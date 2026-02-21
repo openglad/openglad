@@ -10,7 +10,6 @@
 #include <openglad/io/physfs_api.h>
 
 #include "physfs.h"
-#include "physfsrwops.h"
 
 #include <memory>
 
@@ -58,11 +57,6 @@ bool physfs_unmount(const std::string& path)
     return PHYSFS_unmount(path.c_str()) != 0;
 }
 
-bool physfs_exists(const std::string& path)
-{
-    return PHYSFS_exists(path.c_str()) != 0;
-}
-
 std::list<std::string> physfs_enumerate_files_sorted(const std::string& dirname)
 {
     std::list<std::string> out;
@@ -73,15 +67,4 @@ std::list<std::string> physfs_enumerate_files_sorted(const std::string& dirname)
     return out;
 }
 
-SDL_RWops* physfsrw_open_read(const char* path)
-{
-    return PHYSFSRWOPS_openRead(path);
-}
-
-SDL_RWops* physfsrw_open_write(const char* path)
-{
-    return PHYSFSRWOPS_openWrite(path);
-}
-
 } // namespace og::io
-

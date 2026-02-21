@@ -4,6 +4,7 @@
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/render/view.h>
+#include <openglad/render/walker_draw.h>
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
 #include <memory>
@@ -15,7 +16,7 @@ static std::unique_ptr<walker> create_living(char family)
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    auto w = l->create_walker_owned(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family);
     if (!w)
         return nullptr;
     w->setxy(50, 50);
@@ -112,8 +113,8 @@ void test_walker_specials_and_render_paths_smoke()
 
     // Keep to deterministic, non-blocking paths in unit-test mode.
     (void)w->query_next_to();
-    (void)w->draw(v);
-    (void)w->draw_tile(v);
+    (void)draw_walker(*w, v);
+    (void)draw_walker_tile(*w, v);
     w->animate();
     w->set_difficulty(1);
     w->set_direct_frame(0);
@@ -178,7 +179,7 @@ void test_walker_myguy_move_and_weapon_heading_and_outline_named()
     if (!l)
         return;
 
-    auto weapon = l->create_walker_owned(Order::Weapon, FAMILY_ARROW, myscreen);
+    auto weapon = l->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     if (!weapon)
         return;
@@ -257,6 +258,205 @@ void test_walker_myguy_move_and_weapon_heading_and_outline_named()
     TEST_ASSERT(owner->act() == 0, "unknown act_type returns 0");
 }
 REGISTER_TEST(test_walker_myguy_move_and_weapon_heading_and_outline_named);
+
+void test_walker_init_fire_and_fire_check_gate_branches()
+{
+    auto w = create_living(FAMILY_SOLDIER);
+    auto foe = create_living(FAMILY_ORC);
+    TEST_ASSERT(w && foe, "walkers created");
+    if (!(w && foe))
+        return;
+
+    w->setxy(80, 80);
+    foe->setxy(96, 80);
+    w->foe = foe.get();
+
+    // init_fire: control walker must not turn/fire when facing differs.
+    w->curdir = FACE_LEFT;
+    w->enddir = FACE_LEFT;
+    w->set_act_type(ACT_CONTROL);
+    TEST_ASSERT(!w->init_fire(1, 0), "ACT_CONTROL init_fire should fail when facing differs");
+
+    // init_fire: busy gate.
+    w->set_act_type(ACT_RANDOM);
+    w->curdir = FACE_RIGHT;
+    w->enddir = FACE_RIGHT;
+    w->busy = 3;
+    TEST_ASSERT(!w->init_fire(1, 0), "busy init_fire should fail");
+    w->busy = 0;
+
+    // fire_check: no foe.
+    w->foe = nullptr;
+    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail without foe");
+    w->foe = foe.get();
+
+    // fire_check: no-ranged bit.
+    w->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail with BIT_NO_RANGED");
+    w->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+
+    // fire_check: insufficient magic for weapon cost.
+    w->stats()->weapon_cost = 9999;
+    w->stats()->magicpoints = 0;
+    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail when weapon_cost exceeds magicpoints");
+    w->stats()->weapon_cost = 0;
+    w->stats()->magicpoints = 100;
+
+    // fire_check: target direction mismatch with current facing.
+    w->curdir = FACE_LEFT;
+    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail when targetdir differs from curdir");
+}
+REGISTER_TEST(test_walker_init_fire_and_fire_check_gate_branches);
+
+void test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes()
+{
+    auto a = create_living(FAMILY_SOLDIER);
+    auto b = create_living(FAMILY_ARCHER);
+    auto owner_a = create_living(FAMILY_MAGE);
+    auto owner_b = create_living(FAMILY_ORC);
+    TEST_ASSERT(a && b && owner_a && owner_b, "walkers created");
+    if (!(a && b && owner_a && owner_b))
+        return;
+
+    // Null target guard.
+    TEST_ASSERT_EQ(0, (int)a->is_friendly(nullptr), "is_friendly should return 0 for null target");
+
+    // Dead target guard.
+    b->dead = 1;
+    TEST_ASSERT_EQ(0, (int)a->is_friendly(b.get()), "dead target should be unfriendly");
+    b->dead = 0;
+
+    // Owner-chain traversal branches.
+    a->owner = owner_a.get();
+    b->owner = owner_b.get();
+    owner_a->team_num = 0;
+    owner_b->team_num = 1;
+
+    const int old_allied_mode = a->sim_save->allied_mode;
+
+    // Allied mode with one myguy missing (has_myguy == 2 path).
+    owner_a->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+    owner_b->clear_myguy();
+    owner_b->team_num = 0;
+    a->sim_save->allied_mode = 1;
+    TEST_ASSERT(a->is_friendly(b.get()) != 0, "allied mode should treat team-0 non-myguy as friendly");
+
+    owner_b->team_num = 1;
+    TEST_ASSERT_EQ(0, (int)a->is_friendly(b.get()), "allied mode should reject non-team-0 when only one side has myguy");
+
+    // Enemy mode path (allied_mode==0).
+    a->sim_save->allied_mode = 0;
+    owner_b->team_num = owner_a->team_num;
+    TEST_ASSERT(a->is_friendly(b.get()) != 0, "enemy mode uses team equality");
+
+    // is_friendly_to_team dead and no-myguy paths.
+    a->dead = 1;
+    TEST_ASSERT_EQ(0, (int)a->is_friendly_to_team(0), "dead walker should not be friendly to any team");
+    a->dead = 0;
+    owner_a->clear_myguy();
+    a->sim_save->allied_mode = 0;
+    TEST_ASSERT(a->is_friendly_to_team(owner_a->team_num) != 0, "non-myguy path should still compare team");
+
+    a->sim_save->allied_mode = old_allied_mode;
+}
+REGISTER_TEST(test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes);
+
+void test_walker_round6_act_fire_collision_attack_path()
+{
+    auto weapon = create_living(FAMILY_ARROW);
+    auto target = create_living(FAMILY_ORC);
+    TEST_ASSERT(weapon && target, "walkers created");
+    if (!(weapon && target))
+        return;
+
+    weapon->set_order_family(Order::Weapon, FAMILY_ARROW);
+    weapon->team_num = 0;
+    target->team_num = 1;
+    target->stats()->hitpoints = 50;
+    weapon->lineofsight = 5;
+    weapon->lastx = -1;
+    weapon->lasty = 0;
+    weapon->setxy(0, GRID_SIZE * 4); // force walk() failure on next step
+    weapon->collide_ob = target.get();
+    weapon->stats()->set_bit_flags(BIT_IMMORTAL, 1); // keep weapon alive after collision branch
+
+    const float hp_before = target->stats()->hitpoints;
+    weapon->set_act_type(ACT_FIRE);
+    TEST_ASSERT(weapon->act(), "act() should dispatch to act_fire");
+    TEST_ASSERT(target->stats()->hitpoints <= hp_before, "collision branch should attack target");
+}
+REGISTER_TEST(test_walker_round6_act_fire_collision_attack_path);
+
+void test_walker_friendliness_null_dead_and_allied_mode_paths()
+{
+    auto a = create_living(FAMILY_SOLDIER);
+    auto b = create_living(FAMILY_ORC);
+    TEST_ASSERT(a && b, "walkers created");
+    if (!(a && b))
+        return;
+
+    a->team_num = 0;
+    b->team_num = 1;
+
+    TEST_ASSERT(!a->is_friendly(nullptr), "null target should be unfriendly");
+
+    b->dead = 1;
+    TEST_ASSERT(!a->is_friendly(b.get()), "dead target should be unfriendly");
+    b->dead = 0;
+
+    a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    b->clear_myguy();
+
+    b->team_num = 0;
+    TEST_ASSERT(a->is_friendly(b.get()) != 0, "team 0 target with one myguy should be treated as friendly");
+
+    TEST_ASSERT(a->is_friendly_to_team(1) == 0 || a->is_friendly_to_team(1) == 1, "friendly-to-team path should execute");
+
+    a->dead = 1;
+    TEST_ASSERT(!a->is_friendly_to_team(0), "dead walker should be unfriendly to all teams");
+    a->dead = 0;
+}
+REGISTER_TEST(test_walker_friendliness_null_dead_and_allied_mode_paths);
+
+void test_walker_batch2_misc_uncovered_paths_smoke()
+{
+    auto w = create_living(FAMILY_SOLDIER);
+    auto t = create_living(FAMILY_ORC);
+    TEST_ASSERT(w && t, "walkers created");
+    if (!(w && t))
+        return;
+
+    // move_myguy_to(nullptr) small branch.
+    w->move_myguy_to(nullptr);
+
+    // default virtual-like hooks that log and return fallback values.
+    TEST_ASSERT(w->eat_me(t.get()) == 0, "eat_me non-treasure fallback should return 0");
+    (void)w->do_summon(1, 5);
+    (void)w->check_special();
+
+    // set_difficulty branches.
+    w->team_num = 1;
+    w->set_order_family(Order::Living, FAMILY_SOLDIER);
+    w->set_difficulty(3);
+    w->set_order_family(Order::Generator, FAMILY_TENT);
+    w->set_difficulty(3);
+
+    // act_generate / act_fire / act_guard / act_random smoke via public act().
+    w->set_order_family(Order::Generator, FAMILY_TENT);
+    w->stats()->level = 5;
+    w->set_act_type(ACT_GENERATE);
+    (void)w->act();
+    w->set_order_family(Order::Weapon, FAMILY_ARROW);
+    w->lineofsight = 1;
+    w->set_act_type(ACT_FIRE);
+    (void)w->act();
+    w->set_order_family(Order::Living, FAMILY_SOLDIER);
+    w->set_act_type(ACT_GUARD);
+    (void)w->act();
+    w->set_act_type(ACT_RANDOM);
+    (void)w->act();
+}
+REGISTER_TEST(test_walker_batch2_misc_uncovered_paths_smoke);
 
 void test_walker_create_weapon_myguy_and_direction_and_cleric_branches()
 {

@@ -1,6 +1,8 @@
 #include <memory>
 #include <array>
 #include <openglad/input/button.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/pixien.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"

@@ -23,16 +23,16 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <set>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <format>
 #include <openglad/data/gparser.h>
 #include <openglad/core/util.h>
-#include <openglad/platform/io.h>
+#include <openglad/io/og_file.h>
+#include <openglad/io/ogfile_yaml.h>
 #include <openglad/io/yaml_stream.h>
-
-// TODO: Move overscan setting and toInt() to this file.
-#include <openglad/input/input.h>
 
 int toInt(const std::string& s);
 
@@ -53,8 +53,13 @@ std::string cfg_store::get_setting(const std::string& category, const std::strin
 		if(a2 != a1->second.end())
 			return a2->second;
 	}
-	
-	Log("cfg setting not found: {}/{}\n", category, setting);
+
+    static std::set<std::string> missing_logged;
+    const std::string key = category + "/" + setting;
+    if (missing_logged.insert(key).second)
+    {
+        Log("cfg setting not found: {}/{}\n", category, setting);
+    }
 	return "";
 }
 
@@ -63,11 +68,11 @@ bool cfg_store::load_settings()
     // Load defaults
     apply_setting("", "version", "1");
     apply_setting("sound", "sound", "on");
-    
+
     apply_setting("graphics", "render", "normal");
     apply_setting("graphics", "fullscreen", "off");
     apply_setting("graphics", "overscan_percentage", "0");
-    
+
     apply_setting("effects", "gore", "on");
     apply_setting("effects", "mini_hp_bar", "on");
     apply_setting("effects", "hit_flash", "on");
@@ -76,21 +81,21 @@ bool cfg_store::load_settings()
     apply_setting("effects", "hit_anim", "on");
     apply_setting("effects", "damage_numbers", "off");
     apply_setting("effects", "heal_numbers", "on");
-    
+
     Log("Loading settings\n");
-    RwopsPtr rwops(open_read_file("cfg/openglad.yaml", true));
-    if(rwops == nullptr)
+    auto file = og::io::og_open_read("cfg/openglad.yaml", true);
+    if(!file)
 	{
 		Log("Could not open config file. Using defaults.");
 		return false;
 	}
-    
+
     og::io::YamlParser yaml;
-    yaml.set_input(rwops_read_handler, rwops.get());
-    
+    yaml.set_input(ogfile_read_handler, file.get());
+
     std::string last_scalar;
     std::string current_category;
-    
+
     og::io::YamlParseResult parse_result;
     while((parse_result = yaml.parse_next()) == og::io::YamlParseResult::Ok)
     {
@@ -118,37 +123,30 @@ bool cfg_store::load_settings()
                 break;
         }
     }
-    
+
     if(parse_result == og::io::YamlParseResult::Error)
         LogError("Parsing error in config file.\n");
-    
+
     yaml.close_input();
-    
-    // Update game stuff from these settings
-    overscan_percentage = static_cast<float>(toInt(get_setting("graphics", "overscan_percentage"))) / 100.0f;
-    update_overscan_setting();
-    
+
 	return true;
 }
 
 
 bool cfg_store::save_settings()
 {
-    std::string buf = std::format("{:.0f}", 100*overscan_percentage);
-    apply_setting("graphics", "overscan_percentage", buf);
-    
-    RwopsPtr outfile(open_write_file("cfg/openglad.yaml"));
+    auto outfile = og::io::og_open_write("cfg/openglad.yaml");
     if(outfile != nullptr)
     {
         Log("Saving settings\n");
-        
+
         og::io::YamlEmitter yaml;
-        if (!yaml.set_output(rwops_write_handler, outfile.get()))
+        if (!yaml.set_output(ogfile_write_handler, outfile.get()))
         {
             LogError("Couldn't initialize YAML emitter for cfg/openglad.yaml.\n");
             return false;
         }
-        
+
         // Each category is a mapping that holds setting/value pairs
         for(auto& [category, settings] : data)
         {
@@ -168,11 +166,8 @@ bool cfg_store::save_settings()
                 yaml.emit_end_mapping();
             }
         }
-        
-        yaml.close_output();
 
-        // Sync to persistent storage (IDBFS on web)
-        sync_filesystem();
+        yaml.close_output();
 
         return true;
     }
@@ -185,7 +180,7 @@ bool cfg_store::save_settings()
 
 void cfg_store::commandline(int &argc, char **&argv)
 {
-	const char helpmsg[] = 
+	const char helpmsg[] =
 "Usage: openglad [-d -f ...]\n"
 "  -s		Turn sound on\n"
 "  -S		Turn sound off\n"
@@ -216,10 +211,12 @@ void cfg_store::commandline(int &argc, char **&argv)
 			{
 				case 'h':
 					Log(helpmsg);
-					exit (0);
+                    std::fflush(nullptr);
+                    std::_Exit(0);
 				case 'v':
 					Log(versmsg);
-					exit (0);
+                    std::fflush(nullptr);
+                    std::_Exit(0);
 				case 's':
 					data["sound"]["sound"] = "on";
 					Log("Sound is on.");

@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include "SDL.h"
+#include <cstdint>
 #include <array>
 #include <string>
 #include <map>
@@ -51,12 +51,12 @@ public:
     short scen_num;
     std::map<std::string, std::set<int> > completed_levels;
     std::map<std::string, int> current_levels;
-    Uint32 score;
-    Uint32 m_score[4];
-    Uint32 totalcash;
-    Uint32 m_totalcash[4];
-    Uint32 totalscore;
-    Uint32 m_totalscore[4];
+    std::uint32_t score;
+    std::uint32_t m_score[4];
+    std::uint32_t totalcash;
+    std::uint32_t m_totalcash[4];
+    std::uint32_t totalscore;
+    std::uint32_t m_totalscore[4];
     short my_team;
     // Guys used for training and stuff.  After a mission, the team is picked from the LevelData's oblist for saving.
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> team_list;

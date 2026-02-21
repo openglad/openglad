@@ -86,8 +86,11 @@ extern int g_test_registry_count;
     } while(0)
 
 void run_all_tests();
+void list_all_tests(FILE* out);
 
 // Optional filter: if non-null, only tests whose names contain this substring run
 extern const char* g_test_filter;
+// Optional exact selector: comma-separated exact test names to run.
+extern const char* g_test_exact;
 
 #endif // _TEST_FRAMEWORK_H__

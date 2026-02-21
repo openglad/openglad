@@ -18,37 +18,38 @@
 // Living; derived class of walker
 //
 
-#include <openglad/runtime/game_context.h>
+#include <cmath>
+#include <cstdint>
 #include <openglad/core/combat_math.h>
-#include <openglad/render/smooth.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/entities/weapon_family_registry.h>
 #include <openglad/entities/living.h>
+#include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/gparser.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <cstring>
 
 // From picker
-extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];
-extern Sint32 current_difficulty;
+extern std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
+extern std::int32_t current_difficulty;
 
-// Shorthand for the injectable RNG
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
-
-static inline cfg_store& active_config()
-{
-    if(ctx().config != nullptr)
-        return *ctx().config;
-    return cfg;
-}
+// rng/config wrappers removed: use SimEntity fields sim_rng/sim_config directly
 
 living::living(const PixieData& data)
     : walker(data)
+{
+	current_special = 1;
+	lifetime = 0;
+}
+
+living::living()
+    : walker()
 {
 	current_special = 1;
 	lifetime = 0;
@@ -59,7 +60,12 @@ living::~living()
 
 bool living::act()
 {
-	if (bonus_rounds>0 && !dead)  // we get extra rounds to act this cycle
+	// Cap bonus_rounds to prevent stack overflow from unbounded recursion.
+	// The original code recursed for each bonus round, which could exhaust
+	// the stack with large values (e.g., mage freeze-time on many allies).
+	if (bonus_rounds > 50)
+		bonus_rounds = 50;
+	if (bonus_rounds > 0 && !dead)
 	{
 		bonus_rounds--;
 		act();
@@ -68,7 +74,7 @@ bool living::act()
 		return 0;
 
 	// Make sure everyone we're pointing to is valid
-	if (foe && (foe->dead || (rng(foe->invisibility_left/20) > 0) ) )
+	if (foe && (foe->dead || (sim_rng->next(foe->invisibility_left/20) > 0) ) )
 		foe = nullptr;
 	if (is_friendly(foe))
 		foe = nullptr;
@@ -111,7 +117,7 @@ bool living::act()
 
 	// Regenerate magic
 	{
-		bool frozen = myscreen->enemy_freeze || bonus_rounds;
+		bool frozen = *sim_enemy_freeze || bonus_rounds;
 		RegenTickResult mp = compute_regen_tick(stats_->magicpoints, stats_->max_magicpoints,
 		                                        stats_->magic_per_round,
 		                                        stats_->current_magic_delay, stats_->max_magic_delay,
@@ -122,7 +128,7 @@ bool living::act()
 
 	// Regenerate hitpoints
 	{
-		bool frozen = myscreen->enemy_freeze || bonus_rounds;
+		bool frozen = *sim_enemy_freeze || bonus_rounds;
 		HpRegenResult hp = compute_hp_regen_tick(stats_->hitpoints, stats_->max_hitpoints,
 		                                          stats_->heal_per_round,
 		                                          stats_->current_heal_delay, stats_->max_heal_delay,
@@ -149,11 +155,11 @@ bool living::act()
 	// Flight
 	if (flight_left > 0)
 		flight_left--;
-	if (!myscreen->query_grid_passable(xpos, ypos, this) && !flight_left)
+	if (!sim_level->query_grid_passable(xpos, ypos, this) && !flight_left)
 	{
 		flight_left++;
 		stats_->hitpoints--;
-		if(active_config().is_on("effects", "damage_numbers"))
+		if(sim_config && sim_config->is_on("effects", "damage_numbers"))
             damage_numbers.push_back(DamageNumber(xpos + sizex/2, ypos, 1, RED));
 		
 		if (stats_->hitpoints <= 0)
@@ -178,10 +184,10 @@ bool living::act()
 
 	if ( stats_->query_bit_flags(BIT_FORESTWALK) &&
 	        (
-	            myscreen->level_data.mysmoother.query_genre_x_y( xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	            || myscreen->level_data.mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	            || myscreen->level_data.mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
-	            || myscreen->level_data.mysmoother.query_genre_x_y( xpos/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
+	            sim_level->mysmoother.query_genre_x_y( xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	            || sim_level->mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	            || sim_level->mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
+	            || sim_level->mysmoother.query_genre_x_y( xpos/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
 	        )
 	   )
 	{
@@ -257,7 +263,7 @@ bool living::act()
 	// Are we performing some action?
 	if (stats_->has_commands())
 	{
-		Sint32 temp = stats_->do_command();
+		std::int32_t temp = stats_->do_command();
 		if (temp)
 			return 1;
 	}
@@ -268,7 +274,7 @@ bool living::act()
 	// Do we have a generic action-type set?
 	if (action  && (user == -1) )
 	{
-		Sint32 temp = do_action();
+		std::int32_t temp = do_action();
 		if (temp)
 			return temp;
 	}
@@ -310,14 +316,14 @@ bool living::act()
 			// We are randomly walking toward enemy
 		case ACT_RANDOM:
 			{
-				if (!rng(5) ) //1 in 5 to do our special
+				if (!sim_rng->next(5) ) //1 in 5 to do our special
 				{
 					// Should we do our special? Are we full of magic?
 					if (stats_->magicpoints >= stats_->special_cost[1])
 					{
-						current_special = static_cast<char>(rng((stats_->level+2)/3) + 1);
+						current_special = static_cast<char>(sim_rng->next((stats_->level+2)/3) + 1);
 						if ( (current_special > 4) ||
-						        (myscreen->special_name[static_cast<int>(family)][static_cast<int>(current_special)] == "NONE")
+						        (strcmp(get_family_descriptor(family)->special_names[static_cast<int>(current_special)], "NONE") == 0)
 						   )
 							current_special = 1;
 						if (check_special() )
@@ -329,15 +335,15 @@ bool living::act()
 						return 1;
 					}
 				}
-				else if (!rng(5) ) //1 in 5 to do act_random() function
+				else if (!sim_rng->next(5) ) //1 in 5 to do act_random() function
 					act_random();
 				else // 4 of 5 times
 				{
 					if (!foe)
 					{
-						foe = myscreen->find_near_foe(this);
+						foe = sim_level->find_near_foe(this);
 					}
-					if (foe) // && rng(2) )
+					if (foe) // && sim_rng->next(2) )
 					{
 						curdir = enddir = static_cast<char>((enddir/2) * 2);
 						//stats_->try_command(COMMAND_SEARCH, 40, 0, 0);
@@ -345,8 +351,8 @@ bool living::act()
 					}
 					//else if (foe)
 					//  stats_->try_command(COMMAND_RIGHT_WALK,40,0,0);
-					else if (!rng(2))
-						foe = myscreen->find_far_foe(this);
+					else if (!sim_rng->next(2))
+						foe = sim_level->find_far_foe(this);
 					else
 						stats_->try_command(COMMAND_RANDOM_WALK,20);
 
@@ -371,7 +377,7 @@ short living::shove(walker  *target, short x, short y)
 	        (is_friendly(target)) // we are allied
 	   )
 		// Make sure WE don't get shoved
-		if (rng(3) && target->query_act_type() != ACT_CONTROL)
+		if (sim_rng->next(3) && target->query_act_type() != ACT_CONTROL)
 		{
 			// We have to prevent a build-up of shoves which is
 			//   caused by a blocked target.  We do so for now by clearing
@@ -404,9 +410,9 @@ bool living::walk(float x, float y)
 	{
 		// check if off map
 		if (x+xpos < 0 ||
-		        x+xpos >= myscreen->level_data.grid.w*GRID_SIZE ||
+		        x+xpos >= sim_level->grid.w*GRID_SIZE ||
 		        y+ypos < 0 ||
-		        y+ypos >= myscreen->level_data.grid.h*GRID_SIZE)
+		        y+ypos >= sim_level->grid.h*GRID_SIZE)
 		{
 			return 0;
 		}
@@ -415,7 +421,7 @@ bool living::walk(float x, float y)
 		// Normally we would check if the object at this grid point
 		//    is passable (I cheated for now)
 		// FIXME: These additional checks are a hack for the corner clipping bug (you could get into trees, etc.)
-		if (myscreen->query_passable(xpos+x, ypos+y,this) && myscreen->query_passable(xpos+ceilf(x), ypos+ceilf(y),this) && myscreen->query_passable(xpos+floorf(x), ypos+floorf(y),this))
+		if (sim_level->query_passable(xpos+x, ypos+y,this) && sim_level->query_passable(xpos+ceilf(x), ypos+ceilf(y),this) && sim_level->query_passable(xpos+floorf(x), ypos+floorf(y),this))
 		{
 			// Control object does complete redraw anyway
 			worldmove(x,y);
@@ -485,11 +491,11 @@ bool living::collide(walker  *ob)
 	return 1;
 }
 
-walker* living::do_summon(char whatfamily, Sint32 summon_lifetime)
+walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 {
 	walker  *newob;
 
-	newob = myscreen->level_data.add_ob(Order::Living, whatfamily);
+	newob = sim_level->add_ob(Order::Living, whatfamily);
 	newob->owner = this;
 		newob->lifetime = summon_lifetime;
 	newob->transform_to(Order::Living, whatfamily);
@@ -502,7 +508,7 @@ walker* living::do_summon(char whatfamily, Sint32 summon_lifetime)
 // the special or not ..
 bool living::check_special()
 {
-	shifter_down = static_cast<short>(rng(2)); // on or off, randomly ..
+	shifter_down = static_cast<short>(sim_rng->next(2)); // on or off, randomly ..
 
 	// Make sure we have enough ..
 	if (stats_->magicpoints < stats_->special_cost[static_cast<int>(current_special)])
@@ -516,10 +522,10 @@ bool living::check_special()
 	return true;
 }
 
-void living::set_difficulty(Uint32 whatlevel)
+void living::set_difficulty(std::uint32_t whatlevel)
 {
-	//  Sint32 calcdelay,calcrate;  // apparently not used anymore
-	Uint32 dif1 = difficulty_level[current_difficulty];
+	//  std::int32_t calcdelay,calcrate;  // apparently not used anymore
+	std::uint32_t dif1 = difficulty_level[current_difficulty];
 	const float levmult = static_cast<float>(whatlevel) * static_cast<float>(whatlevel);
 	const float level_f = static_cast<float>(whatlevel);
 
@@ -551,7 +557,7 @@ void living::set_difficulty(Uint32 whatlevel)
 
 		stats_->max_heal_delay = REGEN; //defined in graph.h
 		stats_->current_heal_delay =
-		    static_cast<Sint32>(levmult * 4.0f); //for purposes of calculation only
+		    static_cast<std::int32_t>(levmult * 4.0f); //for purposes of calculation only
 
 	while (stats_->current_heal_delay > REGEN)
 	{
@@ -562,7 +568,7 @@ void living::set_difficulty(Uint32 whatlevel)
 	if (stats_->current_heal_delay > 1)
 	{
 		stats_->max_heal_delay /=
-		    static_cast<Sint32>(stats_->current_heal_delay + 1);
+		    static_cast<std::int32_t>(stats_->current_heal_delay + 1);
 	}
 	stats_->current_heal_delay = 0; //start off without healing
 
@@ -576,7 +582,7 @@ void living::set_difficulty(Uint32 whatlevel)
 
 	// Set the magic delay ..
 	stats_->max_magic_delay = REGEN;
-	stats_->current_magic_delay = static_cast<Sint32>(levmult*30);//for calculation only
+	stats_->current_magic_delay = static_cast<std::int32_t>(levmult*30);//for calculation only
 
 	while (stats_->current_magic_delay > REGEN)
 	{
@@ -587,7 +593,7 @@ void living::set_difficulty(Uint32 whatlevel)
 	if (stats_->current_magic_delay > 1)
 	{
 		stats_->max_magic_delay /=
-		    static_cast<Sint32>(stats_->current_magic_delay + 1);
+		    static_cast<std::int32_t>(stats_->current_magic_delay + 1);
 	}
 	stats_->current_magic_delay = 0; //start off without magic regen
 
@@ -601,8 +607,8 @@ void living::set_difficulty(Uint32 whatlevel)
 
 short living::facing(short x, short y)
 {
-	Sint32 bigy = static_cast<Sint32>(y*1000);
-	Sint32 slope;
+	std::int32_t bigy = static_cast<std::int32_t>(y*1000);
+	std::int32_t slope;
 
 	if (!x)
 	{
@@ -646,8 +652,8 @@ bool living::act_random()
 	short xdist, ydist;
 
 	// Find our foe
-	if (!rng(80) || (!foe))
-		foe = myscreen->find_near_foe(this);
+	if (!sim_rng->next(80) || (!foe))
+		foe = sim_level->find_near_foe(this);
 	if (!foe)
 		return stats_->try_command(COMMAND_RANDOM_WALK,40);
 
@@ -661,7 +667,7 @@ bool living::act_random()
 		if (fire_check(xdist, ydist))
 		{
 			init_fire(xdist, ydist);
-			stats_->set_command(COMMAND_FIRE, static_cast<short>(rng(24)), xdist, ydist);
+			stats_->set_command(COMMAND_FIRE, static_cast<short>(sim_rng->next(24)), xdist, ydist);
 			return 1;
 		}
 		else
@@ -686,7 +692,7 @@ bool living::do_action()
 		case ACTION_FOLLOW: // follow our leader, attack his targets ..
 			if (foe)
 				return 0;       // continue as normal
-			leader = myscreen->find_nearest_player(this);
+			leader = sim_level->find_nearest_player(this);
 			if (!leader)
 				return 0;       // continue as normal ... shouldn't happen
 			if (leader->foe)

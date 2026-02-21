@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <cstdint>
 #include <openglad/core/combat_math.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/family_descriptor.h>
@@ -25,40 +26,32 @@
 #include <openglad/entities/effect_family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/level_data.h>
+#include <openglad/data/save_data.h>
+#include <openglad/data/gparser.h>
+#include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include <openglad/legacy/soundob.h>
 #include <cmath>
 #include <format>
 
-namespace {
-static inline Uint32 rng(Uint32 max_exclusive)
-{
-    return ctx().rng->next(max_exclusive);
-}
+// namespace removed: rng/config wrappers replaced with SimEntity fields
 
-static inline cfg_store& active_config()
-{
-    if(ctx().config != nullptr)
-        return *ctx().config;
-    return cfg;
-}
-} // namespace
-
-// from glad.cpp
-short remaining_foes(screen *myscreen, walker* myguy);
+// from level_data.cpp (LevelData overload for sim/render split)
+short remaining_foes(LevelData& level, walker* myguy);
 
 // Thin adapter: delegates to combat_math pure functions
 short exp_from_action(ExpAction action, walker* w, walker* target, short value)
 {
     return compute_xp_from_action(action, w->stats()->level, target->stats()->level,
-                                  value, *ctx().rng);
+                                  value, *w->sim_rng);
 }
 
 float get_base_damage(walker* w)
 {
-    return compute_base_damage(w->damage, *ctx().rng);
+    return compute_base_damage(w->damage, *w->sim_rng);
 }
 
 float get_damage_reduction(walker* w, float damage, walker* target)
@@ -69,7 +62,7 @@ float get_damage_reduction(walker* w, float damage, walker* target)
 
 void walker::do_heal_effects(walker* healer, walker* target, short amount)
 {
-    if(!active_config().is_on("effects", "heal_numbers"))
+    if(!sim_config || !sim_config->is_on("effects", "heal_numbers"))
         return;
 
     if(healer)
@@ -79,7 +72,7 @@ void walker::do_heal_effects(walker* healer, walker* target, short amount)
 
 void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 {
-    if(active_config().is_on("effects", "damage_numbers"))
+    if(sim_config && sim_config->is_on("effects", "damage_numbers"))
     {
         // Orange numbers for the attacker to see
         if(attacker)
@@ -90,13 +83,13 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
     if (target->stats()->hitpoints < 0)
         tempdamage = static_cast<short>(static_cast<float>(tempdamage) + target->stats()->hitpoints);
 
-    if(active_config().is_on("effects", "hit_anim"))
+    if(sim_config && sim_config->is_on("effects", "hit_anim"))
     {
         // Create hit effect
         const auto* efd = (query_order() == Order::FX) ? get_effect_family_descriptor(query_family()) : nullptr;
         if(query_order() != Order::FX || (efd && efd->creates_hit_effect))
         {
-           walker* newob = myscreen->level_data.add_ob(Order::FX, FAMILY_HIT);
+           walker* newob = sim_level->add_ob(Order::FX, FAMILY_HIT);
             if (newob)
             {
                 newob->owner = target;
@@ -121,10 +114,10 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 
     if(tempdamage > 0)
     {
-        if(active_config().is_on("effects", "hit_flash"))
+        if(sim_config && sim_config->is_on("effects", "hit_flash"))
             target->hurt_flash = true;
 
-        if(active_config().is_on("effects", "hit_recoil"))
+        if(sim_config && sim_config->is_on("effects", "hit_recoil"))
         {
             if(target->query_order() == Order::Living)
             {
@@ -268,7 +261,7 @@ bool walker::attack(walker  *target)
                 myguy->exp += newexp;
             if (getscore)
             {
-                myscreen->save_data.m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(target->stats()->level);
+                sim_save->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i) + static_cast<std::uint32_t>(target->stats()->level);
             }
         }
     }
@@ -300,7 +293,7 @@ bool walker::attack(walker  *target)
         {
             if (getscore)
             {
-                myscreen->save_data.m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(target->stats()->level); // / 2;
+                sim_save->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i) + static_cast<std::uint32_t>(target->stats()->level); // / 2;
             }
             if (headguy->myguy)
                 headguy->myguy->exp += newexp;
@@ -330,19 +323,19 @@ bool walker::attack(walker  *target)
                     //}
                     if (getscore)
                     {
-                        myscreen->save_data.m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(10 * target->stats()->level);
+                        sim_save->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i) + static_cast<std::uint32_t>(10 * target->stats()->level);
                     }
                     // If named, alert us of the enemy's death
                     if (target->stats()->name.size() && !(target->lifetime)
                             && (!target->owner) ) // do we have an NPC name?
                     {
                         message = std::format("ENEMY DEATH: {} DIED!", target->stats()->name);
-                        myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
+                        og::sim::emit_notification(sim_events, message);
                     }
-                    if(remaining_foes(myscreen, this) == 1)  // This is the last foe
+                    if(remaining_foes(*sim_level, this) == 1)  // This is the last foe
                     {
                         message = "All foes defeated!";
-                        myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
+                        og::sim::emit_notification(sim_events, message);
                     }
                 }
                 else
@@ -360,24 +353,24 @@ bool walker::attack(walker  *target)
                         const auto* fd = get_family_descriptor(target->query_family());
                         message = fd ? fd->death_message : "SOMEONE DIED";
                     }
-                    myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
+                    og::sim::emit_notification(sim_events, message);
                 }
             }
 
             /* Blood splats at death */
             // Make temporary stain:
-            blood = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BLOOD);
+            blood = sim_level->add_ob(Order::Weapon, FAMILY_BLOOD);
             blood->team_num = target->team_num;
             blood->ani_type = ANI_GROW;
             blood->ignore = 1; // so that we can be walked over .. ?
             blood->setxy(target->xpos,target->ypos);
         }
-        if (on_screen() && targetorder == Order::Living)
+        if (targetorder == Order::Living)
         {
-            if (rng(2))
-                myscreen->soundp->play_sound(SOUND_DIE1);
+            if (sim_rng->next(2))
+                og::sim::emit_sound(sim_events, SOUND_DIE1);
             else
-                myscreen->soundp->play_sound(SOUND_DIE2);
+                og::sim::emit_sound(sim_events, SOUND_DIE2);
         }
 
         target->dead = 1;

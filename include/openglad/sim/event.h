@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace og::sim {
 
@@ -8,22 +9,22 @@ namespace og::sim {
 // Runtime/render layers consume these to produce audio, visual FX, and UI updates.
 enum class EventKind : std::uint32_t {
     None = 0,
-    Damage = 1,      // Entity took damage: a=target_id, b=amount
-    Death = 2,       // Entity died: a=entity_id, b=killer_id
-    Spawn = 3,       // Entity spawned: a=entity_id, b=family
-    PlaySound = 4,   // Request sound: a=sound_id, b=0
-    SpawnFx = 5,     // Spawn visual effect: a=fx_type, b=position_packed
-    TextPopup = 6,   // Display text popup: a=text_id, b=duration
-    LevelComplete = 7, // Level completed: a=level_id, b=score
+    PlaySound = 4,     // Request sound: a=sound_id, b=0
+    Notification = 8,  // Text notification: message in text field
+    SetPalette = 11,   // Request palette change: a=0 normal, a=1 blue/freeze
+    RequestRedraw = 12,// Force full screen redraw
+    EndGame = 13,      // End game: a=ending type, b=next_level (-1 if unset)
+    DamageTile = 14,   // Damage tile at grid position: a=x_pixel, b=y_pixel
+    SetEnd = 15,       // Signal level end: screen sets end=1
 };
 
-// Minimal deterministic event format for headless simulation tests.
-// This is intentionally POD-ish so event streams can be compared byte-for-byte.
+// Simulation event record, pushed into SimEventLog during a tick.
 struct Event final {
     std::uint32_t tick = 0;
     EventKind kind = EventKind::None;
     std::uint32_t a = 0;
     std::uint32_t b = 0;
+    std::string text;  // Optional text payload for Notification events
 
     bool operator==(const Event& o) const = default;
 };

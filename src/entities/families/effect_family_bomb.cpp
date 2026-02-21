@@ -5,32 +5,22 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/level_data.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
-
-Sint32 compute_explosion_range(Sint32 level, short skip_exit);
+std::int32_t compute_explosion_range(std::int32_t level, short skip_exit);
 
 static bool bomb_on_death(effect* self)
 {
     if (!self->owner || self->owner->dead)
         self->owner = self;
-    if (self->on_screen())
-        active_screen()->soundp->play_sound(SOUND_EXPLODE);
-    walker* newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+    og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);
+    walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
     newob->owner = self->owner;
     newob->stats()->hitpoints = 0;
     newob->stats()->level = self->owner->stats()->level;
@@ -44,14 +34,15 @@ static bool explosion_on_death(effect* self)
 {
     if (!self->owner || self->owner->dead)
         self->owner = self;
-    Sint32 generic = compute_explosion_range(self->owner->stats()->level, self->skip_exit);
-    Sint32 howmany = 0;
-    auto foelist = active_screen()->find_in_range(active_screen()->level_data.oblist, 15+generic,
+    std::int32_t generic = compute_explosion_range(self->owner->stats()->level, self->skip_exit);
+    std::int32_t howmany = 0;
+    auto foelist = self->sim_level->find_in_range(self->sim_level->oblist, 15+generic,
         &howmany, self);
 
-    // Damage our tile location ..
-    active_screen()->damage_tile( static_cast<short>(self->xpos+(self->sizex/2)),
-        static_cast<short>(self->ypos+(self->sizey/2)) );
+    // Emit DamageTile event instead of calling screen directly
+    og::sim::emit_event(self->sim_events, og::sim::EventKind::DamageTile,
+        static_cast<std::uint32_t>(self->xpos+(self->sizex/2)),
+        static_cast<std::uint32_t>(self->ypos+(self->sizey/2)));
     if (howmany < 1)
         return false;
 
@@ -63,10 +54,10 @@ static bool explosion_on_death(effect* self)
                 (!self->skip_exit || w != self->owner)
            )
         {
-            Sint32 xdelta = w->xpos - self->xpos;
+            std::int32_t xdelta = w->xpos - self->xpos;
             if (xdelta)
                 xdelta = xdelta/abs(xdelta);
-            Sint32 ydelta = w->ypos - self->ypos;
+            std::int32_t ydelta = w->ypos - self->ypos;
             if (ydelta)
                 ydelta = ydelta/abs(ydelta);
             generic = 2+self->owner->stats()->level/15;

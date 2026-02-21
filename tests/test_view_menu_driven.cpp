@@ -21,7 +21,7 @@ static std::unique_ptr<walker> create_controlled_living(char family)
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    auto w = l->create_walker_owned(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family);
     if (!w)
         return nullptr;
     w->team_num = 0;
@@ -64,6 +64,9 @@ void test_viewscreen_options_menu_exercises_key_paths()
     TEST_ASSERT(control != nullptr, "create_controlled_living should succeed");
     walker* controlp = control.get();
     v->control = controlp;
+
+    // Save prefs that options_menu() may mutate and persist to keyprefs.dat.
+    const signed char saved_view = v->prefs[PREF_VIEW];
 
     KeystateOverride ks;
 
@@ -115,6 +118,10 @@ void test_viewscreen_options_menu_exercises_key_paths()
     player_keys[v->mynum][KEY_SPECIAL] = saved_special;
     player_keys[v->mynum][KEY_YELL] = saved_yell;
     player_keys[v->mynum][KEY_SHIFTER] = saved_shifter;
+
+    // Restore view pref that was mutated by the ] and [ hotkeys.
+    v->prefs[PREF_VIEW] = saved_view;
+    v->resize(saved_view);
 
     v->control = nullptr;
 }

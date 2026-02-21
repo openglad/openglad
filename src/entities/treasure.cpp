@@ -18,37 +18,33 @@
 // treasure; a derived class of walker
 //
 
-//#include "graph.h"
 #include <cmath>
 #include <string>
 #include <openglad/entities/obmap.h>
 #include <openglad/data/gloader.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
 #include <openglad/entities/treasure.h>
+#include <openglad/entities/walker_render.h>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure_family_registry.h>
-#include <openglad/render/text.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
+// pixieN include not needed; render access is through WalkerRender
 #include <algorithm>
 #include <format>
 #include <cstring>
-#include <openglad/runtime/game_context.h>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 treasure::treasure(const PixieData& data)
     : walker(data)
 {
 	ignore =static_cast<char>(0);
+	dead = static_cast<char>(0);
+}
+
+treasure::treasure()
+    : walker()
+{
+	ignore = static_cast<char>(0);
 	dead = static_cast<char>(0);
 }
 
@@ -76,15 +72,15 @@ void treasure::set_direct_frame(short whatframe)
 {
 	frame = whatframe;
 
-	const PixieData& data = active_screen()->level_data.myloader->graphics[PIX(order, family)];
-	bmp = data.data.get() + frame*size;
-
+	// Update render component's bmp pointer if available
+	if (render_)
+		render_->set_frame(whatframe);
 }
 
 // Finds the next connected teleporter in the fxlist for you to warp to.
 walker  * treasure::find_teleport_target()
 {
-	auto& ls = active_screen()->level_data.fxlist;
+	auto& ls = sim_level->fxlist;
 	//Log("Teleporting from #%d ..", number);
 
 	// First find where we are in the list ...

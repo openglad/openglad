@@ -7,7 +7,7 @@
  */
 #pragma once
 
-#include "SDL.h"
+#include <cstdint>
 
 class walker;
 class effect;
@@ -17,7 +17,7 @@ struct EffectFamilyDescriptor {
     const char* name;
     bool loops_animation;     // true = loop cycle; false = one-shot
     bool creates_hit_effect;  // true = creates hit animation on damage (like weapons do)
-    Sint32 init_bit_flags;    // BIT_ flags set on creation in gloader
+    std::int32_t init_bit_flags;    // BIT_ flags set on creation in gloader
 
     bool (*on_act)(effect* self);
     bool (*on_death)(effect* self);

@@ -5,6 +5,8 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure_family_registry.h>
 

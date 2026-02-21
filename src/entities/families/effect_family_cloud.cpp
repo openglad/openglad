@@ -5,32 +5,18 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
+#include <openglad/data/level_data.h>
 
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);
 
 static bool cloud_on_act(effect* self)
 {
-    Sint32 temp = 0;
+    std::int32_t temp = 0;
 
     if (self->lifetime > 0)
         self->lifetime--;
@@ -45,8 +31,8 @@ static bool cloud_on_act(effect* self)
     if (self->invisibility_left > 0)
         self->invisibility_left--;
     // Hit any nearby foes (not friends, for now)
-    auto foelist = active_screen()->find_foes_in_range(
-        active_screen()->level_data.oblist, self->sizex, &temp, self);
+    auto foelist = self->sim_level->find_foes_in_range(
+        self->sim_level->oblist, self->sizex, &temp, self);
 
     for(auto* w : foelist)
     {
@@ -65,10 +51,10 @@ static bool cloud_on_act(effect* self)
         float xd = 0, yd = 0;
         while (xd == 0 && yd == 0)
         {
-            xd = static_cast<float>(static_cast<Sint32>(rng(3)) - 1);
-            yd = static_cast<float>(static_cast<Sint32>(rng(3)) - 1);
+            xd = static_cast<float>(static_cast<std::int32_t>(self->sim_rng->next(3)) - 1);
+            yd = static_cast<float>(static_cast<std::int32_t>(self->sim_rng->next(3)) - 1);
         }
-        self->stats()->add_command(COMMAND_WALK, static_cast<short>(rng(20)),
+        self->stats()->add_command(COMMAND_WALK, static_cast<short>(self->sim_rng->next(20)),
             static_cast<short>(xd), static_cast<short>(yd));
     }
     return true;

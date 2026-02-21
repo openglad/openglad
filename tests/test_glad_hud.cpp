@@ -1,4 +1,5 @@
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
@@ -22,12 +23,31 @@ short score_panel(screen* myscreen);
 short score_panel(screen* myscreen, short do_it);
 short new_score_panel(screen* myscreen, short do_it);
 
+static bool control_pointer_is_live(LevelData& level_data, const walker* candidate)
+{
+    if (candidate == nullptr)
+        return false;
+
+    const auto in_list = [candidate](const std::list<std::unique_ptr<walker>>& list) {
+        for (const auto& entry : list)
+        {
+            if (entry.get() == candidate)
+                return true;
+        }
+        return false;
+    };
+
+    return in_list(level_data.oblist)
+        || in_list(level_data.fxlist)
+        || in_list(level_data.weaplist);
+}
+
 static std::unique_ptr<walker> make_player(unsigned char team)
 {
     guy g(FAMILY_SOLDIER);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     if (!w)
         return nullptr;
     w->team_num = team;
@@ -42,7 +62,7 @@ static std::unique_ptr<walker> make_living(unsigned char family, unsigned char t
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    auto w = l->create_walker_owned(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family);
     if (!w)
         return nullptr;
     w->team_num = team;
@@ -138,7 +158,7 @@ void test_glad_draw_gems_and_value_bars_smoke()
     new_draw_value_bar(80, 28, controlp, 1, myscreen);
     draw_percentage_bar(80, 36, 12, 30, myscreen);
 
-    v->control = old_control;
+    v->control = control_pointer_is_live(myscreen->level_data, old_control) ? old_control : nullptr;
 }
 REGISTER_TEST(test_glad_draw_gems_and_value_bars_smoke);
 
@@ -185,6 +205,6 @@ void test_glad_score_panel_and_new_score_panel_modes()
     TEST_ASSERT_EQ(1, (int)score_panel(myscreen), "score_panel wrapper");
     TEST_ASSERT_EQ(1, (int)score_panel(myscreen, 1), "score_panel overload");
 
-    v->control = old_control;
+    v->control = control_pointer_is_live(myscreen->level_data, old_control) ? old_control : nullptr;
 }
 REGISTER_TEST(test_glad_score_panel_and_new_score_panel_modes);

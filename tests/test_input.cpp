@@ -78,6 +78,15 @@ REGISTER_TEST(test_input_handle_mouse_motion_scales_to_game_coords);
 
 void test_input_overscan_clamps_and_updates_viewport()
 {
+    // Save original viewport state so we don't poison later tests.
+    const float saved_window_w = window_w;
+    const float saved_window_h = window_h;
+    const float saved_overscan = overscan_percentage;
+    const float saved_vp_ox = viewport_offset_x;
+    const float saved_vp_oy = viewport_offset_y;
+    const float saved_vp_w = viewport_w;
+    const float saved_vp_h = viewport_h;
+
     window_w = 1000.0f;
     window_h = 800.0f;
 
@@ -103,6 +112,15 @@ void test_input_overscan_clamps_and_updates_viewport()
     TEST_ASSERT(viewport_offset_y > 0.0f, "offset y should be >0 with overscan");
     TEST_ASSERT(viewport_w < window_w, "viewport_w should shrink with overscan");
     TEST_ASSERT(viewport_h < window_h, "viewport_h should shrink with overscan");
+
+    // Restore viewport state.
+    window_w = saved_window_w;
+    window_h = saved_window_h;
+    overscan_percentage = saved_overscan;
+    viewport_offset_x = saved_vp_ox;
+    viewport_offset_y = saved_vp_oy;
+    viewport_w = saved_vp_w;
+    viewport_h = saved_vp_h;
 }
 REGISTER_TEST(test_input_overscan_clamps_and_updates_viewport);
 

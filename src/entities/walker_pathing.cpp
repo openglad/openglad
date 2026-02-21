@@ -15,10 +15,10 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <cstdint>
 #include <openglad/core/util.h>
 #include <openglad/entities/walker.h>
-#include <openglad/render/view.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
 #include "micropather.h"
 #include <cmath>
 
@@ -26,8 +26,8 @@
 #define GRID_SIZE 16  // Should not really be duplicating this from screen.cpp
 
 #define MAKE_STATE(x, y) reinterpret_cast<MicroPatherState>(static_cast<intptr_t>(((y)/GRID_SIZE)*MAP_WIDTH + ((x)/GRID_SIZE)))
-#define GET_STATE_X(state) (static_cast<Sint32>(reinterpret_cast<intptr_t>(state) % MAP_WIDTH) * GRID_SIZE)
-#define GET_STATE_Y(state) (static_cast<Sint32>(reinterpret_cast<intptr_t>(state) / MAP_WIDTH) * GRID_SIZE)
+#define GET_STATE_X(state) (static_cast<std::int32_t>(reinterpret_cast<intptr_t>(state) % MAP_WIDTH) * GRID_SIZE)
+#define GET_STATE_Y(state) (static_cast<std::int32_t>(reinterpret_cast<intptr_t>(state) / MAP_WIDTH) * GRID_SIZE)
 #define ALIGN_TO_GRID(x) ((x)/GRID_SIZE * GRID_SIZE)
 
 namespace {
@@ -77,10 +77,10 @@ void Map::AdjacentCost(void* state, std::vector<micropather::StateCost>* adjacen
             // TODO: Make teleporters add another adjacent space on the other side of the teleporter.
 
 			// Any terrain in the way?  This checks boundaries too.
-			if (!myscreen->query_grid_passable(adj_x, adj_y, path_walker))
+			if (!path_walker->sim_level->query_grid_passable(adj_x, adj_y, path_walker))
 				continue;
 			// Any moving objects in the way?
-			else if (myscreen->level_data.myobmap->obmap_get_list(static_cast<short>(adj_x), static_cast<short>(adj_y)).size() > 0)
+			else if (path_walker->sim_level->myobmap->obmap_get_list(static_cast<short>(adj_x), static_cast<short>(adj_y)).size() > 0)
 				cost.cost = 10;
 			else
 				// Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal
@@ -152,28 +152,4 @@ void walker::follow_path_to_foe()
     }
 }
 
-void walker::draw_path(viewscreen* view_buf)
-{
-    if (path_to_foe.size() == 0)
-        return;
-
-    const unsigned char mycolor = static_cast<unsigned char>(query_team_color() + static_cast<unsigned char>(reinterpret_cast<intptr_t>(this) % 5));  // Pointer-derived offset for visibility.
-
-    const Sint32 offsetx = view_buf->topx - view_buf->xloc - 8;
-    const Sint32 offsety = view_buf->topy - view_buf->yloc - 8;
-
-    std::vector<MicroPatherState>::iterator e = path_to_foe.begin();
-    int px = GET_STATE_X(*e) - offsetx;
-    int py = GET_STATE_Y(*e) - offsety;
-    while (e != path_to_foe.end())
-    {
-        int x1 = GET_STATE_X(*e) - offsetx;
-        int y1 = GET_STATE_Y(*e) - offsety;
-
-        myscreen->draw_line(px, py, x1, y1, mycolor);
-        myscreen->fastbox_outline(x1 - 1, y1 - 1, 2, 2, mycolor);
-        e++;
-        px = x1;
-        py = y1;
-    }
-}
+// draw_path() has been moved to src/render/walker_draw.cpp as draw_walker_path()

@@ -5,28 +5,25 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/legacy/base.h>
+#include <openglad/data/level_data.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <openglad/core/stats.h>
 
 #include <openglad/entities/living.h>
-#include <openglad/runtime/game_context.h>
 
-Sint32 calculate_level(Uint32 temp_exp);
+std::int32_t calculate_level(std::uint32_t temp_exp);
 
 #define BASE_GUY_HP 30
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 static bool slime_check_special_ai(living* self)
 {
     (void)self;
-    if (myscreen->level_data.numobs < MAXOBS)
+    if (self->sim_level->numobs < MAXOBS)
         return true;
     return false;
 }
@@ -34,7 +31,7 @@ static bool slime_check_special_ai(living* self)
 static bool slime_on_death(walker* self)
 {
     self->dead = 1;
-    walker* newob = myscreen->level_data.add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
+    walker* newob = self->sim_level->add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
     newob->team_num = self->team_num;
     newob->stats()->level = self->stats()->level;
     newob->set_difficulty(self->stats()->level);
@@ -54,7 +51,7 @@ static bool slime_on_death(walker* self)
 static bool medium_slime_on_death(walker* self)
 {
     self->dead = 1;
-    walker* newob = myscreen->level_data.add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    walker* newob = self->sim_level->add_ob(Order::Living, FAMILY_SMALL_SLIME);
     newob->team_num = self->team_num;
     newob->stats()->level = self->stats()->level;
     newob->set_difficulty(self->stats()->level);
@@ -83,11 +80,11 @@ static bool slime_on_ani_complete(walker* self)
     self->setxy(self->xpos-10, self->ypos+10);
 
     // Create a new small slime
-    walker* newob = myscreen->level_data.add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    walker* newob = self->sim_level->add_ob(Order::Living, FAMILY_SMALL_SLIME);
     newob->setxy(self->xpos+12, self->ypos-12);
     // Transfer stats/etc. across to new guy
     self->transfer_stats(newob);
-    if (newob->myguy && newob->myguy->exp < static_cast<Uint32>(1000 * self->stats()->level))
+    if (newob->myguy && newob->myguy->exp < static_cast<std::uint32_t>(1000 * self->stats()->level))
     {
         newob->clear_myguy();
         newob->stats()->name = "SLIME";
@@ -95,7 +92,7 @@ static bool slime_on_ani_complete(walker* self)
     }
     else if (newob->myguy)
     {
-        Uint32 exp = self->myguy->exp / 2;
+        std::uint32_t exp = self->myguy->exp / 2;
         const short newlevel = static_cast<short>(calculate_level(exp));
         self->myguy->upgrade_to_level(newlevel);
         self->myguy->update_derived_stats(self);
@@ -126,7 +123,7 @@ static bool small_slime_do_special(walker* self)
     }
     else
     {
-        self->stats()->set_command(COMMAND_WALK, 10, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
+        self->stats()->set_command(COMMAND_WALK, 10, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1);
         return false;
     }
     return true;
@@ -140,7 +137,7 @@ static bool medium_slime_do_special(walker* self)
     }
     else
     {
-        self->stats()->set_command(COMMAND_WALK, 10, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
+        self->stats()->set_command(COMMAND_WALK, 10, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1);
         return false;
     }
     return true;

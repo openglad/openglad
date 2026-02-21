@@ -9,11 +9,12 @@
 
 #include <openglad/io/zip_api.h>
 
-#include <openglad/platform/io.h> // ArchiveIoError values
+#include <openglad/platform/io_common.h> // ArchiveIoError values
 
 #include "zip.h"
 
 #include <array>
+#include <cstdio>
 #include <filesystem>
 #include <vector>
 
@@ -51,6 +52,11 @@ ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std
     base = fs::weakly_canonical(base, ec);
     if (ec)
         base = fs::path(indirectory);
+    fs::path out_path = fs::path(outfile);
+    std::error_code out_ec;
+    out_path = fs::weakly_canonical(out_path, out_ec);
+    if (out_ec)
+        out_path = fs::path(outfile);
 
     int err = 0;
     zip* archive = zip_open(outfile.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
@@ -63,6 +69,9 @@ ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std
         const fs::path src = base / rel;
         const std::string dest_name = rel.generic_string();
         if (dest_name.empty())
+            continue;
+        std::error_code same_ec;
+        if (fs::equivalent(src, out_path, same_ec))
             continue;
 
         if (fs::is_directory(src, ec))
@@ -145,7 +154,7 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
             continue;
         }
 
-        SDL_RWops* out = SDL_RWFromFile(dest.string().c_str(), "wb");
+        FILE* out = std::fopen(dest.string().c_str(), "wb");
         if (out == nullptr)
         {
             zip_fclose(zf);
@@ -169,11 +178,11 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
                     result = ArchiveIoError::ReadEntryFailed;
                 break;
             }
-            SDL_RWwrite(out, buf.data(), 1, static_cast<size_t>(n));
+            std::fwrite(buf.data(), 1, static_cast<size_t>(n), out);
             written += static_cast<zip_uint64_t>(n);
         }
 
-        SDL_RWclose(out);
+        std::fclose(out);
         zip_fclose(zf);
     }
 

@@ -8,6 +8,8 @@
 #include <openglad/legacy/base.h> // Order + family constants used for test data
 #include <openglad/platform/io.h>
 #include <openglad/data/save_data.h>
+#include <openglad/entities/walker.h>
+#include <openglad/entities/guy.h>
 #include "test_framework.h"
 
 static void rw_write(SDL_RWops* out, const void* data, size_t len)
@@ -395,3 +397,151 @@ void test_save_data_v9_roundtrip_preserves_campaign_progress_maps()
         "secondary campaign completed level should roundtrip");
 }
 REGISTER_TEST(test_save_data_v9_roundtrip_preserves_campaign_progress_maps);
+
+void test_save_data_update_guys_copies_only_live_entries_with_myguy()
+{
+    std::list<std::unique_ptr<walker>> oblist;
+
+    auto live_with_guy = std::make_unique<walker>();
+    live_with_guy->dead = 0;
+    live_with_guy->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    live_with_guy->myguy->exp = 50;
+
+    auto dead_with_guy = std::make_unique<walker>();
+    dead_with_guy->dead = 1;
+    dead_with_guy->set_owned_myguy(std::make_unique<guy>(FAMILY_ARCHER));
+
+    auto live_no_guy = std::make_unique<walker>();
+    live_no_guy->dead = 0;
+    live_no_guy->clear_myguy();
+
+    oblist.push_back(std::move(live_with_guy));
+    oblist.push_back(std::move(dead_with_guy));
+    oblist.push_back(std::move(live_no_guy));
+
+    SaveData data;
+    data.update_guys(oblist);
+
+    TEST_ASSERT_EQ(1, (int)data.team_size, "update_guys should copy only live walkers with myguy");
+    TEST_ASSERT(data.team_list[0] != nullptr, "copied guy should exist");
+    if (data.team_list[0])
+        TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)data.team_list[0]->family, "copied guy should match source family");
+}
+REGISTER_TEST(test_save_data_update_guys_copies_only_live_entries_with_myguy);
+
+void test_save_data_unsupported_version_and_campaign_helper_branches()
+{
+    SDL_RWops* out = open_write_file("save/", "unsupported_ver0.gtl");
+    TEST_ASSERT(out != nullptr, "open_write_file unsupported version");
+    if (!out)
+        return;
+    rw_write(out, "GTL", 3);
+    unsigned char version0 = 0;
+    rw_write_val(out, version0);
+    SDL_RWclose(out);
+
+    SaveData tmp;
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::UnsupportedVersion),
+                   static_cast<int>(tmp.load_with_error("unsupported_ver0")),
+                   "version 0 save should report UnsupportedVersion");
+
+    tmp.completed_levels.clear();
+    tmp.add_level_completed("test.campaign", 2);
+    tmp.add_level_completed("test.campaign", 5);
+    TEST_ASSERT_EQ(2, tmp.get_num_levels_completed("test.campaign"),
+                   "helper should count completed levels for present campaign");
+    TEST_ASSERT_EQ(0, tmp.get_num_levels_completed("missing.campaign"),
+                   "helper should return 0 for missing campaign");
+    tmp.reset_campaign("test.campaign");
+    TEST_ASSERT_EQ(0, tmp.get_num_levels_completed("test.campaign"),
+                   "reset_campaign should clear existing campaign progress");
+}
+REGISTER_TEST(test_save_data_unsupported_version_and_campaign_helper_branches);
+
+void test_save_data_save_with_team_entry_and_wrapper_none_path()
+{
+    SaveData tmp;
+    tmp.current_campaign = "org.openglad.gladiator";
+    tmp.scen_num = 3;
+    tmp.team_size = 1;
+    tmp.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    tmp.team_list[0]->name = "B6TEAM";
+    tmp.team_list[0]->strength = 14;
+    tmp.team_list[0]->dexterity = 13;
+    tmp.team_list[0]->constitution = 12;
+    tmp.team_list[0]->intelligence = 11;
+    tmp.team_list[0]->armor = 10;
+    tmp.team_list[0]->level = 4;
+    tmp.team_list[0]->exp = 777;
+    tmp.team_list[0]->kills = 5;
+    tmp.team_list[0]->level_kills = 6;
+    tmp.team_list[0]->total_damage = 7;
+    tmp.team_list[0]->total_hits = 8;
+    tmp.team_list[0]->total_shots = 9;
+    tmp.team_list[0]->teamnum = 0;
+
+    tmp.current_levels.clear();      // exercise insert branch for current campaign on save
+    tmp.completed_levels.clear();
+    tmp.completed_levels["org.openglad.gladiator"].insert(1);
+    tmp.completed_levels["org.openglad.gladiator"].insert(2);
+
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+                   static_cast<int>(tmp.save_with_error("typed_save_with_team")),
+                   "save_with_error should succeed for one-team-entry save");
+
+    SaveData loaded;
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+                   static_cast<int>(loaded.load_with_error("typed_save_with_team")),
+                   "load_with_error wrapper should return None for saved file");
+    TEST_ASSERT_EQ(1, (int)loaded.team_size, "loaded team should contain one entry");
+}
+REGISTER_TEST(test_save_data_save_with_team_entry_and_wrapper_none_path);
+
+void test_save_data_round8_open_write_failure_and_is_level_completed_paths()
+{
+    SaveData data;
+    data.current_campaign = "round8.campaign";
+    data.completed_levels.clear();
+
+    TEST_ASSERT(!data.is_level_completed(3),
+                "is_level_completed should be false when current campaign is absent");
+
+    data.add_level_completed("round8.campaign", 3);
+    TEST_ASSERT(data.is_level_completed(3),
+                "is_level_completed should be true after adding the level to current campaign");
+    TEST_ASSERT(!data.is_level_completed(99),
+                "is_level_completed should be false for a non-completed level index");
+
+    data.reset_campaign("round8.campaign");
+    TEST_ASSERT(!data.is_level_completed(3),
+                "is_level_completed should become false after reset_campaign");
+
+    const SaveDataIoError err = data.save_with_error("round8/missing_parent_path");
+    TEST_ASSERT_EQ((int)SaveDataIoError::OpenWriteFailed, (int)err,
+                   "save_with_error should report OpenWriteFailed when parent path is missing");
+}
+REGISTER_TEST(test_save_data_round8_open_write_failure_and_is_level_completed_paths);
+
+void test_save_data_round9_reset_campaign_missing_entry_is_noop()
+{
+    SaveData data;
+    data.completed_levels.clear();
+    data.current_campaign = "round9.none";
+
+    // Missing campaign path should be a no-op.
+    data.reset_campaign("round9.none");
+    TEST_ASSERT_EQ(0, data.get_num_levels_completed("round9.none"),
+                   "reset_campaign should keep missing campaign at zero levels");
+
+    // Existing campaign path should clear only that campaign's levels.
+    data.add_level_completed("round9.a", 1);
+    data.add_level_completed("round9.a", 2);
+    data.add_level_completed("round9.b", 3);
+    data.reset_campaign("round9.a");
+
+    TEST_ASSERT_EQ(0, data.get_num_levels_completed("round9.a"),
+                   "reset_campaign should clear target campaign progress");
+    TEST_ASSERT_EQ(1, data.get_num_levels_completed("round9.b"),
+                   "reset_campaign should not clear other campaign progress");
+}
+REGISTER_TEST(test_save_data_round9_reset_campaign_missing_entry_is_noop);

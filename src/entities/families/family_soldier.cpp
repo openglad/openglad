@@ -5,32 +5,30 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
+#include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
-#include <openglad/legacy/base.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 
 #include <cmath>
 #include <list>
 
 #define BASE_GUY_HP 30
 
-namespace {
-static inline Uint32 rng(Uint32 max_exclusive)
-{
-    return ctx().rng->next(max_exclusive);
-}
-} // namespace
+// rng wrapper removed: use SimEntity field sim_rng directly
 
 static bool soldier_do_special(walker* self)
 {
     walker* newob;
-    Sint32 tempx, tempy;
-    Sint32 howmany;
-    Sint32 generic;
+    std::int32_t tempx, tempy;
+    std::int32_t howmany;
+    std::int32_t generic;
 
     switch (self->current_special)
     {
@@ -38,16 +36,15 @@ static bool soldier_do_special(walker* self)
             if (!self->stats()->forward_blocked())
             {
                 self->stats()->add_command(COMMAND_RUSH, 3,
-                    static_cast<Sint32>(self->lastx / self->stepsize),
-                    static_cast<Sint32>(self->lasty / self->stepsize));
-                if (self->on_screen())
-                    myscreen->soundp->play_sound(SOUND_CHARGE);
+                    static_cast<std::int32_t>(self->lastx / self->stepsize),
+                    static_cast<std::int32_t>(self->lasty / self->stepsize));
+                og::sim::emit_sound(self->sim_events, SOUND_CHARGE);
             }
             else
                 return false;
             break;
         case 2: // boomerang
-            newob = myscreen->level_data.add_ob(Order::FX, FAMILY_BOOMERANG);
+            newob = self->sim_level->add_ob(Order::FX, FAMILY_BOOMERANG);
             newob->owner = self;
             newob->team_num = self->team_num;
             newob->ani_type = 1;
@@ -60,8 +57,8 @@ static bool soldier_do_special(walker* self)
             if (self->busy)
                 return false;
             self->busy += 8;
-            tempx = static_cast<Sint32>(self->lastx);
-            tempy = static_cast<Sint32>(self->lasty);
+            tempx = static_cast<std::int32_t>(self->lastx);
+            tempy = static_cast<std::int32_t>(self->lasty);
             self->curdir = -1;
             self->lastx = 0;
             self->lasty = 0;
@@ -75,8 +72,8 @@ static bool soldier_do_special(walker* self)
             self->stats()->add_command(COMMAND_WALK, 1, -1, -1);
 
             {
-                std::list<walker*> newlist = myscreen->find_foes_in_range(
-                    myscreen->level_data.oblist,
+                std::list<walker*> newlist = self->sim_level->find_foes_in_range(
+                    self->sim_level->oblist,
                     32 + self->stats()->level * 2, &howmany, self);
 
                 for (auto* w : newlist)
@@ -102,8 +99,8 @@ static bool soldier_do_special(walker* self)
                 return false;
 
             {
-                std::list<walker*> newlist = myscreen->find_foes_in_range(
-                    myscreen->level_data.oblist, 28, &howmany, self);
+                std::list<walker*> newlist = self->sim_level->find_foes_in_range(
+                    self->sim_level->oblist, 28, &howmany, self);
 
                 generic = 0;
 
@@ -111,7 +108,7 @@ static bool soldier_do_special(walker* self)
                 {
                     if (w)
                     {
-                        if (rng(self->stats()->level) >= rng(w->stats()->level))
+                        if (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(w->stats()->level))
                             w->busy += 6.0f * static_cast<float>(self->stats()->level - w->stats()->level + 1);
                         generic = 1;
                     }
@@ -119,10 +116,9 @@ static bool soldier_do_special(walker* self)
 
                 if (generic)
                 {
-                    if (self->on_screen())
-                        myscreen->soundp->play_sound(SOUND_CHARGE);
+                    og::sim::emit_sound(self->sim_events, SOUND_CHARGE);
                     if (self->team_num == 0 || self->myguy)
-                        myscreen->do_notify("Fighter Disarmed Enemy!", self);
+                        og::sim::emit_notification(self->sim_events, "Fighter Disarmed Enemy!");
                     self->busy += 5;
                 }
                 else
@@ -139,15 +135,15 @@ static bool soldier_check_special_ai(living* self)
 {
     if (self->foe)
     {
-        Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
         if (distance < 75 && distance > 20)
             return true;
         return false;
     }
-    self->foe = myscreen->find_near_foe(self);
+    self->foe = self->sim_level->find_near_foe(self);
     if (!self->foe)
         return false;
-    Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
     if (distance < 75 && distance > 20)
         return true;
     return false;
@@ -155,7 +151,9 @@ static bool soldier_check_special_ai(living* self)
 
 static bool soldier_on_fire_weapon(walker* self, walker* weapon)
 {
-    living* lv = static_cast<living*>(self);
+    living* lv = dynamic_cast<living*>(self);
+    if (lv == nullptr)
+        return true;
     if (lv->weapons_left <= 0)
     {
         self->stats()->magicpoints += self->stats()->weapon_cost;
@@ -168,11 +166,13 @@ static bool soldier_on_fire_weapon(walker* self, walker* weapon)
 
 static void soldier_on_create(walker* self)
 {
-    static_cast<living*>(self)->weapons_left =
-        static_cast<short>((self->stats()->level + 1) / 2);
+    if (living* lv = dynamic_cast<living*>(self))
+    {
+        lv->weapons_left = static_cast<short>((self->stats()->level + 1) / 2);
+    }
 }
 
-static void soldier_set_difficulty(living* self, Uint32 level)
+static void soldier_set_difficulty(living* self, std::uint32_t level)
 {
     const float levmult = static_cast<float>(level) * static_cast<float>(level);
     const float level_f = static_cast<float>(level);

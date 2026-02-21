@@ -5,26 +5,12 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
+#include <openglad/data/level_data.h>
 
 static bool ghost_scare_on_act(effect* self)
 {
@@ -37,8 +23,8 @@ static bool ghost_scare_on_death(effect* self)
 {
     if (!self->owner || self->owner->dead)
         return false;
-    Sint32 howmany = 0;
-    auto foelist = active_screen()->find_foes_in_range(active_screen()->level_data.oblist,
+    std::int32_t howmany = 0;
+    auto foelist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
         50+(10*self->owner->stats()->level), &howmany, self->owner);
     if (howmany < 1)
         return false;
@@ -47,15 +33,15 @@ static bool ghost_scare_on_death(effect* self)
     {
         if (w && w->query_order() == Order::Living)
         {
-            Sint32 tempx = w->xpos - self->xpos;
+            std::int32_t tempx = w->xpos - self->xpos;
             if (tempx)
                 tempx = tempx / (abs(tempx));
-            Sint32 tempy = w->ypos - self->ypos;
+            std::int32_t tempy = w->ypos - self->ypos;
             if (tempy)
                 tempy = tempy / (abs(tempy));
-            Sint32 generic = (self->owner->stats()->level*25);
+            std::int32_t generic = (self->owner->stats()->level*25);
             if (w->myguy)
-                generic -= rng(w->myguy->constitution);
+                generic -= self->sim_rng->next(w->myguy->constitution);
             if (generic > 0)
                 w->stats()->force_command(COMMAND_WALK,
                     static_cast<short>(generic), static_cast<short>(tempx), static_cast<short>(tempy));

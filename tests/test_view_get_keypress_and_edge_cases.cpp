@@ -4,6 +4,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/render/view.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_context.h>
 #include "test_framework.h"
 
 #include <array>
@@ -107,6 +108,9 @@ void test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns()
     // Create a control walker not present in level_data.oblist.
     PixieData px(1, 1, 1, new unsigned char[1]{0});
     walker orphan(px);
+    orphan.sim_level = &myscreen->level_data;
+    orphan.sim_rng = ctx().rng;
+    orphan.sim_config = ctx().config;
     orphan.team_num = 0;
     orphan.real_team_num = 255;
     orphan.dead = 0;
@@ -148,6 +152,9 @@ void test_viewscreen_options_menu_covers_view_size_label_cases()
 
     KeystateOverride ks;
 
+    // Save original pref so we can restore after testing edge cases.
+    const signed char saved_view = v->prefs[PREF_VIEW];
+
     // Immediately request exit, but clear ESC after a short delay so the
     // "wait for release" loop terminates.
     const std::array<int, 6> view_prefs = {
@@ -169,5 +176,11 @@ void test_viewscreen_options_menu_covers_view_size_label_cases()
             SDL_WaitThread(th, &code);
         ks.fake[SDL_SCANCODE_ESCAPE] = 0;
     }
+
+    // Restore original pref — options_menu() saves prefs to keyprefs.dat on
+    // every call, so the bogus value 99 was persisted.  Write back a clean
+    // value so subsequent tests don't inherit corrupt state.
+    v->prefs[PREF_VIEW] = saved_view;
+    v->resize(saved_view);
 }
 REGISTER_TEST(test_viewscreen_options_menu_covers_view_size_label_cases);

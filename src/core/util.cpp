@@ -23,6 +23,7 @@
 
 #include <openglad/core/version.h>
 #include <charconv>
+#include <chrono>
 #include <cstdio>
 #include <ctime>
 #include <cctype>
@@ -30,25 +31,21 @@
 #include <optional>
 #include <string>
 #include <sys/stat.h>
-#include <openglad/legacy/base.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#else
+#include <thread>
 #endif
 
-#ifdef WINDOWS
-#include "windows.h"
-#include <shlobj.h>
-#include <direct.h>
+static auto g_app_start = std::chrono::steady_clock::now();
+static auto g_reset_time = std::chrono::steady_clock::now();
 
-#ifndef mkdir
-#define mkdir(path, perms) _mkdir(path)
-#endif
-
-#endif
-
-
-Uint32 start_time=0;
-Uint32 reset_value=0;
+static std::uint32_t get_ticks_ms()
+{
+    auto now = std::chrono::steady_clock::now();
+    return static_cast<std::uint32_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - g_app_start).count());
+}
 
 float g_game_speed_factor = 1.0f;
 
@@ -57,62 +54,44 @@ void set_game_speed(float factor)
     g_game_speed_factor = (factor < 0.0f) ? 0.0f : factor;
 }
 
-#ifdef __EMSCRIPTEN__
-// Custom SDL log output function for web builds
-// Routes messages to the appropriate JavaScript console method
-static void emscripten_log_output(void* userdata, int category, SDL_LogPriority priority, const char* message)
-{
-    (void)userdata;
-    (void)category;
-
-    switch(priority)
-    {
-        case SDL_LOG_PRIORITY_VERBOSE:
-        case SDL_LOG_PRIORITY_DEBUG:
-        case SDL_LOG_PRIORITY_INFO:
-            EM_ASM({
-                console.log(UTF8ToString($0));
-            }, message);
-            break;
-        case SDL_LOG_PRIORITY_WARN:
-            EM_ASM({
-                console.warn(UTF8ToString($0));
-            }, message);
-            break;
-        case SDL_LOG_PRIORITY_ERROR:
-        case SDL_LOG_PRIORITY_CRITICAL:
-        default:
-            EM_ASM({
-                console.error(UTF8ToString($0));
-            }, message);
-            break;
-    }
-}
-#endif
-
 void init_logging()
 {
-#ifdef __EMSCRIPTEN__
-    SDL_LogSetOutputFunction(emscripten_log_output, nullptr);
-#endif
+    // No-op: logging uses fprintf/EM_ASM directly, no SDL needed.
 }
 
+#ifdef __EMSCRIPTEN__
 void LogImpl(const char* msg)
 {
-    SDL_LogMessage(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO, "%s", msg);
+    EM_ASM({ console.log(UTF8ToString($0)); }, msg);
 }
 
 void LogWarnImpl(const char* msg)
 {
-    SDL_LogMessage(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_WARN, "%s", msg);
+    EM_ASM({ console.warn(UTF8ToString($0)); }, msg);
 }
 
 void LogErrorImpl(const char* msg)
 {
-    SDL_LogMessage(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_ERROR, "%s", msg);
+    EM_ASM({ console.error(UTF8ToString($0)); }, msg);
+}
+#else
+void LogImpl(const char* msg)
+{
+    std::fprintf(stderr, "%s", msg);
 }
 
-void change_time(Uint32 /*new_count*/)
+void LogWarnImpl(const char* msg)
+{
+    std::fprintf(stderr, "[WARN] %s", msg);
+}
+
+void LogErrorImpl(const char* msg)
+{
+    std::fprintf(stderr, "[ERROR] %s", msg);
+}
+#endif
+
+void change_time(std::uint32_t /*new_count*/)
 {}
 
 void grab_timer()
@@ -123,26 +102,44 @@ void release_timer()
 
 void reset_timer()
 {
-    reset_value = SDL_GetTicks();
+    g_reset_time = std::chrono::steady_clock::now();
 }
 
-Sint32 query_timer()
+std::int32_t query_timer()
 {
     // Zardus: why 13.6? With DOS timing, you had to divide 1,193,180 by the desired frequency and
     // that would return ticks / second. Gladiator used to use a frequency of 65536/4 ticks per hour,
     // or 1193180/16383 = 72.3 ticks per second. This translates into 13.6 milliseconds / tick
-    return static_cast<Sint32>((SDL_GetTicks() - reset_value) / 13.6);
+    auto elapsed_ms = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - g_reset_time).count());
+    return static_cast<std::int32_t>(elapsed_ms / 13.6);
 }
 
-Sint32 query_timer_control()
+std::int32_t query_timer_control()
 {
-    return static_cast<Sint32>(SDL_GetTicks() / 13.6);
+    return static_cast<std::int32_t>(get_ticks_ms() / 13.6);
 }
 
-void time_delay(Sint32 delay)
+void time_delay(std::int32_t delay)
 {
-    if (delay < 0) return;
-    SDL_Delay(static_cast<Uint32>(delay * 13.6));
+    if (delay <= 0) return;
+    auto target_us = static_cast<std::int64_t>(delay * 13600); // microseconds
+#ifdef __EMSCRIPTEN__
+  #ifdef __ASYNCIFY__
+    emscripten_sleep(static_cast<unsigned int>(target_us / 1000));
+  #endif
+#else
+    auto start = std::chrono::steady_clock::now();
+    // Sleep for the bulk of the time, leaving 2ms margin to avoid overshoot
+    if (target_us > 3000) {
+        std::this_thread::sleep_for(std::chrono::microseconds(target_us - 2000));
+    }
+    // Spin-wait for the remainder to hit the target precisely
+    while (std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::steady_clock::now() - start).count() < target_us) {
+        // busy-wait
+    }
+#endif
 }
 
 void lowercase(char * str)

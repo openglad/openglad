@@ -1,5 +1,8 @@
+#include <cstdint>
 #include <openglad/entities/effect.h>
 #include <openglad/data/gloader.h>
+#include <openglad/legacy/base.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
 extern screen* myscreen;
@@ -110,9 +113,9 @@ REGISTER_TEST(test_orbit_offset_symmetry);
 
 void test_compute_explosion_range_scaling()
 {
-    Sint32 r1 = compute_explosion_range(1, 0);
-    Sint32 r5 = compute_explosion_range(5, 0);
-    Sint32 r10 = compute_explosion_range(10, 0);
+    std::int32_t r1 = compute_explosion_range(1, 0);
+    std::int32_t r5 = compute_explosion_range(5, 0);
+    std::int32_t r10 = compute_explosion_range(10, 0);
     TEST_ASSERT(r5 > r1, "range should increase with level");
     TEST_ASSERT(r10 > r5, "range should increase with level");
 }
@@ -120,9 +123,35 @@ REGISTER_TEST(test_compute_explosion_range_scaling);
 
 void test_compute_explosion_range_clamp()
 {
-    Sint32 r50 = compute_explosion_range(50, 0);
-    Sint32 r100 = compute_explosion_range(100, 0);
+    std::int32_t r50 = compute_explosion_range(50, 0);
+    std::int32_t r100 = compute_explosion_range(100, 0);
     TEST_ASSERT_EQ(96, (int)r50, "level 50 should cap at 96");
     TEST_ASSERT_EQ(96, (int)r100, "level 100 should cap at 96");
 }
 REGISTER_TEST(test_compute_explosion_range_clamp);
+
+void test_effect_ctor_defaults_and_owner_pointer_cleanup_in_act()
+{
+    effect headless;
+    TEST_ASSERT_EQ(1, (int)headless.ignore, "headless effect ctor should set ignore");
+
+    effect fx;
+    fx.ani_type = ANI_WALK;
+    fx.set_order_family(Order::FX, 120);
+
+    walker foe;
+    walker leader;
+    walker owner;
+    fx.foe = &foe;
+    fx.leader = &leader;
+    fx.owner = &owner;
+    foe.dead = 1;
+    leader.dead = 1;
+    owner.dead = 1;
+
+    (void)fx.act();
+    TEST_ASSERT(fx.foe == nullptr, "effect act should clear dead foe pointer");
+    TEST_ASSERT(fx.leader == nullptr, "effect act should clear dead leader pointer");
+    TEST_ASSERT(fx.owner == nullptr, "effect act should clear dead owner pointer");
+}
+REGISTER_TEST(test_effect_ctor_defaults_and_owner_pointer_cleanup_in_act);

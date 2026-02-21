@@ -28,7 +28,7 @@ public:
         bool install_global_context = true;
         bool allocate_prefs = true;
         bool allocate_seeded_rng = false;
-        Uint32 rng_seed = 0;
+        std::uint32_t rng_seed = 0;
     };
 
     explicit GameSession(const Config& cfg);
@@ -40,7 +40,7 @@ public:
     GameSession& operator=(GameSession&&) = delete;
 
     ::screen* screen_ptr() const { return ctx_.game_screen; }
-    options* prefs_ptr() const { return ctx_.prefs.get(); }
+    options* prefs_ptr() const { return ctx_.prefs; }
     cfg_store* config() const { return ctx_.config; }
     GameContext& context() { return ctx_; }
     const GameContext& context() const { return ctx_; }
@@ -60,6 +60,7 @@ private:
     options* prev_theprefs_ = nullptr;
 
     // Owned runtime state.
+    std::unique_ptr<options> prefs_owner_;
     std::unique_ptr<::screen> screen_owner_;
 };
 

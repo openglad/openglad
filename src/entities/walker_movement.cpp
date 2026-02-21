@@ -15,11 +15,15 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <cmath>
+#include <cstdint>
 #include <openglad/core/stats.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/walker.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 
 short walker::move(short x, short y)
 {
@@ -44,14 +48,16 @@ bool walker::setxy(short x, short y)
             myobmap->remove(this);
     }
 
-    return pixie::setxy(x, y);
+    xpos = x;
+    ypos = y;
+    return true;
 }
 
 void walker::setworldxy(float x, float y)
 {
     worldx_ = x;
     worldy_ = y;
-    
+
     if (myobmap != nullptr)
     {
         if (!ignore)
@@ -60,7 +66,8 @@ void walker::setworldxy(float x, float y)
             myobmap->remove(this);
     }
 
-    pixie::setxy(x, y);
+    xpos = static_cast<short>(x);
+    ypos = static_cast<short>(y);
 }
 
 // WALK -- This function allows us to change facing when we walk.
@@ -75,8 +82,8 @@ bool walker::walk()
 
 short walker::facing(short x, short y)
 {
-    Sint32 bigy = y*1000;
-    Sint32 slope;
+    std::int32_t bigy = y*1000;
+    std::int32_t slope;
 
     if (!x)
     {
@@ -132,7 +139,7 @@ bool walker::walkstep(float x, float y)
     short oldcurdir = curdir;
     float step = stepsize;
     float halfstep;
-    Sint32 i;
+    std::int32_t i;
     //walker *control1 = myscreen->viewob[0]->control;
     //walker *control2;
     short mycycle;
@@ -253,15 +260,15 @@ bool walker::walkstep(float x, float y)
                 
                 if(dx != 0 || dy != 0)
                 {
-                    const Sint32 step_i = static_cast<Sint32>(step);
+                    const std::int32_t step_i = static_cast<std::int32_t>(step);
                     for (i = 0; i < step_i; i++)
                     {
-                        if (myscreen->query_passable(xpos, ypos + dy, this))
+                        if (sim_level->query_passable(xpos, ypos + dy, this))
                         {
                             worldmove(0, dy);  // walk without turning ..
                             gotup = true;
                         }
-                        if (myscreen->query_passable(xpos + dx, ypos, this))
+                        if (sim_level->query_passable(xpos + dx, ypos, this))
                         {
                             worldmove(dx, 0);
                             gotover = true;
@@ -284,9 +291,11 @@ bool walker::walkstep(float x, float y)
                         {
                             cycle = static_cast<signed char>(mycycle);
                             cycle++;
-                            if (ani[curdir][cycle] == -1)
-                                cycle = 0;
-                            set_frame(ani[curdir][cycle]);
+                            if (ani) {
+                                if (ani[curdir][cycle] == -1)
+                                    cycle = 0;
+                                set_frame(ani[curdir][cycle]);
+                            }
                         }  // end of cycled us a frame
                     }
                 }
@@ -325,24 +334,26 @@ bool walker::walk(float x, float y)
     {
         // check if off map
         if (x+xpos < 0 ||
-                x+xpos >= myscreen->level_data.grid.w*GRID_SIZE ||
+                x+xpos >= sim_level->grid.w*GRID_SIZE ||
                 y+ypos < 0 ||
-                y+ypos >= myscreen->level_data.grid.h*GRID_SIZE)
+                y+ypos >= sim_level->grid.h*GRID_SIZE)
         {
             return 0;
         }
 
         // Here we check if the move is valid
-        if (myscreen->query_passable(xpos+x, ypos+y, this))
+        if (sim_level->query_passable(xpos+x, ypos+y, this))
         {
             // Control object does complete redraw anyway
             worldmove(x,y);
             cycle++;
             //if (!ani || (curdir*cycle > sizeof(ani)) )
             //  Log("WALKER::WALK: Bad ani!\n");
-            if (ani[curdir][cycle] == -1)
-                cycle = 0;
-            set_frame(ani[curdir][cycle]);
+            if (ani) {
+                if (ani[curdir][cycle] == -1)
+                    cycle = 0;
+                set_frame(ani[curdir][cycle]);
+            }
             return 1;
         }
         else //Invalid move?
@@ -352,9 +363,11 @@ bool walker::walk(float x, float y)
             if (stats_->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
             {
                 cycle++;
-                if (ani[curdir][cycle] == -1)
-                    cycle = 0;
-                set_frame(ani[curdir][cycle]);
+                if (ani) {
+                    if (ani[curdir][cycle] == -1)
+                        cycle = 0;
+                    set_frame(ani[curdir][cycle]);
+                }
             }
             return 0;
         }
@@ -363,7 +376,8 @@ bool walker::walk(float x, float y)
     {
         curdir = static_cast<char>(dir);
         cycle = 0;
-        set_frame(ani[curdir][cycle]);
+        if (ani)
+            set_frame(ani[curdir][cycle]);
         worldmove(0,0);
     }
     return 1;
@@ -396,7 +410,13 @@ float walker::get_current_angle()
 
 bool walker::turn(short targetdir)
 {
+    auto clamp_dir = [](short dir) -> short {
+        return (dir >= FACE_UP && dir <= FACE_UP_LEFT) ? dir : FACE_UP;
+    };
+
     short distance;
+    short currentdir = clamp_dir(static_cast<short>(curdir));
+    short target = clamp_dir(targetdir);
 
     //   We use a clock-ordered
     //   of directions to numbers) to a clock-ordered
@@ -404,13 +424,15 @@ bool walker::turn(short targetdir)
     //   our next facing should be based on our current one.
 
     // Find how  we have to turn.
-    distance = static_cast<short>(curdir - targetdir);
+    distance = static_cast<short>(currentdir - target);
 
     // Figure out if we should turn clockwise or counterclockwise
     if ( ( (distance >= -4) && (distance < 0) ) || (distance >= 4) )
-        curdir = static_cast<char>((curdir+1) %8);
+        currentdir = static_cast<short>((currentdir + 1) % 8);
     else
-        curdir = static_cast<char>((curdir+7) %8);
+        currentdir = static_cast<short>((currentdir + 7) % 8);
+
+    curdir = static_cast<char>(currentdir);
 
     // Now set our lastx and lasty (facing) variables correctly
     const bool stationary = (order == Order::Living) && [&]{
@@ -459,7 +481,8 @@ bool walker::turn(short targetdir)
         }
     }
     cycle = 0;
-    set_frame(ani[curdir][cycle]);
+    if (ani)
+        set_frame(ani[curdir][cycle]);
     worldmove(0,0);
     return true;
 }

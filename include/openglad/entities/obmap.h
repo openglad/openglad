@@ -20,6 +20,7 @@
 
 #include <cstddef>
 #include <map>
+#include <unordered_map>
 #include <list>
 
 class walker;
@@ -36,12 +37,10 @@ class obmap
 		std::list<walker*>& obmap_get_list(short x, short y); //Returns the list at x,y for fnf
 		short obmapres;
 		size_t size() const;
-		void draw();
-		
+
 		std::map<std::pair<short, short>, std::list<walker*> > pos_to_walker;
-		std::map<walker*, std::list<std::pair<short, short> > > walker_to_pos;
-		
-	private:
-		short hash(short y);
-		short unhash(short y);
+		std::unordered_map<walker*, std::list<std::pair<short, short> > > walker_to_pos;
+
+		static short hash(short y);
+		static short unhash(short y);
 };

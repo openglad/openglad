@@ -5,11 +5,13 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/weap.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <openglad/core/stats.h>
 
 #include <cstdlib>
@@ -19,7 +21,7 @@
 static bool elf_do_special(walker* self)
 {
     weap* fireob;
-    Sint32 i;
+    std::int32_t i;
 
     switch (self->current_special)
     {
@@ -82,21 +84,21 @@ static bool elf_do_special(walker* self)
     return true;
 }
 
-static void elf_level_up(guy* self, Sint32 level_diff)
+static void elf_level_up(guy* self, std::int32_t level_diff)
 {
-    Sint32 s = 8 * level_diff;
-    Sint32 d = 6 * level_diff;
-    Sint32 c = 8 * level_diff;
-    Sint32 it = 8 * level_diff;
-    Sint32 a = 1 * level_diff;
+    std::int32_t s = 8 * level_diff;
+    std::int32_t d = 6 * level_diff;
+    std::int32_t c = 8 * level_diff;
+    std::int32_t it = 8 * level_diff;
+    std::int32_t a = 1 * level_diff;
     s = (s * 3) / 4;
     d = (d * 3) / 2;
     c = (c * 3) / 4;
-    self->strength = static_cast<short>(static_cast<Sint32>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<Sint32>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<Sint32>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<Sint32>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
+    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
+    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
+    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
+    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
+    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
 const FamilyDescriptor& describe_family_elf()

@@ -5,43 +5,28 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 #include <format>
 #include <string>
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 static bool drumstick_on_eat(treasure* self, walker* eater)
 {
     if (eater->stats()->hitpoints >= eater->stats()->max_hitpoints)
         return true;
-    const Sint32 heal_amount = 10 * self->stats()->level + static_cast<Sint32>(rng(static_cast<Uint32>(10 * self->stats()->level)));
+    const std::int32_t heal_amount = 10 * self->stats()->level + static_cast<std::int32_t>(self->sim_rng->next(static_cast<std::uint32_t>(10 * self->stats()->level)));
     const short amount = static_cast<short>(heal_amount);
     eater->stats()->hitpoints += amount;
     if (eater->stats()->hitpoints > eater->stats()->max_hitpoints)
         eater->stats()->hitpoints = eater->stats()->max_hitpoints;
     self->do_heal_effects(nullptr, eater, amount);
     self->dead = 1;
-    if (self->on_screen())
-        active_screen()->soundp->play_sound(SOUND_EAT);
+    og::sim::emit_sound(self->sim_events, SOUND_EAT);
     return true;
 }
 
@@ -54,7 +39,7 @@ static bool magic_potion_on_eat(treasure* self, walker* eater)
     if (eater->user != -1)
     {
         std::string message = std::format("Potion of Mana({})!", self->stats()->level);
-        active_screen()->do_notify(message.c_str(), eater);
+        og::sim::emit_notification(self->sim_events, message);
     }
     return true;
 }
@@ -67,7 +52,7 @@ static bool flight_potion_on_eat(treasure* self, walker* eater)
         if (eater->user != -1)
         {
             std::string message = std::format("Potion of Flight({})!", self->stats()->level);
-            active_screen()->do_notify(message.c_str(), eater);
+            og::sim::emit_notification(self->sim_events, message);
         }
         self->dead = 1;
     }
@@ -83,7 +68,7 @@ static bool invulnerable_potion_on_eat(treasure* self, walker* eater)
         if (eater->user != -1)
         {
             std::string message = std::format("Potion of Invulnerability({})!", self->stats()->level);
-            active_screen()->do_notify(message.c_str(), eater);
+            og::sim::emit_notification(self->sim_events, message);
         }
     }
     return true;
@@ -95,7 +80,7 @@ static bool invis_potion_on_eat(treasure* self, walker* eater)
     if (eater->user != -1)
     {
         std::string message = std::format("Potion of Invisibility({})!", self->stats()->level);
-        active_screen()->do_notify(message.c_str(), eater);
+        og::sim::emit_notification(self->sim_events, message);
     }
     self->dead = 1;
     return true;
@@ -108,7 +93,7 @@ static bool speed_potion_on_eat(treasure* self, walker* eater)
     if (eater->user != -1)
     {
         std::string message = std::format("Potion of Speed({})!", self->stats()->level);
-        active_screen()->do_notify(message.c_str(), eater);
+        og::sim::emit_notification(self->sim_events, message);
     }
     self->dead = 1;
     return true;

@@ -29,6 +29,7 @@ class pixieN : public pixie
 		pixieN& operator=(const pixieN&) = delete;
 		pixieN(pixieN&&) = delete;
 		pixieN& operator=(pixieN&&) = delete;
+		void set_data(const PixieData& data);
 		short set_frame(short framenum);
 		short query_frame();
 		short next_frame();

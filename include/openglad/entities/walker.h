@@ -17,27 +17,54 @@
 #pragma once
 
 // Definition of WALKER class
+//
+// walker inherits from SimEntity (SDL-free) for position, size, identity,
+// state, and animation frame tracking. Rendering data lives in an optional
+// pixieN component (render_) created when graphics are available.
 
-#include <openglad/legacy/base.h>
-#include <openglad/render/pixien.h>
+#include <openglad/sim/sim_entity.h>
 #include <openglad/entities/obmap.h>
+#include <cstdint>
+#include <list>
 #include <memory>
 #include <vector>
+
+// Forward declarations
+class PixieData;
+class WalkerRender;
+class guy;
+class statistics;
 
 // Opaque state type used by MicroPather for pathfinding nodes.
 // States are encoded grid coordinates (not real pointers), but the
 // micropather library API requires void*.
 using MicroPatherState = void*;
 
-class walker : public pixieN
+class walker : public og::sim::SimEntity
 {
 	public:
 		walker(const PixieData& data);
+		walker();  // Headless constructor (no rendering data)
 		~walker() override;
 		walker(const walker&) = delete;
 		walker& operator=(const walker&) = delete;
 		walker(walker&&) = delete;
 		walker& operator=(walker&&) = delete;
+
+		// Render component management
+		void attach_render(const PixieData& data);
+		void set_data(const PixieData& data);  // Update render graphics (for editor)
+		bool has_render() const { return render_ != nullptr; }
+		const unsigned char* bmp_data() const;
+		WalkerRender* render_component() { return render_.get(); }
+		const WalkerRender* render_component() const { return render_.get(); }
+
+		// Animation frame management (sim state in SimEntity::frame/frames;
+		// render bmp pointer updated via render component)
+		short set_frame(short framenum);
+		short query_frame() const { return frame; }
+		short next_frame();
+
 		void set_myguy_view(guy* guy_view);
 		void set_owned_myguy(std::unique_ptr<guy> owned_guy);
 		void clear_myguy();
@@ -47,21 +74,18 @@ class walker : public pixieN
 			void worldmove(float x, float y);
 			virtual bool setxy(short x, short y);
 			// Overloads to avoid implicit narrowing at call sites. These forward to the virtual short-based API.
-			bool setxy(Sint32 x, Sint32 y) { return setxy(static_cast<short>(x), static_cast<short>(y)); }
-			bool setxy(Uint32 x, Uint32 y) { return setxy(static_cast<Sint32>(x), static_cast<Sint32>(y)); }
-			bool setxy(float x, float y) { return setxy(static_cast<Sint32>(x), static_cast<Sint32>(y)); }
+			bool setxy(std::int32_t x, std::int32_t y) { return setxy(static_cast<short>(x), static_cast<short>(y)); }
+			bool setxy(std::uint32_t x, std::uint32_t y) { return setxy(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
+			bool setxy(float x, float y) { return setxy(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
 			void setworldxy(float x, float y);
 			float worldx() const { return worldx_; }
 			float worldy() const { return worldy_; }
 			bool walk();
 			bool walkstep(float x, float y);
 			// Convenience overloads to avoid implicit int->float conversions at call sites.
-			bool walkstep(Sint32 x, Sint32 y) { return walkstep(static_cast<float>(x), static_cast<float>(y)); }
-			bool walkstep(short x, short y) { return walkstep(static_cast<Sint32>(x), static_cast<Sint32>(y)); }
+			bool walkstep(std::int32_t x, std::int32_t y) { return walkstep(static_cast<float>(x), static_cast<float>(y)); }
+			bool walkstep(short x, short y) { return walkstep(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
 			virtual bool walk(float x, float y);
-		bool draw(viewscreen  *view_buf);
-		bool draw_tile(viewscreen  *view_buf);
-		void draw_path(viewscreen* view_buf);
 		void find_path_to_foe();
 		void follow_path_to_foe();
 		bool init_fire();
@@ -91,33 +115,33 @@ class walker : public pixieN
 		bool query_next_to();
 		bool special();
 		bool teleport();
-		bool teleport_ranged(Sint32 range);
-		Sint32  turn_undead(Sint32 range, Sint32 power);
+		bool teleport_ranged(std::int32_t range);
+		std::int32_t  turn_undead(std::int32_t range, std::int32_t power);
 		virtual short shove(walker  *target, short x, short y);
 		virtual bool eat_me(walker  *eater);
 		virtual void set_direct_frame(short whichframe);
 		bool turn(short targetdir);
 		short spaces_clear(); // how many (of 8) spaces around us are clear
 		void transfer_stats(walker  *newob); // transfer values to new walker
-		void transform_to(Order whatorder, Sint32 whatfamily); // change picture, etc.
+		void transform_to(Order whatorder, std::int32_t whatfamily); // change picture, etc.
 		virtual bool death(); // called when death/destruction occurs ..
 		void generate_bloodspot(); // make a permanent stain ..
-			virtual walker* do_summon(char whatfamily, Sint32 summon_lifetime);
+			virtual walker* do_summon(char whatfamily, std::int32_t summon_lifetime);
 		virtual bool check_special();
 		void center_on(walker  *target);  // center us on target
-		virtual void set_difficulty(Uint32 whatlevel);
-			Sint32 distance_to_ob(const walker * target) const;
-			Sint32 distance_to_ob_center(const walker * target) const;
+		virtual void set_difficulty(std::uint32_t whatlevel);
+			std::int32_t distance_to_ob(const walker * target) const;
+			std::int32_t distance_to_ob_center(const walker * target) const;
 			virtual short facing(short x, short y);
 			// Convenience overloads to avoid implicit float->short conversions at call sites.
 			// These forward to the virtual short-based implementations.
-			short facing(Sint32 x, Sint32 y) { return facing(static_cast<short>(x), static_cast<short>(y)); }
-			short facing(float x, float y) { return facing(static_cast<Sint32>(x), static_cast<Sint32>(y)); }
-			short shove(walker* target, Sint32 x, Sint32 y) { return shove(target, static_cast<short>(x), static_cast<short>(y)); }
-			short shove(walker* target, float x, float y) { return shove(target, static_cast<Sint32>(x), static_cast<Sint32>(y)); }
+			short facing(std::int32_t x, std::int32_t y) { return facing(static_cast<short>(x), static_cast<short>(y)); }
+			short facing(float x, float y) { return facing(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
+			short shove(walker* target, std::int32_t x, std::int32_t y) { return shove(target, static_cast<short>(x), static_cast<short>(y)); }
+			short shove(walker* target, float x, float y) { return shove(target, static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
 			unsigned char query_team_color() const;
-		Sint32 is_friendly(const walker *target) const;
-		Sint32 is_friendly_to_team(unsigned char team) const;
+		std::int32_t is_friendly(const walker *target) const;
+		std::int32_t is_friendly_to_team(unsigned char team) const;
 		inline short query_type(Order oval, char fval) const
 		{
 			if (oval == order && fval == family)
@@ -141,7 +165,6 @@ class walker : public pixieN
             unsigned char color;
 
 	            DamageNumber(float x_, float y_, float value_, unsigned char color_);
-            void draw(viewscreen* view_buf);
 		};
 
 		void compute_outline(const walker* viewer_control);
@@ -150,19 +173,13 @@ class walker : public pixieN
         void do_hit_effects(walker* attacker, walker* target, short tempdamage);
         void do_combat_damage(walker* attacker, walker* target, short tempdamage);
 
-		// Public data members
-		unsigned char team_num;
-		unsigned char real_team_num;   // for 'Charm', etc.
-		short bonus_rounds;            // used if an object has extra rounds this cycle
-		short dead;                    // safety check
-		short death_called;            // if death has already been called
+		// Public data members (fields NOT in SimEntity base)
 		short skip_exit;               // cycles after failed exit choice
-		short invulnerable_left;
 		guy  *myguy;                   // Non-owning view of character data; ownership, when present, lives in owned_myguy_
 		walker *foe;
 		walker *leader;
 		walker *owner;                 // for weapons
-		Uint32 keys;                   // used to open doors
+		std::uint32_t keys;                   // used to open doors
 		short view_all;                // used for seeing treasures, etc. on radar
 		short weapons_left;            // for fighter's blades
 		float lastx, lasty;
@@ -171,20 +188,17 @@ class walker : public pixieN
 		char ani_type;
 		float stepsize;
 		float normal_stepsize;         // used for elven forestwalk
-		Sint32 lineofsight;
+		std::int32_t lineofsight;
 		float damage;
 		float fire_frequency;
 		float busy;
 		char ignore;                   // for non-colliding objects
 		unsigned short current_weapon;
-		short flight_left;             // for bonus flight ..
-		short invisibility_left;
-		Sint32 lifetime;               // how much life summoned guys have ..
+		std::int32_t lifetime;               // how much life summoned guys have ..
 			float speed_bonus;             // Additional stepsize while speed potions are active
-			Sint32 speed_bonus_left;        // Cycles remaining for speed bonus
+			std::int32_t speed_bonus_left;        // Cycles remaining for speed bonus
 		walker* collide_ob;
 		unsigned short default_weapon;
-		signed char user;              // are we being used by anyone?
 		signed char curdir;            // Current direction facing
 		signed char** ani;
 		unsigned char drawcycle;
@@ -215,14 +229,10 @@ class walker : public pixieN
 		bool act_guard();
 		virtual bool act_random();
 		char act_type,old_act_type;
-		Order order;
-		char family;
 		short charm_left_;             // If we're still being charmed
-			Sint32 regen_delay_;           // Delay after being hit
-		float worldx_, worldy_;        // Floating point buffer for movement
+			std::int32_t regen_delay_;           // Delay after being hit
 		walker * myself_;
 		std::unique_ptr<statistics> stats_;
 		std::unique_ptr<guy> owned_myguy_;
-
-
+		std::unique_ptr<WalkerRender> render_;  // Optional render component (null for headless)
 };

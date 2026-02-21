@@ -2,6 +2,7 @@
 #include <openglad/entities/walker.h>
 #include <openglad/core/util.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_context.h>
 #include <openglad/render/view.h>
 #include "test_framework.h"
 #include <cstring>
@@ -14,7 +15,7 @@ static std::unique_ptr<walker> create_living_on_team(unsigned char team)
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER, myscreen);
+    auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     if (!w)
         return nullptr;
     w->team_num = team;
@@ -71,11 +72,12 @@ void test_viewscreen_input_consumes_bonus_rounds()
     v->mynum = 0;
     v->my_team = 0;
 
-    // Ensure the bonus-round walk() path runs.
+    // Ensure the bonus-round walk() path runs via process_input().
     controlp->bonus_rounds = 1;
     controlp->lastx = 1.0f;
     controlp->lasty = 0.0f;
-    (void)v->input(make_keydown(SDLK_UNKNOWN));
+    InputState empty_input = {};
+    v->process_input(empty_input);
     TEST_ASSERT_EQ(0, (int)controlp->bonus_rounds, "bonus rounds should decrement");
 
     v->control = nullptr;

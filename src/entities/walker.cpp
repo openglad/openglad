@@ -20,6 +20,7 @@
 	buffers: 7/31/02: *deleted some redundant headers
 */
 
+#include <cstdint>
 #include <openglad/core/combat_math.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/family_descriptor.h>
@@ -30,25 +31,19 @@
 #include <openglad/entities/generator_family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
-#include <openglad/render/smooth.h>
+#include <openglad/entities/walker_render.h>
+#include <openglad/data/level_data.h>
+#include <openglad/data/save_data.h>
+#include <openglad/data/gloader.h>
+#include <openglad/data/gparser.h>
+#include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include <openglad/legacy/soundob.h>
+// pixieN include not needed here; render bridge is in walker_render_bridge.cpp
 #include <format>
 #include <span>
-
-// Shorthand for the injectable RNG
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
-
-static inline cfg_store& active_config()
-{
-    if(ctx().config != nullptr)
-        return *ctx().config;
-    return cfg;
-}
 
 // ************************************************************
 //  WALKER -- graphics routines
@@ -62,83 +57,83 @@ static inline cfg_store& active_config()
 bool debug_draw_paths = false;
 
 // From picker.cpp
-extern Sint32 calculate_level(Uint32 temp_exp);
-extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];
-extern Sint32 current_difficulty;
+extern std::int32_t calculate_level(std::uint32_t temp_exp);
+extern std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
+extern std::int32_t current_difficulty;
 
-// from glad.cpp
-short remaining_foes(screen *myscreen, walker* myguy);
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
-walker::walker(const PixieData& data)
-    : pixieN(data)
+// Common initialization shared by both constructors
+void walker_init_common(walker* w)
 {
+	w->curdir = FACE_DOWN;
+	w->enddir = FACE_DOWN;
+	w->lastx = 0;
+	w->lasty = 0;
+	w->collide_ob = nullptr;
+	w->cycle = 0;
+	w->ani = nullptr;
+	w->ani_type = 0;
+	w->busy = 0;
+	w->foe = nullptr;
+	w->leader = nullptr;
+	w->owner = nullptr;
+	w->myguy = nullptr;
+	w->shifter_down = 0;
+	w->view_all = 0;
+	w->keys = 0;
+	w->action = 0;
+	w->ignore = 0;
+	w->default_weapon = w->current_weapon = FAMILY_KNIFE;
+	w->yo_delay = 0;
+	w->speed_bonus = 0;
+	w->speed_bonus_left = 0;
+	w->outline = 0;
+	w->drawcycle = 0;
+	w->skip_exit = 0;
+	w->weapons_left = 1;
+	w->myobmap = nullptr;
+	w->path_check_counter = 5 + rand()%10;
+	w->hurt_flash = false;
+	w->attack_lunge = 0.0f;
+	w->hit_recoil = 0.0f;
+	w->last_hitpoints = 0.0f;
+}
+
+walker::walker(const PixieData& data)
+    : SimEntity()
+{
+	// Create render component from PixieData
+	attach_render(data);
+
 	// Set our stats ..
 	stats_ = std::make_unique<statistics>(this);
-
-	curdir = FACE_DOWN;  // We are facing DOWN
-	enddir = FACE_DOWN;  // We are trying to face DOWN
-	lastx = 0;
-	lasty = 0;
-	act_type = ACT_RANDOM;
-	collide_ob = nullptr;
-	cycle = 0;
-	ani = nullptr;
-	team_num = 0;
-	real_team_num = 255;  // to show nothing's changed
-	ani_type = 0;
-	busy = 0;
-	foe = nullptr;
-	leader = nullptr;
-	owner = nullptr;
-	myguy = nullptr;
 	myself_ = this;
-	dead = 0; // we're alive
 
-	death_called = 0;
+	walker_init_common(this);
 
-
-	bonus_rounds = 0;
-	shifter_down = 0; // the player's shifter/alternate is NOT pressed
-	view_all = 0;     // by default can't see treasures, etc. on radar
-	keys = 0; // no keys
-
-	action = 0; // no special action mode
-	ignore = 0; // don't ignore us! Collide with us...
-	default_weapon = current_weapon = FAMILY_KNIFE; // just in case ..
-	user = -1; // default user status = no user
-	// Set our stats ..
+	act_type = ACT_RANDOM;
 	set_frame(0);
+}
 
-	yo_delay = 0;
+walker::walker()
+    : SimEntity()
+{
+	// Headless constructor - no render component
+	stats_ = std::make_unique<statistics>(this);
+	myself_ = this;
 
-	flight_left = 0;
-	invulnerable_left = 0;
-	invisibility_left = 0;
-	speed_bonus = 0;
-	speed_bonus_left = 0;
-	regen_delay_ = 0;
-	charm_left_ = 0;
-	outline = 0;
-	drawcycle = 0;
+	walker_init_common(this);
 
-	skip_exit = 0;
-	xpos = ypos = -1; //this to correct a problem with these not being alloced?
-	worldx_ = worldy_ = -1;
+	act_type = ACT_RANDOM;
+}
 
-	weapons_left = 1; // default, used for fighters
-	// Do not implicitly bind to the global screen obmap here. Only walkers that
-	// are registered into a LevelData list should participate in obmap collision
-	// bookkeeping. (Unregistered test-only walkers otherwise leave stale pointers
-	// behind across tests under ASan.)
-	myobmap = nullptr;
+// attach_render, set_data, bmp_data, set_frame are in
+// src/runtime/walker_render_bridge.cpp (require pixieN full definition).
 
-	path_check_counter = 5 + rand()%10;
-	hurt_flash = false;
-	attack_lunge = 0.0f;
-	hit_recoil = 0.0f;
-
-	last_hitpoints = 0.0f;
+short walker::next_frame()
+{
+	return set_frame(frame++ % frames);
 }
 
 void walker::set_myguy_view(guy* guy_view)
@@ -244,32 +239,7 @@ walker::reset(void)
 	return 1;
 }
 
-walker::~walker()
-{
-	//  Log("(Death) Removed ORDER %d FAMILY %d, pos %dx%d\n", order, family,
-	//    xpos, ypos); //debugging memory
-	foe = nullptr;
-	leader = nullptr;
-	owner = nullptr;
-	collide_ob = nullptr;
-	dead = 1;
-
-	// Walkers can outlive a particular LevelData::myobmap instance in tests
-	// (screen cleanup replaces the obmap). Ensure we remove from the current
-	// active obmap as well as the one we were last bound to.
-	obmap* active = (myscreen != nullptr) ? myscreen->level_data.myobmap.get() : nullptr;
-	if (active != nullptr)
-		active->remove(this);
-	if (myobmap != nullptr && myobmap != active)
-		myobmap->remove(this); // remove ourselves from obmap lists
-
-	stats_.reset();
-	bmp = nullptr;
-	clear_myguy();
-	myself_ = nullptr;
-
-
-}
+// ~walker() is in src/runtime/walker_render_bridge.cpp (requires pixieN for render_.reset()).
 
 // Movement/facing/turning methods moved to walker_movement.cpp.
 
@@ -341,7 +311,7 @@ walker  * walker::fire()
 
 	// Determine how much the thrown weapon can 'waver'
 	waver = static_cast<signed char>((weapon->stepsize)/2); // Absolute amount ..
-	waver = static_cast<signed char>(rng(waver+1) - waver/2);
+	waver = static_cast<signed char>(sim_rng->next(waver+1) - waver/2);
 
 	switch(facing(lastx, lasty))
 	{
@@ -396,16 +366,16 @@ walker  * walker::fire()
 	//yp = weapon->ypos;
 
 	// Actual combat
-	if (!myscreen->query_passable(weapon->xpos, weapon->ypos, weapon))
+	if (!sim_level->query_passable(weapon->xpos, weapon->ypos, weapon))
 	{
 		// *** Melee combat ***
 		if (weapon->collide_ob && !weapon->collide_ob->dead)
 		{
-			if (attack(weapon->collide_ob) && on_screen() )
+			if (attack(weapon->collide_ob))
 			{
-				myscreen->soundp->play_sound(SOUND_CLANG);
-				
-                if(active_config().is_on("effects", "attack_lunge"))
+				og::sim::emit_sound(sim_events, SOUND_CLANG);
+
+                if(sim_config && sim_config->is_on("effects", "attack_lunge"))
                 {
                     if(query_order() == Order::Living)
                     {
@@ -448,10 +418,9 @@ walker  * walker::fire()
         }
 
 		// *** Ranged combat ***
-		if (on_screen())
 		{
 			const auto* wfd = get_weapon_family_descriptor(weapon->query_family());
-			myscreen->soundp->play_sound(static_cast<short>(wfd ? wfd->fire_sound : SOUND_FWIP));
+			og::sim::emit_sound(sim_events, static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
 		}
 		if (order == Order::Generator)
 		{
@@ -462,8 +431,8 @@ walker  * walker::fire()
 					weapon->ani_type = gfd->spawn_ani_type;
 				if (gfd->has_lifetime)
 					weapon->lifetime = 800 + stats_->level*11;
-				weapon->stats()->level = static_cast<Sint32>(rng(static_cast<Uint32>(stats_->level))) + 1;
-				weapon->set_difficulty(static_cast<Uint32>(weapon->stats()->level));
+				weapon->stats()->level = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(stats_->level))) + 1;
+				weapon->set_difficulty(static_cast<std::uint32_t>(weapon->stats()->level));
 				if (gfd->clear_owner)
 					weapon->owner = nullptr;
 			}
@@ -480,7 +449,7 @@ void walker::set_weapon_heading(walker *weapon)
 
 	// Determine how much the thrown weapon can 'waver'
 	waver = static_cast<signed char>((weapon->stepsize)/2); // Absolute amount ..
-	waver = static_cast<signed char>(rng(waver+1) - waver/2);
+	waver = static_cast<signed char>(sim_rng->next(waver+1) - waver/2);
 
 	switch(facing(lastx, lasty))  // these are from the 'owner'
 	{
@@ -528,312 +497,15 @@ void walker::set_weapon_heading(walker *weapon)
 
 }
 
-// To avoid problems with limited precision
+// Used by score_panel.cpp and glad.cpp via extern declaration.
 bool float_eq(float a, float b)
 {
     return (a == b || (a - 0.000001f < b && a + 0.000001f > b));
 }
 
-void draw_smallHealthBar(walker* w, viewscreen* view_buf)
-{
-    if(!active_config().is_on("effects", "mini_hp_bar"))
-    {
-        return;
-    }
-
-    if(w->query_order() != Order::Living && w->query_order() != Order::Generator)
-    {
-        return;
-    }
-
-	Sint32 xscreen = static_cast<Sint32>(w->xpos - view_buf->topx + view_buf->xloc);
-	Sint32 yscreen = static_cast<Sint32>(w->ypos - view_buf->topy + view_buf->yloc);
-
-    const Sint32 walkerstartx = xscreen;
-    const Sint32 walkerstarty = yscreen;
-    const Sint32 portstartx = view_buf->xloc;
-    const Sint32 portstarty = view_buf->yloc;
-    const Sint32 portendx = view_buf->endx;
-    const Sint32 portendy = view_buf->endy;
-
-    SDL_Rect r{static_cast<int>(walkerstartx),
-               static_cast<int>(walkerstarty + w->sizey + 1),
-               static_cast<int>(w->sizex),
-               1};
-    if(r.x < portstartx || r.x > portendx || r.y < portstarty || r.y > portendy)
-        return;
-    
-    // Last hit's effect
-    float last_points = w->last_hitpoints;
-    float last_ratio = float(last_points)/w->stats()->max_hitpoints;
-    
-    // Current HP
-    float points = w->stats()->hitpoints;
-    float ratio = float(points)/w->stats()->max_hitpoints;
-    
-    unsigned char whatcolor;
-    
-    if (float_eq(points, w->stats()->max_hitpoints))
-        whatcolor = MAX_HP_COLOR;
-    else if ( (points * 3) < w->stats()->max_hitpoints)
-        whatcolor = LOW_HP_COLOR;
-    else if ( (points * 3 / 2) < w->stats()->max_hitpoints)
-        whatcolor = MID_HP_COLOR;
-    else if (points < w->stats()->max_hitpoints)
-        whatcolor = LIGHT_GREEN;//HIGH_HP_COLOR;
-    else 
-        whatcolor = ORANGE_START;
-    
-    if(ratio >= 0.0f)
-    {
-        if(ratio < 0.95f)
-        {
-            const Sint32 max_w = r.w;
-            const float width_f = static_cast<float>(r.w);
-
-            if(w->last_hitpoints > w->stats()->hitpoints && last_ratio <= 1.0f)
-            {
-                const Sint32 last_w = static_cast<Sint32>(width_f * last_ratio);
-                myscreen->draw_box(r.x, r.y, r.x + last_w, r.y + r.h, static_cast<unsigned char>(53), 1);
-            }
-
-            const Sint32 cur_w = static_cast<Sint32>(width_f * ratio);
-            myscreen->draw_box(r.x, r.y, r.x + cur_w, r.y + r.h, whatcolor, 1);
-            myscreen->draw_box(r.x-1, r.y-1, r.x + max_w+1, r.y + r.h+1, BLACK, 0);
-        }
-    }
-}
-
-
 walker::DamageNumber::DamageNumber(float x_, float y_, float value_, unsigned char color_)
     : x(x_), y(y_), t(1.0f), value(value_), color(color_)
 {}
-
-void walker::DamageNumber::draw(viewscreen* view_buf)
-{
-	const float xscreen_f = x - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc);
-	const float yscreen_f = y - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc);
-	const Sint32 xscreen = static_cast<Sint32>(xscreen_f);
-	const Sint32 yscreen = static_cast<Sint32>(yscreen_f);
-	
-	Uint8 alpha = 0;
-	if (t >= 1.0f)
-		alpha = 255;
-	else if (t > 0.0f)
-		alpha = static_cast<Uint8>(t * 255.0f);
-	myscreen->text_normal.write_xy_center_alpha(xscreen, yscreen, color, alpha, "%.0f", value);
-}
-
-#define ATTACK_LUNGE_SIZE 5
-#define HIT_RECOIL_SIZE 3
-
-bool walker::draw(viewscreen  *view_buf)
-{
-    // Update the drawing coords from the real position
-    xpos = static_cast<short>(worldx_);
-    ypos = static_cast<short>(worldy_);
-    
-	Sint32 xscreen, yscreen;
-
-	//no need for on screen check, it will be checked at the draw level
-	//and the draw level code is cleaner anyway
-	//if (!this) return 0;
-	if (dead)
-	{
-		Log("drawing a dead guy!\n");
-		return 0;
-	}
-	//if (!bmp) {Log("No bitmap!\n"); return 0;}
-	drawcycle++;
-
-	xscreen = static_cast<Sint32>(xpos - view_buf->topx + view_buf->xloc);
-	yscreen = static_cast<Sint32>(ypos - view_buf->topy + view_buf->yloc);
-	
-	if(attack_lunge > 0.0f)
-	    {
-	        const float dx = attack_lunge * ATTACK_LUNGE_SIZE * cosf(attack_lunge_angle);
-	        const float dy = attack_lunge * ATTACK_LUNGE_SIZE * sinf(attack_lunge_angle);
-	        xscreen += static_cast<Sint32>(dx);
-	        yscreen += static_cast<Sint32>(dy);
-	    }
-    
-	if(hit_recoil > 0.0f)
-	    {
-	        const float dx = hit_recoil * HIT_RECOIL_SIZE * cosf(hit_recoil_angle);
-	        const float dy = hit_recoil * HIT_RECOIL_SIZE * sinf(hit_recoil_angle);
-	        xscreen += static_cast<Sint32>(dx);
-	        yscreen += static_cast<Sint32>(dy);
-	    }
-
-	if (stats_->query_bit_flags( BIT_NAMED ) || invisibility_left || flight_left || invulnerable_left)
-	{
-		if (outline == OUTLINE_INVULNERABLE)
-		{
-			if      (flight_left)
-				outline = OUTLINE_FLYING;
-			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
-					outline = OUTLINE_NAMED;
-
-			if (outline != OUTLINE_NAMED)
-				if (invisibility_left)
-					outline = OUTLINE_INVISIBLE;
-		}
-		else if (outline == OUTLINE_FLYING)
-		{
-			//if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
-			//else if (invisibility_left) outline = OUTLINE_INVISIBLE;
-			//else if (invulnerable_left) outline = OUTLINE_INVULNERABLE;
-
-			if (view_buf->control)
-				if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
-					outline = OUTLINE_NAMED;
-
-			if (outline != OUTLINE_NAMED)
-			{
-				if (invisibility_left)
-					outline = OUTLINE_INVISIBLE;
-				else if (invulnerable_left)
-					outline = OUTLINE_INVULNERABLE;
-			}
-		}
-		else if (outline == OUTLINE_NAMED)
-		{
-			if      (invisibility_left)
-				outline = OUTLINE_INVISIBLE;
-			else if (invulnerable_left)
-				outline = OUTLINE_INVULNERABLE;
-			else if (flight_left)
-				outline = OUTLINE_FLYING;
-		}
-		else if (outline == OUTLINE_INVISIBLE)
-		{
-			if      (invulnerable_left)
-				outline = OUTLINE_INVULNERABLE;
-			else if (flight_left)
-				outline = OUTLINE_FLYING;
-			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
-					outline = OUTLINE_NAMED;
-		}
-		else
-		{
-			if      (invisibility_left)
-				outline = OUTLINE_INVISIBLE;
-			else if (flight_left)
-				outline = OUTLINE_FLYING;
-			else if (invulnerable_left)
-				outline = OUTLINE_INVULNERABLE;
-			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
-					outline = OUTLINE_NAMED;
-		}
-	}
-	else
-	{
-	    outline = 0;
-	}
-	
-	if(view_buf->control != nullptr)
-    {
-        if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
-            outline = OUTLINE_INVISIBLE;
-    }
-    
-    bool should_draw_hp = true;
-    int fill_mode = 0;
-    int outline_style = 0;
-    int invisibility_amount = 0;
-    int phantom_mode = 0;
-    
-	if (stats_->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
-    {
-        fill_mode = PHANTOM_MODE;
-        phantom_mode = SHIFT_RANDOM;
-        should_draw_hp = false;
-    }
-	else if (invisibility_left && view_buf->control != nullptr)  //WE ARE INVISIBLE
-	{
-		if (this->team_num == view_buf->control->team_num)
-        {
-            fill_mode = INVISIBLE_MODE;
-            invisibility_amount = ( invisibility_left + 10 );
-            outline_style = outline;
-            should_draw_hp = false;
-        }
-	}
-	else if (stats_->query_bit_flags(BIT_FORESTWALK) && 
-	         myscreen->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	         && !stats_->query_bit_flags(BIT_FLYING)
-	         && (flight_left < 1) )
-    {
-        fill_mode = INVISIBLE_MODE;
-        invisibility_amount = 1000;
-        outline_style = 1;
-        should_draw_hp = false;
-    }
-	else if (outline)    // WE HAVE SOME OUTLINE
-	{
-	    fill_mode = OUTLINE_MODE;
-	    outline_style = outline;
-	}
-	
-	// Draw me
-	if(hurt_flash)
-    {
-        hurt_flash = false;
-        
-        auto bmp_span = std::span<const unsigned char>{bmp, static_cast<size_t>(sizex * sizey)};
-        myscreen->walkputbuffer_flash(xscreen, yscreen, sizex, sizey,
-                                   view_buf->xloc, view_buf->yloc,
-                                   view_buf->endx, view_buf->endy,
-                                   bmp_span, query_team_color());
-    }
-    else
-    {
-        auto bmp_span = std::span<const unsigned char>{bmp, static_cast<size_t>(sizex * sizey)};
-        if(fill_mode == 0 && outline_style == 0)
-        {
-            myscreen->walkputbuffer(xscreen, yscreen, sizex, sizey,
-                                   view_buf->xloc, view_buf->yloc,
-                                   view_buf->endx, view_buf->endy,
-                                   bmp_span, query_team_color());
-        }
-        else
-        {
-	            myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
-	                                    view_buf->xloc, view_buf->yloc,
-	                                    view_buf->endx, view_buf->endy,
-	                                    bmp_span, query_team_color(),
-	                                    static_cast<unsigned char>(fill_mode), //mode
-	                                    invisibility_amount, //invisibility
-	                                    static_cast<unsigned char>(outline_style), //outline
-	                                    static_cast<unsigned char>(phantom_mode)); //type of phantom
-	        }
-	    }
-	
-	if(should_draw_hp)
-        draw_smallHealthBar(this, view_buf);
-	
-	for(auto e = damage_numbers.begin(); e != damage_numbers.end();)
-    {
-        e->t -= 0.05f;
-        if(e->t < 0)
-        {
-            e = damage_numbers.erase(e);
-            continue;
-        }
-        
-        e->y -= 1.5f;
-        if(view_buf->control == this)
-            e->draw(view_buf);
-        e++;
-    }
-	
-	if(debug_draw_paths)
-        draw_path(view_buf);
-	return 1;
-}
 
 void walker::compute_outline(const walker* viewer_control)
 {
@@ -849,7 +521,7 @@ void walker::compute_outline(const walker* viewer_control)
 
 			if (outline != OUTLINE_NAMED)
 				if (invisibility_left)
-					outline = OUTLINE_INVISIBLE;
+					outline = query_team_color();
 		}
 		else if (outline == OUTLINE_FLYING)
 		{
@@ -860,7 +532,7 @@ void walker::compute_outline(const walker* viewer_control)
 			if (outline != OUTLINE_NAMED)
 			{
 				if (invisibility_left)
-					outline = OUTLINE_INVISIBLE;
+					outline = query_team_color();
 				else if (invulnerable_left)
 					outline = OUTLINE_INVULNERABLE;
 			}
@@ -868,13 +540,13 @@ void walker::compute_outline(const walker* viewer_control)
 		else if (outline == OUTLINE_NAMED)
 		{
 			if      (invisibility_left)
-				outline = OUTLINE_INVISIBLE;
+				outline = query_team_color();
 			else if (invulnerable_left)
 				outline = OUTLINE_INVULNERABLE;
 			else if (flight_left)
 				outline = OUTLINE_FLYING;
 		}
-		else if (outline == OUTLINE_INVISIBLE)
+		else if (outline == query_team_color())
 		{
 			if      (invulnerable_left)
 				outline = OUTLINE_INVULNERABLE;
@@ -887,7 +559,7 @@ void walker::compute_outline(const walker* viewer_control)
 		else
 		{
 			if      (invisibility_left)
-				outline = OUTLINE_INVISIBLE;
+				outline = query_team_color();
 			else if (flight_left)
 				outline = OUTLINE_FLYING;
 			else if (invulnerable_left)
@@ -903,93 +575,8 @@ void walker::compute_outline(const walker* viewer_control)
 	}
 
     if(outline == 0 && user != -1 && viewer_control && this != viewer_control && this->team_num == viewer_control->team_num)
-        outline = OUTLINE_INVISIBLE;
+        outline = query_team_color();
 }
-
-bool walker::draw_tile(viewscreen  *view_buf)
-{
-	Sint32 xscreen, yscreen;
-
-	//no need for on screen check, it will be checked at the draw level
-	//and the draw level code is cleaner anyway
-	//if (!this) return 0;
-	if (dead)
-	{
-		Log("drawing a dead guy!\n");
-		return 0;
-	}
-	//if (!bmp) {Log("No bitmap!\n"); return 0;}
-	drawcycle++;
-
-	xscreen = static_cast<Sint32>(xpos - view_buf->topx + view_buf->xloc);
-	yscreen = static_cast<Sint32>(ypos - view_buf->topy + view_buf->yloc);
-
-	compute_outline(view_buf->control);
-
-	auto bmp_span = std::span<const unsigned char>{bmp, static_cast<size_t>(sizex * sizey)};
-
-	if (stats_->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
-		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
-		                        view_buf->xloc, view_buf->yloc,
-		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
-		                        bmp_span, query_team_color(),
-		                        PHANTOM_MODE, //mode
-		                        0, //invisibility
-		                        0, //outline
-		                        SHIFT_RANDOM); //type of phantom
-
-	else if (invisibility_left)  //WE ARE INVISIBLE
-	{
-		if (this->team_num == view_buf->control->team_num)
-			myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
-			                        view_buf->xloc, view_buf->yloc,
-		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
-			                        bmp_span, query_team_color(),
-			                        INVISIBLE_MODE,  //mode
-			                        ( invisibility_left + 10 ), //invisibility
-			                        outline,  //outline
-			                        0 ); //type of phantom
-	}
-	else if (stats_->query_bit_flags(BIT_FORESTWALK) &&
-	         myscreen->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	         && !stats_->query_bit_flags(BIT_FLYING)
-	         && (flight_left < 1) )
-		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
-		                        view_buf->xloc, view_buf->yloc,
-		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
-		                        bmp_span, query_team_color(),
-		                        INVISIBLE_MODE,  //mode
-		                        1000, //invisibility
-		                        1,  //outline
-		                        0 ); //type of phantom
-
-	else if (outline)    // WE HAVE SOME OUTLINE
-	{
-		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
-		                        view_buf->xloc, view_buf->yloc,
-		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
-		                        bmp_span, query_team_color(),
-		                        OUTLINE_MODE, //mode
-		                        0, //invisibility
-		                        outline, //outline
-		                        0 ); //type of phantom
-
-        draw_smallHealthBar(this, view_buf);
-	}
-	else
-	{
-		myscreen->walkputbuffer(xscreen, yscreen, sizex, sizey,
-		                       view_buf->xloc, view_buf->yloc,
-		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
-		                       bmp_span, query_team_color());
-
-        draw_smallHealthBar(this, view_buf);
-	}
-
-	return 1;
-}
-
-
 
 bool walker::act()
 {
@@ -1087,13 +674,13 @@ bool walker::act()
 			// We are randomly walking toward enemy
 		case ACT_RANDOM:
 			{
-				if (!rng(4) )
+				if (!sim_rng->next(4) )
 				{
-					if (!rng(20))   // a 1 in 4 then 1 in 20 chance of rand walk
+					if (!sim_rng->next(20))   // a 1 in 4 then 1 in 20 chance of rand walk
 					{
 						if (!special())
-							stats_->try_command(COMMAND_WALK, rng(30),
-							                   rng(3)-1, rng(3)-1);
+							stats_->try_command(COMMAND_WALK, sim_rng->next(30),
+							                   sim_rng->next(3)-1, sim_rng->next(3)-1);
 						return 1;
 					}
 					act_random(); //1 in 4 followed by 19 in 20 of doing this
@@ -1102,7 +689,7 @@ bool walker::act()
 				{
 					if (!foe)
 					{
-						foe = myscreen->find_far_foe(this);
+						foe = sim_level->find_far_foe(this);
 					}
 					if (foe)
 						//stats_->try_command(COMMAND_SEARCH, 60, 0, 0);
@@ -1159,7 +746,22 @@ bool walker::collide(walker  *ob)
 
 bool walker::animate()
 {
-	const int ani_index = curdir + ani_type * NUM_FACINGS;
+	if (!ani)
+		return 0;
+
+	// Guard against stale/invalid signed-char indices under sanitizer builds.
+	int dir_index = static_cast<int>(static_cast<unsigned char>(curdir));
+	if (dir_index < 0 || dir_index >= NUM_FACINGS)
+		dir_index = 0;
+	int type_index = static_cast<int>(ani_type);
+	if (type_index < ANI_WALK || type_index > ANI_SLIME_SPLIT)
+	{
+		type_index = ANI_WALK;
+		ani_type = static_cast<char>(ANI_WALK);
+		cycle = 0;
+	}
+
+	const int ani_index = dir_index + type_index * NUM_FACINGS;
 	const signed char* seq = ani[ani_index];
 	if (!seq)
 	{
@@ -1264,19 +866,19 @@ walker  *walker::create_weapon()
 	// Special case for generators
 	if (query_order() == Order::Generator)
 	{
-		weapon = myscreen->level_data.add_ob(Order::Living, static_cast<char>(default_weapon));
+		weapon = sim_level->add_ob(Order::Living, static_cast<char>(default_weapon));
 		weapon->team_num = team_num;
 		weapon->owner = this;
-		weapon->set_difficulty(static_cast<Uint32>(stats_->level));
+		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
 		return weapon;
 	}
 	// Normally, only livings fire
 	weapon_type = current_weapon;
 
-	weapon = myscreen->level_data.add_ob(Order::Weapon, static_cast<char>(weapon_type));
+	weapon = sim_level->add_ob(Order::Weapon, static_cast<char>(weapon_type));
 	weapon->team_num = team_num;
 	weapon->owner = this;
-	weapon->set_difficulty(static_cast<Uint32>(stats_->level));
+	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
 	weapon->damage = (weapon->damage * (static_cast<float>(stats_->level) + 3.0f)) / 4.0f;
 	if (myguy)
 	{
@@ -1330,7 +932,7 @@ bool walker::query_next_to()
 	else //if (lasty < 0)
 		newy += -sizey;
 
-	if (!myscreen->query_object_passable(newx, newy, this))
+	if (!sim_level->query_object_passable(newx, newy, this))
 	{
 		return 1;
 	}
@@ -1347,7 +949,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	short i, loops;
 	short xdir = 0;
 	short ydir = 0;
-	Sint32 distance;
+	std::int32_t distance;
 	short targetdir;
 
 	// Allow generators to 'always' succeed
@@ -1361,7 +963,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	weapon->collide_ob = nullptr;
 	// Based on facing, we alter the weapon's proposed
 	//   size so the collision check is fooled into checking
-	//   a Sint32 strip equal to the lineofsight times the size
+	//   a std::int32_t strip equal to the lineofsight times the size
 	//   of the weapon.
 	if (!foe)     // nobody to fire at?
 	{
@@ -1383,7 +985,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	}
 
 	distance = distance_to_ob(foe);
-	if (distance > static_cast<Sint32>( static_cast<Sint32>(weapon->stepsize) * static_cast<Sint32>(weapon->lineofsight)) )
+	if (distance > static_cast<std::int32_t>( static_cast<std::int32_t>(weapon->stepsize) * static_cast<std::int32_t>(weapon->lineofsight)) )
 	{
 		weapon->dead = 1;
 		return 0;
@@ -1427,13 +1029,13 @@ bool walker::fire_check(short xdelta, short ydelta)
 	{
 		weapon->setxy(weapon->xpos + i*weapon->lastx,
 		              weapon->ypos + i*weapon->lasty);
-		if ( !myscreen->query_grid_passable(weapon->xpos, weapon->ypos, weapon) )
+		if ( !sim_level->query_grid_passable(weapon->xpos, weapon->ypos, weapon) )
 		{
 			// we hit a wall, so fail
 			weapon->dead = 1;
 			return 0;
 		}
-		if ( !myscreen->query_object_passable(weapon->xpos, weapon->ypos, weapon) )
+		if ( !sim_level->query_object_passable(weapon->xpos, weapon->ypos, weapon) )
 		{
 			// we hit an enemy, so good!
 			weapon->dead = 1;
@@ -1453,11 +1055,11 @@ bool walker::fire_check(short xdelta, short ydelta)
 
 	// * 16 is to match with grid coords
 	for (i=0; i <= loops; i+=8)  // half a grid square
-		if ( !myscreen->query_grid_passable(xpos+i*xdir, ypos+i*ydir, weapon) )
+		if ( !sim_level->query_grid_passable(xpos+i*xdir, ypos+i*ydir, weapon) )
 		{
 			weapon->dead = 1;
 			//foe = nullptr;  // can't hit this guy
-			//stats_->try_command(COMMAND_RANDOM_WALK, rng(8));
+			//stats_->try_command(COMMAND_RANDOM_WALK, sim_rng->next(8));
 			return 0;
 		}
 	weapon->dead = 1;
@@ -1476,12 +1078,12 @@ bool walker::fire_check(short xdelta, short ydelta)
 bool
 walker::act_generate()
 {
-	if ( myscreen->level_data.numobs < MAXOBS &&
-	        (rng(static_cast<Uint32>(stats_->level * 3)) > rng(static_cast<Uint32>(300 + (myscreen->level_data.numobs * 8))) )
+	if ( sim_level->numobs < MAXOBS &&
+	        (sim_rng->next(static_cast<std::uint32_t>(stats_->level * 3)) > sim_rng->next(static_cast<std::uint32_t>(300 + (sim_level->numobs * 8))) )
 	   )
 	{
-		lastx = static_cast<float>(1 - static_cast<Sint32>(rng(3)));
-		lasty = static_cast<float>(1 - static_cast<Sint32>(rng(3)));
+		lastx = static_cast<float>(1 - static_cast<std::int32_t>(sim_rng->next(3)));
+		lasty = static_cast<float>(1 - static_cast<std::int32_t>(sim_rng->next(3)));
 		if (!lastx && !lasty)
 			lastx = 1;
 		init_fire(static_cast<short>(lastx), static_cast<short>(lasty));
@@ -1528,11 +1130,11 @@ walker::act_guard()
 	//                       fire_check(lasty, lastx) ||
 	//                       fire_check(-lasty, -lastx) ||
 	//                       fire_check(-lastx, -lasty))
-	foe = myscreen->find_near_foe(this);
+	foe = sim_level->find_near_foe(this);
 	if (foe)
 	{
 		curdir = static_cast<char>(facing(foe->xpos - xpos, foe->ypos-ypos));
-		stats_->try_command(COMMAND_FIRE,rng(30));
+		stats_->try_command(COMMAND_FIRE,sim_rng->next(30));
 		return 1;
 	}
 	else
@@ -1546,11 +1148,11 @@ walker::act_random()
 	short xdist, ydist;
 
 	// Specially put in to attempt to make enemy harder
-	//if (rng(sizex/GRID_SIZE)) return 0;
+	//if (sim_rng->next(sizex/GRID_SIZE)) return 0;
 
 	// Find our foe
-	if (!rng(70) || (!foe))
-		foe = myscreen->find_far_foe(this);
+	if (!sim_rng->next(70) || (!foe))
+		foe = sim_level->find_far_foe(this);
 	if (!foe)
 		return stats_->try_command(COMMAND_RANDOM_WALK,20);
 
@@ -1564,7 +1166,7 @@ walker::act_random()
 		if (fire_check(xdist, ydist))
 		{
 			init_fire(xdist, ydist);
-			stats_->set_command(COMMAND_FIRE, rng(24), xdist, ydist);
+			stats_->set_command(COMMAND_FIRE, sim_rng->next(24), xdist, ydist);
 			return 1;
 		}
 		else
@@ -1591,8 +1193,8 @@ walker::act_random()
 		{
 			while ( !newx && !newy)
 			{
-				newx = static_cast<short>(1 - static_cast<Sint32>(rng(3)));   // Walk in some random direction
-				newy = static_cast<short>(1 - static_cast<Sint32>(rng(3)));   // other than 0,0 :)
+				newx = static_cast<short>(1 - static_cast<std::int32_t>(sim_rng->next(3)));   // Walk in some random direction
+				newy = static_cast<short>(1 - static_cast<std::int32_t>(sim_rng->next(3)));   // other than 0,0 :)
 			}
 		}
 
@@ -1615,7 +1217,7 @@ short walker::spaces_clear()
 	for (i=-1; i < 2; i++)
 		for (j=-1; j < 2; j++)
 			if (i || j) // don't check our own location
-				if (myscreen->query_passable(xpos+(i*sizex), ypos+(j*sizey), this) )
+				if (sim_level->query_passable(xpos+(i*sizex), ypos+(j*sizey), this) )
 					count++;
 
 	return count;
@@ -1655,7 +1257,7 @@ void walker::transfer_stats(walker  *newob)
 
 // change picture, etc. but NOT stats (use transfer_stats for that)
 
-void walker::transform_to(Order whatorder, Sint32 whatfamily)
+void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 {
 	short xcenter, ycenter;
 	short tempxpos, tempypos;
@@ -1678,23 +1280,19 @@ void walker::transform_to(Order whatorder, Sint32 whatfamily)
 	// Do this before resetting graphic so illegal
 	//  family values don't try to set graphics.
 	//  order and family are only set if legal
-	myscreen->set_walker(this, whatorder, whatfamily);
+	sim_level->myloader->set_walker(this, whatorder, whatfamily);
 
 	// Reset the graphics
-	const PixieData& data = myscreen->level_data.myloader->graphics[PIX(order, family)];
-	facings = data.data.get();
-	bmp = data.data.get();
-	frames = data.frames;
-	frame = 0;
-	cycle = 0;
+	const PixieData& data = sim_level->myloader->graphics[PIX(order, family)];
 
-	// Deal with resizing and centering ..
+	// Save center before resize (uses old sizex/sizey)
 	xcenter = xpos + sizex/2;
 	ycenter = ypos + sizey/2;
 
-	sizex = data.w;
-	sizey = data.h;
-	size = static_cast<unsigned short>(sizex * sizey);
+	// Update sim fields + sync render component
+	set_data(data);
+	frame = 0;
+	cycle = 0;
 
 	tempxpos = xcenter - sizex/2;
 	tempypos = ycenter - sizey/2;
@@ -1720,7 +1318,7 @@ bool walker::death()
 	// time this function is called, so that we can easily reverse
 	// the decision :)
 	walker  *newob = nullptr;
-	Sint32 i;
+	std::int32_t i;
 
 	if (death_called)
 		return 0;
@@ -1730,7 +1328,7 @@ bool walker::death()
 	// Ensure we are removed from collision bookkeeping as soon as we "die".
 	// This prevents stale pointers in the obmap when callers manage walker
 	// lifetimes outside LevelData's owning lists (common in tests).
-	obmap* active = (myscreen != nullptr) ? myscreen->level_data.myobmap.get() : nullptr;
+	obmap* active = (sim_level != nullptr) ? sim_level->myobmap.get() : nullptr;
 	if (active != nullptr)
 		active->remove(this);
 	if (myobmap != nullptr && myobmap != active)
@@ -1738,7 +1336,7 @@ bool walker::death()
 
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
-			newob = myscreen->level_data.add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
+			newob = sim_level->add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
 			newob->stats()->hitpoints = static_cast<float>(myguy->query_heart_value());
 			newob->stats()->hitpoints *= 0.75f / 2.0f;  // 75%, divided by 2, since score is doubled at end of level
 			newob->team_num = team_num;
@@ -1749,10 +1347,16 @@ bool walker::death()
 	{
 		case Order::Living:
 			if (   (team_num == 0 || myguy) // our team
-			        && (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL)
+			        && (sim_level->type & SCEN_TYPE_SAVE_ALL)
 			        && (stats_->name.size()) // we were named
 			   )
-				return myscreen->endgame(SCEN_TYPE_SAVE_ALL); // failed
+			{
+				// Emit EndGame event instead of calling screen directly.
+				// The runtime layer handles this after the sim tick.
+				og::sim::emit_event(sim_events, og::sim::EventKind::EndGame,
+				                    SCEN_TYPE_SAVE_ALL, static_cast<std::uint32_t>(-1));
+				return true;
+			}
 			{
 				auto* fd = get_family_descriptor(family);
 				if (fd && fd->on_death)
@@ -1772,17 +1376,16 @@ bool walker::death()
 		case Order::Generator:  // go up in flames :>
 			for (i=0; i < 4; i++)
 			{
-				newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+				newob = sim_level->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 				if (!newob) // failsafe
 					break;
 				newob->team_num = team_num;
 				newob->stats()->level = stats_->level;
 				newob->ani_type = ANI_EXPLODE;
-				newob->setxy(xpos+rng(sizex-8)+4, ypos+4+rng(sizey-8) );
+				newob->setxy(xpos+sim_rng->next(sizex-8)+4, ypos+4+sim_rng->next(sizey-8) );
 					newob->damage = static_cast<float>(stats_->level) * 2.0f;
-					newob->set_frame(static_cast<short>(rng(3)));
-				if (on_screen())
-					myscreen->soundp->play_sound(SOUND_EXPLODE);
+					newob->set_frame(static_cast<short>(sim_rng->next(3)));
+				og::sim::emit_sound(sim_events, SOUND_EXPLODE);
 			}
 			break;
 		case Order::FX:
@@ -1805,7 +1408,7 @@ void walker::generate_bloodspot()
 
 	dead = 1; // just in case ..
 
-	bloodstain = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+	bloodstain = sim_level->add_fx_ob(Order::Treasure, FAMILY_STAIN);
 	bloodstain->ignore = 1;
 	transfer_stats(bloodstain);
 
@@ -1821,7 +1424,7 @@ void walker::generate_bloodspot()
 	// We can't select other 'bloodspot' frames, because set_frame
 	// appears to check the order and family and reset our picture
 	// to a living guy .. we need to find a way around this ..
-	bloodstain->set_frame(static_cast<short>(rng(4)));  // has no effect yet ..
+	bloodstain->set_frame(static_cast<short>(sim_rng->next(4)));  // has no effect yet ..
 	bloodstain->ani_type = ANI_WALK;
 	//bloodstain->bmp = (char *) (data+3); // our image
 
@@ -1834,16 +1437,9 @@ bool walker::eat_me(walker  * eater)
 	return 0;
 }
 
-void walker::set_direct_frame(short whichframe)
-{
-	frame = whichframe;
+// set_direct_frame is in src/runtime/walker_render_bridge.cpp.
 
-	const PixieData& data = myscreen->level_data.myloader->graphics[PIX(order, family)];
-	bmp = data.data.get() + frame*size;
-
-}
-
-walker* walker::do_summon(char whatfamily, Sint32 summon_lifetime)
+walker* walker::do_summon(char whatfamily, std::int32_t summon_lifetime)
 {
 	if (whatfamily || summon_lifetime)
 		Log("Should not be hitting walker::do_summon!\n");
@@ -1873,9 +1469,9 @@ void walker::center_on(walker  *target)
 	setxy(newx, newy);
 }
 
-void walker::set_difficulty(Uint32 whatlevel)
+void walker::set_difficulty(std::uint32_t whatlevel)
 {
-	Uint32 temp, dif1;
+	std::uint32_t temp, dif1;
 
 	dif1 = difficulty_level[current_difficulty];
 
@@ -1900,28 +1496,28 @@ void walker::set_difficulty(Uint32 whatlevel)
 	return;
 }
 
-Sint32 walker::distance_to_ob(const walker  * target) const
+std::int32_t walker::distance_to_ob(const walker  * target) const
 {
-	//Sint32 xdelta,ydelta;
+	//std::int32_t xdelta,ydelta;
 
-	//xdelta = static_cast<Sint32>(target->xpos - xpos) +
-	//         static_cast<Sint32>( (target->sizex - sizex) / 2 );
-	//ydelta = static_cast<Sint32>(target->ypos - ypos) +
-	//         static_cast<Sint32>( (target->sizey - sizey) / 2 );
-	//return static_cast<Sint32>(xdelta*xdelta + ydelta*ydelta);
+	//xdelta = static_cast<std::int32_t>(target->xpos - xpos) +
+	//         static_cast<std::int32_t>( (target->sizex - sizex) / 2 );
+	//ydelta = static_cast<std::int32_t>(target->ypos - ypos) +
+	//         static_cast<std::int32_t>( (target->sizey - sizey) / 2 );
+	//return static_cast<std::int32_t>(xdelta*xdelta + ydelta*ydelta);
 	return ( abs(target->xpos - xpos) + abs(target->ypos - ypos) );
 
 }
 
-Sint32 walker::distance_to_ob_center(const walker * target) const
+std::int32_t walker::distance_to_ob_center(const walker * target) const
 {
-	Sint32 xdelta,ydelta;
+	std::int32_t xdelta,ydelta;
 
-	xdelta = static_cast<Sint32>(target->xpos - xpos) +
-	         static_cast<Sint32>( (target->sizex - sizex) / 2 );
-	ydelta = static_cast<Sint32>(target->ypos - ypos) +
-	         static_cast<Sint32>( (target->sizey - sizey) / 2 );
-	return static_cast<Sint32>(xdelta*xdelta + ydelta*ydelta);
+	xdelta = static_cast<std::int32_t>(target->xpos - xpos) +
+	         static_cast<std::int32_t>( (target->sizex - sizex) / 2 );
+	ydelta = static_cast<std::int32_t>(target->ypos - ypos) +
+	         static_cast<std::int32_t>( (target->sizey - sizey) / 2 );
+	return static_cast<std::int32_t>(xdelta*xdelta + ydelta*ydelta);
 }
 
 unsigned char walker::query_team_color() const
@@ -1933,7 +1529,7 @@ unsigned char walker::query_team_color() const
 	//  return static_cast<unsigned char>(7*16 + 40);
 }
 
-Sint32 walker::is_friendly(const walker *target) const
+std::int32_t walker::is_friendly(const walker *target) const
 {
 	// is_friendly determines if _target_ is "friendly"
 	// towards this walker.
@@ -1979,7 +1575,7 @@ Sint32 walker::is_friendly(const walker *target) const
 	// Is allied mode set to zero (enemy)?
 	// If so, then if our team numbers don't match,
 	// we are not friendly
-	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
+	if (sim_save->allied_mode == 0 || has_myguy == 0)
 	{
 		return (headus->team_num == headtarget->team_num);
 	}
@@ -2001,7 +1597,7 @@ Sint32 walker::is_friendly(const walker *target) const
 	return 1;
 }
 
-Sint32 walker::is_friendly_to_team(unsigned char team) const
+std::int32_t walker::is_friendly_to_team(unsigned char team) const
 {
 	// is_friendly_to_team determines if _team_ is "friendly"
 	// towards this walker.
@@ -2035,7 +1631,7 @@ Sint32 walker::is_friendly_to_team(unsigned char team) const
 
 	// Is allied mode set to zero (enemy) or were we not hired (!myguy)?
 	// If so, then our team number must match.
-	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
+	if (sim_save->allied_mode == 0 || has_myguy == 0)
 	{
 		return (headus->team_num == team);
 	}
@@ -2043,3 +1639,6 @@ Sint32 walker::is_friendly_to_team(unsigned char team) const
 	// If we're a hired guy in allied mode, then we're friendly with team 0 (red)
 	return (has_myguy == 1 && team == 0);
 }
+
+// attach_render, set_data, bmp_data, set_frame, set_direct_frame, ~walker
+// are all in src/runtime/walker_render_bridge.cpp.

@@ -5,10 +5,12 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/legacy/base.h>
+#include <openglad/data/level_data.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <openglad/core/stats.h>
 
 #define BASE_GUY_HP 30
@@ -17,19 +19,19 @@ static bool ghost_check_special_ai(living* self)
 {
     if (self->foe)
     {
-        Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
         return (distance < 130);
     }
-    self->foe = myscreen->find_near_foe(self);
+    self->foe = self->sim_level->find_near_foe(self);
     if (!self->foe)
         return false;
-    Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
     return (distance < 130);
 }
 
 static bool ghost_do_special(walker* self)
 {
-    walker* newob = myscreen->level_data.add_ob(Order::FX, FAMILY_GHOST_SCARE);
+    walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_GHOST_SCARE);
     newob->ani_type = ANI_SCARE;
     newob->setxy(self->xpos + self->sizex/2 - newob->sizex/2,
                  self->ypos + self->sizey/2 - newob->sizey/2);

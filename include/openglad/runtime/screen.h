@@ -19,10 +19,12 @@
 // Definition of SCREEN class
 
 #include <openglad/legacy/base.h> // NUM_FAMILIES/NUM_SPECIALS + legacy globals (transitional)
+#include <openglad/platform/soundob_sdl.h> // soundob class for soundp member
 #include <openglad/render/video.h>
 #include <openglad/data/gloader.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
+#include <openglad/sim/sim_world.h>
 #include <array>
 #include <list>
 #include <map>
@@ -30,6 +32,8 @@
 #include <set>
 #include <string>
 #include <string_view>
+
+struct InputState;
 
 class screen : public video
 {
@@ -69,6 +73,7 @@ class screen : public video
 		                   int team_num = -1);
 		short input(const SDL_Event& event);
 		short continuous_input();
+		void process_input(const InputState& input_state);
 		bool act();
 
 		short endgame(short ending);
@@ -120,4 +125,9 @@ class screen : public video
 		short numviews;
 		Uint32 timerstart;
 		Uint32 framecount;
+
+	private:
+		// Simulation world: owns the deterministic tick logic
+		// extracted from the former screen::act() implementation.
+		og::sim::SimWorld sim_world_;
 };

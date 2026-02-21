@@ -16,11 +16,10 @@
  */
 #pragma once
 
-#include "SDL.h"
+#include <cstdint>
 #include <memory>
 #include <string>
 
-class screen;
 class walker;
 
 // Holds attributes for characters.
@@ -33,9 +32,7 @@ class guy
 			guy (int whatfamily);
 			guy (const guy& copy);
 			~guy();
-			Sint32 query_heart_value(); // how much are we worth?
-			[[nodiscard]] std::unique_ptr<walker> create_walker_owned(screen* myscreen);
-			walker* create_and_add_walker(screen* myscreen);
+			std::int32_t query_heart_value(); // how much are we worth?
 			void upgrade_to_level(short new_level, bool set_xp = true);
 		
         float get_hp_bonus() const;
@@ -54,12 +51,12 @@ class guy
 		short constitution;
 		short intelligence;
 		short armor;
-		Uint32 exp;
+		std::uint32_t exp;
 		short kills;       // version 3+
-		Sint32 level_kills;  // version 3+
-		Sint32 total_damage; // version 4+  // This will not be exact after changing damage to floating point, but binary serialization of floats is messy.
-		Sint32 total_hits;   // version 4+
-		Sint32 total_shots;  // version 4+
+		std::int32_t level_kills;  // version 3+
+		std::int32_t total_damage; // version 4+  // This will not be exact after changing damage to floating point, but binary serialization of floats is messy.
+		std::int32_t total_hits;   // version 4+
+		std::int32_t total_shots;  // version 4+
 		short teamnum;     // version 5+
 		
 		// Stats for the last battle

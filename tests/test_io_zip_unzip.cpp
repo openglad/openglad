@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <unistd.h>
+#include <physfs.h>
 
 static bool write_file_bytes(const std::string& path, const std::string& contents)
 {
@@ -78,6 +79,9 @@ void test_io_open_read_file_prefers_cwd_fallback()
     SDL_RWclose(rw);
     TEST_ASSERT_EQ(3, (int)got, "should read 3 bytes");
     TEST_ASSERT_STR_EQ("cwd", buf, "contents should match");
+
+    // Clean up transient test file so it doesn't accumulate in the repo root.
+    std::remove(fname.c_str());
 }
 REGISTER_TEST(test_io_open_read_file_prefers_cwd_fallback);
 
@@ -106,6 +110,25 @@ void test_io_mount_unmount_campaign_typed_errors()
 }
 REGISTER_TEST(test_io_mount_unmount_campaign_typed_errors);
 
+void test_io_remount_campaign_with_open_physfs_file_is_safe()
+{
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
+        static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator")),
+        "mount default campaign should succeed");
+
+    PHYSFS_File* held = PHYSFS_openRead("campaign.yaml");
+    TEST_ASSERT(held != nullptr, "campaign.yaml should open to hold a live PhysFS handle");
+    if (!held)
+        return;
+
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
+        static_cast<int>(remount_campaign_package_with_error()),
+        "remount should gracefully no-op when campaign files are still open");
+
+    PHYSFS_close(held);
+}
+REGISTER_TEST(test_io_remount_campaign_with_open_physfs_file_is_safe);
+
 void test_io_zip_unzip_typed_errors()
 {
     namespace fs = std::filesystem;
@@ -125,3 +148,114 @@ void test_io_zip_unzip_typed_errors()
         "unzip_into_with_error should return OpenArchiveFailed for missing archive");
 }
 REGISTER_TEST(test_io_zip_unzip_typed_errors);
+
+void test_io_zip_contents_with_error_missing_input_directory_path()
+{
+    namespace fs = std::filesystem;
+    fs::path base = fs::temp_directory_path() / ("openglad_io_missing_in_" + std::to_string(::getpid()));
+    fs::path missing = base / "no_such_dir";
+    fs::path zipfile = base / "empty_from_missing.zip";
+    std::filesystem::create_directories(base);
+
+    const ArchiveIoError r = zip_contents_with_error(missing.string(), zipfile.string());
+    TEST_ASSERT(r == ArchiveIoError::None || r == ArchiveIoError::OpenArchiveFailed,
+                "missing input dir should not report add-entry errors");
+}
+REGISTER_TEST(test_io_zip_contents_with_error_missing_input_directory_path);
+
+void test_io_zip_contents_with_error_open_archive_failed_path()
+{
+    namespace fs = std::filesystem;
+    fs::path base = fs::temp_directory_path() / ("openglad_io_zip_open_fail_" + std::to_string(::getpid()));
+    fs::path indir = base / "in";
+    fs::path bad_zip = indir; // output points to directory -> zip_open should fail
+
+    TEST_ASSERT(create_dir(indir.string()), "create_dir in should succeed");
+    TEST_ASSERT(write_file_bytes((indir / "a.txt").string(), "A"), "write input file");
+
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenArchiveFailed),
+        static_cast<int>(zip_contents_with_error(indir.string(), bad_zip.string())),
+        "zip_contents_with_error should return OpenArchiveFailed when output path is a directory");
+}
+REGISTER_TEST(test_io_zip_contents_with_error_open_archive_failed_path);
+
+void test_io_unzip_with_error_open_output_failed_path()
+{
+    namespace fs = std::filesystem;
+    fs::path base = fs::temp_directory_path() / ("openglad_io_unzip_open_output_fail_" + std::to_string(::getpid()));
+    fs::path indir = base / "in";
+    fs::path zipfile = base / "bundle.zip";
+    fs::path out_as_file = base / "out_file";
+
+    TEST_ASSERT(create_dir(indir.string()), "create_dir in should succeed");
+    TEST_ASSERT(write_file_bytes((indir / "a.txt").string(), "ABC"), "write zip input");
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+        static_cast<int>(zip_contents_with_error(indir.string(), zipfile.string())),
+        "zip creation should succeed");
+
+    // out_as_file is a regular file; extracting into "out_as_file/<entry>" should fail fopen.
+    TEST_ASSERT(write_file_bytes(out_as_file.string(), "marker"), "create output blocker file");
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenOutputFailed),
+        static_cast<int>(unzip_into_with_error(zipfile.string(), out_as_file.string())),
+        "unzip_into_with_error should report OpenOutputFailed when output path is blocked by a file");
+}
+REGISTER_TEST(test_io_unzip_with_error_open_output_failed_path);
+
+void test_io_zip_batch5_empty_directory_and_non_regular_entries()
+{
+    namespace fs = std::filesystem;
+    fs::path base = fs::temp_directory_path() / ("openglad_io_zip_batch5_" + std::to_string(::getpid()));
+    fs::path indir = base / "in";
+    fs::path zipfile = base / "bundle.zip";
+    fs::path outdir = base / "out";
+
+    TEST_ASSERT(create_dir(indir.string()), "create_dir input should succeed");
+    TEST_ASSERT(create_dir((indir / "empty_subdir").string()), "create_dir empty_subdir should succeed");
+    TEST_ASSERT(write_file_bytes((indir / "root.txt").string(), "ROOT"), "write regular file should succeed");
+
+#if !defined(_WIN32)
+    // Symlink entry exercises non-regular-file skip path in zip enumeration.
+    std::error_code ec;
+    fs::create_symlink(indir / "root.txt", indir / "root.link", ec);
+#endif
+
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+        static_cast<int>(zip_contents_with_error(indir.string(), zipfile.string())),
+        "zip with empty dir and non-regular entries should still succeed");
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+        static_cast<int>(unzip_into_with_error(zipfile.string(), outdir.string())),
+        "unzip should succeed for archive containing empty directories");
+
+    std::string payload;
+    TEST_ASSERT(read_file_all((outdir / "root.txt").string(), &payload), "unzipped root file should exist");
+    TEST_ASSERT(payload == "ROOT", "unzipped root file content should match");
+}
+REGISTER_TEST(test_io_zip_batch5_empty_directory_and_non_regular_entries);
+
+void test_io_zip_batch6_add_entry_failed_for_unreadable_file()
+{
+    namespace fs = std::filesystem;
+    fs::path base = fs::temp_directory_path() / ("openglad_io_zip_batch6_" + std::to_string(::getpid()));
+    fs::path indir = base / "in";
+    fs::path zipfile = base / "bundle.zip";
+    fs::path blocked = indir / "blocked.txt";
+
+    TEST_ASSERT(create_dir(indir.string()), "create_dir input should succeed");
+    TEST_ASSERT(write_file_bytes((indir / "ok.txt").string(), "OK"), "write readable file");
+    TEST_ASSERT(write_file_bytes(blocked.string(), "NOPE"), "write blocked file");
+
+#if !defined(_WIN32)
+    std::error_code ec;
+    fs::permissions(blocked, fs::perms::none, fs::perm_options::replace, ec);
+    const ArchiveIoError r = zip_contents_with_error(indir.string(), zipfile.string());
+    TEST_ASSERT(r == ArchiveIoError::AddEntryFailed || r == ArchiveIoError::CloseArchiveFailed,
+                "unreadable regular file should produce AddEntryFailed or close failure");
+    fs::permissions(blocked, fs::perms::owner_read | fs::perms::owner_write,
+                    fs::perm_options::replace, ec);
+#else
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+        static_cast<int>(zip_contents_with_error(indir.string(), zipfile.string())),
+        "windows permission behavior may not reject unreadable entry");
+#endif
+}
+REGISTER_TEST(test_io_zip_batch6_add_entry_failed_for_unreadable_file);

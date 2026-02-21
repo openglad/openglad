@@ -8,19 +8,8 @@
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/entities/weap.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/level_data.h>
 #include <openglad/legacy/soundob.h>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 static bool rock_on_death(weap* self)
 {
@@ -28,26 +17,26 @@ static bool rock_on_death(weap* self)
         return false;
     self->dead = 0; // first, un-dead us so we can collide ..
     // Did we hit a barrier?
-    if (active_screen()->query_grid_passable(self->xpos+self->lastx, self->ypos+self->lasty, self))
+    if (self->sim_level->query_grid_passable(self->xpos+self->lastx, self->ypos+self->lasty, self))
     {
         self->dead = 1;
         return false; // if not, die like normal
     }
-    if (active_screen()->query_grid_passable(self->xpos-self->lastx, self->ypos+self->lasty, self))
+    if (self->sim_level->query_grid_passable(self->xpos-self->lastx, self->ypos+self->lasty, self))
     {
         self->setxy(self->xpos-self->lastx, self->ypos+self->lasty);  // bounce 'down-left'
         self->lastx = -self->lastx;
         self->death_called = 0;
         return true;
     }
-    if (active_screen()->query_grid_passable(self->xpos+self->lastx, self->ypos-self->lasty, self))
+    if (self->sim_level->query_grid_passable(self->xpos+self->lastx, self->ypos-self->lasty, self))
     {
         self->setxy(self->xpos+self->lastx, self->ypos-self->lasty); // bounce 'up-right'
         self->lasty = -self->lasty;
         self->death_called = 0;
         return true;
     }
-    if (active_screen()->query_grid_passable(self->xpos-self->lastx, self->ypos-self->lasty, self))
+    if (self->sim_level->query_grid_passable(self->xpos-self->lastx, self->ypos-self->lasty, self))
     {
         self->setxy(self->xpos-self->lastx, self->ypos-self->lasty);
         self->lastx = -self->lastx;

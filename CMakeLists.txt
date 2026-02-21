@@ -90,16 +90,16 @@ set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
 
 # Main game C++ sources
 set(GAME_SOURCES
-    ${SRC_DIR}/glad.cpp
-    ${SRC_DIR}/runtime/game_loop.cpp
+    ${SRC_DIR}/sdl_client/glad.cpp
+    ${SRC_DIR}/sdl_client/runtime/game_loop.cpp
     ${SRC_DIR}/runtime/game_context.cpp
-    ${SRC_DIR}/runtime/game_session.cpp
-    ${SRC_DIR}/runtime/glad_gameplay.cpp
-    ${SRC_DIR}/runtime/legacy_globals.cpp
-    ${SRC_DIR}/runtime/score_panel.cpp
-    ${SRC_DIR}/runtime/screen_lifecycle.cpp
+    ${SRC_DIR}/sdl_client/runtime/game_session.cpp
+    ${SRC_DIR}/sdl_client/runtime/glad_gameplay.cpp
+    ${SRC_DIR}/sdl_client/runtime/legacy_globals.cpp
+    ${SRC_DIR}/sdl_client/runtime/score_panel.cpp
+    ${SRC_DIR}/sdl_client/runtime/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
-    ${SRC_DIR}/input/button.cpp
+    ${SRC_DIR}/sdl_client/ui/button.cpp
     ${SRC_DIR}/entities/effect.cpp
     ${SRC_DIR}/entities/family_registry.cpp
     ${SRC_DIR}/entities/families/family_archer.cpp
@@ -141,80 +141,93 @@ set(GAME_SOURCES
     ${SRC_DIR}/entities/families/treasure_family_valuables.cpp
     ${SRC_DIR}/entities/families/treasure_family_navigation.cpp
     ${SRC_DIR}/entities/generator_family_registry.cpp
-    ${SRC_DIR}/runtime/game.cpp
-    ${SRC_DIR}/render/graphlib.cpp
+    ${SRC_DIR}/sdl_client/runtime/game.cpp
+    ${SRC_DIR}/sdl_client/runtime/guy_create.cpp
+    ${SRC_DIR}/sdl_client/render/graphlib.cpp
     ${SRC_DIR}/entities/guy.cpp
-    ${SRC_DIR}/ui/help.cpp
-    ${SRC_DIR}/input/input.cpp
-    ${SRC_DIR}/ui/intro.cpp
+    ${SRC_DIR}/sdl_client/ui/help.cpp
+    ${SRC_DIR}/sdl_client/input/input.cpp
+    ${SRC_DIR}/input/input_state.cpp
+    ${SRC_DIR}/sdl_client/ui/intro.cpp
     ${SRC_DIR}/entities/living.cpp
     ${SRC_DIR}/entities/obmap.cpp
-    ${SRC_DIR}/render/pal32.cpp
-    ${SRC_DIR}/ui/picker.cpp
-    ${SRC_DIR}/ui/picker_dialogs.cpp
-    ${SRC_DIR}/ui/picker_input.cpp
-    ${SRC_DIR}/ui/picker_main_menu.cpp
-    ${SRC_DIR}/ui/picker_accessible_levels.cpp
-    ${SRC_DIR}/ui/picker_team_build.cpp
-    ${SRC_DIR}/render/pixie.cpp
-    ${SRC_DIR}/render/pixien.cpp
-    ${SRC_DIR}/render/radar.cpp
-    ${SRC_DIR}/runtime/screen.cpp
-    ${SRC_DIR}/render/smooth.cpp
-    ${SRC_DIR}/platform/sound.cpp
-    ${SRC_DIR}/core/stats.cpp
-    ${SRC_DIR}/render/text.cpp
+    ${SRC_DIR}/sdl_client/render/pal32.cpp
+    ${SRC_DIR}/sdl_client/ui/picker.cpp
+    ${SRC_DIR}/sdl_client/ui/picker_dialogs.cpp
+    ${SRC_DIR}/sdl_client/ui/picker_input.cpp
+    ${SRC_DIR}/sdl_client/ui/picker_main_menu.cpp
+    ${SRC_DIR}/sdl_client/ui/picker_accessible_levels.cpp
+    ${SRC_DIR}/sdl_client/ui/picker_team_build.cpp
+    ${SRC_DIR}/ui/menu_model.cpp
+    ${SRC_DIR}/ui/picker_state.cpp
+    ${SRC_DIR}/sdl_client/render/pixie.cpp
+    ${SRC_DIR}/sdl_client/render/pixien.cpp
+    ${SRC_DIR}/sdl_client/render/radar.cpp
+    ${SRC_DIR}/sdl_client/runtime/screen.cpp
+    ${SRC_DIR}/runtime/smooth.cpp
+    ${SRC_DIR}/sdl_client/platform/sound.cpp
+    ${SRC_DIR}/runtime/stats.cpp
+    ${SRC_DIR}/sdl_client/render/text.cpp
     ${SRC_DIR}/entities/treasure.cpp
-    ${SRC_DIR}/render/video.cpp
-    ${SRC_DIR}/render/view.cpp
+    ${SRC_DIR}/sdl_client/render/video.cpp
+    ${SRC_DIR}/sdl_client/render/view.cpp
+    ${SRC_DIR}/sdl_client/render/walker_draw.cpp
+    ${SRC_DIR}/sdl_client/render/obmap_debug_draw.cpp
     ${SRC_DIR}/entities/walker.cpp
     ${SRC_DIR}/entities/walker_combat.cpp
     ${SRC_DIR}/entities/walker_movement.cpp
     ${SRC_DIR}/entities/walker_pathing.cpp
     ${SRC_DIR}/entities/walker_specials.cpp
 	    ${SRC_DIR}/entities/weap.cpp
-	    ${SRC_DIR}/render/sai2x.cpp
+	    ${SRC_DIR}/sdl_client/render/sai2x.cpp
 		    ${SRC_DIR}/core/util.cpp
-		    ${SRC_DIR}/io/platform_io.cpp
+		    ${SRC_DIR}/sdl_client/io/platform_io.cpp
+		    ${SRC_DIR}/io/platform_io_common.cpp
 		    ${SRC_DIR}/io/physfs_api.cpp
 		    ${SRC_DIR}/io/zip_api.cpp
 		    ${SRC_DIR}/io/yaml_stream.cpp
+		    ${SRC_DIR}/io/og_file.cpp
 		    ${SRC_DIR}/data/gparser.cpp
-		    ${SRC_DIR}/data/gloader.cpp
+		    ${SRC_DIR}/runtime/gloader.cpp
     ${SRC_DIR}/data/pixie_data.cpp
-    ${SRC_DIR}/data/level_data.cpp
-    ${SRC_DIR}/ui/level_picker.cpp
-    ${SRC_DIR}/ui/level_editor.cpp
-    ${SRC_DIR}/ui/level_editor_ui.cpp
-    ${SRC_DIR}/ui/level_editor_tools.cpp
-    ${SRC_DIR}/ui/level_editor_file_ops.cpp
-    ${SRC_DIR}/ui/campaign_picker.cpp
-    ${SRC_DIR}/ui/results_screen.cpp
-    ${SRC_DIR}/data/save_data.cpp
-    ${SRC_DIR}/sim/simulator.cpp
+    ${SRC_DIR}/runtime/level_data.cpp
+    ${SRC_DIR}/sdl_client/ui/level_picker.cpp
+    ${SRC_DIR}/sdl_client/ui/level_editor.cpp
+    ${SRC_DIR}/sdl_client/ui/level_editor_ui.cpp
+    ${SRC_DIR}/sdl_client/ui/level_editor_tools.cpp
+    ${SRC_DIR}/sdl_client/ui/level_editor_file_ops.cpp
+    ${SRC_DIR}/sdl_client/ui/campaign_picker.cpp
+    ${SRC_DIR}/sdl_client/ui/results_screen.cpp
+    ${SRC_DIR}/runtime/save_data.cpp
+    ${SRC_DIR}/sim/sim_entity.cpp
+    ${SRC_DIR}/sim/sim_event_log.cpp
+    ${SRC_DIR}/runtime/sim_world.cpp
+    ${SRC_DIR}/runtime/sim_input_handler.cpp
+    ${SRC_DIR}/sdl_client/runtime/input_event_bridge.cpp
+    ${SRC_DIR}/sdl_client/runtime/walker_render_bridge.cpp
+    ${SRC_DIR}/sdl_client/runtime/sdl_context_services.cpp
+    ${SRC_DIR}/sdl_client/runtime/cheat_handler.cpp
+    ${SRC_DIR}/sdl_client/render/sdl_level_render.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
-list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/glad.cpp)
+list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/sdl_client/glad.cpp)
 
 # Internal module decomposition (Phase 1 architecture foundations).
 # Keep these lists in sync with GAME_SOURCES_NO_MAIN so targets remain behaviorally equivalent.
 set(OG_CORE_SOURCES
     ${SRC_DIR}/core/combat_math.cpp
-    ${SRC_DIR}/core/stats.cpp
     ${SRC_DIR}/core/util.cpp
 )
 
 set(OG_SIM_SOURCES
-    ${SRC_DIR}/sim/simulator.cpp
+    ${SRC_DIR}/sim/sim_entity.cpp
+    ${SRC_DIR}/sim/sim_event_log.cpp
 )
 
 set(OG_DATA_SOURCES
-    ${SRC_DIR}/data/gloader.cpp
     ${SRC_DIR}/data/gparser.cpp
-    ${SRC_DIR}/data/level_data.cpp
     ${SRC_DIR}/data/pixie_data.cpp
-    ${SRC_DIR}/data/save_data.cpp
 )
 
 set(OG_ENTITIES_SOURCES
@@ -272,62 +285,81 @@ set(OG_ENTITIES_SOURCES
 )
 
 set(OG_RUNTIME_SOURCES
-    ${SRC_DIR}/runtime/game.cpp
+    ${SRC_DIR}/sdl_client/runtime/game.cpp
     ${SRC_DIR}/runtime/game_context.cpp
-    ${SRC_DIR}/runtime/game_loop.cpp
-    ${SRC_DIR}/runtime/game_session.cpp
-    ${SRC_DIR}/runtime/glad_gameplay.cpp
-    ${SRC_DIR}/runtime/legacy_globals.cpp
-    ${SRC_DIR}/runtime/score_panel.cpp
-    ${SRC_DIR}/runtime/screen_lifecycle.cpp
-    ${SRC_DIR}/runtime/screen.cpp
+    ${SRC_DIR}/sdl_client/runtime/game_loop.cpp
+    ${SRC_DIR}/sdl_client/runtime/game_session.cpp
+    ${SRC_DIR}/sdl_client/runtime/glad_gameplay.cpp
+    ${SRC_DIR}/sdl_client/runtime/legacy_globals.cpp
+    ${SRC_DIR}/sdl_client/runtime/score_panel.cpp
+    ${SRC_DIR}/sdl_client/runtime/screen_lifecycle.cpp
+    ${SRC_DIR}/sdl_client/runtime/screen.cpp
+    ${SRC_DIR}/sdl_client/runtime/guy_create.cpp
+    ${SRC_DIR}/runtime/stats.cpp
+    ${SRC_DIR}/runtime/sim_world.cpp
+    ${SRC_DIR}/runtime/sim_input_handler.cpp
+    ${SRC_DIR}/sdl_client/runtime/input_event_bridge.cpp
+    ${SRC_DIR}/runtime/smooth.cpp
+    ${SRC_DIR}/runtime/gloader.cpp
+    ${SRC_DIR}/runtime/level_data.cpp
+    ${SRC_DIR}/sdl_client/runtime/walker_render_bridge.cpp
+    ${SRC_DIR}/sdl_client/runtime/sdl_context_services.cpp
+    ${SRC_DIR}/sdl_client/runtime/cheat_handler.cpp
+    ${SRC_DIR}/runtime/save_data.cpp
 )
 
 set(OG_RENDER_SOURCES
-    ${SRC_DIR}/render/graphlib.cpp
-    ${SRC_DIR}/render/pal32.cpp
-    ${SRC_DIR}/render/pixie.cpp
-    ${SRC_DIR}/render/pixien.cpp
-    ${SRC_DIR}/render/radar.cpp
-    ${SRC_DIR}/render/sai2x.cpp
-    ${SRC_DIR}/render/smooth.cpp
-    ${SRC_DIR}/render/text.cpp
-    ${SRC_DIR}/render/video.cpp
-    ${SRC_DIR}/render/view.cpp
+    ${SRC_DIR}/sdl_client/render/graphlib.cpp
+    ${SRC_DIR}/sdl_client/render/pal32.cpp
+    ${SRC_DIR}/sdl_client/render/pixie.cpp
+    ${SRC_DIR}/sdl_client/render/pixien.cpp
+    ${SRC_DIR}/sdl_client/render/radar.cpp
+    ${SRC_DIR}/sdl_client/render/sai2x.cpp
+    ${SRC_DIR}/sdl_client/render/text.cpp
+    ${SRC_DIR}/sdl_client/render/video.cpp
+    ${SRC_DIR}/sdl_client/render/view.cpp
+    ${SRC_DIR}/sdl_client/render/walker_draw.cpp
+    ${SRC_DIR}/sdl_client/render/obmap_debug_draw.cpp
+    ${SRC_DIR}/sdl_client/render/sdl_level_render.cpp
 )
 
 set(OG_INPUT_SOURCES
-    ${SRC_DIR}/input/button.cpp
-    ${SRC_DIR}/input/input.cpp
+    ${SRC_DIR}/sdl_client/input/input.cpp
+    ${SRC_DIR}/input/input_state.cpp
 )
 
 set(OG_UI_SOURCES
-    ${SRC_DIR}/ui/campaign_picker.cpp
-    ${SRC_DIR}/ui/help.cpp
-    ${SRC_DIR}/ui/intro.cpp
-    ${SRC_DIR}/ui/level_editor.cpp
-    ${SRC_DIR}/ui/level_editor_file_ops.cpp
-    ${SRC_DIR}/ui/level_editor_tools.cpp
-    ${SRC_DIR}/ui/level_editor_ui.cpp
-    ${SRC_DIR}/ui/level_picker.cpp
-    ${SRC_DIR}/ui/picker.cpp
-    ${SRC_DIR}/ui/picker_accessible_levels.cpp
-    ${SRC_DIR}/ui/picker_dialogs.cpp
-    ${SRC_DIR}/ui/picker_input.cpp
-    ${SRC_DIR}/ui/picker_main_menu.cpp
-    ${SRC_DIR}/ui/picker_team_build.cpp
-    ${SRC_DIR}/ui/results_screen.cpp
+    ${SRC_DIR}/sdl_client/ui/button.cpp
+    ${SRC_DIR}/sdl_client/ui/campaign_picker.cpp
+    ${SRC_DIR}/sdl_client/ui/help.cpp
+    ${SRC_DIR}/sdl_client/ui/intro.cpp
+    ${SRC_DIR}/sdl_client/ui/level_editor.cpp
+    ${SRC_DIR}/sdl_client/ui/level_editor_file_ops.cpp
+    ${SRC_DIR}/sdl_client/ui/level_editor_tools.cpp
+    ${SRC_DIR}/sdl_client/ui/level_editor_ui.cpp
+    ${SRC_DIR}/sdl_client/ui/level_picker.cpp
+    ${SRC_DIR}/sdl_client/ui/picker.cpp
+    ${SRC_DIR}/sdl_client/ui/picker_accessible_levels.cpp
+    ${SRC_DIR}/sdl_client/ui/picker_dialogs.cpp
+    ${SRC_DIR}/sdl_client/ui/picker_input.cpp
+    ${SRC_DIR}/sdl_client/ui/picker_main_menu.cpp
+    ${SRC_DIR}/sdl_client/ui/picker_team_build.cpp
+    ${SRC_DIR}/ui/menu_model.cpp
+    ${SRC_DIR}/ui/picker_state.cpp
+    ${SRC_DIR}/sdl_client/ui/results_screen.cpp
 )
 
 set(OG_IO_SOURCES
-    ${SRC_DIR}/io/platform_io.cpp
+    ${SRC_DIR}/sdl_client/io/platform_io.cpp
+    ${SRC_DIR}/io/platform_io_common.cpp
     ${SRC_DIR}/io/physfs_api.cpp
     ${SRC_DIR}/io/zip_api.cpp
     ${SRC_DIR}/io/yaml_stream.cpp
+    ${SRC_DIR}/io/og_file.cpp
 )
 
 set(OG_PLATFORM_SOURCES
-    ${SRC_DIR}/platform/sound.cpp
+    ${SRC_DIR}/sdl_client/platform/sound.cpp
 )
 
 # External C++ sources
@@ -559,6 +591,10 @@ function(configure_openglad_library target)
     endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
+    if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target} PRIVATE --coverage)
+        target_link_options(${target} PRIVATE --coverage)
+    endif()
 endfunction()
 
 function(configure_openglad_runtime_target target)
@@ -750,7 +786,7 @@ if(NOT EMSCRIPTEN)
     )
 
     # --- openglad (main game) ---
-    add_executable(openglad ${SRC_DIR}/glad.cpp)
+    add_executable(openglad ${SRC_DIR}/sdl_client/glad.cpp)
     configure_openglad_library(openglad)
     target_link_libraries(openglad PRIVATE og_game)
     configure_openglad_runtime_target(openglad)
@@ -758,13 +794,77 @@ if(NOT EMSCRIPTEN)
 
     # --- openscen (level editor) ---
     if(BUILD_EDITOR)
-        add_executable(openscen ${SRC_DIR}/glad.cpp)
+        add_executable(openscen ${SRC_DIR}/sdl_client/glad.cpp)
         configure_openglad_library(openscen)
         target_link_libraries(openscen PRIVATE og_game)
         configure_openglad_runtime_target(openscen)
         target_compile_definitions(openscen PRIVATE OPENSCEN)
         add_runtime_assets_dependency(openscen)
     endif()
+
+    # --- openglad_text (headless text-based simulation client) ---
+    # Compiles shared game sources without SDL. Uses link-time dispatch
+    # (stubs in platform_headless.cpp) instead of preprocessor guards.
+    set(HEADLESS_SOURCES
+        # text client
+        ${SRC_DIR}/text_client/main.cpp
+        ${SRC_DIR}/text_client/platform_headless.cpp
+        ${SRC_DIR}/text_client/walker_headless.cpp
+        ${SRC_DIR}/text_client/text_picker.cpp
+        ${SRC_DIR}/text_client/text_protocol.cpp
+        ${SRC_DIR}/ui/menu_model.cpp
+        ${SRC_DIR}/ui/picker_state.cpp
+        # core
+        ${OG_CORE_SOURCES}
+        # sim
+        ${OG_SIM_SOURCES}
+        # data
+        ${OG_DATA_SOURCES}
+        # entities
+        ${OG_ENTITIES_SOURCES}
+        # input (SDL-free data structs only)
+        ${SRC_DIR}/input/input_state.cpp
+        # io (shared SDL-free helpers + PhysFS/zip/yaml)
+        ${SRC_DIR}/io/platform_io_common.cpp
+        ${SRC_DIR}/io/physfs_api.cpp
+        ${SRC_DIR}/io/zip_api.cpp
+        ${SRC_DIR}/io/yaml_stream.cpp
+        ${SRC_DIR}/io/og_file.cpp
+        # runtime (SDL-free subset)
+        ${SRC_DIR}/runtime/game_context.cpp
+        ${SRC_DIR}/runtime/sim_world.cpp
+        ${SRC_DIR}/runtime/sim_input_handler.cpp
+        ${SRC_DIR}/runtime/gloader.cpp
+        ${SRC_DIR}/runtime/level_data.cpp
+        ${SRC_DIR}/runtime/smooth.cpp
+        ${SRC_DIR}/runtime/stats.cpp
+        ${SRC_DIR}/runtime/save_data.cpp
+    )
+
+    add_executable(openglad_text ${HEADLESS_SOURCES})
+    target_include_directories(openglad_text PUBLIC
+        $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
+    )
+    target_include_directories(openglad_text PRIVATE
+        ${THIRD_PARTY_DIR}/micropather
+        ${THIRD_PARTY_DIR}/yam
+        ${THIRD_PARTY_DIR}/libyaml/include
+        ${THIRD_PARTY_DIR}/physfs
+        ${THIRD_PARTY_DIR}/physfs/extras
+        ${THIRD_PARTY_DIR}/libzip
+    )
+    target_compile_definitions(openglad_text PRIVATE
+        ${COMMON_DEFINITIONS}
+    )
+    target_link_libraries(openglad_text PRIVATE
+        project_warnings
+        project_sanitizers
+        og_ext_micropather
+        ${OG_IO_EXTERNAL_LIBS}
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(openglad_text)
 
     install(TARGETS
         project_warnings
@@ -838,14 +938,62 @@ if(NOT EMSCRIPTEN)
     # --- openglad_test ---
     if(BUILD_TESTING)
         # --- Headless unit tests (no SDL/video init) ---
-        add_executable(og_unit_tests
+        set(OG_UNIT_TEST_SOURCES
             ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_determinism.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_ui_state.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_emscripten_logic.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_web_sim_portability.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_gparser_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_thief_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_druid_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_living_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_r12.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_r12.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_r12.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_r12.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_r12.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_thief_r12.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_r14.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_living_r14.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_r14.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_r14.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_r14.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_r14.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_r14.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_orc_big_orc_r15.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_world_r15.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_r15.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_r15.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_r15.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_zip_api_r15.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_final_coverage_r16.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_coverage_r17.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_coverage_r18.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_coverage_r19.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_coverage_r20.cpp
+        )
+
+        add_executable(og_unit_tests
+            ${OG_UNIT_TEST_SOURCES}
         )
         configure_openglad_library(og_unit_tests)
         target_link_libraries(og_unit_tests PRIVATE og_game)
@@ -855,6 +1003,7 @@ if(NOT EMSCRIPTEN)
         set(TEST_SOURCES
             ${CMAKE_SOURCE_DIR}/tests/test_framework.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_trace_buffer.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_startup.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_combat_math.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_loader_and_walker.cpp
@@ -924,6 +1073,7 @@ if(NOT EMSCRIPTEN)
 	            ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
 	            ${CMAKE_SOURCE_DIR}/tests/test_smooth_ops.cpp
 	            ${CMAKE_SOURCE_DIR}/tests/test_smooth_more_branches.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
 	            ${CMAKE_SOURCE_DIR}/tests/test_radar_more.cpp
 	            ${CMAKE_SOURCE_DIR}/tests/test_treasure_eat.cpp
 	            ${CMAKE_SOURCE_DIR}/tests/test_weap_behavior.cpp
@@ -977,6 +1127,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_api_edges.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_uncovered.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_ownership_fixture.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_state_machine.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_prompt_block.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
@@ -990,6 +1141,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_input_event_dispatch.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_branches.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_internal_helper.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_dialogs_real.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
         )
@@ -1008,6 +1161,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_util.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
         )
 
@@ -1023,10 +1177,74 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_walker_combat.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_specials.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_pathing.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_draw.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_resize.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_redraw.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_get_keypress_and_edge_cases.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_input_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_input_prefs_and_redraw.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_helpers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_extended.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_act.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_chain_and_door.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_weapon_interactions.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_core_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_state_machine.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_menu_model.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_entity_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_mass_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_commands.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_teleport.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_right_walk_direct_walk.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_extended.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_death.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_living_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_living_combat.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_treasure_eat.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_weap_behavior.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_platform_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_save_load.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_save_data_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_smoke.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_interactions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_helpers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_prompt_block.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_menu_nav.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_uncovered.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_ownership_fixture.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_detail_menu_driven.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_dialogs_real.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_branches.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_internal_helper.cpp
         )
 
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
@@ -1037,7 +1255,7 @@ if(NOT EMSCRIPTEN)
         add_dependencies(og_game_test check_graph_h_includes check_vendor_leaks)
 
         add_executable(openglad_test
-            ${SRC_DIR}/glad.cpp
+            ${SRC_DIR}/sdl_client/glad.cpp
             ${TEST_SOURCES}
         )
         configure_openglad_library(openglad_test)
@@ -1050,7 +1268,7 @@ if(NOT EMSCRIPTEN)
         add_runtime_assets_dependency(openglad_test)
 
         add_executable(og_data_tests
-            ${SRC_DIR}/glad.cpp
+            ${SRC_DIR}/sdl_client/glad.cpp
             ${DATA_TEST_SOURCES}
         )
         configure_openglad_library(og_data_tests)
@@ -1062,7 +1280,7 @@ if(NOT EMSCRIPTEN)
         add_runtime_assets_dependency(og_data_tests)
 
         add_executable(og_runtime_tests
-            ${SRC_DIR}/glad.cpp
+            ${SRC_DIR}/sdl_client/glad.cpp
             ${RUNTIME_TEST_SOURCES}
         )
         configure_openglad_library(og_runtime_tests)
@@ -1083,9 +1301,11 @@ if(NOT EMSCRIPTEN)
         add_test(NAME og_runtime_tests COMMAND og_runtime_tests)
         set_tests_properties(openglad_test PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 180
         )
         set_tests_properties(openglad_test_menu PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 180
         )
 	        set_tests_properties(openglad_test_picker PROPERTIES
 	            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -1098,15 +1318,28 @@ if(NOT EMSCRIPTEN)
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         )
 
-        # Emscripten/WASM tests (run via Node.js, skip if emsdk not available)
-        add_test(NAME wasm_sim_test
-            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_wasm.sh
+        add_test(NAME openglad_text_sim
+            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_client.sh $<TARGET_FILE:openglad_text>
         )
-        set_tests_properties(wasm_sim_test PROPERTIES
+        set_tests_properties(openglad_text_sim PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            LABELS "emscripten;wasm"
-            TIMEOUT 120
-            SKIP_RETURN_CODE 77
+            TIMEOUT 60
+        )
+
+        add_test(NAME openglad_text_picker_interactive
+            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_picker_interactive.sh $<TARGET_FILE:openglad_text>
+        )
+        set_tests_properties(openglad_text_picker_interactive PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 60
+        )
+
+        add_test(NAME openglad_text_unsupported
+            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_client_unsupported.sh $<TARGET_FILE:openglad_text>
+        )
+        set_tests_properties(openglad_text_unsupported PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 60
         )
 
         add_test(NAME emscripten_build_test
@@ -1124,12 +1357,15 @@ if(NOT EMSCRIPTEN)
                 # Coverage builds can be extremely slow at -O0; -O1 is usually
                 # a good compromise while still producing accurate line coverage.
                 target_compile_options(og_game_test PRIVATE -O1 -g --coverage)
+                target_compile_options(og_unit_tests PRIVATE -O1 -g --coverage)
                 target_compile_options(openglad_test PRIVATE -O1 -g --coverage)
                 target_compile_options(og_data_tests PRIVATE -O1 -g --coverage)
                 target_compile_options(og_runtime_tests PRIVATE -O1 -g --coverage)
+                target_link_options(og_unit_tests PRIVATE --coverage)
                 target_link_options(openglad_test PRIVATE --coverage)
                 target_link_options(og_data_tests PRIVATE --coverage)
                 target_link_options(og_runtime_tests PRIVATE --coverage)
+                target_compile_definitions(og_unit_tests PRIVATE ENABLE_COVERAGE)
                 target_compile_definitions(openglad_test PRIVATE ENABLE_COVERAGE)
                 target_compile_definitions(og_data_tests PRIVATE ENABLE_COVERAGE)
                 target_compile_definitions(og_runtime_tests PRIVATE ENABLE_COVERAGE)
@@ -1203,7 +1439,7 @@ endif()
 	    # Binaryen transform, but does not define the preprocessor macro.
 	    target_compile_definitions(og_game_web PRIVATE __ASYNCIFY__)
 
-    add_executable(play ${SRC_DIR}/glad.cpp)
+    add_executable(play ${SRC_DIR}/sdl_client/glad.cpp)
     configure_openglad_library(play)
     target_link_libraries(play PRIVATE og_game_web)
     configure_openglad_runtime_target(play)

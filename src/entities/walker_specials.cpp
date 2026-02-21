@@ -15,23 +15,18 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <cstdint>
 #include <openglad/core/stats.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/walker.h>
-#include <openglad/legacy/base.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <openglad/legacy/test_trace.h>
+#include <openglad/sim/sim_emit.h>
 
 #include <list>
-
-namespace {
-static inline Uint32 rng(Uint32 max_exclusive)
-{
-    return ctx().rng->next(max_exclusive);
-}
-} // namespace
 
 bool walker::special()
 {
@@ -49,7 +44,14 @@ bool walker::special()
 		return 0;
 	}
 
-	if (stats_->magicpoints < stats_->special_cost[static_cast<int>(current_special)])
+	int special_index = static_cast<int>(current_special);
+	if (special_index < 0 || special_index >= NUM_SPECIALS)
+	{
+		current_special = 1;
+		special_index = 1;
+	}
+
+	if (stats_->magicpoints < stats_->special_cost[special_index])
 		return 0;
 
 	if (query_order() != Order::Living)
@@ -60,19 +62,19 @@ bool walker::special()
 	if (fd && fd->do_special)
 	{
 		if (fd->do_special(this))
-			stats_->magicpoints -= stats_->special_cost[static_cast<int>(current_special)];
+			stats_->magicpoints -= stats_->special_cost[special_index];
 	}
 	return 0;
 }
 
 bool walker::teleport()
 {
-	Sint32 newx = 0, newy = 0;
-	Sint32 distance = 0;
+	std::int32_t newx = 0, newy = 0;
+	std::int32_t distance = 0;
 
 	// First check to see if we have a marker to go to
 	// NOTE: it must be a bit away from us ..
-	for(auto& uptr : myscreen->level_data.oblist)
+	for(auto& uptr : sim_level->oblist)
 	{
 	    walker* ob = uptr.get();
 		if (ob &&
@@ -84,7 +86,7 @@ bool walker::teleport()
 		{
 			// Found our marker!
 				distance = distance_to_ob(ob);
-				if (myscreen->query_passable(ob->xpos, ob->ypos, this) && (distance > 64))
+				if (sim_level->query_passable(ob->xpos, ob->ypos, this) && (distance > 64))
 				{
 					center_on(ob);
 					ob->lifetime--;
@@ -98,7 +100,7 @@ bool walker::teleport()
 			else  // blocked somehow?
 			{
 				if (user != -1 && (distance > 64) ) // only tell players
-					myscreen->do_notify("Marker is Blocked!", this);
+					og::sim::emit_notification(sim_events, "Marker is Blocked!");
 			}
 			}
 			} // end of checking for marker (we failed)
@@ -106,19 +108,19 @@ bool walker::teleport()
 	// No marker: pick a random passable grid cell. Historically this was an
 	// unbounded loop, which can hang tests (and gameplay) if level/grid state
 	// isn't initialized or nothing is passable.
-	if (!myscreen || !myscreen->level_data.grid.valid() ||
-	    myscreen->level_data.grid.w <= 0 || myscreen->level_data.grid.h <= 0 ||
-	    myscreen->level_data.pixmaxx <= 0 || myscreen->level_data.pixmaxy <= 0)
+	if (!sim_level || !sim_level->grid.valid() ||
+	    sim_level->grid.w <= 0 || sim_level->grid.h <= 0 ||
+	    sim_level->pixmaxx <= 0 || sim_level->pixmaxy <= 0)
 		return 0;
 
-	Sint32 keep_going = 200; // maxtries
+	std::int32_t keep_going = 200; // maxtries
 	do
 	{
-		newx = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.w))) * GRID_SIZE;
-		newy = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.h))) * GRID_SIZE;
+		newx = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(sim_level->grid.w))) * GRID_SIZE;
+		newy = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(sim_level->grid.h))) * GRID_SIZE;
 		keep_going--;
 	} while (keep_going > 0 &&
-	         !myscreen->query_passable(static_cast<float>(newx), static_cast<float>(newy), this));
+	         !sim_level->query_passable(static_cast<float>(newx), static_cast<float>(newy), this));
 
 	if (keep_going > 0)
 	{
@@ -128,18 +130,18 @@ bool walker::teleport()
 	return 0;
 }
 
-bool walker::teleport_ranged(Sint32 range)
+bool walker::teleport_ranged(std::int32_t range)
 {
-	Sint32 newx = 0, newy = 0;
-	Sint32 keep_going = 200; // maxtries
+	std::int32_t newx = 0, newy = 0;
+	std::int32_t keep_going = 200; // maxtries
 
-	newx = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + xpos;
-	newy = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + ypos;
+	newx = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + xpos;
+	newy = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + ypos;
 
-	while(!myscreen->query_passable(static_cast<float>(newx), static_cast<float>(newy), this) && keep_going)
+	while(!sim_level->query_passable(static_cast<float>(newx), static_cast<float>(newy), this) && keep_going)
 	{
-		newx = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + xpos;
-		newy = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + ypos;
+		newx = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + xpos;
+		newy = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + ypos;
 		keep_going--;
 	}
 	if (keep_going)
@@ -152,12 +154,12 @@ bool walker::teleport_ranged(Sint32 range)
 
 // Turns undead; ie, skeleton or ghost, within range
 // Returns the number of dead destroyed
-Sint32 walker::turn_undead(Sint32 range, [[maybe_unused]] Sint32 power)
+std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32_t power)
 {
-	Sint32 killed = 0;
-	Sint32 targets = 0;
+	std::int32_t killed = 0;
+	std::int32_t targets = 0;
 
-	std::list<walker*> deadlist = myscreen->find_foes_in_range(myscreen->level_data.oblist, range,
+	std::list<walker*> deadlist = sim_level->find_foes_in_range(sim_level->oblist, range,
 	                                       &targets, this);
 	if (!targets)
 		return -1;
@@ -167,7 +169,7 @@ Sint32 walker::turn_undead(Sint32 range, [[maybe_unused]] Sint32 power)
 		const auto* target_fd = w ? get_family_descriptor(w->query_family()) : nullptr;
 		if (w && target_fd && target_fd->is_undead)
 		{
-			if (rng(range*40) > rng(w->stats()->level*10) )
+			if (sim_rng->next(range*40) > sim_rng->next(w->stats()->level*10) )
 			{
 				w->dead = 1;
 				w->stats()->hitpoints = 0;

@@ -1,12 +1,17 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
-#include <openglad/render/smooth.h>
+#include <openglad/data/smooth.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 extern screen* myscreen;
 
 static void run_smooth_branch_outputs_with_fixed_rng();
+static PixieData make_center_pattern(unsigned char fill, unsigned char center,
+                                     unsigned char up, unsigned char right,
+                                     unsigned char down, unsigned char left,
+                                     unsigned char upleft, unsigned char upright,
+                                     unsigned char downleft, unsigned char downright);
 
 // ---------------------------------------------------------------------------
 // smoother query_x_y
@@ -488,6 +493,151 @@ void test_smooth_reset()
 }
 REGISTER_TEST(test_smooth_reset);
 
+void test_smooth_dark_grass_round7_branch_matrix_338_448()
+{
+    GameContext test_ctx;
+    test_ctx.game_screen = myscreen;
+    FixedRandom fixed0(0);
+    FixedRandom fixed1(1);
+    test_ctx.rng = &fixed0;
+    set_global_context(&test_ctx);
+
+    // around == (TO_UP | TO_DOWN | TO_LEFT): right-middle branch, rng(2)==1
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        test_ctx.rng = &fixed1;
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_R2, (int)s.query_x_y(1, 1), "right-middle dark-grass branch should choose R2");
+    }
+
+    // around == (TO_LEFT | TO_DOWN): top-right branch with right grass / non-grass
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_LL, (int)s.query_x_y(1, 1), "top-right branch with grass right should map to LL");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_TREE_M1, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B2, (int)s.query_x_y(1, 1), "top-right branch with non-grass right should map to B2");
+    }
+
+    // around == (TO_LEFT | TO_RIGHT | TO_UP): bottom-middle branch with rubble path.
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        test_ctx.rng = &fixed0; // rng(2)==0 then rng(20)==0 => rubble override
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_RUBBLE, (int)s.query_x_y(1, 1), "bottom-middle branch should allow rubble override");
+    }
+
+    // around == TO_LEFT : right-thin branch with grass/non-grass right.
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_LL, (int)s.query_x_y(1, 1), "right-thin branch with grass right should map LL");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_TREE_M1, PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)s.query_x_y(1, 1), "right-thin branch with non-grass right should map B1");
+    }
+
+    // around masks for remaining explicit branches.
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1); // TO_UP|TO_RIGHT|TO_DOWN
+        smoother s;
+        s.set_target(pd);
+        test_ctx.rng = &fixed1; // pick one of the random dark variants
+        s.smooth(1, 1);
+        TEST_ASSERT(s.query_x_y(1, 1) >= PIX_GRASS_DARK_1 && s.query_x_y(1, 1) <= PIX_GRASS_DARK_4,
+                    "left-middle/top-left branch should choose dark-grass variant");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS_DARK_1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1); // TO_UP|TO_DOWN
+        smoother s;
+        s.set_target(pd);
+        test_ctx.rng = &fixed0;
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_R1, (int)s.query_x_y(1, 1), "center-vertical branch should map to R1/R2");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS_DARK_1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1); // TO_DOWN
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_LL, (int)s.query_x_y(1, 1), "top-alone branch should map LL/B1");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS_DARK_1, PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1); // TO_UP|TO_RIGHT
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)s.query_x_y(1, 1), "bottom-left branch should map UR/B1");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1); // TO_RIGHT
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)s.query_x_y(1, 1), "left-alone branch should map UR/B1");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1); // TO_UP
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)s.query_x_y(1, 1), "bottom-alone branch should map UR/B1");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1); // around == 0
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_1, (int)s.query_x_y(1, 1), "default dark-grass branch should map to dark_1");
+    }
+
+    set_global_context(nullptr);
+}
+REGISTER_TEST(test_smooth_dark_grass_round7_branch_matrix_338_448);
+
 static PixieData make_uniform_grid(int w, int h, unsigned char fill)
 {
     PixieData pd;
@@ -700,3 +850,64 @@ static void run_smooth_branch_outputs_with_fixed_rng()
 
     set_global_context(nullptr);
 }
+
+void test_smooth_round11_water_and_tree_edge_masks_662_720()
+{
+    FixedRandom fixed0(0);
+    GameContext test_ctx;
+    test_ctx.game_screen = myscreen;
+    test_ctx.rng = &fixed0;
+    set_global_context(&test_ctx);
+
+    // TYPE_WATER diagonal-corner masks (smooth.cpp:662-669).
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_WATER1,
+                                           PIX_WATER1, PIX_GRASS1, PIX_GRASS1, PIX_WATER1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_WATERGRASS_LR, (int)s.query_x_y(1, 1), "water up+left should map LR");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_WATER1,
+                                           PIX_GRASS1, PIX_WATER1, PIX_WATER1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)s.query_x_y(1, 1), "water down+right should map UL");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_WATER1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_WATER1, PIX_WATER1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_WATERGRASS_UR, (int)s.query_x_y(1, 1), "water down+left should map UR");
+    }
+
+    // TYPE_TREES TO_AROUND edge-side selection (smooth.cpp:715-720).
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_TREE_M1,
+                                           PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1,
+                                           PIX_TREE_M1, PIX_GRASS1, PIX_TREE_M1, PIX_TREE_M1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_TREE_MR, (int)s.query_x_y(1, 1), "trees with missing upper-right should map to right edge");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_TREE_M1,
+                                           PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1,
+                                           PIX_GRASS1, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_TREE_ML, (int)s.query_x_y(1, 1), "trees with missing upper-left should map to left edge");
+    }
+
+    set_global_context(nullptr);
+}
+REGISTER_TEST(test_smooth_round11_water_and_tree_edge_masks_662_720);

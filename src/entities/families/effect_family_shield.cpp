@@ -5,28 +5,18 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
+#include <openglad/data/level_data.h>
 
 void orbit_offset(int drawcycle, float &xd, float &yd);
 
 static bool magic_shield_on_act(effect* self)
 {
     float xd, yd;
-    Sint32 temp = 0;
+    std::int32_t temp = 0;
 
     if (!self->owner || self->owner->dead)
     {
@@ -38,8 +28,8 @@ static bool magic_shield_on_act(effect* self)
     self->center_on(self->owner);
     self->setworldxy(self->worldx()+xd, self->worldy()+yd);
 
-    auto foelist = active_screen()->find_foe_weapons_in_range(
-        active_screen()->level_data.oblist, self->sizex, &temp, self);
+    auto foelist = self->sim_level->find_foe_weapons_in_range(
+        self->sim_level->oblist, self->sizex, &temp, self);
     for(auto* w : foelist)
     {
         self->stats()->hitpoints -= w->damage;
@@ -47,8 +37,8 @@ static bool magic_shield_on_act(effect* self)
         w->death();
     }
 
-    foelist = active_screen()->find_foes_in_range(
-        active_screen()->level_data.oblist, self->sizex, &temp, self);
+    foelist = self->sim_level->find_foes_in_range(
+        self->sim_level->oblist, self->sizex, &temp, self);
     for(auto* w : foelist)
     {
         self->stats()->hitpoints -= w->damage;
@@ -67,7 +57,7 @@ static bool magic_shield_on_act(effect* self)
 static bool boomerang_on_act(effect* self)
 {
     float xd, yd;
-    Sint32 temp = 0;
+    std::int32_t temp = 0;
 
     if (!self->owner || self->owner->dead || self->drawcycle > 253)
     {
@@ -83,8 +73,8 @@ static bool boomerang_on_act(effect* self)
     self->center_on(self->owner);
     self->setworldxy(self->worldx()+xd, self->worldy()+yd);
 
-    auto foelist = active_screen()->find_foe_weapons_in_range(
-        active_screen()->level_data.oblist, self->sizex*2, &temp, self);
+    auto foelist = self->sim_level->find_foe_weapons_in_range(
+        self->sim_level->oblist, self->sizex*2, &temp, self);
     for(auto* w : foelist)
     {
         self->stats()->hitpoints -= w->damage;
@@ -92,8 +82,8 @@ static bool boomerang_on_act(effect* self)
         w->death();
     }
 
-    foelist = active_screen()->find_foes_in_range(
-        active_screen()->level_data.oblist, self->sizex, &temp, self);
+    foelist = self->sim_level->find_foes_in_range(
+        self->sim_level->oblist, self->sizex, &temp, self);
     for(auto* w : foelist)
     {
         self->stats()->hitpoints -= w->damage;

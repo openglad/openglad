@@ -22,8 +22,13 @@
 //   end of its animation, it will call function x.
 //
 
-//#include "graph.h"
+#include <cstdint>
 #include <openglad/entities/effect.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include <openglad/entities/obmap.h>
+#include <openglad/core/stats.h>
+#include <openglad/entities/guy.h>
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect_family_registry.h>
 #include <openglad/legacy/test_trace.h>
@@ -32,6 +37,12 @@ effect::effect(const PixieData& data)
     : walker(data)
 {
 	ignore = 1; // don't collide with other objects
+}
+
+effect::effect()
+    : walker()
+{
+	ignore = 1;
 }
 
 effect::~effect()
@@ -54,8 +65,6 @@ void orbit_offset(int drawcycle, float &xd, float &yd)
 
 bool effect::act()
 {
-	TRACE("effect", "effect::act family=%d drawcycle=%d", family, drawcycle);
-
 	// Make sure everyone we're pointing to is valid
 	if (foe && foe->dead)
 		foe = nullptr;
@@ -106,9 +115,9 @@ bool effect::animate()
 	return 1;
 }
 
-Sint32 compute_explosion_range(Sint32 level, short skip_exit)
+std::int32_t compute_explosion_range(std::int32_t level, short skip_exit)
 {
-    Sint32 range = level * 4;
+    std::int32_t range = level * 4;
     if (skip_exit > 0)
         range = 0;
     if (range > 96)
@@ -122,8 +131,6 @@ Sint32 compute_explosion_range(Sint32 level, short skip_exit)
 // for special effects ..
 bool effect::death()
 {
-	TRACE("effect", "effect::death family=%d", family);
-
 	// Note that the 'dead' variable should ALREADY be set by the
 	// time this function is called, so that we can easily reverse
 	// the decision :)

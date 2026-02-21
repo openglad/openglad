@@ -5,11 +5,13 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/legacy/base.h>
+#include <openglad/data/level_data.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <openglad/core/stats.h>
 
 static bool skeleton_handle_teleport(walker* self)
@@ -24,29 +26,29 @@ static bool skeleton_handle_teleport(walker* self)
 
 static bool skeleton_check_special_ai(living* self)
 {
-    Sint32 howmany = 0;
-    myscreen->find_foes_in_range(myscreen->level_data.oblist,
+    std::int32_t howmany = 0;
+    self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                  5 * GRID_SIZE, &howmany, self);
     if (howmany < 1)
         return true;
     return false;
 }
 
-static void skeleton_level_up(guy* self, Sint32 level_diff)
+static void skeleton_level_up(guy* self, std::int32_t level_diff)
 {
-    Sint32 s = 8 * level_diff;
-    Sint32 d = 6 * level_diff;
-    Sint32 c = 8 * level_diff;
-    Sint32 it = 8 * level_diff;
-    Sint32 a = 1 * level_diff;
+    std::int32_t s = 8 * level_diff;
+    std::int32_t d = 6 * level_diff;
+    std::int32_t c = 8 * level_diff;
+    std::int32_t it = 8 * level_diff;
+    std::int32_t a = 1 * level_diff;
     d *= 2;
     c /= 2;
     it /= 2;
-    self->strength = static_cast<short>(static_cast<Sint32>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<Sint32>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<Sint32>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<Sint32>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
+    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
+    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
+    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
+    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
+    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
 static bool skeleton_do_special(walker* self)

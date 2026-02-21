@@ -14,24 +14,27 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+#include <cstdint>
 #include <openglad/entities/guy.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/walker.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/legacy/base.h>
+#include <openglad/data/level_data.h>
+#include <openglad/data/gloader.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <cmath>
 #include <cstring>
 #define RAISE 1.85  // please also change in picker.cpp
 
-extern Sint32 costlist[NUM_FAMILIES];
-extern Sint32 statlist[NUM_FAMILIES][6];
-extern Sint32 statcosts[NUM_FAMILIES][6];
+extern std::int32_t costlist[NUM_FAMILIES];
+extern std::int32_t statlist[NUM_FAMILIES][6];
+extern std::int32_t statcosts[NUM_FAMILIES][6];
 // Zardus: PORT, exception doesn't compile (dos thing?): int matherr(struct exception *);
 
 
-const char* get_family_string(Sint32 family);
+const char* get_family_string(std::int32_t family);
 
 static int guy_id_counter = 0;
 
@@ -137,10 +140,10 @@ guy::~guy()
     
 }
 
-Sint32 guy::query_heart_value() // how much are we worth?
+std::int32_t guy::query_heart_value() // how much are we worth?
 {
 	guy normal(family); // for base comparisons
-	Sint32 cost=0, temp;
+	std::int32_t cost=0, temp;
 
 	auto* fd = get_family_descriptor(static_cast<int>(family));
 	if (!fd)
@@ -149,27 +152,27 @@ Sint32 guy::query_heart_value() // how much are we worth?
 	// Get strength cost ..
 	temp = strength - normal.strength;
 	temp = MAX(temp,0);
-	cost += static_cast<Sint32>(pow( temp, RAISE) * static_cast<Sint32>(fd->stat_costs[0]));
+	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[0]));
 
 	// Get dexterity cost ..
 	temp = dexterity - normal.dexterity;
 	temp = MAX(temp,0);
-	cost += static_cast<Sint32>(pow( temp, RAISE) * static_cast<Sint32>(fd->stat_costs[1]));
+	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[1]));
 
 	// Get constitution cost ..
 	temp = constitution - normal.constitution;
 	temp = MAX(temp,0);
-	cost += static_cast<Sint32>(pow( temp, RAISE) * static_cast<Sint32>(fd->stat_costs[2]));
+	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[2]));
 
 	// Get intelligence cost ..
 	temp = intelligence - normal.intelligence;
 	temp = MAX(temp,0);
-	cost += static_cast<Sint32>(pow( temp, RAISE) * static_cast<Sint32>(fd->stat_costs[3]));
+	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[3]));
 
 	// Get armor cost ..
 	temp = armor - normal.armor;
 	temp = MAX(temp,0);
-	cost += static_cast<Sint32>(pow( temp, RAISE) * static_cast<Sint32>(fd->stat_costs[4]));
+	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[4]));
 
 	// Add in the base cost value for the guy ..
 	cost += fd->hiring_cost;
@@ -178,9 +181,9 @@ Sint32 guy::query_heart_value() // how much are we worth?
 
 }
 
-Uint32 calculate_exp(Sint32 level);
+std::uint32_t calculate_exp(std::int32_t level);
 
-Sint32 costlist[NUM_FAMILIES] =
+std::int32_t costlist[NUM_FAMILIES] =
     {
         250,  // soldier
         150,  // elf
@@ -202,7 +205,7 @@ Sint32 costlist[NUM_FAMILIES] =
         450,  // archmage, not used
     };
 
-Sint32 statlist[NUM_FAMILIES][6] =
+std::int32_t statlist[NUM_FAMILIES][6] =
     {
       // STR, DEX, CON, INT, ARMOR, LEVEL
         {12,  6,   12,  8,   9,     1},  // soldier
@@ -252,7 +255,7 @@ float derived_bonuses[NUM_FAMILIES][8] =
         {BASE_GUY_HP+100, 0,   0,    0,          0,     0,   0,     5},  // tower
     };
 
-Sint32 statcosts[NUM_FAMILIES][6] =
+std::int32_t statcosts[NUM_FAMILIES][6] =
     {
         // STR, DEX, CON, INT, ARMOR, LEVEL
         { 6,10, 6,25,50, 200},  // soldier
@@ -279,16 +282,16 @@ Sint32 statcosts[NUM_FAMILIES][6] =
 
 
 
-Sint32 calculate_level(Uint32 experience)
+std::int32_t calculate_level(std::uint32_t experience)
 {
-	Sint32 result=1;
+	std::int32_t result=1;
 
 	while (calculate_exp(result) <= experience)
 		result++;
 	return (result-1);
 }
 
-Uint32 calculate_exp(Sint32 level)
+std::uint32_t calculate_exp(std::int32_t level)
 {
 
 
@@ -322,7 +325,7 @@ Uint32 calculate_exp(Sint32 level)
 
 void guy::upgrade_to_level(short new_level, bool set_xp)
 {
-    Sint32 level_diff = static_cast<Sint32>(new_level) - static_cast<Sint32>(this->level);
+    std::int32_t level_diff = static_cast<std::int32_t>(new_level) - static_cast<std::int32_t>(this->level);
     
     auto* fd = get_family_descriptor(family);
     if (fd && fd->level_up)
@@ -332,16 +335,16 @@ void guy::upgrade_to_level(short new_level, bool set_xp)
     else
     {
         // Default: base deltas with no modifier
-        Sint32 s = 8 * level_diff;
-        Sint32 d = 6 * level_diff;
-        Sint32 c = 8 * level_diff;
-        Sint32 it = 8 * level_diff;
-        Sint32 a = 1 * level_diff;
-        strength = static_cast<short>(static_cast<Sint32>(strength) + s);
-        dexterity = static_cast<short>(static_cast<Sint32>(dexterity) + d);
-        constitution = static_cast<short>(static_cast<Sint32>(constitution) + c);
-        intelligence = static_cast<short>(static_cast<Sint32>(intelligence) + it);
-        armor = static_cast<short>(static_cast<Sint32>(armor) + a);
+        std::int32_t s = 8 * level_diff;
+        std::int32_t d = 6 * level_diff;
+        std::int32_t c = 8 * level_diff;
+        std::int32_t it = 8 * level_diff;
+        std::int32_t a = 1 * level_diff;
+        strength = static_cast<short>(static_cast<std::int32_t>(strength) + s);
+        dexterity = static_cast<short>(static_cast<std::int32_t>(dexterity) + d);
+        constitution = static_cast<short>(static_cast<std::int32_t>(constitution) + c);
+        intelligence = static_cast<short>(static_cast<std::int32_t>(intelligence) + it);
+        armor = static_cast<short>(static_cast<std::int32_t>(armor) + a);
     }
     
     this->level = new_level;
@@ -386,7 +389,7 @@ float guy::get_fire_frequency_bonus() const
 void guy::update_derived_stats(walker* w)
 {
     guy* temp_guy = w->myguy;
-    myscreen->level_data.myloader->set_derived_stats(w, Order::Living, temp_guy->family);
+    w->sim_level->myloader->set_derived_stats(w, Order::Living, temp_guy->family);
     
     
     w->stats()->max_hitpoints += temp_guy->get_hp_bonus();
@@ -423,7 +426,7 @@ void guy::update_derived_stats(walker* w)
     w->stats()->max_heal_delay = REGEN;
     {
         float heal_delay = static_cast<float>(temp_guy->constitution) + static_cast<float>(temp_guy->strength) / 6.0f + 20.0f + 1000.0f;
-        w->stats()->current_heal_delay = static_cast<Sint32>(heal_delay); // for purposes of calculation only
+        w->stats()->current_heal_delay = static_cast<std::int32_t>(heal_delay); // for purposes of calculation only
     }
 
     while (w->stats()->current_heal_delay > REGEN)
@@ -435,7 +438,7 @@ void guy::update_derived_stats(walker* w)
     if (w->stats()->current_heal_delay > 1)
     {
         w->stats()->max_heal_delay /=
-            static_cast<Sint32>(w->stats()->current_heal_delay + 1);
+            static_cast<std::int32_t>(w->stats()->current_heal_delay + 1);
     }
     w->stats()->current_heal_delay = 0; //start off without healing
 
@@ -458,7 +461,7 @@ void guy::update_derived_stats(walker* w)
     if (w->stats()->current_magic_delay > 1)
     {
         w->stats()->max_magic_delay /=
-            static_cast<Sint32>(w->stats()->current_magic_delay + 1);
+            static_cast<std::int32_t>(w->stats()->current_magic_delay + 1);
     }
     w->stats()->current_magic_delay = 0; //start off without magic regen
 
@@ -469,36 +472,6 @@ void guy::update_derived_stats(walker* w)
         w->stats()->max_magic_delay = 2;
 }
 
-std::unique_ptr<walker> guy::create_walker_owned(screen* screen_)
-{
-	    auto temp_guy = std::make_unique<guy>(*this);
-	    auto temp_walker = screen_->level_data.myloader->create_walker_owned(Order::Living, temp_guy->family, nullptr);
-	    if (!temp_walker)
-	        return nullptr;
-	    temp_walker->set_owned_myguy(std::move(temp_guy));
-	    temp_walker->stats()->level = temp_walker->myguy->level;
-	    
-	    update_derived_stats(temp_walker.get());
-
-    // Set our team number ..
-    temp_walker->team_num = static_cast<unsigned char>(temp_walker->myguy->teamnum);
-    temp_walker->real_team_num = 255;
-    
-	    return temp_walker;
-}
-
-walker* guy::create_and_add_walker(screen* screen_)
-{
-    auto temp_guy = std::make_unique<guy>(*this);
-    walker* temp_walker = screen_->level_data.add_ob(Order::Living, temp_guy->family);
-    temp_walker->set_owned_myguy(std::move(temp_guy));
-    temp_walker->stats()->level = temp_walker->myguy->level;
-    
-    update_derived_stats(temp_walker);
-
-    // Set our team number ..
-    temp_walker->team_num = static_cast<unsigned char>(temp_walker->myguy->teamnum);
-    temp_walker->real_team_num = 255;
-    
-    return temp_walker;
-}
+// guy_create_walker_owned and guy_create_and_add_walker are free functions
+// in src/runtime/guy_create.cpp (declared in runtime/guy_create.h) because
+// they depend on screen* (runtime layer).

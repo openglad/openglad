@@ -5,27 +5,22 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
+#include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/render/view.h>
-#include <openglad/render/pal32.h>
-#include <openglad/render/video.h>
 
 #include <format>
 #include <string>
 #include <list>
 #include <cmath>
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 static bool mage_handle_teleport(walker* self)
 {
@@ -39,8 +34,8 @@ static bool mage_handle_teleport(walker* self)
 
 static bool mage_check_special_ai(living* self)
 {
-    Sint32 howmany = 0;
-    myscreen->find_foes_in_range(myscreen->level_data.oblist,
+    std::int32_t howmany = 0;
+    self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                  110, &howmany, self);
     if (howmany < 1)
         return true;
@@ -58,7 +53,7 @@ static void mage_hit_response(statistics* stats, walker* foe)
     else
         threshold = (3.0f * stats->max_hitpoints) / 8.0f;
 
-    Sint32 possible_specials[NUM_SPECIALS];
+    std::int32_t possible_specials[NUM_SPECIALS];
     for (int i = 0; i < NUM_SPECIALS; i++)
         possible_specials[i] = 0;
     for (int i = 0; i <= (stats->level + 2) / 3; i++)
@@ -83,7 +78,7 @@ static void mage_hit_response(statistics* stats, walker* foe)
     }
 }
 
-static void mage_set_difficulty(living* self, Uint32 level)
+static void mage_set_difficulty(living* self, std::uint32_t level)
 {
     const float levmult = static_cast<float>(level) * static_cast<float>(level);
     const float level_f = static_cast<float>(level);
@@ -93,30 +88,30 @@ static void mage_set_difficulty(living* self, Uint32 level)
     self->stats()->armor += levmult / 2.0f;
 }
 
-static void mage_level_up(guy* self, Sint32 level_diff)
+static void mage_level_up(guy* self, std::int32_t level_diff)
 {
-    Sint32 s = 8 * level_diff;
-    Sint32 d = 6 * level_diff;
-    Sint32 c = 8 * level_diff;
-    Sint32 it = 8 * level_diff;
-    Sint32 a = 1 * level_diff;
+    std::int32_t s = 8 * level_diff;
+    std::int32_t d = 6 * level_diff;
+    std::int32_t c = 8 * level_diff;
+    std::int32_t it = 8 * level_diff;
+    std::int32_t a = 1 * level_diff;
     s /= 2;
     c /= 2;
     it *= 2;
-    self->strength = static_cast<short>(static_cast<Sint32>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<Sint32>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<Sint32>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<Sint32>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
+    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
+    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
+    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
+    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
+    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
 static bool mage_do_special(walker* self)
 {
     walker* newob;
     walker* alive;
-    Sint32 tempx, tempy;
-    Sint32 generic;
-    Sint32 howmany;
+    std::int32_t tempx, tempy;
+    std::int32_t generic;
+    std::int32_t howmany;
     std::string message;
 
     switch (self->current_special)
@@ -131,12 +126,12 @@ static bool mage_do_special(walker* self)
                 if (self->myguy && (self->myguy->intelligence < 75))
                 {
                     if (self->user != -1)
-                        myscreen->do_notify("Need 75 Int for Marker!", self);
+                        og::sim::emit_notification(self->sim_events, "Need 75 Int for Marker!");
                     return false;
                 }
                 // Remove a marker, if present
                 generic = 0;
-                for (auto& uptr : myscreen->level_data.oblist)
+                for (auto& uptr : self->sim_level->oblist)
                 {
                     walker* ob = uptr.get();
                     if (ob &&
@@ -148,7 +143,7 @@ static bool mage_do_special(walker* self)
                         ob->dead = 1;
                         ob->death();
                         if ((self->team_num == 0 || self->myguy) && self->user != -1)
-                            myscreen->do_notify("(Old Marker Removed)", self);
+                            og::sim::emit_notification(self->sim_events, "(Old Marker Removed)");
                         self->busy += 8;
                         break;
                     }
@@ -156,7 +151,7 @@ static bool mage_do_special(walker* self)
                 generic = 0; // force new placement, for now
                 if (!generic) // didn't remove a marker, so place one
                 {
-                    newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+                    newob = self->sim_level->add_ob(Order::FX, FAMILY_MARKER);
                     if (!newob)
                         return false;
                     newob->owner = self;
@@ -168,29 +163,28 @@ static bool mage_do_special(walker* self)
                     newob->ani_type = ANI_SPIN;
                     if ((self->team_num == 0 || self->myguy) && self->user != -1)
                     {
-                        myscreen->do_notify("Teleport Marker Placed", self);
+                        og::sim::emit_notification(self->sim_events, "Teleport Marker Placed");
                         message = std::format("({} Uses)", newob->lifetime);
-                        myscreen->do_notify(message.c_str(), self);
+                        og::sim::emit_notification(self->sim_events, message);
                     }
                     self->busy += 8;
-                    generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
+                    generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
                     generic /= 2;
                     self->stats()->magicpoints -= static_cast<float>(generic);
                 }
             }
             else
             {
-                if (self->on_screen())
-                    myscreen->soundp->play_sound(SOUND_TELEPORT);
+                og::sim::emit_sound(self->sim_events, SOUND_TELEPORT);
                 self->ani_type = ANI_TELE_OUT;
                 self->cycle = 0;
             }
             break;
         case 2: // starburst
         {
-            tempx = static_cast<Sint32>(self->lastx);
-            tempy = static_cast<Sint32>(self->lasty);
-            generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
+            tempx = static_cast<std::int32_t>(self->lastx);
+            tempy = static_cast<std::int32_t>(self->lasty);
+            generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
             if (generic > 0)
             {
                 generic = generic / 15;
@@ -199,8 +193,8 @@ static bool mage_do_special(walker* self)
             else
                 generic = 0;
             self->stats()->magicpoints += 8.0f * static_cast<float>(self->stats()->weapon_cost);
-            for (Sint32 i = -1; i < 2; i++)
-                for (Sint32 j = -1; j < 2; j++)
+            for (std::int32_t i = -1; i < 2; i++)
+                for (std::int32_t j = -1; j < 2; j++)
                 {
                     if (i || j)
                     {
@@ -212,9 +206,9 @@ static bool mage_do_special(walker* self)
                             newob->damage += static_cast<float>(generic);
                             newob->lineofsight += (generic / 3);
                             if (newob->lastx != 0.0f)
-                                newob->lastx /= fabs(newob->lastx);
+                                newob->lastx /= std::fabs(newob->lastx);
                             if (newob->lasty != 0.0f)
-                                newob->lasty /= fabs(newob->lasty);
+                                newob->lasty /= std::fabs(newob->lasty);
                         }
                     }
                 }
@@ -225,8 +219,8 @@ static bool mage_do_special(walker* self)
         case 3: // freeze time
             if (self->team_num == 0 || self->myguy)
             {
-                myscreen->enemy_freeze += 20 + 11 * self->stats()->level;
-                set_palette(myscreen->bluepalette);
+                *self->sim_enemy_freeze += 20 + 11 * self->stats()->level;
+                og::sim::emit_event(self->sim_events, og::sim::EventKind::SetPalette, 1);
             }
             else
             {
@@ -234,11 +228,10 @@ static bool mage_do_special(walker* self)
                 if (generic > 50)
                     generic = 50;
                 message = std::format("TIME IS FROZEN! ({} rounds)", generic);
-                myscreen->viewob[0]->set_display_text(message.c_str(), 2);
-                myscreen->viewob[0]->redraw();
-                myscreen->viewob[0]->refresh();
-                std::list<walker*> newlist = myscreen->find_friends_in_range(
-                              myscreen->level_data.oblist, 30000, &howmany, self);
+                og::sim::emit_notification(self->sim_events, message, 2);
+                og::sim::emit_event(self->sim_events, og::sim::EventKind::RequestRedraw);
+                std::list<walker*> newlist = self->sim_level->find_friends_in_range(
+                              self->sim_level->oblist, 30000, &howmany, self);
                 for (auto* w : newlist)
                 {
                     if (w)
@@ -250,7 +243,7 @@ static bool mage_do_special(walker* self)
             newob = self->fire();
             if (!newob)
                 return false;
-            alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_WAVE);
+            alive = self->sim_level->add_ob(Order::Weapon, FAMILY_WAVE);
             alive->center_on(newob);
             alive->owner = self;
             alive->stats()->level = self->stats()->level;
@@ -261,11 +254,11 @@ static bool mage_do_special(walker* self)
         case 5:
         default: // heartburst
         {
-            std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+            std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                                   80 + 2 * self->stats()->level, &howmany, self);
             if (!howmany)
                 return false;
-            generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[5]));
+            generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[5]));
             generic /= 2;
             generic /= howmany;
             if (self->myguy)
@@ -276,7 +269,7 @@ static bool mage_do_special(walker* self)
             self->busy += 5;
             for (auto* ob : newlist)
             {
-                newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
+                newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION);
                 if (!newob)
                     return false;
                 newob->owner = self;
@@ -284,8 +277,7 @@ static bool mage_do_special(walker* self)
                 newob->stats()->level = self->stats()->level;
                 newob->damage = static_cast<float>(generic);
                 newob->center_on(ob);
-                if (self->on_screen())
-                    myscreen->soundp->play_sound(SOUND_EXPLODE);
+                og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);
                 newob->ani_type = ANI_EXPLODE;
                 newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                 newob->skip_exit = 100;

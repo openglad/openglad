@@ -15,21 +15,17 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 // OBMAP -- an object to handle locations of pixies on a hash table.
+#include <cstdint>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/util.h>
-#include <openglad/legacy/colors.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <cmath>
 #include <algorithm>
 #include <format>
-#include <openglad/runtime/game_context.h>
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
+#include <openglad/sim/sim_emit.h>
 
 bool debug_draw_obmap = false;
 
@@ -52,67 +48,6 @@ obmap::obmap()
 
 obmap::~obmap()
 {}
-
-void obmap::draw()
-{
-    text& t = myscreen->text_normal;
-    const Sint32 offsetx = myscreen->viewob[0]->topx;
-    const Sint32 offsety = myscreen->viewob[0]->topy;
-    // Draw the number of obs in each pile
-    for(auto& [pos, walkers] : pos_to_walker)
-    {
-        const Sint32 cx = static_cast<Sint32>(unhash(pos.first)) - offsetx + OBRES/2;
-        const Sint32 cy = static_cast<Sint32>(unhash(pos.second)) - offsety + OBRES/2;
-        myscreen->draw_box(cx - OBRES/2, cy - OBRES/2, cx + OBRES/2, cy + OBRES/2, YELLOW, false);
-        t.write_xy_center(cx, cy, YELLOW, "%d", walkers.size());
-    }
-    
-    // Draw a box for each walker
-    for(auto& [w, positions] : walker_to_pos)
-    {
-        // Get bounds
-        bool unset = true;
-        SDL_Rect r = {0, 0, 1, 1};
-        for(auto& [px, py] : positions)
-        {
-            if(unset)
-            {
-                r.x = px;
-                r.y = py;
-                unset = false;
-                continue;
-            }
-            if(px < r.x)
-            {
-                r.w += r.x - px;
-                r.x = px;
-            }
-            if(py < r.y)
-            {
-                r.h += r.y - py;
-                r.y = py;
-            }
-            if(px > r.x + r.w)
-            {
-                r.w += px - (r.x + r.w);
-            }
-            if(py > r.y + r.h)
-            {
-                r.h += py - (r.y + r.h);
-            }
-        }
-
-        if(!unset)
-        {
-            // Draw the rect
-            const Sint32 x = static_cast<Sint32>(unhash(static_cast<short>(r.x))) - offsetx;
-            const Sint32 y = static_cast<Sint32>(unhash(static_cast<short>(r.y))) - offsety;
-            const Sint32 bw = static_cast<Sint32>(unhash(static_cast<short>(r.w)));
-            const Sint32 bh = static_cast<Sint32>(unhash(static_cast<short>(r.h)));
-            myscreen->draw_box(x, y, x + bw, y + bh, w->query_team_color(), false);
-        }
-    }
-}
 
 size_t obmap::size() const
 {
@@ -138,12 +73,17 @@ short obmap::query_list(walker  *ob, short x, short y)
 	{
 		for (numy = startnumy; numy <= endnumy; numy++)
 		{
-			// We should be finding the same item over and over. Avoid
-			// default-constructing empty piles during queries.
+			// Avoid default-constructing empty piles during queries.
 			auto it = pos_to_walker.find(std::make_pair(numx, numy));
 			if (it == pos_to_walker.end())
 				continue;
-			if (!ob_pass_check(x, y, ob, it->second, this)) //&& ob->collide_ob??
+			// Snapshot the pile: collision handlers inside ob_pass_check
+			// (e.g. walker::death → obmap::remove) can erase this
+			// pos_to_walker entry, which would leave a dangling reference
+			// and corrupt iterator traversal — the root cause of the
+			// walker_to_pos.find() infinite-loop hang.
+			auto pile_snapshot = it->second;
+			if (!ob_pass_check(x, y, ob, pile_snapshot, this))
 				return 0;
 		}
 	}
@@ -334,7 +274,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
             if((targetorder == Order::Weapon || myorder == Order::Weapon) && ob->is_friendly(w))
                 continue;
             // Allow weapons to sometimes 'miss' opposing team's weapons
-            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (rng(10) > 3))
+            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (ob->sim_rng->next(10) > 3))
                 continue;
             // Weapons never hit treasure
             else if(targetorder == Order::Treasure && myorder == Order::Weapon)
@@ -355,7 +295,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                               && (w->query_family() == FAMILY_DOOR) )
                     {
                         // Can we unlock this door?
-                        if (ob->keys & static_cast<Sint32>(pow(static_cast<double>(2), w->stats()->level)))
+                        if (ob->keys & static_cast<std::int32_t>(pow(static_cast<double>(2), w->stats()->level)))
                         {
                             // Open the door ..
                             w->dead = 1;
@@ -372,7 +312,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                             {
                                 std::string message = std::format("Key {} needed!",
                                         w->stats()->level);
-                                myscreen->do_notify(message.c_str(), ob);
+                                og::sim::emit_notification(ob->sim_events, message);
                                 ob->skip_exit = 10;
                             } // end of failed open door notification
                             ob->collide(w);

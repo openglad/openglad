@@ -5,14 +5,16 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/core/stats.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 
 #define BASE_GUY_HP 30
 
-static void golem_set_difficulty(living* self, Uint32 level)
+static void golem_set_difficulty(living* self, std::uint32_t level)
 {
     const float levmult = static_cast<float>(level) * static_cast<float>(level);
     const float level_f = static_cast<float>(level);

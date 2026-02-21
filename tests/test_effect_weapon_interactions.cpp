@@ -1,4 +1,5 @@
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/runtime/screen.h>
@@ -46,7 +47,7 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     if (w)
         w->setxy(100, 100);
     return w;
@@ -73,7 +74,7 @@ void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enem
     level.oblist.push_back(std::move(owner));
 
     // A friendly weapon placed in oblist (screen::find_foe_weapons_in_range iterates oblist).
-    auto weap = level.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW, myscreen);
+    auto weap = level.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weap != nullptr, "weapon created");
     if (!weap) {
         remove_new_objects(level, ob_before, fx_before, weap_before);

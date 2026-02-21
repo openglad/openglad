@@ -7,8 +7,6 @@
  */
 #pragma once
 
-#include <openglad/legacy/base.h>
-
 class treasure;
 class walker;
 

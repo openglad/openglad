@@ -16,17 +16,17 @@
  */
 #pragma once
 
-#include <openglad/entities/obmap.h>
-#include <openglad/data/gloader.h>
-#include <openglad/render/pixien.h>
-#include <openglad/render/text.h>
-#include <openglad/runtime/screen.h>
+#include <SDL_stdinc.h>
 #include <array>
 #include <cmath>
 #include <functional>
 #include <memory>
 #include <string>
 #include <openglad/input/input.h>
+
+class pixieN;
+class screen;
+class guy;
 class vbutton;
 
 // Definition of a button

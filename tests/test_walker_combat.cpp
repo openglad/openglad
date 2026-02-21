@@ -1,6 +1,8 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/data/gloader.h>
+#include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
@@ -10,13 +12,14 @@
 #include <vector>
 
 extern screen* myscreen;
+extern cfg_store cfg;
 
 static walker* make_guy(char family, unsigned char team = 0)
 {
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     if (w) w->setxy(100, 100);
     return w.release();
 }
@@ -281,7 +284,7 @@ void test_walker_act_with_commands()
     loader* l = myscreen->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
     if (l) {
-        auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT, myscreen);
+        auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);
         TEST_ASSERT(gen != nullptr, "generator created");
         if (gen) {
             walker* genp = gen.get();
@@ -607,14 +610,14 @@ void test_walker_set_difficulty_all_families()
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
-        auto w = l->create_walker_owned(Order::Living, families[i], myscreen);
+        auto w = l->create_walker_owned(Order::Living, families[i]);
         if (w) {
             w->set_difficulty(5);
             TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP positive after set_difficulty");
         }
     }
 
-    auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT, myscreen);
+    auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);
     TEST_ASSERT(gen != nullptr, "generator created");
     if (gen) {
         float hp_before = gen->stats()->hitpoints;
@@ -693,7 +696,7 @@ void test_walker_act_random_generator_paths()
     loader* l = myscreen->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
 
-    auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT, myscreen);
+    auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);
     walker* foe = make_guy(FAMILY_ORC, 2);
     TEST_ASSERT(gen != nullptr && foe != nullptr, "generator and foe created");
     if (!(gen && foe)) {
@@ -732,3 +735,361 @@ void test_walker_act_random_generator_paths()
     delete foe;
 }
 REGISTER_TEST(test_walker_act_random_generator_paths);
+
+void test_walker_combat_effect_helpers_and_recoil_branches()
+{
+    walker* attacker = make_guy(FAMILY_SOLDIER, 0);
+    walker* target = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(attacker != nullptr && target != nullptr, "combat walkers created");
+    if (!(attacker && target))
+        return;
+
+    target->setxy(attacker->xpos + 12, attacker->ypos + 4);
+    cfg.apply_setting("effects", "hit_recoil", "on");
+    cfg.apply_setting("effects", "hit_anim", "off");
+    cfg.apply_setting("effects", "damage_numbers", "off");
+    cfg.apply_setting("effects", "hit_flash", "off");
+
+    attacker->do_hit_effects(attacker, target, 12);
+    TEST_ASSERT(target->hit_recoil > 0.0f, "hit_recoil should be set for living targets when enabled");
+
+    // do_heal_effects early-return path when sim_config is null.
+    walker stack_a;
+    walker stack_b;
+    stack_a.sim_config = nullptr;
+    stack_a.do_heal_effects(&stack_a, &stack_b, 5);
+
+    delete attacker;
+    delete target;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_combat_effect_helpers_and_recoil_branches);
+
+void test_walker_attack_weapon_owner_chain_and_nonliving_target()
+{
+    walker* owner = make_guy(FAMILY_SOLDIER, 0);
+    walker* living_target = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(owner != nullptr && living_target != nullptr, "owner and target created");
+    if (!(owner && living_target))
+        return;
+
+    walker* weapon = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(weapon != nullptr, "weapon created");
+    if (weapon) {
+        owner->user = 0;
+        weapon->owner = owner;
+        weapon->team_num = owner->team_num;
+        weapon->damage = 1.0f;
+        weapon->stats()->hitpoints = 50;
+
+        living_target->stats()->armor = 5000; // force damage clamp-to-zero path
+        living_target->stats()->hitpoints = 100;
+        (void)weapon->attack(living_target);
+        TEST_ASSERT(living_target->stats()->hitpoints <= 100, "weapon attack path should execute safely");
+
+        walker* nonliving = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
+        TEST_ASSERT(nonliving != nullptr, "nonliving target created");
+        if (nonliving)
+            (void)weapon->attack(nonliving);
+    }
+
+    delete owner;
+    delete living_target;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_attack_weapon_owner_chain_and_nonliving_target);
+
+void test_walker_combat_batch5_heal_and_hit_effect_variants()
+{
+    walker* healer = make_guy(FAMILY_CLERIC, 0);
+    walker* target = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(healer != nullptr && target != nullptr, "healer and target created");
+    if (!(healer && target))
+        return;
+
+    healer->setxy(100, 100);
+    target->setxy(116, 104);
+
+    // do_heal_effects with config enabled and null-healer branch.
+    cfg.apply_setting("effects", "heal_numbers", "on");
+    healer->do_heal_effects(nullptr, target, 9);
+    TEST_ASSERT(!target->damage_numbers.empty(), "heal numbers should be emitted for target when enabled");
+
+    // do_hit_effects projectile branch (attacker != this) and damage number branch.
+    cfg.apply_setting("effects", "damage_numbers", "on");
+    cfg.apply_setting("effects", "hit_anim", "on");
+    cfg.apply_setting("effects", "hit_flash", "on");
+    cfg.apply_setting("effects", "hit_recoil", "on");
+    walker* projectile = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(projectile != nullptr, "projectile created");
+    if (projectile)
+    {
+        projectile->owner = healer;
+        projectile->team_num = healer->team_num;
+        projectile->setxy(108, 100);
+        projectile->do_hit_effects(healer, target, 6);
+        TEST_ASSERT(target->hurt_flash, "hit_flash should be set on positive damage when enabled");
+        TEST_ASSERT(target->hit_recoil > 0.0f, "hit_recoil should be set for living targets");
+    }
+}
+REGISTER_TEST(test_walker_combat_batch5_heal_and_hit_effect_variants);
+
+void test_walker_combat_batch5_do_combat_damage_target_myguy_stats()
+{
+    walker* attacker = make_guy(FAMILY_SOLDIER, 0);
+    walker* victim = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(attacker != nullptr && victim != nullptr, "attacker and victim created");
+    if (!(attacker && victim))
+        return;
+
+    const float taken_before = victim->myguy ? victim->myguy->scen_damage_taken : 0.0f;
+    attacker->do_combat_damage(attacker, victim, 7);
+
+    TEST_ASSERT(victim->last_hitpoints >= victim->stats()->hitpoints, "combat damage should update last_hitpoints");
+    if (victim->myguy)
+    {
+        TEST_ASSERT(victim->myguy->scen_damage_taken >= taken_before,
+                    "target myguy scen_damage_taken should increase");
+    }
+    TEST_ASSERT(victim->stats()->hitpoints <= victim->last_hitpoints,
+                "combat damage should not increase target hitpoints");
+}
+REGISTER_TEST(test_walker_combat_batch5_do_combat_damage_target_myguy_stats);
+
+void test_walker_combat_batch6_attack_branches_enemy_and_weapon_paths()
+{
+    const short saved_allied_mode = myscreen->save_data.allied_mode;
+    myscreen->save_data.allied_mode = 0;
+
+    // Enemy kill path: magical modifier, kill awards, notifications, and remaining-foe branch.
+    walker* attacker = make_guy(FAMILY_MAGE, 0);
+    walker* enemy = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(attacker != nullptr && enemy != nullptr, "attacker/enemy created");
+    if (!(attacker && enemy))
+        return;
+    attacker->stats()->set_bit_flags(BIT_MAGICAL, 1);
+    attacker->damage = 500.0f;
+    enemy->stats()->hitpoints = 3;
+    enemy->stats()->max_hitpoints = 3;
+    enemy->stats()->name = "NamedEnemy";
+    enemy->owner = nullptr;
+    enemy->lifetime = 0;
+    enemy->setxy(attacker->xpos + 10, attacker->ypos + 6);
+    TEST_ASSERT(attacker->attack(enemy), "enemy kill branch should execute");
+
+    // Non-living default branch and weapon durability/death/on-hit callbacks.
+    walker* owner = make_guy(FAMILY_SOLDIER, 0);
+    walker* fx_target = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
+    walker* weapon = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_SPRINKLE);
+    TEST_ASSERT(owner && fx_target && weapon, "owner/fx_target/weapon created");
+    if (owner && fx_target && weapon)
+    {
+        owner->user = 0;
+        weapon->owner = owner;
+        weapon->team_num = owner->team_num;
+        weapon->damage = 10.0f;
+        weapon->stats()->hitpoints = 1;
+        owner->myguy->total_shots = 2;
+        owner->myguy->scen_shots = 2;
+        fx_target->team_num = 1;
+        (void)weapon->attack(fx_target);
+        TEST_ASSERT(owner->myguy->total_shots <= 1, "default non-living target branch should decrement shots");
+        TEST_ASSERT(weapon->dead == 1, "weapon durability path should kill mortal weapon at <=0 hp");
+    }
+
+    myscreen->save_data.allied_mode = saved_allied_mode;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_combat_batch6_attack_branches_enemy_and_weapon_paths);
+
+void test_walker_combat_batch6_attack_friendly_team_death_messages_and_clamps()
+{
+    const short saved_allied_mode = myscreen->save_data.allied_mode;
+    myscreen->save_data.allied_mode = 1;
+
+    // Build an attacker that is not considered friendly to team 0 even when allied mode is on.
+    walker* attacker = make_guy(FAMILY_SOLDIER, 1);
+    TEST_ASSERT(attacker != nullptr, "attacker created");
+    if (!attacker)
+        return;
+    attacker->clear_myguy();
+    attacker->damage = 500.0f;
+
+    // Team-0 target death paths (playerteam==target team) that select various message branches.
+    walker* t_dispelled = make_guy(FAMILY_ORC, 0);
+    walker* t_named = make_guy(FAMILY_ORC, 0);
+    walker* t_myguy_name = make_guy(FAMILY_ORC, 0);
+    TEST_ASSERT(t_dispelled && t_named && t_myguy_name, "targets created");
+    if (t_dispelled && t_named && t_myguy_name)
+    {
+        t_dispelled->stats()->hitpoints = 1;
+        t_dispelled->stats()->name = "Summon";
+        t_dispelled->owner = attacker; // dispelled branch
+        (void)attacker->attack(t_dispelled);
+
+        t_named->stats()->hitpoints = 1;
+        t_named->owner = nullptr;
+        t_named->lifetime = 0;
+        t_named->stats()->name = "AllyName"; // named death branch
+        (void)attacker->attack(t_named);
+
+        t_myguy_name->stats()->hitpoints = 1;
+        t_myguy_name->owner = nullptr;
+        t_myguy_name->lifetime = 0;
+        t_myguy_name->stats()->name.clear();
+        if (t_myguy_name->myguy)
+            t_myguy_name->myguy->name = "GuyName"; // myguy-name branch
+        (void)attacker->attack(t_myguy_name);
+    }
+
+    // High-armor path in attack() (engine still guarantees at least 1 damage).
+    walker* armored = make_guy(FAMILY_ORC, 2);
+    TEST_ASSERT(armored != nullptr, "armored target created");
+    if (armored)
+    {
+        armored->stats()->armor = 100000;
+        const float hp_before = armored->stats()->hitpoints;
+        (void)attacker->attack(armored);
+        TEST_ASSERT(armored->stats()->hitpoints <= hp_before, "high armor path should not increase hitpoints");
+    }
+
+    // do_heal_effects early-return branch when heal numbers are disabled.
+    cfg.apply_setting("effects", "heal_numbers", "off");
+    attacker->do_heal_effects(attacker, attacker, 5);
+    cfg.apply_setting("effects", "heal_numbers", "on");
+
+    myscreen->save_data.allied_mode = saved_allied_mode;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_combat_batch6_attack_friendly_team_death_messages_and_clamps);
+
+void test_walker_batch7_init_fire_and_animate_edge_paths()
+{
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->setxy(100, 100);
+
+    // init_fire turn-gate while ACT_CONTROL (returns false).
+    w->set_act_type(ACT_CONTROL);
+    w->curdir = FACE_LEFT;
+    bool r = w->init_fire(1, 0);
+    TEST_ASSERT(!r, "init_fire should refuse turning fire while ACT_CONTROL");
+
+    // init_fire turning path for non-control walker.
+    w->set_act_type(ACT_RANDOM);
+    w->curdir = FACE_LEFT;
+    r = w->init_fire(1, 0);
+    TEST_ASSERT(r, "init_fire should allow turning for non-control walkers");
+
+    // Busy gate.
+    w->busy = 3;
+    w->curdir = FACE_RIGHT;
+    w->enddir = FACE_RIGHT;
+    r = w->init_fire(1, 0);
+    TEST_ASSERT(!r, "init_fire should fail while busy");
+    w->busy = 0;
+
+    // Attack animation path from ANI_WALK.
+    w->ani_type = ANI_WALK;
+    r = w->init_fire(1, 0);
+    TEST_ASSERT(r, "init_fire should start attack animation from ANI_WALK");
+
+    // Non-walk path uses fire(); insufficient MP should make it fail.
+    w->ani_type = ANI_ATTACK;
+    w->stats()->magicpoints = 0;
+    w->stats()->weapon_cost = 20;
+    r = w->init_fire(1, 0);
+    TEST_ASSERT(!r, "init_fire should fail via fire() when MP is insufficient");
+
+    // animate() no-animation-table path.
+    auto saved_ani = w->ani;
+    w->ani = nullptr;
+    TEST_ASSERT(!w->animate(), "animate should return false when animation table is null");
+    w->ani = saved_ani;
+
+    // animate() null-sequence path.
+    const int ani_index = w->curdir + w->ani_type * NUM_FACINGS;
+    auto saved_seq = w->ani[ani_index];
+    w->ani[ani_index] = nullptr;
+    TEST_ASSERT(!w->animate(), "animate should return false when selected sequence is null");
+    w->ani[ani_index] = saved_seq;
+}
+REGISTER_TEST(test_walker_batch7_init_fire_and_animate_edge_paths);
+
+void test_walker_batch8_act_default_and_animate_invalid_sequence_bounds()
+{
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->setxy(100, 100);
+
+    // Drive act() default branch for unknown act type.
+    w->set_act_type(99);
+    bool acted = w->act();
+    TEST_ASSERT(!acted, "act() should return false for unknown act types");
+
+    // Build an animation sequence with no -1 sentinel to trigger bounds guard.
+    static signed char no_sentinel_seq[128];
+    for (int i = 0; i < 128; i++)
+        no_sentinel_seq[i] = 0;
+
+    w->ani_type = ANI_ATTACK;
+    w->curdir = FACE_RIGHT;
+    const int ani_index = w->curdir + w->ani_type * NUM_FACINGS;
+    signed char* original_seq = w->ani[ani_index];
+    w->ani[ani_index] = no_sentinel_seq;
+    w->cycle = 0;
+
+    bool animated = w->animate();
+    TEST_ASSERT(!animated, "animate() should fail when animation sequence has no sentinel");
+    TEST_ASSERT_EQ(ANI_WALK, (int)w->ani_type, "animate() should reset to ANI_WALK on invalid sequence");
+    TEST_ASSERT_EQ(0, (int)w->cycle, "animate() should reset cycle on invalid sequence");
+
+    w->ani[ani_index] = original_seq;
+    delete w;
+}
+REGISTER_TEST(test_walker_batch8_act_default_and_animate_invalid_sequence_bounds);
+
+void test_walker_combat_round8_attack_early_return_guards()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* attacker = make_guy(FAMILY_SOLDIER, 0);
+    walker* living_target = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(attacker && living_target, "attacker and living target created");
+    if (!(attacker && living_target))
+        return;
+
+    // Dead target guard.
+    living_target->dead = 1;
+    TEST_ASSERT(!attacker->attack(living_target), "attack should fail on dead target");
+    living_target->dead = 0;
+
+    // Friendly target guard.
+    living_target->team_num = attacker->team_num;
+    TEST_ASSERT(!attacker->attack(living_target), "attack should fail on friendly target");
+    living_target->team_num = 1;
+
+    // Treasure target guard.
+    walker* treasure_target = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_GOLD_BAR);
+    TEST_ASSERT(treasure_target != nullptr, "treasure target created");
+    if (treasure_target)
+        TEST_ASSERT(!attacker->attack(treasure_target), "attack should fail against treasure targets");
+
+    // Invincible target guard via bit flag.
+    living_target->stats()->set_bit_flags(BIT_INVINCIBLE, 1);
+    TEST_ASSERT(!attacker->attack(living_target), "attack should fail on BIT_INVINCIBLE targets");
+    living_target->stats()->set_bit_flags(BIT_INVINCIBLE, 0);
+
+    // Invulnerability timer guard.
+    living_target->invulnerable_left = 3;
+    TEST_ASSERT(!attacker->attack(living_target), "attack should fail while invulnerable_left is active");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_combat_round8_attack_early_return_guards);

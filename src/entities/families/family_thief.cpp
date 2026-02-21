@@ -5,24 +5,21 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/legacy/base.h>
+#include <openglad/data/level_data.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/core/stats.h>
-#include <openglad/render/view.h>
+#include <openglad/sim/sim_emit.h>
 
 #include <format>
 #include <string>
 #include <list>
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 #define BASE_GUY_HP 30
 
@@ -32,14 +29,14 @@ static bool thief_check_special_ai(living* self)
     {
         if (self->foe)
         {
-            Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+            std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
             if (distance < 130 && distance > 35)
                 return false;
         }
         else
         {
-            Sint32 howmany = 0;
-            myscreen->find_foes_in_range(myscreen->level_data.oblist,
+            std::int32_t howmany = 0;
+            self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                          110, &howmany, self);
             if (howmany < 3)
                 return false;
@@ -49,14 +46,14 @@ static bool thief_check_special_ai(living* self)
     }
     else if (self->current_special == 3)
     {
-        Uint32 myrange;
+        std::uint32_t myrange;
         if (!self->shifter_down)
             myrange = 80 + 4 * self->stats()->level;
         else
             myrange = 16 + 4 * self->stats()->level;
 
-        Sint32 howmany = 0;
-        myscreen->find_foes_in_range(myscreen->level_data.oblist,
+        std::int32_t howmany = 0;
+        self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                      myrange, &howmany, self);
         if (howmany < 1)
             return false;
@@ -65,33 +62,32 @@ static bool thief_check_special_ai(living* self)
     return true; // default: go for it
 }
 
-static void thief_level_up(guy* self, Sint32 level_diff)
+static void thief_level_up(guy* self, std::int32_t level_diff)
 {
-    Sint32 s = 8 * level_diff;
-    Sint32 d = 6 * level_diff;
-    Sint32 c = 8 * level_diff;
-    Sint32 it = 8 * level_diff;
-    Sint32 a = 1 * level_diff;
+    std::int32_t s = 8 * level_diff;
+    std::int32_t d = 6 * level_diff;
+    std::int32_t c = 8 * level_diff;
+    std::int32_t it = 8 * level_diff;
+    std::int32_t a = 1 * level_diff;
     s /= 2;
     d *= 2;
     c /= 2;
-    self->strength = static_cast<short>(static_cast<Sint32>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<Sint32>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<Sint32>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<Sint32>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
+    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
+    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
+    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
+    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
+    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
 static bool thief_do_special(walker* self)
 {
     walker* newob;
-    Sint32 i;
     std::string message, tempstr;
 
     switch (self->current_special)
     {
         case 1: // drop bomb
-            newob = myscreen->level_data.add_ob(Order::FX, FAMILY_BOMB, 1);
+            newob = self->sim_level->add_ob(Order::FX, FAMILY_BOMB, 1);
             newob->ani_type = ANI_BOMB;
             if (self->myguy)
             {
@@ -104,14 +100,10 @@ static bool thief_do_special(walker* self)
             newob->owner = self;
             // Run away if we're AI
             {
-                char person = 0;
-                for (i = 0; i < myscreen->numviews; i++)
-                    if (myscreen->viewob[i]->control == self)
-                        person = 1;
-                if (!person)
+                if (self->user == -1)
                 {
-                    Sint32 tempx = static_cast<Sint32>(rng(3)) - 1;
-                    Sint32 tempy = static_cast<Sint32>(rng(3)) - 1;
+                    std::int32_t tempx = static_cast<std::int32_t>(self->sim_rng->next(3)) - 1;
+                    std::int32_t tempy = static_cast<std::int32_t>(self->sim_rng->next(3)) - 1;
                     if ((tempx == 0) && (tempy == 0))
                         tempx = 1;
                     self->stats()->force_command(COMMAND_WALK, 20, tempx, tempy);
@@ -119,7 +111,7 @@ static bool thief_do_special(walker* self)
             }
             break;
         case 2: // cloak
-            self->invisibility_left = static_cast<short>(self->invisibility_left + 20 + static_cast<Sint32>(rng(20)) * self->stats()->level);
+            self->invisibility_left = static_cast<short>(self->invisibility_left + 20 + static_cast<std::int32_t>(self->sim_rng->next(20)) * self->stats()->level);
             break;
         case 3: // taunt / charm
             if (!self->shifter_down) // normal taunt
@@ -127,17 +119,17 @@ static bool thief_do_special(walker* self)
                 if (self->busy > 0)
                     return false;
                 {
-                    Sint32 howmany;
-                    std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                    std::int32_t howmany;
+                    std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                                           80 + 4 * self->stats()->level, &howmany, self);
                     for (auto* ob : newlist)
                     {
-                        if (ob && (rng(self->stats()->level) >= rng(ob->stats()->level)))
+                        if (ob && (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(ob->stats()->level)))
                         {
                             ob->foe = self;
                             ob->leader = self;
                             if (ob->query_act_type() != ACT_CONTROL)
-                                ob->stats()->force_command(COMMAND_FOLLOW, 10 + rng(self->stats()->level), 0, 0);
+                                ob->stats()->force_command(COMMAND_FOLLOW, 10 + self->sim_rng->next(self->stats()->level), 0, 0);
                         }
                     }
                 }
@@ -147,7 +139,7 @@ static bool thief_do_special(walker* self)
                     message = std::format("{}: 'Nyah Nyah!'", self->stats()->name);
                 else
                     message = "THIEF: 'Nyah Nyah!'";
-                myscreen->do_notify(message.c_str(), self);
+                og::sim::emit_notification(self->sim_events, message);
                 self->busy += 2;
                 break;
             }
@@ -156,10 +148,10 @@ static bool thief_do_special(walker* self)
                 if (self->busy > 0)
                     return false;
                 {
-                    Sint32 howmany;
-                    Sint32 didheal = 0;
-                    Sint32 generic2 = 0;
-                    std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                    std::int32_t howmany;
+                    std::int32_t didheal = 0;
+                    std::int32_t generic2 = 0;
+                    std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                                           16 + 4 * self->stats()->level, &howmany, self);
                     if (howmany < 1)
                         return false;
@@ -170,8 +162,8 @@ static bool thief_do_special(walker* self)
                             (ob->query_order() == Order::Living) &&
                             1)
                         {
-                            Sint32 generic = self->stats()->level - ob->stats()->level;
-                            if (generic < 0 || (!rng(20)))
+                            std::int32_t generic = self->stats()->level - ob->stats()->level;
+                            if (generic < 0 || (!self->sim_rng->next(20)))
                             {
                                 ob->foe = self;
                                 ob->attack(self);
@@ -203,7 +195,7 @@ static bool thief_do_special(walker* self)
                         tempstr = std::format("{} failed to charm!", message);
                     else
                         tempstr = std::format("{} charmed an opponent!", message);
-                    myscreen->do_notify(tempstr.c_str(), self);
+                    og::sim::emit_notification(self->sim_events, tempstr);
                     self->busy += 10;
                 }
                 break;
@@ -212,7 +204,7 @@ static bool thief_do_special(walker* self)
         default:
             if (self->busy > 0)
                 return false;
-            newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CLOUD);
+            newob = self->sim_level->add_ob(Order::FX, FAMILY_CLOUD);
             if (!newob)
                 return false;
             self->busy += 5;

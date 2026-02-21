@@ -1,5 +1,9 @@
 #include "unit.h"
 
+#ifdef ENABLE_COVERAGE
+extern "C" void __gcov_dump(void);
+#endif
+
 int main()
 {
     int passed = 0;
@@ -19,6 +23,8 @@ int main()
 
     std::fprintf(stderr, "\n=== Unit Results: %d passed, %d failed, %d total ===\n\n",
                  passed, failed, passed + failed);
+#ifdef ENABLE_COVERAGE
+    __gcov_dump();
+#endif
     return failed == 0 ? 0 : 1;
 }
-

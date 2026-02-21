@@ -24,26 +24,24 @@
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/entities/weapon_family_registry.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/render/smooth.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <format>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 weap::weap(const PixieData& data)
     : walker(data)
 {
 	do_bounce = 0; // don't normally bounce :)
+}
+
+weap::weap()
+    : walker()
+{
+	do_bounce = 0;
 }
 
 weap::~weap()
@@ -73,7 +71,7 @@ bool weap::act()
 
 	//  Log("weap %d is ani %d\n", family, ani_type);
 
-	if (active_screen()->level_data.mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
+	if (sim_level->mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
 		if (lineofsight)
 			lineofsight--;
 
@@ -89,7 +87,7 @@ bool weap::act()
 			{
 				const auto* wfd = get_weapon_family_descriptor(family);
 				if (!wfd || !wfd->skip_sit_notify)
-					active_screen()->do_notify("Weapon sitting", this);
+					og::sim::emit_notification(sim_events, "Weapon sitting");
 				return 1;
 			}
 
@@ -125,7 +123,7 @@ bool weap::act()
 			{
 				std::string msg = std::format("Weapon {} doing act random?", family);
 				//Log("Weapon doing act_random?\n");
-				active_screen()->do_notify(msg.c_str(), this);
+				og::sim::emit_notification(sim_events, msg);
 				return 1;
 			}  // END RANDOM
 			//break;
@@ -133,7 +131,7 @@ bool weap::act()
 		default:
 			{
 				//Log("No act type set for weapon.\n");
-				active_screen()->do_notify("No act type set for weapon", this);
+				og::sim::emit_notification(sim_events, "No act type set for weapon");
 				return 0;
 			}
 	}  // END SWITCH

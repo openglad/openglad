@@ -1,4 +1,4 @@
 #pragma once
 
-// Transitional shim: prefer including <openglad/render/smooth.h>.
-#include <openglad/render/smooth.h>
+// Transitional shim: smooth.h moved to data/ module.
+#include <openglad/data/smooth.h>

@@ -1,8 +1,9 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/runtime/game_context.h>
 #include "test_framework.h"
+#include <cstdint>
 
-static Uint32 rng_return(Uint32 x)
+static std::uint32_t rng_return(std::uint32_t x)
 {
     // Deterministic stub: pretend random(x) returned (x ? x-1 : 0).
     return (x == 0) ? 0u : (x - 1);
@@ -34,6 +35,18 @@ void test_compute_base_damage_deterministic()
 }
 REGISTER_TEST(test_compute_base_damage_deterministic);
 
+void test_compute_base_damage_null_rng_and_irandom_overload()
+{
+    RandomU32 null_rng = nullptr;
+    float d = compute_base_damage(9.0f, null_rng);
+    TEST_ASSERT((d > 7.49f && d < 7.51f), "null RandomU32 should fall back to deterministic zero RNG");
+
+    FixedRandom fixed(2);
+    float d_irandom = compute_base_damage(9.0f, fixed);
+    TEST_ASSERT((d_irandom > 9.49f && d_irandom < 9.51f), "IRandom overload should use rng.next()");
+}
+REGISTER_TEST(test_compute_base_damage_null_rng_and_irandom_overload);
+
 void test_compute_post_reduction_damage_clamps()
 {
     TEST_ASSERT_EQ(0, (int)compute_post_reduction_damage(-1.0f, 0.0f), "negative incoming damage clamps to 0");
@@ -51,7 +64,7 @@ void test_freeze_duration_basic()
 {
     FixedRandom fixed(10);
     // level=5, constitution=0 -> max_time = 40 + 10 = 50 -> rng.next(50) = 10
-    Sint32 result = compute_freeze_duration(5, 0, fixed);
+    std::int32_t result = compute_freeze_duration(5, 0, fixed);
     TEST_ASSERT_EQ(10, (int)result, "freeze duration with no constitution");
 }
 REGISTER_TEST(test_freeze_duration_basic);
@@ -60,7 +73,7 @@ void test_freeze_duration_with_constitution()
 {
     FixedRandom fixed(10);
     // level=5, constitution=42 -> max_time = 40 + 10 - 2 = 48 -> rng.next(48) = 10
-    Sint32 result = compute_freeze_duration(5, 42, fixed);
+    std::int32_t result = compute_freeze_duration(5, 42, fixed);
     TEST_ASSERT_EQ(10, (int)result, "freeze duration with constitution");
 }
 REGISTER_TEST(test_freeze_duration_with_constitution);
@@ -69,7 +82,7 @@ void test_freeze_duration_high_constitution_clamps()
 {
     FixedRandom fixed(999);
     // level=1, constitution=2100 -> max_time = 40 + 2 - 100 = -58 -> clamps to 0
-    Sint32 result = compute_freeze_duration(1, 2100, fixed);
+    std::int32_t result = compute_freeze_duration(1, 2100, fixed);
     TEST_ASSERT_EQ(0, (int)result, "freeze duration clamps to 0 when constitution overwhelms");
 }
 REGISTER_TEST(test_freeze_duration_high_constitution_clamps);
@@ -78,7 +91,7 @@ void test_freeze_duration_zero_level()
 {
     FixedRandom fixed(5);
     // level=0, constitution=0 -> max_time = 40 -> rng.next(40) = 5
-    Sint32 result = compute_freeze_duration(0, 0, fixed);
+    std::int32_t result = compute_freeze_duration(0, 0, fixed);
     TEST_ASSERT_EQ(5, (int)result, "freeze duration at level 0");
 }
 REGISTER_TEST(test_freeze_duration_zero_level);
@@ -139,7 +152,7 @@ void test_charm_duration_positive_diff()
 {
     FixedRandom fixed(10);
     // level_diff=3 -> generic = 3 -> rng(60) = 10 -> result = 25 + 10 = 35
-    Sint32 result = compute_charm_duration(3, fixed);
+    std::int32_t result = compute_charm_duration(3, fixed);
     TEST_ASSERT_EQ(35, (int)result, "charm duration with positive level diff");
 }
 REGISTER_TEST(test_charm_duration_positive_diff);
@@ -148,7 +161,7 @@ void test_charm_duration_zero_diff()
 {
     FixedRandom fixed(99);
     // level_diff=0 -> generic = 0 -> rng(0) = 0 -> result = 25
-    Sint32 result = compute_charm_duration(0, fixed);
+    std::int32_t result = compute_charm_duration(0, fixed);
     TEST_ASSERT_EQ(25, (int)result, "charm duration with zero level diff");
 }
 REGISTER_TEST(test_charm_duration_zero_diff);
@@ -157,7 +170,7 @@ void test_charm_duration_negative_diff()
 {
     FixedRandom fixed(99);
     // level_diff=-5 -> generic = 0 (clamped) -> rng(0) = 0 -> result = 25
-    Sint32 result = compute_charm_duration(-5, fixed);
+    std::int32_t result = compute_charm_duration(-5, fixed);
     TEST_ASSERT_EQ(25, (int)result, "charm duration with negative level diff clamps to base");
 }
 REGISTER_TEST(test_charm_duration_negative_diff);
@@ -289,6 +302,15 @@ void test_xp_from_action_eat_corpse()
 }
 REGISTER_TEST(test_xp_from_action_eat_corpse);
 
+void test_xp_from_action_unknown_enum_defaults_to_zero()
+{
+    FixedRandom fixed(7);
+    const ExpAction unknown = static_cast<ExpAction>(999);
+    short xp = compute_xp_from_action(unknown, 5, 2, 10, fixed);
+    TEST_ASSERT_EQ(0, (int)xp, "unknown ExpAction should default to zero XP");
+}
+REGISTER_TEST(test_xp_from_action_unknown_enum_defaults_to_zero);
+
 // ---------------------------------------------------------------------------
 // compute_regen_tick tests
 // ---------------------------------------------------------------------------
@@ -370,3 +392,18 @@ void test_hp_regen_no_delay()
     TEST_ASSERT_EQ(0, (int)r.new_regen_delay, "regen delay should remain 0");
 }
 REGISTER_TEST(test_hp_regen_no_delay);
+
+void test_combat_math_round11_edge_branches()
+{
+    // incoming < 1 with huge armor: reduction clamps to incoming-1 (negative), post-reduction still non-negative.
+    const float reduction = compute_damage_reduction(0.5f, 999.0f);
+    TEST_ASSERT(reduction < 0.0f, "tiny incoming damage should hit incoming-1 clamp branch");
+    const float post = compute_post_reduction_damage(0.5f, 999.0f);
+    TEST_ASSERT(post > 0.49f, "post reduction should remain positive for tiny incoming values");
+
+    // Null RNG path with non-perfect-square base to exercise floor(sqrt()) argument.
+    RandomU32 null_rng = nullptr;
+    const float base = compute_base_damage(15.0f, null_rng);
+    TEST_ASSERT(base > 13.0f && base < 14.0f, "null RNG fallback should use zero return with floor(sqrt(base))");
+}
+REGISTER_TEST(test_combat_math_round11_edge_branches);

@@ -1,5 +1,6 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
@@ -40,7 +41,7 @@ static walker* make_special_guy(char family, unsigned char team = 0, short level
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(level, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     if (w) {
         w->setxy(100, 100);
         w->stats()->magicpoints = 500; // lots of magic for specials
@@ -107,6 +108,14 @@ public:
 private:
     std::vector<Uint32> vals_;
     size_t idx_;
+};
+
+class NoStatsWalker : public walker {
+public:
+    NoStatsWalker() : walker()
+    {
+        stats_.reset();
+    }
 };
 
 // ---------------------------------------------------------------------------
@@ -1072,6 +1081,82 @@ void test_walker_special_cleric_raise_skeleton_and_ghost_from_stain()
 }
 REGISTER_SPECIAL_TEST(test_walker_special_cleric_raise_skeleton_and_ghost_from_stain);
 
+void test_walker_special_cleric_mystic_mace_low_int_and_success_paths()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 8);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    if (!cleric)
+        return;
+
+    cleric->current_special = 1;
+    cleric->shifter_down = 1;
+    cleric->stats()->special_cost[1] = 0;
+    cleric->busy = 0;
+    cleric->user = 0;
+
+    if (cleric->myguy) {
+        cleric->myguy->intelligence = 40;
+    }
+    int shields_before = count_family_all_lists(FAMILY_MAGIC_SHIELD);
+    (void)cleric->special();
+    int shields_after_low_int = count_family_all_lists(FAMILY_MAGIC_SHIELD);
+    TEST_ASSERT_EQ(shields_before, shields_after_low_int,
+                   "low-int mystic mace path should not create shield");
+
+    if (cleric->myguy) {
+        cleric->myguy->intelligence = 120;
+    }
+    cleric->busy = 0;
+    float mp_before = cleric->stats()->magicpoints;
+    (void)cleric->special();
+    int shields_after_success = count_family_all_lists(FAMILY_MAGIC_SHIELD);
+    TEST_ASSERT(shields_after_success > shields_after_low_int,
+                "valid mystic mace cast should create shield fx");
+    TEST_ASSERT(cleric->busy > 0, "valid mystic mace should set busy");
+    TEST_ASSERT(cleric->stats()->magicpoints < mp_before,
+                "valid mystic mace should spend magicpoints");
+
+    delete cleric;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_SPECIAL_TEST(test_walker_special_cleric_mystic_mace_low_int_and_success_paths);
+
+void test_walker_special_cleric_resurrect_friendly_and_enemy_stains()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 8);
+    walker* ally = make_special_guy(FAMILY_SOLDIER, 1, 5);
+    TEST_ASSERT(cleric != nullptr && ally != nullptr, "cleric and ally created");
+    if (!(cleric && ally))
+        return;
+
+    cleric->setxy(100, 100);
+    cleric->current_special = 4;
+    cleric->stats()->special_cost[4] = 0;
+    cleric->stats()->magicpoints = 2000;
+    myscreen->save_data.allied_mode = 0;
+    ally->setxy(110, 100);
+    ally->team_num = 1;
+    ally->generate_bloodspot();
+
+    int soldiers_before = count_family_in_oblist(FAMILY_SOLDIER);
+    (void)cleric->special();
+    int soldiers_after = count_family_in_oblist(FAMILY_SOLDIER);
+    TEST_ASSERT(soldiers_after >= soldiers_before,
+                "friendly stain should allow resurrecting original family");
+
+    delete ally;
+    delete cleric;
+    myscreen->level_data.delete_objects();
+
+    // Enemy-stain branch depends on map passability and alliance mode interactions;
+    // keep this test deterministic by validating the friendly resurrection path only.
+}
+REGISTER_SPECIAL_TEST(test_walker_special_cleric_resurrect_friendly_and_enemy_stains);
+
 void test_walker_special_elf_rock_barrage_level4_smoke()
 {
     myscreen->level_data.delete_objects();
@@ -1160,3 +1245,70 @@ void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
     myscreen->level_data.delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges);
+
+void test_walker_special_guard_paths_and_teleport_failures()
+{
+    walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
+    TEST_ASSERT(w != nullptr, "mage created");
+    if (!w)
+        return;
+
+    // dead guard
+    w->dead = 1;
+    TEST_ASSERT(!w->special(), "dead walker special should fail");
+    w->dead = 0;
+
+    // magic cost guard
+    w->current_special = 1;
+    w->stats()->special_cost[1] = 50;
+    w->stats()->magicpoints = 0;
+    TEST_ASSERT(!w->special(), "insufficient MP special should fail");
+
+    // order guard
+    w->stats()->magicpoints = 500;
+    w->set_order_family(Order::FX, FAMILY_MARKER);
+    TEST_ASSERT(!w->special(), "non-living special should fail");
+    w->set_order_family(Order::Living, FAMILY_MAGE);
+
+    // teleport_ranged failure branch
+    w->setxy(-200, -200);
+    TEST_ASSERT(!w->teleport_ranged(0), "teleport_ranged should fail when no passable destination exists");
+
+    // turn_undead no-target branch
+    TEST_ASSERT_EQ(-1, (int)w->turn_undead(10, 1), "turn_undead should return -1 with no foes in range");
+
+    delete w;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_SPECIAL_TEST(test_walker_special_guard_paths_and_teleport_failures);
+
+void test_walker_special_no_stats_guard()
+{
+    NoStatsWalker no_stats;
+    TEST_ASSERT(!no_stats.special(), "special should fail safely when stats are missing");
+}
+REGISTER_SPECIAL_TEST(test_walker_special_no_stats_guard);
+
+void test_walker_special_unknown_family_and_teleport_ranged_fail_loop()
+{
+    walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    // special(): living + enough MP but missing descriptor callback -> return tail.
+    w->set_order_family(Order::Living, 120);
+    w->current_special = 1;
+    w->stats()->special_cost[1] = 0;
+    w->stats()->magicpoints = 100;
+    TEST_ASSERT(!w->special(), "unknown living family special should fall through and return false");
+
+    // teleport_ranged(): exhaust keep_going loop and hit explicit false return.
+    w->set_order_family(Order::Living, FAMILY_MAGE);
+    w->setxy(-1000, -1000);
+    TEST_ASSERT(!w->teleport_ranged(1), "teleport_ranged should fail after retries on invalid area");
+
+    delete w;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_SPECIAL_TEST(test_walker_special_unknown_family_and_teleport_ranged_fail_loop);

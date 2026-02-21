@@ -1,4 +1,5 @@
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/screen.h>
@@ -16,7 +17,7 @@ static std::unique_ptr<walker> make_walker_at(char family, short x, short y, uns
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(2, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     if (w) w->setxy(x, y);
     return w;
 }
@@ -76,7 +77,7 @@ void test_screen_query_grid_passable_walking()
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l) return;
-    auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER, myscreen);
+    auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     if (!w) return;
     w->setxy(100, 100);
 
@@ -97,7 +98,7 @@ void test_screen_query_grid_passable_weapon()
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l) return;
-    auto w = l->create_walker_owned(Order::Weapon, FAMILY_KNIFE, myscreen);
+    auto w = l->create_walker_owned(Order::Weapon, FAMILY_KNIFE);
     if (!w) return;
     w->setxy(100, 100);
 

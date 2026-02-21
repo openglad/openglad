@@ -1,4 +1,5 @@
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/gloader.h>
 #include <openglad/render/view.h>
@@ -13,7 +14,7 @@ static std::unique_ptr<walker> make_guy(char family, unsigned char team = 0, sho
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(level, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     if (w) w->setxy(100, 100);
     return w;
 }
@@ -70,7 +71,7 @@ REGISTER_TEST(test_walker_death_small_slime);
 
 void test_walker_death_medium_slime()
 {
-    auto w = myscreen->level_data.myloader->create_walker_owned(Order::Living, FAMILY_MEDIUM_SLIME, myscreen);
+    auto w = myscreen->level_data.myloader->create_walker_owned(Order::Living, FAMILY_MEDIUM_SLIME);
     if (!w) return;
     w->setxy(100, 100);
     w->dead = 1;
@@ -80,7 +81,7 @@ REGISTER_TEST(test_walker_death_medium_slime);
 
 void test_walker_death_large_slime()
 {
-    auto w = myscreen->level_data.myloader->create_walker_owned(Order::Living, FAMILY_SLIME, myscreen);
+    auto w = myscreen->level_data.myloader->create_walker_owned(Order::Living, FAMILY_SLIME);
     if (!w) return;
     w->setxy(100, 100);
     w->dead = 1;

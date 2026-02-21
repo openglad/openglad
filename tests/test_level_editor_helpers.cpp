@@ -129,7 +129,7 @@ static std::unique_ptr<walker> make_living(unsigned char family)
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    auto w = l->create_walker_owned(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family);
     if (w) {
         w->dead = 0;
         w->user = -1;
@@ -224,8 +224,8 @@ void test_level_editor_create_new_campaign_and_detect_exists()
                     "all objects inside area should report false");
 
         loader* l = myscreen->level_data.myloader.get();
-        auto fx_inside = l ? l->create_walker_owned(Order::FX, FAMILY_FLASH, myscreen) : nullptr;
-        auto fx_outside = l ? l->create_walker_owned(Order::FX, FAMILY_FLASH, myscreen) : nullptr;
+        auto fx_inside = l ? l->create_walker_owned(Order::FX, FAMILY_FLASH) : nullptr;
+        auto fx_outside = l ? l->create_walker_owned(Order::FX, FAMILY_FLASH) : nullptr;
         TEST_ASSERT(fx_inside != nullptr && fx_outside != nullptr, "fx objects should be created");
         if (fx_inside && fx_outside) {
             walker* fx_inside_p = fx_inside.get();
@@ -241,8 +241,8 @@ void test_level_editor_create_new_campaign_and_detect_exists()
                         "inside fx objects should report false");
         }
 
-        auto weap_inside = l ? l->create_walker_owned(Order::Weapon, FAMILY_BOMB, myscreen) : nullptr;
-        auto weap_outside = l ? l->create_walker_owned(Order::Weapon, FAMILY_BOMB, myscreen) : nullptr;
+        auto weap_inside = l ? l->create_walker_owned(Order::Weapon, FAMILY_BOMB) : nullptr;
+        auto weap_outside = l ? l->create_walker_owned(Order::Weapon, FAMILY_BOMB) : nullptr;
         TEST_ASSERT(weap_inside != nullptr && weap_outside != nullptr, "weapon objects should be created");
         if (weap_inside && weap_outside) {
             walker* weap_inside_p = weap_inside.get();

@@ -17,6 +17,7 @@
  
 #pragma once
 
+#include <openglad/platform/io_common.h>  // CampaignLoadError, CampaignLoadResult, load_campaign
 #include <openglad/runtime/screen.h>
 #include <map>
 #include <string>
@@ -25,28 +26,13 @@ struct CampaignResult
 {
     std::string id;
     int first_level;
-    
+
     CampaignResult()
         : first_level(1)
     {}
 };
 
-enum class CampaignLoadError
-{
-    None = 0,
-    UnmountFailed,
-    MountFailed
-};
-
-struct CampaignLoadResult
-{
-    CampaignLoadError error = CampaignLoadError::None;
-    int current_level = 1;
-};
+// CampaignLoadError, CampaignLoadResult, load_campaign_with_error, and
+// load_campaign are declared in io_common.h (shared by SDL and headless).
 
 CampaignResult pick_campaign(SaveData* save_data, bool enable_delete = false);
-
-CampaignLoadResult load_campaign_with_error(const std::string& campaign,
-    std::map<std::string, int>& current_levels, int first_level = 1);
-
-int load_campaign(const std::string& campaign, std::map<std::string, int>& current_levels, int first_level = 1);

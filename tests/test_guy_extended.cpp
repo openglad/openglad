@@ -1,4 +1,5 @@
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
@@ -10,6 +11,7 @@ extern screen* myscreen;
 extern Sint32 costlist[NUM_FAMILIES];
 extern Sint32 statlist[NUM_FAMILIES][6];
 extern Sint32 statcosts[NUM_FAMILIES][6];
+int MAX(int a, int b);
 
 // ---------------------------------------------------------------------------
 // upgrade_to_level - exercises the big family switch (lines 323-456)
@@ -146,7 +148,7 @@ void test_guy_update_derived_stats_soldier()
 {
     guy g(FAMILY_SOLDIER);
     g.upgrade_to_level(3, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP should be positive");
     TEST_ASSERT(w->stats()->max_magicpoints >= 0, "MP should be non-negative");
@@ -164,7 +166,7 @@ void test_guy_update_derived_stats_all_families()
     for (int i = 0; i < 14; i++) {
         guy g(families[i]);
         g.upgrade_to_level(3, true);
-        auto w = g.create_walker_owned(myscreen);
+        auto w = guy_create_walker_owned(g, myscreen);
         if (w) {
             TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP should be positive for all families");
         }
@@ -211,7 +213,7 @@ void test_guy_create_walker_various()
     for (int i = 0; i < 6; i++) {
         guy g(families[i]);
         g.upgrade_to_level(2, true);
-        auto w = g.create_walker_owned(myscreen);
+        auto w = guy_create_walker_owned(g, myscreen);
         TEST_ASSERT(w != nullptr, "create_walker should succeed");
         TEST_ASSERT(w->myguy != nullptr, "walker should have myguy set");
         TEST_ASSERT(w->stats()->level == 2, "walker level should match guy level");
@@ -267,3 +269,73 @@ void test_guy_derived_bonus_scaling()
     TEST_ASSERT(mp2 > mp1, "more intelligence should give more MP bonus");
 }
 REGISTER_TEST(test_guy_derived_bonus_scaling);
+
+void test_guy_unknown_family_fallback_and_zero_heart_value()
+{
+    guy unknown(127);
+    TEST_ASSERT_EQ(12, (int)unknown.strength, "unknown family should use fallback STR");
+    TEST_ASSERT_EQ(6, (int)unknown.dexterity, "unknown family should use fallback DEX");
+    TEST_ASSERT_EQ(12, (int)unknown.constitution, "unknown family should use fallback CON");
+    TEST_ASSERT_EQ(8, (int)unknown.intelligence, "unknown family should use fallback INT");
+    TEST_ASSERT_EQ(6, (int)unknown.armor, "unknown family should use fallback armor");
+    TEST_ASSERT_EQ(1, (int)unknown.level, "unknown family should use fallback level");
+
+    unknown.family = 127;
+    TEST_ASSERT_EQ(0, (int)unknown.query_heart_value(), "unknown family should have zero heart value");
+}
+REGISTER_TEST(test_guy_unknown_family_fallback_and_zero_heart_value);
+
+void test_guy_update_derived_stats_clamps_speed_and_regen_delays()
+{
+    guy g(FAMILY_SOLDIER);
+    g.dexterity = 3000;
+    g.constitution = 3000;
+    g.strength = 3000;
+    g.intelligence = 3000;
+    g.level = 1;
+
+    auto w = guy_create_walker_owned(g, myscreen);
+    TEST_ASSERT(w != nullptr, "walker should be created");
+    if (!w)
+        return;
+
+    TEST_ASSERT(w->stepsize <= 12.0f, "stepsize should clamp to 12");
+    TEST_ASSERT(w->fire_frequency >= 1.0f, "fire_frequency should clamp to minimum 1");
+    TEST_ASSERT(w->stats()->heal_per_round > 0, "high stats should increase heal_per_round");
+    TEST_ASSERT(w->stats()->magic_per_round > 0, "high stats should increase magic_per_round");
+    TEST_ASSERT(w->stats()->max_heal_delay >= 2, "max_heal_delay should respect minimum clamp");
+    TEST_ASSERT(w->stats()->max_magic_delay >= 2, "max_magic_delay should respect minimum clamp");
+}
+REGISTER_TEST(test_guy_update_derived_stats_clamps_speed_and_regen_delays);
+
+void test_guy_batch5_max_helper_and_more_unknown_family_paths()
+{
+    TEST_ASSERT_EQ(5, MAX(3, 5), "MAX should return second operand when first is lower");
+    TEST_ASSERT_EQ(7, MAX(7, 2), "MAX should return first operand when first is higher");
+
+    guy unknown_neg(-999);
+    TEST_ASSERT_STR_EQ("BEAST", unknown_neg.name.c_str(), "negative unknown family should use fallback name");
+    TEST_ASSERT_EQ(1, (int)unknown_neg.level, "negative unknown family should use fallback level");
+    unknown_neg.family = static_cast<char>(-127);
+    TEST_ASSERT_EQ(0, (int)unknown_neg.query_heart_value(),
+                   "unknown negative family should report zero heart value");
+}
+REGISTER_TEST(test_guy_batch5_max_helper_and_more_unknown_family_paths);
+
+void test_guy_round10_query_heart_value_clamps_negative_stat_deltas_to_base_cost()
+{
+    guy g(FAMILY_SOLDIER);
+    const Sint32 base = g.query_heart_value();
+
+    // Drop stats below base values; MAX(temp,0) branches should prevent negative contributions.
+    g.strength = static_cast<short>(g.strength - 5);
+    g.dexterity = static_cast<short>(g.dexterity - 5);
+    g.constitution = static_cast<short>(g.constitution - 5);
+    g.intelligence = static_cast<short>(g.intelligence - 5);
+    g.armor = static_cast<short>(g.armor - 5);
+
+    const Sint32 lowered = g.query_heart_value();
+    TEST_ASSERT_EQ(base, lowered,
+                   "query_heart_value should clamp negative stat deltas and keep base hiring cost only");
+}
+REGISTER_TEST(test_guy_round10_query_heart_value_clamps_negative_stat_deltas_to_base_cost);

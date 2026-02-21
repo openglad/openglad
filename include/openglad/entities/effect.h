@@ -18,20 +18,16 @@
 
 // Definition of EFFECT class
 
-#include <openglad/legacy/base.h>
-#include <openglad/entities/obmap.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/core/stats.h>
 #include <openglad/entities/walker.h>
-#include <openglad/entities/guy.h>
 // Pure helper functions extracted from effect logic
 void orbit_offset(int drawcycle, float &xd, float &yd);
-Sint32 compute_explosion_range(Sint32 level, short skip_exit);
+std::int32_t compute_explosion_range(std::int32_t level, short skip_exit);
 
 class effect : public walker
 {
 	public:
 		effect(const PixieData& data);
+		effect();  // Headless constructor (no rendering data)
 		~effect() override;
 		effect(const effect&) = delete;
 		effect& operator=(const effect&) = delete;

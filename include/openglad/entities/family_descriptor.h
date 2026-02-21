@@ -16,7 +16,7 @@
  */
 #pragma once
 
-#include "SDL.h"
+#include <cstdint>
 
 inline constexpr int FD_NUM_SPECIALS = 6;
 
@@ -30,22 +30,22 @@ struct FamilyDescriptor {
     const char* name;                          // "SOLDIER", "ELF", etc.
 
     // Base stats from guy.cpp statlist[]
-    Sint32 base_stats[6];                      // STR, DEX, CON, INT, ARMOR, LVL
+    std::int32_t base_stats[6];                      // STR, DEX, CON, INT, ARMOR, LVL
 
     // Hiring cost from guy.cpp costlist[]
-    Sint32 hiring_cost;
+    std::int32_t hiring_cost;
 
     // Derived bonuses from guy.cpp derived_bonuses[]
     float derived_bonuses[8];                  // HP, MP, ATK, RATK, RNG, DEF, SPD, ATKSPD
 
     // Stat upgrade costs from guy.cpp statcosts[]
-    Sint32 stat_costs[6];                      // STR, DEX, CON, INT, ARMOR, LVL
+    std::int32_t stat_costs[6];                      // STR, DEX, CON, INT, ARMOR, LVL
 
     // Data from gloader.cpp set_walker()
     unsigned short special_cost[FD_NUM_SPECIALS]; // cost of each special (index 0 unused)
     short weapon_cost;                         // cost to fire weapon
     int default_weapon;                        // weapon family ID
-    Sint32 init_bit_flags;                     // BIT_ flags to set on creation
+    std::int32_t init_bit_flags;                     // BIT_ flags to set on creation
     char init_ani_type;                        // 0=default, ANI_SKEL_GROW for skeleton
     float init_max_magicpoints;                // override max MP (0 = use default)
 
@@ -71,8 +71,8 @@ struct FamilyDescriptor {
     bool (*do_special)(walker* self);
     bool (*check_special_ai)(living* self);
     void (*hit_response)(statistics* stats, walker* who);
-    void (*set_difficulty)(living* self, Uint32 level);
-    void (*level_up)(guy* self, Sint32 level_diff);
+    void (*set_difficulty)(living* self, std::uint32_t level);
+    void (*level_up)(guy* self, std::int32_t level_diff);
     bool (*on_death)(walker* self);            // return true = handled
 
     // Step 3 callbacks: remaining per-family behavioral dispatch
