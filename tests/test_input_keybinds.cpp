@@ -1,9 +1,11 @@
 #include <openglad/input/input.h>
+#include <openglad/input/button.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/data/gparser.h>
 #include "test_framework.h"
 
 extern int player_keys[4][NUM_KEYS];
+extern cfg_store cfg;
 
 namespace
 {
@@ -92,6 +94,42 @@ struct ModeKeyBindingGuard
         set_player_control_mode(player, static_cast<int>(ControlDirectionMode::EightDirection));
         set_player_key_binding(player, key_enum, old_eight);
         set_player_control_mode(player, old_mode);
+    }
+};
+
+struct FullControlSnapshotGuard
+{
+    int modes[4];
+    int mode4[4][NUM_KEYS];
+    int mode8[4][NUM_KEYS];
+
+    FullControlSnapshotGuard()
+    {
+        for (int p = 0; p < 4; ++p)
+        {
+            modes[p] = get_player_control_mode(p);
+            for (int k = 0; k < NUM_KEYS; ++k)
+            {
+                mode4[p][k] = get_player_key_binding_for_mode(
+                    p, static_cast<int>(ControlDirectionMode::FourDirection), k);
+                mode8[p][k] = get_player_key_binding_for_mode(
+                    p, static_cast<int>(ControlDirectionMode::EightDirection), k);
+            }
+        }
+    }
+
+    ~FullControlSnapshotGuard()
+    {
+        for (int p = 0; p < 4; ++p)
+        {
+            set_player_control_mode(p, static_cast<int>(ControlDirectionMode::FourDirection));
+            for (int k = 0; k < NUM_KEYS; ++k)
+                set_player_key_binding(p, k, mode4[p][k]);
+            set_player_control_mode(p, static_cast<int>(ControlDirectionMode::EightDirection));
+            for (int k = 0; k < NUM_KEYS; ++k)
+                set_player_key_binding(p, k, mode8[p][k]);
+            set_player_control_mode(p, modes[p]);
+        }
     }
 };
 } // namespace
@@ -287,3 +325,60 @@ void test_input_control_settings_cfg_persists_separate_mode_keymaps()
         "config load should restore 8-direction binding");
 }
 REGISTER_TEST(test_input_control_settings_cfg_persists_separate_mode_keymaps);
+
+void test_controls_reset_defaults_action_resets_controls_only()
+{
+    FullControlSnapshotGuard guard;
+
+    reset_default_player_controls();
+    int expected_mode[4];
+    int expected_mode4[4][NUM_KEYS];
+    int expected_mode8[4][NUM_KEYS];
+    for (int p = 0; p < 4; ++p)
+    {
+        expected_mode[p] = get_player_control_mode(p);
+        for (int k = 0; k < NUM_KEYS; ++k)
+        {
+            expected_mode4[p][k] = get_player_key_binding_for_mode(
+                p, static_cast<int>(ControlDirectionMode::FourDirection), k);
+            expected_mode8[p][k] = get_player_key_binding_for_mode(
+                p, static_cast<int>(ControlDirectionMode::EightDirection), k);
+        }
+    }
+
+    for (int p = 0; p < 4; ++p)
+    {
+        set_player_control_mode(p, static_cast<int>(ControlDirectionMode::FourDirection));
+        set_player_key_binding(p, KEY_UP, SDLK_F1 + p);
+        set_player_control_mode(p, static_cast<int>(ControlDirectionMode::EightDirection));
+        set_player_key_binding(p, KEY_UP_RIGHT, SDLK_F5 + p);
+    }
+
+    const std::string old_render = cfg.get_setting("graphics", "render");
+    cfg.apply_setting("graphics", "render", "CONTROL_RESET_TEST");
+
+    vbutton b;
+    const Sint32 result = b.do_call(button_action_id(ButtonAction::RestoreDefaultControls), -1);
+    TEST_ASSERT_EQ(2, (int)result, "restore-default-controls should request redraw");
+
+    for (int p = 0; p < 4; ++p)
+    {
+        TEST_ASSERT_EQ(expected_mode[p], get_player_control_mode(p),
+            "control reset should restore default mode");
+        for (int k = 0; k < NUM_KEYS; ++k)
+        {
+            TEST_ASSERT_EQ(expected_mode4[p][k],
+                get_player_key_binding_for_mode(p, static_cast<int>(ControlDirectionMode::FourDirection), k),
+                "control reset should restore default 4-direction map");
+            TEST_ASSERT_EQ(expected_mode8[p][k],
+                get_player_key_binding_for_mode(p, static_cast<int>(ControlDirectionMode::EightDirection), k),
+                "control reset should restore default 8-direction map");
+        }
+    }
+
+    TEST_ASSERT_STR_EQ("CONTROL_RESET_TEST", cfg.get_setting("graphics", "render").c_str(),
+        "controls reset should not modify non-controls settings");
+
+    cfg.apply_setting("graphics", "render", old_render);
+}
+REGISTER_TEST(test_controls_reset_defaults_action_resets_controls_only);

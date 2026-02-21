@@ -695,6 +695,9 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             parse_int_strict(active_config().get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
         update_overscan_setting();
         return REDRAW;
+    case ButtonAction::RestoreDefaultControls:
+        reset_default_player_controls();
+        return REDRAW;
     default:
         return OK;
     }

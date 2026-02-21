@@ -248,11 +248,12 @@ enum class ButtonAction : Sint32
     ToggleHealNumbers = 42,
     ToggleGore = 43,
     RestoreDefaultSettings = 44,
-    ShowHelp = 45,
-    CreateProgressMenu = 46,
-    OpenControlSettings = 47,
-    ToggleControlMode = 48,
-    EditPlayerKeymap = 49,
+    RestoreDefaultControls = 45,
+    ShowHelp = 46,
+    CreateProgressMenu = 47,
+    OpenControlSettings = 48,
+    ToggleControlMode = 49,
+    EditPlayerKeymap = 50,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)
@@ -308,6 +309,7 @@ inline constexpr ButtonAction button_action_from_id(Sint32 action)
     case button_action_id(ButtonAction::ToggleHealNumbers): return ButtonAction::ToggleHealNumbers;
     case button_action_id(ButtonAction::ToggleGore): return ButtonAction::ToggleGore;
     case button_action_id(ButtonAction::RestoreDefaultSettings): return ButtonAction::RestoreDefaultSettings;
+    case button_action_id(ButtonAction::RestoreDefaultControls): return ButtonAction::RestoreDefaultControls;
     case button_action_id(ButtonAction::ShowHelp): return ButtonAction::ShowHelp;
     case button_action_id(ButtonAction::CreateProgressMenu): return ButtonAction::CreateProgressMenu;
     case button_action_id(ButtonAction::OpenControlSettings): return ButtonAction::OpenControlSettings;

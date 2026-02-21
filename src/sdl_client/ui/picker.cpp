@@ -600,7 +600,8 @@ button control_options_buttons[] =
         button_action_id(ButtonAction::ToggleControlMode), 3, MenuNav::UpDownRight(5, 9, 8)),
     button("player4_remap", "REMAP P4", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(3), 100, 15,
         button_action_id(ButtonAction::EditPlayerKeymap), 3, MenuNav::UpDownLeft(6, 9, 7)),
-    button("controls_restore_defaults", "RESET DEFAULTS", KEYSTATE_UNKNOWN, 80, 170, 160, 15, RESTORE_DEFAULT_SETTINGS, -1, MenuNav::Up(7)),
+    button("controls_restore_defaults", "RESET DEFAULTS", KEYSTATE_UNKNOWN, 80, 170, 160, 15,
+        button_action_id(ButtonAction::RestoreDefaultControls), -1, MenuNav::Up(7)),
 };
 
 // beginmenu (first menu of new game), create_team_menu
