@@ -851,6 +851,33 @@ static std::string get_key_display_name_short(int keycode)
     return sname;
 }
 
+std::string build_player_control_summary(int player_index)
+{
+    if (player_index < 0 || player_index >= 4)
+        return {};
+
+    const bool eight_dir =
+        get_player_control_mode(player_index) == static_cast<int>(ControlDirectionMode::EightDirection);
+    const std::string up_s = get_key_display_name_short(player_keys[player_index][KEY_UP]);
+    const std::string left_s = get_key_display_name_short(player_keys[player_index][KEY_LEFT]);
+    const std::string down_s = get_key_display_name_short(player_keys[player_index][KEY_DOWN]);
+    const std::string right_s = get_key_display_name_short(player_keys[player_index][KEY_RIGHT]);
+    const std::string yell_s = get_key_display_name_short(player_keys[player_index][KEY_YELL]);
+
+    if (!eight_dir)
+    {
+        return std::format("{}/{}/{}/{} Yell:{}",
+            up_s, left_s, down_s, right_s, yell_s);
+    }
+
+    const std::string up_right_s = get_key_display_name_short(player_keys[player_index][KEY_UP_RIGHT]);
+    const std::string down_right_s = get_key_display_name_short(player_keys[player_index][KEY_DOWN_RIGHT]);
+    const std::string down_left_s = get_key_display_name_short(player_keys[player_index][KEY_DOWN_LEFT]);
+    const std::string up_left_s = get_key_display_name_short(player_keys[player_index][KEY_UP_LEFT]);
+    return std::format("Card:{}/{}/{}/{} Diag:{}/{}/{}/{} Y:{}",
+        up_s, left_s, down_s, right_s, up_right_s, down_right_s, down_left_s, up_left_s, yell_s);
+}
+
 static void draw_remap_prompt(const std::string& prompt)
 {
     text& mytext = myscreen->text_normal;
@@ -868,16 +895,30 @@ static void remap_player_keys(int player_index)
     if (player_index < 0 || player_index >= 4)
         return;
 
+    const bool eight_dir =
+        get_player_control_mode(player_index) == static_cast<int>(ControlDirectionMode::EightDirection);
     struct KeyPrompt { int key; const char* label; };
-    constexpr KeyPrompt prompts[] = {
+    constexpr KeyPrompt prompts_four[] = {
         {KEY_UP, "UP"},
         {KEY_RIGHT, "RIGHT"},
         {KEY_DOWN, "DOWN"},
         {KEY_LEFT, "LEFT"},
-        {KEY_UP_RIGHT, "UP-RIGHT (8-direction)"},
-        {KEY_DOWN_RIGHT, "DOWN-RIGHT (8-direction)"},
-        {KEY_DOWN_LEFT, "DOWN-LEFT (8-direction)"},
-        {KEY_UP_LEFT, "UP-LEFT (8-direction)"},
+        {KEY_FIRE, "FIRE"},
+        {KEY_SPECIAL, "SPECIAL"},
+        {KEY_SPECIAL_SWITCH, "SPECIAL SWITCH"},
+        {KEY_YELL, "YELL"},
+        {KEY_SWITCH, "SWITCH CHARACTER"},
+        {KEY_SHIFTER, "SHIFTER"},
+    };
+    constexpr KeyPrompt prompts_eight[] = {
+        {KEY_UP, "UP"},
+        {KEY_RIGHT, "RIGHT"},
+        {KEY_DOWN, "DOWN"},
+        {KEY_LEFT, "LEFT"},
+        {KEY_UP_RIGHT, "UP-RIGHT"},
+        {KEY_DOWN_RIGHT, "DOWN-RIGHT"},
+        {KEY_DOWN_LEFT, "DOWN-LEFT"},
+        {KEY_UP_LEFT, "UP-LEFT"},
         {KEY_FIRE, "FIRE"},
         {KEY_SPECIAL, "SPECIAL"},
         {KEY_SPECIAL_SWITCH, "SPECIAL SWITCH"},
@@ -886,8 +927,12 @@ static void remap_player_keys(int player_index)
         {KEY_SHIFTER, "SHIFTER"},
     };
 
-    for (const auto& prompt : prompts)
+    const KeyPrompt* prompts = eight_dir ? prompts_eight : prompts_four;
+    const size_t prompt_count = eight_dir ? array_size(prompts_eight) : array_size(prompts_four);
+
+    for (size_t idx = 0; idx < prompt_count; ++idx)
     {
+        const auto& prompt = prompts[idx];
         draw_remap_prompt(std::format("P{} {}", player_index + 1, prompt.label));
         assignKeyFromWaitEvent(player_index, prompt.key);
     }
@@ -959,15 +1004,8 @@ Sint32 main_controls_options()
         {
             const int btn_y = CTRL_PLAYER_Y(i);
             mytext.write_xy(10, btn_y + 3, DARK_BLUE, "P%d", i + 1);
-
-            const std::string up_s = get_key_display_name_short(player_keys[i][KEY_UP]);
-            const std::string left_s = get_key_display_name_short(player_keys[i][KEY_LEFT]);
-            const std::string down_s = get_key_display_name_short(player_keys[i][KEY_DOWN]);
-            const std::string right_s = get_key_display_name_short(player_keys[i][KEY_RIGHT]);
-            const std::string yell_s = get_key_display_name_short(player_keys[i][KEY_YELL]);
-            mytext.write_xy(30, btn_y + 17, DARK_BLUE, "%s/%s/%s/%s Yell:%s",
-                up_s.c_str(), left_s.c_str(), down_s.c_str(),
-                right_s.c_str(), yell_s.c_str());
+            const std::string summary = build_player_control_summary(i);
+            mytext.write_xy(30, btn_y + 17, DARK_BLUE, "%s", summary.c_str());
         }
 
         mytext.write_xy(10, 155, DARK_BLUE, "4-dir = cardinal only. 8-dir adds diagonals.");

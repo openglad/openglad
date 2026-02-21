@@ -104,6 +104,10 @@ SDL_Joystick* joysticks[MAX_NUM_JOYSTICKS];
 
 namespace
 {
+constexpr int kModeFourIndex = 0;
+constexpr int kModeEightIndex = 1;
+constexpr int kNumControlModeKeymaps = 2;
+
 constexpr int kDefaultPlayerKeys[4][NUM_KEYS] = {
     {
         SDLK_w, SDLK_UNKNOWN, SDLK_d, SDLK_UNKNOWN,  // movements
@@ -156,6 +160,28 @@ constexpr int kDefaultControlModes[4] = {
     static_cast<int>(ControlDirectionMode::FourDirection),
     static_cast<int>(ControlDirectionMode::FourDirection),
 };
+
+int normalize_control_mode(int mode)
+{
+    return (mode == static_cast<int>(ControlDirectionMode::EightDirection))
+        ? static_cast<int>(ControlDirectionMode::EightDirection)
+        : static_cast<int>(ControlDirectionMode::FourDirection);
+}
+
+int control_mode_keymap_index(int mode)
+{
+    return (normalize_control_mode(mode) == static_cast<int>(ControlDirectionMode::EightDirection))
+        ? kModeEightIndex
+        : kModeFourIndex;
+}
+
+int current_player_mode_keymap_index(int player_index)
+{
+    return control_mode_keymap_index(get_player_control_mode(player_index));
+}
+
+void sync_runtime_keys_to_active_mode(int player_index);
+void activate_mode_keymap_for_player(int player_index, int mode);
 } // namespace
 
 int player_keys[4][NUM_KEYS] = {
@@ -190,6 +216,7 @@ int player_control_modes[4] = {
     static_cast<int>(ControlDirectionMode::FourDirection),
     static_cast<int>(ControlDirectionMode::FourDirection),
 };
+int player_mode_keys[4][kNumControlModeKeymaps][NUM_KEYS] = {};
 
 #ifdef USE_TOUCH_INPUT
 bool touch_keystate[4][NUM_KEYS] = {
@@ -245,7 +272,11 @@ void reset_default_player_controls()
     for (int p = 0; p < 4; ++p)
     {
         for (int k = 0; k < NUM_KEYS; ++k)
+        {
             player_keys[p][k] = kDefaultPlayerKeys[p][k];
+            player_mode_keys[p][kModeFourIndex][k] = kDefaultPlayerKeys[p][k];
+            player_mode_keys[p][kModeEightIndex][k] = kDefaultPlayerKeys[p][k];
+        }
         player_control_modes[p] = kDefaultControlModes[p];
     }
 }
@@ -261,10 +292,9 @@ void set_player_control_mode(int player_index, int mode)
 {
     if (player_index < 0 || player_index >= 4)
         return;
-    player_control_modes[player_index] =
-        (mode == static_cast<int>(ControlDirectionMode::EightDirection))
-            ? static_cast<int>(ControlDirectionMode::EightDirection)
-            : static_cast<int>(ControlDirectionMode::FourDirection);
+    sync_runtime_keys_to_active_mode(player_index);
+    player_control_modes[player_index] = normalize_control_mode(mode);
+    activate_mode_keymap_for_player(player_index, player_control_modes[player_index]);
 }
 
 bool player_allows_diagonal_movement(int player_index)
@@ -272,28 +302,64 @@ bool player_allows_diagonal_movement(int player_index)
     return get_player_control_mode(player_index) == static_cast<int>(ControlDirectionMode::EightDirection);
 }
 
+int get_player_key_binding_for_mode(int player_index, int mode, int key_enum)
+{
+    if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
+        return SDLK_UNKNOWN;
+    const int mode_index = control_mode_keymap_index(mode);
+    return player_mode_keys[player_index][mode_index][key_enum];
+}
+
+void set_player_key_binding(int player_index, int key_enum, int keycode)
+{
+    if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
+        return;
+    const int mode_index = current_player_mode_keymap_index(player_index);
+    player_mode_keys[player_index][mode_index][key_enum] = keycode;
+    player_keys[player_index][key_enum] = keycode;
+}
+
 void load_player_control_settings_from_cfg(cfg_store& config)
 {
     reset_default_player_controls();
-    if (config.get_setting("controls", "player1_mode").empty())
-        return;
 
     for (int p = 0; p < 4; ++p)
     {
         const std::string mode_key = std::format("player{}_mode", p + 1);
         const std::string mode_str = config.get_setting("controls", mode_key);
-        if (!mode_str.empty())
-            set_player_control_mode(p, parse_int_strict(mode_str).value_or(
-                static_cast<int>(ControlDirectionMode::FourDirection)));
-
         for (int k = 0; k < NUM_KEYS; ++k)
         {
-            const std::string key_name = std::format("player{}_key{}", p + 1, k);
-            const std::string key_value = config.get_setting("controls", key_name);
-            if (key_value.empty())
-                continue;
-            player_keys[p][k] = parse_int_strict(key_value).value_or(kDefaultPlayerKeys[p][k]);
+            const std::string legacy_key_name = std::format("player{}_key{}", p + 1, k);
+            const std::string legacy_key_value = config.get_setting("controls", legacy_key_name);
+            if (!legacy_key_value.empty())
+            {
+                const int parsed = parse_int_strict(legacy_key_value).value_or(kDefaultPlayerKeys[p][k]);
+                player_mode_keys[p][kModeFourIndex][k] = parsed;
+                player_mode_keys[p][kModeEightIndex][k] = parsed;
+            }
+
+            const std::string mode4_key_name = std::format("player{}_mode4_key{}", p + 1, k);
+            const std::string mode4_key_value = config.get_setting("controls", mode4_key_name);
+            if (!mode4_key_value.empty())
+            {
+                player_mode_keys[p][kModeFourIndex][k] =
+                    parse_int_strict(mode4_key_value).value_or(kDefaultPlayerKeys[p][k]);
+            }
+
+            const std::string mode8_key_name = std::format("player{}_mode8_key{}", p + 1, k);
+            const std::string mode8_key_value = config.get_setting("controls", mode8_key_name);
+            if (!mode8_key_value.empty())
+            {
+                player_mode_keys[p][kModeEightIndex][k] =
+                    parse_int_strict(mode8_key_value).value_or(kDefaultPlayerKeys[p][k]);
+            }
         }
+
+        player_control_modes[p] = mode_str.empty()
+            ? static_cast<int>(ControlDirectionMode::FourDirection)
+            : normalize_control_mode(parse_int_strict(mode_str).value_or(
+                static_cast<int>(ControlDirectionMode::FourDirection)));
+        activate_mode_keymap_for_player(p, player_control_modes[p]);
     }
 }
 
@@ -301,15 +367,38 @@ void save_player_control_settings_to_cfg(cfg_store& config)
 {
     for (int p = 0; p < 4; ++p)
     {
+        sync_runtime_keys_to_active_mode(p);
         config.apply_setting("controls", std::format("player{}_mode", p + 1),
             std::to_string(get_player_control_mode(p)));
         for (int k = 0; k < NUM_KEYS; ++k)
         {
+            const int mode_index = current_player_mode_keymap_index(p);
             config.apply_setting("controls", std::format("player{}_key{}", p + 1, k),
-                std::to_string(player_keys[p][k]));
+                std::to_string(player_mode_keys[p][mode_index][k]));
+            config.apply_setting("controls", std::format("player{}_mode4_key{}", p + 1, k),
+                std::to_string(player_mode_keys[p][kModeFourIndex][k]));
+            config.apply_setting("controls", std::format("player{}_mode8_key{}", p + 1, k),
+                std::to_string(player_mode_keys[p][kModeEightIndex][k]));
         }
     }
 }
+
+namespace
+{
+void sync_runtime_keys_to_active_mode(int player_index)
+{
+    const int mode_index = current_player_mode_keymap_index(player_index);
+    for (int k = 0; k < NUM_KEYS; ++k)
+        player_mode_keys[player_index][mode_index][k] = player_keys[player_index][k];
+}
+
+void activate_mode_keymap_for_player(int player_index, int mode)
+{
+    const int mode_index = control_mode_keymap_index(mode);
+    for (int k = 0; k < NUM_KEYS; ++k)
+        player_keys[player_index][k] = player_mode_keys[player_index][mode_index][k];
+}
+} // namespace
 
 
 //
@@ -851,7 +940,7 @@ void assignKeyFromWaitEvent(int player_num, int key_enum)
     {
         if(event.key.keysym.sym != SDLK_ESCAPE)
         {
-            player_keys[player_num][key_enum] = event.key.keysym.sym;
+            set_player_key_binding(player_num, key_enum, event.key.keysym.sym);
         }
     }
     else if(isJoystickEvent(event))

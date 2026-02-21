@@ -14,6 +14,40 @@ static constexpr int NUM_CONTROL_OPTIONS = 10;
 static constexpr int SCREEN_W = 320;
 static constexpr int SCREEN_H = 200;
 
+namespace
+{
+struct PlayerControlSnapshotGuard
+{
+    int player;
+    int old_mode;
+    int old_four[NUM_KEYS];
+    int old_eight[NUM_KEYS];
+
+    explicit PlayerControlSnapshotGuard(int player_)
+        : player(player_), old_mode(get_player_control_mode(player_))
+    {
+        for (int k = 0; k < NUM_KEYS; ++k)
+        {
+            old_four[k] = get_player_key_binding_for_mode(
+                player, static_cast<int>(ControlDirectionMode::FourDirection), k);
+            old_eight[k] = get_player_key_binding_for_mode(
+                player, static_cast<int>(ControlDirectionMode::EightDirection), k);
+        }
+    }
+
+    ~PlayerControlSnapshotGuard()
+    {
+        set_player_control_mode(player, static_cast<int>(ControlDirectionMode::FourDirection));
+        for (int k = 0; k < NUM_KEYS; ++k)
+            set_player_key_binding(player, k, old_four[k]);
+        set_player_control_mode(player, static_cast<int>(ControlDirectionMode::EightDirection));
+        for (int k = 0; k < NUM_KEYS; ++k)
+            set_player_key_binding(player, k, old_eight[k]);
+        set_player_control_mode(player, old_mode);
+    }
+};
+} // namespace
+
 static bool buttons_overlap(const button& a, const button& b)
 {
     if (a.hidden || b.hidden)
@@ -133,3 +167,34 @@ void test_control_options_nav_indices_in_range()
     check_nav_in_range(control_options_buttons, NUM_CONTROL_OPTIONS, "control_options");
 }
 REGISTER_TEST(test_control_options_nav_indices_in_range);
+
+void test_controls_summary_switches_between_four_and_eight_direction_formats()
+{
+    PlayerControlSnapshotGuard guard(0);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_UP, SDLK_w);
+    set_player_key_binding(0, KEY_LEFT, SDLK_a);
+    set_player_key_binding(0, KEY_DOWN, SDLK_s);
+    set_player_key_binding(0, KEY_RIGHT, SDLK_d);
+    set_player_key_binding(0, KEY_YELL, SDLK_q);
+
+    const std::string summary_four = build_player_control_summary(0);
+    TEST_ASSERT(summary_four.find("Yell:") != std::string::npos,
+        "4-direction summary should include Yell label");
+    TEST_ASSERT(summary_four.find("Diag:") == std::string::npos,
+        "4-direction summary should not include diagonal keys");
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_e);
+    set_player_key_binding(0, KEY_DOWN_RIGHT, SDLK_c);
+    set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_z);
+    set_player_key_binding(0, KEY_UP_LEFT, SDLK_q);
+
+    const std::string summary_eight = build_player_control_summary(0);
+    TEST_ASSERT(summary_eight.find("Card:") != std::string::npos,
+        "8-direction summary should include cardinal-key label");
+    TEST_ASSERT(summary_eight.find("Diag:") != std::string::npos,
+        "8-direction summary should include diagonal-key label");
+}
+REGISTER_TEST(test_controls_summary_switches_between_four_and_eight_direction_formats);

@@ -68,6 +68,32 @@ struct KeyStateGuard
             keys[sc] = old_value;
     }
 };
+
+struct ModeKeyBindingGuard
+{
+    int player;
+    int key_enum;
+    int old_mode;
+    int old_four;
+    int old_eight;
+
+    ModeKeyBindingGuard(int player_, int key_enum_)
+        : player(player_),
+          key_enum(key_enum_),
+          old_mode(get_player_control_mode(player_)),
+          old_four(get_player_key_binding_for_mode(player_, static_cast<int>(ControlDirectionMode::FourDirection), key_enum_)),
+          old_eight(get_player_key_binding_for_mode(player_, static_cast<int>(ControlDirectionMode::EightDirection), key_enum_))
+    {}
+
+    ~ModeKeyBindingGuard()
+    {
+        set_player_control_mode(player, static_cast<int>(ControlDirectionMode::FourDirection));
+        set_player_key_binding(player, key_enum, old_four);
+        set_player_control_mode(player, static_cast<int>(ControlDirectionMode::EightDirection));
+        set_player_key_binding(player, key_enum, old_eight);
+        set_player_control_mode(player, old_mode);
+    }
+};
 } // namespace
 
 void test_input_isPlayerHoldingKey_uses_keyboard_state_when_no_joystick_mapping()
@@ -154,13 +180,15 @@ REGISTER_TEST(test_input_wait_for_key_event_returns_fake_escape_in_test_mode);
 void test_input_state_from_sdl_respects_four_direction_mode()
 {
     disablePlayerJoystick(0);
-    KeyBindingGuard bind_diag(0, KEY_UP_RIGHT, SDLK_v);
+    ModeKeyBindingGuard bind_diag(0, KEY_UP_RIGHT);
     KeyStateGuard ks(SDL_GetScancodeFromKey(SDLK_v));
     ControlModeGuard mode_guard(0);
 
     InputState input{};
     input.clear();
 
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_v);
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
     ks.set(true);
     input_state_from_sdl(input);
@@ -173,6 +201,37 @@ void test_input_state_from_sdl_respects_four_direction_mode()
     TEST_ASSERT(input.players[0].pressed[KEY_UP_RIGHT], "8-direction should allow pressed diagonal edges");
 }
 REGISTER_TEST(test_input_state_from_sdl_respects_four_direction_mode);
+
+void test_input_mode_key_binding_updates_are_isolated_by_control_mode()
+{
+    ModeKeyBindingGuard bind_guard(0, KEY_UP);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_UP, SDLK_1);
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_1),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_UP),
+        "4-direction keymap should update in 4-direction mode");
+
+    const int eight_before = get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    TEST_ASSERT_EQ(eight_before, player_keys[0][KEY_UP],
+        "switching to 8-direction should restore that mode's key binding");
+    set_player_key_binding(0, KEY_UP, SDLK_2);
+
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_1),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_UP),
+        "editing in 8-direction mode must not mutate 4-direction binding");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_2),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP),
+        "8-direction binding should update when editing in 8-direction mode");
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_1), player_keys[0][KEY_UP],
+        "switching back to 4-direction should restore 4-direction binding");
+}
+REGISTER_TEST(test_input_mode_key_binding_updates_are_isolated_by_control_mode);
 
 void test_input_control_settings_cfg_roundtrip()
 {
@@ -198,3 +257,33 @@ void test_input_control_settings_cfg_roundtrip()
     player_keys[0][KEY_YELL] = old_yell;
 }
 REGISTER_TEST(test_input_control_settings_cfg_roundtrip);
+
+void test_input_control_settings_cfg_persists_separate_mode_keymaps()
+{
+    cfg_store config;
+    config.load_settings();
+
+    ModeKeyBindingGuard bind_guard(0, KEY_UP);
+    ControlModeGuard mode_guard(0);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_UP, SDLK_3);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_UP, SDLK_4);
+    save_player_control_settings_to_cfg(config);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_UP, SDLK_UNKNOWN);
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_UP, SDLK_UNKNOWN);
+
+    load_player_control_settings_from_cfg(config);
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_3),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_UP),
+        "config load should restore 4-direction binding");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_4),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP),
+        "config load should restore 8-direction binding");
+}
+REGISTER_TEST(test_input_control_settings_cfg_persists_separate_mode_keymaps);
