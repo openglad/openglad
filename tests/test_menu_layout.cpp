@@ -178,10 +178,27 @@ void test_controls_summary_switches_between_four_and_eight_direction_formats()
     set_player_key_binding(0, KEY_DOWN, SDLK_s);
     set_player_key_binding(0, KEY_RIGHT, SDLK_d);
     set_player_key_binding(0, KEY_YELL, SDLK_q);
+    set_player_key_binding(0, KEY_FIRE, SDLK_1);
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_2);
+    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_EQUALS);
+    set_player_key_binding(0, KEY_SWITCH, SDLK_3);
+    set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
     const std::string summary_four = build_player_control_summary(0);
-    TEST_ASSERT(summary_four.find("Yell:") != std::string::npos,
-        "4-direction summary should include Yell label");
+    TEST_ASSERT(summary_four.find("Dir:W/A/S/D") != std::string::npos,
+        "4-direction summary should include compact direction order");
+    TEST_ASSERT(summary_four.find("Y:Q") != std::string::npos,
+        "4-direction summary should include yell label");
+    TEST_ASSERT(summary_four.find("F:1") != std::string::npos,
+        "4-direction summary should include fire key");
+    TEST_ASSERT(summary_four.find("S:2") != std::string::npos,
+        "4-direction summary should include special key");
+    TEST_ASSERT(summary_four.find("SS:=") != std::string::npos,
+        "4-direction summary should include special switch key");
+    TEST_ASSERT(summary_four.find("SW:3") != std::string::npos,
+        "4-direction summary should include switch key");
+    TEST_ASSERT(summary_four.find("Shft:F8") != std::string::npos,
+        "4-direction summary should include shifter key");
     TEST_ASSERT(summary_four.find("Diag:") == std::string::npos,
         "4-direction summary should not include diagonal keys");
 
@@ -213,12 +230,27 @@ void test_eight_direction_summary_clockwise_order()
     set_player_key_binding(0, KEY_LEFT, SDLK_a);
     set_player_key_binding(0, KEY_UP_LEFT, SDLK_q);
     set_player_key_binding(0, KEY_YELL, SDLK_s);
+    set_player_key_binding(0, KEY_FIRE, SDLK_1);
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_2);
+    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_EQUALS);
+    set_player_key_binding(0, KEY_SWITCH, SDLK_3);
+    set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
     const std::string summary = build_player_control_summary(0);
-    // Should be clockwise: Dir:W/E/D/C/X/Z/A/Q Y:S
+    // Should be clockwise: Dir:W/E/D/C/X/Z/A/Q Y:S F:1 S:2 SS:= SW:3 Shft:F8
     TEST_ASSERT(summary.find("Dir:W/E/D/C/X/Z/A/Q") != std::string::npos,
         "8-direction summary should list keys clockwise from Up");
     TEST_ASSERT(summary.find("Y:S") != std::string::npos,
-        "8-direction summary should end with Yell key");
+        "8-direction summary should include yell key");
+    TEST_ASSERT(summary.find("F:1") != std::string::npos,
+        "8-direction summary should include fire key");
+    TEST_ASSERT(summary.find("S:2") != std::string::npos,
+        "8-direction summary should include special key");
+    TEST_ASSERT(summary.find("SS:=") != std::string::npos,
+        "8-direction summary should include special switch key");
+    TEST_ASSERT(summary.find("SW:3") != std::string::npos,
+        "8-direction summary should include switch key");
+    TEST_ASSERT(summary.find("Shft:F8") != std::string::npos,
+        "8-direction summary should include shifter key");
 }
 REGISTER_TEST(test_eight_direction_summary_clockwise_order);

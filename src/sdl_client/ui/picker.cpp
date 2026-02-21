@@ -864,19 +864,26 @@ std::string build_player_control_summary(int player_index)
     const std::string down_s = get_key_display_name_short(player_keys[player_index][KEY_DOWN]);
     const std::string right_s = get_key_display_name_short(player_keys[player_index][KEY_RIGHT]);
     const std::string yell_s = get_key_display_name_short(player_keys[player_index][KEY_YELL]);
+    const std::string fire_s = get_key_display_name_short(player_keys[player_index][KEY_FIRE]);
+    const std::string special_s = get_key_display_name_short(player_keys[player_index][KEY_SPECIAL]);
+    const std::string special_switch_s =
+        get_key_display_name_short(player_keys[player_index][KEY_SPECIAL_SWITCH]);
+    const std::string switch_s = get_key_display_name_short(player_keys[player_index][KEY_SWITCH]);
+    const std::string shifter_s = get_key_display_name_short(player_keys[player_index][KEY_SHIFTER]);
 
     if (!eight_dir)
     {
-        return std::format("{}/{}/{}/{} Yell:{}",
-            up_s, left_s, down_s, right_s, yell_s);
+        return std::format("Dir:{}/{}/{}/{} Y:{} F:{} S:{} SS:{} SW:{} Shft:{}",
+            up_s, left_s, down_s, right_s, yell_s, fire_s, special_s, special_switch_s, switch_s, shifter_s);
     }
 
     const std::string up_right_s = get_key_display_name_short(player_keys[player_index][KEY_UP_RIGHT]);
     const std::string down_right_s = get_key_display_name_short(player_keys[player_index][KEY_DOWN_RIGHT]);
     const std::string down_left_s = get_key_display_name_short(player_keys[player_index][KEY_DOWN_LEFT]);
     const std::string up_left_s = get_key_display_name_short(player_keys[player_index][KEY_UP_LEFT]);
-    return std::format("Dir:{}/{}/{}/{}/{}/{}/{}/{} Y:{}",
-        up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s, yell_s);
+    return std::format("Dir:{}/{}/{}/{}/{}/{}/{}/{} Y:{} F:{} S:{} SS:{} SW:{} Shft:{}",
+        up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s,
+        yell_s, fire_s, special_s, special_switch_s, switch_s, shifter_s);
 }
 
 static void draw_remap_prompt(const std::string& prompt, int player_index)
