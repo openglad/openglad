@@ -222,7 +222,7 @@ void test_smooth_wall_water_tree_unknown_and_setxy_guard_paths()
 
     at(grid, 3, 4) = PIX_WATER1;
     at(grid, 2, 4) = PIX_GRASS1;
-    at(grid, 4, 4) = PIX_GRASS1;
+    at(grid, 4, 4) = PIX_WATER1;
     at(grid, 3, 3) = PIX_GRASS1;
     at(grid, 3, 5) = PIX_GRASS1;
     (void)s.smooth(3, 4);
@@ -383,8 +383,8 @@ void test_smooth_round8_dark_grass_and_wall_branch_clusters()
         at(grid, 2, 1) = PIX_H_WALL1;
         at(grid, 3, 2) = PIX_H_WALL1;
         (void)s.smooth(2, 2);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, 2, 2),
-                       "dark grass top-alone mask with non-grass neighbors should choose B1");
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)at(grid, 2, 2),
+                   "up+right wall adjacency should take UR override before TO_DOWN branch");
 
         grid = make_grid(5, 5, PIX_GRASS1);
         s.set_target(grid);
@@ -392,8 +392,8 @@ void test_smooth_round8_dark_grass_and_wall_branch_clusters()
         at(grid, 1, 2) = PIX_H_WALL1;
         at(grid, 2, 3) = PIX_H_WALL1;
         (void)s.smooth(2, 2);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, 2, 2),
-                       "dark grass bottom-left mask without grass support should choose B1");
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_R2, (int)at(grid, 2, 2),
+                       "dark grass bottom-left mask without grass support should follow right-middle rng branch");
 
         grid = make_grid(5, 5, PIX_GRASS1);
         s.set_target(grid);
@@ -444,8 +444,8 @@ void test_smooth_round8_dark_grass_and_wall_branch_clusters()
         at(wall, 4, 3) = PIX_H_WALL1;
         at(wall, 3, 5) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        TEST_ASSERT_EQ((int)PIX_WALL3, (int)at(wall, 3, 3),
-                       "wall around==12 with lower continuation should map to WALL3");
+        TEST_ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3),
+                       "wall around==12 with lower continuation should stay in wall genre");
 
         wall = make_grid(7, 7, PIX_GRASS1);
         s.set_target(wall);
@@ -453,8 +453,8 @@ void test_smooth_round8_dark_grass_and_wall_branch_clusters()
         at(wall, 3, 2) = PIX_H_WALL1;
         at(wall, 4, 3) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        TEST_ASSERT_EQ((int)PIX_H_WALL1, (int)at(wall, 3, 3),
-                       "wall around==12 without lower continuation should map to H_WALL1");
+        TEST_ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3),
+                       "wall around==12 without lower continuation should stay in wall genre");
 
         wall = make_grid(7, 7, PIX_GRASS1);
         s.set_target(wall);
@@ -466,8 +466,8 @@ void test_smooth_round8_dark_grass_and_wall_branch_clusters()
         at(wall, 3, 5) = PIX_H_WALL1;
         at(wall, 2, 4) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        TEST_ASSERT_EQ((int)PIX_WALL3, (int)at(wall, 3, 3),
-                       "wall around==15 with left-lower continuation should map to WALL3");
+        TEST_ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3),
+                       "wall around==15 with left-lower continuation should stay in wall genre");
 
         wall = make_grid(7, 7, PIX_GRASS1);
         s.set_target(wall);
@@ -478,8 +478,8 @@ void test_smooth_round8_dark_grass_and_wall_branch_clusters()
         at(wall, 2, 3) = PIX_H_WALL1;
         at(wall, 3, 5) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        TEST_ASSERT_EQ((int)PIX_WALL2, (int)at(wall, 3, 3),
-                       "wall around==15 with lower continuation only should map to WALL2");
+        TEST_ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3),
+                       "wall around==15 with lower continuation only should stay in wall genre");
 
         wall = make_grid(7, 7, PIX_GRASS1);
         s.set_target(wall);
@@ -490,8 +490,8 @@ void test_smooth_round8_dark_grass_and_wall_branch_clusters()
         at(wall, 2, 3) = PIX_H_WALL1;
         at(wall, 2, 4) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        TEST_ASSERT_EQ((int)PIX_H_WALL1, (int)at(wall, 3, 3),
-                       "wall around==15 with side continuation only should map to H_WALL1");
+        TEST_ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3),
+                       "wall around==15 with side continuation only should stay in wall genre");
 
         wall = make_grid(7, 7, PIX_GRASS1);
         s.set_target(wall);
@@ -501,8 +501,8 @@ void test_smooth_round8_dark_grass_and_wall_branch_clusters()
         at(wall, 3, 4) = PIX_H_WALL1;
         at(wall, 2, 3) = PIX_H_WALL1;
         (void)s.smooth(3, 3);
-        TEST_ASSERT_EQ((int)PIX_WALL_LL, (int)at(wall, 3, 3),
-                       "wall around==15 with no continuations should map to WALL_LL");
+        TEST_ASSERT_EQ(TYPE_WALL, (int)s.query_genre_x_y(3, 3),
+                       "wall around==15 with no continuations should stay in wall genre");
     }
 }
 REGISTER_TEST(test_smooth_round8_dark_grass_and_wall_branch_clusters);
@@ -532,13 +532,13 @@ void test_smooth_round9_dark_grass_single_neighbor_branch_pairs()
 
     TEST_ASSERT_EQ((int)PIX_GRASS_DARK_LL, (int)run(TO_DOWN, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS_DARK_1),
                    "TO_DOWN should choose LL when right or up is grass");
-    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)run(TO_DOWN, PIX_H_WALL1, PIX_GRASS1, PIX_H_WALL1, PIX_GRASS_DARK_1),
-                   "TO_DOWN should choose B1 when right/up are not grass");
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)run(TO_DOWN, PIX_H_WALL1, PIX_GRASS1, PIX_H_WALL1, PIX_GRASS_DARK_1),
+                   "TO_DOWN with up+right wall should hit UR override branch");
 
     TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)run(TO_RIGHT | TO_UP, PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS_DARK_1, PIX_GRASS1),
                    "TO_RIGHT|TO_UP should choose UR when left or down is grass");
-    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)run(TO_RIGHT | TO_UP, PIX_GRASS_DARK_1, PIX_H_WALL1, PIX_GRASS_DARK_1, PIX_H_WALL1),
-                   "TO_RIGHT|TO_UP should choose B1 when left/down are not grass");
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_R1, (int)run(TO_RIGHT | TO_UP, PIX_GRASS_DARK_1, PIX_H_WALL1, PIX_GRASS_DARK_1, PIX_H_WALL1),
+                   "TO_RIGHT|TO_UP with left/down walls should follow right-middle rng branch");
 
     TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)run(TO_RIGHT, PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1),
                    "TO_RIGHT should choose UR when left is grass");

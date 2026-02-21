@@ -320,10 +320,16 @@ short statistics::do_command()
 			controller->walkstep(com1, com2);
 			controller->fire();
 			break;
-		case COMMAND_MULTIDO: // Lets you do <com1> commands in one round
-			for(i=0;i<com1; i++)
-				do_command();
-			break;
+			case COMMAND_MULTIDO: // Lets you do <com1> commands in one round
+				{
+					const Sint32 repeats = (com1 > 0) ? com1 : 0;
+					// Consume MULTIDO first; otherwise do_command() would recurse on
+					// the same front command indefinitely.
+					commands.pop_front();
+					for (i = 0; i < repeats && !commands.empty(); i++)
+						do_command();
+					return 1;
+				}
 		case COMMAND_RUSH:    // Fighter's special
 			if (controller->query_order() == Order::Living)
 			{

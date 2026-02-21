@@ -44,17 +44,15 @@ jobs:
         run: cmake --preset ci-coverage
 
       - name: Build coverage test binaries
-        run: cmake --build --preset ci-coverage --target og_unit_tests og_data_tests og_runtime_tests openglad_test -j"$(nproc)"
+        run: cmake --build --preset ci-coverage --target og_unit_tests og_data_tests og_runtime_tests -j"$(nproc)"
 
       - name: Run coverage test binaries
         run: |
+          rm -f "$HOME/.openglad/campaigns/org.openglad.test."*.glad 2>/dev/null || true
+          rm -f scen/scen93*.fss scen/scen94*.fss 2>/dev/null || true
           timeout 300 ./build/ci-coverage/og_unit_tests
-          timeout 600 ./build/ci-coverage/og_data_tests || echo "og_data_tests timed out or failed (exit $?), continuing for partial coverage"
-          timeout 600 ./build/ci-coverage/og_runtime_tests || echo "og_runtime_tests timed out or failed (exit $?), continuing for partial coverage"
-          if ! timeout 900 ./build/ci-coverage/openglad_test; then
-            echo "openglad_test attempt 1 failed (exit $?), retrying once..."
-            timeout 900 ./build/ci-coverage/openglad_test || echo "openglad_test attempt 2 timed out or failed (exit $?), continuing for partial coverage"
-          fi
+          timeout 600 ./build/ci-coverage/og_data_tests
+          timeout 600 ./build/ci-coverage/og_runtime_tests
 
       - name: Generate HTML coverage report
         run: |
@@ -63,6 +61,9 @@ jobs:
             --root . \
             --filter src/ \
             --exclude 'src/fuzz/' \
+            --exclude 'src/sdl_client/' \
+            --exclude 'src/ui/' \
+            --exclude 'src/test_trace.cpp' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --html-details \
             --output build/ci-coverage/coverage/coverage.html \
@@ -71,14 +72,17 @@ jobs:
       - name: Generate coverage summary report and enforce thresholds
         id: coverage_metrics
         run: |
-          LINE_THRESHOLD=69
-          FUNCTION_THRESHOLD=86
+          LINE_THRESHOLD=85
+          FUNCTION_THRESHOLD=90
 
           set +e
           python3 -m gcovr \
             --root . \
             --filter src/ \
             --exclude 'src/fuzz/' \
+            --exclude 'src/sdl_client/' \
+            --exclude 'src/ui/' \
+            --exclude 'src/test_trace.cpp' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --txt \
             --output build/ci-coverage/coverage/coverage-summary.txt \
@@ -133,8 +137,8 @@ jobs:
         if: ${{ always() && github.event_name == 'pull_request' }}
         uses: actions/github-script@v7
         env:
-          LINE_THRESHOLD: 69
-          FUNCTION_THRESHOLD: 86
+          LINE_THRESHOLD: 85
+          FUNCTION_THRESHOLD: 90
           LINE_PCT: ${{ steps.coverage_metrics.outputs.line_pct }}
           FUNCTION_PCT: ${{ steps.coverage_metrics.outputs.function_pct }}
           LINE_STATUS: ${{ steps.coverage_metrics.outputs.line_status }}

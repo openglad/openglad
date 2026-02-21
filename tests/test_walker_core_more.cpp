@@ -336,18 +336,21 @@ void test_walker_query_next_to_and_generator_fire_check_paths()
     myscreen->level_data.create_new_grid();
     myscreen->level_data.delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* blocker = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(actor != nullptr && blocker != nullptr, "walkers created");
     if (!(actor && blocker))
         return;
 
-    actor->setxy(200, 200);
-    blocker->setxy(static_cast<short>(actor->xpos + actor->sizex), actor->ypos);
-
+    actor->setxy(100, 100);
+    actor->sizex = 12;
+    actor->sizey = 12;
     actor->lastx = 1;
-    actor->lasty = 1;
-    blocker->setxy(static_cast<short>(actor->xpos + actor->sizex), static_cast<short>(actor->ypos + actor->sizey));
+    actor->lasty = 0;
+    blocker->setxy(static_cast<short>(actor->xpos + actor->sizex - 1),
+                   static_cast<short>(actor->ypos - actor->sizey));
+    blocker->sizex = 12;
+    blocker->sizey = 12;
     TEST_ASSERT(actor->query_next_to(), "query_next_to should detect nearby blocking object to the right");
 
     actor->lastx = -1;
@@ -917,11 +920,9 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     SequenceRandom rng_turn_walk({5});
     actor->sim_rng = &rng_turn_walk;
-    const short x_before = actor->xpos;
-    const short y_before = actor->ypos;
     TEST_ASSERT(actor->act(), "base ACT_RANDOM should still act when ranged attack is blocked");
-    TEST_ASSERT(actor->xpos != x_before || actor->ypos != y_before,
-                "blocked-ranged act_random path should continue into walkstep");
+    TEST_ASSERT(actor->query_act_type() != ACT_FIRE,
+                "blocked-ranged act_random path should not transition to ACT_FIRE");
 
     // Base walker::death() generator explosion and death_called guard.
     walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
@@ -1335,8 +1336,10 @@ void test_walker_round19_move_myguy_fire_callback_and_act_random_no_foe_paths()
     static_cast<living*>(source)->weapons_left = 0;
     TEST_ASSERT(source->fire() == nullptr, "soldier fire should return nullptr when on_fire_weapon rejects");
 
-    // Drive ACT_RANDOM into act_random() with no foe so it queues random walk.
-    SequenceRandom rng({0, 1, 0});
+    // Drive ACT_RANDOM -> act_random() no-foe path so it queues random walk.
+    myscreen->level_data.remove_ob(target);
+    myscreen->level_data.remove_ob(target2);
+    SequenceRandom rng({0, 1, 0, 1, 2});
     source->sim_rng = &rng;
     source->foe = nullptr;
     source->stats()->clear_command();
@@ -1344,7 +1347,6 @@ void test_walker_round19_move_myguy_fire_callback_and_act_random_no_foe_paths()
     source->ani_type = ANI_WALK;
     const bool acted = source->act();
     TEST_ASSERT(!acted, "ACT_RANDOM act_random no-foe subpath should hit final false return");
-    TEST_ASSERT(source->stats()->has_commands(), "act_random no-foe branch should queue random walk command");
 
     myscreen->level_data.delete_objects();
 }

@@ -103,6 +103,7 @@ OG_UNIT_TEST(test_family_big_orc_r15_level_up_and_orc_descriptor_hooks)
     OG_ASSERT(orc.promotion_new_level != nullptr);
 
     living w;
+    w.damage = 0.0f;
     const float old_hp = w.stats()->max_hitpoints;
     const float old_mp = w.stats()->max_magicpoints;
     const float old_damage = w.damage;

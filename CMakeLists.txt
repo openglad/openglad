@@ -1130,7 +1130,10 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_picker_state_machine.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_prompt_block.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_core_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_more_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_text_input_ex_value.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_detail_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_team_list.cpp
@@ -1139,7 +1142,9 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_branches.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_internal_helper.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_dialogs_real.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
         )
 
         # Module-level test binaries (kept in addition to the full integration suite).
@@ -1181,11 +1186,13 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_prefs_and_redraw.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_helpers.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_act.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_chain_and_door.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_weapon_interactions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_core_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_state_machine.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_model.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
@@ -1199,6 +1206,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_commands.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_more_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_teleport.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_right_walk_direct_walk.cpp
@@ -1211,6 +1219,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_treasure_eat.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_weap_behavior.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
@@ -1223,6 +1232,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_interactions.cpp
@@ -1232,6 +1242,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_picker_uncovered.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_ownership_fixture.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_detail_menu_driven.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_dialogs_real.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_branches.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_internal_helper.cpp
         )

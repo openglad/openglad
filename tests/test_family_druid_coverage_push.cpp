@@ -24,6 +24,7 @@ OG_UNIT_TEST(test_family_druid_descriptor_level_up_and_difficulty)
     OG_ASSERT(g.intelligence > old_int);
 
     living self;
+    self.damage = 0.0f;
     const float old_hp = self.stats()->max_hitpoints;
     const float old_mp = self.stats()->max_magicpoints;
     const float old_damage = self.damage;
