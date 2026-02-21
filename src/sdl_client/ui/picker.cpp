@@ -837,25 +837,25 @@ static std::string get_key_display_name_short(int keycode)
 {
     std::string sname = SDL_GetKeyName(keycode);
 
-    if (sname == "`") return "~/`";
-    if (sname == "Left Ctrl") return "LCtrl";
-    if (sname == "Right Ctrl") return "RCtrl";
-    if (sname == "Left Shift") return "LShift";
-    if (sname == "Right Shift") return "RShift";
-    if (sname == "Left Alt") return "LAlt";
-    if (sname == "Right Alt") return "RAlt";
-    if (sname == "Backspace") return "BkSpc";
-    if (sname == "CapsLock") return "Caps";
+    if (sname == "`") return "Grv";
+    if (sname == "Left Ctrl") return "LC";
+    if (sname == "Right Ctrl") return "RC";
+    if (sname == "Left Shift") return "LS";
+    if (sname == "Right Shift") return "RS";
+    if (sname == "Left Alt") return "LA";
+    if (sname == "Right Alt") return "RA";
+    if (sname == "Backspace") return "Bk";
+    if (sname == "CapsLock") return "Cap";
     if (sname == "Unknown Key") return "--";
     if (sname.size() > 10)
         return sname.substr(0, 9);
     return sname;
 }
 
-std::string build_player_control_summary(int player_index)
+std::array<std::string, 2> build_player_control_summary_lines(int player_index, bool remap_mode)
 {
     if (player_index < 0 || player_index >= 4)
-        return {};
+        return {"", ""};
 
     const bool eight_dir =
         get_player_control_mode(player_index) == static_cast<int>(ControlDirectionMode::EightDirection);
@@ -870,20 +870,51 @@ std::string build_player_control_summary(int player_index)
         get_key_display_name_short(player_keys[player_index][KEY_SPECIAL_SWITCH]);
     const std::string switch_s = get_key_display_name_short(player_keys[player_index][KEY_SWITCH]);
     const std::string shifter_s = get_key_display_name_short(player_keys[player_index][KEY_SHIFTER]);
+    const std::string action_line = std::format("Y:{} F:{} S:{} SS:{} SW:{} Sh:{}",
+        yell_s, fire_s, special_s, special_switch_s, switch_s, shifter_s);
 
     if (!eight_dir)
     {
-        return std::format("Dir:{}/{}/{}/{} Y:{} F:{} S:{} SS:{} SW:{} Shft:{}",
-            up_s, left_s, down_s, right_s, yell_s, fire_s, special_s, special_switch_s, switch_s, shifter_s);
+        if (remap_mode)
+        {
+            return {
+                std::format("Dir:{}/{}/{}/{}", up_s, left_s, down_s, right_s),
+                action_line
+            };
+        }
+        return {
+            std::format("D:{}{}{}{}", up_s, left_s, down_s, right_s),
+            action_line
+        };
     }
 
     const std::string up_right_s = get_key_display_name_short(player_keys[player_index][KEY_UP_RIGHT]);
     const std::string down_right_s = get_key_display_name_short(player_keys[player_index][KEY_DOWN_RIGHT]);
     const std::string down_left_s = get_key_display_name_short(player_keys[player_index][KEY_DOWN_LEFT]);
     const std::string up_left_s = get_key_display_name_short(player_keys[player_index][KEY_UP_LEFT]);
-    return std::format("Dir:{}/{}/{}/{}/{}/{}/{}/{} Y:{} F:{} S:{} SS:{} SW:{} Shft:{}",
-        up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s,
-        yell_s, fire_s, special_s, special_switch_s, switch_s, shifter_s);
+
+    if (remap_mode)
+    {
+        return {
+            std::format("Dir:{}/{}/{}/{}/{}/{}/{}/{}",
+                up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s),
+            action_line
+        };
+    }
+
+    return {
+        std::format("D:{}{}{}{}{}{}{}{}",
+            up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s),
+        action_line
+    };
+}
+
+std::string build_player_control_summary(int player_index)
+{
+    const auto lines = build_player_control_summary_lines(player_index, false);
+    if (lines[0].empty() && lines[1].empty())
+        return {};
+    return std::format("{} {}", lines[0], lines[1]);
 }
 
 static void draw_remap_prompt(const std::string& prompt, int player_index)
@@ -895,8 +926,9 @@ static void draw_remap_prompt(const std::string& prompt, int player_index)
     mytext.write_xy_center(160, 45, RED, "REMAP CONTROLS");
     mytext.write_xy_center(160, 80, DARK_BLUE, "%s", prompt.c_str());
     mytext.write_xy_center(160, 105, DARK_BLUE, "Press ESC to keep current key");
-    const std::string summary = build_player_control_summary(player_index);
-    mytext.write_xy_center(160, 155, DARK_BLUE, "%s", summary.c_str());
+    const auto summary_lines = build_player_control_summary_lines(player_index, true);
+    mytext.write_xy_center(160, 150, DARK_BLUE, "%s", summary_lines[0].c_str());
+    mytext.write_xy_center(160, 160, DARK_BLUE, "%s", summary_lines[1].c_str());
     myscreen->buffer_to_screen(0, 0, 320, 200);
 }
 
