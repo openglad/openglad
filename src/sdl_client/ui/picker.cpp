@@ -557,7 +557,7 @@ button mainmenu_buttons[] =
 
 button main_options_buttons[] =
 {
-    button("options_back", "BACK", KEYSTATE_ESCAPE, 40, 10, 50, 15, RETURN_MENU, menu_result_id(MenuResult::Exit), MenuNav::UpDownRight(12, 1, 14)),
+    button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, RETURN_MENU, menu_result_id(MenuResult::Exit), MenuNav::UpDownRight(12, 1, 15)),
     button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, TOGGLE_SOUND, -1, MenuNav::UpDown(0, 2)),
     button("toggle_rendering", "NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, TOGGLE_RENDERING_ENGINE, -1, MenuNav::UpDownRight(1, 4, 3)),
     button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, TOGGLE_FULLSCREEN, -1, MenuNav::UpDownLeft(1, 5, 2)),
@@ -570,32 +570,37 @@ button main_options_buttons[] =
     button("toggle_hit_sparks", "Hit sparks", KEYSTATE_UNKNOWN, 80, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_HIT_ANIM, -1, MenuNav::UpDownRight(8, 12, 11)),
     button("toggle_damage_numbers", "Damage numbers", KEYSTATE_UNKNOWN, 210, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_DAMAGE_NUMBERS, -1, MenuNav::UpDownLeft(9, 13, 10)),
     button("toggle_heal_numbers", "Healing numbers", KEYSTATE_UNKNOWN, 80, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_HEAL_NUMBERS, -1, MenuNav::UpDownRight(10, 0, 13)),
-    button("toggle_gore", "Gore", KEYSTATE_UNKNOWN, 210, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_GORE, -1, MenuNav::UpDownLeft(11, 0, 12)),
-    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 170, 10, 120, 15, RESTORE_DEFAULT_SETTINGS, -1, MenuNav::UpDownLeftRight(12, 1, 0, 15)),
-    button("player_controls", "PLAYER CONTROLS", KEYSTATE_UNKNOWN, 170, 29, 120, 15,
-        button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav::UpDownLeft(14, 2, 1)),
+    button("toggle_gore", "Gore", KEYSTATE_UNKNOWN, 210, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_GORE, -1, MenuNav::UpDownLeft(11, 14, 12)),
+    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, RESTORE_DEFAULT_SETTINGS, -1, MenuNav::UpDownLeft(13, 1, 15)),
+    button("player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 100, 10, 80, 15,
+        button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav::UpDownLeftRight(13, 1, 0, 14)),
 };
+
+// Control options: 4 player sections at 28px pitch, each with mode + remap buttons.
+// Text labels ("Px", key info) drawn in main_controls_options() below each section's buttons.
+#define CTRL_PLAYER_PITCH 28
+#define CTRL_PLAYER_Y(i) (40 + (i) * CTRL_PLAYER_PITCH)
 
 button control_options_buttons[] =
 {
-    button("controls_back", "BACK", KEYSTATE_ESCAPE, 20, 10, 50, 15, RETURN_MENU, menu_result_id(MenuResult::Exit), MenuNav::Down(1)),
-    button("player1_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 20, 40, 120, 15,
+    button("controls_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15, RETURN_MENU, menu_result_id(MenuResult::Exit), MenuNav::Down(1)),
+    button("player1_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(0), 100, 15,
         button_action_id(ButtonAction::ToggleControlMode), 0, MenuNav::UpDownRight(0, 3, 2)),
-    button("player1_remap", "REMAP P1", KEYSTATE_UNKNOWN, 160, 40, 120, 15,
-        button_action_id(ButtonAction::EditPlayerKeymap), 0, MenuNav::DownLeft(4, 1)),
-    button("player2_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 20, 65, 120, 15,
+    button("player1_remap", "REMAP P1", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(0), 100, 15,
+        button_action_id(ButtonAction::EditPlayerKeymap), 0, MenuNav::UpDownLeft(0, 4, 1)),
+    button("player2_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(1), 100, 15,
         button_action_id(ButtonAction::ToggleControlMode), 1, MenuNav::UpDownRight(1, 5, 4)),
-    button("player2_remap", "REMAP P2", KEYSTATE_UNKNOWN, 160, 65, 120, 15,
+    button("player2_remap", "REMAP P2", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(1), 100, 15,
         button_action_id(ButtonAction::EditPlayerKeymap), 1, MenuNav::UpDownLeft(2, 6, 3)),
-    button("player3_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 20, 90, 120, 15,
+    button("player3_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(2), 100, 15,
         button_action_id(ButtonAction::ToggleControlMode), 2, MenuNav::UpDownRight(3, 7, 6)),
-    button("player3_remap", "REMAP P3", KEYSTATE_UNKNOWN, 160, 90, 120, 15,
+    button("player3_remap", "REMAP P3", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(2), 100, 15,
         button_action_id(ButtonAction::EditPlayerKeymap), 2, MenuNav::UpDownLeft(4, 8, 5)),
-    button("player4_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 20, 115, 120, 15,
+    button("player4_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(3), 100, 15,
         button_action_id(ButtonAction::ToggleControlMode), 3, MenuNav::UpDownRight(5, 9, 8)),
-    button("player4_remap", "REMAP P4", KEYSTATE_UNKNOWN, 160, 115, 120, 15,
+    button("player4_remap", "REMAP P4", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(3), 100, 15,
         button_action_id(ButtonAction::EditPlayerKeymap), 3, MenuNav::UpDownLeft(6, 9, 7)),
-    button("controls_restore_defaults", "RESET CONTROL DEFAULTS", KEYSTATE_UNKNOWN, 70, 150, 180, 18, RESTORE_DEFAULT_SETTINGS, -1, MenuNav::Up(8)),
+    button("controls_restore_defaults", "RESET DEFAULTS", KEYSTATE_UNKNOWN, 80, 170, 160, 15, RESTORE_DEFAULT_SETTINGS, -1, MenuNav::Up(7)),
 };
 
 // beginmenu (first menu of new game), create_team_menu
@@ -827,9 +832,8 @@ void draw_toggle_effect_button(button& b, const std::string& category, const std
     mytext.write_xy_center(b.x + b.sizex/2, b.y + b.sizey/2 - 3, DARK_BLUE, "%s", b.label.c_str());
 }
 
-static const char* get_key_display_name_short(int keycode)
+static std::string get_key_display_name_short(int keycode)
 {
-    static std::string buffer;
     std::string sname = SDL_GetKeyName(keycode);
 
     if (sname == "`") return "~/`";
@@ -843,11 +847,8 @@ static const char* get_key_display_name_short(int keycode)
     if (sname == "CapsLock") return "Caps";
     if (sname == "Unknown Key") return "--";
     if (sname.size() > 10)
-    {
-        buffer = sname.substr(0, 9);
-        return buffer.c_str();
-    }
-    return SDL_GetKeyName(keycode);
+        return sname.substr(0, 9);
+    return sname;
 }
 
 static void draw_remap_prompt(const std::string& prompt)
@@ -952,26 +953,24 @@ Sint32 main_controls_options()
         myscreen->draw_button_inverted(4, 4, 312, 192);
         draw_buttons(buttons, num_buttons);
 
-        mytext.write_xy(20, 22, DARK_BLUE, "Player control modes and key remapping");
-        mytext.write_xy(20, 132, DARK_BLUE, "4-direction uses only cardinal movement.");
-        mytext.write_xy(20, 140, DARK_BLUE, "8-direction enables diagonal movement keys.");
+        mytext.write_xy(10, 24, DARK_BLUE, "Player control modes and key remapping");
 
         for (int i = 0; i < 4; ++i)
         {
-            const int y = 45 + i * 25;
-            const int up_key = player_keys[i][KEY_UP];
-            const int left_key = player_keys[i][KEY_LEFT];
-            const int down_key = player_keys[i][KEY_DOWN];
-            const int right_key = player_keys[i][KEY_RIGHT];
-            const int yell_key = player_keys[i][KEY_YELL];
-            mytext.write_xy(20, y - 8, DARK_BLUE, "P%d", i + 1);
-            mytext.write_xy(24, y + 10, DARK_BLUE, "%s/%s/%s/%s  Yell:%s",
-                get_key_display_name_short(up_key),
-                get_key_display_name_short(left_key),
-                get_key_display_name_short(down_key),
-                get_key_display_name_short(right_key),
-                get_key_display_name_short(yell_key));
+            const int btn_y = CTRL_PLAYER_Y(i);
+            mytext.write_xy(10, btn_y + 3, DARK_BLUE, "P%d", i + 1);
+
+            const std::string up_s = get_key_display_name_short(player_keys[i][KEY_UP]);
+            const std::string left_s = get_key_display_name_short(player_keys[i][KEY_LEFT]);
+            const std::string down_s = get_key_display_name_short(player_keys[i][KEY_DOWN]);
+            const std::string right_s = get_key_display_name_short(player_keys[i][KEY_RIGHT]);
+            const std::string yell_s = get_key_display_name_short(player_keys[i][KEY_YELL]);
+            mytext.write_xy(30, btn_y + 17, DARK_BLUE, "%s/%s/%s/%s Yell:%s",
+                up_s.c_str(), left_s.c_str(), down_s.c_str(),
+                right_s.c_str(), yell_s.c_str());
         }
+
+        mytext.write_xy(10, 155, DARK_BLUE, "4-dir = cardinal only. 8-dir adds diagonals.");
 
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0, 0, 320, 200);
