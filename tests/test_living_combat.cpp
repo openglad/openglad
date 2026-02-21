@@ -665,6 +665,18 @@ void test_living_round7_act_random_and_do_action_targeted_branches()
     foe->setxy(120, 100);
     actor->lineofsight = 40;
     actor->foe = foe.get();
+    class FixedRandom final : public IRandom
+    {
+    public:
+        std::uint32_t next(std::uint32_t max_exclusive) override
+        {
+            if (max_exclusive == 0)
+                return 0;
+            return 1 % max_exclusive;
+        }
+    };
+    FixedRandom rng;
+    actor->sim_rng = &rng;
 
     // living::act_random fire_check true path through act() dispatch.
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);

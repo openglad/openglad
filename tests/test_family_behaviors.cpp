@@ -2859,6 +2859,7 @@ void test_family_round12_cleric_druid_soldier_thief_guard_and_ai_edges()
     TEST_ASSERT(!druid_fd->do_special(druid), "druid faerie summon should fail when fire() fails");
     druid->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     druid->current_special = 4;
+    cleric->team_num = 1; // ensure there are no nearby same-team allies for this guard check
     // No nearby allies except self => howmany <= 1 => false.
     TEST_ASSERT(!druid_fd->do_special(druid), "druid protection should fail with no nearby allies");
 
@@ -2870,7 +2871,8 @@ void test_family_round12_cleric_druid_soldier_thief_guard_and_ai_edges()
     soldier->current_special = 1;
     soldier->lastx = 1;
     soldier->lasty = 0;
-    walker* block_front = add_living_to_level(FAMILY_ORC, 1, static_cast<short>(soldier->xpos + GRID_SIZE), soldier->ypos);
+    soldier->curdir = FACE_RIGHT;
+    walker* block_front = add_living_to_level(FAMILY_ORC, 1, static_cast<short>(soldier->xpos + 1), soldier->ypos);
     TEST_ASSERT(block_front != nullptr, "soldier blocker created");
     TEST_ASSERT(!soldier_fd->do_special(soldier), "soldier charge should fail when forward is blocked");
     soldier->current_special = 3;

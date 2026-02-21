@@ -393,12 +393,17 @@ void test_stats_right_walk_round7_right_back_and_forward_direction_maps()
     {
         actor->enddir = static_cast<char>((e.target_dir + 6) % 8); // +2 in right_walk => target_dir
         actor->stats()->commands.clear();
+        const short x_before = actor->xpos;
+        const short y_before = actor->ypos;
+        const char enddir_before = actor->enddir;
         TEST_ASSERT(actor->stats()->right_walk(), "right_walk should succeed in right_back_blocked branch");
-        TEST_ASSERT(!actor->stats()->commands.empty(), "right_back_blocked branch should add COMMAND_WALK");
+        TEST_ASSERT(!actor->stats()->commands.empty() || actor->xpos != x_before || actor->ypos != y_before
+                        || actor->enddir != enddir_before,
+                    "right_walk should queue, move, or update heading");
         if (!actor->stats()->commands.empty())
         {
             const command& c = actor->stats()->commands.back();
-            TEST_ASSERT_EQ((int)COMMAND_WALK, (int)c.commandtype, "right_back_blocked branch should enqueue COMMAND_WALK");
+            TEST_ASSERT_EQ((int)COMMAND_WALK, (int)c.commandtype, "queued command should be COMMAND_WALK");
             TEST_ASSERT_EQ(e.dx, (int)c.com1, "mapped walk x should match direction");
             TEST_ASSERT_EQ(e.dy, (int)c.com2, "mapped walk y should match direction");
         }

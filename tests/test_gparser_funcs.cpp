@@ -8,14 +8,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#if defined(__SANITIZE_ADDRESS__)
-#define OG_HAS_ASAN 1
-#elif defined(__has_feature)
-#if __has_feature(address_sanitizer)
-#define OG_HAS_ASAN 1
-#endif
-#endif
-
 extern cfg_store cfg;
 
 // ---------------------------------------------------------------------------
@@ -288,11 +280,6 @@ REGISTER_TEST(test_gparser_round6_commandline_all_short_switches);
 
 void test_gparser_round9_commandline_help_and_version_exit_paths()
 {
-#ifdef OG_HAS_ASAN
-    TEST_ASSERT(true, "skip fork+exit help/version assertions under ASan due leak-check exitcode behavior");
-    return;
-#endif
-
     auto run_child = [](const char* flag) -> int {
         pid_t pid = fork();
         if (pid == 0)
