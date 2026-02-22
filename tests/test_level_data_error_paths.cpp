@@ -4,10 +4,14 @@
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
+#include <cerrno>
 #include <filesystem>
 #include <cstdio>
 #include <cstdint>
+#include <fcntl.h>
 #include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 extern screen* myscreen;
@@ -96,6 +100,26 @@ static bool scenario_file_has_consistent_object_block(const fs::path& p, short c
     return pos == bytes.size();
 }
 
+static bool dev_full_write_fails_as_expected()
+{
+    struct stat st {};
+    if (::stat("/dev/full", &st) != 0)
+        return false;
+    if (!S_ISCHR(st.st_mode))
+        return false;
+
+    const int fd = ::open("/dev/full", O_WRONLY);
+    if (fd < 0)
+        return false;
+
+    const char byte = 'x';
+    const ssize_t n = ::write(fd, &byte, 1);
+    const int saved_errno = errno;
+    ::close(fd);
+
+    return n < 0 && saved_errno == ENOSPC;
+}
+
 void test_level_data_save_truncates_fixed_fields_and_rejects_null_object()
 {
     myscreen->level_data.create_new_grid();
@@ -149,6 +173,11 @@ REGISTER_TEST(test_level_data_save_reports_failure_when_grid_write_fails);
 
 void test_level_data_save_caps_object_count_to_loader_limit()
 {
+    if (!dev_full_write_fails_as_expected()) {
+        fprintf(stderr, "  INFO: /dev/full unavailable or not ENOSPC; skipping test\n");
+        return;
+    }
+
     const int old_id = myscreen->level_data.id;
     const std::string old_grid_file = myscreen->level_data.grid_file;
     const std::string old_title = myscreen->level_data.title;
