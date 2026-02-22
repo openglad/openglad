@@ -199,8 +199,11 @@ OgFilePtr og_open_write(const char* file)
         return std::make_unique<PhysfsOgFile>(f);
 
     FILE* fp = std::fopen(file, "wb");
-    if (fp)
+    if (fp) {
+        // Disable stdio buffering so write errors are reported on write().
+        std::setvbuf(fp, nullptr, _IONBF, 0);
         return std::make_unique<StdioOgFile>(fp);
+    }
 
     return nullptr;
 }
@@ -251,4 +254,3 @@ PixieData read_pixie_file(const char* filename)
 
     return result;
 }
-
