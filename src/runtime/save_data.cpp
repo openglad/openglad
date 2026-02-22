@@ -36,6 +36,11 @@
 #define DISABLE_MULTIPLAYER
 #endif
 
+namespace
+{
+constexpr unsigned char kMaxPlayers = 4;
+}
+
 
 SaveData::SaveData()
     : current_campaign("org.openglad.gladiator"), scen_num(1), score(0), totalcash(0), totalscore(0), my_team(0), numplayers(1), allied_mode(1)
@@ -289,6 +294,13 @@ bool SaveData::load(const std::string& filename)
 	#ifdef DISABLE_MULTIPLAYER
 	temp_numplayers = 1;
 	#endif
+    if (temp_numplayers == 0 || temp_numplayers > kMaxPlayers)
+    {
+        LogError("save_load_numplayers_invalid file={} numplayers={} max={}\n",
+            filename, (int)temp_numplayers, (int)kMaxPlayers);
+        last_io_error_ = SaveDataIoError::ReadFailed;
+        return 0;
+    }
 	numplayers = temp_numplayers;
 
 	// Read the reserved area, 31 bytes
