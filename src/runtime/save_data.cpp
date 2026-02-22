@@ -93,7 +93,8 @@ bool SaveData::load(const std::string& filename)
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 
 	char temptext[10] = "GTL";
-	char savedgame[40];
+	char savedgame[41];
+	std::fill_n(savedgame, std::size(savedgame), '\0');
 	char temp_campaign[41];
 	snprintf(temp_campaign, sizeof(temp_campaign), "org.openglad.gladiator");
 	temp_campaign[40] = '\0';
@@ -219,7 +220,10 @@ bool SaveData::load(const std::string& filename)
 	if (temp_version != 1)
 	{
 		if (temp_version >= 2)
+		{
 			READ_OR_FAIL(savedgame, 40, 1); // read and ignore the name
+			savedgame[40] = '\0';
+		}
 		else
 		{
 			LogError("Save file version not supported: {}\n", filename);

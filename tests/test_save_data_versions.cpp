@@ -292,6 +292,66 @@ void test_save_data_load_v9_uses_campaign_list()
 }
 REGISTER_TEST(test_save_data_load_v9_uses_campaign_list);
 
+void test_save_data_load_non_nul_terminated_save_name_is_bounded()
+{
+    SDL_RWops* out = open_write_file("save/", "ver9_non_nul_name.gtl");
+    TEST_ASSERT(out != nullptr, "open_write_file non-nul save-name");
+    if (!out)
+        return;
+
+    rw_write(out, "GTL", 3);
+    unsigned char version = 9;
+    rw_write_val(out, version);
+
+    short registered = 0;
+    rw_write_val(out, registered);
+
+    const std::string non_nul_name(40, 'N');
+    rw_write(out, non_nul_name.data(), non_nul_name.size());
+    rw_write_padded(out, "org.openglad.gladiator", 40);
+
+    short scen_num = 1;
+    uint32_t cash = 123;
+    uint32_t score = 456;
+    rw_write_val(out, scen_num);
+    rw_write_val(out, cash);
+    rw_write_val(out, score);
+
+    for (int i = 0; i < 4; i++) {
+        uint32_t c = cash + (uint32_t)i;
+        uint32_t s = score + (uint32_t)(i * 10);
+        rw_write_val(out, c);
+        rw_write_val(out, s);
+    }
+
+    short allied_mode = 1;
+    rw_write_val(out, allied_mode);
+
+    short listsize = 0;
+    unsigned char numplayers = 1;
+    rw_write_val(out, listsize);
+    rw_write_val(out, numplayers);
+    char filler31[31] = {0};
+    rw_write(out, filler31, sizeof(filler31));
+
+    short num_campaigns = 1;
+    rw_write_val(out, num_campaigns);
+    rw_write_padded(out, "org.openglad.gladiator", 40);
+    short cur_level = 1;
+    short num_levels = 0;
+    rw_write_val(out, cur_level);
+    rw_write_val(out, num_levels);
+
+    SDL_RWclose(out);
+
+    SaveData tmp;
+    TEST_ASSERT(tmp.load("ver9_non_nul_name"), "v9 load with non-nul save-name should succeed");
+    TEST_ASSERT_EQ(40, (int)tmp.save_name.size(), "save_name should remain bounded to 40 bytes");
+    TEST_ASSERT(tmp.save_name == std::string(40, 'N'),
+                "save_name content should be exactly the 40-byte field");
+}
+REGISTER_TEST(test_save_data_load_non_nul_terminated_save_name_is_bounded);
+
 void test_save_data_load_with_error_truncated_file_reports_read_failed()
 {
     SDL_RWops* out = open_write_file("save/", "truncated_read_fail.gtl");
