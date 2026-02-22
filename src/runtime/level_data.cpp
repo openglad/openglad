@@ -1769,7 +1769,12 @@ bool LevelData::save()
 	}
 
 	// Save map (grid) file
-	save_grid_file(grid_file.c_str(), grid);
+	if (!save_grid_file(grid_file.c_str(), grid))
+	{
+		last_io_error_ = IoError::OpenWriteFailed;
+#undef WRITE_FIELD
+		return false;
+	}
 
 	Log("Scenario saved.\n");
 

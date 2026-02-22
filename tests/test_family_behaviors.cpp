@@ -2493,6 +2493,7 @@ void test_family_round6_mage_thief_soldier_guard_branches()
     TEST_ASSERT(!thief_fd->do_special(thief), "thief taunt should fail while busy");
     thief->shifter_down = 1;
     thief->busy = 0;
+    thief->setxy(300, 100); // Keep charm range clear of foes created above.
     TEST_ASSERT(!thief_fd->do_special(thief), "thief charm should fail when no targets are in range");
     thief->current_special = 4;
     thief->busy = 1;
