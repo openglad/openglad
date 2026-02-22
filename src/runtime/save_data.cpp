@@ -285,6 +285,13 @@ bool SaveData::load(const std::string& filename)
 	#ifdef DISABLE_MULTIPLAYER
 	temp_numplayers = 1;
 	#endif
+    if (temp_numplayers == 0 || temp_numplayers > std::size(m_score))
+    {
+        LogError("save_load_numplayers_invalid file={} numplayers={} max={}\n",
+            filename, (int)temp_numplayers, std::size(m_score));
+        last_io_error_ = SaveDataIoError::ReadFailed;
+        return 0;
+    }
 	numplayers = temp_numplayers;
 
 	// Read the reserved area, 31 bytes
