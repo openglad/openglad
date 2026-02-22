@@ -1627,7 +1627,14 @@ bool LevelData::save()
 		return false;
 	}
 
-#define WRITE_FIELD(src, size, count) outfile->write((src), (size), (count))
+#define WRITE_FIELD(src, size, count)                                                                    \
+    do {                                                                                                 \
+        if (outfile->write((src), (size), (count)) != static_cast<std::size_t>(count)) {               \
+            Log("Failed to write scenario file: temp/scen/{}\n", temp_filename);                        \
+            last_io_error_ = IoError::SerializeFailed;                                                   \
+            return false;                                                                                \
+        }                                                                                                \
+    } while (0)
 
 	// Write id header
 	WRITE_FIELD(temptext, 3, 1);
