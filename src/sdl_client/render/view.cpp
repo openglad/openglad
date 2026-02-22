@@ -1572,8 +1572,11 @@ static const char* get_key_display_name(int keycode)
 	static std::string buffer;
 	std::string sname = SDL_GetKeyName(keycode);
 
-	// Substitute characters not in the bitmap font
-	if (sname == "`") return "Grv";
+	// Map arrow keys to bitmap font arrow glyphs (indices 1-4)
+	if (sname == "Up") { buffer = std::string(1, '\x01'); return buffer.c_str(); }
+	if (sname == "Down") { buffer = std::string(1, '\x02'); return buffer.c_str(); }
+	if (sname == "Left") { buffer = std::string(1, '\x03'); return buffer.c_str(); }
+	if (sname == "Right") { buffer = std::string(1, '\x04'); return buffer.c_str(); }
 
 	// Shorten long modifier key names to fit
 	if (sname == "Left Ctrl") return "LCtrl";
