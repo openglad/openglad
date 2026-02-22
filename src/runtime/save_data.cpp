@@ -474,8 +474,12 @@ void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
     for(auto& uptr : oblist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead && ob->myguy)
+        if (ob && !ob->dead && ob->myguy)
 		{
+            if (team_size >= MAX_TEAM_SIZE)
+            {
+                continue;
+            }
 		    // Take this one
 			team_list[team_size] = std::make_unique<guy>(*ob->myguy);
 			// Update his level from the experience
