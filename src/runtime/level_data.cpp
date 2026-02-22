@@ -1582,7 +1582,6 @@ bool LevelData::save()
 	std::string temp_filename;
 	std::uint8_t numlines = 0;
 	std::uint8_t tempwidth = 0;
-	char oneline[80];
 	char tempname[12] = {};
 	char scentitle[30] = {};
 	short temp_par;
@@ -1762,10 +1761,11 @@ bool LevelData::save()
 	WRITE_FIELD( &numlines, 1, 1);
 	for (auto& line : this->description)
 	{
-		snprintf(oneline, sizeof(oneline), "%s", line.c_str());
-		tempwidth = static_cast<Uint8>(line.size());
+		const size_t serialized_width = std::min<size_t>(line.size(), 0xffu);
+		tempwidth = static_cast<Uint8>(serialized_width);
 		WRITE_FIELD( &tempwidth, 1, 1);
-		WRITE_FIELD( oneline, tempwidth, 1);
+		if(serialized_width > 0)
+			WRITE_FIELD(line.data(), serialized_width, 1);
 	}
 
 	// Save map (grid) file

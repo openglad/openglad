@@ -99,6 +99,41 @@ static std::vector<uint8_t> make_scenario_blob_with_one_object(bool include_type
     push_bytes(b, "hello!", 6);
     return b;
 }
+
+static bool read_file_bytes(const std::string& path, std::vector<uint8_t>* out)
+{
+    if(out == nullptr)
+        return false;
+
+    std::FILE* f = std::fopen(path.c_str(), "rb");
+    if(f == nullptr)
+        return false;
+
+    if(std::fseek(f, 0, SEEK_END) != 0)
+    {
+        std::fclose(f);
+        return false;
+    }
+    const long len = std::ftell(f);
+    if(len < 0 || std::fseek(f, 0, SEEK_SET) != 0)
+    {
+        std::fclose(f);
+        return false;
+    }
+
+    out->resize(static_cast<size_t>(len));
+    if(!out->empty())
+    {
+        const size_t got = std::fread(out->data(), 1, out->size(), f);
+        if(got != out->size())
+        {
+            std::fclose(f);
+            return false;
+        }
+    }
+    std::fclose(f);
+    return true;
+}
 } // namespace
 
 namespace
@@ -505,6 +540,72 @@ void test_level_data_get_description_line()
     delete_campaign(tmp_id);
 }
 REGISTER_TEST(test_level_data_get_description_line);
+
+void test_level_data_save_description_serialization_bounds()
+{
+    constexpr int kScenarioId = 950;
+    const std::string empty_line;
+    const std::string boundary_line(79, 'B');
+    const std::string long_line(400, 'L');
+
+    myscreen->level_data.id = kScenarioId;
+    myscreen->level_data.grid_file = "grid";
+    myscreen->level_data.title = "Save Desc Regression";
+    myscreen->level_data.type = 1;
+    myscreen->level_data.par_value = 2;
+    myscreen->level_data.time_bonus_limit = 3000;
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.description.clear();
+    myscreen->level_data.description.push_back(empty_line);
+    myscreen->level_data.description.push_back(boundary_line);
+    myscreen->level_data.description.push_back(long_line);
+    std::filesystem::create_directories("temp/scen");
+
+    TEST_ASSERT(myscreen->level_data.save(), "save should succeed for description bounds regression");
+
+    const std::string scen_path = "temp/scen/scen" + std::to_string(kScenarioId) + ".fss";
+    std::vector<uint8_t> bytes;
+    TEST_ASSERT(read_file_bytes(scen_path, &bytes), "saved scenario should be readable");
+    TEST_ASSERT(bytes.size() >= 49, "saved scenario should include fixed header");
+
+    size_t pos = 0;
+    TEST_ASSERT(bytes[pos++] == 'F' && bytes[pos++] == 'S' && bytes[pos++] == 'S', "header should start with FSS");
+    pos += 1;  // version
+    pos += 8;  // grid name
+    pos += 30; // title
+    pos += 1;  // type
+    pos += 2;  // par
+    pos += 2;  // time limit
+    TEST_ASSERT(bytes.size() >= pos + 2, "saved scenario should include object count");
+    const uint16_t object_count = static_cast<uint16_t>(bytes[pos])
+        | (static_cast<uint16_t>(bytes[pos + 1]) << 8);
+    TEST_ASSERT_EQ(0, (int)object_count, "test fixture should serialize zero objects");
+    pos += 2;
+
+    TEST_ASSERT(bytes.size() > pos, "saved scenario should include description line count");
+    const uint8_t num_lines = bytes[pos++];
+    TEST_ASSERT_EQ(3, (int)num_lines, "expected three serialized description lines");
+
+    TEST_ASSERT(bytes.size() > pos, "line 1 width should be present");
+    const uint8_t width0 = bytes[pos++];
+    TEST_ASSERT_EQ(0, (int)width0, "empty description should serialize with width 0");
+
+    TEST_ASSERT(bytes.size() > pos, "line 2 width should be present");
+    const uint8_t width1 = bytes[pos++];
+    TEST_ASSERT_EQ(79, (int)width1, "79-char description should preserve exact width");
+    TEST_ASSERT(bytes.size() >= pos + width1, "line 2 payload should be present");
+    for(size_t i = 0; i < width1; ++i)
+        TEST_ASSERT(bytes[pos + i] == static_cast<uint8_t>('B'), "line 2 payload should match source text");
+    pos += width1;
+
+    TEST_ASSERT(bytes.size() > pos, "line 3 width should be present");
+    const uint8_t width2 = bytes[pos++];
+    TEST_ASSERT_EQ(255, (int)width2, "long description should clamp width to uint8_t max");
+    TEST_ASSERT(bytes.size() >= pos + width2, "line 3 payload should be present");
+    for(size_t i = 0; i < width2; ++i)
+        TEST_ASSERT(bytes[pos + i] == static_cast<uint8_t>('L'), "line 3 payload should be copied from source text");
+}
+REGISTER_TEST(test_level_data_save_description_serialization_bounds);
 
 // ---------------------------------------------------------------------------
 // LevelData::resize_grid with objects - tests off-map cleanup
