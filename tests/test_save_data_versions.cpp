@@ -342,6 +342,32 @@ void test_save_data_load_with_error_campaign_mount_failure()
 }
 REGISTER_TEST(test_save_data_load_with_error_campaign_mount_failure);
 
+void test_save_data_load_rejects_negative_team_size()
+{
+    write_save_file("ver9_negative_team_size",
+                    /*version=*/9,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/nullptr,
+                    /*listsize=*/-1,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr);
+
+    SaveData tmp;
+    TEST_ASSERT(!tmp.load("ver9_negative_team_size"),
+                "load should fail when team listsize is negative");
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::ReadFailed),
+                   static_cast<int>(tmp.last_io_error()),
+                   "negative team listsize should report ReadFailed");
+}
+REGISTER_TEST(test_save_data_load_rejects_negative_team_size);
+
 void test_save_data_save_with_error_open_write_failed_for_missing_directory()
 {
     const std::string bad_subdir = "save/typed_save_missing_dir";
