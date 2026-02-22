@@ -31,6 +31,9 @@
 #include "SDL.h"
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/ui/level_picker.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
+#include <openglad/ui/picker_common.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -44,13 +47,10 @@
 
 #define DOWN(x) (72 + static_cast<Sint32>((x) * 15))
 #define VIEW_DOWN(x) (10 + static_cast<Sint32>((x) * 20))
-#define RAISE 1.85  // please also change in guy.cpp
-
 #define EXIT 1
 #define REDRAW 2
 #define OK 4
 #define BUTTON_HEIGHT 15
-#define ARRAY_SIZE(a) (sizeof(a)/sizeof(a[0]))
 
 extern std::unique_ptr<guy> current_guy;
 extern guy* old_guy;
@@ -58,7 +58,7 @@ extern std::string message;
 extern Sint32 editguy;
 extern vbutton* localbuttons;
 extern short current_team_num;
-extern std::array<Sint32, 14> allowable_guys;
+// allowable_guys replaced by og::ui::kAllowableGuys
 extern Sint32 current_type;
 extern std::array<Sint32, NUM_FAMILIES> numbought;
 extern button createmenu_buttons[];
@@ -1465,74 +1465,45 @@ Sint32 decrease_stat(Sint32 whatstat, Sint32 howmuch)
 
 Uint32 calculate_hire_cost()
 {
-	guy  *ob = current_guy.get();
-	Sint32 temp;
-	Sint32 myfamily;
-
-	if (!ob)
+	if (!current_guy)
 		return 0;
 
-	myfamily = ob->family;
-	temp = costlist[myfamily];
-
-		// Long check of various things ..
-		if (ob->strength < statlist[myfamily][BUT_STR])
-			ob->strength = static_cast<short>(statlist[myfamily][BUT_STR]);
-		if (ob->dexterity < statlist[myfamily][BUT_DEX])
-			ob->dexterity = static_cast<short>(statlist[myfamily][BUT_DEX]);
-		if (ob->constitution < statlist[myfamily][BUT_CON])
-			ob->constitution = static_cast<short>(statlist[myfamily][BUT_CON]);
-		if (ob->intelligence < statlist[myfamily][BUT_INT])
-			ob->intelligence = static_cast<short>(statlist[myfamily][BUT_INT]);
-		if (ob->armor < statlist[myfamily][BUT_ARMOR])
-			ob->armor = static_cast<short>(statlist[myfamily][BUT_ARMOR]);
-
-	// Now figure out costs ..
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_STR]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_DEX]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_CON]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_INT]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_ARMOR]));
-    
-		if (ob->level < statlist[myfamily][BUT_LEVEL])
-			ob->upgrade_to_level(static_cast<short>(statlist[myfamily][BUT_LEVEL]));
-		
-	if (static_cast<Sint32>(calculate_exp(ob->level)) < 0) // overflow
-		ob->upgrade_to_level(1);
-    
-	temp += static_cast<Sint32>(calculate_exp(ob->level));
-	
-	if (temp < 0)
-	{
-		//guytemp = new guy(current_guy->family);
-		//delete current_guy;
-		//current_guy = guytemp;
-		cycle_guy(0);
-		//temp = -1;  // This used to be an error code checked by picker.cpp line 2213
-		temp = 0;
+	// SDL side effect: clamp stats up to family base values.
+	// The pure og::ui function handles cost calculation correctly without mutation,
+	// but the SDL picker UI expects the guy to be corrected in place.
+	const auto* fd = get_family_descriptor(current_guy->family);
+	if (fd) {
+		if (current_guy->strength < fd->base_stats[0])
+			current_guy->strength = static_cast<short>(fd->base_stats[0]);
+		if (current_guy->dexterity < fd->base_stats[1])
+			current_guy->dexterity = static_cast<short>(fd->base_stats[1]);
+		if (current_guy->constitution < fd->base_stats[2])
+			current_guy->constitution = static_cast<short>(fd->base_stats[2]);
+		if (current_guy->intelligence < fd->base_stats[3])
+			current_guy->intelligence = static_cast<short>(fd->base_stats[3]);
+		if (current_guy->armor < fd->base_stats[4])
+			current_guy->armor = static_cast<short>(fd->base_stats[4]);
+		if (current_guy->level < fd->base_stats[5])
+			current_guy->upgrade_to_level(static_cast<short>(fd->base_stats[5]));
 	}
-	return static_cast<Uint32>(temp);
+
+	Uint32 cost = og::ui::calculate_hire_cost(*current_guy);
+	if (cost == 0 && current_guy) {
+		// Overflow/reset: shared function returned 0, reset the guy
+		cycle_guy(0);
+	}
+	return cost;
 }
 
 // This version compares current_guy versus the old version ..
 Uint32 calculate_train_cost(guy  *oldguy)
 {
 	guy  *ob = current_guy.get();
-	Sint32 temp;
-	Sint32 myfamily;
 
 	if (!ob || !oldguy)
 		return 0;
 
-	myfamily = ob->family;
-	temp = 0;
-
-	// Long check of various things ..
+	// Clamp current stats to not go below old (SDL-specific mutation)
 	if (ob->strength < oldguy->strength)
 		ob->strength = oldguy->strength;
 	if (ob->dexterity < oldguy->dexterity)
@@ -1543,259 +1514,76 @@ Uint32 calculate_train_cost(guy  *oldguy)
 		ob->intelligence = oldguy->intelligence;
 	if (ob->armor < oldguy->armor)
 		ob->armor = oldguy->armor;
-
-	// Now figure out costs ..
-    
-	// Add on extra level cost ..
 	if (ob->level < oldguy->level)
 		ob->upgrade_to_level(oldguy->level);
-	if (calculate_exp(ob->level) > oldguy->exp)
-		temp += static_cast<Sint32>(calculate_exp(ob->level) - oldguy->exp);
 
-	if (ob->level <= old_guy->level) // Only count these costs if the level is not being upgraded
-    {
-	// First we have our 'total increased value..'
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_STR]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_DEX]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_CON]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_INT]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_ARMOR]));
+	Uint32 cost = og::ui::calculate_train_cost(*ob, *oldguy);
 
-	// Now subtract what we've already paid for ..
-	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_STR]));
-	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_DEX]));
-	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_CON]));
-	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_INT]));
-	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_ARMOR]));
-    }
-    
-
-	if (temp < 0)
-	{
-		temp = 0;
+	if (cost == 0 && (ob->strength != oldguy->strength ||
+	                  ob->dexterity != oldguy->dexterity ||
+	                  ob->constitution != oldguy->constitution ||
+	                  ob->intelligence != oldguy->intelligence ||
+	                  ob->armor != oldguy->armor ||
+	                  ob->level != oldguy->level)) {
+		// Overflow/reset: revert to old stats
 		statscopy(current_guy.get(), oldguy);
 		cycle_team_guy(0);
-
 	}
 
-	return static_cast<Uint32>(temp);
+	return cost;
 }
 
 
-#define GET_RAND_ELEM(array) (array[rand()%ARRAY_SIZE(array)])
+// Name generation moved to og::ui::get_random_name / og::ui::get_unique_name
+// in picker_common.cpp
 
-const char* archer_names[] = {
-    "Robin", "Green Arrow", 
-    "Legolas", 
-    "Yeoman", "Strider", "Longshot", "Bowyer", "Hunter", "Archy"
-};
-
-const char* cleric_names[] = {
-    "Tuck", 
-    "Brother", "Pater", "Drake", "Friar", "Francis", "John Paul", "Medic"
-};
-
-const char* druid_names[] = {
-    "Roland", 
-    "Merlin", 
-    "Hippy", "Green Thumb", "Treefall", "Rain"
-};
-
-const char* elf_names[] = {
-    "Legolas", "Took", "Elrond", 
-    "Tanis", 
-    "Acorn", "Lightfoot", "Treewee"
-};
-
-const char* mage_names[] = {
-    "Gandalf", "Saruman", "Radagast", "Alatar", "Pallando", 
-    "Raistlin", "Fizban", "Mordenkainen", 
-    "Merlin", 
-    "Harry", 
-    "Manannan", "Mordack", 
-    "Jace"
-};
-
-const char* soldier_names[] = {
-    "Lothar", 
-    "Arthur", "Uther", 
-    "Achilles", "Lu Bu", "Wallace", "Leonidas", "Attila", "Alexander", "Ajax", "Nestor", "Priam", "Hector", 
-    "Tom", "Bigfoot"
-};
-
-const char* thief_names[] = {
-    "Shinobi", 
-    "Dismas", 
-    "Shadow", "Stabby", "Swiftstrike", "Scourge", "Rogue"
-};
-
-const char* orc_names[] = {
-    "Grom", 
-    "Thrull", 
-    "Vernix", "Lanugo", 
-    "Grok", "Horde", "Grog", "Krosh"
-};
-
-const char* barbarian_names[] = {
-    "Thor", 
-    "Conan", 
-    "Beowulf", "Cronus", "Pallas", "Atlas", "Prometheus", 
-    "Titan"
-};
-
-const char* elemental_names[] = {
-    "Furnace", "Molten", "Burns", "Fire Eli", "Fireball", "Sunny", "Lava", "Heatwave", "Torch", "Scorch"
-};
-
-const char* skeleton_names[] = {
-    "Drybones", 
-    "Blackbeard", 
-    "Boney", "Femur", "Patella", "Humerus", "Scapula"
-};
-
-const char* slime_names[] = {
-    "Grimer", 
-    "Goop", "Slurp", "Glopp", "Sludge", "Blob"
-};
-
-const char* faerie_names[] = {
-    "Tink", 
-    "Gem", "Glitter", "Jewel", "Blossom", "Ruby", "Muffin", "Flutter", "Sparkle", "Sprint", "Sprite", "Eve", "Twinkle", "Violet", "Daisy", "Lily"
-};
-
-const char* ghost_names[] = {
-    "Casper", 
-    "Slimer", 
-    "Reaper", "Ecto", "Pepper", "Boo", "Banshee", "Nyx"
-};
-
+// Legacy wrappers for code that still calls the old names
 const char* get_random_name(unsigned char family)
 {
-	switch(family)
-	{
-		case FAMILY_ARCHER:
-			return GET_RAND_ELEM(archer_names);
-		case FAMILY_CLERIC:
-			return GET_RAND_ELEM(cleric_names);
-		case FAMILY_DRUID:
-			return GET_RAND_ELEM(druid_names);
-		case FAMILY_ELF:
-			return GET_RAND_ELEM(elf_names);
-		case FAMILY_MAGE:
-			return GET_RAND_ELEM(mage_names);
-		case FAMILY_SOLDIER:
-			return GET_RAND_ELEM(soldier_names);
-		case FAMILY_THIEF:
-			return GET_RAND_ELEM(thief_names);
-		case FAMILY_ARCHMAGE:
-			return GET_RAND_ELEM(mage_names);
-		case FAMILY_ORC:
-			return GET_RAND_ELEM(orc_names);
-		case FAMILY_BIG_ORC:
-			return GET_RAND_ELEM(orc_names);
-		case FAMILY_BARBARIAN:
-			return GET_RAND_ELEM(barbarian_names);
-		case FAMILY_FIREELEMENTAL:
-			return GET_RAND_ELEM(elemental_names);
-		case FAMILY_SKELETON:
-			return GET_RAND_ELEM(skeleton_names);
-		case FAMILY_SLIME:
-		case FAMILY_MEDIUM_SLIME:
-		case FAMILY_SMALL_SLIME:
-			return GET_RAND_ELEM(slime_names);
-		case FAMILY_FAERIE:
-			return GET_RAND_ELEM(faerie_names);
-		case FAMILY_GHOST:
-			return GET_RAND_ELEM(ghost_names);
-		default:
-			return GET_RAND_ELEM(soldier_names);
-	}
+	return og::ui::get_random_name(family);
 }
 
 bool has_name_in_team(const char* name)
 {
     auto& ourteam = myscreen->save_data.team_list;
     int team_size = myscreen->save_data.team_size;
-    
-    for(int i = 0; i < team_size; i++)
-    {
-        if(ourteam[i]->name == name)
+    for (int i = 0; i < team_size; i++) {
+        if (ourteam[i] && ourteam[i]->name == name)
             return true;
     }
-    
     return false;
 }
 
 const char* get_new_name(unsigned char family)
 {
     static std::string new_name_buffer;
-    const char* result = get_random_name(family);
-
-    // Try a few times to get a unique name
-    int i = 0;
-    while(has_name_in_team(result) && i < 10)
-    {
-        result = get_random_name(family);
-        i++;
-    }
-
-    // A bare name is a duplicate?
-    if(has_name_in_team(result))
-    {
-        // Append a number
-        i = 2;
-        do
-        {
-            new_name_buffer = std::format("{}{}", result, i);
-            i++;
-        }
-        while(has_name_in_team(new_name_buffer.c_str()));
-
-        result = new_name_buffer.c_str();
-    }
-
-    return result;
+    new_name_buffer = og::ui::get_unique_name(family, myscreen->save_data);
+    return new_name_buffer.c_str();
 }
 
 Sint32 cycle_guy(Sint32 whichway)
 {
 	Sint32 newfamily;
+	constexpr auto& guys = og::ui::kAllowableGuys;
 
 	if (!current_guy)
-		newfamily = allowable_guys[0];
+		newfamily = guys[0];
 	else
 	{
-		current_type = current_type + whichway + static_cast<Sint32>(allowable_guys.size());
-		current_type %= static_cast<Sint32>(allowable_guys.size());
+		current_type = current_type + whichway + static_cast<Sint32>(guys.size());
+		current_type %= static_cast<Sint32>(guys.size());
 		if (current_type < 0)
-			current_type = static_cast<Sint32>(allowable_guys.size()) - 1;
-		newfamily = allowable_guys[current_type];
-		//newfamily = current_guy->family + whichway;
+			current_type = static_cast<Sint32>(guys.size()) - 1;
+		newfamily = guys[current_type];
 	}
 
-	//newfamily = (newfamily + NUM_FAMILIES) % NUM_FAMILIES;
-
-	// Make the new guy
-	current_guy = std::make_unique<guy>(newfamily);
-	current_guy->teamnum = current_team_num;
-		current_guy->name = get_new_name(static_cast<unsigned char>(newfamily));
+	// Make the new guy using shared create_recruit for unique naming
+	current_guy = og::ui::create_recruit(newfamily, current_team_num, myscreen->save_data);
 
 	show_guy(0, 0);
 
-	//myscreen->buffer_to_screen(52, 24, 108, 64);
-
 	grab_mouse();
-	
+
 	return OK;
 }
 
@@ -1875,20 +1663,10 @@ Sint32 cycle_team_guy(Sint32 whichway)
 
 Sint32 add_guy(guy *newguy)
 {
-	Sint32 i;
-
-	for (i=0; i < MAX_TEAM_SIZE; i++)
-    {
-		if (!myscreen->save_data.team_list[i])
-		{
-			myscreen->save_data.team_list[i].reset(newguy);
-			myscreen->save_data.team_size++;
-			return i;
-		}
-    }
-
-	// failed the case; too many guys
-	return -1;
+	short team_num = newguy->teamnum;
+	std::unique_ptr<guy> owned(newguy);
+	int slot = og::ui::add_recruit_to_team(myscreen->save_data, std::move(owned), team_num);
+	return static_cast<Sint32>(slot);
 }
 
 Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
@@ -2024,16 +1802,7 @@ Sint32 edit_guy(Sint32 arg1)
 
 Sint32 how_many(Sint32 whatfamily)    // how many guys of family X on the team?
 {
-	Sint32 counter = 0;
-	Sint32 i;
-
-	for (i=0; i < MAX_TEAM_SIZE; i++)
-    {
-		if (myscreen->save_data.team_list[i] && myscreen->save_data.team_list[i]->family == whatfamily)
-			counter++;
-    }
-
-	return counter;
+	return static_cast<Sint32>(og::ui::count_family_members(whatfamily, myscreen->save_data));
 }
 
 Sint32 do_save(Sint32 arg1)

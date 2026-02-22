@@ -159,6 +159,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/sdl_client/ui/picker_accessible_levels.cpp
     ${SRC_DIR}/sdl_client/ui/picker_team_build.cpp
     ${SRC_DIR}/ui/menu_model.cpp
+    ${SRC_DIR}/ui/picker_common.cpp
     ${SRC_DIR}/ui/picker_state.cpp
     ${SRC_DIR}/sdl_client/render/pixie.cpp
     ${SRC_DIR}/sdl_client/render/pixien.cpp
@@ -345,6 +346,7 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/sdl_client/ui/picker_main_menu.cpp
     ${SRC_DIR}/sdl_client/ui/picker_team_build.cpp
     ${SRC_DIR}/ui/menu_model.cpp
+    ${SRC_DIR}/ui/picker_common.cpp
     ${SRC_DIR}/ui/picker_state.cpp
     ${SRC_DIR}/sdl_client/ui/results_screen.cpp
 )
@@ -813,6 +815,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/text_client/text_picker.cpp
         ${SRC_DIR}/text_client/text_protocol.cpp
         ${SRC_DIR}/ui/menu_model.cpp
+        ${SRC_DIR}/ui/picker_common.cpp
         ${SRC_DIR}/ui/picker_state.cpp
         # core
         ${OG_CORE_SOURCES}
@@ -947,6 +950,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_picker_common.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_coverage_push.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_coverage_push.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_thief_coverage_push.cpp

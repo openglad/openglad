@@ -37,6 +37,7 @@
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/ui/level_picker.h>
 #include <openglad/ui/menu_model.h>
+#include <openglad/ui/picker_common.h>
 #include <openglad/ui/picker_state.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen_lifecycle.h>
@@ -56,7 +57,7 @@
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable
 
-inline constexpr float RAISE = 1.85f;  // please also change in guy.cpp
+// Stat cost exponent moved to og::ui::kStatCostExponent in picker_common.h
 
 enum class MenuResult : Sint32
 {
@@ -159,22 +160,7 @@ void picker_testing_mark_game_end()
 }
 #endif
 
-std::array<Sint32, 14> allowable_guys{
-    FAMILY_SOLDIER,
-    FAMILY_BARBARIAN,
-    FAMILY_ELF,
-    FAMILY_ARCHER,
-    FAMILY_MAGE,
-    FAMILY_CLERIC,
-    FAMILY_THIEF,
-    FAMILY_DRUID,
-    FAMILY_ORC,
-    FAMILY_SKELETON,
-    FAMILY_FIREELEMENTAL,
-    FAMILY_SMALL_SLIME,
-    FAMILY_FAERIE,
-    FAMILY_GHOST
-};
+// allowable_guys moved to og::ui::kAllowableGuys in picker_common.h
 
 Sint32 current_type = 0; // guy type we're looking at
 
@@ -194,6 +180,8 @@ Sint32 difficulty_level[DIFFICULTY_SETTINGS] =
         100,
         200,
     };  // end of difficulty settings
+// difficulty_names: legacy mutable array for button labels that format into it.
+// Values sourced from og::ui::kDifficultyNames.
 char difficulty_names[DIFFICULTY_SETTINGS][80] =
     {
         "Skirmish",
@@ -777,30 +765,13 @@ void draw_version_number()
 
 const char* get_family_string(Sint32 family)
 {
-	auto* fd = get_family_descriptor(family);
-	if (fd)
-		return fd->name;
-	return "BEAST";
+	return og::ui::family_display_name(family);
 }
 
 
 const char* family_name_copy(short family)
 {
-	switch(family)
-	{
-		case FAMILY_ARCHER:    return "ARCHER";
-		case FAMILY_CLERIC:    return "CLERIC";
-		case FAMILY_DRUID:     return "DRUID";
-		case FAMILY_ELF:       return "ELF";
-		case FAMILY_MAGE:      return "MAGE";
-		case FAMILY_SOLDIER:   return "SOLDIER";
-		case FAMILY_THIEF:     return "THIEF";
-		case FAMILY_ARCHMAGE:  return "ARCHMAGE";
-		case FAMILY_ORC:       return "ORC";
-		case FAMILY_BIG_ORC:   return "ORC CAP.";
-		case FAMILY_BARBARIAN: return "BARBAR.";
-		default:               return "BEAST";
-	}
+	return og::ui::family_short_name(family);
 }
 
 

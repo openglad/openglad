@@ -1,7 +1,8 @@
 /* Text-based picker implementation for the headless client.
  *
  * Provides a line-oriented stdin/stdout menu interface that drives
- * the shared picker state machine.
+ * the shared picker state machine. Uses SaveData as the backing store
+ * and shared business logic from picker_common.h.
  */
 
 #include <openglad/core/constants.h>
@@ -13,10 +14,10 @@
 #include <openglad/platform/io_common.h>
 #include <openglad/ui/menu_model.h>
 #include <openglad/ui/picker.h>
+#include <openglad/ui/picker_common.h>
 #include <openglad/ui/picker_state.h>
 #include <openglad/ui/text_protocol.h>
 
-#include <array>
 #include <cstdio>
 #include <format>
 #include <iostream>
@@ -30,29 +31,6 @@ extern std::int32_t current_difficulty;
 namespace og::ui {
 namespace {
 
-constexpr std::array<const char*, DIFFICULTY_SETTINGS> kDifficultyNames = {
-    "Skirmish",
-    "Battle",
-    "Slaughter",
-};
-
-constexpr std::array<int, 14> kAllowableGuys = {
-    FAMILY_SOLDIER,
-    FAMILY_BARBARIAN,
-    FAMILY_ELF,
-    FAMILY_ARCHER,
-    FAMILY_MAGE,
-    FAMILY_CLERIC,
-    FAMILY_THIEF,
-    FAMILY_DRUID,
-    FAMILY_ORC,
-    FAMILY_SKELETON,
-    FAMILY_FIREELEMENTAL,
-    FAMILY_SMALL_SLIME,
-    FAMILY_FAERIE,
-    FAMILY_GHOST,
-};
-
 bool read_line(std::string& out)
 {
     if (!std::getline(std::cin, out))
@@ -60,30 +38,6 @@ bool read_line(std::string& out)
     while (!out.empty() && (out.back() == '\r' || out.back() == '\n'))
         out.pop_back();
     return true;
-}
-
-const char* family_display_name(int family)
-{
-    switch (family) {
-    case FAMILY_SOLDIER: return "Soldier";
-    case FAMILY_BARBARIAN: return "Barbarian";
-    case FAMILY_ELF: return "Elf";
-    case FAMILY_ARCHER: return "Archer";
-    case FAMILY_MAGE: return "Mage";
-    case FAMILY_CLERIC: return "Cleric";
-    case FAMILY_THIEF: return "Thief";
-    case FAMILY_DRUID: return "Druid";
-    case FAMILY_ORC: return "Orc";
-    case FAMILY_SKELETON: return "Skeleton";
-    case FAMILY_FIREELEMENTAL: return "Fire Elemental";
-    case FAMILY_SMALL_SLIME: return "Slime";
-    case FAMILY_FAERIE: return "Faerie";
-    case FAMILY_GHOST: return "Ghost";
-    default: {
-        const FamilyDescriptor* fd = get_family_descriptor(family);
-        return fd ? fd->name : "Unknown";
-    }
-    }
 }
 
 std::string save_error_string(SaveDataIoError error)
@@ -99,12 +53,6 @@ std::string save_error_string(SaveDataIoError error)
     case SaveDataIoError::CampaignLoadFailed: return "campaign_load_failed";
     }
     return "unknown";
-}
-
-int family_hiring_cost(int family)
-{
-    const FamilyDescriptor* fd = get_family_descriptor(family);
-    return fd ? static_cast<int>(fd->hiring_cost) : 0;
 }
 
 void wait_for_enter()
@@ -178,14 +126,14 @@ public:
 
     bool prepare_new_game() override
     {
-        team_roster_.clear();
-        team_gold_ = 5000;
+        reset_for_new_game(save_data_);
+        save_data_.m_totalcash[0] = kNewGameStartingGold;
+        save_data_.totalcash = kNewGameStartingGold;
 
-        guy starter(FAMILY_SOLDIER);
-        starter.name = "Soldier1";
-        team_roster_.push_back(starter);
+        auto starter = create_recruit(FAMILY_SOLDIER, 0, save_data_);
+        add_recruit_to_team(save_data_, std::move(starter), 0);
 
-        sync_team_families_from_roster();
+        sync_config_from_save();
         start_team_build_in_hire_mode_ = true;
         return true;
     }
@@ -220,6 +168,7 @@ public:
         }
 
         config_.campaign = entries[static_cast<size_t>(*choice - 1)];
+        save_data_.current_campaign = config_.campaign;
         return config_.campaign;
     }
 
@@ -261,7 +210,7 @@ public:
     void run_game() override
     {
         ensure_team_initialized();
-        sync_team_families_from_roster();
+        sync_config_from_save();
 
         const int result = run_text_picker_protocol_session(config_);
         if (result != 0) {
@@ -277,8 +226,7 @@ public:
 
     bool load_game() override
     {
-        SaveData loaded;
-        const SaveDataIoError io = loaded.load_with_error(config_.save_name);
+        const SaveDataIoError io = save_data_.load_with_error(config_.save_name);
         if (io != SaveDataIoError::None) {
             set_error(TextPickerErrorCode::LoadIoError,
                 std::string("load failed: ") + save_error_string(io));
@@ -287,27 +235,20 @@ public:
             return false;
         }
 
-        config_.campaign = loaded.current_campaign;
-        config_.level = loaded.scen_num > 0 ? loaded.scen_num : 1;
+        config_.campaign = save_data_.current_campaign;
+        config_.level = save_data_.scen_num > 0 ? save_data_.scen_num : 1;
 
-        team_gold_ = static_cast<int>(loaded.m_totalcash[0]);
-        team_roster_.clear();
-        for (size_t i = 0; i < loaded.team_size; ++i) {
-            if (loaded.team_list[i])
-                team_roster_.push_back(*loaded.team_list[i]);
+        if (save_data_.team_size == 0) {
+            auto starter = create_recruit(FAMILY_SOLDIER, 0, save_data_);
+            add_recruit_to_team(save_data_, std::move(starter), 0);
         }
 
-        if (team_roster_.empty()) {
-            guy starter(FAMILY_SOLDIER);
-            starter.name = "Soldier1";
-            team_roster_.push_back(starter);
-        }
+        sync_config_from_save();
 
-        sync_team_families_from_roster();
-
-        std::printf("Loaded '%s' (campaign=%s level=%d team=%zu gold=%d).\n",
+        std::printf("Loaded '%s' (campaign=%s level=%d team=%d gold=%u).\n",
             config_.save_name.c_str(), config_.campaign.c_str(),
-            config_.level, team_roster_.size(), team_gold_);
+            config_.level, static_cast<int>(save_data_.team_size),
+            static_cast<unsigned>(save_data_.m_totalcash[0]));
         clear_error();
         return true;
     }
@@ -315,22 +256,11 @@ public:
     bool save_game() override
     {
         ensure_team_initialized();
-        sync_team_families_from_roster();
+        save_data_.current_campaign = config_.campaign;
+        save_data_.scen_num = static_cast<short>(config_.level);
+        save_data_.numplayers = 1;
 
-        SaveData save;
-        save.current_campaign = config_.campaign;
-        save.scen_num = static_cast<short>(config_.level);
-        save.numplayers = 1;
-        save.totalcash = static_cast<std::uint32_t>(team_gold_);
-        save.m_totalcash[0] = static_cast<std::uint32_t>(team_gold_);
-
-        save.team_size = 0;
-        for (size_t i = 0; i < team_roster_.size() && i < MAX_TEAM_SIZE; ++i) {
-            save.team_list[i] = std::make_unique<guy>(team_roster_[i]);
-            ++save.team_size;
-        }
-
-        const SaveDataIoError io = save.save_with_error(config_.save_name);
+        const SaveDataIoError io = save_data_.save_with_error(config_.save_name);
         if (io != SaveDataIoError::None) {
             set_error(TextPickerErrorCode::SaveIoError,
                 std::string("save failed: ") + save_error_string(io));
@@ -351,19 +281,23 @@ private:
             return;
 
         std::printf("\nTeam: ");
-        if (team_roster_.empty()) {
+        if (save_data_.team_size == 0) {
             std::printf("(empty)\n");
         } else {
-            for (size_t i = 0; i < team_roster_.size(); ++i) {
-                if (i > 0)
+            bool first = true;
+            for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+                if (!save_data_.team_list[i])
+                    continue;
+                if (!first)
                     std::printf(", ");
-                std::printf("%s (%s)", team_roster_[i].name.c_str(),
-                    family_display_name(team_roster_[i].family));
+                std::printf("%s (%s)", save_data_.team_list[i]->name.c_str(),
+                    family_display_name(save_data_.team_list[i]->family));
+                first = false;
             }
             std::printf("\n");
         }
 
-        std::printf("Gold: %d\n", team_gold_);
+        std::printf("Gold: %u\n", static_cast<unsigned>(save_data_.m_totalcash[0]));
         if (start_team_build_in_hire_mode_) {
             std::printf("[New game: hire and train your team before GO!]\n");
             start_team_build_in_hire_mode_ = false;
@@ -376,7 +310,8 @@ private:
             const int difficulty_idx = current_difficulty >= 0
                 ? (current_difficulty % DIFFICULTY_SETTINGS)
                 : 0;
-            return std::format("{}: {}", item.label, kDifficultyNames[static_cast<size_t>(difficulty_idx)]);
+            return std::format("{}: {}", item.label,
+                kDifficultyNames[static_cast<size_t>(difficulty_idx)]);
         }
         if (item.command == PickerMenuCommand::SetLevel)
             return std::format("{} ({})", item.label, config_.level);
@@ -450,62 +385,52 @@ private:
 
     void ensure_team_initialized()
     {
-        if (!team_roster_.empty())
+        if (save_data_.team_size > 0)
             return;
 
         if (config_.team_families.empty())
             config_.team_families.push_back(FAMILY_SOLDIER);
 
-        for (size_t i = 0; i < config_.team_families.size(); ++i) {
+        save_data_.m_totalcash[0] = kNewGameStartingGold;
+        save_data_.totalcash = kNewGameStartingGold;
+
+        for (size_t i = 0; i < config_.team_families.size() && save_data_.team_size < MAX_TEAM_SIZE; ++i) {
             const int family = config_.team_families[i];
-            guy g(family);
-            if (g.name.empty()) {
-                g.name = std::format("{}{}", family_display_name(family), i + 1);
-            } else {
-                g.name = std::format("{}{}", family_display_name(family), i + 1);
-            }
-            team_roster_.push_back(g);
+            auto recruit = create_recruit(family, 0, save_data_);
+            add_recruit_to_team(save_data_, std::move(recruit), 0);
         }
 
-        if (team_roster_.empty()) {
-            guy starter(FAMILY_SOLDIER);
-            starter.name = "Soldier1";
-            team_roster_.push_back(starter);
+        if (save_data_.team_size == 0) {
+            auto starter = create_recruit(FAMILY_SOLDIER, 0, save_data_);
+            add_recruit_to_team(save_data_, std::move(starter), 0);
         }
-
-        sync_team_families_from_roster();
     }
 
-    void sync_team_families_from_roster()
+    void sync_config_from_save()
     {
         config_.team_families.clear();
-        for (const guy& member : team_roster_)
-            config_.team_families.push_back(static_cast<int>(member.family));
-    }
-
-    size_t family_count(int family) const
-    {
-        size_t count = 0;
-        for (const guy& member : team_roster_) {
-            if (member.family == family)
-                ++count;
+        for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+            if (save_data_.team_list[i])
+                config_.team_families.push_back(static_cast<int>(save_data_.team_list[i]->family));
         }
-        return count;
     }
 
     void view_team_roster()
     {
         std::printf("\n--- Team Roster ---\n");
-        if (team_roster_.empty()) {
+        if (save_data_.team_size == 0) {
             std::printf("(empty)\n");
             wait_for_enter();
             return;
         }
 
-        for (size_t i = 0; i < team_roster_.size(); ++i) {
-            const guy& member = team_roster_[i];
-            std::printf("%2zu. %-14s Family=%-14s L=%d STR=%d DEX=%d CON=%d INT=%d ARM=%d\n",
-                i + 1,
+        int idx = 1;
+        for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+            if (!save_data_.team_list[i])
+                continue;
+            const guy& member = *save_data_.team_list[i];
+            std::printf("%2d. %-14s Family=%-14s L=%d STR=%d DEX=%d CON=%d INT=%d ARM=%d\n",
+                idx++,
                 member.name.c_str(),
                 family_display_name(member.family),
                 member.level,
@@ -519,23 +444,35 @@ private:
         wait_for_enter();
     }
 
+    // Collect non-null team members into a flat index list for menu selection
+    std::vector<int> get_team_slot_indices() const
+    {
+        std::vector<int> slots;
+        for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+            if (save_data_.team_list[i])
+                slots.push_back(i);
+        }
+        return slots;
+    }
+
     void train_team()
     {
-        if (team_roster_.empty()) {
+        auto slots = get_team_slot_indices();
+        if (slots.empty()) {
             std::printf("No team members available to train.\n");
             return;
         }
 
         std::printf("\n--- Train Team ---\n");
-        for (size_t i = 0; i < team_roster_.size(); ++i) {
-            const guy& member = team_roster_[i];
+        for (size_t i = 0; i < slots.size(); ++i) {
+            const guy& member = *save_data_.team_list[slots[i]];
             std::printf("  %zu. %s (%s, L%d)\n",
                 i + 1,
                 member.name.c_str(),
                 family_display_name(member.family),
                 member.level);
         }
-        std::printf("Choose member [1-%zu] (blank cancels): ", team_roster_.size());
+        std::printf("Choose member [1-%zu] (blank cancels): ", slots.size());
         std::fflush(stdout);
 
         std::string line;
@@ -543,12 +480,12 @@ private:
             return;
 
         const auto pick = parse_int_strict(line);
-        if (!pick || *pick < 1 || static_cast<size_t>(*pick) > team_roster_.size()) {
+        if (!pick || *pick < 1 || static_cast<size_t>(*pick) > slots.size()) {
             std::printf("Invalid member selection.\n");
             return;
         }
 
-        guy& member = team_roster_[static_cast<size_t>(*pick - 1)];
+        guy& member = *save_data_.team_list[slots[static_cast<size_t>(*pick - 1)]];
         const FamilyDescriptor* fd = get_family_descriptor(member.family);
         if (!fd) {
             std::printf("Unable to train this family.\n");
@@ -556,8 +493,9 @@ private:
         }
 
         for (;;) {
-            std::printf("\nTraining %s (%s) | Gold: %d\n",
-                member.name.c_str(), family_display_name(member.family), team_gold_);
+            std::printf("\nTraining %s (%s) | Gold: %u\n",
+                member.name.c_str(), family_display_name(member.family),
+                static_cast<unsigned>(save_data_.m_totalcash[0]));
             std::printf("  1. Strength     (%d)  +1 cost %d\n", member.strength, static_cast<int>(fd->stat_costs[0]));
             std::printf("  2. Dexterity    (%d)  +1 cost %d\n", member.dexterity, static_cast<int>(fd->stat_costs[1]));
             std::printf("  3. Constitution (%d)  +1 cost %d\n", member.constitution, static_cast<int>(fd->stat_costs[2]));
@@ -581,39 +519,22 @@ private:
             short* target_stat = nullptr;
             int cost = 0;
             switch (*choice) {
-            case 1:
-                target_stat = &member.strength;
-                cost = static_cast<int>(fd->stat_costs[0]);
-                break;
-            case 2:
-                target_stat = &member.dexterity;
-                cost = static_cast<int>(fd->stat_costs[1]);
-                break;
-            case 3:
-                target_stat = &member.constitution;
-                cost = static_cast<int>(fd->stat_costs[2]);
-                break;
-            case 4:
-                target_stat = &member.intelligence;
-                cost = static_cast<int>(fd->stat_costs[3]);
-                break;
-            case 5:
-                target_stat = &member.armor;
-                cost = static_cast<int>(fd->stat_costs[4]);
-                break;
-            default:
-                std::printf("Invalid choice.\n");
-                break;
+            case 1: target_stat = &member.strength;     cost = static_cast<int>(fd->stat_costs[0]); break;
+            case 2: target_stat = &member.dexterity;    cost = static_cast<int>(fd->stat_costs[1]); break;
+            case 3: target_stat = &member.constitution; cost = static_cast<int>(fd->stat_costs[2]); break;
+            case 4: target_stat = &member.intelligence; cost = static_cast<int>(fd->stat_costs[3]); break;
+            case 5: target_stat = &member.armor;        cost = static_cast<int>(fd->stat_costs[4]); break;
+            default: std::printf("Invalid choice.\n"); break;
             }
 
             if (!target_stat)
                 continue;
-            if (cost <= 0 || team_gold_ < cost) {
+            if (cost <= 0 || static_cast<int>(save_data_.m_totalcash[0]) < cost) {
                 std::printf("Not enough gold.\n");
                 continue;
             }
 
-            team_gold_ -= cost;
+            save_data_.m_totalcash[0] -= static_cast<std::uint32_t>(cost);
             ++(*target_stat);
             std::printf("Upgraded successfully.\n");
         }
@@ -621,7 +542,7 @@ private:
 
     void hire_troops()
     {
-        if (team_roster_.size() >= MAX_TEAM_SIZE) {
+        if (save_data_.team_size >= MAX_TEAM_SIZE) {
             std::printf("Team is already at max size (%d).\n", MAX_TEAM_SIZE);
             return;
         }
@@ -632,9 +553,9 @@ private:
             std::printf("  %2zu. %-14s Cost %d\n",
                 i + 1,
                 family_display_name(family),
-                family_hiring_cost(family));
+                family_hiring_base_cost(family));
         }
-        std::printf("Gold: %d\n", team_gold_);
+        std::printf("Gold: %u\n", static_cast<unsigned>(save_data_.m_totalcash[0]));
         std::printf("Choose troop [1-%zu] (blank cancels): ", kAllowableGuys.size());
         std::fflush(stdout);
 
@@ -649,23 +570,21 @@ private:
         }
 
         const int family = kAllowableGuys[static_cast<size_t>(*choice - 1)];
-        const int cost = family_hiring_cost(family);
+        auto recruit = create_recruit(family, 0, save_data_);
+        int cost = static_cast<int>(calculate_hire_cost(*recruit));
         if (cost <= 0) {
             std::printf("That troop cannot be hired.\n");
             return;
         }
-        if (team_gold_ < cost) {
+        if (static_cast<int>(save_data_.m_totalcash[0]) < cost) {
             std::printf("Not enough gold.\n");
             return;
         }
 
-        team_gold_ -= cost;
-        guy recruit(family);
-        recruit.name = std::format("{}{}", family_display_name(family), family_count(family) + 1);
-        team_roster_.push_back(recruit);
-        sync_team_families_from_roster();
-
-        std::printf("Hired %s for %d gold.\n", recruit.name.c_str(), cost);
+        save_data_.m_totalcash[0] -= static_cast<std::uint32_t>(cost);
+        std::printf("Hired %s for %d gold.\n", recruit->name.c_str(), cost);
+        add_recruit_to_team(save_data_, std::move(recruit), 0);
+        sync_config_from_save();
     }
 
     void set_level()
@@ -684,6 +603,7 @@ private:
         }
 
         config_.level = *level;
+        save_data_.scen_num = static_cast<short>(*level);
     }
 
     void clear_error()
@@ -702,8 +622,7 @@ private:
 
     TextPickerConfig& config_;
     TextPickerError* error_ = nullptr;
-    std::vector<guy> team_roster_;
-    int team_gold_ = 5000;
+    SaveData save_data_;
     bool start_team_build_in_hire_mode_ = false;
     int player_mode_ = 1;
     bool allied_mode_ = false;

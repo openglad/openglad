@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/ui/results_screen.h>
+#include <openglad/ui/picker_common.h>
 #include <openglad/legacy/base.h>
 #include <openglad/input/button.h>
 #include <openglad/runtime/screen.h>
@@ -154,9 +155,9 @@ const char* get_family_string(Sint32 family);
 std::string TroopResult::get_class_name() const
 {
     if(before != nullptr)
-        return get_family_string(before->family);
+        return og::ui::family_display_name(before->family);
     if(after != nullptr)
-        return get_family_string(after->myguy->family);
+        return og::ui::family_display_name(after->myguy->family);
     return std::string();
 }
 
@@ -646,7 +647,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             {
                 BEGIN_IF_IN_SCROLL_AREA;
                 
-                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "MVP: %s the %s", mvp->myguy->name.c_str(), get_family_string(mvp->myguy->family));
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "MVP: %s the %s", mvp->myguy->name.c_str(), og::ui::family_display_name(mvp->myguy->family));
                 mytext.write_xy_center(area.x + area.w/2, y + 8, DARK_BLUE, "(%.0f pts)", mvp_points);
                 y += 22;
                 
