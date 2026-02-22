@@ -1224,20 +1224,12 @@ Sint32 create_train_menu(Sint32 arg1)
 	return REDRAW;
 }
 
-Sint32 create_load_menu(Sint32 arg1)
+static Sint32 create_slot_menu(button* buttons, const char* title)
 {
 	Sint32 retvalue=0;
-	Sint32 i;
-	std::string temp_filename;
-	text& loadtext = myscreen->text_normal;
-	std::string menu_message;
+	text& menutext = myscreen->text_normal;
 
-	if (arg1)
-		arg1 = 1;
-
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
-	button* buttons = loadteam_buttons;
+	// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 	int num_buttons = 11;
 	int highlighted_button = 10;
 	localbuttons = init_buttons(buttons, num_buttons);
@@ -1253,28 +1245,28 @@ Sint32 create_load_menu(Sint32 arg1)
                 return REDRAW;
             }
         }
-        
+
         handle_menu_nav(buttons, highlighted_button, retvalue);
         if(retvalue == REDRAW)
         {
             return REDRAW;
         }
-        
+
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
-		
+
 		// Draw
 		myscreen->clearbuffer();
         draw_backdrop();
         draw_buttons(buttons, num_buttons);
-        
+
         myscreen->draw_button(15,  9, 255, 199, 1, 1);
         myscreen->draw_text_bar(19, 13, 251, 21);
-        menu_message = "Gladiator: Load Game";
-        loadtext.write_xy(135-(static_cast<int>(menu_message.size())*3), 15, menu_message.c_str(), RED, 1);
-        for (i=0; i < 10; i++)
+        int title_len = static_cast<int>(std::strlen(title));
+        menutext.write_xy(135-(title_len*3), 15, title, RED, 1);
+        for (Sint32 i=0; i < 10; i++)
         {
-            temp_filename = std::format("save{}", i+1);
+            std::string temp_filename = std::format("save{}", i+1);
             allbuttons[i]->label = get_saved_name(temp_filename.c_str());
             myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
             allbuttons[i]->vdisplay();
@@ -1289,89 +1281,23 @@ Sint32 create_load_menu(Sint32 arg1)
                            allbuttons[10]->yloc-1,
                            allbuttons[10]->xend,
                            allbuttons[10]->yend, 0, 0, 1);
-                           
+
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
-	
+
 	return REDRAW;
 }
 
-
-Sint32 create_save_menu(Sint32 arg1)
+Sint32 create_load_menu(Sint32 /*arg1*/)
 {
-	Sint32 retvalue=0;
-	Sint32 i;
-	std::string temp_filename;
-	text& savetext = myscreen->text_normal;
-	std::string menu_message;
+	return create_slot_menu(loadteam_buttons, "Gladiator: Load Game");
+}
 
-	if (arg1)
-		arg1 = 1;
-
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
-	button* buttons = saveteam_buttons;
-	int num_buttons = 11;
-	int highlighted_button = 10;
-	localbuttons = init_buttons(buttons, num_buttons);
-	
-
-	while ( !(retvalue & EXIT) )
-	{
-	    // Input
-		if(leftmouse(buttons))
-        {
-			retvalue = localbuttons->leftclick();
-			if(retvalue == REDRAW)
-            {
-                return REDRAW;
-            }
-        }
-        
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == REDRAW)
-        {
-            return REDRAW;
-        }
-        
-        // Reset buttons
-        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
-		
-		// Draw
-		myscreen->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        
-        myscreen->draw_button(15,  9, 255, 199, 1, 1);
-        myscreen->draw_text_bar(19, 13, 251, 21);
-        menu_message = "Gladiator: Save Game";
-        savetext.write_xy(135-(static_cast<int>(menu_message.size())*3), 15, menu_message.c_str(), RED, 1);
-        for (i=0; i < 10; i++)
-        {
-            temp_filename = std::format("save{}", i+1);
-            allbuttons[i]->label = get_saved_name(temp_filename.c_str());
-            myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
-            allbuttons[i]->vdisplay();
-            myscreen->draw_box(allbuttons[i]->xloc-1,
-                               allbuttons[i]->yloc-1,
-                               allbuttons[i]->xend,
-                               allbuttons[i]->yend, 0, 0, 1);
-        }
-        myscreen->draw_text_bar(23, allbuttons[10]->yloc-2, 66, allbuttons[10]->yend+1);
-        allbuttons[10]->vdisplay();
-        myscreen->draw_box(allbuttons[10]->xloc-1,
-                           allbuttons[10]->yloc-1,
-                           allbuttons[10]->xend,
-                           allbuttons[10]->yend, 0, 0, 1);
-                           
-        draw_highlight(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
-	}
-	return REDRAW;
-
+Sint32 create_save_menu(Sint32 /*arg1*/)
+{
+	return create_slot_menu(saveteam_buttons, "Gladiator: Save Game");
 }
 
 // --- Session-based thin wrappers for button callbacks ---
