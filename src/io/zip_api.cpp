@@ -245,11 +245,18 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
                     result = ArchiveIoError::ReadEntryFailed;
                 break;
             }
-            std::fwrite(buf.data(), 1, static_cast<size_t>(n), out);
-            written += static_cast<zip_uint64_t>(n);
+            const size_t chunk_size = static_cast<size_t>(n);
+            const size_t out_written = std::fwrite(buf.data(), 1, chunk_size, out);
+            if (out_written != chunk_size)
+            {
+                result = ArchiveIoError::OpenOutputFailed;
+                break;
+            }
+            written += static_cast<zip_uint64_t>(out_written);
         }
 
-        std::fclose(out);
+        if (std::fclose(out) != 0)
+            result = ArchiveIoError::OpenOutputFailed;
         zip_fclose(zf);
     }
 
