@@ -491,6 +491,7 @@ void test_level_data_get_description_line()
     myscreen->level_data.description.push_back("desc-b");
     myscreen->level_data.delete_objects();
     std::filesystem::create_directories("temp/scen");
+    std::filesystem::create_directories("temp/pix");
 
     walker* ob = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
