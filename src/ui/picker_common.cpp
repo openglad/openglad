@@ -430,6 +430,60 @@ void set_player_count(SaveData& save, int count)
     save.numplayers = static_cast<unsigned char>(count);
 }
 
+// --- Label formatting ---
+
+std::string format_difficulty_label(int difficulty)
+{
+    return std::format("Difficulty: {}", kDifficultyNames[difficulty]);
+}
+
+std::string format_allied_mode_label(const SaveData& save)
+{
+    return is_allied_mode(save) ? "PVP: Ally" : "PVP: Enemy";
+}
+
+// --- Team family extraction ---
+
+std::vector<int> collect_team_families(const SaveData& save)
+{
+    std::vector<int> families;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+        if (save.team_list[i])
+            families.push_back(static_cast<int>(save.team_list[i]->family));
+    }
+    return families;
+}
+
+// --- Team initialization ---
+
+void initialize_starting_team(SaveData& save, const std::vector<int>& families, int team_num)
+{
+    if (save.team_size > 0)
+        return;
+
+    save.m_totalcash[team_num] = kNewGameStartingGold;
+    save.totalcash = kNewGameStartingGold;
+
+    ensure_team_populated(save, families, team_num);
+}
+
+// --- Save/Load error strings ---
+
+const char* save_error_string(SaveDataIoError error)
+{
+    switch (error) {
+    case SaveDataIoError::None: return "none";
+    case SaveDataIoError::OpenReadFailed: return "open_read_failed";
+    case SaveDataIoError::OpenWriteFailed: return "open_write_failed";
+    case SaveDataIoError::ReadFailed: return "read_failed";
+    case SaveDataIoError::WriteFailed: return "write_failed";
+    case SaveDataIoError::InvalidHeader: return "invalid_header";
+    case SaveDataIoError::UnsupportedVersion: return "unsupported_version";
+    case SaveDataIoError::CampaignLoadFailed: return "campaign_load_failed";
+    }
+    return "unknown";
+}
+
 // --- Stats copy utility ---
 
 void statscopy(guy* dest, const guy* source)

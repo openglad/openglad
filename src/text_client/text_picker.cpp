@@ -38,21 +38,6 @@ bool read_line(std::string& out)
     return true;
 }
 
-std::string save_error_string(SaveDataIoError error)
-{
-    switch (error) {
-    case SaveDataIoError::None: return "none";
-    case SaveDataIoError::OpenReadFailed: return "open_read_failed";
-    case SaveDataIoError::OpenWriteFailed: return "open_write_failed";
-    case SaveDataIoError::ReadFailed: return "read_failed";
-    case SaveDataIoError::WriteFailed: return "write_failed";
-    case SaveDataIoError::InvalidHeader: return "invalid_header";
-    case SaveDataIoError::UnsupportedVersion: return "unsupported_version";
-    case SaveDataIoError::CampaignLoadFailed: return "campaign_load_failed";
-    }
-    return "unknown";
-}
-
 void wait_for_enter()
 {
     std::printf("Press Enter to continue...");
@@ -225,7 +210,7 @@ public:
             set_error(TextPickerErrorCode::LoadIoError,
                 std::string("load failed: ") + save_error_string(io));
             std::printf("Load failed for '%s' (%s).\n",
-                config_.save_name.c_str(), save_error_string(io).c_str());
+                config_.save_name.c_str(), save_error_string(io));
             return false;
         }
 
@@ -256,7 +241,7 @@ public:
             set_error(TextPickerErrorCode::SaveIoError,
                 std::string("save failed: ") + save_error_string(io));
             std::printf("Save failed for '%s' (%s).\n",
-                config_.save_name.c_str(), save_error_string(io).c_str());
+                config_.save_name.c_str(), save_error_string(io));
             return false;
         }
 
@@ -295,17 +280,14 @@ private:
 
     std::string menu_item_label(const PickerMenuItem& item) const
     {
-        if (item.command == PickerMenuCommand::SetDifficulty) {
-            return std::format("{}: {}", item.label,
-                kDifficultyNames[current_difficulty]);
-        }
+        if (item.command == PickerMenuCommand::SetDifficulty)
+            return format_difficulty_label(current_difficulty);
         if (item.command == PickerMenuCommand::SetLevel)
             return std::format("{} ({})", item.label, config_.level);
         if (item.command == PickerMenuCommand::SetCampaign)
             return std::format("{} ({})", item.label, config_.campaign);
         if (item.command == PickerMenuCommand::ToggleAlliedMode)
-            return std::format("{}: {}", item.label,
-                is_allied_mode(save_data_) ? "Allied" : "Enemy");
+            return format_allied_mode_label(save_data_);
         return std::string(item.label);
     }
 
@@ -369,25 +351,14 @@ private:
 
     void ensure_team_initialized()
     {
-        if (save_data_.team_size > 0)
-            return;
-
         if (config_.team_families.empty())
             config_.team_families.push_back(FAMILY_SOLDIER);
-
-        save_data_.m_totalcash[0] = kNewGameStartingGold;
-        save_data_.totalcash = kNewGameStartingGold;
-
-        ensure_team_populated(save_data_, config_.team_families);
+        initialize_starting_team(save_data_, config_.team_families);
     }
 
     void sync_config_from_save()
     {
-        config_.team_families.clear();
-        for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
-            if (save_data_.team_list[i])
-                config_.team_families.push_back(static_cast<int>(save_data_.team_list[i]->family));
-        }
+        config_.team_families = collect_team_families(save_data_);
     }
 
     void view_team_roster()

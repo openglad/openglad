@@ -25,7 +25,6 @@
 #include <openglad/ui/picker_common.h>
 #include "SDL.h"
 #include <array>
-#include <format>
 #include <memory>
 
 #ifndef DISABLE_MULTIPLAYER
@@ -64,7 +63,6 @@ void redraw_mainmenu()
         return;
 
     int count = 0;
-	std::string message;
     
     main_title_logo_pix->set_frame(0);
     main_title_logo_pix->drawMix(15,  8, game->viewob[0].get());
@@ -122,19 +120,13 @@ void redraw_mainmenu()
         allbuttons[5]->vdisplay();
     }
 
-    message = std::format("Difficulty: {}", og::ui::kDifficultyNames[current_difficulty]);
-    allbuttons[6]->label = message;
+    allbuttons[6]->label = og::ui::format_difficulty_label(current_difficulty);
 
     // Show the allied mode
-    if (game->save_data.allied_mode)
-        message = "PVP: Ally";
-    else
-        message = "PVP: Enemy";
-    allbuttons[7]->label = message;
+    allbuttons[7]->label = og::ui::format_allied_mode_label(game->save_data);
     #else
 
-    message = std::format("Difficulty: {}", og::ui::kDifficultyNames[current_difficulty]);
-    allbuttons[2]->label = message;
+    allbuttons[2]->label = og::ui::format_difficulty_label(current_difficulty);
     
     #endif
 

@@ -118,6 +118,30 @@ bool is_allied_mode(const SaveData& save);
 
 void set_player_count(SaveData& save, int count);
 
+// --- Label formatting ---
+
+// Format the difficulty button label (e.g. "Difficulty: Battle").
+std::string format_difficulty_label(int difficulty);
+
+// Format the allied mode button label ("PVP: Ally" or "PVP: Enemy").
+std::string format_allied_mode_label(const SaveData& save);
+
+// --- Team family extraction ---
+
+// Collect family IDs from non-null team slots into a vector.
+std::vector<int> collect_team_families(const SaveData& save);
+
+// --- Team initialization ---
+
+// If the team is empty, set starting gold and populate with recruits.
+// No-op if team already has members.
+void initialize_starting_team(SaveData& save, const std::vector<int>& families = {}, int team_num = 0);
+
+// --- Save/Load error strings ---
+
+// Human-readable string for SaveDataIoError values.
+const char* save_error_string(SaveDataIoError error);
+
 // --- Team iteration ---
 
 // Iterate over non-null team members, calling fn(slot_index, member_ref).

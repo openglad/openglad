@@ -1696,7 +1696,7 @@ int matherr(struct exception *problem)
 Sint32 set_difficulty()
 {
    current_difficulty = og::ui::cycle_difficulty(current_difficulty);
-   std::string msg = std::format("Difficulty: {}", og::ui::kDifficultyNames[current_difficulty]);
+   std::string msg = og::ui::format_difficulty_label(current_difficulty);
    #ifndef DISABLE_MULTIPLAYER
    allbuttons[6]->label = msg;
    #else
@@ -1759,10 +1759,7 @@ Sint32 change_allied()
 {
    og::ui::toggle_allied_mode(myscreen->save_data);
 
-   if (og::ui::is_allied_mode(myscreen->save_data))
-       allbuttons[7]->label = "PVP: Ally";
-   else
-       allbuttons[7]->label = "PVP: Enemy";
+   allbuttons[7]->label = og::ui::format_allied_mode_label(myscreen->save_data);
 
    //buffers: allbuttons[7]->vdisplay();
    //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);

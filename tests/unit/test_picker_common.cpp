@@ -697,6 +697,111 @@ OG_UNIT_TEST(test_for_each_team_member_empty)
     OG_ASSERT(count == 0);
 }
 
+// --- format_difficulty_label ---
+
+OG_UNIT_TEST(test_format_difficulty_label)
+{
+    OG_ASSERT(og::ui::format_difficulty_label(0) == "Difficulty: Skirmish");
+    OG_ASSERT(og::ui::format_difficulty_label(1) == "Difficulty: Battle");
+    OG_ASSERT(og::ui::format_difficulty_label(2) == "Difficulty: Slaughter");
+}
+
+// --- format_allied_mode_label ---
+
+OG_UNIT_TEST(test_format_allied_mode_label)
+{
+    SaveData save;
+    save.allied_mode = 0;
+    OG_ASSERT(og::ui::format_allied_mode_label(save) == "PVP: Enemy");
+
+    save.allied_mode = 1;
+    OG_ASSERT(og::ui::format_allied_mode_label(save) == "PVP: Ally");
+}
+
+// --- collect_team_families ---
+
+OG_UNIT_TEST(test_collect_team_families)
+{
+    SaveData save;
+    save.team_size = 0;
+
+    // Empty team -> empty vector
+    std::vector<int> families = og::ui::collect_team_families(save);
+    OG_ASSERT(families.empty());
+
+    // Add some team members
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[2] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[4] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_size = 3;
+
+    families = og::ui::collect_team_families(save);
+    OG_ASSERT(families.size() == 3);
+    OG_ASSERT(families[0] == FAMILY_SOLDIER);
+    OG_ASSERT(families[1] == FAMILY_MAGE);
+    OG_ASSERT(families[2] == FAMILY_ARCHER);
+}
+
+// --- initialize_starting_team ---
+
+OG_UNIT_TEST(test_initialize_starting_team_empty)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+    save.m_totalcash[0] = 0;
+    save.totalcash = 0;
+
+    // Should set gold and populate
+    og::ui::initialize_starting_team(save);
+    OG_ASSERT(save.team_size >= 1);
+    OG_ASSERT(save.m_totalcash[0] == og::ui::kNewGameStartingGold);
+    OG_ASSERT(save.totalcash == og::ui::kNewGameStartingGold);
+    OG_ASSERT(save.team_list[0]->family == FAMILY_SOLDIER);
+}
+
+OG_UNIT_TEST(test_initialize_starting_team_noop_if_populated)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_ELF);
+    save.team_size = 1;
+    save.m_totalcash[0] = 100;
+
+    // Should be no-op
+    og::ui::initialize_starting_team(save, {FAMILY_MAGE});
+    OG_ASSERT(save.team_size == 1);
+    OG_ASSERT(save.team_list[0]->family == FAMILY_ELF);
+    OG_ASSERT(save.m_totalcash[0] == 100); // unchanged
+}
+
+OG_UNIT_TEST(test_initialize_starting_team_with_families)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+
+    og::ui::initialize_starting_team(save, {FAMILY_MAGE, FAMILY_ARCHER});
+    OG_ASSERT(save.team_size == 2);
+    OG_ASSERT(save.team_list[0]->family == FAMILY_MAGE);
+    OG_ASSERT(save.team_list[1]->family == FAMILY_ARCHER);
+    OG_ASSERT(save.m_totalcash[0] == og::ui::kNewGameStartingGold);
+}
+
+// --- save_error_string ---
+
+OG_UNIT_TEST(test_save_error_string)
+{
+    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::None), "none") == 0);
+    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::OpenReadFailed), "open_read_failed") == 0);
+    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::OpenWriteFailed), "open_write_failed") == 0);
+    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::ReadFailed), "read_failed") == 0);
+    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::WriteFailed), "write_failed") == 0);
+    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::InvalidHeader), "invalid_header") == 0);
+    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::UnsupportedVersion), "unsupported_version") == 0);
+    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::CampaignLoadFailed), "campaign_load_failed") == 0);
+}
+
 // --- reset_for_new_game sets gold ---
 
 OG_UNIT_TEST(test_reset_for_new_game_sets_gold)
