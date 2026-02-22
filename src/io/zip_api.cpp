@@ -255,7 +255,7 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
             written += static_cast<zip_uint64_t>(out_written);
         }
 
-        if (std::fclose(out) != 0)
+        if (std::fclose(out) != 0 && result == ArchiveIoError::None)
             result = ArchiveIoError::OpenOutputFailed;
         zip_fclose(zf);
     }
