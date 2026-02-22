@@ -88,4 +88,86 @@ std::unique_ptr<guy> create_recruit(int family, int team_num, const SaveData& sa
 // Reset save data for a new game: clear team, reset gold.
 void reset_for_new_game(SaveData& save);
 
+// --- Stats copy utility ---
+
+// Copy all stats, name, and metadata between guy objects.
+void statscopy(guy* dest, const guy* source);
+
+// --- HireSession: cycle-through-families hiring flow ---
+
+class HireSession {
+public:
+    HireSession(SaveData& save, int team_num);
+
+    // Navigation — wrapping cycle through kAllowableGuys
+    void next_family();
+    void prev_family();
+
+    // Hire the current recruit: deducts gold, places in team, auto-creates
+    // next recruit with same family. Returns slot index or -1 on failure.
+    int hire();
+
+    // Rename the recruit that was just placed in the given slot.
+    void rename_hired(int slot, const std::string& name);
+
+    // State queries (for rendering)
+    const guy* current_recruit() const;
+    std::uint32_t current_cost() const;
+    int family_index() const;
+    int team_num() const;
+    bool team_full() const;
+
+private:
+    SaveData& save_;
+    int team_num_;
+    int current_type_ = 0;
+    std::unique_ptr<guy> recruit_;
+
+    void make_recruit();
+};
+
+// --- TrainSession: constrained stat-editing flow ---
+
+class TrainSession {
+public:
+    explicit TrainSession(SaveData& save);
+
+    bool empty() const;
+
+    // Navigation — cycle through non-null team slots
+    void next_member();
+    void prev_member();
+
+    // Stat editing with constraint rules:
+    //  - Can't modify stats if level increased above original
+    //  - Can't modify level if any stat increased above original
+    //  - Stats clamped to not go below original
+    //  - Level decrease clamped to original level
+    enum class Stat { Strength, Dexterity, Constitution, Intelligence, Armor, Level };
+    void increase_stat(Stat stat, int amount = 1);
+    void decrease_stat(Stat stat, int amount = 1);
+
+    // Accept: validates cost, deducts gold, copies working copy -> real team member.
+    // If level changed, calls upgrade_to_level(). Returns false if can't afford.
+    // force=true skips the cost check (for cheat mode).
+    bool accept(bool force = false);
+
+    // State queries (for rendering)
+    const guy& working_copy() const;
+    const guy& original() const;
+    std::uint32_t current_cost() const;
+    bool level_increased() const;
+    bool stats_increased() const;
+    int current_slot() const;
+
+private:
+    SaveData& save_;
+    int edit_slot_ = 0;
+    std::unique_ptr<guy> working_;
+    guy* original_ = nullptr;
+
+    void select_current_slot();
+    void clamp_working_stats();
+};
+
 } // namespace og::ui

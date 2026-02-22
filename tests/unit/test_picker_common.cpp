@@ -244,3 +244,312 @@ OG_UNIT_TEST(test_get_random_name_all_families)
         OG_ASSERT(std::strlen(name) > 0);
     }
 }
+
+// --- statscopy ---
+
+OG_UNIT_TEST(test_statscopy)
+{
+    init_family_registry();
+    guy src(FAMILY_MAGE);
+    src.name = "Gandalf";
+    src.strength = 10;
+    src.dexterity = 20;
+    src.constitution = 30;
+    src.intelligence = 40;
+    src.armor = 5;
+    src.level = 3;
+    src.exp = 999;
+    src.kills = 7;
+    src.teamnum = 2;
+
+    guy dst(FAMILY_SOLDIER);
+    og::ui::statscopy(&dst, &src);
+
+    OG_ASSERT(dst.family == FAMILY_MAGE);
+    OG_ASSERT(dst.name == "Gandalf");
+    OG_ASSERT(dst.strength == 10);
+    OG_ASSERT(dst.dexterity == 20);
+    OG_ASSERT(dst.constitution == 30);
+    OG_ASSERT(dst.intelligence == 40);
+    OG_ASSERT(dst.armor == 5);
+    OG_ASSERT(dst.level == 3);
+    OG_ASSERT(dst.exp == 999);
+    OG_ASSERT(dst.kills == 7);
+    OG_ASSERT(dst.teamnum == 2);
+}
+
+// --- HireSession ---
+
+OG_UNIT_TEST(test_hire_session_cycle)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+    save.m_totalcash[0] = 50000;
+
+    og::ui::HireSession session(save, 0);
+
+    // Should start at index 0 (SOLDIER)
+    OG_ASSERT(session.family_index() == 0);
+    OG_ASSERT(session.current_recruit() != nullptr);
+    OG_ASSERT(session.current_recruit()->family == FAMILY_SOLDIER);
+
+    // Cycle forward through all 14 families
+    for (int i = 1; i < 14; i++) {
+        session.next_family();
+        OG_ASSERT(session.family_index() == i);
+        OG_ASSERT(session.current_recruit() != nullptr);
+        OG_ASSERT(session.current_recruit()->family == og::ui::kAllowableGuys[i]);
+    }
+
+    // Wraps back to 0
+    session.next_family();
+    OG_ASSERT(session.family_index() == 0);
+    OG_ASSERT(session.current_recruit()->family == FAMILY_SOLDIER);
+
+    // Cycle backward wraps to 13 (GHOST)
+    session.prev_family();
+    OG_ASSERT(session.family_index() == 13);
+    OG_ASSERT(session.current_recruit()->family == FAMILY_GHOST);
+}
+
+OG_UNIT_TEST(test_hire_session_hire)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+    save.m_totalcash[0] = 50000;
+
+    og::ui::HireSession session(save, 0);
+    std::uint32_t cost = session.current_cost();
+    OG_ASSERT(cost > 0);
+
+    std::uint32_t gold_before = save.m_totalcash[0];
+    int slot = session.hire();
+    OG_ASSERT(slot == 0);
+    OG_ASSERT(save.team_size == 1);
+    OG_ASSERT(save.team_list[0] != nullptr);
+    OG_ASSERT(save.team_list[0]->family == FAMILY_SOLDIER);
+    OG_ASSERT(save.m_totalcash[0] == gold_before - cost);
+
+    // After hiring, session auto-creates next recruit with same family
+    OG_ASSERT(session.current_recruit() != nullptr);
+    OG_ASSERT(session.current_recruit()->family == FAMILY_SOLDIER);
+}
+
+OG_UNIT_TEST(test_hire_session_rename_hired)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+    save.m_totalcash[0] = 50000;
+
+    og::ui::HireSession session(save, 0);
+    int slot = session.hire();
+    OG_ASSERT(slot >= 0);
+
+    session.rename_hired(slot, "CustomName");
+    OG_ASSERT(save.team_list[slot]->name == "CustomName");
+}
+
+OG_UNIT_TEST(test_hire_session_team_full)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+    save.m_totalcash[0] = 999999;
+
+    // Fill the team
+    for (int i = 0; i < MAX_TEAM_SIZE; i++) {
+        save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_size++;
+    }
+
+    og::ui::HireSession session(save, 0);
+    OG_ASSERT(session.team_full());
+    OG_ASSERT(session.hire() == -1);
+}
+
+OG_UNIT_TEST(test_hire_session_not_enough_gold)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+    save.m_totalcash[0] = 0; // no gold
+
+    og::ui::HireSession session(save, 0);
+    OG_ASSERT(session.hire() == -1);
+    OG_ASSERT(save.team_size == 0);
+}
+
+// --- TrainSession ---
+
+OG_UNIT_TEST(test_train_session_cycle)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+
+    // Add 3 team members in non-contiguous slots
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Alpha";
+    save.team_list[2] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[2]->name = "Beta";
+    save.team_list[5] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[5]->name = "Gamma";
+    save.team_size = 3;
+    save.m_totalcash[0] = 50000;
+
+    og::ui::TrainSession session(save);
+    OG_ASSERT(!session.empty());
+    OG_ASSERT(session.current_slot() == 0);
+    OG_ASSERT(session.working_copy().name == "Alpha");
+
+    session.next_member();
+    OG_ASSERT(session.current_slot() == 2);
+    OG_ASSERT(session.working_copy().name == "Beta");
+
+    session.next_member();
+    OG_ASSERT(session.current_slot() == 5);
+    OG_ASSERT(session.working_copy().name == "Gamma");
+
+    // Wraps back to first
+    session.next_member();
+    OG_ASSERT(session.current_slot() == 0);
+    OG_ASSERT(session.working_copy().name == "Alpha");
+
+    // Backward wraps to last
+    session.prev_member();
+    OG_ASSERT(session.current_slot() == 5);
+    OG_ASSERT(session.working_copy().name == "Gamma");
+}
+
+OG_UNIT_TEST(test_train_session_empty)
+{
+    SaveData save;
+    save.team_size = 0;
+
+    og::ui::TrainSession session(save);
+    OG_ASSERT(session.empty());
+}
+
+OG_UNIT_TEST(test_train_session_increase_decrease)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 50000;
+
+    og::ui::TrainSession session(save);
+    short orig_str = session.original().strength;
+
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 3);
+    OG_ASSERT(session.working_copy().strength == orig_str + 3);
+    OG_ASSERT(session.current_cost() > 0);
+
+    // Decrease back to original — cost should be 0
+    session.decrease_stat(og::ui::TrainSession::Stat::Strength, 3);
+    OG_ASSERT(session.working_copy().strength == orig_str);
+    OG_ASSERT(session.current_cost() == 0);
+
+    // Decrease below original — clamped to original
+    session.decrease_stat(og::ui::TrainSession::Stat::Strength, 5);
+    OG_ASSERT(session.working_copy().strength == orig_str);
+}
+
+OG_UNIT_TEST(test_train_session_level_locks_stats)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+
+    // Increase level
+    session.increase_stat(og::ui::TrainSession::Stat::Level, 1);
+    OG_ASSERT(session.level_increased());
+
+    // Now stats should be locked — increase should be no-op
+    short str_before = session.working_copy().strength;
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 1);
+    OG_ASSERT(session.working_copy().strength == str_before);
+}
+
+OG_UNIT_TEST(test_train_session_stats_lock_level)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+
+    // Increase a stat
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 1);
+    OG_ASSERT(session.stats_increased());
+
+    // Now level should be locked — increase should be no-op
+    short level_before = session.working_copy().level;
+    session.increase_stat(og::ui::TrainSession::Stat::Level, 1);
+    OG_ASSERT(session.working_copy().level == level_before);
+}
+
+OG_UNIT_TEST(test_train_session_accept)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+    short orig_str = session.original().strength;
+
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 5);
+    std::uint32_t cost = session.current_cost();
+    OG_ASSERT(cost > 0);
+
+    std::uint32_t gold_before = save.m_totalcash[0];
+    OG_ASSERT(session.accept());
+    OG_ASSERT(save.m_totalcash[0] == gold_before - cost);
+    // Original team member should now have updated stats
+    OG_ASSERT(save.team_list[0]->strength == orig_str + 5);
+}
+
+OG_UNIT_TEST(test_train_session_accept_cant_afford)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 1; // almost no gold
+
+    og::ui::TrainSession session(save);
+    short orig_str = session.original().strength;
+
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 10);
+    OG_ASSERT(!session.accept()); // can't afford
+    // Original should be unchanged
+    OG_ASSERT(save.team_list[0]->strength == orig_str);
+}
+
+OG_UNIT_TEST(test_train_session_accept_force)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 0; // no gold
+
+    og::ui::TrainSession session(save);
+    short orig_str = session.original().strength;
+
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 5);
+    OG_ASSERT(session.accept(true)); // force=true bypasses cost
+    OG_ASSERT(save.team_list[0]->strength == orig_str + 5);
+    OG_ASSERT(save.m_totalcash[0] == 0); // gold unchanged
+}

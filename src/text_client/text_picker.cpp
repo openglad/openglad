@@ -8,8 +8,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/data/save_data.h>
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/platform/io_common.h>
 #include <openglad/ui/menu_model.h>
@@ -444,147 +442,121 @@ private:
         wait_for_enter();
     }
 
-    // Collect non-null team members into a flat index list for menu selection
-    std::vector<int> get_team_slot_indices() const
-    {
-        std::vector<int> slots;
-        for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
-            if (save_data_.team_list[i])
-                slots.push_back(i);
-        }
-        return slots;
-    }
-
     void train_team()
     {
-        auto slots = get_team_slot_indices();
-        if (slots.empty()) {
+        TrainSession session(save_data_);
+        if (session.empty()) {
             std::printf("No team members available to train.\n");
             return;
         }
 
-        std::printf("\n--- Train Team ---\n");
-        for (size_t i = 0; i < slots.size(); ++i) {
-            const guy& member = *save_data_.team_list[slots[i]];
-            std::printf("  %zu. %s (%s, L%d)\n",
-                i + 1,
-                member.name.c_str(),
-                family_display_name(member.family),
-                member.level);
-        }
-        std::printf("Choose member [1-%zu] (blank cancels): ", slots.size());
-        std::fflush(stdout);
-
+        using S = TrainSession::Stat;
         std::string line;
-        if (!read_line(line) || line.empty())
-            return;
-
-        const auto pick = parse_int_strict(line);
-        if (!pick || *pick < 1 || static_cast<size_t>(*pick) > slots.size()) {
-            std::printf("Invalid member selection.\n");
-            return;
-        }
-
-        guy& member = *save_data_.team_list[slots[static_cast<size_t>(*pick - 1)]];
-        const FamilyDescriptor* fd = get_family_descriptor(member.family);
-        if (!fd) {
-            std::printf("Unable to train this family.\n");
-            return;
-        }
 
         for (;;) {
-            std::printf("\nTraining %s (%s) | Gold: %u\n",
-                member.name.c_str(), family_display_name(member.family),
+            const guy& w = session.working_copy();
+            const guy& o = session.original();
+            std::printf("\n--- Train: %s (%s) ---\n",
+                w.name.c_str(), family_display_name(w.family));
+            std::printf("        Current  Original\n");
+            std::printf("  1.STR:  %5d    %5d%s\n", w.strength, o.strength,
+                session.level_increased() ? " [locked]" : "");
+            std::printf("  2.DEX:  %5d    %5d%s\n", w.dexterity, o.dexterity,
+                session.level_increased() ? " [locked]" : "");
+            std::printf("  3.CON:  %5d    %5d%s\n", w.constitution, o.constitution,
+                session.level_increased() ? " [locked]" : "");
+            std::printf("  4.INT:  %5d    %5d%s\n", w.intelligence, o.intelligence,
+                session.level_increased() ? " [locked]" : "");
+            std::printf("  5.ARM:  %5d    %5d%s\n", w.armor, o.armor,
+                session.level_increased() ? " [locked]" : "");
+            std::printf("  6.LVL:  %5d    %5d%s\n", w.level, o.level,
+                session.stats_increased() ? " [locked]" : "");
+            std::printf("Cost: %u  |  Gold: %u\n",
+                static_cast<unsigned>(session.current_cost()),
                 static_cast<unsigned>(save_data_.m_totalcash[0]));
-            std::printf("  1. Strength     (%d)  +1 cost %d\n", member.strength, static_cast<int>(fd->stat_costs[0]));
-            std::printf("  2. Dexterity    (%d)  +1 cost %d\n", member.dexterity, static_cast<int>(fd->stat_costs[1]));
-            std::printf("  3. Constitution (%d)  +1 cost %d\n", member.constitution, static_cast<int>(fd->stat_costs[2]));
-            std::printf("  4. Intelligence (%d)  +1 cost %d\n", member.intelligence, static_cast<int>(fd->stat_costs[3]));
-            std::printf("  5. Armor        (%d)  +1 cost %d\n", member.armor, static_cast<int>(fd->stat_costs[4]));
-            std::printf("  6. Back\n");
-            std::printf("Choice: ");
+            std::printf("[+1..6] increase  [-1..-6] decrease\n");
+            std::printf("[A]ccept  [N]ext  [P]rev  [B]ack: ");
             std::fflush(stdout);
 
-            if (!read_line(line))
+            if (!read_line(line) || line.empty())
+                continue;
+
+            char c = line[0];
+            if (c == 'b' || c == 'B')
                 return;
-
-            const auto choice = parse_int_strict(line);
-            if (!choice) {
-                std::printf("Invalid choice.\n");
-                continue;
-            }
-            if (*choice == 6)
-                return;
-
-            short* target_stat = nullptr;
-            int cost = 0;
-            switch (*choice) {
-            case 1: target_stat = &member.strength;     cost = static_cast<int>(fd->stat_costs[0]); break;
-            case 2: target_stat = &member.dexterity;    cost = static_cast<int>(fd->stat_costs[1]); break;
-            case 3: target_stat = &member.constitution; cost = static_cast<int>(fd->stat_costs[2]); break;
-            case 4: target_stat = &member.intelligence; cost = static_cast<int>(fd->stat_costs[3]); break;
-            case 5: target_stat = &member.armor;        cost = static_cast<int>(fd->stat_costs[4]); break;
-            default: std::printf("Invalid choice.\n"); break;
-            }
-
-            if (!target_stat)
-                continue;
-            if (cost <= 0 || static_cast<int>(save_data_.m_totalcash[0]) < cost) {
-                std::printf("Not enough gold.\n");
+            if (c == 'n' || c == 'N') { session.next_member(); continue; }
+            if (c == 'p' || c == 'P') { session.prev_member(); continue; }
+            if (c == 'a' || c == 'A') {
+                if (session.accept())
+                    std::printf("Training accepted.\n");
+                else
+                    std::printf("Can't afford training.\n");
                 continue;
             }
 
-            save_data_.m_totalcash[0] -= static_cast<std::uint32_t>(cost);
-            ++(*target_stat);
-            std::printf("Upgraded successfully.\n");
+            const auto val = parse_int_strict(line);
+            if (val) {
+                S stats[] = {S::Strength, S::Dexterity, S::Constitution,
+                             S::Intelligence, S::Armor, S::Level};
+                int idx = std::abs(*val) - 1;
+                if (idx >= 0 && idx < 6) {
+                    if (*val > 0) session.increase_stat(stats[idx]);
+                    else session.decrease_stat(stats[idx]);
+                }
+            }
         }
     }
 
     void hire_troops()
     {
-        if (save_data_.team_size >= MAX_TEAM_SIZE) {
+        HireSession session(save_data_, 0);
+        if (session.team_full()) {
             std::printf("Team is already at max size (%d).\n", MAX_TEAM_SIZE);
             return;
         }
 
-        std::printf("\n--- Hire Troops ---\n");
-        for (size_t i = 0; i < kAllowableGuys.size(); ++i) {
-            const int family = kAllowableGuys[i];
-            std::printf("  %2zu. %-14s Cost %d\n",
-                i + 1,
-                family_display_name(family),
-                family_hiring_base_cost(family));
-        }
-        std::printf("Gold: %u\n", static_cast<unsigned>(save_data_.m_totalcash[0]));
-        std::printf("Choose troop [1-%zu] (blank cancels): ", kAllowableGuys.size());
-        std::fflush(stdout);
-
         std::string line;
-        if (!read_line(line) || line.empty())
-            return;
 
-        const auto choice = parse_int_strict(line);
-        if (!choice || *choice < 1 || static_cast<size_t>(*choice) > kAllowableGuys.size()) {
-            std::printf("Invalid troop selection.\n");
-            return;
-        }
+        for (;;) {
+            const guy* r = session.current_recruit();
+            if (!r)
+                break;
+            std::printf("\n--- Hire: %s (%d/%d) ---\n",
+                family_display_name(r->family),
+                session.family_index() + 1,
+                static_cast<int>(kAllowableGuys.size()));
+            std::printf("Name: %s\n", r->name.c_str());
+            std::printf("STR: %d  DEX: %d  CON: %d  INT: %d  ARM: %d  LVL: %d\n",
+                r->strength, r->dexterity, r->constitution,
+                r->intelligence, r->armor, r->level);
+            std::printf("Cost: %u  |  Gold: %u\n",
+                static_cast<unsigned>(session.current_cost()),
+                static_cast<unsigned>(save_data_.m_totalcash[0]));
+            std::printf("[N]ext  [P]rev  [H]ire  [B]ack: ");
+            std::fflush(stdout);
 
-        const int family = kAllowableGuys[static_cast<size_t>(*choice - 1)];
-        auto recruit = create_recruit(family, 0, save_data_);
-        int cost = static_cast<int>(calculate_hire_cost(*recruit));
-        if (cost <= 0) {
-            std::printf("That troop cannot be hired.\n");
-            return;
-        }
-        if (static_cast<int>(save_data_.m_totalcash[0]) < cost) {
-            std::printf("Not enough gold.\n");
-            return;
-        }
+            if (!read_line(line) || line.empty())
+                continue;
 
-        save_data_.m_totalcash[0] -= static_cast<std::uint32_t>(cost);
-        std::printf("Hired %s for %d gold.\n", recruit->name.c_str(), cost);
-        add_recruit_to_team(save_data_, std::move(recruit), 0);
-        sync_config_from_save();
+            char c = line[0];
+            if (c == 'b' || c == 'B')
+                return;
+            if (c == 'n' || c == 'N') { session.next_family(); continue; }
+            if (c == 'p' || c == 'P') { session.prev_family(); continue; }
+            if (c == 'h' || c == 'H') {
+                int slot = session.hire();
+                if (slot < 0) {
+                    std::printf("Can't hire (not enough gold or team full).\n");
+                    continue;
+                }
+                std::printf("Hired %s!\n", save_data_.team_list[slot]->name.c_str());
+                sync_config_from_save();
+                if (session.team_full()) {
+                    std::printf("Team is now full.\n");
+                    return;
+                }
+            }
+        }
     }
 
     void set_level()

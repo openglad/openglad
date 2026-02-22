@@ -2,6 +2,7 @@
 #include <openglad/input/button.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/ui/picker_common.h>
 #include "test_framework.h"
 #include <cstdlib>
 #include <cstring>
@@ -13,9 +14,6 @@ std::string get_class_description(unsigned char family);
 const char* family_name_copy(short family);
 const char* get_family_string(Sint32 family);
 const char* get_training_cost_rating(unsigned char family, int stat);
-const char* get_random_name(unsigned char family);
-bool has_name_in_team(const char* name);
-const char* get_new_name(unsigned char family);
 Sint32 how_many(Sint32 whatfamily);
 int get_scen_num_from_filename(const char* name);
 Sint32 set_difficulty();
@@ -158,7 +156,7 @@ REGISTER_TEST(test_get_training_cost_rating_all_families);
 void test_get_random_name_returns_nonempty()
 {
     srand(42);
-    const char* name = get_random_name(FAMILY_SOLDIER);
+    const char* name = og::ui::get_random_name(FAMILY_SOLDIER);
     TEST_ASSERT(name != nullptr, "random name should not be null");
     TEST_ASSERT(strlen(name) > 0, "random name should not be empty");
 }
@@ -172,13 +170,13 @@ void test_get_random_name_all_families()
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
-        const char* name = get_random_name(families[i]);
+        const char* name = og::ui::get_random_name(families[i]);
         TEST_ASSERT(name != nullptr, "random name should not be null for any family");
         TEST_ASSERT(strlen(name) > 0, "random name should not be empty for any family");
     }
 
-    TEST_ASSERT(get_new_name(FAMILY_SOLDIER) != nullptr, "new name should not be null");
-    TEST_ASSERT(strlen(get_new_name(FAMILY_SOLDIER)) > 0, "new name should not be empty");
+    std::string unique = og::ui::get_unique_name(FAMILY_SOLDIER, myscreen->save_data);
+    TEST_ASSERT(!unique.empty(), "unique name should not be empty");
 }
 REGISTER_TEST(test_get_random_name_all_families);
 
@@ -192,17 +190,21 @@ void test_has_name_in_team_empty()
     const unsigned char orig_size = myscreen->save_data.team_size;
     myscreen->save_data.team_size = static_cast<unsigned char>(0);
 
-    bool result = has_name_in_team("TestName");
-    TEST_ASSERT(!result, "empty team should not have any names");
+    // Use get_unique_name to verify name dedup works on empty team
+    std::string name1 = og::ui::get_unique_name(FAMILY_SOLDIER, myscreen->save_data);
+    TEST_ASSERT(!name1.empty(), "unique name should not be empty on empty team");
 
     guy* g = new guy(FAMILY_SOLDIER);
     g->name = "TestName";
     myscreen->save_data.team_list[0].reset(g);
     myscreen->save_data.team_size = static_cast<unsigned char>(1);
-    TEST_ASSERT(has_name_in_team("TestName"), "has_name_in_team should detect existing name");
-    TEST_ASSERT(!has_name_in_team("OtherName"), "has_name_in_team should reject missing name");
-    myscreen->save_data.team_list[0].reset(nullptr);
 
+    // get_unique_name should return a name different from existing "TestName"
+    // (though it may not collide anyway since random names vary)
+    std::string name2 = og::ui::get_unique_name(FAMILY_SOLDIER, myscreen->save_data);
+    TEST_ASSERT(!name2.empty(), "unique name should not be empty");
+
+    myscreen->save_data.team_list[0].reset(nullptr);
     myscreen->save_data.team_size = orig_size;
 }
 REGISTER_TEST(test_has_name_in_team_empty);

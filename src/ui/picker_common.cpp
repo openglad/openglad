@@ -363,4 +363,388 @@ void reset_for_new_game(SaveData& save)
     save.reset();
 }
 
+// --- Stats copy utility ---
+
+void statscopy(guy* dest, const guy* source)
+{
+    dest->family = source->family;
+    dest->strength = source->strength;
+    dest->dexterity = source->dexterity;
+    dest->constitution = source->constitution;
+    dest->intelligence = source->intelligence;
+    dest->level = source->level;
+    dest->armor = source->armor;
+    dest->exp = source->exp;
+    dest->kills = source->kills;
+    dest->level_kills = source->level_kills;
+    dest->total_damage = source->total_damage;
+    dest->total_hits = source->total_hits;
+    dest->total_shots = source->total_shots;
+    dest->teamnum = source->teamnum;
+
+    dest->scen_damage = source->scen_damage;
+    dest->scen_kills = source->scen_kills;
+    dest->scen_damage_taken = source->scen_damage_taken;
+    dest->scen_min_hp = source->scen_min_hp;
+    dest->scen_shots = source->scen_shots;
+    dest->scen_hits = source->scen_hits;
+
+    dest->name = source->name;
+}
+
+// --- HireSession ---
+
+HireSession::HireSession(SaveData& save, int team_num)
+    : save_(save), team_num_(team_num)
+{
+    make_recruit();
+}
+
+void HireSession::next_family()
+{
+    current_type_ = (current_type_ + 1) % static_cast<int>(kAllowableGuys.size());
+    make_recruit();
+}
+
+void HireSession::prev_family()
+{
+    current_type_ = (current_type_ - 1 + static_cast<int>(kAllowableGuys.size()))
+                    % static_cast<int>(kAllowableGuys.size());
+    make_recruit();
+}
+
+int HireSession::hire()
+{
+    if (!recruit_ || team_full())
+        return -1;
+
+    std::uint32_t cost = current_cost();
+    if (cost == 0 || cost > save_.m_totalcash[team_num_])
+        return -1;
+
+    save_.m_totalcash[team_num_] -= cost;
+
+    int newfamily = recruit_->family;
+    recruit_->teamnum = static_cast<short>(team_num_);
+    recruit_->exp = calculate_exp(recruit_->level);
+
+    for (int i = 0; i < MAX_TEAM_SIZE; i++) {
+        if (!save_.team_list[i]) {
+            // Save a copy of the hired recruit's stats for the next recruit
+            auto next = std::make_unique<guy>(newfamily);
+            statscopy(next.get(), recruit_.get());
+            next->name = get_unique_name(static_cast<unsigned char>(newfamily), save_);
+
+            save_.team_list[i] = std::move(recruit_);
+            save_.team_size++;
+
+            // Next recruit starts with same stats as the one just hired
+            recruit_ = std::move(next);
+
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+void HireSession::rename_hired(int slot, const std::string& name)
+{
+    if (slot >= 0 && slot < MAX_TEAM_SIZE && save_.team_list[slot])
+        save_.team_list[slot]->name = name;
+}
+
+const guy* HireSession::current_recruit() const
+{
+    return recruit_.get();
+}
+
+std::uint32_t HireSession::current_cost() const
+{
+    if (!recruit_)
+        return 0;
+    return calculate_hire_cost(*recruit_);
+}
+
+int HireSession::family_index() const
+{
+    return current_type_;
+}
+
+int HireSession::team_num() const
+{
+    return team_num_;
+}
+
+bool HireSession::team_full() const
+{
+    return save_.team_size >= MAX_TEAM_SIZE;
+}
+
+void HireSession::make_recruit()
+{
+    int family = kAllowableGuys[current_type_];
+    recruit_ = create_recruit(family, team_num_, save_);
+
+    // Clamp stats up to family base values
+    const auto* fd = get_family_descriptor(family);
+    if (fd) {
+        if (recruit_->strength < fd->base_stats[0])
+            recruit_->strength = static_cast<short>(fd->base_stats[0]);
+        if (recruit_->dexterity < fd->base_stats[1])
+            recruit_->dexterity = static_cast<short>(fd->base_stats[1]);
+        if (recruit_->constitution < fd->base_stats[2])
+            recruit_->constitution = static_cast<short>(fd->base_stats[2]);
+        if (recruit_->intelligence < fd->base_stats[3])
+            recruit_->intelligence = static_cast<short>(fd->base_stats[3]);
+        if (recruit_->armor < fd->base_stats[4])
+            recruit_->armor = static_cast<short>(fd->base_stats[4]);
+        if (recruit_->level < fd->base_stats[5])
+            recruit_->upgrade_to_level(static_cast<short>(fd->base_stats[5]));
+    }
+}
+
+// --- TrainSession ---
+
+TrainSession::TrainSession(SaveData& save)
+    : save_(save)
+{
+    if (save_.team_size < 1)
+        return;
+
+    // Find first non-null team slot
+    for (int i = 0; i < MAX_TEAM_SIZE; i++) {
+        if (save_.team_list[i]) {
+            edit_slot_ = i;
+            break;
+        }
+    }
+
+    select_current_slot();
+}
+
+bool TrainSession::empty() const
+{
+    return save_.team_size < 1 || !working_;
+}
+
+void TrainSession::next_member()
+{
+    if (empty())
+        return;
+
+    int start = edit_slot_;
+    do {
+        edit_slot_++;
+        if (edit_slot_ >= MAX_TEAM_SIZE)
+            edit_slot_ = 0;
+    } while (!save_.team_list[edit_slot_] && edit_slot_ != start);
+
+    select_current_slot();
+}
+
+void TrainSession::prev_member()
+{
+    if (empty())
+        return;
+
+    int start = edit_slot_;
+    do {
+        edit_slot_--;
+        if (edit_slot_ < 0)
+            edit_slot_ = MAX_TEAM_SIZE - 1;
+    } while (!save_.team_list[edit_slot_] && edit_slot_ != start);
+
+    select_current_slot();
+}
+
+void TrainSession::increase_stat(Stat stat, int amount)
+{
+    if (!working_)
+        return;
+
+    const short delta = static_cast<short>(amount);
+
+    if (stat == Stat::Level) {
+        if (!stats_increased()) {
+            short newlevel = static_cast<short>(static_cast<int>(working_->level) + delta);
+            working_->upgrade_to_level(newlevel);
+        }
+    } else {
+        if (!level_increased()) {
+            switch (stat) {
+            case Stat::Strength:
+                working_->strength = static_cast<short>(static_cast<int>(working_->strength) + delta);
+                break;
+            case Stat::Dexterity:
+                working_->dexterity = static_cast<short>(static_cast<int>(working_->dexterity) + delta);
+                break;
+            case Stat::Constitution:
+                working_->constitution = static_cast<short>(static_cast<int>(working_->constitution) + delta);
+                break;
+            case Stat::Intelligence:
+                working_->intelligence = static_cast<short>(static_cast<int>(working_->intelligence) + delta);
+                break;
+            case Stat::Armor:
+                working_->armor = static_cast<short>(static_cast<int>(working_->armor) + delta);
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
+    clamp_working_stats();
+}
+
+void TrainSession::decrease_stat(Stat stat, int amount)
+{
+    if (!working_)
+        return;
+
+    const short delta = static_cast<short>(amount);
+
+    if (stat == Stat::Level) {
+        if (!stats_increased()) {
+            short newlevel = static_cast<short>(static_cast<int>(working_->level) - delta);
+            if (newlevel > 0 && newlevel >= original_->level) {
+                working_->upgrade_to_level(newlevel);
+                if (working_->level == original_->level)
+                    working_->exp = original_->exp;
+            }
+        }
+    } else {
+        if (!level_increased()) {
+            switch (stat) {
+            case Stat::Strength:
+                working_->strength = static_cast<short>(static_cast<int>(working_->strength) - delta);
+                break;
+            case Stat::Dexterity:
+                working_->dexterity = static_cast<short>(static_cast<int>(working_->dexterity) - delta);
+                break;
+            case Stat::Constitution:
+                working_->constitution = static_cast<short>(static_cast<int>(working_->constitution) - delta);
+                break;
+            case Stat::Intelligence:
+                working_->intelligence = static_cast<short>(static_cast<int>(working_->intelligence) - delta);
+                break;
+            case Stat::Armor:
+                working_->armor = static_cast<short>(static_cast<int>(working_->armor) - delta);
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
+    clamp_working_stats();
+}
+
+bool TrainSession::accept(bool force)
+{
+    if (!working_ || !original_)
+        return false;
+
+    std::uint32_t cost = current_cost();
+
+    if (!force) {
+        // If cost is 0 but stats changed, that's a cost overflow — reject and revert
+        if (cost == 0 && (working_->strength != original_->strength ||
+                          working_->dexterity != original_->dexterity ||
+                          working_->constitution != original_->constitution ||
+                          working_->intelligence != original_->intelligence ||
+                          working_->armor != original_->armor ||
+                          working_->level != original_->level)) {
+            statscopy(working_.get(), original_);
+            return false;
+        }
+
+        if (cost > save_.m_totalcash[working_->teamnum])
+            return false;
+
+        save_.m_totalcash[working_->teamnum] -= cost;
+    }
+
+    if (original_->level != working_->level)
+        working_->upgrade_to_level(working_->level);
+
+    statscopy(original_, working_.get());
+
+    return true;
+}
+
+const guy& TrainSession::working_copy() const
+{
+    return *working_;
+}
+
+const guy& TrainSession::original() const
+{
+    return *original_;
+}
+
+std::uint32_t TrainSession::current_cost() const
+{
+    if (!working_ || !original_)
+        return 0;
+    return calculate_train_cost(*working_, *original_);
+}
+
+bool TrainSession::level_increased() const
+{
+    if (!working_ || !original_)
+        return false;
+    return original_->level < working_->level;
+}
+
+bool TrainSession::stats_increased() const
+{
+    if (!working_ || !original_)
+        return false;
+    if (level_increased())
+        return false;
+    return (original_->strength < working_->strength
+         || original_->dexterity < working_->dexterity
+         || original_->constitution < working_->constitution
+         || original_->intelligence < working_->intelligence
+         || original_->armor < working_->armor);
+}
+
+int TrainSession::current_slot() const
+{
+    return edit_slot_;
+}
+
+void TrainSession::select_current_slot()
+{
+    if (!save_.team_list[edit_slot_]) {
+        working_.reset();
+        original_ = nullptr;
+        return;
+    }
+
+    original_ = save_.team_list[edit_slot_].get();
+    working_ = std::make_unique<guy>(original_->family);
+    statscopy(working_.get(), original_);
+}
+
+void TrainSession::clamp_working_stats()
+{
+    if (!working_ || !original_)
+        return;
+
+    if (working_->strength < original_->strength)
+        working_->strength = original_->strength;
+    if (working_->dexterity < original_->dexterity)
+        working_->dexterity = original_->dexterity;
+    if (working_->constitution < original_->constitution)
+        working_->constitution = original_->constitution;
+    if (working_->intelligence < original_->intelligence)
+        working_->intelligence = original_->intelligence;
+    if (working_->armor < original_->armor)
+        working_->armor = original_->armor;
+    if (working_->level < original_->level)
+        working_->upgrade_to_level(original_->level);
+}
+
 } // namespace og::ui

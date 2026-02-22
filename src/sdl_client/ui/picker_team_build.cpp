@@ -68,6 +68,26 @@ extern button trainmenu_buttons[];
 extern button hiremenu_buttons[];
 extern button saveteam_buttons[];
 extern button loadteam_buttons[];
+
+// Session pointers — set during the respective menu loops, null otherwise.
+static og::ui::HireSession* g_hire_session = nullptr;
+static og::ui::TrainSession* g_train_session = nullptr;
+
+// Sync current_guy from the active session's state.
+static void sync_current_guy_from_hire()
+{
+    if (g_hire_session && g_hire_session->current_recruit())
+        current_guy = std::make_unique<guy>(*g_hire_session->current_recruit());
+}
+
+static void sync_current_guy_from_train()
+{
+    if (g_train_session && !g_train_session->empty()) {
+        current_guy = std::make_unique<guy>(g_train_session->working_copy());
+        old_guy = &const_cast<guy&>(g_train_session->original());
+        editguy = g_train_session->current_slot();
+    }
+}
 #ifdef __EMSCRIPTEN__
 void picker_request_start_game();
 #endif
@@ -701,8 +721,10 @@ Sint32 create_hire_menu(Sint32 arg1)
 	int num_buttons = 5;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
-	
-    cycle_guy(0);
+
+    og::ui::HireSession hire_session(myscreen->save_data, current_team_num);
+    g_hire_session = &hire_session;
+    sync_current_guy_from_hire();
     change_hire_teamnum(0);
     
     
@@ -743,7 +765,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         draw_buttons(buttons, num_buttons);
         
         if (!current_guy)
-            cycle_guy(0);
+            sync_current_guy_from_hire();
         
         // Name box
         myscreen->draw_button(name_box, 1);
@@ -783,7 +805,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         
         message = std::format("CASH: {}", myscreen->save_data.m_totalcash[current_team_num]);
         mytext.write_xy(cost_box_content.x, cost_box_content.y, message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
-        current_cost = calculate_hire_cost();
+        current_cost = g_hire_session ? g_hire_session->current_cost() : 0;
         mytext.write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
         message = std::format("      {}", current_cost );
         if (current_cost > myscreen->save_data.m_totalcash[current_team_num])
@@ -893,6 +915,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         }
 	}
 	
+	g_hire_session = nullptr;
 	myscreen->clearbuffer();
 	//myscreen->clearscreen();
 	return REDRAW;
@@ -948,11 +971,12 @@ Sint32 create_train_menu(Sint32 arg1)
 
 	
 	auto& ourteam = myscreen->save_data.team_list;
-	
-	// Set to first guy on list using global variable ..
-	cycle_team_guy(0);
+
+    og::ui::TrainSession train_session(myscreen->save_data);
+    g_train_session = &train_session;
+    sync_current_guy_from_train();
     guy* here = ourteam[editguy].get();
-    current_cost = calculate_train_cost(here);
+    current_cost = g_train_session->current_cost();
 
 	grab_mouse();
 	
@@ -977,7 +1001,7 @@ Sint32 create_train_menu(Sint32 arg1)
             if(retvalue == REDRAW)
             {
 					localbuttons = init_buttons(buttons, num_buttons);
-				
+
 				for (i=2; i < 14; i++)
 				{
 					if (!(i%2)) // 2, 4, ..., 12
@@ -985,14 +1009,14 @@ Sint32 create_train_menu(Sint32 arg1)
 					else
 						allbuttons[i]->set_graphic(FAMILY_PLUS);
 				}
-				cycle_team_guy(0);
+				sync_current_guy_from_train();
             }
-            
+
             if (!current_guy)
-                cycle_team_guy(0);
+                sync_current_guy_from_train();
             if (here != ourteam[editguy].get())
                 here = ourteam[editguy].get();
-            current_cost = calculate_train_cost(here);
+            current_cost = g_train_session->current_cost();
             retvalue = 0;
         }
 		
@@ -1019,16 +1043,8 @@ Sint32 create_train_menu(Sint32 arg1)
         myscreen->draw_text_bar(42, 70, 116, 156);
 
         
-        bool level_increased = (old_guy->level < current_guy->level);
-        bool stat_increased;
-        if(level_increased)
-            stat_increased = false;
-        else
-            stat_increased = (old_guy->strength < current_guy->strength
-                   || old_guy->dexterity < current_guy->dexterity
-                   || old_guy->constitution < current_guy->constitution
-                   || old_guy->intelligence < current_guy->intelligence
-                   || old_guy->armor < current_guy->armor);
+        bool level_increased = g_train_session->level_increased();
+        bool stat_increased = g_train_session->stats_increased();
 
         // Strength
         message = std::format("{}", current_guy->strength);
@@ -1195,6 +1211,7 @@ Sint32 create_train_menu(Sint32 arg1)
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
+	g_train_session = nullptr;
 	myscreen->clearbuffer();
 	//myscreen->clearscreen();
 	return REDRAW;
@@ -1350,241 +1367,62 @@ Sint32 create_save_menu(Sint32 arg1)
 
 }
 
+// --- Session-based thin wrappers for button callbacks ---
+
+static og::ui::TrainSession::Stat but_to_stat(Sint32 whatstat)
+{
+    switch (whatstat) {
+    case BUT_STR:   return og::ui::TrainSession::Stat::Strength;
+    case BUT_DEX:   return og::ui::TrainSession::Stat::Dexterity;
+    case BUT_CON:   return og::ui::TrainSession::Stat::Constitution;
+    case BUT_INT:   return og::ui::TrainSession::Stat::Intelligence;
+    case BUT_ARMOR: return og::ui::TrainSession::Stat::Armor;
+    case BUT_LEVEL: return og::ui::TrainSession::Stat::Level;
+    default:        return og::ui::TrainSession::Stat::Strength;
+    }
+}
+
 Sint32 increase_stat(Sint32 whatstat, Sint32 howmuch)
 {
-    bool level_increased = (old_guy->level < current_guy->level);
-    bool stat_increased;
-    const short delta = static_cast<short>(howmuch);
-    if(level_increased)
-    {
-        stat_increased = false;
-    }
-    else
-    {
-        stat_increased = (old_guy->strength < current_guy->strength
-               || old_guy->dexterity < current_guy->dexterity
-               || old_guy->constitution < current_guy->constitution
-               || old_guy->intelligence < current_guy->intelligence
-               || old_guy->armor < current_guy->armor);
-    }
-    
-	switch(whatstat)
-		{
-			case BUT_STR:
-				if(!level_increased)
-	                current_guy->strength = static_cast<short>(static_cast<Sint32>(current_guy->strength) + delta);
-				break;
-			case BUT_DEX:
-				if(!level_increased)
-	                current_guy->dexterity = static_cast<short>(static_cast<Sint32>(current_guy->dexterity) + delta);
-				break;
-			case BUT_CON:
-				if(!level_increased)
-	                current_guy->constitution = static_cast<short>(static_cast<Sint32>(current_guy->constitution) + delta);
-				break;
-			case BUT_INT:
-				if(!level_increased)
-	                current_guy->intelligence = static_cast<short>(static_cast<Sint32>(current_guy->intelligence) + delta);
-				break;
-			case BUT_ARMOR:
-				if(!level_increased)
-	                current_guy->armor = static_cast<short>(static_cast<Sint32>(current_guy->armor) + delta);
-				break;
-			case BUT_LEVEL:
-			    if(!stat_increased)
-			    {
-	                short newlevel = static_cast<short>(static_cast<Sint32>(current_guy->level) + delta);
-	                current_guy->upgrade_to_level(newlevel);
-			    }
-				break;
-			default:
-			break;
-	}
-	
-	return OK;
+    if (!g_train_session)
+        return OK;
+    g_train_session->increase_stat(but_to_stat(whatstat), howmuch);
+    sync_current_guy_from_train();
+    return OK;
 }
 
 Sint32 decrease_stat(Sint32 whatstat, Sint32 howmuch)
 {
-    bool level_increased = (old_guy->level < current_guy->level);
-    bool stat_increased;
-    const short delta = static_cast<short>(howmuch);
-    if(level_increased)
-    {
-        stat_increased = false;
-    }
-    else
-    {
-        stat_increased = (old_guy->strength < current_guy->strength
-               || old_guy->dexterity < current_guy->dexterity
-               || old_guy->constitution < current_guy->constitution
-               || old_guy->intelligence < current_guy->intelligence
-               || old_guy->armor < current_guy->armor);
-    }
-    
-	switch(whatstat)
-		{
-			case BUT_STR:
-			    if(!level_increased)
-	                current_guy->strength = static_cast<short>(static_cast<Sint32>(current_guy->strength) - delta);
-				break;
-			case BUT_DEX:
-				if(!level_increased)
-	                current_guy->dexterity = static_cast<short>(static_cast<Sint32>(current_guy->dexterity) - delta);
-				break;
-			case BUT_CON:
-				if(!level_increased)
-	                current_guy->constitution = static_cast<short>(static_cast<Sint32>(current_guy->constitution) - delta);
-				break;
-			case BUT_INT:
-				if(!level_increased)
-	                current_guy->intelligence = static_cast<short>(static_cast<Sint32>(current_guy->intelligence) - delta);
-				break;
-			case BUT_ARMOR:
-				if(!level_increased)
-	                current_guy->armor = static_cast<short>(static_cast<Sint32>(current_guy->armor) - delta);
-				break;
-			case BUT_LEVEL:
-				if(!stat_increased)
-	            {
-				    short newlevel = static_cast<short>(static_cast<Sint32>(current_guy->level) - delta);
-				    if(newlevel > 0 && newlevel >= myscreen->save_data.team_list[editguy]->level)
-	                {
-	                    current_guy->upgrade_to_level(newlevel);
-	                    if(current_guy->level == myscreen->save_data.team_list[editguy]->level)
-                        current_guy->exp = myscreen->save_data.team_list[editguy]->exp;
-                }
-			}
-			break;
-		default:
-			break;
-	}
-	
-	return OK;
-}
-
-Uint32 calculate_hire_cost()
-{
-	if (!current_guy)
-		return 0;
-
-	// SDL side effect: clamp stats up to family base values.
-	// The pure og::ui function handles cost calculation correctly without mutation,
-	// but the SDL picker UI expects the guy to be corrected in place.
-	const auto* fd = get_family_descriptor(current_guy->family);
-	if (fd) {
-		if (current_guy->strength < fd->base_stats[0])
-			current_guy->strength = static_cast<short>(fd->base_stats[0]);
-		if (current_guy->dexterity < fd->base_stats[1])
-			current_guy->dexterity = static_cast<short>(fd->base_stats[1]);
-		if (current_guy->constitution < fd->base_stats[2])
-			current_guy->constitution = static_cast<short>(fd->base_stats[2]);
-		if (current_guy->intelligence < fd->base_stats[3])
-			current_guy->intelligence = static_cast<short>(fd->base_stats[3]);
-		if (current_guy->armor < fd->base_stats[4])
-			current_guy->armor = static_cast<short>(fd->base_stats[4]);
-		if (current_guy->level < fd->base_stats[5])
-			current_guy->upgrade_to_level(static_cast<short>(fd->base_stats[5]));
-	}
-
-	Uint32 cost = og::ui::calculate_hire_cost(*current_guy);
-	if (cost == 0 && current_guy) {
-		// Overflow/reset: shared function returned 0, reset the guy
-		cycle_guy(0);
-	}
-	return cost;
-}
-
-// This version compares current_guy versus the old version ..
-Uint32 calculate_train_cost(guy  *oldguy)
-{
-	guy  *ob = current_guy.get();
-
-	if (!ob || !oldguy)
-		return 0;
-
-	// Clamp current stats to not go below old (SDL-specific mutation)
-	if (ob->strength < oldguy->strength)
-		ob->strength = oldguy->strength;
-	if (ob->dexterity < oldguy->dexterity)
-		ob->dexterity = oldguy->dexterity;
-	if (ob->constitution < oldguy->constitution)
-		ob->constitution = oldguy->constitution;
-	if (ob->intelligence < oldguy->intelligence)
-		ob->intelligence = oldguy->intelligence;
-	if (ob->armor < oldguy->armor)
-		ob->armor = oldguy->armor;
-	if (ob->level < oldguy->level)
-		ob->upgrade_to_level(oldguy->level);
-
-	Uint32 cost = og::ui::calculate_train_cost(*ob, *oldguy);
-
-	if (cost == 0 && (ob->strength != oldguy->strength ||
-	                  ob->dexterity != oldguy->dexterity ||
-	                  ob->constitution != oldguy->constitution ||
-	                  ob->intelligence != oldguy->intelligence ||
-	                  ob->armor != oldguy->armor ||
-	                  ob->level != oldguy->level)) {
-		// Overflow/reset: revert to old stats
-		statscopy(current_guy.get(), oldguy);
-		cycle_team_guy(0);
-	}
-
-	return cost;
-}
-
-
-// Name generation moved to og::ui::get_random_name / og::ui::get_unique_name
-// in picker_common.cpp
-
-// Legacy wrappers for code that still calls the old names
-const char* get_random_name(unsigned char family)
-{
-	return og::ui::get_random_name(family);
-}
-
-bool has_name_in_team(const char* name)
-{
-    auto& ourteam = myscreen->save_data.team_list;
-    int team_size = myscreen->save_data.team_size;
-    for (int i = 0; i < team_size; i++) {
-        if (ourteam[i] && ourteam[i]->name == name)
-            return true;
-    }
-    return false;
-}
-
-const char* get_new_name(unsigned char family)
-{
-    static std::string new_name_buffer;
-    new_name_buffer = og::ui::get_unique_name(family, myscreen->save_data);
-    return new_name_buffer.c_str();
+    if (!g_train_session)
+        return OK;
+    g_train_session->decrease_stat(but_to_stat(whatstat), howmuch);
+    sync_current_guy_from_train();
+    return OK;
 }
 
 Sint32 cycle_guy(Sint32 whichway)
 {
-	Sint32 newfamily;
-	constexpr auto& guys = og::ui::kAllowableGuys;
+    if (!g_hire_session) {
+        // Fallback: create recruit directly (for any code calling this outside a session)
+        constexpr auto& guys = og::ui::kAllowableGuys;
+        current_type = (current_type + whichway + static_cast<Sint32>(guys.size())) % static_cast<Sint32>(guys.size());
+        if (current_type < 0)
+            current_type = static_cast<Sint32>(guys.size()) - 1;
+        current_guy = og::ui::create_recruit(guys[current_type], current_team_num, myscreen->save_data);
+        show_guy(0, 0);
+        grab_mouse();
+        return OK;
+    }
 
-	if (!current_guy)
-		newfamily = guys[0];
-	else
-	{
-		current_type = current_type + whichway + static_cast<Sint32>(guys.size());
-		current_type %= static_cast<Sint32>(guys.size());
-		if (current_type < 0)
-			current_type = static_cast<Sint32>(guys.size()) - 1;
-		newfamily = guys[current_type];
-	}
+    if (whichway > 0) g_hire_session->next_family();
+    else if (whichway < 0) g_hire_session->prev_family();
+    // whichway == 0: session constructor already initialized
 
-	// Make the new guy using shared create_recruit for unique naming
-	current_guy = og::ui::create_recruit(newfamily, current_team_num, myscreen->save_data);
-
-	show_guy(0, 0);
-
-	grab_mouse();
-
-	return OK;
+    current_type = g_hire_session->family_index();
+    sync_current_guy_from_hire();
+    show_guy(0, 0);
+    grab_mouse();
+    return OK;
 }
 
 	void show_guy(Sint32 frames, Sint32 who, Sint32 centerx, Sint32 centery) // shows the current guy ..
@@ -1615,46 +1453,20 @@ Sint32 cycle_guy(Sint32 whichway)
 	myscreen->draw_text_bar(centerx - 80 + 56, centery - 45 + 28, centerx - 80 + 104, centery - 45 + 62);
 	draw_walker(*mywalker, myscreen->viewob[0].get());
 }
-// Sets current_guy to 'whichguy' in the teamlist, and
-// returns a COPY of him as the function result
 Sint32 cycle_team_guy(Sint32 whichway)
 {
-	if (myscreen->save_data.team_size < 1)
+	if (!g_train_session || g_train_session->empty())
 		return -1;
-    
-    auto& ourteam = myscreen->save_data.team_list;
-    
-	editguy += whichway;
-	if (editguy < 0)
-	{
-		editguy += MAX_TEAM_SIZE;
-		while (!ourteam[editguy])
-			editguy--;
-	}
 
-	if (editguy < 0 || editguy >= MAX_TEAM_SIZE)
-		editguy = 0;
+	if (whichway > 0) g_train_session->next_member();
+	else if (whichway < 0) g_train_session->prev_member();
 
-	if (!whichway && !ourteam[editguy])
-		whichway = 1;
-
-	while (!ourteam[editguy])
-	{
-		editguy += whichway;
-		if (editguy < 0 || editguy >= MAX_TEAM_SIZE)
-			editguy = 0;
-	}
-
-	current_guy = std::make_unique<guy>(ourteam[editguy]->family);
-	statscopy(current_guy.get(), ourteam[editguy].get());
-	old_guy = ourteam[editguy].get();
-
+	sync_current_guy_from_train();
 	show_guy(0, 0);
 
 	current_team_num = current_guy->teamnum;
 
-	// Set our team button back to normal color ..
-	// Zardus: FIX: added a check for null pointers
+	// Set our team button back to normal color
 	if (allbuttons[18])
 		allbuttons[18]->do_outline = 0;
 
@@ -1702,97 +1514,45 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 
 Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 {
-	Sint32 newfamily = current_guy->family;
-	//buffers: changed typename to type_name due to some compile error
-	std::string type_name;
-	Sint32 i;
-
-	if (myscreen->save_data.team_size >= MAX_TEAM_SIZE) // abort abort!
+	if (!g_hire_session)
 		return -1;
 
-	if (!current_guy) // we should be adding current_guy
-		return -1;
+	int slot = g_hire_session->hire();
+	if (slot < 0)
+		return (myscreen->save_data.team_size >= MAX_TEAM_SIZE) ? -1 : OK;
 
-    Uint32 cost = calculate_hire_cost();
-	if (cost == 0 || cost > myscreen->save_data.m_totalcash[current_team_num])
-		return OK;
+	// SDL-specific: prompt for name
+	release_mouse();
+	auto& hired = myscreen->save_data.team_list[slot];
+	std::string name = hired->name;
+	if (prompt_for_string("NAME THIS CHARACTER", name))
+		g_hire_session->rename_hired(slot, name);
+	grab_mouse();
 
-	myscreen->save_data.m_totalcash[current_team_num] -= cost;
-    
-    auto& ourteam = myscreen->save_data.team_list;
-	for (i=0; i < MAX_TEAM_SIZE; i++)
-    {
-		if (!ourteam[i]) // found an empty slot
-		{
-			current_guy->teamnum = current_team_num;
-			ourteam[i] = std::move(current_guy);
-			myscreen->save_data.team_size++;
-			release_mouse();
-			
-			std::string name = ourteam[i]->name;
-			if(prompt_for_string("NAME THIS CHARACTER", name))
-                ourteam[i]->name = name;
-            
-			grab_mouse();
-
-			// Increment the next guy's number
-			numbought[newfamily]++;
-
-			// Ensure we have the right exp for our level
-			ourteam[i]->exp = calculate_exp(ourteam[i]->level);
-
-			// Grab a new, generic guy to be edited/bought
-			current_guy = std::make_unique<guy>(newfamily);
-			type_name = current_guy->name;
-			statscopy(current_guy.get(), ourteam[i].get()); // set to same stats as just bought
-			current_guy->name = type_name;
-            current_guy->name = get_new_name(static_cast<unsigned char>(newfamily));
-
-			// Return okay status
-			return OK;
-		}
-    }
+	// Sync current_guy from the session's next recruit
+	sync_current_guy_from_hire();
 
 	return OK;
 }
 
 // Accept changes ..
-Sint32 edit_guy(Sint32 arg1)
+Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 {
-	guy *here;
-	MouseState& cheatmouse = query_mouse();
-
-	if (arg1)
-		arg1 = 1;
-
-	if (!current_guy)
+	if (!g_train_session || g_train_session->empty())
 		return -1;
 
-	here = myscreen->save_data.team_list[editguy].get();
-	if (!here)
-		return -1;  // error case; should never happen
-
-	// This is for cheating! Only CHEAT :)
-	// When holding down the right mouse button, can always accept free changes
-	if (CHEAT_MODE && cheatmouse.right)
-	{
-		if (here->level != current_guy->level)
-			current_guy->upgrade_to_level(current_guy->level);
-		statscopy(here, current_guy.get());
-		return OK;
+	// SDL-specific: cheat mode (hold right mouse → free changes)
+	bool force = false;
+	if (CHEAT_MODE) {
+		MouseState& cheatmouse = query_mouse();
+		force = cheatmouse.right;
 	}
-    
-    Uint32 cost = calculate_train_cost(here);
-	if (cost > myscreen->save_data.m_totalcash[current_guy->teamnum])  // compare cost of here to current_guy
-		return OK;
 
-	myscreen->save_data.m_totalcash[current_guy->teamnum] -= cost;  // cost of new - old (current_guy - here)
+	if (!g_train_session->accept(force))
+		return OK;  // can't afford
 
-    if (here->level != current_guy->level)
-    {
-        current_guy->upgrade_to_level(current_guy->level);
-    }
-	statscopy(here, current_guy.get());
+	// Sync working copy back after accept
+	sync_current_guy_from_train();
 
 	// Color our team button normally
 	allbuttons[18]->do_outline = 0;
@@ -2015,27 +1775,5 @@ Sint32 go_menu(Sint32 arg1)
 
 void statscopy(guy *dest, guy *source)
 {
-	dest->family = source->family;
-	dest->strength = source->strength;
-	dest->dexterity = source->dexterity;
-	dest->constitution = source->constitution;
-	dest->intelligence = source->intelligence;
-	dest->level = source->level;
-	dest->armor = source->armor;
-	dest->exp = source->exp;
-	dest->kills = source->kills;
-	dest->level_kills = source->level_kills;
-	dest->total_damage = source->total_damage;
-	dest->total_hits   = source->total_hits;
-	dest->total_shots  = source->total_shots;
-	dest->teamnum = source->teamnum;
-	
-	dest->scen_damage = source->scen_damage;
-	dest->scen_kills = source->scen_kills;
-	dest->scen_damage_taken = source->scen_damage_taken;
-	dest->scen_min_hp = source->scen_min_hp;
-	dest->scen_shots = source->scen_shots;
-	dest->scen_hits = source->scen_hits;
-
-	dest->name = source->name;
+	og::ui::statscopy(dest, source);
 }
