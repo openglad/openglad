@@ -273,7 +273,7 @@ bool SaveData::load(const std::string& filename)
 
 	// Get # of guys to read
 	READ_OR_FAIL(&listsize, 2, 1);
-    const bool invalid_team_size = listsize > MAX_TEAM_SIZE;
+    const bool invalid_team_size = (listsize < 0) || (listsize > MAX_TEAM_SIZE);
     if (invalid_team_size)
     {
         LogError("save_load_team_size_invalid file={} listsize={} max={}\n",
