@@ -10,6 +10,7 @@
 
 #include <unistd.h>
 #include <physfs.h>
+#include "zip.h"
 
 static bool write_file_bytes(const std::string& path, const std::string& contents)
 {
@@ -259,3 +260,48 @@ void test_io_zip_batch6_add_entry_failed_for_unreadable_file()
 #endif
 }
 REGISTER_TEST(test_io_zip_batch6_add_entry_failed_for_unreadable_file);
+
+void test_io_unzip_rejects_zip_slip_paths()
+{
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / ("openglad_io_zipslip_" + std::to_string(::getpid()));
+    const fs::path zipfile = base / "malicious.zip";
+    const fs::path outdir = base / "out";
+    const fs::path outside = base / "outside.txt";
+
+    TEST_ASSERT(create_dir(base.string()), "create base dir should succeed");
+
+    int err = 0;
+    zip* za = zip_open(zipfile.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
+    TEST_ASSERT(za != nullptr, "zip_open malicious archive should succeed");
+    if (!za)
+        return;
+
+    zip_source* safe_src = zip_source_buffer(za, "SAFE", 4, 0);
+    TEST_ASSERT(safe_src != nullptr, "zip_source_buffer safe entry should succeed");
+    if (safe_src && zip_file_add(za, "safe.txt", safe_src, ZIP_FL_OVERWRITE) < 0)
+    {
+        zip_source_free(safe_src);
+        TEST_ASSERT(false, "zip_file_add safe entry should succeed");
+    }
+
+    zip_source* slip_src = zip_source_buffer(za, "EVIL", 4, 0);
+    TEST_ASSERT(slip_src != nullptr, "zip_source_buffer zip slip entry should succeed");
+    if (slip_src && zip_file_add(za, "../outside.txt", slip_src, ZIP_FL_OVERWRITE) < 0)
+    {
+        zip_source_free(slip_src);
+        TEST_ASSERT(false, "zip_file_add zip slip entry should succeed");
+    }
+
+    TEST_ASSERT_EQ(0, zip_close(za), "zip_close malicious archive should succeed");
+
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenEntryFailed),
+        static_cast<int>(unzip_into_with_error(zipfile.string(), outdir.string())),
+        "zip slip entry should be rejected");
+
+    std::string payload;
+    TEST_ASSERT(read_file_all((outdir / "safe.txt").string(), &payload), "safe file should extract");
+    TEST_ASSERT(payload == "SAFE", "safe file content should match");
+    TEST_ASSERT(!fs::exists(outside), "zip slip output path outside extraction root must not be created");
+}
+REGISTER_TEST(test_io_unzip_rejects_zip_slip_paths);
