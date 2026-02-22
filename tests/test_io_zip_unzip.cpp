@@ -337,6 +337,9 @@ void test_io_unzip_reports_output_write_failure()
     TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenOutputFailed),
         static_cast<int>(unzip_into_with_error(zipfile.string(), "/dev")),
         "unzip_into_with_error should report output write/close failure");
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
 #endif
 }
 REGISTER_TEST(test_io_unzip_reports_output_write_failure);
