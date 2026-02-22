@@ -125,11 +125,7 @@ public:
     bool prepare_new_game() override
     {
         reset_for_new_game(save_data_);
-        save_data_.m_totalcash[0] = kNewGameStartingGold;
-        save_data_.totalcash = kNewGameStartingGold;
-
-        auto starter = create_recruit(FAMILY_SOLDIER, 0, save_data_);
-        add_recruit_to_team(save_data_, std::move(starter), 0);
+        ensure_team_populated(save_data_);
 
         sync_config_from_save();
         start_team_build_in_hire_mode_ = true;
@@ -236,10 +232,7 @@ public:
         config_.campaign = save_data_.current_campaign;
         config_.level = save_data_.scen_num > 0 ? save_data_.scen_num : 1;
 
-        if (save_data_.team_size == 0) {
-            auto starter = create_recruit(FAMILY_SOLDIER, 0, save_data_);
-            add_recruit_to_team(save_data_, std::move(starter), 0);
-        }
+        ensure_team_populated(save_data_);
 
         sync_config_from_save();
 
@@ -283,15 +276,13 @@ private:
             std::printf("(empty)\n");
         } else {
             bool first = true;
-            for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
-                if (!save_data_.team_list[i])
-                    continue;
+            for_each_team_member(save_data_, [&](int /*slot*/, const guy& member) {
                 if (!first)
                     std::printf(", ");
-                std::printf("%s (%s)", save_data_.team_list[i]->name.c_str(),
-                    family_display_name(save_data_.team_list[i]->family));
+                std::printf("%s (%s)", member.name.c_str(),
+                    family_display_name(member.family));
                 first = false;
-            }
+            });
             std::printf("\n");
         }
 
@@ -305,40 +296,35 @@ private:
     std::string menu_item_label(const PickerMenuItem& item) const
     {
         if (item.command == PickerMenuCommand::SetDifficulty) {
-            const int difficulty_idx = current_difficulty >= 0
-                ? (current_difficulty % DIFFICULTY_SETTINGS)
-                : 0;
             return std::format("{}: {}", item.label,
-                kDifficultyNames[static_cast<size_t>(difficulty_idx)]);
+                kDifficultyNames[current_difficulty]);
         }
         if (item.command == PickerMenuCommand::SetLevel)
             return std::format("{} ({})", item.label, config_.level);
         if (item.command == PickerMenuCommand::SetCampaign)
             return std::format("{} ({})", item.label, config_.campaign);
         if (item.command == PickerMenuCommand::ToggleAlliedMode)
-            return std::format("{}: {}", item.label, allied_mode_ ? "Allied" : "Enemy");
+            return std::format("{}: {}", item.label,
+                is_allied_mode(save_data_) ? "Allied" : "Enemy");
         return std::string(item.label);
     }
 
     void handle_main_menu_item(const PickerMenuItem& item)
     {
         switch (item.command) {
-        case PickerMenuCommand::SetDifficulty: {
-            const int difficulty_idx = current_difficulty >= 0
-                ? (current_difficulty % DIFFICULTY_SETTINGS)
-                : 0;
-            current_difficulty = (difficulty_idx + 1) % DIFFICULTY_SETTINGS;
+        case PickerMenuCommand::SetDifficulty:
+            current_difficulty = cycle_difficulty(current_difficulty);
             std::printf("Difficulty set to %s.\n",
-                kDifficultyNames[static_cast<size_t>(current_difficulty)]);
+                kDifficultyNames[current_difficulty]);
             break;
-        }
         case PickerMenuCommand::SetPlayerMode:
-            player_mode_ = item.arg;
-            std::printf("Player mode set to %d.\n", player_mode_);
+            set_player_count(save_data_, item.arg);
+            std::printf("Player mode set to %d.\n", item.arg);
             break;
         case PickerMenuCommand::ToggleAlliedMode:
-            allied_mode_ = !allied_mode_;
-            std::printf("PVP mode set to %s.\n", allied_mode_ ? "Allied" : "Enemy");
+            toggle_allied_mode(save_data_);
+            std::printf("PVP mode set to %s.\n",
+                is_allied_mode(save_data_) ? "Allied" : "Enemy");
             break;
         case PickerMenuCommand::LevelEdit:
             std::printf("Level Edit is not available in the headless text client.\n");
@@ -392,16 +378,7 @@ private:
         save_data_.m_totalcash[0] = kNewGameStartingGold;
         save_data_.totalcash = kNewGameStartingGold;
 
-        for (size_t i = 0; i < config_.team_families.size() && save_data_.team_size < MAX_TEAM_SIZE; ++i) {
-            const int family = config_.team_families[i];
-            auto recruit = create_recruit(family, 0, save_data_);
-            add_recruit_to_team(save_data_, std::move(recruit), 0);
-        }
-
-        if (save_data_.team_size == 0) {
-            auto starter = create_recruit(FAMILY_SOLDIER, 0, save_data_);
-            add_recruit_to_team(save_data_, std::move(starter), 0);
-        }
+        ensure_team_populated(save_data_, config_.team_families);
     }
 
     void sync_config_from_save()
@@ -423,10 +400,7 @@ private:
         }
 
         int idx = 1;
-        for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
-            if (!save_data_.team_list[i])
-                continue;
-            const guy& member = *save_data_.team_list[i];
+        for_each_team_member(save_data_, [&](int /*slot*/, const guy& member) {
             std::printf("%2d. %-14s Family=%-14s L=%d STR=%d DEX=%d CON=%d INT=%d ARM=%d\n",
                 idx++,
                 member.name.c_str(),
@@ -437,7 +411,7 @@ private:
                 member.constitution,
                 member.intelligence,
                 member.armor);
-        }
+        });
 
         wait_for_enter();
     }
@@ -596,8 +570,6 @@ private:
     TextPickerError* error_ = nullptr;
     SaveData save_data_;
     bool start_team_build_in_hire_mode_ = false;
-    int player_mode_ = 1;
-    bool allied_mode_ = false;
 };
 
 void run_text_picker(TextPickerConfig& config, TextPickerError* error)

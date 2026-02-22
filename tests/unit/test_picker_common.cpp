@@ -6,6 +6,7 @@
 #include <openglad/entities/family_registry.h>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 // --- calculate_hire_cost ---
 
@@ -552,4 +553,162 @@ OG_UNIT_TEST(test_train_session_accept_force)
     OG_ASSERT(session.accept(true)); // force=true bypasses cost
     OG_ASSERT(save.team_list[0]->strength == orig_str + 5);
     OG_ASSERT(save.m_totalcash[0] == 0); // gold unchanged
+}
+
+// --- compute_derived_stats ---
+
+OG_UNIT_TEST(test_compute_derived_stats)
+{
+    init_family_registry();
+    guy g(FAMILY_SOLDIER);
+
+    auto ds = og::ui::compute_derived_stats(g, 100.0f, 20.0f, 5.0f, 8.0f);
+    // HP = ceil(100 + hp_bonus), MP = ceil(mp_bonus)
+    OG_ASSERT(ds.hp >= 100.0f);
+    OG_ASSERT(ds.mp >= 0.0f);
+    OG_ASSERT(ds.atk >= 20.0f);
+    OG_ASSERT(ds.def >= 0.0f);
+    OG_ASSERT(ds.spd >= 5.0f);
+    OG_ASSERT(ds.atk_spd > 0.0f);
+}
+
+OG_UNIT_TEST(test_compute_derived_stats_min_fire_freq)
+{
+    init_family_registry();
+    guy g(FAMILY_SOLDIER);
+    // base_fire_freq of 0 should be clamped to 1 to avoid div-by-zero
+    auto ds = og::ui::compute_derived_stats(g, 50.0f, 10.0f, 3.0f, 0.0f);
+    OG_ASSERT(ds.atk_spd > 0.0f);
+    OG_ASSERT(ds.atk_spd <= 10.0f);
+}
+
+// --- cycle_difficulty ---
+
+OG_UNIT_TEST(test_cycle_difficulty)
+{
+    OG_ASSERT(og::ui::cycle_difficulty(0) == 1);
+    OG_ASSERT(og::ui::cycle_difficulty(1) == 2);
+    OG_ASSERT(og::ui::cycle_difficulty(2) == 0); // wraps
+}
+
+// --- toggle_allied_mode / is_allied_mode ---
+
+OG_UNIT_TEST(test_toggle_allied_mode)
+{
+    SaveData save;
+    // SaveData constructor sets allied_mode = 1
+    bool initial = og::ui::is_allied_mode(save);
+
+    og::ui::toggle_allied_mode(save);
+    OG_ASSERT(og::ui::is_allied_mode(save) != initial);
+
+    og::ui::toggle_allied_mode(save);
+    OG_ASSERT(og::ui::is_allied_mode(save) == initial);
+}
+
+// --- set_player_count ---
+
+OG_UNIT_TEST(test_set_player_count)
+{
+    SaveData save;
+    og::ui::set_player_count(save, 3);
+    OG_ASSERT(save.numplayers == 3);
+
+    og::ui::set_player_count(save, 1);
+    OG_ASSERT(save.numplayers == 1);
+}
+
+// --- ensure_team_populated ---
+
+OG_UNIT_TEST(test_ensure_team_populated_empty_families)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+
+    // Empty families list -> should add a FAMILY_SOLDIER
+    og::ui::ensure_team_populated(save);
+    OG_ASSERT(save.team_size == 1);
+    OG_ASSERT(save.team_list[0] != nullptr);
+    OG_ASSERT(save.team_list[0]->family == FAMILY_SOLDIER);
+}
+
+OG_UNIT_TEST(test_ensure_team_populated_with_families)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+
+    std::vector<int> families = {FAMILY_MAGE, FAMILY_ARCHER};
+    og::ui::ensure_team_populated(save, families);
+    OG_ASSERT(save.team_size == 2);
+    OG_ASSERT(save.team_list[0]->family == FAMILY_MAGE);
+    OG_ASSERT(save.team_list[1]->family == FAMILY_ARCHER);
+}
+
+OG_UNIT_TEST(test_ensure_team_populated_noop_if_has_members)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_ELF);
+    save.team_size = 1;
+
+    // Should be a no-op since team already has members
+    og::ui::ensure_team_populated(save, {FAMILY_MAGE});
+    OG_ASSERT(save.team_size == 1);
+    OG_ASSERT(save.team_list[0]->family == FAMILY_ELF);
+}
+
+// --- for_each_team_member ---
+
+OG_UNIT_TEST(test_for_each_team_member)
+{
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Alpha";
+    save.team_list[2] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[2]->name = "Beta";
+    save.team_size = 2;
+
+    int count = 0;
+    std::vector<int> slots;
+    og::ui::for_each_team_member(save, [&](int slot, const guy& member) {
+        count++;
+        slots.push_back(slot);
+        if (slot == 0) OG_ASSERT(member.name == "Alpha");
+        if (slot == 2) OG_ASSERT(member.name == "Beta");
+    });
+
+    OG_ASSERT(count == 2);
+    OG_ASSERT(slots.size() == 2);
+    OG_ASSERT(slots[0] == 0);
+    OG_ASSERT(slots[1] == 2);
+}
+
+OG_UNIT_TEST(test_for_each_team_member_empty)
+{
+    SaveData save;
+    save.team_size = 0;
+
+    int count = 0;
+    og::ui::for_each_team_member(save, [&](int, const guy&) {
+        count++;
+    });
+    OG_ASSERT(count == 0);
+}
+
+// --- reset_for_new_game sets gold ---
+
+OG_UNIT_TEST(test_reset_for_new_game_sets_gold)
+{
+    SaveData save;
+    save.totalcash = 0;
+    save.m_totalcash[0] = 0;
+
+    og::ui::reset_for_new_game(save);
+
+    // m_totalcash is set by SaveData::reset() to 5000
+    OG_ASSERT(save.m_totalcash[0] == 5000);
+    // totalcash is now also set by reset_for_new_game
+    OG_ASSERT(save.totalcash == og::ui::kNewGameStartingGold);
 }

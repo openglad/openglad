@@ -22,6 +22,7 @@
 #include <openglad/render/pixien.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/ui/picker_common.h>
 #include "SDL.h"
 #include <array>
 #include <format>
@@ -40,7 +41,7 @@ constexpr Sint32 REDRAW_VALUE = 2;
 
 extern std::unique_ptr<pixieN> main_title_logo_pix;
 extern std::unique_ptr<pixieN> main_columns_pix;
-extern char difficulty_names[DIFFICULTY_SETTINGS][80];
+// difficulty_names removed — use og::ui::kDifficultyNames from picker_common.h
 extern Sint32 current_difficulty;
 extern std::unique_ptr<guy> current_guy;
 extern std::array<Sint32, NUM_FAMILIES> numbought;
@@ -121,7 +122,7 @@ void redraw_mainmenu()
         allbuttons[5]->vdisplay();
     }
 
-    message = std::format("Difficulty: {}", difficulty_names[current_difficulty]);
+    message = std::format("Difficulty: {}", og::ui::kDifficultyNames[current_difficulty]);
     allbuttons[6]->label = message;
 
     // Show the allied mode
@@ -132,7 +133,7 @@ void redraw_mainmenu()
     allbuttons[7]->label = message;
     #else
 
-    message = std::format("Difficulty: {}", difficulty_names[current_difficulty]);
+    message = std::format("Difficulty: {}", og::ui::kDifficultyNames[current_difficulty]);
     allbuttons[2]->label = message;
     
     #endif
@@ -246,7 +247,7 @@ bool picker_prepare_new_game_setup()
 	game->clear();
 
     // Reset the save data so we have a fresh, new team
-	game->save_data.reset();
+	og::ui::reset_for_new_game(game->save_data);
 	current_guy = nullptr;
 	
 	// Clear the labeling counter

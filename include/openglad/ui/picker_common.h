@@ -6,13 +6,14 @@
 #pragma once
 
 #include <openglad/core/constants.h>
+#include <openglad/data/save_data.h>
 #include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 class guy;
-class SaveData;
 
 namespace og::ui {
 
@@ -87,6 +88,41 @@ std::unique_ptr<guy> create_recruit(int family, int team_num, const SaveData& sa
 
 // Reset save data for a new game: clear team, reset gold.
 void reset_for_new_game(SaveData& save);
+
+// Ensure team has at least one member.  Creates recruits from the
+// families list, falling back to FAMILY_SOLDIER if the list is empty.
+void ensure_team_populated(SaveData& save, const std::vector<int>& families = {}, int team_num = 0);
+
+// --- Derived stats ---
+
+struct DerivedStats {
+    float hp, mp, atk, def, spd, atk_spd;
+};
+
+// Compute derived stats from a guy's bonuses and base loader values.
+// base_hp/damage/stepsize/fire_freq come from the loader arrays.
+DerivedStats compute_derived_stats(const guy& g,
+    float base_hp, float base_damage, float base_stepsize, float base_fire_freq);
+
+// --- Difficulty ---
+
+// Cycle to the next difficulty setting. Returns (current + 1) % DIFFICULTY_SETTINGS.
+int cycle_difficulty(int current);
+
+// --- Allied mode ---
+
+void toggle_allied_mode(SaveData& save);
+bool is_allied_mode(const SaveData& save);
+
+// --- Player count ---
+
+void set_player_count(SaveData& save, int count);
+
+// --- Team iteration ---
+
+// Iterate over non-null team members, calling fn(slot_index, member_ref).
+template<typename Fn>
+void for_each_team_member(const SaveData& save, Fn&& fn);
 
 // --- Stats copy utility ---
 
@@ -169,5 +205,18 @@ private:
     void select_current_slot();
     void clamp_working_stats();
 };
+
+// --- Template implementations ---
+
+// Requires full SaveData definition (include <openglad/data/save_data.h>)
+// at the point of instantiation.
+template<typename Fn>
+void for_each_team_member(const SaveData& save, Fn&& fn)
+{
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+        if (save.team_list[i])
+            fn(i, *save.team_list[i]);
+    }
+}
 
 } // namespace og::ui

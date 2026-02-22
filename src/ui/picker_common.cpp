@@ -18,6 +18,11 @@
 // Defined in entities/guy.cpp
 std::uint32_t calculate_exp(std::int32_t level);
 
+// Legacy global used by entity code (living.cpp, walker.cpp) via
+// extern std::int32_t difficulty_level[].  Centralised here so both
+// the SDL and headless clients share a single definition.
+std::int32_t difficulty_level[DIFFICULTY_SETTINGS] = {50, 100, 200};
+
 namespace og::ui {
 
 // --- Constants ---
@@ -361,6 +366,68 @@ std::unique_ptr<guy> create_recruit(int family, int team_num, const SaveData& sa
 void reset_for_new_game(SaveData& save)
 {
     save.reset();
+    save.totalcash = kNewGameStartingGold;
+}
+
+void ensure_team_populated(SaveData& save, const std::vector<int>& families, int team_num)
+{
+    if (save.team_size > 0)
+        return;
+
+    for (size_t i = 0; i < families.size() && save.team_size < MAX_TEAM_SIZE; ++i) {
+        auto recruit = create_recruit(families[i], team_num, save);
+        add_recruit_to_team(save, std::move(recruit), team_num);
+    }
+
+    // Fallback: if families was empty or all failed, add a soldier.
+    if (save.team_size == 0) {
+        auto recruit = create_recruit(FAMILY_SOLDIER, team_num, save);
+        add_recruit_to_team(save, std::move(recruit), team_num);
+    }
+}
+
+// --- Derived stats ---
+
+DerivedStats compute_derived_stats(const guy& g,
+    float base_hp, float base_damage, float base_stepsize, float base_fire_freq)
+{
+    DerivedStats ds;
+    ds.hp = std::ceil(base_hp + g.get_hp_bonus());
+    ds.mp = std::ceil(g.get_mp_bonus());
+    ds.atk = base_damage + g.get_damage_bonus();
+    ds.def = g.get_armor_bonus();
+    ds.spd = base_stepsize + g.get_speed_bonus();
+    float freq = base_fire_freq - g.get_fire_frequency_bonus();
+    if (freq < 1.0f)
+        freq = 1.0f;
+    ds.atk_spd = 10.0f / freq;
+    return ds;
+}
+
+// --- Difficulty ---
+
+int cycle_difficulty(int current)
+{
+    return (current + 1) % DIFFICULTY_SETTINGS;
+}
+
+// --- Allied mode ---
+
+void toggle_allied_mode(SaveData& save)
+{
+    save.allied_mode = static_cast<short>((save.allied_mode + 1) % 2);
+}
+
+bool is_allied_mode(const SaveData& save)
+{
+    return save.allied_mode != 0;
+}
+
+// --- Player count ---
+
+void set_player_count(SaveData& save, int count)
+{
+    save.numplayers = static_cast<unsigned char>(count);
 }
 
 // --- Stats copy utility ---

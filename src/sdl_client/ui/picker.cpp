@@ -174,20 +174,8 @@ extern Sint32 statcosts[NUM_FAMILIES][6];
 
 // Difficulty settings .. in percent, so 100 == normal
 Sint32 current_difficulty = 1; // setting 'normal'
-Sint32 difficulty_level[DIFFICULTY_SETTINGS] =
-    {
-        50,
-        100,
-        200,
-    };  // end of difficulty settings
-// difficulty_names: legacy mutable array for button labels that format into it.
-// Values sourced from og::ui::kDifficultyNames.
-char difficulty_names[DIFFICULTY_SETTINGS][80] =
-    {
-        "Skirmish",
-        "Battle",
-        "Slaughter",
-    };  // end of difficulty names
+// difficulty_level[] now defined in picker_common.cpp (shared between SDL and headless)
+extern std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
 
 enum class PickerInterceptScope
 {
@@ -1130,7 +1118,7 @@ Sint32 overscan_adjust(Sint32 arg)
 Sint32 set_player_mode(Sint32 howmany)
 {
 	Sint32 count = 0;
-	myscreen->save_data.numplayers = static_cast<unsigned char>(howmany);
+	og::ui::set_player_count(myscreen->save_data, howmany);
 
 	while (allbuttons[count])
 	{
@@ -1707,8 +1695,8 @@ int matherr(struct exception *problem)
 
 Sint32 set_difficulty()
 {
-   current_difficulty = (current_difficulty + 1) % DIFFICULTY_SETTINGS;
-   std::string msg = std::format("Difficulty: {}", difficulty_names[current_difficulty]);
+   current_difficulty = og::ui::cycle_difficulty(current_difficulty);
+   std::string msg = std::format("Difficulty: {}", og::ui::kDifficultyNames[current_difficulty]);
    #ifndef DISABLE_MULTIPLAYER
    allbuttons[6]->label = msg;
    #else
@@ -1769,11 +1757,9 @@ Sint32 change_hire_teamnum(Sint32 arg)
 
 Sint32 change_allied()
 {
-   // Change our allied mode (on or off)
-   myscreen->save_data.allied_mode += 1;
-   myscreen->save_data.allied_mode %= 2;
+   og::ui::toggle_allied_mode(myscreen->save_data);
 
-   if (myscreen->save_data.allied_mode)
+   if (og::ui::is_allied_mode(myscreen->save_data))
        allbuttons[7]->label = "PVP: Ally";
    else
        allbuttons[7]->label = "PVP: Enemy";
