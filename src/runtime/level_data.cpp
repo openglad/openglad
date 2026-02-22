@@ -1655,106 +1655,59 @@ bool LevelData::save()
 	temp_time_limit = this->time_bonus_limit;
 	WRITE_FIELD(&temp_time_limit, 2, 1);
 
-	// Determine size of object list ...
-	{
-		const size_t listsize_st = oblist.size() + fxlist.size() + weaplist.size();
-		listsize = static_cast<short>(listsize_st);
-	}
+	// Determine size of object list and clamp to loader's accepted range.
+	const size_t total_objects = oblist.size() + fxlist.size() + weaplist.size();
+	const size_t serialized_objects = std::min(total_objects, static_cast<size_t>(MAX_SCENARIO_OBJECTS));
+	if (serialized_objects != total_objects)
+		Log("Scenario object count {} exceeds {}, truncating on save.\n", total_objects, MAX_SCENARIO_OBJECTS);
+	listsize = static_cast<short>(serialized_objects);
 	WRITE_FIELD(&listsize, 2, 1);
 
+	size_t remaining_objects = serialized_objects;
+	auto write_object_list = [&](std::list<std::unique_ptr<walker>>& list, const char* null_label) -> bool
+	{
+		for (auto& uptr : list)
+		{
+			if (remaining_objects == 0)
+				break;
+
+			walker* ob = uptr.get();
+			if (ob == nullptr)
+			{
+				Log("Unexpected nullptr {} object.\n", null_label);
+				last_io_error_ = IoError::SerializeFailed;
+				return false;
+			}
+			temporder = static_cast<unsigned char>(ob->query_order());
+			tempfacing= ob->curdir;
+			tempfamily= ob->query_family();
+			tempteam  = ob->team_num;
+			tempcommand = static_cast<char>(ob->query_act_type());
+			currentx  = ob->xpos;
+			currenty  = ob->ypos;
+			shortlevel = static_cast<short>(ob->stats()->level);
+			snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
+			WRITE_FIELD( &temporder, 1, 1);
+			WRITE_FIELD( &tempfamily, 1, 1);
+			WRITE_FIELD( &currentx, 2, 1);
+			WRITE_FIELD( &currenty, 2, 1);
+			WRITE_FIELD( &tempteam, 1, 1);
+			WRITE_FIELD( &tempfacing, 1, 1);
+			WRITE_FIELD( &tempcommand, 1, 1);
+			WRITE_FIELD( &shortlevel, 2, 1);
+			WRITE_FIELD( tempname, 12, 1);
+			WRITE_FIELD( filler, 10, 1);
+			remaining_objects--;
+		}
+		return true;
+	};
+
 	// Okay, we've written header .. now dump the data ..
-	for(auto& uptr : oblist)
+	if (!write_object_list(oblist, "regular") ||
+	    !write_object_list(fxlist, "fx") ||
+	    !write_object_list(weaplist, "weap"))
 	{
-	    walker* w = uptr.get();
-        if (w == nullptr)
-        {
-            Log("Unexpected nullptr object.\n");
-            last_io_error_ = IoError::SerializeFailed;
-            return false;  // Something wrong! Too few objects..
-        }
-        temporder = static_cast<unsigned char>(w->query_order());
-        tempfacing= w->curdir;
-        tempfamily= w->query_family();
-        tempteam  = w->team_num;
-        tempcommand = static_cast<char>(w->query_act_type());
-        currentx  = w->xpos;
-        currenty  = w->ypos;
-        //templevel = w->stats()->level;
-        shortlevel = static_cast<short>(w->stats()->level);
-        snprintf(tempname, sizeof(tempname), "%s", w->stats()->name.c_str());
-        WRITE_FIELD( &temporder, 1, 1);
-        WRITE_FIELD( &tempfamily, 1, 1);
-        WRITE_FIELD( &currentx, 2, 1);
-        WRITE_FIELD( &currenty, 2, 1);
-        WRITE_FIELD( &tempteam, 1, 1);
-        WRITE_FIELD( &tempfacing, 1, 1);
-        WRITE_FIELD( &tempcommand, 1, 1);
-        WRITE_FIELD( &shortlevel, 2, 1);
-        WRITE_FIELD( tempname, 12, 1);
-        WRITE_FIELD( filler, 10, 1);
-	}
-
-	// Now dump the fxlist data ..
-	for(auto& uptr : fxlist)
-	{
-	    walker* ob = uptr.get();
-        if (ob == nullptr)
-        {
-            Log("Unexpected nullptr fx object.\n");
-            last_io_error_ = IoError::SerializeFailed;
-            return false;  // Something wrong! Too few objects..
-        }
-        temporder = static_cast<unsigned char>(ob->query_order());
-        tempfacing= ob->curdir;
-        tempfamily= ob->query_family();
-        tempteam  = ob->team_num;
-        tempcommand = static_cast<char>(ob->query_act_type());
-        currentx  = ob->xpos;
-        currenty  = ob->ypos;
-        //templevel = ob->stats()->level;
-        shortlevel = static_cast<short>(ob->stats()->level);
-        snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
-        WRITE_FIELD( &temporder, 1, 1);
-        WRITE_FIELD( &tempfamily, 1, 1);
-        WRITE_FIELD( &currentx, 2, 1);
-        WRITE_FIELD( &currenty, 2, 1);
-        WRITE_FIELD( &tempteam, 1, 1);
-        WRITE_FIELD( &tempfacing, 1, 1);
-        WRITE_FIELD( &tempcommand, 1, 1);
-        WRITE_FIELD( &shortlevel, 2, 1);
-        WRITE_FIELD( tempname, 12, 1);
-        WRITE_FIELD( filler, 10, 1);
-	}
-
-	// Now dump the weaplist data ..
-	for(auto& uptr : weaplist)
-	{
-	    walker* ob = uptr.get();
-        if (ob == nullptr)
-        {
-            Log("Unexpected nullptr weap object.\n");
-            last_io_error_ = IoError::SerializeFailed;
-            return false;  // Something wrong! Too few objects..
-        }
-        temporder = static_cast<unsigned char>(ob->query_order());
-        tempfacing= ob->curdir;
-        tempfamily= ob->query_family();
-        tempteam  = ob->team_num;
-        tempcommand = static_cast<char>(ob->query_act_type());
-        currentx  = ob->xpos;
-        currenty  = ob->ypos;
-        shortlevel = static_cast<short>(ob->stats()->level);
-        snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
-        WRITE_FIELD( &temporder, 1, 1);
-        WRITE_FIELD( &tempfamily, 1, 1);
-        WRITE_FIELD( &currentx, 2, 1);
-        WRITE_FIELD( &currenty, 2, 1);
-        WRITE_FIELD( &tempteam, 1, 1);
-        WRITE_FIELD( &tempfacing, 1, 1);
-        WRITE_FIELD( &tempcommand, 1, 1);
-        WRITE_FIELD( &shortlevel, 2, 1);
-        WRITE_FIELD( tempname, 12, 1);
-        WRITE_FIELD( filler, 10, 1);
+		return false;
 	}
 
 	numlines = static_cast<Uint8>(this->description.size());

@@ -5,7 +5,10 @@
 #include "test_framework.h"
 
 #include <filesystem>
+#include <cstdio>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 extern screen* myscreen;
 
@@ -21,6 +24,76 @@ static bool write_file_bytes(const fs::path& p, const std::string& contents)
     size_t n = fwrite(contents.data(), 1, contents.size(), f);
     fclose(f);
     return n == contents.size();
+}
+
+static bool read_scenario_object_count(const fs::path& p, short* out_count)
+{
+    if (!out_count)
+        return false;
+    FILE* f = fopen(p.string().c_str(), "rb");
+    if (!f)
+        return false;
+    constexpr long kObjectCountOffset = 3 + 1 + 8 + 30 + 1 + 2 + 2;
+    if (fseek(f, kObjectCountOffset, SEEK_SET) != 0)
+    {
+        fclose(f);
+        return false;
+    }
+    std::int16_t count = 0;
+    const size_t read_count = fread(&count, sizeof(count), 1, f);
+    fclose(f);
+    if (read_count != 1)
+        return false;
+    *out_count = count;
+    return true;
+}
+
+static bool scenario_file_has_consistent_object_block(const fs::path& p, short count)
+{
+    if (count < 0)
+        return false;
+
+    FILE* f = fopen(p.string().c_str(), "rb");
+    if (!f)
+        return false;
+    if (fseek(f, 0, SEEK_END) != 0)
+    {
+        fclose(f);
+        return false;
+    }
+    const long raw_size = ftell(f);
+    if (raw_size < 0)
+    {
+        fclose(f);
+        return false;
+    }
+    const std::size_t size = static_cast<std::size_t>(raw_size);
+    rewind(f);
+
+    std::vector<unsigned char> bytes(size);
+    const size_t nread = fread(bytes.data(), 1, bytes.size(), f);
+    fclose(f);
+    if (nread != bytes.size())
+        return false;
+
+    constexpr std::size_t kObjectCountOffset = 3 + 1 + 8 + 30 + 1 + 2 + 2;
+    constexpr std::size_t kSerializedObjectSize = 1 + 1 + 2 + 2 + 1 + 1 + 1 + 2 + 12 + 10;
+    std::size_t pos = kObjectCountOffset + 2 + (static_cast<std::size_t>(count) * kSerializedObjectSize);
+    if (pos >= bytes.size())
+        return false;
+
+    const unsigned int numlines = bytes[pos++];
+    for (unsigned int i = 0; i < numlines; ++i)
+    {
+        if (pos >= bytes.size())
+            return false;
+        const std::size_t width = bytes[pos++];
+        if (pos + width > bytes.size())
+            return false;
+        pos += width;
+    }
+
+    return pos == bytes.size();
 }
 
 void test_level_data_save_truncates_fixed_fields_and_rejects_null_object()
@@ -49,6 +122,7 @@ void test_level_data_save_reports_failure_when_grid_write_fails()
     const int old_id = myscreen->level_data.id;
     const std::string old_grid_file = myscreen->level_data.grid_file;
     const std::string old_title = myscreen->level_data.title;
+    const std::list<std::string> old_description = myscreen->level_data.description;
 
     myscreen->level_data.create_new_grid();
     myscreen->level_data.delete_objects();
@@ -69,8 +143,54 @@ void test_level_data_save_reports_failure_when_grid_write_fails()
     myscreen->level_data.id = old_id;
     myscreen->level_data.grid_file = old_grid_file;
     myscreen->level_data.title = old_title;
+    myscreen->level_data.description = old_description;
 }
 REGISTER_TEST(test_level_data_save_reports_failure_when_grid_write_fails);
+
+void test_level_data_save_caps_object_count_to_loader_limit()
+{
+    const int old_id = myscreen->level_data.id;
+    const std::string old_grid_file = myscreen->level_data.grid_file;
+    const std::string old_title = myscreen->level_data.title;
+    const std::list<std::string> old_description = myscreen->level_data.description;
+
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.id = 125;
+    myscreen->level_data.grid_file = "objcap";
+    myscreen->level_data.title = "object cap";
+    myscreen->level_data.description.clear();
+
+    fs::create_directories("temp/scen");
+    fs::create_directories("temp/pix");
+
+    constexpr int kMaxScenarioObjects = 4096;
+    constexpr int kObjectCount = kMaxScenarioObjects + 1;
+    for (int i = 0; i < kObjectCount; ++i)
+    {
+        walker* w = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+        TEST_ASSERT(w != nullptr, "add_ob should succeed while building large object list");
+    }
+
+    TEST_ASSERT(myscreen->level_data.save(), "save should succeed even when object count exceeds loader limit");
+
+    short serialized_count = -1;
+    const fs::path scen_path = fs::path("temp/scen") / "scen125.fss";
+    TEST_ASSERT(read_scenario_object_count(scen_path, &serialized_count),
+        "should read serialized object count from scenario file");
+    TEST_ASSERT_EQ(kMaxScenarioObjects, static_cast<int>(serialized_count),
+        "save should clamp serialized object count to loader max");
+
+    TEST_ASSERT(scenario_file_has_consistent_object_block(scen_path, serialized_count),
+        "save should serialize object records consistently with the serialized object count");
+
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.id = old_id;
+    myscreen->level_data.grid_file = old_grid_file;
+    myscreen->level_data.title = old_title;
+    myscreen->level_data.description = old_description;
+}
+REGISTER_TEST(test_level_data_save_caps_object_count_to_loader_limit);
 
 void test_campaign_data_load_reports_open_read_failed_when_campaign_yaml_missing()
 {
