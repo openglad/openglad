@@ -935,7 +935,7 @@ short load_version_4(og::io::OgFile& infile, LevelData* data)
 	char newgrid[9] = "grid";  // default grid (8-byte field, no implicit NUL)
 	char oneline[80] = {};
 	char numlines, tempwidth;
-	char tempname[12] = {};
+	char tempname[13] = {};
 
 
 	// Format of a scenario object list file version 4 is:
@@ -995,6 +995,7 @@ short load_version_4(og::io::OgFile& infile, LevelData* data)
 		    !rw_read_exact_or_log(infile, tempname, 12, 1) ||
 		    !rw_read_exact_or_log(infile, tempreserved, 10, 1))
 			return 0;
+		tempname[12] = '\0';
 		if (static_cast<Order>(temporder) == Order::Treasure)
 			//new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily, 1); // add to top of list
 			new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);
@@ -1081,7 +1082,7 @@ short load_version_5(og::io::OgFile& infile, LevelData* data)
 	char new_scen_type; // read the scenario type
 	char oneline[80] = {};
 	char numlines, tempwidth;
-	char tempname[12] = {};
+	char tempname[13] = {};
 
 	// Format of a scenario object list file version 5 is:
 	// 3-byte header: 'FSS'
@@ -1146,6 +1147,7 @@ short load_version_5(og::io::OgFile& infile, LevelData* data)
 		    !rw_read_exact_or_log(infile, tempname, 12, 1) ||
 		    !rw_read_exact_or_log(infile, tempreserved, 10, 1))
 			return 0;
+		tempname[12] = '\0';
 		if (static_cast<Order>(temporder) == Order::Treasure)
 			new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);
 		else

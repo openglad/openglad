@@ -608,6 +608,63 @@ void test_level_data_save_description_serialization_bounds()
 }
 REGISTER_TEST(test_level_data_save_description_serialization_bounds);
 
+void test_level_data_load_version4_5_name_field_without_nul_is_bounded()
+{
+    auto make_blob = [](bool include_type_byte) {
+        std::vector<uint8_t> b;
+        push_bytes(b, "16grass1", 8); // grid
+        if (include_type_byte)
+            push_u8(b, 2); // scenario type
+
+        push_i16(b, 1); // listsize
+
+        push_u8(b, static_cast<uint8_t>(Order::Living));
+        push_u8(b, static_cast<uint8_t>(FAMILY_SOLDIER));
+        push_i16(b, 48);
+        push_i16(b, 64);
+        push_u8(b, 1); // team
+        push_u8(b, 0); // facing
+        push_u8(b, static_cast<uint8_t>(ACT_RANDOM)); // command
+        push_u8(b, 4); // level
+        push_bytes(b, "ABCDEFGHIJKL", 12); // no NUL terminator in fixed 12-byte field
+        push_bytes(b, "RRRRRRRRRR", 10);   // no NUL in reserved field either
+
+        push_u8(b, 1); // numlines
+        push_u8(b, 6); // width
+        push_bytes(b, "hello!", 6);
+        return b;
+    };
+
+    const std::string expected_name = "ABCDEFGHIJKL";
+
+    {
+        std::vector<uint8_t> blob4 = make_blob(false);
+        MemoryOgFile rw4(blob4.data(), blob4.size());
+        myscreen->level_data.delete_objects();
+        myscreen->level_data.description.clear();
+        short r4 = load_scenario_version(rw4, &myscreen->level_data, 4);
+        TEST_ASSERT_EQ(1, (int)r4, "v4 should load with full 12-byte non-NUL name");
+        TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v4 should create an object");
+        TEST_ASSERT(myscreen->level_data.oblist.front()->stats()->name == expected_name,
+            "v4 name should be bounded to 12 bytes");
+    }
+
+    {
+        std::vector<uint8_t> blob5 = make_blob(true);
+        MemoryOgFile rw5(blob5.data(), blob5.size());
+        myscreen->level_data.delete_objects();
+        myscreen->level_data.description.clear();
+        short r5 = load_scenario_version(rw5, &myscreen->level_data, 5);
+        TEST_ASSERT_EQ(1, (int)r5, "v5 should load with full 12-byte non-NUL name");
+        TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v5 should create an object");
+        TEST_ASSERT(myscreen->level_data.oblist.front()->stats()->name == expected_name,
+            "v5 name should be bounded to 12 bytes");
+    }
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_data_load_version4_5_name_field_without_nul_is_bounded);
+
 // ---------------------------------------------------------------------------
 // LevelData::resize_grid with objects - tests off-map cleanup
 // ---------------------------------------------------------------------------
