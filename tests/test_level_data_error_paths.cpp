@@ -143,6 +143,7 @@ void test_level_data_save_reports_failure_when_grid_write_fails()
     myscreen->level_data.id = old_id;
     myscreen->level_data.grid_file = old_grid_file;
     myscreen->level_data.title = old_title;
+    myscreen->level_data.description = old_description;
 }
 REGISTER_TEST(test_level_data_save_reports_failure_when_grid_write_fails);
 

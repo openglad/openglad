@@ -33,7 +33,6 @@
 #include <openglad/data/level_render.h>
 #include <openglad/data/level_data_hooks.h>
 #include <algorithm>
-#include <limits>
 #include <cstring>
 #include <format>
 #include <string>
@@ -1661,7 +1660,7 @@ bool LevelData::save()
 	const size_t serialized_objects = std::min(total_objects, static_cast<size_t>(MAX_SCENARIO_OBJECTS));
 	if (serialized_objects != total_objects)
 		Log("Scenario object count {} exceeds {}, truncating on save.\n", total_objects, MAX_SCENARIO_OBJECTS);
-	listsize = static_cast<short>(std::min<size_t>(serialized_objects, static_cast<size_t>(std::numeric_limits<short>::max())));
+	listsize = static_cast<short>(serialized_objects);
 	WRITE_FIELD(&listsize, 2, 1);
 
 	size_t remaining_objects = serialized_objects;
