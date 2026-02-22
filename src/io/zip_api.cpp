@@ -45,6 +45,60 @@ static std::vector<fs::path> list_relative_paths_recursively(const fs::path& bas
     return out;
 }
 
+static bool path_has_prefix(const fs::path& path, const fs::path& prefix)
+{
+    auto pit = path.begin();
+    auto pend = path.end();
+    auto qit = prefix.begin();
+    auto qend = prefix.end();
+    for (; qit != qend; ++qit, ++pit)
+    {
+        if (pit == pend || *pit != *qit)
+            return false;
+    }
+    return true;
+}
+
+static bool resolve_safe_unzip_destination(const fs::path& outdir_canonical,
+    const std::string& archive_entry_name, fs::path* out_destination)
+{
+    if (archive_entry_name.empty() || archive_entry_name.find('\0') != std::string::npos)
+        return false;
+
+    std::string normalized = archive_entry_name;
+    for (char& c : normalized)
+    {
+        if (c == '\\')
+            c = '/';
+    }
+    while (!normalized.empty() && normalized.back() == '/')
+        normalized.pop_back();
+    if (normalized.empty())
+        return false;
+
+    const fs::path rel = fs::path(normalized);
+    if (rel.empty() || rel.is_absolute() || rel.has_root_directory() || rel.has_root_name())
+        return false;
+
+    for (const fs::path& part : rel)
+    {
+        const std::string token = part.generic_string();
+        if (token.empty() || token == "." || token == "..")
+            return false;
+    }
+
+    std::error_code ec;
+    fs::path candidate = fs::weakly_canonical(outdir_canonical / rel, ec);
+    if (ec)
+        candidate = (outdir_canonical / rel).lexically_normal();
+
+    if (!path_has_prefix(candidate, outdir_canonical))
+        return false;
+
+    *out_destination = candidate;
+    return true;
+}
+
 ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std::string& outfile)
 {
     fs::path base = fs::path(indirectory);
@@ -111,6 +165,14 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
     std::error_code ec;
     fs::create_directories(outdir, ec);
 
+    fs::path outdir_canonical = fs::weakly_canonical(outdir, ec);
+    if (ec)
+    {
+        outdir_canonical = fs::absolute(outdir, ec);
+        if (ec)
+            outdir_canonical = outdir.lexically_normal();
+    }
+
     int err = 0;
     zip* archive = zip_open(infile.c_str(), 0, &err);
     if (archive == nullptr)
@@ -137,7 +199,12 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
             continue;
 
         const bool is_dir = !name.empty() && name.back() == '/';
-        const fs::path dest = outdir / fs::path(name);
+        fs::path dest;
+        if (!resolve_safe_unzip_destination(outdir_canonical, name, &dest))
+        {
+            result = ArchiveIoError::OpenEntryFailed;
+            continue;
+        }
 
         if (is_dir)
         {
