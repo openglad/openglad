@@ -45,12 +45,10 @@
 #include <string>
 #include <vector>
 
+#include "picker_sdl_defs.h"
+
 #define DOWN(x) (72 + static_cast<Sint32>((x) * 15))
 #define VIEW_DOWN(x) (10 + static_cast<Sint32>((x) * 20))
-#define EXIT 1
-#define REDRAW 2
-#define OK 4
-#define BUTTON_HEIGHT 15
 
 extern std::unique_ptr<guy> current_guy;
 extern guy* old_guy;
@@ -61,13 +59,6 @@ extern short current_team_num;
 // allowable_guys replaced by og::ui::kAllowableGuys
 extern Sint32 current_type;
 extern std::array<Sint32, NUM_FAMILIES> numbought;
-extern button createmenu_buttons[];
-extern button viewteam_buttons[];
-extern button details_buttons[];
-extern button trainmenu_buttons[];
-extern button hiremenu_buttons[];
-extern button saveteam_buttons[];
-extern button loadteam_buttons[];
 
 // Session pointers — set during the respective menu loops, null otherwise.
 static og::ui::HireSession* g_hire_session = nullptr;
@@ -125,6 +116,52 @@ Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 create_detail_menu(guy *arg1);
 void glad_main(Sint32 playermode);
 void statscopy(guy *dest, guy *source);
+
+#define STAT_NUM_OFFSET 42
+#define STAT_COLOR   DARK_BLUE // color for normal stat text
+#define STAT_CHANGED RED       // color for changed stat text
+#define STAT_LEVELED LIGHT_BLUE   // color for leveled up stat text
+#define STAT_DISABLED BLACK   // color for disabled stat text
+#define STAT_DERIVED DARK_BLUE + 3
+
+// Compute derived stats for a guy using the current screen's loader data.
+static og::ui::DerivedStats compute_guy_derived_stats(const guy& g)
+{
+    auto pix = PIX(Order::Living, g.family);
+    return og::ui::compute_derived_stats(g,
+        myscreen->level_data.myloader->hitpoints[pix],
+        myscreen->level_data.myloader->damage[pix],
+        myscreen->level_data.myloader->stepsizes[pix],
+        myscreen->level_data.myloader->fire_frequency[pix]);
+}
+
+// Draw the HP/MP/ATK/DEF/SPD/ATK_SPD derived stats block.
+// y_fn(line) returns the y coordinate for the given line number.
+template <typename YFn>
+static void draw_derived_stats_block(text& mytext, const og::ui::DerivedStats& ds,
+    int x, int derived_offset, unsigned char value_color,
+    YFn y_fn, int& line)
+{
+    mytext.write_xy(x, y_fn(line), "HP:", STAT_DERIVED, 1);
+    mytext.write_xy(x + derived_offset - 9, y_fn(line), HIGH_HP_COLOR, "%.0f", ds.hp);
+    mytext.write_xy(x + derived_offset + 18, y_fn(line), "MP:", STAT_DERIVED, 1);
+    mytext.write_xy(x + 2*derived_offset + 18 - 9, y_fn(line), MAX_MP_COLOR, "%.0f", ds.mp);
+
+    line++;
+    mytext.write_xy(x, y_fn(line), "ATK:", STAT_DERIVED, 1);
+    mytext.write_xy(x + derived_offset - 3, y_fn(line), value_color, "%.0f", ds.atk);
+    mytext.write_xy(x + derived_offset + 18, y_fn(line), "DEF:", STAT_DERIVED, 1);
+    mytext.write_xy(x + 2*derived_offset + 18 - 3, y_fn(line), value_color, "%.0f", ds.def);
+
+    line++;
+    mytext.write_xy(x, y_fn(line), "SPD:", STAT_DERIVED, 1);
+    mytext.write_xy(x + derived_offset, y_fn(line), value_color, "%.1f", ds.spd);
+
+    line++;
+    mytext.write_xy(x, y_fn(line), "ATK SPD:", STAT_DERIVED, 1);
+    mytext.write_xy(x + derived_offset + 21, y_fn(line), value_color, "%.1f", ds.atk_spd);
+}
+
 Sint32 create_team_menu(Sint32 arg1)
 {
 	Sint32 retvalue=0;
@@ -152,7 +189,7 @@ Sint32 create_team_menu(Sint32 arg1)
 	
 	myscreen->fadeblack(1);
 	
-	while ( !(retvalue & EXIT) )
+	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		if(leftmouse(buttons))
@@ -165,8 +202,8 @@ Sint32 create_team_menu(Sint32 arg1)
         bool buttons_were_reset = reset_buttons(localbuttons, buttons, num_buttons, retvalue);
 
         // Nested menus can replace the global vbutton array with a different
-        // layout before returning EXIT. Avoid drawing with mismatched arrays.
-        if (retvalue & EXIT)
+        // layout before returning MENU_EXIT. Avoid drawing with mismatched arrays.
+        if (retvalue & MENU_EXIT)
             break;
 		
         if(last_level_id != myscreen->save_data.scen_num || buttons_were_reset)
@@ -196,11 +233,11 @@ Sint32 create_team_menu(Sint32 arg1)
         SDL_Delay(10);
 	}
 
-	// Propagate EXIT if that's why we left the loop
-	if (retvalue & EXIT)
+	// Propagate MENU_EXIT if that's why we left the loop
+	if (retvalue & MENU_EXIT)
 		return retvalue;
 
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 Sint32 create_view_menu(Sint32 arg1)
@@ -219,7 +256,7 @@ Sint32 create_view_menu(Sint32 arg1)
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
 
-	while ( !(retvalue & EXIT) )
+	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		if(leftmouse(buttons))
@@ -227,9 +264,9 @@ Sint32 create_view_menu(Sint32 arg1)
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
 
-        // BACK returns REDRAW to signal "go back to team menu".
+        // BACK returns MENU_REDRAW to signal "go back to team menu".
         // Check before reset_buttons can clear it.
-        if (retvalue & REDRAW)
+        if (retvalue & MENU_REDRAW)
             break;
 
         // Reset buttons (relevant after go_menu returns from game)
@@ -246,12 +283,12 @@ Sint32 create_view_menu(Sint32 arg1)
 	}
 	myscreen->clearbuffer();
 
-	// Propagate EXIT so TeamBuild interception can map GO -> StartGame.
-	// BACK returns REDRAW to keep parent create_team_menu running.
-	if (retvalue & EXIT)
+	// Propagate MENU_EXIT so TeamBuild interception can map GO -> StartGame.
+	// BACK returns MENU_REDRAW to keep parent create_team_menu running.
+	if (retvalue & MENU_EXIT)
 		return retvalue;
 
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 // Helper struct for progress menu
@@ -328,13 +365,13 @@ Sint32 create_progress_menu(Sint32 arg1)
     button buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, prev_btn.x, prev_btn.y, prev_btn.w, prev_btn.h, 0, -1, MenuNav::Right(1)),
         button("next", "NEXT", KEYSTATE_UNKNOWN, next_btn.x, next_btn.y, next_btn.w, next_btn.h, 0, -1, MenuNav::LeftRight(0, 2)),
-        button("back", "BACK", KEYSTATE_ESCAPE, back_btn.x, back_btn.y, back_btn.w, back_btn.h, RETURN_MENU, EXIT, MenuNav::Left(1)),
+        button("back", "BACK", KEYSTATE_ESCAPE, back_btn.x, back_btn.y, back_btn.w, back_btn.h, RETURN_MENU, MENU_EXIT, MenuNav::Left(1)),
     };
     int num_buttons = 3;
     int highlighted_button = 2;
     localbuttons = init_buttons(buttons, num_buttons);
 
-    while (!(retvalue & EXIT))
+    while (!(retvalue & MENU_EXIT))
     {
         // Input
         if (leftmouse(buttons))
@@ -359,10 +396,10 @@ Sint32 create_progress_menu(Sint32 arg1)
 
         bool do_prev = prev_enabled && ((clicked && prev_btn.x <= mx && mx <= prev_btn.x + prev_btn.w
                        && prev_btn.y <= my && my <= prev_btn.y + prev_btn.h)
-                       || (retvalue == OK && highlighted_button == 0));
+                       || (retvalue == MENU_OK && highlighted_button == 0));
         bool do_next = next_enabled && ((clicked && next_btn.x <= mx && mx <= next_btn.x + next_btn.w
                        && next_btn.y <= my && my <= next_btn.y + next_btn.h)
-                       || (retvalue == OK && highlighted_button == 1));
+                       || (retvalue == MENU_OK && highlighted_button == 1));
 
         if (do_prev) {
             scroll_offset--;
@@ -388,7 +425,7 @@ Sint32 create_progress_menu(Sint32 arg1)
                         // Set current level and exit
                         myscreen->save_data.scen_num = static_cast<short>(lp.id);
                         myscreen->clearbuffer();
-                        return REDRAW;
+                        return MENU_REDRAW;
                     }
                 }
                 row_y += row_height;
@@ -396,7 +433,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         }
 
         // Reset
-        if (retvalue == OK && highlighted_button != 2)
+        if (retvalue == MENU_OK && highlighted_button != 2)
             retvalue = 0;
 
         // Draw
@@ -475,7 +512,7 @@ Sint32 create_progress_menu(Sint32 arg1)
     }
 
     myscreen->clearbuffer();
-    return REDRAW;
+    return MENU_REDRAW;
 }
 
 std::string get_class_description(unsigned char family)
@@ -679,12 +716,6 @@ Sint32 create_hire_menu(Sint32 arg1)
 	Uint32 current_cost;
 	Sint32 clickvalue;
 
-#define STAT_NUM_OFFSET 42
-#define STAT_COLOR   DARK_BLUE // color for normal stat text
-#define STAT_CHANGED RED       // color for changed stat text
-#define STAT_LEVELED LIGHT_BLUE   // color for leveled up stat text
-#define STAT_DISABLED BLACK   // color for disabled stat text
-#define STAT_DERIVED DARK_BLUE + 3
     
     SDL_Rect stat_box = {196, 50 - 6 - 32, 104, 82 + 32};
     SDL_Rect stat_box_inner = {stat_box.x + 4, stat_box.y + 4 + 6, stat_box.w - 8, stat_box.h - 8 - 6};
@@ -735,7 +766,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 	
 	grab_mouse();
 
-	while ( !(retvalue & EXIT) )
+	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		clickvalue = leftmouse(buttons);
@@ -747,7 +778,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         handle_menu_nav(buttons, highlighted_button, retvalue);
         
         // Reset buttons
-        if(retvalue == OK || retvalue == REDRAW)
+        if(retvalue == MENU_OK || retvalue == MENU_REDRAW)
         {
 	            // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 	            localbuttons = init_buttons(buttons, num_buttons);
@@ -872,34 +903,13 @@ Sint32 create_hire_menu(Sint32 arg1)
 		myscreen->draw_button_inverted(r);
 		
 		int derived_offset = 3*STAT_NUM_OFFSET/4;
-		auto pix_idx = PIX(Order::Living, last_family);
-		auto ds = og::ui::compute_derived_stats(*current_guy,
-		    myscreen->level_data.myloader->hitpoints[pix_idx],
-		    myscreen->level_data.myloader->damage[pix_idx],
-		    myscreen->level_data.myloader->stepsizes[pix_idx],
-		    myscreen->level_data.myloader->fire_frequency[pix_idx]);
+		auto ds = compute_guy_derived_stats(*current_guy);
 
         linesdown++;
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "HP:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + derived_offset - 9, stat_box_content.y + linesdown*line_height + 4, HIGH_HP_COLOR, "%.0f", ds.hp);
-
-        mytext.write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "MP:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + 2*derived_offset + 18 - 9, stat_box_content.y + linesdown*line_height + 4, MAX_MP_COLOR, "%.0f", ds.mp);
-
-		linesdown++;
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + derived_offset - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", ds.atk);
-
-        mytext.write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "DEF:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + 2*derived_offset + 18 - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", ds.def);
-
-		linesdown++;
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "SPD:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + derived_offset, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", ds.spd);
-
-		linesdown++;
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK SPD:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + derived_offset + 21, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", ds.atk_spd);
+        int hire_line = linesdown;
+        draw_derived_stats_block(mytext, ds, stat_box_content.x, derived_offset, showcolor,
+            [&](int l) { return stat_box_content.y + l*line_height + 4; }, hire_line);
+        linesdown = hire_line;
 
 
         draw_highlight(buttons[highlighted_button]);
@@ -920,7 +930,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 	g_hire_session = nullptr;
 	myscreen->clearbuffer();
 	//myscreen->clearscreen();
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 Sint32 create_train_menu(Sint32 arg1)
@@ -947,7 +957,7 @@ Sint32 create_train_menu(Sint32 arg1)
 	{
 		popup_dialog("NEED A TEAM!", "You need to\nhire a team\nto train");
 		
-		return OK;
+		return MENU_OK;
 	}
 
 	myscreen->clearbuffer();
@@ -986,7 +996,7 @@ Sint32 create_train_menu(Sint32 arg1)
     
     clear_key_press_event();
 
-	while ( !(retvalue & EXIT) )
+	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		clickvalue = leftmouse(buttons);
@@ -998,9 +1008,9 @@ Sint32 create_train_menu(Sint32 arg1)
         handle_menu_nav(buttons, highlighted_button, retvalue);
         
         // Reset buttons
-        if(localbuttons && (retvalue == OK || retvalue == REDRAW))
+        if(localbuttons && (retvalue == MENU_OK || retvalue == MENU_REDRAW))
         {
-            if(retvalue == REDRAW)
+            if(retvalue == MENU_REDRAW)
             {
 					localbuttons = init_buttons(buttons, num_buttons);
 
@@ -1162,33 +1172,12 @@ Sint32 create_train_menu(Sint32 arg1)
         linesdown += 0.4f;
 
         {
-            auto train_pix = PIX(Order::Living, current_guy->family);
-            auto ds = og::ui::compute_derived_stats(*current_guy,
-                myscreen->level_data.myloader->hitpoints[train_pix],
-                myscreen->level_data.myloader->damage[train_pix],
-                myscreen->level_data.myloader->stepsizes[train_pix],
-                myscreen->level_data.myloader->fire_frequency[train_pix]);
-
-	        mytext.write_xy(info_box_content.x, info_y(linesdown), "HP:", STAT_DERIVED, 1);
-	        mytext.write_xy(info_box_content.x + derived_offset - 9, info_y(linesdown), HIGH_HP_COLOR, "%.0f", ds.hp);
-
-	        mytext.write_xy(info_box_content.x + derived_offset + 18, info_y(linesdown), "MP:", STAT_DERIVED, 1);
-	        mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 9, info_y(linesdown), MAX_MP_COLOR, "%.0f", ds.mp);
-
-		linesdown++;
-	        mytext.write_xy(info_box_content.x, info_y(linesdown), "ATK:", STAT_DERIVED, 1);
-	        mytext.write_xy(info_box_content.x + derived_offset - 3, info_y(linesdown), showcolor, "%.0f", ds.atk);
-
-	        mytext.write_xy(info_box_content.x + derived_offset + 18, info_y(linesdown), "DEF:", STAT_DERIVED, 1);
-	        mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 3, info_y(linesdown), showcolor, "%.0f", ds.def);
-
-		linesdown++;
-	        mytext.write_xy(info_box_content.x, info_y(linesdown), "SPD:", STAT_DERIVED, 1);
-	        mytext.write_xy(info_box_content.x + derived_offset, info_y(linesdown), showcolor, "%.1f", ds.spd);
-
-		linesdown++;
-	        mytext.write_xy(info_box_content.x, info_y(linesdown), "ATK SPD:", STAT_DERIVED, 1);
-	        mytext.write_xy(info_box_content.x + derived_offset + 21, info_y(linesdown), showcolor, "%.1f", ds.atk_spd);
+            auto ds = compute_guy_derived_stats(*current_guy);
+            float base_line = linesdown;
+            int train_line = 0;
+            draw_derived_stats_block(mytext, ds, info_box_content.x, derived_offset, showcolor,
+                [&](int l) { return info_y(base_line + static_cast<float>(l)); }, train_line);
+            linesdown = base_line + static_cast<float>(train_line);
         }
         
         
@@ -1221,7 +1210,7 @@ Sint32 create_train_menu(Sint32 arg1)
 	g_train_session = nullptr;
 	myscreen->clearbuffer();
 	//myscreen->clearscreen();
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 static Sint32 create_slot_menu(button* buttons, const char* title)
@@ -1234,22 +1223,22 @@ static Sint32 create_slot_menu(button* buttons, const char* title)
 	int highlighted_button = 10;
 	localbuttons = init_buttons(buttons, num_buttons);
 
-	while ( !(retvalue & EXIT) )
+	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		if(leftmouse(buttons))
         {
 			retvalue = localbuttons->leftclick();
-			if(retvalue == REDRAW)
+			if(retvalue == MENU_REDRAW)
             {
-                return REDRAW;
+                return MENU_REDRAW;
             }
         }
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == REDRAW)
+        if(retvalue == MENU_REDRAW)
         {
-            return REDRAW;
+            return MENU_REDRAW;
         }
 
         // Reset buttons
@@ -1287,7 +1276,7 @@ static Sint32 create_slot_menu(button* buttons, const char* title)
         SDL_Delay(10);
 	}
 
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 Sint32 create_load_menu(Sint32 /*arg1*/)
@@ -1318,19 +1307,19 @@ static og::ui::TrainSession::Stat but_to_stat(Sint32 whatstat)
 Sint32 increase_stat(Sint32 whatstat, Sint32 howmuch)
 {
     if (!g_train_session)
-        return OK;
+        return MENU_OK;
     g_train_session->increase_stat(but_to_stat(whatstat), howmuch);
     sync_current_guy_from_train();
-    return OK;
+    return MENU_OK;
 }
 
 Sint32 decrease_stat(Sint32 whatstat, Sint32 howmuch)
 {
     if (!g_train_session)
-        return OK;
+        return MENU_OK;
     g_train_session->decrease_stat(but_to_stat(whatstat), howmuch);
     sync_current_guy_from_train();
-    return OK;
+    return MENU_OK;
 }
 
 Sint32 cycle_guy(Sint32 whichway)
@@ -1344,7 +1333,7 @@ Sint32 cycle_guy(Sint32 whichway)
         current_guy = og::ui::create_recruit(guys[current_type], current_team_num, myscreen->save_data);
         show_guy(0, 0);
         grab_mouse();
-        return OK;
+        return MENU_OK;
     }
 
     if (whichway > 0) g_hire_session->next_family();
@@ -1355,7 +1344,7 @@ Sint32 cycle_guy(Sint32 whichway)
     sync_current_guy_from_hire();
     show_guy(0, 0);
     grab_mouse();
-    return OK;
+    return MENU_OK;
 }
 
 	void show_guy(Sint32 frames, Sint32 who, Sint32 centerx, Sint32 centery) // shows the current guy ..
@@ -1403,7 +1392,7 @@ Sint32 cycle_team_guy(Sint32 whichway)
 	if (allbuttons[18])
 		allbuttons[18]->do_outline = 0;
 
-	return OK;
+	return MENU_OK;
 }
 
 Sint32 add_guy(guy *newguy)
@@ -1425,7 +1414,7 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 		someguy = current_guy.get();
 
 	if (!someguy)
-		return REDRAW;
+		return MENU_REDRAW;
 
 	release_mouse();
 	
@@ -1442,7 +1431,7 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	grab_mouse();
 
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
@@ -1452,7 +1441,7 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 
 	int slot = g_hire_session->hire();
 	if (slot < 0)
-		return (myscreen->save_data.team_size >= MAX_TEAM_SIZE) ? -1 : OK;
+		return (myscreen->save_data.team_size >= MAX_TEAM_SIZE) ? -1 : MENU_OK;
 
 	// SDL-specific: prompt for name
 	release_mouse();
@@ -1465,7 +1454,7 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 	// Sync current_guy from the session's next recruit
 	sync_current_guy_from_hire();
 
-	return OK;
+	return MENU_OK;
 }
 
 // Accept changes ..
@@ -1482,7 +1471,7 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 	}
 
 	if (!g_train_session->accept(force))
-		return OK;  // can't afford
+		return MENU_OK;  // can't afford
 
 	// Sync working copy back after accept
 	sync_current_guy_from_train();
@@ -1490,7 +1479,7 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 	// Color our team button normally
 	allbuttons[18]->do_outline = 0;
 
-	return OK;
+	return MENU_OK;
 }
 
 Sint32 how_many(Sint32 whatfamily)    // how many guys of family X on the team?
@@ -1521,7 +1510,7 @@ Sint32 do_save(Sint32 arg1)
 
     grab_mouse();
 
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 Sint32 do_load(Sint32 arg1)
@@ -1537,7 +1526,7 @@ Sint32 do_load(Sint32 arg1)
         timed_dialog("LOAD FAILED");
     }
 
-    return REDRAW;
+    return MENU_REDRAW;
 }
 
 std::string get_saved_name(const char * filename)
@@ -1627,19 +1616,19 @@ Sint32 go_menu(Sint32 arg1)
     {
         popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
 
-        return REDRAW;
+        return MENU_REDRAW;
     }
 
 #ifdef __EMSCRIPTEN__
-    // For Emscripten: Set flag and return EXIT to unwind all menu loops
+    // For Emscripten: Set flag and return MENU_EXIT to unwind all menu loops
     // The state machine in main() will handle starting the game
     myscreen->save_data.save("save0");
 
     current_guy.reset();
 
     picker_request_start_game();
-    Log("go_menu: Setting g_start_game_requested, returning EXIT\n");
-    return EXIT;  // This will unwind all menu loops back to picker_main/picker_frame
+    Log("go_menu: Setting g_start_game_requested, returning MENU_EXIT\n");
+    return MENU_EXIT;  // This will unwind all menu loops back to picker_main/picker_frame
 #else
     // Native build: use blocking loop
     do

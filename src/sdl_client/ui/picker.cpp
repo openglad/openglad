@@ -59,27 +59,13 @@
 
 // Stat cost exponent moved to og::ui::kStatCostExponent in picker_common.h
 
-enum class MenuResult : Sint32
-{
-    Exit = 1,   // leave picker menu loop
-    Redraw = 2, // exited submenu and should redraw
-    Ok = 4,     // continue normal operation
-    Yes = 5,
-    No = 6,
-};
-
-constexpr Sint32 menu_result_id(MenuResult result)
-{
-    return static_cast<Sint32>(result);
-}
+#include "picker_sdl_defs.h"
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 void popup_dialog(const char* title, const char* message);
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
 
 bool prompt_for_string(const std::string& message, std::string& result);
-
-inline constexpr Sint32 BUTTON_HEIGHT = 15;
 template <typename T, size_t N>
 constexpr size_t array_size(const T (&)[N]) noexcept { return N; }
 
@@ -285,14 +271,14 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         if (!menu_item)
             return false;
         g_picker_selected_menu_item = menu_item;
-        retvalue = menu_result_id(MenuResult::Exit);
+        retvalue = MENU_EXIT;
         return true;
     }
     if (g_picker_intercept_scope == PickerInterceptScope::TeamBuild) {
         if (action == ButtonAction::GoMenu) {
             g_picker_selected_menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::TeamBuild, og::ui::PickerMenuCommand::StartGame);
-            retvalue = menu_result_id(MenuResult::Exit);
+            retvalue = MENU_EXIT;
             return true;
         }
     }
@@ -527,13 +513,12 @@ button mainmenu_buttons[] =
 #endif // DISABLE_MULTIPLAYER
 
 
-#define BUTTON_HEIGHT 15
-#define BUTTON_PADDING 8
-#define BUTTON_PITCH (BUTTON_HEIGHT + BUTTON_PADDING)
+inline constexpr Sint32 BUTTON_PADDING = 8;
+inline constexpr Sint32 BUTTON_PITCH = BUTTON_HEIGHT + BUTTON_PADDING;
 
 button main_options_buttons[] =
 {
-    button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, RETURN_MENU, menu_result_id(MenuResult::Exit), MenuNav::UpDownRight(12, 1, 15)),
+    button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, RETURN_MENU, MENU_EXIT, MenuNav::UpDownRight(12, 1, 15)),
     button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, TOGGLE_SOUND, -1, MenuNav::UpDown(0, 2)),
     button("toggle_rendering", "NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, TOGGLE_RENDERING_ENGINE, -1, MenuNav::UpDownRight(1, 4, 3)),
     button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, TOGGLE_FULLSCREEN, -1, MenuNav::UpDownLeft(1, 5, 2)),
@@ -559,7 +544,7 @@ button main_options_buttons[] =
 
 button control_options_buttons[] =
 {
-    button("controls_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15, RETURN_MENU, menu_result_id(MenuResult::Exit), MenuNav::Down(1)),
+    button("controls_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15, RETURN_MENU, MENU_EXIT, MenuNav::Down(1)),
     button("player1_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(0), 100, 15,
         button_action_id(ButtonAction::ToggleControlMode), 0, MenuNav::UpDownRight(0, 3, 2)),
     button("player1_remap", "REMAP P1", KEYSTATE_UNKNOWN, 170, CTRL_PLAYER_Y(0), 100, 15,
@@ -590,10 +575,10 @@ button createmenu_buttons[] =
         button("save_team", "SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, CREATE_SAVE_MENU, -1, MenuNav::UpLeftRight(1, 3, 5)),
         button("go", "GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, GO_MENU, -1, MenuNav::UpDownLeft(2, 8, 4)),
 
-        button("back", "BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, RETURN_MENU, menu_result_id(MenuResult::Exit), MenuNav::UpRight(3, 7)),
+        button("back", "BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, RETURN_MENU, MENU_EXIT, MenuNav::UpRight(3, 7)),
         button("progress", "PROGRESS", KEYSTATE_UNKNOWN, 120, 140, 80, 20, CREATE_PROGRESS_MENU, -1, MenuNav::UpLeftRight(4, 6, 8)),
-        button("set_level", "SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, menu_result_id(MenuResult::Exit), MenuNav::UpDownLeft(5, 9, 7)),
-        button("set_campaign", "SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, DO_PICK_CAMPAIGN, menu_result_id(MenuResult::Exit), MenuNav::UpLeft(8, 7)),
+        button("set_level", "SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, MENU_EXIT, MenuNav::UpDownLeft(5, 9, 7)),
+        button("set_campaign", "SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, DO_PICK_CAMPAIGN, MENU_EXIT, MenuNav::UpLeft(8, 7)),
 
     };
 
@@ -602,13 +587,13 @@ button viewteam_buttons[] =
         //  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, CREATE_TRAIN_MENU, -1},
         //  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, CREATE_HIRE_MENU, -1},
         button("go", "GO", KEYSTATE_UNKNOWN,        270, 170, 40, 20, GO_MENU, -1, MenuNav::Left(1)),
-        button("back", "BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , menu_result_id(MenuResult::Redraw), MenuNav::Right(0)),
+        button("back", "BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , MENU_REDRAW, MenuNav::Right(0)),
 
     };
 
 button details_buttons[] =
     {
-        button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, RETURN_MENU , menu_result_id(MenuResult::Exit), MenuNav::UpRight(1, 1)),
+        button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, RETURN_MENU , MENU_EXIT, MenuNav::UpRight(1, 1)),
         button("promote", 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav::DownLeft(0, 0), false, true) // PROMOTE
     };
 
@@ -633,7 +618,7 @@ button trainmenu_buttons[] =
         button("rename", "RENAME", KEYSTATE_UNKNOWN, 174,  8, 64, 22, NAME_GUY, 1, MenuNav::DownLeftRight(18, 1, 17)),
         button("details", "DETAILS..", KEYSTATE_UNKNOWN, 240, 8, 64, 22, CREATE_DETAIL_MENU, 0, MenuNav::DownLeft(18, 16)),
         button("change_team", "Playing on Team X", KEYSTATE_UNKNOWN, 174, 138, 133, 22, CHANGE_TEAM, 1, MenuNav::UpDownLeft(17, 14, 13)),
-        button("back", "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , menu_result_id(MenuResult::Exit), MenuNav::UpRight(12, 15)),
+        button("back", "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , MENU_EXIT, MenuNav::UpRight(12, 15)),
 
     };
 
@@ -643,7 +628,7 @@ button hiremenu_buttons[] =
         button("next", "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 3)),
         button("change_hire_team", "hiring for team X", KEYSTATE_UNKNOWN, 190, 170, 110, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpLeft(1, 3)),
         button("hire_me", "HIRE ME", KEYSTATE_UNKNOWN,  82, 166, 88, 28, ADD_GUY, -1, MenuNav::UpLeftRight(1, 4, 2)),
-        button("back", "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , menu_result_id(MenuResult::Exit), MenuNav::UpRight(0, 3)),
+        button("back", "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , MENU_EXIT, MenuNav::UpRight(0, 3)),
 
     };
 
@@ -660,7 +645,7 @@ button saveteam_buttons[] =
         button("save_slot_8", "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_SAVE, 8, MenuNav::UpDown(6, 8)),
         button("save_slot_9", "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_SAVE, 9, MenuNav::UpDown(7, 9)),
         button("save_slot_10", "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_SAVE, 10, MenuNav::UpDown(8, 10)),
-        button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , menu_result_id(MenuResult::Exit), MenuNav::UpDown(9, 0)),
+        button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , MENU_EXIT, MenuNav::UpDown(9, 0)),
 
     };
 
@@ -676,7 +661,7 @@ button loadteam_buttons[] =
         button("load_slot_8", "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_LOAD, 8, MenuNav::UpDown(6, 8)),
         button("load_slot_9", "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_LOAD, 9, MenuNav::UpDown(7, 9)),
         button("load_slot_10", "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_LOAD, 10, MenuNav::UpDown(8, 10)),
-        button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , menu_result_id(MenuResult::Exit), MenuNav::UpDown(9, 0)),
+        button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , MENU_EXIT, MenuNav::UpDown(9, 0)),
 
     };
 
@@ -947,20 +932,20 @@ Sint32 toggle_player_control_mode(Sint32 arg)
 {
     const int player_index = static_cast<int>(arg);
     if (player_index < 0 || player_index >= 4)
-        return menu_result_id(MenuResult::Redraw);
+        return MENU_REDRAW;
 
     const int current_mode = get_player_control_mode(player_index);
     const int next_mode = (current_mode == static_cast<int>(ControlDirectionMode::EightDirection))
         ? static_cast<int>(ControlDirectionMode::FourDirection)
         : static_cast<int>(ControlDirectionMode::EightDirection);
     set_player_control_mode(player_index, next_mode);
-    return menu_result_id(MenuResult::Redraw);
+    return MENU_REDRAW;
 }
 
 Sint32 edit_player_keymap(Sint32 arg)
 {
     remap_player_keys(static_cast<int>(arg));
-    return menu_result_id(MenuResult::Redraw);
+    return MENU_REDRAW;
 }
 
 Sint32 main_controls_options()
@@ -973,19 +958,19 @@ Sint32 main_controls_options()
     clear_keyboard();
 
     Sint32 retvalue = 0;
-	while(!(retvalue & menu_result_id(MenuResult::Exit)))
+	while(!(retvalue & MENU_EXIT))
 	{
         if(leftmouse(buttons))
         {
             const Sint32 click_result = localbuttons->leftclick();
-            if(click_result == menu_result_id(MenuResult::Exit))
+            if(click_result == MENU_EXIT)
                 break;
             if(click_result != 0)
                 retvalue = click_result;
         }
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == menu_result_id(MenuResult::Exit))
+        if(retvalue == MENU_EXIT)
             break;
 
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
@@ -1020,7 +1005,7 @@ Sint32 main_controls_options()
         SDL_Delay(10);
     }
 
-    return menu_result_id(MenuResult::Redraw);
+    return MENU_REDRAW;
 }
 
 Sint32 main_options()
@@ -1043,20 +1028,20 @@ Sint32 main_options()
 	clear_keyboard();
     
     Sint32 retvalue = 0;
-	while(!(retvalue & menu_result_id(MenuResult::Exit)))
+	while(!(retvalue & MENU_EXIT))
 	{
 	    // Input
 		if(leftmouse(buttons))
         {
             const Sint32 click_result = localbuttons->leftclick();
-			if(click_result == menu_result_id(MenuResult::Exit))
+			if(click_result == MENU_EXIT)
                 break;
             if(click_result != 0)
                 retvalue = click_result;
         }
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == menu_result_id(MenuResult::Exit))
+        if(retvalue == MENU_EXIT)
             break;
         
         // Reset buttons
@@ -1104,7 +1089,7 @@ Sint32 main_options()
     save_player_control_settings_to_cfg(active_config());
 	active_config().save_settings();
     
-    return menu_result_id(MenuResult::Redraw);
+    return MENU_REDRAW;
 }
 
 Sint32 overscan_adjust(Sint32 arg)
@@ -1112,7 +1097,7 @@ Sint32 overscan_adjust(Sint32 arg)
     overscan_percentage -= static_cast<float>(arg) / 100.0f;
     update_overscan_setting();
     
-    return menu_result_id(MenuResult::Redraw);
+    return MENU_REDRAW;
 }
 
 Sint32 set_player_mode(Sint32 howmany)
@@ -1127,7 +1112,7 @@ Sint32 set_player_mode(Sint32 howmany)
 	}
 	//buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
 
-	return menu_result_id(MenuResult::Ok);
+	return MENU_OK;
 }
 
 
@@ -1172,7 +1157,7 @@ Sint32 create_detail_menu(guy *arg1)
    //leftmouse(buttons);
    //localbuttons->leftclick(buttons);
 
-   while ( !(retvalue & menu_result_id(MenuResult::Exit)) )
+   while ( !(retvalue & MENU_EXIT) )
    {
        show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
     
@@ -1200,7 +1185,7 @@ Sint32 create_detail_menu(guy *arg1)
                myscreen->soundp->play_sound(SOUND_EXPLODE);
                myscreen->soundp->play_sound(SOUND_EXPLODE);
                myscreen->soundp->play_sound(SOUND_EXPLODE);
-               return menu_result_id(MenuResult::Redraw);
+               return MENU_REDRAW;
            }
        }
         
@@ -1609,7 +1594,7 @@ Sint32 create_detail_menu(guy *arg1)
        draw_highlight_interior(buttons[highlighted_button]);
        myscreen->buffer_to_screen(0, 0, 320, 200);
    }
-   return menu_result_id(MenuResult::Redraw);  // back to edit menu
+   return MENU_REDRAW;  // back to edit menu
 }
 
 
@@ -1648,7 +1633,7 @@ Sint32 do_pick_campaign(Sint32 arg1)
         myscreen->save_data.current_campaign = result.id;
         myscreen->save_data.scen_num = static_cast<short>(load_campaign(result.id, myscreen->save_data.current_levels, result.first_level));
    }
-   return menu_result_id(MenuResult::Redraw);
+   return MENU_REDRAW;
 }
 
 Sint32 do_set_scen_level(Sint32 arg1)
@@ -1682,7 +1667,7 @@ Sint32 do_set_scen_level(Sint32 arg1)
        }
    }
 
-   return menu_result_id(MenuResult::Redraw);
+   return MENU_REDRAW;
 }
 
 /*
@@ -1706,7 +1691,7 @@ Sint32 set_difficulty()
    //allbuttons[6]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);
 
-   return menu_result_id(MenuResult::Ok);
+   return MENU_OK;
 }
 
 Sint32 change_teamnum(Sint32 arg)
@@ -1733,7 +1718,7 @@ Sint32 change_teamnum(Sint32 arg)
    //allbuttons[18]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);
 
-   return menu_result_id(MenuResult::Ok);
+   return MENU_OK;
 }
 
 Sint32 change_hire_teamnum(Sint32 arg)
@@ -1752,7 +1737,7 @@ Sint32 change_hire_teamnum(Sint32 arg)
    // Update our button display
    allbuttons[2]->label = std::format("Hiring for Team {}", current_team_num + 1);
 
-   return menu_result_id(MenuResult::Ok);
+   return MENU_OK;
 }
 
 Sint32 change_allied()
@@ -1764,7 +1749,7 @@ Sint32 change_allied()
    //buffers: allbuttons[7]->vdisplay();
    //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
 
-   return menu_result_id(MenuResult::Ok);
+   return MENU_OK;
 }
 
 #ifdef __EMSCRIPTEN__

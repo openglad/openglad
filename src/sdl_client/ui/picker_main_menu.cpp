@@ -35,8 +35,7 @@ constexpr int OPTIONS_BUTTON_INDEX = 5;
 constexpr int MAINMENU_BUTTON_COUNT = 6;
 #endif
 
-constexpr Sint32 EXIT_VALUE = 1;
-constexpr Sint32 REDRAW_VALUE = 2;
+#include "picker_sdl_defs.h"
 
 extern std::unique_ptr<pixieN> main_title_logo_pix;
 extern std::unique_ptr<pixieN> main_columns_pix;
@@ -45,7 +44,6 @@ extern Sint32 current_difficulty;
 extern std::unique_ptr<guy> current_guy;
 extern std::array<Sint32, NUM_FAMILIES> numbought;
 extern vbutton *localbuttons;
-extern button mainmenu_buttons[];
 
 void draw_version_number();
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
@@ -151,7 +149,7 @@ Sint32 mainmenu(Sint32 arg1)
 {
 	screen* game = ctx().active_screen() ? ctx().active_screen() : myscreen;
 	if (!game)
-		return EXIT_VALUE;
+		return MENU_EXIT;
 
 	Sint32 retvalue=0;
 
@@ -182,7 +180,7 @@ Sint32 mainmenu(Sint32 arg1)
 
 	grab_mouse();
 
-	while(!(retvalue & EXIT_VALUE))
+	while(!(retvalue & MENU_EXIT))
 	{
 	    // Input
 		if(leftmouse(buttons))
@@ -198,7 +196,7 @@ Sint32 mainmenu(Sint32 arg1)
         }
 
         // A submenu may have replaced allbuttons — skip draw if exiting
-            if(retvalue & EXIT_VALUE)
+            if(retvalue & MENU_EXIT)
             break;
 
 		// Draw
@@ -253,7 +251,7 @@ Sint32 beginmenu(Sint32 arg1)
 {
     (void)arg1;
     if (!picker_prepare_new_game_setup())
-        return REDRAW_VALUE;
+        return MENU_REDRAW;
 
     return create_team_menu(1);
 }
