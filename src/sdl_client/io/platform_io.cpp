@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <random>
 #include <stdexcept>
 #include <sys/stat.h>
@@ -93,6 +94,25 @@ int rwops_write_handler(void *data, unsigned char *buffer, size_t size)
 
 std::string get_user_path()
 {
+    auto normalize_dir = [](std::string path) {
+        while (path.size() > 1 && path.back() == '/') {
+            path.pop_back();
+        }
+        if (path.empty()) {
+            return std::string("./");
+        }
+        if (path.back() != '/') {
+            path.push_back('/');
+        }
+        return path;
+    };
+
+    if (const char* config_dir = std::getenv("OPENGLAD_CONFIG_DIR")) {
+        if (config_dir[0] != '\0') {
+            return normalize_dir(config_dir);
+        }
+    }
+
 #ifdef __EMSCRIPTEN__
     // Use IDBFS mount point for persistent storage in browser
     return "/persist/";
@@ -121,13 +141,15 @@ std::string get_user_path()
                 s[pos] = '/';
         } while(pos != std::string::npos);
 
-        return s + "/.openglad/";
+        return normalize_dir(s + "/.openglad");
     }
     return "";
 #else
-    std::string path = getenv("HOME");
-    path += "/.openglad/";
-    return path;
+    const char* home = std::getenv("HOME");
+    if (!home) {
+        return "./";
+    }
+    return normalize_dir(std::string(home) + "/.openglad");
 #endif
 }
 
@@ -614,4 +636,3 @@ bool create_new_scen_file(const std::string& scenfile, const std::string& gridna
 {
     return create_new_scen_file_with_error(scenfile, gridname) == NewFileIoError::None;
 }
-
