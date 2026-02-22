@@ -1,6 +1,43 @@
 #include <openglad/platform/io.h>
 #include "test_framework.h"
 
+#include <cstdlib>
+#include <string>
+
+namespace {
+class ScopedEnvVar {
+public:
+    explicit ScopedEnvVar(const char* name) : name_(name) {
+        const char* current = std::getenv(name_);
+        if (current) {
+            had_value_ = true;
+            old_value_ = current;
+        }
+    }
+
+    ~ScopedEnvVar() {
+        if (had_value_) {
+#ifdef _WIN32
+            _putenv_s(name_, old_value_.c_str());
+#else
+            setenv(name_, old_value_.c_str(), 1);
+#endif
+        } else {
+#ifdef _WIN32
+            _putenv_s(name_, "");
+#else
+            unsetenv(name_);
+#endif
+        }
+    }
+
+private:
+    const char* name_;
+    bool had_value_ = false;
+    std::string old_value_;
+};
+} // namespace
+
 // ---------------------------------------------------------------------------
 // explode() - string splitting utility
 // ---------------------------------------------------------------------------
@@ -59,6 +96,58 @@ void test_io_get_user_path_nonempty()
     TEST_ASSERT(path.size() > 1, "user path has content");
 }
 REGISTER_TEST(test_io_get_user_path_nonempty);
+
+void test_io_get_user_path_uses_openglad_config_dir_when_set()
+{
+    ScopedEnvVar scoped("OPENGLAD_CONFIG_DIR");
+#ifdef _WIN32
+    _putenv_s("OPENGLAD_CONFIG_DIR", "C:/tmp/openglad_test_cfg");
+    const char* expected = "C:/tmp/openglad_test_cfg/";
+#else
+    setenv("OPENGLAD_CONFIG_DIR", "/tmp/openglad_test_cfg", 1);
+    const char* expected = "/tmp/openglad_test_cfg/";
+#endif
+
+    std::string path = get_user_path();
+    TEST_ASSERT_STR_EQ(expected, path.c_str(),
+                       "OPENGLAD_CONFIG_DIR should override default user path");
+}
+REGISTER_TEST(test_io_get_user_path_uses_openglad_config_dir_when_set);
+
+void test_io_get_user_path_ignores_empty_openglad_config_dir()
+{
+    ScopedEnvVar scoped_cfg("OPENGLAD_CONFIG_DIR");
+#ifdef _WIN32
+    _putenv_s("OPENGLAD_CONFIG_DIR", "");
+    std::string path = get_user_path();
+    TEST_ASSERT(!path.empty(), "empty OPENGLAD_CONFIG_DIR should still produce a non-empty default path");
+#else
+    ScopedEnvVar scoped_home("HOME");
+    setenv("OPENGLAD_CONFIG_DIR", "", 1);
+    setenv("HOME", "/tmp/openglad_test_home", 1);
+    std::string path = get_user_path();
+    TEST_ASSERT_STR_EQ("/tmp/openglad_test_home/.openglad/", path.c_str(),
+                       "empty OPENGLAD_CONFIG_DIR should fall back to HOME/.openglad");
+#endif
+}
+REGISTER_TEST(test_io_get_user_path_ignores_empty_openglad_config_dir);
+
+void test_io_get_user_path_normalizes_trailing_slashes()
+{
+    ScopedEnvVar scoped("OPENGLAD_CONFIG_DIR");
+#ifdef _WIN32
+    _putenv_s("OPENGLAD_CONFIG_DIR", "C:/tmp/openglad_cfg///");
+    const char* expected = "C:/tmp/openglad_cfg/";
+#else
+    setenv("OPENGLAD_CONFIG_DIR", "/tmp/openglad_cfg///", 1);
+    const char* expected = "/tmp/openglad_cfg/";
+#endif
+
+    std::string path = get_user_path();
+    TEST_ASSERT_STR_EQ(expected, path.c_str(),
+                       "OPENGLAD_CONFIG_DIR should normalize repeated trailing slashes");
+}
+REGISTER_TEST(test_io_get_user_path_normalizes_trailing_slashes);
 
 // ---------------------------------------------------------------------------
 // list_files

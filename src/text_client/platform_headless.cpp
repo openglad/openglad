@@ -36,6 +36,25 @@ std::int32_t difficulty_level[DIFFICULTY_SETTINGS] = { 50, 100, 200 };
 
 std::string get_user_path()
 {
+    auto normalize_dir = [](std::string path) {
+        while (path.size() > 1 && path.back() == '/') {
+            path.pop_back();
+        }
+        if (path.empty()) {
+            return std::string("./");
+        }
+        if (path.back() != '/') {
+            path.push_back('/');
+        }
+        return path;
+    };
+
+    if (const char* config_dir = std::getenv("OPENGLAD_CONFIG_DIR")) {
+        if (config_dir[0] != '\0') {
+            return normalize_dir(config_dir);
+        }
+    }
+
 #ifdef _WIN32
     char path[MAX_PATH];
     HRESULT hr = SHGetFolderPath(0, CSIDL_LOCAL_APPDATA, 0, 0, path);
@@ -47,13 +66,13 @@ std::string get_user_path()
             if (pos != std::string::npos)
                 s[pos] = '/';
         } while (pos != std::string::npos);
-        return s + "/.openglad/";
+        return normalize_dir(s + "/.openglad");
     }
     return "";
 #else
     const char* home = std::getenv("HOME");
     if (!home) return "./";
-    return std::string(home) + "/.openglad/";
+    return normalize_dir(std::string(home) + "/.openglad");
 #endif
 }
 
