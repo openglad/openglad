@@ -219,7 +219,7 @@ bool SaveData::load(const std::string& filename)
 	if (temp_version != 1)
 	{
 		if (temp_version >= 2)
-			READ_OR_FAIL(savedgame, 40, 1); // read and ignore the name
+			READ_OR_FAIL(savedgame, 40, 1); // load save name from fixed-width (40-byte), NUL-terminated field
 		else
 		{
 			LogError("Save file version not supported: {}\n", filename);
