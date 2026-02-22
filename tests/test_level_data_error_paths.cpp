@@ -4,8 +4,12 @@
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
+#include <cerrno>
 #include <filesystem>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <string>
+#include <unistd.h>
 
 extern screen* myscreen;
 
@@ -21,6 +25,26 @@ static bool write_file_bytes(const fs::path& p, const std::string& contents)
     size_t n = fwrite(contents.data(), 1, contents.size(), f);
     fclose(f);
     return n == contents.size();
+}
+
+static bool dev_full_write_fails_as_expected()
+{
+    struct stat st {};
+    if (::stat("/dev/full", &st) != 0)
+        return false;
+    if (!S_ISCHR(st.st_mode))
+        return false;
+
+    const int fd = ::open("/dev/full", O_WRONLY);
+    if (fd < 0)
+        return false;
+
+    const char byte = 'x';
+    const ssize_t n = ::write(fd, &byte, 1);
+    const int saved_errno = errno;
+    ::close(fd);
+
+    return n < 0 && saved_errno == ENOSPC;
 }
 
 void test_level_data_save_truncates_fixed_fields_and_rejects_null_object()
@@ -74,6 +98,11 @@ REGISTER_TEST(test_level_data_save_reports_failure_when_grid_write_fails);
 
 void test_level_data_save_reports_failure_when_scenario_write_fails()
 {
+    if (!dev_full_write_fails_as_expected()) {
+        fprintf(stderr, "  INFO: /dev/full unavailable or not ENOSPC; skipping test\n");
+        return;
+    }
+
     const int old_id = myscreen->level_data.id;
     const std::string old_grid_file = myscreen->level_data.grid_file;
     const std::string old_title = myscreen->level_data.title;
@@ -91,7 +120,10 @@ void test_level_data_save_reports_failure_when_scenario_write_fails()
     std::error_code ec;
     fs::remove(scen_file, ec);
     fs::create_symlink("/dev/full", scen_file, ec);
-    TEST_ASSERT(!ec, "create symlink to /dev/full");
+    if (ec) {
+        fprintf(stderr, "  INFO: cannot symlink /dev/full (%s); skipping test\n", ec.message().c_str());
+        return;
+    }
 
     TEST_ASSERT(!myscreen->level_data.save(), "save should fail when scenario file write fails");
     TEST_ASSERT_EQ((int)LevelData::IoError::SerializeFailed, (int)myscreen->level_data.last_io_error(),
