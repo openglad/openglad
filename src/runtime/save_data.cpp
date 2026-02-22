@@ -221,7 +221,7 @@ bool SaveData::load(const std::string& filename)
 	{
 		if (temp_version >= 2)
 		{
-			READ_OR_FAIL(savedgame, 40, 1); // read and ignore the name
+			READ_OR_FAIL(savedgame, 40, 1); // load save name from the fixed-width 40-byte save-name field
 			savedgame[40] = '\0';
 		}
 		else
