@@ -384,6 +384,14 @@ walker  * walker::fire()
                         attack_lunge_angle = get_current_angle();
                     }
                 }
+
+				// Family-specific melee hit callback
+				if (order == Order::Living)
+				{
+					const auto* fd = get_family_descriptor(family);
+					if (fd && fd->on_melee_hit)
+						fd->on_melee_hit(this, weapon->collide_ob);
+				}
 			}
 			if (myguy)
             {

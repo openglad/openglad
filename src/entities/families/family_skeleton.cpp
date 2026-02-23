@@ -60,6 +60,8 @@ static bool skeleton_do_special(walker* self)
     return true;
 }
 
+static const char* const skeleton_names[] = {"Drybones", "Blackbeard", "Boney", "Femur", "Patella", "Humerus", "Scapula"};
+
 const FamilyDescriptor& describe_family_skeleton()
 {
     static const FamilyDescriptor desc = {
@@ -99,6 +101,22 @@ const FamilyDescriptor& describe_family_skeleton()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "skeleton.pix",
+        .animation_type = FAMILY_ANIM_SKELETON,
+        .ai_line_of_sight = 7,
+        .description = "Skeletons are the pathetic\n"
+                       "remains of those who once \n"
+                       "were among the living.    \n"
+                       "They are not particularly \n"
+                       "dangerous, but they move  \n"
+                       "with blinding speed.      \n"
+                       "\n"
+                       "Special: Tunnel",
+        .name_pool = skeleton_names,
+        .name_pool_size = sizeof(skeleton_names) / sizeof(skeleton_names[0]),
+        .is_playable = true,
+        .playable_order = 10,
     };
     return desc;
 }

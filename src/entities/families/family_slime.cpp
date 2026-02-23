@@ -143,6 +143,8 @@ static bool medium_slime_do_special(walker* self)
     return true;
 }
 
+static const char* const slime_names[] = {"Grimer", "Goop", "Slurp", "Glopp", "Sludge", "Blob"};
+
 const FamilyDescriptor& describe_family_slime()
 {
     static const FamilyDescriptor desc = {
@@ -182,6 +184,22 @@ const FamilyDescriptor& describe_family_slime()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = slime_on_ani_complete,
+        .on_melee_hit = nullptr,
+        .pix_filename = "amoeba3.pix",
+        .animation_type = FAMILY_ANIM_SLIME,
+        .ai_line_of_sight = 4,
+        .description = "Slimes are patches of ooze\n"
+                       "which grow and split into \n"
+                       "two smaller slimes, over- \n"
+                       "whelming the enemy. Their \n"
+                       "nebulous nature makes them\n"
+                       "more susceptible to magic.\n"
+                       "\n"
+                       "Special: Grow",
+        .name_pool = slime_names,
+        .name_pool_size = sizeof(slime_names) / sizeof(slime_names[0]),
+        .is_playable = false,
+        .playable_order = 999,
     };
     return desc;
 }
@@ -225,6 +243,22 @@ const FamilyDescriptor& describe_family_small_slime()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "s_slime.pix",
+        .animation_type = FAMILY_ANIM_SMALL_SLIME,
+        .ai_line_of_sight = 2,
+        .description = "Slimes are patches of ooze\n"
+                       "which grow and split into \n"
+                       "two smaller slimes, over- \n"
+                       "whelming the enemy. Their \n"
+                       "nebulous nature makes them\n"
+                       "more susceptible to magic.\n"
+                       "\n"
+                       "Special: Grow",
+        .name_pool = slime_names,
+        .name_pool_size = sizeof(slime_names) / sizeof(slime_names[0]),
+        .is_playable = true,
+        .playable_order = 12,
     };
     return desc;
 }
@@ -268,6 +302,22 @@ const FamilyDescriptor& describe_family_medium_slime()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "m_slime.pix",
+        .animation_type = FAMILY_ANIM_SMALL_SLIME,
+        .ai_line_of_sight = 3,
+        .description = "Slimes are patches of ooze\n"
+                       "which grow and split into \n"
+                       "two smaller slimes, over- \n"
+                       "whelming the enemy. Their \n"
+                       "nebulous nature makes them\n"
+                       "more susceptible to magic.\n"
+                       "\n"
+                       "Special: Grow",
+        .name_pool = slime_names,
+        .name_pool_size = sizeof(slime_names) / sizeof(slime_names[0]),
+        .is_playable = false,
+        .playable_order = 999,
     };
     return desc;
 }

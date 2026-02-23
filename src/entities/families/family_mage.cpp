@@ -294,6 +294,8 @@ static short mage_promotion_level(int old_level)
     return static_cast<short>((old_level - 6) / 2 + 1);
 }
 
+static const char* const mage_names[] = {"Gandalf", "Saruman", "Radagast", "Alatar", "Pallando", "Raistlin", "Fizban", "Mordenkainen", "Merlin", "Harry", "Manannan", "Mordack", "Jace"};
+
 const FamilyDescriptor& describe_family_mage()
 {
     static const FamilyDescriptor desc = {
@@ -333,6 +335,22 @@ const FamilyDescriptor& describe_family_mage()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "mage.pix",
+        .animation_type = FAMILY_ANIM_MAGE,
+        .ai_line_of_sight = 7,
+        .description = "Mages are slow, can't     \n"
+                       "stand much damage, and are\n"
+                       "horrible at hand-to-hand  \n"
+                       "combat, but their magical \n"
+                       "fireballs pack a big      \n"
+                       "punch.                    \n"
+                       "\n"
+                       "Special: Teleport",
+        .name_pool = mage_names,
+        .name_pool_size = sizeof(mage_names) / sizeof(mage_names[0]),
+        .is_playable = true,
+        .playable_order = 4,
     };
     return desc;
 }

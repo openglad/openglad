@@ -183,6 +183,8 @@ static void soldier_set_difficulty(living* self, std::uint32_t level)
     self->stats()->armor += 2.0f * levmult;
 }
 
+static const char* const soldier_names[] = {"Lothar", "Arthur", "Uther", "Achilles", "Lu Bu", "Wallace", "Leonidas", "Attila", "Alexander", "Ajax", "Nestor", "Priam", "Hector", "Tom", "Bigfoot"};
+
 const FamilyDescriptor& describe_family_soldier()
 {
     static const FamilyDescriptor desc = {
@@ -222,6 +224,22 @@ const FamilyDescriptor& describe_family_soldier()
         .on_create = soldier_on_create,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "footman.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 7,
+        .description = "Your basic grunt, can     \n"
+                       "absorb and deal damage and\n"
+                       "move moderately fast. A   \n"
+                       "good all-around fighter. A\n"
+                       "soldier's normal weapon is\n"
+                       "a magical returning blade.\n"
+                       "\n"
+                       "Special: Charge",
+        .name_pool = soldier_names,
+        .name_pool_size = sizeof(soldier_names) / sizeof(soldier_names[0]),
+        .is_playable = true,
+        .playable_order = 0,
     };
     return desc;
 }

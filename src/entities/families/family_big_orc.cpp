@@ -31,6 +31,8 @@ static void big_orc_level_up(guy* self, std::int32_t level_diff)
     self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
+static const char* const orc_names[] = {"Grom", "Thrull", "Vernix", "Lanugo", "Grok", "Horde", "Grog", "Krosh"};
+
 const FamilyDescriptor& describe_family_big_orc()
 {
     static const FamilyDescriptor desc = {
@@ -70,6 +72,19 @@ const FamilyDescriptor& describe_family_big_orc()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "orc2.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 25,
+        .description = "Orcs captains are stronger\n"
+                       "and smarter than the basic\n"
+                       "orc.  They throw blades   \n"
+                       "across the battlefield to \n"
+                       "deal damage from afar.",
+        .name_pool = orc_names,
+        .name_pool_size = sizeof(orc_names) / sizeof(orc_names[0]),
+        .is_playable = false,
+        .playable_order = 999,
     };
     return desc;
 }

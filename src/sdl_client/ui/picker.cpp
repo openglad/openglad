@@ -153,10 +153,6 @@ Sint32 current_type = 0; // guy type we're looking at
 // Used to label new hires, like "SOLDIER5"
 std::array<Sint32, NUM_FAMILIES> numbought{};
 
-// See guy.cpp
-extern Sint32 costlist[NUM_FAMILIES];
-extern Sint32 statlist[NUM_FAMILIES][6];
-extern Sint32 statcosts[NUM_FAMILIES][6];
 
 // Difficulty settings .. in percent, so 100 == normal
 Sint32 current_difficulty = 1; // setting 'normal'

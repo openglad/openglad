@@ -331,6 +331,8 @@ static bool cleric_do_special(walker* self)
     return true;
 }
 
+static const char* const cleric_names[] = {"Tuck", "Brother", "Pater", "Drake", "Friar", "Francis", "John Paul", "Medic"};
+
 const FamilyDescriptor& describe_family_cleric()
 {
     static const FamilyDescriptor desc = {
@@ -370,6 +372,22 @@ const FamilyDescriptor& describe_family_cleric()
         .on_create = nullptr,
         .customize_weapon = cleric_customize_weapon,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "cleric.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 4,
+        .description = "Clerics, like mages, are  \n"
+                       "slow, but have a stronger \n"
+                       "hand-to-hand attack.      \n"
+                       "Clerics possess abilities \n"
+                       "related to healing and    \n"
+                       "interaction with the dead.\n"
+                       "\n"
+                       "Special: Heal",
+        .name_pool = cleric_names,
+        .name_pool_size = sizeof(cleric_names) / sizeof(cleric_names[0]),
+        .is_playable = true,
+        .playable_order = 5,
     };
     return desc;
 }

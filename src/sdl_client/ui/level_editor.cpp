@@ -26,6 +26,8 @@
 #include <openglad/render/view.h>
 #include <openglad/render/radar.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <openglad/data/smooth.h>
 #include <openglad/render/walker_draw.h>
 #include <openglad/input/input.h>
@@ -1355,14 +1357,18 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	      "PROTECTION", "HAMMER", "DOOR",
 	    };
 
-	static char livings[NUM_FAMILIES][20] =
-	    {  "SOLDIER", "ELF", "ARCHER", "MAGE",
-	       "SKELETON", "CLERIC", "ELEMENTAL",
-	       "FAERIE", "L SLIME", "S SLIME", "M SLIME",
-	       "THIEF", "GHOST", "DRUID", "ORC",
-	       "ORC CAPTAIN", "BARBARIAN", "ARCHMAGE",
-	       "GOLEM", "G SKELETON", "TOWER1",
-	    };
+	static char livings[NUM_FAMILIES][20] = {};
+	static bool livings_init = false;
+	if (!livings_init) {
+	    for (int i = 0; i < NUM_FAMILIES; i++) {
+	        const auto* fd = get_family_descriptor(i);
+	        if (fd && fd->name)
+	            snprintf(livings[i], 20, "%s", fd->name);
+	        else
+	            snprintf(livings[i], 20, "BEAST");
+	    }
+	    livings_init = true;
+	}
 
     // Info box for select mode
     if(mode == Mode::Select && selection.size() > 0)

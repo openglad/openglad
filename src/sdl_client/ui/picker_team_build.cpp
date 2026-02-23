@@ -17,6 +17,8 @@
 
 #include <openglad/core/version.h>
 #include <openglad/core/stats.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/input/button.h>
@@ -49,6 +51,7 @@
 
 #define DOWN(x) (72 + static_cast<Sint32>((x) * 15))
 #define VIEW_DOWN(x) (10 + static_cast<Sint32>((x) * 20))
+
 
 extern std::unique_ptr<guy> current_guy;
 extern guy* old_guy;
@@ -87,9 +90,6 @@ void picker_testing_mark_game_start();
 void picker_testing_mark_game_end();
 #endif
 
-extern Sint32 costlist[NUM_FAMILIES];
-extern Sint32 statlist[NUM_FAMILIES][6];
-extern Sint32 statcosts[NUM_FAMILIES][6];
 
 bool prompt_for_string(const std::string& message, std::string& result);
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
@@ -517,177 +517,18 @@ Sint32 create_progress_menu(Sint32 arg1)
 
 std::string get_class_description(unsigned char family)
 {
-    std::string result;
-    
-    switch(family)
-    {
-    case FAMILY_SOLDIER:
-        result = "Your basic grunt, can     \n"
-                 "absorb and deal damage and\n"
-                 "move moderately fast. A   \n"
-                 "good all-around fighter. A\n"
-                 "soldier's normal weapon is\n"
-                 "a magical returning blade.\n"
-                 "\n"
-                 "Special: Charge";
-        break;
-    case FAMILY_ELF:
-        result = "Elves are small and weak, \n"
-                 "but are harder to hit than\n"
-                 "most classes. Alone of all\n"
-                 "the classes, elves possess\n"
-                 "the 'ForestWalk' ability. \n"
-                 "\n"
-                 "Special: Rocks";
-        break;
-    case FAMILY_ARCHER:
-        result = "Archers are fleet of foot,\n"
-                 "and their arrows have a   \n"
-                 "long range. Although      \n"
-                 "they're not as strong as  \n"
-                 "other fighters, they can  \n"
-                 "be a good squad backbone. \n"
-                 "\n"
-                 "Special: Fire Arrows";
-        break;
-    case FAMILY_MAGE:
-        result = "Mages are slow, can't     \n"
-                 "stand much damage, and are\n"
-                 "horrible at hand-to-hand  \n"
-                 "combat, but their magical \n"
-                 "fireballs pack a big      \n"
-                 "punch.                    \n"
-                 "\n"
-                 "Special: Teleport";
-        break;
-    case FAMILY_SKELETON:
-        result = "Skeletons are the pathetic\n"
-                 "remains of those who once \n"
-                 "were among the living.    \n"
-                 "They are not particularly \n"
-                 "dangerous, but they move  \n"
-                 "with blinding speed.      \n"
-                 "\n"
-                 "Special: Tunnel";
-        break;
-    case FAMILY_CLERIC:
-        result = "Clerics, like mages, are  \n"
-                 "slow, but have a stronger \n"
-                 "hand-to-hand attack.      \n"
-                 "Clerics possess abilities \n"
-                 "related to healing and    \n"
-                 "interaction with the dead.\n"
-                 "\n"
-                 "Special: Heal";
-        break;
-    case FAMILY_FIREELEMENTAL:
-        result = "Strong and quick, fire    \n"
-                 "elementals can expel      \n"
-                 "flaming meteors in all    \n"
-                 "directions to decimate    \n"
-                 "enemies.                  \n"
-                 "\n"
-                 "Special: Starburst";
-        break;
-    case FAMILY_FAERIE:
-        result = "The faerie are small,     \n"
-                 "flying above friends and  \n"
-                 "enemies alike unnoticed.  \n"
-                 "Although they are delicate\n"
-                 "and easily destroyed,     \n"
-                 "faeries can sprinkle a    \n"
-                 "magic powder which freezes\n"
-                 "their enemies.";
-        break;
-    case FAMILY_SLIME:
-    case FAMILY_SMALL_SLIME:
-    case FAMILY_MEDIUM_SLIME:
-        result = "Slimes are patches of ooze\n"
-                 "which grow and split into \n"
-                 "two smaller slimes, over- \n"
-                 "whelming the enemy. Their \n"
-                 "nebulous nature makes them\n"
-                 "more susceptible to magic.\n"
-                 "\n"
-                 "Special: Grow";
-        break;
-    case FAMILY_THIEF:
-        result = "Thieves are fast, though  \n"
-                 "not so potent as the      \n"
-                 "soldier. Thieves can throw\n"
-                 "small blades rapidly and  \n"
-                 "damage whole groups of    \n"
-                 "enemies with their bombs. \n"
-                 "\n"
-                 "Special: Drop Bomb";
-        break;
-    case FAMILY_GHOST:
-        result = "Ghosts can pass through   \n"
-                 "walls, trees, and anything\n"
-                 "else that gets in the way.\n"
-                 "Their chilling touch can  \n"
-                 "bring death quickly at    \n"
-                 "close range.              \n"
-                 "\n"
-                 "Special: Scare";
-        break;
-    case FAMILY_DRUID:
-        result = "Druids are the magicians  \n"
-                 "of nature, and have power \n"
-                 "over natural events. They \n"
-                 "throw lightning bolts at  \n"
-                 "their foes; the fast bolts\n"
-                 "have long range.          \n"
-                 "\n"
-                 "Special: Plant Tree";
-        break;
-    case FAMILY_ORC:
-        result = "Orcs are a basic 'grunt'; \n"
-                 "strong and hard to hurt,  \n"
-                 "they don't do much more   \n"
-                 "than inflict pain. Orcs   \n"
-                 "can't attack at range.    \n"
-                 "\n"
-                 "Special: Howl";
-        break;
-    case FAMILY_BIG_ORC:
-        result = "Orcs captains are stronger\n"
-                 "and smarter than the basic\n"
-                 "orc.  They throw blades   \n"
-                 "across the battlefield to \n"
-                 "deal damage from afar.";
-        break;
-    case FAMILY_BARBARIAN:
-        result = "Barbarians are powerful   \n"
-                 "and resist some magic     \n"
-                 "damage, but have more will\n"
-                 "than skill. They are tough,\n"
-                 "tending to bash their way \n"
-                 "through trouble with heavy\n"
-                 "iron hammers.             \n"
-                 "Special: Hurl Boulder";
-        break;
-    case FAMILY_ARCHMAGE:
-        result = "An Archmage takes the     \n"
-                 "learnings of the Magi one \n"
-                 "step further, possessing  \n"
-                 "extraordinary firepower at\n"
-                 "the expense of physical   \n"
-                 "weakness.                 \n"
-                 "\n"
-                 "Special: Teleport";
-        break;
-    default:
-        break;
-    }
-    
-    return result;
+    const auto* fd = get_family_descriptor(family);
+    if (fd && fd->description)
+        return fd->description;
+    return {};
 }
 
 // stat: str 0, dex 1, con 2, int 3, armor 4
 	const char* get_training_cost_rating(unsigned char family, int stat)
 	{
-	    int value = 55/(statcosts[family][stat]);
+	    const auto* fd = get_family_descriptor(family);
+	    if (!fd) return "";
+	    int value = 55/(fd->stat_costs[stat]);
 	    int rating = (value * 5) / 11;
 	    switch(rating)
 	    {

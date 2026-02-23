@@ -90,6 +90,15 @@ void init_family_registry()
         d.on_create = nullptr;
         d.customize_weapon = nullptr;
         d.on_ani_complete = nullptr;
+        d.on_melee_hit = nullptr;
+        d.pix_filename = nullptr;
+        d.animation_type = FAMILY_ANIM_STANDARD;
+        d.ai_line_of_sight = 7;
+        d.description = nullptr;
+        d.name_pool = nullptr;
+        d.name_pool_size = 0;
+        d.is_playable = false;
+        d.playable_order = 999;
     }
 
     // === FAMILY_SOLDIER (0) — defined in families/family_soldier.cpp ===

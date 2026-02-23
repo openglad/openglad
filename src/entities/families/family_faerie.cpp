@@ -31,6 +31,8 @@ static void faerie_level_up(guy* self, std::int32_t level_diff)
     self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
+static const char* const faerie_names[] = {"Tink", "Gem", "Glitter", "Jewel", "Blossom", "Ruby", "Muffin", "Flutter", "Sparkle", "Sprint", "Sprite", "Eve", "Twinkle", "Violet", "Daisy", "Lily"};
+
 const FamilyDescriptor& describe_family_faerie()
 {
     static const FamilyDescriptor desc = {
@@ -70,6 +72,22 @@ const FamilyDescriptor& describe_family_faerie()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "faerie.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 8,
+        .description = "The faerie are small,     \n"
+                       "flying above friends and  \n"
+                       "enemies alike unnoticed.  \n"
+                       "Although they are delicate\n"
+                       "and easily destroyed,     \n"
+                       "faeries can sprinkle a    \n"
+                       "magic powder which freezes\n"
+                       "their enemies.",
+        .name_pool = faerie_names,
+        .name_pool_size = sizeof(faerie_names) / sizeof(faerie_names[0]),
+        .is_playable = true,
+        .playable_order = 13,
     };
     return desc;
 }

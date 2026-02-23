@@ -28,9 +28,6 @@
 #include <cstring>
 #define RAISE 1.85  // please also change in picker.cpp
 
-extern std::int32_t costlist[NUM_FAMILIES];
-extern std::int32_t statlist[NUM_FAMILIES][6];
-extern std::int32_t statcosts[NUM_FAMILIES][6];
 // Zardus: PORT, exception doesn't compile (dos thing?): int matherr(struct exception *);
 
 
@@ -183,101 +180,6 @@ std::int32_t guy::query_heart_value() // how much are we worth?
 
 std::uint32_t calculate_exp(std::int32_t level);
 
-std::int32_t costlist[NUM_FAMILIES] =
-    {
-        250,  // soldier
-        150,  // elf
-        350,  // archer
-        450,  // mage
-        300,  // skeleton
-        400,  // cleric
-        600, // fire elem
-        450,  // faerie
-        700, // slime          // can't buy
-        700, // small slime
-        700, // medium slime   // can't buy
-        400,  // thief
-        600, // ghost
-        350,  // druid
-        300,  // orc
-        1000, // 'big' orc
-        350,  // barbarian
-        450,  // archmage, not used
-    };
-
-std::int32_t statlist[NUM_FAMILIES][6] =
-    {
-      // STR, DEX, CON, INT, ARMOR, LEVEL
-        {12,  6,   12,  8,   9,     1},  // soldier
-        {5,   14,  5,   12,  8,     1},  // elf
-        {6,   12,  6,   10,  5,     1},  // archer
-        {4,   6,   4,   16,  5,     1},  // mage
-        {9,   14,  9,   6,   6,     1},  // skeleton
-        {6,   7,   6,   14,  7,     1},  // cleric
-        {14,  10,  14,  14,  9,     1},  // fire elem
-        {3,   8,   3,   14,  2,     1},  // faerie
-        {18,  2,   18,  7,   6,     1},  // slime (big)
-        {18,  2,   18,  7,   6,     1},  // small slime
-        {18,  2,   18,  7,   6,     1},  // slime (medium)
-        {9,   12,  12,  10,  5,     1},  // thief
-        {6,   12,  18,  10,  15,    1},  // ghost
-        {7,   8,   14,  12,  7,     1},  // druid
-        {18,  8,   16,  5,   11,    1},  // orc
-        {18,  8,   16,  5,   11,    1},  // 'big' orc
-        {14,  5,   14,  8,   8,     1},  // barbarian
-        {4,   6,   4,   16,  5,     1},  // archmage
-    };
-
-#define BASE_GUY_HP 30
-float derived_bonuses[NUM_FAMILIES][8] =
-    {
-      // HP,  MP,  ATK,  RANGED ATK, RANGE, DEF, SPD,   ATK SPD (delay)
-        {BASE_GUY_HP+90,  0,   20,   0,          0,     0,   4,     6},  // soldier
-        {BASE_GUY_HP+45,  0,   12,   0,          0,     0,   4,     5},  // elf
-        {BASE_GUY_HP+60,  0,   8,    0,          0,     0,   4,     5},  // archer
-        {BASE_GUY_HP+60,  0,   4,    0,          0,     0,   2,     4},  // mage
-        {BASE_GUY_HP+30,  0,   4,    0,          0,     0,   6,     4.5f},  // skeleton
-        {BASE_GUY_HP+90,  0,   12,   0,          0,     0,   2,     7.5f},  // cleric
-        {BASE_GUY_HP+70,  0,   28,   0,          0,     0,   4,     5},  // fire elem
-        {BASE_GUY_HP+45,  0,   5,    0,          0,     0,   4,     9},  // faerie
-        {BASE_GUY_HP+120, 0,   28,   0,          0,     0,   3,     11},  // slime (big)
-        {BASE_GUY_HP+50,  0,   12,   0,          0,     0,   2,     12},  // small slime
-        {BASE_GUY_HP+80,  0,   20,   0,          0,     0,   2,     10},  // slime (medium)
-        {BASE_GUY_HP+45,  0,   12,   0,          0,     0,   5,     5},  // thief
-        {BASE_GUY_HP+20,  0,   12,   0,          0,     0,   4,     7},  // ghost
-        {BASE_GUY_HP+80,  0,   10,   0,          0,     0,   3,     9},  // druid
-        {BASE_GUY_HP+110, 0,   23,   0,          0,     0,   3,     7},  // orc
-        {BASE_GUY_HP+150, 0,   28,   0,          0,     0,   3,     6},  // 'big' orc
-        {BASE_GUY_HP+120, 0,   25,   0,          0,     0,   3,     5.5f},  // barbarian
-        {BASE_GUY_HP+120, 0,   8,    0,          0,     0,   3,     1},  // archmage
-        {BASE_GUY_HP+270, 0,   60,   0,          0,     0,   8,     9},  // golem
-        {BASE_GUY_HP+270, 0,   60,   0,          0,     0,   8,     7},  // giant skeleton
-        {BASE_GUY_HP+100, 0,   0,    0,          0,     0,   0,     5},  // tower
-    };
-
-std::int32_t statcosts[NUM_FAMILIES][6] =
-    {
-        // STR, DEX, CON, INT, ARMOR, LEVEL
-        { 6,10, 6,25,50, 200},  // soldier
-        {25, 6,12,8,50, 200},  // elf
-        {15, 6, 9,10,50, 200},  // archer
-        {20,15,16, 6,50, 200},  // mage
-        {15, 6,16,25,50, 200},  // skeleton
-        {15,15, 9, 6,50, 200},  // cleric
-        {7, 10,14,12,50, 200},  // fire elem
-        {25, 6,12,8,50, 200},  // faerie
-        {20,20,8,14,50, 200},  // slime
-        {20,20,8,14,50, 200},  // small slime
-        {20,20,8,14,50, 200},  // medium slime
-        {15, 6, 9,10,50, 200},  // thief
-        {16,16,16,16,45, 200},  // ghost
-        {15,15, 7, 6,50, 200},  // druid
-        { 6,15, 5,40,50, 200},  // orc
-        { 6,15, 5,40,50, 200},  // 'big' orc
-        { 5,35, 5,35,50, 200},  // barbarian
-        //  {25,15,20, 5,50, 200},  // archmage
-        {30,20,25, 7,55, 200},  // archmage
-    };
 
 
 

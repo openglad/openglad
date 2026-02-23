@@ -20,6 +20,16 @@
 
 inline constexpr int FD_NUM_SPECIALS = 6;
 
+enum FamilyAnimationType {
+    FAMILY_ANIM_STANDARD = 0,       // animan (most livings)
+    FAMILY_ANIM_MAGE,               // animage (mage, archmage)
+    FAMILY_ANIM_SKELETON,           // aniskel (skeleton with grow/shrink)
+    FAMILY_ANIM_GIANT_SKELETON,     // anigs
+    FAMILY_ANIM_SLIME,              // anislime
+    FAMILY_ANIM_SMALL_SLIME,        // ani_small_slime
+    FAMILY_ANIM_STATIC,             // anifood (tower)
+};
+
 class walker;
 class living;
 class statistics;
@@ -83,4 +93,17 @@ struct FamilyDescriptor {
     void (*on_create)(walker* self);                // called when walker created from guy
     void (*customize_weapon)(walker* self, walker* weapon); // tweak weapon after creation
     bool (*on_ani_complete)(walker* self);    // animation end; true = handled
+    void (*on_melee_hit)(walker* self, walker* target);    // called after successful melee attack
+
+    // Graphics / loader data (replaces hardcoded gloader.cpp arrays)
+    const char* pix_filename;          // "monk.pix", "footman.pix", etc.
+    int animation_type;                // FamilyAnimationType enum
+    int ai_line_of_sight;              // AI's understanding of ranged attack range
+
+    // UI / picker data (replaces hardcoded switch statements)
+    const char* description;           // multiline class description for team builder
+    const char* const* name_pool;      // array of random names
+    int name_pool_size;                // count of names in pool
+    bool is_playable;                  // appears in hire menu
+    int playable_order;                // sort order in hire menu (lower = earlier)
 };

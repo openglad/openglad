@@ -2,9 +2,8 @@
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
-extern Sint32 costlist[NUM_FAMILIES];
-extern Sint32 statlist[NUM_FAMILIES][6];
-extern Sint32 statcosts[NUM_FAMILIES][6];
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 
 Uint32 calculate_exp(Sint32 level);
 Sint32 calculate_level(Uint32 experience);

@@ -176,6 +176,8 @@ static bool druid_do_special(walker* self)
     return true;
 }
 
+static const char* const druid_names[] = {"Roland", "Merlin", "Hippy", "Green Thumb", "Treefall", "Rain"};
+
 const FamilyDescriptor& describe_family_druid()
 {
     static const FamilyDescriptor desc = {
@@ -215,6 +217,22 @@ const FamilyDescriptor& describe_family_druid()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "druid.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 10,
+        .description = "Druids are the magicians  \n"
+                       "of nature, and have power \n"
+                       "over natural events. They \n"
+                       "throw lightning bolts at  \n"
+                       "their foes; the fast bolts\n"
+                       "have long range.          \n"
+                       "\n"
+                       "Special: Plant Tree",
+        .name_pool = druid_names,
+        .name_pool_size = sizeof(druid_names) / sizeof(druid_names[0]),
+        .is_playable = true,
+        .playable_order = 8,
     };
     return desc;
 }
