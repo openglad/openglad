@@ -852,51 +852,28 @@ Sint32 create_hire_menu(Sint32 arg1)
         // Stat box content
         linesdown = 0;
         int line_height = 10;
-        
+
         showcolor = STAT_COLOR;
-        
-        // Strength
-        message = std::format("{}", current_guy->strength);
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "STR:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
 
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 0), showcolor, 1);
-        
-        linesdown++;
-        // Dexterity
-        message = std::format("{}", current_guy->dexterity);
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "DEX:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 1), showcolor, 1);
-
-        linesdown++;
-        // Constitution
-        message = std::format("{}", current_guy->constitution);
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "CON:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 2), showcolor, 1);
-
-        linesdown++;
-        // Intelligence
-        message = std::format("{}", current_guy->intelligence);
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "INT:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 3), showcolor, 1);
-
-        linesdown++;
-        // Armor
-        message = std::format("{}", current_guy->armor);
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "ARMOR:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
+        struct { const char* label; short value; } hire_stats[] = {
+            {"STR:",  current_guy->strength},
+            {"DEX:",  current_guy->dexterity},
+            {"CON:",  current_guy->constitution},
+            {"INT:",  current_guy->intelligence},
+            {"ARMOR:", current_guy->armor},
+        };
+        for (int si = 0; si < 5; si++) {
+            int y = stat_box_content.y + linesdown * line_height;
+            message = std::format("{}", hire_stats[si].value);
+            mytext.write_xy(stat_box_content.x, y, hire_stats[si].label,
+                             static_cast<unsigned char>(STAT_COLOR), 1);
+            mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, y, message.c_str(), showcolor, 1);
+            if (si < 4) // cost rating for STR/DEX/CON/INT only
+                mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, y,
+                                get_training_cost_rating(last_family, si), showcolor, 1);
+            if (si < 4)
+                linesdown++;
+        }
 		
 		// Separator bar
 		SDL_Rect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*line_height - 2, stat_box_content.w - 20, 2};
@@ -1058,67 +1035,27 @@ Sint32 create_train_menu(Sint32 arg1)
         bool level_increased = g_train_session->level_increased();
         bool stat_increased = g_train_session->stats_increased();
 
-        // Strength
-        message = std::format("{}", current_guy->strength);
-        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  STR:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-        if (level_increased)
-            showcolor = STAT_LEVELED;
-        else if (here->strength < current_guy->strength)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
+        struct { const char* label; short cur_val; short old_val; } train_stats[] = {
+            {"  STR:", current_guy->strength,     here->strength},
+            {"  DEX:", current_guy->dexterity,    here->dexterity},
+            {"  CON:", current_guy->constitution, here->constitution},
+            {"  INT:", current_guy->intelligence, here->intelligence},
+            {"ARMOR:", current_guy->armor,        here->armor},
+        };
+        for (auto& s : train_stats) {
+            message = std::format("{}", s.cur_val);
+            mytext.write_xy(stat_box_content.x, DOWN(linesdown), s.label,
+                             static_cast<unsigned char>(STAT_COLOR), 1);
+            if (level_increased)
+                showcolor = STAT_LEVELED;
+            else if (s.old_val < s.cur_val)
+                showcolor = STAT_CHANGED;
+            else
+                showcolor = STAT_COLOR;
+            mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
+        }
 
-        // Dexterity
-        message = std::format("{}", current_guy->dexterity);
-        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  DEX:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-        if (level_increased)
-            showcolor = STAT_LEVELED;
-        else if (here->dexterity < current_guy->dexterity)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
-
-        // Constitution
-        message = std::format("{}", current_guy->constitution);
-        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  CON:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-        if (level_increased)
-            showcolor = STAT_LEVELED;
-        else if (here->constitution < current_guy->constitution)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
-
-        // Intelligence
-        message = std::format("{}", current_guy->intelligence);
-        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  INT:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-        if (level_increased)
-            showcolor = STAT_LEVELED;
-        else if (here->intelligence < current_guy->intelligence)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
-
-        // Armor
-        message = std::format("{}", current_guy->armor);
-        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "ARMOR:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-        if (level_increased)
-            showcolor = STAT_LEVELED;
-        else if (here->armor < current_guy->armor)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
-
-        // Level
+        // Level (different color logic: no STAT_LEVELED, uses STAT_DISABLED)
         message = std::format("{}", current_guy->level);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "LEVEL:",
                          static_cast<unsigned char>(STAT_COLOR), 1);

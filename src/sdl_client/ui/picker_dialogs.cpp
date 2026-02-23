@@ -32,6 +32,7 @@
 namespace {
 constexpr int YES_VALUE = 5;
 constexpr int NO_VALUE = 6;
+constexpr int PIX_PER_CHAR = 6;
 
 button yes_or_no_buttons[] =
     {
@@ -49,6 +50,25 @@ button popup_dialog_buttons[] =
     {
         button("ok", "OK", KEYSTATE_ESCAPE,  160 - 25, 130, 50, 20, YES_OR_NO, YES_VALUE, MenuNav::None())
     };
+
+// Compute centered dialog bounds from a title and message lines.
+struct DialogBounds {
+    int w, h, leftside, rightside;
+};
+
+DialogBounds compute_dialog_bounds(const char* title, const std::list<std::string>& lines)
+{
+    int w = static_cast<int>(strlen(title)) * 9;
+    int h = 30 + 10 * static_cast<int>(lines.size());
+    for (auto& line : lines)
+    {
+        const int line_width = static_cast<int>(line.size()) * PIX_PER_CHAR;
+        if (line_width > w)
+            w = line_width;
+    }
+    return { w, h, 160 - w/2 - 12, 160 + w/2 + 12 };
+}
+
 } // namespace
 
 extern vbutton * localbuttons;
@@ -66,9 +86,8 @@ void timed_dialog(const char* message, float delay_seconds)
 
     text& gladtext = myscreen->text_normal;
 
-    int pix_per_char = 6;
     int len = static_cast<int>(strlen(message));
-    int width = len * pix_per_char;
+    int width = len * PIX_PER_CHAR;
     int leftside  = 160 - width/2 - 12;
     int rightside = 160 + width/2 + 12;
 
@@ -119,13 +138,16 @@ void picker_testing_set_force_real_dialogs(bool enabled)
 }
 #endif
 
-bool yes_or_no_prompt(const char* title, const char* message, bool default_value)
+// Shared implementation for yes/no prompts.
+// When yes_first is true, YES is on the left (default highlight maps directly).
+// When yes_first is false, NO is on the left (default highlight is inverted).
+static bool yes_no_prompt_impl(const char* title, const char* message, bool default_value, bool yes_first)
 {
     Log("{}, {}: \n", title, message);
 #ifdef TESTING
     if (!s_force_real_dialogs)
     {
-        if (!s_yes_or_no_overrides.empty())
+        if (yes_first && !s_yes_or_no_overrides.empty())
         {
             bool v = s_yes_or_no_overrides.front();
             s_yes_or_no_overrides.erase(s_yes_or_no_overrides.begin());
@@ -139,48 +161,26 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 
     text& gladtext = myscreen->text_normal;
 
-    int pix_per_char = 6;
-
-    // Break message into lines
     std::list<std::string> ls = explode(message, '\n');
-
-    // Get the max dimensions needed to display it
-    int w = static_cast<int>(strlen(title))*9;
-    int h = 30 + 10*static_cast<int>(ls.size());
-    for(auto& line : ls)
-    {
-        const int line_width = static_cast<int>(line.size()) * pix_per_char;
-        if(line_width > w)
-            w = line_width;
-    }
-
-    // Centered bounds
-    int leftside  = 160 - w/2 - 12;
-    int rightside = 160 + w/2 + 12;
-    int j = 0;
-
-    int dumbcount;
+    auto [w, h, leftside, rightside] = compute_dialog_bounds(title, ls);
 
     // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-    button* buttons = yes_or_no_buttons;
+    button* buttons = yes_first ? yes_or_no_buttons : no_or_yes_buttons;
     int num_buttons = 2;
-    int highlighted_button = (default_value? 0 : 1);
+    int highlighted_button = yes_first ? (default_value ? 0 : 1)
+                                       : (default_value ? 1 : 0);
     localbuttons = init_buttons(buttons, num_buttons);
 
     grab_mouse();
     clear_keyboard();
-
     clear_key_press_event();
 
     int retvalue = 0;
     while (retvalue == 0)
     {
-        // Input - leftmouse will poll events via query_mouse()
         if(leftmouse(buttons))
             retvalue = localbuttons->leftclick();
 
-        // Check keyboard after leftmouse has polled events
         if(query_key_press_event())
         {
             if(keystates[KEYSTATE_y])
@@ -192,21 +192,17 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
         }
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
 
-        // Draw
-        dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
-        j = 0;
+        int dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
+        int j = 0;
         for(auto& line : ls)
         {
-            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+            gladtext.write_xy(dumbcount + 3*PIX_PER_CHAR/2, 104 - h/2 + 10*j, line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             j++;
         }
 
         draw_buttons(buttons, num_buttons);
-
         draw_highlight_interior(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
@@ -225,102 +221,14 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
     return default_value;
 }
 
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value)
+{
+    return yes_no_prompt_impl(title, message, default_value, true);
+}
+
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value)
 {
-    Log("{}, {}: \n", title, message);
-#ifdef TESTING
-    if (!s_force_real_dialogs)
-        return default_value;
-#endif
-
-    myscreen->darken_screen();
-
-    text& gladtext = myscreen->text_normal;
-
-    int pix_per_char = 6;
-
-    // Break message into lines
-    std::list<std::string> ls = explode(message, '\n');
-
-    // Get the max dimensions needed to display it
-    int w = static_cast<int>(strlen(title))*9;
-    int h = 30 + 10*static_cast<int>(ls.size());
-    for(auto& line : ls)
-    {
-        const int line_width = static_cast<int>(line.size()) * pix_per_char;
-        if(line_width > w)
-            w = line_width;
-    }
-
-    // Centered bounds
-    int leftside  = 160 - w/2 - 12;
-    int rightside = 160 + w/2 + 12;
-    int j = 0;
-
-    int dumbcount;
-
-    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
-    button* buttons = no_or_yes_buttons;
-    int num_buttons = 2;
-    int highlighted_button = (default_value? 1 : 0);
-    localbuttons = init_buttons(buttons, num_buttons);
-
-    grab_mouse();
-    clear_keyboard();
-
-    clear_key_press_event();
-
-    int retvalue = 0;
-    while (retvalue == 0)
-    {
-        // Input - leftmouse will poll events via query_mouse()
-        if(leftmouse(buttons))
-            retvalue = localbuttons->leftclick();
-
-        // Check keyboard after leftmouse has polled events
-        if(query_key_press_event())
-        {
-            if(keystates[KEYSTATE_y])
-                retvalue = YES_VALUE;
-            else if(keystates[KEYSTATE_n])
-                retvalue = NO_VALUE;
-            else if(keystates[KEYSTATE_ESCAPE])
-                break;
-        }
-
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // Reset buttons
-        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
-
-        // Draw
-        dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
-        j = 0;
-        for(auto& line : ls)
-        {
-            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
-            j++;
-        }
-
-        draw_buttons(buttons, num_buttons);
-
-        draw_highlight_interior(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
-    }
-
-    if(retvalue == YES_VALUE)
-    {
-        Log("YES\n");
-        return true;
-    }
-    if(retvalue == NO_VALUE)
-    {
-        Log("NO\n");
-        return false;
-    }
-    return default_value;
+    return yes_no_prompt_impl(title, message, default_value, false);
 }
 
 void popup_dialog(const char* title, const char* message)
@@ -338,33 +246,10 @@ void popup_dialog(const char* title, const char* message)
 
     text& gladtext = myscreen->text_normal;
 
-    int pix_per_char = 6;
-
-    // Break message into lines
     std::list<std::string> ls = explode(message, '\n');
-
-    // Get the max dimensions needed to display it
-    int w = static_cast<int>(strlen(title))*9;
-    int h = 30 + 10*static_cast<int>(ls.size());
-    for(auto& line : ls)
-    {
-        const int line_width = static_cast<int>(line.size()) * pix_per_char;
-        if(line_width > w)
-            w = line_width;
-    }
-
-    // Centered bounds
-    int leftside  = 160 - w/2 - 12;
-    int rightside = 160 + w/2 + 12;
-
-    // Draw background
-    int dumbcount;
-
-    // Draw message
-    int j = 0;
+    auto [w, h, leftside, rightside] = compute_dialog_bounds(title, ls);
 
     // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-
     button* buttons = popup_dialog_buttons;
     int num_buttons = 1;
     int highlighted_button = 0;
@@ -372,17 +257,14 @@ void popup_dialog(const char* title, const char* message)
 
     grab_mouse();
     clear_keyboard();
-
     clear_key_press_event();
 
     int retvalue = 0;
     while (retvalue == 0)
     {
-        // Input - leftmouse will poll events via query_mouse()
         if(leftmouse(buttons))
             retvalue = localbuttons->leftclick();
 
-        // Check keyboard after leftmouse has polled events
         if(query_key_press_event())
         {
             if(keystates[KEYSTATE_RETURN] || keystates[KEYSTATE_SPACE] || keystates[KEYSTATE_ESCAPE])
@@ -390,21 +272,17 @@ void popup_dialog(const char* title, const char* message)
         }
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
-
-        // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
 
-        // Draw
-        dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
-        j = 0;
+        int dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
+        int j = 0;
         for(auto& line : ls)
         {
-            gladtext.write_xy(dumbcount + 3*pix_per_char/2 + w/2 - static_cast<Sint32>(line.size())*pix_per_char/2, 104 - h/2 + 10*j, line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+            gladtext.write_xy(dumbcount + 3*PIX_PER_CHAR/2 + w/2 - static_cast<Sint32>(line.size())*PIX_PER_CHAR/2, 104 - h/2 + 10*j, line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             j++;
         }
 
         draw_buttons(buttons, num_buttons);
-
         draw_highlight_interior(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
