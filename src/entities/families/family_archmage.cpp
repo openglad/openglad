@@ -464,13 +464,7 @@ static bool archmage_do_special(walker* self)
             }
             if (!didheal)
                 return false;
-            if (self->stats()->name.size())
-                message = self->stats()->name;
-            else if (self->myguy && self->myguy->name.size())
-                message = self->myguy->name;
-            else
-                message = "ArchMage";
-            tempstr = std::format("{} has controlled {} men", message, didheal);
+            tempstr = std::format("{} has controlled {} men", entity_display_name(self, "ArchMage"), didheal);
             og::sim::emit_notification(self->sim_events, tempstr);
             // Target budget starts at mp_after_base_cost + 10, so the first
             // control is covered by base special cost and extras cost 10 MP each.

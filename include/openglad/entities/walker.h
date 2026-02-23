@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <string_view>
 #include <vector>
 
 // Forward declarations
@@ -236,3 +237,7 @@ class walker : public og::sim::SimEntity
 		std::unique_ptr<guy> owned_myguy_;
 		std::unique_ptr<WalkerRender> render_;  // Optional render component (null for headless)
 };
+
+// Returns the best display name for an entity: myguy name if available,
+// then stats name, then the provided fallback.
+std::string_view entity_display_name(const walker* w, std::string_view fallback = "");

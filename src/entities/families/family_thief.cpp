@@ -121,12 +121,7 @@ static bool thief_do_special(walker* self)
                         }
                     }
                 }
-                if (self->myguy)
-                    message = std::format("{}: 'Nyah Nyah!'", self->myguy->name);
-                else if (self->stats()->name.size())
-                    message = std::format("{}: 'Nyah Nyah!'", self->stats()->name);
-                else
-                    message = "THIEF: 'Nyah Nyah!'";
+                message = std::format("{}: 'Nyah Nyah!'", entity_display_name(self, "THIEF"));
                 og::sim::emit_notification(self->sim_events, message);
                 self->busy += 2;
                 break;
@@ -173,16 +168,10 @@ static bool thief_do_special(walker* self)
                     }
                     if (!didheal)
                         return false;
-                    if (self->stats()->name.size())
-                        message = self->stats()->name;
-                    else if (self->myguy && self->myguy->name.size())
-                        message = self->myguy->name;
-                    else
-                        message = "Thief";
                     if (generic2)
-                        tempstr = std::format("{} failed to charm!", message);
+                        tempstr = std::format("{} failed to charm!", entity_display_name(self, "Thief"));
                     else
-                        tempstr = std::format("{} charmed an opponent!", message);
+                        tempstr = std::format("{} charmed an opponent!", entity_display_name(self, "Thief"));
                     og::sim::emit_notification(self->sim_events, tempstr);
                     self->busy += 10;
                 }

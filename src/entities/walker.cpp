@@ -1609,5 +1609,14 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	return (has_myguy == 1 && team == 0);
 }
 
+std::string_view entity_display_name(const walker* w, std::string_view fallback)
+{
+	if (w->myguy && !w->myguy->name.empty())
+		return w->myguy->name;
+	if (!w->stats()->name.empty())
+		return w->stats()->name;
+	return fallback;
+}
+
 // attach_render, set_data, bmp_data, set_frame, set_direct_frame, ~walker
 // are all in src/runtime/walker_render_bridge.cpp.

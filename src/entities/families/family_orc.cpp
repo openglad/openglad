@@ -88,12 +88,8 @@ static bool orc_do_special(walker* self)
             if (self->myguy)
             {
                 self->myguy->exp += exp_from_action(ExpAction::EatCorpse, self, newob, 0);
-                message = std::format("{} ate a corpse.", self->myguy->name);
             }
-            else if (self->stats()->name.size())
-                message = std::format("{} ate a corpse.", self->stats()->name);
-            else
-                message = "Orc ate a corpse.";
+            message = std::format("{} ate a corpse.", entity_display_name(self, "Orc"));
 
             if (self->sim_config && self->sim_config->is_on("effects", "heal_numbers"))
                 og::sim::emit_notification(self->sim_events, message);
