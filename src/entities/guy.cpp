@@ -225,10 +225,19 @@ std::uint32_t calculate_exp(std::int32_t level)
     return 8000 + 2000*level_1 + 4000*level_2 + calculate_exp(level-1);
 }
 
+void apply_level_up(guy* self, std::int32_t level_diff, const LevelUpGains& g)
+{
+    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + g.str * level_diff);
+    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + g.dex * level_diff);
+    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + g.con * level_diff);
+    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + g.intel * level_diff);
+    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + g.armor * level_diff);
+}
+
 void guy::upgrade_to_level(short new_level, bool set_xp)
 {
     std::int32_t level_diff = static_cast<std::int32_t>(new_level) - static_cast<std::int32_t>(this->level);
-    
+
     auto* fd = get_family_descriptor(family);
     if (fd && fd->level_up)
     {
@@ -236,19 +245,9 @@ void guy::upgrade_to_level(short new_level, bool set_xp)
     }
     else
     {
-        // Default: base deltas with no modifier
-        std::int32_t s = 8 * level_diff;
-        std::int32_t d = 6 * level_diff;
-        std::int32_t c = 8 * level_diff;
-        std::int32_t it = 8 * level_diff;
-        std::int32_t a = 1 * level_diff;
-        strength = static_cast<short>(static_cast<std::int32_t>(strength) + s);
-        dexterity = static_cast<short>(static_cast<std::int32_t>(dexterity) + d);
-        constitution = static_cast<short>(static_cast<std::int32_t>(constitution) + c);
-        intelligence = static_cast<short>(static_cast<std::int32_t>(intelligence) + it);
-        armor = static_cast<short>(static_cast<std::int32_t>(armor) + a);
+        apply_level_up(this, level_diff, kDefaultLevelUpGains);
     }
-    
+
     this->level = new_level;
     if(set_xp)
         exp = calculate_exp(new_level);

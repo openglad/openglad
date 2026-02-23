@@ -86,19 +86,7 @@ static bool elf_do_special(walker* self)
 
 static void elf_level_up(guy* self, std::int32_t level_diff)
 {
-    std::int32_t s = 8 * level_diff;
-    std::int32_t d = 6 * level_diff;
-    std::int32_t c = 8 * level_diff;
-    std::int32_t it = 8 * level_diff;
-    std::int32_t a = 1 * level_diff;
-    s = (s * 3) / 4;
-    d = (d * 3) / 2;
-    c = (c * 3) / 4;
-    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
+    apply_level_up(self, level_diff, {6, 9, 6, 8, 1});
 }
 
 static const char* const elf_names[] = {"Legolas", "Took", "Elrond", "Tanis", "Acorn", "Lightfoot", "Treewee"};

@@ -35,6 +35,17 @@ class living;
 class statistics;
 class guy;
 
+// Per-level stat gains for level_up(). Each value is multiplied by level_diff.
+struct LevelUpGains {
+    std::int32_t str, dex, con, intel, armor;
+};
+
+// Default gains (no family-specific modifiers): base values 8,6,8,8,1.
+inline constexpr LevelUpGains kDefaultLevelUpGains{8, 6, 8, 8, 1};
+
+// Apply level-up stat gains to a guy.
+void apply_level_up(guy* self, std::int32_t level_diff, const LevelUpGains& g);
+
 struct FamilyDescriptor {
     int family_id;
     const char* name;                          // "SOLDIER", "ELF", etc.
