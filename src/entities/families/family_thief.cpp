@@ -229,6 +229,7 @@ const FamilyDescriptor& describe_family_thief()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_THIEF,
         .name = "THIEF",
+        .short_name = nullptr,
         .base_stats = {9, 12, 12, 10, 5, 1},
         .hiring_cost = 400,
         .derived_bonuses = {BASE_GUY_HP+45, 0, 12, 0, 0, 0, 5, 5},

@@ -301,6 +301,7 @@ const FamilyDescriptor& describe_family_mage()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_MAGE,
         .name = "MAGE",
+        .short_name = nullptr,
         .base_stats = {4, 6, 4, 16, 5, 1},
         .hiring_cost = 450,
         .derived_bonuses = {BASE_GUY_HP+60, 0, 4, 0, 0, 0, 2, 4},

@@ -190,6 +190,7 @@ const FamilyDescriptor& describe_family_soldier()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_SOLDIER,
         .name = "SOLDIER",
+        .short_name = nullptr,
         .base_stats = {12, 6, 12, 8, 9, 1},
         .hiring_cost = 250,
         .derived_bonuses = {BASE_GUY_HP+90, 0, 20, 0, 0, 0, 4, 6},

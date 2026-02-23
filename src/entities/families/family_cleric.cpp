@@ -338,6 +338,7 @@ const FamilyDescriptor& describe_family_cleric()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_CLERIC,
         .name = "CLERIC",
+        .short_name = nullptr,
         .base_stats = {6, 7, 6, 14, 7, 1},
         .hiring_cost = 400,
         .derived_bonuses = {BASE_GUY_HP+90, 0, 12, 0, 0, 0, 2, 7.5f},

@@ -150,6 +150,7 @@ const FamilyDescriptor& describe_family_slime()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_SLIME,
         .name = "SLIME",
+        .short_name = nullptr,
         .base_stats = {18, 2, 18, 7, 6, 1},
         .hiring_cost = 700,
         .derived_bonuses = {BASE_GUY_HP+120, 0, 28, 0, 0, 0, 3, 11},
@@ -209,6 +210,7 @@ const FamilyDescriptor& describe_family_small_slime()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_SMALL_SLIME,
         .name = "SLIME",
+        .short_name = nullptr,
         .base_stats = {18, 2, 18, 7, 6, 1},
         .hiring_cost = 700,
         .derived_bonuses = {BASE_GUY_HP+50, 0, 12, 0, 0, 0, 2, 12},
@@ -268,6 +270,7 @@ const FamilyDescriptor& describe_family_medium_slime()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_MEDIUM_SLIME,
         .name = "SLIME",
+        .short_name = nullptr,
         .base_stats = {18, 2, 18, 7, 6, 1},
         .hiring_cost = 700,
         .derived_bonuses = {BASE_GUY_HP+80, 0, 20, 0, 0, 0, 2, 10},

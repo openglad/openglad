@@ -140,6 +140,7 @@ const FamilyDescriptor& describe_family_archer()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_ARCHER,
         .name = "ARCHER",
+        .short_name = nullptr,
         .base_stats = {6, 12, 6, 10, 5, 1},
         .hiring_cost = 350,
         .derived_bonuses = {BASE_GUY_HP+60, 0, 8, 0, 0, 0, 4, 5},

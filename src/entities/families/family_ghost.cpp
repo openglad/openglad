@@ -48,6 +48,7 @@ const FamilyDescriptor& describe_family_ghost()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_GHOST,
         .name = "GHOST",
+        .short_name = nullptr,
         .base_stats = {6, 12, 18, 10, 15, 1},
         .hiring_cost = 600,
         .derived_bonuses = {BASE_GUY_HP+20, 0, 12, 0, 0, 0, 4, 7},

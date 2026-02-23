@@ -29,6 +29,7 @@ const FamilyDescriptor& describe_family_golem()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_GOLEM,
         .name = "BEAST",
+        .short_name = nullptr,
         .base_stats = {12, 6, 12, 8, 6, 1},
         .hiring_cost = 0,
         .derived_bonuses = {BASE_GUY_HP+270, 0, 60, 0, 0, 0, 8, 9},

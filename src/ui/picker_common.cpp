@@ -45,25 +45,10 @@ const char* family_display_name(int family)
 
 const char* family_short_name(short family)
 {
-    switch (family) {
-    case FAMILY_ARCHER:       return "ARCHER";
-    case FAMILY_CLERIC:       return "CLERIC";
-    case FAMILY_DRUID:        return "DRUID";
-    case FAMILY_ELF:          return "ELF";
-    case FAMILY_MAGE:         return "MAGE";
-    case FAMILY_SOLDIER:      return "SOLDIER";
-    case FAMILY_THIEF:        return "THIEF";
-    case FAMILY_ARCHMAGE:     return "ARCHMAGE";
-    case FAMILY_ORC:          return "ORC";
-    case FAMILY_BIG_ORC:      return "ORC CAP.";
-    case FAMILY_BARBARIAN:    return "BARBAR.";
-    case FAMILY_FIREELEMENTAL:return "ELEMENT.";
-    case FAMILY_SKELETON:     return "SKELTON";
-    case FAMILY_SMALL_SLIME:  return "SLIME";
-    case FAMILY_FAERIE:       return "FAERIE";
-    case FAMILY_GHOST:        return "GHOST";
-    default:                  return "BEAST";
-    }
+    const auto* fd = get_family_descriptor(family);
+    if (fd)
+        return fd->short_name ? fd->short_name : fd->name;
+    return "BEAST";
 }
 
 // --- Cost calculations ---

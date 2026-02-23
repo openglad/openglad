@@ -38,6 +38,7 @@ const FamilyDescriptor& describe_family_faerie()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_FAERIE,
         .name = "FAERIE",
+        .short_name = nullptr,
         .base_stats = {3, 8, 3, 14, 2, 1},
         .hiring_cost = 450,
         .derived_bonuses = {BASE_GUY_HP+45, 0, 5, 0, 0, 0, 4, 9},
