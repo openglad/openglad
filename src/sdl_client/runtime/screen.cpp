@@ -130,88 +130,74 @@ Uint32 random(Uint32 x)
 // ************************************************************
 
 
-screen::screen(short howmany)
-    : video(), level_data(1, false, &sdl_level_data_hooks())
+// Common initialization logic shared by both constructors.
+void screen::init_common(short howmany, bool has_display)
 {
-    TRACE("init", "screen constructor: numviews=%d", howmany);
-    // Set the global here so objects we construct here can use it
+    TRACE("init", "screen constructor: numviews=%d display=%d", howmany, has_display);
     myscreen = this;
-    
+
 	Sint32 i, j;
-	text& first_text = text_normal;
-	Sint32 left = 66;
 
 	grab_timer();
 
 	timerstart = query_timer_control();
 	framecount = 0;
 
-	//  control = nullptr;
-	//myradar[0] = myradar[1] = nullptr; // very important! :)
 	control_hp = 0;
 
 	// Load the palette ..
 	load_and_set_palette("our.pal", newpalette);
 
-	// load the pixie graphics data into memory
+	if (has_display) {
+		text& first_text = text_normal;
+		Sint32 left = 66;
+		draw_button(60, 50, 260, 110, 2, 1);
+		draw_text_bar(64, 54, 256, 62);
+		first_text.write_y(56, "Loading Gladiator..Please Wait", RED, 1);
+		draw_text_bar(64, 64, 256, 106);
+		first_text.write_xy(left, 70, "Loading Graphics...", DARK_BLUE, 1);
+		buffer_to_screen(0, 0, 320, 200);
+		first_text.write_xy(left, 70, "Loading Graphics...Done", DARK_BLUE, 1);
+		first_text.write_xy(left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
+		buffer_to_screen(0, 0, 320, 200);
+	}
 
-	draw_button(60, 50, 260, 110, 2, 1);
-	draw_text_bar(64, 54, 256, 62); // header field
-	first_text.write_y(56, "Loading Gladiator..Please Wait", RED, 1);
-	draw_text_bar(64, 64, 256, 106); // draw box for text
-
-	first_text.write_xy(left, 70, "Loading Graphics...", DARK_BLUE, 1);
-	buffer_to_screen(0, 0, 320, 200);
-    // FIXME: Loader used to be created here...  but now it's in level_data.
-	first_text.write_xy(left, 70, "Loading Graphics...Done", DARK_BLUE, 1);
-	first_text.write_xy(left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
-	buffer_to_screen(0, 0, 320, 200);
-	
 	update_overscan_setting();
-	
+
 	palmode = 0;
-
 	end = 0;
-	timer_wait = 6;       // 'moderate' speed setting
-
+	timer_wait = 6;
 	redrawme = 1;
-	cyclemode = 1; //color cycling on by default
-	
+	cyclemode = 1;
 	enemy_freeze = 0;
-
 	level_done = 0;
-	
 	retry = false;
 
-	// Load map data from a pixie format
-	// FIXME: This was moved into level_data
-	//load_map_data(pixdata);
-	first_text.write_xy(left, 78, "Loading Gameplay Info...Done", DARK_BLUE, 1);
-	first_text.write_xy(left, 86, "Initializing Display...", DARK_BLUE, 1);
-	buffer_to_screen(0, 0, 320, 200);
-
-
-	// Set up the viewscreen poshorters
-	numviews = howmany; // # of viewscreens
+	numviews = howmany;
     for (auto& view : viewob)
         view.reset();
-    
     initialize_views();
 
-	first_text.write_xy(left, 86, "Initializing Display...Done", DARK_BLUE, 1);
-	first_text.write_xy(left, 94, "Initializing Sound...", DARK_BLUE, 1);
-	buffer_to_screen(0, 0, 320, 200);
-	
+	if (has_display) {
+		text& first_text = text_normal;
+		Sint32 left = 66;
+		first_text.write_xy(left, 78, "Loading Gameplay Info...Done", DARK_BLUE, 1);
+		first_text.write_xy(left, 86, "Initializing Display...Done", DARK_BLUE, 1);
+		first_text.write_xy(left, 94, "Initializing Sound...", DARK_BLUE, 1);
+		buffer_to_screen(0, 0, 320, 200);
+	}
 
-	// Init the sound data
     soundp = std::make_unique<soundob>();
     if(!active_config().is_on("sound", "sound"))
         soundp->set_sound(1);
-    first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
-    
-	buffer_to_screen(0, 0, 320, 200);
 
-	// Initialize all entity family registries (living, weapon, effect, treasure, generator)
+	if (has_display) {
+		text& first_text = text_normal;
+		Sint32 left = 66;
+		first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
+		buffer_to_screen(0, 0, 320, 200);
+	}
+
 	init_all_registries();
 	for (i=0; i < NUM_FAMILIES; i++)
 	{
@@ -222,7 +208,18 @@ screen::screen(short howmany)
 			alternate_name[i][j] = fd ? fd->alternate_names[j] : "NONE";
 		}
 	}
+}
 
+screen::screen(short howmany)
+    : video(), level_data(1, false, &sdl_level_data_hooks())
+{
+	init_common(howmany, true);
+}
+
+screen::screen(short howmany, bool create_display)
+    : video(create_display), level_data(1, false, &sdl_level_data_hooks())
+{
+	init_common(howmany, create_display);
 }
 
 screen::~screen()

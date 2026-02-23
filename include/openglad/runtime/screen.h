@@ -49,6 +49,7 @@ class screen : public video
 
 		screen();  // called with '1' for numviews
 		screen(short howmany);
+		screen(short howmany, bool create_display);
 
 		void reset(short howmany);
 		void ready_for_battle(short howmany);
@@ -127,6 +128,8 @@ class screen : public video
 		Uint32 framecount;
 
 	private:
+		void init_common(short howmany, bool has_display);
+
 		// Simulation world: owns the deterministic tick logic
 		// extracted from the former screen::act() implementation.
 		og::sim::SimWorld sim_world_;

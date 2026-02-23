@@ -11,7 +11,9 @@
 #include <openglad/data/gparser.h> // cfg legacy global
 #include <openglad/runtime/screen.h>
 #include <openglad/render/view.h> // options + theprefs legacy global
+#include <openglad/render/sai2x.h> // E_Screen
 #include <openglad/runtime/game_context.h>
+#include "SDL.h"
 
 extern options* theprefs;
 
@@ -52,7 +54,13 @@ GameSession::GameSession(const Config& session_cfg)
     }
 
     if (cfg_.allocate_screen) {
-        screen_owner_ = std::make_unique<::screen>(cfg_.numviews);
+        screen_owner_ = std::make_unique<::screen>(cfg_.numviews, cfg_.create_display);
+    }
+
+    // Create per-session render surface for sub-sessions sharing a display.
+    if (cfg_.allocate_screen && !cfg_.create_display) {
+        session_surface_ = SDL_CreateRGBSurface(
+            SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
     }
 
     if (cfg_.install_legacy_globals) {
@@ -79,6 +87,71 @@ GameSession::~GameSession()
     screen_owner_.reset();
     prefs_owner_.reset();
     seeded_rng_.reset();
+
+    if (session_surface_) {
+        SDL_FreeSurface(session_surface_);
+        session_surface_ = nullptr;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SessionScope: RAII activation of a session's globals
+// ---------------------------------------------------------------------------
+
+GameSession::SessionScope GameSession::activate()
+{
+    return SessionScope(*this);
+}
+
+GameSession::SessionScope::SessionScope(GameSession& session)
+    : session_(&session)
+{
+    // Save current globals
+    saved_myscreen_ = myscreen;
+    saved_theprefs_ = theprefs;
+    saved_context_ = &::ctx();
+
+    // Install this session's globals
+    myscreen = session_->screen_owner_.get();
+    if (session_->prefs_owner_) {
+        theprefs = session_->prefs_owner_.get();
+    }
+    set_global_context(&session_->ctx_);
+
+    // Swap render surface if this session has its own
+    if (session_->session_surface_ && E_Screen) {
+        saved_render_surface_ = E_Screen->render;
+        E_Screen->render = session_->session_surface_;
+    }
+}
+
+GameSession::SessionScope::~SessionScope()
+{
+    if (!session_) return; // moved-from
+
+    // Restore render surface
+    if (saved_render_surface_ && E_Screen) {
+        E_Screen->render = saved_render_surface_;
+    }
+
+    // Restore previous globals
+    myscreen = saved_myscreen_;
+    theprefs = saved_theprefs_;
+    if (saved_context_) {
+        set_global_context(saved_context_);
+    } else {
+        set_global_context(nullptr);
+    }
+}
+
+GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
+    : session_(other.session_)
+    , saved_myscreen_(other.saved_myscreen_)
+    , saved_theprefs_(other.saved_theprefs_)
+    , saved_context_(other.saved_context_)
+    , saved_render_surface_(other.saved_render_surface_)
+{
+    other.session_ = nullptr;
 }
 
 } // namespace og::runtime

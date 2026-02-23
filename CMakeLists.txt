@@ -796,6 +796,15 @@ if(NOT EMSCRIPTEN)
         add_runtime_assets_dependency(openscen)
     endif()
 
+    # --- openglad_demo (multi-session demo) ---
+    # Runs 12 concurrent AI-controlled game sessions in a 4x3 grid,
+    # demonstrating the de-singletonized engine.
+    add_executable(openglad_demo ${SRC_DIR}/sdl_client/demo.cpp)
+    configure_openglad_library(openglad_demo)
+    target_link_libraries(openglad_demo PRIVATE og_game)
+    configure_openglad_runtime_target(openglad_demo)
+    add_runtime_assets_dependency(openglad_demo)
+
     # --- openglad_text (headless text-based simulation client) ---
     # Compiles shared game sources without SDL. Uses link-time dispatch
     # (stubs in platform_headless.cpp) instead of preprocessor guards.

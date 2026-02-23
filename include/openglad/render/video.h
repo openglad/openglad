@@ -27,6 +27,7 @@ class video
 {
 	public:
 		video();
+		explicit video(bool create_display);
 		virtual ~video();
 		video(const video&) = delete;
 		video& operator=(const video&) = delete;
@@ -157,7 +158,10 @@ class video
 		SDL_Surface *window;
 		int screen_width,screen_height,fullscreen;
 		int pdouble;
-		
+
 		text text_normal;
 		text text_big;
+
+	protected:
+		bool owns_display_ = true;  // false for sub-sessions sharing a display
 };

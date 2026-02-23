@@ -52,21 +52,29 @@ unsigned char * videoptr = reinterpret_cast<unsigned char*>(VIDEO_LINEAR);
 
 std::unique_ptr<Screen> E_Screen;
 
-video::video()
-    : text_normal(TEXT_1), text_big(TEXT_BIG)
+static void video_init_palettes(video& v)
 {
-	Sint32 i;
-	RenderEngine render;
-	fullscreen = 0;
-    render = RenderEngine::NoZoom;
+	load_and_set_palette("our.pal", v.ourpalette);
+	load_palette("our.pal", v.redpalette);
 
-	if(active_config().is_on("graphics","fullscreen"))
-		fullscreen = 1;
-	else
-		fullscreen = 0;
+	for (Sint32 i = 32; i < 256; i++)
+	{
+		v.redpalette[i*3+1] /= 2;
+		v.redpalette[i*3+2] /= 2;
+	}
 
-	
-	std::string qresult = active_config().get_setting("graphics", "render");
+	load_palette("our.pal", v.bluepalette);
+}
+
+static void video_create_display()
+{
+	RenderEngine render = RenderEngine::NoZoom;
+	int fullscreen_flag = 0;
+
+	if(cfg.is_on("graphics","fullscreen"))
+		fullscreen_flag = 1;
+
+	std::string qresult = cfg.get_setting("graphics", "render");
 	if(qresult == "normal")
 		render = RenderEngine::NoZoom;
 	else if(qresult == "sai")
@@ -75,55 +83,57 @@ video::video()
 		render = RenderEngine::Eagle;
 	else if(qresult == "double")
 		render = RenderEngine::Double;
-	
-	fadeDuration = 500;
-
-	// Load our palettes ..
-	load_and_set_palette("our.pal", ourpalette);
-	load_palette("our.pal", redpalette);
-
-	// Create the red-shifted palette
-	for (i=32; i < 256; i++)
-	{
-		redpalette[i*3+1] /= 2;
-		redpalette[i*3+2] /= 2;
-	}
-
-	load_palette("our.pal", bluepalette);
-
-	// Create the blue-shifted palette
-	//for (i=32; i < 256; i++)
-	//{
-	//	bluepalette[i*3+0] /= 2;
-	//	bluepalette[i*3+1] /= 2;
-	//}
 
 	int w = 640;
 	int h = 400;
 
 #ifdef __EMSCRIPTEN__
-	// For web builds, use the native game resolution to match the canvas
-	// CSS scaling handles display size
 	w = 320;
 	h = 200;
 #else
-	qresult = active_config().get_setting("graphics", "width");
+	qresult = cfg.get_setting("graphics", "width");
 	if(qresult.size() > 0)
 	    w = stoi(qresult);
 
-	qresult = active_config().get_setting("graphics", "height");
+	qresult = cfg.get_setting("graphics", "height");
 	if(qresult.size() > 0)
 	    h = stoi(qresult);
 #endif
-        Log("Creating screen {}x{}\n", w, h);
-	E_Screen = std::make_unique<Screen>(render, w, h, fullscreen);
+	Log("Creating screen {}x{}\n", w, h);
+	E_Screen = std::make_unique<Screen>(render, w, h, fullscreen_flag);
 	TRACE("init", "video initialized: %dx%d", w, h);
+}
+
+video::video()
+    : text_normal(TEXT_1), text_big(TEXT_BIG)
+{
+	fullscreen = 0;
+	fadeDuration = 500;
+	owns_display_ = true;
+
+	video_init_palettes(*this);
+	video_create_display();
+}
+
+video::video(bool create_display)
+    : text_normal(TEXT_1), text_big(TEXT_BIG)
+{
+	fullscreen = 0;
+	fadeDuration = 500;
+	owns_display_ = create_display;
+
+	video_init_palettes(*this);
+	if (create_display) {
+		video_create_display();
+	}
 }
 
 video::~video()
 {
-	E_Screen.reset();
-	SDL_Quit();
+	if (owns_display_) {
+		E_Screen.reset();
+		SDL_Quit();
+	}
 }
 
 void video::set_fullscreen(bool enable_fullscreen)
