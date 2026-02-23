@@ -30,6 +30,12 @@ static inline Uint32 rng(Uint32 max_exclusive)
     return ctx().rng->next(max_exclusive);
 }
 
+static bool is_valid_score_team(unsigned char team_num)
+{
+    constexpr unsigned char kScoreTeams = 4;
+    return team_num < kScoreTeams;
+}
+
 bool float_eq(float a, float b);
 
 short remaining_foes(screen* s, walker* myguy);
@@ -205,21 +211,15 @@ short new_score_panel(screen* s, short /*do_it*/)
                 if (draw_button)
                     s->draw_button(lm+1, bm-26, lm+98, bm-2, 1, 1);
 
-                if (!control)
+                const bool can_show_team_score = is_valid_score_team(control->team_num);
+                if (!can_show_team_score)
                 {
                     message = "SC: 0";
                     mytext.write_xy(lm+2, bm-8, message.c_str(), text_color, static_cast<short>(1));
                     continue;
                 }
 
-                const int team_index = static_cast<int>(control->team_num);
-                if (team_index < 0 || team_index >= static_cast<int>(std::size(s->save_data.m_score)))
-                {
-                    // Invalid team index; skip score display/update for this control.
-                    continue;
-                }
-
-                const unsigned char team_num = static_cast<unsigned char>(team_index);
+                const unsigned char team_num = control->team_num;
                 myscore = s->save_data.m_score[team_num];
                 if (scorecountup[team_num] > myscore)
                     scorecountup[team_num] = myscore;

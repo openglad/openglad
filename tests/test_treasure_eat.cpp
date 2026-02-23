@@ -31,6 +31,12 @@ static walker* make_treasure(char family, short level = 1)
     return t;
 }
 
+static Uint32 total_team_score()
+{
+    return myscreen->save_data.m_score[0] + myscreen->save_data.m_score[1] +
+           myscreen->save_data.m_score[2] + myscreen->save_data.m_score[3];
+}
+
 
 // ---------------------------------------------------------------------------
 // treasure::eat_me - various treasure types
@@ -93,6 +99,31 @@ void test_treasure_eat_gold_bar()
     delete eater;
 }
 REGISTER_TEST(test_treasure_eat_gold_bar);
+
+void test_treasure_eat_gold_bar_invalid_team_does_not_index_score_array()
+{
+    walker* eater = make_eater(FAMILY_SOLDIER, 0);
+    if (!eater) return;
+    eater->team_num = 250; // corrupted scenario team id
+
+    walker* gold = make_treasure(FAMILY_GOLD_BAR, 2);
+    if (!gold) { delete eater; return; }
+
+    myscreen->save_data.m_score[0] = 10;
+    myscreen->save_data.m_score[1] = 20;
+    myscreen->save_data.m_score[2] = 30;
+    myscreen->save_data.m_score[3] = 40;
+    const Uint32 score_before = total_team_score();
+
+    gold->eat_me(eater);
+    TEST_ASSERT_EQ((int)score_before, (int)total_team_score(),
+                   "invalid team id should not write outside m_score bounds");
+    TEST_ASSERT(gold->dead == 1, "gold bar should still be consumed");
+
+    myscreen->level_data.remove_ob(gold);
+    delete eater;
+}
+REGISTER_TEST(test_treasure_eat_gold_bar_invalid_team_does_not_index_score_array);
 
 void test_treasure_eat_silver_bar()
 {

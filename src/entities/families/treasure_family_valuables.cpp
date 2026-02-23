@@ -19,11 +19,18 @@
 #include <cmath>
 #include <algorithm>
 
+static bool is_valid_score_team(unsigned char team_num)
+{
+    constexpr unsigned char kScoreTeams = 4;
+    return team_num < kScoreTeams;
+}
+
 static bool gold_bar_on_eat(treasure* self, walker* eater)
 {
     if (eater->team_num == 0 || eater->myguy)
     {
-        eater->sim_save->m_score[eater->team_num] += (200 * self->stats()->level);
+        if (eater->sim_save && is_valid_score_team(eater->team_num))
+            eater->sim_save->m_score[eater->team_num] += (200 * self->stats()->level);
         self->dead = 1;
         og::sim::emit_sound(self->sim_events, SOUND_MONEY);
     }
@@ -34,7 +41,8 @@ static bool silver_bar_on_eat(treasure* self, walker* eater)
 {
     if (eater->team_num == 0 || eater->myguy)
     {
-        eater->sim_save->m_score[eater->team_num] += (50 * self->stats()->level);
+        if (eater->sim_save && is_valid_score_team(eater->team_num))
+            eater->sim_save->m_score[eater->team_num] += (50 * self->stats()->level);
         self->dead = 1;
         og::sim::emit_sound(self->sim_events, SOUND_MONEY);
     }
@@ -45,7 +53,8 @@ static bool life_gem_on_eat(treasure* self, walker* eater)
 {
     if (eater->team_num != self->team_num) // only our team can get these
         return true;
-    eater->sim_save->m_score[eater->team_num] += static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints));
+    if (eater->sim_save && is_valid_score_team(eater->team_num))
+        eater->sim_save->m_score[eater->team_num] += static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints));
     walker* flash = self->sim_level->add_ob(Order::FX, FAMILY_FLASH);
     flash->ani_type = ANI_EXPAND_8;
     flash->center_on(self);

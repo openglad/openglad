@@ -200,6 +200,47 @@ void test_level_data_load_version_dispatch_and_grid_save_paths()
 }
 REGISTER_TEST(test_level_data_load_version_dispatch_and_grid_save_paths);
 
+void test_level_data_load_clamps_invalid_team_ids_to_score_range()
+{
+    std::filesystem::create_directories("temp/pix");
+    PixieData pix(1, 1, 1, new unsigned char[1]{7});
+    TEST_ASSERT(save_grid_file("covteam", pix), "save_grid_file should create loader grid");
+
+    std::vector<unsigned char> bytes;
+    bytes.reserve(8 + 2 + 20);
+    const char grid_name[8] = {'c', 'o', 'v', 't', 'e', 'a', 'm', 0};
+    bytes.insert(bytes.end(), grid_name, grid_name + 8);
+
+    const std::int16_t listsize = 1;
+    bytes.push_back(static_cast<unsigned char>(listsize & 0xff));
+    bytes.push_back(static_cast<unsigned char>((listsize >> 8) & 0xff));
+
+    const std::int16_t xpos = 64;
+    const std::int16_t ypos = 64;
+    bytes.push_back(static_cast<unsigned char>(Order::Living)); // order
+    bytes.push_back(static_cast<unsigned char>(FAMILY_SOLDIER)); // family
+    bytes.push_back(static_cast<unsigned char>(xpos & 0xff));
+    bytes.push_back(static_cast<unsigned char>((xpos >> 8) & 0xff));
+    bytes.push_back(static_cast<unsigned char>(ypos & 0xff));
+    bytes.push_back(static_cast<unsigned char>((ypos >> 8) & 0xff));
+    bytes.push_back(250); // invalid team id
+    bytes.push_back(0);   // facing
+    bytes.push_back(0);   // command
+    for (int i = 0; i < 11; ++i)
+        bytes.push_back(0);
+
+    MemoryOgFile mem(bytes.data(), bytes.size());
+    LevelData data(9991);
+    TEST_ASSERT_EQ(1, (int)load_scenario_version(mem, &data, 2), "version 2 loader should succeed");
+    TEST_ASSERT(!data.oblist.empty(), "loader should create one object");
+    walker* loaded = data.oblist.empty() ? nullptr : data.oblist.front().get();
+    TEST_ASSERT(loaded != nullptr, "loaded walker should exist");
+    if (loaded)
+        TEST_ASSERT_EQ(0, (int)loaded->team_num, "invalid team id should clamp to 0");
+    data.delete_objects();
+}
+REGISTER_TEST(test_level_data_load_clamps_invalid_team_ids_to_score_range);
+
 void test_level_data_query_grid_passable_edge_cases()
 {
     myscreen->level_data.create_new_grid();
