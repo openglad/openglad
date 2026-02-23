@@ -162,6 +162,25 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_tick_and_level_done_paths)
     OG_ASSERT(fx.events.size() > before_events);
 }
 
+OG_UNIT_TEST(test_sim_world_r15_freeze_uses_friendliness_not_team_zero)
+{
+    SimWorldR15Fixture fx;
+    og::sim::SimWorld world(11);
+    fx.save.my_team = 1;
+
+    TickWalker* friendly = add_ob(fx, Order::Living, FAMILY_SOLDIER, 1, 64, 64);
+    TickWalker* hostile = add_ob(fx, Order::Living, FAMILY_ORC, 0, 80, 64);
+    OG_ASSERT(friendly && hostile);
+
+    fx.enemy_freeze = 11;
+    const og::sim::TickResult frozen = world.tick(fx.level, fx.save, fx.enemy_freeze, 0, fx.events);
+
+    OG_ASSERT(frozen.level_done == 2);
+    OG_ASSERT(frozen.game_ended);
+    OG_ASSERT(friendly->acts > 0);
+    OG_ASSERT(hostile->acts == 0);
+}
+
 OG_UNIT_TEST(test_sim_world_r15_end_flag_and_auto_advance_paths)
 {
     SimWorldR15Fixture fx;

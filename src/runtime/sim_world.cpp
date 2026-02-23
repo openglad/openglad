@@ -127,7 +127,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
             if (ob && !ob->dead &&
                 (((ob->query_order() != Order::Living) &&
                   (ob->query_order() != Order::Generator)) ||
-                 (ob->team_num == 0)))
+                 ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team))))
             {
                 ob->act();
                 if (ob && !ob->dead)
