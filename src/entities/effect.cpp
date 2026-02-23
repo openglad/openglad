@@ -30,7 +30,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/effect_family_descriptor.h>
-#include <openglad/entities/effect_family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/legacy/test_trace.h>
 
 effect::effect(const PixieData& data)

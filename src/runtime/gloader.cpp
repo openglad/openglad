@@ -24,13 +24,10 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/weapon_family_descriptor.h>
-#include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/entities/effect_family_descriptor.h>
-#include <openglad/entities/effect_family_registry.h>
 #include <openglad/entities/treasure_family_descriptor.h>
-#include <openglad/entities/treasure_family_registry.h>
 #include <openglad/entities/generator_family_descriptor.h>
-#include <openglad/entities/generator_family_registry.h>
 #include <format>
 #include <openglad/entities/living.h>
 #include <openglad/entities/treasure.h>

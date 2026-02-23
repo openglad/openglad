@@ -22,7 +22,7 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/weapon_family_descriptor.h>
-#include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/terrain_types.h>

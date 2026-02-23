@@ -6,7 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/weapon_family_descriptor.h>
-#include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>

@@ -26,9 +26,8 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/weapon_family_descriptor.h>
-#include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/entities/generator_family_descriptor.h>
-#include <openglad/entities/generator_family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/walker_render.h>

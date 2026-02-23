@@ -26,7 +26,7 @@
 #include <openglad/entities/treasure.h>
 #include <openglad/entities/walker_render.h>
 #include <openglad/entities/treasure_family_descriptor.h>
-#include <openglad/entities/treasure_family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 // pixieN include not needed; render access is through WalkerRender
