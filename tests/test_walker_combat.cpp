@@ -7,7 +7,6 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/combat_math.h>
-#include <openglad/core/terrain_types.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 #include <memory>
@@ -70,6 +69,9 @@ static int count_family_in_oblist(char family)
 
 static void set_world_tile(short world_x, short world_y, unsigned char tile)
 {
+    if (world_x < 0 || world_y < 0) {
+        return;
+    }
     auto& level = myscreen->level_data;
     const int gx = world_x / GRID_SIZE;
     const int gy = world_y / GRID_SIZE;
