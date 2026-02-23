@@ -38,6 +38,7 @@ const FamilyDescriptor& describe_family_big_orc()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_BIG_ORC,
         .name = "ORC CAPTAIN",
+        .short_name = "ORC CAP.",
         .base_stats = {18, 8, 16, 5, 11, 1},
         .hiring_cost = 1000,
         .derived_bonuses = {BASE_GUY_HP+150, 0, 28, 0, 0, 0, 3, 6},

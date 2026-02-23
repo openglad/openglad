@@ -38,6 +38,7 @@ class guy;
 struct FamilyDescriptor {
     int family_id;
     const char* name;                          // "SOLDIER", "ELF", etc.
+    const char* short_name;                    // abbreviated picker label (nullptr = use name)
 
     // Base stats from guy.cpp statlist[]
     std::int32_t base_stats[6];                      // STR, DEX, CON, INT, ARMOR, LVL

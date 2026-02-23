@@ -183,6 +183,7 @@ const FamilyDescriptor& describe_family_druid()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_DRUID,
         .name = "DRUID",
+        .short_name = nullptr,
         .base_stats = {7, 8, 14, 12, 7, 1},
         .hiring_cost = 350,
         .derived_bonuses = {BASE_GUY_HP+80, 0, 10, 0, 0, 0, 3, 9},

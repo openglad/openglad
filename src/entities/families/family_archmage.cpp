@@ -507,6 +507,7 @@ const FamilyDescriptor& describe_family_archmage()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_ARCHMAGE,
         .name = "ARCHMAGE",
+        .short_name = nullptr,
         .base_stats = {4, 6, 4, 16, 5, 1},
         .hiring_cost = 450,
         .derived_bonuses = {BASE_GUY_HP+120, 0, 8, 0, 0, 0, 3, 1},

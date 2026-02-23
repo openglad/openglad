@@ -85,6 +85,7 @@ const FamilyDescriptor& describe_family_barbarian()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_BARBARIAN,
         .name = "BARBARIAN",
+        .short_name = "BARBAR.",
         .base_stats = {14, 5, 14, 8, 8, 1},
         .hiring_cost = 350,
         .derived_bonuses = {BASE_GUY_HP+120, 0, 25, 0, 0, 0, 3, 5.5f},

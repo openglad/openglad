@@ -67,6 +67,7 @@ const FamilyDescriptor& describe_family_skeleton()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_SKELETON,
         .name = "SKELETON",
+        .short_name = "SKELTON",
         .base_stats = {9, 14, 9, 6, 6, 1},
         .hiring_cost = 300,
         .derived_bonuses = {BASE_GUY_HP+30, 0, 4, 0, 0, 0, 6, 4.5f},

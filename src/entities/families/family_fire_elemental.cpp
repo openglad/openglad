@@ -109,6 +109,7 @@ const FamilyDescriptor& describe_family_fire_elemental()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_FIREELEMENTAL,
         .name = "ELEMENTAL",
+        .short_name = "ELEMENT.",
         .base_stats = {14, 10, 14, 14, 9, 1},
         .hiring_cost = 600,
         .derived_bonuses = {BASE_GUY_HP+70, 0, 28, 0, 0, 0, 4, 5},

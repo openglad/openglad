@@ -108,6 +108,7 @@ const FamilyDescriptor& describe_family_elf()
     static const FamilyDescriptor desc = {
         .family_id = FAMILY_ELF,
         .name = "ELF",
+        .short_name = nullptr,
         .base_stats = {5, 14, 5, 12, 8, 1},
         .hiring_cost = 150,
         .derived_bonuses = {BASE_GUY_HP+45, 0, 12, 0, 0, 0, 4, 5},
