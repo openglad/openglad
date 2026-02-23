@@ -10,18 +10,15 @@
 #include <openglad/entities/generator_family_descriptor.h>
 #include <openglad/entities/generator_family_registry.h>
 
+#include "family_registry_base.h"
+
 static constexpr int NUM_GENERATOR_FAMILIES = 4;
 
-static bool s_registry_initialized = false;
-static GeneratorFamilyDescriptor s_registry[NUM_GENERATOR_FAMILIES];
+static FamilyRegistryBase<GeneratorFamilyDescriptor, NUM_GENERATOR_FAMILIES> s_registry;
 
-void init_generator_family_registry()
+static void populate(GeneratorFamilyDescriptor* e)
 {
-    if (s_registry_initialized)
-        return;
-
-    // FAMILY_TENT (0) — skeleton tent
-    s_registry[FAMILY_TENT] = {
+    e[FAMILY_TENT] = {
         .family_id = FAMILY_TENT,
         .name = "TENT",
         .default_weapon = FAMILY_SKELETON,
@@ -30,8 +27,7 @@ void init_generator_family_registry()
         .clear_owner = false,
     };
 
-    // FAMILY_TOWER (1) — mage tower
-    s_registry[FAMILY_TOWER] = {
+    e[FAMILY_TOWER] = {
         .family_id = FAMILY_TOWER,
         .name = "TOWER",
         .default_weapon = FAMILY_MAGE,
@@ -40,8 +36,7 @@ void init_generator_family_registry()
         .clear_owner = true,
     };
 
-    // FAMILY_BONES (2) — ghost bone pile
-    s_registry[FAMILY_BONES] = {
+    e[FAMILY_BONES] = {
         .family_id = FAMILY_BONES,
         .name = "BONES",
         .default_weapon = FAMILY_GHOST,
@@ -50,8 +45,7 @@ void init_generator_family_registry()
         .clear_owner = false,
     };
 
-    // FAMILY_TREEHOUSE (3) — elf tree-house
-    s_registry[FAMILY_TREEHOUSE] = {
+    e[FAMILY_TREEHOUSE] = {
         .family_id = FAMILY_TREEHOUSE,
         .name = "TREEHOUSE",
         .default_weapon = FAMILY_ELF,
@@ -59,17 +53,16 @@ void init_generator_family_registry()
         .spawn_ani_type = 0,
         .clear_owner = true,
     };
+}
 
-    s_registry_initialized = true;
+void init_generator_family_registry()
+{
+    s_registry.init(nullptr, populate);
 }
 
 const GeneratorFamilyDescriptor* get_generator_family_descriptor(int family_id)
 {
-    if (family_id < 0 || family_id >= NUM_GENERATOR_FAMILIES)
-        return nullptr;
-
-    if (!s_registry_initialized)
+    if (!s_registry.is_initialized())
         init_generator_family_registry();
-
-    return &s_registry[family_id];
+    return s_registry.get(family_id);
 }
