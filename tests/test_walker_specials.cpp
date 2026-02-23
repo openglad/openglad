@@ -55,7 +55,7 @@ static int count_family_in_oblist(char family)
     int count = 0;
     for (auto& uptr : myscreen->level_data.oblist) {
         walker* w = uptr.get();
-        if (w && w->query_family() == family)
+        if (w && w->family == family)
             count++;
     }
     return count;
@@ -66,7 +66,7 @@ static int count_family_in_fxlist(char family)
     int count = 0;
     for (auto& uptr : myscreen->level_data.fxlist) {
         walker* w = uptr.get();
-        if (w && w->query_family() == family)
+        if (w && w->family == family)
             count++;
     }
     return count;
@@ -81,7 +81,7 @@ static walker* find_first_alive_ob_by_family(char family)
 {
     for (auto& uptr : myscreen->level_data.oblist) {
         walker* w = uptr.get();
-        if (w && w->query_family() == family && !w->dead)
+        if (w && w->family == family && !w->dead)
             return w;
     }
     return nullptr;
@@ -381,7 +381,7 @@ void test_walker_special_mage_energy_wave()
         random_ctx.rng = &seq_rng;
         set_global_context(&random_ctx);
         (void)actor->act();
-        TEST_ASSERT(actor->query_act_type() == ACT_RANDOM, "ACT_RANDOM path should preserve act type");
+        TEST_ASSERT(actor->act_type == ACT_RANDOM, "ACT_RANDOM path should preserve act type");
 
         // rng(4)==1 -> take the alternate search branch.
         FixedRandom nonzero_rng(1);
@@ -389,7 +389,7 @@ void test_walker_special_mage_energy_wave()
         set_global_context(&random_ctx);
         actor->stats()->clear_command();
         (void)actor->act();
-        TEST_ASSERT(actor->query_act_type() == ACT_RANDOM, "ACT_RANDOM alternate path should preserve act type");
+        TEST_ASSERT(actor->act_type == ACT_RANDOM, "ACT_RANDOM alternate path should preserve act type");
         set_global_context(nullptr);
     }
     delete actor;
@@ -964,9 +964,9 @@ void test_walker_special_archmage_mind_control_stats_name_path()
     foe->real_team_num = 255;
     foe2->real_team_num = 255;
     foe3->real_team_num = 255;
-    foe->set_charm_left(0);
-    foe2->set_charm_left(0);
-    foe3->set_charm_left(0);
+    foe->charm_left = (0);
+    foe2->charm_left = (0);
+    foe3->charm_left = (0);
     const float mp_before = arch->stats()->magicpoints;
 
     SequenceRandom seq_rng({1, 1, 1, 1, 1, 1, 1, 1});

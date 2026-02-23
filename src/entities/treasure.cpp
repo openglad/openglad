@@ -100,7 +100,7 @@ walker  * treasure::find_teleport_target()
 		if (w && !w->dead)
 		{
 			if (w->query_order() == Order::Treasure &&
-			        w->query_family() == FAMILY_TELEPORTER &&
+			        w->family == FAMILY_TELEPORTER &&
 			        w->stats()->level == stats_->level)
 			{
 				//Log(" to target %d\n", number);
@@ -116,7 +116,7 @@ walker  * treasure::find_teleport_target()
 		if (w && !w->dead)
 		{
 			if (w->query_order() == Order::Treasure &&
-			        w->query_family() == FAMILY_TELEPORTER &&
+			        w->family == FAMILY_TELEPORTER &&
 			        w->stats()->level == stats_->level)
 			{
 				//Log(" to looped target %d\n", number);

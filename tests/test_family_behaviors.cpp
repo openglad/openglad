@@ -1464,7 +1464,7 @@ void test_cleric_mystic_mace_success_path_direct()
     for (auto& uptr : myscreen->level_data.oblist)
     {
         walker* w = uptr.get();
-        if (w && w->query_order() == Order::FX && w->query_family() == FAMILY_MAGIC_SHIELD &&
+        if (w && w->query_order() == Order::FX && w->family == FAMILY_MAGIC_SHIELD &&
             w->owner == cleric)
         {
             found_shield = true;
@@ -1474,7 +1474,7 @@ void test_cleric_mystic_mace_success_path_direct()
     for (auto& uptr : myscreen->level_data.fxlist)
     {
         walker* w = uptr.get();
-        if (w && w->query_family() == FAMILY_MAGIC_SHIELD && w->owner == cleric)
+        if (w && w->family == FAMILY_MAGIC_SHIELD && w->owner == cleric)
         {
             found_shield = true;
             break;
@@ -1622,7 +1622,7 @@ void test_cleric_raise_skeleton_and_ghost_from_blood()
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
-            w->query_family() == FAMILY_SKELETON && w->owner == cleric)
+            w->family == FAMILY_SKELETON && w->owner == cleric)
         {
             found_skeleton = true;
             break;
@@ -1643,7 +1643,7 @@ void test_cleric_raise_skeleton_and_ghost_from_blood()
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
-            w->query_family() == FAMILY_GHOST && w->owner == cleric)
+            w->family == FAMILY_GHOST && w->owner == cleric)
         {
             found_ghost = true;
             break;
@@ -1674,7 +1674,7 @@ void test_cleric_resurrect_friendly_and_enemy_blood()
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
-            w->query_family() == FAMILY_SOLDIER && w->team_num == 0)
+            w->family == FAMILY_SOLDIER && w->team_num == 0)
         {
             found_resurrected_friend = true;
             break;
@@ -1694,7 +1694,7 @@ void test_cleric_resurrect_friendly_and_enemy_blood()
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
-            w->query_family() == FAMILY_GHOST && w->team_num == cleric->team_num &&
+            w->family == FAMILY_GHOST && w->team_num == cleric->team_num &&
             w->owner == cleric)
         {
             found_enemy_ghost = true;
@@ -1872,7 +1872,7 @@ void test_druid_batch3_special_branches()
     for (auto& uptr : myscreen->level_data.weaplist)
     {
         walker* w = uptr.get();
-        if (w && w->query_family() == FAMILY_CIRCLE_PROTECTION)
+        if (w && w->family == FAMILY_CIRCLE_PROTECTION)
         {
             existing_circle = w;
             break;

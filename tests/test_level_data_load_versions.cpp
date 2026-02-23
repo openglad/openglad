@@ -783,10 +783,10 @@ void test_level_data_load_version6plus_named_objects_treasure_route_and_door_fix
     for (auto& uptr : data.weaplist)
     {
         walker* w = uptr.get();
-        if (w && w->query_family() == FAMILY_DOOR)
+        if (w && w->family == FAMILY_DOOR)
         {
             saw_door = true;
-            TEST_ASSERT_EQ(1, (int)w->query_frame(), "door with wall above should be frame 1 after fixup");
+            TEST_ASSERT_EQ(1, (int)w->frame, "door with wall above should be frame 1 after fixup");
         }
     }
     TEST_ASSERT(saw_door, "door object should be present in loaded weapon list");

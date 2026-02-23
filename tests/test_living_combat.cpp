@@ -293,7 +293,7 @@ void test_living_act_timers_charm_and_recoil_clamps()
     w->invulnerable_left = 1;
     w->invisibility_left = 0;
     w->outline = 5;
-    w->set_charm_left(1);
+    w->charm_left = (1);
     w->team_num = 4;
     w->real_team_num = 2;
     w->speed_bonus_left = 2;

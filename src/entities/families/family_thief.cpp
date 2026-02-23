@@ -117,7 +117,7 @@ static bool thief_do_special(walker* self)
                         {
                             ob->foe = self;
                             ob->leader = self;
-                            if (ob->query_act_type() != ACT_CONTROL)
+                            if (ob->act_type != ACT_CONTROL)
                                 ob->stats()->force_command(COMMAND_FOLLOW, 10 + self->sim_rng->next(self->stats()->level), 0, 0);
                         }
                     }
@@ -161,7 +161,7 @@ static bool thief_do_special(walker* self)
                                     ob->foe = nullptr;
                                 else
                                     ob->foe = self->foe;
-                                ob->set_charm_left(static_cast<short>(75 + generic * 25));
+                                ob->charm_left = (static_cast<short>(75 + generic * 25));
                                 generic2 = 0;
                             }
                             didheal++;

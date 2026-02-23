@@ -401,7 +401,7 @@ public:
         else
         {
             order = target->query_order();
-            family = target->query_family();
+            family = target->family;
             team = target->team_num;
             level = target->stats()->level;
         }
@@ -455,7 +455,7 @@ public:
             w = target_->sizex;
             h = target_->sizey;
             order = target_->query_order();
-            family = target_->query_family();
+            family = target_->family;
             level = target_->stats()->level;
             this->target = target_;
         }
@@ -1192,7 +1192,7 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
     for(auto& uptr : d.fxlist)
     {
         walker* w = uptr.get();
-        if(w->query_order() == Order::Treasure && w->query_family() == FAMILY_EXIT && w->stats() != nullptr)
+        if(w->query_order() == Order::Treasure && w->family == FAMILY_EXIT && w->stats() != nullptr)
             exits.insert(w->stats()->level);
     }
     

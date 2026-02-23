@@ -35,7 +35,7 @@ static void json_entity(std::ostream& os, const walker* w, int index)
 {
     os << "{\"id\":" << index
        << ",\"order\":" << static_cast<int>(w->query_order())
-       << ",\"family\":" << static_cast<int>(w->query_family())
+       << ",\"family\":" << static_cast<int>(w->family)
        << ",\"team\":" << static_cast<int>(w->team_num)
        << ",\"x\":" << w->xpos
        << ",\"y\":" << w->ypos

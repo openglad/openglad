@@ -63,7 +63,6 @@ class walker : public og::sim::SimEntity
 		// Animation frame management (sim state in SimEntity::frame/frames;
 		// render bmp pointer updated via render component)
 		short set_frame(short framenum);
-		short query_frame() const { return frame; }
 		short next_frame();
 
 		void set_myguy_view(guy* guy_view);
@@ -96,9 +95,6 @@ class walker : public og::sim::SimEntity
 		virtual bool act();
 		short set_act_type(short num);
 		short restore_act_type();
-		short query_act_type() const;
-		short set_old_act_type(short num);
-		short query_old_act_type() const;
 		virtual bool collide(walker  *ob);
 		bool attack(walker  *target);
 		virtual bool animate();
@@ -106,10 +102,6 @@ class walker : public og::sim::SimEntity
 		virtual Order query_order() const
 		{
 			return order;
-		}
-		char query_family() const
-		{
-			return family;
 		}
 		walker  *create_weapon();
 		bool fire_check(short xdelta, short ydelta);
@@ -143,13 +135,6 @@ class walker : public og::sim::SimEntity
 			unsigned char query_team_color() const;
 		std::int32_t is_friendly(const walker *target) const;
 		std::int32_t is_friendly_to_team(unsigned char team) const;
-		inline short query_type(Order oval, char fval) const
-		{
-			if (oval == order && fval == family)
-				return 1;
-			else
-				return 0;
-		};
 
 
 		// stats (unique_ptr ownership is protected; getter returns raw pointer)
@@ -219,18 +204,15 @@ class walker : public og::sim::SimEntity
 		float last_hitpoints;
 		std::list<DamageNumber> damage_numbers;
 		char enddir;                   // Proposed direction facing
-
-		// Accessors for protected fields used by family callbacks
-		void set_charm_left(short value) { charm_left_ = value; }
-		short charm_left() const { return charm_left_; }
+		char act_type;
+		char old_act_type;
+		short charm_left;              // If we're still being charmed
 
 	protected:
 		bool act_generate();
 		bool act_fire();
 		bool act_guard();
 		virtual bool act_random();
-		char act_type,old_act_type;
-		short charm_left_;             // If we're still being charmed
 			std::int32_t regen_delay_;           // Delay after being hit
 		walker * myself_;
 		std::unique_ptr<statistics> stats_;

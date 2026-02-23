@@ -65,17 +65,18 @@ public:
     IRandom*      sim_rng = nullptr;
     cfg_store*    sim_config = nullptr;
 
-protected:
-    // Position: floating-point authoritative, xpos/ypos are display-snapped
-    float worldx_ = -1.0f;
-    float worldy_ = -1.0f;
-
     // Identity
     Order order = Order::Living;
     char  family = 0;
 
     // Animation frame state (sim-relevant; actual pixel data is in render component)
     short frame = 0;
+
+protected:
+    // Position: floating-point authoritative, xpos/ypos are display-snapped
+    float worldx_ = -1.0f;
+    float worldy_ = -1.0f;
+
     short frames = 0;
 };
 

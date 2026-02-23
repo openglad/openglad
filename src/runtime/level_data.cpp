@@ -1228,7 +1228,7 @@ short load_version_5(og::io::OgFile& infile, LevelData* data)
 	for(auto& uptr : data->weaplist)
 	{
 	    walker* w = uptr.get();
-		if (w && w->query_family()==FAMILY_DOOR)
+		if (w && w->family==FAMILY_DOOR)
 		{
 			if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
 			        (w->ypos/GRID_SIZE)-1)==TYPE_WALL)
@@ -1421,7 +1421,7 @@ short load_version_6(og::io::OgFile& infile, LevelData* data, short version)
 	for(auto& uptr : data->weaplist)
 	{
 	    walker* w = uptr.get();
-        if (w && w->query_family()==FAMILY_DOOR)
+        if (w && w->family==FAMILY_DOOR)
         {
             if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
                     (w->ypos/GRID_SIZE)-1)==TYPE_WALL)
@@ -1696,9 +1696,9 @@ bool LevelData::save()
 			}
 			temporder = static_cast<unsigned char>(ob->query_order());
 			tempfacing= ob->curdir;
-			tempfamily= ob->query_family();
+			tempfamily= ob->family;
 			tempteam  = ob->team_num;
-			tempcommand = static_cast<char>(ob->query_act_type());
+			tempcommand = static_cast<char>(ob->act_type);
 			currentx  = ob->xpos;
 			currenty  = ob->ypos;
 			shortlevel = static_cast<short>(ob->stats()->level);
@@ -2191,7 +2191,7 @@ walker  * LevelData::find_nearest_blood(walker  *who)
 	{
 	    walker* w = uptr.get();
 		if (w && w->query_order() == Order::Treasure &&
-		        w->query_family() == FAMILY_STAIN && !w->dead)
+		        w->family == FAMILY_STAIN && !w->dead)
 		{
 			newdistance = static_cast<std::int32_t>(who->distance_to_ob_center(w));
 			if (newdistance < distance)

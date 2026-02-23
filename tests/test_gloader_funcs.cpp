@@ -30,7 +30,7 @@ void test_gloader_create_living_all()
         TEST_ASSERT(w != nullptr, "create_walker should succeed for all living families");
         TEST_ASSERT(w->stats() != nullptr, "stats should exist");
         TEST_ASSERT(w->query_order() == Order::Living, "order should be Living");
-        TEST_ASSERT_EQ((int)families[i], (int)w->query_family(), "family should match");
+        TEST_ASSERT_EQ((int)families[i], (int)w->family, "family should match");
     }
 }
 REGISTER_TEST(test_gloader_create_living_all);
@@ -164,7 +164,7 @@ void test_gloader_set_walker()
     walker* wp = w.get();
 
     myscreen->set_walker(wp, Order::Living, FAMILY_MAGE);
-    TEST_ASSERT_EQ((int)FAMILY_MAGE, (int)wp->query_family(), "family should change to mage");
+    TEST_ASSERT_EQ((int)FAMILY_MAGE, (int)wp->family, "family should change to mage");
 
     const Order orders[] = {Order::Living, Order::Weapon, Order::Treasure, Order::FX, Order::Generator, Order::Special};
     for (Order o : orders) {
@@ -202,13 +202,13 @@ void test_gloader_invalid_family_clamp_paths()
     TEST_ASSERT(living_w != nullptr, "invalid living family should fall back to soldier");
     if (!living_w)
         return;
-    TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)living_w->query_family(),
+    TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)living_w->family,
                    "invalid living family should clamp to soldier");
 
     auto weapon_w = l->create_walker_owned(Order::Weapon, NUM_FAMILIES + 5);
     TEST_ASSERT(weapon_w != nullptr, "invalid weapon family should clamp to 0 and still construct");
     if (weapon_w)
-        TEST_ASSERT_EQ(0, (int)weapon_w->query_family(),
+        TEST_ASSERT_EQ(0, (int)weapon_w->family,
                        "invalid non-living family should clamp to family 0");
 
     l->set_derived_stats(living_w.get(), Order::Living, NUM_FAMILIES + 9);
@@ -216,7 +216,7 @@ void test_gloader_invalid_family_clamp_paths()
 
     walker* changed = l->set_walker(living_w.get(), Order::Living, NUM_FAMILIES + 9);
     TEST_ASSERT(changed != nullptr, "set_walker should clamp invalid family and return object");
-    TEST_ASSERT_EQ(0, (int)living_w->query_family(), "set_walker invalid family should clamp to 0");
+    TEST_ASSERT_EQ(0, (int)living_w->family, "set_walker invalid family should clamp to 0");
 }
 REGISTER_TEST(test_gloader_invalid_family_clamp_paths);
 
@@ -243,7 +243,7 @@ void test_gloader_order_special_and_invalid_graphics_paths()
     auto neg_living = l->create_walker_owned(Order::Living, -4);
     TEST_ASSERT(neg_living != nullptr, "negative living family should clamp to soldier");
     if (neg_living)
-        TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)neg_living->query_family(),
+        TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)neg_living->family,
                        "negative living family should map to soldier");
 }
 REGISTER_TEST(test_gloader_order_special_and_invalid_graphics_paths);
@@ -278,7 +278,7 @@ void test_gloader_set_walker_descriptor_flag_and_default_paths()
     TEST_ASSERT_EQ(1, (int)w->ignore, "stain treasure should set ignore");
 
     l->set_walker(w.get(), Order::Treasure, FAMILY_GOLD_BAR);
-    TEST_ASSERT_EQ(0, (int)w->query_frame(), "gold bar should set direct frame 0");
+    TEST_ASSERT_EQ(0, (int)w->frame, "gold bar should set direct frame 0");
 
     // Generator descriptor missing path: family >= NUM_GENERATOR_FAMILIES falls back to skeleton.
     l->set_walker(w.get(), Order::Generator, 6);

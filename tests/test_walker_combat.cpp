@@ -61,7 +61,7 @@ static int count_family_in_oblist(char family)
     int count = 0;
     for (auto& uptr : myscreen->level_data.oblist) {
         walker* w = uptr.get();
-        if (w && w->query_family() == family)
+        if (w && w->family == family)
             count++;
     }
     return count;
@@ -486,7 +486,7 @@ void test_walker_transform_to()
     TEST_ASSERT(w != nullptr, "walker created");
 
     w->transform_to(Order::Living, FAMILY_ARCHER);
-    TEST_ASSERT_EQ((int)FAMILY_ARCHER, (int)w->query_family(), "should be archer after transform");
+    TEST_ASSERT_EQ((int)FAMILY_ARCHER, (int)w->family, "should be archer after transform");
 
 }
 REGISTER_TEST(test_walker_transform_to);
@@ -498,8 +498,8 @@ void test_walker_transform_to_same_order()
 
     w->set_act_type(ACT_CONTROL);
     w->transform_to(Order::Living, FAMILY_MAGE);
-    TEST_ASSERT_EQ((int)FAMILY_MAGE, (int)w->query_family(), "should be mage");
-    TEST_ASSERT_EQ(ACT_CONTROL, (int)w->query_act_type(), "should preserve act type for same order");
+    TEST_ASSERT_EQ((int)FAMILY_MAGE, (int)w->family, "should be mage");
+    TEST_ASSERT_EQ(ACT_CONTROL, (int)w->act_type, "should preserve act type for same order");
 
 }
 REGISTER_TEST(test_walker_transform_to_same_order);
@@ -632,18 +632,18 @@ void test_walker_set_order_family_all()
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
         w->set_order_family(Order::Living, families[i]);
-        TEST_ASSERT_EQ((int)families[i], (int)w->query_family(), "family should match");
+        TEST_ASSERT_EQ((int)families[i], (int)w->family, "family should match");
     }
 
     // Exercise non-living order assignments too.
     TEST_ASSERT(w->set_order_family(Order::Weapon, FAMILY_KNIFE), "set_order_family weapon should return true");
-    TEST_ASSERT_EQ((int)FAMILY_KNIFE, (int)w->query_family(), "family should change to knife");
+    TEST_ASSERT_EQ((int)FAMILY_KNIFE, (int)w->family, "family should change to knife");
     TEST_ASSERT(w->set_order_family(Order::Treasure, FAMILY_STAIN), "set_order_family treasure should return true");
-    TEST_ASSERT_EQ((int)FAMILY_STAIN, (int)w->query_family(), "family should change to stain");
+    TEST_ASSERT_EQ((int)FAMILY_STAIN, (int)w->family, "family should change to stain");
     TEST_ASSERT(w->set_order_family(Order::FX, FAMILY_EXPLOSION), "set_order_family fx should return true");
-    TEST_ASSERT_EQ((int)FAMILY_EXPLOSION, (int)w->query_family(), "family should change to explosion");
+    TEST_ASSERT_EQ((int)FAMILY_EXPLOSION, (int)w->family, "family should change to explosion");
     TEST_ASSERT(w->set_order_family(Order::Generator, FAMILY_TENT), "set_order_family generator should return true");
-    TEST_ASSERT_EQ((int)FAMILY_TENT, (int)w->query_family(), "family should change to tent");
+    TEST_ASSERT_EQ((int)FAMILY_TENT, (int)w->family, "family should change to tent");
 
 }
 REGISTER_TEST(test_walker_set_order_family_all);
@@ -803,7 +803,7 @@ void test_walker_act_random_generator_paths()
     (void)genp->act();
     set_global_context(nullptr);
 
-    TEST_ASSERT_EQ(ACT_RANDOM, (int)genp->query_act_type(), "generator should remain in ACT_RANDOM");
+    TEST_ASSERT_EQ(ACT_RANDOM, (int)genp->act_type, "generator should remain in ACT_RANDOM");
 
     delete foe;
 }

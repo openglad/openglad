@@ -246,7 +246,7 @@ OG_UNIT_TEST(test_living_r14_lines_65_73_89_95_138_175_owner_lifetime_and_counte
     self->invulnerable_left = 2;
     self->invisibility_left = 2;
     self->flight_left = 2;
-    self->set_charm_left(2);
+    self->charm_left = (2);
     self->real_team_num = 1;
     self->set_act_type(ACT_CONTROL);
     OG_ASSERT(self->act());
@@ -317,7 +317,7 @@ OG_UNIT_TEST(test_living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_3
     self->ani_type = ANI_WALK;
     self->busy = 0;
     self->stats()->frozen_delay = 0;
-    self->set_charm_left(0);
+    self->charm_left = (0);
     self->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     self->set_act_type(ACT_DIE);
     (void)self->act();

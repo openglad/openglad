@@ -317,10 +317,10 @@ OG_UNIT_TEST(test_walker_r11_act_animate_and_misc_paths)
     (void)w->animate();
 
     // query/restore helpers
-    w->set_old_act_type(ACT_GUARD);
-    OG_ASSERT(w->query_old_act_type() == ACT_GUARD);
+    w->old_act_type = ACT_GUARD;
+    OG_ASSERT(w->old_act_type == ACT_GUARD);
     w->set_act_type(ACT_CONTROL);
-    OG_ASSERT(w->query_act_type() == ACT_CONTROL);
+    OG_ASSERT(w->act_type == ACT_CONTROL);
     (void)w->restore_act_type();
 
     // collide, spaces, center, set_difficulty, friendliness and owner-chain paths

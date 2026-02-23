@@ -728,7 +728,7 @@ walker  * screen::first_of(Order whatorder, unsigned char whatfamily,
 		if (ob && !ob->dead)
 		{
 			if (ob->query_order() == whatorder &&
-			        ob->query_family()== whatfamily)
+			        ob->family== whatfamily)
 			{
 				if (team_num == -1 || team_num == ob->team_num)
 					return ob;

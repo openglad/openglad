@@ -76,7 +76,7 @@ statistics::statistics(walker  * someguy)
     if(controller != nullptr)
     {
         old_order = controller->query_order();
-        old_family= controller->query_family();
+        old_family= controller->family;
     }
     else
     {
@@ -447,14 +447,14 @@ void statistics::hit_response(walker  *who)
 	if (who->dead || controller->dead)
 		return;
 
-	if (controller->query_act_type() == ACT_CONTROL)
+	if (controller->act_type == ACT_CONTROL)
 		return;
 
 	if (controller->query_order() != Order::Living)
 		return;
 
 	// Set quick-reference values ..
-	myfamily = controller->query_family();
+	myfamily = controller->family;
 	if (who->query_order() == Order::Weapon && who->owner)
 		foe = who->owner;
 	else
@@ -507,7 +507,7 @@ void statistics::yell_for_help(walker *foe)
 		if (foe != w->foe)
 			w->stats()->last_distance = w->stats()->current_distance = 32000;
 		w->foe = foe;
-		//if (w->query_act_type() != ACT_CONTROL)
+		//if (w->act_type != ACT_CONTROL)
 		//  w->stats()->force_command(COMMAND_FOLLOW, 80, 0, 0);
 	}
 	

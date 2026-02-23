@@ -318,7 +318,7 @@ void test_walker_act_guard_else_and_act_random_turn_walk_paths()
 
     actor->set_act_type(ACT_RANDOM);
     (void)actor->act();
-    TEST_ASSERT(actor->query_act_type() != ACT_FIRE, "act_random blocked fire path should not set ACT_FIRE");
+    TEST_ASSERT(actor->act_type != ACT_FIRE, "act_random blocked fire path should not set ACT_FIRE");
 
     myscreen->level_data.delete_objects();
 }
@@ -555,9 +555,9 @@ void test_walker_round6_init_fire_animate_and_misc_guards()
         return;
 
     // next_frame path (smoke coverage without touching protected state).
-    const short before = w->query_frame();
+    const short before = w->frame;
     (void)w->next_frame();
-    const short after = w->query_frame();
+    const short after = w->frame;
     (void)before;
     (void)after;
     TEST_ASSERT(true, "next_frame should be callable");
@@ -914,7 +914,7 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
     SequenceRandom rng_turn_walk({5});
     actor->sim_rng = &rng_turn_walk;
     TEST_ASSERT(actor->act(), "base ACT_RANDOM should still act when ranged attack is blocked");
-    TEST_ASSERT(actor->query_act_type() != ACT_FIRE,
+    TEST_ASSERT(actor->act_type != ACT_FIRE,
                 "blocked-ranged act_random path should not transition to ACT_FIRE");
 
     // Base walker::death() generator explosion and death_called guard.

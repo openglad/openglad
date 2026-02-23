@@ -167,7 +167,7 @@ static bool archmage_do_special(walker* self)
                     walker* ob = uptr.get();
                     if (ob &&
                             ob->query_order() == Order::FX &&
-                            ob->query_family() == FAMILY_MARKER &&
+                            ob->family == FAMILY_MARKER &&
                             ob->owner == self &&
                             !ob->dead)
                     {
@@ -432,7 +432,7 @@ static bool archmage_do_special(walker* self)
                     if (generic2 < 10) break;
                     if ((ob->real_team_num == 255) &&
                         (ob->query_order() == Order::Living) &&
-                        (ob->charm_left() <= 10))
+                        (ob->charm_left <= 10))
                     {
                         generic2 -= 10;
                         generic = self->stats()->level - ob->stats()->level;
@@ -440,14 +440,14 @@ static bool archmage_do_special(walker* self)
                         {
                             ob->real_team_num = ob->team_num;
                             ob->team_num = static_cast<unsigned char>(self->sim_rng->next(8));
-                            ob->set_charm_left(static_cast<short>(compute_charm_duration(generic, *self->sim_rng)));
+                            ob->charm_left = (static_cast<short>(compute_charm_duration(generic, *self->sim_rng)));
                         }
                         else
                         {
                             ob->real_team_num = ob->team_num;
                             ob->team_num = self->team_num;
                             ob->foe = nullptr;
-                            ob->set_charm_left(static_cast<short>(compute_charm_duration(generic, *self->sim_rng)));
+                            ob->charm_left = (static_cast<short>(compute_charm_duration(generic, *self->sim_rng)));
                         }
                         didheal++;
                         controlled_targets++;

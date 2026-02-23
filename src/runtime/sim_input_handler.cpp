@@ -227,7 +227,7 @@ SimInputResult sim_process_player_input(
         control->current_special = control->current_special + 1;
 
         const int special_index = static_cast<int>(control->current_special);
-        const int family_index = static_cast<int>(static_cast<unsigned char>(control->query_family()));
+        const int family_index = static_cast<int>(static_cast<unsigned char>(control->family));
         bool special_missing = true;
         if (special_names != nullptr &&
             family_index >= 0 && family_index < NUM_FAMILIES &&
@@ -255,7 +255,7 @@ SimInputResult sim_process_player_input(
         {
             walker* w = uptr.get();
             if (w && (w->query_order() == Order::Living) &&
-                (w->query_act_type() != ACT_CONTROL) &&
+                (w->act_type != ACT_CONTROL) &&
                 (w->team_num == control->team_num) &&
                 (!w->leader))
             {
@@ -295,7 +295,7 @@ SimInputResult sim_process_player_input(
                 {
                     walker* w = uptr.get();
                     if (w && (w->query_order() == Order::Living) &&
-                        (w->query_act_type() != ACT_CONTROL) &&
+                        (w->act_type != ACT_CONTROL) &&
                         (w->team_num == control->team_num))
                     {
                         w->action = 0;

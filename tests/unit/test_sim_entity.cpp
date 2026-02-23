@@ -135,10 +135,10 @@ OG_UNIT_TEST(test_walker_headless_stats)
 OG_UNIT_TEST(test_walker_headless_frame_tracking)
 {
     walker w;
-    OG_ASSERT(w.query_frame() == 0);
+    OG_ASSERT(w.frame == 0);
 
     // set_frame validates against frames count; headless walker has 0 frames
     short result = w.set_frame(2);
     OG_ASSERT(result == 0);           // Should fail — no frames allocated
-    OG_ASSERT(w.query_frame() == 0);  // Frame unchanged
+    OG_ASSERT(w.frame == 0);  // Frame unchanged
 }

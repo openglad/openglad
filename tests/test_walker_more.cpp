@@ -43,15 +43,15 @@ void test_walker_misc_methods_smoke()
     TEST_ASSERT(w->distance_to_ob(w.get()) == 0, "distance to self should be 0");
     (void)w->distance_to_ob_center(w.get());
     (void)w->get_current_angle();
-    (void)w->query_old_act_type();
+    (void)w->old_act_type;
     (void)w->spaces_clear();
     (void)w->query_team_color();
 
     // Order/family reassignment and simple state transitions.
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
     w->set_act_type(0);
-    (void)w->query_act_type();
-    w->set_old_act_type(1);
+    (void)w->act_type;
+    w->old_act_type = 1;
     (void)w->restore_act_type();
     (void)w->fire_check(1, 0);
     w->center_on(nearby.get());
@@ -119,7 +119,7 @@ void test_walker_specials_and_render_paths_smoke()
     w->set_difficulty(1);
     w->set_direct_frame(0);
     (void)w->query_team_color();
-    (void)w->query_old_act_type();
+    (void)w->old_act_type;
 
 }
 REGISTER_TEST(test_walker_specials_and_render_paths_smoke);

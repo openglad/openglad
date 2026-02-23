@@ -292,7 +292,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                         w->eat_me(ob);
                     }
                     else if ( (targetorder == Order::Weapon)
-                              && (w->query_family() == FAMILY_DOOR) )
+                              && (w->family == FAMILY_DOOR) )
                     {
                         // Can we unlock this door?
                         if (ob->keys & static_cast<std::int32_t>(pow(static_cast<double>(2), w->stats()->level)))

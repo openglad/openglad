@@ -106,7 +106,7 @@ static bool druid_do_special(walker* self)
                                 walker* ob = uptr.get();
                                 if (ob && ob->owner == newob
                                         && ob->query_order() == Order::Weapon
-                                        && ob->query_family() == FAMILY_CIRCLE_PROTECTION)
+                                        && ob->family == FAMILY_CIRCLE_PROTECTION)
                                 {
                                     tempwalk = ob;
                                     break;

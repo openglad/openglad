@@ -120,7 +120,7 @@ static bool mage_do_special(walker* self)
                     walker* ob = uptr.get();
                     if (ob &&
                             ob->query_order() == Order::FX &&
-                            ob->query_family() == FAMILY_MARKER &&
+                            ob->family == FAMILY_MARKER &&
                             ob->owner == self &&
                             !ob->dead)
                     {

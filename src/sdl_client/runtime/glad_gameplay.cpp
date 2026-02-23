@@ -49,7 +49,7 @@ void glad_init()
     if (g_test_remove_exits) {
         for (auto& uptr : current_screen->level_data.fxlist) {
             walker* w = uptr.get();
-            if (w && w->query_order() == Order::Treasure && w->query_family() == FAMILY_EXIT)
+            if (w && w->query_order() == Order::Treasure && w->family == FAMILY_EXIT)
                 w->dead = 1;
         }
     }

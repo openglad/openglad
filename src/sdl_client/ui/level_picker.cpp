@@ -100,7 +100,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
 	        switch(ob->query_order())
 	        {
 	            case Order::Treasure:
-	                if(ob->query_family() == FAMILY_EXIT)
+	                if(ob->family == FAMILY_EXIT)
 	                {
 	                    exits.push_back(ob->stats()->level);
 	                }

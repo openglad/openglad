@@ -163,7 +163,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
         if (ob && !ob->dead)
         {
             if (ob->query_order() == Order::Treasure &&
-                ob->query_family() == FAMILY_EXIT &&
+                ob->family == FAMILY_EXIT &&
                 result.level_done != 0)
             {
                 result.level_done = 1;

@@ -58,7 +58,7 @@ bool walker::special()
 		return 0;
 
 	// Dispatch via family descriptor callback
-	auto* fd = get_family_descriptor(query_family());
+	auto* fd = get_family_descriptor(family);
 	bool did_special = false;
 	if (fd && fd->do_special)
 	{
@@ -81,7 +81,7 @@ bool walker::teleport()
 	    walker* ob = uptr.get();
 		if (ob &&
 		        ob->query_order() == Order::FX &&
-		        ob->query_family() == FAMILY_MARKER &&
+		        ob->family == FAMILY_MARKER &&
 		        ob->owner == this &&
 		        !ob->dead
 		   )
@@ -168,7 +168,7 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
 
     for(auto* w : deadlist)
 	{
-		const auto* target_fd = w ? get_family_descriptor(w->query_family()) : nullptr;
+		const auto* target_fd = w ? get_family_descriptor(w->family) : nullptr;
 		if (w && target_fd && target_fd->is_undead)
 		{
 			if (sim_rng->next(range*40) > sim_rng->next(w->stats()->level*10) )

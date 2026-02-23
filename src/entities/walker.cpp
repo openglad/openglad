@@ -265,7 +265,7 @@ bool walker::init_fire(short xdir, short ydir)
 	{
 		//if (family==FAMILY_TOWER1)
 		//  enddir = curdir;
-		if (query_act_type() == ACT_CONTROL)
+		if (act_type == ACT_CONTROL)
 			return 0;
 		else
 			return turn(enddir);
@@ -427,7 +427,7 @@ walker  * walker::fire()
 
 		// *** Ranged combat ***
 		{
-			const auto* wfd = get_weapon_family_descriptor(weapon->query_family());
+			const auto* wfd = get_weapon_family_descriptor(weapon->family);
 			og::sim::emit_sound(sim_events, static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
 		}
 		if (order == Order::Generator)
@@ -728,21 +728,6 @@ short walker::restore_act_type()
 	return old_act_type;
 }
 
-short walker::query_act_type() const
-{
-	return act_type;
-}
-
-short walker::set_old_act_type(short num)
-{
-	old_act_type = static_cast<char>(num);
-	return num;
-}
-
-short walker::query_old_act_type() const
-{
-	return old_act_type;
-}
 
 bool walker::collide(walker  *ob)
 {
@@ -1230,7 +1215,7 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	short xcenter, ycenter;
 	short tempxpos, tempypos;
 	short reset = 0;
-	short tempact = query_act_type();;
+	short tempact = act_type;;
 
 	// First remove us from the collision table..
 	if (myobmap != nullptr)
@@ -1239,7 +1224,7 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	if (order == whatorder) // same object type
 	{
 		reset = 1;
-		tempact = query_act_type();
+		tempact = act_type;
 	}
 
 	// Reset bit flags

@@ -31,10 +31,10 @@ class pixieN : public pixie
 		pixieN& operator=(pixieN&&) = delete;
 		void set_data(const PixieData& data);
 		short set_frame(short framenum);
-		short query_frame();
 		short next_frame();
-	protected:
+
 		short frames; // total frames
 		short frame; // current frame
+	protected:
 		unsigned char * facings;
 };

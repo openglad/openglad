@@ -26,7 +26,7 @@ void clear_keyboard();
 static bool exit_on_eat(treasure* self, walker* eater)
 {
     if (eater->in_act) return true;
-    if (eater->query_act_type() != ACT_CONTROL || (eater->skip_exit > 1))
+    if (eater->act_type != ACT_CONTROL || (eater->skip_exit > 1))
         return true;
     eater->skip_exit = 10;
     // See if there are any enemies left ...

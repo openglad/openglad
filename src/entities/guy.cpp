@@ -343,7 +343,7 @@ void guy::update_derived_stats(walker* w)
 
     // Per-family walker creation hooks (e.g. soldier weapons_left)
     {
-        const auto* fd = get_family_descriptor(w->query_family());
+        const auto* fd = get_family_descriptor(w->family);
         if (fd && fd->on_create)
             fd->on_create(w);
     }

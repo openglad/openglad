@@ -142,7 +142,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			if (w)
 			{
 			    // Kill everything except for our team, exits, and teleporters
-				myfam = w->query_family();
+				myfam = w->family;
 				myord = w->query_order();
 				if ( ( (w->team_num==0 || w->myguy) && myord==Order::Living) || //living team member
 				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
@@ -161,7 +161,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			    walker* w = uptr.get();
 			if (w)
 			{
-				myfam = w->query_family();
+				myfam = w->family;
 				myord = w->query_order();
 				if ( (w->team_num==0 && myord==Order::Living) || //living team member
 				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
@@ -181,7 +181,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			    walker* w = uptr.get();
 			if (w)
 			{
-				myfam = w->query_family();
+				myfam = w->family;
 				myord = w->query_order();
 				if ( (w->team_num==0 && myord==Order::Living) || //living team member
 				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
