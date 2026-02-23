@@ -40,6 +40,7 @@ class text
 		Sint32 write_xy_center(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...);
 		Sint32 write_xy_center_alpha(Sint32 x, Sint32 y, unsigned char color, Uint8 alpha, const char* formatted_string, ...);
 		Sint32 write_xy_center_shadow(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...);
+		Sint32 write_formatted(Sint32 x, Sint32 y, const char* str, unsigned char color, bool center, bool shadow, bool use_alpha, Uint8 alpha);
 		Sint32 write_xy(Sint32 x, Sint32 y, std::string_view string, short to_buffer);
 		Sint32 write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char color, short to_buffer);
 		Sint32 write_xy(Sint32 x, Sint32 y, std::string_view string, viewscreen *whereto);
