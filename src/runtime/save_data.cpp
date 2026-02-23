@@ -222,13 +222,13 @@ bool SaveData::load(const std::string& filename)
 	}
 
 	// Do other stuff based on version ..
-	if (temp_version != 1)
-	{
-		if (temp_version >= 2)
+		if (temp_version != 1)
 		{
-			READ_OR_FAIL(savedgame, 40, 1); // load save name from the fixed-width 40-byte save-name field
-			savedgame[40] = '\0';
-		}
+			if (temp_version >= 2)
+			{
+				READ_OR_FAIL(savedgame, 40, 1); // load save name from fixed-width (40-byte) field
+				savedgame[40] = '\0';
+			}
 		else
 		{
 			LogError("Save file version not supported: {}\n", filename);

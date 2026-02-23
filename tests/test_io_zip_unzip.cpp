@@ -199,6 +199,9 @@ void test_io_unzip_with_error_open_output_failed_path()
     TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenOutputFailed),
         static_cast<int>(unzip_into_with_error(zipfile.string(), out_as_file.string())),
         "unzip_into_with_error should report OpenOutputFailed when output path is blocked by a file");
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
 }
 REGISTER_TEST(test_io_unzip_with_error_open_output_failed_path);
 
@@ -305,3 +308,38 @@ void test_io_unzip_rejects_zip_slip_paths()
     TEST_ASSERT(!fs::exists(outside), "zip slip output path outside extraction root must not be created");
 }
 REGISTER_TEST(test_io_unzip_rejects_zip_slip_paths);
+
+void test_io_unzip_reports_output_write_failure()
+{
+#if defined(__linux__)
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / ("openglad_io_write_fail_" + std::to_string(::getpid()));
+    const fs::path indir = base / "in";
+    const fs::path zipfile = base / "bundle.zip";
+    const fs::path dev_full = "/dev/full";
+
+    if (!fs::exists(dev_full) || !fs::is_character_file(dev_full))
+        return;
+
+    FILE* full = std::fopen(dev_full.string().c_str(), "wb");
+    if (!full)
+        return;
+    const bool dev_full_writes_fail = (std::fwrite("x", 1, 1, full) == 0) || (std::fclose(full) != 0);
+    if (!dev_full_writes_fail)
+        return;
+
+    TEST_ASSERT(create_dir(indir.string()), "create_dir input should succeed");
+    TEST_ASSERT(write_file_bytes((indir / "full").string(), "payload"), "write file that maps to /dev/full");
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+        static_cast<int>(zip_contents_with_error(indir.string(), zipfile.string())),
+        "zip creation should succeed");
+
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenOutputFailed),
+        static_cast<int>(unzip_into_with_error(zipfile.string(), "/dev")),
+        "unzip_into_with_error should report output write/close failure");
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+#endif
+}
+REGISTER_TEST(test_io_unzip_reports_output_write_failure);
