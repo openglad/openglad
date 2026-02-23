@@ -12,11 +12,14 @@ extern screen* myscreen;
 extern std::unique_ptr<guy> current_guy;
 extern guy* old_guy;
 extern Sint32 editguy;
+extern short current_team_num;
 
 Sint32 name_guy(Sint32 arg);
 Sint32 edit_guy(Sint32 arg1);
 Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
+Sint32 change_teamnum(Sint32 arg);
+Sint32 change_hire_teamnum(Sint32 arg);
 
 namespace
 {
@@ -159,3 +162,35 @@ void test_picker_campaign_and_level_wrappers_cancel_fast()
     TEST_ASSERT_EQ(scen_before, (int)myscreen->save_data.scen_num, "cancel paths should preserve selected scenario");
 }
 REGISTER_TEST(test_picker_campaign_and_level_wrappers_cancel_fast);
+
+void test_picker_team_wraps_on_negative_step()
+{
+    PickerStateGuard guard;
+    ButtonSlotGuard button2_guard(2);
+    ButtonSlotGuard button18_guard(18);
+    const short saved_team_num = current_team_num;
+
+    allbuttons[2] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b2", KEYSTATE_UNKNOWN);
+    allbuttons[18] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b18", KEYSTATE_UNKNOWN);
+    current_guy = std::make_unique<guy>(FAMILY_SOLDIER);
+    current_guy->teamnum = static_cast<short>(0);
+    current_team_num = static_cast<short>(0);
+
+    TEST_ASSERT_EQ(4, (int)change_teamnum(-1), "change_teamnum should return OK");
+    TEST_ASSERT_EQ(3, (int)current_guy->teamnum, "change_teamnum should wrap 0 -> 3 for arg -1");
+    TEST_ASSERT_STR_EQ("Playing on Team 4", allbuttons[18]->label.c_str(), "team label should wrap to Team 4");
+
+    current_guy->teamnum = static_cast<short>(0);
+    current_team_num = static_cast<short>(0);
+    TEST_ASSERT_EQ(4, (int)change_hire_teamnum(-1), "change_hire_teamnum should return OK");
+    TEST_ASSERT_EQ(3, (int)current_team_num, "change_hire_teamnum should wrap 0 -> 3 for arg -1");
+    TEST_ASSERT_EQ(3, (int)current_guy->teamnum, "change_hire_teamnum should mirror to current_guy");
+    TEST_ASSERT_STR_EQ("Hiring for Team 4", allbuttons[2]->label.c_str(), "hire label should wrap to Team 4");
+
+    delete allbuttons[2];
+    delete allbuttons[18];
+    allbuttons[2] = nullptr;
+    allbuttons[18] = nullptr;
+    current_team_num = saved_team_num;
+}
+REGISTER_TEST(test_picker_team_wraps_on_negative_step);
