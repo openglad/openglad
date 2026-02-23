@@ -70,7 +70,7 @@ bool cfg_store::load_settings()
     apply_setting("sound", "sound", "on");
 
     apply_setting("graphics", "render", "normal");
-    apply_setting("graphics", "fullscreen", "off");
+    apply_setting("graphics", "fullscreen", "on");
     apply_setting("graphics", "overscan_percentage", "0");
 
     apply_setting("effects", "gore", "on");
