@@ -25,6 +25,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/data/smooth.h>
 #include <openglad/entities/obmap.h>
+#include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 
 #include <openglad/io/yaml_stream.h>
@@ -65,6 +66,14 @@ static bool rw_read_exact_or_log(og::io::OgFile& file, void* dst, size_t size, s
         return false;
     }
     return true;
+}
+
+static unsigned char sanitize_loaded_team_num(unsigned char team_num)
+{
+    if (team_num <= MAX_TEAM)
+        return team_num;
+    LogWarn("Scenario object uses invalid team id {}. Clamping to team 0.\n", static_cast<int>(team_num));
+    return 0;
 }
 
 static void fill_fixed_field(char* dst, size_t fixed_len, std::string_view src, const char* field_name)
@@ -763,7 +772,7 @@ short load_version_2(og::io::OgFile& infile, LevelData* data)
 		}
 		new_guy ->setxy(currentx, currenty);
 		//       Log("X: %d  Y: %d  \n", currentx, currenty);
-		new_guy ->team_num = tempteam;
+		new_guy->team_num = sanitize_loaded_team_num(tempteam);
 	}
 
 	// Now read the grid file to our master screen ..
@@ -865,7 +874,7 @@ short load_version_3(og::io::OgFile& infile, LevelData* data)
 			return 0;
 		}
 		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = tempteam;
+		new_guy->team_num = sanitize_loaded_team_num(tempteam);
 		new_guy->stats()->level = templevel;
 	}
 
@@ -1007,7 +1016,7 @@ short load_version_4(og::io::OgFile& infile, LevelData* data)
 			return 0;
 		}
 		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = tempteam;
+		new_guy->team_num = sanitize_loaded_team_num(tempteam);
 		new_guy->stats()->level = templevel;
 		new_guy->stats()->name = tempname;
 		if (new_guy->stats()->name.size() > 1)           //chad 5/25/95
@@ -1158,7 +1167,7 @@ short load_version_5(og::io::OgFile& infile, LevelData* data)
 			return 0;
 		}
 		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = tempteam;
+		new_guy->team_num = sanitize_loaded_team_num(tempteam);
 		new_guy->stats()->level = templevel;
 		new_guy->stats()->name = tempname;
 		if (new_guy->stats()->name.size() > 1)           //chad 5/25/95
@@ -1348,7 +1357,7 @@ short load_version_6(og::io::OgFile& infile, LevelData* data, short version)
         }
         
         new_guy->setxy(currentx, currenty);
-        new_guy->team_num = tempteam;
+        new_guy->team_num = sanitize_loaded_team_num(tempteam);
         if (version >= 7)
             new_guy->stats()->level = shortlevel;
         else

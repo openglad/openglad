@@ -67,6 +67,12 @@ static int count_family_in_oblist(char family)
     return count;
 }
 
+static Uint32 total_team_score()
+{
+    return myscreen->save_data.m_score[0] + myscreen->save_data.m_score[1] +
+           myscreen->save_data.m_score[2] + myscreen->save_data.m_score[3];
+}
+
 static void set_world_tile(short world_x, short world_y, unsigned char tile)
 {
     if (world_x < 0 || world_y < 0) {
@@ -1088,6 +1094,46 @@ void test_walker_combat_attack_rewards_single_credit_weapon_hit()
     myscreen->save_data.allied_mode = saved_allied_mode;
 }
 REGISTER_TEST(test_walker_combat_attack_rewards_single_credit_weapon_hit);
+
+void test_walker_combat_attack_ignores_out_of_range_team_score_index()
+{
+    const short saved_allied_mode = myscreen->save_data.allied_mode;
+    myscreen->save_data.allied_mode = 0;
+
+    walker* attacker = make_guy(FAMILY_SOLDIER, 0);
+    walker* target = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(attacker && target, "attacker/target created");
+    if (!(attacker && target))
+    {
+        myscreen->level_data.delete_objects();
+        myscreen->save_data.allied_mode = saved_allied_mode;
+        return;
+    }
+
+    SequenceRandomCombat fixed_rng({0});
+    attacker->sim_rng = &fixed_rng;
+    attacker->team_num = 250; // invalid score index from corrupted scenario data
+    attacker->damage = 12.0f;
+    target->team_num = 1;
+    target->stats()->armor = 0;
+    target->stats()->hitpoints = 40;
+    target->stats()->max_hitpoints = 40;
+    target->setxy(static_cast<short>(attacker->xpos + 10), static_cast<short>(attacker->ypos));
+
+    myscreen->save_data.m_score[0] = 10;
+    myscreen->save_data.m_score[1] = 20;
+    myscreen->save_data.m_score[2] = 30;
+    myscreen->save_data.m_score[3] = 40;
+    const Uint32 score_before = total_team_score();
+
+    TEST_ASSERT(attacker->attack(target), "attack should still succeed with invalid team id");
+    TEST_ASSERT_EQ(score_before, total_team_score(),
+                   "invalid team id should not write outside m_score bounds");
+
+    myscreen->level_data.delete_objects();
+    myscreen->save_data.allied_mode = saved_allied_mode;
+}
+REGISTER_TEST(test_walker_combat_attack_ignores_out_of_range_team_score_index);
 
 void test_walker_combat_attack_rewards_single_credit_melee_kill()
 {
