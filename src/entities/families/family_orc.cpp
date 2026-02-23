@@ -153,6 +153,8 @@ static short orc_promotion_level([[maybe_unused]] int old_level)
     return 1;
 }
 
+static const char* const orc_names[] = {"Grom", "Thrull", "Vernix", "Lanugo", "Grok", "Horde", "Grog", "Krosh"};
+
 const FamilyDescriptor& describe_family_orc()
 {
     static const FamilyDescriptor desc = {
@@ -192,6 +194,21 @@ const FamilyDescriptor& describe_family_orc()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "orc.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 20,
+        .description = "Orcs are a basic 'grunt'; \n"
+                       "strong and hard to hurt,  \n"
+                       "they don't do much more   \n"
+                       "than inflict pain. Orcs   \n"
+                       "can't attack at range.    \n"
+                       "\n"
+                       "Special: Howl",
+        .name_pool = orc_names,
+        .name_pool_size = sizeof(orc_names) / sizeof(orc_names[0]),
+        .is_playable = true,
+        .playable_order = 9,
     };
     return desc;
 }

@@ -8,9 +8,8 @@
 #include "test_framework.h"
 
 extern screen* myscreen;
-extern Sint32 costlist[NUM_FAMILIES];
-extern Sint32 statlist[NUM_FAMILIES][6];
-extern Sint32 statcosts[NUM_FAMILIES][6];
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 int MAX(int a, int b);
 
 // ---------------------------------------------------------------------------
@@ -21,7 +20,7 @@ void test_guy_upgrade_soldier()
 {
     guy g(FAMILY_SOLDIER);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.strength > statlist[FAMILY_SOLDIER][0], "soldier str should increase");
+    TEST_ASSERT(g.strength > get_family_descriptor(FAMILY_SOLDIER)->base_stats[0], "soldier str should increase");
     TEST_ASSERT(g.level == 5, "level should be 5");
     TEST_ASSERT(g.exp > 0, "exp should be set when set_xp=true");
 }
@@ -31,7 +30,7 @@ void test_guy_upgrade_elf()
 {
     guy g(FAMILY_ELF);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.dexterity > statlist[FAMILY_ELF][1], "elf dex should increase significantly");
+    TEST_ASSERT(g.dexterity > get_family_descriptor(FAMILY_ELF)->base_stats[1], "elf dex should increase significantly");
 }
 REGISTER_TEST(test_guy_upgrade_elf);
 
@@ -39,7 +38,7 @@ void test_guy_upgrade_archer()
 {
     guy g(FAMILY_ARCHER);
     g.upgrade_to_level(5, false);
-    TEST_ASSERT(g.dexterity > statlist[FAMILY_ARCHER][1], "archer dex should increase");
+    TEST_ASSERT(g.dexterity > get_family_descriptor(FAMILY_ARCHER)->base_stats[1], "archer dex should increase");
     TEST_ASSERT_EQ(0, (int)g.exp, "exp should be 0 when set_xp=false");
 }
 REGISTER_TEST(test_guy_upgrade_archer);
@@ -48,7 +47,7 @@ void test_guy_upgrade_mage()
 {
     guy g(FAMILY_MAGE);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.intelligence > statlist[FAMILY_MAGE][3], "mage int should increase most");
+    TEST_ASSERT(g.intelligence > get_family_descriptor(FAMILY_MAGE)->base_stats[3], "mage int should increase most");
 }
 REGISTER_TEST(test_guy_upgrade_mage);
 
@@ -56,7 +55,7 @@ void test_guy_upgrade_skeleton()
 {
     guy g(FAMILY_SKELETON);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.dexterity > statlist[FAMILY_SKELETON][1], "skeleton dex should increase");
+    TEST_ASSERT(g.dexterity > get_family_descriptor(FAMILY_SKELETON)->base_stats[1], "skeleton dex should increase");
 }
 REGISTER_TEST(test_guy_upgrade_skeleton);
 
@@ -72,7 +71,7 @@ void test_guy_upgrade_fireelemental()
 {
     guy g(FAMILY_FIREELEMENTAL);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.strength > statlist[FAMILY_FIREELEMENTAL][0], "fire elem str should increase");
+    TEST_ASSERT(g.strength > get_family_descriptor(FAMILY_FIREELEMENTAL)->base_stats[0], "fire elem str should increase");
 }
 REGISTER_TEST(test_guy_upgrade_fireelemental);
 
@@ -80,7 +79,7 @@ void test_guy_upgrade_faerie()
 {
     guy g(FAMILY_FAERIE);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.dexterity > statlist[FAMILY_FAERIE][1], "faerie dex should increase");
+    TEST_ASSERT(g.dexterity > get_family_descriptor(FAMILY_FAERIE)->base_stats[1], "faerie dex should increase");
 }
 REGISTER_TEST(test_guy_upgrade_faerie);
 
@@ -96,7 +95,7 @@ void test_guy_upgrade_thief()
 {
     guy g(FAMILY_THIEF);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.dexterity > statlist[FAMILY_THIEF][1], "thief dex should increase");
+    TEST_ASSERT(g.dexterity > get_family_descriptor(FAMILY_THIEF)->base_stats[1], "thief dex should increase");
 }
 REGISTER_TEST(test_guy_upgrade_thief);
 
@@ -112,7 +111,7 @@ void test_guy_upgrade_druid()
 {
     guy g(FAMILY_DRUID);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.intelligence > statlist[FAMILY_DRUID][3], "druid int should increase");
+    TEST_ASSERT(g.intelligence > get_family_descriptor(FAMILY_DRUID)->base_stats[3], "druid int should increase");
 }
 REGISTER_TEST(test_guy_upgrade_druid);
 
@@ -120,7 +119,7 @@ void test_guy_upgrade_orc()
 {
     guy g(FAMILY_ORC);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.strength > statlist[FAMILY_ORC][0], "orc str should increase");
+    TEST_ASSERT(g.strength > get_family_descriptor(FAMILY_ORC)->base_stats[0], "orc str should increase");
 }
 REGISTER_TEST(test_guy_upgrade_orc);
 
@@ -128,7 +127,7 @@ void test_guy_upgrade_barbarian()
 {
     guy g(FAMILY_BARBARIAN);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.strength > statlist[FAMILY_BARBARIAN][0], "barbarian str should increase");
+    TEST_ASSERT(g.strength > get_family_descriptor(FAMILY_BARBARIAN)->base_stats[0], "barbarian str should increase");
 }
 REGISTER_TEST(test_guy_upgrade_barbarian);
 
@@ -136,7 +135,7 @@ void test_guy_upgrade_archmage()
 {
     guy g(FAMILY_ARCHMAGE);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.intelligence > statlist[FAMILY_ARCHMAGE][3], "archmage int should increase");
+    TEST_ASSERT(g.intelligence > get_family_descriptor(FAMILY_ARCHMAGE)->base_stats[3], "archmage int should increase");
 }
 REGISTER_TEST(test_guy_upgrade_archmage);
 

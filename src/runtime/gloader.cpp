@@ -49,7 +49,7 @@ static inline cfg_store& active_config()
 void popup_dialog(const char* title, const char* message);
 
 #define SIZE_ORDERS 7 // see graph.h
-#define SIZE_FAMILIES 21  // see also NUM_FAMILIES in graph.h
+#define SIZE_FAMILIES 21  // see also NUM_FAMILIES in constants.h
 //#define PIX(a,b) (SIZE_FAMILIES*a+b)  //moved to graph.h
 
 static inline Order sanitize_order(Order order)
@@ -58,8 +58,6 @@ static inline Order sanitize_order(Order order)
         return Order::Living;
     return order;
 }
-
-extern float derived_bonuses[NUM_FAMILIES][8];
 
 // These are for monsters and us
 signed char bit1[] = {static_cast<char>(1),static_cast<char>(5),static_cast<char>(1),static_cast<char>(9),static_cast<signed char>(-1)};     // up
@@ -343,6 +341,22 @@ signed char  *anifood[] = { food1, food1, food1, food1,
                             food1, food1, food1, food1,
                             food1, food1, food1, food1 };
 
+// Animation table lookup from FamilyAnimationType enum
+static signed char** animation_for_type(int anim_type)
+{
+    switch (anim_type)
+    {
+        case FAMILY_ANIM_STANDARD:        return animan;
+        case FAMILY_ANIM_MAGE:            return animage;
+        case FAMILY_ANIM_SKELETON:        return aniskel;
+        case FAMILY_ANIM_GIANT_SKELETON:  return anigs;
+        case FAMILY_ANIM_SLIME:           return anislime;
+        case FAMILY_ANIM_SMALL_SLIME:     return ani_small_slime;
+        case FAMILY_ANIM_STATIC:          return anifood;
+        default:                          return animan;
+    }
+}
+
 PixieData data_copy(const PixieData& d)
 {
     PixieData result;
@@ -373,104 +387,21 @@ loader::loader()
 {
 	std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f);
 
-	// Livings
-	graphics[PIX(Order::Living, FAMILY_SOLDIER)] = read_pixie_file("footman.pix");
-	graphics[PIX(Order::Living, FAMILY_ELF)] = read_pixie_file("elf.pix");
-	graphics[PIX(Order::Living, FAMILY_ARCHER)] = read_pixie_file("archer.pix");
-	graphics[PIX(Order::Living, FAMILY_THIEF)] = read_pixie_file("thief.pix");
-	graphics[PIX(Order::Living, FAMILY_MAGE)] = read_pixie_file("mage.pix");
-	graphics[PIX(Order::Living, FAMILY_SKELETON)] = read_pixie_file("skeleton.pix");
-	graphics[PIX(Order::Living, FAMILY_CLERIC)] = read_pixie_file("cleric.pix");
-	graphics[PIX(Order::Living, FAMILY_FIREELEMENTAL)] = read_pixie_file("firelem.pix");
-	graphics[PIX(Order::Living, FAMILY_FAERIE)] = read_pixie_file("faerie.pix");
-	graphics[PIX(Order::Living, FAMILY_SLIME)] = read_pixie_file("amoeba3.pix");
-	graphics[PIX(Order::Living, FAMILY_SMALL_SLIME)] = read_pixie_file("s_slime.pix");
-	graphics[PIX(Order::Living, FAMILY_MEDIUM_SLIME)] = read_pixie_file("m_slime.pix");
-	graphics[PIX(Order::Living, FAMILY_GHOST)] = read_pixie_file("ghost.pix");
-	graphics[PIX(Order::Living, FAMILY_DRUID)] = read_pixie_file("druid.pix");
-	graphics[PIX(Order::Living, FAMILY_ORC)] = read_pixie_file("orc.pix");
-	graphics[PIX(Order::Living, FAMILY_BIG_ORC)] = read_pixie_file("orc2.pix");
-	graphics[PIX(Order::Living, FAMILY_BARBARIAN)] = read_pixie_file("barby.pix");
-	graphics[PIX(Order::Living, FAMILY_ARCHMAGE)] = read_pixie_file("archmage.pix");
-	graphics[PIX(Order::Living, FAMILY_GOLEM)] = read_pixie_file("golem1.pix");
-	graphics[PIX(Order::Living, FAMILY_GIANT_SKELETON)] = read_pixie_file("gs1.pix");
-	graphics[PIX(Order::Living, FAMILY_TOWER1)] = read_pixie_file("towersm1.pix");
-
-    for(int i = 0; i < NUM_FAMILIES; i++)
-    {
-        hitpoints[PIX(Order::Living, i)] = derived_bonuses[i][0];
-        damage[PIX(Order::Living, i)] = derived_bonuses[i][2];
-        stepsizes[PIX(Order::Living, i)] = derived_bonuses[i][6];
-        fire_frequency[PIX(Order::Living, i)] = derived_bonuses[i][7];
-    }
-
-
-	act_types[PIX(Order::Living, FAMILY_SOLDIER)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_ELF)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_ARCHER)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_THIEF)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_MAGE)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_SKELETON)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_CLERIC)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_FIREELEMENTAL)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_FAERIE)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_SLIME)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_SMALL_SLIME)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_MEDIUM_SLIME)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_GHOST)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_DRUID)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_ORC)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_BIG_ORC)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_BARBARIAN)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_ARCHMAGE)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_GOLEM)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_GIANT_SKELETON)] = ACT_RANDOM;
-	act_types[PIX(Order::Living, FAMILY_TOWER1)] = ACT_RANDOM;
-
-	animations[PIX(Order::Living, FAMILY_SOLDIER)] = animan;
-	animations[PIX(Order::Living, FAMILY_ELF)] = animan;
-	animations[PIX(Order::Living, FAMILY_ARCHER)] = animan;
-	animations[PIX(Order::Living, FAMILY_THIEF)] = animan;
-	animations[PIX(Order::Living, FAMILY_MAGE)] = animage;
-	animations[PIX(Order::Living, FAMILY_SKELETON)] = aniskel;
-	animations[PIX(Order::Living, FAMILY_CLERIC)] = animan;
-	animations[PIX(Order::Living, FAMILY_FIREELEMENTAL)] = animan;
-	animations[PIX(Order::Living, FAMILY_FAERIE)] = animan;
-	animations[PIX(Order::Living, FAMILY_SLIME)] = anislime;
-	animations[PIX(Order::Living, FAMILY_SMALL_SLIME)] = ani_small_slime;
-	animations[PIX(Order::Living, FAMILY_MEDIUM_SLIME)] = ani_small_slime;
-	animations[PIX(Order::Living, FAMILY_GHOST)] = animan;
-	animations[PIX(Order::Living, FAMILY_DRUID)] = animan;
-	animations[PIX(Order::Living, FAMILY_ORC)] = animan;
-	animations[PIX(Order::Living, FAMILY_BIG_ORC)] = animan;
-	animations[PIX(Order::Living, FAMILY_BARBARIAN)] = animan;
-	animations[PIX(Order::Living, FAMILY_ARCHMAGE)] = animage;
-	animations[PIX(Order::Living, FAMILY_GOLEM)] = animan;
-	animations[PIX(Order::Living, FAMILY_GIANT_SKELETON)] = anigs;
-	animations[PIX(Order::Living, FAMILY_TOWER1)] = anifood;
-
-    // AI's understanding of how much range its ranged attack has so it will try to shoot.
-	lineofsight[PIX(Order::Living, FAMILY_SOLDIER)] = 7;
-	lineofsight[PIX(Order::Living, FAMILY_ELF)] = 8;
-	lineofsight[PIX(Order::Living, FAMILY_ARCHER)] = 12;
-	lineofsight[PIX(Order::Living, FAMILY_THIEF)] = 10;
-	lineofsight[PIX(Order::Living, FAMILY_MAGE)] = 7;
-	lineofsight[PIX(Order::Living, FAMILY_SKELETON)] = 7;
-	lineofsight[PIX(Order::Living, FAMILY_CLERIC)] = 4;
-	lineofsight[PIX(Order::Living, FAMILY_FIREELEMENTAL)] = 10;
-	lineofsight[PIX(Order::Living, FAMILY_FAERIE)] = 8;
-	lineofsight[PIX(Order::Living, FAMILY_SLIME)] = 4;
-	lineofsight[PIX(Order::Living, FAMILY_SMALL_SLIME)] = 2;
-	lineofsight[PIX(Order::Living, FAMILY_MEDIUM_SLIME)] = 3;
-	lineofsight[PIX(Order::Living, FAMILY_GHOST)] = 12;
-	lineofsight[PIX(Order::Living, FAMILY_DRUID)] = 10;
-	lineofsight[PIX(Order::Living, FAMILY_ORC)] = 20;
-	lineofsight[PIX(Order::Living, FAMILY_BIG_ORC)] = 25;
-	lineofsight[PIX(Order::Living, FAMILY_BARBARIAN)] = 12;
-	lineofsight[PIX(Order::Living, FAMILY_ARCHMAGE)] = 10;
-	lineofsight[PIX(Order::Living, FAMILY_GOLEM)] = 20;
-	lineofsight[PIX(Order::Living, FAMILY_GIANT_SKELETON)] = 20;
-	lineofsight[PIX(Order::Living, FAMILY_TOWER1)] = 10;
+	// Livings — all data driven from family descriptors
+	for (int i = 0; i < NUM_FAMILIES; i++)
+	{
+		const auto* fd = get_family_descriptor(i);
+		if (!fd || !fd->pix_filename)
+			continue;
+		graphics[PIX(Order::Living, i)] = read_pixie_file(fd->pix_filename);
+		act_types[PIX(Order::Living, i)] = ACT_RANDOM;
+		animations[PIX(Order::Living, i)] = animation_for_type(fd->animation_type);
+		lineofsight[PIX(Order::Living, i)] = fd->ai_line_of_sight;
+		hitpoints[PIX(Order::Living, i)] = fd->derived_bonuses[0];
+		damage[PIX(Order::Living, i)] = fd->derived_bonuses[2];
+		stepsizes[PIX(Order::Living, i)] = fd->derived_bonuses[6];
+		fire_frequency[PIX(Order::Living, i)] = fd->derived_bonuses[7];
+	}
 
 	// Weapons
 	graphics[PIX(Order::Weapon, FAMILY_KNIFE)] = read_pixie_file("knife.pix");

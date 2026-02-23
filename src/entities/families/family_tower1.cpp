@@ -50,6 +50,15 @@ const FamilyDescriptor& describe_family_tower1()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "towersm1.pix",
+        .animation_type = FAMILY_ANIM_STATIC,
+        .ai_line_of_sight = 10,
+        .description = nullptr,
+        .name_pool = nullptr,
+        .name_pool_size = 0,
+        .is_playable = false,
+        .playable_order = 999,
     };
     return desc;
 }

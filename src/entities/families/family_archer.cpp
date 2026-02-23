@@ -133,6 +133,8 @@ static void archer_level_up(guy* self, std::int32_t level_diff)
     self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
+static const char* const archer_names[] = {"Robin", "Green Arrow", "Legolas", "Yeoman", "Strider", "Longshot", "Bowyer", "Hunter", "Archy"};
+
 const FamilyDescriptor& describe_family_archer()
 {
     static const FamilyDescriptor desc = {
@@ -172,6 +174,22 @@ const FamilyDescriptor& describe_family_archer()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "archer.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 12,
+        .description = "Archers are fleet of foot,\n"
+                       "and their arrows have a   \n"
+                       "long range. Although      \n"
+                       "they're not as strong as  \n"
+                       "other fighters, they can  \n"
+                       "be a good squad backbone. \n"
+                       "\n"
+                       "Special: Fire Arrows",
+        .name_pool = archer_names,
+        .name_pool_size = sizeof(archer_names) / sizeof(archer_names[0]),
+        .is_playable = true,
+        .playable_order = 3,
     };
     return desc;
 }

@@ -41,6 +41,8 @@ static bool ghost_do_special(walker* self)
     return true;
 }
 
+static const char* const ghost_names[] = {"Casper", "Slimer", "Reaper", "Ecto", "Pepper", "Boo", "Banshee", "Nyx"};
+
 const FamilyDescriptor& describe_family_ghost()
 {
     static const FamilyDescriptor desc = {
@@ -80,6 +82,22 @@ const FamilyDescriptor& describe_family_ghost()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "ghost.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 12,
+        .description = "Ghosts can pass through   \n"
+                       "walls, trees, and anything\n"
+                       "else that gets in the way.\n"
+                       "Their chilling touch can  \n"
+                       "bring death quickly at    \n"
+                       "close range.              \n"
+                       "\n"
+                       "Special: Scare",
+        .name_pool = ghost_names,
+        .name_pool_size = sizeof(ghost_names) / sizeof(ghost_names[0]),
+        .is_playable = true,
+        .playable_order = 14,
     };
     return desc;
 }

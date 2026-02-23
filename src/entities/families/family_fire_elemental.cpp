@@ -102,6 +102,8 @@ static bool fire_elemental_do_special(walker* self)
     return true;
 }
 
+static const char* const elemental_names[] = {"Furnace", "Molten", "Burns", "Fire Eli", "Fireball", "Sunny", "Lava", "Heatwave", "Torch", "Scorch"};
+
 const FamilyDescriptor& describe_family_fire_elemental()
 {
     static const FamilyDescriptor desc = {
@@ -141,6 +143,21 @@ const FamilyDescriptor& describe_family_fire_elemental()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "firelem.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 10,
+        .description = "Strong and quick, fire    \n"
+                       "elementals can expel      \n"
+                       "flaming meteors in all    \n"
+                       "directions to decimate    \n"
+                       "enemies.                  \n"
+                       "\n"
+                       "Special: Starburst",
+        .name_pool = elemental_names,
+        .name_pool_size = sizeof(elemental_names) / sizeof(elemental_names[0]),
+        .is_playable = true,
+        .playable_order = 11,
     };
     return desc;
 }

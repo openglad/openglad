@@ -78,6 +78,8 @@ static bool barbarian_do_special(walker* self)
     return true;
 }
 
+static const char* const barbarian_names[] = {"Thor", "Conan", "Beowulf", "Cronus", "Pallas", "Atlas", "Prometheus", "Titan"};
+
 const FamilyDescriptor& describe_family_barbarian()
 {
     static const FamilyDescriptor desc = {
@@ -117,6 +119,22 @@ const FamilyDescriptor& describe_family_barbarian()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "barby.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 12,
+        .description = "Barbarians are powerful   \n"
+                       "and resist some magic     \n"
+                       "damage, but have more will\n"
+                       "than skill. They are tough,\n"
+                       "tending to bash their way \n"
+                       "through trouble with heavy\n"
+                       "iron hammers.             \n"
+                       "Special: Hurl Boulder",
+        .name_pool = barbarian_names,
+        .name_pool_size = sizeof(barbarian_names) / sizeof(barbarian_names[0]),
+        .is_playable = true,
+        .playable_order = 1,
     };
     return desc;
 }

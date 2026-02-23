@@ -101,6 +101,8 @@ static void elf_level_up(guy* self, std::int32_t level_diff)
     self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
+static const char* const elf_names[] = {"Legolas", "Took", "Elrond", "Tanis", "Acorn", "Lightfoot", "Treewee"};
+
 const FamilyDescriptor& describe_family_elf()
 {
     static const FamilyDescriptor desc = {
@@ -140,6 +142,21 @@ const FamilyDescriptor& describe_family_elf()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "elf.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 8,
+        .description = "Elves are small and weak, \n"
+                       "but are harder to hit than\n"
+                       "most classes. Alone of all\n"
+                       "the classes, elves possess\n"
+                       "the 'ForestWalk' ability. \n"
+                       "\n"
+                       "Special: Rocks",
+        .name_pool = elf_names,
+        .name_pool_size = sizeof(elf_names) / sizeof(elf_names[0]),
+        .is_playable = true,
+        .playable_order = 2,
     };
     return desc;
 }

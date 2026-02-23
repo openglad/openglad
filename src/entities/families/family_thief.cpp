@@ -222,6 +222,8 @@ static bool thief_do_special(walker* self)
     return true;
 }
 
+static const char* const thief_names[] = {"Shinobi", "Dismas", "Shadow", "Stabby", "Swiftstrike", "Scourge", "Rogue"};
+
 const FamilyDescriptor& describe_family_thief()
 {
     static const FamilyDescriptor desc = {
@@ -261,6 +263,22 @@ const FamilyDescriptor& describe_family_thief()
         .on_create = nullptr,
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
+        .on_melee_hit = nullptr,
+        .pix_filename = "thief.pix",
+        .animation_type = FAMILY_ANIM_STANDARD,
+        .ai_line_of_sight = 10,
+        .description = "Thieves are fast, though  \n"
+                       "not so potent as the      \n"
+                       "soldier. Thieves can throw\n"
+                       "small blades rapidly and  \n"
+                       "damage whole groups of    \n"
+                       "enemies with their bombs. \n"
+                       "\n"
+                       "Special: Drop Bomb",
+        .name_pool = thief_names,
+        .name_pool_size = sizeof(thief_names) / sizeof(thief_names[0]),
+        .is_playable = true,
+        .playable_order = 7,
     };
     return desc;
 }

@@ -35,9 +35,8 @@ extern std::unique_ptr<guy> current_guy;
 extern short current_team_num;
 extern Sint32 current_difficulty;
 
-extern Sint32 costlist[NUM_FAMILIES];
-extern Sint32 statlist[NUM_FAMILIES][6];
-extern Sint32 statcosts[NUM_FAMILIES][6];
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 
 // Button stat constants from picker.cpp
 #define BUT_STR 0
@@ -104,7 +103,7 @@ void test_family_name_copy_all_families()
         TEST_ASSERT(strlen(name) > 0, "family name should not be empty");
     }
 
-    TEST_ASSERT(std::string(family_name_copy(FAMILY_BIG_ORC)) == "ORC CAP.", "big orc short label");
+    TEST_ASSERT(std::string(family_name_copy(FAMILY_BIG_ORC)) == "ORC CAPTAIN", "big orc label from registry");
     TEST_ASSERT(std::string(get_family_string(FAMILY_BIG_ORC)) == "ORC CAPTAIN", "big orc full label");
     TEST_ASSERT(std::string(get_family_string(255)) == "BEAST", "unknown family full label fallback");
 }
