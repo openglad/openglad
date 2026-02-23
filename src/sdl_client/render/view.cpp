@@ -281,154 +281,132 @@ void viewscreen::free_zoom_surface()
 	}
 }
 
-// Nearest-neighbor scale blit: pixel-perfect scaling with no interpolation.
-// Each source pixel maps to an integer block of destination pixels (zoom in)
-// or is sampled at integer intervals (zoom out). No bilinear filtering.
-namespace {
-void nearest_neighbor_blit(SDL_Surface* src, SDL_Surface* dst, const SDL_Rect& dst_rect)
-{
-	if (SDL_MUSTLOCK(src)) SDL_LockSurface(src);
-	if (SDL_MUSTLOCK(dst)) SDL_LockSurface(dst);
+// --- Zoom rendering helpers ---
+//
+// Zoom approach: render the game world at native pixel resolution to a
+// buffer sized to the world viewport (world_w × world_h), then do a
+// SINGLE nearest-neighbor scale to the viewscreen's screen area.
+// No intermediate surfaces, no interpolation, no double-scaling.
 
+// Nearest-neighbor scale: copy each source pixel to the corresponding
+// destination pixel(s) with no filtering. For zoom-in, each source pixel
+// becomes an NxN block. For zoom-out, every Nth pixel is sampled.
+static void zoom_scale_nearest(SDL_Surface* src, SDL_Surface* dst,
+                               const SDL_Rect& dst_rect)
+{
 	const int dw = dst_rect.w;
 	const int dh = dst_rect.h;
 	const int sw = src->w;
 	const int sh = src->h;
 
+	if (SDL_MUSTLOCK(src)) SDL_LockSurface(src);
+	if (SDL_MUSTLOCK(dst)) SDL_LockSurface(dst);
+
 	for (int y = 0; y < dh; ++y)
 	{
 		const int sy = y * sh / dh;
-		const auto* src_row = reinterpret_cast<const Uint32*>(
+		const auto* srow = reinterpret_cast<const Uint32*>(
 			static_cast<const Uint8*>(src->pixels) + sy * src->pitch);
-		auto* dst_row = reinterpret_cast<Uint32*>(
+		auto* drow = reinterpret_cast<Uint32*>(
 			static_cast<Uint8*>(dst->pixels) + (dst_rect.y + y) * dst->pitch);
 
 		for (int x = 0; x < dw; ++x)
 		{
-			const int sx = x * sw / dw;
-			dst_row[dst_rect.x + x] = src_row[sx];
+			drow[dst_rect.x + x] = srow[x * sw / dw];
 		}
 	}
 
 	if (SDL_MUSTLOCK(dst)) SDL_UnlockSurface(dst);
 	if (SDL_MUSTLOCK(src)) SDL_UnlockSurface(src);
 }
-} // namespace
 
-// RAII helper to manage offscreen zoom rendering.
-// Swaps E_Screen->render to a cached surface of world_w × world_h,
-// adjusts the viewscreen parameters, renders, then scales back
-// using nearest-neighbor (pixel-perfect, no interpolation).
-// The surface is cached per-viewscreen and only reallocated when the
-// required dimensions change.
-namespace {
-struct ZoomRenderContext {
-	viewscreen* view;
-	SDL_Surface* original_render;
-	bool active;
-	Sint32 saved_xloc, saved_yloc, saved_endx, saved_endy;
-	Sint32 saved_xview, saved_yview;
-
-	ZoomRenderContext(viewscreen* v)
-		: view(v), original_render(nullptr), active(false),
-		  saved_xloc(0), saved_yloc(0), saved_endx(0), saved_endy(0),
-		  saved_xview(0), saved_yview(0)
-	{}
-
-	bool begin()
-	{
-		if (std::fabs(view->zoom_level - 1.0f) < 0.001f)
-			return false; // No zoom needed
-
-		Sint32 world_w = view->world_width();
-		Sint32 world_h = view->world_height();
-
-		// Reuse the cached surface if dimensions match
-		if (view->zoom_surface_ == nullptr
-			|| view->zoom_surface_w_ != world_w
-			|| view->zoom_surface_h_ != world_h)
-		{
-			view->free_zoom_surface();
-			// Match the pixel format of the main render surface exactly
-			auto* fmt = E_Screen->render->format;
-			view->zoom_surface_ = SDL_CreateRGBSurface(
-				SDL_SWSURFACE, world_w, world_h,
-				fmt->BitsPerPixel, fmt->Rmask, fmt->Gmask, fmt->Bmask, fmt->Amask);
-			if (!view->zoom_surface_)
-				return false;
-			view->zoom_surface_w_ = world_w;
-			view->zoom_surface_h_ = world_h;
-		}
-
-		SDL_FillRect(view->zoom_surface_, nullptr, 0x000000);
-
-		// Swap the render target
-		original_render = E_Screen->render;
-		E_Screen->render = view->zoom_surface_;
-
-		// Save and adjust viewport parameters
-		saved_xloc = view->xloc;
-		saved_yloc = view->yloc;
-		saved_endx = view->endx;
-		saved_endy = view->endy;
-		saved_xview = view->xview;
-		saved_yview = view->yview;
-
-		view->xloc = 0;
-		view->yloc = 0;
-		view->endx = world_w;
-		view->endy = world_h;
-		view->xview = world_w;
-		view->yview = world_h;
-
-		active = true;
+// Ensure the cached zoom surface matches the required dimensions and
+// pixel format. Returns true if the surface is ready to use.
+static bool zoom_ensure_surface(viewscreen* view, Sint32 w, Sint32 h)
+{
+	if (view->zoom_surface_ && view->zoom_surface_w_ == w && view->zoom_surface_h_ == h)
 		return true;
-	}
 
-	void end()
-	{
-		if (!active)
-			return;
+	view->free_zoom_surface();
 
-		// Restore render target
-		E_Screen->render = original_render;
+	// Match the pixel format of the main render surface exactly
+	auto* fmt = E_Screen->render->format;
+	view->zoom_surface_ = SDL_CreateRGBSurface(
+		SDL_SWSURFACE, w, h,
+		fmt->BitsPerPixel, fmt->Rmask, fmt->Gmask, fmt->Bmask, fmt->Amask);
+	if (!view->zoom_surface_)
+		return false;
 
-		// Restore viewport parameters
-		view->xloc = saved_xloc;
-		view->yloc = saved_yloc;
-		view->endx = saved_endx;
-		view->endy = saved_endy;
-		view->xview = saved_xview;
-		view->yview = saved_yview;
+	view->zoom_surface_w_ = w;
+	view->zoom_surface_h_ = h;
+	return true;
+}
 
-		// Nearest-neighbor scale blit from zoom surface to viewscreen area
-		SDL_Rect dst = {
-			static_cast<int>(saved_xloc),
-			static_cast<int>(saved_yloc),
-			static_cast<int>(saved_xview),
-			static_cast<int>(saved_yview)
-		};
-		nearest_neighbor_blit(view->zoom_surface_, E_Screen->render, dst);
-
-		active = false;
-	}
-
-	~ZoomRenderContext()
-	{
-		// Safety: if end() was not called, restore state
-		if (active)
-		{
-			E_Screen->render = original_render;
-			view->xloc = saved_xloc;
-			view->yloc = saved_yloc;
-			view->endx = saved_endx;
-			view->endy = saved_endy;
-			view->xview = saved_xview;
-			view->yview = saved_yview;
-		}
-	}
+// Saved viewport state during zoom rendering.
+struct ZoomState {
+	SDL_Surface* original_render;
+	Sint32 xloc, yloc, endx, endy, xview, yview;
 };
-} // namespace
+
+// Begin zoom rendering: swap to the world-sized buffer.
+// Returns true if zoom is active (caller must call zoom_end_frame).
+static bool zoom_begin_frame(viewscreen* view, ZoomState& state)
+{
+	if (std::fabs(view->zoom_level - 1.0f) < 0.001f)
+		return false;
+
+	Sint32 world_w = view->world_width();
+	Sint32 world_h = view->world_height();
+
+	if (!zoom_ensure_surface(view, world_w, world_h))
+		return false;
+
+	// Clear the zoom buffer to opaque black
+	Uint32 black = SDL_MapRGB(view->zoom_surface_->format, 0, 0, 0);
+	SDL_FillRect(view->zoom_surface_, nullptr, black);
+
+	// Save current state
+	state.original_render = E_Screen->render;
+	state.xloc = view->xloc;
+	state.yloc = view->yloc;
+	state.endx = view->endx;
+	state.endy = view->endy;
+	state.xview = view->xview;
+	state.yview = view->yview;
+
+	// Redirect rendering to the zoom buffer (world-pixel resolution)
+	E_Screen->render = view->zoom_surface_;
+	view->xloc = 0;
+	view->yloc = 0;
+	view->endx = world_w;
+	view->endy = world_h;
+	view->xview = world_w;
+	view->yview = world_h;
+
+	return true;
+}
+
+// End zoom rendering: restore viewport, do ONE nearest-neighbor scale.
+static void zoom_end_frame(viewscreen* view, const ZoomState& state)
+{
+	// Restore the original render target and viewport
+	E_Screen->render = state.original_render;
+	view->xloc = state.xloc;
+	view->yloc = state.yloc;
+	view->endx = state.endx;
+	view->endy = state.endy;
+	view->xview = state.xview;
+	view->yview = state.yview;
+
+	// Single nearest-neighbor scale from world buffer to screen viewport
+	SDL_Rect dst = {
+		static_cast<int>(state.xloc),
+		static_cast<int>(state.yloc),
+		static_cast<int>(state.xview),
+		static_cast<int>(state.yview)
+	};
+	zoom_scale_nearest(view->zoom_surface_, E_Screen->render, dst);
+}
 
 void viewscreen::clear()
 {
@@ -442,16 +420,16 @@ void viewscreen::clear()
 
 bool viewscreen::redraw()
 {
-	// Set up zoom rendering (swaps render surface if zoomed)
-	ZoomRenderContext zoom_ctx(this);
-	bool zoomed = zoom_ctx.begin();
+	// Begin zoom: redirect rendering to world-sized buffer if zoomed
+	ZoomState zoom_state{};
+	bool zoomed = zoom_begin_frame(this, zoom_state);
 
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
 	walker  *controlob = control;
 	auto* renderer = active_screen()->level_data.renderer_.get();
-	if (!renderer) { if (zoomed) zoom_ctx.end(); return false; }
+	if (!renderer) { if (zoomed) zoom_end_frame(this, zoom_state); return false; }
 	PixieData& gridp = active_screen()->level_data.grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
@@ -501,9 +479,9 @@ bool viewscreen::redraw()
 		myradar->draw();
 	display_text();
 
-	// Finalize zoom: scale from zoom surface back to render surface
+	// End zoom: single nearest-neighbor scale from world buffer to screen
 	if (zoomed)
-		zoom_ctx.end();
+		zoom_end_frame(this, zoom_state);
 
 	return 1;
 
@@ -511,16 +489,16 @@ bool viewscreen::redraw()
 
 bool viewscreen::redraw(LevelData* data, bool draw_radar)
 {
-	// Set up zoom rendering (swaps render surface if zoomed)
-	ZoomRenderContext zoom_ctx(this);
-	bool zoomed = zoom_ctx.begin();
+	// Begin zoom: redirect rendering to world-sized buffer if zoomed
+	ZoomState zoom_state{};
+	bool zoomed = zoom_begin_frame(this, zoom_state);
 
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
 	walker  *controlob = control;
 	auto* renderer = data->renderer_.get();
-	if (!renderer) { if (zoomed) zoom_ctx.end(); return false; }
+	if (!renderer) { if (zoomed) zoom_end_frame(this, zoom_state); return false; }
 	PixieData& gridp = data->grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
@@ -570,9 +548,9 @@ bool viewscreen::redraw(LevelData* data, bool draw_radar)
 		myradar->draw(data);
 	display_text();
 
-	// Finalize zoom: scale from zoom surface back to render surface
+	// End zoom: single nearest-neighbor scale from world buffer to screen
 	if (zoomed)
-		zoom_ctx.end();
+		zoom_end_frame(this, zoom_state);
 
 	return 1;
 

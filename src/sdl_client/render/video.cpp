@@ -629,17 +629,13 @@ void video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
 	SDL_FillRect(E_Screen->render,&rect,c);
 }
 
-//buffers: draw color using an offset
-// NOTE: Offset-based pixel addressing uses the current render surface width.
-// Callers that compute offsets using a fixed 320 stride should use the
-// (x,y) pointb overload instead when rendering to zoom surfaces.
+//buffers: draw color using an offset (assumes 320-wide stride)
 void video::pointb(int offset, unsigned char color)
 {
 	int x, y;
-	int w = E_Screen->render->w;
 
-	y = offset/w;
-	x = offset - y*w;
+	y = offset/320;
+	x = offset - y*320;
 
 	pointb(x,y,color);
 }
