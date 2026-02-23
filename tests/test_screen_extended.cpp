@@ -159,6 +159,8 @@ REGISTER_TEST(test_screen_save_data_score);
 
 void test_screen_endgame_clears_mission_score_after_payout()
 {
+    const char saved_end = myscreen->end;
+
     myscreen->save_data.reset();
     myscreen->save_data.current_campaign = "org.openglad.gladiator";
     myscreen->save_data.scen_num = 1;
@@ -178,6 +180,8 @@ void test_screen_endgame_clears_mission_score_after_payout()
 
     TEST_ASSERT_EQ(1250, static_cast<int>(myscreen->save_data.m_totalscore[0]),
                    "subsequent wins must not re-credit previous mission score");
+
+    myscreen->end = saved_end;
 }
 REGISTER_TEST(test_screen_endgame_clears_mission_score_after_payout);
 
