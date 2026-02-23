@@ -618,6 +618,47 @@ OG_UNIT_TEST(test_set_player_count)
     OG_ASSERT(save.numplayers == 1);
 }
 
+// --- set_player_count with 0 (spectator mode) ---
+
+OG_UNIT_TEST(test_set_player_count_zero)
+{
+    SaveData save;
+    // Start at a normal count
+    og::ui::set_player_count(save, 2);
+    OG_ASSERT(save.numplayers == 2);
+
+    // Set to 0 (spectator)
+    og::ui::set_player_count(save, 0);
+    OG_ASSERT(save.numplayers == 0);
+
+    // Round-trip: set back to a normal count
+    og::ui::set_player_count(save, 4);
+    OG_ASSERT(save.numplayers == 4);
+
+    // And back to 0
+    og::ui::set_player_count(save, 0);
+    OG_ASSERT(save.numplayers == 0);
+}
+
+// --- is_spectator_mode ---
+
+OG_UNIT_TEST(test_is_spectator_mode)
+{
+    SaveData save;
+
+    // Default numplayers is 1
+    OG_ASSERT(!og::ui::is_spectator_mode(save));
+
+    og::ui::set_player_count(save, 0);
+    OG_ASSERT(og::ui::is_spectator_mode(save));
+
+    og::ui::set_player_count(save, 1);
+    OG_ASSERT(!og::ui::is_spectator_mode(save));
+
+    og::ui::set_player_count(save, 4);
+    OG_ASSERT(!og::ui::is_spectator_mode(save));
+}
+
 // --- ensure_team_populated ---
 
 OG_UNIT_TEST(test_ensure_team_populated_empty_families)

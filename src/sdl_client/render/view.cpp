@@ -22,6 +22,7 @@
 
 #include <openglad/input/input.h>
 #include <openglad/runtime/cheat_handler.h>
+#include <openglad/ui/picker_common.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/core/version.h>
 #include <openglad/core/util.h>
@@ -455,6 +456,88 @@ void viewscreen::process_input(const InputState& input_state)
 	static SimInputDebounce debounce[6] = {};
 
 	const PlayerInput& pi = input_state.players[mynum];
+
+	// --- Spectator mode: only allow switching the camera target ---
+	if (og::ui::is_spectator_mode(active_screen()->save_data))
+	{
+		// SwitchChar cycles the camera target (no ACT_CONTROL claim)
+		if (!pi.was_pressed(InputAction::SwitchChar))
+			debounce[mynum].changedchar = 0;
+		else if (!debounce[mynum].changedchar)
+		{
+			debounce[mynum].changedchar = 1;
+			walker* oldcontrol = control;
+			if (!oldcontrol)
+			{
+				control = find_next_control();
+				return;
+			}
+
+			bool reverse = pi.is_held(InputAction::Shift);
+			auto& oblist = active_screen()->level_data.oblist;
+			auto pred = [oldcontrol](const std::unique_ptr<walker>& p) { return p.get() == oldcontrol; };
+			walker* found = nullptr;
+
+			if (!reverse)
+			{
+				auto mine = std::find_if(oblist.begin(), oblist.end(), pred);
+				if (mine != oblist.end())
+				{
+					for (auto e = std::next(mine); e != oblist.end(); ++e)
+					{
+						walker* w = e->get();
+						if (w && !w->dead && w->query_order() == Order::Living
+						    && w->team_num == my_team)
+						{ found = w; break; }
+					}
+					if (!found)
+					{
+						for (auto e = oblist.begin(); e != mine; ++e)
+						{
+							walker* w = e->get();
+							if (w && !w->dead && w->query_order() == Order::Living
+							    && w->team_num == my_team)
+							{ found = w; break; }
+						}
+					}
+				}
+			}
+			else
+			{
+				auto mine = std::find_if(oblist.rbegin(), oblist.rend(), pred);
+				if (mine != oblist.rend())
+				{
+					for (auto e = std::next(mine); e != oblist.rend(); ++e)
+					{
+						walker* w = e->get();
+						if (w && !w->dead && w->query_order() == Order::Living
+						    && w->team_num == my_team)
+						{ found = w; break; }
+					}
+					if (!found)
+					{
+						for (auto e = oblist.rbegin(); e != mine; ++e)
+						{
+							walker* w = e->get();
+							if (w && !w->dead && w->query_order() == Order::Living
+							    && w->team_num == my_team)
+							{ found = w; break; }
+						}
+					}
+				}
+			}
+
+			if (found)
+				control = found;
+			// If the current control died, find any alive character
+			if (control && control->dead)
+				control = find_next_control();
+		}
+		// If the current control died between frames, re-acquire
+		if (control && control->dead)
+			control = find_next_control();
+		return; // No further input processing in spectator mode
+	}
 
 	// --- Prefs key (render-layer concern: opens a UI menu) ---
 	if (!pi.is_held(InputAction::Cheat))

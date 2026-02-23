@@ -23,6 +23,7 @@
 #include <openglad/data/smooth.h>
 #include <openglad/core/util.h>
 #include <openglad/ui/campaign_picker.h>
+#include <openglad/ui/picker_common.h>
 #include <openglad/render/view.h>
 #include <openglad/runtime/screen.h>
 #include <algorithm>
@@ -47,7 +48,9 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	short         myfam;
 	bool used_fallback_level = false;
 
-	screenp->numviews = screenp->save_data.numplayers;
+	// Spectator mode (numplayers==0) still needs 1 viewscreen for the camera
+	screenp->numviews = (screenp->save_data.numplayers == 0)
+	    ? 1 : screenp->save_data.numplayers;
 
 	screenp->cleanup(screenp->numviews);
 	screenp->initialize_views();
@@ -200,6 +203,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
     // Here we decide if all players are controlling team 0, or if they're
     // playing competing teams. Then pre-assign controls so the first redraw
     // (shown before/under scenario intro text) is centered on the player.
+    const bool spectator = og::ui::is_spectator_mode(screenp->save_data);
     short view_idx = 0;
     const short numviews = std::min<short>(screenp->numviews, static_cast<short>(std::size(screenp->viewob)));
     for (auto& view : screenp->viewob)
@@ -212,7 +216,13 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
         else
             view->my_team = 0;
         view->control = view->find_next_control();
-        if (view->control && view->control->user == -1)
+        if (spectator)
+        {
+            // Spectator mode: set a camera target but don't claim player control
+            if (view->control && view_idx == 0)
+                screenp->control_hp = view->control->stats()->hitpoints;
+        }
+        else if (view->control && view->control->user == -1)
         {
             view->control->user = static_cast<signed char>(view_idx);
             view->control->set_act_type(ACT_CONTROL);

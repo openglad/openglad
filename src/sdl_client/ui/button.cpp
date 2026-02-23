@@ -634,6 +634,11 @@ Sint32 vbutton::do_call_right(Sint32 whatfunc, Sint32 call_arg)
         return decrease_stat(call_arg, 5);
     case ButtonAction::IncreaseStat:
         return increase_stat(call_arg, 5);
+    case ButtonAction::SetPlayerMode:
+        // Right-click on the currently-selected player count deselects (spectator mode)
+        if (myscreen && myscreen->save_data.numplayers == static_cast<unsigned char>(call_arg))
+            return set_player_mode(0);
+        return 4; // not the selected button — no-op
     default:
         return 4;
     }

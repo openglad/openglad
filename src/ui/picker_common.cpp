@@ -415,6 +415,11 @@ void set_player_count(SaveData& save, int count)
     save.numplayers = static_cast<unsigned char>(count);
 }
 
+bool is_spectator_mode(const SaveData& save)
+{
+    return save.numplayers == 0;
+}
+
 // --- Label formatting ---
 
 std::string format_difficulty_label(int difficulty)
