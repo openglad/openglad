@@ -926,34 +926,54 @@ void test_walker_special_archmage_mind_control_stats_name_path()
     myscreen->level_data.delete_objects();
 
     walker* arch = make_special_guy(FAMILY_ARCHMAGE, 4, 7);
-    walker* foe = make_special_guy(FAMILY_ORC, 2, 1);
-    TEST_ASSERT(arch != nullptr && foe != nullptr, "arch and foe created");
-    if (!(arch && foe)) {
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe2 = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe3 = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(arch != nullptr && foe != nullptr && foe2 != nullptr && foe3 != nullptr,
+                "arch and mind-control targets created");
+    if (!(arch && foe && foe2 && foe3)) {
+        delete arch;
+        myscreen->level_data.delete_objects();
         return;
     }
 
     arch->setxy(120, 120);
     foe->setxy(126, 120);
+    foe2->setxy(130, 120);
+    foe3->setxy(134, 120);
+    foe->team_num = 2;
+    foe2->team_num = 2;
+    foe3->team_num = 2;
+    foe->stats()->level = 1;
+    foe2->stats()->level = 1;
+    foe3->stats()->level = 1;
     arch->busy = 0;
     arch->current_special = 4;
     arch->shifter_down = 0;
     arch->stats()->special_cost[4] = 0;
-    arch->stats()->magicpoints = 1000;
+    arch->stats()->magicpoints = 80;
     arch->stats()->name = "ARCH-NPC";
     if (arch->myguy) {
         arch->clear_myguy();
     }
     foe->real_team_num = 255;
+    foe2->real_team_num = 255;
+    foe3->real_team_num = 255;
+    foe->set_charm_left(0);
+    foe2->set_charm_left(0);
+    foe3->set_charm_left(0);
+    const float mp_before = arch->stats()->magicpoints;
 
-    SequenceRandom seq_rng({1, 3, 4, 5});
+    SequenceRandom seq_rng({1, 1, 1, 1, 1, 1, 1, 1});
     GameContext test_ctx;
     test_ctx.game_screen = myscreen;
     test_ctx.rng = &seq_rng;
     set_global_context(&test_ctx);
     (void)arch->special();
     set_global_context(nullptr);
+    TEST_ASSERT(arch->stats()->magicpoints < mp_before,
+                "mind-control should spend MP for controlled targets");
 
-    delete foe;
     delete arch;
     myscreen->level_data.delete_objects();
 }
