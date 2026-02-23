@@ -212,7 +212,14 @@ short new_score_panel(screen* s, short /*do_it*/)
                     continue;
                 }
 
-                const unsigned char team_num = static_cast<unsigned char>(control->team_num);
+                const int team_index = static_cast<int>(control->team_num);
+                if (team_index < 0 || team_index >= static_cast<int>(std::size(s->save_data.m_score)))
+                {
+                    // Invalid team index; skip score display/update for this control.
+                    continue;
+                }
+
+                const unsigned char team_num = static_cast<unsigned char>(team_index);
                 myscore = s->save_data.m_score[team_num];
                 if (scorecountup[team_num] > myscore)
                     scorecountup[team_num] = myscore;

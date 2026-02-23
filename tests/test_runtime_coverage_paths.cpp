@@ -562,9 +562,11 @@ REGISTER_TEST(test_sim_world_freeze_countdown_notification_and_weap_cleanup);
 void test_runtime_score_panel_null_control_score_overlay_safe()
 {
     viewscreen* v = myscreen->viewob[0].get();
-    TEST_ASSERT(v != nullptr, "view should exist");
     if (!v)
+    {
+        TEST_ASSERT(false, "view should exist");
         return;
+    }
 
     walker* old_control = v->control;
     const unsigned char old_overlay = v->prefs[PREF_OVERLAY];
