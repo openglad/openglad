@@ -30,6 +30,12 @@ inline constexpr float ZOOM_MIN = 0.5f;
 inline constexpr float ZOOM_MAX = 3.0f;
 inline constexpr float ZOOM_STEP = 0.25f;
 
+// Pure zoom math helpers (testable without SDL)
+float zoom_clamp(float level);
+float zoom_apply_in(float level);
+float zoom_apply_out(float level);
+int zoom_world_dim(int screen_dim, float zoom_level);
+
 // Viewscreen-related defines
 inline constexpr signed char PREF_LIFE = 0;
   inline constexpr signed char PREF_LIFE_TEXT  = 0;
@@ -147,6 +153,12 @@ class viewscreen
 			// World-space viewport dimensions at current zoom
 			Sint32 world_width() const;
 			Sint32 world_height() const;
+
+		// Cached offscreen surface for zoom rendering (reused across frames)
+		SDL_Surface* zoom_surface_ = nullptr;
+		Sint32 zoom_surface_w_ = 0;
+		Sint32 zoom_surface_h_ = 0;
+		void free_zoom_surface();
 
 	protected:
 		options *prefsob;

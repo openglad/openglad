@@ -221,47 +221,81 @@ viewscreen::viewscreen(short x, short y, short width,
 // Destruct the viewscreen and its variables
 viewscreen::~viewscreen()
 {
+	free_zoom_surface();
+}
+
+// --- Pure zoom math helpers ---
+
+float zoom_clamp(float level)
+{
+	return std::max(ZOOM_MIN, std::min(level, ZOOM_MAX));
+}
+
+float zoom_apply_in(float level)
+{
+	return zoom_clamp(level + ZOOM_STEP);
+}
+
+float zoom_apply_out(float level)
+{
+	return zoom_clamp(level - ZOOM_STEP);
+}
+
+int zoom_world_dim(int screen_dim, float zoom_level)
+{
+	return static_cast<int>(std::ceil(static_cast<float>(screen_dim) / zoom_level));
 }
 
 // --- Zoom methods ---
 
 void viewscreen::zoom_in()
 {
-	float new_zoom = zoom_level + ZOOM_STEP;
-	zoom_level = std::min(new_zoom, ZOOM_MAX);
+	zoom_level = zoom_apply_in(zoom_level);
 	TRACE("zoom", "zoom_in level=%.2f", zoom_level);
 }
 
 void viewscreen::zoom_out()
 {
-	float new_zoom = zoom_level - ZOOM_STEP;
-	zoom_level = std::max(new_zoom, ZOOM_MIN);
+	zoom_level = zoom_apply_out(zoom_level);
 	TRACE("zoom", "zoom_out level=%.2f", zoom_level);
 }
 
 Sint32 viewscreen::world_width() const
 {
-	return static_cast<Sint32>(std::ceil(static_cast<float>(xview) / zoom_level));
+	return static_cast<Sint32>(zoom_world_dim(xview, zoom_level));
 }
 
 Sint32 viewscreen::world_height() const
 {
-	return static_cast<Sint32>(std::ceil(static_cast<float>(yview) / zoom_level));
+	return static_cast<Sint32>(zoom_world_dim(yview, zoom_level));
+}
+
+void viewscreen::free_zoom_surface()
+{
+	if (zoom_surface_)
+	{
+		SDL_FreeSurface(zoom_surface_);
+		zoom_surface_ = nullptr;
+		zoom_surface_w_ = 0;
+		zoom_surface_h_ = 0;
+	}
 }
 
 // RAII helper to manage offscreen zoom rendering.
-// Swaps E_Screen->render to a temporary surface of world_w × world_h,
+// Swaps E_Screen->render to a cached surface of world_w × world_h,
 // adjusts the viewscreen parameters, renders, then scales back.
+// The surface is cached per-viewscreen and only reallocated when the
+// required dimensions change.
 namespace {
 struct ZoomRenderContext {
 	viewscreen* view;
 	SDL_Surface* original_render;
-	SDL_Surface* zoom_surface;
+	bool active;
 	Sint32 saved_xloc, saved_yloc, saved_endx, saved_endy;
 	Sint32 saved_xview, saved_yview;
 
 	ZoomRenderContext(viewscreen* v)
-		: view(v), original_render(nullptr), zoom_surface(nullptr),
+		: view(v), original_render(nullptr), active(false),
 		  saved_xloc(0), saved_yloc(0), saved_endx(0), saved_endy(0),
 		  saved_xview(0), saved_yview(0)
 	{}
@@ -274,17 +308,25 @@ struct ZoomRenderContext {
 		Sint32 world_w = view->world_width();
 		Sint32 world_h = view->world_height();
 
-		// Create a temporary surface matching the render surface format
-		original_render = E_Screen->render;
-		zoom_surface = SDL_CreateRGBSurface(
-			SDL_SWSURFACE, world_w, world_h, 32, 0, 0, 0, 0);
-		if (!zoom_surface)
-			return false;
+		// Reuse the cached surface if dimensions match
+		if (view->zoom_surface_ == nullptr
+			|| view->zoom_surface_w_ != world_w
+			|| view->zoom_surface_h_ != world_h)
+		{
+			view->free_zoom_surface();
+			view->zoom_surface_ = SDL_CreateRGBSurface(
+				SDL_SWSURFACE, world_w, world_h, 32, 0, 0, 0, 0);
+			if (!view->zoom_surface_)
+				return false;
+			view->zoom_surface_w_ = world_w;
+			view->zoom_surface_h_ = world_h;
+		}
 
-		SDL_FillRect(zoom_surface, nullptr, 0x000000);
+		SDL_FillRect(view->zoom_surface_, nullptr, 0x000000);
 
 		// Swap the render target
-		E_Screen->render = zoom_surface;
+		original_render = E_Screen->render;
+		E_Screen->render = view->zoom_surface_;
 
 		// Save and adjust viewport parameters
 		saved_xloc = view->xloc;
@@ -301,12 +343,13 @@ struct ZoomRenderContext {
 		view->xview = world_w;
 		view->yview = world_h;
 
+		active = true;
 		return true;
 	}
 
 	void end()
 	{
-		if (!zoom_surface)
+		if (!active)
 			return;
 
 		// Restore render target
@@ -327,16 +370,15 @@ struct ZoomRenderContext {
 			static_cast<int>(saved_xview),
 			static_cast<int>(saved_yview)
 		};
-		SDL_BlitScaled(zoom_surface, nullptr, E_Screen->render, &dst);
+		SDL_BlitScaled(view->zoom_surface_, nullptr, E_Screen->render, &dst);
 
-		SDL_FreeSurface(zoom_surface);
-		zoom_surface = nullptr;
+		active = false;
 	}
 
 	~ZoomRenderContext()
 	{
-		// Safety: if end() was not called, clean up
-		if (zoom_surface)
+		// Safety: if end() was not called, restore state
+		if (active)
 		{
 			E_Screen->render = original_render;
 			view->xloc = saved_xloc;
@@ -345,7 +387,6 @@ struct ZoomRenderContext {
 			view->endy = saved_endy;
 			view->xview = saved_xview;
 			view->yview = saved_yview;
-			SDL_FreeSurface(zoom_surface);
 		}
 	}
 };

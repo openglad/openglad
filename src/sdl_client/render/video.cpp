@@ -630,6 +630,9 @@ void video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
 }
 
 //buffers: draw color using an offset
+// NOTE: Offset-based pixel addressing uses the current render surface width.
+// Callers that compute offsets using a fixed 320 stride should use the
+// (x,y) pointb overload instead when rendering to zoom surfaces.
 void video::pointb(int offset, unsigned char color)
 {
 	int x, y;
