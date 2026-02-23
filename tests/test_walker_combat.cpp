@@ -6,6 +6,7 @@
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
+#include <openglad/core/combat_math.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 #include <memory>
@@ -962,6 +963,126 @@ void test_walker_combat_batch6_attack_friendly_team_death_messages_and_clamps()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_combat_batch6_attack_friendly_team_death_messages_and_clamps);
+
+void test_walker_combat_attack_rewards_single_credit_weapon_hit()
+{
+    const short saved_allied_mode = myscreen->save_data.allied_mode;
+    myscreen->save_data.allied_mode = 0;
+
+    walker* owner = make_guy(FAMILY_SOLDIER, 0);
+    walker* target = make_guy(FAMILY_ORC, 1);
+    walker* weapon = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(owner && target && weapon, "owner/target/weapon created");
+    if (!(owner && target && weapon))
+    {
+        myscreen->level_data.delete_objects();
+        myscreen->save_data.allied_mode = saved_allied_mode;
+        return;
+    }
+
+    SequenceRandomCombat fixed_rng({0});
+    weapon->sim_rng = &fixed_rng;
+    weapon->owner = owner;
+    weapon->team_num = owner->team_num;
+    weapon->damage = 16.0f;
+    owner->team_num = 0;
+    target->team_num = 1;
+
+    target->stats()->armor = 0;
+    target->stats()->hitpoints = 200;
+    target->stats()->max_hitpoints = 200;
+    target->setxy(static_cast<short>(owner->xpos + 8), static_cast<short>(owner->ypos));
+
+    const int exp_before = owner->myguy ? owner->myguy->exp : 0;
+    const Uint32 score_before = myscreen->save_data.m_score[owner->team_num];
+    const float hp_before = target->stats()->hitpoints;
+
+    TEST_ASSERT(weapon->attack(target), "weapon attack should succeed");
+
+    const short dealt = static_cast<short>(hp_before - target->stats()->hitpoints);
+    TEST_ASSERT(dealt > 0, "weapon attack should deal positive damage");
+    TEST_ASSERT(target->stats()->hitpoints > 0, "weapon reward regression should use non-lethal hit");
+
+    const std::int32_t level_diff = weapon->stats()->level - target->stats()->level;
+    const short expected_attack_xp = compute_xp_from_attack(level_diff, static_cast<float>(dealt));
+    const int exp_after = owner->myguy ? owner->myguy->exp : 0;
+    TEST_ASSERT_EQ((int)expected_attack_xp, exp_after - exp_before,
+                   "weapon hit should award attack XP exactly once");
+
+    const Uint32 score_after = myscreen->save_data.m_score[owner->team_num];
+    const Uint32 expected_score = static_cast<Uint32>(dealt) + static_cast<Uint32>(target->stats()->level);
+    TEST_ASSERT_EQ((int)expected_score, static_cast<int>(score_after - score_before),
+                   "weapon hit should award score once per hit");
+
+    myscreen->level_data.delete_objects();
+    myscreen->save_data.allied_mode = saved_allied_mode;
+}
+REGISTER_TEST(test_walker_combat_attack_rewards_single_credit_weapon_hit);
+
+void test_walker_combat_attack_rewards_single_credit_melee_kill()
+{
+    const short saved_allied_mode = myscreen->save_data.allied_mode;
+    myscreen->save_data.allied_mode = 0;
+
+    walker* attacker = make_guy(FAMILY_SOLDIER, 0);
+    walker* target = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(attacker && target, "attacker/target created");
+    if (!(attacker && target))
+    {
+        myscreen->level_data.delete_objects();
+        myscreen->save_data.allied_mode = saved_allied_mode;
+        return;
+    }
+
+    SequenceRandomCombat fixed_rng({0});
+    attacker->sim_rng = &fixed_rng;
+    attacker->damage = 16.0f;
+    attacker->team_num = 0;
+    target->team_num = 1;
+    target->stats()->armor = 0;
+    target->stats()->hitpoints = 14;
+    target->stats()->max_hitpoints = 14;
+    target->setxy(attacker->xpos + 10, attacker->ypos + 4);
+
+    const int exp_before = attacker->myguy ? attacker->myguy->exp : 0;
+    const int kills_before = attacker->myguy ? attacker->myguy->kills : 0;
+    const int scen_kills_before = attacker->myguy ? attacker->myguy->scen_kills : 0;
+    const int level_kills_before = attacker->myguy ? attacker->myguy->level_kills : 0;
+    const Uint32 score_before = myscreen->save_data.m_score[attacker->team_num];
+    const float hp_before = target->stats()->hitpoints;
+
+    TEST_ASSERT(attacker->attack(target), "melee attack should succeed");
+
+    const short dealt = static_cast<short>(hp_before - target->stats()->hitpoints);
+    TEST_ASSERT_EQ(14, (int)dealt, "configured melee kill should deal deterministic damage");
+    TEST_ASSERT(target->dead == 1, "target should die in kill-reward regression");
+
+    const std::int32_t level_diff = attacker->stats()->level - target->stats()->level;
+    const short expected_attack_xp = compute_xp_from_attack(level_diff, static_cast<float>(dealt));
+    const short expected_kill_xp = compute_xp_from_kill(level_diff);
+    const int exp_after = attacker->myguy ? attacker->myguy->exp : 0;
+    TEST_ASSERT_EQ((int)(expected_attack_xp + expected_kill_xp), exp_after - exp_before,
+                   "melee kill should award attack XP once plus one kill XP");
+
+    const Uint32 score_after = myscreen->save_data.m_score[attacker->team_num];
+    const Uint32 expected_score =
+        static_cast<Uint32>(dealt + target->stats()->level) +
+        static_cast<Uint32>(dealt + 10 * target->stats()->level);
+    TEST_ASSERT_EQ((int)expected_score, static_cast<int>(score_after - score_before),
+                   "melee kill should award one hit score and one kill bonus");
+
+    TEST_ASSERT_EQ(1, (attacker->myguy ? attacker->myguy->kills : 0) - kills_before,
+                   "kill counter should increment once");
+    TEST_ASSERT_EQ(1, (attacker->myguy ? attacker->myguy->scen_kills : 0) - scen_kills_before,
+                   "scenario kill counter should increment once");
+    TEST_ASSERT_EQ((int)target->stats()->level,
+                   (attacker->myguy ? attacker->myguy->level_kills : 0) - level_kills_before,
+                   "level_kills should increase by defeated target level");
+
+    myscreen->level_data.delete_objects();
+    myscreen->save_data.allied_mode = saved_allied_mode;
+}
+REGISTER_TEST(test_walker_combat_attack_rewards_single_credit_melee_kill);
 
 void test_walker_batch7_init_fire_and_animate_edge_paths()
 {
