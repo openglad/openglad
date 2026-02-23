@@ -1322,7 +1322,7 @@ std::string get_saved_name(const char * filename)
 	
 	// Format of a team list file is:
 	// 3-byte header: 'GTL'
-	// 1-byte version number (from graph.h)
+	// 1-byte version number
 	// 2-bytes registered mark, version 7+ only
 	// 40-byte saved-game name (version 2 and up only!)
 	//   .

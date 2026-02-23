@@ -45,9 +45,8 @@ static inline cfg_store& active_config()
 
 void popup_dialog(const char* title, const char* message);
 
-#define SIZE_ORDERS 7 // see graph.h
+#define SIZE_ORDERS 7 // see constants.h
 #define SIZE_FAMILIES 21  // see also NUM_FAMILIES in constants.h
-//#define PIX(a,b) (SIZE_FAMILIES*a+b)  //moved to graph.h
 
 static inline Order sanitize_order(Order order)
 {

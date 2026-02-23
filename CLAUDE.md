@@ -85,7 +85,6 @@ Dependencies flow inward: `ui → runtime → sim → core`. See `docs/architect
 
 ### Key Rules
 
-- **No `graph.h` includes.** The legacy umbrella header has an empty allowlist. Use explicit narrow includes: `#include <openglad/module/header.h>`
 - **Vendor headers stay in `src/io/`** (PhysFS, libzip, libyaml) and `src/entities/` (micropather only). Enforced by `scripts/check_vendor_leaks.sh`.
 - **RAII ownership.** `GameSession` is the root owner of screen, prefs, RNG. Use `std::unique_ptr<T>` for owning pointers, `T&`/`T*` for non-owning borrows.
 

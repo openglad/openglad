@@ -555,7 +555,7 @@ void living::set_difficulty(std::uint32_t whatlevel)
 	stats_->hitpoints = stats_->max_hitpoints;
 	stats_->magicpoints = stats_->max_magicpoints;
 
-		stats_->max_heal_delay = REGEN; //defined in graph.h
+		stats_->max_heal_delay = REGEN; //defined in constants.h
 		stats_->current_heal_delay =
 		    static_cast<std::int32_t>(levmult * 4.0f); //for purposes of calculation only
 

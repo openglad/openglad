@@ -1600,7 +1600,7 @@ bool LevelData::save()
 
 	// Format of a scenario object list file is: (ver. 8)
 	// 3-byte header: 'FSS'
-	// 1-byte version number (from graph.h)
+	// 1-byte version number
 	// 8-byte grid file name
 	// 30-byte scenario title
 	// 1-byte scenario_type

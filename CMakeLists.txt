@@ -638,14 +638,6 @@ function(add_runtime_assets_dependency target)
     add_dependencies(${target} stage_runtime_assets)
 endfunction()
 
-# graph.h include guardrail: allow transitional files, block new include spread.
-add_custom_target(check_graph_h_includes
-    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_graph_includes.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Checking graph.h include allowlist"
-    VERBATIM
-)
-
 # Vendor header leak check: no third-party headers in public or internal code.
 add_custom_target(check_vendor_leaks
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_vendor_leaks.sh
@@ -774,7 +766,7 @@ if(NOT EMSCRIPTEN)
         target_link_libraries(og_game INTERFACE "-Wl,--end-group")
     endif()
     target_link_libraries(og_game INTERFACE og_runtime_deps)
-    add_dependencies(og_game check_graph_h_includes check_vendor_leaks)
+    add_dependencies(og_game check_vendor_leaks)
 
     # Stage runtime assets into the build tree so tests and local runs do not
     # depend on pre-existing user data.
@@ -1232,7 +1224,7 @@ if(NOT EMSCRIPTEN)
         target_include_directories(og_game_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
         target_compile_definitions(og_game_test PRIVATE TESTING)
         target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
-        add_dependencies(og_game_test check_graph_h_includes check_vendor_leaks)
+        add_dependencies(og_game_test check_vendor_leaks)
 
         add_executable(openglad_test
             ${SRC_DIR}/sdl_client/glad.cpp
@@ -1413,7 +1405,6 @@ endif()
 	    configure_openglad_runtime_target(og_game_web)
 	    target_include_directories(og_game_web PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
 	    target_link_libraries(og_game_web PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS})
-	    add_dependencies(og_game_web check_graph_h_includes)
 	    # Define __ASYNCIFY__ so that YIELD_SLEEP expands to emscripten_sleep()
 	    # instead of a no-op.  The -sASYNCIFY linker flag below enables the
 	    # Binaryen transform, but does not define the preprocessor macro.
