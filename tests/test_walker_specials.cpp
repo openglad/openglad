@@ -671,8 +671,14 @@ void test_walker_special_dead()
     w->dead = 0; // so destructor works
     w->current_special = 3;
     w->stats()->magicpoints = w->stats()->special_cost[3];
-    w->set_order_family(Order::Weapon, FAMILY_KNIFE);
-    TEST_ASSERT(!w->special(), "non-living special should fail early");
+
+    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(weapon != nullptr, "weapon created");
+    if (weapon) {
+        weapon->current_special = 1;
+        weapon->stats()->magicpoints = weapon->stats()->special_cost[1];
+        TEST_ASSERT(!weapon->special(), "non-living special should fail early");
+    }
 }
 REGISTER_SPECIAL_TEST(test_walker_special_dead);
 
@@ -1332,3 +1338,62 @@ void test_walker_special_unknown_family_and_teleport_ranged_fail_loop()
     myscreen->level_data.delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_unknown_family_and_teleport_ranged_fail_loop);
+
+void test_walker_special_success_returns_true_and_spends_mp()
+{
+    walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->set_order_family(Order::Living, FAMILY_MAGE);
+    w->current_special = 1; // teleport
+    w->stats()->special_cost[1] = 7;
+    w->stats()->magicpoints = 50;
+
+    walker* marker = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+    TEST_ASSERT(marker != nullptr, "teleport marker created");
+    if (!marker) {
+        delete w;
+        myscreen->level_data.delete_objects();
+        return;
+    }
+
+    marker->owner = w;
+    marker->dead = 0;
+    marker->lifetime = 1;
+
+    Sint32 mx = std::min<Sint32>(w->xpos + 96, myscreen->level_data.pixmaxx - w->sizex - 2);
+    Sint32 my = std::min<Sint32>(w->ypos + 96, myscreen->level_data.pixmaxy - w->sizey - 2);
+    if (!myscreen->query_passable(static_cast<float>(mx), static_cast<float>(my), w))
+    {
+        bool found = false;
+        for (Sint32 x = 0; x < myscreen->level_data.pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
+        {
+            for (Sint32 y = 0; y < myscreen->level_data.pixmaxy - w->sizey - 2; y += GRID_SIZE)
+            {
+                const Sint32 dx = x - w->xpos;
+                const Sint32 dy = y - w->ypos;
+                if (dx * dx + dy * dy <= 64 * 64)
+                    continue;
+                if (myscreen->query_passable(static_cast<float>(x), static_cast<float>(y), w))
+                {
+                    mx = x;
+                    my = y;
+                    found = true;
+                    break;
+                }
+            }
+        }
+    }
+    marker->setxy(mx, my);
+
+    const float mp_before = w->stats()->magicpoints;
+    TEST_ASSERT(w->special(), "successful special should return true");
+    TEST_ASSERT(w->stats()->magicpoints == mp_before - w->stats()->special_cost[1],
+                "successful special should spend configured MP cost");
+
+    delete w;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_SPECIAL_TEST(test_walker_special_success_returns_true_and_spends_mp);
