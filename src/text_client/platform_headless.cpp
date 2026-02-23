@@ -23,10 +23,9 @@
 #include <string>
 #include <unistd.h>
 
-// Difficulty globals — normally defined in picker.cpp (UI layer).
-// Headless client provides its own definitions.
+// current_difficulty global — difficulty_level[] is now in picker_common.cpp
 std::int32_t current_difficulty = 1; // 'normal'
-std::int32_t difficulty_level[DIFFICULTY_SETTINGS] = { 50, 100, 200 };
+// difficulty_level[] moved to src/ui/picker_common.cpp (shared with SDL client)
 
 #ifdef _WIN32
 #include <direct.h>

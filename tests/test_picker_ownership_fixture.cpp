@@ -1,43 +1,25 @@
 #include <openglad/entities/guy.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/ui/picker_common.h>
 #include "test_framework.h"
 
 #include <memory>
 
 extern screen* myscreen;
-extern std::unique_ptr<guy> current_guy;
-extern guy* old_guy;
-extern Sint32 editguy;
-extern short current_team_num;
-
-Sint32 cycle_team_guy(Sint32 whichway);
 
 namespace {
-struct PickerOwnershipFixtureState {
-    std::unique_ptr<guy> saved_current_guy;
-    guy* saved_old_guy = nullptr;
-    Sint32 saved_editguy = 0;
-    short saved_current_team_num = 0;
+struct OwnershipFixtureState {
     int saved_team_size = 0;
     std::unique_ptr<guy> saved_slot0;
 };
 
-PickerOwnershipFixtureState g_fixture;
+OwnershipFixtureState g_fixture;
 
 void setup_picker_ownership_fixture()
 {
-    g_fixture.saved_current_guy = std::move(current_guy);
-    g_fixture.saved_old_guy = old_guy;
-    g_fixture.saved_editguy = editguy;
-    g_fixture.saved_current_team_num = current_team_num;
     g_fixture.saved_team_size = myscreen->save_data.team_size;
     g_fixture.saved_slot0.reset(myscreen->save_data.team_list[0].release());
-
-    current_guy = nullptr;
-    old_guy = nullptr;
-    editguy = 0;
-    current_team_num = 0;
 
     myscreen->save_data.team_list[0].reset(new guy(FAMILY_SOLDIER));
     myscreen->save_data.team_list[0]->name = "FIXTURE_SOLDIER";
@@ -47,14 +29,7 @@ void setup_picker_ownership_fixture()
 
 void teardown_picker_ownership_fixture()
 {
-    current_guy.reset();
-
     myscreen->save_data.team_list[0].reset(g_fixture.saved_slot0.release());
-
-    current_guy = std::move(g_fixture.saved_current_guy);
-    old_guy = g_fixture.saved_old_guy;
-    editguy = g_fixture.saved_editguy;
-    current_team_num = g_fixture.saved_current_team_num;
     myscreen->save_data.team_size = static_cast<unsigned char>(g_fixture.saved_team_size);
 }
 } // namespace
@@ -63,20 +38,20 @@ void test_picker_cycle_team_guy_ownership_copy_and_alias()
 {
     const int original_strength = myscreen->save_data.team_list[0]->strength;
 
-    const Sint32 rc = cycle_team_guy(0);
-    TEST_ASSERT_EQ(4, rc, "cycle_team_guy should return OK");
+    // Create a TrainSession to cycle through team members
+    og::ui::TrainSession session(myscreen->save_data);
+    TEST_ASSERT(!session.empty(), "session should not be empty");
 
-    TEST_ASSERT(current_guy != nullptr, "cycle_team_guy should create current_guy copy");
-    TEST_ASSERT(old_guy == myscreen->save_data.team_list[0].get(),
-        "old_guy should alias team_list slot");
-    TEST_ASSERT(current_guy.get() != old_guy,
-        "current_guy should be a distinct owned copy");
+    // working_copy() should be a distinct copy from original()
+    const guy& working = session.working_copy();
+    const guy& original = session.original();
 
-    current_guy->strength += 7;
-    TEST_ASSERT_EQ(original_strength, myscreen->save_data.team_list[0]->strength,
-        "editing current_guy must not mutate team_list until save/edit");
-    TEST_ASSERT_EQ(myscreen->save_data.team_list[0]->teamnum, current_team_num,
-        "current_team_num should follow selected guy team");
+    TEST_ASSERT(&working != &original,
+        "working copy should be distinct from original");
+    TEST_ASSERT_EQ(original_strength, (int)working.strength,
+        "working copy should have same strength as original");
+    TEST_ASSERT_EQ(original_strength, (int)original.strength,
+        "original should match team list slot");
 }
 REGISTER_TEST_WITH_FIXTURE(test_picker_cycle_team_guy_ownership_copy_and_alias,
     setup_picker_ownership_fixture, teardown_picker_ownership_fixture);

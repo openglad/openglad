@@ -31,6 +31,9 @@
 #include "SDL.h"
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/ui/level_picker.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
+#include <openglad/ui/picker_common.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -42,15 +45,10 @@
 #include <string>
 #include <vector>
 
+#include "picker_sdl_defs.h"
+
 #define DOWN(x) (72 + static_cast<Sint32>((x) * 15))
 #define VIEW_DOWN(x) (10 + static_cast<Sint32>((x) * 20))
-#define RAISE 1.85  // please also change in guy.cpp
-
-#define EXIT 1
-#define REDRAW 2
-#define OK 4
-#define BUTTON_HEIGHT 15
-#define ARRAY_SIZE(a) (sizeof(a)/sizeof(a[0]))
 
 extern std::unique_ptr<guy> current_guy;
 extern guy* old_guy;
@@ -58,16 +56,29 @@ extern std::string message;
 extern Sint32 editguy;
 extern vbutton* localbuttons;
 extern short current_team_num;
-extern std::array<Sint32, 14> allowable_guys;
+// allowable_guys replaced by og::ui::kAllowableGuys
 extern Sint32 current_type;
 extern std::array<Sint32, NUM_FAMILIES> numbought;
-extern button createmenu_buttons[];
-extern button viewteam_buttons[];
-extern button details_buttons[];
-extern button trainmenu_buttons[];
-extern button hiremenu_buttons[];
-extern button saveteam_buttons[];
-extern button loadteam_buttons[];
+
+// Session pointers — set during the respective menu loops, null otherwise.
+static og::ui::HireSession* g_hire_session = nullptr;
+static og::ui::TrainSession* g_train_session = nullptr;
+
+// Sync current_guy from the active session's state.
+static void sync_current_guy_from_hire()
+{
+    if (g_hire_session && g_hire_session->current_recruit())
+        current_guy = std::make_unique<guy>(*g_hire_session->current_recruit());
+}
+
+static void sync_current_guy_from_train()
+{
+    if (g_train_session && !g_train_session->empty()) {
+        current_guy = std::make_unique<guy>(g_train_session->working_copy());
+        old_guy = &const_cast<guy&>(g_train_session->original());
+        editguy = g_train_session->current_slot();
+    }
+}
 #ifdef __EMSCRIPTEN__
 void picker_request_start_game();
 #endif
@@ -105,6 +116,52 @@ Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 create_detail_menu(guy *arg1);
 void glad_main(Sint32 playermode);
 void statscopy(guy *dest, guy *source);
+
+#define STAT_NUM_OFFSET 42
+#define STAT_COLOR   DARK_BLUE // color for normal stat text
+#define STAT_CHANGED RED       // color for changed stat text
+#define STAT_LEVELED LIGHT_BLUE   // color for leveled up stat text
+#define STAT_DISABLED BLACK   // color for disabled stat text
+#define STAT_DERIVED DARK_BLUE + 3
+
+// Compute derived stats for a guy using the current screen's loader data.
+static og::ui::DerivedStats compute_guy_derived_stats(const guy& g)
+{
+    auto pix = PIX(Order::Living, g.family);
+    return og::ui::compute_derived_stats(g,
+        myscreen->level_data.myloader->hitpoints[pix],
+        myscreen->level_data.myloader->damage[pix],
+        myscreen->level_data.myloader->stepsizes[pix],
+        myscreen->level_data.myloader->fire_frequency[pix]);
+}
+
+// Draw the HP/MP/ATK/DEF/SPD/ATK_SPD derived stats block.
+// y_fn(line) returns the y coordinate for the given line number.
+template <typename YFn>
+static void draw_derived_stats_block(text& mytext, const og::ui::DerivedStats& ds,
+    int x, int derived_offset, unsigned char value_color,
+    YFn y_fn, int& line)
+{
+    mytext.write_xy(x, y_fn(line), "HP:", STAT_DERIVED, 1);
+    mytext.write_xy(x + derived_offset - 9, y_fn(line), HIGH_HP_COLOR, "%.0f", ds.hp);
+    mytext.write_xy(x + derived_offset + 18, y_fn(line), "MP:", STAT_DERIVED, 1);
+    mytext.write_xy(x + 2*derived_offset + 18 - 9, y_fn(line), MAX_MP_COLOR, "%.0f", ds.mp);
+
+    line++;
+    mytext.write_xy(x, y_fn(line), "ATK:", STAT_DERIVED, 1);
+    mytext.write_xy(x + derived_offset - 3, y_fn(line), value_color, "%.0f", ds.atk);
+    mytext.write_xy(x + derived_offset + 18, y_fn(line), "DEF:", STAT_DERIVED, 1);
+    mytext.write_xy(x + 2*derived_offset + 18 - 3, y_fn(line), value_color, "%.0f", ds.def);
+
+    line++;
+    mytext.write_xy(x, y_fn(line), "SPD:", STAT_DERIVED, 1);
+    mytext.write_xy(x + derived_offset, y_fn(line), value_color, "%.1f", ds.spd);
+
+    line++;
+    mytext.write_xy(x, y_fn(line), "ATK SPD:", STAT_DERIVED, 1);
+    mytext.write_xy(x + derived_offset + 21, y_fn(line), value_color, "%.1f", ds.atk_spd);
+}
+
 Sint32 create_team_menu(Sint32 arg1)
 {
 	Sint32 retvalue=0;
@@ -132,7 +189,7 @@ Sint32 create_team_menu(Sint32 arg1)
 	
 	myscreen->fadeblack(1);
 	
-	while ( !(retvalue & EXIT) )
+	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		if(leftmouse(buttons))
@@ -145,8 +202,8 @@ Sint32 create_team_menu(Sint32 arg1)
         bool buttons_were_reset = reset_buttons(localbuttons, buttons, num_buttons, retvalue);
 
         // Nested menus can replace the global vbutton array with a different
-        // layout before returning EXIT. Avoid drawing with mismatched arrays.
-        if (retvalue & EXIT)
+        // layout before returning MENU_EXIT. Avoid drawing with mismatched arrays.
+        if (retvalue & MENU_EXIT)
             break;
 		
         if(last_level_id != myscreen->save_data.scen_num || buttons_were_reset)
@@ -176,11 +233,11 @@ Sint32 create_team_menu(Sint32 arg1)
         SDL_Delay(10);
 	}
 
-	// Propagate EXIT if that's why we left the loop
-	if (retvalue & EXIT)
+	// Propagate MENU_EXIT if that's why we left the loop
+	if (retvalue & MENU_EXIT)
 		return retvalue;
 
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 Sint32 create_view_menu(Sint32 arg1)
@@ -199,7 +256,7 @@ Sint32 create_view_menu(Sint32 arg1)
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
 
-	while ( !(retvalue & EXIT) )
+	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		if(leftmouse(buttons))
@@ -207,9 +264,9 @@ Sint32 create_view_menu(Sint32 arg1)
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
 
-        // BACK returns REDRAW to signal "go back to team menu".
+        // BACK returns MENU_REDRAW to signal "go back to team menu".
         // Check before reset_buttons can clear it.
-        if (retvalue & REDRAW)
+        if (retvalue & MENU_REDRAW)
             break;
 
         // Reset buttons (relevant after go_menu returns from game)
@@ -226,12 +283,12 @@ Sint32 create_view_menu(Sint32 arg1)
 	}
 	myscreen->clearbuffer();
 
-	// Propagate EXIT so TeamBuild interception can map GO -> StartGame.
-	// BACK returns REDRAW to keep parent create_team_menu running.
-	if (retvalue & EXIT)
+	// Propagate MENU_EXIT so TeamBuild interception can map GO -> StartGame.
+	// BACK returns MENU_REDRAW to keep parent create_team_menu running.
+	if (retvalue & MENU_EXIT)
 		return retvalue;
 
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 // Helper struct for progress menu
@@ -308,13 +365,13 @@ Sint32 create_progress_menu(Sint32 arg1)
     button buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, prev_btn.x, prev_btn.y, prev_btn.w, prev_btn.h, 0, -1, MenuNav::Right(1)),
         button("next", "NEXT", KEYSTATE_UNKNOWN, next_btn.x, next_btn.y, next_btn.w, next_btn.h, 0, -1, MenuNav::LeftRight(0, 2)),
-        button("back", "BACK", KEYSTATE_ESCAPE, back_btn.x, back_btn.y, back_btn.w, back_btn.h, RETURN_MENU, EXIT, MenuNav::Left(1)),
+        button("back", "BACK", KEYSTATE_ESCAPE, back_btn.x, back_btn.y, back_btn.w, back_btn.h, RETURN_MENU, MENU_EXIT, MenuNav::Left(1)),
     };
     int num_buttons = 3;
     int highlighted_button = 2;
     localbuttons = init_buttons(buttons, num_buttons);
 
-    while (!(retvalue & EXIT))
+    while (!(retvalue & MENU_EXIT))
     {
         // Input
         if (leftmouse(buttons))
@@ -339,10 +396,10 @@ Sint32 create_progress_menu(Sint32 arg1)
 
         bool do_prev = prev_enabled && ((clicked && prev_btn.x <= mx && mx <= prev_btn.x + prev_btn.w
                        && prev_btn.y <= my && my <= prev_btn.y + prev_btn.h)
-                       || (retvalue == OK && highlighted_button == 0));
+                       || (retvalue == MENU_OK && highlighted_button == 0));
         bool do_next = next_enabled && ((clicked && next_btn.x <= mx && mx <= next_btn.x + next_btn.w
                        && next_btn.y <= my && my <= next_btn.y + next_btn.h)
-                       || (retvalue == OK && highlighted_button == 1));
+                       || (retvalue == MENU_OK && highlighted_button == 1));
 
         if (do_prev) {
             scroll_offset--;
@@ -368,7 +425,7 @@ Sint32 create_progress_menu(Sint32 arg1)
                         // Set current level and exit
                         myscreen->save_data.scen_num = static_cast<short>(lp.id);
                         myscreen->clearbuffer();
-                        return REDRAW;
+                        return MENU_REDRAW;
                     }
                 }
                 row_y += row_height;
@@ -376,7 +433,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         }
 
         // Reset
-        if (retvalue == OK && highlighted_button != 2)
+        if (retvalue == MENU_OK && highlighted_button != 2)
             retvalue = 0;
 
         // Draw
@@ -455,7 +512,7 @@ Sint32 create_progress_menu(Sint32 arg1)
     }
 
     myscreen->clearbuffer();
-    return REDRAW;
+    return MENU_REDRAW;
 }
 
 std::string get_class_description(unsigned char family)
@@ -659,12 +716,6 @@ Sint32 create_hire_menu(Sint32 arg1)
 	Uint32 current_cost;
 	Sint32 clickvalue;
 
-#define STAT_NUM_OFFSET 42
-#define STAT_COLOR   DARK_BLUE // color for normal stat text
-#define STAT_CHANGED RED       // color for changed stat text
-#define STAT_LEVELED LIGHT_BLUE   // color for leveled up stat text
-#define STAT_DISABLED BLACK   // color for disabled stat text
-#define STAT_DERIVED DARK_BLUE + 3
     
     SDL_Rect stat_box = {196, 50 - 6 - 32, 104, 82 + 32};
     SDL_Rect stat_box_inner = {stat_box.x + 4, stat_box.y + 4 + 6, stat_box.w - 8, stat_box.h - 8 - 6};
@@ -701,8 +752,10 @@ Sint32 create_hire_menu(Sint32 arg1)
 	int num_buttons = 5;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
-	
-    cycle_guy(0);
+
+    og::ui::HireSession hire_session(myscreen->save_data, current_team_num);
+    g_hire_session = &hire_session;
+    sync_current_guy_from_hire();
     change_hire_teamnum(0);
     
     
@@ -713,7 +766,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 	
 	grab_mouse();
 
-	while ( !(retvalue & EXIT) )
+	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		clickvalue = leftmouse(buttons);
@@ -725,7 +778,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         handle_menu_nav(buttons, highlighted_button, retvalue);
         
         // Reset buttons
-        if(retvalue == OK || retvalue == REDRAW)
+        if(retvalue == MENU_OK || retvalue == MENU_REDRAW)
         {
 	            // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 	            localbuttons = init_buttons(buttons, num_buttons);
@@ -743,7 +796,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         draw_buttons(buttons, num_buttons);
         
         if (!current_guy)
-            cycle_guy(0);
+            sync_current_guy_from_hire();
         
         // Name box
         myscreen->draw_button(name_box, 1);
@@ -783,7 +836,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         
         message = std::format("CASH: {}", myscreen->save_data.m_totalcash[current_team_num]);
         mytext.write_xy(cost_box_content.x, cost_box_content.y, message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
-        current_cost = calculate_hire_cost();
+        current_cost = g_hire_session ? g_hire_session->current_cost() : 0;
         mytext.write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
         message = std::format("      {}", current_cost );
         if (current_cost > myscreen->save_data.m_totalcash[current_team_num])
@@ -799,85 +852,43 @@ Sint32 create_hire_menu(Sint32 arg1)
         // Stat box content
         linesdown = 0;
         int line_height = 10;
-        
+
         showcolor = STAT_COLOR;
-        
-        // Strength
-        message = std::format("{}", current_guy->strength);
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "STR:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
 
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 0), showcolor, 1);
-        
-        linesdown++;
-        // Dexterity
-        message = std::format("{}", current_guy->dexterity);
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "DEX:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 1), showcolor, 1);
-
-        linesdown++;
-        // Constitution
-        message = std::format("{}", current_guy->constitution);
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "CON:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 2), showcolor, 1);
-
-        linesdown++;
-        // Intelligence
-        message = std::format("{}", current_guy->intelligence);
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "INT:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 3), showcolor, 1);
-
-        linesdown++;
-        // Armor
-        message = std::format("{}", current_guy->armor);
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "ARMOR:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
+        struct { const char* label; short value; } hire_stats[] = {
+            {"STR:",  current_guy->strength},
+            {"DEX:",  current_guy->dexterity},
+            {"CON:",  current_guy->constitution},
+            {"INT:",  current_guy->intelligence},
+            {"ARMOR:", current_guy->armor},
+        };
+        for (int si = 0; si < 5; si++) {
+            int y = stat_box_content.y + linesdown * line_height;
+            message = std::format("{}", hire_stats[si].value);
+            mytext.write_xy(stat_box_content.x, y, hire_stats[si].label,
+                             static_cast<unsigned char>(STAT_COLOR), 1);
+            mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, y, message.c_str(), showcolor, 1);
+            if (si < 4) // cost rating for STR/DEX/CON/INT only
+                mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, y,
+                                get_training_cost_rating(last_family, si), showcolor, 1);
+            if (si < 4)
+                linesdown++;
+        }
 		
 		// Separator bar
 		SDL_Rect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*line_height - 2, stat_box_content.w - 20, 2};
 		myscreen->draw_button_inverted(r);
 		
 		int derived_offset = 3*STAT_NUM_OFFSET/4;
+		auto ds = compute_guy_derived_stats(*current_guy);
+
         linesdown++;
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "HP:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + derived_offset - 9, stat_box_content.y + linesdown*line_height + 4, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(Order::Living, last_family)] + current_guy->get_hp_bonus()));
-        
-        mytext.write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "MP:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + 2*derived_offset + 18 - 9, stat_box_content.y + linesdown*line_height + 4, MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
-		
-		linesdown++;
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + derived_offset - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(Order::Living, last_family)] + current_guy->get_damage_bonus());
-        
-        mytext.write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "DEF:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + 2*derived_offset + 18 - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", current_guy->get_armor_bonus());
-		
-		linesdown++;
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "SPD:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + derived_offset, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(Order::Living, last_family)] + current_guy->get_speed_bonus());
-        
-		linesdown++;
-        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK SPD:", STAT_DERIVED, 1);
-        // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
-        float fire_freq = myscreen->level_data.myloader->fire_frequency[PIX(Order::Living, last_family)] - current_guy->get_fire_frequency_bonus();
-        if(fire_freq < 1)
-            fire_freq = 1;
-        mytext.write_xy(stat_box_content.x + derived_offset + 21, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", 10.0f/fire_freq);
-        
-        
-		
+        int hire_line = linesdown;
+        draw_derived_stats_block(mytext, ds, stat_box_content.x, derived_offset, showcolor,
+            [&](int l) { return stat_box_content.y + l*line_height + 4; }, hire_line);
+        linesdown = hire_line;
+
+
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
@@ -893,9 +904,10 @@ Sint32 create_hire_menu(Sint32 arg1)
         }
 	}
 	
+	g_hire_session = nullptr;
 	myscreen->clearbuffer();
 	//myscreen->clearscreen();
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 Sint32 create_train_menu(Sint32 arg1)
@@ -922,7 +934,7 @@ Sint32 create_train_menu(Sint32 arg1)
 	{
 		popup_dialog("NEED A TEAM!", "You need to\nhire a team\nto train");
 		
-		return OK;
+		return MENU_OK;
 	}
 
 	myscreen->clearbuffer();
@@ -948,11 +960,12 @@ Sint32 create_train_menu(Sint32 arg1)
 
 	
 	auto& ourteam = myscreen->save_data.team_list;
-	
-	// Set to first guy on list using global variable ..
-	cycle_team_guy(0);
+
+    og::ui::TrainSession train_session(myscreen->save_data);
+    g_train_session = &train_session;
+    sync_current_guy_from_train();
     guy* here = ourteam[editguy].get();
-    current_cost = calculate_train_cost(here);
+    current_cost = g_train_session->current_cost();
 
 	grab_mouse();
 	
@@ -960,7 +973,7 @@ Sint32 create_train_menu(Sint32 arg1)
     
     clear_key_press_event();
 
-	while ( !(retvalue & EXIT) )
+	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		clickvalue = leftmouse(buttons);
@@ -972,12 +985,12 @@ Sint32 create_train_menu(Sint32 arg1)
         handle_menu_nav(buttons, highlighted_button, retvalue);
         
         // Reset buttons
-        if(localbuttons && (retvalue == OK || retvalue == REDRAW))
+        if(localbuttons && (retvalue == MENU_OK || retvalue == MENU_REDRAW))
         {
-            if(retvalue == REDRAW)
+            if(retvalue == MENU_REDRAW)
             {
 					localbuttons = init_buttons(buttons, num_buttons);
-				
+
 				for (i=2; i < 14; i++)
 				{
 					if (!(i%2)) // 2, 4, ..., 12
@@ -985,14 +998,14 @@ Sint32 create_train_menu(Sint32 arg1)
 					else
 						allbuttons[i]->set_graphic(FAMILY_PLUS);
 				}
-				cycle_team_guy(0);
+				sync_current_guy_from_train();
             }
-            
+
             if (!current_guy)
-                cycle_team_guy(0);
+                sync_current_guy_from_train();
             if (here != ourteam[editguy].get())
                 here = ourteam[editguy].get();
-            current_cost = calculate_train_cost(here);
+            current_cost = g_train_session->current_cost();
             retvalue = 0;
         }
 		
@@ -1019,78 +1032,30 @@ Sint32 create_train_menu(Sint32 arg1)
         myscreen->draw_text_bar(42, 70, 116, 156);
 
         
-        bool level_increased = (old_guy->level < current_guy->level);
-        bool stat_increased;
-        if(level_increased)
-            stat_increased = false;
-        else
-            stat_increased = (old_guy->strength < current_guy->strength
-                   || old_guy->dexterity < current_guy->dexterity
-                   || old_guy->constitution < current_guy->constitution
-                   || old_guy->intelligence < current_guy->intelligence
-                   || old_guy->armor < current_guy->armor);
+        bool level_increased = g_train_session->level_increased();
+        bool stat_increased = g_train_session->stats_increased();
 
-        // Strength
-        message = std::format("{}", current_guy->strength);
-        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  STR:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-        if (level_increased)
-            showcolor = STAT_LEVELED;
-        else if (here->strength < current_guy->strength)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
+        struct { const char* label; short cur_val; short old_val; } train_stats[] = {
+            {"  STR:", current_guy->strength,     here->strength},
+            {"  DEX:", current_guy->dexterity,    here->dexterity},
+            {"  CON:", current_guy->constitution, here->constitution},
+            {"  INT:", current_guy->intelligence, here->intelligence},
+            {"ARMOR:", current_guy->armor,        here->armor},
+        };
+        for (auto& s : train_stats) {
+            message = std::format("{}", s.cur_val);
+            mytext.write_xy(stat_box_content.x, DOWN(linesdown), s.label,
+                             static_cast<unsigned char>(STAT_COLOR), 1);
+            if (level_increased)
+                showcolor = STAT_LEVELED;
+            else if (s.old_val < s.cur_val)
+                showcolor = STAT_CHANGED;
+            else
+                showcolor = STAT_COLOR;
+            mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
+        }
 
-        // Dexterity
-        message = std::format("{}", current_guy->dexterity);
-        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  DEX:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-        if (level_increased)
-            showcolor = STAT_LEVELED;
-        else if (here->dexterity < current_guy->dexterity)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
-
-        // Constitution
-        message = std::format("{}", current_guy->constitution);
-        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  CON:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-        if (level_increased)
-            showcolor = STAT_LEVELED;
-        else if (here->constitution < current_guy->constitution)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
-
-        // Intelligence
-        message = std::format("{}", current_guy->intelligence);
-        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  INT:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-        if (level_increased)
-            showcolor = STAT_LEVELED;
-        else if (here->intelligence < current_guy->intelligence)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
-
-        // Armor
-        message = std::format("{}", current_guy->armor);
-        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "ARMOR:",
-                         static_cast<unsigned char>(STAT_COLOR), 1);
-        if (level_increased)
-            showcolor = STAT_LEVELED;
-        else if (here->armor < current_guy->armor)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
-
-        // Level
+        // Level (different color logic: no STAT_LEVELED, uses STAT_DISABLED)
         message = std::format("{}", current_guy->level);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "LEVEL:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
@@ -1142,31 +1107,15 @@ Sint32 create_train_menu(Sint32 arg1)
 			myscreen->draw_button_inverted(r);
         
         linesdown += 0.4f;
-        
-	        mytext.write_xy(info_box_content.x, info_y(linesdown), "HP:", STAT_DERIVED, 1);
-	        mytext.write_xy(info_box_content.x + derived_offset - 9, info_y(linesdown), HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(Order::Living, current_guy->family)] + current_guy->get_hp_bonus()));
-        
-	        mytext.write_xy(info_box_content.x + derived_offset + 18, info_y(linesdown), "MP:", STAT_DERIVED, 1);
-	        mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 9, info_y(linesdown), MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
-		
-		linesdown++;
-	        mytext.write_xy(info_box_content.x, info_y(linesdown), "ATK:", STAT_DERIVED, 1);
-	        mytext.write_xy(info_box_content.x + derived_offset - 3, info_y(linesdown), showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(Order::Living, current_guy->family)] + current_guy->get_damage_bonus());
-        
-	        mytext.write_xy(info_box_content.x + derived_offset + 18, info_y(linesdown), "DEF:", STAT_DERIVED, 1);
-	        mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 3, info_y(linesdown), showcolor, "%.0f", current_guy->get_armor_bonus());
-		
-		linesdown++;
-	        mytext.write_xy(info_box_content.x, info_y(linesdown), "SPD:", STAT_DERIVED, 1);
-	        mytext.write_xy(info_box_content.x + derived_offset, info_y(linesdown), showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(Order::Living, current_guy->family)] + current_guy->get_speed_bonus());
-        
-		linesdown++;
-	        mytext.write_xy(info_box_content.x, info_y(linesdown), "ATK SPD:", STAT_DERIVED, 1);
-        float fire_freq = myscreen->level_data.myloader->fire_frequency[PIX(Order::Living, current_guy->family)] - current_guy->get_fire_frequency_bonus();
-        if(fire_freq < 1)
-            fire_freq = 1;
-        // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
-	        mytext.write_xy(info_box_content.x + derived_offset + 21, info_y(linesdown), showcolor, "%.1f", 10.0f/fire_freq);
+
+        {
+            auto ds = compute_guy_derived_stats(*current_guy);
+            float base_line = linesdown;
+            int train_line = 0;
+            draw_derived_stats_block(mytext, ds, info_box_content.x, derived_offset, showcolor,
+                [&](int l) { return info_y(base_line + static_cast<float>(l)); }, train_line);
+            linesdown = base_line + static_cast<float>(train_line);
+        }
         
         
         linesdown++;
@@ -1195,62 +1144,55 @@ Sint32 create_train_menu(Sint32 arg1)
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
+	g_train_session = nullptr;
 	myscreen->clearbuffer();
 	//myscreen->clearscreen();
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
-Sint32 create_load_menu(Sint32 arg1)
+static Sint32 create_slot_menu(button* buttons, const char* title)
 {
 	Sint32 retvalue=0;
-	Sint32 i;
-	std::string temp_filename;
-	text& loadtext = myscreen->text_normal;
-	std::string menu_message;
+	text& menutext = myscreen->text_normal;
 
-	if (arg1)
-		arg1 = 1;
-
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
-	button* buttons = loadteam_buttons;
+	// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 	int num_buttons = 11;
 	int highlighted_button = 10;
 	localbuttons = init_buttons(buttons, num_buttons);
 
-	while ( !(retvalue & EXIT) )
+	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		if(leftmouse(buttons))
         {
 			retvalue = localbuttons->leftclick();
-			if(retvalue == REDRAW)
+			if(retvalue == MENU_REDRAW)
             {
-                return REDRAW;
+                return MENU_REDRAW;
             }
         }
-        
+
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == REDRAW)
+        if(retvalue == MENU_REDRAW)
         {
-            return REDRAW;
+            return MENU_REDRAW;
         }
-        
+
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
-		
+
 		// Draw
 		myscreen->clearbuffer();
         draw_backdrop();
         draw_buttons(buttons, num_buttons);
-        
+
         myscreen->draw_button(15,  9, 255, 199, 1, 1);
         myscreen->draw_text_bar(19, 13, 251, 21);
-        menu_message = "Gladiator: Load Game";
-        loadtext.write_xy(135-(static_cast<int>(menu_message.size())*3), 15, menu_message.c_str(), RED, 1);
-        for (i=0; i < 10; i++)
+        int title_len = static_cast<int>(std::strlen(title));
+        menutext.write_xy(135-(title_len*3), 15, title, RED, 1);
+        for (Sint32 i=0; i < 10; i++)
         {
-            temp_filename = std::format("save{}", i+1);
+            std::string temp_filename = std::format("save{}", i+1);
             allbuttons[i]->label = get_saved_name(temp_filename.c_str());
             myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
             allbuttons[i]->vdisplay();
@@ -1265,538 +1207,81 @@ Sint32 create_load_menu(Sint32 arg1)
                            allbuttons[10]->yloc-1,
                            allbuttons[10]->xend,
                            allbuttons[10]->yend, 0, 0, 1);
-                           
+
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
-	
-	return REDRAW;
+
+	return MENU_REDRAW;
 }
 
-
-Sint32 create_save_menu(Sint32 arg1)
+Sint32 create_load_menu(Sint32 /*arg1*/)
 {
-	Sint32 retvalue=0;
-	Sint32 i;
-	std::string temp_filename;
-	text& savetext = myscreen->text_normal;
-	std::string menu_message;
+	return create_slot_menu(loadteam_buttons, "Gladiator: Load Game");
+}
 
-	if (arg1)
-		arg1 = 1;
+Sint32 create_save_menu(Sint32 /*arg1*/)
+{
+	return create_slot_menu(saveteam_buttons, "Gladiator: Save Game");
+}
 
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
-	button* buttons = saveteam_buttons;
-	int num_buttons = 11;
-	int highlighted_button = 10;
-	localbuttons = init_buttons(buttons, num_buttons);
-	
+// --- Session-based thin wrappers for button callbacks ---
 
-	while ( !(retvalue & EXIT) )
-	{
-	    // Input
-		if(leftmouse(buttons))
-        {
-			retvalue = localbuttons->leftclick();
-			if(retvalue == REDRAW)
-            {
-                return REDRAW;
-            }
-        }
-        
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        if(retvalue == REDRAW)
-        {
-            return REDRAW;
-        }
-        
-        // Reset buttons
-        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
-		
-		// Draw
-		myscreen->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
-        
-        myscreen->draw_button(15,  9, 255, 199, 1, 1);
-        myscreen->draw_text_bar(19, 13, 251, 21);
-        menu_message = "Gladiator: Save Game";
-        savetext.write_xy(135-(static_cast<int>(menu_message.size())*3), 15, menu_message.c_str(), RED, 1);
-        for (i=0; i < 10; i++)
-        {
-            temp_filename = std::format("save{}", i+1);
-            allbuttons[i]->label = get_saved_name(temp_filename.c_str());
-            myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
-            allbuttons[i]->vdisplay();
-            myscreen->draw_box(allbuttons[i]->xloc-1,
-                               allbuttons[i]->yloc-1,
-                               allbuttons[i]->xend,
-                               allbuttons[i]->yend, 0, 0, 1);
-        }
-        myscreen->draw_text_bar(23, allbuttons[10]->yloc-2, 66, allbuttons[10]->yend+1);
-        allbuttons[10]->vdisplay();
-        myscreen->draw_box(allbuttons[10]->xloc-1,
-                           allbuttons[10]->yloc-1,
-                           allbuttons[10]->xend,
-                           allbuttons[10]->yend, 0, 0, 1);
-                           
-        draw_highlight(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
-	}
-	return REDRAW;
-
+static og::ui::TrainSession::Stat but_to_stat(Sint32 whatstat)
+{
+    switch (whatstat) {
+    case BUT_STR:   return og::ui::TrainSession::Stat::Strength;
+    case BUT_DEX:   return og::ui::TrainSession::Stat::Dexterity;
+    case BUT_CON:   return og::ui::TrainSession::Stat::Constitution;
+    case BUT_INT:   return og::ui::TrainSession::Stat::Intelligence;
+    case BUT_ARMOR: return og::ui::TrainSession::Stat::Armor;
+    case BUT_LEVEL: return og::ui::TrainSession::Stat::Level;
+    default:        return og::ui::TrainSession::Stat::Strength;
+    }
 }
 
 Sint32 increase_stat(Sint32 whatstat, Sint32 howmuch)
 {
-    bool level_increased = (old_guy->level < current_guy->level);
-    bool stat_increased;
-    const short delta = static_cast<short>(howmuch);
-    if(level_increased)
-    {
-        stat_increased = false;
-    }
-    else
-    {
-        stat_increased = (old_guy->strength < current_guy->strength
-               || old_guy->dexterity < current_guy->dexterity
-               || old_guy->constitution < current_guy->constitution
-               || old_guy->intelligence < current_guy->intelligence
-               || old_guy->armor < current_guy->armor);
-    }
-    
-	switch(whatstat)
-		{
-			case BUT_STR:
-				if(!level_increased)
-	                current_guy->strength = static_cast<short>(static_cast<Sint32>(current_guy->strength) + delta);
-				break;
-			case BUT_DEX:
-				if(!level_increased)
-	                current_guy->dexterity = static_cast<short>(static_cast<Sint32>(current_guy->dexterity) + delta);
-				break;
-			case BUT_CON:
-				if(!level_increased)
-	                current_guy->constitution = static_cast<short>(static_cast<Sint32>(current_guy->constitution) + delta);
-				break;
-			case BUT_INT:
-				if(!level_increased)
-	                current_guy->intelligence = static_cast<short>(static_cast<Sint32>(current_guy->intelligence) + delta);
-				break;
-			case BUT_ARMOR:
-				if(!level_increased)
-	                current_guy->armor = static_cast<short>(static_cast<Sint32>(current_guy->armor) + delta);
-				break;
-			case BUT_LEVEL:
-			    if(!stat_increased)
-			    {
-	                short newlevel = static_cast<short>(static_cast<Sint32>(current_guy->level) + delta);
-	                current_guy->upgrade_to_level(newlevel);
-			    }
-				break;
-			default:
-			break;
-	}
-	
-	return OK;
+    if (!g_train_session)
+        return MENU_OK;
+    g_train_session->increase_stat(but_to_stat(whatstat), howmuch);
+    sync_current_guy_from_train();
+    return MENU_OK;
 }
 
 Sint32 decrease_stat(Sint32 whatstat, Sint32 howmuch)
 {
-    bool level_increased = (old_guy->level < current_guy->level);
-    bool stat_increased;
-    const short delta = static_cast<short>(howmuch);
-    if(level_increased)
-    {
-        stat_increased = false;
-    }
-    else
-    {
-        stat_increased = (old_guy->strength < current_guy->strength
-               || old_guy->dexterity < current_guy->dexterity
-               || old_guy->constitution < current_guy->constitution
-               || old_guy->intelligence < current_guy->intelligence
-               || old_guy->armor < current_guy->armor);
-    }
-    
-	switch(whatstat)
-		{
-			case BUT_STR:
-			    if(!level_increased)
-	                current_guy->strength = static_cast<short>(static_cast<Sint32>(current_guy->strength) - delta);
-				break;
-			case BUT_DEX:
-				if(!level_increased)
-	                current_guy->dexterity = static_cast<short>(static_cast<Sint32>(current_guy->dexterity) - delta);
-				break;
-			case BUT_CON:
-				if(!level_increased)
-	                current_guy->constitution = static_cast<short>(static_cast<Sint32>(current_guy->constitution) - delta);
-				break;
-			case BUT_INT:
-				if(!level_increased)
-	                current_guy->intelligence = static_cast<short>(static_cast<Sint32>(current_guy->intelligence) - delta);
-				break;
-			case BUT_ARMOR:
-				if(!level_increased)
-	                current_guy->armor = static_cast<short>(static_cast<Sint32>(current_guy->armor) - delta);
-				break;
-			case BUT_LEVEL:
-				if(!stat_increased)
-	            {
-				    short newlevel = static_cast<short>(static_cast<Sint32>(current_guy->level) - delta);
-				    if(newlevel > 0 && newlevel >= myscreen->save_data.team_list[editguy]->level)
-	                {
-	                    current_guy->upgrade_to_level(newlevel);
-	                    if(current_guy->level == myscreen->save_data.team_list[editguy]->level)
-                        current_guy->exp = myscreen->save_data.team_list[editguy]->exp;
-                }
-			}
-			break;
-		default:
-			break;
-	}
-	
-	return OK;
-}
-
-Uint32 calculate_hire_cost()
-{
-	guy  *ob = current_guy.get();
-	Sint32 temp;
-	Sint32 myfamily;
-
-	if (!ob)
-		return 0;
-
-	myfamily = ob->family;
-	temp = costlist[myfamily];
-
-		// Long check of various things ..
-		if (ob->strength < statlist[myfamily][BUT_STR])
-			ob->strength = static_cast<short>(statlist[myfamily][BUT_STR]);
-		if (ob->dexterity < statlist[myfamily][BUT_DEX])
-			ob->dexterity = static_cast<short>(statlist[myfamily][BUT_DEX]);
-		if (ob->constitution < statlist[myfamily][BUT_CON])
-			ob->constitution = static_cast<short>(statlist[myfamily][BUT_CON]);
-		if (ob->intelligence < statlist[myfamily][BUT_INT])
-			ob->intelligence = static_cast<short>(statlist[myfamily][BUT_INT]);
-		if (ob->armor < statlist[myfamily][BUT_ARMOR])
-			ob->armor = static_cast<short>(statlist[myfamily][BUT_ARMOR]);
-
-	// Now figure out costs ..
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_STR]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_DEX]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_CON]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_INT]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_ARMOR]));
-    
-		if (ob->level < statlist[myfamily][BUT_LEVEL])
-			ob->upgrade_to_level(static_cast<short>(statlist[myfamily][BUT_LEVEL]));
-		
-	if (static_cast<Sint32>(calculate_exp(ob->level)) < 0) // overflow
-		ob->upgrade_to_level(1);
-    
-	temp += static_cast<Sint32>(calculate_exp(ob->level));
-	
-	if (temp < 0)
-	{
-		//guytemp = new guy(current_guy->family);
-		//delete current_guy;
-		//current_guy = guytemp;
-		cycle_guy(0);
-		//temp = -1;  // This used to be an error code checked by picker.cpp line 2213
-		temp = 0;
-	}
-	return static_cast<Uint32>(temp);
-}
-
-// This version compares current_guy versus the old version ..
-Uint32 calculate_train_cost(guy  *oldguy)
-{
-	guy  *ob = current_guy.get();
-	Sint32 temp;
-	Sint32 myfamily;
-
-	if (!ob || !oldguy)
-		return 0;
-
-	myfamily = ob->family;
-	temp = 0;
-
-	// Long check of various things ..
-	if (ob->strength < oldguy->strength)
-		ob->strength = oldguy->strength;
-	if (ob->dexterity < oldguy->dexterity)
-		ob->dexterity = oldguy->dexterity;
-	if (ob->constitution < oldguy->constitution)
-		ob->constitution = oldguy->constitution;
-	if (ob->intelligence < oldguy->intelligence)
-		ob->intelligence = oldguy->intelligence;
-	if (ob->armor < oldguy->armor)
-		ob->armor = oldguy->armor;
-
-	// Now figure out costs ..
-    
-	// Add on extra level cost ..
-	if (ob->level < oldguy->level)
-		ob->upgrade_to_level(oldguy->level);
-	if (calculate_exp(ob->level) > oldguy->exp)
-		temp += static_cast<Sint32>(calculate_exp(ob->level) - oldguy->exp);
-
-	if (ob->level <= old_guy->level) // Only count these costs if the level is not being upgraded
-    {
-	// First we have our 'total increased value..'
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_STR]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_DEX]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_CON]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_INT]));
-	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_ARMOR]));
-
-	// Now subtract what we've already paid for ..
-	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_STR]));
-	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_DEX]));
-	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_CON]));
-	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_INT]));
-	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * static_cast<Sint32>(statcosts[myfamily][BUT_ARMOR]));
-    }
-    
-
-	if (temp < 0)
-	{
-		temp = 0;
-		statscopy(current_guy.get(), oldguy);
-		cycle_team_guy(0);
-
-	}
-
-	return static_cast<Uint32>(temp);
-}
-
-
-#define GET_RAND_ELEM(array) (array[rand()%ARRAY_SIZE(array)])
-
-const char* archer_names[] = {
-    "Robin", "Green Arrow", 
-    "Legolas", 
-    "Yeoman", "Strider", "Longshot", "Bowyer", "Hunter", "Archy"
-};
-
-const char* cleric_names[] = {
-    "Tuck", 
-    "Brother", "Pater", "Drake", "Friar", "Francis", "John Paul", "Medic"
-};
-
-const char* druid_names[] = {
-    "Roland", 
-    "Merlin", 
-    "Hippy", "Green Thumb", "Treefall", "Rain"
-};
-
-const char* elf_names[] = {
-    "Legolas", "Took", "Elrond", 
-    "Tanis", 
-    "Acorn", "Lightfoot", "Treewee"
-};
-
-const char* mage_names[] = {
-    "Gandalf", "Saruman", "Radagast", "Alatar", "Pallando", 
-    "Raistlin", "Fizban", "Mordenkainen", 
-    "Merlin", 
-    "Harry", 
-    "Manannan", "Mordack", 
-    "Jace"
-};
-
-const char* soldier_names[] = {
-    "Lothar", 
-    "Arthur", "Uther", 
-    "Achilles", "Lu Bu", "Wallace", "Leonidas", "Attila", "Alexander", "Ajax", "Nestor", "Priam", "Hector", 
-    "Tom", "Bigfoot"
-};
-
-const char* thief_names[] = {
-    "Shinobi", 
-    "Dismas", 
-    "Shadow", "Stabby", "Swiftstrike", "Scourge", "Rogue"
-};
-
-const char* orc_names[] = {
-    "Grom", 
-    "Thrull", 
-    "Vernix", "Lanugo", 
-    "Grok", "Horde", "Grog", "Krosh"
-};
-
-const char* barbarian_names[] = {
-    "Thor", 
-    "Conan", 
-    "Beowulf", "Cronus", "Pallas", "Atlas", "Prometheus", 
-    "Titan"
-};
-
-const char* elemental_names[] = {
-    "Furnace", "Molten", "Burns", "Fire Eli", "Fireball", "Sunny", "Lava", "Heatwave", "Torch", "Scorch"
-};
-
-const char* skeleton_names[] = {
-    "Drybones", 
-    "Blackbeard", 
-    "Boney", "Femur", "Patella", "Humerus", "Scapula"
-};
-
-const char* slime_names[] = {
-    "Grimer", 
-    "Goop", "Slurp", "Glopp", "Sludge", "Blob"
-};
-
-const char* faerie_names[] = {
-    "Tink", 
-    "Gem", "Glitter", "Jewel", "Blossom", "Ruby", "Muffin", "Flutter", "Sparkle", "Sprint", "Sprite", "Eve", "Twinkle", "Violet", "Daisy", "Lily"
-};
-
-const char* ghost_names[] = {
-    "Casper", 
-    "Slimer", 
-    "Reaper", "Ecto", "Pepper", "Boo", "Banshee", "Nyx"
-};
-
-const char* get_random_name(unsigned char family)
-{
-	switch(family)
-	{
-		case FAMILY_ARCHER:
-			return GET_RAND_ELEM(archer_names);
-		case FAMILY_CLERIC:
-			return GET_RAND_ELEM(cleric_names);
-		case FAMILY_DRUID:
-			return GET_RAND_ELEM(druid_names);
-		case FAMILY_ELF:
-			return GET_RAND_ELEM(elf_names);
-		case FAMILY_MAGE:
-			return GET_RAND_ELEM(mage_names);
-		case FAMILY_SOLDIER:
-			return GET_RAND_ELEM(soldier_names);
-		case FAMILY_THIEF:
-			return GET_RAND_ELEM(thief_names);
-		case FAMILY_ARCHMAGE:
-			return GET_RAND_ELEM(mage_names);
-		case FAMILY_ORC:
-			return GET_RAND_ELEM(orc_names);
-		case FAMILY_BIG_ORC:
-			return GET_RAND_ELEM(orc_names);
-		case FAMILY_BARBARIAN:
-			return GET_RAND_ELEM(barbarian_names);
-		case FAMILY_FIREELEMENTAL:
-			return GET_RAND_ELEM(elemental_names);
-		case FAMILY_SKELETON:
-			return GET_RAND_ELEM(skeleton_names);
-		case FAMILY_SLIME:
-		case FAMILY_MEDIUM_SLIME:
-		case FAMILY_SMALL_SLIME:
-			return GET_RAND_ELEM(slime_names);
-		case FAMILY_FAERIE:
-			return GET_RAND_ELEM(faerie_names);
-		case FAMILY_GHOST:
-			return GET_RAND_ELEM(ghost_names);
-		default:
-			return GET_RAND_ELEM(soldier_names);
-	}
-}
-
-bool has_name_in_team(const char* name)
-{
-    auto& ourteam = myscreen->save_data.team_list;
-    int team_size = myscreen->save_data.team_size;
-    
-    for(int i = 0; i < team_size; i++)
-    {
-        if(ourteam[i]->name == name)
-            return true;
-    }
-    
-    return false;
-}
-
-const char* get_new_name(unsigned char family)
-{
-    static std::string new_name_buffer;
-    const char* result = get_random_name(family);
-
-    // Try a few times to get a unique name
-    int i = 0;
-    while(has_name_in_team(result) && i < 10)
-    {
-        result = get_random_name(family);
-        i++;
-    }
-
-    // A bare name is a duplicate?
-    if(has_name_in_team(result))
-    {
-        // Append a number
-        i = 2;
-        do
-        {
-            new_name_buffer = std::format("{}{}", result, i);
-            i++;
-        }
-        while(has_name_in_team(new_name_buffer.c_str()));
-
-        result = new_name_buffer.c_str();
-    }
-
-    return result;
+    if (!g_train_session)
+        return MENU_OK;
+    g_train_session->decrease_stat(but_to_stat(whatstat), howmuch);
+    sync_current_guy_from_train();
+    return MENU_OK;
 }
 
 Sint32 cycle_guy(Sint32 whichway)
 {
-	Sint32 newfamily;
+    if (!g_hire_session) {
+        // Fallback: create recruit directly (for any code calling this outside a session)
+        constexpr auto& guys = og::ui::kAllowableGuys;
+        current_type = (current_type + whichway + static_cast<Sint32>(guys.size())) % static_cast<Sint32>(guys.size());
+        if (current_type < 0)
+            current_type = static_cast<Sint32>(guys.size()) - 1;
+        current_guy = og::ui::create_recruit(guys[current_type], current_team_num, myscreen->save_data);
+        show_guy(0, 0);
+        grab_mouse();
+        return MENU_OK;
+    }
 
-	if (!current_guy)
-		newfamily = allowable_guys[0];
-	else
-	{
-		current_type = current_type + whichway + static_cast<Sint32>(allowable_guys.size());
-		current_type %= static_cast<Sint32>(allowable_guys.size());
-		if (current_type < 0)
-			current_type = static_cast<Sint32>(allowable_guys.size()) - 1;
-		newfamily = allowable_guys[current_type];
-		//newfamily = current_guy->family + whichway;
-	}
+    if (whichway > 0) g_hire_session->next_family();
+    else if (whichway < 0) g_hire_session->prev_family();
+    // whichway == 0: session constructor already initialized
 
-	//newfamily = (newfamily + NUM_FAMILIES) % NUM_FAMILIES;
-
-	// Make the new guy
-	current_guy = std::make_unique<guy>(newfamily);
-	current_guy->teamnum = current_team_num;
-		current_guy->name = get_new_name(static_cast<unsigned char>(newfamily));
-
-	show_guy(0, 0);
-
-	//myscreen->buffer_to_screen(52, 24, 108, 64);
-
-	grab_mouse();
-	
-	return OK;
+    current_type = g_hire_session->family_index();
+    sync_current_guy_from_hire();
+    show_guy(0, 0);
+    grab_mouse();
+    return MENU_OK;
 }
 
 	void show_guy(Sint32 frames, Sint32 who, Sint32 centerx, Sint32 centery) // shows the current guy ..
@@ -1827,68 +1312,32 @@ Sint32 cycle_guy(Sint32 whichway)
 	myscreen->draw_text_bar(centerx - 80 + 56, centery - 45 + 28, centerx - 80 + 104, centery - 45 + 62);
 	draw_walker(*mywalker, myscreen->viewob[0].get());
 }
-// Sets current_guy to 'whichguy' in the teamlist, and
-// returns a COPY of him as the function result
 Sint32 cycle_team_guy(Sint32 whichway)
 {
-	if (myscreen->save_data.team_size < 1)
+	if (!g_train_session || g_train_session->empty())
 		return -1;
-    
-    auto& ourteam = myscreen->save_data.team_list;
-    
-	editguy += whichway;
-	if (editguy < 0)
-	{
-		editguy += MAX_TEAM_SIZE;
-		while (!ourteam[editguy])
-			editguy--;
-	}
 
-	if (editguy < 0 || editguy >= MAX_TEAM_SIZE)
-		editguy = 0;
+	if (whichway > 0) g_train_session->next_member();
+	else if (whichway < 0) g_train_session->prev_member();
 
-	if (!whichway && !ourteam[editguy])
-		whichway = 1;
-
-	while (!ourteam[editguy])
-	{
-		editguy += whichway;
-		if (editguy < 0 || editguy >= MAX_TEAM_SIZE)
-			editguy = 0;
-	}
-
-	current_guy = std::make_unique<guy>(ourteam[editguy]->family);
-	statscopy(current_guy.get(), ourteam[editguy].get());
-	old_guy = ourteam[editguy].get();
-
+	sync_current_guy_from_train();
 	show_guy(0, 0);
 
 	current_team_num = current_guy->teamnum;
 
-	// Set our team button back to normal color ..
-	// Zardus: FIX: added a check for null pointers
+	// Set our team button back to normal color
 	if (allbuttons[18])
 		allbuttons[18]->do_outline = 0;
 
-	return OK;
+	return MENU_OK;
 }
 
 Sint32 add_guy(guy *newguy)
 {
-	Sint32 i;
-
-	for (i=0; i < MAX_TEAM_SIZE; i++)
-    {
-		if (!myscreen->save_data.team_list[i])
-		{
-			myscreen->save_data.team_list[i].reset(newguy);
-			myscreen->save_data.team_size++;
-			return i;
-		}
-    }
-
-	// failed the case; too many guys
-	return -1;
+	short team_num = newguy->teamnum;
+	std::unique_ptr<guy> owned(newguy);
+	int slot = og::ui::add_recruit_to_team(myscreen->save_data, std::move(owned), team_num);
+	return static_cast<Sint32>(slot);
 }
 
 Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
@@ -1902,7 +1351,7 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 		someguy = current_guy.get();
 
 	if (!someguy)
-		return REDRAW;
+		return MENU_REDRAW;
 
 	release_mouse();
 	
@@ -1919,121 +1368,60 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	grab_mouse();
 
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 {
-	Sint32 newfamily = current_guy->family;
-	//buffers: changed typename to type_name due to some compile error
-	std::string type_name;
-	Sint32 i;
-
-	if (myscreen->save_data.team_size >= MAX_TEAM_SIZE) // abort abort!
+	if (!g_hire_session)
 		return -1;
 
-	if (!current_guy) // we should be adding current_guy
-		return -1;
+	int slot = g_hire_session->hire();
+	if (slot < 0)
+		return (myscreen->save_data.team_size >= MAX_TEAM_SIZE) ? -1 : MENU_OK;
 
-    Uint32 cost = calculate_hire_cost();
-	if (cost == 0 || cost > myscreen->save_data.m_totalcash[current_team_num])
-		return OK;
+	// SDL-specific: prompt for name
+	release_mouse();
+	auto& hired = myscreen->save_data.team_list[slot];
+	std::string name = hired->name;
+	if (prompt_for_string("NAME THIS CHARACTER", name))
+		g_hire_session->rename_hired(slot, name);
+	grab_mouse();
 
-	myscreen->save_data.m_totalcash[current_team_num] -= cost;
-    
-    auto& ourteam = myscreen->save_data.team_list;
-	for (i=0; i < MAX_TEAM_SIZE; i++)
-    {
-		if (!ourteam[i]) // found an empty slot
-		{
-			current_guy->teamnum = current_team_num;
-			ourteam[i] = std::move(current_guy);
-			myscreen->save_data.team_size++;
-			release_mouse();
-			
-			std::string name = ourteam[i]->name;
-			if(prompt_for_string("NAME THIS CHARACTER", name))
-                ourteam[i]->name = name;
-            
-			grab_mouse();
+	// Sync current_guy from the session's next recruit
+	sync_current_guy_from_hire();
 
-			// Increment the next guy's number
-			numbought[newfamily]++;
-
-			// Ensure we have the right exp for our level
-			ourteam[i]->exp = calculate_exp(ourteam[i]->level);
-
-			// Grab a new, generic guy to be edited/bought
-			current_guy = std::make_unique<guy>(newfamily);
-			type_name = current_guy->name;
-			statscopy(current_guy.get(), ourteam[i].get()); // set to same stats as just bought
-			current_guy->name = type_name;
-            current_guy->name = get_new_name(static_cast<unsigned char>(newfamily));
-
-			// Return okay status
-			return OK;
-		}
-    }
-
-	return OK;
+	return MENU_OK;
 }
 
 // Accept changes ..
-Sint32 edit_guy(Sint32 arg1)
+Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 {
-	guy *here;
-	MouseState& cheatmouse = query_mouse();
-
-	if (arg1)
-		arg1 = 1;
-
-	if (!current_guy)
+	if (!g_train_session || g_train_session->empty())
 		return -1;
 
-	here = myscreen->save_data.team_list[editguy].get();
-	if (!here)
-		return -1;  // error case; should never happen
-
-	// This is for cheating! Only CHEAT :)
-	// When holding down the right mouse button, can always accept free changes
-	if (CHEAT_MODE && cheatmouse.right)
-	{
-		if (here->level != current_guy->level)
-			current_guy->upgrade_to_level(current_guy->level);
-		statscopy(here, current_guy.get());
-		return OK;
+	// SDL-specific: cheat mode (hold right mouse → free changes)
+	bool force = false;
+	if (CHEAT_MODE) {
+		MouseState& cheatmouse = query_mouse();
+		force = cheatmouse.right;
 	}
-    
-    Uint32 cost = calculate_train_cost(here);
-	if (cost > myscreen->save_data.m_totalcash[current_guy->teamnum])  // compare cost of here to current_guy
-		return OK;
 
-	myscreen->save_data.m_totalcash[current_guy->teamnum] -= cost;  // cost of new - old (current_guy - here)
+	if (!g_train_session->accept(force))
+		return MENU_OK;  // can't afford
 
-    if (here->level != current_guy->level)
-    {
-        current_guy->upgrade_to_level(current_guy->level);
-    }
-	statscopy(here, current_guy.get());
+	// Sync working copy back after accept
+	sync_current_guy_from_train();
 
 	// Color our team button normally
 	allbuttons[18]->do_outline = 0;
 
-	return OK;
+	return MENU_OK;
 }
 
 Sint32 how_many(Sint32 whatfamily)    // how many guys of family X on the team?
 {
-	Sint32 counter = 0;
-	Sint32 i;
-
-	for (i=0; i < MAX_TEAM_SIZE; i++)
-    {
-		if (myscreen->save_data.team_list[i] && myscreen->save_data.team_list[i]->family == whatfamily)
-			counter++;
-    }
-
-	return counter;
+	return static_cast<Sint32>(og::ui::count_family_members(whatfamily, myscreen->save_data));
 }
 
 Sint32 do_save(Sint32 arg1)
@@ -2059,7 +1447,7 @@ Sint32 do_save(Sint32 arg1)
 
     grab_mouse();
 
-	return REDRAW;
+	return MENU_REDRAW;
 }
 
 Sint32 do_load(Sint32 arg1)
@@ -2075,7 +1463,7 @@ Sint32 do_load(Sint32 arg1)
         timed_dialog("LOAD FAILED");
     }
 
-    return REDRAW;
+    return MENU_REDRAW;
 }
 
 std::string get_saved_name(const char * filename)
@@ -2165,19 +1553,19 @@ Sint32 go_menu(Sint32 arg1)
     {
         popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
 
-        return REDRAW;
+        return MENU_REDRAW;
     }
 
 #ifdef __EMSCRIPTEN__
-    // For Emscripten: Set flag and return EXIT to unwind all menu loops
+    // For Emscripten: Set flag and return MENU_EXIT to unwind all menu loops
     // The state machine in main() will handle starting the game
     myscreen->save_data.save("save0");
 
     current_guy.reset();
 
     picker_request_start_game();
-    Log("go_menu: Setting g_start_game_requested, returning EXIT\n");
-    return EXIT;  // This will unwind all menu loops back to picker_main/picker_frame
+    Log("go_menu: Setting g_start_game_requested, returning MENU_EXIT\n");
+    return MENU_EXIT;  // This will unwind all menu loops back to picker_main/picker_frame
 #else
     // Native build: use blocking loop
     do
@@ -2246,27 +1634,5 @@ Sint32 go_menu(Sint32 arg1)
 
 void statscopy(guy *dest, guy *source)
 {
-	dest->family = source->family;
-	dest->strength = source->strength;
-	dest->dexterity = source->dexterity;
-	dest->constitution = source->constitution;
-	dest->intelligence = source->intelligence;
-	dest->level = source->level;
-	dest->armor = source->armor;
-	dest->exp = source->exp;
-	dest->kills = source->kills;
-	dest->level_kills = source->level_kills;
-	dest->total_damage = source->total_damage;
-	dest->total_hits   = source->total_hits;
-	dest->total_shots  = source->total_shots;
-	dest->teamnum = source->teamnum;
-	
-	dest->scen_damage = source->scen_damage;
-	dest->scen_kills = source->scen_kills;
-	dest->scen_damage_taken = source->scen_damage_taken;
-	dest->scen_min_hp = source->scen_min_hp;
-	dest->scen_shots = source->scen_shots;
-	dest->scen_hits = source->scen_hits;
-
-	dest->name = source->name;
+	og::ui::statscopy(dest, source);
 }

@@ -69,278 +69,152 @@ std::string read_one_line(SDL_RWops *infile, short length)
 	return newline;
 }
 
-// Note: this code has been redone to work in 'scanlines,'
-//       so that the text scrolls by pixels rather than lines.
+// Shared scrolling text viewer used by read_scenario and read_campaign_intro.
+// GetLine(int index) should return a std::string for the given line index.
+template <typename GetLine>
+static short scroll_text_view(screen* scr, int num_lines, int box_width,
+    const char* title, Sint32 buf_x, Sint32 buf_y, Sint32 buf_w, Sint32 buf_h,
+    GetLine get_line)
+{
+	Sint32 screenlines = num_lines * 8;
+	Sint32 linesdown = 0;
+	Sint32 changed = 1;
+	Sint32 templines;
+	Sint32 text_delay = 1;
+	Sint32 key_presses = 0;
+
+	text& mytext = scr->text_normal;
+	Sint32 start_time = query_timer();
+	Sint32 now_time;
+	Sint32 bottomrow = screenlines - ((DISPLAY_LINES-1)*8);
+
+	clear_keyboard();
+
+	while (!query_input_continue())
+	{
+		SDL_Delay(10);
+		get_input_events(POLL);
+
+		short scroll_amount = get_and_reset_scroll_amount();
+		if (scroll_amount < 0)
+		{
+			now_time = query_timer();
+			key_presses = (now_time - start_time) % text_delay;
+			if (!key_presses && (linesdown < bottomrow))
+			{
+				while (linesdown < bottomrow && scroll_amount != 0)
+				{
+					linesdown++;
+					scroll_amount++;
+				}
+				changed = 1;
+			}
+		}
+
+		if (keystates[KEYSTATE_PAGEDOWN])
+		{
+			now_time = query_timer();
+			key_presses = (now_time - start_time) % (10*text_delay);
+			if (!key_presses && (linesdown < bottomrow))
+			{
+				templines = linesdown + (DISPLAY_LINES * 7);
+				if (templines > bottomrow)
+					templines = bottomrow;
+				if (linesdown != templines)
+				{
+					linesdown = templines;
+					changed = 1;
+				}
+			}
+		}
+
+		if (scroll_amount > 0)
+		{
+			now_time = query_timer();
+			key_presses = (now_time - start_time) % text_delay;
+			if (!key_presses && linesdown)
+			{
+				while (linesdown && scroll_amount != 0)
+				{
+					linesdown--;
+					scroll_amount--;
+				}
+				changed = 1;
+			}
+		}
+
+		if (keystates[KEYSTATE_PAGEUP])
+		{
+			now_time = query_timer();
+			key_presses = (now_time - start_time) % (10*text_delay);
+			if (!key_presses && linesdown)
+			{
+				linesdown -= (DISPLAY_LINES * 7);
+				if (linesdown < 0)
+					linesdown = 0;
+				changed = 1;
+			}
+		}
+
+		if (changed)
+		{
+			templines = linesdown/8;
+			scr->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
+			                 HELPTEXT_LEFT+box_width, HELPTEXT_TOP+107, 3, 1);
+			for (Sint32 j = 0; j < DISPLAY_LINES; j++)
+			{
+				std::string line = get_line(j + templines);
+				if (line.size() > 0)
+					mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(text_down(j)-linesdown%8),
+					                line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+			}
+
+			scr->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
+			                   HELPTEXT_LEFT+box_width-4, HELPTEXT_TOP-2);
+			scr->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
+			                   HELPTEXT_LEFT+box_width-4, HELPTEXT_TOP+103);
+			int title_x = HELPTEXT_LEFT + box_width/2 - static_cast<int>(strlen(title))*3;
+			mytext.write_xy(title_x, HELPTEXT_TOP-7, title, static_cast<unsigned char>(RED), 1);
+			int cont_len = static_cast<int>(strlen(CONTINUE_ACTION_STRING " TO CONTINUE"));
+			int cont_x = HELPTEXT_LEFT + box_width/2 - cont_len*3;
+			mytext.write_xy(cont_x, HELPTEXT_TOP+98,
+			                CONTINUE_ACTION_STRING " TO CONTINUE", static_cast<unsigned char>(RED), 1);
+			scr->buffer_to_screen(buf_x, buf_y, buf_w, buf_h);
+			changed = 0;
+		}
+	}
+
+	while (keystates[KEYSTATE_ESCAPE])
+	{
+		SDL_Delay(1);
+		get_input_events(POLL);
+	}
+
+	return static_cast<short>(screenlines);
+}
+
 short read_scenario(screen *s)
 {
 #ifdef TESTING
 	return 1;
 #endif
-	Sint32 screenlines = static_cast<Sint32>(s->level_data.description.size()) * 8;
-	Sint32  numlines, j;
-	Sint32 linesdown;
-	Sint32 changed;
-	Sint32 templines;
-	Sint32 text_delay = 1; // bigger = slower
-	Sint32 key_presses = 0;
-	
-	text& mytext = s->text_normal;
-	Sint32 start_time, now_time;
-	Sint32 bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );
-
-	clear_keyboard();
-	linesdown = 0;
-	changed = 1;
-	start_time = query_timer();
-	numlines = screenlines;
-
-	// Do the loop until person hits escape
-	while (!query_input_continue())
-	{
-		SDL_Delay(10);
-		get_input_events(POLL);
-
-		short scroll_amount = get_and_reset_scroll_amount();
-		if (scroll_amount < 0)    // scrolling down
-		{
-			now_time = query_timer();
-
-			key_presses =  (now_time - start_time) % text_delay;
-			if (!key_presses && (linesdown < bottomrow) )
-			{
-			    while(linesdown < bottomrow && scroll_amount != 0)
-                {
-                    linesdown++;
-                    scroll_amount++;
-                }
-				changed = 1;
-			}
-		} // end of KEYSTATE_DOWN
-
-		if (keystates[KEYSTATE_PAGEDOWN])    // scrolling one page down
-		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % (10*text_delay);
-			if (!key_presses && (linesdown < bottomrow) )
-			{
-				templines = linesdown + (DISPLAY_LINES * 7);
-				if (templines > bottomrow)
-					templines = bottomrow;
-				if (linesdown != templines) // we actually moved down
-				{
-					linesdown = templines;
-					changed = 1;
-				}
-			}
-		} // end of PAGE DOWN
-
-		if (scroll_amount > 0)      // scrolling up
-		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % text_delay;
-			if (!key_presses && linesdown)
-			{
-			    while(linesdown && scroll_amount != 0)
-                {
-                    linesdown--;
-                    scroll_amount--;
-                }
-				changed = 1;
-			}
-		} // end of KEYSTATE_UP
-
-		if (keystates[KEYSTATE_PAGEUP])    // scrolling one page up
-		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % (10*text_delay);
-			if (!key_presses && linesdown)
-			{
-				linesdown -= (DISPLAY_LINES * 7);
-				if (linesdown < 0)
-					linesdown = 0;
-				changed = 1;
-			}
-		}  // end of PAGE UP
-
-		if (changed)  // did we scroll, etc.?
-		{
-			templines = linesdown/8; // which TEXT line are we at?
-				s->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
-				                      HELPTEXT_LEFT+200, HELPTEXT_TOP+107, 3, 1);
-				for (j=0; j < DISPLAY_LINES; j++)
-	            {
-	                std::string line = s->level_data.get_description_line(j+templines);
-					if(line.size() > 0)
-						mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(text_down(j)-linesdown%8),
-						                 line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1 ); // to buffer!
-	            }
-
-
-			// Draw a bounding box (top and bottom edges) ..
-				s->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
-				                        HELPTEXT_LEFT+200-4, HELPTEXT_TOP-2);
-				s->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
-				                        HELPTEXT_LEFT+200-4, HELPTEXT_TOP+103);
-			mytext.write_xy(HELPTEXT_LEFT+40,
-			                 HELPTEXT_TOP-7, "SCENARIO INFORMATION", static_cast<unsigned char>(RED), 1);
-			mytext.write_xy(HELPTEXT_LEFT+30,
-			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", static_cast<unsigned char>(RED), 1);
-				s->buffer_to_screen(0, 0, 320, 200);
-				changed = 0;
-			} // end of changed drawing loop
-
-	}  // loop until ESC is pressed
-
-	while (keystates[KEYSTATE_ESCAPE])  // wait for key release
-	{
-		SDL_Delay(1);
-		get_input_events(POLL);
-	}
-
-	return static_cast<short>(numlines);
+	return scroll_text_view(s,
+		static_cast<int>(s->level_data.description.size()), 200,
+		"SCENARIO INFORMATION", 0, 0, 320, 200,
+		[&](int idx) { return s->level_data.get_description_line(idx); });
 }
 
 short read_campaign_intro(screen *s)
 {
-    CampaignData data(s->save_data.current_campaign);
-    if(!data.load())
-    {
-        return 1;
-    }
-    
-	Sint32 screenlines;
-	Sint32  numlines, j;
-	Sint32 linesdown;
-	Sint32 changed;
-	Sint32 templines;
-	Sint32 text_delay = 1; // bigger = slower
-	Sint32 key_presses = 0;
-	
-	text& mytext = s->text_normal;
-	Sint32 start_time, now_time;
-	Sint32 bottomrow;
+	CampaignData data(s->save_data.current_campaign);
+	if (!data.load())
+		return 1;
 
-	clear_keyboard();
 	end_of_file = 0;
-	linesdown = 0;
-	changed = 1;
-	start_time = query_timer();
-
-	// Fill the helptext array with data ..
-	numlines = static_cast<Sint32>(data.description.size());
-	screenlines = numlines*8;
-	numlines = screenlines;
-	bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );
-
-	// Do the loop until person hits escape
-	while (!query_input_continue())
-	{
-		SDL_Delay(10);
-		get_input_events(POLL);
-
-		short scroll_amount = get_and_reset_scroll_amount();
-		if (scroll_amount < 0)    // scrolling down
-		{
-			now_time = query_timer();
-
-			key_presses =  (now_time - start_time) % text_delay;
-			if (!key_presses && (linesdown < bottomrow) )
-			{
-			    while(linesdown < bottomrow && scroll_amount != 0)
-                {
-                    linesdown++;
-                    scroll_amount++;
-                }
-				changed = 1;
-			}
-		} // end of KEYSTATE_DOWN
-
-		if (keystates[KEYSTATE_PAGEDOWN])    // scrolling one page down
-		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % (10*text_delay);
-			if (!key_presses && (linesdown < bottomrow) )
-			{
-				templines = linesdown + (DISPLAY_LINES * 7);
-				if (templines > bottomrow)
-					templines = bottomrow;
-				if (linesdown != templines) // we actually moved down
-				{
-					linesdown = templines;
-					changed = 1;
-				}
-			}
-		} // end of PAGE DOWN
-
-		if (scroll_amount > 0)      // scrolling up
-		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % text_delay;
-			if (!key_presses && linesdown)
-			{
-			    while(linesdown && scroll_amount != 0)
-                {
-                    linesdown--;
-                    scroll_amount--;
-                }
-				changed = 1;
-			}
-		} // end of KEYSTATE_UP
-
-		if (keystates[KEYSTATE_PAGEUP])    // scrolling one page up
-		{
-			now_time = query_timer();
-			key_presses = (now_time - start_time) % (10*text_delay);
-			if (!key_presses && linesdown)
-			{
-				linesdown -= (DISPLAY_LINES * 7);
-				if (linesdown < 0)
-					linesdown = 0;
-				changed = 1;
-			}
-		}  // end of PAGE UP
-
-		if (changed)  // did we scroll, etc.?
-		{
-			templines = linesdown/8; // which TEXT line are we at?
-			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
-			                      HELPTEXT_LEFT+240, HELPTEXT_TOP+107, 3, 1);
-			for (j=0; j < DISPLAY_LINES; j++)
-            {
-				if(data.getDescriptionLine(j+templines).size() == 0)
-                    continue;
-                
-                mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(text_down(j)-linesdown%8), data.getDescriptionLine(j+templines).c_str(), static_cast<unsigned char>(DARK_BLUE), 1 ); // to buffer!
-            }
-
-			
-			// Draw a bounding box (top and bottom edges) ..
-			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
-			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP-2);
-			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
-			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP+103);
-			mytext.write_xy(HELPTEXT_LEFT+240/2 - static_cast<Sint32>(data.title.size())*3,
-			                 HELPTEXT_TOP-7, data.title.c_str(), static_cast<unsigned char>(RED), 1);
-			mytext.write_xy(HELPTEXT_LEFT+52,
-			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", static_cast<unsigned char>(RED), 1);
-			//myscreen->buffer_to_screen(0, 0, 320, 200);
-			myscreen->buffer_to_screen(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,244,119);
-
-			
-			changed = 0;
-		} // end of changed drawing loop
-
-	}  // loop until ESC is pressed
-
-
-
-	while (keystates[KEYSTATE_ESCAPE])  // wait for key release
-	{
-		SDL_Delay(1);
-		get_input_events(POLL);
-	}
-	//delete mytext;
-	return static_cast<short>(numlines);
+	return scroll_text_view(s,
+		static_cast<int>(data.description.size()), 240,
+		data.title.c_str(), HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8, 244, 119,
+		[&](int idx) { return data.getDescriptionLine(idx); });
 }
 
 

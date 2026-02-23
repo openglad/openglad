@@ -2,6 +2,7 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/core/constants.h>
 #include <openglad/entities/guy.h>
+#include <openglad/ui/picker_common.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 
@@ -15,7 +16,6 @@ extern Sint32 editguy;
 extern short current_team_num;
 
 Sint32 name_guy(Sint32 arg);
-Sint32 edit_guy(Sint32 arg1);
 Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
 Sint32 change_teamnum(Sint32 arg);
@@ -131,40 +131,28 @@ void test_picker_edit_guy_paths()
 {
     PickerStateGuard guard;
     TeamSlotGuard slot_guard(0);
-    ButtonSlotGuard button_guard(18);
 
-    // Null current_guy path.
-    current_guy = nullptr;
-    TEST_ASSERT_EQ(-1, (int)edit_guy(0), "edit_guy should fail when current_guy is null");
-
-    // Missing team slot path.
-    current_guy = std::make_unique<guy>(FAMILY_SOLDIER);
-    auto old_guy_owned = std::make_unique<guy>(*current_guy);
-    old_guy = old_guy_owned.get();
-    current_guy->teamnum = 0;
-    editguy = 0;
+    // Empty session path: no team members to train.
+    myscreen->save_data.team_size = 0;
     myscreen->save_data.team_list[0].reset(nullptr);
-    TEST_ASSERT_EQ(-1, (int)edit_guy(0), "edit_guy should fail when destination slot is empty");
+    og::ui::TrainSession empty_session(myscreen->save_data);
+    TEST_ASSERT(empty_session.empty(), "session should be empty with no team");
 
-    // Successful transfer path.
+    // Successful accept path.
     myscreen->save_data.team_list[0].reset(new guy(FAMILY_SOLDIER));
     myscreen->save_data.team_list[0]->teamnum = 0;
-    old_guy_owned = std::make_unique<guy>(*myscreen->save_data.team_list[0]);
-    old_guy = old_guy_owned.get();
-    current_guy->strength = myscreen->save_data.team_list[0]->strength + 1;
+    myscreen->save_data.team_size = 1;
     myscreen->save_data.m_totalcash[0] = 100000;
 
-    allbuttons[18] = new vbutton();
-    allbuttons[18]->do_outline = 1;
-    TEST_ASSERT_EQ(4, (int)edit_guy(0), "edit_guy should return OK on valid edit");
-    TEST_ASSERT_EQ(0, (int)allbuttons[18]->do_outline, "edit_guy should clear team button outline");
+    og::ui::TrainSession session(myscreen->save_data);
+    TEST_ASSERT(!session.empty(), "session should not be empty");
 
-    delete allbuttons[18];
-    allbuttons[18] = nullptr;
-    myscreen->save_data.team_list[0].reset();
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 1);
+    TEST_ASSERT(session.current_cost() > 0, "cost should be positive after stat increase");
+    TEST_ASSERT(session.accept(), "accept should succeed with enough gold");
+
     myscreen->save_data.team_list[0].reset(nullptr);
-    old_guy = nullptr;
-    current_guy.reset();
+    myscreen->save_data.team_size = 0;
 }
 REGISTER_TEST(test_picker_edit_guy_paths);
 

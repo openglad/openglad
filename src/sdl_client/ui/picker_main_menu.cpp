@@ -22,9 +22,9 @@
 #include <openglad/render/pixien.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/ui/picker_common.h>
 #include "SDL.h"
 #include <array>
-#include <format>
 #include <memory>
 
 #ifndef DISABLE_MULTIPLAYER
@@ -35,17 +35,15 @@ constexpr int OPTIONS_BUTTON_INDEX = 5;
 constexpr int MAINMENU_BUTTON_COUNT = 6;
 #endif
 
-constexpr Sint32 EXIT_VALUE = 1;
-constexpr Sint32 REDRAW_VALUE = 2;
+#include "picker_sdl_defs.h"
 
 extern std::unique_ptr<pixieN> main_title_logo_pix;
 extern std::unique_ptr<pixieN> main_columns_pix;
-extern char difficulty_names[DIFFICULTY_SETTINGS][80];
+// difficulty_names removed — use og::ui::kDifficultyNames from picker_common.h
 extern Sint32 current_difficulty;
 extern std::unique_ptr<guy> current_guy;
 extern std::array<Sint32, NUM_FAMILIES> numbought;
 extern vbutton *localbuttons;
-extern button mainmenu_buttons[];
 
 void draw_version_number();
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
@@ -63,7 +61,6 @@ void redraw_mainmenu()
         return;
 
     int count = 0;
-	std::string message;
     
     main_title_logo_pix->set_frame(0);
     main_title_logo_pix->drawMix(15,  8, game->viewob[0].get());
@@ -121,19 +118,13 @@ void redraw_mainmenu()
         allbuttons[5]->vdisplay();
     }
 
-    message = std::format("Difficulty: {}", difficulty_names[current_difficulty]);
-    allbuttons[6]->label = message;
+    allbuttons[6]->label = og::ui::format_difficulty_label(current_difficulty);
 
     // Show the allied mode
-    if (game->save_data.allied_mode)
-        message = "PVP: Ally";
-    else
-        message = "PVP: Enemy";
-    allbuttons[7]->label = message;
+    allbuttons[7]->label = og::ui::format_allied_mode_label(game->save_data);
     #else
 
-    message = std::format("Difficulty: {}", difficulty_names[current_difficulty]);
-    allbuttons[2]->label = message;
+    allbuttons[2]->label = og::ui::format_difficulty_label(current_difficulty);
     
     #endif
 
@@ -158,7 +149,7 @@ Sint32 mainmenu(Sint32 arg1)
 {
 	screen* game = ctx().active_screen() ? ctx().active_screen() : myscreen;
 	if (!game)
-		return EXIT_VALUE;
+		return MENU_EXIT;
 
 	Sint32 retvalue=0;
 
@@ -189,7 +180,7 @@ Sint32 mainmenu(Sint32 arg1)
 
 	grab_mouse();
 
-	while(!(retvalue & EXIT_VALUE))
+	while(!(retvalue & MENU_EXIT))
 	{
 	    // Input
 		if(leftmouse(buttons))
@@ -205,7 +196,7 @@ Sint32 mainmenu(Sint32 arg1)
         }
 
         // A submenu may have replaced allbuttons — skip draw if exiting
-            if(retvalue & EXIT_VALUE)
+            if(retvalue & MENU_EXIT)
             break;
 
 		// Draw
@@ -246,7 +237,7 @@ bool picker_prepare_new_game_setup()
 	game->clear();
 
     // Reset the save data so we have a fresh, new team
-	game->save_data.reset();
+	og::ui::reset_for_new_game(game->save_data);
 	current_guy = nullptr;
 	
 	// Clear the labeling counter
@@ -260,7 +251,7 @@ Sint32 beginmenu(Sint32 arg1)
 {
     (void)arg1;
     if (!picker_prepare_new_game_setup())
-        return REDRAW_VALUE;
+        return MENU_REDRAW;
 
     return create_team_menu(1);
 }
