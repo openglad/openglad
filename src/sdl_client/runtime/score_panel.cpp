@@ -30,6 +30,12 @@ static inline Uint32 rng(Uint32 max_exclusive)
     return ctx().rng->next(max_exclusive);
 }
 
+static bool is_valid_score_team(unsigned char team_num)
+{
+    constexpr unsigned char kScoreTeams = 4;
+    return team_num < kScoreTeams;
+}
+
 bool float_eq(float a, float b);
 
 short remaining_foes(screen* s, walker* myguy);
@@ -205,20 +211,22 @@ short new_score_panel(screen* s, short /*do_it*/)
                 if (draw_button)
                     s->draw_button(lm+1, bm-26, lm+98, bm-2, 1, 1);
 
-                if (control)
+                const bool can_show_team_score = (control != nullptr && is_valid_score_team(control->team_num));
+                if (can_show_team_score)
                     myscore = s->save_data.m_score[control->team_num];
                 else
                     myscore = 0;
-                if (scorecountup[control->team_num] > myscore)
+                if (can_show_team_score && scorecountup[control->team_num] > myscore)
                     scorecountup[control->team_num] = myscore;
-                if (scorecountup[control->team_num] < myscore)
+                if (can_show_team_score && scorecountup[control->team_num] < myscore)
                 {
                     scorecountup[control->team_num]++;
                     scorecountup[control->team_num] += static_cast<Uint32>(rng((myscore - scorecountup[control->team_num]))/12);
                 }
-                if (scorecountup[control->team_num] > myscore)
+                if (can_show_team_score && scorecountup[control->team_num] > myscore)
                     scorecountup[control->team_num] = myscore;
-                s->save_data.m_score[control->team_num] = myscore;
+                if (can_show_team_score)
+                    s->save_data.m_score[control->team_num] = myscore;
 
                 int special_y = bm + special_offset;
                 if (s->numviews > 2 && !(s->numviews == 3 && players == 0))
@@ -227,7 +235,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                 }
                 else
                 {
-                    message = std::format("SC: {}", scorecountup[control->team_num]);
+                    message = std::format("SC: {}", can_show_team_score ? scorecountup[control->team_num] : 0);
                     mytext.write_xy(lm+2, bm-8, message.c_str(), text_color, static_cast<short>(1));
 
                     if (control->myguy)
