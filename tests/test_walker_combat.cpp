@@ -6,6 +6,7 @@
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 #include <memory>
@@ -64,6 +65,16 @@ static int count_family_in_oblist(char family)
             count++;
     }
     return count;
+}
+
+static void set_world_tile(short world_x, short world_y, unsigned char tile)
+{
+    auto& level = myscreen->level_data;
+    const int gx = world_x / GRID_SIZE;
+    const int gy = world_y / GRID_SIZE;
+    if (gx < 0 || gy < 0 || gx >= level.grid.w || gy >= level.grid.h)
+        return;
+    level.grid.data[gx + level.grid.w * gy] = tile;
 }
 
 // ---------------------------------------------------------------------------
@@ -525,6 +536,63 @@ void test_walker_fire_check_all_dirs()
 
 }
 REGISTER_TEST(test_walker_fire_check_all_dirs);
+
+void test_walker_fire_check_blocks_on_intermediate_step()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* shooter = make_guy(FAMILY_ARCHER, 0);
+    walker* foe = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(shooter != nullptr && foe != nullptr, "fixtures created");
+    if (!(shooter && foe))
+        return;
+
+    shooter->sim_level = &myscreen->level_data;
+    foe->sim_level = &myscreen->level_data;
+    shooter->setxy(96, 96);
+    shooter->lastx = 1;
+    shooter->lasty = 0;
+    shooter->curdir = FACE_RIGHT;
+    shooter->enddir = FACE_RIGHT;
+    shooter->team_num = 0;
+    foe->team_num = 1;
+    shooter->foe = foe;
+    shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    shooter->stats()->magicpoints = 9999.0f;
+    shooter->stats()->weapon_cost = 0.0f;
+
+    SequenceRandomCombat rng({0});
+    shooter->sim_rng = &rng;
+    foe->sim_rng = &rng;
+
+    walker* probe = shooter->create_weapon();
+    TEST_ASSERT(probe != nullptr, "probe weapon created");
+    if (!probe)
+        return;
+    shooter->set_weapon_heading(probe);
+
+    const short start_x = probe->xpos;
+    const short start_y = probe->ypos;
+    const short step_x = static_cast<short>(probe->lastx);
+    const short step_y = static_cast<short>(probe->lasty);
+    myscreen->level_data.remove_ob(probe);
+
+    TEST_ASSERT(step_x != 0 || step_y != 0, "probe step should be non-zero");
+
+    // Block the second linear probe step and place the foe at the third.
+    set_world_tile(static_cast<short>(start_x + 2 * step_x),
+                   static_cast<short>(start_y + 2 * step_y),
+                   PIX_H_WALL1);
+    foe->setxy(static_cast<short>(start_x + 3 * step_x),
+               static_cast<short>(start_y + 3 * step_y));
+    foe->sizex = 1;
+    foe->sizey = 1;
+
+    TEST_ASSERT(!shooter->fire_check(1, 0),
+                "fire_check should fail when an intermediate tile on the shot path is blocked");
+}
+REGISTER_TEST(test_walker_fire_check_blocks_on_intermediate_step);
 
 // ---------------------------------------------------------------------------
 // init_fire (lines 646-691)
