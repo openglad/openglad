@@ -304,10 +304,10 @@ OG_UNIT_TEST(test_level_data_r11_object_passability_and_search_sets)
 } // namespace detail_level_data_r11
 
 // --- From test_level_data_r12.cpp ---
-namespace detail_level_data_r12 {
 short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
 bool save_grid_file(const char* gridname, const PixieData& grid);
 
+namespace detail_level_data_r12 {
 namespace {
 
 class MemoryOgFile final : public og::io::OgFile {
@@ -584,8 +584,6 @@ OG_UNIT_TEST(test_level_data_r12_remove_ob_paths_and_zip_api_paths)
 
 // --- From test_level_data_r14.cpp ---
 namespace detail_level_data_r14 {
-short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
-
 namespace {
 
 class MemoryOgFile final : public og::io::OgFile {

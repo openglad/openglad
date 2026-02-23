@@ -127,6 +127,8 @@ OG_UNIT_TEST(test_walker_death_save_all_and_misc_paths)
 } // namespace detail_walker_coverage_push
 
 // --- From test_walker_r11.cpp ---
+bool float_eq(float a, float b);
+
 namespace detail_walker_r11 {
 namespace {
 
@@ -197,8 +199,6 @@ void assign_wide_ani(walker* w)
 }
 
 } // namespace
-
-bool float_eq(float a, float b);
 
 OG_UNIT_TEST(test_walker_r11_myguy_move_and_init_fire_paths)
 {

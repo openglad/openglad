@@ -18,8 +18,9 @@
 #include <openglad/runtime/game_context.h>
 
 // --- From test_family_cleric_coverage_push.cpp ---
-namespace detail_family_cleric_coverage_push {
 const FamilyDescriptor& describe_family_cleric();
+
+namespace detail_family_cleric_coverage_push {
 
 OG_UNIT_TEST(test_family_cleric_descriptor_difficulty_and_customize_weapon)
 {
@@ -74,8 +75,6 @@ OG_UNIT_TEST(test_family_cleric_check_ai_default_and_do_special_busy_returns)
 
 // --- From test_family_cleric_r11.cpp ---
 namespace detail_family_cleric_r11 {
-const FamilyDescriptor& describe_family_cleric();
-
 namespace {
 
 struct ClericFixture {
@@ -261,11 +260,10 @@ OG_UNIT_TEST(test_family_cleric_r11_resurrect_friendly_and_hostile_paths)
 } // namespace detail_family_cleric_r11
 
 // --- From test_family_cleric_r12.cpp ---
-namespace detail_family_cleric_r12 {
-const FamilyDescriptor& describe_family_cleric();
 const FamilyDescriptor& describe_family_mage();
 const FamilyDescriptor& describe_family_soldier();
 
+namespace detail_family_cleric_r12 {
 namespace {
 
 struct ClericR12Fixture {
@@ -531,8 +529,6 @@ OG_UNIT_TEST(test_family_cleric_r12_shoved_ai_and_turn_undead_guard_paths)
 
 // --- From test_family_cleric_r14.cpp ---
 namespace detail_family_cleric_r14 {
-const FamilyDescriptor& describe_family_cleric();
-
 namespace {
 
 struct ClericR14Fixture {
@@ -679,8 +675,6 @@ OG_UNIT_TEST(test_family_cleric_r14_lines_291_302_304_306_311_325_resurrect_vari
 
 // --- From test_family_cleric_r15.cpp ---
 namespace detail_family_cleric_r15 {
-const FamilyDescriptor& describe_family_cleric();
-
 namespace {
 
 struct ClericR15Fixture {

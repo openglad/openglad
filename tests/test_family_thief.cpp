@@ -16,8 +16,9 @@
 #include <memory>
 
 // --- From test_family_thief_coverage_push.cpp ---
-namespace detail_family_thief_coverage_push {
 const FamilyDescriptor& describe_family_thief();
+
+namespace detail_family_thief_coverage_push {
 
 OG_UNIT_TEST(test_family_thief_descriptor_shape_and_level_up)
 {
@@ -86,8 +87,6 @@ OG_UNIT_TEST(test_family_thief_do_special_busy_and_cloak_paths)
 
 // --- From test_family_thief_r12.cpp ---
 namespace detail_family_thief_r12 {
-const FamilyDescriptor& describe_family_thief();
-
 namespace {
 
 struct ThiefR12Fixture {

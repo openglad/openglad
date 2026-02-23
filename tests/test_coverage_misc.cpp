@@ -362,9 +362,9 @@ OG_UNIT_TEST(test_coverage_r17_save_data_reset_defaults)
 } // namespace detail_coverage_r17
 
 // --- From test_coverage_r18.cpp ---
-namespace detail_coverage_r18 {
 const FamilyDescriptor& describe_family_cleric();
 
+namespace detail_coverage_r18 {
 namespace {
 
 class MenuOnlyClient final : public og::ui::IPickerClient
@@ -937,8 +937,6 @@ OG_UNIT_TEST(test_coverage_r18_gparser_more_commandline_switches)
 
 // --- From test_coverage_r19.cpp ---
 namespace detail_coverage_r19 {
-const FamilyDescriptor& describe_family_cleric();
-
 namespace {
 
 struct SeqRandom final : IRandom {
@@ -1107,11 +1105,10 @@ OG_UNIT_TEST(test_coverage_r19_walker_act_random_paths)
 } // namespace detail_coverage_r19
 
 // --- From test_coverage_r20.cpp ---
-namespace detail_coverage_r20 {
-const FamilyDescriptor& describe_family_cleric();
 const FamilyDescriptor& describe_family_mage();
 const FamilyDescriptor& describe_family_druid();
 
+namespace detail_coverage_r20 {
 namespace {
 
 struct ConstantRandom final : IRandom {
