@@ -62,8 +62,7 @@ float get_damage_reduction(walker* w, float damage, walker* target)
 
 static bool is_valid_score_team(unsigned char team_num)
 {
-    constexpr unsigned char kScoreTeams = 4;
-    return team_num < kScoreTeams;
+    return team_num < SCORE_TEAM_COUNT;
 }
 
 void walker::do_heal_effects(walker* healer, walker* target, short amount)

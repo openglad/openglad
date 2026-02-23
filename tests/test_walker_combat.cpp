@@ -1127,7 +1127,7 @@ void test_walker_combat_attack_ignores_out_of_range_team_score_index()
     const Uint32 score_before = total_team_score();
 
     TEST_ASSERT(attacker->attack(target), "attack should still succeed with invalid team id");
-    TEST_ASSERT_EQ((int)score_before, (int)total_team_score(),
+    TEST_ASSERT_EQ(score_before, total_team_score(),
                    "invalid team id should not write outside m_score bounds");
 
     myscreen->level_data.delete_objects();

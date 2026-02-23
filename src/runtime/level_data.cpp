@@ -25,6 +25,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/data/smooth.h>
 #include <openglad/entities/obmap.h>
+#include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 
 #include <openglad/io/yaml_stream.h>
@@ -69,8 +70,7 @@ static bool rw_read_exact_or_log(og::io::OgFile& file, void* dst, size_t size, s
 
 static unsigned char sanitize_loaded_team_num(unsigned char team_num)
 {
-    constexpr unsigned char kMaxScoreTeams = 4;
-    if (team_num < kMaxScoreTeams)
+    if (team_num <= MAX_TEAM)
         return team_num;
     LogWarn("Scenario object uses invalid team id {}. Clamping to team 0.\n", static_cast<int>(team_num));
     return 0;

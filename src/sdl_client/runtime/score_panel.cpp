@@ -17,6 +17,7 @@
 #include <openglad/render/view.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
+#include <openglad/core/constants.h>
 #include <openglad/entities/guy.h>
 
 #include <openglad/runtime/game_context.h>
@@ -32,8 +33,7 @@ static inline Uint32 rng(Uint32 max_exclusive)
 
 static bool is_valid_score_team(unsigned char team_num)
 {
-    constexpr unsigned char kScoreTeams = 4;
-    return team_num < kScoreTeams;
+    return team_num < SCORE_TEAM_COUNT;
 }
 
 bool float_eq(float a, float b);
@@ -133,7 +133,7 @@ short new_score_panel(screen* s, short /*do_it*/)
         };
 
     Uint32 myscore;
-    static Uint32 scorecountup[4] = {
+    static Uint32 scorecountup[SCORE_TEAM_COUNT] = {
         s->save_data.m_score[0],
         s->save_data.m_score[1],
         s->save_data.m_score[2],
