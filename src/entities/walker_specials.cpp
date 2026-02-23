@@ -51,6 +51,9 @@ bool walker::special()
 		special_index = 1;
 	}
 
+	if (silence_left > 0)
+		return 0;
+
 	if (stats_->magicpoints < stats_->special_cost[special_index])
 		return 0;
 

@@ -21,13 +21,14 @@ namespace og::ui {
 
 inline constexpr float kStatCostExponent = 1.85f;
 
-inline constexpr std::array<int, 14> kAllowableGuys = {
+inline constexpr std::array<int, 15> kAllowableGuys = {
     FAMILY_SOLDIER,
     FAMILY_BARBARIAN,
     FAMILY_ELF,
     FAMILY_ARCHER,
     FAMILY_MAGE,
     FAMILY_CLERIC,
+    FAMILY_MONK,
     FAMILY_THIEF,
     FAMILY_DRUID,
     FAMILY_ORC,

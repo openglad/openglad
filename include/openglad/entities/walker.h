@@ -192,6 +192,7 @@ class walker : public og::sim::SimEntity
 		unsigned char outline;
 		short shifter_down;            // is our shifter/alternate key pressed?
 		short yo_delay;
+		short silence_left;            // when >0, specials are blocked (ticks down each frame)
 		bool in_act;                   // set while in an action
 		obmap* myobmap;
 		int path_check_counter;

@@ -93,6 +93,7 @@ void walker_init_common(walker* w)
 	w->weapons_left = 1;
 	w->myobmap = nullptr;
 	w->current_special = 0;
+	w->silence_left = 0;
 	w->path_check_counter = 5 + rand()%10;
 	w->hurt_flash = false;
 	w->attack_lunge = 0.0f;
@@ -610,6 +611,10 @@ bool walker::act()
 		stats_->frozen_delay--;
 		return 1;
 	}
+
+	// Tick down silence timer
+	if (silence_left > 0)
+		silence_left--;
 
 	if (busy > 0)
 		busy--; // This allows busy to be our FIRING delay.
