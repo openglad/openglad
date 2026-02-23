@@ -7,6 +7,7 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/screen_lifecycle.h>
+#include <openglad/render/view.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/terrain_types.h>
 #include <openglad/sim/event.h>
@@ -19,6 +20,7 @@ extern screen* myscreen;
 extern int raw_key;
 extern short key_press_event;
 extern bool input_continue;
+short new_score_panel(screen* s, short do_it);
 
 // TESTING-only helpers from picker_dialogs.cpp.
 void picker_testing_yes_or_no_queue_clear();
@@ -556,6 +558,36 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
     clear_level_lists();
 }
 REGISTER_TEST(test_sim_world_freeze_countdown_notification_and_weap_cleanup);
+
+void test_runtime_score_panel_null_control_score_overlay_safe()
+{
+    viewscreen* v = myscreen->viewob[0].get();
+    TEST_ASSERT(v != nullptr, "view should exist");
+    if (!v)
+        return;
+
+    walker* old_control = v->control;
+    const unsigned char old_overlay = v->prefs[PREF_OVERLAY];
+    const unsigned char old_score = v->prefs[PREF_SCORE];
+    const unsigned char old_foes = v->prefs[PREF_FOES];
+    const unsigned char old_life = v->prefs[PREF_LIFE];
+
+    v->control = nullptr;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+    v->prefs[PREF_SCORE] = PREF_SCORE_ON;
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_LIFE] = PREF_LIFE_BOTH;
+
+    TEST_ASSERT_EQ(1, static_cast<int>(new_score_panel(myscreen, 1)),
+                   "new_score_panel should tolerate null control when score overlay is on");
+
+    v->control = old_control;
+    v->prefs[PREF_OVERLAY] = old_overlay;
+    v->prefs[PREF_SCORE] = old_score;
+    v->prefs[PREF_FOES] = old_foes;
+    v->prefs[PREF_LIFE] = old_life;
+}
+REGISTER_TEST(test_runtime_score_panel_null_control_score_overlay_safe);
 
 void test_sim_world_batch5_game_end_paths()
 {
