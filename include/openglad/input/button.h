@@ -48,34 +48,12 @@ inline constexpr char BUTTON_RIGHT  = 12; //11
 // Observer pointer (non-owning). Owned by og::runtime::GameSession.
 extern screen *myscreen;
 
-// Holds array indices for navigating menu buttons
-class MenuNav
+// Holds array indices for navigating menu buttons.
+// Use C++20 designated initializers: MenuNav{.up=5, .down=3}
+// Unspecified directions default to -1 (unused).
+struct MenuNav
 {
-public:
-    // Array indices for the button to move to.
-    // -1 is invalid/unused direction
-    int up, down, left, right;
-    
-    static MenuNav Up(int up);
-    static MenuNav Down(int down);
-    static MenuNav Left(int left);
-    static MenuNav Right(int right);
-    static MenuNav UpDown(int up, int down);
-    static MenuNav UpLeft(int up, int left);
-    static MenuNav UpRight(int up, int right);
-    static MenuNav UpDownLeft(int up, int down, int left);
-    static MenuNav UpDownRight(int up, int down, int right);
-    static MenuNav UpLeftRight(int up, int left, int right);
-    static MenuNav DownLeft(int down, int left);
-    static MenuNav DownRight(int down, int right);
-    static MenuNav DownLeftRight(int down, int left, int right);
-    static MenuNav LeftRight(int left, int right);
-    static MenuNav UpDownLeftRight(int up, int down, int left, int right);
-    static MenuNav All(int up, int down, int left, int right);
-    static MenuNav None();
-private:
-    MenuNav();
-    MenuNav(int up, int down, int left, int right);
+    int up = -1, down = -1, left = -1, right = -1;
 };
 
 struct button
