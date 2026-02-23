@@ -932,6 +932,8 @@ void test_walker_special_archmage_mind_control_stats_name_path()
     TEST_ASSERT(arch != nullptr && foe != nullptr && foe2 != nullptr && foe3 != nullptr,
                 "arch and mind-control targets created");
     if (!(arch && foe && foe2 && foe3)) {
+        delete arch;
+        myscreen->level_data.delete_objects();
         return;
     }
 

@@ -436,7 +436,7 @@ static bool archmage_do_special(walker* self)
             if (self->busy > 0)
                 return false;
             std::int32_t mp_after_base_cost = 0;
-            std::int32_t spent_mp = 0;
+            std::int32_t controlled_targets = 0;
             {
                 const std::int32_t special_cost = self->stats()->special_cost[static_cast<int>(self->current_special)];
                 mp_after_base_cost =
@@ -455,7 +455,6 @@ static bool archmage_do_special(walker* self)
                         (ob->charm_left() <= 10))
                     {
                         generic2 -= 10;
-                        spent_mp += 10;
                         generic = self->stats()->level - ob->stats()->level;
                         if (generic < 0 || (!self->sim_rng->next(20)))
                         {
@@ -471,6 +470,7 @@ static bool archmage_do_special(walker* self)
                             ob->set_charm_left(static_cast<short>(compute_charm_duration(generic, *self->sim_rng)));
                         }
                         didheal++;
+                        controlled_targets++;
                     }
                 }
             }
@@ -484,9 +484,12 @@ static bool archmage_do_special(walker* self)
                 message = "ArchMage";
             tempstr = std::format("{} has controlled {} men", message, didheal);
             og::sim::emit_notification(self->sim_events, tempstr);
-            if (mp_after_base_cost > 0)
+            // Target budget starts at mp_after_base_cost + 10, so the first
+            // control is covered by base special cost and extras cost 10 MP each.
+            if (mp_after_base_cost > 0 && controlled_targets > 1)
             {
-                self->stats()->magicpoints -= static_cast<float>(std::min(spent_mp, mp_after_base_cost));
+                const std::int32_t additional_spend = (controlled_targets - 1) * 10;
+                self->stats()->magicpoints -= static_cast<float>(std::min(additional_spend, mp_after_base_cost));
             }
             self->busy += 10;
             break;
