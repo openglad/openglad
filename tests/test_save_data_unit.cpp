@@ -2,11 +2,9 @@
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
 #include <openglad/legacy/base.h>
-
 #include <cstdint>
 #include <list>
 #include <memory>
-
 #include "unit/unit.h"
 
 OG_UNIT_TEST(test_save_data_update_guys_clamps_to_max_team_size)

@@ -1,12 +1,9 @@
 #include <openglad/data/gparser.h>
-
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
 #include <string>
 #include <vector>
-
 #include "unit/unit.h"
 
 OG_UNIT_TEST(test_gparser_apply_get_and_is_on_paths)

@@ -951,50 +951,23 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_picker_common.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_gparser_coverage_push.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_coverage_push.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_thief_coverage_push.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_druid_coverage_push.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage_push.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_coverage_push.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage_push.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_push.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_coverage_push.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_coverage_push.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_smooth_r11.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_r11.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_r11.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_r11.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials_r11.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_living_r11.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_r11.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_r11.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_r11.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_r12.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_smooth_r12.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_r12.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_r12.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_r12.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_thief_r12.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_r14.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_living_r14.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_r14.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_r14.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_r14.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_smooth_r14.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_r14.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_orc_big_orc_r15.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_sim_world_r15.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_r15.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_r15.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_r15.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_zip_api_r15.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_final_coverage_r16.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_coverage_r17.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_coverage_r18.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_coverage_r19.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_coverage_r20.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_save_data_update_guys_r21.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_druid.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_orc.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_thief.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_gparser_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_living_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_save_data_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_coverage_misc.cpp
         )
 
         add_executable(og_unit_tests

@@ -3,11 +3,9 @@
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
-
 #include <filesystem>
 #include <fstream>
 #include <string>
-
 #include "unit/unit.h"
 
 namespace {
@@ -84,4 +82,3 @@ OG_UNIT_TEST(test_zip_api_r15_error_paths_for_open_archive_and_output)
     }
     OG_ASSERT(og::io::unzip_into_with_error(zipfile.string(), blocked.string()) == ArchiveIoError::OpenOutputFailed);
 }
-

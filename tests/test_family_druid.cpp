@@ -3,7 +3,6 @@
 #include <openglad/entities/guy.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
-
 #include "unit/unit.h"
 
 const FamilyDescriptor& describe_family_druid();

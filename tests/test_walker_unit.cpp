@@ -7,15 +7,127 @@
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/irandom.h>
 #include <openglad/legacy/base.h>
+#include <memory>
+#include "unit/unit.h"
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
-
 #include <array>
-#include <memory>
+#include <openglad/core/constants.h>
 
-#include "unit/unit.h"
+// --- From test_walker_coverage_push.cpp ---
+namespace detail_walker_coverage_push {
+namespace {
 
+struct WalkerFixture {
+    LevelData level{1, true};
+    SaveData save;
+    std::int32_t enemy_freeze = 0;
+    og::sim::SimEventLog events;
+    FixedRandom rng{0};
+
+    WalkerFixture()
+    {
+        level.create_new_grid();
+        save.allied_mode = 0;
+        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+};
+
+walker* add_living(WalkerFixture& fx, char family, unsigned char team)
+{
+    auto w = std::make_unique<walker>();
+    w->set_order_family(Order::Living, family);
+    fx.level.wire_entity(w.get());
+    w->sizex = 16;
+    w->sizey = 16;
+    w->stepsize = 1.0f;
+    w->lineofsight = 6;
+    w->setxy(64, 64);
+    w->team_num = team;
+    w->real_team_num = 255;
+    w->dead = 0;
+    walker* out = w.get();
+    fx.level.oblist.push_back(std::move(w));
+    return out;
+}
+
+} // namespace
+
+OG_UNIT_TEST(test_walker_reset_compute_outline_and_act_paths)
+{
+    WalkerFixture fx;
+    walker* w = add_living(fx, FAMILY_SOLDIER, 0);
+    OG_ASSERT(w != nullptr);
+
+    w->invisibility_left = 1;
+    w->compute_outline(nullptr);
+    OG_ASSERT(w->outline == w->query_team_color());
+
+    w->outline = OUTLINE_NAMED;
+    w->invisibility_left = 0;
+    w->invulnerable_left = 1;
+    w->compute_outline(nullptr);
+    OG_ASSERT(w->outline == OUTLINE_INVULNERABLE);
+
+    w->set_act_type(ACT_DIE);
+    w->dead = 0;
+    OG_ASSERT(w->act());
+    OG_ASSERT(w->dead == 1);
+
+    w->dead = 0;
+    w->set_act_type(127);
+    OG_ASSERT(!w->act());
+
+    OG_ASSERT(w->reset());
+}
+
+OG_UNIT_TEST(test_walker_friendliness_and_distance_paths)
+{
+    WalkerFixture fx;
+    walker* a = add_living(fx, FAMILY_SOLDIER, 0);
+    walker* b = add_living(fx, FAMILY_ORC, 1);
+    OG_ASSERT(a && b);
+
+    a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    b->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
+    a->setxy(64, 64);
+    b->setxy(96, 64);
+
+    OG_ASSERT(a->distance_to_ob(b) > 0);
+    OG_ASSERT(a->distance_to_ob_center(b) >= 0);
+    OG_ASSERT(!a->is_friendly(b));
+    OG_ASSERT(a->is_friendly_to_team(0));
+
+    fx.save.allied_mode = 1;
+    OG_ASSERT(a->is_friendly(b));
+}
+
+OG_UNIT_TEST(test_walker_death_save_all_and_misc_paths)
+{
+    WalkerFixture fx;
+    walker* w = add_living(fx, FAMILY_SKELETON, 0); // no bloodspot branch
+    OG_ASSERT(w != nullptr);
+    w->stats()->name = "Named";
+    w->dead = 1;
+    fx.level.type = static_cast<char>(SCEN_TYPE_SAVE_ALL);
+
+    OG_ASSERT(w->death());
+    OG_ASSERT(fx.events.size() >= 1);
+
+    walker misc;
+    misc.set_order_family(Order::Generator, FAMILY_TENT);
+    misc.sim_level = &fx.level;
+    misc.sim_rng = &fx.rng;
+    OG_ASSERT(misc.fire_check(1, 0));
+    (void)misc.eat_me(nullptr);
+    OG_ASSERT(misc.do_summon(0, 0) == nullptr);
+    OG_ASSERT(!misc.check_special());
+}
+} // namespace detail_walker_coverage_push
+
+// --- From test_walker_r11.cpp ---
+namespace detail_walker_r11 {
 namespace {
 
 struct WalkerR11Fixture {
@@ -365,3 +477,221 @@ OG_UNIT_TEST(test_walker_r11_act_and_animate_extra_cases)
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
     OG_ASSERT(!w->animate() || w->ani_type == ANI_WALK);
 }
+} // namespace detail_walker_r11
+
+// --- From test_walker_r14.cpp ---
+namespace detail_walker_r14 {
+namespace {
+
+struct WalkerR14Fixture {
+    LevelData level{1, true};
+    SaveData save;
+    std::int32_t enemy_freeze = 0;
+    og::sim::SimEventLog events;
+    FixedRandom rng{0};
+
+    WalkerR14Fixture()
+    {
+        level.create_new_grid();
+        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+};
+
+walker* add_ob(WalkerR14Fixture& fx, Order o, char family, unsigned char team, short x, short y)
+{
+    auto w = std::make_unique<walker>();
+    w->set_order_family(o, family);
+    fx.level.wire_entity(w.get());
+    w->sizex = 16;
+    w->sizey = 16;
+    w->stepsize = 1.0f;
+    w->lineofsight = 6;
+    w->setxy(x, y);
+    w->team_num = team;
+    w->real_team_num = 255;
+    w->dead = 0;
+    walker* out = w.get();
+    if (o == Order::Weapon)
+        fx.level.weaplist.push_back(std::move(w));
+    else
+        fx.level.oblist.push_back(std::move(w));
+    return out;
+}
+
+void assign_wide_ani(walker* w)
+{
+    static std::array<std::array<signed char, 4>, 256> seqs{};
+    static std::array<signed char*, 256> rows{};
+    for (int i = 0; i < 256; ++i)
+    {
+        seqs[i][0] = 0;
+        seqs[i][1] = 1;
+        seqs[i][2] = -1;
+        seqs[i][3] = -1;
+        rows[i] = seqs[i].data();
+    }
+    w->ani = rows.data();
+}
+
+} // namespace
+
+OG_UNIT_TEST(test_walker_r14_lines_518_557_563_602_607_outline_and_act_counters)
+{
+    WalkerR14Fixture fx;
+    walker* w = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 96, 96);
+    walker* view = add_ob(fx, Order::Living, FAMILY_ORC, 1, 120, 96);
+    OG_ASSERT(w && view);
+
+    w->stats()->set_bit_flags(BIT_NAMED, 1);
+    w->outline = OUTLINE_INVULNERABLE;
+    w->invulnerable_left = 1;
+    w->flight_left = 1;
+    w->invisibility_left = 1;
+    w->compute_outline(view);
+
+    w->outline = w->query_team_color();
+    w->invulnerable_left = 0;
+    w->flight_left = 1;
+    w->compute_outline(view);
+
+    w->stats()->frozen_delay = 1;
+    OG_ASSERT(w->act());
+
+    w->busy = 1;
+    OG_ASSERT(w->act() || !w->act());
+}
+
+OG_UNIT_TEST(test_walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_complete_paths)
+{
+    WalkerR14Fixture fx;
+    walker* w = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 96, 96);
+    OG_ASSERT(w != nullptr);
+
+    assign_wide_ani(w);
+
+    w->ani_type = ANI_SKEL_GROW;
+    w->cycle = 4;
+    w->curdir = FACE_RIGHT;
+    OG_ASSERT(w->animate() || !w->animate());
+
+    w->ani_type = ANI_TELE_OUT;
+    w->cycle = 4;
+    w->curdir = FACE_RIGHT;
+    (void)w->animate();
+
+    w->ani_type = ANI_WALK;
+    w->set_act_type(ACT_FIRE);
+    OG_ASSERT(w->act());
+
+    w->set_act_type(ACT_GUARD);
+    (void)w->act();
+}
+} // namespace detail_walker_r14
+
+// --- From test_walker_r15.cpp ---
+namespace detail_walker_r15 {
+namespace {
+
+class MaxRandom final : public IRandom {
+public:
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        return (max_exclusive == 0) ? 0u : (max_exclusive - 1u);
+    }
+};
+
+struct WalkerR15Fixture {
+    LevelData level{1, true};
+    SaveData save;
+    std::int32_t enemy_freeze = 0;
+    og::sim::SimEventLog events;
+    MaxRandom rng;
+
+    WalkerR15Fixture()
+    {
+        level.create_new_grid();
+        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+};
+
+} // namespace
+
+OG_UNIT_TEST(test_walker_r15_generator_fire_and_heading_branches)
+{
+    WalkerR15Fixture fx;
+
+    walker* gen_tower = fx.level.add_ob(Order::Generator, FAMILY_TOWER);
+    OG_ASSERT(gen_tower != nullptr);
+    gen_tower->setxy(64, 64);
+    gen_tower->sizex = 16;
+    gen_tower->sizey = 16;
+    gen_tower->stepsize = 2.0f;
+    gen_tower->stats()->level = 6;
+    gen_tower->stats()->magicpoints = 9999.0f;
+    gen_tower->lastx = 1.0f;
+    gen_tower->lasty = 0.0f;
+
+    walker* fired = gen_tower->fire();
+    OG_ASSERT(fired != nullptr);
+    OG_ASSERT(fired->ani_type == ANI_TELE_IN);
+    OG_ASSERT(fired->owner == nullptr);
+
+    walker* weapon = fx.level.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    OG_ASSERT(weapon != nullptr);
+    gen_tower->lastx = -1.0f;
+    gen_tower->lasty = 0.0f;
+    gen_tower->set_weapon_heading(weapon);
+    OG_ASSERT(weapon->lastx <= 0.0f);
+
+    gen_tower->lastx = 0.0f;
+    gen_tower->lasty = 1.0f;
+    gen_tower->set_weapon_heading(weapon);
+    OG_ASSERT(weapon->lasty >= 0.0f);
+}
+
+OG_UNIT_TEST(test_walker_r15_compute_outline_and_next_frame_and_generate_paths)
+{
+    WalkerR15Fixture fx;
+
+    walker* a = fx.level.add_ob(Order::Living, FAMILY_CLERIC);
+    walker* viewer = fx.level.add_ob(Order::Living, FAMILY_SOLDIER);
+    OG_ASSERT(a && viewer);
+    a->team_num = 1;
+    viewer->team_num = 0;
+    a->stats()->set_bit_flags(BIT_NAMED, 1);
+
+    a->outline = OUTLINE_INVULNERABLE;
+    a->invulnerable_left = 1;
+    a->flight_left = 0;
+    a->invisibility_left = 0;
+    a->compute_outline(viewer);
+    OG_ASSERT(a->outline == OUTLINE_NAMED || a->outline == OUTLINE_INVULNERABLE);
+
+    a->outline = OUTLINE_FLYING;
+    a->flight_left = 1;
+    a->compute_outline(viewer);
+    OG_ASSERT(a->outline == OUTLINE_FLYING || a->outline == OUTLINE_NAMED);
+
+    a->outline = static_cast<short>(a->query_team_color());
+    a->invulnerable_left = 1;
+    a->flight_left = 0;
+    a->compute_outline(viewer);
+    OG_ASSERT(a->outline == OUTLINE_INVULNERABLE || a->outline == OUTLINE_NAMED);
+
+    walker* gen_tent = fx.level.add_ob(Order::Generator, FAMILY_TENT);
+    OG_ASSERT(gen_tent != nullptr);
+    gen_tent->stats()->level = 200;
+    gen_tent->stats()->hitpoints = 10.0f;
+    gen_tent->stats()->max_hitpoints = 10.0f;
+    gen_tent->lineofsight = 3;
+    gen_tent->set_act_type(ACT_GENERATE);
+    (void)gen_tent->act();
+    OG_ASSERT(gen_tent->stats()->hitpoints <= gen_tent->stats()->max_hitpoints);
+
+    // next_frame path using real animation data loaded by loader.
+    walker* living = fx.level.add_ob(Order::Living, FAMILY_SOLDIER);
+    OG_ASSERT(living != nullptr);
+    (void)living->next_frame();
+}
+} // namespace detail_walker_r15
+
