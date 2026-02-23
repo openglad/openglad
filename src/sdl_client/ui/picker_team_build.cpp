@@ -1424,7 +1424,10 @@ Sint32 go_menu(Sint32 arg1)
         current_guy.reset();
 
         // Reset viewscreen prefs
-        myscreen->ready_for_battle(myscreen->save_data.numplayers);
+        {
+            short numviews = (myscreen->save_data.numplayers == 0) ? 1 : myscreen->save_data.numplayers;
+            myscreen->ready_for_battle(numviews);
+        }
 
 #ifdef TESTING
         picker_testing_mark_game_start();

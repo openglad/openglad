@@ -69,6 +69,55 @@ walker* sim_find_next_control(LevelData& level, short my_team)
     return nullptr;
 }
 
+walker* sim_cycle_next_character(
+    std::list<std::unique_ptr<walker>>& oblist,
+    walker* current,
+    bool reverse,
+    const std::function<bool(const walker*)>& pred)
+{
+    auto is_current = [current](const std::unique_ptr<walker>& p) { return p.get() == current; };
+
+    if (!reverse)
+    {
+        auto mine = std::find_if(oblist.begin(), oblist.end(), is_current);
+        if (mine == oblist.end())
+            return nullptr;
+        // Search from after current to end
+        for (auto e = std::next(mine); e != oblist.end(); ++e)
+        {
+            walker* w = e->get();
+            if (w && pred(w))
+                return w;
+        }
+        // Wrap: search from begin to current
+        for (auto e = oblist.begin(); e != mine; ++e)
+        {
+            walker* w = e->get();
+            if (w && pred(w))
+                return w;
+        }
+    }
+    else
+    {
+        auto mine = std::find_if(oblist.rbegin(), oblist.rend(), is_current);
+        if (mine == oblist.rend())
+            return nullptr;
+        for (auto e = std::next(mine); e != oblist.rend(); ++e)
+        {
+            walker* w = e->get();
+            if (w && pred(w))
+                return w;
+        }
+        for (auto e = oblist.rbegin(); e != mine; ++e)
+        {
+            walker* w = e->get();
+            if (w && pred(w))
+                return w;
+        }
+    }
+    return nullptr;
+}
+
 SimInputResult sim_process_player_input(
     const PlayerInput& pi,
     walker*& control,
@@ -128,87 +177,12 @@ SimInputResult sim_process_player_input(
         }
         control = nullptr;
 
-        auto& oblist = level.oblist;
-        auto pred = [oldcontrol](const std::unique_ptr<walker>& p) { return p.get() == oldcontrol; };
-
-        if (!reverse)
-        {
-            auto mine = std::find_if(oblist.begin(), oblist.end(), pred);
-            if (mine == oblist.end())
-            {
-                LogError("view_control_switch_failed");
-                control = oldcontrol;
-                result.control_hp_changed = true;
-                result.control_hp = control->stats()->hitpoints;
-                return result;
-            }
-            auto e = mine;
-            e++;
-            for (; e != oblist.end(); e++)
-            {
-                walker* w = e->get();
-                if (w->query_order() == Order::Living &&
-                    w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                    w->real_team_num == 255 && w->user == -1)
-                {
-                    control = w;
-                    break;
-                }
-            }
-            if (!control)
-            {
-                for (e = oblist.begin(); e != mine; e++)
-                {
-                    walker* w = e->get();
-                    if (w->query_order() == Order::Living &&
-                        w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                        w->real_team_num == 255 && w->user == -1)
-                    {
-                        control = w;
-                        break;
-                    }
-                }
-            }
-        }
-        else
-        {
-            auto mine = std::find_if(oblist.rbegin(), oblist.rend(), pred);
-            if (mine == oblist.rend())
-            {
-                LogError("view_control_switch_failed");
-                control = oldcontrol;
-                result.control_hp_changed = true;
-                result.control_hp = control->stats()->hitpoints;
-                return result;
-            }
-            auto e = mine;
-            e++;
-            for (; e != oblist.rend(); e++)
-            {
-                walker* w = e->get();
-                if (w->query_order() == Order::Living &&
-                    w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                    w->real_team_num == 255 && w->user == -1)
-                {
-                    control = w;
-                    break;
-                }
-            }
-            if (!control)
-            {
-                for (e = oblist.rbegin(); e != mine; e++)
-                {
-                    walker* w = e->get();
-                    if (w->query_order() == Order::Living &&
-                        w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                        w->real_team_num == 255 && w->user == -1)
-                    {
-                        control = w;
-                        break;
-                    }
-                }
-            }
-        }
+        auto filter = [oldcontrol, my_team](const walker* w) {
+            return w->query_order() == Order::Living &&
+                   w->is_friendly(oldcontrol) && w->team_num == my_team &&
+                   w->real_team_num == 255 && w->user == -1;
+        };
+        control = sim_cycle_next_character(level.oblist, oldcontrol, reverse, filter);
 
         if (!control)
             control = oldcontrol;

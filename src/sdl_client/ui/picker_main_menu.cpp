@@ -78,10 +78,6 @@ void redraw_mainmenu()
         allbuttons[3]->do_outline = 0;
         allbuttons[4]->do_outline = 0;
         allbuttons[5]->do_outline = 0;
-        allbuttons[2]->vdisplay();
-        allbuttons[3]->vdisplay();
-        allbuttons[4]->vdisplay();
-        allbuttons[5]->vdisplay();
     }
     else if (game->save_data.numplayers==3)
     {
@@ -89,10 +85,6 @@ void redraw_mainmenu()
         allbuttons[3]->do_outline = 1;
         allbuttons[4]->do_outline = 0;
         allbuttons[5]->do_outline = 0;
-        allbuttons[2]->vdisplay();
-        allbuttons[3]->vdisplay();
-        allbuttons[4]->vdisplay();
-        allbuttons[5]->vdisplay();
     }
     else if (game->save_data.numplayers==2)
     {
@@ -100,10 +92,14 @@ void redraw_mainmenu()
         allbuttons[3]->do_outline = 0;
         allbuttons[4]->do_outline = 1;
         allbuttons[5]->do_outline = 0;
-        allbuttons[2]->vdisplay();
-        allbuttons[3]->vdisplay();
-        allbuttons[4]->vdisplay();
-        allbuttons[5]->vdisplay();
+    }
+    else if (game->save_data.numplayers==0)
+    {
+        // Spectator mode: no player count button is highlighted
+        allbuttons[2]->do_outline = 0;
+        allbuttons[3]->do_outline = 0;
+        allbuttons[4]->do_outline = 0;
+        allbuttons[5]->do_outline = 0;
     }
     else
     {
@@ -111,16 +107,19 @@ void redraw_mainmenu()
         allbuttons[3]->do_outline = 0;
         allbuttons[4]->do_outline = 0;
         allbuttons[5]->do_outline = 1;
-        allbuttons[2]->vdisplay();
-        allbuttons[3]->vdisplay();
-        allbuttons[4]->vdisplay();
-        allbuttons[5]->vdisplay();
     }
+    allbuttons[2]->vdisplay();
+    allbuttons[3]->vdisplay();
+    allbuttons[4]->vdisplay();
+    allbuttons[5]->vdisplay();
 
     allbuttons[6]->label = og::ui::format_difficulty_label(current_difficulty);
 
-    // Show the allied mode
-    allbuttons[7]->label = og::ui::format_allied_mode_label(game->save_data);
+    // Show the allied mode or spectator label
+    if (game->save_data.numplayers == 0)
+        allbuttons[7]->label = "SPECTATOR";
+    else
+        allbuttons[7]->label = og::ui::format_allied_mode_label(game->save_data);
     #else
 
     allbuttons[2]->label = og::ui::format_difficulty_label(current_difficulty);
@@ -182,8 +181,13 @@ Sint32 mainmenu(Sint32 arg1)
 	while(!(retvalue & MENU_EXIT))
 	{
 	    // Input
-		if(leftmouse(buttons))
-			retvalue = localbuttons->leftclick();
+		{
+			Sint32 click = leftmouse(buttons);
+			if(click == 1)
+				retvalue = localbuttons->leftclick();
+			else if(click == 2)
+				retvalue = localbuttons->rightclick(buttons);
+		}
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
 

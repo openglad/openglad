@@ -118,6 +118,9 @@ bool is_allied_mode(const SaveData& save);
 
 void set_player_count(SaveData& save, int count);
 
+// Returns true when numplayers == 0 (spectator / autoplay mode).
+bool is_spectator_mode(const SaveData& save);
+
 // --- Label formatting ---
 
 // Format the difficulty button label (e.g. "Difficulty: Battle").

@@ -294,7 +294,7 @@ bool SaveData::load(const std::string& filename)
 	#ifdef DISABLE_MULTIPLAYER
 	temp_numplayers = 1;
 	#endif
-    if (temp_numplayers == 0 || temp_numplayers > kMaxPlayers)
+    if (temp_numplayers > kMaxPlayers)
     {
         LogError("save_load_numplayers_invalid file={} numplayers={} max={}\n",
             filename, (int)temp_numplayers, (int)kMaxPlayers);

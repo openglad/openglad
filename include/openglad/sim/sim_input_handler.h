@@ -8,6 +8,9 @@
 #pragma once
 
 #include <string>
+#include <functional>
+#include <list>
+#include <memory>
 #include <openglad/input/input_action.h>
 
 class walker;
@@ -68,3 +71,12 @@ SimInputResult sim_process_player_input(
 // Find the next available control walker for a player.
 // Searches level_data.oblist for: player chars, team members, then any alive.
 walker* sim_find_next_control(LevelData& level, short my_team);
+
+// Cycle through the oblist starting after `current`, wrapping around,
+// returning the first living walker that satisfies `pred`.
+// If `reverse` is true, iterates backward.  Returns nullptr if none found.
+walker* sim_cycle_next_character(
+    std::list<std::unique_ptr<walker>>& oblist,
+    walker* current,
+    bool reverse,
+    const std::function<bool(const walker*)>& pred);

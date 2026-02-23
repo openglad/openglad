@@ -22,6 +22,7 @@
 
 #include <openglad/input/input.h>
 #include <openglad/runtime/cheat_handler.h>
+#include <openglad/ui/picker_common.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/core/version.h>
 #include <openglad/core/util.h>
@@ -455,6 +456,41 @@ void viewscreen::process_input(const InputState& input_state)
 	static SimInputDebounce debounce[6] = {};
 
 	const PlayerInput& pi = input_state.players[mynum];
+
+	// --- Spectator mode: only allow switching the camera target ---
+	if (og::ui::is_spectator_mode(active_screen()->save_data))
+	{
+		// SwitchChar cycles the camera target (no ACT_CONTROL claim)
+		if (!pi.was_pressed(InputAction::SwitchChar))
+			debounce[mynum].changedchar = 0;
+		else if (!debounce[mynum].changedchar)
+		{
+			debounce[mynum].changedchar = 1;
+			walker* oldcontrol = control;
+			if (!oldcontrol)
+			{
+				control = find_next_control();
+				return;
+			}
+
+			bool reverse = pi.is_held(InputAction::Shift);
+			short team = my_team;
+			auto filter = [team](const walker* w) {
+				return !w->dead && w->query_order() == Order::Living
+				       && w->team_num == team;
+			};
+			walker* found = sim_cycle_next_character(
+				active_screen()->level_data.oblist, oldcontrol, reverse, filter);
+			if (found)
+				control = found;
+			if (control && control->dead)
+				control = find_next_control();
+		}
+		// If the current control died between frames, re-acquire
+		if (control && control->dead)
+			control = find_next_control();
+		return; // No further input processing in spectator mode
+	}
 
 	// --- Prefs key (render-layer concern: opens a UI menu) ---
 	if (!pi.is_held(InputAction::Cheat))
