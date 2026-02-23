@@ -5,6 +5,7 @@
 #include "test_framework.h"
 
 #include <memory>
+#include <vector>
 
 static PixieData make_grid(unsigned char w, unsigned char h, unsigned char fill)
 {

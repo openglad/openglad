@@ -100,7 +100,6 @@ void test_walker_generator_fire_sets_weapon_lifetime_or_owner_paths()
 
     FixedRandom fixed_rng(1);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
@@ -155,7 +154,6 @@ void test_walker_generator_create_weapon_special_case()
 
     FixedRandom fixed_rng(1);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
@@ -190,7 +188,6 @@ void test_walker_act_guard_and_random_branch_paths()
     {
         FixedRandom rng1(1);
         GameContext c;
-        c.game_screen = myscreen;
         c.rng = &rng1;
         GlobalContextGuard guard(&c);
 
@@ -203,7 +200,6 @@ void test_walker_act_guard_and_random_branch_paths()
     {
         SequenceRandom rng_seq({0, 1, 0, 0});
         GameContext c;
-        c.game_screen = myscreen;
         c.rng = &rng_seq;
         GlobalContextGuard guard(&c);
 
@@ -229,7 +225,6 @@ void test_walker_act_guard_and_random_branch_paths()
     {
         SequenceRandom rng_seq({0, 1, 1, 5});
         GameContext c;
-        c.game_screen = myscreen;
         c.rng = &rng_seq;
         GlobalContextGuard guard(&c);
 
@@ -253,7 +248,6 @@ void test_walker_act_generate_zero_vector_and_hp_cap_paths()
     // next(3)=1 for both axes gives 0,0 to trigger the fallback lastx=1 branch.
     SequenceRandom rng_seq({59, 0, 1, 1, 0, 0, 0});
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &rng_seq;
     GlobalContextGuard guard(&c);
 
@@ -319,7 +313,6 @@ void test_walker_act_guard_else_and_act_random_turn_walk_paths()
 
     SequenceRandom rng_seq({0, 1, 1});
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &rng_seq;
     GlobalContextGuard guard(&c);
 

@@ -21,7 +21,7 @@
 #include <openglad/render/text.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/gparser.h>
 #include <openglad/platform/io.h>
 #include <array>
 #include <utility>
@@ -461,8 +461,6 @@ Sint32 yes_or_no(Sint32 arg)
 
 static cfg_store& active_config()
 {
-    if (ctx().active_config())
-        return *ctx().active_config();
     return cfg;
 }
 

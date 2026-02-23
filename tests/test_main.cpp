@@ -109,8 +109,7 @@ int main(int argc, char* argv[]) {
         std::format("{:.0f}", 100 * overscan_percentage));
 
     static options test_prefs;
-    ctx().prefs = &test_prefs;
-    theprefs = ctx().prefs;
+    theprefs = &test_prefs;
     create_global_screen(1);
     init_input();
 

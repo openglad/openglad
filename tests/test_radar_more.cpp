@@ -33,7 +33,6 @@ void test_radar_update_and_draw_covers_key_paths()
 {
     FixedRandom fixed_rng(1);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 

@@ -69,7 +69,7 @@ struct R17Fixture {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
-        gc.config = &cfg;
+
         set_global_context(&gc);
     }
 
@@ -978,7 +978,7 @@ struct R19Fixture {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
-        gc.config = &cfg;
+
         set_global_context(&gc);
     }
 
@@ -1168,7 +1168,7 @@ struct R20Fixture {
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
 
         gc.rng = &rng;
-        gc.config = &cfg;
+
         set_global_context(&gc);
     }
 
@@ -1520,7 +1520,7 @@ struct FinalR16Fixture {
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
-        gc.config = &cfg;
+
         set_global_context(&gc);
     }
 

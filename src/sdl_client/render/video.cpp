@@ -38,8 +38,6 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 
 static cfg_store& active_config()
 {
-    if (ctx().config)
-        return *ctx().config;
     return cfg;
 }
 

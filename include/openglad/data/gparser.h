@@ -34,8 +34,6 @@ public:
 	std::map<std::string, std::map<std::string, std::string> > data;
 };
 
-// Legacy global cfg_store instance (transitional).
-// Owned at file scope in data/gparser.cpp. Accessed by GameSession via pointer.
-// Treat as borrowed; prefer ctx().active_config() for new code.
+// Global cfg_store instance, owned at file scope in data/gparser.cpp.
 extern cfg_store cfg;
 

@@ -6,10 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/runtime/game_context.h>
-#include <openglad/data/gparser.h>
 #include <openglad/sim/sim_event_log.h>
-
-class options;
 
 // The existing global random() function (defined in screen.cpp or text_client main)
 std::uint32_t random(std::uint32_t x);
@@ -34,24 +31,15 @@ void GameContext::poll_input()
 // Global context singleton
 // ---------------------------------------------------------------------------
 
-// Default production RNG instance
 static ProductionRandom s_production_rng;
-
-// The default global context, initialized lazily from existing globals
 static GameContext s_default_context;
 static GameContext* s_active_context = nullptr;
-
-// Forward-declare the globals this wraps
-extern screen* myscreen;
 
 GameContext& ctx()
 {
     if (s_active_context)
         return *s_active_context;
 
-    // Lazily populate from existing globals
-    s_default_context.game_screen = myscreen;
-    s_default_context.config = &cfg;
     if (!s_default_context.rng)
         s_default_context.rng = &s_production_rng;
 

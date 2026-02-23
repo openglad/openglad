@@ -46,22 +46,16 @@ namespace
 {
 inline screen* active_screen()
 {
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
     return myscreen;
 }
 
 inline options* active_prefs()
 {
-    if (ctx().prefs)
-        return ctx().prefs;
     return theprefs;
 }
 
 inline cfg_store& active_config()
 {
-    if(ctx().config != nullptr)
-        return *ctx().config;
     return cfg;
 }
 } // namespace

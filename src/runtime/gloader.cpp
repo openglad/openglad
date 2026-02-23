@@ -18,7 +18,6 @@
 #include <openglad/data/gparser.h>
 #include <openglad/io/og_file.h>
 #include <openglad/core/util.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/family_descriptor.h>
@@ -38,8 +37,6 @@
 
 static inline cfg_store& active_config()
 {
-    if(ctx().config != nullptr)
-        return *ctx().config;
     return cfg;
 }
 

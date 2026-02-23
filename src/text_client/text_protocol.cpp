@@ -155,7 +155,6 @@ int run_text_protocol_session(const TextProtocolArgs& args)
 
     // Set up GameContext minimally
     GameContext text_ctx;
-    text_ctx.config = &cfg;
     text_ctx.rng = &entity_rng;
     text_ctx.sim_events = std::make_unique<og::sim::SimEventLog>();
     set_global_context(&text_ctx);

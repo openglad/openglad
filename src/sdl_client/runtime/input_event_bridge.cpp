@@ -6,7 +6,6 @@
 
 #include <openglad/input/input.h>
 #include <openglad/core/util.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/data/gparser.h>
 #include <openglad/platform/io.h>
@@ -19,15 +18,11 @@ extern bool input_continue;
 
 static inline screen* active_screen()
 {
-    if(ctx().active_screen() != nullptr)
-        return ctx().active_screen();
     return myscreen;
 }
 
 static inline cfg_store* active_config()
 {
-    if(ctx().active_config() != nullptr)
-        return ctx().active_config();
     return &cfg;
 }
 

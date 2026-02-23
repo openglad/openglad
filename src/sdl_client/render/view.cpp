@@ -150,15 +150,11 @@ namespace
 {
 inline screen* active_screen()
 {
-    if(ctx().active_screen() != nullptr)
-        return ctx().active_screen();
     return myscreen;
 }
 
 inline options* active_prefs()
 {
-    if(ctx().active_prefs() != nullptr)
-        return ctx().active_prefs();
     return theprefs;
 }
 } // namespace

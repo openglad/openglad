@@ -17,7 +17,7 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/gparser.h>
 #include <openglad/data/smooth.h>
 #include <span>
 #include <cmath>
@@ -26,8 +26,6 @@ extern bool debug_draw_paths;
 
 static inline cfg_store& active_config()
 {
-    if(ctx().config != nullptr)
-        return *ctx().config;
     return cfg;
 }
 

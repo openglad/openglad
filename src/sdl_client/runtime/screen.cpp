@@ -27,6 +27,7 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
+#include <openglad/data/gparser.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/obmap.h>
@@ -92,8 +93,6 @@ bool rw_read_exact(SDL_RWops* infile, void* dst, size_t size, size_t count)
 
 static inline cfg_store& active_config()
 {
-    if(ctx().config != nullptr)
-        return *ctx().config;
     return cfg;
 }
 

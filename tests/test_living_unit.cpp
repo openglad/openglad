@@ -181,7 +181,6 @@ struct LivingR14Fixture {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
-        gc.config = &cfg;
         set_global_context(&gc);
     }
 

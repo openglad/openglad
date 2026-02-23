@@ -39,7 +39,6 @@
 #include <openglad/ui/menu_model.h>
 #include <openglad/ui/picker_common.h>
 #include <openglad/ui/picker_state.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen_lifecycle.h>
 #include <array>
 #include <cstddef>
@@ -171,8 +170,6 @@ static const og::ui::PickerMenuItem* g_picker_selected_menu_item = nullptr;
 
 static cfg_store& active_config()
 {
-    if (ctx().config)
-        return *ctx().config;
     return cfg;
 }
 
@@ -752,7 +749,6 @@ void quit(Sint32 arg1)
 #else
 		myscreen->refresh();
 
-		ctx().prefs = nullptr;
 		picker_quit();  // deletes the screen objects
 		Log("quit({})\n", arg1);
 		exit(0);

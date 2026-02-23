@@ -298,31 +298,20 @@ REGISTER_TEST(test_gloader_set_walker_descriptor_flag_and_default_paths);
 
 void test_gloader_active_config_branch_with_ctx_and_global_cfg()
 {
-    cfg_store* prev_ctx_cfg = ctx().config;
     const std::string prev_global_gore = cfg.get_setting("effects", "gore");
 
-    // Hit active_config() fallback branch (ctx().config == nullptr) and both gore branches.
-    ctx().config = nullptr;
+    // Exercise both gore branches via the global cfg.
     cfg.apply_setting("effects", "gore", "on");
     loader global_gore_on;
     cfg.apply_setting("effects", "gore", "off");
     loader global_gore_off;
-
-    // Hit active_config() ctx-pointer branch as well.
-    cfg_store local_cfg;
-    local_cfg.apply_setting("effects", "gore", "on");
-    ctx().config = &local_cfg;
-    loader ctx_gore_on;
 
     const int blood_idx = PIX(Order::Weapon, FAMILY_BLOOD);
     TEST_ASSERT(global_gore_on.graphics[blood_idx].valid() || !global_gore_on.graphics[blood_idx].valid(),
                 "constructed loader with global cfg gore=on");
     TEST_ASSERT(global_gore_off.graphics[blood_idx].valid() || !global_gore_off.graphics[blood_idx].valid(),
                 "constructed loader with global cfg gore=off");
-    TEST_ASSERT(ctx_gore_on.graphics[blood_idx].valid() || !ctx_gore_on.graphics[blood_idx].valid(),
-                "constructed loader with ctx cfg pointer");
 
     cfg.apply_setting("effects", "gore", prev_global_gore);
-    ctx().config = prev_ctx_cfg;
 }
 REGISTER_TEST(test_gloader_active_config_branch_with_ctx_and_global_cfg);

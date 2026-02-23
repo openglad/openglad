@@ -293,7 +293,7 @@ void test_walker_special_mage_energy_wave()
 
     FixedRandom fixed_rng(1); // deterministic non-zero path for rng(20)
     GameContext test_ctx;
-    test_ctx.game_screen = myscreen;
+
     test_ctx.rng = &fixed_rng;
     set_global_context(&test_ctx);
 
@@ -377,7 +377,7 @@ void test_walker_special_mage_energy_wave()
         // rng(4)==0 and rng(20)==1 -> take the act_random() path.
         SequenceRandom seq_rng({0, 1, 0, 1, 0, 1});
         GameContext random_ctx;
-        random_ctx.game_screen = myscreen;
+    
         random_ctx.rng = &seq_rng;
         set_global_context(&random_ctx);
         (void)actor->act();
@@ -457,7 +457,7 @@ void test_walker_special_mage_energy_wave()
         arch2->stats()->special_cost[3] = 0;
         arch2->stats()->max_magicpoints = 2000;
         GameContext arch2_ctx;
-        arch2_ctx.game_screen = myscreen;
+    
         const int mp_tiers[] = {120, 300, 700, 1200};
         const int max_pick[] = {3, 5, 7, 9};
         for (int t = 0; t < 4; ++t) {
@@ -520,7 +520,7 @@ void test_walker_special_cleric_raise_undead()
 
         SequenceRandom seq_rng({39, 0, 39, 0, 39, 0});
         GameContext test_ctx;
-        test_ctx.game_screen = myscreen;
+    
         test_ctx.rng = &seq_rng;
         set_global_context(&test_ctx);
         Sint32 killed = w->turn_undead(24, 2);
@@ -757,7 +757,6 @@ void test_walker_special_archmage_illusion_rng_tables()
     arch->shifter_down = static_cast<short>(0);
 
     GameContext ctx;
-    ctx.game_screen = myscreen;
 
     const int mp_tiers[] = {120, 300, 700, 1200};
     const int max_pick[] = {3, 5, 7, 9};
@@ -972,7 +971,7 @@ void test_walker_special_archmage_mind_control_stats_name_path()
 
     SequenceRandom seq_rng({1, 1, 1, 1, 1, 1, 1, 1});
     GameContext test_ctx;
-    test_ctx.game_screen = myscreen;
+
     test_ctx.rng = &seq_rng;
     set_global_context(&test_ctx);
     (void)arch->special();
@@ -1227,7 +1226,7 @@ void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
         ghost->stats()->hitpoints = 8;
         SequenceRandom seq_rng({1000, 0, 1000, 0});
         GameContext test_ctx;
-        test_ctx.game_screen = myscreen;
+    
         test_ctx.rng = &seq_rng;
         set_global_context(&test_ctx);
         (void)cleric->turn_undead(40, 3);
@@ -1255,7 +1254,7 @@ void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
         // act_random(): rng(70)==0, find no foe => random-walk command path
         SequenceRandom random_rng({0, 1, 0, 1, 1, 2});
         GameContext random_ctx;
-        random_ctx.game_screen = myscreen;
+    
         random_ctx.rng = &random_rng;
         set_global_context(&random_ctx);
         (void)randomer->act();

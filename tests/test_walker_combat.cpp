@@ -316,7 +316,6 @@ void test_walker_act_with_commands()
             genp->stats()->hitpoints = 10;
             SequenceRandomCombat gen_rng({100, 0, 1, 1});
             GameContext gen_ctx;
-            gen_ctx.game_screen = myscreen;
             gen_ctx.rng = &gen_rng;
             set_global_context(&gen_ctx);
             (void)genp->act();
@@ -373,7 +372,6 @@ void test_walker_act_with_commands()
             base_rand->foe = base_foe;
 
             GameContext base_ctx;
-            base_ctx.game_screen = myscreen;
 
             // act(): rng(4)==0, rng(20)!=0 -> act_random().
             // act_random(): rng(70)==0 -> refresh foe and drive fire path.
@@ -410,7 +408,6 @@ void test_walker_act_with_commands()
         // act_random(): rng(70)==0 path then in-range fire_check branch.
         SequenceRandomCombat random_rng({0, 1, 0, 1, 0, 0});
         GameContext random_ctx;
-        random_ctx.game_screen = myscreen;
         random_ctx.rng = &random_rng;
         set_global_context(&random_ctx);
         (void)randomer->act();
@@ -791,7 +788,6 @@ void test_walker_act_random_generator_paths()
     genp->stats()->clear_command();
 
     GameContext ctx;
-    ctx.game_screen = myscreen;
 
     // Trigger act_random() route and in-range logic.
     SequenceRandomCombat rng1({0, 1, 0, 0, 0});

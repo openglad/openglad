@@ -11,6 +11,7 @@
 
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/data/gparser.h>
 #include <openglad/input/input.h>
 #include <openglad/render/view.h>
 #include <openglad/data/level_data.h>
@@ -55,9 +56,8 @@ void input_state_from_sdl(InputState& out)
 namespace og::runtime {
 void install_sdl_context_services()
 {
-    auto& c = ctx();
-    c.game_screen = myscreen;
-    c.prefs = theprefs;
+    // Fields game_screen, prefs, config removed from GameContext.
+    // Callers use myscreen, theprefs, cfg globals directly.
 }
 } // namespace og::runtime
 
@@ -84,7 +84,7 @@ void sdl_level_data_wire_entity_from_screen(walker* w)
     if (ctx().sim_events)
         w->sim_events = ctx().sim_events.get();
     w->sim_rng = ctx().rng;
-    w->sim_config = ctx().config;
+    w->sim_config = &cfg;
 }
 
 void sdl_level_data_draw(LevelData* level, screen* screenp)

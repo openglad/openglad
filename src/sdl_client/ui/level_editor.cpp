@@ -35,7 +35,7 @@
 #include <openglad/ui/level_picker.h>
 #include <span>
 #include <openglad/ui/campaign_picker.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/gparser.h>
 #include <openglad/render/sai2x.h>
 #include <algorithm>
 #include <cstring>
@@ -60,8 +60,6 @@ void quit(Sint32 arg1);
 
 static inline cfg_store& active_config()
 {
-    if(ctx().config != nullptr)
-        return *ctx().config;
     return cfg;
 }
 

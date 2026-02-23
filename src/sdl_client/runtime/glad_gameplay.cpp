@@ -17,7 +17,6 @@
 #include <openglad/input/input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/render/view.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 
 extern options* theprefs;
@@ -29,20 +28,10 @@ GameLoopFrameState g_frame_state{};
 bool g_test_remove_exits = false;
 #endif
 
-namespace
-{
-inline screen* active_screen()
-{
-    if (ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
-
 // Initialize the game for playing (called before game loop starts).
 void glad_init()
 {
-    screen* current_screen = active_screen();
+    screen* current_screen = myscreen;
     if (current_screen == nullptr)
     {
         LogError("glad_init_failed reason=missing_screen\n");
@@ -85,7 +74,7 @@ void glad_init()
 
 void glad_main(Sint32 playermode)
 {
-    screen* current_screen = active_screen();
+    screen* current_screen = myscreen;
     if (current_screen == nullptr)
     {
         LogError("glad_main_failed mode={} reason=missing_screen\n", playermode);
