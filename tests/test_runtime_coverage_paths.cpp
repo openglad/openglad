@@ -494,7 +494,7 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
     SaveData save;
     save.my_team = 1; // team 0 is hostile from this perspective
 
-    // Team-0 living should still act while freeze is active and mark level as not done.
+    // Non-friendly living should be frozen while freeze is active.
     walker* hostile_team0 = add_living(0);
     TEST_ASSERT(hostile_team0 != nullptr, "hostile team0 living created");
     if (!hostile_team0)
@@ -509,7 +509,8 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
     char end = 0;
     og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT_EQ(10, (int)enemy_freeze, "enemy_freeze should decrement from 11 to 10");
-    TEST_ASSERT_EQ(0, (int)r.level_done, "hostile team-0 living during freeze should keep level_done at 0");
+    TEST_ASSERT_EQ(2, (int)r.level_done, "hostile living during freeze should stay frozen and not keep level active");
+    TEST_ASSERT(r.game_ended, "when only frozen hostiles remain, tick should report level completion");
 
     int time_left_messages = 0;
     for (const auto& ev : events.events())
