@@ -116,7 +116,7 @@ void test_treasure_eat_gold_bar_invalid_team_does_not_index_score_array()
     const Uint32 score_before = total_team_score();
 
     gold->eat_me(eater);
-    TEST_ASSERT_EQ((int)score_before, (int)total_team_score(),
+    TEST_ASSERT_EQ(score_before, total_team_score(),
                    "invalid team id should not write outside m_score bounds");
     TEST_ASSERT(gold->dead == 1, "gold bar should still be consumed");
 

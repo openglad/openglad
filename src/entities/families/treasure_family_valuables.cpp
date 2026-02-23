@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure.h>
+#include <openglad/core/constants.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
@@ -21,8 +22,7 @@
 
 static bool is_valid_score_team(unsigned char team_num)
 {
-    constexpr unsigned char kScoreTeams = 4;
-    return team_num < kScoreTeams;
+    return team_num < SCORE_TEAM_COUNT;
 }
 
 static bool gold_bar_on_eat(treasure* self, walker* eater)

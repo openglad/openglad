@@ -19,6 +19,7 @@ inline constexpr int ACT_SIT = 6;
 
 // Team types
 inline constexpr int MAX_TEAM = 7;
+inline constexpr unsigned char SCORE_TEAM_COUNT = 4;
 
 // Animation Types : Livings
 inline constexpr int ANI_WALK = 0;
