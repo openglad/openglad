@@ -91,15 +91,15 @@ void test_load_saved_game_maps_views_to_saved_team_ids() {
     myscreen->save_data.scen_num = 1;
     myscreen->save_data.numplayers = 2;
 
-    auto team2 = std::make_unique<guy>(FAMILY_SOLDIER);
-    team2->name = "TEAM2";
-    team2->teamnum = 2;
-    myscreen->save_data.team_list[0] = std::move(team2);
+    auto team1 = std::make_unique<guy>(FAMILY_SOLDIER);
+    team1->name = "TEAM1";
+    team1->teamnum = 1;
+    myscreen->save_data.team_list[0] = std::move(team1);
 
-    auto team4 = std::make_unique<guy>(FAMILY_ARCHER);
-    team4->name = "TEAM4";
-    team4->teamnum = 4;
-    myscreen->save_data.team_list[1] = std::move(team4);
+    auto team3 = std::make_unique<guy>(FAMILY_ARCHER);
+    team3->name = "TEAM3";
+    team3->teamnum = 3;
+    myscreen->save_data.team_list[1] = std::move(team3);
     myscreen->save_data.team_size = 2;
 
     TEST_ASSERT(myscreen->save_data.save("test_level_team_mapping"),
@@ -114,9 +114,9 @@ void test_load_saved_game_maps_views_to_saved_team_ids() {
         return;
     }
 
-    TEST_ASSERT_EQ(2, (int)myscreen->viewob[0]->my_team,
+    TEST_ASSERT_EQ(1, (int)myscreen->viewob[0]->my_team,
         "view 0 should map to first distinct saved team id");
-    TEST_ASSERT_EQ(4, (int)myscreen->viewob[1]->my_team,
+    TEST_ASSERT_EQ(3, (int)myscreen->viewob[1]->my_team,
         "view 1 should map to second distinct saved team id");
 
     myscreen->level_data.delete_objects();
