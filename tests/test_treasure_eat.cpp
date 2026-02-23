@@ -145,7 +145,8 @@ void test_treasure_eat_magic_potion()
     if (!potion) { delete eater; return; }
 
     potion->eat_me(eater);
-    TEST_ASSERT(eater->stats()->magicpoints >= 100, "magic potion restores MP");
+    TEST_ASSERT(eater->stats()->magicpoints >= eater->stats()->max_magicpoints, "magic potion restores MP");
+    TEST_ASSERT(eater->stats()->magicpoints <= eater->stats()->max_magicpoints, "magic potion should not exceed max MP");
     TEST_ASSERT(potion->dead == 1, "potion consumed");
 
     myscreen->level_data.remove_ob(potion);

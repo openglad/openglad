@@ -12,6 +12,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
+#include <algorithm>
 #include <format>
 #include <string>
 
@@ -32,9 +33,8 @@ static bool drumstick_on_eat(treasure* self, walker* eater)
 
 static bool magic_potion_on_eat(treasure* self, walker* eater)
 {
-    if (eater->stats()->magicpoints < eater->stats()->max_magicpoints)
-        eater->stats()->magicpoints = eater->stats()->max_magicpoints;
-    eater->stats()->magicpoints += static_cast<float>(50 * self->stats()->level);
+    const float restore_amount = static_cast<float>(50 * self->stats()->level);
+    eater->stats()->magicpoints = std::min(eater->stats()->max_magicpoints, eater->stats()->magicpoints + restore_amount);
     self->dead = 1;
     if (eater->user != -1)
     {
