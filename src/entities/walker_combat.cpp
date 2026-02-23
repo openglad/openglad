@@ -239,8 +239,8 @@ bool walker::attack(walker  *target)
     do_combat_damage(attacker, target, tempdamage_i);
     TRACE("walker", "attack: %s deals %d damage", attacker->stats_->name.c_str(), tempdamage_i);
 
-    // Base exp from attack damage
-    short newexp = exp_from_action(ExpAction::Attack, this, target, tempdamage_i);
+    // Base exp from this successful hit.
+    short attack_exp = exp_from_action(ExpAction::Attack, this, target, tempdamage_i);
 
     // Set our target to fighting our owner
     //in the case of our weapon hit something
@@ -248,22 +248,10 @@ bool walker::attack(walker  *target)
     {
         owner->foe = target;
         target->stats()->hit_response(owner);
-        if (headguy->myguy)
-        {
-            headguy->myguy->exp += newexp;
-        }
     }
     else  //melee combat, set target to hit_response to us
     {
         target->stats()->hit_response(this);
-        if (myguy)
-        {
-                myguy->exp += newexp;
-            if (getscore)
-            {
-                sim_save->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i) + static_cast<std::uint32_t>(target->stats()->level);
-            }
-        }
     }
 
     if (order == Order::Weapon)
@@ -285,18 +273,15 @@ bool walker::attack(walker  *target)
 
     playerteam = 0;
 
-    // Positive score for hurting enemies, negative for us
-    if (owner &&
-            (targetorder != Order::Weapon) ) // are we still alive?
+    // Award base hit rewards once per successful enemy hit.
+    if (playerteam != target->team_num)
     {
-        if (playerteam != target->team_num)
+        if (headguy->myguy)
+            headguy->myguy->exp += attack_exp;
+        if (getscore)
         {
-            if (getscore)
-            {
-                sim_save->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i) + static_cast<std::uint32_t>(target->stats()->level); // / 2;
-            }
-            if (headguy->myguy)
-                headguy->myguy->exp += newexp;
+            sim_save->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i)
+                + static_cast<std::uint32_t>(target->stats()->level);
         }
     }
 
@@ -310,7 +295,7 @@ bool walker::attack(walker  *target)
                 {
                     if (headguy->myguy)  // headguy can == this
                     {
-                        headguy->myguy->exp += newexp + exp_from_action(ExpAction::Kill, this, target, 0);
+                        headguy->myguy->exp += exp_from_action(ExpAction::Kill, this, target, 0);
                         headguy->myguy->kills++;
                         headguy->myguy->scen_kills++;
                         headguy->myguy->level_kills += target->stats()->level;
