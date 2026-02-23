@@ -136,6 +136,11 @@ void picker_testing_set_force_real_dialogs(bool enabled)
 {
     s_force_real_dialogs = enabled;
 }
+
+int picker_testing_yes_or_no_queue_remaining()
+{
+    return static_cast<int>(s_yes_or_no_overrides.size());
+}
 #endif
 
 // Shared implementation for yes/no prompts.

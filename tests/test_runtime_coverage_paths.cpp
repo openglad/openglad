@@ -25,6 +25,7 @@ short new_score_panel(screen* s, short do_it);
 // TESTING-only helpers from picker_dialogs.cpp.
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
+int picker_testing_yes_or_no_queue_remaining();
 
 namespace {
 
@@ -866,3 +867,116 @@ void test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero()
     clear_level_lists();
 }
 REGISTER_TEST(test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero);
+
+// --- Issue #98 regression tests: exits triggerable without beating scenario ---
+
+void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
+{
+    // Regression test for GitHub issue #98.
+    // When TYPE_CAN_EXIT_WHENEVER is set and Withdraw conditions are also met,
+    // the Exit dialog should show (not Withdraw). Before the fix, the Withdraw
+    // dialog fired first, and accepting it changed scen_num (retreat behavior).
+    // After the fix, the Exit dialog fires instead and scen_num is unchanged
+    // (normal level completion path).
+    clear_level_lists();
+
+    static og::sim::SimEventLog sim_events;
+    static ProductionRandom rng;
+    sim_events.clear();
+    myscreen->level_data.set_sim_context(
+        &myscreen->save_data, &myscreen->enemy_freeze, &sim_events, &rng, &cfg);
+
+    // Setup: CAN_EXIT_WHENEVER flag, enemies still present, dest level completed,
+    // current scenario NOT completed → both Withdraw AND Exit conditions met.
+    myscreen->level_data.type = LevelData::TYPE_CAN_EXIT_WHENEVER;
+    myscreen->level_data.level_done = 0; // enemies still present
+
+    myscreen->save_data.reset();
+    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    myscreen->save_data.scen_num = 5; // current level (not completed)
+    myscreen->save_data.add_level_completed(myscreen->save_data.current_campaign, 3);
+    (void)myscreen->save_data.save("save0");
+
+    treasure* exit_fx = add_treasure(FAMILY_EXIT, 3); // exit points to level 3
+    walker* eater = add_living(0);
+    TEST_ASSERT(exit_fx && eater, "exit/eater created");
+    if (!(exit_fx && eater))
+        return;
+
+    eater->set_act_type(ACT_CONTROL);
+    eater->in_act = false;
+    eater->skip_exit = 0;
+
+    // Push one "accept" answer. With the fix, the Exit dialog fires and
+    // consumes this. Before the fix, the Withdraw dialog consumed it instead.
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+
+    exit_fx->eat_me(eater);
+
+    // The Withdraw-accept path changes scen_num to the exit level (3) via
+    // load("save0") + scen_num = exit_level + save("save0").
+    // The Exit-accept path does NOT change scen_num.
+    // With the fix (Exit fires, not Withdraw), scen_num should stay at 5.
+    TEST_ASSERT_EQ(5, static_cast<int>(myscreen->save_data.scen_num),
+                   "CAN_EXIT_WHENEVER should show Exit (scen_num unchanged), not Withdraw");
+
+    myscreen->level_data.type = 0;
+    clear_level_lists();
+}
+REGISTER_TEST(test_issue98_can_exit_flag_should_show_exit_not_withdraw);
+
+void test_issue98_no_double_dialog_on_withdraw_exit()
+{
+    // Regression test for GitHub issue #98.
+    // Before the fix, when CAN_EXIT_WHENEVER was set and Withdraw conditions
+    // were met, BOTH Withdraw and Exit dialogs fired in sequence — consuming
+    // two prompt answers. After the fix, only one dialog fires.
+    //
+    // We verify this by pushing 2 answers and checking how many remain:
+    // - Buggy code: 2 dialogs fire → 2 answers consumed → 0 remaining
+    // - Fixed code: 1 dialog fires → 1 answer consumed → 1 remaining
+    clear_level_lists();
+
+    static og::sim::SimEventLog sim_events;
+    static ProductionRandom rng;
+    sim_events.clear();
+    myscreen->level_data.set_sim_context(
+        &myscreen->save_data, &myscreen->enemy_freeze, &sim_events, &rng, &cfg);
+
+    myscreen->level_data.type = LevelData::TYPE_CAN_EXIT_WHENEVER;
+    myscreen->level_data.level_done = 0; // enemies still present
+
+    myscreen->save_data.reset();
+    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    myscreen->save_data.scen_num = 5;
+    myscreen->save_data.add_level_completed(myscreen->save_data.current_campaign, 3);
+    (void)myscreen->save_data.save("save0");
+
+    treasure* exit_fx = add_treasure(FAMILY_EXIT, 3);
+    walker* eater = add_living(0);
+    TEST_ASSERT(exit_fx && eater, "exit/eater created");
+    if (!(exit_fx && eater))
+        return;
+
+    eater->set_act_type(ACT_CONTROL);
+    eater->in_act = false;
+    eater->skip_exit = 0;
+
+    // Push two "decline" answers into the queue.
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(false);
+    picker_testing_yes_or_no_queue_push(false);
+
+    exit_fx->eat_me(eater);
+
+    // With the bug, both Withdraw and Exit dialogs fire (2 consumed, 0 remaining).
+    // With the fix, only one dialog fires (1 consumed, 1 remaining).
+    int remaining = picker_testing_yes_or_no_queue_remaining();
+    TEST_ASSERT_EQ(1, remaining,
+                   "Only one dialog should fire, not both Withdraw and Exit");
+
+    myscreen->level_data.type = 0;
+    clear_level_lists();
+}
+REGISTER_TEST(test_issue98_no_double_dialog_on_withdraw_exit);
