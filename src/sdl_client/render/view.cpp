@@ -281,9 +281,44 @@ void viewscreen::free_zoom_surface()
 	}
 }
 
+// Nearest-neighbor scale blit: pixel-perfect scaling with no interpolation.
+// Each source pixel maps to an integer block of destination pixels (zoom in)
+// or is sampled at integer intervals (zoom out). No bilinear filtering.
+namespace {
+void nearest_neighbor_blit(SDL_Surface* src, SDL_Surface* dst, const SDL_Rect& dst_rect)
+{
+	if (SDL_MUSTLOCK(src)) SDL_LockSurface(src);
+	if (SDL_MUSTLOCK(dst)) SDL_LockSurface(dst);
+
+	const int dw = dst_rect.w;
+	const int dh = dst_rect.h;
+	const int sw = src->w;
+	const int sh = src->h;
+
+	for (int y = 0; y < dh; ++y)
+	{
+		const int sy = y * sh / dh;
+		const auto* src_row = reinterpret_cast<const Uint32*>(
+			static_cast<const Uint8*>(src->pixels) + sy * src->pitch);
+		auto* dst_row = reinterpret_cast<Uint32*>(
+			static_cast<Uint8*>(dst->pixels) + (dst_rect.y + y) * dst->pitch);
+
+		for (int x = 0; x < dw; ++x)
+		{
+			const int sx = x * sw / dw;
+			dst_row[dst_rect.x + x] = src_row[sx];
+		}
+	}
+
+	if (SDL_MUSTLOCK(dst)) SDL_UnlockSurface(dst);
+	if (SDL_MUSTLOCK(src)) SDL_UnlockSurface(src);
+}
+} // namespace
+
 // RAII helper to manage offscreen zoom rendering.
 // Swaps E_Screen->render to a cached surface of world_w × world_h,
-// adjusts the viewscreen parameters, renders, then scales back.
+// adjusts the viewscreen parameters, renders, then scales back
+// using nearest-neighbor (pixel-perfect, no interpolation).
 // The surface is cached per-viewscreen and only reallocated when the
 // required dimensions change.
 namespace {
@@ -314,8 +349,11 @@ struct ZoomRenderContext {
 			|| view->zoom_surface_h_ != world_h)
 		{
 			view->free_zoom_surface();
+			// Match the pixel format of the main render surface exactly
+			auto* fmt = E_Screen->render->format;
 			view->zoom_surface_ = SDL_CreateRGBSurface(
-				SDL_SWSURFACE, world_w, world_h, 32, 0, 0, 0, 0);
+				SDL_SWSURFACE, world_w, world_h,
+				fmt->BitsPerPixel, fmt->Rmask, fmt->Gmask, fmt->Bmask, fmt->Amask);
 			if (!view->zoom_surface_)
 				return false;
 			view->zoom_surface_w_ = world_w;
@@ -363,14 +401,14 @@ struct ZoomRenderContext {
 		view->xview = saved_xview;
 		view->yview = saved_yview;
 
-		// Scale blit from zoom surface to the viewscreen's area
+		// Nearest-neighbor scale blit from zoom surface to viewscreen area
 		SDL_Rect dst = {
 			static_cast<int>(saved_xloc),
 			static_cast<int>(saved_yloc),
 			static_cast<int>(saved_xview),
 			static_cast<int>(saved_yview)
 		};
-		SDL_BlitScaled(view->zoom_surface_, nullptr, E_Screen->render, &dst);
+		nearest_neighbor_blit(view->zoom_surface_, E_Screen->render, dst);
 
 		active = false;
 	}

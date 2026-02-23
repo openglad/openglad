@@ -22,6 +22,7 @@
 #include <openglad/legacy/colors.h>
 #include <openglad/entities/walker.h>
 #include <openglad/render/radar.h>
+#include <openglad/render/sai2x.h>
 #include <openglad/render/view.h>
 #include <openglad/runtime/screen.h>
 #include <span>
@@ -223,8 +224,8 @@ short radar::draw(LevelData* data)
 				{} //also do nothing
 				else
 				{
-					tempz = (tempx+(tempy*320)); //this may need fixing
-					if (tempz > 64000 || tempz < 0)
+					tempz = (tempx+(tempy*E_Screen->render->w));
+					if (tempz > (E_Screen->render->w * E_Screen->render->h) || tempz < 0)
 					{
 						Log("bad radar, bad\n");
 						return 1;
@@ -329,8 +330,8 @@ short radar::draw(LevelData* data)
 				{} //also do nothing
 				else
 				{
-					tempz = (tempx+(tempy*320)); //this may need fixing
-					if (tempz > 64000 || tempz < 0)
+					tempz = (tempx+(tempy*E_Screen->render->w));
+					if (tempz > (E_Screen->render->w * E_Screen->render->h) || tempz < 0)
 					{
 						Log("bad radar, bad\n");
 						return 1;
