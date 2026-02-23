@@ -7,12 +7,12 @@
  */
 #pragma once
 
-// Common boilerplate for family registries: static array + initialized flag
-// + lazy-init getter with bounds check.
+// Common boilerplate for family registries: static array + init-once
+// + bounds-checked getter.
 //
 // Usage:
 //   static FamilyRegistryBase<MyDescriptor, NUM> s_registry;
-//   s_registry.init(apply_defaults, populate);  // in init function
+//   s_registry.init(apply_defaults, populate);  // once at startup
 //   return s_registry.get(id);                  // in getter
 template <typename Descriptor, int NUM>
 class FamilyRegistryBase {
@@ -35,8 +35,6 @@ public:
     const Descriptor* get(int family_id) const {
         return (family_id >= 0 && family_id < NUM) ? &entries_[family_id] : nullptr;
     }
-
-    bool is_initialized() const { return initialized_; }
 
 private:
     bool initialized_ = false;

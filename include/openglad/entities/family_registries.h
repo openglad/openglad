@@ -7,6 +7,8 @@
  */
 #pragma once
 
+#include <openglad/entities/family_registry.h>
+
 // Forward declarations
 struct WeaponFamilyDescriptor;
 struct EffectFamilyDescriptor;
@@ -28,3 +30,13 @@ void init_treasure_family_registry();
 // Generator family registry
 const GeneratorFamilyDescriptor* get_generator_family_descriptor(int family_id);
 void init_generator_family_registry();
+
+// Initialize all five family registries. Call once at startup before any lookups.
+inline void init_all_registries()
+{
+    init_family_registry();
+    init_weapon_family_registry();
+    init_effect_family_registry();
+    init_treasure_family_registry();
+    init_generator_family_registry();
+}

@@ -64,7 +64,5 @@ void init_effect_family_registry()
 
 const EffectFamilyDescriptor* get_effect_family_descriptor(int family_id)
 {
-    if (!s_registry.is_initialized())
-        init_effect_family_registry();
     return s_registry.get(family_id);
 }

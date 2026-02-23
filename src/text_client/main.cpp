@@ -36,6 +36,7 @@
 #include <openglad/core/util.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/input/input_state.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/ui/picker.h>
 
 #include <cstdio>
@@ -160,6 +161,7 @@ int main(int argc, char* argv[])
 
     // Load configuration
     cfg.load_settings();
+    init_all_registries();
 
     if (args.probe_unsupported_warnings) {
         emit_headless_unsupported_warnings_probe();

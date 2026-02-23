@@ -29,7 +29,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/smooth.h>
@@ -211,8 +211,8 @@ screen::screen(short howmany)
     
 	buffer_to_screen(0, 0, 320, 200);
 
-	// Set the special names for all walkers from the family registry
-	init_family_registry();
+	// Initialize all entity family registries (living, weapon, effect, treasure, generator)
+	init_all_registries();
 	for (i=0; i < NUM_FAMILIES; i++)
 	{
 		auto* fd = get_family_descriptor(i);

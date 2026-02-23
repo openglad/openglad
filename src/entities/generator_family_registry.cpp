@@ -62,7 +62,5 @@ void init_generator_family_registry()
 
 const GeneratorFamilyDescriptor* get_generator_family_descriptor(int family_id)
 {
-    if (!s_registry.is_initialized())
-        init_generator_family_registry();
     return s_registry.get(family_id);
 }
