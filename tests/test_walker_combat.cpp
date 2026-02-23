@@ -975,6 +975,7 @@ void test_walker_combat_attack_rewards_single_credit_weapon_hit()
     TEST_ASSERT(owner && target && weapon, "owner/target/weapon created");
     if (!(owner && target && weapon))
     {
+        myscreen->level_data.delete_objects();
         myscreen->save_data.allied_mode = saved_allied_mode;
         return;
     }
@@ -1028,6 +1029,7 @@ void test_walker_combat_attack_rewards_single_credit_melee_kill()
     TEST_ASSERT(attacker && target, "attacker/target created");
     if (!(attacker && target))
     {
+        myscreen->level_data.delete_objects();
         myscreen->save_data.allied_mode = saved_allied_mode;
         return;
     }

@@ -274,7 +274,7 @@ bool walker::attack(walker  *target)
     playerteam = 0;
 
     // Award base hit rewards once per successful enemy hit.
-    if (playerteam != target->team_num)
+    if (targetorder == Order::Living && playerteam != target->team_num)
     {
         if (headguy->myguy)
             headguy->myguy->exp += attack_exp;
