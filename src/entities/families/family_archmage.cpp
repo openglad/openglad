@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
+#include <openglad/entities/summon.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
@@ -179,11 +180,9 @@ static bool archmage_do_special(walker* self)
                         break;
                     }
                 }
-                newob = self->sim_level->add_ob(Order::FX, FAMILY_MARKER);
+                newob = summon_entity(self, Order::FX, FAMILY_MARKER);
                 if (!newob)
                     return false;
-                newob->owner = self;
-                newob->center_on(self);
                 if (self->myguy)
                     newob->lifetime = self->myguy->intelligence / 33;
                 else
@@ -237,12 +236,9 @@ static bool archmage_do_special(walker* self)
                     self->busy += 5;
                     for (auto* ob : newlist)
                     {
-                        newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION);
+                        newob = summon_entity(self, Order::FX, FAMILY_EXPLOSION);
                         if (!newob)
                             return false;
-                        newob->owner = self;
-                        newob->team_num = self->team_num;
-                        newob->stats()->level = self->stats()->level;
                         newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                         newob->damage = static_cast<float>(generic);
                         newob->center_on(ob);
@@ -261,11 +257,7 @@ static bool archmage_do_special(walker* self)
                         self->myguy->total_shots++;
                         self->myguy->scen_shots++;
                     }
-                    newob = self->sim_level->add_ob(Order::FX, FAMILY_CHAIN);
-                    newob->center_on(self);
-                    newob->owner = self;
-                    newob->stats()->level = self->stats()->level;
-                    newob->team_num = self->team_num;
+                    newob = summon_entity(self, Order::FX, FAMILY_CHAIN);
                     generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[2]));
                     generic /= 2;
                     self->stats()->magicpoints -= static_cast<float>(generic);

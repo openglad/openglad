@@ -9,6 +9,7 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/summon.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
@@ -150,11 +151,9 @@ static bool cleric_do_special(walker* self)
                     self->myguy->total_shots++;
                     self->myguy->scen_shots++;
                 }
-                newob = self->sim_level->add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+                newob = summon_entity(self, Order::FX, FAMILY_MAGIC_SHIELD);
                 if (!newob)
                     return false;
-                newob->owner = self;
-                newob->team_num = self->team_num;
                 newob->ani_type = 1;
                 generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
                 generic /= 2;

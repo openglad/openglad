@@ -10,6 +10,7 @@
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/summon.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
@@ -181,19 +182,15 @@ static bool thief_do_special(walker* self)
         default:
             if (self->busy > 0)
                 return false;
-            newob = self->sim_level->add_ob(Order::FX, FAMILY_CLOUD);
+            newob = summon_entity(self, Order::FX, FAMILY_CLOUD);
             if (!newob)
                 return false;
             self->busy += 5;
             newob->ignore = 1;
             newob->lifetime = 40 + 3 * self->stats()->level;
-            newob->center_on(self);
             newob->invisibility_left = 10;
             newob->ani_type = ANI_SPIN;
-            newob->team_num = self->team_num;
-            newob->stats()->level = self->stats()->level;
             newob->damage = static_cast<float>(self->stats()->level);
-            newob->owner = self;
             break;
     }
     return true;

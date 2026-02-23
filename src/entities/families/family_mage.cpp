@@ -9,6 +9,7 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
+#include <openglad/entities/summon.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
@@ -134,11 +135,9 @@ static bool mage_do_special(walker* self)
                 generic = 0; // force new placement, for now
                 if (!generic) // didn't remove a marker, so place one
                 {
-                    newob = self->sim_level->add_ob(Order::FX, FAMILY_MARKER);
+                    newob = summon_entity(self, Order::FX, FAMILY_MARKER);
                     if (!newob)
                         return false;
-                    newob->owner = self;
-                    newob->center_on(self);
                     if (self->myguy)
                         newob->lifetime = self->myguy->intelligence / 33;
                     else
@@ -252,12 +251,9 @@ static bool mage_do_special(walker* self)
             self->busy += 5;
             for (auto* ob : newlist)
             {
-                newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION);
+                newob = summon_entity(self, Order::FX, FAMILY_EXPLOSION);
                 if (!newob)
                     return false;
-                newob->owner = self;
-                newob->team_num = self->team_num;
-                newob->stats()->level = self->stats()->level;
                 newob->damage = static_cast<float>(generic);
                 newob->center_on(ob);
                 og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);

@@ -9,6 +9,7 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/summon.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
@@ -44,9 +45,7 @@ static bool soldier_do_special(walker* self)
                 return false;
             break;
         case 2: // boomerang
-            newob = self->sim_level->add_ob(Order::FX, FAMILY_BOOMERANG);
-            newob->owner = self;
-            newob->team_num = self->team_num;
+            newob = summon_entity(self, Order::FX, FAMILY_BOOMERANG);
             newob->ani_type = 1;
             newob->lifetime = 30 + self->stats()->level * 12;
             newob->stats()->hitpoints += static_cast<float>(self->stats()->level) * 12.0f;
