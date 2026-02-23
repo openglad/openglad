@@ -124,7 +124,7 @@ std::unique_ptr<pixieN> main_columns_pix;
 
 // Non-owning alias to the current button set (init_buttons owns allbuttons[]).
 vbutton * localbuttons;
-Sint32 current_team_num = 0;
+short current_team_num = 0;
 extern int player_keys[4][NUM_KEYS];
 
 #ifdef TESTING
@@ -1780,8 +1780,9 @@ Sint32 change_teamnum(Sint32 arg)
 Sint32 change_hire_teamnum(Sint32 arg)
 {
    // Change the team number of the hiring menu ..
-   current_team_num += arg;
-   current_team_num = static_cast<short>((current_team_num % 4 + 4) % 4);
+   int next_team = current_team_num + static_cast<int>(arg);
+   next_team = (next_team % 4 + 4) % 4;
+   current_team_num = static_cast<short>(next_team);
 
    // Change our guy, if he exists ..
    if (current_guy)

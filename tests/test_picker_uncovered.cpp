@@ -69,6 +69,24 @@ struct ButtonSlotGuard
 	~ButtonSlotGuard() { allbuttons[slot] = saved; }
 };
 
+struct OwnedButtonReplacementGuard
+{
+    int slot;
+    vbutton* saved;
+
+    OwnedButtonReplacementGuard(int slot_, const char* name)
+        : slot(slot_), saved(allbuttons[slot_])
+    {
+        allbuttons[slot] = new vbutton(0, 0, 10, 10, NULLMENU, 0, name, KEYSTATE_UNKNOWN);
+    }
+
+    ~OwnedButtonReplacementGuard()
+    {
+        delete allbuttons[slot];
+        allbuttons[slot] = saved;
+    }
+};
+
 int name_guy_injector(void*)
 {
     SDL_Delay(40);
@@ -166,12 +184,10 @@ REGISTER_TEST(test_picker_campaign_and_level_wrappers_cancel_fast);
 void test_picker_team_wraps_on_negative_step()
 {
     PickerStateGuard guard;
-    ButtonSlotGuard button2_guard(2);
-    ButtonSlotGuard button18_guard(18);
+    OwnedButtonReplacementGuard button2_guard(2, "b2");
+    OwnedButtonReplacementGuard button18_guard(18, "b18");
     const short saved_team_num = current_team_num;
 
-    allbuttons[2] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b2", KEYSTATE_UNKNOWN);
-    allbuttons[18] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b18", KEYSTATE_UNKNOWN);
     current_guy = std::make_unique<guy>(FAMILY_SOLDIER);
     current_guy->teamnum = static_cast<short>(0);
     current_team_num = static_cast<short>(0);
@@ -187,10 +203,6 @@ void test_picker_team_wraps_on_negative_step()
     TEST_ASSERT_EQ(3, (int)current_guy->teamnum, "change_hire_teamnum should mirror to current_guy");
     TEST_ASSERT_STR_EQ("Hiring for Team 4", allbuttons[2]->label.c_str(), "hire label should wrap to Team 4");
 
-    delete allbuttons[2];
-    delete allbuttons[18];
-    allbuttons[2] = nullptr;
-    allbuttons[18] = nullptr;
     current_team_num = saved_team_num;
 }
 REGISTER_TEST(test_picker_team_wraps_on_negative_step);

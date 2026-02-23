@@ -231,40 +231,6 @@ void test_how_many_empty_team()
 }
 REGISTER_TEST(test_how_many_empty_team);
 
-void test_change_team_functions_wrap_negative_to_last_team()
-{
-    vbutton* old2 = allbuttons[2];
-    vbutton* old18 = allbuttons[18];
-    std::unique_ptr<guy> old_current = std::move(current_guy);
-    const short old_team_num = current_team_num;
-
-    allbuttons[2] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b2", KEYSTATE_UNKNOWN);
-    allbuttons[18] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b18", KEYSTATE_UNKNOWN);
-
-    current_guy = std::make_unique<guy>(FAMILY_SOLDIER);
-    current_guy->teamnum = static_cast<short>(0);
-    current_team_num = static_cast<short>(0);
-
-    TEST_ASSERT_EQ(4, (int)change_teamnum(-1), "change_teamnum should return OK");
-    TEST_ASSERT_EQ(3, (int)current_guy->teamnum, "team should wrap from 0 to 3");
-    TEST_ASSERT_STR_EQ("Playing on Team 4", allbuttons[18]->label.c_str(), "team label should wrap to Team 4");
-
-    current_guy->teamnum = static_cast<short>(0);
-    current_team_num = static_cast<short>(0);
-    TEST_ASSERT_EQ(4, (int)change_hire_teamnum(-1), "change_hire_teamnum should return OK");
-    TEST_ASSERT_EQ(3, (int)current_team_num, "hire team should wrap from 0 to 3");
-    TEST_ASSERT_EQ(3, (int)current_guy->teamnum, "current guy team should mirror wrapped hire team");
-    TEST_ASSERT_STR_EQ("Hiring for Team 4", allbuttons[2]->label.c_str(), "hire label should wrap to Team 4");
-
-    current_guy = std::move(old_current);
-    current_team_num = old_team_num;
-    delete allbuttons[2];
-    delete allbuttons[18];
-    allbuttons[2] = old2;
-    allbuttons[18] = old18;
-}
-REGISTER_TEST(test_change_team_functions_wrap_negative_to_last_team);
-
 void test_how_many_with_team()
 {
     // Save originals
