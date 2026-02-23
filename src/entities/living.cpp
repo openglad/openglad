@@ -251,6 +251,10 @@ bool living::act()
 		return 1;
 	}
 
+	// Tick down silence timer
+	if (silence_left > 0)
+		silence_left--;
+
 	if (busy > 0)
 		busy--; // This allows busy to be our FIRING delay.
 	// Find new action

@@ -43,6 +43,7 @@ const FamilyDescriptor& describe_family_druid();
 const FamilyDescriptor& describe_family_orc();
 const FamilyDescriptor& describe_family_barbarian();
 const FamilyDescriptor& describe_family_archmage();
+const FamilyDescriptor& describe_family_monk();
 
 static FamilyRegistryBase<FamilyDescriptor, NUM_FAMILIES> s_registry;
 
@@ -80,6 +81,7 @@ static void populate(FamilyDescriptor* e)
     e[FAMILY_BIG_ORC] = describe_family_big_orc();
     e[FAMILY_BARBARIAN] = describe_family_barbarian();
     e[FAMILY_ARCHMAGE] = describe_family_archmage();
+    e[FAMILY_MONK] = describe_family_monk();
     e[FAMILY_GOLEM] = describe_family_golem();
     e[FAMILY_GIANT_SKELETON] = describe_family_giant_skeleton();
     e[FAMILY_TOWER1] = describe_family_tower1();

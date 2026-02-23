@@ -115,6 +115,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/entities/families/family_giant_skeleton.cpp
     ${SRC_DIR}/entities/families/family_golem.cpp
     ${SRC_DIR}/entities/families/family_mage.cpp
+    ${SRC_DIR}/entities/families/family_monk.cpp
     ${SRC_DIR}/entities/families/family_orc.cpp
     ${SRC_DIR}/entities/families/family_skeleton.cpp
     ${SRC_DIR}/entities/families/family_slime.cpp
@@ -247,6 +248,7 @@ set(OG_ENTITIES_SOURCES
     ${SRC_DIR}/entities/families/family_giant_skeleton.cpp
     ${SRC_DIR}/entities/families/family_golem.cpp
     ${SRC_DIR}/entities/families/family_mage.cpp
+    ${SRC_DIR}/entities/families/family_monk.cpp
     ${SRC_DIR}/entities/families/family_orc.cpp
     ${SRC_DIR}/entities/families/family_skeleton.cpp
     ${SRC_DIR}/entities/families/family_slime.cpp
@@ -1116,6 +1118,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_picker_dialogs_real.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_monk.cpp
         )
 
         # Helper: select test source files from TEST_SOURCES by basename.

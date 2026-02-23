@@ -64,7 +64,8 @@ inline constexpr int FAMILY_ARCHMAGE = 17;
 inline constexpr int FAMILY_GOLEM = 18;
 inline constexpr int FAMILY_GIANT_SKELETON = 19;
 inline constexpr int FAMILY_TOWER1 = 20;
-inline constexpr int NUM_FAMILIES = 21;
+inline constexpr int FAMILY_MONK = 21;
+inline constexpr int NUM_FAMILIES = 22;
 
 constexpr int PIX(int a, int b) { return NUM_FAMILIES * a + b; }
 constexpr int PIX(Order a, int b) { return NUM_FAMILIES * static_cast<int>(a) + b; }

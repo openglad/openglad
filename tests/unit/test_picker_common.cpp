@@ -201,6 +201,7 @@ OG_UNIT_TEST(test_family_short_name)
     OG_ASSERT(std::strcmp(og::ui::family_short_name(FAMILY_BIG_ORC), "ORC CAP.") == 0);
     OG_ASSERT(std::strcmp(og::ui::family_short_name(FAMILY_BARBARIAN), "BARBAR.") == 0);
     OG_ASSERT(std::strcmp(og::ui::family_short_name(FAMILY_FIREELEMENTAL), "ELEMENT.") == 0);
+    OG_ASSERT(std::strcmp(og::ui::family_short_name(FAMILY_MONK), "MONK") == 0);
     OG_ASSERT(std::strcmp(og::ui::family_short_name(99), "BEAST") == 0);
 }
 
@@ -219,10 +220,11 @@ OG_UNIT_TEST(test_family_hiring_base_cost)
 
 OG_UNIT_TEST(test_allowable_guys_constants)
 {
-    OG_ASSERT(og::ui::kAllowableGuys.size() == 14);
+    OG_ASSERT(og::ui::kAllowableGuys.size() == 15);
     OG_ASSERT(og::ui::kAllowableGuys[0] == FAMILY_SOLDIER);
     OG_ASSERT(og::ui::kAllowableGuys[1] == FAMILY_BARBARIAN);
-    OG_ASSERT(og::ui::kAllowableGuys[13] == FAMILY_GHOST);
+    OG_ASSERT(og::ui::kAllowableGuys[6] == FAMILY_MONK);
+    OG_ASSERT(og::ui::kAllowableGuys[14] == FAMILY_GHOST);
 }
 
 // --- kDifficultyNames ---
@@ -295,8 +297,8 @@ OG_UNIT_TEST(test_hire_session_cycle)
     OG_ASSERT(session.current_recruit() != nullptr);
     OG_ASSERT(session.current_recruit()->family == FAMILY_SOLDIER);
 
-    // Cycle forward through all 14 families
-    for (int i = 1; i < 14; i++) {
+    // Cycle forward through all 15 families
+    for (int i = 1; i < 15; i++) {
         session.next_family();
         OG_ASSERT(session.family_index() == i);
         OG_ASSERT(session.current_recruit() != nullptr);
@@ -308,9 +310,9 @@ OG_UNIT_TEST(test_hire_session_cycle)
     OG_ASSERT(session.family_index() == 0);
     OG_ASSERT(session.current_recruit()->family == FAMILY_SOLDIER);
 
-    // Cycle backward wraps to 13 (GHOST)
+    // Cycle backward wraps to 14 (GHOST)
     session.prev_family();
-    OG_ASSERT(session.family_index() == 13);
+    OG_ASSERT(session.family_index() == 14);
     OG_ASSERT(session.current_recruit()->family == FAMILY_GHOST);
 }
 
