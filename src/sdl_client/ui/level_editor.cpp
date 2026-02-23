@@ -15,11 +15,6 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-// TODO: Migrate isPlayerHoldingKey()/didPlayerPressKey() calls in the
-// level editor to use InputState/InputAction. All current calls are
-// inside #ifdef USE_CONTROLLER_INPUT blocks and use the raw SDL event
-// loop pattern, which would require restructuring to frame-based input.
-
 #include <openglad/runtime/screen.h>
 #include <openglad/render/pal32.h>
 #include <openglad/render/pixien.h>
@@ -47,9 +42,6 @@
 #include <format>
 #include <memory>
 
-#ifdef OUYA
-#include <openglad/legacy/OuyaController.h>
-#endif
 extern short scroll_amount;  // for scrolling up and down text popups
 
 void quit(Sint32 arg1);
@@ -3300,92 +3292,6 @@ Sint32 level_editor()
                 break;
             }
         }
-
-        #ifdef USE_CONTROLLER_INPUT
-        {
-            int dx = 0;
-            int dy = 0;
-            OuyaController& c = OuyaControllerManager::getController(0);
-            if(!c.isStickBeyondDeadzone(OuyaController::AxisEnum::LsX))
-            {
-                if(isPlayerHoldingKey(0, KEY_UP) || isPlayerHoldingKey(0, KEY_UP_LEFT) || isPlayerHoldingKey(0, KEY_UP_RIGHT))
-                {
-                    dy = -5;
-                }
-                if(isPlayerHoldingKey(0, KEY_DOWN) || isPlayerHoldingKey(0, KEY_DOWN_LEFT) || isPlayerHoldingKey(0, KEY_DOWN_RIGHT))
-                {
-                    dy = 5;
-                }
-                if(isPlayerHoldingKey(0, KEY_LEFT) || isPlayerHoldingKey(0, KEY_UP_LEFT) || isPlayerHoldingKey(0, KEY_DOWN_LEFT))
-                {
-                    dx = -5;
-                }
-                if(isPlayerHoldingKey(0, KEY_RIGHT) || isPlayerHoldingKey(0, KEY_UP_RIGHT) || isPlayerHoldingKey(0, KEY_DOWN_RIGHT))
-                {
-                    dx = 5;
-                }
-            }
-            else
-            {
-                dx = 5*c.getAxisValue(OuyaController::AxisEnum::LsX);
-                dy = 5*c.getAxisValue(OuyaController::AxisEnum::LsY);
-            }
-            
-            if(mymouse.x + dx < 0)
-                mymouse.x = 0;
-            if(mymouse.x + dx > 320)
-                mymouse.x = 320;
-            if(mymouse.y + dy < 0)
-                mymouse.y = 0;
-            if(mymouse.y + dy > 200)
-                mymouse.y = 200;
-            
-            if(dx != 0 || dy != 0)
-            {
-                int x, y;
-                SDL_Event event;
-                
-                event.type = SDL_MOUSEMOTION;
-                event.motion.type = SDL_MOUSEMOTION;
-                event.motion.windowID = 0;
-                event.motion.which = 0;
-                event.motion.state = SDL_GetMouseState(&x, &y);
-                event.motion.xrel = dx * (viewport_w / 320);
-                event.motion.yrel = dy * (viewport_h / 200);
-                event.motion.x = mymouse.x * (viewport_w / 320) + viewport_offset_x + event.motion.xrel;
-                event.motion.y = mymouse.y * (viewport_h / 200) + viewport_offset_y + event.motion.yrel;
-                SDL_PushEvent(&event);
-            }
-        }
-        
-        #ifdef OUYA
-            
-            const OuyaController& c = OuyaControllerManager::getController(0);
-            
-            float vx = c.getAxisValue(OuyaController::AxisEnum::RsX);
-            float vy = c.getAxisValue(OuyaController::AxisEnum::RsY);
-            
-            // Scroll the tile selector when over it
-            if(Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse.x, mymouse.y))
-            {
-                if(fabs(vy) > OuyaController::DEADZONE)
-                    scroll_amount = -2*vy;
-                else
-                    scroll_amount = 0;
-            }
-            else
-            {
-                scroll_amount = 0;
-                
-                // Panning
-                pan_left = (vx < -OuyaController::DEADZONE);
-                pan_right = (vx > OuyaController::DEADZONE);
-                pan_up = (vy < -OuyaController::DEADZONE);
-                pan_down = (vy > OuyaController::DEADZONE);
-            }
-        #endif
-        
-        #endif
 
 		short scroll_delta = get_and_reset_scroll_amount();
 		#if defined(USE_TOUCH_INPUT)

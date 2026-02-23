@@ -29,9 +29,6 @@ bool s_force_full_results_ui = false;
 }
 #endif
 
-#ifdef OUYA
-#include <openglad/legacy/OuyaController.h>
-#endif
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
@@ -535,17 +532,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         bool do_click = mouse_down && !was_mouse_down;
         was_mouse_down = mouse_down;
 
-        #ifdef USE_CONTROLLER_INPUT
-        {
-            const OuyaController& c = OuyaControllerManager::getController(0);
-
-            float v = c.getAxisValue(OuyaController::AxisEnum::LsY) + c.getAxisValue(OuyaController::AxisEnum::RsY);
-            if(fabs(v) > OuyaController::DEADZONE)
-                scroll -= -5*v;
-        }
-        #else
 		scroll -= static_cast<float>(get_and_reset_scroll_amount());
-			#endif
 		if(scroll < 0.0f)
             scroll = 0.0f;
 
