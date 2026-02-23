@@ -89,7 +89,7 @@ CampaignEntry::CampaignEntry(const std::string& campaign_id, int levels_complete
     bool saw_first_level = false;
 
     // Load the campaign data from <user_data>/scen/<id>.glad
-    if(mount_campaign_package(campaign_id))
+    if(mount_campaign_package_with_error(campaign_id) == CampaignPackageIoError::None)
     {
         SDL_RWops* rwops = open_read_file("campaign.yaml");
         
@@ -143,7 +143,7 @@ CampaignEntry::CampaignEntry(const std::string& campaign_id, int levels_complete
 	        std::list<int> levels = list_levels();
 	        num_levels = static_cast<int>(levels.size());
 
-        unmount_campaign_package(campaign_id);
+        (void)unmount_campaign_package_with_error(campaign_id);
     }
 
     if (!saw_version || version.empty())
@@ -275,7 +275,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     
     text& loadtext = myscreen->text_normal;
     
-    unmount_campaign_package(old_campaign_id);
+    (void)unmount_campaign_package_with_error(old_campaign_id);
 
     // Here are the browser variables
     std::vector<std::unique_ptr<CampaignEntry>> entries;
@@ -458,7 +458,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
                delete_campaign(entries[current_campaign_index]->id);
                
                restore_default_campaigns();
-               remount_campaign_package();  // Just in case we deleted the current campaign
+               (void)remount_campaign_package_with_error();  // Just in case we deleted the current campaign
                
                // Reload the picker
 	               entries.clear();
@@ -577,7 +577,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     }
     
     // Restore old campaign
-    mount_campaign_package(old_campaign_id);
+    (void)mount_campaign_package_with_error(old_campaign_id);
     
     if(result != nullptr)
     {

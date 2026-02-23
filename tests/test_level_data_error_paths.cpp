@@ -279,7 +279,7 @@ void test_campaign_data_load_reports_open_read_failed_when_campaign_yaml_missing
     TEST_ASSERT(write_file_bytes(indir / "dummy.txt", "x"), "write dummy");
 
     const fs::path outfile = fs::path(get_user_path()) / "campaigns" / (id + ".glad");
-    TEST_ASSERT(zip_contents(indir.string(), outfile.string()), "zip_contents should create campaign package");
+    TEST_ASSERT(zip_contents_with_error(indir.string(), outfile.string()) == ArchiveIoError::None, "zip_contents should create campaign package");
 
     CampaignData cd(id);
     TEST_ASSERT_EQ((int)CampaignData::IoError::OpenReadFailed, (int)cd.load_with_error(),

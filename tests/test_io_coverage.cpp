@@ -53,7 +53,7 @@ void test_io_platform_helpers_explode_and_archive_bool_wrappers()
     std::list<std::string> parts = explode("a::b::", ':');
     TEST_ASSERT(!parts.empty(), "explode should return at least one token");
 
-    const bool unzip_ok = unzip_into("temp/no_such_archive.zip", "temp/no_such_archive_out");
-    TEST_ASSERT(!unzip_ok, "unzip bool wrapper should return false for missing archive");
+    const bool unzip_ok = unzip_into_with_error("temp/no_such_archive.zip", "temp/no_such_archive_out") == ArchiveIoError::None;
+    TEST_ASSERT(!unzip_ok, "unzip should return error for missing archive");
 }
 REGISTER_TEST(test_io_platform_helpers_explode_and_archive_bool_wrappers);

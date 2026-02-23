@@ -332,7 +332,7 @@ void io_init(int argc, char* argv[])
     
     // Open up the default campaign
     Log("Mounting default campaign...\n");
-    if (!mount_campaign_package("org.openglad.gladiator"))
+    if (mount_campaign_package_with_error("org.openglad.gladiator") != CampaignPackageIoError::None)
     {
         std::string msg = std::format("Fatal: Failed to mount default campaign: {}", og::io::physfs_last_error());
         LogError("{}\n", msg);
@@ -617,22 +617,3 @@ NewFileIoError create_new_scen_file_with_error(const std::string& scenfile, cons
     return NewFileIoError::None;
 }
 
-bool create_new_map_pix(const std::string& filename, int w, int h)
-{
-    return create_new_map_pix_with_error(filename, w, h) == NewFileIoError::None;
-}
-
-bool create_new_pix(const std::string& filename, int w, int h, unsigned char fill_color)
-{
-    return create_new_pix_with_error(filename, w, h, fill_color) == NewFileIoError::None;
-}
-
-bool create_new_campaign_descriptor(const std::string& filename)
-{
-    return create_new_campaign_descriptor_with_error(filename) == NewFileIoError::None;
-}
-
-bool create_new_scen_file(const std::string& scenfile, const std::string& gridname)
-{
-    return create_new_scen_file_with_error(scenfile, gridname) == NewFileIoError::None;
-}

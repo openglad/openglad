@@ -753,21 +753,21 @@ bool LevelEditorData::saveCampaignAs(const std::string& id)
     bool result = campaign->save_as(id);
     
     // Remount for consistency in PhysFS
-    if(!remount_campaign_package())
+    if(remount_campaign_package_with_error() != CampaignPackageIoError::None)
     {
         Log("Failed to remount campaign after saving it.\n");
         return false;
     }
-    
+
     return result;
 }
 
 bool LevelEditorData::saveCampaign()
 {
     bool result = campaign->save();
-    
+
     // Remount for consistency in PhysFS
-    if(!remount_campaign_package())
+    if(remount_campaign_package_with_error() != CampaignPackageIoError::None)
     {
         Log("Failed to remount campaign after saving it.\n");
         return false;
@@ -788,10 +788,10 @@ bool LevelEditorData::saveLevelAs(int id)
     if(result)
         result = repack_campaign(old_campaign);
     cleanup_unpacked_campaign();
-    
+
     // Remount for consistency in PhysFS
-    remount_campaign_package();
-    
+    (void)remount_campaign_package_with_error();
+
     return result;
 }
 
@@ -1248,10 +1248,10 @@ bool LevelEditorData::saveLevel()
     if(result)
         result = repack_campaign(get_mounted_campaign());
     cleanup_unpacked_campaign();
-    
+
     // Remount for consistency in PhysFS
-    remount_campaign_package();
-    
+    (void)remount_campaign_package_with_error();
+
     return result;
 }
 
@@ -1878,9 +1878,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             if(loadCampaign(campaign_id))
                             {
                                 // Mount new campaign
-                                unmount_campaign_package(get_mounted_campaign());
-                                mount_campaign_package(campaign_id);
-                                
+                                (void)unmount_campaign_package_with_error(get_mounted_campaign());
+                                (void)mount_campaign_package_with_error(campaign_id);
+
                                 // Load first scenario
                                 std::list<int> levels = list_levels();
                                 
@@ -1932,8 +1932,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 {
                     if(loadCampaign(result.id))
                     {
-                        unmount_campaign_package(get_mounted_campaign());
-                        mount_campaign_package(result.id);
+                        (void)unmount_campaign_package_with_error(get_mounted_campaign());
+                        (void)mount_campaign_package_with_error(result.id);
                         campaignchanged = 0;
                     }
                     else
@@ -3039,8 +3039,8 @@ Sint32 level_editor()
     
     std::string old_campaign = get_mounted_campaign();
     if(old_campaign.size() > 0)
-        unmount_campaign_package(old_campaign);
-    mount_campaign_package(data.campaign->id);
+        (void)unmount_campaign_package_with_error(old_campaign);
+    (void)mount_campaign_package_with_error(data.campaign->id);
     
 
     std::list<int> levels = list_levels();
@@ -3627,8 +3627,8 @@ Sint32 level_editor()
     // Clear the background
     myscreen->clearbuffer();
     
-    unmount_campaign_package(data.campaign->id);
-    mount_campaign_package(old_campaign);
+    (void)unmount_campaign_package_with_error(data.campaign->id);
+    (void)mount_campaign_package_with_error(old_campaign);
     
 	return OK;
 }

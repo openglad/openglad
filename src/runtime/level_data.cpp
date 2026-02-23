@@ -117,17 +117,17 @@ bool CampaignData::load()
 {
     last_io_error_ = IoError::None;
     std::string old_campaign = get_mounted_campaign();
-    unmount_campaign_package(old_campaign);
-    
+    (void)unmount_campaign_package_with_error(old_campaign);
+
     // Load the campaign data from <user_data>/scen/<id>.glad
-    if(mount_campaign_package(id))
+    if(mount_campaign_package_with_error(id) == CampaignPackageIoError::None)
     {
         auto file = og::io::og_open_read("campaign.yaml", true);
         if(!file)
         {
             last_io_error_ = IoError::OpenReadFailed;
-            unmount_campaign_package(id);
-            mount_campaign_package(old_campaign);
+            (void)unmount_campaign_package_with_error(id);
+            (void)mount_campaign_package_with_error(old_campaign);
             return false;
         }
 
@@ -177,14 +177,14 @@ bool CampaignData::load()
         std::list<int> levels = list_levels();
         num_levels = static_cast<int>(levels.size());
 
-        unmount_campaign_package(id);
+        (void)unmount_campaign_package_with_error(id);
     }
     else
     {
         last_io_error_ = IoError::PackageMountFailed;
     }
-    
-    mount_campaign_package(old_campaign);
+
+    (void)mount_campaign_package_with_error(old_campaign);
     
     return (last_io_error_ == IoError::None);
 }

@@ -156,7 +156,7 @@ void teardown_editor_campaign_fixture()
 {
     delete_campaign(g_editor_campaign_fixture.tmp_id);
     if(!g_editor_campaign_fixture.old_mounted_campaign.empty())
-        (void)mount_campaign_package(g_editor_campaign_fixture.old_mounted_campaign);
+        (void)mount_campaign_package_with_error(g_editor_campaign_fixture.old_mounted_campaign);
 }
 } // namespace
 
