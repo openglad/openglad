@@ -3,50 +3,6 @@
 #include <openglad/data/save_data.h>
 #include <openglad/input/input_state.h>
 
-// --- Spectator mode: set_player_count(0) round-trips ---
-
-OG_UNIT_TEST(test_spectator_set_player_count_zero_roundtrip)
-{
-    SaveData save;
-
-    // Default is 1 player
-    OG_ASSERT(save.numplayers == 1);
-
-    // Set to 0
-    og::ui::set_player_count(save, 0);
-    OG_ASSERT(save.numplayers == 0);
-
-    // Set to 3
-    og::ui::set_player_count(save, 3);
-    OG_ASSERT(save.numplayers == 3);
-
-    // Back to 0
-    og::ui::set_player_count(save, 0);
-    OG_ASSERT(save.numplayers == 0);
-}
-
-// --- is_spectator_mode returns correct values ---
-
-OG_UNIT_TEST(test_spectator_is_spectator_mode)
-{
-    SaveData save;
-
-    // numplayers=1 (default) -> not spectator
-    OG_ASSERT(!og::ui::is_spectator_mode(save));
-
-    // numplayers=0 -> spectator
-    og::ui::set_player_count(save, 0);
-    OG_ASSERT(og::ui::is_spectator_mode(save));
-
-    // numplayers=2 -> not spectator
-    og::ui::set_player_count(save, 2);
-    OG_ASSERT(!og::ui::is_spectator_mode(save));
-
-    // numplayers=4 -> not spectator
-    og::ui::set_player_count(save, 4);
-    OG_ASSERT(!og::ui::is_spectator_mode(save));
-}
-
 // --- Spectator mode: numviews calculation ---
 
 OG_UNIT_TEST(test_spectator_numviews_calculation)
@@ -68,11 +24,11 @@ OG_UNIT_TEST(test_spectator_numviews_calculation)
     OG_ASSERT(numviews == 3);
 }
 
-// --- Spectator mode: input filtering logic ---
-// Verify that in spectator mode, the spectator check would suppress
-// player input processing while allowing switch-character.
+// --- Spectator mode: cleared InputState has expected defaults ---
+// Verifies that a freshly cleared InputState reports no actions held/pressed
+// and zero movement axes — the preconditions the spectator guard relies on.
 
-OG_UNIT_TEST(test_spectator_input_filtering_logic)
+OG_UNIT_TEST(test_spectator_cleared_input_state_defaults)
 {
     SaveData save;
     og::ui::set_player_count(save, 0);

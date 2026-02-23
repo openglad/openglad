@@ -474,62 +474,15 @@ void viewscreen::process_input(const InputState& input_state)
 			}
 
 			bool reverse = pi.is_held(InputAction::Shift);
-			auto& oblist = active_screen()->level_data.oblist;
-			auto pred = [oldcontrol](const std::unique_ptr<walker>& p) { return p.get() == oldcontrol; };
-			walker* found = nullptr;
-
-			if (!reverse)
-			{
-				auto mine = std::find_if(oblist.begin(), oblist.end(), pred);
-				if (mine != oblist.end())
-				{
-					for (auto e = std::next(mine); e != oblist.end(); ++e)
-					{
-						walker* w = e->get();
-						if (w && !w->dead && w->query_order() == Order::Living
-						    && w->team_num == my_team)
-						{ found = w; break; }
-					}
-					if (!found)
-					{
-						for (auto e = oblist.begin(); e != mine; ++e)
-						{
-							walker* w = e->get();
-							if (w && !w->dead && w->query_order() == Order::Living
-							    && w->team_num == my_team)
-							{ found = w; break; }
-						}
-					}
-				}
-			}
-			else
-			{
-				auto mine = std::find_if(oblist.rbegin(), oblist.rend(), pred);
-				if (mine != oblist.rend())
-				{
-					for (auto e = std::next(mine); e != oblist.rend(); ++e)
-					{
-						walker* w = e->get();
-						if (w && !w->dead && w->query_order() == Order::Living
-						    && w->team_num == my_team)
-						{ found = w; break; }
-					}
-					if (!found)
-					{
-						for (auto e = oblist.rbegin(); e != mine; ++e)
-						{
-							walker* w = e->get();
-							if (w && !w->dead && w->query_order() == Order::Living
-							    && w->team_num == my_team)
-							{ found = w; break; }
-						}
-					}
-				}
-			}
-
+			short team = my_team;
+			auto filter = [team](const walker* w) {
+				return !w->dead && w->query_order() == Order::Living
+				       && w->team_num == team;
+			};
+			walker* found = sim_cycle_next_character(
+				active_screen()->level_data.oblist, oldcontrol, reverse, filter);
 			if (found)
 				control = found;
-			// If the current control died, find any alive character
 			if (control && control->dead)
 				control = find_next_control();
 		}

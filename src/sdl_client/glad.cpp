@@ -184,7 +184,10 @@ static void emscripten_frame_wrapper() {
 						g_game_state = GameState::Quit;
 						break;
 					}
-					current_screen->ready_for_battle(current_screen->save_data.numplayers);
+					{
+					short numviews = (current_screen->save_data.numplayers == 0) ? 1 : current_screen->save_data.numplayers;
+					current_screen->ready_for_battle(numviews);
+				}
 					glad_init();
 					g_frame_state.done = false;
 					g_frame_state.currentcycle = 0;
