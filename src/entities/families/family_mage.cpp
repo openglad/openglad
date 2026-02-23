@@ -16,7 +16,7 @@
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
-
+#include <openglad/entities/foe_query.h>
 
 #include <format>
 #include <string>
@@ -35,14 +35,8 @@ static bool mage_handle_teleport(walker* self)
 
 static bool mage_check_special_ai(living* self)
 {
-    std::int32_t howmany = 0;
-    self->sim_level->find_foes_in_range(self->sim_level->oblist,
-                                 110, &howmany, self);
-    if (howmany < 1)
-        return true;
-    if (howmany > 3)
-        return true;
-    return false;
+    std::int32_t howmany = count_foes_in_range(self, 110);
+    return howmany < 1 || howmany > 3;
 }
 
 static void mage_hit_response(statistics* stats, walker* foe)

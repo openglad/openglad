@@ -16,9 +16,9 @@
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
+#include <openglad/entities/foe_query.h>
 
 #include <cmath>
-#include <list>
 
 #define BASE_GUY_HP 30
 
@@ -28,7 +28,6 @@ static bool soldier_do_special(walker* self)
 {
     walker* newob;
     std::int32_t tempx, tempy;
-    std::int32_t howmany;
     std::int32_t generic;
 
     switch (self->current_special)
@@ -70,26 +69,16 @@ static bool soldier_do_special(walker* self)
             self->stats()->add_command(COMMAND_WALK, 1, -1, 0);
             self->stats()->add_command(COMMAND_WALK, 1, -1, -1);
 
-            {
-                std::list<walker*> newlist = self->sim_level->find_foes_in_range(
-                    self->sim_level->oblist,
-                    32 + self->stats()->level * 2, &howmany, self);
-
-                for (auto* w : newlist)
-                {
-                    if (w)
-                    {
-                        tempx = w->xpos - self->xpos;
-                        if (tempx)
-                            tempx = tempx / (abs(tempx));
-                        tempy = w->ypos - self->ypos;
-                        if (tempy)
-                            tempy = tempy / (abs(tempy));
-                        self->attack(w);
-                        w->stats()->force_command(COMMAND_WALK, 8, tempx, tempy);
-                    }
-                }
-            }
+            for_each_foe_in_range(self, 32 + self->stats()->level * 2, [&](walker* w) {
+                tempx = w->xpos - self->xpos;
+                if (tempx)
+                    tempx = tempx / (abs(tempx));
+                tempy = w->ypos - self->ypos;
+                if (tempy)
+                    tempy = tempy / (abs(tempy));
+                self->attack(w);
+                w->stats()->force_command(COMMAND_WALK, 8, tempx, tempy);
+            });
             break;
         case 4: // Disarm opponent
             if (self->busy)
@@ -98,20 +87,12 @@ static bool soldier_do_special(walker* self)
                 return false;
 
             {
-                std::list<walker*> newlist = self->sim_level->find_foes_in_range(
-                    self->sim_level->oblist, 28, &howmany, self);
-
                 generic = 0;
-
-                for (auto* w : newlist)
-                {
-                    if (w)
-                    {
-                        if (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(w->stats()->level))
-                            w->busy += 6.0f * static_cast<float>(self->stats()->level - w->stats()->level + 1);
-                        generic = 1;
-                    }
-                }
+                for_each_foe_in_range(self, 28, [&](walker* w) {
+                    if (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(w->stats()->level))
+                        w->busy += 6.0f * static_cast<float>(self->stats()->level - w->stats()->level + 1);
+                    generic = 1;
+                });
 
                 if (generic)
                 {

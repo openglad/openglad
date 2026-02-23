@@ -17,6 +17,7 @@
 #include <openglad/legacy/soundob.h>
 #include <openglad/core/stats.h>
 #include <openglad/sim/sim_emit.h>
+#include <openglad/entities/foe_query.h>
 
 #include <format>
 #include <string>
@@ -36,12 +37,7 @@ static bool thief_check_special_ai(living* self)
         }
         else
         {
-            std::int32_t howmany = 0;
-            self->sim_level->find_foes_in_range(self->sim_level->oblist,
-                                         110, &howmany, self);
-            if (howmany < 3)
-                return false;
-            return true;
+            return count_foes_in_range(self, 110) >= 3;
         }
         return true; // fallthrough for foe case when distance is acceptable
     }
@@ -53,12 +49,7 @@ static bool thief_check_special_ai(living* self)
         else
             myrange = 16 + 4 * self->stats()->level;
 
-        std::int32_t howmany = 0;
-        self->sim_level->find_foes_in_range(self->sim_level->oblist,
-                                     myrange, &howmany, self);
-        if (howmany < 1)
-            return false;
-        return true;
+        return count_foes_in_range(self, myrange) >= 1;
     }
     return true; // default: go for it
 }
@@ -107,21 +98,15 @@ static bool thief_do_special(walker* self)
             {
                 if (self->busy > 0)
                     return false;
-                {
-                    std::int32_t howmany;
-                    std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
-                                                          80 + 4 * self->stats()->level, &howmany, self);
-                    for (auto* ob : newlist)
+                for_each_foe_in_range(self, 80 + 4 * self->stats()->level, [self](walker* ob) {
+                    if (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(ob->stats()->level))
                     {
-                        if (ob && (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(ob->stats()->level)))
-                        {
-                            ob->foe = self;
-                            ob->leader = self;
-                            if (ob->act_type != ACT_CONTROL)
-                                ob->stats()->force_command(COMMAND_FOLLOW, 10 + self->sim_rng->next(self->stats()->level), 0, 0);
-                        }
+                        ob->foe = self;
+                        ob->leader = self;
+                        if (ob->act_type != ACT_CONTROL)
+                            ob->stats()->force_command(COMMAND_FOLLOW, 10 + self->sim_rng->next(self->stats()->level), 0, 0);
                     }
-                }
+                });
                 message = std::format("{}: 'Nyah Nyah!'", entity_display_name(self, "THIEF"));
                 og::sim::emit_notification(self->sim_events, message);
                 self->busy += 2;
