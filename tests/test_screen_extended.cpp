@@ -157,6 +157,34 @@ void test_screen_save_data_score()
 }
 REGISTER_TEST(test_screen_save_data_score);
 
+void test_screen_endgame_clears_mission_score_after_payout()
+{
+    const char saved_end = myscreen->end;
+
+    myscreen->save_data.reset();
+    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    myscreen->save_data.scen_num = 1;
+
+    myscreen->save_data.m_totalscore[0] = 1000;
+    myscreen->save_data.m_score[0] = 250;
+    myscreen->end = 0;
+    (void)myscreen->endgame(0, -1);
+
+    TEST_ASSERT_EQ(1250, static_cast<int>(myscreen->save_data.m_totalscore[0]),
+                   "win should add current mission score exactly once");
+    TEST_ASSERT_EQ(0, static_cast<int>(myscreen->save_data.m_score[0]),
+                   "mission score should reset after payout");
+
+    myscreen->end = 0;
+    (void)myscreen->endgame(0, -1);
+
+    TEST_ASSERT_EQ(1250, static_cast<int>(myscreen->save_data.m_totalscore[0]),
+                   "subsequent wins must not re-credit previous mission score");
+
+    myscreen->end = saved_end;
+}
+REGISTER_TEST(test_screen_endgame_clears_mission_score_after_payout);
+
 // ---------------------------------------------------------------------------
 // do_notify
 // ---------------------------------------------------------------------------

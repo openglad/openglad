@@ -577,20 +577,21 @@ short screen::endgame(short ending, short nextlevel)
 	{
 		end = 1;
 	}
-	else if (ending == 0) // we won
-	{
-        Uint32 bonuscash[4] = {0, 0, 0, 0};
-        Uint32 allbonuscash = 0;
-        
-		// Update all the money!
-		for (int i=0; i < 4; i++)
+		else if (ending == 0) // we won
 		{
-			save_data.m_totalscore[i] += save_data.m_score[i];
-			save_data.m_totalcash[i] += (save_data.m_score[i]*2);
-		}
-		for (int i=0; i < 4; i++)
-		{
-            bonuscash[i] = get_time_bonus(i);
+	        Uint32 bonuscash[4] = {0, 0, 0, 0};
+	        Uint32 allbonuscash = 0;
+	        
+			// Update all the money!
+			for (int i=0; i < 4; i++)
+			{
+				save_data.m_totalscore[i] += save_data.m_score[i];
+				save_data.m_totalcash[i] += (save_data.m_score[i]*2);
+				save_data.m_score[i] = 0;
+			}
+			for (int i=0; i < 4; i++)
+			{
+	            bonuscash[i] = get_time_bonus(i);
 			save_data.m_totalcash[i] += bonuscash[i];
 			allbonuscash += bonuscash[i];
 		}
