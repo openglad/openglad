@@ -16,7 +16,7 @@
 
 static bool knife_on_death(weap* self)
 {
-    const auto* owner_fd = self->owner ? get_family_descriptor(self->owner->query_family()) : nullptr;
+    const auto* owner_fd = self->owner ? get_family_descriptor(self->owner->family) : nullptr;
     if (!owner_fd || !owner_fd->has_returning_weapon)
         return false; // no special handling
 

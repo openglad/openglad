@@ -15,11 +15,6 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-// TODO: Migrate isPlayerHoldingKey()/didPlayerPressKey() calls in the
-// level editor to use InputState/InputAction. All current calls are
-// inside #ifdef USE_CONTROLLER_INPUT blocks and use the raw SDL event
-// loop pattern, which would require restructuring to frame-based input.
-
 #include <openglad/runtime/screen.h>
 #include <openglad/render/pal32.h>
 #include <openglad/render/pixien.h>
@@ -40,16 +35,13 @@
 #include <openglad/ui/level_picker.h>
 #include <span>
 #include <openglad/ui/campaign_picker.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/gparser.h>
 #include <openglad/render/sai2x.h>
 #include <algorithm>
 #include <cstring>
 #include <format>
 #include <memory>
 
-#ifdef OUYA
-#include <openglad/legacy/OuyaController.h>
-#endif
 extern short scroll_amount;  // for scrolling up and down text popups
 
 void quit(Sint32 arg1);
@@ -68,8 +60,6 @@ void quit(Sint32 arg1);
 
 static inline cfg_store& active_config()
 {
-    if(ctx().config != nullptr)
-        return *ctx().config;
     return cfg;
 }
 
@@ -411,7 +401,7 @@ public:
         else
         {
             order = target->query_order();
-            family = target->query_family();
+            family = target->family;
             team = target->team_num;
             level = target->stats()->level;
         }
@@ -465,7 +455,7 @@ public:
             w = target_->sizex;
             h = target_->sizey;
             order = target_->query_order();
-            family = target_->query_family();
+            family = target_->family;
             level = target_->stats()->level;
             this->target = target_;
         }
@@ -753,21 +743,21 @@ bool LevelEditorData::saveCampaignAs(const std::string& id)
     bool result = campaign->save_as(id);
     
     // Remount for consistency in PhysFS
-    if(!remount_campaign_package())
+    if(remount_campaign_package_with_error() != CampaignPackageIoError::None)
     {
         Log("Failed to remount campaign after saving it.\n");
         return false;
     }
-    
+
     return result;
 }
 
 bool LevelEditorData::saveCampaign()
 {
     bool result = campaign->save();
-    
+
     // Remount for consistency in PhysFS
-    if(!remount_campaign_package())
+    if(remount_campaign_package_with_error() != CampaignPackageIoError::None)
     {
         Log("Failed to remount campaign after saving it.\n");
         return false;
@@ -788,10 +778,10 @@ bool LevelEditorData::saveLevelAs(int id)
     if(result)
         result = repack_campaign(old_campaign);
     cleanup_unpacked_campaign();
-    
+
     // Remount for consistency in PhysFS
-    remount_campaign_package();
-    
+    (void)remount_campaign_package_with_error();
+
     return result;
 }
 
@@ -1202,7 +1192,7 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
     for(auto& uptr : d.fxlist)
     {
         walker* w = uptr.get();
-        if(w->query_order() == Order::Treasure && w->query_family() == FAMILY_EXIT && w->stats() != nullptr)
+        if(w->query_order() == Order::Treasure && w->family == FAMILY_EXIT && w->stats() != nullptr)
             exits.insert(w->stats()->level);
     }
     
@@ -1248,10 +1238,10 @@ bool LevelEditorData::saveLevel()
     if(result)
         result = repack_campaign(get_mounted_campaign());
     cleanup_unpacked_campaign();
-    
+
     // Remount for consistency in PhysFS
-    remount_campaign_package();
-    
+    (void)remount_campaign_package_with_error();
+
     return result;
 }
 
@@ -1878,9 +1868,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             if(loadCampaign(campaign_id))
                             {
                                 // Mount new campaign
-                                unmount_campaign_package(get_mounted_campaign());
-                                mount_campaign_package(campaign_id);
-                                
+                                (void)unmount_campaign_package_with_error(get_mounted_campaign());
+                                (void)mount_campaign_package_with_error(campaign_id);
+
                                 // Load first scenario
                                 std::list<int> levels = list_levels();
                                 
@@ -1932,8 +1922,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 {
                     if(loadCampaign(result.id))
                     {
-                        unmount_campaign_package(get_mounted_campaign());
-                        mount_campaign_package(result.id);
+                        (void)unmount_campaign_package_with_error(get_mounted_campaign());
+                        (void)mount_campaign_package_with_error(result.id);
                         campaignchanged = 0;
                     }
                     else
@@ -3039,8 +3029,8 @@ Sint32 level_editor()
     
     std::string old_campaign = get_mounted_campaign();
     if(old_campaign.size() > 0)
-        unmount_campaign_package(old_campaign);
-    mount_campaign_package(data.campaign->id);
+        (void)unmount_campaign_package_with_error(old_campaign);
+    (void)mount_campaign_package_with_error(data.campaign->id);
     
 
     std::list<int> levels = list_levels();
@@ -3301,92 +3291,6 @@ Sint32 level_editor()
             }
         }
 
-        #ifdef USE_CONTROLLER_INPUT
-        {
-            int dx = 0;
-            int dy = 0;
-            OuyaController& c = OuyaControllerManager::getController(0);
-            if(!c.isStickBeyondDeadzone(OuyaController::AxisEnum::LsX))
-            {
-                if(isPlayerHoldingKey(0, KEY_UP) || isPlayerHoldingKey(0, KEY_UP_LEFT) || isPlayerHoldingKey(0, KEY_UP_RIGHT))
-                {
-                    dy = -5;
-                }
-                if(isPlayerHoldingKey(0, KEY_DOWN) || isPlayerHoldingKey(0, KEY_DOWN_LEFT) || isPlayerHoldingKey(0, KEY_DOWN_RIGHT))
-                {
-                    dy = 5;
-                }
-                if(isPlayerHoldingKey(0, KEY_LEFT) || isPlayerHoldingKey(0, KEY_UP_LEFT) || isPlayerHoldingKey(0, KEY_DOWN_LEFT))
-                {
-                    dx = -5;
-                }
-                if(isPlayerHoldingKey(0, KEY_RIGHT) || isPlayerHoldingKey(0, KEY_UP_RIGHT) || isPlayerHoldingKey(0, KEY_DOWN_RIGHT))
-                {
-                    dx = 5;
-                }
-            }
-            else
-            {
-                dx = 5*c.getAxisValue(OuyaController::AxisEnum::LsX);
-                dy = 5*c.getAxisValue(OuyaController::AxisEnum::LsY);
-            }
-            
-            if(mymouse.x + dx < 0)
-                mymouse.x = 0;
-            if(mymouse.x + dx > 320)
-                mymouse.x = 320;
-            if(mymouse.y + dy < 0)
-                mymouse.y = 0;
-            if(mymouse.y + dy > 200)
-                mymouse.y = 200;
-            
-            if(dx != 0 || dy != 0)
-            {
-                int x, y;
-                SDL_Event event;
-                
-                event.type = SDL_MOUSEMOTION;
-                event.motion.type = SDL_MOUSEMOTION;
-                event.motion.windowID = 0;
-                event.motion.which = 0;
-                event.motion.state = SDL_GetMouseState(&x, &y);
-                event.motion.xrel = dx * (viewport_w / 320);
-                event.motion.yrel = dy * (viewport_h / 200);
-                event.motion.x = mymouse.x * (viewport_w / 320) + viewport_offset_x + event.motion.xrel;
-                event.motion.y = mymouse.y * (viewport_h / 200) + viewport_offset_y + event.motion.yrel;
-                SDL_PushEvent(&event);
-            }
-        }
-        
-        #ifdef OUYA
-            
-            const OuyaController& c = OuyaControllerManager::getController(0);
-            
-            float vx = c.getAxisValue(OuyaController::AxisEnum::RsX);
-            float vy = c.getAxisValue(OuyaController::AxisEnum::RsY);
-            
-            // Scroll the tile selector when over it
-            if(Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse.x, mymouse.y))
-            {
-                if(fabs(vy) > OuyaController::DEADZONE)
-                    scroll_amount = -2*vy;
-                else
-                    scroll_amount = 0;
-            }
-            else
-            {
-                scroll_amount = 0;
-                
-                // Panning
-                pan_left = (vx < -OuyaController::DEADZONE);
-                pan_right = (vx > OuyaController::DEADZONE);
-                pan_up = (vy < -OuyaController::DEADZONE);
-                pan_down = (vy > OuyaController::DEADZONE);
-            }
-        #endif
-        
-        #endif
-
 		short scroll_delta = get_and_reset_scroll_amount();
 		#if defined(USE_TOUCH_INPUT)
 		// Only scroll the tile selector when touching it and you've already moved a bit
@@ -3627,8 +3531,8 @@ Sint32 level_editor()
     // Clear the background
     myscreen->clearbuffer();
     
-    unmount_campaign_package(data.campaign->id);
-    mount_campaign_package(old_campaign);
+    (void)unmount_campaign_package_with_error(data.campaign->id);
+    (void)mount_campaign_package_with_error(old_campaign);
     
 	return OK;
 }

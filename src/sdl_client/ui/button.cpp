@@ -21,7 +21,7 @@
 #include <openglad/render/text.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/gparser.h>
 #include <openglad/platform/io.h>
 #include <array>
 #include <utility>
@@ -40,82 +40,6 @@ void get_input_events(bool);
 
 
 
-MenuNav MenuNav::Up(int up)
-{
-    return MenuNav(up, -1,-1,-1);
-}
-MenuNav MenuNav::Down(int down)
-{
-    return MenuNav(-1, down, -1, -1);
-}
-MenuNav MenuNav::Left(int left)
-{
-    return MenuNav(-1, -1, left, -1);
-}
-MenuNav MenuNav::Right(int right)
-{
-    return MenuNav(-1, -1, -1, right);
-}
-MenuNav MenuNav::UpDown(int up, int down)
-{
-    return MenuNav(up, down, -1, -1);
-}
-MenuNav MenuNav::UpLeft(int up, int left)
-{
-    return MenuNav(up, -1, left, -1);
-}
-MenuNav MenuNav::UpRight(int up, int right)
-{
-    return MenuNav(up, -1, -1, right);
-}
-MenuNav MenuNav::UpDownLeft(int up, int down, int left)
-{
-    return MenuNav(up, down, left, -1);
-}
-MenuNav MenuNav::UpDownRight(int up, int down, int right)
-{
-    return MenuNav(up, down, -1, right);
-}
-MenuNav MenuNav::UpLeftRight(int up, int left, int right)
-{
-    return MenuNav(up, -1, left, right);
-}
-MenuNav MenuNav::DownLeft(int down, int left)
-{
-    return MenuNav(-1, down, left, -1);
-}
-MenuNav MenuNav::DownRight(int down, int right)
-{
-    return MenuNav(-1, down, -1, right);
-}
-MenuNav MenuNav::DownLeftRight(int down, int left, int right)
-{
-    return MenuNav(-1, down, left, right);
-}
-MenuNav MenuNav::LeftRight(int left, int right)
-{
-    return MenuNav(-1, -1, left, right);
-}
-MenuNav MenuNav::UpDownLeftRight(int up, int down, int left, int right)
-{
-    return MenuNav(up, down, left, right);
-}
-MenuNav MenuNav::All(int up, int down, int left, int right)
-{
-    return MenuNav(up, down, left, right);
-}
-MenuNav MenuNav::None()
-{
-    return MenuNav();
-}
-
-MenuNav::MenuNav()
-    : up(-1), down(-1), left(-1), right(-1)
-{}
-
-MenuNav::MenuNav(int up_idx, int down_idx, int left_idx, int right_idx)
-    : up(up_idx), down(down_idx), left(left_idx), right(right_idx)
-{}
 
 
 
@@ -537,8 +461,6 @@ Sint32 yes_or_no(Sint32 arg)
 
 static cfg_store& active_config()
 {
-    if (ctx().active_config())
-        return *ctx().active_config();
     return cfg;
 }
 
@@ -577,7 +499,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             return intercepted_retvalue;
         }
 
-	    switch (button_action_from_id(whatfunc))
+	    switch (static_cast<ButtonAction>(whatfunc))
 	    {
 	    case ButtonAction::BeginMenu:
 	        return beginmenu(call_arg);
@@ -706,7 +628,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
 // For right-button
 Sint32 vbutton::do_call_right(Sint32 whatfunc, Sint32 call_arg)
 {
-    switch (button_action_from_id(whatfunc))
+    switch (static_cast<ButtonAction>(whatfunc))
     {
     case ButtonAction::DecreaseStat:
         return decrease_stat(call_arg, 5);

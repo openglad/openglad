@@ -221,7 +221,7 @@ void test_campaign_picker_mouse_choose_and_cancel_paths()
     SDL_WaitThread(choose_thread, &choose_rc);
     TEST_ASSERT(!chosen.id.empty(), "choose path should return a selected campaign id");
     // Ensure later tests run against the baseline default campaign that has scenarios.
-    TEST_ASSERT(mount_campaign_package(old_campaign), "failed to restore mounted campaign after choose path");
+    TEST_ASSERT(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None, "failed to restore mounted campaign after choose path");
 
     SDL_Thread* cancel_thread = SDL_CreateThread(picker_cancel_injector, "picker_cancel", nullptr);
     TEST_ASSERT(cancel_thread != nullptr, "failed to create cancel injector");
@@ -229,7 +229,7 @@ void test_campaign_picker_mouse_choose_and_cancel_paths()
     int cancel_rc = 0;
     SDL_WaitThread(cancel_thread, &cancel_rc);
     TEST_ASSERT(canceled.id.empty(), "cancel path should not return a campaign id");
-    TEST_ASSERT(mount_campaign_package(old_campaign), "failed to restore mounted campaign after cancel path");
+    TEST_ASSERT(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None, "failed to restore mounted campaign after cancel path");
 
     myscreen->end = old_end;
 }
@@ -277,7 +277,7 @@ void test_load_campaign_invalid_id_reports_error()
     TEST_ASSERT_EQ(-2, rv, "load_campaign should return -2 when mount fails");
 
     // Restore environment for tests that expect a mounted campaign.
-    TEST_ASSERT(mount_campaign_package(old_campaign), "failed to remount original campaign");
+    TEST_ASSERT(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None, "failed to remount original campaign");
 }
 REGISTER_TEST(test_load_campaign_invalid_id_reports_error);
 
@@ -297,7 +297,7 @@ void test_load_campaign_with_error_typed_result_paths()
         "typed load_campaign should report MountFailed for invalid campaign");
 
     // Restore environment for tests that expect a mounted campaign.
-    TEST_ASSERT(mount_campaign_package(old_campaign), "failed to remount original campaign");
+    TEST_ASSERT(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None, "failed to remount original campaign");
 }
 REGISTER_TEST(test_load_campaign_with_error_typed_result_paths);
 

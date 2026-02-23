@@ -117,17 +117,17 @@ bool CampaignData::load()
 {
     last_io_error_ = IoError::None;
     std::string old_campaign = get_mounted_campaign();
-    unmount_campaign_package(old_campaign);
-    
+    (void)unmount_campaign_package_with_error(old_campaign);
+
     // Load the campaign data from <user_data>/scen/<id>.glad
-    if(mount_campaign_package(id))
+    if(mount_campaign_package_with_error(id) == CampaignPackageIoError::None)
     {
         auto file = og::io::og_open_read("campaign.yaml", true);
         if(!file)
         {
             last_io_error_ = IoError::OpenReadFailed;
-            unmount_campaign_package(id);
-            mount_campaign_package(old_campaign);
+            (void)unmount_campaign_package_with_error(id);
+            (void)mount_campaign_package_with_error(old_campaign);
             return false;
         }
 
@@ -177,14 +177,14 @@ bool CampaignData::load()
         std::list<int> levels = list_levels();
         num_levels = static_cast<int>(levels.size());
 
-        unmount_campaign_package(id);
+        (void)unmount_campaign_package_with_error(id);
     }
     else
     {
         last_io_error_ = IoError::PackageMountFailed;
     }
-    
-    mount_campaign_package(old_campaign);
+
+    (void)mount_campaign_package_with_error(old_campaign);
     
     return (last_io_error_ == IoError::None);
 }
@@ -1228,7 +1228,7 @@ short load_version_5(og::io::OgFile& infile, LevelData* data)
 	for(auto& uptr : data->weaplist)
 	{
 	    walker* w = uptr.get();
-		if (w && w->query_family()==FAMILY_DOOR)
+		if (w && w->family==FAMILY_DOOR)
 		{
 			if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
 			        (w->ypos/GRID_SIZE)-1)==TYPE_WALL)
@@ -1421,7 +1421,7 @@ short load_version_6(og::io::OgFile& infile, LevelData* data, short version)
 	for(auto& uptr : data->weaplist)
 	{
 	    walker* w = uptr.get();
-        if (w && w->query_family()==FAMILY_DOOR)
+        if (w && w->family==FAMILY_DOOR)
         {
             if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
                     (w->ypos/GRID_SIZE)-1)==TYPE_WALL)
@@ -1600,7 +1600,7 @@ bool LevelData::save()
 
 	// Format of a scenario object list file is: (ver. 8)
 	// 3-byte header: 'FSS'
-	// 1-byte version number (from graph.h)
+	// 1-byte version number
 	// 8-byte grid file name
 	// 30-byte scenario title
 	// 1-byte scenario_type
@@ -1696,9 +1696,9 @@ bool LevelData::save()
 			}
 			temporder = static_cast<unsigned char>(ob->query_order());
 			tempfacing= ob->curdir;
-			tempfamily= ob->query_family();
+			tempfamily= ob->family;
 			tempteam  = ob->team_num;
-			tempcommand = static_cast<char>(ob->query_act_type());
+			tempcommand = static_cast<char>(ob->act_type);
 			currentx  = ob->xpos;
 			currenty  = ob->ypos;
 			shortlevel = static_cast<short>(ob->stats()->level);
@@ -2191,7 +2191,7 @@ walker  * LevelData::find_nearest_blood(walker  *who)
 	{
 	    walker* w = uptr.get();
 		if (w && w->query_order() == Order::Treasure &&
-		        w->query_family() == FAMILY_STAIN && !w->dead)
+		        w->family == FAMILY_STAIN && !w->dead)
 		{
 			newdistance = static_cast<std::int32_t>(who->distance_to_ob_center(w));
 			if (newdistance < distance)

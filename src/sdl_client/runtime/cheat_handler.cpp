@@ -139,7 +139,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 
 	if (query_key_event(SDLK_t, event))
 	{
-		Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(control->query_family())) + 1) % NUM_FAMILIES;
+		Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(control->family)) + 1) % NUM_FAMILIES;
 		control->transform_to(control->query_order(), family);
 	}
 

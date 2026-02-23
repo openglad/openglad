@@ -23,7 +23,6 @@ void test_statistics_hit_response_archer_runs_away_and_queues_walk()
 
     FixedRandom fixed_rng(1);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 

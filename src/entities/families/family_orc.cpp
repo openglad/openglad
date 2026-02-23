@@ -88,12 +88,8 @@ static bool orc_do_special(walker* self)
             if (self->myguy)
             {
                 self->myguy->exp += exp_from_action(ExpAction::EatCorpse, self, newob, 0);
-                message = std::format("{} ate a corpse.", self->myguy->name);
             }
-            else if (self->stats()->name.size())
-                message = std::format("{} ate a corpse.", self->stats()->name);
-            else
-                message = "Orc ate a corpse.";
+            message = std::format("{} ate a corpse.", entity_display_name(self, "Orc"));
 
             if (self->sim_config && self->sim_config->is_on("effects", "heal_numbers"))
                 og::sim::emit_notification(self->sim_events, message);
@@ -108,44 +104,17 @@ static bool orc_do_special(walker* self)
 
 static bool orc_check_special_ai(living* self)
 {
-    if (self->foe)
-    {
-        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
-        return (distance < 130);
-    }
-    self->foe = self->sim_level->find_near_foe(self);
-    if (!self->foe)
-        return false;
-    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
-    return (distance < 130);
+    return check_special_ai_distance(self, 130);
 }
 
 static void orc_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 14.0f * levmult;
-    self->stats()->max_magicpoints += 7.0f * levmult;
-    self->damage += 6.0f * level_f;
-    self->stats()->armor += 3.0f * levmult;
+    apply_difficulty_scaling(self, level, {14.0f, 7.0f, 6.0f, 3.0f});
 }
 
 static void orc_level_up(guy* self, std::int32_t level_diff)
 {
-    std::int32_t s = 8 * level_diff;
-    std::int32_t d = 6 * level_diff;
-    std::int32_t c = 8 * level_diff;
-    std::int32_t it = 8 * level_diff;
-    std::int32_t a = 1 * level_diff;
-    s = (s * 3) / 2;
-    d /= 2;
-    c = (c * 3) / 2;
-    it /= 2;
-    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
+    apply_level_up(self, level_diff, {12, 3, 12, 4, 1});
 }
 
 static short orc_promotion_level([[maybe_unused]] int old_level)

@@ -10,18 +10,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/build_common.sh"
 
-cd "$PROJECT_ROOT"
-
-# ----------------------------------------------------------------------------
-# Check dependencies
-# ----------------------------------------------------------------------------
-if ! pkg-config --exists sdl2 SDL2_mixer; then
-    echo "ERROR: Missing dependencies. Install with:"
-    echo "  sudo apt-get install libsdl2-dev libsdl2-mixer-dev"
-    exit 1
-fi
+require_sdl2
 
 echo "Building test binary..."
 echo "Using SDL2: $(pkg-config --modversion sdl2)"

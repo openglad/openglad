@@ -113,107 +113,63 @@ Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char
 }
 
 static char text_buffer[255];
-Sint32 text::write_xy(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...)
+
+Sint32 text::write_formatted(Sint32 x, Sint32 y, const char* str,
+                              unsigned char color, bool center, bool shadow,
+                              bool use_alpha, Uint8 alpha)
 {
-    if(formatted_string == nullptr)
-        return 0;
-    
-    va_list lst;
-    va_start(lst, formatted_string);
-    vsnprintf(text_buffer, 255, formatted_string, lst);
-    va_end(lst);
-    
-	std::size_t i = 0;
-	while (text_buffer[i])
-	{
-		const Sint32 xi = x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
-		write_char_xy(xi, y, text_buffer[i], color);
-		i++;
-	}
-	return static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
+    Sint32 base_x = x;
+    const std::size_t len = strlen(str);
+    if (center)
+        base_x -= (static_cast<Sint32>(len) * static_cast<Sint32>(sizex + 1)) / 2;
+    for (std::size_t i = 0; str[i]; i++)
+    {
+        const Sint32 xi = base_x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
+        if (shadow)
+            write_char_xy(xi - 1, y + 1, str[i], static_cast<unsigned char>(PURE_BLACK + 2));
+        if (use_alpha)
+            write_char_xy_alpha(xi, y, str[i], color, alpha);
+        else
+            write_char_xy(xi, y, str[i], color);
+    }
+    return center ? 1 : static_cast<Sint32>(len) * static_cast<Sint32>(sizex + 1);
 }
 
-Sint32 text::write_xy_shadow(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...)
-{
-    if(formatted_string == nullptr)
-        return 0;
-    
-    va_list lst;
-    va_start(lst, formatted_string);
-    vsnprintf(text_buffer, 255, formatted_string, lst);
-    va_end(lst);
-    
-	std::size_t i = 0;
-	while (text_buffer[i])
-	{
-	    const Sint32 xx = x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
-		write_char_xy(xx - 1, y + 1, text_buffer[i], static_cast<unsigned char>(PURE_BLACK + 2));
-		write_char_xy(xx, y, text_buffer[i], color);
-		i++;
-	}
-	return static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
+#define TEXT_VFORMAT()                                                     \
+    do {                                                                   \
+        if (!formatted_string) return 0;                                   \
+        va_list lst;                                                       \
+        va_start(lst, formatted_string);                                   \
+        vsnprintf(text_buffer, sizeof(text_buffer), formatted_string, lst);\
+        va_end(lst);                                                       \
+    } while(0)
+
+Sint32 text::write_xy(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...) {
+    TEXT_VFORMAT();
+    return write_formatted(x, y, text_buffer, color, false, false, false, 0);
 }
 
-Sint32 text::write_xy_center(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...)
-{
-    if(formatted_string == nullptr)
-        return 0;
-    
-    va_list lst;
-    va_start(lst, formatted_string);
-    vsnprintf(text_buffer, 255, formatted_string, lst);
-    va_end(lst);
-    
-	const std::size_t len = strlen(text_buffer);
-	const Sint32 base_x = x - (static_cast<Sint32>(len) * static_cast<Sint32>(sizex + 1)) / 2;
-	for (std::size_t i = 0; text_buffer[i]; i++)
-	{
-		const Sint32 xi = base_x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
-		write_char_xy(xi, y, text_buffer[i], color);
-	}
-	return 1;
+Sint32 text::write_xy_shadow(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...) {
+    TEXT_VFORMAT();
+    return write_formatted(x, y, text_buffer, color, false, true, false, 0);
 }
 
-Sint32 text::write_xy_center_alpha(Sint32 x, Sint32 y, unsigned char color, Uint8 alpha, const char* formatted_string, ...)
-{
-    if(formatted_string == nullptr)
-        return 0;
-    
-    va_list lst;
-    va_start(lst, formatted_string);
-    vsnprintf(text_buffer, 255, formatted_string, lst);
-    va_end(lst);
-    
-	const std::size_t len = strlen(text_buffer);
-	const Sint32 base_x = x - (static_cast<Sint32>(len) * static_cast<Sint32>(sizex + 1)) / 2;
-	for (std::size_t i = 0; text_buffer[i]; i++)
-	{
-		const Sint32 xi = base_x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
-		write_char_xy_alpha(xi, y, text_buffer[i], color, alpha);
-	}
-	return 1;
+Sint32 text::write_xy_center(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...) {
+    TEXT_VFORMAT();
+    return write_formatted(x, y, text_buffer, color, true, false, false, 0);
 }
 
-Sint32 text::write_xy_center_shadow(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...)
-{
-    if(formatted_string == nullptr)
-        return 0;
-    
-    va_list lst;
-    va_start(lst, formatted_string);
-    vsnprintf(text_buffer, 255, formatted_string, lst);
-    va_end(lst);
-    
-	const std::size_t len = strlen(text_buffer);
-	const Sint32 base_x = x - (static_cast<Sint32>(len) * static_cast<Sint32>(sizex + 1)) / 2;
-	for (std::size_t i = 0; text_buffer[i]; i++)
-	{
-	    const Sint32 xi = base_x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
-		write_char_xy(xi - 1, y + 1, text_buffer[i], static_cast<unsigned char>(PURE_BLACK + 2));
-		write_char_xy(xi, y, text_buffer[i], color);
-	}
-	return 1;
+Sint32 text::write_xy_center_alpha(Sint32 x, Sint32 y, unsigned char color, Uint8 alpha, const char* formatted_string, ...) {
+    TEXT_VFORMAT();
+    return write_formatted(x, y, text_buffer, color, true, false, true, alpha);
 }
+
+Sint32 text::write_xy_center_shadow(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...) {
+    TEXT_VFORMAT();
+    return write_formatted(x, y, text_buffer, color, true, true, false, 0);
+}
+
+#undef TEXT_VFORMAT
 
 Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string)
 {

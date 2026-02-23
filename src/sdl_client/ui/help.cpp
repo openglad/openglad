@@ -95,17 +95,17 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 		SDL_Delay(10);
 		get_input_events(POLL);
 
-		short scroll_amount = get_and_reset_scroll_amount();
-		if (scroll_amount < 0)
+		short scroll_delta = get_and_reset_scroll_amount();
+		if (scroll_delta < 0)
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % text_delay;
 			if (!key_presses && (linesdown < bottomrow))
 			{
-				while (linesdown < bottomrow && scroll_amount != 0)
+				while (linesdown < bottomrow && scroll_delta != 0)
 				{
 					linesdown++;
-					scroll_amount++;
+					scroll_delta++;
 				}
 				changed = 1;
 			}
@@ -128,16 +128,16 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			}
 		}
 
-		if (scroll_amount > 0)
+		if (scroll_delta > 0)
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % text_delay;
 			if (!key_presses && linesdown)
 			{
-				while (linesdown && scroll_amount != 0)
+				while (linesdown && scroll_delta != 0)
 				{
 					linesdown--;
-					scroll_amount--;
+					scroll_delta--;
 				}
 				changed = 1;
 			}
@@ -562,17 +562,17 @@ Sint32 show_general_help()
 		}
 		key3_was_pressed = keystates[KEYSTATE_3];
 
-		short scroll_amount = get_and_reset_scroll_amount();
-		if (scroll_amount < 0)
+		short scroll_delta = get_and_reset_scroll_amount();
+		if (scroll_delta < 0)
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % text_delay;
 			if (!key_presses && (linesdown < bottomrow))
 			{
-				while(linesdown < bottomrow && scroll_amount != 0)
+				while(linesdown < bottomrow && scroll_delta != 0)
 				{
 					linesdown++;
-					scroll_amount++;
+					scroll_delta++;
 				}
 				changed = 1;
 			}
@@ -595,16 +595,16 @@ Sint32 show_general_help()
 			}
 		}
 
-		if (scroll_amount > 0)
+		if (scroll_delta > 0)
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % text_delay;
 			if (!key_presses && linesdown)
 			{
-				while(linesdown && scroll_amount != 0)
+				while(linesdown && scroll_delta != 0)
 				{
 					linesdown--;
-					scroll_amount--;
+					scroll_delta--;
 				}
 				changed = 1;
 			}

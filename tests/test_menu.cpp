@@ -42,9 +42,9 @@ static void push_mouse_motion_game_coords(int game_x, int game_y)
 void test_mainmenu_buttons() {
     // Create a simple button array using the button struct constructor
     button test_buttons[3] = {
-        button("begin", "BEGIN",   SDLK_b, 80, 60,  80, 20, 0, 0, MenuNav::None()),
-        button("options", "OPTIONS", SDLK_o, 80, 90,  80, 20, 0, 0, MenuNav::None()),
-        button("quit", "QUIT",    SDLK_q, 80, 120, 80, 20, 0, 0, MenuNav::None()),
+        button("begin", "BEGIN",   SDLK_b, 80, 60,  80, 20, 0, 0, MenuNav{}),
+        button("options", "OPTIONS", SDLK_o, 80, 90,  80, 20, 0, 0, MenuNav{}),
+        button("quit", "QUIT",    SDLK_q, 80, 120, 80, 20, 0, 0, MenuNav{}),
     };
 
     trace_clear();
@@ -65,7 +65,7 @@ REGISTER_TEST(test_mainmenu_buttons);
 
 void test_menu_button_misc_paths()
 {
-    MenuNav up = MenuNav::Up(7);
+    MenuNav up = MenuNav{.up=7};
     TEST_ASSERT_EQ(7, up.up, "MenuNav::Up should set up");
     TEST_ASSERT_EQ(-1, up.down, "MenuNav::Up should leave down unset");
     TEST_ASSERT_EQ(-1, up.left, "MenuNav::Up should leave left unset");
@@ -130,7 +130,7 @@ REGISTER_TEST(test_menu_button_misc_paths);
 void test_menu_hover_highlight_draws_without_click_and_persists()
 {
     button test_buttons[1] = {
-        button("hover", "HOVER", SDLK_h, 10, 10, 30, 10, 0, 0, MenuNav::None()),
+        button("hover", "HOVER", SDLK_h, 10, 10, 30, 10, 0, 0, MenuNav{}),
     };
 
     vbutton* localbuttons = init_buttons(test_buttons, 1);

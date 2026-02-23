@@ -25,7 +25,7 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/weapon_family_descriptor.h>
-#include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/entities/living.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
@@ -170,11 +170,11 @@ bool living::act()
 	}
 
 	// Charmed-ness
-	if (charm_left_ > 1)
-		charm_left_--;
+	if (charm_left > 1)
+		charm_left--;
 	else
 	{
-		charm_left_ = 0;
+		charm_left = 0;
 		if (real_team_num != 255)
 		{
 			team_num = real_team_num;
@@ -377,14 +377,14 @@ short living::shove(walker  *target, short x, short y)
 	        (is_friendly(target)) // we are allied
 	   )
 		// Make sure WE don't get shoved
-		if (sim_rng->next(3) && target->query_act_type() != ACT_CONTROL)
+		if (sim_rng->next(3) && target->act_type != ACT_CONTROL)
 		{
 			// We have to prevent a build-up of shoves which is
 			//   caused by a blocked target.  We do so for now by clearing
 			//   all commands
 			target->stats()->clear_command();
 			{
-				const auto* fd = get_family_descriptor(target->query_family());
+				const auto* fd = get_family_descriptor(target->family);
 				if (fd && fd->on_shoved)
 					fd->on_shoved(target);
 			}
@@ -462,7 +462,7 @@ bool living::walk(float x, float y)
 		//   other walkers call ACT.  This would cause control
 		//   to turn TWICE on the first call to walk, which is bad.
 		//   So we stop that behavior here.
-		if (this->query_act_type() != ACT_CONTROL || stats_->has_commands())
+		if (this->act_type != ACT_CONTROL || stats_->has_commands())
 			turn(enddir);
 	}
 	return 1;
@@ -475,7 +475,7 @@ bool walkerIsAutoAttackable(walker* ob)
         return true;
     if (order == Order::Weapon)
     {
-        const auto* wfd = get_weapon_family_descriptor(ob->query_family());
+        const auto* wfd = get_weapon_family_descriptor(ob->family);
         return wfd && wfd->is_auto_attackable;
     }
     return false;
@@ -555,7 +555,7 @@ void living::set_difficulty(std::uint32_t whatlevel)
 	stats_->hitpoints = stats_->max_hitpoints;
 	stats_->magicpoints = stats_->max_magicpoints;
 
-		stats_->max_heal_delay = REGEN; //defined in graph.h
+		stats_->max_heal_delay = REGEN; //defined in constants.h
 		stats_->current_heal_delay =
 		    static_cast<std::int32_t>(levmult * 4.0f); //for purposes of calculation only
 

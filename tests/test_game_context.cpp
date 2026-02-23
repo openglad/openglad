@@ -12,9 +12,6 @@ extern screen* myscreen;
 void test_ctx_returns_valid_context()
 {
     GameContext& c = ctx();
-    TEST_ASSERT(c.valid(), "global context should be valid after screen init");
-    TEST_ASSERT(c.game_screen == myscreen, "ctx().game_screen should equal myscreen");
-    TEST_ASSERT(c.config != nullptr, "ctx().config should be non-null");
     TEST_ASSERT(c.rng != nullptr, "ctx().rng should be non-null (production RNG)");
 }
 REGISTER_TEST(test_ctx_returns_valid_context);
@@ -23,7 +20,6 @@ void test_set_global_context_overrides()
 {
     FixedRandom fixed(42);
     GameContext test_ctx;
-    test_ctx.game_screen = myscreen;
     test_ctx.rng = &fixed;
 
     set_global_context(&test_ctx);
@@ -216,7 +212,6 @@ void test_deterministic_rng_via_game_context()
     SeededRandom rng2(99999);
 
     GameContext test_ctx;
-    test_ctx.game_screen = myscreen;
     test_ctx.rng = &rng1;
     set_global_context(&test_ctx);
 

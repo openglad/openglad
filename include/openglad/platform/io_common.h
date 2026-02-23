@@ -50,9 +50,6 @@ enum class ArchiveIoError {
 [[nodiscard]] CampaignPackageIoError mount_campaign_package_with_error(const std::string& id);
 [[nodiscard]] CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id);
 [[nodiscard]] CampaignPackageIoError remount_campaign_package_with_error();
-bool mount_campaign_package(const std::string& id);
-bool unmount_campaign_package(const std::string& id);
-bool remount_campaign_package();
 std::list<std::string> list_campaigns();
 std::list<int> list_levels();
 std::vector<int> list_levels_v();
@@ -88,8 +85,6 @@ void delete_campaign(const std::string& id);
 
 [[nodiscard]] ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std::string& outfile);
 [[nodiscard]] ArchiveIoError unzip_into_with_error(const std::string& infile, const std::string& outdirectory);
-bool zip_contents(const std::string& indirectory, const std::string& outfile);
-bool unzip_into(const std::string& infile, const std::string& outdirectory);
 
 bool unpack_campaign(const std::string& campaign_id);
 bool repack_campaign(const std::string& campaign_id);
@@ -107,9 +102,5 @@ enum class NewFileIoError {
 [[nodiscard]] NewFileIoError create_new_pix_with_error(const std::string& filename, int w, int h, unsigned char fill_color = 0);
 [[nodiscard]] NewFileIoError create_new_campaign_descriptor_with_error(const std::string& filename);
 [[nodiscard]] NewFileIoError create_new_scen_file_with_error(const std::string& scenfile, const std::string& gridname);
-bool create_new_map_pix(const std::string& filename, int w, int h);
-bool create_new_pix(const std::string& filename, int w, int h, unsigned char fill_color = 0);
-bool create_new_campaign_descriptor(const std::string& filename);
-bool create_new_scen_file(const std::string& scenfile, const std::string& gridname);
 
 void load_map_data(PixieData* whereto);

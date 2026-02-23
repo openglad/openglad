@@ -19,16 +19,7 @@
 
 static bool fire_elemental_check_special_ai(living* self)
 {
-    if (self->foe)
-    {
-        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
-        return (distance < 130);
-    }
-    self->foe = self->sim_level->find_near_foe(self);
-    if (!self->foe)
-        return false;
-    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
-    return (distance < 130);
+    return check_special_ai_distance(self, 130);
 }
 
 static bool fire_elemental_on_death(walker* self)
@@ -42,18 +33,7 @@ static bool fire_elemental_on_death(walker* self)
 
 static void fire_elemental_level_up(guy* self, std::int32_t level_diff)
 {
-    std::int32_t s = 8 * level_diff;
-    std::int32_t d = 6 * level_diff;
-    std::int32_t c = 8 * level_diff;
-    std::int32_t it = 8 * level_diff;
-    std::int32_t a = 1 * level_diff;
-    s = (s * 3) / 2;
-    c /= 2;
-    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
+    apply_level_up(self, level_diff, {12, 6, 4, 8, 1});
 }
 
 static void fire_elemental_on_act_living(living* self)

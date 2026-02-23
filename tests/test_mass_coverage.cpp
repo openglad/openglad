@@ -96,22 +96,22 @@ int write_handler(void* data, unsigned char* buffer, std::size_t size)
     REGISTER_TEST(name)
 
 // MenuNav (button.cpp uncovered)
-MASS_TEST(test_mass_menunav_up, { (void)MenuNav::Up(1); });
-MASS_TEST(test_mass_menunav_down, { (void)MenuNav::Down(2); });
-MASS_TEST(test_mass_menunav_left, { (void)MenuNav::Left(3); });
-MASS_TEST(test_mass_menunav_right, { (void)MenuNav::Right(4); });
-MASS_TEST(test_mass_menunav_updown, { (void)MenuNav::UpDown(1, 2); });
-MASS_TEST(test_mass_menunav_upleft, { (void)MenuNav::UpLeft(1, 2); });
-MASS_TEST(test_mass_menunav_upright, { (void)MenuNav::UpRight(1, 2); });
-MASS_TEST(test_mass_menunav_updownleft, { (void)MenuNav::UpDownLeft(1, 2, 3); });
-MASS_TEST(test_mass_menunav_updownright, { (void)MenuNav::UpDownRight(1, 2, 3); });
-MASS_TEST(test_mass_menunav_upleftright, { (void)MenuNav::UpLeftRight(1, 2, 3); });
-MASS_TEST(test_mass_menunav_downleft, { (void)MenuNav::DownLeft(1, 2); });
-MASS_TEST(test_mass_menunav_downright, { (void)MenuNav::DownRight(1, 2); });
-MASS_TEST(test_mass_menunav_downleftright, { (void)MenuNav::DownLeftRight(1, 2, 3); });
-MASS_TEST(test_mass_menunav_leftright, { (void)MenuNav::LeftRight(1, 2); });
-MASS_TEST(test_mass_menunav_updownleftright, { (void)MenuNav::UpDownLeftRight(1, 2, 3, 4); });
-MASS_TEST(test_mass_menunav_none, { (void)MenuNav::None(); });
+MASS_TEST(test_mass_menunav_up, { (void)MenuNav{.up=1}; });
+MASS_TEST(test_mass_menunav_down, { (void)MenuNav{.down=2}; });
+MASS_TEST(test_mass_menunav_left, { (void)MenuNav{.left=3}; });
+MASS_TEST(test_mass_menunav_right, { (void)MenuNav{.right=4}; });
+MASS_TEST(test_mass_menunav_updown, { (void)MenuNav{.up=1, .down=2}; });
+MASS_TEST(test_mass_menunav_upleft, { (void)MenuNav{.up=1, .left=2}; });
+MASS_TEST(test_mass_menunav_upright, { (void)MenuNav{.up=1, .right=2}; });
+MASS_TEST(test_mass_menunav_updownleft, { (void)MenuNav{.up=1, .down=2, .left=3}; });
+MASS_TEST(test_mass_menunav_updownright, { (void)MenuNav{.up=1, .down=2, .right=3}; });
+MASS_TEST(test_mass_menunav_upleftright, { (void)MenuNav{.up=1, .left=2, .right=3}; });
+MASS_TEST(test_mass_menunav_downleft, { (void)MenuNav{.down=1, .left=2}; });
+MASS_TEST(test_mass_menunav_downright, { (void)MenuNav{.down=1, .right=2}; });
+MASS_TEST(test_mass_menunav_downleftright, { (void)MenuNav{.down=1, .left=2, .right=3}; });
+MASS_TEST(test_mass_menunav_leftright, { (void)MenuNav{.left=1, .right=2}; });
+MASS_TEST(test_mass_menunav_updownleftright, { (void)MenuNav{.up=1, .down=2, .left=3, .right=4}; });
+MASS_TEST(test_mass_menunav_none, { (void)MenuNav{}; });
 
 // vbutton + button helpers (button.cpp uncovered)
 MASS_TEST(test_mass_vbutton_ctor_callback, {

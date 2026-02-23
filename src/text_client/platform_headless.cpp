@@ -268,10 +268,6 @@ NewFileIoError create_new_scen_file_with_error(const std::string& scenfile, cons
     return NewFileIoError::OpenWriteFailed;
 }
 
-bool create_new_map_pix(const std::string& f, int w, int h) { return create_new_map_pix_with_error(f, w, h) == NewFileIoError::None; }
-bool create_new_pix(const std::string& f, int w, int h, unsigned char c) { return create_new_pix_with_error(f, w, h, c) == NewFileIoError::None; }
-bool create_new_campaign_descriptor(const std::string& f) { return create_new_campaign_descriptor_with_error(f) == NewFileIoError::None; }
-bool create_new_scen_file(const std::string& f, const std::string& g) { return create_new_scen_file_with_error(f, g) == NewFileIoError::None; }
 
 void load_map_data(PixieData*)
 {
@@ -314,7 +310,7 @@ void io_init(int argc, char* argv[])
     restore_default_campaigns();
 
     // Mount default campaign
-    if (!mount_campaign_package("org.openglad.gladiator")) {
+    if (mount_campaign_package_with_error("org.openglad.gladiator") != CampaignPackageIoError::None) {
         LogError("io_init(headless): Failed to mount default campaign\n");
     }
 

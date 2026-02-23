@@ -48,34 +48,12 @@ inline constexpr char BUTTON_RIGHT  = 12; //11
 // Observer pointer (non-owning). Owned by og::runtime::GameSession.
 extern screen *myscreen;
 
-// Holds array indices for navigating menu buttons
-class MenuNav
+// Holds array indices for navigating menu buttons.
+// Use C++20 designated initializers: MenuNav{.up=5, .down=3}
+// Unspecified directions default to -1 (unused).
+struct MenuNav
 {
-public:
-    // Array indices for the button to move to.
-    // -1 is invalid/unused direction
-    int up, down, left, right;
-    
-    static MenuNav Up(int up);
-    static MenuNav Down(int down);
-    static MenuNav Left(int left);
-    static MenuNav Right(int right);
-    static MenuNav UpDown(int up, int down);
-    static MenuNav UpLeft(int up, int left);
-    static MenuNav UpRight(int up, int right);
-    static MenuNav UpDownLeft(int up, int down, int left);
-    static MenuNav UpDownRight(int up, int down, int right);
-    static MenuNav UpLeftRight(int up, int left, int right);
-    static MenuNav DownLeft(int down, int left);
-    static MenuNav DownRight(int down, int right);
-    static MenuNav DownLeftRight(int down, int left, int right);
-    static MenuNav LeftRight(int left, int right);
-    static MenuNav UpDownLeftRight(int up, int down, int left, int right);
-    static MenuNav All(int up, int down, int left, int right);
-    static MenuNav None();
-private:
-    MenuNav();
-    MenuNav(int up, int down, int left, int right);
+    int up = -1, down = -1, left = -1, right = -1;
 };
 
 struct button
@@ -260,109 +238,3 @@ inline constexpr Sint32 button_action_id(ButtonAction action)
     return static_cast<Sint32>(action);
 }
 
-inline constexpr ButtonAction button_action_from_id(Sint32 action)
-{
-    switch (action)
-    {
-    case button_action_id(ButtonAction::BeginMenu): return ButtonAction::BeginMenu;
-    case button_action_id(ButtonAction::CreateTeamMenu): return ButtonAction::CreateTeamMenu;
-    case button_action_id(ButtonAction::SetPlayerMode): return ButtonAction::SetPlayerMode;
-    case button_action_id(ButtonAction::QuitMenu): return ButtonAction::QuitMenu;
-    case button_action_id(ButtonAction::CreateViewMenu): return ButtonAction::CreateViewMenu;
-    case button_action_id(ButtonAction::CreateTrainMenu): return ButtonAction::CreateTrainMenu;
-    case button_action_id(ButtonAction::CreateHireMenu): return ButtonAction::CreateHireMenu;
-    case button_action_id(ButtonAction::CreateLoadMenu): return ButtonAction::CreateLoadMenu;
-    case button_action_id(ButtonAction::CreateSaveMenu): return ButtonAction::CreateSaveMenu;
-    case button_action_id(ButtonAction::GoMenu): return ButtonAction::GoMenu;
-    case button_action_id(ButtonAction::ReturnMenu): return ButtonAction::ReturnMenu;
-    case button_action_id(ButtonAction::CycleTeamGuy): return ButtonAction::CycleTeamGuy;
-    case button_action_id(ButtonAction::DecreaseStat): return ButtonAction::DecreaseStat;
-    case button_action_id(ButtonAction::IncreaseStat): return ButtonAction::IncreaseStat;
-    case button_action_id(ButtonAction::EditGuy): return ButtonAction::EditGuy;
-    case button_action_id(ButtonAction::CycleGuy): return ButtonAction::CycleGuy;
-    case button_action_id(ButtonAction::AddGuy): return ButtonAction::AddGuy;
-    case button_action_id(ButtonAction::DoSave): return ButtonAction::DoSave;
-    case button_action_id(ButtonAction::DoLoad): return ButtonAction::DoLoad;
-    case button_action_id(ButtonAction::NameGuy): return ButtonAction::NameGuy;
-    case button_action_id(ButtonAction::CreateDetailMenu): return ButtonAction::CreateDetailMenu;
-    case button_action_id(ButtonAction::NullMenu): return ButtonAction::NullMenu;
-    case button_action_id(ButtonAction::DoSetScenLevel): return ButtonAction::DoSetScenLevel;
-    case button_action_id(ButtonAction::SetDifficulty): return ButtonAction::SetDifficulty;
-    case button_action_id(ButtonAction::ChangeTeam): return ButtonAction::ChangeTeam;
-    case button_action_id(ButtonAction::AlliedMode): return ButtonAction::AlliedMode;
-    case button_action_id(ButtonAction::ChangeHireTeam): return ButtonAction::ChangeHireTeam;
-    case button_action_id(ButtonAction::YesOrNo): return ButtonAction::YesOrNo;
-    case button_action_id(ButtonAction::DoPickCampaign): return ButtonAction::DoPickCampaign;
-    case button_action_id(ButtonAction::DoLevelEdit): return ButtonAction::DoLevelEdit;
-    case button_action_id(ButtonAction::MainOptions): return ButtonAction::MainOptions;
-    case button_action_id(ButtonAction::ToggleSound): return ButtonAction::ToggleSound;
-    case button_action_id(ButtonAction::ToggleRenderingEngine): return ButtonAction::ToggleRenderingEngine;
-    case button_action_id(ButtonAction::ToggleFullscreen): return ButtonAction::ToggleFullscreen;
-    case button_action_id(ButtonAction::OverscanAdjust): return ButtonAction::OverscanAdjust;
-    case button_action_id(ButtonAction::ToggleMiniHpBar): return ButtonAction::ToggleMiniHpBar;
-    case button_action_id(ButtonAction::ToggleHitFlash): return ButtonAction::ToggleHitFlash;
-    case button_action_id(ButtonAction::ToggleHitRecoil): return ButtonAction::ToggleHitRecoil;
-    case button_action_id(ButtonAction::ToggleAttackLunge): return ButtonAction::ToggleAttackLunge;
-    case button_action_id(ButtonAction::ToggleHitAnim): return ButtonAction::ToggleHitAnim;
-    case button_action_id(ButtonAction::ToggleDamageNumbers): return ButtonAction::ToggleDamageNumbers;
-    case button_action_id(ButtonAction::ToggleHealNumbers): return ButtonAction::ToggleHealNumbers;
-    case button_action_id(ButtonAction::ToggleGore): return ButtonAction::ToggleGore;
-    case button_action_id(ButtonAction::RestoreDefaultSettings): return ButtonAction::RestoreDefaultSettings;
-    case button_action_id(ButtonAction::RestoreDefaultControls): return ButtonAction::RestoreDefaultControls;
-    case button_action_id(ButtonAction::ShowHelp): return ButtonAction::ShowHelp;
-    case button_action_id(ButtonAction::CreateProgressMenu): return ButtonAction::CreateProgressMenu;
-    case button_action_id(ButtonAction::OpenControlSettings): return ButtonAction::OpenControlSettings;
-    case button_action_id(ButtonAction::ToggleControlMode): return ButtonAction::ToggleControlMode;
-    case button_action_id(ButtonAction::EditPlayerKeymap): return ButtonAction::EditPlayerKeymap;
-    default:
-        return ButtonAction::Invalid;
-    }
-}
-
-// Legacy integer aliases kept while callers migrate to ButtonAction.
-#define BEGINMENU                button_action_id(ButtonAction::BeginMenu)
-#define CREATE_TEAM_MENU         button_action_id(ButtonAction::CreateTeamMenu)
-#define SET_PLAYER_MODE          button_action_id(ButtonAction::SetPlayerMode)
-#define QUIT_MENU                button_action_id(ButtonAction::QuitMenu)
-#define CREATE_VIEW_MENU         button_action_id(ButtonAction::CreateViewMenu)
-#define CREATE_TRAIN_MENU        button_action_id(ButtonAction::CreateTrainMenu)
-#define CREATE_HIRE_MENU         button_action_id(ButtonAction::CreateHireMenu)
-#define CREATE_LOAD_MENU         button_action_id(ButtonAction::CreateLoadMenu)
-#define CREATE_SAVE_MENU         button_action_id(ButtonAction::CreateSaveMenu)
-#define GO_MENU                  button_action_id(ButtonAction::GoMenu)
-#define RETURN_MENU              button_action_id(ButtonAction::ReturnMenu)
-#define CYCLE_TEAM_GUY           button_action_id(ButtonAction::CycleTeamGuy)
-#define DECREASE_STAT            button_action_id(ButtonAction::DecreaseStat)
-#define INCREASE_STAT            button_action_id(ButtonAction::IncreaseStat)
-#define EDIT_GUY                 button_action_id(ButtonAction::EditGuy)
-#define CYCLE_GUY                button_action_id(ButtonAction::CycleGuy)
-#define ADD_GUY                  button_action_id(ButtonAction::AddGuy)
-#define DO_SAVE                  button_action_id(ButtonAction::DoSave)
-#define DO_LOAD                  button_action_id(ButtonAction::DoLoad)
-#define NAME_GUY                 button_action_id(ButtonAction::NameGuy)
-#define CREATE_DETAIL_MENU       button_action_id(ButtonAction::CreateDetailMenu)
-#define NULLMENU                 button_action_id(ButtonAction::NullMenu)
-#define DO_SET_SCEN_LEVEL        button_action_id(ButtonAction::DoSetScenLevel)
-#define SET_DIFFICULTY           button_action_id(ButtonAction::SetDifficulty)
-#define CHANGE_TEAM              button_action_id(ButtonAction::ChangeTeam)
-#define ALLIED_MODE              button_action_id(ButtonAction::AlliedMode)
-#define CHANGE_HIRE_TEAM         button_action_id(ButtonAction::ChangeHireTeam)
-#define YES_OR_NO                button_action_id(ButtonAction::YesOrNo)
-#define DO_PICK_CAMPAIGN         button_action_id(ButtonAction::DoPickCampaign)
-#define DO_LEVEL_EDIT            button_action_id(ButtonAction::DoLevelEdit)
-#define MAIN_OPTIONS             button_action_id(ButtonAction::MainOptions)
-#define TOGGLE_SOUND             button_action_id(ButtonAction::ToggleSound)
-#define TOGGLE_RENDERING_ENGINE  button_action_id(ButtonAction::ToggleRenderingEngine)
-#define TOGGLE_FULLSCREEN        button_action_id(ButtonAction::ToggleFullscreen)
-#define OVERSCAN_ADJUST          button_action_id(ButtonAction::OverscanAdjust)
-#define TOGGLE_MINI_HP_BAR       button_action_id(ButtonAction::ToggleMiniHpBar)
-#define TOGGLE_HIT_FLASH         button_action_id(ButtonAction::ToggleHitFlash)
-#define TOGGLE_HIT_RECOIL        button_action_id(ButtonAction::ToggleHitRecoil)
-#define TOGGLE_ATTACK_LUNGE      button_action_id(ButtonAction::ToggleAttackLunge)
-#define TOGGLE_HIT_ANIM          button_action_id(ButtonAction::ToggleHitAnim)
-#define TOGGLE_DAMAGE_NUMBERS    button_action_id(ButtonAction::ToggleDamageNumbers)
-#define TOGGLE_HEAL_NUMBERS      button_action_id(ButtonAction::ToggleHealNumbers)
-#define TOGGLE_GORE              button_action_id(ButtonAction::ToggleGore)
-#define RESTORE_DEFAULT_SETTINGS button_action_id(ButtonAction::RestoreDefaultSettings)
-#define SHOW_HELP                button_action_id(ButtonAction::ShowHelp)
-#define CREATE_PROGRESS_MENU     button_action_id(ButtonAction::CreateProgressMenu)

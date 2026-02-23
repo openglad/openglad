@@ -397,7 +397,7 @@ void test_save_data_load_with_error_campaign_mount_failure()
         "invalid current campaign should report CampaignLoadFailed");
 
     // Restore expected mounted campaign for other tests.
-    TEST_ASSERT(mount_campaign_package("org.openglad.gladiator"),
+    TEST_ASSERT(mount_campaign_package_with_error("org.openglad.gladiator") == CampaignPackageIoError::None,
         "should remount default campaign after CampaignLoadFailed test");
 }
 REGISTER_TEST(test_save_data_load_with_error_campaign_mount_failure);

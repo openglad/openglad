@@ -12,27 +12,20 @@
 #include <openglad/render/walker_draw.h>
 #include <openglad/legacy/base.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/pathfinding_grid.h>
 #include <openglad/render/view.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/gparser.h>
 #include <openglad/data/smooth.h>
 #include <span>
 #include <cmath>
-
-// Duplicated from walker_pathing.cpp; these encode/decode grid coordinates
-// in MicroPater state pointers.
-#define MAP_WIDTH 400
-#define GET_STATE_X(state) (static_cast<Sint32>(reinterpret_cast<intptr_t>(state) % MAP_WIDTH) * GRID_SIZE)
-#define GET_STATE_Y(state) (static_cast<Sint32>(reinterpret_cast<intptr_t>(state) / MAP_WIDTH) * GRID_SIZE)
 
 extern bool debug_draw_paths;
 
 static inline cfg_store& active_config()
 {
-    if(ctx().config != nullptr)
-        return *ctx().config;
     return cfg;
 }
 

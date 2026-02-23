@@ -55,9 +55,9 @@ void test_io_zip_contents_and_unzip_into_roundtrip()
     TEST_ASSERT(write_file_bytes((indir / "a.txt").string(), "AAA"), "write a.txt");
     TEST_ASSERT(write_file_bytes((indir / "sub" / "b.txt").string(), "BBB"), "write sub/b.txt");
 
-    TEST_ASSERT(zip_contents(indir.string(), zipfile.string()), "zip_contents should succeed");
+    TEST_ASSERT(zip_contents_with_error(indir.string(), zipfile.string()) == ArchiveIoError::None, "zip_contents should succeed");
     TEST_ASSERT(create_dir(outdir.string()), "create_dir(out) should succeed");
-    TEST_ASSERT(unzip_into(zipfile.string(), outdir.string()), "unzip_into should succeed");
+    TEST_ASSERT(unzip_into_with_error(zipfile.string(), outdir.string()) == ArchiveIoError::None, "unzip_into should succeed");
 
     std::string a, b;
     TEST_ASSERT(read_file_all((outdir / "a.txt").string(), &a), "read out a.txt");
@@ -88,9 +88,9 @@ REGISTER_TEST(test_io_open_read_file_prefers_cwd_fallback);
 
 void test_io_mount_unmount_campaign_invalid_id_paths()
 {
-    TEST_ASSERT(!mount_campaign_package(""), "mount_campaign_package(\"\") should fail");
-    TEST_ASSERT(!mount_campaign_package("definitely.not.a.campaign"), "mount invalid campaign should fail");
-    TEST_ASSERT(unmount_campaign_package(""), "unmount_campaign_package(\"\") should succeed");
+    TEST_ASSERT(mount_campaign_package_with_error("") != CampaignPackageIoError::None, "mount_campaign_package(\"\") should fail");
+    TEST_ASSERT(mount_campaign_package_with_error("definitely.not.a.campaign") != CampaignPackageIoError::None, "mount invalid campaign should fail");
+    TEST_ASSERT(unmount_campaign_package_with_error("") == CampaignPackageIoError::None, "unmount_campaign_package(\"\") should succeed");
 }
 REGISTER_TEST(test_io_mount_unmount_campaign_invalid_id_paths);
 

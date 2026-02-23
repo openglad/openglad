@@ -64,9 +64,9 @@ void test_picker_handle_menu_nav_moves_and_skips_hidden_targets()
     KeyStateGuard ks;
 
     button buttons[] = {
-        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10, 0, 0, MenuNav::All(-1, 1, -1, 2), false),
-        button("b1", "B", KEYSTATE_UNKNOWN, 10, 30, 30, 10, 0, 0, MenuNav::All(0, -1, -1, 2), false),
-        button("b2", "C", KEYSTATE_UNKNOWN, 10, 50, 30, 10, 0, 0, MenuNav::All(-1, -1, 1, -1), true),
+        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10, 0, 0, MenuNav{.up=-1, .down=1, .left=-1, .right=2}, false),
+        button("b1", "B", KEYSTATE_UNKNOWN, 10, 30, 30, 10, 0, 0, MenuNav{.up=0, .down=-1, .left=-1, .right=2}, false),
+        button("b2", "C", KEYSTATE_UNKNOWN, 10, 50, 30, 10, 0, 0, MenuNav{.up=-1, .down=-1, .left=1, .right=-1}, true),
     };
 
     int highlighted = 1;
@@ -114,7 +114,7 @@ void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
     KeyStateGuard ks;
 
     button buttons[] = {
-        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10, 0, 0, MenuNav::None(), false),
+        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10, 0, 0, MenuNav{}, false),
     };
     int highlighted = 0;
     Sint32 retvalue = 0;

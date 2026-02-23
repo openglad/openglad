@@ -869,49 +869,6 @@ void handle_events(const SDL_Event& event)
 //Keyboard routines
 //
 
-int query_key()
-{
-    return raw_key;
-}
-
-const char* query_text_input()
-{
-    if (raw_text_input.empty())
-        return nullptr;
-    return raw_text_input.c_str();
-}
-
-bool query_key_event(int key, const SDL_Event& event)
-{
-    if(event.type == SDL_KEYDOWN)
-        return (event.key.keysym.sym == key);
-    return false;
-}
-
-
-bool isAnyPlayerKey(SDLKey key)
-{
-    for(int player_num = 0; player_num < 4; player_num++)
-    {
-        for(int i = 0; i < NUM_KEYS; i++)
-        {
-            if(player_keys[player_num][i] == key)
-                return true;
-        }
-    }
-    return false;
-}
-
-bool isPlayerKey(int player_num, SDLKey key)
-{
-    for(int i = 0; i < NUM_KEYS; i++)
-    {
-        if(player_keys[player_num][i] == key)
-            return true;
-    }
-    return false;
-}
-
 SDL_Event wait_for_key_event()
 {
     SDL_Event event;
@@ -946,16 +903,6 @@ void quit_if_quit_event(const SDL_Event& event)
 {
     if(event.type == SDL_QUIT)
         quit(0);
-}
-
-bool isKeyboardEvent(const SDL_Event& event)
-{
-    return (event.type == SDL_KEYDOWN);  // does not handle key up events
-}
-
-bool isJoystickEvent(const SDL_Event& event)
-{
-    return (event.type == SDL_JOYAXISMOTION || event.type == SDL_JOYHATMOTION || event.type == SDL_JOYBUTTONDOWN);  // does not handle button up, hats, or balls
 }
 
 void clear_events()
@@ -1004,18 +951,6 @@ void clear_keyboard()
     #ifdef USE_TOUCH_INPUT
     tapping = false;
     #endif
-}
-
-bool query_input_continue()
-{
-    return input_continue;
-}
-
-short get_and_reset_scroll_amount()
-{
-    short temp = scroll_amount;
-    scroll_amount = 0;
-    return temp;
 }
 
 void wait_for_key(int somekey)
@@ -1314,16 +1249,6 @@ bool JoyData::hasButtonSet(int key_enum) const
     return (index >= 0 && key_type[key_enum] != NONE);
 }
 
-bool playerHasJoystick(int player_num)
-{
-    return (player_joy[player_num].index >= 0);
-}
-
-void disablePlayerJoystick(int player_num)
-{
-    player_joy[player_num].index = -1;
-}
-
 void resetJoystick(int player_num)
 {
     // FIXME: SDL2 supports hotplugging, so I don't need to restart the joystick subsystem
@@ -1566,28 +1491,6 @@ bool didPlayerReleaseKey(int player_index, int key_enum, const SDL_Event& event)
     }
 }
 
-short query_key_press_event()
-{
-    return key_press_event;
-}
-
-void clear_key_press_event()
-{
-    key_press_event = 0;
-}
-
-short query_text_input_event()
-{
-    return text_input_event;
-}
-
-void clear_text_input_event()
-{
-    text_input_event = 0;
-    raw_text_input.clear();
-}
-
-
 //
 // Mouse routines
 //
@@ -1611,12 +1514,6 @@ MouseState& query_mouse()
     get_input_events(POLL);
     return mouse_state;
 }
-
-MouseState& query_mouse_no_poll()
-{
-    return mouse_state;
-}
-
 
 // Convert from scancode to ascii, ie, SDLK_a to 'A'
 unsigned char convert_to_ascii(int scancode)

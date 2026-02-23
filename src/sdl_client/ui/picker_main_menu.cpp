@@ -21,7 +21,6 @@
 #include <openglad/legacy/base.h>
 #include <openglad/render/pixien.h>
 #include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/ui/picker_common.h>
 #include "SDL.h"
 #include <array>
@@ -56,7 +55,7 @@ bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sin
 
 void redraw_mainmenu()
 {
-    screen* game = ctx().active_screen() ? ctx().active_screen() : myscreen;
+    screen* game = myscreen;
     if (!game)
         return;
 
@@ -147,7 +146,7 @@ void redraw_mainmenu()
 
 Sint32 mainmenu(Sint32 arg1)
 {
-	screen* game = ctx().active_screen() ? ctx().active_screen() : myscreen;
+	screen* game = myscreen;
 	if (!game)
 		return MENU_EXIT;
 
@@ -214,7 +213,7 @@ Sint32 mainmenu(Sint32 arg1)
 // Reset game data and go to create_team_menu()
 bool picker_prepare_new_game_setup()
 {
-    screen* game = ctx().active_screen() ? ctx().active_screen() : myscreen;
+    screen* game = myscreen;
     if (!game)
         return false;
 

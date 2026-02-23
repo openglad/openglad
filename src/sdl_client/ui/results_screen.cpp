@@ -29,9 +29,6 @@ bool s_force_full_results_ui = false;
 }
 #endif
 
-#ifdef OUYA
-#include <openglad/legacy/OuyaController.h>
-#endif
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
@@ -501,10 +498,10 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	int num_buttons = 4;
 	
 	button buttons[] = {
-        button("ok", "OK", KEYSTATE_UNKNOWN, ok_rect.x, ok_rect.y, ok_rect.w, ok_rect.h, 0, -1 , MenuNav::UpRight(overview_index, retry_index)),
-        button("retry", "RETRY", KEYSTATE_UNKNOWN, retry_rect.x, retry_rect.y, retry_rect.w, retry_rect.h, 0, -1 , MenuNav::UpLeft(troops_index, ok_index)),
-        button("overview", "OVERVIEW", KEYSTATE_UNKNOWN, overview_rect.x, overview_rect.y, overview_rect.w, overview_rect.h, 0, -1 , MenuNav::DownRight(ok_index, troops_index)),
-        button("troops", "TROOPS", KEYSTATE_UNKNOWN, troops_rect.x, troops_rect.y, troops_rect.w, troops_rect.h, 0, -1 , MenuNav::DownLeft(retry_index, overview_index)),
+        button("ok", "OK", KEYSTATE_UNKNOWN, ok_rect.x, ok_rect.y, ok_rect.w, ok_rect.h, 0, -1 , MenuNav{.up=overview_index, .right=retry_index}),
+        button("retry", "RETRY", KEYSTATE_UNKNOWN, retry_rect.x, retry_rect.y, retry_rect.w, retry_rect.h, 0, -1 , MenuNav{.up=troops_index, .left=ok_index}),
+        button("overview", "OVERVIEW", KEYSTATE_UNKNOWN, overview_rect.x, overview_rect.y, overview_rect.w, overview_rect.h, 0, -1 , MenuNav{.down=ok_index, .right=troops_index}),
+        button("troops", "TROOPS", KEYSTATE_UNKNOWN, troops_rect.x, troops_rect.y, troops_rect.w, troops_rect.h, 0, -1 , MenuNav{.down=retry_index, .left=overview_index}),
 	};
 	
 	
@@ -535,17 +532,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         bool do_click = mouse_down && !was_mouse_down;
         was_mouse_down = mouse_down;
 
-        #ifdef USE_CONTROLLER_INPUT
-        {
-            const OuyaController& c = OuyaControllerManager::getController(0);
-
-            float v = c.getAxisValue(OuyaController::AxisEnum::LsY) + c.getAxisValue(OuyaController::AxisEnum::RsY);
-            if(fabs(v) > OuyaController::DEADZONE)
-                scroll -= -5*v;
-        }
-        #else
 		scroll -= static_cast<float>(get_and_reset_scroll_amount());
-			#endif
 		if(scroll < 0.0f)
             scroll = 0.0f;
 

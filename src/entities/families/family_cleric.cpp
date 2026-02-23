@@ -9,6 +9,7 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/summon.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
@@ -67,12 +68,7 @@ static bool cleric_check_special_ai(living* self)
 
 static void cleric_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 9.0f * levmult;
-    self->stats()->max_magicpoints += 12.0f * levmult;
-    self->damage += 4.0f * level_f;
-    self->stats()->armor += levmult / 2.0f;
+    apply_difficulty_scaling(self, level, {9.0f, 12.0f, 4.0f, 0.5f});
 }
 
 static bool cleric_do_special(walker* self)
@@ -155,11 +151,9 @@ static bool cleric_do_special(walker* self)
                     self->myguy->total_shots++;
                     self->myguy->scen_shots++;
                 }
-                newob = self->sim_level->add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+                newob = summon_entity(self, Order::FX, FAMILY_MAGIC_SHIELD);
                 if (!newob)
                     return false;
-                newob->owner = self;
-                newob->team_num = self->team_num;
                 newob->ani_type = 1;
                 generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
                 generic /= 2;

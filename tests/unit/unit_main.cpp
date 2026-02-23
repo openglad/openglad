@@ -1,4 +1,5 @@
 #include "unit.h"
+#include <openglad/entities/family_registries.h>
 
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);
@@ -6,6 +7,8 @@ extern "C" void __gcov_dump(void);
 
 int main()
 {
+    init_all_registries();
+
     int passed = 0;
     int failed = 0;
     for (const auto& tc : og::unit::registry())

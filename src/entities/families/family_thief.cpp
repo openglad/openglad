@@ -10,12 +10,14 @@
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/summon.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/core/stats.h>
 #include <openglad/sim/sim_emit.h>
+#include <openglad/entities/foe_query.h>
 
 #include <format>
 #include <string>
@@ -35,12 +37,7 @@ static bool thief_check_special_ai(living* self)
         }
         else
         {
-            std::int32_t howmany = 0;
-            self->sim_level->find_foes_in_range(self->sim_level->oblist,
-                                         110, &howmany, self);
-            if (howmany < 3)
-                return false;
-            return true;
+            return count_foes_in_range(self, 110) >= 3;
         }
         return true; // fallthrough for foe case when distance is acceptable
     }
@@ -52,31 +49,14 @@ static bool thief_check_special_ai(living* self)
         else
             myrange = 16 + 4 * self->stats()->level;
 
-        std::int32_t howmany = 0;
-        self->sim_level->find_foes_in_range(self->sim_level->oblist,
-                                     myrange, &howmany, self);
-        if (howmany < 1)
-            return false;
-        return true;
+        return count_foes_in_range(self, myrange) >= 1;
     }
     return true; // default: go for it
 }
 
 static void thief_level_up(guy* self, std::int32_t level_diff)
 {
-    std::int32_t s = 8 * level_diff;
-    std::int32_t d = 6 * level_diff;
-    std::int32_t c = 8 * level_diff;
-    std::int32_t it = 8 * level_diff;
-    std::int32_t a = 1 * level_diff;
-    s /= 2;
-    d *= 2;
-    c /= 2;
-    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
+    apply_level_up(self, level_diff, {4, 12, 4, 8, 1});
 }
 
 static bool thief_do_special(walker* self)
@@ -118,27 +98,16 @@ static bool thief_do_special(walker* self)
             {
                 if (self->busy > 0)
                     return false;
-                {
-                    std::int32_t howmany;
-                    std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
-                                                          80 + 4 * self->stats()->level, &howmany, self);
-                    for (auto* ob : newlist)
+                for_each_foe_in_range(self, 80 + 4 * self->stats()->level, [self](walker* ob) {
+                    if (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(ob->stats()->level))
                     {
-                        if (ob && (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(ob->stats()->level)))
-                        {
-                            ob->foe = self;
-                            ob->leader = self;
-                            if (ob->query_act_type() != ACT_CONTROL)
-                                ob->stats()->force_command(COMMAND_FOLLOW, 10 + self->sim_rng->next(self->stats()->level), 0, 0);
-                        }
+                        ob->foe = self;
+                        ob->leader = self;
+                        if (ob->act_type != ACT_CONTROL)
+                            ob->stats()->force_command(COMMAND_FOLLOW, 10 + self->sim_rng->next(self->stats()->level), 0, 0);
                     }
-                }
-                if (self->myguy)
-                    message = std::format("{}: 'Nyah Nyah!'", self->myguy->name);
-                else if (self->stats()->name.size())
-                    message = std::format("{}: 'Nyah Nyah!'", self->stats()->name);
-                else
-                    message = "THIEF: 'Nyah Nyah!'";
+                });
+                message = std::format("{}: 'Nyah Nyah!'", entity_display_name(self, "THIEF"));
                 og::sim::emit_notification(self->sim_events, message);
                 self->busy += 2;
                 break;
@@ -177,7 +146,7 @@ static bool thief_do_special(walker* self)
                                     ob->foe = nullptr;
                                 else
                                     ob->foe = self->foe;
-                                ob->set_charm_left(static_cast<short>(75 + generic * 25));
+                                ob->charm_left = (static_cast<short>(75 + generic * 25));
                                 generic2 = 0;
                             }
                             didheal++;
@@ -185,16 +154,10 @@ static bool thief_do_special(walker* self)
                     }
                     if (!didheal)
                         return false;
-                    if (self->stats()->name.size())
-                        message = self->stats()->name;
-                    else if (self->myguy && self->myguy->name.size())
-                        message = self->myguy->name;
-                    else
-                        message = "Thief";
                     if (generic2)
-                        tempstr = std::format("{} failed to charm!", message);
+                        tempstr = std::format("{} failed to charm!", entity_display_name(self, "Thief"));
                     else
-                        tempstr = std::format("{} charmed an opponent!", message);
+                        tempstr = std::format("{} charmed an opponent!", entity_display_name(self, "Thief"));
                     og::sim::emit_notification(self->sim_events, tempstr);
                     self->busy += 10;
                 }
@@ -204,19 +167,15 @@ static bool thief_do_special(walker* self)
         default:
             if (self->busy > 0)
                 return false;
-            newob = self->sim_level->add_ob(Order::FX, FAMILY_CLOUD);
+            newob = summon_entity(self, Order::FX, FAMILY_CLOUD);
             if (!newob)
                 return false;
             self->busy += 5;
             newob->ignore = 1;
             newob->lifetime = 40 + 3 * self->stats()->level;
-            newob->center_on(self);
             newob->invisibility_left = 10;
             newob->ani_type = ANI_SPIN;
-            newob->team_num = self->team_num;
-            newob->stats()->level = self->stats()->level;
             newob->damage = static_cast<float>(self->stats()->level);
-            newob->owner = self;
             break;
     }
     return true;

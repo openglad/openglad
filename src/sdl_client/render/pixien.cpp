@@ -79,7 +79,3 @@ short pixieN::next_frame()
 	return set_frame(frame++ % frames);
 }
 
-short pixieN::query_frame()
-{
-	return frame;
-}

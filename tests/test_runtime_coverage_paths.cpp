@@ -162,7 +162,7 @@ void test_treasure_core_methods_and_teleport_target_search()
     treasure standalone;
     TEST_ASSERT(standalone.act(), "treasure::act should return true");
     standalone.set_direct_frame(7);
-    TEST_ASSERT_EQ(7, standalone.query_frame(), "set_direct_frame should update frame");
+    TEST_ASSERT_EQ(7, standalone.frame, "set_direct_frame should update frame");
     walker eater_default;
     TEST_ASSERT(standalone.eat_me(&eater_default), "eat_me should safely return true without descriptor");
 

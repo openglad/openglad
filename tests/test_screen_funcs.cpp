@@ -31,7 +31,7 @@ void test_screen_first_of_found()
 
     walker* found = myscreen->first_of(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(found != nullptr, "first_of should find the soldier");
-    TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)found->query_family(), "found should be soldier");
+    TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)found->family, "found should be soldier");
 
     // Remove from oblist (don't double-delete)
     myscreen->level_data.oblist.pop_back();

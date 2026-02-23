@@ -217,13 +217,13 @@ void test_walker_set_act_type()
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->set_act_type(ACT_CONTROL);
-    TEST_ASSERT_EQ(ACT_CONTROL, (int)w->query_act_type(), "act type should be ACT_CONTROL");
+    TEST_ASSERT_EQ(ACT_CONTROL, (int)w->act_type, "act type should be ACT_CONTROL");
 
-    w->set_old_act_type(ACT_RANDOM);
-    TEST_ASSERT_EQ(ACT_RANDOM, (int)w->query_old_act_type(), "old act type should be ACT_RANDOM");
+    w->old_act_type = ACT_RANDOM;
+    TEST_ASSERT_EQ(ACT_RANDOM, (int)w->old_act_type, "old act type should be ACT_RANDOM");
 
     w->restore_act_type();
-    TEST_ASSERT_EQ(ACT_RANDOM, (int)w->query_act_type(), "restored act type should be ACT_RANDOM");
+    TEST_ASSERT_EQ(ACT_RANDOM, (int)w->act_type, "restored act type should be ACT_RANDOM");
 
 }
 REGISTER_TEST(test_walker_set_act_type);
@@ -287,7 +287,7 @@ void test_walker_set_order_family()
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->set_order_family(Order::Living, FAMILY_ARCHER);
-    TEST_ASSERT_EQ((int)FAMILY_ARCHER, (int)w->query_family(), "family should be archer");
+    TEST_ASSERT_EQ((int)FAMILY_ARCHER, (int)w->family, "family should be archer");
 
 }
 REGISTER_TEST(test_walker_set_order_family);

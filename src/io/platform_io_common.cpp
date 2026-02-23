@@ -128,21 +128,6 @@ CampaignPackageIoError remount_campaign_package_with_error()
     return mount_campaign_package_with_error(id);
 }
 
-bool mount_campaign_package(const std::string& id)
-{
-    return mount_campaign_package_with_error(id) == CampaignPackageIoError::None;
-}
-
-bool unmount_campaign_package(const std::string& id)
-{
-    return unmount_campaign_package_with_error(id) == CampaignPackageIoError::None;
-}
-
-bool remount_campaign_package()
-{
-    return remount_campaign_package_with_error() == CampaignPackageIoError::None;
-}
-
 // ---------------------------------------------------------------------------
 // Campaign/level listing
 // ---------------------------------------------------------------------------
@@ -276,30 +261,20 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
     return og::io::unzip_into_with_error(infile, outdirectory);
 }
 
-bool zip_contents(const std::string& indirectory, const std::string& outfile)
-{
-    return zip_contents_with_error(indirectory, outfile) == ArchiveIoError::None;
-}
-
-bool unzip_into(const std::string& infile, const std::string& outdirectory)
-{
-    return unzip_into_with_error(infile, outdirectory) == ArchiveIoError::None;
-}
-
 // ---------------------------------------------------------------------------
 // Campaign pack/unpack
 // ---------------------------------------------------------------------------
 
 bool unpack_campaign(const std::string& campaign_id)
 {
-    return unzip_into(get_user_path() + "campaigns/" + campaign_id + ".glad", get_user_path() + "temp/");
+    return unzip_into_with_error(get_user_path() + "campaigns/" + campaign_id + ".glad", get_user_path() + "temp/") == ArchiveIoError::None;
 }
 
 bool repack_campaign(const std::string& campaign_id)
 {
     std::string outfile = get_user_path() + "campaigns/" + campaign_id + ".glad";
     std::remove(outfile.c_str());
-    return zip_contents(get_user_path() + "temp/", outfile);
+    return zip_contents_with_error(get_user_path() + "temp/", outfile) == ArchiveIoError::None;
 }
 
 void cleanup_unpacked_campaign()
@@ -329,7 +304,7 @@ void delete_level(int id)
     std::filesystem::remove(path, ec);
     repack_campaign(campaign);
 
-    remount_campaign_package();
+    (void)remount_campaign_package_with_error();
 }
 
 void delete_campaign(const std::string& id)
@@ -381,14 +356,14 @@ CampaignLoadResult load_campaign_with_error(const std::string& campaign,
     std::string old_campaign = get_mounted_campaign();
     if(old_campaign != campaign)
     {
-        if(!unmount_campaign_package(old_campaign))
+        if(unmount_campaign_package_with_error(old_campaign) != CampaignPackageIoError::None)
         {
             LogError("campaign_load_failed reason=unmount_failed old={} requested={}\n", old_campaign, campaign);
             result.error = CampaignLoadError::UnmountFailed;
             return result;
         }
 
-        if(!mount_campaign_package(campaign))
+        if(mount_campaign_package_with_error(campaign) != CampaignPackageIoError::None)
         {
             result.error = CampaignLoadError::MountFailed;
             return result;

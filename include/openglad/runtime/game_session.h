@@ -13,16 +13,14 @@ namespace og::runtime {
 
 // GameSession: RAII root object for runtime state.
 //
-// Transitional notes:
-// - Many subsystems still reference legacy globals (myscreen, theprefs, cfg).
-//   A session can install non-owning shims for those globals, but ownership
-//   lives in the session and teardown is explicit.
+// Owns the screen and prefs objects, installs them into legacy globals
+// (myscreen, theprefs), and sets up a GameContext for RNG / sim events.
 class GameSession final {
 public:
     struct Config {
         short numviews = 1;
         // Headless sessions can skip screen allocation to avoid SDL/video init.
-        // Note: legacy shims (myscreen) will point at nullptr in this mode.
+        // Note: myscreen will be nullptr in this mode.
         bool allocate_screen = true;
         bool install_legacy_globals = true;
         bool install_global_context = true;
@@ -39,9 +37,8 @@ public:
     GameSession(GameSession&&) = delete;
     GameSession& operator=(GameSession&&) = delete;
 
-    ::screen* screen_ptr() const { return ctx_.game_screen; }
-    options* prefs_ptr() const { return ctx_.prefs; }
-    cfg_store* config() const { return ctx_.config; }
+    ::screen* screen_ptr() const;
+    options* prefs_ptr() const;
     GameContext& context() { return ctx_; }
     const GameContext& context() const { return ctx_; }
 

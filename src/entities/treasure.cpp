@@ -26,7 +26,7 @@
 #include <openglad/entities/treasure.h>
 #include <openglad/entities/walker_render.h>
 #include <openglad/entities/treasure_family_descriptor.h>
-#include <openglad/entities/treasure_family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 // pixieN include not needed; render access is through WalkerRender
@@ -100,7 +100,7 @@ walker  * treasure::find_teleport_target()
 		if (w && !w->dead)
 		{
 			if (w->query_order() == Order::Treasure &&
-			        w->query_family() == FAMILY_TELEPORTER &&
+			        w->family == FAMILY_TELEPORTER &&
 			        w->stats()->level == stats_->level)
 			{
 				//Log(" to target %d\n", number);
@@ -116,7 +116,7 @@ walker  * treasure::find_teleport_target()
 		if (w && !w->dead)
 		{
 			if (w->query_order() == Order::Treasure &&
-			        w->query_family() == FAMILY_TELEPORTER &&
+			        w->family == FAMILY_TELEPORTER &&
 			        w->stats()->level == stats_->level)
 			{
 				//Log(" to looped target %d\n", number);

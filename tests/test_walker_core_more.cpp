@@ -100,7 +100,6 @@ void test_walker_generator_fire_sets_weapon_lifetime_or_owner_paths()
 
     FixedRandom fixed_rng(1);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
@@ -155,7 +154,6 @@ void test_walker_generator_create_weapon_special_case()
 
     FixedRandom fixed_rng(1);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
@@ -190,7 +188,6 @@ void test_walker_act_guard_and_random_branch_paths()
     {
         FixedRandom rng1(1);
         GameContext c;
-        c.game_screen = myscreen;
         c.rng = &rng1;
         GlobalContextGuard guard(&c);
 
@@ -203,7 +200,6 @@ void test_walker_act_guard_and_random_branch_paths()
     {
         SequenceRandom rng_seq({0, 1, 0, 0});
         GameContext c;
-        c.game_screen = myscreen;
         c.rng = &rng_seq;
         GlobalContextGuard guard(&c);
 
@@ -229,7 +225,6 @@ void test_walker_act_guard_and_random_branch_paths()
     {
         SequenceRandom rng_seq({0, 1, 1, 5});
         GameContext c;
-        c.game_screen = myscreen;
         c.rng = &rng_seq;
         GlobalContextGuard guard(&c);
 
@@ -253,7 +248,6 @@ void test_walker_act_generate_zero_vector_and_hp_cap_paths()
     // next(3)=1 for both axes gives 0,0 to trigger the fallback lastx=1 branch.
     SequenceRandom rng_seq({59, 0, 1, 1, 0, 0, 0});
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &rng_seq;
     GlobalContextGuard guard(&c);
 
@@ -319,13 +313,12 @@ void test_walker_act_guard_else_and_act_random_turn_walk_paths()
 
     SequenceRandom rng_seq({0, 1, 1});
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &rng_seq;
     GlobalContextGuard guard(&c);
 
     actor->set_act_type(ACT_RANDOM);
     (void)actor->act();
-    TEST_ASSERT(actor->query_act_type() != ACT_FIRE, "act_random blocked fire path should not set ACT_FIRE");
+    TEST_ASSERT(actor->act_type != ACT_FIRE, "act_random blocked fire path should not set ACT_FIRE");
 
     myscreen->level_data.delete_objects();
 }
@@ -562,9 +555,9 @@ void test_walker_round6_init_fire_animate_and_misc_guards()
         return;
 
     // next_frame path (smoke coverage without touching protected state).
-    const short before = w->query_frame();
+    const short before = w->frame;
     (void)w->next_frame();
-    const short after = w->query_frame();
+    const short after = w->frame;
     (void)before;
     (void)after;
     TEST_ASSERT(true, "next_frame should be callable");
@@ -921,7 +914,7 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
     SequenceRandom rng_turn_walk({5});
     actor->sim_rng = &rng_turn_walk;
     TEST_ASSERT(actor->act(), "base ACT_RANDOM should still act when ranged attack is blocked");
-    TEST_ASSERT(actor->query_act_type() != ACT_FIRE,
+    TEST_ASSERT(actor->act_type != ACT_FIRE,
                 "blocked-ranged act_random path should not transition to ACT_FIRE");
 
     // Base walker::death() generator explosion and death_called guard.

@@ -9,15 +9,16 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/summon.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
+#include <openglad/entities/foe_query.h>
 
 #include <cmath>
-#include <list>
 
 #define BASE_GUY_HP 30
 
@@ -27,7 +28,6 @@ static bool soldier_do_special(walker* self)
 {
     walker* newob;
     std::int32_t tempx, tempy;
-    std::int32_t howmany;
     std::int32_t generic;
 
     switch (self->current_special)
@@ -44,9 +44,7 @@ static bool soldier_do_special(walker* self)
                 return false;
             break;
         case 2: // boomerang
-            newob = self->sim_level->add_ob(Order::FX, FAMILY_BOOMERANG);
-            newob->owner = self;
-            newob->team_num = self->team_num;
+            newob = summon_entity(self, Order::FX, FAMILY_BOOMERANG);
             newob->ani_type = 1;
             newob->lifetime = 30 + self->stats()->level * 12;
             newob->stats()->hitpoints += static_cast<float>(self->stats()->level) * 12.0f;
@@ -71,26 +69,16 @@ static bool soldier_do_special(walker* self)
             self->stats()->add_command(COMMAND_WALK, 1, -1, 0);
             self->stats()->add_command(COMMAND_WALK, 1, -1, -1);
 
-            {
-                std::list<walker*> newlist = self->sim_level->find_foes_in_range(
-                    self->sim_level->oblist,
-                    32 + self->stats()->level * 2, &howmany, self);
-
-                for (auto* w : newlist)
-                {
-                    if (w)
-                    {
-                        tempx = w->xpos - self->xpos;
-                        if (tempx)
-                            tempx = tempx / (abs(tempx));
-                        tempy = w->ypos - self->ypos;
-                        if (tempy)
-                            tempy = tempy / (abs(tempy));
-                        self->attack(w);
-                        w->stats()->force_command(COMMAND_WALK, 8, tempx, tempy);
-                    }
-                }
-            }
+            for_each_foe_in_range(self, 32 + self->stats()->level * 2, [&](walker* w) {
+                tempx = w->xpos - self->xpos;
+                if (tempx)
+                    tempx = tempx / (abs(tempx));
+                tempy = w->ypos - self->ypos;
+                if (tempy)
+                    tempy = tempy / (abs(tempy));
+                self->attack(w);
+                w->stats()->force_command(COMMAND_WALK, 8, tempx, tempy);
+            });
             break;
         case 4: // Disarm opponent
             if (self->busy)
@@ -99,20 +87,12 @@ static bool soldier_do_special(walker* self)
                 return false;
 
             {
-                std::list<walker*> newlist = self->sim_level->find_foes_in_range(
-                    self->sim_level->oblist, 28, &howmany, self);
-
                 generic = 0;
-
-                for (auto* w : newlist)
-                {
-                    if (w)
-                    {
-                        if (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(w->stats()->level))
-                            w->busy += 6.0f * static_cast<float>(self->stats()->level - w->stats()->level + 1);
-                        generic = 1;
-                    }
-                }
+                for_each_foe_in_range(self, 28, [&](walker* w) {
+                    if (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(w->stats()->level))
+                        w->busy += 6.0f * static_cast<float>(self->stats()->level - w->stats()->level + 1);
+                    generic = 1;
+                });
 
                 if (generic)
                 {
@@ -174,13 +154,8 @@ static void soldier_on_create(walker* self)
 
 static void soldier_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 13.0f * levmult;
-    self->stats()->max_magicpoints += 8.0f * levmult;
+    apply_difficulty_scaling(self, level, {13.0f, 8.0f, 5.0f, 2.0f});
     self->weapons_left = static_cast<short>((level + 1) / 2);
-    self->damage += 5.0f * level_f;
-    self->stats()->armor += 2.0f * levmult;
 }
 
 static const char* const soldier_names[] = {"Lothar", "Arthur", "Uther", "Achilles", "Lu Bu", "Wallace", "Leonidas", "Attila", "Alexander", "Ajax", "Nestor", "Priam", "Hector", "Tom", "Bigfoot"};

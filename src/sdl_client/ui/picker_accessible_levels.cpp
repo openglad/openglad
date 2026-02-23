@@ -16,7 +16,7 @@
  */
 
 #include <openglad/ui/level_picker.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/legacy/base.h>
 #include <algorithm>
 #include <list>
 #include <set>
@@ -27,7 +27,7 @@
 // Get list of accessible levels (cleared levels + their exits)
 std::vector<int> get_accessible_levels()
 {
-    screen* game = ctx().active_screen() ? ctx().active_screen() : myscreen;
+    screen* game = myscreen;
     if (!game) {
         return {1};
     }

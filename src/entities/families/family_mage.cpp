@@ -9,13 +9,14 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
+#include <openglad/entities/summon.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
-
+#include <openglad/entities/foe_query.h>
 
 #include <format>
 #include <string>
@@ -34,14 +35,8 @@ static bool mage_handle_teleport(walker* self)
 
 static bool mage_check_special_ai(living* self)
 {
-    std::int32_t howmany = 0;
-    self->sim_level->find_foes_in_range(self->sim_level->oblist,
-                                 110, &howmany, self);
-    if (howmany < 1)
-        return true;
-    if (howmany > 3)
-        return true;
-    return false;
+    std::int32_t howmany = count_foes_in_range(self, 110);
+    return howmany < 1 || howmany > 3;
 }
 
 static void mage_hit_response(statistics* stats, walker* foe)
@@ -80,29 +75,12 @@ static void mage_hit_response(statistics* stats, walker* foe)
 
 static void mage_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 7.0f * levmult;
-    self->stats()->max_magicpoints += 14.0f * levmult;
-    self->damage += 3.0f * level_f;
-    self->stats()->armor += levmult / 2.0f;
+    apply_difficulty_scaling(self, level, {7.0f, 14.0f, 3.0f, 0.5f});
 }
 
 static void mage_level_up(guy* self, std::int32_t level_diff)
 {
-    std::int32_t s = 8 * level_diff;
-    std::int32_t d = 6 * level_diff;
-    std::int32_t c = 8 * level_diff;
-    std::int32_t it = 8 * level_diff;
-    std::int32_t a = 1 * level_diff;
-    s /= 2;
-    c /= 2;
-    it *= 2;
-    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
+    apply_level_up(self, level_diff, {4, 6, 4, 16, 1});
 }
 
 static bool mage_do_special(walker* self)
@@ -136,7 +114,7 @@ static bool mage_do_special(walker* self)
                     walker* ob = uptr.get();
                     if (ob &&
                             ob->query_order() == Order::FX &&
-                            ob->query_family() == FAMILY_MARKER &&
+                            ob->family == FAMILY_MARKER &&
                             ob->owner == self &&
                             !ob->dead)
                     {
@@ -151,11 +129,9 @@ static bool mage_do_special(walker* self)
                 generic = 0; // force new placement, for now
                 if (!generic) // didn't remove a marker, so place one
                 {
-                    newob = self->sim_level->add_ob(Order::FX, FAMILY_MARKER);
+                    newob = summon_entity(self, Order::FX, FAMILY_MARKER);
                     if (!newob)
                         return false;
-                    newob->owner = self;
-                    newob->center_on(self);
                     if (self->myguy)
                         newob->lifetime = self->myguy->intelligence / 33;
                     else
@@ -269,12 +245,9 @@ static bool mage_do_special(walker* self)
             self->busy += 5;
             for (auto* ob : newlist)
             {
-                newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION);
+                newob = summon_entity(self, Order::FX, FAMILY_EXPLOSION);
                 if (!newob)
                     return false;
-                newob->owner = self;
-                newob->team_num = self->team_num;
-                newob->stats()->level = self->stats()->level;
                 newob->damage = static_cast<float>(generic);
                 newob->center_on(ob);
                 og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);

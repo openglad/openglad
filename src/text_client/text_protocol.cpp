@@ -35,7 +35,7 @@ static void json_entity(std::ostream& os, const walker* w, int index)
 {
     os << "{\"id\":" << index
        << ",\"order\":" << static_cast<int>(w->query_order())
-       << ",\"family\":" << static_cast<int>(w->query_family())
+       << ",\"family\":" << static_cast<int>(w->family)
        << ",\"team\":" << static_cast<int>(w->team_num)
        << ",\"x\":" << w->xpos
        << ",\"y\":" << w->ypos
@@ -155,7 +155,6 @@ int run_text_protocol_session(const TextProtocolArgs& args)
 
     // Set up GameContext minimally
     GameContext text_ctx;
-    text_ctx.config = &cfg;
     text_ctx.rng = &entity_rng;
     text_ctx.sim_events = std::make_unique<og::sim::SimEventLog>();
     set_global_context(&text_ctx);

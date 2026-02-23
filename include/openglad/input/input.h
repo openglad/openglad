@@ -192,9 +192,20 @@ class JoyData
     bool hasButtonSet(int key_enum) const;
 };
 
+// Input state globals (defined in input.cpp)
+extern JoyData player_joy[4];
+extern int player_keys[4][NUM_KEYS];
+extern int raw_key;
+extern std::string raw_text_input;
+extern short key_press_event;
+extern short text_input_event;
+extern short scroll_amount;
+extern bool input_continue;
 
-bool playerHasJoystick(int player_num);
-void disablePlayerJoystick(int player_num);
+// Inline trivial accessors for joystick/key/input state
+inline bool playerHasJoystick(int player_num) { return (player_joy[player_num].index >= 0); }
+inline void disablePlayerJoystick(int player_num) { player_joy[player_num].index = -1; }
+
 void resetJoystick(int player_num);
 bool isPlayerHoldingKey(int player_index, int key_enum);
 bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event);
@@ -211,16 +222,21 @@ void handle_text_event(const SDL_Event& event);
 void handle_mouse_event(const SDL_Event& event);
 void handle_joy_event(const SDL_Event& event);
 
-
 // Takes SDLK (SDL_Keycode) values
 void sendFakeKeyDownEvent(int keycode);
 void sendFakeKeyUpEvent(int keycode);
 
-int query_key();                                                            // return last keypress
-const char* query_text_input();                                                            // return last text input
-
-bool query_input_continue();
-short get_and_reset_scroll_amount();
+inline int query_key() { return raw_key; }
+inline const char* query_text_input() {
+    if (raw_text_input.empty()) return nullptr;
+    return raw_text_input.c_str();
+}
+inline bool query_input_continue() { return input_continue; }
+inline short get_and_reset_scroll_amount() {
+    short temp = scroll_amount;
+    scroll_amount = 0;
+    return temp;
+}
 
 #ifdef USE_TOUCH_INPUT
 
@@ -253,30 +269,45 @@ bool input_touch_has_alternate();
 #endif
 #endif
 
-bool query_key_event(int key, const SDL_Event& event);
-bool isAnyPlayerKey(SDLKey key);
-bool isPlayerKey(int player_num, SDLKey key);
+inline bool query_key_event(int key, const SDL_Event& event) {
+    if (event.type == SDL_KEYDOWN)
+        return (event.key.keysym.sym == key);
+    return false;
+}
+
+inline bool isAnyPlayerKey(SDLKey key) {
+    for (int player_num = 0; player_num < 4; player_num++)
+        for (int i = 0; i < NUM_KEYS; i++)
+            if (player_keys[player_num][i] == key)
+                return true;
+    return false;
+}
+
+inline bool isPlayerKey(int player_num, SDLKey key) {
+    for (int i = 0; i < NUM_KEYS; i++)
+        if (player_keys[player_num][i] == key)
+            return true;
+    return false;
+}
 
 SDL_Event wait_for_key_event();
 void quit_if_quit_event(const SDL_Event& event);
 
-bool isKeyboardEvent(const SDL_Event& event);
-bool isJoystickEvent(const SDL_Event& event);
+inline bool isKeyboardEvent(const SDL_Event& event) { return (event.type == SDL_KEYDOWN); }
+inline bool isJoystickEvent(const SDL_Event& event) {
+    return (event.type == SDL_JOYAXISMOTION || event.type == SDL_JOYHATMOTION || event.type == SDL_JOYBUTTONDOWN);
+}
 
-void clear_events();  // Clears the SDL event queue
+void clear_events();
 
 void assignKeyFromWaitEvent(int player_num, int key_enum);
 
-void clear_keyboard();                                              // set keyboard to none pressed
-void wait_for_key(int somekey); // wait for key SOMEKEY
-short query_key_press_event();                       //query_ & clear_key_press_event
-void clear_key_press_event();                       // detect a key press :)
-short query_text_input_event();                       //query_ & clear_key_press_event
-void clear_text_input_event();                       // detect a key press :)
-bool query_key_code(int code);                       // OBSOLETE, use query_keyboard
-void clear_key_code(int code);
-void enable_keyrepeat();
-void disable_keyrepeat();
+void clear_keyboard();
+void wait_for_key(int somekey);
+inline short query_key_press_event() { return key_press_event; }
+inline void clear_key_press_event() { key_press_event = 0; }
+inline short query_text_input_event() { return text_input_event; }
+inline void clear_text_input_event() { text_input_event = 0; raw_text_input.clear(); }
 void init_input();
 
 void grab_mouse();
@@ -298,8 +329,10 @@ struct MouseState
 	    }
 	};
 
+extern MouseState mouse_state;
+
 MouseState& query_mouse();
-MouseState& query_mouse_no_poll();
+inline MouseState& query_mouse_no_poll() { return mouse_state; }
 
 unsigned char convert_to_ascii(int scancode);
 

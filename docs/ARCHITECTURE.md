@@ -35,7 +35,7 @@ openglad/
 │   ├── input/              Input handling and button types
 │   ├── ui/                 Menu state machines and view models
 │   ├── platform/           Platform I/O abstraction
-│   └── legacy/             Transitional headers (base.h, graph.h, etc.)
+│   └── legacy/             Transitional headers (base.h, etc.)
 │
 ├── src/                    Private implementation
 │   ├── core/               combat_math.cpp, stats.cpp, util.cpp
@@ -317,12 +317,11 @@ Dependencies flow **inward toward purity**. Outer layers depend on inner layers;
 
 ### Enforcement
 
-Two build-time checks enforce these boundaries:
+A build-time check enforces these boundaries:
 
-1. **`check_graph_includes.sh`** — The legacy umbrella header `graph.h` has an **empty** allowlist. No code may include it.
-2. **`check_vendor_leaks.sh`** — Vendor headers (physfs, libzip, libyaml, zipint.h) may only appear in `src/io/`; micropather.h only in `src/entities/`. Public headers under `include/openglad/` must never include vendor headers.
+1. **`check_vendor_leaks.sh`** — Vendor headers (physfs, libzip, libyaml, zipint.h) may only appear in `src/io/`; micropather.h only in `src/entities/`. Public headers under `include/openglad/` must never include vendor headers.
 
-Both checks run as custom CMake targets (`check_graph_h_includes`, `check_vendor_leaks`) that execute before the `og_game` aggregate target.
+This check runs as a custom CMake target (`check_vendor_leaks`) that executes before the `og_game` aggregate target.
 
 ---
 

@@ -1,4 +1,5 @@
 #include <openglad/core/stats.h>
+#include <openglad/data/gparser.h>
 #include <openglad/data/pixie_data.h>
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
@@ -57,7 +58,7 @@ void test_stats_right_walk_turn_right_adds_walk_command_all_enddirs()
     walker w(px);
     w.sim_level = &myscreen->level_data;
     w.sim_rng = ctx().rng;
-    w.sim_config = ctx().config;
+    w.sim_config = &cfg;
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
     w.curdir = FACE_UP;
@@ -117,10 +118,10 @@ void test_stats_direct_walk_grid_passability_branches()
     // fire_check -> create_weapon -> sim_level->add_ob() doesn't segfault.
     w.sim_level = &myscreen->level_data;
     w.sim_rng = ctx().rng;
-    w.sim_config = ctx().config;
+    w.sim_config = &cfg;
     foe.sim_level = &myscreen->level_data;
     foe.sim_rng = ctx().rng;
-    foe.sim_config = ctx().config;
+    foe.sim_config = &cfg;
 
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
@@ -166,7 +167,7 @@ void test_stats_right_walk_forward_normalization_and_forward_blocked_turn_branch
     walker w(px);
     w.sim_level = &myscreen->level_data;
     w.sim_rng = ctx().rng;
-    w.sim_config = ctx().config;
+    w.sim_config = &cfg;
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
     w.curdir = FACE_UP;
@@ -206,7 +207,7 @@ void test_stats_blocked_direction_switch_tables_all_cases_round6()
     walker w(px);
     w.sim_level = &myscreen->level_data;
     w.sim_rng = ctx().rng;
-    w.sim_config = ctx().config;
+    w.sim_config = &cfg;
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE * 4, GRID_SIZE * 4);
 

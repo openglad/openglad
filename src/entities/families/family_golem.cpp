@@ -16,12 +16,7 @@
 
 static void golem_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 18.0f * levmult;
-    self->stats()->max_magicpoints += 5.0f * levmult;
-    self->damage += 7.0f * level_f;
-    self->stats()->armor += 4.0f * levmult;
+    apply_difficulty_scaling(self, level, {18.0f, 5.0f, 7.0f, 4.0f});
 }
 
 const FamilyDescriptor& describe_family_golem()

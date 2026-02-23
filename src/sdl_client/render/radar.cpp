@@ -205,8 +205,8 @@ short radar::draw(LevelData* data)
             oborder = ob->query_order();
 			do_show = 0; // don't show, by default
 			if ((oborder == Order::Living || oborder == Order::Weapon
-			            || (oborder == Order::Treasure && (ob->query_family() == FAMILY_LIFE_GEM))
-			            || (oborder == Order::Treasure && (ob->query_family() == FAMILY_EXIT))
+			            || (oborder == Order::Treasure && (ob->family == FAMILY_LIFE_GEM))
+			            || (oborder == Order::Treasure && (ob->family == FAMILY_EXIT))
 			            || (oborder == Order::Generator && can_see)
 			           )
 			        && (obteam==ob->team_num || ob->invisibility_left < 1 || can_see)
@@ -283,7 +283,7 @@ short radar::draw(LevelData* data)
 		if (ob && !ob->dead)
 		{
 			oborder  = ob->query_order();
-			obfamily = ob->query_family();
+			obfamily = ob->family;
 
 			do_show = 0; // don't show, by default
 			if (oborder == Order::Treasure)

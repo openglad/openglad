@@ -100,7 +100,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
 	        switch(ob->query_order())
 	        {
 	            case Order::Treasure:
-	                if(ob->query_family() == FAMILY_EXIT)
+	                if(ob->family == FAMILY_EXIT)
 	                {
 	                    exits.push_back(ob->stats()->level);
 	                }
@@ -369,15 +369,15 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	int entry3_index = 8;
 	
 	button buttons[] = {
-        button("prev", "PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav::DownLeftRight(next_index, entry1_index, id_index)),
-        button("next", "NEXT", KEYSTATE_UNKNOWN, next.x, next.y, next.w, next.h, 0, -1 , MenuNav::UpLeftRight(prev_index, entry3_index, cancel_index)),
-        button("ok", "OK", KEYSTATE_UNKNOWN, choose.x, choose.y, choose.w, choose.h, 0, -1 , MenuNav::UpLeft(id_index, cancel_index), true),
-        button("cancel", "CANCEL", KEYSTATE_ESCAPE, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav::UpLeftRight(id_index, next_index, choose_index)),
-        button("delete", "DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav::DownLeft(choose_index, id_index), true),
-        button("enter_id", "ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav::DownLeftRight(cancel_index, prev_index, delete_index)),
-        button("entry_1", "1", KEYSTATE_UNKNOWN, 10, 15, 40, (53 - 12), 0, -1 , MenuNav::DownRight(entry2_index, prev_index)),
-        button("entry_2", "2", KEYSTATE_UNKNOWN, 10, 15 + (53 + 12), 40, (53 - 12), 0, -1 , MenuNav::UpDownRight(entry1_index, entry3_index, next_index)),
-        button("entry_3", "3", KEYSTATE_UNKNOWN, 10, 15 + (53 + 12)*2, 40, (53 - 12), 0, -1 , MenuNav::UpRight(entry2_index, next_index)),
+        button("prev", "PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav{.down=next_index, .left=entry1_index, .right=id_index}),
+        button("next", "NEXT", KEYSTATE_UNKNOWN, next.x, next.y, next.w, next.h, 0, -1 , MenuNav{.up=prev_index, .left=entry3_index, .right=cancel_index}),
+        button("ok", "OK", KEYSTATE_UNKNOWN, choose.x, choose.y, choose.w, choose.h, 0, -1 , MenuNav{.up=id_index, .left=cancel_index}, true),
+        button("cancel", "CANCEL", KEYSTATE_ESCAPE, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav{.up=id_index, .left=next_index, .right=choose_index}),
+        button("delete", "DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav{.down=choose_index, .left=id_index}, true),
+        button("enter_id", "ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav{.down=cancel_index, .left=prev_index, .right=delete_index}),
+        button("entry_1", "1", KEYSTATE_UNKNOWN, 10, 15, 40, (53 - 12), 0, -1 , MenuNav{.down=entry2_index, .right=prev_index}),
+        button("entry_2", "2", KEYSTATE_UNKNOWN, 10, 15 + (53 + 12), 40, (53 - 12), 0, -1 , MenuNav{.up=entry1_index, .down=entry3_index, .right=next_index}),
+        button("entry_3", "3", KEYSTATE_UNKNOWN, 10, 15 + (53 + 12)*2, 40, (53 - 12), 0, -1 , MenuNav{.up=entry2_index, .right=next_index}),
 
 	};
     

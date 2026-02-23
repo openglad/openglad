@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
+#include <openglad/entities/summon.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
@@ -17,27 +18,15 @@
 
 static bool ghost_check_special_ai(living* self)
 {
-    if (self->foe)
-    {
-        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
-        return (distance < 130);
-    }
-    self->foe = self->sim_level->find_near_foe(self);
-    if (!self->foe)
-        return false;
-    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
-    return (distance < 130);
+    return check_special_ai_distance(self, 130);
 }
 
 static bool ghost_do_special(walker* self)
 {
-    walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_GHOST_SCARE);
+    walker* newob = summon_entity(self, Order::FX, FAMILY_GHOST_SCARE);
     newob->ani_type = ANI_SCARE;
     newob->setxy(self->xpos + self->sizex/2 - newob->sizex/2,
                  self->ypos + self->sizey/2 - newob->sizey/2);
-    newob->owner = self;
-    newob->stats()->level = self->stats()->level;
-    newob->team_num = self->team_num;
     return true;
 }
 

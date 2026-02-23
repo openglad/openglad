@@ -391,9 +391,9 @@ REGISTER_TEST(test_treasure_batch7_explicit_fxlist_teleporter_branches);
 void test_treasure_set_direct_frame_updates_frame_without_render_component()
 {
     treasure t;
-    TEST_ASSERT_EQ(0, (int)t.query_frame(), "new treasure should start on frame 0");
+    TEST_ASSERT_EQ(0, (int)t.frame, "new treasure should start on frame 0");
     t.set_direct_frame(7);
-    TEST_ASSERT_EQ(7, (int)t.query_frame(), "set_direct_frame should update frame even without render component");
+    TEST_ASSERT_EQ(7, (int)t.frame, "set_direct_frame should update frame even without render component");
 }
 REGISTER_TEST(test_treasure_set_direct_frame_updates_frame_without_render_component);
 

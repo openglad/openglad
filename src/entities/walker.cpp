@@ -26,9 +26,8 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/weapon_family_descriptor.h>
-#include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/entities/generator_family_descriptor.h>
-#include <openglad/entities/generator_family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/walker_render.h>
@@ -266,7 +265,7 @@ bool walker::init_fire(short xdir, short ydir)
 	{
 		//if (family==FAMILY_TOWER1)
 		//  enddir = curdir;
-		if (query_act_type() == ACT_CONTROL)
+		if (act_type == ACT_CONTROL)
 			return 0;
 		else
 			return turn(enddir);
@@ -428,7 +427,7 @@ walker  * walker::fire()
 
 		// *** Ranged combat ***
 		{
-			const auto* wfd = get_weapon_family_descriptor(weapon->query_family());
+			const auto* wfd = get_weapon_family_descriptor(weapon->family);
 			og::sim::emit_sound(sim_events, static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
 		}
 		if (order == Order::Generator)
@@ -729,21 +728,6 @@ short walker::restore_act_type()
 	return old_act_type;
 }
 
-short walker::query_act_type() const
-{
-	return act_type;
-}
-
-short walker::set_old_act_type(short num)
-{
-	old_act_type = static_cast<char>(num);
-	return num;
-}
-
-short walker::query_old_act_type() const
-{
-	return old_act_type;
-}
 
 bool walker::collide(walker  *ob)
 {
@@ -1014,25 +998,6 @@ bool walker::fire_check(short xdelta, short ydelta)
 		if (ydelta != 0)
 			ydir = (ydelta > 0) ? 1 : -1;
 
-	/* // why are we assuming walls don't matter in these two cases?
-	  if (!xdelta || !ydelta) // aligned on a major axis
-	  {
-	         weapon->dead = 1;
-	         return 1;
-	  }
-	 
-	  if ( abs( abs(xdelta) - abs(ydelta) ) < 3)
-	  {
-	         weapon->dead = 1;
-	         return 1;
-	  }
-	  else
-	  {
-	         weapon->dead = 1;
-	//         return 0;
-	  }
-	*/
-
 	// Run weapon through where it would go if all went well ..
 	for (i=0; i < weapon->lineofsight; i++)
 	{
@@ -1055,27 +1020,6 @@ bool walker::fire_check(short xdelta, short ydelta)
 	// range and didn't hit anyone ..
 	weapon->dead = 1;
 	return 0;
-
-	// Determine # of loops to look for guy
-	if ( abs(xdelta) > abs(ydelta) )
-		loops = abs(xdelta);
-	else
-		loops = abs(ydelta);
-
-	// * 16 is to match with grid coords
-	for (i=0; i <= loops; i+=8)  // half a grid square
-		if ( !sim_level->query_grid_passable(xpos+i*xdir, ypos+i*ydir, weapon) )
-		{
-			weapon->dead = 1;
-			//foe = nullptr;  // can't hit this guy
-			//stats_->try_command(COMMAND_RANDOM_WALK, sim_rng->next(8));
-			return 0;
-		}
-	weapon->dead = 1;
-
-	// We have a good chance of hitting, so ..
-	return 1;
-
 }
 
 /****************************************************
@@ -1271,7 +1215,7 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	short xcenter, ycenter;
 	short tempxpos, tempypos;
 	short reset = 0;
-	short tempact = query_act_type();;
+	short tempact = act_type;;
 
 	// First remove us from the collision table..
 	if (myobmap != nullptr)
@@ -1280,7 +1224,7 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	if (order == whatorder) // same object type
 	{
 		reset = 1;
-		tempact = query_act_type();
+		tempact = act_type;
 	}
 
 	// Reset bit flags
@@ -1647,6 +1591,15 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	
 	// If we're a hired guy in allied mode, then we're friendly with team 0 (red)
 	return (has_myguy == 1 && team == 0);
+}
+
+std::string_view entity_display_name(const walker* w, std::string_view fallback)
+{
+	if (w->myguy && !w->myguy->name.empty())
+		return w->myguy->name;
+	if (!w->stats()->name.empty())
+		return w->stats()->name;
+	return fallback;
 }
 
 // attach_render, set_data, bmp_data, set_frame, set_direct_frame, ~walker

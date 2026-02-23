@@ -21,9 +21,8 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/weapon_family_descriptor.h>
-#include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/entities/effect_family_descriptor.h>
-#include <openglad/entities/effect_family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
@@ -91,7 +90,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
     if(sim_config && sim_config->is_on("effects", "hit_anim"))
     {
         // Create hit effect
-        const auto* efd = (query_order() == Order::FX) ? get_effect_family_descriptor(query_family()) : nullptr;
+        const auto* efd = (query_order() == Order::FX) ? get_effect_family_descriptor(family) : nullptr;
         if(query_order() != Order::FX || (efd && efd->creates_hit_effect))
         {
            walker* newob = sim_level->add_ob(Order::FX, FAMILY_HIT);
@@ -176,7 +175,7 @@ bool walker::attack(walker  *target)
     float tempdamage = get_base_damage(this);
     short getscore=0;
     Order targetorder = target->query_order();
-    char targetfamily= target->query_family();
+    char targetfamily= target->family;
     walker *attacker; // us or our owner ..
     static short tom = 0;
 
@@ -270,7 +269,7 @@ bool walker::attack(walker  *target)
             death();
         }
         //special effects
-        const auto* wfd = get_weapon_family_descriptor(query_family());
+        const auto* wfd = get_weapon_family_descriptor(family);
         if (wfd && wfd->on_hit_target)
             wfd->on_hit_target(this, target, owner);
 
@@ -340,7 +339,7 @@ bool walker::attack(walker  *target)
                         message = std::format("{} Died!", target->myguy->name);
                     else
                     {
-                        const auto* fd = get_family_descriptor(target->query_family());
+                        const auto* fd = get_family_descriptor(target->family);
                         message = fd ? fd->death_message : "SOMEONE DIED";
                     }
                     og::sim::emit_notification(sim_events, message);

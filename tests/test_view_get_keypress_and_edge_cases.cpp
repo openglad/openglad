@@ -1,3 +1,4 @@
+#include <openglad/data/gparser.h>
 #include <openglad/data/pixie_data.h>
 #include <openglad/entities/walker.h>
 #include <openglad/input/input.h>
@@ -110,7 +111,7 @@ void test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns()
     walker orphan(px);
     orphan.sim_level = &myscreen->level_data;
     orphan.sim_rng = ctx().rng;
-    orphan.sim_config = ctx().config;
+    orphan.sim_config = &cfg;
     orphan.team_num = 0;
     orphan.real_team_num = 255;
     orphan.dead = 0;

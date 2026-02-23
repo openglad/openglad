@@ -36,19 +36,19 @@ constexpr int PIX_PER_CHAR = 6;
 
 button yes_or_no_buttons[] =
     {
-        button("yes", "YES", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, YES_VALUE, MenuNav::Right(1)),
-        button("no", "NO", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, NO_VALUE, MenuNav::Left(0))
+        button("yes", "YES", KEYSTATE_UNKNOWN,  70, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), YES_VALUE, MenuNav{.right=1}),
+        button("no", "NO", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), NO_VALUE, MenuNav{.left=0})
     };
 
 button no_or_yes_buttons[] =
     {
-        button("no", "NO", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, NO_VALUE, MenuNav::Right(1)),
-        button("yes", "YES", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, YES_VALUE, MenuNav::Left(0))
+        button("no", "NO", KEYSTATE_UNKNOWN,  70, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), NO_VALUE, MenuNav{.right=1}),
+        button("yes", "YES", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), YES_VALUE, MenuNav{.left=0})
     };
 
 button popup_dialog_buttons[] =
     {
-        button("ok", "OK", KEYSTATE_ESCAPE,  160 - 25, 130, 50, 20, YES_OR_NO, YES_VALUE, MenuNav::None())
+        button("ok", "OK", KEYSTATE_ESCAPE,  160 - 25, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), YES_VALUE, MenuNav{})
     };
 
 // Compute centered dialog bounds from a title and message lines.

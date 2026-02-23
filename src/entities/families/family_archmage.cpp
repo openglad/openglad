@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
+#include <openglad/entities/summon.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
@@ -133,19 +134,7 @@ static void archmage_hit_response(statistics* stats, walker* foe)
 
 static void archmage_level_up(guy* self, std::int32_t level_diff)
 {
-    std::int32_t s = 8 * level_diff;
-    std::int32_t d = 6 * level_diff;
-    std::int32_t c = 8 * level_diff;
-    std::int32_t it = 8 * level_diff;
-    std::int32_t a = 1 * level_diff;
-    s /= 2;
-    c /= 2;
-    it *= 2;
-    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
+    apply_level_up(self, level_diff, {4, 6, 4, 16, 1});
 }
 
 static bool archmage_do_special(walker* self)
@@ -178,7 +167,7 @@ static bool archmage_do_special(walker* self)
                     walker* ob = uptr.get();
                     if (ob &&
                             ob->query_order() == Order::FX &&
-                            ob->query_family() == FAMILY_MARKER &&
+                            ob->family == FAMILY_MARKER &&
                             ob->owner == self &&
                             !ob->dead)
                     {
@@ -191,11 +180,9 @@ static bool archmage_do_special(walker* self)
                         break;
                     }
                 }
-                newob = self->sim_level->add_ob(Order::FX, FAMILY_MARKER);
+                newob = summon_entity(self, Order::FX, FAMILY_MARKER);
                 if (!newob)
                     return false;
-                newob->owner = self;
-                newob->center_on(self);
                 if (self->myguy)
                     newob->lifetime = self->myguy->intelligence / 33;
                 else
@@ -249,12 +236,9 @@ static bool archmage_do_special(walker* self)
                     self->busy += 5;
                     for (auto* ob : newlist)
                     {
-                        newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION);
+                        newob = summon_entity(self, Order::FX, FAMILY_EXPLOSION);
                         if (!newob)
                             return false;
-                        newob->owner = self;
-                        newob->team_num = self->team_num;
-                        newob->stats()->level = self->stats()->level;
                         newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                         newob->damage = static_cast<float>(generic);
                         newob->center_on(ob);
@@ -273,11 +257,7 @@ static bool archmage_do_special(walker* self)
                         self->myguy->total_shots++;
                         self->myguy->scen_shots++;
                     }
-                    newob = self->sim_level->add_ob(Order::FX, FAMILY_CHAIN);
-                    newob->center_on(self);
-                    newob->owner = self;
-                    newob->stats()->level = self->stats()->level;
-                    newob->team_num = self->team_num;
+                    newob = summon_entity(self, Order::FX, FAMILY_CHAIN);
                     generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[2]));
                     generic /= 2;
                     self->stats()->magicpoints -= static_cast<float>(generic);
@@ -452,7 +432,7 @@ static bool archmage_do_special(walker* self)
                     if (generic2 < 10) break;
                     if ((ob->real_team_num == 255) &&
                         (ob->query_order() == Order::Living) &&
-                        (ob->charm_left() <= 10))
+                        (ob->charm_left <= 10))
                     {
                         generic2 -= 10;
                         generic = self->stats()->level - ob->stats()->level;
@@ -460,14 +440,14 @@ static bool archmage_do_special(walker* self)
                         {
                             ob->real_team_num = ob->team_num;
                             ob->team_num = static_cast<unsigned char>(self->sim_rng->next(8));
-                            ob->set_charm_left(static_cast<short>(compute_charm_duration(generic, *self->sim_rng)));
+                            ob->charm_left = (static_cast<short>(compute_charm_duration(generic, *self->sim_rng)));
                         }
                         else
                         {
                             ob->real_team_num = ob->team_num;
                             ob->team_num = self->team_num;
                             ob->foe = nullptr;
-                            ob->set_charm_left(static_cast<short>(compute_charm_duration(generic, *self->sim_rng)));
+                            ob->charm_left = (static_cast<short>(compute_charm_duration(generic, *self->sim_rng)));
                         }
                         didheal++;
                         controlled_targets++;
@@ -476,13 +456,7 @@ static bool archmage_do_special(walker* self)
             }
             if (!didheal)
                 return false;
-            if (self->stats()->name.size())
-                message = self->stats()->name;
-            else if (self->myguy && self->myguy->name.size())
-                message = self->myguy->name;
-            else
-                message = "ArchMage";
-            tempstr = std::format("{} has controlled {} men", message, didheal);
+            tempstr = std::format("{} has controlled {} men", entity_display_name(self, "ArchMage"), didheal);
             og::sim::emit_notification(self->sim_events, tempstr);
             // Target budget starts at mp_after_base_cost + 10, so the first
             // control is covered by base special cost and extras cost 10 MP each.

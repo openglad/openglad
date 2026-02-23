@@ -163,7 +163,7 @@ short new_score_panel(screen* s, short /*do_it*/)
             else if (!control->stats()->name.empty())
                 tempname = control->stats()->name;
             else
-                tempname = namelist[static_cast<int>(control->query_family())];
+                tempname = namelist[static_cast<int>(control->family)];
 
             message = tempname;
 
@@ -250,10 +250,10 @@ short new_score_panel(screen* s, short /*do_it*/)
                 }
 
                 if (control->shifter_down &&
-                    s->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] != "NONE")
-                    message = std::format("SPC: {}", s->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
+                    s->alternate_name[static_cast<int>(control->family)][static_cast<int>(control->current_special)] != "NONE")
+                    message = std::format("SPC: {}", s->alternate_name[static_cast<int>(control->family)][static_cast<int>(control->current_special)]);
                 else
-                    message = std::format("SPC: {}", s->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
+                    message = std::format("SPC: {}", s->special_name[static_cast<int>(control->family)][static_cast<int>(control->current_special)]);
 
                 if (control->stats()->magicpoints >= control->stats()->special_cost[static_cast<int>(control->current_special)])
                     mytext.write_xy(lm+2, special_y, message.c_str(), text_color, static_cast<short>(1));
@@ -261,9 +261,9 @@ short new_score_panel(screen* s, short /*do_it*/)
                     mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
 
 #ifdef USE_TOUCH_INPUT
-                if (s->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] != "NONE")
+                if (s->alternate_name[static_cast<int>(control->family)][static_cast<int>(control->current_special)] != "NONE")
                 {
-                    message = std::format("ALT: {}", s->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
+                    message = std::format("ALT: {}", s->alternate_name[static_cast<int>(control->family)][static_cast<int>(control->current_special)]);
                     if (control->stats()->magicpoints >= control->stats()->special_cost[static_cast<int>(control->current_special)])
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), text_color, static_cast<short>(1));
                     else

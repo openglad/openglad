@@ -73,16 +73,7 @@ static bool archer_do_special(walker* self)
 
 static bool archer_check_special_ai(living* self)
 {
-    if (self->foe)
-    {
-        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
-        return (distance < 130);
-    }
-    self->foe = self->sim_level->find_near_foe(self);
-    if (!self->foe)
-        return false;
-    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
-    return (distance < 130);
+    return check_special_ai_distance(self, 130);
 }
 
 static void archer_hit_response(statistics* stats, walker* foe)
@@ -109,28 +100,12 @@ static void archer_hit_response(statistics* stats, walker* foe)
 
 static void archer_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 11.0f * levmult;
-    self->stats()->max_magicpoints += 12.0f * levmult;
-    self->damage += 4.0f * level_f;
-    self->stats()->armor += levmult;
+    apply_difficulty_scaling(self, level, {11.0f, 12.0f, 4.0f, 1.0f});
 }
 
 static void archer_level_up(guy* self, std::int32_t level_diff)
 {
-    std::int32_t s = 8 * level_diff;
-    std::int32_t d = 6 * level_diff;
-    std::int32_t c = 8 * level_diff;
-    std::int32_t it = 8 * level_diff;
-    std::int32_t a = 1 * level_diff;
-    s /= 2;
-    d = (d * 3) / 2;
-    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
+    apply_level_up(self, level_diff, {4, 9, 8, 8, 1});
 }
 
 static const char* const archer_names[] = {"Robin", "Green Arrow", "Legolas", "Yeoman", "Strider", "Longshot", "Bowyer", "Hunter", "Archy"};

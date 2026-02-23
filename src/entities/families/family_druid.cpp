@@ -10,6 +10,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/summon.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/combat_math.h>
@@ -28,28 +29,12 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
 static void druid_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 9.0f * levmult;
-    self->stats()->max_magicpoints += 12.0f * levmult;
-    self->damage += 4.0f * level_f;
-    self->stats()->armor += levmult / 2.0f;
+    apply_difficulty_scaling(self, level, {9.0f, 12.0f, 4.0f, 0.5f});
 }
 
 static void druid_level_up(guy* self, std::int32_t level_diff)
 {
-    std::int32_t s = 8 * level_diff;
-    std::int32_t d = 6 * level_diff;
-    std::int32_t c = 8 * level_diff;
-    std::int32_t it = 8 * level_diff;
-    std::int32_t a = 1 * level_diff;
-    d /= 2;
-    it = (it * 3) / 2;
-    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
+    apply_level_up(self, level_diff, {8, 3, 8, 12, 1});
 }
 
 static bool druid_do_special(walker* self)
@@ -70,11 +55,9 @@ static bool druid_do_special(walker* self)
             if (!newob)
                 return false;
             self->busy += (self->fire_frequency * 2);
-            alive = self->sim_level->add_ob(Order::Weapon, FAMILY_TREE);
+            alive = summon_entity(self, Order::Weapon, FAMILY_TREE);
             alive->setxy(newob->xpos, newob->ypos);
-            alive->team_num = self->team_num;
             alive->ani_type = ANI_GROW;
-            alive->owner = self;
             newob->dead = 1;
             break;
         case 2: // summon faerie
@@ -84,10 +67,8 @@ static bool druid_do_special(walker* self)
             newob = self->fire();
             if (!newob)
                 return false;
-            alive = self->sim_level->add_ob(Order::Living, FAMILY_FAERIE);
+            alive = summon_entity(self, Order::Living, FAMILY_FAERIE);
             alive->setxy(newob->xpos, newob->ypos);
-            alive->team_num = self->team_num;
-            alive->owner = self;
             alive->lifetime = 50 + self->stats()->level * 40;
             newob->dead = 1;
             if (!self->sim_level->query_passable(alive->xpos, alive->ypos, alive))
@@ -125,7 +106,7 @@ static bool druid_do_special(walker* self)
                                 walker* ob = uptr.get();
                                 if (ob && ob->owner == newob
                                         && ob->query_order() == Order::Weapon
-                                        && ob->query_family() == FAMILY_CIRCLE_PROTECTION)
+                                        && ob->family == FAMILY_CIRCLE_PROTECTION)
                                 {
                                     tempwalk = ob;
                                     break;
@@ -133,13 +114,9 @@ static bool druid_do_special(walker* self)
                             }
                             if (!tempwalk)
                             {
-                                alive = self->sim_level->add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+                                alive = summon_entity(newob, Order::Weapon, FAMILY_CIRCLE_PROTECTION);
                                 if (!alive)
                                     return false;
-                                alive->owner = newob;
-                                alive->center_on(newob);
-                                alive->team_num = newob->team_num;
-                                alive->stats()->level = newob->stats()->level;
                                 didheal++;
                             }
                             else

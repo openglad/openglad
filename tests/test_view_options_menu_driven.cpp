@@ -78,7 +78,6 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
 {
     FixedRandom fixed_rng(1);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 

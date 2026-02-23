@@ -496,7 +496,6 @@ REGISTER_TEST(test_smooth_reset);
 void test_smooth_dark_grass_round7_branch_matrix_338_448()
 {
     GameContext test_ctx;
-    test_ctx.game_screen = myscreen;
     FixedRandom fixed0(0);
     FixedRandom fixed1(1);
     test_ctx.rng = &fixed0;
@@ -678,7 +677,6 @@ static void run_smooth_branch_outputs_with_fixed_rng()
 {
     FixedRandom fixed0(0);
     GameContext test_ctx;
-    test_ctx.game_screen = myscreen;
     test_ctx.rng = &fixed0;
     set_global_context(&test_ctx);
 
@@ -855,7 +853,6 @@ void test_smooth_round11_water_and_tree_edge_masks_662_720()
 {
     FixedRandom fixed0(0);
     GameContext test_ctx;
-    test_ctx.game_screen = myscreen;
     test_ctx.rng = &fixed0;
     set_global_context(&test_ctx);
 

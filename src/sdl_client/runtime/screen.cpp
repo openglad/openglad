@@ -27,8 +27,9 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
+#include <openglad/data/gparser.h>
 #include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/smooth.h>
@@ -92,8 +93,6 @@ bool rw_read_exact(SDL_RWops* infile, void* dst, size_t size, size_t count)
 
 static inline cfg_store& active_config()
 {
-    if(ctx().config != nullptr)
-        return *ctx().config;
     return cfg;
 }
 
@@ -212,8 +211,8 @@ screen::screen(short howmany)
     
 	buffer_to_screen(0, 0, 320, 200);
 
-	// Set the special names for all walkers from the family registry
-	init_family_registry();
+	// Initialize all entity family registries (living, weapon, effect, treasure, generator)
+	init_all_registries();
 	for (i=0; i < NUM_FAMILIES; i++)
 	{
 		auto* fd = get_family_descriptor(i);
@@ -729,7 +728,7 @@ walker  * screen::first_of(Order whatorder, unsigned char whatfamily,
 		if (ob && !ob->dead)
 		{
 			if (ob->query_order() == whatorder &&
-			        ob->query_family()== whatfamily)
+			        ob->family== whatfamily)
 			{
 				if (team_num == -1 || team_num == ob->team_num)
 					return ob;

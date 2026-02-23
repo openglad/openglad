@@ -1,27 +1,22 @@
 /*
- * GameContext: central dependency-injection point for game subsystems.
+ * GameContext: dependency-injection point for non-global game subsystems.
  *
- * Instead of reaching for globals (myscreen, theprefs, cfg, random()),
- * subsystems can accept a GameContext& and pull what they need from it.
+ * Holds state that doesn't have a legacy global equivalent: RNG interface,
+ * input snapshot, simulation event log, and mounted-campaign tracking.
+ * For screen, prefs, and config, use the globals directly (myscreen,
+ * theprefs, cfg).
  *
- * Phase 1: the context is a thin wrapper around the existing globals.
- * Call ctx() to get the current global context. Existing code is not
- * yet ported — this module is additive and introduces no behavioral
- * change.
+ * Tests can call set_global_context() to substitute a context with a
+ * mock RNG or custom sim-event log.
  */
 #pragma once
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <string>
 #include <openglad/input/input_state.h>
 #include <openglad/sim/irandom.h>
 
-// Forward declarations — avoid pulling in heavy headers
-class screen;
-class options;
-class cfg_store;
 namespace og::sim { class SimEventLog; }
 
 // Production RNG: wraps the existing global random() function
@@ -47,10 +42,7 @@ struct GameContext {
     GameContext(GameContext&&) noexcept = default;
     GameContext& operator=(GameContext&&) noexcept = default;
 
-    screen*     game_screen = nullptr;
-    options*    prefs       = nullptr;  // non-owning; GameSession owns via prefs_owner_
     std::string mounted_campaign;
-    cfg_store*  config      = nullptr;
     IRandom*    rng         = nullptr;
     InputState  input       = {};
 
@@ -59,23 +51,12 @@ struct GameContext {
     // layer drains and dispatches them after each tick.
     std::unique_ptr<og::sim::SimEventLog> sim_events;
 
-    // Convenience: is this a valid, initialized context?
-    bool valid() const { return game_screen != nullptr; }
-
-    // Direct accessors — no service indirection.
-    screen* active_screen() const { return game_screen; }
-    options* active_prefs() const { return prefs; }
-    cfg_store* active_config() const { return config; }
-    InputState* active_input() { return &input; }
     void poll_input();
 };
 
 // ---------------------------------------------------------------------------
 // Global context accessor
 // ---------------------------------------------------------------------------
-// Returns the current global GameContext. In production this wraps the
-// existing globals. Tests can call set_global_context() to substitute
-// their own.
 
 GameContext& ctx();
 void set_global_context(GameContext* context);

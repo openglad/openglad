@@ -3,7 +3,7 @@
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/weap.h>
-#include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/family_registries.h>
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/terrain_types.h>

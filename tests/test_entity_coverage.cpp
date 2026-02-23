@@ -163,7 +163,7 @@ void test_sim_input_idle_animation_cycle_wraps()
         0, 0, debounce, special_names, &log);
 
     TEST_ASSERT_EQ(0, (int)control->cycle, "idle animation should wrap cycle at -1 sentinel");
-    TEST_ASSERT_EQ(9, (int)control->query_frame(), "idle animation should set frame from ani table");
+    TEST_ASSERT_EQ(9, (int)control->frame, "idle animation should set frame from ani table");
     TEST_ASSERT(result.new_control == control, "idle path should keep control");
 
     clear_level();

@@ -62,7 +62,6 @@ void test_effect_magic_shield_hits_weapon_and_enemy_paths()
     // Deterministic RNG for weapon targeting/miss chances, if any.
     FixedRandom fixed_rng(1);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
@@ -114,7 +113,6 @@ void test_effect_boomerang_hits_weapon_and_enemy_paths()
 
     SeededRandom seeded(123u);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &seeded;
     GlobalContextGuard guard(&c);
 
@@ -165,7 +163,6 @@ void test_effect_cloud_hits_collision_branch_and_walk_command_path()
     // that produces (-1, +1) on the first draw.
     SequenceRandom seq_rng({0, 2, 0, 2});
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &seq_rng;
     GlobalContextGuard guard(&c);
 
@@ -197,7 +194,6 @@ void test_effect_chain_lightning_hits_leader_and_spawns_explosion()
 
     FixedRandom fixed_rng(1);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
@@ -237,7 +233,6 @@ void test_effect_death_explosion_shoves_nearby_targets()
 
     FixedRandom fixed_rng(1);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
@@ -327,7 +322,6 @@ void test_effect_batch3_shield_and_boomerang_collision_loops()
 
     FixedRandom fixed_rng(1);
     GameContext c;
-    c.game_screen = myscreen;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 

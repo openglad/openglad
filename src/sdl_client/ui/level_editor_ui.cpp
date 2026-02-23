@@ -17,7 +17,6 @@
 
 #include <openglad/runtime/screen.h>
 #include <openglad/input/input.h>
-#include <openglad/runtime/game_context.h>
 #include <cstring>
 #include <list>
 #include <string>
@@ -27,8 +26,6 @@ extern screen* myscreen;
 
 static screen* active_screen()
 {
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
     return myscreen;
 }
 
