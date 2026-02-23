@@ -1118,105 +1118,127 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
         )
 
+        # Helper: select test source files from TEST_SOURCES by basename.
+        # Eliminates duplicate full-path entries across test target lists.
+        function(og_test_subset outvar)
+            cmake_parse_arguments(ARG "" "" "FILES;EXTRA" ${ARGN})
+            set(result)
+            foreach(src IN LISTS TEST_SOURCES)
+                cmake_path(GET src FILENAME fname)
+                if(fname IN_LIST ARG_FILES)
+                    list(APPEND result "${src}")
+                endif()
+            endforeach()
+            list(APPEND result ${ARG_EXTRA})
+            set(${outvar} "${result}" PARENT_SCOPE)
+        endfunction()
+
         # Module-level test binaries (kept in addition to the full integration suite).
         # These allow faster targeted iteration without removing broad end-to-end coverage.
-        set(DATA_TEST_SOURCES
-            ${CMAKE_SOURCE_DIR}/tests/test_framework.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_save_load.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_save_data_versions.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_io_funcs.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_util.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
+
+        # DATA_TEST_SOURCES: pure subset of TEST_SOURCES (data/IO-focused tests).
+        og_test_subset(DATA_TEST_SOURCES FILES
+            test_framework.cpp
+            test_main.cpp
+            test_campaign_and_level_picker.cpp
+            test_gparser_funcs.cpp
+            test_io_filesystem.cpp
+            test_io_funcs.cpp
+            test_io_new_file_fixture.cpp
+            test_io_zip_unzip.cpp
+            test_level_data_load_versions.cpp
+            test_level_data_ops.cpp
+            test_save_data_versions.cpp
+            test_save_load.cpp
+            test_util.cpp
         )
 
-        set(RUNTIME_TEST_SOURCES
-            ${CMAKE_SOURCE_DIR}/tests/test_framework.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_game_loop.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_input.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_input_more.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_input_keybinds.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_input_joystick.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_combat.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_pathing.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_funcs.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_draw.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_resize.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_redraw.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_get_keypress_and_edge_cases.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_input_more_paths.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_input_prefs_and_redraw.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_effect_helpers.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_effect_extended.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_effect_act.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_effect_chain_and_door.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_effect_weapon_interactions.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_core_more.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_picker_state_machine.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_menu_layout.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_menu_model.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_entity_coverage.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_mass_coverage.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_commands.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_more_paths.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_more.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_teleport.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_right_walk_direct_walk.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_extended.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_death.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_living_funcs.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_living_combat.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_treasure_eat.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_weap_behavior.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_io_funcs.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_io_platform_coverage.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_io_coverage.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_save_load.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_save_data_versions.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_coverage.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_smoke.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_interactions.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_helpers.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_prompt_block.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_picker_menu_nav.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_picker_uncovered.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_picker_ownership_fixture.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_picker_detail_menu_driven.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_picker_dialogs_real.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_branches.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_internal_helper.cpp
+        # RUNTIME_TEST_SOURCES: subset of TEST_SOURCES plus coverage-only files.
+        # The FILES list selects from the master TEST_SOURCES; EXTRA lists files
+        # unique to this target (not in the master integration suite).
+        og_test_subset(RUNTIME_TEST_SOURCES
+            FILES
+                test_framework.cpp
+                test_main.cpp
+                test_campaign_and_level_picker.cpp
+                test_effect_act.cpp
+                test_effect_chain_and_door.cpp
+                test_effect_extended.cpp
+                test_effect_helpers.cpp
+                test_effect_more_paths.cpp
+                test_effect_weapon_interactions.cpp
+                test_family_behaviors.cpp
+                test_family_data.cpp
+                test_game_loop.cpp
+                test_gparser_funcs.cpp
+                test_input.cpp
+                test_input_joystick.cpp
+                test_input_keybinds.cpp
+                test_input_more.cpp
+                test_io_filesystem.cpp
+                test_io_funcs.cpp
+                test_io_new_file_fixture.cpp
+                test_io_zip_unzip.cpp
+                test_level_data_error_paths.cpp
+                test_level_data_load_versions.cpp
+                test_level_data_ops.cpp
+                test_level_editor_helpers.cpp
+                test_level_editor_interactions.cpp
+                test_level_editor_prompt_block.cpp
+                test_level_editor_smoke.cpp
+                test_living_combat.cpp
+                test_living_funcs.cpp
+                test_menu_layout.cpp
+                test_picker_detail_menu_driven.cpp
+                test_picker_dialogs_real.cpp
+                test_picker_menu_nav.cpp
+                test_picker_ownership_fixture.cpp
+                test_picker_state_machine.cpp
+                test_picker_uncovered.cpp
+                test_results_screen_branches.cpp
+                test_results_screen_full_ui.cpp
+                test_results_screen_internal_helper.cpp
+                test_save_data_versions.cpp
+                test_save_load.cpp
+                test_smooth_matrix.cpp
+                test_stats.cpp
+                test_stats_commands.cpp
+                test_stats_extended.cpp
+                test_stats_hit_response_more.cpp
+                test_stats_hit_response_teleport.cpp
+                test_stats_more_paths.cpp
+                test_stats_navigation.cpp
+                test_stats_right_walk_direct_walk.cpp
+                test_treasure_eat.cpp
+                test_view_draw.cpp
+                test_view_funcs.cpp
+                test_view_get_keypress_and_edge_cases.cpp
+                test_view_input_more_paths.cpp
+                test_view_input_paths.cpp
+                test_view_input_prefs_and_redraw.cpp
+                test_view_input_smoke.cpp
+                test_view_redraw.cpp
+                test_view_resize.cpp
+                test_walker_combat.cpp
+                test_walker_core_more.cpp
+                test_walker_death.cpp
+                test_walker_extended.cpp
+                test_walker_more.cpp
+                test_walker_movement.cpp
+                test_walker_pathing.cpp
+                test_walker_specials.cpp
+                test_weap_behavior.cpp
+            EXTRA
+                ${CMAKE_SOURCE_DIR}/tests/test_entity_coverage.cpp
+                ${CMAKE_SOURCE_DIR}/tests/test_io_coverage.cpp
+                ${CMAKE_SOURCE_DIR}/tests/test_io_platform_coverage.cpp
+                ${CMAKE_SOURCE_DIR}/tests/test_level_data_coverage.cpp
+                ${CMAKE_SOURCE_DIR}/tests/test_mass_coverage.cpp
+                ${CMAKE_SOURCE_DIR}/tests/test_menu_model.cpp
+                ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
+                ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
+                ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage.cpp
+                ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
         )
 
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
