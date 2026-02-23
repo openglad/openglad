@@ -4,10 +4,14 @@
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
+#include <cerrno>
 #include <filesystem>
 #include <cstdio>
 #include <cstdint>
+#include <fcntl.h>
 #include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 extern screen* myscreen;
@@ -96,6 +100,26 @@ static bool scenario_file_has_consistent_object_block(const fs::path& p, short c
     return pos == bytes.size();
 }
 
+static bool dev_full_write_fails_as_expected()
+{
+    struct stat st {};
+    if (::stat("/dev/full", &st) != 0)
+        return false;
+    if (!S_ISCHR(st.st_mode))
+        return false;
+
+    const int fd = ::open("/dev/full", O_WRONLY);
+    if (fd < 0)
+        return false;
+
+    const char byte = 'x';
+    const ssize_t n = ::write(fd, &byte, 1);
+    const int saved_errno = errno;
+    ::close(fd);
+
+    return n < 0 && saved_errno == ENOSPC;
+}
+
 void test_level_data_save_truncates_fixed_fields_and_rejects_null_object()
 {
     myscreen->level_data.create_new_grid();
@@ -149,6 +173,11 @@ REGISTER_TEST(test_level_data_save_reports_failure_when_grid_write_fails);
 
 void test_level_data_save_caps_object_count_to_loader_limit()
 {
+    if (!dev_full_write_fails_as_expected()) {
+        fprintf(stderr, "  INFO: /dev/full unavailable or not ENOSPC; skipping test\n");
+        return;
+    }
+
     const int old_id = myscreen->level_data.id;
     const std::string old_grid_file = myscreen->level_data.grid_file;
     const std::string old_title = myscreen->level_data.title;
@@ -191,6 +220,51 @@ void test_level_data_save_caps_object_count_to_loader_limit()
     myscreen->level_data.description = old_description;
 }
 REGISTER_TEST(test_level_data_save_caps_object_count_to_loader_limit);
+
+void test_level_data_save_reports_failure_when_scenario_write_fails()
+{
+    if (!dev_full_write_fails_as_expected()) {
+        fprintf(stderr, "  INFO: /dev/full unavailable or not ENOSPC; skipping test\n");
+        return;
+    }
+
+    const int old_id = myscreen->level_data.id;
+    const std::string old_grid_file = myscreen->level_data.grid_file;
+    const std::string old_title = myscreen->level_data.title;
+    const std::list<std::string> old_description = myscreen->level_data.description;
+
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.id = 125;
+    myscreen->level_data.grid_file = "grid";
+    myscreen->level_data.title = "scenario save failure";
+    myscreen->level_data.description.clear();
+
+    const fs::path scen_dir = "temp/scen";
+    const fs::path scen_file = scen_dir / "scen125.fss";
+    fs::create_directories(scen_dir);
+    fs::create_directories("temp/pix");
+    std::error_code ec;
+    fs::remove(scen_file, ec);
+    fs::create_symlink("/dev/full", scen_file, ec);
+    if (ec) {
+        fprintf(stderr, "  INFO: cannot symlink /dev/full (%s); skipping test\n", ec.message().c_str());
+        return;
+    }
+
+    TEST_ASSERT(!myscreen->level_data.save(), "save should fail when scenario file write fails");
+    TEST_ASSERT_EQ((int)LevelData::IoError::SerializeFailed, (int)myscreen->level_data.last_io_error(),
+        "save should propagate scenario write failure as SerializeFailed");
+    TEST_ASSERT_EQ((int)LevelData::IoError::SerializeFailed, (int)myscreen->level_data.save_with_error(),
+        "save_with_error should report scenario write failure");
+
+    fs::remove(scen_file, ec);
+    myscreen->level_data.id = old_id;
+    myscreen->level_data.grid_file = old_grid_file;
+    myscreen->level_data.title = old_title;
+    myscreen->level_data.description = old_description;
+}
+REGISTER_TEST(test_level_data_save_reports_failure_when_scenario_write_fails);
 
 void test_campaign_data_load_reports_open_read_failed_when_campaign_yaml_missing()
 {
