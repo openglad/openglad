@@ -77,7 +77,7 @@ struct OwnedButtonReplacementGuard
     OwnedButtonReplacementGuard(int slot_, const char* name)
         : slot(slot_), saved(allbuttons[slot_])
     {
-        allbuttons[slot] = new vbutton(0, 0, 10, 10, NULLMENU, 0, name, KEYSTATE_UNKNOWN);
+        allbuttons[slot] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, name, KEYSTATE_UNKNOWN);
     }
 
     ~OwnedButtonReplacementGuard()

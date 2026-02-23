@@ -276,10 +276,10 @@ void test_how_many_with_team()
     Sint32 old_diff = current_difficulty;
     const short old_allied = myscreen->save_data.allied_mode;
 
-    allbuttons[2] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b2", KEYSTATE_UNKNOWN);
-    allbuttons[6] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b6", KEYSTATE_UNKNOWN);
-    allbuttons[7] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b7", KEYSTATE_UNKNOWN);
-    allbuttons[18] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b18", KEYSTATE_UNKNOWN);
+    allbuttons[2] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b2", KEYSTATE_UNKNOWN);
+    allbuttons[6] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b6", KEYSTATE_UNKNOWN);
+    allbuttons[7] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b7", KEYSTATE_UNKNOWN);
+    allbuttons[18] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b18", KEYSTATE_UNKNOWN);
 
     current_guy = std::make_unique<guy>(FAMILY_SOLDIER);
     current_guy->teamnum = 1;
@@ -328,7 +328,7 @@ void test_how_many_with_team()
 
     vbutton* old0 = allbuttons[0];
     if (allbuttons[0] == nullptr) {
-        allbuttons[0] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b0", KEYSTATE_UNKNOWN);
+        allbuttons[0] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b0", KEYSTATE_UNKNOWN);
     }
     allbuttons[0]->label = "UNIT_TEST_SAVE";
     Sint32 save_ret = do_save(1);

@@ -501,7 +501,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             return intercepted_retvalue;
         }
 
-	    switch (button_action_from_id(whatfunc))
+	    switch (static_cast<ButtonAction>(whatfunc))
 	    {
 	    case ButtonAction::BeginMenu:
 	        return beginmenu(call_arg);
@@ -630,7 +630,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
 // For right-button
 Sint32 vbutton::do_call_right(Sint32 whatfunc, Sint32 call_arg)
 {
-    switch (button_action_from_id(whatfunc))
+    switch (static_cast<ButtonAction>(whatfunc))
     {
     case ButtonAction::DecreaseStat:
         return decrease_stat(call_arg, 5);

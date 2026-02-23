@@ -365,7 +365,7 @@ Sint32 create_progress_menu(Sint32 arg1)
     button buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, prev_btn.x, prev_btn.y, prev_btn.w, prev_btn.h, 0, -1, MenuNav{.right=1}),
         button("next", "NEXT", KEYSTATE_UNKNOWN, next_btn.x, next_btn.y, next_btn.w, next_btn.h, 0, -1, MenuNav{.left=0, .right=2}),
-        button("back", "BACK", KEYSTATE_ESCAPE, back_btn.x, back_btn.y, back_btn.w, back_btn.h, RETURN_MENU, MENU_EXIT, MenuNav{.left=1}),
+        button("back", "BACK", KEYSTATE_ESCAPE, back_btn.x, back_btn.y, back_btn.w, back_btn.h, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.left=1}),
     };
     int num_buttons = 3;
     int highlighted_button = 2;
@@ -1469,7 +1469,7 @@ Sint32 go_menu(Sint32 arg1)
     }
     while(myscreen->retry);
 
-	return CREATE_TEAM_MENU;
+	return button_action_id(ButtonAction::CreateTeamMenu);
 #endif
 }
 
