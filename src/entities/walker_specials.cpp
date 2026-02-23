@@ -59,12 +59,14 @@ bool walker::special()
 
 	// Dispatch via family descriptor callback
 	auto* fd = get_family_descriptor(query_family());
+	bool did_special = false;
 	if (fd && fd->do_special)
 	{
-		if (fd->do_special(this))
+		did_special = fd->do_special(this);
+		if (did_special)
 			stats_->magicpoints -= stats_->special_cost[special_index];
 	}
-	return 0;
+	return did_special;
 }
 
 bool walker::teleport()

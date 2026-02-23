@@ -70,9 +70,12 @@ OG_UNIT_TEST(test_walker_specials_r11_special_and_teleport_paths)
     OG_ASSERT(!w->special());
     w->dead = 0;
 
-    w->set_order_family(Order::Weapon, FAMILY_ARROW);
-    OG_ASSERT(!w->special());
-    w->set_order_family(Order::Living, FAMILY_CLERIC);
+    walker* weapon = fx.level.add_ob(Order::Weapon, FAMILY_ARROW);
+    OG_ASSERT(weapon != nullptr);
+    if (weapon) {
+        weapon->dead = 0;
+        OG_ASSERT(!weapon->special());
+    }
 
     // marker teleport success with marker expiry (lines 86-90)
     w->setxy(20, 20);

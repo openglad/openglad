@@ -264,6 +264,7 @@ OG_UNIT_TEST(test_final_r16_walker_specials_teleport_and_turn_undead)
     OG_ASSERT(!self->special());
 
     self->dead = 0;
+    self->stats()->special_cost[1] = 1;
     self->stats()->magicpoints = 0;
     OG_ASSERT(!self->special());
 
