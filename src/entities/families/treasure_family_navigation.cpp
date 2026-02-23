@@ -46,14 +46,36 @@ static bool exit_on_eat(treasure* self, walker* eater)
 
     std::int32_t leftside  = 160 - ( (static_cast<int>(exitname.size()) + 18) * 3);
     std::int32_t rightside = 160 + ( (static_cast<int>(exitname.size()) + 18) * 3);
-    // First check to see if we're withdrawing into
-    //    somewhere we've been, in which case we abort
-    //    this level, and set our current level to
-    //    that pointed to by the exit ...
+
+    // Exit path: all enemies dead, or scenario allows free exit.
+    // Check this BEFORE the withdraw path so that CAN_EXIT_WHENEVER levels
+    // show the normal "Exit to X?" dialog instead of "Withdraw to X?".
+    if (!guys_here || (self->sim_level->type & LevelData::TYPE_CAN_EXIT_WHENEVER))
+    {
+        std::string buf = std::format("Exit to {}?", exitname);
+        bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
+        // Redraw screen ..
+        og::sim::emit_event(self->sim_events, og::sim::EventKind::RequestRedraw);
+
+        if(result) // accepted level change
+        {
+            clear_keyboard();
+            og::sim::emit_event(self->sim_events, og::sim::EventKind::EndGame,
+                                0, static_cast<std::uint32_t>(self->stats()->level));
+            return true;
+        }
+        clear_keyboard();
+        return true;
+    }
+
+    // Withdraw path: enemies still present, destination level already completed,
+    // current scenario not yet completed. Abort the current level and revert
+    // to the autosave, then jump to the exit's destination level.
+    // This is mutually exclusive with the exit path above — if the exit path
+    // didn't fire, we know guys_here != 0 and CAN_EXIT_WHENEVER is not set.
     if ( self->sim_save->is_level_completed(self->stats()->level)
             && !self->sim_save->is_level_completed(self->sim_save->scen_num)
-            && (guys_here != 0)
-       ) // okay to leave
+       )
     {
         leftside -= 12;
         rightside += 12;
@@ -95,25 +117,6 @@ static bool exit_on_eat(treasure* self, walker* eater)
         }  // end of accepted withdraw to new level ..
         clear_keyboard();
     } // end of checking for withdrawal to completed level
-
-    //buffers: also, allow exit if scenario_type == can exit
-    if (!guys_here || (self->sim_level->type == SCEN_TYPE_CAN_EXIT)) // nobody evil left, so okay to exit level ..
-    {
-        std::string buf = std::format("Exit to {}?", exitname);
-        bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
-        // Redraw screen ..
-        og::sim::emit_event(self->sim_events, og::sim::EventKind::RequestRedraw);
-
-        if(result) // accepted level change
-        {
-            clear_keyboard();
-            og::sim::emit_event(self->sim_events, og::sim::EventKind::EndGame,
-                                0, static_cast<std::uint32_t>(self->stats()->level));
-            return true;
-        }
-        clear_keyboard();
-        return true;
-    }
     return true;
 }
 
