@@ -1014,25 +1014,6 @@ bool walker::fire_check(short xdelta, short ydelta)
 		if (ydelta != 0)
 			ydir = (ydelta > 0) ? 1 : -1;
 
-	/* // why are we assuming walls don't matter in these two cases?
-	  if (!xdelta || !ydelta) // aligned on a major axis
-	  {
-	         weapon->dead = 1;
-	         return 1;
-	  }
-	 
-	  if ( abs( abs(xdelta) - abs(ydelta) ) < 3)
-	  {
-	         weapon->dead = 1;
-	         return 1;
-	  }
-	  else
-	  {
-	         weapon->dead = 1;
-	//         return 0;
-	  }
-	*/
-
 	// Run weapon through where it would go if all went well ..
 	for (i=0; i < weapon->lineofsight; i++)
 	{
@@ -1055,27 +1036,6 @@ bool walker::fire_check(short xdelta, short ydelta)
 	// range and didn't hit anyone ..
 	weapon->dead = 1;
 	return 0;
-
-	// Determine # of loops to look for guy
-	if ( abs(xdelta) > abs(ydelta) )
-		loops = abs(xdelta);
-	else
-		loops = abs(ydelta);
-
-	// * 16 is to match with grid coords
-	for (i=0; i <= loops; i+=8)  // half a grid square
-		if ( !sim_level->query_grid_passable(xpos+i*xdir, ypos+i*ydir, weapon) )
-		{
-			weapon->dead = 1;
-			//foe = nullptr;  // can't hit this guy
-			//stats_->try_command(COMMAND_RANDOM_WALK, sim_rng->next(8));
-			return 0;
-		}
-	weapon->dead = 1;
-
-	// We have a good chance of hitting, so ..
-	return 1;
-
 }
 
 /****************************************************
