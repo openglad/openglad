@@ -36,6 +36,8 @@ public:
         return (family_id >= 0 && family_id < NUM) ? &entries_[family_id] : nullptr;
     }
 
+    bool is_initialized() const { return initialized_; }
+
 private:
     bool initialized_ = false;
     Descriptor entries_[NUM]{};

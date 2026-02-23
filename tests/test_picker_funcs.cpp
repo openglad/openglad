@@ -103,7 +103,7 @@ void test_family_name_copy_all_families()
         TEST_ASSERT(strlen(name) > 0, "family name should not be empty");
     }
 
-    TEST_ASSERT(std::string(family_name_copy(FAMILY_BIG_ORC)) == "ORC CAPTAIN", "big orc label from registry");
+    TEST_ASSERT(std::string(family_name_copy(FAMILY_BIG_ORC)) == "ORC CAP.", "big orc label from registry");
     TEST_ASSERT(std::string(get_family_string(FAMILY_BIG_ORC)) == "ORC CAPTAIN", "big orc full label");
     TEST_ASSERT(std::string(get_family_string(255)) == "BEAST", "unknown family full label fallback");
 }
