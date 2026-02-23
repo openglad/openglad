@@ -21,6 +21,7 @@
 #include <string>
 #include <list>
 #include <cmath>
+#include <algorithm>
 
 #define BASE_GUY_HP 30
 
@@ -431,15 +432,21 @@ static bool archmage_do_special(walker* self)
             }
             break;
         case 4: // mind control
+        {
             if (self->busy > 0)
                 return false;
+            std::int32_t mp_after_base_cost = 0;
+            std::int32_t spent_mp = 0;
             {
+                const std::int32_t special_cost = self->stats()->special_cost[static_cast<int>(self->current_special)];
+                mp_after_base_cost =
+                    static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(special_cost));
                 std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                                       80 + 4 * self->stats()->level, &howmany, self);
                 if (howmany < 1)
                     return false;
                 didheal = 0;
-                generic2 = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)])) + 10;
+                generic2 = mp_after_base_cost + 10;
                 for (auto* ob : newlist)
                 {
                     if (generic2 < 10) break;
@@ -448,6 +455,7 @@ static bool archmage_do_special(walker* self)
                         (ob->charm_left() <= 10))
                     {
                         generic2 -= 10;
+                        spent_mp += 10;
                         generic = self->stats()->level - ob->stats()->level;
                         if (generic < 0 || (!self->sim_rng->next(20)))
                         {
@@ -476,18 +484,13 @@ static bool archmage_do_special(walker* self)
                 message = "ArchMage";
             tempstr = std::format("{} has controlled {} men", message, didheal);
             og::sim::emit_notification(self->sim_events, tempstr);
-            generic2 = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
-            if (generic2 > 0)
+            if (mp_after_base_cost > 0)
             {
-                while ((didheal > 0) && (generic2 >= 10))
-                {
-                    if (generic2 > 10)
-                        generic2 -= 10;
-                    didheal--;
-                }
+                self->stats()->magicpoints -= static_cast<float>(std::min(spent_mp, mp_after_base_cost));
             }
             self->busy += 10;
             break;
+        }
         default:
             break;
     }
