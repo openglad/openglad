@@ -1122,14 +1122,156 @@ Sint32 return_menu(Sint32 arg)
    return arg;
 }
 
+// Character ability descriptions for the detail menu, rendered data-driven.
+namespace {
+
+inline constexpr int DETAIL_LM = 11;
+inline constexpr int DETAIL_MM = 164;
+constexpr int detail_line_y(int x) { return 90 + x * 6; }
+
+struct AbilityBlock {
+    int level_req;
+    bool right;       // false = left column (DETAIL_LM), true = right (DETAIL_MM)
+    int start_line;
+    const char* text[8]; // nullptr-terminated
+};
+
+static const AbilityBlock soldier_abilities[] = {
+    { 1, false, 2, { " Charge", "  Charge causes you to ", "  run forward, damaging", "  anything in your way." } },
+    { 4, false, 7, { " Boomerang", "  The boomerang flies  ", "  out in a spiral,     ", "  hurting nearby foes. " } },
+    { 7, true, 0, { " Whirl    ", "  The fighter whirls in", "  a spiral, hurting or ", "  stunning melee foes. " } },
+    { 10, true, 5, { " Disarm   ", "  Cause a melee foe to ", "  temporarily lose the ", "  strength of attacks. " } },
+};
+
+static const AbilityBlock barbarian_abilities[] = {
+    { 1, false, 2, { " Hurl Boulder", "  Throw a massive stone", "  boulder at your      ", "  enemies.             " } },
+    { 4, false, 7, { " Exploding Boulder", "  Hurl a boulder so hard ", "  that it explodes and   ", "  hits foes all around.  " } },
+};
+
+static const AbilityBlock elf_abilities[] = {
+    { 1, false, 2, { " Rocks/Forestwalk", "  Rocks hurls a few rocks", "  at the enemy.  Forest- ", "  walk, dexterity-based, ", "  lets you move in trees." } },
+    { 4, false, 7, { " More Rocks", "  Like #1, but these    ", "  rocks bounce off walls", "  and other barricades. " } },
+    { 7, true, 0, { " Lots of Rocks", "  Like #2, but more     ", "  rocks, with a longer  ", "  thrown range.         " } },
+    { 10, true, 5, { " MegaRocks", "  This giant handful of ", "  rocks bounces far away", "  and packs a big punch." } },
+};
+
+static const AbilityBlock archer_abilities[] = {
+    { 1, false, 2, { " Fire Arrows     ", "  An archer can spin in a", "  circle, firing off a   ", "  ring of flaming bolts. " } },
+    { 4, false, 7, { " Barrage   ", "  Rather than a single  ", "  bolt, the archer sends", "  3 deadly bolts ahead. " } },
+    { 7, true, 0, { " Exploding Bolt", "  This fatal bolt will  ", "  explode on contact,   ", "  dealing death to all. " } },
+};
+
+static const AbilityBlock mage_abilities[] = {
+    { 1, false, 2, { " Teleport/Marker ", "  Any mage can teleport  ", "  randomly away easily.  ", "  Leaving a marker for   ", "  anchor requires 75 int." } },
+    { 4, false, 7, { " Warp Space", "  Twist the fabric of   ", "  space around you to   ", "  deal death to enemies." } },
+    { 7, true, 0, { " Freeze Time   ", "  Freeze time for all   ", "  but your team and kill", "  enemies with ease.    " } },
+    { 10, true, 4, { " Energy Wave", "  Send a growing ripple ", "  of energy through     ", "  walls and foes.       " } },
+    { 13, true, 8, { " HeartBurst  ", "  Burst your enemies    ", "  into flame. More magic", "  means a bigger effect." } },
+};
+
+static const AbilityBlock archmage_abilities[] = {
+    { 1, false, 2, { " Teleport/Marker ", "  Any mage can teleport  ", "  randomly away easily.  ", "  Leaving a marker for   ", "  anchor requires 75 int." } },
+    { 4, false, 7, { " HeartBurst/Lightning", "  Burst your enemies    ", "  into flame around you.", "  ALT: Chain lightning  ", "  bounces through foes. " } },
+    { 7, true, 0, { " Summon Image/Sum. Elem.", "  Summon an illusionary ", "  ally to fight for you.", "  ALT: Summon a daemon, ", "  who uses your stamina." } },
+    { 10, true, 5, { " Mind Control", "  Convert nearby foes to", "  your team, for a time." } },
+};
+
+static const AbilityBlock cleric_abilities[] = {
+    { 1, false, 2, { " Heal            ", "  Heal all teammates who ", "  are close to you, for  ", "  as much as you have SP." } },
+    { 4, false, 7, { " Raise/Turn Undead", "  Raise the gore of any ", "  victim to a skeleton. ", "  Alternate (turning)   ", "  requires 65 Int.      " } },
+    { 7, true, 0, { " Raise/Turn Ghost", "  A more powerful raise,", "  you can now get ghosts", "  to fly and wail.      " } },
+    { 10, true, 5, { " Resurrection", "  The ultimate Healing, ", "  this restores dead    ", "  friends to life, or   ", "  enemies to undead.    ", "  Beware: this will use ", "  your own EXP to cast! " } },
+};
+
+static const AbilityBlock druid_abilities[] = {
+    { 1, false, 2, { " Plant Tree      ", "  These magical trees    ", "  will resist the enemy, ", "  while allowing friends ", "  to pass.               " } },
+    { 4, false, 7, { " Summon Faerie", "  This spell brings to  ", "  you a small flying    ", "  faerie to stun foes.  " } },
+    { 7, true, 0, { " Circle of Protection", "  Calls the winds to aid", "  your nearby friends by", "  circling them with a  ", "  shield of moving air. " } },
+    { 10, true, 5, { " Reveal   ", "  Gives you a magical   ", "  view to see treasure, ", "  potions, outposts, and", "  invisible enemies.    " } },
+};
+
+static const AbilityBlock thief_abilities[] = {
+    { 1, false, 2, { " Drop Bomb       ", "  Leave a burning bomb to", "  explode and hurt the   ", "  unwary, friend or foe! " } },
+    { 4, false, 7, { " Cloak of Darkness", "  Cloak yourself in the ", "  shadows, slipping past", "  your enemies.         " } },
+    { 7, true, 0, { " Taunt Enemies       ", "  Beckon your enemies   ", "  to you with jeers, and", "  confuse their attack. " } },
+    { 10, true, 5, { " Poison Cloud", "  Release a cloud of    ", "  poisonous gas to roam ", "  at will and sicken    ", "  your foes.            " } },
+};
+
+static const AbilityBlock orc_abilities[] = {
+    { 1, false, 2, { " Howl            ", "  Howl in rage, stunning ", "  nearby enemies in their", "  tracks.                " } },
+    { 4, false, 7, { " Devour Corpse    ", "  Regain health by      ", "  devouring the corpses ", "  of your foes.         " } },
+};
+
+struct FamilyDetail {
+    const char* class_name;
+    const AbilityBlock* abilities;
+    int num_abilities;
+};
+
+const FamilyDetail* get_family_detail(int family_id) {
+    struct Entry { int id; FamilyDetail detail; };
+    static const Entry entries[] = {
+        { FAMILY_SOLDIER,   { "soldier",   soldier_abilities,   static_cast<int>(std::size(soldier_abilities)) } },
+        { FAMILY_BARBARIAN, { "barbarian", barbarian_abilities, static_cast<int>(std::size(barbarian_abilities)) } },
+        { FAMILY_ELF,       { "elf",       elf_abilities,       static_cast<int>(std::size(elf_abilities)) } },
+        { FAMILY_ARCHER,    { "archer",    archer_abilities,    static_cast<int>(std::size(archer_abilities)) } },
+        { FAMILY_MAGE,      { "Mage",      mage_abilities,      static_cast<int>(std::size(mage_abilities)) } },
+        { FAMILY_ARCHMAGE,  { "ArchMage",  archmage_abilities,  static_cast<int>(std::size(archmage_abilities)) } },
+        { FAMILY_CLERIC,    { "Cleric",    cleric_abilities,    static_cast<int>(std::size(cleric_abilities)) } },
+        { FAMILY_DRUID,     { "Druid",     druid_abilities,     static_cast<int>(std::size(druid_abilities)) } },
+        { FAMILY_THIEF,     { "Thief",     thief_abilities,     static_cast<int>(std::size(thief_abilities)) } },
+        { FAMILY_ORC,       { "Orc",       orc_abilities,       static_cast<int>(std::size(orc_abilities)) } },
+    };
+    for (const auto& e : entries) {
+        if (e.id == family_id) return &e.detail;
+    }
+    return nullptr;
+}
+
+void render_family_abilities(text& mytext, const guy* g) {
+    const FamilyDetail* detail = get_family_detail(g->family);
+    if (!detail) return;
+
+    std::string title = std::format("Level {} {} has:", g->level, detail->class_name);
+    mytext.write_xy(DETAIL_LM+1, detail_line_y(0)+1, title.c_str(), 10, 1);
+    mytext.write_xy(DETAIL_LM, detail_line_y(0), title.c_str(), DARK_BLUE, 1);
+
+    for (int i = 0; i < detail->num_abilities; i++) {
+        const auto& ab = detail->abilities[i];
+        if (g->level < ab.level_req) continue;
+        int x = ab.right ? DETAIL_MM : DETAIL_LM;
+        for (int j = 0; j < 8 && ab.text[j]; j++) {
+            unsigned char color = (ab.text[j][1] != ' ')
+                ? static_cast<unsigned char>(RED) : static_cast<unsigned char>(DARK_BLUE);
+            mytext.write_xy(x, detail_line_y(ab.start_line + j), ab.text[j], color, 1);
+        }
+    }
+
+    // Promotion dialog boxes (mage -> archmage, orc -> orc captain)
+    if (g->family == FAMILY_MAGE && g->level >= 6) {
+        std::string promo_msg = std::format("Level {} Archmage. This", (g->level-6)/2+1);
+        myscreen->draw_dialog(158, 4, 315, 66, "Become ArchMage");
+        mytext.write_xy(DETAIL_MM, detail_line_y(-10), "Your Mage is now of high", RED, 1);
+        mytext.write_xy(DETAIL_MM, detail_line_y(-9), "enough level to become a", RED, 1);
+        mytext.write_xy(DETAIL_MM, detail_line_y(-8), promo_msg.c_str(), RED, 1);
+        mytext.write_xy(DETAIL_MM, detail_line_y(-7), "change CANNOT be undone!", RED, 1);
+        mytext.write_xy(DETAIL_MM, detail_line_y(-6), " Click here to change.  ", RED, 1);
+    }
+    if (g->family == FAMILY_ORC && g->level >= 6) {
+        myscreen->draw_dialog(158, 4, 315, 66, "Become Orc Captain");
+        mytext.write_xy(DETAIL_MM, detail_line_y(-10), "Your Orc is now of high ", RED, 1);
+        mytext.write_xy(DETAIL_MM, detail_line_y(-9), "enough level to become a", RED, 1);
+        mytext.write_xy(DETAIL_MM, detail_line_y(-8), "Level 1 Orc Captain. You", RED, 1);
+        mytext.write_xy(DETAIL_MM, detail_line_y(-7), "CANNOT undo this action!", RED, 1);
+        mytext.write_xy(DETAIL_MM, detail_line_y(-6), " Click here to change.  ", RED, 1);
+    }
+}
+
+} // namespace
+
 Sint32 create_detail_menu(guy *arg1)
 {
 	(void)arg1;
-#define DETAIL_LM 11             // left edge margin ..
-#define DETAIL_MM 164            // center margin
-#define DETAIL_LD(x) (90+(x*6))  // vertical line for text
-#define WL(p,m) if (m[1] != ' ') mytext.write_xy(DETAIL_LM, DETAIL_LD(p), m, RED, 1); else mytext.write_xy(DETAIL_LM, DETAIL_LD(p), m, DARK_BLUE, 1)
-#define WR(p,m) if (m[1] != ' ') mytext.write_xy(DETAIL_MM, DETAIL_LD(p), m, RED, 1); else mytext.write_xy(DETAIL_MM, DETAIL_LD(p), m, DARK_BLUE, 1)
 
    Sint32 retvalue = 0;
    guy *thisguy;
@@ -1205,387 +1347,7 @@ Sint32 create_detail_menu(guy *arg1)
        myscreen->draw_dialog(5, 68, 315, 167, "Character Special Abilities");
        myscreen->draw_text_bar(160, 90, 162, 160);
 
-       // Text stuff, determined by character class & level
-       switch (thisguy->family)
-       {
-           case FAMILY_SOLDIER:
-               message = std::format("Level {} soldier has:", thisguy->level);
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
-               // Level 1 things (charge)
-               WL(2, " Charge");
-               WL(3, "  Charge causes you to ");
-               WL(4, "  run forward, damaging");
-               WL(5, "  anything in your way.");
-               // Level 4 things (boomerang)
-               if (thisguy->level >= 4)
-               {
-                   WL(7, " Boomerang");
-                   WL(8, "  The boomerang flies  ");
-                   WL(9, "  out in a spiral,     ");
-                   WL(10,"  hurting nearby foes. ");
-               }
-               // Level 7 things (whirl)
-               if (thisguy->level >= 7)
-               {
-                   WR(0, " Whirl    ");
-                   WR(1, "  The fighter whirls in");
-                   WR(2, "  a spiral, hurting or ");
-                   WR(3 ,"  stunning melee foes. ");
-               }
-               // Level 10 things (disarm)
-               if (thisguy->level >= 10)
-               {
-                   WR(5, " Disarm   ");
-                   WR(6, "  Cause a melee foe to ");
-                   WR(7, "  temporarily lose the ");
-                   WR(8 ,"  strength of attacks. ");
-               }
-               break;
-           case FAMILY_BARBARIAN:
-               message = std::format("Level {} barbarian has:", thisguy->level);
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
-               // Level 1 things (hurl boulder)
-               WL(2, " Hurl Boulder");
-               WL(3, "  Throw a massive stone");
-               WL(4, "  boulder at your      ");
-               WL(5, "  enemies.             ");
-               // Level 4 things (exploding boulder)
-               if (thisguy->level >= 4)
-               {
-                   WL(7, " Exploding Boulder");
-                   WL(8, "  Hurl a boulder so hard ");
-                   WL(9, "  that it explodes and   ");
-                   WL(10,"  hits foes all around.  ");
-               }
-               break;
-           case FAMILY_ELF:
-               message = std::format("Level {} elf has:", thisguy->level);
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
-               // Level 1 things (rocks)
-               WL(2, " Rocks/Forestwalk");
-               WL(3, "  Rocks hurls a few rocks");
-               WL(4, "  at the enemy.  Forest- ");
-               WL(5, "  walk, dexterity-based, ");
-               WL(6, "  lets you move in trees.");
-               // Level 4 things (more rocks)
-               if (thisguy->level >= 4)
-               {
-                   WL(7, " More Rocks");
-                   WL(8, "  Like #1, but these    ");
-                   WL(9, "  rocks bounce off walls");
-                   WL(10,"  and other barricades. ");
-               }
-               // Level 7 things
-               if (thisguy->level >= 7)
-               {
-                   WR(0, " Lots of Rocks");
-                   WR(1, "  Like #2, but more     ");
-                   WR(2, "  rocks, with a longer  ");
-                   WR(3 ,"  thrown range.         ");
-               }
-               // Level 10 things
-               if (thisguy->level >= 10)
-               {
-                   WR(5, " MegaRocks");
-                   WR(6, "  This giant handful of ");
-                   WR(7, "  rocks bounces far away");
-                   WR(8 ,"  and packs a big punch.");
-               }
-               break;
-           case FAMILY_ARCHER:
-               message = std::format("Level {} archer has:", thisguy->level);
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
-               // Level 1 things
-               WL(2, " Fire Arrows     ");
-               WL(3, "  An archer can spin in a");
-               WL(4, "  circle, firing off a   ");
-               WL(5, "  ring of flaming bolts. ");
-               //WL(6, "  lets you move in trees.");
-               // Level 4 things
-               if (thisguy->level >= 4)
-               {
-                   WL(7, " Barrage   ");
-                   WL(8, "  Rather than a single  ");
-                   WL(9, "  bolt, the archer sends");
-                   WL(10,"  3 deadly bolts ahead. ");
-               }
-               // Level 7 things
-               if (thisguy->level >= 7)
-               {
-                   WR(0, " Exploding Bolt");
-                   WR(1, "  This fatal bolt will  ");
-                   WR(2, "  explode on contact,   ");
-                   WR(3 ,"  dealing death to all. ");
-               }
-               // Level 10 things
-               if (thisguy->level >= 10)
-               {
-                   WR(5, "          ");
-                   WR(6, "                        ");
-                   WR(7, "                        ");
-                   WR(8 ,"                        ");
-               }
-               break;
-           case FAMILY_MAGE:
-               message = std::format("Level {} Mage has:", thisguy->level);
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
-               // Level 1 things
-               WL(2, " Teleport/Marker ");
-               WL(3, "  Any mage can teleport  ");
-               WL(4, "  randomly away easily.  ");
-               WL(5, "  Leaving a marker for   ");
-               WL(6, "  anchor requires 75 int.");
-               // Level 4 things
-               if (thisguy->level >= 4)
-               {
-                   WL(7, " Warp Space");
-                   WL(8, "  Twist the fabric of   ");
-                   WL(9, "  space around you to   ");
-                   WL(10,"  deal death to enemies.");
-               }
-               // Can we change to archmage?
-               if (thisguy->level >= 6)
-               {
-                   message = std::format("Level {} Archmage. This",
-                           (thisguy->level-6)/2+1);
-                   myscreen->draw_dialog(158, 4, 315, 66, "Become ArchMage");
-                   WR(-10,"Your Mage is now of high");
-                   WR( -9,"enough level to become a");
-                   //WR( -8,"Level 1 Archmage. This  ");
-                   WR(-8, message.c_str());
-                   WR( -7,"change CANNOT be undone!");
-                   WR( -6," Click here to change.  ");
-               }
-               // Level 7 things
-               if (thisguy->level >= 7)
-               {
-                   WR(0, " Freeze Time   ");
-                   WR(1, "  Freeze time for all   ");
-                   WR(2, "  but your team and kill");
-                   WR(3 ,"  enemies with ease.    ");
-               }
-               // Level 10 things
-               if (thisguy->level >= 10)
-               {
-                   WR(4, " Energy Wave");
-                   WR(5, "  Send a growing ripple ");
-                   WR(6, "  of energy through     ");
-                   WR(7 ,"  walls and foes.       ");
-               }
-               // Level 13 things
-               if (thisguy->level >= 13)
-               {
-                   WR(8, " HeartBurst  ");
-                   WR(9, "  Burst your enemies    ");
-                   WR(10,"  into flame. More magic");
-                   WR(11,"  means a bigger effect.");
-               }
-               break;
-           case FAMILY_ARCHMAGE:
-               message = std::format("Level {} ArchMage has:", thisguy->level);
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
-               // Level 1 things
-               WL(2, " Teleport/Marker ");
-               WL(3, "  Any mage can teleport  ");
-               WL(4, "  randomly away easily.  ");
-               WL(5, "  Leaving a marker for   ");
-               WL(6, "  anchor requires 75 int.");
-               // Level 4 things
-               if (thisguy->level >= 4)
-               {
-                   WL(7, " HeartBurst/Lightning");
-                   WL(8, "  Burst your enemies    ");
-                   WL(9, "  into flame around you.");
-                   WL(10,"  ALT: Chain lightning  ");
-                   WL(11,"  bounces through foes. ");
-               }
-               // Level 7 things
-               if (thisguy->level >= 7)
-               {
-                   WR(0, " Summon Image/Sum. Elem.");
-                   WR(1, "  Summon an illusionary ");
-                   WR(2, "  ally to fight for you.");
-                   WR(3 ,"  ALT: Summon a daemon, ");
-                   WR(4 ,"  who uses your stamina.");
-               }
-               // Level 10 things
-               if (thisguy->level >= 10)
-               {
-                   WR(5, " Mind Control");
-                   WR(6,"  Convert nearby foes to");
-                   WR(7,"  your team, for a time.");
-               }
-               break;
-
-           case FAMILY_CLERIC:
-               message = std::format("Level {} Cleric has:", thisguy->level);
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
-               // Level 1 things
-               WL(2, " Heal            ");
-               WL(3, "  Heal all teammates who ");
-               WL(4, "  are close to you, for  ");
-               WL(5, "  as much as you have SP.");
-               //WL(6, "  lets you move in trees.");
-               // Level 4 things
-               if (thisguy->level >= 4)
-               {
-                   WL(7, " Raise/Turn Undead");
-                   WL(8, "  Raise the gore of any ");
-                   WL(9, "  victim to a skeleton. ");
-                   WL(10,"  Alternate (turning)   ");
-                   WL(11,"  requires 65 Int.      ");
-               }
-               // Level 7 things
-               if (thisguy->level >= 7)
-               {
-                   WR(0, " Raise/Turn Ghost");
-                   WR(1, "  A more powerful raise,");
-                   WR(2, "  you can now get ghosts");
-                   WR(3 ,"  to fly and wail.      ");
-               }
-               // Level 10 things
-               if (thisguy->level >= 10)
-               {
-                   WR(5, " Resurrection");
-                   WR(6, "  The ultimate Healing, ");
-                   WR(7, "  this restores dead    ");
-                   WR(8 ,"  friends to life, or   ");
-                   WR(9 ,"  enemies to undead.    ");
-                   WR(10,"  Beware: this will use ");
-                   WR(11,"  your own EXP to cast! ");
-               }
-               break;
-           case FAMILY_DRUID:
-               message = std::format("Level {} Druid has:", thisguy->level);
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
-               // Level 1 things
-               WL(2, " Plant Tree      ");
-               WL(3, "  These magical trees    ");
-               WL(4, "  will resist the enemy, ");
-               WL(5, "  while allowing friends ");
-               WL(6, "  to pass.               ");
-               // Level 4 things
-               if (thisguy->level >= 4)
-               {
-                   WL(7, " Summon Faerie");
-                   WL(8, "  This spell brings to  ");
-                   WL(9, "  you a small flying    ");
-                   WL(10,"  faerie to stun foes.  ");
-               }
-               // Level 7 things
-               if (thisguy->level >= 7)
-               {
-                   WR(0, " Circle of Protection");
-                   WR(1, "  Calls the winds to aid");
-                   WR(2, "  your nearby friends by");
-                   WR(3 ,"  circling them with a  ");
-                   WR(4 ,"  shield of moving air. ");
-               }
-               // Level 10 things
-               if (thisguy->level >= 10)
-               {
-                   WR(5, " Reveal   ");
-                   WR(6, "  Gives you a magical   ");
-                   WR(7, "  view to see treasure, ");
-                   WR(8 ,"  potions, outposts, and");
-                   WR(9 ,"  invisible enemies.    ");
-               }
-               break;
-           case FAMILY_THIEF:
-               message = std::format("Level {} Thief has:", thisguy->level);
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
-               // Level 1 things
-               WL(2, " Drop Bomb       ");
-               WL(3, "  Leave a burning bomb to");
-               WL(4, "  explode and hurt the   ");
-               WL(5, "  unwary, friend or foe! ");
-               //WL(6, "  to pass.               ");
-               // Level 4 things
-               if (thisguy->level >= 4)
-               {
-                   WL(7, " Cloak of Darkness");
-                   WL(8, "  Cloak yourself in the ");
-                   WL(9, "  shadows, slipping past");
-                   WL(10,"  your enemies.         ");
-               }
-               // Level 7 things
-               if (thisguy->level >= 7)
-               {
-                   WR(0, " Taunt Enemies       ");
-                   WR(1, "  Beckon your enemies   ");
-                   WR(2, "  to you with jeers, and");
-                   WR(3 ,"  confuse their attack. ");
-                   //WR(4 ,"  shield of moving air. ");
-               }
-               // Level 10 things
-               if (thisguy->level >= 10)
-               {
-                   WR(5, " Poison Cloud");
-                   WR(6, "  Release a cloud of    ");
-                   WR(7, "  poisonous gas to roam ");
-                   WR(8 ,"  at will and sicken    ");
-                   WR(9 ,"  your foes.            ");
-               }
-               break;
-           case FAMILY_ORC:
-               message = std::format("Level {} Orc has:", thisguy->level);
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
-               // Level 1 things
-               WL(2, " Howl            ");
-               WL(3, "  Howl in rage, stunning ");
-               WL(4, "  nearby enemies in their");
-               WL(5, "  tracks.                ");
-               //WL(6, "  to pass.               ");
-               // Level 4 things
-               if (thisguy->level >= 4)
-               {
-                   WL(7, " Devour Corpse    ");
-                   WL(8, "  Regain health by      ");
-                   WL(9, "  devouring the corpses ");
-                   WL(10,"  of your foes.         ");
-               }
-               // Can we change to orc captain?
-               if (thisguy->level >= 6)
-               {
-                   myscreen->draw_dialog(158, 4, 315, 66, "Become Orc Captain");
-                   WR(-10,"Your Orc is now of high ");
-                   WR( -9,"enough level to become a");
-                   WR( -8,"Level 1 Orc Captain. You");
-                   WR( -7,"CANNOT undo this action!");
-                   WR( -6," Click here to change.  ");
-               }
-               // Level 7 things
-               if (thisguy->level >= 7)
-               {
-                   WR(0, "                     ");
-                   //WR(1, "  Beckon your enemies   ");
-                   //WR(2, "  to you with jeers, and");
-                   //WR(3 ,"  confuse their attack. ");
-                   //WR(4 ,"  shield of moving air. ");
-               }
-               // Level 10 things
-               if (thisguy->level >= 10)
-               {
-                   WR(5, "             ");
-                   //WR(6, "  Release a cloud of    ");
-                   //WR(7, "  poisonous gas to roam ");
-                   //WR(8 ,"  at will and sicken    ");
-                   //WR(9 ,"  your foes.            ");
-               }
-               break;
-           default:
-               break;
-       }
+       render_family_abilities(mytext, thisguy);
 
        show_guy(0, 1);
        
