@@ -174,13 +174,8 @@ static void soldier_on_create(walker* self)
 
 static void soldier_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 13.0f * levmult;
-    self->stats()->max_magicpoints += 8.0f * levmult;
+    apply_difficulty_scaling(self, level, {13.0f, 8.0f, 5.0f, 2.0f});
     self->weapons_left = static_cast<short>((level + 1) / 2);
-    self->damage += 5.0f * level_f;
-    self->stats()->armor += 2.0f * levmult;
 }
 
 static const char* const soldier_names[] = {"Lothar", "Arthur", "Uther", "Achilles", "Lu Bu", "Wallace", "Leonidas", "Attila", "Alexander", "Ajax", "Nestor", "Priam", "Hector", "Tom", "Bigfoot"};

@@ -122,12 +122,7 @@ static bool orc_check_special_ai(living* self)
 
 static void orc_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 14.0f * levmult;
-    self->stats()->max_magicpoints += 7.0f * levmult;
-    self->damage += 6.0f * level_f;
-    self->stats()->armor += 3.0f * levmult;
+    apply_difficulty_scaling(self, level, {14.0f, 7.0f, 6.0f, 3.0f});
 }
 
 static void orc_level_up(guy* self, std::int32_t level_diff)

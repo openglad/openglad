@@ -109,12 +109,7 @@ static void archer_hit_response(statistics* stats, walker* foe)
 
 static void archer_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 11.0f * levmult;
-    self->stats()->max_magicpoints += 12.0f * levmult;
-    self->damage += 4.0f * level_f;
-    self->stats()->armor += levmult;
+    apply_difficulty_scaling(self, level, {11.0f, 12.0f, 4.0f, 1.0f});
 }
 
 static void archer_level_up(guy* self, std::int32_t level_diff)

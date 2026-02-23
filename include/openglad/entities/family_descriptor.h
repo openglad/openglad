@@ -46,6 +46,15 @@ inline constexpr LevelUpGains kDefaultLevelUpGains{8, 6, 8, 8, 1};
 // Apply level-up stat gains to a guy.
 void apply_level_up(guy* self, std::int32_t level_diff, const LevelUpGains& g);
 
+// Per-family difficulty scaling coefficients for set_difficulty().
+// HP/MP/armor scale with level^2; damage scales with level.
+struct DifficultyScaling {
+    float hp, mp, dmg, armor;
+};
+
+// Apply difficulty scaling to a living entity.
+void apply_difficulty_scaling(living* self, std::uint32_t level, const DifficultyScaling& s);
+
 struct FamilyDescriptor {
     int family_id;
     const char* name;                          // "SOLDIER", "ELF", etc.

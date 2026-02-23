@@ -80,12 +80,7 @@ static void mage_hit_response(statistics* stats, walker* foe)
 
 static void mage_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 7.0f * levmult;
-    self->stats()->max_magicpoints += 14.0f * levmult;
-    self->damage += 3.0f * level_f;
-    self->stats()->armor += levmult / 2.0f;
+    apply_difficulty_scaling(self, level, {7.0f, 14.0f, 3.0f, 0.5f});
 }
 
 static void mage_level_up(guy* self, std::int32_t level_diff)

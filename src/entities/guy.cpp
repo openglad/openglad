@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <openglad/entities/guy.h>
 #include <openglad/core/stats.h>
+#include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/gloader.h>
@@ -232,6 +233,16 @@ void apply_level_up(guy* self, std::int32_t level_diff, const LevelUpGains& g)
     self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + g.con * level_diff);
     self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + g.intel * level_diff);
     self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + g.armor * level_diff);
+}
+
+void apply_difficulty_scaling(living* self, std::uint32_t level, const DifficultyScaling& s)
+{
+    const float levmult = static_cast<float>(level) * static_cast<float>(level);
+    const float level_f = static_cast<float>(level);
+    self->stats()->max_hitpoints   += s.hp * levmult;
+    self->stats()->max_magicpoints += s.mp * levmult;
+    self->damage += s.dmg * level_f;
+    self->stats()->armor += s.armor * levmult;
 }
 
 void guy::upgrade_to_level(short new_level, bool set_xp)

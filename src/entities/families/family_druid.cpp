@@ -28,12 +28,7 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
 static void druid_set_difficulty(living* self, std::uint32_t level)
 {
-    const float levmult = static_cast<float>(level) * static_cast<float>(level);
-    const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += 9.0f * levmult;
-    self->stats()->max_magicpoints += 12.0f * levmult;
-    self->damage += 4.0f * level_f;
-    self->stats()->armor += levmult / 2.0f;
+    apply_difficulty_scaling(self, level, {9.0f, 12.0f, 4.0f, 0.5f});
 }
 
 static void druid_level_up(guy* self, std::int32_t level_diff)
