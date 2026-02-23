@@ -10,7 +10,7 @@ effects:
   mini_hp_bar: on
   gore: on
 graphics:
-  fullscreen: off
+  fullscreen: on
   overscan_percentage: 0
   render: normal
 sound:
