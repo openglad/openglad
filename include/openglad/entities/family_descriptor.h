@@ -55,6 +55,9 @@ struct DifficultyScaling {
 // Apply difficulty scaling to a living entity.
 void apply_difficulty_scaling(living* self, std::uint32_t level, const DifficultyScaling& s);
 
+// Common check_special_ai: find foe if needed, return true if within threshold distance.
+bool check_special_ai_distance(living* self, std::uint32_t threshold);
+
 struct FamilyDescriptor {
     int family_id;
     const char* name;                          // "SOLDIER", "ELF", etc.

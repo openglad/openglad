@@ -245,6 +245,20 @@ void apply_difficulty_scaling(living* self, std::uint32_t level, const Difficult
     self->stats()->armor += s.armor * levmult;
 }
 
+bool check_special_ai_distance(living* self, std::uint32_t threshold)
+{
+    if (self->foe)
+    {
+        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
+        return (distance < threshold);
+    }
+    self->foe = self->sim_level->find_near_foe(self);
+    if (!self->foe)
+        return false;
+    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
+    return (distance < threshold);
+}
+
 void guy::upgrade_to_level(short new_level, bool set_xp)
 {
     std::int32_t level_diff = static_cast<std::int32_t>(new_level) - static_cast<std::int32_t>(this->level);

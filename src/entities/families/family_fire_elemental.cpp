@@ -19,16 +19,7 @@
 
 static bool fire_elemental_check_special_ai(living* self)
 {
-    if (self->foe)
-    {
-        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
-        return (distance < 130);
-    }
-    self->foe = self->sim_level->find_near_foe(self);
-    if (!self->foe)
-        return false;
-    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
-    return (distance < 130);
+    return check_special_ai_distance(self, 130);
 }
 
 static bool fire_elemental_on_death(walker* self)
