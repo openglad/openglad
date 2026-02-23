@@ -477,7 +477,7 @@ void video::pointb(Sint32 x, Sint32 y, unsigned char color)
 	int c;
 
 	//buffers: this does bound checking (just to be safe)
-	if(x<0 || x>319 || y<0 || y>199)
+	if(x<0 || x>=E_Screen->render->w || y<0 || y>=E_Screen->render->h)
 		return;
 
 	query_palette_reg(color,&r,&g,&b);
@@ -599,7 +599,7 @@ void video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha)
 	int c;
 
 	//buffers: this does bound checking (just to be safe)
-	if(x<0 || x>319 || y<0 || y>199)
+	if(x<0 || x>=E_Screen->render->w || y<0 || y>=E_Screen->render->h)
 		return;
 
 	query_palette_reg(color,&r,&g,&b);
@@ -608,7 +608,7 @@ void video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha)
 	               static_cast<Uint8>(r * 4),
 	               static_cast<Uint8>(g * 4),
 	               static_cast<Uint8>(b * 4));
-	
+
     blend_pixel(E_Screen->render, x, y, c, alpha);
 }
 
@@ -633,9 +633,10 @@ void video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
 void video::pointb(int offset, unsigned char color)
 {
 	int x, y;
+	int w = E_Screen->render->w;
 
-	y = offset/320;
-	x = offset - y*320;
+	y = offset/w;
+	x = offset - y*w;
 
 	pointb(x,y,color);
 }

@@ -44,8 +44,10 @@
 #include <format>
 #include <openglad/legacy/view_sizes.h>
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <memory>
+#include <openglad/render/sai2x.h>
 #include <openglad/legacy/test_trace.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -221,6 +223,134 @@ viewscreen::~viewscreen()
 {
 }
 
+// --- Zoom methods ---
+
+void viewscreen::zoom_in()
+{
+	float new_zoom = zoom_level + ZOOM_STEP;
+	zoom_level = std::min(new_zoom, ZOOM_MAX);
+	TRACE("zoom", "zoom_in level=%.2f", zoom_level);
+}
+
+void viewscreen::zoom_out()
+{
+	float new_zoom = zoom_level - ZOOM_STEP;
+	zoom_level = std::max(new_zoom, ZOOM_MIN);
+	TRACE("zoom", "zoom_out level=%.2f", zoom_level);
+}
+
+Sint32 viewscreen::world_width() const
+{
+	return static_cast<Sint32>(std::ceil(static_cast<float>(xview) / zoom_level));
+}
+
+Sint32 viewscreen::world_height() const
+{
+	return static_cast<Sint32>(std::ceil(static_cast<float>(yview) / zoom_level));
+}
+
+// RAII helper to manage offscreen zoom rendering.
+// Swaps E_Screen->render to a temporary surface of world_w × world_h,
+// adjusts the viewscreen parameters, renders, then scales back.
+namespace {
+struct ZoomRenderContext {
+	viewscreen* view;
+	SDL_Surface* original_render;
+	SDL_Surface* zoom_surface;
+	Sint32 saved_xloc, saved_yloc, saved_endx, saved_endy;
+	Sint32 saved_xview, saved_yview;
+
+	ZoomRenderContext(viewscreen* v)
+		: view(v), original_render(nullptr), zoom_surface(nullptr),
+		  saved_xloc(0), saved_yloc(0), saved_endx(0), saved_endy(0),
+		  saved_xview(0), saved_yview(0)
+	{}
+
+	bool begin()
+	{
+		if (std::fabs(view->zoom_level - 1.0f) < 0.001f)
+			return false; // No zoom needed
+
+		Sint32 world_w = view->world_width();
+		Sint32 world_h = view->world_height();
+
+		// Create a temporary surface matching the render surface format
+		original_render = E_Screen->render;
+		zoom_surface = SDL_CreateRGBSurface(
+			SDL_SWSURFACE, world_w, world_h, 32, 0, 0, 0, 0);
+		if (!zoom_surface)
+			return false;
+
+		SDL_FillRect(zoom_surface, nullptr, 0x000000);
+
+		// Swap the render target
+		E_Screen->render = zoom_surface;
+
+		// Save and adjust viewport parameters
+		saved_xloc = view->xloc;
+		saved_yloc = view->yloc;
+		saved_endx = view->endx;
+		saved_endy = view->endy;
+		saved_xview = view->xview;
+		saved_yview = view->yview;
+
+		view->xloc = 0;
+		view->yloc = 0;
+		view->endx = world_w;
+		view->endy = world_h;
+		view->xview = world_w;
+		view->yview = world_h;
+
+		return true;
+	}
+
+	void end()
+	{
+		if (!zoom_surface)
+			return;
+
+		// Restore render target
+		E_Screen->render = original_render;
+
+		// Restore viewport parameters
+		view->xloc = saved_xloc;
+		view->yloc = saved_yloc;
+		view->endx = saved_endx;
+		view->endy = saved_endy;
+		view->xview = saved_xview;
+		view->yview = saved_yview;
+
+		// Scale blit from zoom surface to the viewscreen's area
+		SDL_Rect dst = {
+			static_cast<int>(saved_xloc),
+			static_cast<int>(saved_yloc),
+			static_cast<int>(saved_xview),
+			static_cast<int>(saved_yview)
+		};
+		SDL_BlitScaled(zoom_surface, nullptr, E_Screen->render, &dst);
+
+		SDL_FreeSurface(zoom_surface);
+		zoom_surface = nullptr;
+	}
+
+	~ZoomRenderContext()
+	{
+		// Safety: if end() was not called, clean up
+		if (zoom_surface)
+		{
+			E_Screen->render = original_render;
+			view->xloc = saved_xloc;
+			view->yloc = saved_yloc;
+			view->endx = saved_endx;
+			view->endy = saved_endy;
+			view->xview = saved_xview;
+			view->yview = saved_yview;
+			SDL_FreeSurface(zoom_surface);
+		}
+	}
+};
+} // namespace
+
 void viewscreen::clear()
 {
 	unsigned short i;
@@ -233,12 +363,16 @@ void viewscreen::clear()
 
 bool viewscreen::redraw()
 {
+	// Set up zoom rendering (swaps render surface if zoomed)
+	ZoomRenderContext zoom_ctx(this);
+	bool zoomed = zoom_ctx.begin();
+
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
 	walker  *controlob = control;
 	auto* renderer = active_screen()->level_data.renderer_.get();
-	if (!renderer) return false;
+	if (!renderer) { if (zoomed) zoom_ctx.end(); return false; }
 	PixieData& gridp = active_screen()->level_data.grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
@@ -287,18 +421,27 @@ bool viewscreen::redraw()
 	if (control && !control->dead && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
 	display_text();
+
+	// Finalize zoom: scale from zoom surface back to render surface
+	if (zoomed)
+		zoom_ctx.end();
+
 	return 1;
 
 }
 
 bool viewscreen::redraw(LevelData* data, bool draw_radar)
 {
+	// Set up zoom rendering (swaps render surface if zoomed)
+	ZoomRenderContext zoom_ctx(this);
+	bool zoomed = zoom_ctx.begin();
+
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
 	walker  *controlob = control;
 	auto* renderer = data->renderer_.get();
-	if (!renderer) return false;
+	if (!renderer) { if (zoomed) zoom_ctx.end(); return false; }
 	PixieData& gridp = data->grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
@@ -347,6 +490,11 @@ bool viewscreen::redraw(LevelData* data, bool draw_radar)
 	if (draw_radar && control && !control->dead && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();
+
+	// Finalize zoom: scale from zoom surface back to render surface
+	if (zoomed)
+		zoom_ctx.end();
+
 	return 1;
 
 }
@@ -409,6 +557,20 @@ short viewscreen::input(const SDL_Event& event)
 		return 1;
 
 	const PlayerInput& pi = ctx().input.players[mynum];
+
+	// --- Zoom keys (F11 = zoom out, F12 = zoom in) ---
+	if (query_key_event(SDLK_F11, event))
+	{
+		zoom_out();
+		std::string msg = std::format("Zoom: {:.0f}%", zoom_level * 100.0f);
+		set_display_text(msg, STANDARD_TEXT_TIME);
+	}
+	if (query_key_event(SDLK_F12, event))
+	{
+		zoom_in();
+		std::string msg = std::format("Zoom: {:.0f}%", zoom_level * 100.0f);
+		set_display_text(msg, STANDARD_TEXT_TIME);
+	}
 
 	// --- Debug keys (require raw SDL keycode checks) ---
 	if (!pi.is_held(InputAction::Cheat))

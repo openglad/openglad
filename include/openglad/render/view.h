@@ -24,6 +24,12 @@
 #include <string>
 #include <string_view>
 
+// Zoom constants
+inline constexpr float ZOOM_DEFAULT = 1.0f;
+inline constexpr float ZOOM_MIN = 0.5f;
+inline constexpr float ZOOM_MAX = 3.0f;
+inline constexpr float ZOOM_STEP = 0.25f;
+
 // Viewscreen-related defines
 inline constexpr signed char PREF_LIFE = 0;
   inline constexpr signed char PREF_LIFE_TEXT  = 0;
@@ -132,6 +138,15 @@ class viewscreen
 			short radarstart; //has the radar been started yet?
 			Sint32 xview;
 			Sint32 yview;
+
+			// Camera zoom (1.0 = default, <1.0 = zoom out, >1.0 = zoom in)
+			float zoom_level = ZOOM_DEFAULT;
+			void zoom_in();
+			void zoom_out();
+			float get_zoom_level() const { return zoom_level; }
+			// World-space viewport dimensions at current zoom
+			Sint32 world_width() const;
+			Sint32 world_height() const;
 
 	protected:
 		options *prefsob;

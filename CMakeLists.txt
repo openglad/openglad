@@ -944,6 +944,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_picker_common.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_zoom.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_cleric.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_druid.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_orc.cpp
