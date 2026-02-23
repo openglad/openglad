@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <format>
 #include <iterator>
+#include <vector>
 
 void popup_dialog(const char* title, const char* message);
 
@@ -44,7 +45,6 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	walker        *temp_walker,  *replace_walker;
 	Order         myord{};
 	short         myfam;
-	int           multi_team = 0;
 	bool used_fallback_level = false;
 
 	screenp->numviews = screenp->save_data.numplayers;
@@ -92,12 +92,6 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	    temp_walker->myguy->scen_shots = 0;
 	    temp_walker->myguy->scen_hits = 0;
 
-		// Do we have guys on multiple teams? If so, we need
-		// to record it so that we can set the controls of
-		// the viewscreens correctly
-		if (temp_guy->teamnum != 0)
-			multi_team = 1;
-
 		// First, try to find a marker that's the correct team number ..
 			replace_walker = screenp->first_of(Order::Special,
 			                                    FAMILY_RESERVED_TEAM,
@@ -123,6 +117,19 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	{
 		replace_walker->dead = 1;
 		replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
+	}
+
+	std::vector<short> view_teams;
+	view_teams.reserve(static_cast<std::size_t>(screenp->numviews));
+	for(int guy_idx = 0; guy_idx < screenp->save_data.team_size; guy_idx++)
+	{
+		const guy* team_guy = screenp->save_data.team_list[guy_idx].get();
+		if (!team_guy)
+			continue;
+		if (team_guy->teamnum == 0)
+			continue;
+		if (std::find(view_teams.begin(), view_teams.end(), team_guy->teamnum) == view_teams.end())
+			view_teams.push_back(team_guy->teamnum);
 	}
 
 	// Have we already done this scenario?
@@ -200,7 +207,10 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
         if (!view || view_idx >= numviews)
             break;
 
-        view->my_team = multi_team ? view_idx : 0;
+        if (view_idx < static_cast<short>(view_teams.size()))
+            view->my_team = view_teams[static_cast<std::size_t>(view_idx)];
+        else
+            view->my_team = 0;
         view->control = view->find_next_control();
         if (view->control && view->control->user == -1)
         {

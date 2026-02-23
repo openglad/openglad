@@ -1,9 +1,12 @@
+#include <memory>
 #include <openglad/input/button.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include <openglad/data/save_data.h>
 #include <openglad/data/level_data.h>
+#include <openglad/entities/guy.h>
 extern screen* myscreen;
 
 short load_saved_game(const char *filename, screen *myscreen);
@@ -78,3 +81,44 @@ void test_level_fallback() {
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_fallback);
+
+// Regression: saved multiplayer teams must map to views by saved team ids,
+// not by view index.
+void test_load_saved_game_maps_views_to_saved_team_ids() {
+    trace_clear();
+
+    myscreen->save_data.reset();
+    myscreen->save_data.scen_num = 1;
+    myscreen->save_data.numplayers = 2;
+
+    auto team2 = std::make_unique<guy>(FAMILY_SOLDIER);
+    team2->name = "TEAM2";
+    team2->teamnum = 2;
+    myscreen->save_data.team_list[0] = std::move(team2);
+
+    auto team4 = std::make_unique<guy>(FAMILY_ARCHER);
+    team4->name = "TEAM4";
+    team4->teamnum = 4;
+    myscreen->save_data.team_list[1] = std::move(team4);
+    myscreen->save_data.team_size = 2;
+
+    TEST_ASSERT(myscreen->save_data.save("test_level_team_mapping"),
+        "save should succeed for team mapping regression");
+    TEST_ASSERT(load_saved_game("test_level_team_mapping", myscreen) != 0,
+        "load_saved_game should succeed for team mapping regression");
+
+    TEST_ASSERT(myscreen->viewob[0] != nullptr, "view 0 should exist");
+    TEST_ASSERT(myscreen->viewob[1] != nullptr, "view 1 should exist");
+    if (!myscreen->viewob[0] || !myscreen->viewob[1]) {
+        myscreen->level_data.delete_objects();
+        return;
+    }
+
+    TEST_ASSERT_EQ(2, (int)myscreen->viewob[0]->my_team,
+        "view 0 should map to first distinct saved team id");
+    TEST_ASSERT_EQ(4, (int)myscreen->viewob[1]->my_team,
+        "view 1 should map to second distinct saved team id");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_load_saved_game_maps_views_to_saved_team_ids);
