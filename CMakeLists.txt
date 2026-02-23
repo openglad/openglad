@@ -770,27 +770,12 @@ if(NOT EMSCRIPTEN)
 
     # Stage runtime assets into the build tree so tests and local runs do not
     # depend on pre-existing user data.
-    # Use symlinks on Unix to avoid duplicating assets across build directories;
-    # fall back to copies on Windows where symlinks require elevated privileges.
-    set(_ASSET_DIRS builtin cfg pix sound)
-    set(_STAGE_COMMANDS "")
-    if(WIN32)
-        foreach(_dir ${_ASSET_DIRS})
-            list(APPEND _STAGE_COMMANDS
-                COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/${_dir} ${CMAKE_BINARY_DIR}/${_dir})
-        endforeach()
-        set(_STAGE_COMMENT "Staging runtime asset directories (copies)")
-    else()
-        foreach(_dir ${_ASSET_DIRS})
-            list(APPEND _STAGE_COMMANDS
-                COMMAND ${CMAKE_COMMAND} -E rm -rf ${CMAKE_BINARY_DIR}/${_dir}
-                COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_SOURCE_DIR}/${_dir} ${CMAKE_BINARY_DIR}/${_dir})
-        endforeach()
-        set(_STAGE_COMMENT "Staging runtime asset directories (symlinks)")
-    endif()
     add_custom_target(stage_runtime_assets
-        ${_STAGE_COMMANDS}
-        COMMENT "${_STAGE_COMMENT}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/builtin ${CMAKE_BINARY_DIR}/builtin
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/cfg ${CMAKE_BINARY_DIR}/cfg
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/pix ${CMAKE_BINARY_DIR}/pix
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/sound ${CMAKE_BINARY_DIR}/sound
+        COMMENT "Staging runtime asset directories"
         VERBATIM
     )
 
