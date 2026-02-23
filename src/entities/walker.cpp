@@ -1028,8 +1028,8 @@ bool walker::fire_check(short xdelta, short ydelta)
 	// Run weapon through where it would go if all went well ..
 	for (i=0; i < weapon->lineofsight; i++)
 	{
-		weapon->setxy(weapon->xpos + i*weapon->lastx,
-		              weapon->ypos + i*weapon->lasty);
+		weapon->setxy(weapon->xpos + weapon->lastx,
+		              weapon->ypos + weapon->lasty);
 		if ( !sim_level->query_grid_passable(weapon->xpos, weapon->ypos, weapon) )
 		{
 			// we hit a wall, so fail
