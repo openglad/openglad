@@ -403,321 +403,115 @@ loader::loader()
 		fire_frequency[PIX(Order::Living, i)] = fd->derived_bonuses[7];
 	}
 
-	// Weapons
-	graphics[PIX(Order::Weapon, FAMILY_KNIFE)] = read_pixie_file("knife.pix");
-	graphics[PIX(Order::Weapon, FAMILY_ROCK)] = read_pixie_file("rock.pix");
-	graphics[PIX(Order::Weapon, FAMILY_ARROW)] = read_pixie_file("arrow.pix");
-	graphics[PIX(Order::Weapon, FAMILY_FIRE_ARROW)] = read_pixie_file("farrow.pix");
-	graphics[PIX(Order::Weapon, FAMILY_FIREBALL)] = read_pixie_file("fire.pix");
-	graphics[PIX(Order::Weapon, FAMILY_TREE)] = read_pixie_file("tree.pix");
-	graphics[PIX(Order::Weapon, FAMILY_METEOR)] = read_pixie_file("meteor.pix");
-	graphics[PIX(Order::Weapon, FAMILY_SPRINKLE)] = read_pixie_file("sparkle.pix");
-	
-	if(active_config().is_on("effects", "gore"))
-    {
-        graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood.pix");
-        graphics[PIX(Order::Treasure,FAMILY_STAIN)] = read_pixie_file("stain.pix");
-    }
-	else
-    {
-        graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood_friendly.pix");
-        graphics[PIX(Order::Treasure,FAMILY_STAIN)] = read_pixie_file("stain_friendly.pix");
-    }
-        
-	graphics[PIX(Order::Weapon, FAMILY_BONE)] = read_pixie_file("bone1.pix");
-	graphics[PIX(Order::Weapon, FAMILY_BLOB)] = read_pixie_file("sl_ball.pix");
-	graphics[PIX(Order::Weapon, FAMILY_LIGHTNING)] = read_pixie_file("lightnin.pix");
-	graphics[PIX(Order::Weapon, FAMILY_GLOW)] = read_pixie_file("clerglow.pix");
-	graphics[PIX(Order::Weapon, FAMILY_WAVE)] = read_pixie_file("wave.pix");
-	graphics[PIX(Order::Weapon, FAMILY_WAVE2)] = read_pixie_file("wave2.pix");
-	graphics[PIX(Order::Weapon, FAMILY_WAVE3)] = read_pixie_file("wave3.pix");
-	graphics[PIX(Order::Weapon, FAMILY_CIRCLE_PROTECTION)] = read_pixie_file("wave2.pix");
-	graphics[PIX(Order::Weapon, FAMILY_HAMMER)] = read_pixie_file("hammer.pix");
-	
-	graphics[PIX(Order::Weapon, FAMILY_DOOR)] = read_pixie_file("door.pix");
-	graphics[PIX(Order::Weapon, FAMILY_BOULDER)] = read_pixie_file("boulder1.pix");
+	// Table-driven entity initialization for non-Living entities
+	struct EntityDef {
+		Order order; int family; const char* pix_file;
+		float hp; int act_type; signed char** anim;
+		float stepsize; int los; float dmg; float fire_freq;
+	};
 
-	hitpoints[PIX(Order::Weapon, FAMILY_KNIFE)] = 6;
-	hitpoints[PIX(Order::Weapon, FAMILY_BONE)] = 5;
-	hitpoints[PIX(Order::Weapon, FAMILY_ROCK)] = 4;
-	hitpoints[PIX(Order::Weapon, FAMILY_ARROW)] = 5;
-	hitpoints[PIX(Order::Weapon, FAMILY_FIRE_ARROW)] = 7;
-	hitpoints[PIX(Order::Weapon, FAMILY_FIREBALL)] = 8;
-	hitpoints[PIX(Order::Weapon, FAMILY_TREE)] = 50;
-	hitpoints[PIX(Order::Weapon, FAMILY_METEOR)] = 12;
-	hitpoints[PIX(Order::Weapon, FAMILY_SPRINKLE)] = 1;
-	hitpoints[PIX(Order::Weapon, FAMILY_BLOB)] = 1;
-	hitpoints[PIX(Order::Weapon, FAMILY_LIGHTNING)] = 60;
-	hitpoints[PIX(Order::Weapon, FAMILY_GLOW)] = 50;
-	hitpoints[PIX(Order::Weapon, FAMILY_WAVE)] = 50;
-	hitpoints[PIX(Order::Weapon, FAMILY_WAVE2)] = 50;
-	hitpoints[PIX(Order::Weapon, FAMILY_WAVE3)] = 50;
-	hitpoints[PIX(Order::Weapon, FAMILY_CIRCLE_PROTECTION)] = 50;
-	hitpoints[PIX(Order::Weapon, FAMILY_HAMMER)] = 10;
-	hitpoints[PIX(Order::Weapon, FAMILY_DOOR)] = 5000;
-	hitpoints[PIX(Order::Weapon, FAMILY_BOULDER)] = 50;
+	// clang-format off
+	static const EntityDef defs[] = {
+		// Weapon entities (BLOOD pix handled separately for gore toggle)
+		//                                                       hp  act         anim           step los  dmg freq
+		{Order::Weapon, FAMILY_KNIFE,             "knife.pix",    6, ACT_FIRE, anikni,          5,  7,  6, 0},
+		{Order::Weapon, FAMILY_ROCK,              "rock.pix",     4, ACT_FIRE, anirock,         5,  8,  4, 0},
+		{Order::Weapon, FAMILY_ARROW,             "arrow.pix",    5, ACT_FIRE, aniarrow,        8, 12,  5, 0},
+		{Order::Weapon, FAMILY_FIRE_ARROW,        "farrow.pix",   7, ACT_FIRE, aniarrow,        8, 12,  7, 0},
+		{Order::Weapon, FAMILY_FIREBALL,          "fire.pix",     8, ACT_FIRE, aniarrow,        6,  7, 10, 0},
+		{Order::Weapon, FAMILY_TREE,              "tree.pix",    50, ACT_SIT,  anitree,         0,  1,  0, 0},
+		{Order::Weapon, FAMILY_METEOR,            "meteor.pix",  12, ACT_FIRE, aniarrow,        7,  9, 12, 0},
+		{Order::Weapon, FAMILY_SPRINKLE,          "sparkle.pix",  1, ACT_FIRE, anikni,          6, 10,  1, 0},
+		{Order::Weapon, FAMILY_BLOOD,             nullptr,        0, ACT_DIE,  aniblood,        0,  1,  0, 0},
+		{Order::Weapon, FAMILY_BONE,              "bone1.pix",    5, ACT_FIRE, anikni,          6,  6,  5, 0},
+		{Order::Weapon, FAMILY_BLOB,              "sl_ball.pix",  1, ACT_FIRE, aniblob1,        2, 11,  1, 2},
+		{Order::Weapon, FAMILY_LIGHTNING,         "lightnin.pix",60, ACT_FIRE, aniarrow,        9, 13,  6, 0},
+		{Order::Weapon, FAMILY_GLOW,              "clerglow.pix",50, ACT_SIT,  aniglowgrow,    0,   1,  0, 0},
+		{Order::Weapon, FAMILY_WAVE,              "wave.pix",    50, ACT_FIRE, aniarrow,        6,  3, 16, 0},
+		{Order::Weapon, FAMILY_WAVE2,             "wave2.pix",   50, ACT_RANDOM, aniarrow,      4,  4, 12, 0},
+		{Order::Weapon, FAMILY_WAVE3,             "wave3.pix",   50, ACT_FIRE, aniarrow,        3,  6, 10, 0},
+		{Order::Weapon, FAMILY_CIRCLE_PROTECTION, "wave2.pix",   50, ACT_SIT,  anifood,         1,110,  0, 0},
+		{Order::Weapon, FAMILY_HAMMER,            "hammer.pix",  10, ACT_FIRE, aniarrow,        6,  4,  9, 0},
+		{Order::Weapon, FAMILY_DOOR,              "door.pix",  5000, ACT_SIT,  anidoor,         0,  1,  0, 0},
+		{Order::Weapon, FAMILY_BOULDER,           "boulder1.pix",50, ACT_FIRE, aninone,        10,  9, 25, 0},
 
-	act_types[PIX(Order::Weapon, FAMILY_KNIFE)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_BONE)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_ROCK)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_ARROW)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_FIRE_ARROW)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_FIREBALL)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_TREE)] = ACT_SIT;
-	act_types[PIX(Order::Weapon, FAMILY_METEOR)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_SPRINKLE)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_BLOOD)] = ACT_DIE;
-	act_types[PIX(Order::Weapon, FAMILY_BLOB)] = ACT_FIRE;
-	act_types[PIX(Order::Treasure,     FAMILY_STAIN)] = ACT_CONTROL;
-	act_types[PIX(Order::Weapon, FAMILY_LIGHTNING)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_GLOW)] = ACT_SIT;
-	act_types[PIX(Order::Weapon, FAMILY_WAVE)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_WAVE3)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_WAVE3)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_CIRCLE_PROTECTION)] = ACT_SIT;
-	act_types[PIX(Order::Weapon, FAMILY_HAMMER)] = ACT_FIRE;
-	act_types[PIX(Order::Weapon, FAMILY_DOOR)] = ACT_SIT;
-	act_types[PIX(Order::Weapon, FAMILY_BOULDER)] = ACT_FIRE;
+		// Treasure entities (STAIN pix handled by gore toggle; data_copy entries have nullptr pix)
+		{Order::Treasure, FAMILY_STAIN,                nullptr,       0, ACT_CONTROL, aniblood, 0, 0, 0, 0},
+		{Order::Treasure, FAMILY_DRUMSTICK,            "food1.pix",  10, ACT_CONTROL, anifood,  5, 0, 0, 0},
+		{Order::Treasure, FAMILY_GOLD_BAR,             "bar1.pix", 1000, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_SILVER_BAR,           nullptr,     100, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_MAGIC_POTION,         "bottle.pix",  0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_INVIS_POTION,         nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_INVULNERABLE_POTION,  nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_FLIGHT_POTION,        nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_EXIT,                 "16exit1.pix", 0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_TELEPORTER,           "teleport.pix",0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_LIFE_GEM,             "lifegem.pix", 0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_KEY,                  "key.pix",     0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_SPEED_POTION,         nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
 
-	animations[PIX(Order::Weapon, FAMILY_KNIFE)] = anikni;
-	animations[PIX(Order::Weapon, FAMILY_BONE)] = anikni;
-	animations[PIX(Order::Weapon, FAMILY_ROCK)] = anirock;
-	animations[PIX(Order::Weapon, FAMILY_ARROW)] = aniarrow;
-	animations[PIX(Order::Weapon, FAMILY_FIRE_ARROW)] = aniarrow;
-	animations[PIX(Order::Weapon, FAMILY_FIREBALL)] = aniarrow;
-	animations[PIX(Order::Weapon, FAMILY_TREE)] = anitree;
-	animations[PIX(Order::Weapon, FAMILY_METEOR)] = aniarrow;
-	animations[PIX(Order::Weapon, FAMILY_SPRINKLE)] = anikni;
-	animations[PIX(Order::Weapon, FAMILY_BLOOD)] = aniblood;
-	animations[PIX(Order::Weapon, FAMILY_BLOB)] = aniblob1;
-	animations[PIX(Order::Treasure,     FAMILY_STAIN)] = aniblood;
-	animations[PIX(Order::Weapon, FAMILY_LIGHTNING)] = aniarrow;
-	animations[PIX(Order::Weapon, FAMILY_GLOW)] = aniglowgrow;
-	animations[PIX(Order::Weapon, FAMILY_WAVE)] = aniarrow;
-	animations[PIX(Order::Weapon, FAMILY_WAVE2)] = aniarrow;
-	animations[PIX(Order::Weapon, FAMILY_WAVE3)] = aniarrow;
-	animations[PIX(Order::Weapon, FAMILY_CIRCLE_PROTECTION)] = anifood;
-	animations[PIX(Order::Weapon, FAMILY_HAMMER)] = aniarrow;
-	animations[PIX(Order::Weapon, FAMILY_DOOR)] = anidoor;
-	animations[PIX(Order::Weapon, FAMILY_BOULDER)] = aninone;
+		// Generator entities
+		{Order::Generator, FAMILY_TENT,      "tent.pix",    100, ACT_GENERATE, anitent,  0, 0, 0, 0},
+		{Order::Generator, FAMILY_TOWER,     "tower4.pix",    0, ACT_GENERATE, anitower, 0, 0, 0, 0},
+		{Order::Generator, FAMILY_BONES,     "bonepile.pix",  0, ACT_GENERATE, aninone,  0, 0, 2, 0},
+		{Order::Generator, FAMILY_TREEHOUSE, "bigtree.pix",   0, ACT_GENERATE, aninone,  0, 0, 0, 0},
 
-	stepsizes[PIX(Order::Weapon, FAMILY_KNIFE)] = 5;
-	stepsizes[PIX(Order::Weapon, FAMILY_BONE)] = 6;
-	stepsizes[PIX(Order::Weapon, FAMILY_ROCK)] = 5;
-	stepsizes[PIX(Order::Weapon, FAMILY_ARROW)] = 8;
-	stepsizes[PIX(Order::Weapon, FAMILY_FIRE_ARROW)] = 8;
-	stepsizes[PIX(Order::Weapon, FAMILY_FIREBALL)] = 6;
-	stepsizes[PIX(Order::Weapon, FAMILY_TREE)] = 0;
-	stepsizes[PIX(Order::Weapon, FAMILY_METEOR)] = 7;
-	stepsizes[PIX(Order::Weapon, FAMILY_SPRINKLE)] = 6;
-	stepsizes[PIX(Order::Weapon, FAMILY_BLOOD)] = 0;
-	stepsizes[PIX(Order::Weapon, FAMILY_BLOB)] = 2;
-	stepsizes[PIX(Order::Treasure,     FAMILY_STAIN)] = 0;
-	stepsizes[PIX(Order::Weapon, FAMILY_LIGHTNING)] = 9;
-	stepsizes[PIX(Order::Weapon, FAMILY_GLOW)] = 0;
-	stepsizes[PIX(Order::Weapon, FAMILY_WAVE)] = 6;
-	stepsizes[PIX(Order::Weapon, FAMILY_WAVE2)] = 4;
-	stepsizes[PIX(Order::Weapon, FAMILY_WAVE3)] = 3;
-	stepsizes[PIX(Order::Weapon, FAMILY_CIRCLE_PROTECTION)] = 1;
-	stepsizes[PIX(Order::Weapon, FAMILY_HAMMER)] = 6;
-	stepsizes[PIX(Order::Weapon, FAMILY_DOOR)] = 0;
-	stepsizes[PIX(Order::Weapon, FAMILY_BOULDER)] = 10;
+		// Special
+		{Order::Special, FAMILY_RESERVED_TEAM, "team.pix", 0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
 
-	// Acts as weapon's range (pixel range == lineofsight * stepsize)
-	lineofsight[PIX(Order::Weapon, FAMILY_KNIFE)] = 7;
-	lineofsight[PIX(Order::Weapon, FAMILY_BONE)] = 6;
-	lineofsight[PIX(Order::Weapon, FAMILY_ROCK)] = 8;
-	lineofsight[PIX(Order::Weapon, FAMILY_ARROW)] = 12;
-	lineofsight[PIX(Order::Weapon, FAMILY_FIRE_ARROW)] = 12;
-	lineofsight[PIX(Order::Weapon, FAMILY_FIREBALL)] = 7;
-	lineofsight[PIX(Order::Weapon, FAMILY_TREE)] = 1;
-	lineofsight[PIX(Order::Weapon, FAMILY_METEOR)] = 9;
-	lineofsight[PIX(Order::Weapon, FAMILY_SPRINKLE)] = 10;
-	lineofsight[PIX(Order::Weapon, FAMILY_BLOB)] = 11;
-	lineofsight[PIX(Order::Weapon, FAMILY_BLOOD)] = 1;
-	lineofsight[PIX(Order::Weapon, FAMILY_LIGHTNING)] = 13;
-	lineofsight[PIX(Order::Weapon, FAMILY_GLOW)] = 1;
-	lineofsight[PIX(Order::Weapon, FAMILY_WAVE)] = 3;
-	lineofsight[PIX(Order::Weapon, FAMILY_WAVE2)] = 4;
-	lineofsight[PIX(Order::Weapon, FAMILY_WAVE3)] = 6;
-	lineofsight[PIX(Order::Weapon, FAMILY_CIRCLE_PROTECTION)] = 110;
-	lineofsight[PIX(Order::Weapon, FAMILY_HAMMER)] = 4;
-	lineofsight[PIX(Order::Weapon, FAMILY_DOOR)] = 1;
-	lineofsight[PIX(Order::Weapon, FAMILY_BOULDER)] = 9;
+		// FX entities
+		{Order::FX, FAMILY_EXPAND,       "expand8.pix",    0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
+		{Order::FX, FAMILY_GHOST_SCARE,  "expand8.pix",    0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
+		{Order::FX, FAMILY_BOMB,         "bomb1.pix",      0, ACT_RANDOM, anibomb1,      0,  0,  0, 0},
+		{Order::FX, FAMILY_EXPLOSION,    "boom1.pix",      0, ACT_RANDOM, aniexplosion1, 0,  0,  0, 0},
+		{Order::FX, FAMILY_FLASH,        "telflash.pix",   0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
+		{Order::FX, FAMILY_MAGIC_SHIELD, "mshield.pix",  100, ACT_RANDOM, anikni,        0,  0, 10, 0},
+		{Order::FX, FAMILY_KNIFE_BACK,   "knife.pix",      0, ACT_RANDOM, anikni,        0,  0,  0, 0},
+		{Order::FX, FAMILY_CLOUD,        "cloud.pix",      0, ACT_RANDOM, anicloud,      4,  0, 20, 0},
+		{Order::FX, FAMILY_MARKER,       "marker.pix",     0, ACT_RANDOM, animarker,     0,  0,  0, 0},
+		{Order::FX, FAMILY_BOOMERANG,    "boomer.pix",    50, ACT_RANDOM, ani16,         0,  0,  8, 0},
+		{Order::FX, FAMILY_CHAIN,        "lightnin.pix",   0, ACT_RANDOM, aniarrow,     12, 15,  0, 0},
+		{Order::FX, FAMILY_DOOR_OPEN,    "door.pix",       0, ACT_RANDOM, anidooropen,   0,  0,  0, 0},
+		{Order::FX, FAMILY_HIT,          "hit.pix",        0, ACT_RANDOM, anihit,        0,  0,  0, 0},
 
-	// Strength of weapon
-	damage[PIX(Order::Weapon, FAMILY_KNIFE)] = 6;
-	damage[PIX(Order::Weapon, FAMILY_BONE)] = 5;
-	damage[PIX(Order::Weapon, FAMILY_ROCK)] = 4;
-	damage[PIX(Order::Weapon, FAMILY_ARROW)] = 5;
-	damage[PIX(Order::Weapon, FAMILY_FIRE_ARROW)] = 7;
-	damage[PIX(Order::Weapon, FAMILY_FIREBALL)] = 10;
-	damage[PIX(Order::Weapon, FAMILY_TREE)] = 0;
-	damage[PIX(Order::Weapon, FAMILY_METEOR)] = 12;
-	damage[PIX(Order::Weapon, FAMILY_SPRINKLE)] = 1;
-	damage[PIX(Order::Weapon, FAMILY_BLOB)] = 1;
-	damage[PIX(Order::Weapon, FAMILY_BLOOD)] = 0;
-	damage[PIX(Order::Weapon, FAMILY_LIGHTNING)] = 6;
-	damage[PIX(Order::Weapon, FAMILY_GLOW)] = 0;
-	damage[PIX(Order::Weapon, FAMILY_WAVE)] = 16;
-	damage[PIX(Order::Weapon, FAMILY_WAVE2)] = 12;
-	damage[PIX(Order::Weapon, FAMILY_WAVE3)] = 10;
-	damage[PIX(Order::Weapon, FAMILY_CIRCLE_PROTECTION)] = 0;
-	damage[PIX(Order::Weapon, FAMILY_HAMMER)] = 9;
-	damage[PIX(Order::Weapon, FAMILY_DOOR)] = 0;
-	damage[PIX(Order::Weapon, FAMILY_BOULDER)] = 25;
+		// Button graphics (no gameplay properties)
+		{Order::Button1, FAMILY_NORMAL1, "normal1.pix",  0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
+		{Order::Button1, FAMILY_PLUS,    "butplus.pix",  0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
+		{Order::Button1, FAMILY_MINUS,   "butminus.pix", 0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
+		{Order::Button1, FAMILY_WRENCH,  "wrench.pix",   0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
+	};
+	// clang-format on
 
-	fire_frequency[PIX(Order::Weapon, FAMILY_KNIFE)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_BONE)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_ROCK)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_ARROW)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_FIRE_ARROW)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_FIREBALL)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_TREE)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_METEOR)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_SPRINKLE)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_BLOB)] = 2;
-	fire_frequency[PIX(Order::Weapon, FAMILY_BLOOD)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_LIGHTNING)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_GLOW)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_WAVE)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_WAVE2)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_WAVE3)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_HAMMER)] = 0;
-	fire_frequency[PIX(Order::Weapon, FAMILY_BOULDER)] = 0;
+	for (const auto& e : defs) {
+		int idx = PIX(e.order, e.family);
+		if (e.pix_file)
+			graphics[idx] = read_pixie_file(e.pix_file);
+		hitpoints[idx] = e.hp;
+		act_types[idx] = static_cast<char>(e.act_type);
+		if (e.anim)
+			animations[idx] = e.anim;
+		stepsizes[idx] = e.stepsize;
+		lineofsight[idx] = e.los;
+		damage[idx] = e.dmg;
+		fire_frequency[idx] = e.fire_freq;
+	}
 
-	// Treasure items (food, etc.)
-	graphics[PIX(Order::Treasure, FAMILY_DRUMSTICK)] = read_pixie_file("food1.pix");
-	graphics[PIX(Order::Treasure, FAMILY_GOLD_BAR)] = read_pixie_file("bar1.pix");
+	// Gore toggle: BLOOD and STAIN use alternate graphics when gore is off
+	if (active_config().is_on("effects", "gore")) {
+		graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood.pix");
+		graphics[PIX(Order::Treasure, FAMILY_STAIN)] = read_pixie_file("stain.pix");
+	} else {
+		graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood_friendly.pix");
+		graphics[PIX(Order::Treasure, FAMILY_STAIN)] = read_pixie_file("stain_friendly.pix");
+	}
+
+	// Treasure items that share graphics via data_copy
 	graphics[PIX(Order::Treasure, FAMILY_SILVER_BAR)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_GOLD_BAR)]);
-	graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)] = read_pixie_file("bottle.pix");
 	graphics[PIX(Order::Treasure, FAMILY_INVIS_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 	graphics[PIX(Order::Treasure, FAMILY_INVULNERABLE_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 	graphics[PIX(Order::Treasure, FAMILY_FLIGHT_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
-	graphics[PIX(Order::Treasure, FAMILY_EXIT)] = read_pixie_file("16exit1.pix");
-	graphics[PIX(Order::Treasure, FAMILY_TELEPORTER)] = read_pixie_file("teleport.pix");
-	graphics[PIX(Order::Treasure, FAMILY_LIFE_GEM)] = read_pixie_file("lifegem.pix");
-	graphics[PIX(Order::Treasure, FAMILY_KEY)] = read_pixie_file("key.pix");
 	graphics[PIX(Order::Treasure, FAMILY_SPEED_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 
-	hitpoints[PIX(Order::Treasure, FAMILY_DRUMSTICK)] = 10;
-	hitpoints[PIX(Order::Treasure, FAMILY_GOLD_BAR)] = 1000;
-	hitpoints[PIX(Order::Treasure, FAMILY_SILVER_BAR)] = 100;
-
-	act_types[PIX(Order::Treasure, FAMILY_DRUMSTICK)] = ACT_CONTROL;
-	act_types[PIX(Order::Treasure, FAMILY_GOLD_BAR)] = ACT_CONTROL;
-	act_types[PIX(Order::Treasure, FAMILY_SILVER_BAR)] = ACT_CONTROL;
-	act_types[PIX(Order::Treasure, FAMILY_MAGIC_POTION)] = ACT_CONTROL;
-	act_types[PIX(Order::Treasure, FAMILY_INVIS_POTION)] = ACT_CONTROL;
-	act_types[PIX(Order::Treasure, FAMILY_INVULNERABLE_POTION)] = ACT_CONTROL;
-	act_types[PIX(Order::Treasure, FAMILY_FLIGHT_POTION)] = ACT_CONTROL;
-	act_types[PIX(Order::Treasure, FAMILY_EXIT)] = ACT_CONTROL;
-	act_types[PIX(Order::Treasure, FAMILY_TELEPORTER)] = ACT_CONTROL;
-	act_types[PIX(Order::Treasure, FAMILY_LIFE_GEM)] = ACT_CONTROL;
-	act_types[PIX(Order::Treasure, FAMILY_KEY)] = ACT_CONTROL;
-	act_types[PIX(Order::Treasure, FAMILY_SPEED_POTION)] = ACT_CONTROL;
-
-	animations[PIX(Order::Treasure, FAMILY_DRUMSTICK)] = anifood;
-	animations[PIX(Order::Treasure, FAMILY_GOLD_BAR)] = anifood;
-	animations[PIX(Order::Treasure, FAMILY_SILVER_BAR)] = anifood;
-	animations[PIX(Order::Treasure, FAMILY_MAGIC_POTION)] = anifood;
-	animations[PIX(Order::Treasure, FAMILY_INVIS_POTION)] = anifood;
-	animations[PIX(Order::Treasure, FAMILY_INVULNERABLE_POTION)] = anifood;
-	animations[PIX(Order::Treasure, FAMILY_FLIGHT_POTION)] = anifood;
-	animations[PIX(Order::Treasure, FAMILY_EXIT)] = anifood;
-	animations[PIX(Order::Treasure, FAMILY_TELEPORTER)] = anifood;
-	animations[PIX(Order::Treasure, FAMILY_LIFE_GEM)] = anifood;
-	animations[PIX(Order::Treasure, FAMILY_KEY)] = anifood;
-	animations[PIX(Order::Treasure, FAMILY_SPEED_POTION)] = anifood;
-
-	stepsizes[PIX(Order::Treasure, FAMILY_DRUMSTICK)] = 5;
-
-	// Generator
-	graphics[PIX(Order::Generator, FAMILY_TENT)] = read_pixie_file("tent.pix");
-	graphics[PIX(Order::Generator, FAMILY_TOWER)] = read_pixie_file("tower4.pix");
-	graphics[PIX(Order::Generator, FAMILY_BONES)] = read_pixie_file("bonepile.pix");
-	graphics[PIX(Order::Generator, FAMILY_TREEHOUSE)] = read_pixie_file("bigtree.pix");
-	hitpoints[PIX(Order::Generator, FAMILY_TENT)] = 100;
-
-	act_types[PIX(Order::Generator, FAMILY_TENT)] = ACT_GENERATE;
-	act_types[PIX(Order::Generator, FAMILY_TOWER)] = ACT_GENERATE;
-	act_types[PIX(Order::Generator, FAMILY_BONES)] = ACT_GENERATE;
-	act_types[PIX(Order::Generator, FAMILY_TREEHOUSE)] = ACT_GENERATE;
-
-	animations[PIX(Order::Generator, FAMILY_TENT)] = anitent;
-	animations[PIX(Order::Generator, FAMILY_TOWER)] = anitower;
-	animations[PIX(Order::Generator, FAMILY_BONES)] = aninone;
-	animations[PIX(Order::Generator, FAMILY_TREEHOUSE)] = aninone;
-
-	stepsizes[PIX(Order::Generator, FAMILY_TENT)] = 0;
-	stepsizes[PIX(Order::Generator, FAMILY_TOWER)] = 0;
-	stepsizes[PIX(Order::Generator, FAMILY_BONES)] = 0;
-	stepsizes[PIX(Order::Generator, FAMILY_TREEHOUSE)] = 0;
-
-	lineofsight[PIX(Order::Generator, FAMILY_TENT)] = 0;
-	lineofsight[PIX(Order::Generator, FAMILY_TOWER)] = 0;
-	lineofsight[PIX(Order::Generator, FAMILY_BONES)] = 0;
-	lineofsight[PIX(Order::Generator, FAMILY_TREEHOUSE)] = 0;
-
-	damage[PIX(Order::Generator, FAMILY_TENT)] = 0;
-	damage[PIX(Order::Generator, FAMILY_TOWER)] = 0;
-	damage[PIX(Order::Generator, FAMILY_BONES)] = 2;
-	damage[PIX(Order::Generator, FAMILY_TREEHOUSE)] = 0;
-
-	fire_frequency[PIX(Order::Generator, FAMILY_TENT)] = 0;
-	fire_frequency[PIX(Order::Generator, FAMILY_TOWER)] = 0;
-	fire_frequency[PIX(Order::Generator, FAMILY_BONES)] = 0;
-	fire_frequency[PIX(Order::Generator, FAMILY_TREEHOUSE)] = 0;
-
-	// Specials ..
-	graphics[PIX(Order::Special, FAMILY_RESERVED_TEAM)] = read_pixie_file("team.pix");
-
-	// Effects ..
-	graphics[PIX(Order::FX, FAMILY_EXPAND)] = read_pixie_file("expand8.pix");
-	graphics[PIX(Order::FX, FAMILY_GHOST_SCARE)]  = read_pixie_file("expand8.pix");
-	graphics[PIX(Order::FX, FAMILY_BOMB)]  = read_pixie_file("bomb1.pix");
-	graphics[PIX(Order::FX, FAMILY_EXPLOSION)]  = read_pixie_file("boom1.pix");
-	graphics[PIX(Order::FX, FAMILY_FLASH)]  = read_pixie_file("telflash.pix");
-	graphics[PIX(Order::FX, FAMILY_MAGIC_SHIELD)] = read_pixie_file("mshield.pix");
-	graphics[PIX(Order::FX, FAMILY_KNIFE_BACK)] = read_pixie_file("knife.pix");
-	graphics[PIX(Order::FX, FAMILY_CLOUD)] = read_pixie_file("cloud.pix");
-	graphics[PIX(Order::FX, FAMILY_MARKER)] = read_pixie_file("marker.pix");
-	graphics[PIX(Order::FX, FAMILY_BOOMERANG)] = read_pixie_file("boomer.pix");
-	graphics[PIX(Order::FX, FAMILY_CHAIN)] = read_pixie_file("lightnin.pix");
-	graphics[PIX(Order::FX, FAMILY_DOOR_OPEN)] = read_pixie_file("door.pix");
-	graphics[PIX(Order::FX, FAMILY_HIT)] = read_pixie_file("hit.pix");
-
-	animations[PIX(Order::FX, FAMILY_EXPAND)] = aniexpand8;
-	animations[PIX(Order::FX, FAMILY_GHOST_SCARE)] = aniexpand8;
-	animations[PIX(Order::FX, FAMILY_BOMB)] = anibomb1;
-	animations[PIX(Order::FX, FAMILY_EXPLOSION)] = aniexplosion1;
-	animations[PIX(Order::FX, FAMILY_FLASH)] = aniexpand8;
-	animations[PIX(Order::FX, FAMILY_MAGIC_SHIELD)] = anikni;
-	animations[PIX(Order::FX, FAMILY_KNIFE_BACK)] = anikni;
-	animations[PIX(Order::FX, FAMILY_BOOMERANG)] = ani16;
-	animations[PIX(Order::FX, FAMILY_CLOUD)] = anicloud;
-	animations[PIX(Order::FX, FAMILY_MARKER)] = animarker;
-	animations[PIX(Order::FX, FAMILY_CHAIN)] = aniarrow;
-	animations[PIX(Order::FX, FAMILY_DOOR_OPEN)] = anidooropen;
-	animations[PIX(Order::FX, FAMILY_HIT)] = anihit;
-
-	stepsizes[PIX(Order::FX, FAMILY_CLOUD)] = 4;
-	stepsizes[PIX(Order::FX, FAMILY_CHAIN)] = 12;  // REALLY fast!
-
-	lineofsight[PIX(Order::FX, FAMILY_CHAIN)] = 15;
-
-	hitpoints[PIX(Order::FX, FAMILY_MAGIC_SHIELD)] = 100;
-	hitpoints[PIX(Order::FX, FAMILY_BOOMERANG)] = 50;
-
-	damage[PIX(Order::FX, FAMILY_MAGIC_SHIELD)] = 10;
-	damage[PIX(Order::FX, FAMILY_BOOMERANG)] = 8;
-	damage[PIX(Order::FX, FAMILY_CLOUD)] = 20;
-
-	// These are button graphics ..
-	graphics[PIX(Order::Button1, FAMILY_NORMAL1)] = read_pixie_file("normal1.pix");
-	graphics[PIX(Order::Button1, FAMILY_PLUS)] = read_pixie_file("butplus.pix");
-	graphics[PIX(Order::Button1, FAMILY_MINUS)] = read_pixie_file("butminus.pix");
-	graphics[PIX(Order::Button1, FAMILY_WRENCH)] = read_pixie_file("wrench.pix");
 
 }
 
