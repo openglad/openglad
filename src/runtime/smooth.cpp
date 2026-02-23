@@ -19,9 +19,206 @@
 #include <openglad/data/smooth.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/game_context.h>
+#include <array>
+
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
+
+// Lookup table: PIX_* value → terrain genre TYPE_*
+static constexpr auto make_pix_to_genre() {
+	std::array<Sint32, PIX_MAX> table{};
+	for (auto& v : table) v = TYPE_UNKNOWN;
+
+	table[PIX_GRASS1] = TYPE_GRASS;
+	table[PIX_GRASS2] = TYPE_GRASS;
+	table[PIX_GRASS3] = TYPE_GRASS;
+	table[PIX_GRASS4] = TYPE_GRASS;
+	table[PIX_GRASSWATER_LL] = TYPE_GRASS;
+	table[PIX_GRASSWATER_LR] = TYPE_GRASS;
+	table[PIX_GRASSWATER_UL] = TYPE_GRASS;
+	table[PIX_GRASSWATER_UR] = TYPE_GRASS;
+
+	table[PIX_GRASS_DARK_1] = TYPE_GRASS_DARK;
+	table[PIX_GRASS_DARK_2] = TYPE_GRASS_DARK;
+	table[PIX_GRASS_DARK_3] = TYPE_GRASS_DARK;
+	table[PIX_GRASS_DARK_4] = TYPE_GRASS_DARK;
+	table[PIX_GRASS_DARK_LL] = TYPE_GRASS_DARK;
+	table[PIX_GRASS_DARK_UR] = TYPE_GRASS_DARK;
+	table[PIX_GRASS_RUBBLE] = TYPE_GRASS_DARK;
+	table[PIX_GRASS_DARK_B1] = TYPE_GRASS_DARK;
+	table[PIX_GRASS_DARK_B2] = TYPE_GRASS_DARK;
+	table[PIX_GRASS_DARK_BR] = TYPE_GRASS_DARK;
+	table[PIX_GRASS_DARK_R1] = TYPE_GRASS_DARK;
+	table[PIX_GRASS_DARK_R2] = TYPE_GRASS_DARK;
+
+	table[PIX_GRASS_LIGHT_1] = TYPE_GRASS_LIGHT;
+	table[PIX_GRASS_LIGHT_TOP] = TYPE_GRASS_LIGHT;
+	table[PIX_GRASS_LIGHT_RIGHT_TOP] = TYPE_GRASS_LIGHT;
+	table[PIX_GRASS_LIGHT_RIGHT] = TYPE_GRASS_LIGHT;
+	table[PIX_GRASS_LIGHT_RIGHT_BOTTOM] = TYPE_GRASS_LIGHT;
+	table[PIX_GRASS_LIGHT_BOTTOM] = TYPE_GRASS_LIGHT;
+	table[PIX_GRASS_LIGHT_LEFT_BOTTOM] = TYPE_GRASS_LIGHT;
+	table[PIX_GRASS_LIGHT_LEFT] = TYPE_GRASS_LIGHT;
+	table[PIX_GRASS_LIGHT_LEFT_TOP] = TYPE_GRASS_LIGHT;
+
+	table[PIX_CARPET_LL] = TYPE_CARPET;
+	table[PIX_CARPET_L] = TYPE_CARPET;
+	table[PIX_CARPET_B] = TYPE_CARPET;
+	table[PIX_CARPET_LR] = TYPE_CARPET;
+	table[PIX_CARPET_UR] = TYPE_CARPET;
+	table[PIX_CARPET_U] = TYPE_CARPET;
+	table[PIX_CARPET_UL] = TYPE_CARPET;
+	table[PIX_CARPET_M] = TYPE_CARPET;
+	table[PIX_CARPET_M2] = TYPE_CARPET;
+	table[PIX_CARPET_R] = TYPE_CARPET;
+	table[PIX_CARPET_SMALL_HOR] = TYPE_CARPET;
+	table[PIX_CARPET_SMALL_VER] = TYPE_CARPET;
+	table[PIX_CARPET_SMALL_CUP] = TYPE_CARPET;
+	table[PIX_CARPET_SMALL_CAP] = TYPE_CARPET;
+	table[PIX_CARPET_SMALL_LEFT] = TYPE_CARPET;
+	table[PIX_CARPET_SMALL_RIGHT] = TYPE_CARPET;
+	table[PIX_CARPET_SMALL_TINY] = TYPE_CARPET;
+
+	table[PIX_H_WALL1] = TYPE_WALL;
+	table[PIX_WALL_LL] = TYPE_WALL;
+	table[PIX_WALL2] = TYPE_WALL;
+	table[PIX_WALL3] = TYPE_WALL;
+	table[PIX_WALL4] = TYPE_WALL;
+	table[PIX_WALL5] = TYPE_WALL;
+	table[PIX_WALLSIDE1] = TYPE_WALL;
+	table[PIX_WALLSIDE_L] = TYPE_WALL;
+	table[PIX_WALLSIDE_R] = TYPE_WALL;
+	table[PIX_WALLSIDE_C] = TYPE_WALL;
+	table[PIX_WALLSIDE_CRACK_C1] = TYPE_WALL;
+	table[PIX_WALL_ARROW_GRASS] = TYPE_WALL;
+	table[PIX_WALL_ARROW_FLOOR] = TYPE_WALL;
+	table[PIX_WALL_ARROW_GRASS_DARK] = TYPE_WALL;
+
+	table[PIX_WATER1] = TYPE_WATER;
+	table[PIX_WATER2] = TYPE_WATER;
+	table[PIX_WATER3] = TYPE_WATER;
+	table[PIX_WATERGRASS_LL] = TYPE_WATER;
+	table[PIX_WATERGRASS_LR] = TYPE_WATER;
+	table[PIX_WATERGRASS_UL] = TYPE_WATER;
+	table[PIX_WATERGRASS_UR] = TYPE_WATER;
+
+	table[PIX_TREE_T1] = TYPE_TREES;
+	table[PIX_TREE_M1] = TYPE_TREES;
+	table[PIX_TREE_ML] = TYPE_TREES;
+	table[PIX_TREE_MR] = TYPE_TREES;
+	table[PIX_TREE_MT] = TYPE_TREES;
+	table[PIX_TREE_B1] = TYPE_TREES;
+
+	table[PIX_DIRT_1] = TYPE_DIRT;
+	table[PIX_DIRTGRASS_UL1] = TYPE_DIRT;
+	table[PIX_DIRTGRASS_UR1] = TYPE_DIRT;
+	table[PIX_DIRTGRASS_LL1] = TYPE_DIRT;
+	table[PIX_DIRTGRASS_LR1] = TYPE_DIRT;
+
+	table[PIX_DIRT_DARK_1] = TYPE_DIRT_DARK;
+	table[PIX_DIRTGRASS_DARK_UL1] = TYPE_DIRT_DARK;
+	table[PIX_DIRTGRASS_DARK_UR1] = TYPE_DIRT_DARK;
+	table[PIX_DIRTGRASS_DARK_LL1] = TYPE_DIRT_DARK;
+	table[PIX_DIRTGRASS_DARK_LR1] = TYPE_DIRT_DARK;
+
+	table[PIX_COBBLE_1] = TYPE_COBBLE;
+	table[PIX_COBBLE_2] = TYPE_COBBLE;
+	table[PIX_COBBLE_3] = TYPE_COBBLE;
+	table[PIX_COBBLE_4] = TYPE_COBBLE;
+
+	return table;
+}
+static constexpr auto PIX_to_genre = make_pix_to_genre();
+
+// Random variant lookup tables for smooth()
+static constexpr Sint32 grass_variants[] = {PIX_GRASS1, PIX_GRASS2, PIX_GRASS3, PIX_GRASS4};
+static constexpr Sint32 grass_dark_variants[] = {PIX_GRASS_DARK_1, PIX_GRASS_DARK_2, PIX_GRASS_DARK_3, PIX_GRASS_DARK_4};
+static constexpr Sint32 grass_dark_right[] = {PIX_GRASS_DARK_R1, PIX_GRASS_DARK_R2};
+static constexpr Sint32 grass_dark_bottom[] = {PIX_GRASS_DARK_B1, PIX_GRASS_DARK_B2};
+static constexpr Sint32 water_variants[] = {PIX_WATER1, PIX_WATER2, PIX_WATER3};
+static constexpr Sint32 watergrass_up[] = {PIX_WATERGRASS_LL, PIX_WATERGRASS_LR};
+static constexpr Sint32 watergrass_down[] = {PIX_WATERGRASS_UL, PIX_WATERGRASS_UR};
+static constexpr Sint32 watergrass_left[] = {PIX_WATERGRASS_UR, PIX_WATERGRASS_LR};
+static constexpr Sint32 watergrass_right[] = {PIX_WATERGRASS_UL, PIX_WATERGRASS_LL};
+static constexpr Sint32 cobble_variants[] = {PIX_COBBLE_1, PIX_COBBLE_2, PIX_COBBLE_3, PIX_COBBLE_4};
+
+// Directional lookup tables: surround value (0-15) → PIX tile
+static constexpr Sint32 carpet_by_surround[] = {
+	PIX_CARPET_SMALL_TINY,   // 0: all alone
+	PIX_CARPET_SMALL_CUP,    // 1: bottom cup
+	PIX_CARPET_SMALL_LEFT,   // 2: left edge
+	PIX_CARPET_LL,            // 3: bottom left
+	PIX_CARPET_SMALL_CAP,    // 4: top cap
+	PIX_CARPET_SMALL_VER,    // 5: vertical pipe
+	PIX_CARPET_UL,            // 6: top-left corner
+	PIX_CARPET_L,             // 7: left edge
+	PIX_CARPET_SMALL_RIGHT,  // 8: right edge end
+	PIX_CARPET_LR,            // 9: lower right corner
+	PIX_CARPET_SMALL_HOR,    // 10: horizontal pipe
+	PIX_CARPET_B,             // 11: bottom flat piece
+	PIX_CARPET_UR,            // 12: top-right corner
+	PIX_CARPET_R,             // 13: right-edge flat piece
+	PIX_CARPET_U,             // 14: top-edge flat piece
+	PIX_CARPET_M,             // 15: surrounded
+};
+
+static constexpr Sint32 grass_light_by_surround[] = {
+	PIX_GRASS_LIGHT_RIGHT,          // 0: all alone
+	PIX_GRASS_LIGHT_RIGHT_BOTTOM,   // 1: bottom cup
+	PIX_GRASS_LIGHT_LEFT_TOP,       // 2: left edge
+	PIX_GRASS_LIGHT_LEFT_BOTTOM,    // 3: bottom left
+	PIX_GRASS_LIGHT_RIGHT_TOP,      // 4: top cap
+	PIX_GRASS_LIGHT_RIGHT,          // 5: vertical pipe
+	PIX_GRASS_LIGHT_LEFT_TOP,       // 6: top-left corner
+	PIX_GRASS_LIGHT_LEFT,           // 7: left edge
+	PIX_GRASS_LIGHT_RIGHT_TOP,      // 8: right edge end
+	PIX_GRASS_LIGHT_RIGHT_BOTTOM,   // 9: lower right corner
+	PIX_GRASS_LIGHT_TOP,            // 10: horizontal pipe
+	PIX_GRASS_LIGHT_BOTTOM,         // 11: bottom flat piece
+	PIX_GRASS_LIGHT_RIGHT_TOP,      // 12: top-right corner
+	PIX_GRASS_LIGHT_RIGHT,          // 13: right-edge flat piece
+	PIX_GRASS_LIGHT_TOP,            // 14: top-edge flat piece
+	PIX_GRASS_LIGHT_1,              // 15: surrounded
+};
+
+static constexpr Sint32 dirt_by_surround[] = {
+	PIX_DIRT_1,          // 0: all alone
+	PIX_DIRT_1,          // 1: TO_UP
+	PIX_DIRT_1,          // 2: TO_RIGHT
+	PIX_DIRTGRASS_UR1,   // 3: TO_UP | TO_RIGHT
+	PIX_DIRT_1,          // 4: TO_DOWN
+	PIX_DIRT_1,          // 5: TO_UP | TO_DOWN
+	PIX_DIRTGRASS_LR1,   // 6: TO_DOWN | TO_RIGHT
+	PIX_DIRT_1,          // 7: TO_UP | TO_DOWN | TO_RIGHT
+	PIX_DIRT_1,          // 8: TO_LEFT
+	PIX_DIRTGRASS_UL1,   // 9: TO_UP | TO_LEFT
+	PIX_DIRT_1,          // 10: TO_LEFT | TO_RIGHT
+	PIX_DIRT_1,          // 11: TO_UP | TO_LEFT | TO_RIGHT
+	PIX_DIRTGRASS_LL1,   // 12: TO_DOWN | TO_LEFT
+	PIX_DIRT_1,          // 13: TO_UP | TO_DOWN | TO_LEFT
+	PIX_DIRT_1,          // 14: TO_DOWN | TO_LEFT | TO_RIGHT
+	PIX_DIRT_1,          // 15: all around
+};
+
+static constexpr Sint32 dirt_dark_by_surround[] = {
+	PIX_DIRT_DARK_1,          // 0: all alone
+	PIX_DIRT_DARK_1,          // 1: TO_UP
+	PIX_DIRT_DARK_1,          // 2: TO_RIGHT
+	PIX_DIRTGRASS_DARK_UR1,   // 3: TO_UP | TO_RIGHT
+	PIX_DIRT_DARK_1,          // 4: TO_DOWN
+	PIX_DIRT_DARK_1,          // 5: TO_UP | TO_DOWN
+	PIX_DIRTGRASS_DARK_LR1,   // 6: TO_DOWN | TO_RIGHT
+	PIX_DIRT_DARK_1,          // 7: TO_UP | TO_DOWN | TO_RIGHT
+	PIX_DIRT_DARK_1,          // 8: TO_LEFT
+	PIX_DIRTGRASS_DARK_UL1,   // 9: TO_UP | TO_LEFT
+	PIX_DIRT_DARK_1,          // 10: TO_LEFT | TO_RIGHT
+	PIX_DIRT_DARK_1,          // 11: TO_UP | TO_LEFT | TO_RIGHT
+	PIX_DIRTGRASS_DARK_LL1,   // 12: TO_DOWN | TO_LEFT
+	PIX_DIRT_DARK_1,          // 13: TO_UP | TO_DOWN | TO_LEFT
+	PIX_DIRT_DARK_1,          // 14: TO_DOWN | TO_LEFT | TO_RIGHT
+	PIX_DIRT_DARK_1,          // 15: all around
+};
 
 smoother::smoother()
     : mygrid(nullptr), maxx(0), maxy(0)
@@ -60,122 +257,10 @@ Sint32 smoother::query_x_y(Sint32 x, Sint32 y)
 
 Sint32 smoother::query_genre_x_y(Sint32 x, Sint32 y)
 {
-	Sint32 basetype;
-
-	basetype = query_x_y(x, y); // get our base type, like PIX_GRASS1
-
-	switch (basetype)
-	{
-		case PIX_GRASS1:  // all grass
-		case PIX_GRASS2:
-		case PIX_GRASS3:
-		case PIX_GRASS4:
-		case PIX_GRASSWATER_LL: // mostly grass
-		case PIX_GRASSWATER_LR:
-		case PIX_GRASSWATER_UL:
-		case PIX_GRASSWATER_UR:
-			return TYPE_GRASS;
-
-		case PIX_GRASS_DARK_1: // dark grass
-		case PIX_GRASS_DARK_2:
-		case PIX_GRASS_DARK_3:
-		case PIX_GRASS_DARK_4:
-		case PIX_GRASS_DARK_LL: // edges
-		case PIX_GRASS_DARK_UR:
-		case PIX_GRASS_DARK_B1: // fuzzy bottom edge
-		case PIX_GRASS_DARK_B2:
-		case PIX_GRASS_DARK_BR:
-		case PIX_GRASS_DARK_R1:
-		case PIX_GRASS_DARK_R2:
-		case PIX_GRASS_RUBBLE: // dark grass with rubble
-			return TYPE_GRASS_DARK;
-
-		case PIX_GRASS_LIGHT_1: // light grass
-		case PIX_GRASS_LIGHT_TOP:
-		case PIX_GRASS_LIGHT_RIGHT_TOP:
-		case PIX_GRASS_LIGHT_RIGHT:
-		case PIX_GRASS_LIGHT_RIGHT_BOTTOM:
-		case PIX_GRASS_LIGHT_BOTTOM:
-		case PIX_GRASS_LIGHT_LEFT_BOTTOM:
-		case PIX_GRASS_LIGHT_LEFT:
-		case PIX_GRASS_LIGHT_LEFT_TOP:
-			return TYPE_GRASS_LIGHT;
-
-		case PIX_CARPET_LL:  // all the carpets ..
-		case PIX_CARPET_L:
-		case PIX_CARPET_B:
-		case PIX_CARPET_LR:
-		case PIX_CARPET_UR:
-		case PIX_CARPET_U:
-		case PIX_CARPET_UL:
-		case PIX_CARPET_M:
-		case PIX_CARPET_M2:
-		case PIX_CARPET_R:
-		case PIX_CARPET_SMALL_HOR:
-		case PIX_CARPET_SMALL_VER:
-		case PIX_CARPET_SMALL_CUP:
-		case PIX_CARPET_SMALL_CAP:
-		case PIX_CARPET_SMALL_LEFT:
-		case PIX_CARPET_SMALL_RIGHT:
-		case PIX_CARPET_SMALL_TINY:
-			return TYPE_CARPET;
-
-		case PIX_H_WALL1:  // these are various walls ..
-		case PIX_WALL_LL:
-		case PIX_WALL2:
-		case PIX_WALL3:
-		case PIX_WALL4:
-		case PIX_WALL5:
-		case PIX_WALLSIDE1:
-		case PIX_WALLSIDE_L:
-		case PIX_WALLSIDE_R:
-		case PIX_WALLSIDE_C:
-		case PIX_WALLSIDE_CRACK_C1:
-		case PIX_WALL_ARROW_GRASS:
-		case PIX_WALL_ARROW_FLOOR:
-		case PIX_WALL_ARROW_GRASS_DARK:
-			return TYPE_WALL;
-
-		case PIX_WATER1: // all water
-		case PIX_WATER2:
-		case PIX_WATER3:
-		case PIX_WATERGRASS_LL:  // mostly water
-		case PIX_WATERGRASS_LR:
-		case PIX_WATERGRASS_UL:
-		case PIX_WATERGRASS_UR:
-			return TYPE_WATER;
-
-		case PIX_TREE_T1:  // Trees ..
-		case PIX_TREE_M1:
-		case PIX_TREE_ML:
-		case PIX_TREE_MR:
-		case PIX_TREE_MT:
-		case PIX_TREE_B1:
-			return TYPE_TREES;
-
-		case PIX_DIRT_1: // Dirt paths ..
-		case PIX_DIRTGRASS_UL1:
-		case PIX_DIRTGRASS_UR1:
-		case PIX_DIRTGRASS_LL1:
-		case PIX_DIRTGRASS_LR1:
-			return TYPE_DIRT;
-
-		case PIX_DIRT_DARK_1: // Dark dirk
-		case PIX_DIRTGRASS_DARK_UL1:
-		case PIX_DIRTGRASS_DARK_UR1:
-		case PIX_DIRTGRASS_DARK_LL1:
-		case PIX_DIRTGRASS_DARK_LR1:
-			return TYPE_DIRT_DARK;
-
-		case PIX_COBBLE_1:  // cobblestone
-		case PIX_COBBLE_2:
-		case PIX_COBBLE_3:
-		case PIX_COBBLE_4:
-			return TYPE_COBBLE;
-
-		default :
-			return TYPE_UNKNOWN;
-	}
+	Sint32 basetype = query_x_y(x, y);
+	if (basetype < 0 || basetype >= PIX_MAX)
+		return TYPE_UNKNOWN;
+	return PIX_to_genre[basetype];
 }
 
 Sint32 smoother::surrounds(Sint32 x, Sint32 y, Sint32 whatgenre)
@@ -232,54 +317,18 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			         downleft == TYPE_WATER && right == TYPE_WATER && down == TYPE_WATER)
 				newvalue = PIX_GRASSWATER_LR;
 			else
-				switch (rng(4))
-				{
-					case 0:
-						newvalue = PIX_GRASS1;
-						break;
-					case 1:
-						newvalue = PIX_GRASS2;
-						break;
-					case 2:
-						newvalue = PIX_GRASS3;
-						break;
-					case 3:
-						newvalue = PIX_GRASS4;
-						break;
-				}
+				newvalue = grass_variants[rng(4)];
 			break;
 		case TYPE_GRASS_DARK:  // Shadowed grass
 			if (around == TO_AROUND ) // all around
 			{
-				switch (rng(4))
-				{
-					case 0:
-						newvalue = PIX_GRASS_DARK_1;
-						break;
-					case 1:
-						newvalue = PIX_GRASS_DARK_2;
-						break;
-					case 2:
-						newvalue = PIX_GRASS_DARK_3;
-						break;
-					case 3:
-						newvalue = PIX_GRASS_DARK_4;
-						break;
-				}
+				newvalue = grass_dark_variants[rng(4)];
 			}
 			else if ( (left == TYPE_TREES || left == TYPE_WALL)
 			          && (down == TYPE_TREES || down == TYPE_WALL)
 			          && (upright != TYPE_TREES && upright != TYPE_WALL) ) // act as right edge
 			{
-				switch (rng(2))
-				{
-					case 0:
-						newvalue = PIX_GRASS_DARK_R1;
-						break;
-					case 1:
-						newvalue = PIX_GRASS_DARK_R2;
-						break;
-				}
+				newvalue = grass_dark_right[rng(2)];
 				break;
 			}
 			else if (   (upleft == TYPE_TREES || upleft == TYPE_WALL)
@@ -292,34 +341,12 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 					case TYPE_TREES:
 					case TYPE_DIRT:
 					case TYPE_COBBLE:
-						switch (rng(2))
-						{
-							case 0:
-								newvalue = PIX_GRASS_DARK_B1;
-								break;
-							case 1:
-								newvalue = PIX_GRASS_DARK_B2;
-								break;
-						}
+						newvalue = grass_dark_bottom[rng(2)];
 						if (!rng(20)) // then place a bit o' rubble
 							newvalue = PIX_GRASS_RUBBLE;
 						break;
 					default:
-						switch (rng(4))
-						{
-							case 0:
-								newvalue = PIX_GRASS_DARK_1;
-								break;
-							case 1:
-								newvalue = PIX_GRASS_DARK_2;
-								break;
-							case 2:
-								newvalue = PIX_GRASS_DARK_3;
-								break;
-							case 3:
-								newvalue = PIX_GRASS_DARK_4;
-								break;
-						}
+						newvalue = grass_dark_variants[rng(4)];
 						break;
 				} // end case-check of what's below us
 			}  // end of first bottom-middle case
@@ -330,15 +357,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			{} // do nothing
 			else if (around == (TO_UP | TO_DOWN | TO_LEFT)) // right middle
 			{
-				switch (rng(2))
-				{
-					case 0:
-						newvalue = PIX_GRASS_DARK_R1;
-						break;
-					case 1:
-						newvalue = PIX_GRASS_DARK_R2;
-						break;
-				}
+				newvalue = grass_dark_right[rng(2)];
 			}
 			else if (around == (TO_LEFT | TO_DOWN)) // top right
 			{
@@ -349,29 +368,13 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			}
 			else if (around == (TO_LEFT | TO_RIGHT | TO_UP)) // bottom middle
 			{
-				switch (rng(2))
-				{
-					case 0:
-						newvalue = PIX_GRASS_DARK_B1;
-						break;
-					case 1:
-						newvalue = PIX_GRASS_DARK_B2;
-						break;
-				}
+				newvalue = grass_dark_bottom[rng(2)];
 				if (!rng(20)) // then place a bit o' rubble
 					newvalue = PIX_GRASS_RUBBLE;
 			}
 			else if (around == (TO_LEFT | TO_RIGHT)) // middle, thin
 			{
-				switch (rng(2))
-				{
-					case 0:
-						newvalue = PIX_GRASS_DARK_B1;
-						break;
-					case 1:
-						newvalue = PIX_GRASS_DARK_B2;
-						break;
-				}
+				newvalue = grass_dark_bottom[rng(2)];
 				if (!rng(20)) // then place a bit o' rubble
 					newvalue = PIX_GRASS_RUBBLE;
 			}
@@ -387,33 +390,11 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			else if ( (around == (TO_DOWN | TO_RIGHT | TO_UP) ) || // left middle
 			          (around == (TO_DOWN | TO_RIGHT) ) ) // top left
 			{
-				switch (rng(4))
-				{
-					case 0:
-						newvalue = PIX_GRASS_DARK_1;
-						break;
-					case 1:
-						newvalue = PIX_GRASS_DARK_2;
-						break;
-					case 2:
-						newvalue = PIX_GRASS_DARK_3;
-						break;
-					case 3:
-						newvalue = PIX_GRASS_DARK_4;
-						break;
-				}
+				newvalue = grass_dark_variants[rng(4)];
 			}
 			else if (around == (TO_DOWN | TO_UP)) // center vertical
 			{
-				switch (rng(2))
-				{
-					case 0:
-						newvalue = PIX_GRASS_DARK_R1;
-						break;
-					case 1:
-						newvalue = PIX_GRASS_DARK_R2;
-						break;
-				}
+				newvalue = grass_dark_right[rng(2)];
 			}
 			else if (around == TO_DOWN) // top, alone
 			{
@@ -447,113 +428,10 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				newvalue = PIX_GRASS_DARK_1; // default case
 			break;
 		case TYPE_CARPET:
-			switch (around)
-			{
-				case 0: // all alone
-					newvalue = PIX_CARPET_SMALL_TINY;
-					break;
-				case 1: // we're a bottom "cup"
-					newvalue = PIX_CARPET_SMALL_CUP;
-					break;
-				case 2: // we're a left edge
-					newvalue = PIX_CARPET_SMALL_LEFT;
-					break;
-				case 3: // we're the bottom left ..
-					newvalue = PIX_CARPET_LL;
-					break;
-				case 4: // we're a top "cap"
-					newvalue = PIX_CARPET_SMALL_CAP;
-					break;
-				case 5: // we're a vertical pipe
-					newvalue = PIX_CARPET_SMALL_VER;
-					break;
-				case 6: // we're a top-left corner
-					newvalue = PIX_CARPET_UL;
-					break;
-				case 7: // we're a left edge
-					newvalue = PIX_CARPET_L;
-					break;
-				case 8: // we're a right edge end
-					newvalue = PIX_CARPET_SMALL_RIGHT;
-					break;
-				case 9: // we're a lower right corner
-					newvalue = PIX_CARPET_LR;
-					break;
-				case 10: // we're a horizontal pipe
-					newvalue = PIX_CARPET_SMALL_HOR;
-					break;
-				case 11: // we're a bottom flat piece
-					newvalue = PIX_CARPET_B;
-					break;
-				case 12: // we're a top-right corner
-					newvalue = PIX_CARPET_UR;
-					break;
-				case 13: // we're a right-edge flat piece
-					newvalue = PIX_CARPET_R;
-					break;
-				case 14: // we're a top-edge flat piece
-					newvalue = PIX_CARPET_U;
-					break;
-				case 15:  // we're surrounded!
-					if (here == PIX_CARPET_M || here == PIX_CARPET_M2)
-						newvalue = here;
-					else
-						newvalue = PIX_CARPET_M;
-					break;
-			}
+			newvalue = carpet_by_surround[around];
 			break; // end of carpet case
 		case TYPE_GRASS_LIGHT:
-			switch (around)
-			{
-				case 0: // all alone
-					newvalue = PIX_GRASS_LIGHT_RIGHT; //temp
-					break;
-				case 1: // we're a bottom "cup"
-					newvalue = PIX_GRASS_LIGHT_RIGHT_BOTTOM;
-					break;
-				case 2: // we're a left edge
-					newvalue = PIX_GRASS_LIGHT_LEFT_TOP;
-					break;
-				case 3: // we're the bottom left ..
-					newvalue = PIX_GRASS_LIGHT_LEFT_BOTTOM;
-					break;
-				case 4: // we're a top "cap"
-					newvalue = PIX_GRASS_LIGHT_RIGHT_TOP;
-					break;
-				case 5: // we're a vertical pipe
-					newvalue = PIX_GRASS_LIGHT_RIGHT; //temp
-					break;
-				case 6: // we're a top-left corner
-					newvalue = PIX_GRASS_LIGHT_LEFT_TOP;
-					break;
-				case 7: // we're a left edge
-					newvalue = PIX_GRASS_LIGHT_LEFT;
-					break;
-				case 8: // we're a right edge end
-					newvalue = PIX_GRASS_LIGHT_RIGHT_TOP;
-					break;
-				case 9: // we're a lower right corner
-					newvalue = PIX_GRASS_LIGHT_RIGHT_BOTTOM;
-					break;
-				case 10: // we're a horizontal pipe
-					newvalue = PIX_GRASS_LIGHT_TOP;
-					break;
-				case 11: // we're a bottom flat piece
-					newvalue = PIX_GRASS_LIGHT_BOTTOM;
-					break;
-				case 12: // we're a top-right corner
-					newvalue = PIX_GRASS_LIGHT_RIGHT_TOP;
-					break;
-				case 13: // we're a right-edge flat piece
-					newvalue = PIX_GRASS_LIGHT_RIGHT;
-					break;
-				case 14: // we're a top-edge flat piece
-					newvalue = PIX_GRASS_LIGHT_TOP;
-					break;
-				case 15:  // we're surrounded!
-					newvalue = PIX_GRASS_LIGHT_1;
-					break;
-			}
+			newvalue = grass_light_by_surround[around];
 			break; // end of light grass case
 		case TYPE_WALL:
 			if (herepix == PIX_WALL_ARROW_GRASS ||
@@ -647,18 +525,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			        ||(around == (TO_UP | TO_DOWN | TO_LEFT))
 			        ||(around == (TO_UP | TO_DOWN | TO_RIGHT))
 			   )
-				switch (rng(3))
-				{
-					case 0:
-						newvalue = PIX_WATER1;
-						break;
-					case 1:
-						newvalue = PIX_WATER2;
-						break;
-					case 2:
-						newvalue = PIX_WATER3;
-						break;
-				}
+				newvalue = water_variants[rng(3)];
 			else if (around == (TO_UP | TO_RIGHT) )
 				newvalue = PIX_WATERGRASS_LL;
 			else if (around == (TO_UP | TO_LEFT) )
@@ -668,45 +535,13 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			else if (around == (TO_DOWN | TO_LEFT) )
 				newvalue = PIX_WATERGRASS_UR;
 			else if (around == (TO_UP) )
-				switch (rng(2))
-				{
-					case 0:
-						newvalue = PIX_WATERGRASS_LL;
-						break;
-					case 1:
-						newvalue = PIX_WATERGRASS_LR;
-						break;
-				}
+				newvalue = watergrass_up[rng(2)];
 			else if (around == (TO_DOWN) )
-				switch (rng(2))
-				{
-					case 0:
-						newvalue = PIX_WATERGRASS_UL;
-						break;
-					case 1:
-						newvalue = PIX_WATERGRASS_UR;
-						break;
-				}
+				newvalue = watergrass_down[rng(2)];
 			else if (around == (TO_LEFT) )
-				switch (rng(2))
-				{
-					case 0:
-						newvalue = PIX_WATERGRASS_UR;
-						break;
-					case 1:
-						newvalue = PIX_WATERGRASS_LR;
-						break;
-				}
+				newvalue = watergrass_left[rng(2)];
 			else if (around == (TO_RIGHT) )
-				switch (rng(2))
-				{
-					case 0:
-						newvalue = PIX_WATERGRASS_UL;
-						break;
-					case 1:
-						newvalue = PIX_WATERGRASS_LL;
-						break;
-				}
+				newvalue = watergrass_right[rng(2)];
 			else  // Water default:
 				newvalue = query_x_y(x, y);
 			break;
@@ -719,18 +554,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				else if (downleft != TYPE_TREES || upleft  != TYPE_TREES)
 					newvalue = PIX_TREE_ML; // left edge..
 				else
-					switch (rng(3))
-					{
-						case 0:
-							newvalue = PIX_TREE_M1;
-							break;
-						case 1:
-							newvalue = PIX_TREE_M1;
-							break;
-						case 2:
-							newvalue = PIX_TREE_M1;
-							break;
-					}
+					newvalue = PIX_TREE_M1;
 			}
 			else if (around == (TO_LEFT | TO_RIGHT | TO_DOWN)) // == top middle
 				newvalue = PIX_TREE_T1;
@@ -762,115 +586,15 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				newvalue = PIX_TREE_B1;
 			else
 				newvalue = PIX_TREE_B1; // default case
-			//if (newvalue == PIX_TREE_T1)
-			//  Log("%dx%d = %d\n", x, y, around);
 			break;
 		case TYPE_DIRT:
-			if (around == TO_AROUND ) // all around
-				switch (rng(3))
-				{
-					case 0:
-						newvalue = PIX_DIRT_1;
-						break;
-					case 1:
-						newvalue = PIX_DIRT_1;
-						break;
-					case 2:
-						newvalue = PIX_DIRT_1;
-						break;
-				}
-			else if (around == (TO_LEFT | TO_RIGHT | TO_DOWN)) // == top middle
-				newvalue = PIX_DIRT_1;
-			else if (around == (TO_UP | TO_DOWN | TO_LEFT)) // right middle
-				newvalue = PIX_DIRT_1;
-			else if (around == (TO_LEFT | TO_DOWN)) // top right
-				newvalue = PIX_DIRTGRASS_LL1;
-			else if (around == (TO_LEFT | TO_RIGHT | TO_UP)) // bottom middle
-				newvalue = PIX_DIRT_1;
-			else if (around == (TO_LEFT | TO_RIGHT)) // middle, thin
-				newvalue = PIX_DIRT_1;
-			else if (around == (TO_LEFT | TO_UP)) // bottom right
-				newvalue = PIX_DIRTGRASS_UL1;
-			else if (around == TO_LEFT) // right, thin
-				newvalue = PIX_DIRT_1;
-			else if (around == (TO_DOWN | TO_RIGHT | TO_UP)) // left middle
-				newvalue = PIX_DIRT_1;
-			else if (around == (TO_DOWN | TO_RIGHT)) // top left
-				newvalue = PIX_DIRTGRASS_LR1;
-			else if (around == (TO_DOWN | TO_UP)) // center vertical
-				newvalue = PIX_DIRT_1;
-			else if (around == TO_DOWN) // top, alone
-				newvalue = PIX_DIRT_1;
-			else if (around == (TO_RIGHT | TO_UP)) // bottom left
-				newvalue = PIX_DIRTGRASS_UR1;
-			else if (around == TO_RIGHT) // left, alone
-				newvalue = PIX_DIRT_1;
-			else if (around == TO_UP) // bottom, alone
-				newvalue = PIX_DIRT_1;
-			else
-				newvalue = PIX_DIRT_1; // default case
+			newvalue = dirt_by_surround[around];
 			break; // end of dirt cases
 		case TYPE_DIRT_DARK:
-			if (around == TO_AROUND ) // all around
-				switch (rng(3))
-				{
-					case 0:
-						newvalue = PIX_DIRT_DARK_1;
-						break;
-					case 1:
-						newvalue = PIX_DIRT_DARK_1;
-						break;
-					case 2:
-						newvalue = PIX_DIRT_DARK_1;
-						break;
-				}
-			else if (around == (TO_LEFT | TO_RIGHT | TO_DOWN)) // == top middle
-				newvalue = PIX_DIRT_DARK_1;
-			else if (around == (TO_UP | TO_DOWN | TO_LEFT)) // right middle
-				newvalue = PIX_DIRT_DARK_1;
-			else if (around == (TO_LEFT | TO_DOWN)) // top right
-				newvalue = PIX_DIRTGRASS_DARK_LL1;
-			else if (around == (TO_LEFT | TO_RIGHT | TO_UP)) // bottom middle
-				newvalue = PIX_DIRT_DARK_1;
-			else if (around == (TO_LEFT | TO_RIGHT)) // middle, thin
-				newvalue = PIX_DIRT_DARK_1;
-			else if (around == (TO_LEFT | TO_UP)) // bottom right
-				newvalue = PIX_DIRTGRASS_DARK_UL1;
-			else if (around == TO_LEFT) // right, thin
-				newvalue = PIX_DIRT_DARK_1;
-			else if (around == (TO_DOWN | TO_RIGHT | TO_UP)) // left middle
-				newvalue = PIX_DIRT_DARK_1;
-			else if (around == (TO_DOWN | TO_RIGHT)) // top left
-				newvalue = PIX_DIRTGRASS_DARK_LR1;
-			else if (around == (TO_DOWN | TO_UP)) // center vertical
-				newvalue = PIX_DIRT_DARK_1;
-			else if (around == TO_DOWN) // top, alone
-				newvalue = PIX_DIRT_DARK_1;
-			else if (around == (TO_RIGHT | TO_UP)) // bottom left
-				newvalue = PIX_DIRTGRASS_DARK_UR1;
-			else if (around == TO_RIGHT) // left, alone
-				newvalue = PIX_DIRT_DARK_1;
-			else if (around == TO_UP) // bottom, alone
-				newvalue = PIX_DIRT_DARK_1;
-			else
-				newvalue = PIX_DIRT_DARK_1; // default case
+			newvalue = dirt_dark_by_surround[around];
 			break; // end of dark dirt cases
 		case TYPE_COBBLE: // cobblestone
-			switch (rng(4))
-			{
-				case 0:
-					newvalue = PIX_COBBLE_1;
-					break;
-				case 1:
-					newvalue = PIX_COBBLE_2;
-					break;
-				case 2:
-					newvalue = PIX_COBBLE_3;
-					break;
-				case 3:
-					newvalue = PIX_COBBLE_4;
-					break;
-			}
+			newvalue = cobble_variants[rng(4)];
 			break;
 		case TYPE_UNKNOWN:  // don't change these ..
 		default:
