@@ -7,9 +7,9 @@
 #include <openglad/data/save_data.h>
 #include <openglad/data/level_data.h>
 #include <openglad/entities/guy.h>
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
-short load_saved_game(const char *filename, screen *myscreen);
+short load_saved_game(const char *filename, screen *scr);
 
 // Test: Load levels 1-10, covering both version 9 and version 6 scenario formats.
 //

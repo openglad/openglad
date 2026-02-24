@@ -13,7 +13,7 @@
 #include <map>
 #include <string>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // level_picker.cpp helpers
 bool isDir(const std::string& filename);

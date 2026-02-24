@@ -9,7 +9,7 @@
 #include "test_framework.h"
 #include <vector>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static void ensure_level_loaded()
 {

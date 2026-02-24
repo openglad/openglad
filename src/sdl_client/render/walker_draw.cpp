@@ -22,7 +22,6 @@
 #include <span>
 #include <cmath>
 
-extern bool debug_draw_paths;
 
 static inline cfg_store& active_config()
 {

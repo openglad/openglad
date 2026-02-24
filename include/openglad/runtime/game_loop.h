@@ -15,19 +15,9 @@
 #include "SDL.h"
 #include <functional>
 
+#include <openglad/runtime/game_loop_state.h>
+
 class screen;
-
-struct GameLoopFrameState {
-    bool done = false;
-    bool initialized = false;
-    short currentcycle = 0;
-    short cycletime = 3;
-
-#ifdef __EMSCRIPTEN__
-    Uint32 last_frame_time = 0;
-    Uint32 accumulated_time = 0;
-#endif
-};
 
 struct GameLoopDeps {
     // If null, defaults will be used (SDL_PollEvent, handle_events).

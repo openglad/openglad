@@ -12,14 +12,10 @@
 #include "test_framework.h"
 #include <openglad/core/util.h>
 
-extern screen* myscreen;
-extern const Uint8* keystates;
-extern int player_keys[4][NUM_KEYS];
+// myscreen is now a macro defined in base.h (via game_session.h)
 
-short load_saved_game(const char* filename, screen* myscreen);
+short load_saved_game(const char* filename, screen* scr);
 
-extern bool debug_draw_paths;
-extern bool debug_draw_obmap;
 
 struct EventScript {
     std::vector<SDL_Event> events;

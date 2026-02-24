@@ -2,7 +2,7 @@
 #include "test_framework.h"
 #include "test_input_helpers.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // From picker.cpp
 void timed_dialog(const char* message, float delay_seconds = 3.0f);

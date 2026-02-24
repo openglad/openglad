@@ -27,7 +27,6 @@
 #include <format>
 #include <openglad/sim/sim_emit.h>
 
-bool debug_draw_obmap = false;
 
 short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map);
 short collide(short x,  short y,  short xsize,  short ysize,

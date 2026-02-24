@@ -9,11 +9,8 @@
 #include <string>
 #include <memory>
 
-extern screen* myscreen;
-extern std::unique_ptr<guy> current_guy;
+// myscreen is now a macro defined in base.h (via game_session.h)
 extern guy* old_guy;
-extern Sint32 editguy;
-extern short current_team_num;
 
 Sint32 name_guy(Sint32 arg);
 Sint32 do_pick_campaign(Sint32 arg1);

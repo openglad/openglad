@@ -2,7 +2,7 @@
 #include "test_framework.h"
 #include <openglad/data/save_data.h>
 #include <openglad/runtime/screen.h>
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 void test_save_load_roundtrip() {
     // Set up known values

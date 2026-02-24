@@ -1,7 +1,7 @@
 #include "test_framework.h"
 #include "SDL.h"
 #include <openglad/runtime/screen.h>
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static SDL_mutex* s_allbuttons_mutex = nullptr;
 

@@ -42,7 +42,7 @@
 #include <format>
 #include <memory>
 
-extern short scroll_amount;  // for scrolling up and down text popups
+// scroll_amount is now a macro via input.h → current_session->scroll_amount_
 
 void quit(Sint32 arg1);
 
@@ -95,19 +95,16 @@ void timed_dialog(const char* message, float delay_seconds = 3.0f);
 
 enum class Mode { Terrain, Object, Select };
 
-void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y);
+void set_screen_pos(screen *scr, Sint32 x, Sint32 y);
 walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data);
 Sint32 get_random_matching_tile(Sint32 whatback);
 
 class EditorTerrainBrush;
 class EditorObjectBrush;
-void info_box(walker  *target, screen * myscreen);
-void set_name(walker  *target, screen * myscreen);
+void info_box(walker  *target, screen * scr);
+void set_name(walker  *target, screen * scr);
 
-extern screen *myscreen;  // global for scen?
-
-// Zardus: our prefs object from view.cpp
-extern options * theprefs;
+// myscreen and theprefs are now macros defined in base.h / view.h
 
 unsigned char scenpalette[768];
 Sint32 redraw = 1;  // need to redraw?
@@ -261,7 +258,7 @@ bool save_level_and_map(screen* ascreen);
 bool does_campaign_exist(const std::string& campaign_id);
 bool create_new_campaign(const std::string& campaign_id);
 void importCampaignPicker();
-void shareCampaign(screen* myscreen);
+void shareCampaign(screen* scr);
 
 bool prompt_for_string_block(const std::string& message, std::list<std::string>& result);
 bool prompt_for_string(const std::string& message, std::string& result);

@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 Sint32 yes_or_no(Sint32 arg);
 void toggle_effect(const std::string& category, const std::string& setting);

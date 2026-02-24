@@ -5,7 +5,7 @@
 #include "test_framework.h"
 #include <memory>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 void test_picker_increase_decrease_stats_and_levels()
 {

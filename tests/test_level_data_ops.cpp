@@ -16,7 +16,7 @@
 #include <unistd.h>
 #include <vector>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
 
 // Memory-backed OgFile for testing (replaces SDL_RWFromConstMem)

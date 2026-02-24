@@ -29,7 +29,7 @@
 extern short scen_level;
 extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 
-std::array<vbutton*, MAX_BUTTONS> allbuttons{};
+// allbuttons is now a macro → current_session->allbuttons_
 namespace
 {
 std::array<std::unique_ptr<vbutton>, MAX_BUTTONS> owned_buttons;

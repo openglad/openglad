@@ -9,7 +9,7 @@
 
 #include <vector>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace
 {

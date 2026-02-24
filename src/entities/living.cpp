@@ -33,11 +33,12 @@
 #include <openglad/data/gparser.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
+#include <openglad/runtime/game_session.h> // current_difficulty macro
 #include <cstring>
 
 // From picker
 extern std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
-extern std::int32_t current_difficulty;
+#define current_difficulty (og::runtime::current_session->current_difficulty_)
 
 // rng/config wrappers removed: use SimEntity fields sim_rng/sim_config directly
 

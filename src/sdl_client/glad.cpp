@@ -40,7 +40,7 @@
 #include <openglad/render/text.h>
 #include <openglad/ui/results_screen.h>
 #include <openglad/runtime/game_context.h>
-extern options *theprefs;
+// theprefs is now a macro defined in view.h (via game_session.h)
 
 namespace
 {
@@ -81,8 +81,6 @@ static GameState g_game_state = GameState::Intro;
 static bool g_state_initialized = false;
 #endif
 
-extern bool debug_draw_paths;
-extern bool debug_draw_obmap;
 
 #ifdef TESTING
 // Defined in src/runtime/glad_gameplay.cpp (linked into test binaries via og_game_test).
@@ -97,26 +95,24 @@ void popup_dialog(const char* title, const char* message);
 void picker_main(Sint32 argc, char **argv);
 void intro_main(Sint32 argc, char **argv);
 
-short remaining_foes(screen *myscreen, walker* myguy);
-short remaining_team(screen *myscreen, char myteam);
-short score_panel(screen *myscreen);
-short score_panel(screen *myscreen, short do_it);
+short remaining_foes(screen *scr, walker* myguy);
+short remaining_team(screen *scr, char myteam);
+short score_panel(screen *scr);
+short score_panel(screen *scr, short do_it);
 short new_score_panel(screen *s, short /*do_it*/);
-void draw_value_bar(short left, short top, walker * control, short mode,screen * myscreen);
+void draw_value_bar(short left, short top, walker * control, short mode, screen * scr);
 void new_draw_value_bar(Sint32 left, Sint32 top,
-                        walker  * control, short mode, screen * myscreen);
+                        walker  * control, short mode, screen * scr);
 void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor,
-                         short somelength, screen * myscreen);
+                         short somelength, screen * scr);
 void init_input();
 
-void draw_radar_gems(screen  *myscreen);
-void draw_gem(short x, short y, short color, screen * myscreen);
+void draw_radar_gems(screen  *scr);
+void draw_gem(short x, short y, short color, screen * scr);
 
-void glad_main(screen *myscreen, Sint32 playermode);
+void glad_main(screen *scr, Sint32 playermode);
 
-// Zardus: FIX: from view.cpp. We need this here so that it doesn't
-// try to create it before main and go nuts trying to load it
-extern options *theprefs;
+// theprefs is now a macro defined in view.h (via game_session.h)
 
 // Frame state for main game loop (used by Emscripten and native builds)
 extern GameLoopFrameState g_frame_state;
@@ -232,18 +228,14 @@ int main(int argc, char *argv[])
 
 		cfg.load_settings();
 		load_player_control_settings_from_cfg(cfg);
-		// Sync overscan from config (data/ can't depend on input/)
-		overscan_percentage = static_cast<float>(
-		    parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
-		update_overscan_setting();
-		cfg.apply_setting("graphics", "overscan_percentage",
-		    std::format("{:.0f}", 100 * overscan_percentage));
 		save_player_control_settings_to_cfg(cfg);
 		cfg.save_settings();
 		cfg.commandline(argc, argv);
 
 		// GameSession is the RAII root for all runtime state.
 		// It owns the screen, prefs, and installs legacy global shims.
+		// Must be created before any macro-backed globals are accessed
+		// (overscan_percentage, player_keys, keystates, etc.).
 		og::runtime::GameSession::Config session_cfg;
 		session_cfg.numviews = 1;
 		session_cfg.allocate_screen = true;
@@ -261,6 +253,14 @@ int main(int argc, char *argv[])
 
 		init_input();
 		load_player_control_settings_from_cfg(cfg);
+
+		// Sync overscan from config (must be after session creation since
+		// overscan_percentage is now a macro backed by current_session).
+		overscan_percentage = static_cast<float>(
+		    parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
+		update_overscan_setting();
+		cfg.apply_setting("graphics", "overscan_percentage",
+		    std::format("{:.0f}", 100 * overscan_percentage));
 		intro_main(argc, argv);
 
 	#ifdef __EMSCRIPTEN__

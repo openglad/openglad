@@ -140,6 +140,7 @@ class viewscreen
 		unsigned char  *bmp,  *oldbmp;
 };
 
-// Legacy global (transitional): installed by og::runtime::GameSession.
-// Treat as borrowed and nullable.
-extern options* theprefs;
+// Legacy global shim: dereferences current_session so existing code
+// (`theprefs->foo`, `if (theprefs)`, etc.) continues to work unchanged.
+#include <openglad/runtime/game_session.h>
+#define theprefs (og::runtime::current_session ? og::runtime::current_session->theprefs_ : static_cast<options*>(nullptr))

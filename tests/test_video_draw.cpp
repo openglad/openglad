@@ -5,7 +5,7 @@
 #include <cstring>
 #include <span>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // ---------------------------------------------------------------------------
 // walkputbuffer - the big pixel-copying function in video.cpp

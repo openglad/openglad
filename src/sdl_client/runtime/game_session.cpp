@@ -8,17 +8,22 @@
 #include <openglad/runtime/game_session.h>
 
 #include <openglad/core/util.h> // LogError
-#include <openglad/legacy/base.h> // legacy globals: myscreen
-#include <openglad/data/gparser.h> // cfg legacy global
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h> // options + theprefs legacy global
-#include <openglad/render/sai2x.h> // E_Screen
+#include <openglad/entities/guy.h> // complete type for unique_ptr<guy> destructor
+#include <openglad/runtime/screen.h> // screen class (pulls in base.h → myscreen macro)
+#include <openglad/render/view.h>    // options class (defines theprefs macro)
+#include <openglad/render/sai2x.h>   // E_Screen
 #include <openglad/runtime/game_context.h>
 #include "SDL.h"
 
-extern options* theprefs;
+// The legacy global macros (myscreen, theprefs) expand through current_session.
+// This file manages current_session itself, so we #undef the macros to avoid
+// accidental expansion in the implementation below.
+#undef myscreen
+#undef theprefs
 
 namespace og::runtime {
+
+GameSession* current_session = nullptr;
 
 GameSession::GameSession(const Config& session_cfg)
     : cfg_(session_cfg)
@@ -28,8 +33,7 @@ GameSession::GameSession(const Config& session_cfg)
     // when we install a session-specific context.
     GameContext& prev_ctx = ::ctx();
 
-    prev_myscreen_ = myscreen;
-    prev_theprefs_ = theprefs;
+    prev_session_ = current_session;
 
     if (cfg_.allocate_prefs) {
         prefs_owner_ = std::make_unique<options>();
@@ -48,14 +52,22 @@ GameSession::GameSession(const Config& session_cfg)
         set_global_context(&ctx_);
     }
 
-    // Install legacy globals BEFORE creating the screen, because the screen
-    // constructor creates viewscreens whose constructors read theprefs.
-    if (cfg_.install_legacy_globals && prefs_owner_) {
-        theprefs = prefs_owner_.get();
+    // Set session members before creating the screen, because the screen
+    // constructor creates viewscreens whose constructors read theprefs (macro).
+    theprefs_ = prefs_owner_.get();
+
+    // Initialize legacy video pointer (VGA linear buffer address from DOS era).
+    videoptr_ = reinterpret_cast<unsigned char*>(VIDEO_LINEAR);
+
+    // Install current_session so the theprefs macro resolves to this session's
+    // prefs during screen construction (viewscreen ctors read theprefs).
+    if (cfg_.install_legacy_globals) {
+        current_session = this;
     }
 
     if (cfg_.allocate_screen) {
         screen_owner_ = std::make_unique<::screen>(cfg_.numviews, cfg_.create_display);
+        myscreen_ = screen_owner_.get();
     }
 
     // Create per-session render surface for sub-sessions sharing a display.
@@ -67,10 +79,6 @@ GameSession::GameSession(const Config& session_cfg)
                      SDL_GetError());
         }
     }
-
-    if (cfg_.install_legacy_globals) {
-        myscreen = screen_owner_.get();
-    }
 }
 
 ::screen* GameSession::screen_ptr() const { return screen_owner_.get(); }
@@ -79,10 +87,8 @@ options* GameSession::prefs_ptr() const { return prefs_owner_.get(); }
 GameSession::~GameSession()
 {
     if (cfg_.install_legacy_globals) {
-        if (myscreen == screen_owner_.get())
-            myscreen = prev_myscreen_;
-        if (prefs_owner_ && theprefs == prefs_owner_.get())
-            theprefs = prev_theprefs_;
+        if (current_session == this)
+            current_session = prev_session_;
     }
 
     if (cfg_.install_global_context) {
@@ -111,25 +117,16 @@ GameSession::SessionScope GameSession::activate()
 GameSession::SessionScope::SessionScope(GameSession& session)
     : session_(&session)
 {
-    // Save current globals
-    saved_myscreen_ = myscreen;
-    saved_theprefs_ = theprefs;
+    // Save current session
+    saved_session_ = current_session;
     saved_context_ = &::ctx();
 
-    // Install this session's globals.
-    // Set both myscreen and theprefs unconditionally to keep the
-    // save/set/restore cycle symmetric. If the session doesn't own prefs,
-    // theprefs is left as the session's prefs_ptr (nullptr), ensuring the
-    // destructor's unconditional restore is always correct.
-    myscreen = session_->screen_owner_.get();
-    theprefs = session_->prefs_owner_ ? session_->prefs_owner_.get() : saved_theprefs_;
+    // Install this session as current.  The legacy macros (myscreen, theprefs)
+    // dereference current_session, so this single pointer swap is sufficient.
+    current_session = session_;
     set_global_context(&session_->ctx_);
 
     // Swap render surface if this session has its own.
-    // Save E_Screen->render even if it is nullptr so the destructor can
-    // restore it correctly.  We use a separate flag to track whether a
-    // swap was performed rather than relying on saved_render_surface_
-    // being non-null.
     if (session_->session_surface_ && E_Screen) {
         saved_render_surface_ = E_Screen->render;
         did_swap_render_ = true;
@@ -146,9 +143,8 @@ GameSession::SessionScope::~SessionScope()
         E_Screen->render = saved_render_surface_;
     }
 
-    // Restore previous globals
-    myscreen = saved_myscreen_;
-    theprefs = saved_theprefs_;
+    // Restore previous session.
+    current_session = saved_session_;
     if (saved_context_) {
         set_global_context(saved_context_);
     } else {
@@ -158,8 +154,7 @@ GameSession::SessionScope::~SessionScope()
 
 GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
     : session_(other.session_)
-    , saved_myscreen_(other.saved_myscreen_)
-    , saved_theprefs_(other.saved_theprefs_)
+    , saved_session_(other.saved_session_)
     , saved_context_(other.saved_context_)
     , saved_render_surface_(other.saved_render_surface_)
     , did_swap_render_(other.did_swap_render_)
@@ -168,3 +163,11 @@ GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
 }
 
 } // namespace og::runtime
+
+// set_game_speed() — moved from core/util.cpp (Batch 7).
+// Defined outside the namespace because base.h declares it at global scope.
+void set_game_speed(float factor)
+{
+    og::runtime::current_session->g_game_speed_factor_ =
+        (factor < 0.0f) ? 0.0f : factor;
+}

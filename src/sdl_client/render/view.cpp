@@ -142,10 +142,8 @@ int *normalkeys[] = {key1,key2,key3,key4};
 // Zardus: keys is a sys var (apparently) so we'll use allkeys
 int allkeys[4][16];
 
-// Legacy global observer alias for prefs.
-// Ownership lives in `GameContext::prefs` (std::unique_ptr<options>); code that still
-// reads `theprefs` should treat it as borrowed and nullable.
-options *theprefs = nullptr;
+// theprefs is now a macro defined in view.h (dereferences current_session).
+// myscreen is now a macro defined in base.h (dereferences current_session).
 
 namespace
 {
@@ -1633,7 +1631,6 @@ static const char* get_key_display_name(int keycode)
 void viewscreen::view_key_bindings()
 {
 	text& keytext = active_screen()->text_normal;
-	extern int player_keys[4][NUM_KEYS];
 
 	clear_keyboard();
 

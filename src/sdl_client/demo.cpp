@@ -43,9 +43,9 @@
 #include <vector>
 
 // External declarations
-extern options* theprefs;
+// theprefs is now a macro defined in view.h (via game_session.h)
 void init_input();
-short load_saved_game(const char* filename, screen* myscreen);
+short load_saved_game(const char* filename, screen* scr);
 
 inline constexpr int GRID_COLS = 4;
 inline constexpr int GRID_ROWS = 3;

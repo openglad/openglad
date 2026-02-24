@@ -5,7 +5,7 @@
 
 #include <map>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 void test_results_screen_ending_branches_smoke()
 {

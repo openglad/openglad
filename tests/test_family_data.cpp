@@ -10,7 +10,7 @@
 #include <openglad/entities/family_registry.h>
 #include <cstring>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 const char* get_family_string(Sint32 family);
 
 // Verify guy constructor produces same stats as registry base_stats

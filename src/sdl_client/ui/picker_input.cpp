@@ -218,11 +218,11 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
     return activated;
 }
 
-bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sint32& retvalue)
+bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue)
 {
-    if(localbuttons && (retvalue == OK_VALUE || retvalue == REDRAW_VALUE))
+    if(local_btns && (retvalue == OK_VALUE || retvalue == REDRAW_VALUE))
     {
-        localbuttons = init_buttons(buttons, num_buttons);
+        local_btns = init_buttons(buttons, num_buttons);
 
         retvalue = 0;
         return true;

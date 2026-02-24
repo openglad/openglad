@@ -15,5 +15,5 @@ class screen;
 
 // Free functions extracted from guy class to avoid runtime (screen*)
 // dependency in the entities layer.  Implementations in src/runtime/guy_create.cpp.
-[[nodiscard]] std::unique_ptr<walker> guy_create_walker_owned(guy& g, screen* myscreen);
-walker* guy_create_and_add_walker(guy& g, screen* myscreen);
+[[nodiscard]] std::unique_ptr<walker> guy_create_walker_owned(guy& g, screen* scr);
+walker* guy_create_and_add_walker(guy& g, screen* scr);

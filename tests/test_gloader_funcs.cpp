@@ -9,7 +9,7 @@
 #include <openglad/runtime/game_context.h>
 #include "test_framework.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // ---------------------------------------------------------------------------
 // create_walker for all order+family combos

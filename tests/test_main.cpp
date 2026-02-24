@@ -22,8 +22,6 @@ extern "C" void __gcov_dump();
 #include <openglad/runtime/screen.h>
 #include <openglad/data/save_data.h>
 #include <openglad/sim/sim_event_log.h>
-extern screen* myscreen;
-extern options* theprefs;
 
 static void handle_test_signal(int sig)
 {
@@ -102,16 +100,19 @@ int main(int argc, char* argv[]) {
     io_init(argc, argv);
     // Avoid startup hangs in CI from filesystem-backed config loading in module suites.
     cfg.apply_setting("graphics", "overscan_percentage", "0");
+
+    // Create a GameSession which owns screen + prefs and sets current_session.
+    // The legacy macros (myscreen, theprefs, overscan_percentage, etc.)
+    // dereference current_session, so this must precede any macro usage.
+    create_global_screen(1);
+    init_input();
+
+    // Now that current_session exists, apply overscan from cfg.
     overscan_percentage = static_cast<float>(
         parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
     update_overscan_setting();
     cfg.apply_setting("graphics", "overscan_percentage",
         std::format("{:.0f}", 100 * overscan_percentage));
-
-    static options test_prefs;
-    theprefs = &test_prefs;
-    create_global_screen(1);
-    init_input();
 
     // Initialize sim context so walkers created for testing have a valid RNG etc.
     static og::sim::SimEventLog test_events;

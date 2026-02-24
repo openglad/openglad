@@ -25,16 +25,17 @@
 */
 
 #include <openglad/render/pal32.h>
+#include <openglad/runtime/game_session.h>
 #include <cstddef>
 #include <cstdio>
 #include <span>
 #include "SDL_types.h"
 
-unsigned char temppal[768];    // for loading, setting, etc.
-unsigned char gammapal[768];   // for gamma-correction
-
-//buffers: PORT: we need a palette to store the current palette
-unsigned char curpal[768];
+// Palette globals moved into GameSession (Batch 6).
+// File-local macros keep existing code unchanged.
+#define curpal  (og::runtime::current_session->curpal_)
+#define temppal (og::runtime::current_session->temppal_)
+// gammapal removed — dead code (declared but never used).
 
 unsigned char our_pal_lookup(int index);
 

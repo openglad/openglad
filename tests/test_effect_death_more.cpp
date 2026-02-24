@@ -4,7 +4,7 @@
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 void test_effect_death_ghost_scare_forces_walk_commands_on_foes()
 {

@@ -45,13 +45,8 @@
 
 void quit(Sint32 arg1);
 
-int raw_key;
-std::string raw_text_input;
-short key_press_event = 0;    // used to signed key-press
-short text_input_event = 0;    // used to signal text input
-short scroll_amount = 0;  // for scrolling up and down text popups
-
-bool input_continue = false;  // Done with text popups, etc.
+// Input scalar globals (raw_key, player_keys, keystates, viewport_*, etc.)
+// are now members of GameSession, accessed via macros defined in input.h.
 
 #ifdef USE_TOUCH_INPUT
 bool tapping = false;
@@ -68,20 +63,9 @@ bool firing = false;
 SDL_FingerID firingTouch = 0;
 #endif
 
-const Uint8* keystates = nullptr;
-
+// These remain as true globals (SDL-dependent types).
 MouseState mouse_state;
-
 Sint32 mouse_buttons;
-
-float viewport_offset_x = 0;  // In window coords
-float viewport_offset_y = 0;
-float window_w = 320;
-float window_h = 200;
-float viewport_w = 320;
-float viewport_h = 200;
-
-float overscan_percentage = 0.0f;  // Out of 1.0f, percent of total screen dimension that is cut off.  10% (0.10f) is recommended on OUYA.
 
 void update_overscan_setting()
 {
@@ -214,32 +198,8 @@ void sync_runtime_keys_to_active_mode(int player_index);
 void activate_mode_keymap_for_player(int player_index, int mode);
 } // namespace
 
-int player_keys[4][NUM_KEYS] = {
-    {
-        SDLK_w, SDLK_UNKNOWN, SDLK_d, SDLK_UNKNOWN,
-        SDLK_s, SDLK_UNKNOWN, SDLK_a, SDLK_UNKNOWN,
-        SDLK_LCTRL, SDLK_LALT, SDLK_BACKQUOTE, SDLK_TAB,
-        SDLK_e, SDLK_LSHIFT, SDLK_1, SDLK_F5,
-    },
-    {
-        SDLK_UP, SDLK_UNKNOWN, SDLK_RIGHT, SDLK_UNKNOWN,
-        SDLK_DOWN, SDLK_UNKNOWN, SDLK_LEFT, SDLK_UNKNOWN,
-        SDLK_PERIOD, SDLK_SLASH, SDLK_RETURN, SDLK_QUOTE,
-        SDLK_BACKSLASH, SDLK_RSHIFT, SDLK_2, SDLK_F6,
-    },
-    {
-        SDLK_i, SDLK_UNKNOWN, SDLK_l, SDLK_UNKNOWN,
-        SDLK_k, SDLK_UNKNOWN, SDLK_j, SDLK_UNKNOWN,
-        SDLK_SPACE, SDLK_SEMICOLON, SDLK_MINUS, SDLK_9,
-        SDLK_u, SDLK_0, SDLK_3, SDLK_F7,
-    },
-    {
-        SDLK_t, SDLK_UNKNOWN, SDLK_h, SDLK_UNKNOWN,
-        SDLK_g, SDLK_UNKNOWN, SDLK_f, SDLK_UNKNOWN,
-        SDLK_5, SDLK_6, SDLK_EQUALS, SDLK_7,
-        SDLK_y, SDLK_8, SDLK_4, SDLK_F8,
-    }
-};
+// player_keys is now a macro → current_session->player_keys_.
+// Default values are set by reset_default_player_controls() called from init_input().
 int player_control_modes[4] = {
     static_cast<int>(ControlDirectionMode::FourDirection),
     static_cast<int>(ControlDirectionMode::FourDirection),

@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <vector>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // From picker.cpp
 std::vector<int> get_accessible_levels();

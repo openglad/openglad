@@ -5,10 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <openglad/legacy/base.h>
 
-// Legacy global shims (transitional). Ownership is being moved into
-// og::runtime::GameSession, but these variables must remain linkable for
-// non-app binaries (tests/tools).
-screen* myscreen = nullptr;
-
+// Legacy global definitions have been consolidated into GameSession.
+// myscreen and theprefs are now macros that dereference current_session.
+// This file is kept as a placeholder; remove once all globals are migrated.

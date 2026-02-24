@@ -7,7 +7,7 @@
 #include <openglad/runtime/screen.h>
 #include <memory>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // Test: Guy constructors create characters with correct family defaults
 void test_guy_creation() {

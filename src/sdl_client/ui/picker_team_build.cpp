@@ -53,15 +53,7 @@
 #define VIEW_DOWN(x) (10 + static_cast<Sint32>((x) * 20))
 
 
-extern std::unique_ptr<guy> current_guy;
 extern guy* old_guy;
-extern std::string message;
-extern Sint32 editguy;
-extern vbutton* localbuttons;
-extern short current_team_num;
-// allowable_guys replaced by og::ui::kAllowableGuys
-extern Sint32 current_type;
-extern std::array<Sint32, NUM_FAMILIES> numbought;
 
 // Session pointers — set during the respective menu loops, null otherwise.
 static og::ui::HireSession* g_hire_session = nullptr;
@@ -102,7 +94,7 @@ Sint32 leftmouse(button* buttons);
 void draw_highlight(const button& b);
 void draw_highlight_interior(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
-bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sint32& retvalue);
+bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue);
 const char* family_name_copy(short family);
 const char* get_family_string(Sint32 family);
 std::string get_saved_name(const char* filename);
@@ -116,6 +108,10 @@ Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 create_detail_menu(guy *arg1);
 void glad_main(Sint32 playermode);
 void statscopy(guy *dest, guy *source);
+
+// File-local alias for the per-session picker message buffer.
+// Not in base.h because 'message' is too common as a parameter name.
+#define message (og::runtime::current_session->message_)
 
 #define STAT_NUM_OFFSET 42
 #define STAT_COLOR   DARK_BLUE // color for normal stat text

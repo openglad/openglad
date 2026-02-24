@@ -133,8 +133,8 @@ void test_menu_hover_highlight_draws_without_click_and_persists()
         button("hover", "HOVER", SDLK_h, 10, 10, 30, 10, 0, 0, MenuNav{}),
     };
 
-    vbutton* localbuttons = init_buttons(test_buttons, 1);
-    TEST_ASSERT(localbuttons != nullptr, "init_buttons should return first button");
+    vbutton* local_btns = init_buttons(test_buttons, 1);
+    TEST_ASSERT(local_btns != nullptr, "init_buttons should return first button");
     clear_events();
     mouse_state.left = false;
     mouse_state.right = false;
@@ -144,20 +144,20 @@ void test_menu_hover_highlight_draws_without_click_and_persists()
     leftmouse(test_buttons);
     myscreen->clearbuffer();
     draw_buttons(test_buttons, 1);
-    TEST_ASSERT(localbuttons->had_focus, "hover should set focus without clicking");
+    TEST_ASSERT(local_btns->had_focus, "hover should set focus without clicking");
 
     // Without moving the mouse, highlight should persist frame-to-frame.
     leftmouse(test_buttons);
     myscreen->clearbuffer();
     draw_buttons(test_buttons, 1);
-    TEST_ASSERT(localbuttons->had_focus, "hover highlight should persist while hovered");
+    TEST_ASSERT(local_btns->had_focus, "hover highlight should persist while hovered");
 
     clear_events();
     push_mouse_motion_game_coords(200, 150);
     leftmouse(test_buttons);
     myscreen->clearbuffer();
     draw_buttons(test_buttons, 1);
-    TEST_ASSERT(!localbuttons->had_focus, "hover highlight should clear after leaving button bounds");
+    TEST_ASSERT(!local_btns->had_focus, "hover highlight should clear after leaving button bounds");
 
     clear_allbuttons();
 }

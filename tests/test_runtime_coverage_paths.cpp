@@ -16,10 +16,7 @@
 
 #include "test_framework.h"
 
-extern screen* myscreen;
-extern int raw_key;
-extern short key_press_event;
-extern bool input_continue;
+// myscreen is now a macro defined in base.h (via game_session.h)
 short new_score_panel(screen* s, short do_it);
 
 // TESTING-only helpers from picker_dialogs.cpp.

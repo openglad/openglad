@@ -11,7 +11,7 @@
 #include "test_framework.h"
 #include <memory>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 bool walkerIsAutoAttackable(walker* ob);
 short collide(short x, short y, short xsize, short ysize,
               short x2, short y2, short xsize2, short ysize2);

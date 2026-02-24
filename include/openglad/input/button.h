@@ -45,8 +45,9 @@ inline constexpr char BUTTON_BOTTOM = 11; //10
 inline constexpr char BUTTON_LEFT   = 14; //13
 inline constexpr char BUTTON_RIGHT  = 12; //11
 
-// Observer pointer (non-owning). Owned by og::runtime::GameSession.
-extern screen *myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h).
+// button.h includes input.h but not base.h, so pull it in here.
+#include <openglad/legacy/base.h>
 
 // Holds array indices for navigating menu buttons.
 // Use C++20 designated initializers: MenuNav{.up=5, .down=3}
@@ -121,7 +122,8 @@ class vbutton
 };
 
 inline constexpr int MAX_BUTTONS = 50;  // max buttons per screen
-extern std::array<vbutton*, MAX_BUTTONS> allbuttons;
+// allbuttons is now a macro → current_session->allbuttons_ (moved into GameSession).
+#define allbuttons (og::runtime::current_session->allbuttons_)
 void clear_allbuttons();
 
 vbutton * init_buttons(button * buttons, Sint32 numbuttons);
@@ -129,7 +131,7 @@ void draw_backdrop();
 void draw_buttons(button * buttons, Sint32 numbuttons);
 
 // These are for picker ..
-Sint32 score_panel(screen *myscreen);
+Sint32 score_panel(screen *scr);
 Sint32 mainmenu(Sint32 arg1);
 Sint32 beginmenu(Sint32 arg1);
 void quit(Sint32 arg1);

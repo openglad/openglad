@@ -19,8 +19,7 @@
 #include <openglad/data/level_render.h>
 #include <openglad/data/level_data_hooks.h>
 
-extern screen* myscreen;
-extern options* theprefs;
+// myscreen and theprefs are now macros defined in base.h / view.h
 
 void input_state_from_sdl(InputState& out)
 {

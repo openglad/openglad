@@ -4,9 +4,9 @@
 #include <openglad/entities/walker.h>
 #include "test_framework.h"
 #include <openglad/data/save_data.h>
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
-short load_saved_game(const char *filename, screen *myscreen);
+short load_saved_game(const char *filename, screen *scr);
 
 void test_level_loading() {
     // Set up save_data for scenario 1

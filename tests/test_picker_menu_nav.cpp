@@ -5,7 +5,6 @@
 #include <chrono>
 #include <thread>
 
-extern int player_keys[4][NUM_KEYS];
 
 // From picker.cpp
 extern bool menu_nav_enabled;

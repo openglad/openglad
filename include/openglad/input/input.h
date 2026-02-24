@@ -192,15 +192,20 @@ class JoyData
     bool hasButtonSet(int key_enum) const;
 };
 
-// Input state globals (defined in input.cpp)
+// Input state globals: JoyData/MouseState stay as true globals (SDL-dependent
+// types that can't live in game_session.h without pulling in SDL.h).
 extern JoyData player_joy[4];
-extern int player_keys[4][NUM_KEYS];
-extern int raw_key;
-extern std::string raw_text_input;
-extern short key_press_event;
-extern short text_input_event;
-extern short scroll_amount;
-extern bool input_continue;
+
+// Input state: scalar globals moved into GameSession (Batch 3).
+// Macros dereference current_session so existing code is unchanged.
+#include <openglad/runtime/game_session.h>
+#define player_keys   (og::runtime::current_session->player_keys_)
+#define raw_key       (og::runtime::current_session->raw_key_)
+#define raw_text_input (og::runtime::current_session->raw_text_input_)
+#define key_press_event (og::runtime::current_session->key_press_event_)
+#define text_input_event (og::runtime::current_session->text_input_event_)
+#define scroll_amount (og::runtime::current_session->scroll_amount_)
+#define input_continue (og::runtime::current_session->input_continue_)
 
 // Inline trivial accessors for joystick/key/input state
 inline bool playerHasJoystick(int player_num) { return (player_joy[player_num].index >= 0); }
@@ -329,22 +334,21 @@ struct MouseState
 	    }
 	};
 
-extern MouseState mouse_state;
+extern MouseState mouse_state;  // Stays as true global (SDL-dependent type)
 
 MouseState& query_mouse();
 inline MouseState& query_mouse_no_poll() { return mouse_state; }
 
 unsigned char convert_to_ascii(int scancode);
 
-extern const Uint8* keystates;
-
-extern float viewport_offset_x;  // In window coords
-extern float viewport_offset_y;
-extern float window_w;
-extern float window_h;
-extern float viewport_w;
-extern float viewport_h;
-
-extern float overscan_percentage;
+// keystates and viewport globals moved into GameSession (Batches 3-4).
+#define keystates          (og::runtime::current_session->keystates_)
+#define viewport_offset_x  (og::runtime::current_session->viewport_offset_x_)
+#define viewport_offset_y  (og::runtime::current_session->viewport_offset_y_)
+#define window_w            (og::runtime::current_session->window_w_)
+#define window_h            (og::runtime::current_session->window_h_)
+#define viewport_w          (og::runtime::current_session->viewport_w_)
+#define viewport_h          (og::runtime::current_session->viewport_h_)
+#define overscan_percentage (og::runtime::current_session->overscan_percentage_)
 
 void update_overscan_setting();

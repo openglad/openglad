@@ -12,9 +12,6 @@
 #include <openglad/legacy/base.h>
 
 // Globals defined in input.cpp
-extern int raw_key;
-extern short key_press_event;
-extern bool input_continue;
 
 static inline screen* active_screen()
 {

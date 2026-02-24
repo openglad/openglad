@@ -24,7 +24,10 @@
 #include <string>
 #include <vector>
 
-extern std::int32_t current_difficulty;
+
+// Access current_difficulty through the headless session storage (defined in main.cpp).
+#include <openglad/runtime/game_session.h>
+#define current_difficulty (og::runtime::current_session->current_difficulty_)
 
 namespace og::ui {
 namespace {

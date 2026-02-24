@@ -2,7 +2,7 @@
 #include "test_framework.h"
 #include "test_input_helpers.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // From level_editor.cpp
 Sint32 level_editor();

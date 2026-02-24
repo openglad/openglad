@@ -11,10 +11,10 @@
 #include <cstdio>
 #include <unistd.h>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // From level_editor.cpp
-void set_screen_pos(screen* myscreen, Sint32 x, Sint32 y);
+void set_screen_pos(screen* scr, Sint32 x, Sint32 y);
 char get_random_matching_tile(Sint32 whatback);
 Sint32 check_collide(Sint32 x, Sint32 y, Sint32 xsize, Sint32 ysize,
                      Sint32 x2, Sint32 y2, Sint32 xsize2, Sint32 ysize2);
@@ -26,7 +26,7 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
 std::string get_editor_family_label(Order order, Sint32 family, char livings[][20], const char* treasures[], const char* weapons[]);
 std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
 void importCampaignPicker();
-void shareCampaign(screen* myscreen);
+void shareCampaign(screen* scr);
 bool prompt_for_string(const std::string& message, std::string& result);
 int level_editor_test_exercise_internal_helpers();
 

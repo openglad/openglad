@@ -133,8 +133,12 @@ Uint32 random(Uint32 x)
 // Common initialization logic shared by both constructors.
 void screen::init_common(short howmany, bool has_display)
 {
+    // Register this screen as the current session's myscreen_ so the myscreen
+    // macro resolves during the rest of construction (text rendering, etc.).
+    if (og::runtime::current_session)
+        og::runtime::current_session->myscreen_ = this;
+
     TRACE("init", "screen constructor: numviews=%d display=%d", howmany, has_display);
-    myscreen = this;
 
 	Sint32 i, j;
 

@@ -47,12 +47,7 @@ static std::uint32_t get_ticks_ms()
         std::chrono::duration_cast<std::chrono::milliseconds>(now - g_app_start).count());
 }
 
-float g_game_speed_factor = 1.0f;
-
-void set_game_speed(float factor)
-{
-    g_game_speed_factor = (factor < 0.0f) ? 0.0f : factor;
-}
+// g_game_speed_factor and set_game_speed() moved to runtime/game_session.cpp (Batch 7).
 
 void init_logging()
 {

@@ -4,7 +4,7 @@
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static void run_smooth_branch_outputs_with_fixed_rng();
 static PixieData make_center_pattern(unsigned char fill, unsigned char center,

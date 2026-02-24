@@ -12,8 +12,7 @@
 #include <list>
 #include <memory>
 
-extern screen* myscreen;
-extern int player_keys[4][NUM_KEYS];
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace
 {

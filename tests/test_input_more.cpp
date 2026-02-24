@@ -5,7 +5,6 @@
 #include <array>
 #include <cstring>
 
-extern int player_keys[4][NUM_KEYS];
 
 void test_input_mouse_wheel_sets_scroll_amount_and_keypress_flag()
 {

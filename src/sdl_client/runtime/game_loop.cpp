@@ -22,8 +22,6 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 short score_panel(screen* scr);
 short score_panel(screen* scr, short do_it);
 
-extern bool debug_draw_paths;
-extern bool debug_draw_obmap;
 
 static int default_poll(SDL_Event* e)
 {

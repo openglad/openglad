@@ -19,7 +19,7 @@
 #include <openglad/render/view.h>
 #include <openglad/runtime/screen.h>
 
-extern options* theprefs;
+// theprefs is now a macro defined in view.h (via game_session.h)
 
 GameLoopFrameState g_frame_state{};
 

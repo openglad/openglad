@@ -12,9 +12,7 @@
 #include <memory>
 #include <thread>
 
-extern screen* myscreen;
-extern const Uint8* keystates;
-extern int player_keys[4][NUM_KEYS];
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static std::unique_ptr<walker> create_controlled_living(char family)
 {

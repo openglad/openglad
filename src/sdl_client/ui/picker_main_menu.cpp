@@ -39,10 +39,6 @@ constexpr int MAINMENU_BUTTON_COUNT = 6;
 extern std::unique_ptr<pixieN> main_title_logo_pix;
 extern std::unique_ptr<pixieN> main_columns_pix;
 // difficulty_names removed — use og::ui::kDifficultyNames from picker_common.h
-extern Sint32 current_difficulty;
-extern std::unique_ptr<guy> current_guy;
-extern std::array<Sint32, NUM_FAMILIES> numbought;
-extern vbutton *localbuttons;
 
 void draw_version_number();
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
@@ -51,7 +47,7 @@ Sint32 create_team_menu(Sint32 arg1);
 Sint32 leftmouse(button* buttons);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
-bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sint32& retvalue);
+bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue);
 
 void redraw_mainmenu()
 {

@@ -69,8 +69,9 @@ std::int32_t query_timer_control();
 void time_delay(std::int32_t);
 
 // Game speed factor: 1.0 = normal, 2.0 = 2x speed, 0.0 = max speed (no delays)
-extern float g_game_speed_factor;
-void set_game_speed(float factor);
+// g_game_speed_factor moved into GameSession; macro defined in base.h.
+// set_game_speed() declared in base.h, defined in game_session.cpp.
+// (Kept as comment here so searchers find the new location.)
 
 // Zardus: add: lowercase func
 void lowercase(char *);

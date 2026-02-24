@@ -6,7 +6,7 @@
 #include <list>
 #include <string>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // From level_editor.cpp
 bool prompt_for_string_block(const std::string& message, std::list<std::string>& result);

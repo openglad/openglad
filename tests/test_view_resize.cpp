@@ -2,7 +2,7 @@
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // ---------------------------------------------------------------------------
 // viewscreen::resize(char whatmode) - multi-player modes

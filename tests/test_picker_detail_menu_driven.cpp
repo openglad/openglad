@@ -7,15 +7,12 @@
 #include <array>
 #include <memory>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // picker.cpp globals
-extern std::unique_ptr<guy> current_guy;
 extern guy* old_guy;
-extern Sint32 editguy;
 
 // picker_input.cpp global keyboard state observer
-extern const Uint8* keystates;
 
 // picker.cpp menu entry
 Sint32 create_detail_menu(guy* arg1);

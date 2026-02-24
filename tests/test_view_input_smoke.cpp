@@ -8,7 +8,7 @@
 #include <cstring>
 #include <memory>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static std::unique_ptr<walker> create_living_on_team(unsigned char team)
 {

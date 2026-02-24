@@ -8,7 +8,7 @@
 #include "test_framework.h"
 #include <cstdint>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static walker* make_guy(char family, unsigned char team)
 {

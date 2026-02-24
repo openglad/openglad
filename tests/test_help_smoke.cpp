@@ -5,10 +5,10 @@
 
 #include <unistd.h>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // From help.cpp
-short read_campaign_intro(screen* myscreen);
+short read_campaign_intro(screen* scr);
 Sint32 show_general_help();
 
 struct ViewportGuard

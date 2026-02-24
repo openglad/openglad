@@ -3,7 +3,7 @@
 #include <openglad/legacy/colors.h>
 #include "test_framework.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // ---------------------------------------------------------------------------
 // compute_hp_color tests

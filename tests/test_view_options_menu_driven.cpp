@@ -9,8 +9,7 @@
 #include <array>
 #include <cstring>
 
-extern screen* myscreen;
-extern const Uint8* keystates;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace
 {

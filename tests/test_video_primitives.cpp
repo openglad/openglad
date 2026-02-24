@@ -3,7 +3,7 @@
 
 #include <cstring>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 void test_video_draw_primitives_modify_buffer()
 {

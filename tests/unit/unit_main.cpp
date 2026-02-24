@@ -1,5 +1,6 @@
 #include "unit.h"
 #include <openglad/entities/family_registries.h>
+#include <openglad/runtime/game_session.h>
 
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);
@@ -7,6 +8,15 @@ extern "C" void __gcov_dump(void);
 
 int main()
 {
+    // Entity code (living/walker) dereferences current_session->current_difficulty_.
+    // Provide a zero-initialized session so set_difficulty() doesn't segfault.
+    og::runtime::GameSession::Config cfg{};
+    cfg.allocate_screen = false;
+    cfg.allocate_prefs = false;
+    cfg.install_legacy_globals = true;
+    cfg.install_global_context = false;
+    og::runtime::GameSession session(cfg);
+
     init_all_registries();
 
     int passed = 0;

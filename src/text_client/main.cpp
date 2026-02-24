@@ -62,6 +62,17 @@ screen* myscreen = nullptr;
 class options;
 options* theprefs = nullptr;
 
+// Entity code (living/walker) dereferences current_session->current_difficulty_.
+// The text client doesn't use the full GameSession but needs the symbol +
+// storage so set_difficulty() works at runtime.
+#include <openglad/runtime/game_session.h>
+namespace og::runtime {
+    // Zero-initialized storage that satisfies the symbol.  text_picker sets
+    // current_difficulty_ before simulation runs.
+    alignas(GameSession) static char headless_session_buf[sizeof(GameSession)]{};
+    GameSession* current_session = reinterpret_cast<GameSession*>(headless_session_buf);
+}
+
 // The global config store
 extern cfg_store cfg;
 

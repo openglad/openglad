@@ -4,7 +4,6 @@
 #include <openglad/data/gparser.h>
 #include "test_framework.h"
 
-extern int player_keys[4][NUM_KEYS];
 extern cfg_store cfg;
 
 namespace

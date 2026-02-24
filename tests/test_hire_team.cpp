@@ -10,7 +10,7 @@
 #include "test_interact.h"
 #include <openglad/data/save_data.h>
 #include <openglad/entities/guy.h>
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
 void picker_main(Sint32 argc, char **argv);
@@ -22,7 +22,6 @@ extern PixieData main_title_logo_data, main_columns_data;
 extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
 extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 extern PixieData backpics[5];
-extern vbutton *localbuttons;
 
 static void cleanup_picker_state()
 {

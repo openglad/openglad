@@ -15,7 +15,7 @@
 #include <format>
 #include <vector>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
 bool save_grid_file(const char* gridname, const PixieData& grid);

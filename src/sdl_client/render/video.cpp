@@ -48,7 +48,8 @@ static cfg_store& active_config()
 #define CY_SCREEN 200
 
 
-unsigned char * videoptr = reinterpret_cast<unsigned char*>(VIDEO_LINEAR);
+// videoptr moved into GameSession (Batch 6). File-local macro for compatibility.
+#define videoptr (og::runtime::current_session->videoptr_)
 
 std::unique_ptr<Screen> E_Screen;
 

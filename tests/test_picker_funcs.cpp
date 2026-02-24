@@ -30,10 +30,7 @@ Sint32 return_menu(Sint32 arg);
 Sint32 name_guy(Sint32 arg);
 Sint32 edit_guy(Sint32 arg1);
 
-extern screen* myscreen;
-extern std::unique_ptr<guy> current_guy;
-extern short current_team_num;
-extern Sint32 current_difficulty;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>

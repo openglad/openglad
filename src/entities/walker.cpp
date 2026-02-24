@@ -40,6 +40,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/runtime/game_session.h> // current_difficulty macro
 // pixieN include not needed here; render bridge is in walker_render_bridge.cpp
 #include <format>
 #include <span>
@@ -53,12 +54,11 @@
 //  variable allows for external functions to learn the facing.
 // ************************************************************
 
-bool debug_draw_paths = false;
 
 // From picker.cpp
 extern std::int32_t calculate_level(std::uint32_t temp_exp);
 extern std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
-extern std::int32_t current_difficulty;
+#define current_difficulty (og::runtime::current_session->current_difficulty_)
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 

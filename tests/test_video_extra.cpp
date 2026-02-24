@@ -5,7 +5,7 @@
 #include <cstring>
 #include <span>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // ---------------------------------------------------------------------------
 // video::pointb variants

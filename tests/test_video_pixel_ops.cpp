@@ -7,15 +7,14 @@
 
 #include "SDL.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // Defined in src/render/video.cpp (not exposed in a header).
 extern void putpixel(SDL_Surface* surface, int x, int y, Uint32 pixel);
 extern void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha);
 
-// Global in src/render/video.cpp. In the SDL port, some legacy code still
-// uses `videoptr` directly; override it in tests to avoid writing to 0xA0000.
-extern unsigned char* videoptr;
+// videoptr moved into GameSession. Define the same file-local macro as video.cpp.
+#define videoptr (og::runtime::current_session->videoptr_)
 
 namespace
 {

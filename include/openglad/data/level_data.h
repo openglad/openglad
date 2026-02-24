@@ -178,7 +178,7 @@ public:
 
     void set_draw_pos(std::int32_t new_topx, std::int32_t new_topy);
     void add_draw_pos(std::int32_t dx, std::int32_t dy);
-    void draw(screen* myscreen);
+    void draw(screen* scr);
 
     std::string get_description_line(int i);
     bool is_headless() const { return headless_; }

@@ -3,6 +3,7 @@
 
 #include "test_framework.h"
 #include <openglad/core/util.h>
+#include <openglad/legacy/base.h>  // g_game_speed_factor macro, set_game_speed()
 
 void test_util_case_conversion_cstr()
 {

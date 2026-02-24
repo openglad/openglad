@@ -71,12 +71,11 @@ DialogBounds compute_dialog_bounds(const char* title, const std::list<std::strin
 
 } // namespace
 
-extern vbutton * localbuttons;
 
 Sint32 leftmouse(button* buttons);
 void draw_highlight_interior(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
-bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sint32& retvalue);
+bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue);
 
 void timed_dialog(const char* message, float delay_seconds)
 {

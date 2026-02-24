@@ -1,7 +1,7 @@
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // ---------------------------------------------------------------------------
 // draw_box tests

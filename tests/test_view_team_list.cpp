@@ -5,7 +5,7 @@
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 void test_viewscreen_view_team_renders_entries_for_my_team()
 {

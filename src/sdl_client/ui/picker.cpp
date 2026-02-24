@@ -84,7 +84,7 @@ Sint32 leftmouse(button* buttons);
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
-bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sint32& retvalue);
+bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue);
 const char* family_name_copy(short family);
 
 // Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
@@ -99,19 +99,11 @@ std::array<std::unique_ptr<pixieN>, 5> backdrops;
 bool g_start_game_requested = false;
 #endif
 
-std::unique_ptr<guy> current_guy;
 guy  *old_guy = nullptr;
-
-std::string  message;
-Sint32 editguy = 0;        // Global for editing guys ..
 PixieData main_title_logo_data, main_columns_data;
 std::unique_ptr<pixieN> main_title_logo_pix;
 std::unique_ptr<pixieN> main_columns_pix;
 
-// Non-owning alias to the current button set (init_buttons owns allbuttons[]).
-vbutton * localbuttons;
-short current_team_num = 0;
-extern int player_keys[4][NUM_KEYS];
 
 #ifdef TESTING
 // Test infrastructure for picker_mainmenu_loop
@@ -147,14 +139,7 @@ void picker_testing_mark_game_end()
 
 // allowable_guys moved to og::ui::kAllowableGuys in picker_common.h
 
-Sint32 current_type = 0; // guy type we're looking at
-
-// Used to label new hires, like "SOLDIER5"
-std::array<Sint32, NUM_FAMILIES> numbought{};
-
-
-// Difficulty settings .. in percent, so 100 == normal
-Sint32 current_difficulty = 1; // setting 'normal'
+// difficulty_level[] now shared via picker_common.cpp
 // difficulty_level[] now defined in picker_common.cpp (shared between SDL and headless)
 extern std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
 

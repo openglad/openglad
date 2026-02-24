@@ -3,13 +3,6 @@
 #include <openglad/input/input.h>
 #include "test_framework.h"
 
-extern float overscan_percentage;
-extern float window_w;
-extern float window_h;
-extern float viewport_offset_x;
-extern float viewport_offset_y;
-extern float viewport_w;
-extern float viewport_h;
 
 extern MouseState mouse_state;
 

@@ -9,19 +9,19 @@
 #include "test_framework.h"
 #include <memory>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // From glad.cpp
-short remaining_foes(screen* myscreen, walker* myguy);
-short remaining_team(screen* myscreen, char myteam);
-void draw_radar_gems(screen* myscreen);
-void draw_gem(short x, short y, short color, screen* myscreen);
-void draw_value_bar(short left, short top, walker* control, short mode, screen* myscreen);
-void new_draw_value_bar(Sint32 left, Sint32 top, walker* control, short mode, screen* myscreen);
-void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor, short somelength, screen* myscreen);
-short score_panel(screen* myscreen);
-short score_panel(screen* myscreen, short do_it);
-short new_score_panel(screen* myscreen, short do_it);
+short remaining_foes(screen* scr, walker* myguy);
+short remaining_team(screen* scr, char myteam);
+void draw_radar_gems(screen* scr);
+void draw_gem(short x, short y, short color, screen* scr);
+void draw_value_bar(short left, short top, walker* control, short mode, screen* scr);
+void new_draw_value_bar(Sint32 left, Sint32 top, walker* control, short mode, screen* scr);
+void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor, short somelength, screen* scr);
+short score_panel(screen* scr);
+short score_panel(screen* scr, short do_it);
+short new_score_panel(screen* scr, short do_it);
 
 static bool control_pointer_is_live(LevelData& level_data, const walker* candidate)
 {
