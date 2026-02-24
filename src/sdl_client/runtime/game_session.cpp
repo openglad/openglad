@@ -59,6 +59,10 @@ GameSession::GameSession(const Config& session_cfg)
     // Initialize legacy video pointer (VGA linear buffer address from DOS era).
     videoptr_ = reinterpret_cast<unsigned char*>(VIDEO_LINEAR);
 
+    // Share SDL's keyboard state array. SDL_GetKeyboardState returns a pointer
+    // to SDL's internal array — it's the same for all sessions.
+    keystates_ = SDL_GetKeyboardState(nullptr);
+
     // Install current_session so the theprefs macro resolves to this session's
     // prefs during screen construction (viewscreen ctors read theprefs).
     if (cfg_.install_legacy_globals) {
