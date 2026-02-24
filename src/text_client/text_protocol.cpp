@@ -25,8 +25,7 @@
 #include <sstream>
 #include <string>
 
-// External globals needed by entity code
-extern cfg_store cfg;
+#include <openglad/data/gparser.h> // cfg_store, ::cfg
 
 namespace og::ui {
 namespace {

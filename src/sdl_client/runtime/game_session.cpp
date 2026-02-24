@@ -8,6 +8,7 @@
 #include <openglad/runtime/game_session.h>
 
 #include <openglad/core/util.h> // LogError
+#include <openglad/data/gparser.h> // cfg_store, ::cfg
 #include <algorithm>            // std::copy
 #include <openglad/entities/guy.h> // complete type for unique_ptr<guy> destructor
 #include <openglad/input/button.h> // complete type for unique_ptr<vbutton> destructor
@@ -117,6 +118,7 @@ GameSession::GameSession(const Config& session_cfg)
 
 ::screen* GameSession::screen_ptr() const { return screen_owner_.get(); }
 options* GameSession::prefs_ptr() const { return prefs_owner_.get(); }
+const cfg_store& GameSession::config() const { return ::cfg; }
 
 GameSession::~GameSession()
 {

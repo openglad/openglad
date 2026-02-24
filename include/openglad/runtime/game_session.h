@@ -54,6 +54,7 @@ public:
 
     ::screen* screen_ptr() const;
     options* prefs_ptr() const;
+    const cfg_store& config() const;
 
     // Activate this session: install its globals as current.
     // Returns an RAII guard that restores the previous session on destruction.

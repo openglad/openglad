@@ -65,8 +65,7 @@ namespace og::runtime {
     std::atomic<GameSession*> primary_session{reinterpret_cast<GameSession*>(headless_session_buf)};
 }
 
-// The global config store
-extern cfg_store cfg;
+// cfg is declared in <openglad/data/gparser.h> (already included above).
 
 // Platform lifecycle (headless implementation in platform_headless.cpp)
 void io_init(int argc, char* argv[]);
