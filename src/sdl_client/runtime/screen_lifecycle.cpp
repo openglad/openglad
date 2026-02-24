@@ -26,7 +26,6 @@ og::runtime::GameSession* create_global_session(short numviews)
     og::runtime::GameSession::Config session_cfg;
     session_cfg.numviews = numviews;
     session_cfg.install_legacy_globals = true;
-    session_cfg.install_global_context = true;
 
     g_session_owner = std::make_unique<og::runtime::GameSession>(session_cfg);
     return g_session_owner.get();

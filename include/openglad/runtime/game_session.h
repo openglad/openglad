@@ -35,7 +35,6 @@ public:
         // in the multi-instance demo.
         bool create_display = true;
         bool install_legacy_globals = true;
-        bool install_global_context = true;
         bool allocate_prefs = true;
         bool allocate_seeded_rng = false;
         std::uint32_t rng_seed = 0;
@@ -164,7 +163,6 @@ private:
 
     GameSession* session_ = nullptr;
     GameSession* saved_session_ = nullptr;
-    GameContext* saved_context_ = nullptr;
     SDL_Surface* saved_render_surface_ = nullptr;
     bool did_swap_render_ = false;
 };

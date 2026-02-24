@@ -23,7 +23,7 @@ OG_UNIT_TEST(test_game_session_headless_restores_legacy_globals)
         session_cfg.allocate_screen = false;
         session_cfg.allocate_prefs = false;
         session_cfg.install_legacy_globals = true;
-        session_cfg.install_global_context = true;
+
         og::runtime::GameSession session(session_cfg);
 
         OG_ASSERT(og::runtime::current_session->myscreen_ == nullptr);
@@ -40,7 +40,7 @@ OG_UNIT_TEST(test_game_session_seeded_rng_is_deterministic)
     og::runtime::GameSession::Config session_cfg;
     session_cfg.allocate_screen = false;
     session_cfg.install_legacy_globals = false;
-    session_cfg.install_global_context = false;
+
     session_cfg.allocate_prefs = false;
     session_cfg.allocate_seeded_rng = true;
     session_cfg.rng_seed = 123u;
@@ -72,7 +72,7 @@ OG_UNIT_TEST(test_game_session_repeated_create_destroy)
         session_cfg.allocate_screen = false;
         session_cfg.allocate_prefs = false;
         session_cfg.install_legacy_globals = true;
-        session_cfg.install_global_context = true;
+
         session_cfg.allocate_seeded_rng = true;
         session_cfg.rng_seed = static_cast<Uint32>(i);
         og::runtime::GameSession session(session_cfg);
@@ -110,7 +110,7 @@ OG_UNIT_TEST(test_session_scope_activates_and_restores_globals)
     session_cfg.allocate_screen = false;
     session_cfg.allocate_prefs = false;
     session_cfg.install_legacy_globals = false;
-    session_cfg.install_global_context = false;
+
     og::runtime::GameSession session(session_cfg);
 
     // Before activation: globals should still be baseline
@@ -136,7 +136,7 @@ OG_UNIT_TEST(test_session_scope_context_isolation)
     cfg1.allocate_screen = false;
     cfg1.allocate_prefs = false;
     cfg1.install_legacy_globals = false;
-    cfg1.install_global_context = false;
+
     cfg1.allocate_seeded_rng = true;
     cfg1.rng_seed = 42;
     og::runtime::GameSession session1(cfg1);
@@ -145,7 +145,7 @@ OG_UNIT_TEST(test_session_scope_context_isolation)
     cfg2.allocate_screen = false;
     cfg2.allocate_prefs = false;
     cfg2.install_legacy_globals = false;
-    cfg2.install_global_context = false;
+
     cfg2.allocate_seeded_rng = true;
     cfg2.rng_seed = 99;
     og::runtime::GameSession session2(cfg2);
@@ -179,7 +179,7 @@ OG_UNIT_TEST(test_multiple_sessions_coexist_headless)
     session_cfg.allocate_screen = false;
     session_cfg.allocate_prefs = false;
     session_cfg.install_legacy_globals = false;
-    session_cfg.install_global_context = false;
+
     session_cfg.allocate_seeded_rng = true;
 
     constexpr int N = 5;
@@ -221,7 +221,7 @@ OG_UNIT_TEST(test_session_scope_nested_activation)
     cfg1.allocate_screen = false;
     cfg1.allocate_prefs = false;
     cfg1.install_legacy_globals = false;
-    cfg1.install_global_context = false;
+
     cfg1.allocate_seeded_rng = true;
     cfg1.rng_seed = 111;
     og::runtime::GameSession session1(cfg1);
@@ -230,7 +230,7 @@ OG_UNIT_TEST(test_session_scope_nested_activation)
     cfg2.allocate_screen = false;
     cfg2.allocate_prefs = false;
     cfg2.install_legacy_globals = false;
-    cfg2.install_global_context = false;
+
     cfg2.allocate_seeded_rng = true;
     cfg2.rng_seed = 222;
     og::runtime::GameSession session2(cfg2);
@@ -263,7 +263,7 @@ OG_UNIT_TEST(test_session_frame_state_independence)
     session_cfg.allocate_screen = false;
     session_cfg.allocate_prefs = false;
     session_cfg.install_legacy_globals = false;
-    session_cfg.install_global_context = false;
+
     og::runtime::GameSession session1(session_cfg);
     og::runtime::GameSession session2(session_cfg);
 
@@ -296,7 +296,7 @@ OG_UNIT_TEST(test_twelve_sessions_coexist)
     session_cfg.allocate_screen = false;
     session_cfg.allocate_prefs = false;
     session_cfg.install_legacy_globals = false;
-    session_cfg.install_global_context = false;
+
     session_cfg.allocate_seeded_rng = true;
 
     constexpr int N = 12;
@@ -347,7 +347,7 @@ OG_UNIT_TEST(test_session_state_modification_isolation)
     session_cfg.allocate_screen = false;
     session_cfg.allocate_prefs = false;
     session_cfg.install_legacy_globals = false;
-    session_cfg.install_global_context = false;
+
     session_cfg.allocate_seeded_rng = true;
     session_cfg.rng_seed = 1;
 

@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/game_session.h>
 #include <openglad/sim/sim_event_log.h>
 
 // The existing global random() function (defined in screen.cpp or text_client main)
@@ -28,25 +29,28 @@ void GameContext::poll_input()
 }
 
 // ---------------------------------------------------------------------------
-// Global context singleton
+// Global context accessor
 // ---------------------------------------------------------------------------
 
-static ProductionRandom s_production_rng;
-static GameContext s_default_context;
-static thread_local GameContext* s_active_context = nullptr;
+// Test-only override: when non-null, ctx() returns this instead of
+// the session context.  Production code never sets this; only tests
+// call set_global_context() to inject mock RNGs.
+static thread_local GameContext* s_test_context_override = nullptr;
 
 GameContext& ctx()
 {
-    if (s_active_context)
-        return *s_active_context;
+    if (s_test_context_override)
+        return *s_test_context_override;
 
-    if (!s_default_context.rng)
-        s_default_context.rng = &s_production_rng;
+    if (og::runtime::current_session)
+        return og::runtime::current_session->ctx_;
 
-    return s_default_context;
+    // Pre-session fallback (e.g. during io_init before any GameSession exists).
+    static GameContext s_fallback;
+    return s_fallback;
 }
 
 void set_global_context(GameContext* context)
 {
-    s_active_context = context;
+    s_test_context_override = context;
 }

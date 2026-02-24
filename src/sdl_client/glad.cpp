@@ -238,7 +238,6 @@ int main(int argc, char *argv[])
 		session_cfg.allocate_screen = true;
 		session_cfg.allocate_prefs = true;
 		session_cfg.install_legacy_globals = true;
-		session_cfg.install_global_context = true;
 		og::runtime::GameSession session(session_cfg);
 
     #ifdef OUYA

@@ -14,7 +14,6 @@ int main()
     cfg.allocate_screen = false;
     cfg.allocate_prefs = false;
     cfg.install_legacy_globals = true;
-    cfg.install_global_context = false;
     og::runtime::GameSession session(cfg);
 
     init_all_registries();

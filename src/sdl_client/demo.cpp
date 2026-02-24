@@ -179,7 +179,6 @@ static void worker_thread_func(WorkerSync& sync, DemoSession& demo, int session_
 {
     // Install this session as thread_local current_session.
     og::runtime::current_session = demo.session.get();
-    set_global_context(&demo.session->ctx_);
 
     // Simulation-only deps: no rendering, no event polling, no frame timing.
     // The main thread handles all of these.
@@ -296,7 +295,6 @@ int main(int argc, char* argv[])
         host_cfg.create_display = true;
         host_cfg.allocate_prefs = true;
         host_cfg.install_legacy_globals = true;
-        host_cfg.install_global_context = true;
         og::runtime::GameSession host_session(host_cfg);
 
         init_input();
@@ -323,7 +321,6 @@ int main(int argc, char* argv[])
             sub_cfg.create_display = false;
             sub_cfg.allocate_prefs = true;
             sub_cfg.install_legacy_globals = false;
-            sub_cfg.install_global_context = false;
             sub_cfg.allocate_seeded_rng = true;
             sub_cfg.rng_seed = static_cast<std::uint32_t>(rand());
 

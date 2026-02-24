@@ -50,9 +50,8 @@ GameSession::GameSession(const Config& session_cfg)
         ctx_.rng = &production_rng_;
     }
 
-    if (cfg_.install_global_context) {
-        set_global_context(&ctx_);
-    }
+    // ctx() now reads from current_session->ctx_ directly; no need to
+    // call set_global_context.
 
     // Set session members before creating the screen, because the screen
     // constructor creates viewscreens whose constructors read theprefs (macro).
@@ -107,10 +106,6 @@ GameSession::~GameSession()
             current_session = prev_session_;
     }
 
-    if (cfg_.install_global_context) {
-        set_global_context(nullptr);
-    }
-
     screen_owner_.reset();
     prefs_owner_.reset();
     seeded_rng_.reset();
@@ -135,12 +130,12 @@ GameSession::SessionScope::SessionScope(GameSession& session)
 {
     // Save current session
     saved_session_ = current_session;
-    saved_context_ = &::ctx();
 
     // Install this session as current.  The legacy macros (myscreen, theprefs)
     // dereference current_session, so this single pointer swap is sufficient.
+    // ctx() also reads from current_session->ctx_, so no separate context
+    // installation is needed.
     current_session = session_;
-    set_global_context(&session_->ctx_);
 
     // Swap render surface if this session has its own.
     if (session_->session_surface_ && E_Screen) {
@@ -159,19 +154,13 @@ GameSession::SessionScope::~SessionScope()
         E_Screen->render = saved_render_surface_;
     }
 
-    // Restore previous session.
+    // Restore previous session.  ctx() follows current_session automatically.
     current_session = saved_session_;
-    if (saved_context_) {
-        set_global_context(saved_context_);
-    } else {
-        set_global_context(nullptr);
-    }
 }
 
 GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
     : session_(other.session_)
     , saved_session_(other.saved_session_)
-    , saved_context_(other.saved_context_)
     , saved_render_surface_(other.saved_render_surface_)
     , did_swap_render_(other.did_swap_render_)
 {
