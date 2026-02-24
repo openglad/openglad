@@ -53,6 +53,7 @@ struct GoNoTeamState {
 
 static int go_no_team_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     GoNoTeamState* state = static_cast<GoNoTeamState*>(data);
     state->started = true;
 
@@ -129,6 +130,7 @@ struct TrainNoTeamState {
 
 static int train_no_team_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     TrainNoTeamState* state = static_cast<TrainNoTeamState*>(data);
     state->started = true;
 

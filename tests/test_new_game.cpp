@@ -57,6 +57,7 @@ struct NewGameState {
 
 static int new_game_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     NewGameState* state = static_cast<NewGameState*>(data);
     state->started = true;
 

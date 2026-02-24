@@ -3,6 +3,7 @@
 
 #include <openglad/input/button.h>
 #include <openglad/input/input.h>
+#include <openglad/runtime/game_session.h>
 #include "test_input_helpers.h"
 #include <string>
 #include <vector>
@@ -31,6 +32,7 @@ struct Interactable {
 // Get all currently active interactables from allbuttons[]
 inline std::vector<Interactable> get_interactables()
 {
+    og::runtime::ensure_thread_session();
     AllButtonsLock lock;
     std::vector<Interactable> result;
     for (int i = 0; i < MAX_BUTTONS; i++) {
@@ -52,6 +54,7 @@ inline std::vector<Interactable> get_interactables()
 // Check if an interactable with this ID exists and is not hidden
 inline bool has_interactable(const std::string& id)
 {
+    og::runtime::ensure_thread_session();
     AllButtonsLock lock;
     bool found = false;
     for (int i = 0; i < MAX_BUTTONS; i++) {
@@ -84,6 +87,7 @@ inline bool wait_for_interactable(const std::string& id, int timeout_ms = 5000)
 // converts to window coords, injects SDL click event.
 inline void interact(const std::string& id)
 {
+    og::runtime::ensure_thread_session();
     AllButtonsLock lock;
     int win_x = -1, win_y = -1;
     bool found = false;

@@ -16,6 +16,7 @@ struct EditorThreadState {
 
 static int editor_injector_thread(void* data)
 {
+    og::runtime::ensure_thread_session();
     EditorThreadState* st = static_cast<EditorThreadState*>(data);
     st->started = true;
 
@@ -294,6 +295,7 @@ static void push_mouse_drag(int x0, int y0, int x1, int y1)
 
 static int editor_edit_smoke_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     EditorThreadState* st = static_cast<EditorThreadState*>(data);
     st->started = true;
 

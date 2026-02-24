@@ -33,7 +33,7 @@ void GameContext::poll_input()
 
 static ProductionRandom s_production_rng;
 static GameContext s_default_context;
-static GameContext* s_active_context = nullptr;
+static thread_local GameContext* s_active_context = nullptr;
 
 GameContext& ctx()
 {

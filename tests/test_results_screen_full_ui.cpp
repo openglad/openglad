@@ -23,6 +23,7 @@ struct ResultsThreadState
 
 static int results_ui_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
     st->started = true;
 

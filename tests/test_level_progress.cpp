@@ -40,6 +40,7 @@ struct EventSequence {
 
 static int event_injector_thread(void* data)
 {
+    og::runtime::ensure_thread_session();
     EventSequence* seq = static_cast<EventSequence*>(data);
     seq->started = true;
 

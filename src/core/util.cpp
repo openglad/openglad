@@ -38,7 +38,7 @@
 #endif
 
 static auto g_app_start = std::chrono::steady_clock::now();
-static auto g_reset_time = std::chrono::steady_clock::now();
+static thread_local auto g_reset_time = std::chrono::steady_clock::now();
 
 static std::uint32_t get_ticks_ms()
 {

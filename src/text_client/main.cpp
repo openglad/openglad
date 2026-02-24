@@ -61,7 +61,8 @@ namespace og::runtime {
     // Zero-initialized storage that satisfies the symbol.  text_picker sets
     // current_difficulty_ before simulation runs.
     alignas(GameSession) static char headless_session_buf[sizeof(GameSession)]{};
-    GameSession* current_session = reinterpret_cast<GameSession*>(headless_session_buf);
+    thread_local GameSession* current_session = reinterpret_cast<GameSession*>(headless_session_buf);
+    std::atomic<GameSession*> primary_session{reinterpret_cast<GameSession*>(headless_session_buf)};
 }
 
 // The global config store

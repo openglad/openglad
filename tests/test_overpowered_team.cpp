@@ -70,6 +70,7 @@ struct OpState {
 
 static int op_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     OpState* state = static_cast<OpState*>(data);
     state->started = true;
 

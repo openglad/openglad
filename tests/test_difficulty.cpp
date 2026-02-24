@@ -54,6 +54,7 @@ struct DifficultyState {
 
 static int difficulty_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     DifficultyState* state = static_cast<DifficultyState*>(data);
     state->started = true;
 

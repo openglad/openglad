@@ -52,6 +52,7 @@ struct SaveMenuState {
 
 static int save_menu_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     SaveMenuState* state = static_cast<SaveMenuState*>(data);
     state->started = true;
 

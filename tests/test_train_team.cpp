@@ -53,6 +53,7 @@ struct TrainState {
 
 static int train_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     TrainState* state = static_cast<TrainState*>(data);
     state->started = true;
 

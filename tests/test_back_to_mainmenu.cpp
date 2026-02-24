@@ -44,6 +44,7 @@ struct BackTestState {
 
 static int back_test_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     BackTestState* state = static_cast<BackTestState*>(data);
     state->started = true;
 

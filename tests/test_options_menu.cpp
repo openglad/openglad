@@ -53,6 +53,7 @@ struct OptionsState {
 
 static int options_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     OptionsState* state = static_cast<OptionsState*>(data);
     state->started = true;
 

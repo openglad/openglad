@@ -55,6 +55,7 @@ struct HireState {
 
 static int hire_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     HireState* state = static_cast<HireState*>(data);
     state->started = true;
 

@@ -24,7 +24,8 @@
 
 namespace og::runtime {
 
-GameSession* current_session = nullptr;
+thread_local GameSession* current_session = nullptr;
+std::atomic<GameSession*> primary_session{nullptr};
 
 GameSession::GameSession(const Config& session_cfg)
     : cfg_(session_cfg)
@@ -68,6 +69,7 @@ GameSession::GameSession(const Config& session_cfg)
     // prefs during screen construction (viewscreen ctors read theprefs).
     if (cfg_.install_legacy_globals) {
         current_session = this;
+        primary_session.store(this, std::memory_order_release);
     }
 
     if (cfg_.allocate_screen) {

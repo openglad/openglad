@@ -53,6 +53,7 @@ struct MainMenuButtonState {
 
 static int mainmenu_button_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     MainMenuButtonState* state = static_cast<MainMenuButtonState*>(data);
     state->started = true;
 

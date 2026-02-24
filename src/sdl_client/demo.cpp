@@ -1,18 +1,27 @@
 /*
  * openglad_demo: Runs 12 independent AI-controlled game sessions in a 4x3 grid.
  *
- * Demonstrates that the engine supports multiple concurrent GameSession
- * instances within a single process. Each session:
- *   - Has its own screen, prefs, RNG, and render surface
- *   - Runs in 0-player spectator mode (AI-only)
- *   - Loads a scenario from the available set
+ * Each session runs its game simulation in its own thread, leveraging the
+ * thread_local current_session to avoid cross-thread state pollution.
  *
- * Rendering pipeline:
- *   1. For each session, activate() swaps E_Screen->render to session surface
- *   2. game_frame() renders to E_Screen->render (= session surface)
- *   3. E_Screen->suppress_present prevents immediate SDL_RenderPresent
- *   4. After all sessions tick, composite all surfaces into the display
- *   5. Present once via E_Screen->swap()
+ * Threading model:
+ *   - 12 worker threads: each runs one session's simulation (act, AI, input)
+ *   - 1 main thread: SDL event polling, per-session rendering, compositing
+ *
+ * Per-frame synchronization:
+ *   1. Main thread signals all workers to tick one simulation frame
+ *   2. Workers run game_frame() with enable_render=false (simulation only)
+ *   3. Workers signal completion
+ *   4. Main thread renders each session to its surface (sequential, via SessionScope)
+ *   5. Main thread composites all surfaces and presents to SDL display
+ *
+ * SDL thread safety:
+ *   - SDL_PollEvent: main thread only
+ *   - SDL_RenderPresent/Copy/Clear: main thread only
+ *   - SDL_UpdateTexture: main thread only
+ *   - E_Screen->render swap: main thread only (via SessionScope)
+ *   - Per-session SDL_Surface pixel writes: each worker writes only to its own surface
+ *   - SDL_mixer (Mix_PlayChannel): thread-safe in SDL_mixer 2.x
  */
 
 #include <openglad/core/util.h>
@@ -31,11 +40,14 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <ctime>
 #include <format>
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <random>
 #include <stdexcept>
@@ -43,7 +55,6 @@
 #include <vector>
 
 // External declarations
-// theprefs is now a macro defined in view.h (via game_session.h)
 void init_input();
 short load_saved_game(const char* filename, screen* scr);
 
@@ -56,7 +67,6 @@ inline constexpr int DISPLAY_W = GRID_COLS * CELL_W;
 inline constexpr int DISPLAY_H = GRID_ROWS * CELL_H;
 
 // Scenario pool — diverse levels from the main campaign plus bonus maps.
-// These are all present in the gladiator campaign archive or scen/ directory.
 static const std::array<int, 20> SCENARIO_POOL = {
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     11, 12, 13, 14, 15, 16,
@@ -65,9 +75,27 @@ static const std::array<int, 20> SCENARIO_POOL = {
 
 struct DemoSession {
     std::unique_ptr<og::runtime::GameSession> session;
-    bool finished = false;
+    std::atomic<bool> finished{false};
 };
 
+// ---------------------------------------------------------------------------
+// Worker synchronization
+// ---------------------------------------------------------------------------
+// Each frame:
+//   main thread increments generation → workers wake, simulate, signal done
+//   main thread waits for all workers done → renders → repeats
+struct WorkerSync {
+    std::mutex mtx;
+    std::condition_variable start_cv;   // main → workers: "start ticking"
+    std::condition_variable done_cv;    // workers → main: "I'm done"
+    int generation = 0;                 // incremented each frame by main
+    int workers_done = 0;               // count of workers finished this frame
+    bool shutdown = false;              // signal workers to exit
+};
+
+// ---------------------------------------------------------------------------
+// Session initialization (called from main thread)
+// ---------------------------------------------------------------------------
 static void init_session_game(DemoSession& demo, int scen_id)
 {
     auto scope = demo.session->activate();
@@ -84,7 +112,76 @@ static void init_session_game(DemoSession& demo, int scen_id)
     s->framecount = 0;
     s->timerstart = query_timer_control();
     demo.session->frame_state_ = {};
-    demo.finished = false;
+    demo.finished.store(false, std::memory_order_relaxed);
+}
+
+// ---------------------------------------------------------------------------
+// Worker thread function
+// ---------------------------------------------------------------------------
+// Each worker thread owns one session. It installs the session as thread_local
+// current_session and waits for the main thread to signal each frame.
+static void worker_thread_func(WorkerSync& sync, DemoSession& demo, int session_idx)
+{
+    // Install this session as thread_local current_session.
+    og::runtime::current_session = demo.session.get();
+    set_global_context(&demo.session->ctx_);
+
+    // Simulation-only deps: no rendering, no event polling, no frame timing.
+    // The main thread handles all of these.
+    GameLoopDeps sim_deps;
+    sim_deps.enable_render = false;
+    sim_deps.enable_event_poll = false;
+    sim_deps.enable_frame_timing = false;
+
+    int last_gen = 0;
+
+    while (true) {
+        // Wait for the main thread to signal the next frame.
+        {
+            std::unique_lock lock(sync.mtx);
+            sync.start_cv.wait(lock, [&] {
+                return sync.generation > last_gen || sync.shutdown;
+            });
+            if (sync.shutdown) break;
+            last_gen = sync.generation;
+        }
+
+        // Run one simulation tick if this session is still active.
+        if (!demo.finished.load(std::memory_order_relaxed)) {
+            screen* s = demo.session->myscreen_;
+            if (s) {
+                GameLoopFrameState& fs = demo.session->frame_state_;
+                bool done = game_frame(*s, fs, sim_deps);
+                if (done) {
+                    demo.finished.store(true, std::memory_order_relaxed);
+                    Log("Session {} finished (worker thread)\n", session_idx);
+                }
+            }
+        }
+
+        // Signal completion to the main thread.
+        {
+            std::lock_guard lock(sync.mtx);
+            sync.workers_done++;
+        }
+        sync.done_cv.notify_one();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Render one session's frame to its surface (main thread only)
+// ---------------------------------------------------------------------------
+// This does the rendering half of game_frame: redraw + refresh.
+// Must be called with the session's SessionScope active.
+static void render_session_frame(screen& s)
+{
+    if (s.redrawme) {
+        s.draw_panels(s.numviews);
+        s.refresh();
+        s.redrawme = 0;
+    }
+    s.redraw();
+    s.refresh();
 }
 
 // Blit a 320x200 session surface into a sub-region of the composite surface.
@@ -115,14 +212,9 @@ int main(int argc, char* argv[])
         cfg.apply_setting("graphics", "render", "normal");
         cfg.apply_setting("graphics", "fullscreen", "off");
 
-        // Seed rand() for non-deterministic session variety. The demo is
-        // intentionally non-deterministic: each run produces different RNG seeds
-        // and scenario selections. Determinism is not a goal here.
         srand(static_cast<unsigned int>(time(nullptr)));
 
         // --- Create the display-owning "host" session ---
-        // This creates the SDL window and renderer at DISPLAY_W x DISPLAY_H.
-        // Its screen object is only used for display ownership.
         og::runtime::GameSession::Config host_cfg;
         host_cfg.numviews = 1;
         host_cfg.allocate_screen = true;
@@ -135,9 +227,7 @@ int main(int argc, char* argv[])
         init_input();
         load_player_control_settings_from_cfg(cfg);
 
-        // Create a composite surface and texture at the full display resolution.
-        // E_Screen->render is only 320x200 (for single-session rendering).
-        // We need DISPLAY_W x DISPLAY_H for the 4x3 grid composite.
+        // Create composite surface and texture at the full display resolution.
         SDL_Surface* composite_surface = SDL_CreateRGBSurface(
             SDL_SWSURFACE, DISPLAY_W, DISPLAY_H, 32, 0, 0, 0, 0);
         SDL_Texture* composite_tex = SDL_CreateTexture(
@@ -148,14 +238,14 @@ int main(int argc, char* argv[])
             return 1;
         }
 
-        // --- Create 12 sub-sessions ---
+        // --- Create 12 sub-sessions (main thread) ---
         std::array<DemoSession, NUM_SESSIONS> demos;
 
         for (int i = 0; i < NUM_SESSIONS; i++) {
             og::runtime::GameSession::Config sub_cfg;
             sub_cfg.numviews = 1;
             sub_cfg.allocate_screen = true;
-            sub_cfg.create_display = false;  // Share the host's display
+            sub_cfg.create_display = false;
             sub_cfg.allocate_prefs = true;
             sub_cfg.install_legacy_globals = false;
             sub_cfg.install_global_context = false;
@@ -165,8 +255,7 @@ int main(int argc, char* argv[])
             demos[i].session = std::make_unique<og::runtime::GameSession>(sub_cfg);
         }
 
-        // Build a shuffled list of scenario IDs so each session gets a
-        // different level.  We sample without replacement from the pool.
+        // Build a shuffled list of scenario IDs.
         std::mt19937 demo_rng(static_cast<unsigned>(time(nullptr)));
         auto pick_scenarios = [&]() {
             std::vector<int> picks;
@@ -177,8 +266,7 @@ int main(int argc, char* argv[])
             return picks;
         };
 
-        // Initialize each session with a unique scenario.
-        // Suppress presentation during init to avoid flashing individual sessions.
+        // Initialize each session with a unique scenario (main thread).
         std::vector<int> chosen = pick_scenarios();
         E_Screen->suppress_present = true;
         for (int i = 0; i < NUM_SESSIONS; i++) {
@@ -189,24 +277,18 @@ int main(int argc, char* argv[])
         for (int i = 0; i < NUM_SESSIONS; i++) {
             Log("  session {}: scenario {}\n", i, chosen[static_cast<size_t>(i)]);
         }
-        Log("openglad_demo: {} sessions initialized\n", NUM_SESSIONS);
+        Log("openglad_demo: {} sessions initialized, spawning {} worker threads\n",
+            NUM_SESSIONS, NUM_SESSIONS);
+
+        // --- Spawn worker threads ---
+        WorkerSync sync;
+        std::array<std::thread, NUM_SESSIONS> workers;
+        for (int i = 0; i < NUM_SESSIONS; i++) {
+            workers[i] = std::thread(worker_thread_func,
+                                     std::ref(sync), std::ref(demos[i]), i);
+        }
 
         // --- Main loop ---
-        // During session ticks, suppress_present prevents each session's
-        // buffer_to_screen → E_Screen->swap from presenting to the display.
-        // All rendering still goes to E_Screen->render (which is swapped to
-        // the session's own surface via SessionScope).
-        GameLoopDeps deps;
-        deps.enable_event_poll = false;   // We handle events ourselves
-        deps.enable_render = true;
-        deps.enable_frame_timing = false; // We pace the simulation externally
-                                          // with a single sleep per frame (below),
-                                          // avoiding per-session multiplicative delays.
-
-        // Match the normal game's simulation rate.  timer_wait defaults to 6
-        // ticks, and 1 tick = 13.6ms, so target frame period = 81.6ms (~12 fps).
-        // This is the game logic tick rate, not a display framerate — it controls
-        // how fast walkers move, attacks land, etc.
         constexpr int TIMER_WAIT_TICKS = 6;
         constexpr std::chrono::microseconds FRAME_PERIOD{TIMER_WAIT_TICKS * 13600};
 
@@ -214,7 +296,7 @@ int main(int argc, char* argv[])
         while (running) {
             auto frame_start = std::chrono::steady_clock::now();
 
-            // Poll events on the main display
+            // --- Phase 1: Poll SDL events (main thread only) ---
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
                 if (event.type == SDL_QUIT) {
@@ -229,30 +311,39 @@ int main(int argc, char* argv[])
 
             if (!running) break;
 
-            // Suppress presentation during individual session ticks
-            E_Screen->suppress_present = true;
+            // --- Phase 2: Signal workers to simulate one frame ---
+            {
+                std::lock_guard lock(sync.mtx);
+                sync.workers_done = 0;
+                sync.generation++;
+            }
+            sync.start_cv.notify_all();
 
-            // Tick each session - rendering goes to each session's own surface
+            // --- Phase 3: Wait for all workers to finish simulation ---
+            {
+                std::unique_lock lock(sync.mtx);
+                sync.done_cv.wait(lock, [&] {
+                    return sync.workers_done >= NUM_SESSIONS;
+                });
+            }
+
+            // --- Phase 4: Render each session to its surface (main thread) ---
+            // This is sequential: only the main thread touches E_Screen.
+            E_Screen->suppress_present = true;
             int active_count = 0;
             for (int i = 0; i < NUM_SESSIONS; i++) {
-                if (demos[i].finished) continue;
+                if (demos[i].finished.load(std::memory_order_relaxed)) continue;
                 active_count++;
 
                 auto scope = demos[i].session->activate();
                 screen* s = og::runtime::current_session->myscreen_;
                 if (!s) continue;
 
-                GameLoopFrameState& fs = demos[i].session->frame_state_;
-                bool done = game_frame(*s, fs, deps);
-                if (done) {
-                    demos[i].finished = true;
-                    Log("Session {} finished\n", i);
-                }
+                render_session_frame(*s);
             }
-
             E_Screen->suppress_present = false;
 
-            // Composite all session surfaces into the composite surface
+            // --- Phase 5: Composite and present (main thread only) ---
             SDL_FillRect(composite_surface, nullptr, 0x000000);
             for (int i = 0; i < NUM_SESSIONS; i++) {
                 SDL_Surface* src = demos[i].session->session_surface_;
@@ -261,7 +352,6 @@ int main(int argc, char* argv[])
                 composite_session(composite_surface, src, col, row);
             }
 
-            // Upload composite to our full-resolution texture and present.
             SDL_UpdateTexture(composite_tex, nullptr,
                               composite_surface->pixels,
                               composite_surface->pitch);
@@ -270,24 +360,34 @@ int main(int argc, char* argv[])
                            nullptr, nullptr);
             SDL_RenderPresent(E_Screen->renderer);
 
-            // If all sessions are done, restart them with new scenarios
+            // If all sessions are done, restart them with new scenarios.
             if (active_count == 0) {
                 Log("All sessions finished, restarting...\n");
                 chosen = pick_scenarios();
+                E_Screen->suppress_present = true;
                 for (int i = 0; i < NUM_SESSIONS; i++) {
                     init_session_game(demos[i], chosen[static_cast<size_t>(i)]);
                 }
+                E_Screen->suppress_present = false;
             }
 
-            // Sleep once for all 12 sessions to match the normal game's tick rate.
-            // The normal game does time_delay(timer_wait - query_timer()) per frame,
-            // sleeping for the remainder of timer_wait*13.6ms after game work.
-            // We replicate that here: measure total frame work, sleep the remainder.
+            // Frame pacing: sleep remainder of the target frame period.
             auto elapsed = std::chrono::steady_clock::now() - frame_start;
             auto remaining = FRAME_PERIOD - elapsed;
             if (remaining > std::chrono::microseconds(1000)) {
                 std::this_thread::sleep_for(remaining);
             }
+        }
+
+        // --- Shutdown worker threads ---
+        {
+            std::lock_guard lock(sync.mtx);
+            sync.shutdown = true;
+        }
+        sync.start_cv.notify_all();
+
+        for (auto& w : workers) {
+            if (w.joinable()) w.join();
         }
 
         // Cleanup

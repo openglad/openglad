@@ -81,6 +81,7 @@ struct FairyState {
 
 static int fairy_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     FairyState* state = static_cast<FairyState*>(data);
     state->started = true;
 

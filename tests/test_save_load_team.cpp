@@ -135,6 +135,7 @@ struct LoadMenuState {
 
 static int load_menu_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     LoadMenuState* state = static_cast<LoadMenuState*>(data);
     state->started = true;
 

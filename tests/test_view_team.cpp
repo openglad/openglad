@@ -106,6 +106,7 @@ struct ViewState {
 
 static int view_team_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     ViewState* state = static_cast<ViewState*>(data);
     state->started = true;
 
@@ -215,6 +216,7 @@ struct ViewTeamGoState {
 
 static int view_team_go_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     ViewTeamGoState* state = static_cast<ViewTeamGoState*>(data);
     state->started = true;
 
@@ -325,6 +327,7 @@ struct DirectMenuClickState {
 
 static int direct_menu_click_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     auto* state = static_cast<DirectMenuClickState*>(data);
 
     int elapsed = 0;
@@ -419,6 +422,7 @@ struct ViewTeamGoLevel17State {
 
 static int view_team_go_level17_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     auto* state = static_cast<ViewTeamGoLevel17State*>(data);
 
     if (!wait_for_interactable("continue_game", 5000)) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -131,7 +132,21 @@ private:
 
 // The currently-active session.  Code accesses members directly, e.g.
 // og::runtime::current_session->myscreen_.  Set by GameSession ctor / SessionScope.
-extern GameSession* current_session;
+// Thread-local: each thread gets its own session pointer for multi-threaded demos.
+extern thread_local GameSession* current_session;
+
+// Non-thread-local atomic pointer to the most recently installed session.
+// Used by child threads (e.g. test injector threads) to inherit the session
+// when their thread_local current_session is still nullptr.
+extern std::atomic<GameSession*> primary_session;
+
+// If current_session is nullptr on this thread, inherit from primary_session.
+// Call at the start of any child thread that needs session access.
+inline void ensure_thread_session() {
+    if (!current_session) {
+        current_session = primary_session.load(std::memory_order_acquire);
+    }
+}
 
 // RAII guard: while alive, the associated session's globals are installed.
 // On destruction, previous globals are restored.
