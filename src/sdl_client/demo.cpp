@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdlib>
 #include <ctime>
 #include <format>
@@ -38,6 +39,7 @@
 #include <numeric>
 #include <random>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 // External declarations
@@ -197,12 +199,21 @@ int main(int argc, char* argv[])
         GameLoopDeps deps;
         deps.enable_event_poll = false;   // We handle events ourselves
         deps.enable_render = true;
-        deps.enable_frame_timing = false; // We cap the frame rate externally;
-                                          // per-session time_delay (~82ms each)
-                                          // would otherwise kill performance.
+        deps.enable_frame_timing = false; // We pace the simulation externally
+                                          // with a single sleep per frame (below),
+                                          // avoiding per-session multiplicative delays.
+
+        // Match the normal game's simulation rate.  timer_wait defaults to 6
+        // ticks, and 1 tick = 13.6ms, so target frame period = 81.6ms (~12 fps).
+        // This is the game logic tick rate, not a display framerate — it controls
+        // how fast walkers move, attacks land, etc.
+        constexpr int TIMER_WAIT_TICKS = 6;
+        constexpr std::chrono::microseconds FRAME_PERIOD{TIMER_WAIT_TICKS * 13600};
 
         bool running = true;
         while (running) {
+            auto frame_start = std::chrono::steady_clock::now();
+
             // Poll events on the main display
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
@@ -268,7 +279,15 @@ int main(int argc, char* argv[])
                 }
             }
 
-            SDL_Delay(16); // ~60fps cap
+            // Sleep once for all 12 sessions to match the normal game's tick rate.
+            // The normal game does time_delay(timer_wait - query_timer()) per frame,
+            // sleeping for the remainder of timer_wait*13.6ms after game work.
+            // We replicate that here: measure total frame work, sleep the remainder.
+            auto elapsed = std::chrono::steady_clock::now() - frame_start;
+            auto remaining = FRAME_PERIOD - elapsed;
+            if (remaining > std::chrono::microseconds(1000)) {
+                std::this_thread::sleep_for(remaining);
+            }
         }
 
         // Cleanup
