@@ -8,6 +8,7 @@
 #include <openglad/runtime/game_session.h>
 
 #include <openglad/core/util.h> // LogError
+#include <algorithm>            // std::copy
 #include <openglad/entities/guy.h> // complete type for unique_ptr<guy> destructor
 #include <openglad/runtime/screen.h> // screen class (pulls in base.h → myscreen macro)
 #include <openglad/render/view.h>    // options class (defines theprefs macro)
@@ -72,6 +73,15 @@ GameSession::GameSession(const Config& session_cfg)
     if (cfg_.allocate_screen) {
         screen_owner_ = std::make_unique<::screen>(cfg_.numviews, cfg_.create_display);
         myscreen_ = screen_owner_.get();
+
+        // Ensure this session's curpal_ matches the screen's palette.
+        // video_init_palettes() populates video::ourpalette per-instance,
+        // but set_palette() writes to current_session->curpal_ — which is
+        // a different session when install_legacy_globals is false (e.g.
+        // demo sub-sessions).  Copy the authoritative palette here so that
+        // rendering with this session active uses correct colors.
+        std::copy(screen_owner_->ourpalette.begin(),
+                  screen_owner_->ourpalette.end(), curpal_);
     }
 
     // Create per-session render surface for sub-sessions sharing a display.
