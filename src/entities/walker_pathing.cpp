@@ -28,7 +28,7 @@
 
 namespace {
 
-walker* path_walker = nullptr;
+thread_local walker* path_walker = nullptr;
 
 class Map : public micropather::Graph
 {
@@ -103,8 +103,8 @@ void Map::PrintStateInfo(void* state)
     Log("({},{})", x1, y1);
 }
 
-Map path_map;
-micropather::MicroPather pather(&path_map);
+thread_local Map path_map;
+thread_local micropather::MicroPather pather(&path_map);
 
 } // namespace
 
