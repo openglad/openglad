@@ -1246,8 +1246,8 @@ void test_walker_batch7_init_fire_and_animate_edge_paths()
     // animate() null-sequence path: create a local table with a null at the target index.
     const int ani_index = w->curdir + w->ani_type * NUM_FACINGS;
     const signed char * null_seq_rows[32] = {};
-    // Copy existing pointers, then null out the target index.
-    for (int i = 0; i < 32 && w->ani[i]; i++)
+    // Copy existing pointers up to the target index, then null it out.
+    for (int i = 0; i <= ani_index; i++)
         null_seq_rows[i] = w->ani[i];
     null_seq_rows[ani_index] = nullptr;
     auto saved_ani2 = w->ani;
