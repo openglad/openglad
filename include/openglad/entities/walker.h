@@ -186,7 +186,7 @@ class walker : public og::sim::SimEntity
 		walker* collide_ob;
 		unsigned short default_weapon;
 		signed char curdir;            // Current direction facing
-		signed char** ani;
+		const signed char * const * ani;
 		unsigned char drawcycle;
 		char current_special;
 		unsigned char outline;

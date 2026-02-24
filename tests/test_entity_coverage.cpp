@@ -146,8 +146,13 @@ void test_sim_input_idle_animation_cycle_wraps()
     control->stats()->set_bit_flags(BIT_ANIMATE, 1);
     control->curdir = 0;
     control->cycle = 0;
-    control->ani[0][0] = 9;
-    control->ani[0][1] = -1;
+    // Create local mutable animation data (global tables are const)
+    static signed char test_seq[] = {9, -1};
+    static const signed char * test_ani_rows[] = {test_seq, test_seq, test_seq, test_seq,
+                                                   test_seq, test_seq, test_seq, test_seq,
+                                                   test_seq, test_seq, test_seq, test_seq,
+                                                   test_seq, test_seq, test_seq, test_seq};
+    control->ani = test_ani_rows;
 
     og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(control_up));
 

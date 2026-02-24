@@ -80,7 +80,7 @@ inline constexpr SDL_Keycode SDLK_KP9 = SDLK_KP_9;
 // Zardus: these were originally static chars but are now ints
 // Now define the arrays with their default values
 
-int key1[] = {
+const int key1[] = {
                  SDLK_w, SDLK_e, SDLK_d, SDLK_c,  // movements
                  SDLK_x, SDLK_z, SDLK_a, SDLK_q,
                  SDLK_LCTRL, SDLK_LALT,                    // fire & special
@@ -92,7 +92,7 @@ int key1[] = {
                  SDLK_F5,                                 // Cheat key
              };
              
-int key2[] = {
+const int key2[] = {
                  SDLK_KP8, SDLK_KP9, SDLK_KP6, SDLK_KP3,  // movements
                  SDLK_KP2, SDLK_KP1, SDLK_KP4, SDLK_KP7,
                  SDLK_KP0, SDLK_KP_ENTER,                    // fire & special
@@ -104,7 +104,7 @@ int key2[] = {
                  SDLK_F8,                                    // Cheat key
              };
 
-int key3[] = {
+const int key3[] = {
                  SDLK_i, SDLK_o, SDLK_l, SDLK_PERIOD,  // movements
                  SDLK_COMMA, SDLK_m, SDLK_j, SDLK_u,
                  SDLK_SPACE, SDLK_SEMICOLON,                    // fire & special
@@ -116,7 +116,7 @@ int key3[] = {
                  SDLK_F7,                                 // Cheat key
              };
 
-int key4[] = {
+const int key4[] = {
                  SDLK_t, SDLK_y, SDLK_h, SDLK_n,  // movements
                  SDLK_b, SDLK_v, SDLK_f, SDLK_r,
                  SDLK_5, SDLK_6,                    // fire & special
@@ -138,7 +138,7 @@ inline constexpr const char* KEY_FILE = "keyprefs.dat";
 // This only exists so we can use the array constructor
 //   for our prefs object (grumble grumble)
 // Zardus: these used to be static chars too
-int *normalkeys[] = {key1,key2,key3,key4};
+const int *normalkeys[] = {key1,key2,key3,key4};
 // Zardus: keys is a sys var (apparently) so we'll use allkeys
 int allkeys[4][16];
 

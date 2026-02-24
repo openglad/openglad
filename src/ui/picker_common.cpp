@@ -21,7 +21,7 @@ std::uint32_t calculate_exp(std::int32_t level);
 // Legacy global used by entity code (living.cpp, walker.cpp) via
 // extern std::int32_t difficulty_level[].  Centralised here so both
 // the SDL and headless clients share a single definition.
-std::int32_t difficulty_level[DIFFICULTY_SETTINGS] = {50, 100, 200};
+extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS] = {50, 100, 200};
 
 namespace og::ui {
 

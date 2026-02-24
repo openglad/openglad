@@ -751,7 +751,13 @@ void test_sim_input_deep_branch_coverage_smoke()
     control->ani_type = ANI_ATTACK; // forces animate() branch
     control->stats()->set_bit_flags(BIT_ANIMATE, 1);
     control->cycle = 0;
-    control->ani[control->curdir][1] = -1; // force animation wrap in idle branch
+    // Create local mutable animation data (global tables are const)
+    static signed char test_wrap_seq[] = {0, -1};
+    static const signed char * test_wrap_rows[] = {test_wrap_seq, test_wrap_seq, test_wrap_seq, test_wrap_seq,
+                                                    test_wrap_seq, test_wrap_seq, test_wrap_seq, test_wrap_seq,
+                                                    test_wrap_seq, test_wrap_seq, test_wrap_seq, test_wrap_seq,
+                                                    test_wrap_seq, test_wrap_seq, test_wrap_seq, test_wrap_seq};
+    control->ani = test_wrap_rows; // force animation wrap in idle branch
 
     og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(ally_before_up));
     og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(control_up));

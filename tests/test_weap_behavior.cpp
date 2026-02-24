@@ -443,8 +443,13 @@ void test_weapon_family_animate_callbacks_and_sprinkle_hit_paths()
     tree_w->curdir = 0;
     tree_w->ani_type = 5;
     tree_w->cycle = 0;
-    tree_w->ani[0][0] = 10;
-    tree_w->ani[0][1] = -1;
+    // Create local mutable animation data (global tables are const)
+    static signed char tree_test_seq[] = {10, -1};
+    static const signed char * tree_test_rows[] = {tree_test_seq, tree_test_seq, tree_test_seq, tree_test_seq,
+                                                    tree_test_seq, tree_test_seq, tree_test_seq, tree_test_seq,
+                                                    tree_test_seq, tree_test_seq, tree_test_seq, tree_test_seq,
+                                                    tree_test_seq, tree_test_seq, tree_test_seq, tree_test_seq};
+    tree_w->ani = tree_test_rows;
     TEST_ASSERT(tree_w->animate(), "tree animate should succeed");
     TEST_ASSERT_EQ(0, (int)tree_w->ani_type, "tree animate should clamp ani_type >1 to 0");
     TEST_ASSERT_EQ(0, (int)tree_w->cycle, "tree animate should reset cycle at -1 sentinel");
@@ -475,8 +480,13 @@ void test_weapon_family_animate_callbacks_and_sprinkle_hit_paths()
     glow_w->lifetime = 0;
     glow_w->dead = 0;
     glow_w->death_called = 0;
-    glow_w->ani[NUM_FACINGS * 2][0] = 12;
-    glow_w->ani[NUM_FACINGS * 2][1] = -1;
+    // Create local mutable animation data for glow (global tables are const)
+    static signed char glow_test_seq[] = {12, -1};
+    static const signed char * glow_test_rows[32] = {};
+    // Fill all rows with the test sequence
+    for (int i = 0; i < 32; i++)
+        glow_test_rows[i] = glow_test_seq;
+    glow_w->ani = glow_test_rows;
     TEST_ASSERT(glow_w->animate(), "glow animate should succeed");
     TEST_ASSERT_EQ(2, (int)glow_w->ani_type, "glow animate should clamp ani_type >2 to pulse state");
     TEST_ASSERT_EQ(0, (int)glow_w->cycle, "glow animate should reset cycle at sentinel");

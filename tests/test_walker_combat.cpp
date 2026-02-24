@@ -1243,12 +1243,17 @@ void test_walker_batch7_init_fire_and_animate_edge_paths()
     TEST_ASSERT(!w->animate(), "animate should return false when animation table is null");
     w->ani = saved_ani;
 
-    // animate() null-sequence path.
+    // animate() null-sequence path: create a local table with a null at the target index.
     const int ani_index = w->curdir + w->ani_type * NUM_FACINGS;
-    auto saved_seq = w->ani[ani_index];
-    w->ani[ani_index] = nullptr;
+    const signed char * null_seq_rows[32] = {};
+    // Copy existing pointers, then null out the target index.
+    for (int i = 0; i < 32 && w->ani[i]; i++)
+        null_seq_rows[i] = w->ani[i];
+    null_seq_rows[ani_index] = nullptr;
+    auto saved_ani2 = w->ani;
+    w->ani = null_seq_rows;
     TEST_ASSERT(!w->animate(), "animate should return false when selected sequence is null");
-    w->ani[ani_index] = saved_seq;
+    w->ani = saved_ani2;
 }
 REGISTER_TEST(test_walker_batch7_init_fire_and_animate_edge_paths);
 
@@ -1274,8 +1279,13 @@ void test_walker_batch8_act_default_and_animate_invalid_sequence_bounds()
     w->ani_type = ANI_ATTACK;
     w->curdir = FACE_RIGHT;
     const int ani_index = w->curdir + w->ani_type * NUM_FACINGS;
-    signed char* original_seq = w->ani[ani_index];
-    w->ani[ani_index] = no_sentinel_seq;
+    // Create a local table with the no-sentinel sequence at the target index.
+    const signed char * custom_rows[32] = {};
+    for (int i = 0; i < 32; i++)
+        custom_rows[i] = w->ani[i];
+    custom_rows[ani_index] = no_sentinel_seq;
+    auto saved_ani = w->ani;
+    w->ani = custom_rows;
     w->cycle = 0;
 
     bool animated = w->animate();
@@ -1283,7 +1293,7 @@ void test_walker_batch8_act_default_and_animate_invalid_sequence_bounds()
     TEST_ASSERT_EQ(ANI_WALK, (int)w->ani_type, "animate() should reset to ANI_WALK on invalid sequence");
     TEST_ASSERT_EQ(0, (int)w->cycle, "animate() should reset cycle on invalid sequence");
 
-    w->ani[ani_index] = original_seq;
+    w->ani = saved_ani;
     delete w;
 }
 REGISTER_TEST(test_walker_batch8_act_default_and_animate_invalid_sequence_bounds);

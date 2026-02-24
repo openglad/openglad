@@ -44,7 +44,7 @@ class loader
 		void set_derived_stats(walker* w, Order order, std::int32_t family);
 		walker *set_walker(walker *ob, Order order, std::int32_t family);
 		std::vector<PixieData> graphics;
-		std::vector<signed char**> animations;
+		std::vector<const signed char * const *> animations;
 		std::vector<float> stepsizes;
 		std::vector<std::int32_t> lineofsight;
 

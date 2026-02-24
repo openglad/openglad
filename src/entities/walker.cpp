@@ -57,7 +57,7 @@
 
 // From picker.cpp
 extern std::int32_t calculate_level(std::uint32_t temp_exp);
-extern std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
+extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
 // current_difficulty lives in GameSession — access via current_session->current_difficulty_.
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);

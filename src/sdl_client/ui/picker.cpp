@@ -141,7 +141,7 @@ void picker_testing_mark_game_end()
 
 // difficulty_level[] now shared via picker_common.cpp
 // difficulty_level[] now defined in picker_common.cpp (shared between SDL and headless)
-extern std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
+extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
 
 enum class PickerInterceptScope
 {

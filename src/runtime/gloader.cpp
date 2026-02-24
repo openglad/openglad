@@ -53,89 +53,89 @@ static inline Order sanitize_order(Order order)
 }
 
 // These are for monsters and us
-signed char bit1[] = {static_cast<char>(1),static_cast<char>(5),static_cast<char>(1),static_cast<char>(9),static_cast<signed char>(-1)};     // up
-signed char bit2[] = {static_cast<char>(13),static_cast<char>(17),static_cast<char>(13),static_cast<char>(21),static_cast<signed char>(-1)}; // up-right
-signed char bit3[] = {static_cast<char>(2),static_cast<char>(6),static_cast<char>(2),static_cast<char>(10),static_cast<signed char>(-1)};    // right
-signed char bit4[] = {static_cast<char>(14),static_cast<char>(18),static_cast<char>(14),static_cast<char>(22),static_cast<signed char>(-1)}; // down-right
-signed char bit5[] = {static_cast<char>(0),static_cast<char>(4),static_cast<char>(0),static_cast<char>(8),static_cast<signed char>(-1)};     // down
-signed char bit6[] = {static_cast<char>(12),static_cast<char>(16),static_cast<char>(12),static_cast<char>(20),static_cast<signed char>(-1)}; // down-left
-signed char bit7[] = {static_cast<char>(3),static_cast<char>(7),static_cast<char>(3),static_cast<char>(11),static_cast<signed char>(-1)};    // left
-signed char bit8[] = {static_cast<char>(15),static_cast<char>(19),static_cast<char>(15),static_cast<char>(23),static_cast<signed char>(-1)}; // up-left
+const signed char bit1[] = {static_cast<char>(1),static_cast<char>(5),static_cast<char>(1),static_cast<char>(9),static_cast<signed char>(-1)};     // up
+const signed char bit2[] = {static_cast<char>(13),static_cast<char>(17),static_cast<char>(13),static_cast<char>(21),static_cast<signed char>(-1)}; // up-right
+const signed char bit3[] = {static_cast<char>(2),static_cast<char>(6),static_cast<char>(2),static_cast<char>(10),static_cast<signed char>(-1)};    // right
+const signed char bit4[] = {static_cast<char>(14),static_cast<char>(18),static_cast<char>(14),static_cast<char>(22),static_cast<signed char>(-1)}; // down-right
+const signed char bit5[] = {static_cast<char>(0),static_cast<char>(4),static_cast<char>(0),static_cast<char>(8),static_cast<signed char>(-1)};     // down
+const signed char bit6[] = {static_cast<char>(12),static_cast<char>(16),static_cast<char>(12),static_cast<char>(20),static_cast<signed char>(-1)}; // down-left
+const signed char bit7[] = {static_cast<char>(3),static_cast<char>(7),static_cast<char>(3),static_cast<char>(11),static_cast<signed char>(-1)};    // left
+const signed char bit8[] = {static_cast<char>(15),static_cast<char>(19),static_cast<char>(15),static_cast<char>(23),static_cast<signed char>(-1)}; // up-left
 
-signed char att1[] = {1,5,1,-1};       // up
-signed char att2[] = {13,17,13,-1};    // up-right
-signed char att3[] = {2,6,2,-1};       // right
-signed char att4[] = {14,18,14,-1};    // down-right
-signed char att5[] = {0,4,0,-1};       // down
-signed char att6[] = {12,16,12,-1};    // down-left
-signed char att7[] = {3,7,3,-1};       // left
-signed char att8[] = {15,19,15,-1};    // up-left
+const signed char att1[] = {1,5,1,-1};       // up
+const signed char att2[] = {13,17,13,-1};    // up-right
+const signed char att3[] = {2,6,2,-1};       // right
+const signed char att4[] = {14,18,14,-1};    // down-right
+const signed char att5[] = {0,4,0,-1};       // down
+const signed char att6[] = {12,16,12,-1};    // down-left
+const signed char att7[] = {3,7,3,-1};       // left
+const signed char att8[] = {15,19,15,-1};    // up-left
 
-signed char bitm2[] = {21,25,21,29,-1};  // up-right
-signed char bitm4[] = {22,26,22,30,-1};  // down-right
-signed char bitm6[] = {20,24,20,28,-1};  // down-left
-signed char bitm8[] = {23,27,23,31,-1};  // up-left
+const signed char bitm2[] = {21,25,21,29,-1};  // up-right
+const signed char bitm4[] = {22,26,22,30,-1};  // down-right
+const signed char bitm6[] = {20,24,20,28,-1};  // down-left
+const signed char bitm8[] = {23,27,23,31,-1};  // up-left
 
-signed char mageatt1[] = {5,17,1,-1};    // up
-signed char mageatt2[] = {25,33,21,-1};  // up-right
-signed char mageatt3[] = {6,18,2,-1};    // right
-signed char mageatt4[] = {26,34,22,-1};  // down-right
-signed char mageatt5[] = {4,16,0,-1};    // down
-signed char mageatt6[] = {24,32,20,-1};  // down-left
-signed char mageatt7[] = {7,19,3,-1};    // left
-signed char mageatt8[] = {27,35,23,-1};  // up-left
+const signed char mageatt1[] = {5,17,1,-1};    // up
+const signed char mageatt2[] = {25,33,21,-1};  // up-right
+const signed char mageatt3[] = {6,18,2,-1};    // right
+const signed char mageatt4[] = {26,34,22,-1};  // down-right
+const signed char mageatt5[] = {4,16,0,-1};    // down
+const signed char mageatt6[] = {24,32,20,-1};  // down-left
+const signed char mageatt7[] = {7,19,3,-1};    // left
+const signed char mageatt8[] = {27,35,23,-1};  // up-left
 
 
-signed char tele_out1[] = {12,13,14,15,-1};
-signed char tele_in1[] = {15,14,13,12,1,-1};  // up
-signed char tele_in2[] = {15,14,13,12,2,-1};  // right
-signed char tele_in3[] = {15,14,13,12,0,-1};  // down
-signed char tele_in4[] = {15,14,13,12,3,-1};  // left
+const signed char tele_out1[] = {12,13,14,15,-1};
+const signed char tele_in1[] = {15,14,13,12,1,-1};  // up
+const signed char tele_in2[] = {15,14,13,12,2,-1};  // right
+const signed char tele_in3[] = {15,14,13,12,0,-1};  // down
+const signed char tele_in4[] = {15,14,13,12,3,-1};  // left
 
 // Big skeleton, who is currently different ...
-signed char gs_down[] = {0, 1, 2, 3, -1}; // true "down"
-signed char gs_up[] = {3, 2, 1, 0, -1}; // faked up :)
+const signed char gs_down[] = {0, 1, 2, 3, -1}; // true "down"
+const signed char gs_up[] = {3, 2, 1, 0, -1}; // faked up :)
 
 // Skeleton growing
-signed char skel_grow[] =   {27, 26, 25, 24, 0, -1};
-signed char skel_shrink[] = {0, 24, 25, 26, 27, -1};
+const signed char skel_grow[] =   {27, 26, 25, 24, 0, -1};
+const signed char skel_shrink[] = {0, 24, 25, 26, 27, -1};
 
 // For slime unidirectional movement
-signed char slime_pulse[] = { 0, 0, 1, 1, 2, 2, 1, 1, -1 };
+const signed char slime_pulse[] = { 0, 0, 1, 1, 2, 2, 1, 1, -1 };
 
-signed char slime_split[] = { 8, 8, 9, 9, 10, 10,
+const signed char slime_split[] = { 8, 8, 9, 9, 10, 10,
                               11,11,12,12, 13, 13, -1 };
 
-signed char small_slime[] = { 0, 0, 1, 1, 2, 2, 3, 3,
+const signed char small_slime[] = { 0, 0, 1, 1, 2, 2, 3, 3,
                               4, 4, 5, 5, 6, 6, 7, 7,
                               6, 6, 5, 5, 4 ,4, 3, 3,
                               2, 2, 1, 1, -1 };
 
 // These are for the 'effect' objects
-signed char series_8[] = {0, 1, 2, 3, 4, 5, 6, 7, -1};
-signed char  *aniexpand8[] = { series_8, series_8, series_8, series_8,
+const signed char series_8[] = {0, 1, 2, 3, 4, 5, 6, 7, -1};
+const signed char * const aniexpand8[] = { series_8, series_8, series_8, series_8,
                                series_8, series_8, series_8, series_8,
                                series_8, series_8, series_8, series_8,
                                series_8, series_8, series_8, series_8 };
 
 //signed char series_16[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1};
-signed char series_16[] = {0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, -1};
-signed char *ani16[] = {series_16, series_16, series_16, series_16,
+const signed char series_16[] = {0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, -1};
+const signed char * const ani16[] = {series_16, series_16, series_16, series_16,
                         series_16, series_16, series_16, series_16,
                         series_16, series_16, series_16, series_16,
                         series_16, series_16, series_16, series_16};
 
-signed char bomb1[] = {0, 1, 0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3,
+const signed char bomb1[] = {0, 1, 0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3,
                        4, 5, 4, 5, 4, 5, 4, 5, 6, 7, 6, 7, 6, 7, 6, 7,
                        8, 9, 8, 9, 8, 9, 8, 9, 10, 11, 10, 11, 10, 11, 10, 11,
                        12, 12, -1};
-signed char  *anibomb1[] = {bomb1, bomb1, bomb1, bomb1,
+const signed char * const anibomb1[] = {bomb1, bomb1, bomb1, bomb1,
                             bomb1, bomb1, bomb1, bomb1,
                             bomb1, bomb1, bomb1, bomb1,
                             bomb1, bomb1, bomb1, bomb1 };
 
-signed char explosion1[] = {0, 1, 2, -1};
-signed char  *aniexplosion1[] = {explosion1, explosion1, explosion1, explosion1,
+const signed char explosion1[] = {0, 1, 2, -1};
+const signed char * const aniexplosion1[] = {explosion1, explosion1, explosion1, explosion1,
                                  explosion1, explosion1, explosion1, explosion1,
                                  explosion1, explosion1, explosion1, explosion1,
                                  explosion1, explosion1, explosion1, explosion1 };
@@ -149,10 +149,10 @@ The animation can be directional due to the use of curdir.
 The signed char[] are the actual frame indices for the animation.  -1 means to end the animation.
 */
 
-signed char hit1[] = {0, 1, -1};
-signed char hit2[] = {0, 2, -1};
-signed char hit3[] = {0, 3, -1};
-signed char  *anihit[] = {hit1, hit1, hit1, hit1,
+const signed char hit1[] = {0, 1, -1};
+const signed char hit2[] = {0, 2, -1};
+const signed char hit3[] = {0, 3, -1};
+const signed char * const anihit[] = {hit1, hit1, hit1, hit1,
                                  hit1, hit1, hit1, hit1,
                                  hit1, hit1, hit1, hit1,
                                  hit1, hit1, hit1, hit1,
@@ -161,28 +161,28 @@ signed char  *anihit[] = {hit1, hit1, hit1, hit1,
                                  hit3, hit3, hit3, hit3,
                                  hit3, hit3, hit3, hit3 };
 
-signed char cloud_cycle[] = {0, 1, 2, 3, 2, 1, -1};
-signed char *anicloud[] = {cloud_cycle, cloud_cycle, cloud_cycle, cloud_cycle,
+const signed char cloud_cycle[] = {0, 1, 2, 3, 2, 1, -1};
+const signed char * const anicloud[] = {cloud_cycle, cloud_cycle, cloud_cycle, cloud_cycle,
                            cloud_cycle, cloud_cycle, cloud_cycle, cloud_cycle,
                            cloud_cycle, cloud_cycle, cloud_cycle, cloud_cycle,
                            cloud_cycle, cloud_cycle, cloud_cycle, cloud_cycle};
 
-signed char marker_cycle[] = {0, 1, 2, 3, 4,      // mage TP marker
+const signed char marker_cycle[] = {0, 1, 2, 3, 4,      // mage TP marker
                               5, 6, 7, 8, 9,
                               10,11,12,13,14,
                               15,16,17,18,19,-1};
-signed char *animarker[] = {marker_cycle, marker_cycle, marker_cycle, marker_cycle,
+const signed char * const animarker[] = {marker_cycle, marker_cycle, marker_cycle, marker_cycle,
                             marker_cycle, marker_cycle, marker_cycle, marker_cycle,
                             marker_cycle, marker_cycle, marker_cycle, marker_cycle,
                             marker_cycle, marker_cycle, marker_cycle, marker_cycle };
 
 // These are for livings now
-signed char  *animan[] = {
+const signed char * const animan[] = {
                              bit1, bit2, bit3, bit4, bit5, bit6, bit7, bit8,
                              att1, att2, att3, att4, att5, att6, att7, att8,
                          };
 
-signed char  *aniskel[] = {
+const signed char * const aniskel[] = {
                               bit1, bit2, bit3, bit4,
                               bit5, bit6, bit7, bit8,
                               att1, att2, att3, att4,
@@ -194,7 +194,7 @@ signed char  *aniskel[] = {
 
                           };
 
-signed char  *animage[] = {
+const signed char * const animage[] = {
                               bit1, bitm2, bit3, bitm4,
                               bit5, bitm6, bit7, bitm8,
                               mageatt1, mageatt2, mageatt3, mageatt4,       // 8 == attack
@@ -206,14 +206,14 @@ signed char  *animage[] = {
                           };
 
 // giant skeleton ..
-signed char *anigs[] = {
+const signed char * const anigs[] = {
                            gs_down, gs_up, gs_down, gs_up,
                            gs_down, gs_up, gs_down, gs_up,
                            gs_down, gs_up, gs_down, gs_up,
                            gs_down, gs_up, gs_down, gs_up,
                        };
 
-signed char  *anislime[] = {
+const signed char * const anislime[] = {
                                slime_pulse, slime_pulse, slime_pulse, slime_pulse, // 0 == walk
                                slime_pulse, slime_pulse, slime_pulse, slime_pulse,
                                slime_pulse, slime_pulse, slime_pulse, slime_pulse, // 8 == attack
@@ -226,7 +226,7 @@ signed char  *anislime[] = {
                                slime_split, slime_split, slime_split, slime_split,
                            };
 
-signed char  *ani_small_slime[] = {
+const signed char * const ani_small_slime[] = {
                                       small_slime, small_slime, small_slime, small_slime,
                                       small_slime, small_slime, small_slime, small_slime,
                                       small_slime, small_slime, small_slime, small_slime,
@@ -235,91 +235,91 @@ signed char  *ani_small_slime[] = {
 
 
 // These are for the knives
-signed char kni1[] = {7,6,5,4,3,2,1,0,-1};  // clockwise?
-signed char kni2[] = {0,1,2,3,4,5,6,7,-1};  // counter?
-signed char  *anikni[] = { kni2, kni2, kni1, kni1,
+const signed char kni1[] = {7,6,5,4,3,2,1,0,-1};  // clockwise?
+const signed char kni2[] = {0,1,2,3,4,5,6,7,-1};  // counter?
+const signed char * const anikni[] = { kni2, kni2, kni1, kni1,
                            kni1, kni1, kni2, kni2,
                            kni2, kni2, kni1, kni1,
                            kni1, kni1, kni2, kni2 };
 
 // These are for the rocks
-signed char rock1[] = {0, -1};
-signed char  *anirock[] = { rock1, rock1, rock1, rock1,
+const signed char rock1[] = {0, -1};
+const signed char * const anirock[] = { rock1, rock1, rock1, rock1,
                             rock1, rock1, rock1, rock1,
                             rock1, rock1, rock1, rock1,
                             rock1, rock1, rock1, rock1 };
 
-signed char grow1[] = {4, 3, 2, 1, 0, -1};
-signed char  *anitree[] = { rock1, rock1, rock1, rock1,
+const signed char grow1[] = {4, 3, 2, 1, 0, -1};
+const signed char * const anitree[] = { rock1, rock1, rock1, rock1,
                             rock1, rock1, rock1, rock1,
                             grow1, grow1, grow1, grow1,
                             grow1, grow1, grow1, grow1 };
 
-signed char door1[] = {0, -1};
-signed char door2[] = {1, -1};
-signed char *anidoor[] = { door1, door1, door2, door2,
+const signed char door1[] = {0, -1};
+const signed char door2[] = {1, -1};
+const signed char * const anidoor[] = { door1, door1, door2, door2,
                            door1, door1, door2, door2,
                            door1, door1, door2, door2,
                            door1, door1, door2, door2 };
 
 
-signed char dooropen1[] = {0, 2, 3, 4, 1, -1};
-signed char dooropen2[] = {1, 4, 3, 2, 0, -1};
-signed char *anidooropen[] = { door2, door2, door1, door1,
+const signed char dooropen1[] = {0, 2, 3, 4, 1, -1};
+const signed char dooropen2[] = {1, 4, 3, 2, 0, -1};
+const signed char * const anidooropen[] = { door2, door2, door1, door1,
                                door2, door2, door1, door1,
                                dooropen1, dooropen1, dooropen2, dooropen2,
                                dooropen1, dooropen1, dooropen2, dooropen2 };
 
-signed char arrow1[] = {1, -1}; // up
-signed char arrow2[] = {5, -1}; // up-right
-signed char arrow3[] = {2, -1}; // right
-signed char arrow4[] = {6, -1}; // down-right
-signed char arrow5[] = {0, -1}; // down
-signed char arrow6[] = {4, -1}; // down-left
-signed char arrow7[] = {3, -1}; // left
-signed char arrow8[] = {7, -1}; // up-left
-signed char  *aniarrow[] = { arrow1, arrow2, arrow3, arrow4,
+const signed char arrow1[] = {1, -1}; // up
+const signed char arrow2[] = {5, -1}; // up-right
+const signed char arrow3[] = {2, -1}; // right
+const signed char arrow4[] = {6, -1}; // down-right
+const signed char arrow5[] = {0, -1}; // down
+const signed char arrow6[] = {4, -1}; // down-left
+const signed char arrow7[] = {3, -1}; // left
+const signed char arrow8[] = {7, -1}; // up-left
+const signed char * const aniarrow[] = { arrow1, arrow2, arrow3, arrow4,
                              arrow5, arrow6, arrow7, arrow8,
                              arrow1, arrow2, arrow3, arrow4,
                              arrow5, arrow6, arrow7, arrow8 };
 
 // These are for the slimes' blobs
-signed char blob1[] = {0, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1, 0, -1};
-signed char  *aniblob1[] = { blob1, blob1, blob1, blob1,
+const signed char blob1[] = {0, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1, 0, -1};
+const signed char * const aniblob1[] = { blob1, blob1, blob1, blob1,
                              blob1, blob1, blob1, blob1,
                              blob1, blob1, blob1, blob1,
                              blob1, blob1, blob1, blob1 };
 
-signed char none1[] = {0, -1};
-signed char  *aninone[] = { none1, none1, none1, none1,
+const signed char none1[] = {0, -1};
+const signed char * const aninone[] = { none1, none1, none1, none1,
                             none1, none1, none1, none1,
                             none1, none1, none1, none1,
                             none1, none1, none1, none1 };
 
 // for the tower generator
-signed char towerglow1[] = { 1,1,1,2,2,0,-1 };
-signed char *anitower[] = { none1, none1, none1, none1,
+const signed char towerglow1[] = { 1,1,1,2,2,0,-1 };
+const signed char * const anitower[] = { none1, none1, none1, none1,
                             none1, none1, none1, none1,
                             towerglow1, towerglow1, towerglow1, towerglow1,
                             towerglow1, towerglow1, towerglow1, towerglow1 };
 
 // for tent generator
-signed char tent1[] = { 1,1,1,2,2,2,3,3,3,4,4,4,0,-1 };
-signed char *anitent[] = { none1, none1, none1, none1,
+const signed char tent1[] = { 1,1,1,2,2,2,3,3,3,4,4,4,0,-1 };
+const signed char * const anitent[] = { none1, none1, none1, none1,
                            none1, none1, none1, none1,
                            tent1, tent1, tent1, tent1,
                            tent1, tent1, tent1, tent1 };
 
-signed char blood1[] = {3,2,1,0,-1};
-signed char  *aniblood[] = { rock1, rock1, rock1, rock1,
+const signed char blood1[] = {3,2,1,0,-1};
+const signed char * const aniblood[] = { rock1, rock1, rock1, rock1,
                              rock1, rock1, rock1, rock1,
                              blood1, blood1, blood1, blood1,
                              blood1, blood1, blood1, blood1, };
 
 // These are for the cleric's glow thing
-signed char glowgrow[] = {0, 1, 2, 3, -1};
-signed char glowpulse[] = {4, 5, 6, 7, 8, 9, 8, 7, 6, 5, -1};
-signed char  *aniglowgrow[] = { rock1, rock1, rock1, rock1,
+const signed char glowgrow[] = {0, 1, 2, 3, -1};
+const signed char glowpulse[] = {4, 5, 6, 7, 8, 9, 8, 7, 6, 5, -1};
+const signed char * const aniglowgrow[] = { rock1, rock1, rock1, rock1,
                                 rock1, rock1, rock1, rock1,
                                 glowgrow, glowgrow, glowgrow, glowgrow,
                                 glowgrow, glowgrow, glowgrow, glowgrow,
@@ -328,14 +328,14 @@ signed char  *aniglowgrow[] = { rock1, rock1, rock1, rock1,
 
 // Treasure animations
 
-signed char food1[] = {0, -1};
-signed char  *anifood[] = { food1, food1, food1, food1,
+const signed char food1[] = {0, -1};
+const signed char * const anifood[] = { food1, food1, food1, food1,
                             food1, food1, food1, food1,
                             food1, food1, food1, food1,
                             food1, food1, food1, food1 };
 
 // Animation table lookup from FamilyAnimationType enum
-static signed char** animation_for_type(int anim_type)
+static const signed char * const * animation_for_type(int anim_type)
 {
     switch (anim_type)
     {
@@ -399,7 +399,7 @@ loader::loader()
 	// Table-driven entity initialization for non-Living entities
 	struct EntityDef {
 		Order order; int family; const char* pix_file;
-		float hp; int act_type; signed char** anim;
+		float hp; int act_type; const signed char * const * anim;
 		float stepsize; int los; float dmg; float fire_freq;
 	};
 
