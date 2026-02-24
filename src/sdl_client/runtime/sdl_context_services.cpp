@@ -64,9 +64,11 @@ namespace
 {
 void sdl_clear_stale_view_controls(LevelData* level)
 {
-    if (myscreen != nullptr && &myscreen->level_data == level)
+    if (og::runtime::current_session &&
+        og::runtime::current_session->myscreen_ != nullptr &&
+        &og::runtime::current_session->myscreen_->level_data == level)
     {
-        for (auto& view : myscreen->viewob)
+        for (auto& view : og::runtime::current_session->myscreen_->viewob)
         {
             if (view)
                 view->control = nullptr;
@@ -76,9 +78,9 @@ void sdl_clear_stale_view_controls(LevelData* level)
 
 void sdl_level_data_wire_entity_from_screen(walker* w)
 {
-    if (myscreen) {
-        w->sim_save = &myscreen->save_data;
-        w->sim_enemy_freeze = &myscreen->enemy_freeze;
+    if (og::runtime::current_session && og::runtime::current_session->myscreen_) {
+        w->sim_save = &og::runtime::current_session->myscreen_->save_data;
+        w->sim_enemy_freeze = &og::runtime::current_session->myscreen_->enemy_freeze;
     }
     if (ctx().sim_events)
         w->sim_events = ctx().sim_events.get();

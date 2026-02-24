@@ -15,7 +15,7 @@
 
 static inline screen* active_screen()
 {
-    return myscreen;
+    return og::runtime::current_session->myscreen_;
 }
 
 static inline cfg_store* active_config()
@@ -44,8 +44,8 @@ void handle_window_event(const SDL_Event& event)
                 s->refresh();
             break;
         case SDL_WINDOWEVENT_RESIZED:
-            window_w = static_cast<float>(event.window.data1);
-            window_h = static_cast<float>(event.window.data2);
+            og::runtime::current_session->window_w_ = static_cast<float>(event.window.data1);
+            og::runtime::current_session->window_h_ = static_cast<float>(event.window.data2);
             update_overscan_setting();
             break;
         break;
@@ -65,10 +65,10 @@ void handle_key_event(const SDL_Event& event)
             break;
         }
         #endif
-        raw_key = event.key.keysym.sym;
-        if(raw_key == SDLK_ESCAPE)
-            input_continue = true;
-        key_press_event = 1;
+        og::runtime::current_session->raw_key_ = event.key.keysym.sym;
+        if(og::runtime::current_session->raw_key_ == SDLK_ESCAPE)
+            og::runtime::current_session->input_continue_ = true;
+        og::runtime::current_session->key_press_event_ = 1;
 
         if(event.key.keysym.sym == SDLK_F10)
         {
@@ -80,7 +80,7 @@ void handle_key_event(const SDL_Event& event)
             restore_default_settings();
             active_config()->load_settings();
             load_player_control_settings_from_cfg(*active_config());
-            overscan_percentage = static_cast<float>(
+            og::runtime::current_session->overscan_percentage_ = static_cast<float>(
                 parse_int_strict(active_config()->get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
             update_overscan_setting();
         }

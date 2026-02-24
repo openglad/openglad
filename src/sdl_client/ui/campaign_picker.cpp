@@ -164,7 +164,7 @@ void CampaignEntry::draw(const SDL_Rect& area, int team_power)
     int w = area.w;
     int h = area.h;
     
-    text& loadtext = myscreen->text_normal;
+    text& loadtext = og::runtime::current_session->myscreen_->text_normal;
 
     // Print title
     loadtext.write_xy(x + w/2 - static_cast<Sint32>(title.size())*3, y - 22, title.c_str(), WHITE, 1);
@@ -185,10 +185,10 @@ void CampaignEntry::draw(const SDL_Rect& area, int team_power)
         loadtext.write_xy(x + w/2 - static_cast<Sint32>(buf.size())*3, y - 14, buf.c_str(), WHITE, 1);
 
     // Draw icon button
-    myscreen->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
+    og::runtime::current_session->myscreen_->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw icon
 	if (icon)
-	    icon->drawMix(x, y, myscreen->viewob[0].get());
+	    icon->drawMix(x, y, og::runtime::current_session->myscreen_->viewob[0].get());
 	y += h + 4;
 
 	// Print suggested power
@@ -233,7 +233,7 @@ void CampaignEntry::draw(const SDL_Rect& area, int team_power)
     
     // Draw description box
     SDL_Rect descbox = {160 - 225/2, Sint16(area.y + area.h + 35), 225, 60};
-    myscreen->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
+    og::runtime::current_session->myscreen_->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
     
     // Print description
     std::string desc = description;
@@ -273,7 +273,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     CampaignEntry* result = nullptr;
     CampaignResult ret_value;
     
-    text& loadtext = myscreen->text_normal;
+    text& loadtext = og::runtime::current_session->myscreen_->text_normal;
     
     (void)unmount_campaign_package_with_error(old_campaign_id);
 
@@ -371,7 +371,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         // Reset the timer count to zero ...
         reset_timer();
 
-        if (myscreen->end)
+        if (og::runtime::current_session->myscreen_->end)
             break;
 
         // Get keys and stuff
@@ -380,7 +380,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         handle_menu_nav(buttons, highlighted_button, retvalue, false);
 
         // Quit if 'q' is pressed
-        if(keystates[KEYSTATE_q])
+        if(og::runtime::current_session->keystates_[KEYSTATE_q])
             done = true;
 
 		// Mouse stuff ..
@@ -396,7 +396,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         bool do_choose = !buttons[choose_index].hidden && ((do_click && choose.x <= mx && mx <= choose.x + choose.w
                && choose.y <= my && my <= choose.y + choose.h) || (retvalue == OG_OK && highlighted_button == choose_index));
         bool do_cancel = (do_click && cancel.x <= mx && mx <= cancel.x + cancel.w
-               && cancel.y <= my && my <= cancel.y + cancel.h) || (retvalue == OG_OK && highlighted_button == cancel_index) || keystates[buttons[cancel_index].hotkey];
+               && cancel.y <= my && my <= cancel.y + cancel.h) || (retvalue == OG_OK && highlighted_button == cancel_index) || og::runtime::current_session->keystates_[buttons[cancel_index].hotkey];
         bool do_delete = !buttons[delete_index].hidden && ((do_click && enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
                && delete_button.y <= my && my <= delete_button.y + delete_button.h) || (retvalue == OG_OK && highlighted_button == delete_index));
         bool do_reset = !buttons[reset_index].hidden && ((do_click && reset_button.x <= mx && mx <= reset_button.x + reset_button.w
@@ -441,7 +441,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         // Cancel
         else if(do_cancel)
         {
-            while(keystates[buttons[cancel_index].hotkey])
+            while(og::runtime::current_session->keystates_[buttons[cancel_index].hotkey])
             {
                 SDL_Delay(1);
                 get_input_events(POLL);
@@ -494,7 +494,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
            if(yes_or_no_prompt("Reset campaign", "Reset your progress\nin this campaign?", false)
               && no_or_yes_prompt("Reset campaign", "Are you really sure?", false))
            {
-               myscreen->save_data.reset_campaign(entries[current_campaign_index]->id);
+               og::runtime::current_session->myscreen_->save_data.reset_campaign(entries[current_campaign_index]->id);
            }
        }
        
@@ -526,39 +526,39 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         }
 
         // Draw
-        myscreen->clearbuffer();
+        og::runtime::current_session->myscreen_->clearbuffer();
 
         if(current_campaign_index > 0)
         {
-            myscreen->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
+            og::runtime::current_session->myscreen_->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
             loadtext.write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
         }
         
         if(current_campaign_index + 1 < entries.size())
         {
-            myscreen->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
+            og::runtime::current_session->myscreen_->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
             loadtext.write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
         }
         
         if(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr)
         {
-            myscreen->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
+            og::runtime::current_session->myscreen_->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
             loadtext.write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
         }
-        myscreen->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
+        og::runtime::current_session->myscreen_->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
         loadtext.write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
         if(enable_delete)
         {
-            myscreen->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
+            og::runtime::current_session->myscreen_->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
             loadtext.write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
         }
         else
         {
-            myscreen->draw_button(reset_button.x, reset_button.y, reset_button.x + reset_button.w, reset_button.y + reset_button.h, 1, 1);
+            og::runtime::current_session->myscreen_->draw_button(reset_button.x, reset_button.y, reset_button.x + reset_button.w, reset_button.y + reset_button.h, 1, 1);
             loadtext.write_xy(reset_button.x + 2, reset_button.y + 2, "Reset", RED, 1);
         }
         
-        myscreen->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
+        og::runtime::current_session->myscreen_->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
         loadtext.write_xy(id_button.x + 2, id_button.y + 2, "Enter ID", DARK_BLUE, 1);
         
         // Draw entry
@@ -566,11 +566,11 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
             entries[current_campaign_index]->draw(area, army_power);
 
         draw_highlight(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0, 0, 320, 200);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
         SDL_Delay(10);
     }
 
-    while (keystates[KEYSTATE_q])
+    while (og::runtime::current_session->keystates_[KEYSTATE_q])
     {
         SDL_Delay(1);
         get_input_events(POLL);

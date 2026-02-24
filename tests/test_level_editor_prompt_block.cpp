@@ -106,7 +106,7 @@ int prompt_block_editing_injector(void* data)
 
 void test_level_editor_prompt_for_string_block_escape_cancel()
 {
-    (void)myscreen;
+    (void)og::runtime::current_session->myscreen_;
 
     std::list<std::string> original{
         "Line one",

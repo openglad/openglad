@@ -122,8 +122,7 @@ class vbutton
 };
 
 inline constexpr int MAX_BUTTONS = 50;  // max buttons per screen
-// allbuttons is now a macro → current_session->allbuttons_ (moved into GameSession).
-#define allbuttons (og::runtime::current_session->allbuttons_)
+// allbuttons lives in GameSession — access via current_session->allbuttons_.
 void clear_allbuttons();
 
 vbutton * init_buttons(button * buttons, Sint32 numbuttons);

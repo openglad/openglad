@@ -1,7 +1,7 @@
 /*
  * Pure-ish combat math helpers extracted for unit testing.
  *
- * Keep this module free of `myscreen`/rendering/FX spawning. Randomness is
+ * Keep this module free of `og::runtime::current_session->myscreen_`/rendering/FX spawning. Randomness is
  * injected so tests can be deterministic.
  */
 #pragma once

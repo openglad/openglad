@@ -227,7 +227,7 @@ static int editor_injector_thread(void* data)
 
     // Let it draw a few frames, then request exit.
     SDL_Delay(300);
-    myscreen->end = 1;
+    og::runtime::current_session->myscreen_->end = 1;
 
     st->finished = true;
     return 0;
@@ -236,7 +236,7 @@ static int editor_injector_thread(void* data)
 void test_level_editor_runs_and_handles_basic_input()
 {
     // Ensure the editor loop runs for a short period.
-    myscreen->end = 0;
+    og::runtime::current_session->myscreen_->end = 0;
 
     EditorThreadState st{false, false};
     SDL_Thread* thread = SDL_CreateThread(editor_injector_thread, "editor_injector", &st);
@@ -249,7 +249,7 @@ void test_level_editor_runs_and_handles_basic_input()
     SDL_WaitThread(thread, &thread_result);
 
     // Reset end flag for subsequent tests.
-    myscreen->end = 0;
+    og::runtime::current_session->myscreen_->end = 0;
 
     TEST_ASSERT(st.started, "injector thread should have started");
     TEST_ASSERT(st.finished, "injector thread should have finished");
@@ -324,7 +324,7 @@ static int editor_edit_smoke_injector(void* data)
 
     // Exit editor.
     SDL_Delay(200);
-    myscreen->end = 1;
+    og::runtime::current_session->myscreen_->end = 1;
 
     st->finished = true;
     return 0;
@@ -333,7 +333,7 @@ static int editor_edit_smoke_injector(void* data)
 
 void test_level_editor_edits_terrain_and_places_objects_smoke()
 {
-    myscreen->end = 0;
+    og::runtime::current_session->myscreen_->end = 0;
 
     EditorThreadState st{false, false};
     SDL_Thread* thread = SDL_CreateThread(editor_edit_smoke_injector, "editor_edit_smoke", &st);
@@ -344,7 +344,7 @@ void test_level_editor_edits_terrain_and_places_objects_smoke()
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
 
-    myscreen->end = 0;
+    og::runtime::current_session->myscreen_->end = 0;
 
     TEST_ASSERT(st.started, "injector thread should have started");
     TEST_ASSERT(st.finished, "injector thread should have finished");

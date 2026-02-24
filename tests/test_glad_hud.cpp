@@ -47,7 +47,7 @@ static std::unique_ptr<walker> make_player(unsigned char team)
     guy g(FAMILY_SOLDIER);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (!w)
         return nullptr;
     w->team_num = team;
@@ -59,7 +59,7 @@ static std::unique_ptr<walker> make_player(unsigned char team)
 
 static std::unique_ptr<walker> make_living(unsigned char family, unsigned char team)
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -79,11 +79,11 @@ void test_glad_remaining_counts()
         std::list<std::unique_ptr<walker>> saved;
         ObListSwap()
         {
-            saved.splice(saved.end(), myscreen->level_data.oblist);
+            saved.splice(saved.end(), og::runtime::current_session->myscreen_->level_data.oblist);
         }
         ~ObListSwap()
         {
-            myscreen->level_data.oblist.splice(myscreen->level_data.oblist.end(), saved);
+            og::runtime::current_session->myscreen_->level_data.oblist.splice(og::runtime::current_session->myscreen_->level_data.oblist.end(), saved);
         }
     } swap;
 
@@ -98,17 +98,17 @@ void test_glad_remaining_counts()
     walker* foe1p = foe1.get();
     walker* foe2p = foe2.get();
 
-    myscreen->level_data.oblist.push_back(std::move(control));
-    myscreen->level_data.oblist.push_back(std::move(ally));
-    myscreen->level_data.oblist.push_back(std::move(foe1));
-    myscreen->level_data.oblist.push_back(std::move(foe2));
+    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(control));
+    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(ally));
+    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(foe1));
+    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(foe2));
 
-    TEST_ASSERT_EQ(2, (int)remaining_foes(myscreen, controlp), "should count non-friendly living foes");
-    TEST_ASSERT_EQ(2, (int)remaining_team(myscreen, 0), "should count living on team 0 (including control)");
+    TEST_ASSERT_EQ(2, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp), "should count non-friendly living foes");
+    TEST_ASSERT_EQ(2, (int)remaining_team(og::runtime::current_session->myscreen_, 0), "should count living on team 0 (including control)");
 
     foe2p->dead = 1;
-    TEST_ASSERT_EQ(1, (int)remaining_foes(myscreen, controlp), "dead foes should not be counted");
-    myscreen->level_data.oblist.clear();
+    TEST_ASSERT_EQ(1, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp), "dead foes should not be counted");
+    og::runtime::current_session->myscreen_->level_data.oblist.clear();
 }
 REGISTER_TEST(test_glad_remaining_counts);
 
@@ -119,46 +119,46 @@ void test_glad_draw_gems_and_value_bars_smoke()
     walker* controlp = control.get();
 
     // Attach control to view so draw_radar_gems can find it.
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     walker* old_control = v->control;
     v->control = controlp;
 
     // draw_radar_gems caches old team; change team to force multiple draws.
     controlp->team_num = 0;
-    draw_radar_gems(myscreen);
+    draw_radar_gems(og::runtime::current_session->myscreen_);
     controlp->team_num = 1;
-    draw_radar_gems(myscreen);
+    draw_radar_gems(og::runtime::current_session->myscreen_);
 
     // Direct gem draw.
-    draw_gem(10, 10, 32, myscreen);
+    draw_gem(10, 10, 32, og::runtime::current_session->myscreen_);
 
     // Exercise value bar thresholds for HP and MP.
     controlp->stats()->max_hitpoints = 100;
     controlp->stats()->hitpoints = 100;
-    draw_value_bar(10, 20, controlp, 0, myscreen);
+    draw_value_bar(10, 20, controlp, 0, og::runtime::current_session->myscreen_);
     controlp->stats()->hitpoints = 20;
-    draw_value_bar(10, 28, controlp, 0, myscreen);
+    draw_value_bar(10, 28, controlp, 0, og::runtime::current_session->myscreen_);
     controlp->stats()->hitpoints = 60;
-    draw_value_bar(10, 36, controlp, 0, myscreen);
+    draw_value_bar(10, 36, controlp, 0, og::runtime::current_session->myscreen_);
     controlp->stats()->hitpoints = 90;
-    draw_value_bar(10, 44, controlp, 0, myscreen);
+    draw_value_bar(10, 44, controlp, 0, og::runtime::current_session->myscreen_);
     controlp->stats()->hitpoints = 120;
-    draw_value_bar(10, 52, controlp, 0, myscreen);
+    draw_value_bar(10, 52, controlp, 0, og::runtime::current_session->myscreen_);
 
     controlp->stats()->max_magicpoints = 80;
     controlp->stats()->magicpoints = 80;
-    draw_value_bar(10, 60, controlp, 1, myscreen);
+    draw_value_bar(10, 60, controlp, 1, og::runtime::current_session->myscreen_);
     controlp->stats()->magicpoints = 10;
-    draw_value_bar(10, 68, controlp, 1, myscreen);
+    draw_value_bar(10, 68, controlp, 1, og::runtime::current_session->myscreen_);
     controlp->stats()->magicpoints = 100;
-    draw_value_bar(10, 76, controlp, 1, myscreen);
+    draw_value_bar(10, 76, controlp, 1, og::runtime::current_session->myscreen_);
 
     // New percentage-bar-based drawing.
-    new_draw_value_bar(80, 20, controlp, 0, myscreen);
-    new_draw_value_bar(80, 28, controlp, 1, myscreen);
-    draw_percentage_bar(80, 36, 12, 30, myscreen);
+    new_draw_value_bar(80, 20, controlp, 0, og::runtime::current_session->myscreen_);
+    new_draw_value_bar(80, 28, controlp, 1, og::runtime::current_session->myscreen_);
+    draw_percentage_bar(80, 36, 12, 30, og::runtime::current_session->myscreen_);
 
-    v->control = control_pointer_is_live(myscreen->level_data, old_control) ? old_control : nullptr;
+    v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_data, old_control) ? old_control : nullptr;
 }
 REGISTER_TEST(test_glad_draw_gems_and_value_bars_smoke);
 
@@ -177,7 +177,7 @@ void test_glad_score_panel_and_new_score_panel_modes()
     controlp->stats()->max_magicpoints = 80;
     controlp->stats()->special_cost[static_cast<unsigned char>(controlp->current_special)] = 10;
 
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "view should exist");
     walker* old_control = v->control;
     v->control = controlp;
@@ -189,22 +189,22 @@ void test_glad_score_panel_and_new_score_panel_modes()
 
     // Exercise all life display variants in new_score_panel.
     v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
-    TEST_ASSERT_EQ(1, (int)new_score_panel(myscreen, 1), "new_score_panel text mode");
+    TEST_ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1), "new_score_panel text mode");
     v->prefs[PREF_LIFE] = PREF_LIFE_BARS;
-    TEST_ASSERT_EQ(1, (int)new_score_panel(myscreen, 1), "new_score_panel bars mode");
+    TEST_ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1), "new_score_panel bars mode");
     v->prefs[PREF_LIFE] = PREF_LIFE_BOTH;
-    TEST_ASSERT_EQ(1, (int)new_score_panel(myscreen, 1), "new_score_panel both mode");
+    TEST_ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1), "new_score_panel both mode");
 
     // Toggle shifter special-name branch and low-mp branch.
     controlp->shifter_down = 1;
     controlp->stats()->magicpoints = 0;
-    (void)new_score_panel(myscreen, 1);
+    (void)new_score_panel(og::runtime::current_session->myscreen_, 1);
     controlp->shifter_down = 0;
 
     // Wrapper functions.
-    TEST_ASSERT_EQ(1, (int)score_panel(myscreen), "score_panel wrapper");
-    TEST_ASSERT_EQ(1, (int)score_panel(myscreen, 1), "score_panel overload");
+    TEST_ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_), "score_panel wrapper");
+    TEST_ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_, 1), "score_panel overload");
 
-    v->control = control_pointer_is_live(myscreen->level_data, old_control) ? old_control : nullptr;
+    v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_data, old_control) ? old_control : nullptr;
 }
 REGISTER_TEST(test_glad_score_panel_and_new_score_panel_modes);

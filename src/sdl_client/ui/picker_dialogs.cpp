@@ -81,19 +81,19 @@ void timed_dialog(const char* message, float delay_seconds)
 {
     Log("{}\n", message);
 
-    myscreen->darken_screen();
+    og::runtime::current_session->myscreen_->darken_screen();
 
-    text& gladtext = myscreen->text_normal;
+    text& gladtext = og::runtime::current_session->myscreen_->text_normal;
 
     int len = static_cast<int>(strlen(message));
     int width = len * PIX_PER_CHAR;
     int leftside  = 160 - width/2 - 12;
     int rightside = 160 + width/2 + 12;
 
-    myscreen->draw_button(leftside, 80, rightside, 110, 1);
+    og::runtime::current_session->myscreen_->draw_button(leftside, 80, rightside, 110, 1);
     gladtext.write_xy(160 - width/2, 94, message, static_cast<unsigned char>(DARK_BLUE), 1);
 
-    myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
+    og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200); // refresh screen
 
     grab_mouse();
     clear_keyboard();
@@ -161,9 +161,9 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
     }
 #endif
 
-    myscreen->darken_screen();
+    og::runtime::current_session->myscreen_->darken_screen();
 
-    text& gladtext = myscreen->text_normal;
+    text& gladtext = og::runtime::current_session->myscreen_->text_normal;
 
     std::list<std::string> ls = explode(message, '\n');
     auto [w, h, leftside, rightside] = compute_dialog_bounds(title, ls);
@@ -173,7 +173,7 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
     int num_buttons = 2;
     int highlighted_button = yes_first ? (default_value ? 0 : 1)
                                        : (default_value ? 1 : 0);
-    localbuttons = init_buttons(buttons, num_buttons);
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
     grab_mouse();
     clear_keyboard();
@@ -183,22 +183,22 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
     while (retvalue == 0)
     {
         if(leftmouse(buttons))
-            retvalue = localbuttons->leftclick();
+            retvalue = og::runtime::current_session->localbuttons_->leftclick();
 
         if(query_key_press_event())
         {
-            if(keystates[KEYSTATE_y])
+            if(og::runtime::current_session->keystates_[KEYSTATE_y])
                 retvalue = YES_VALUE;
-            else if(keystates[KEYSTATE_n])
+            else if(og::runtime::current_session->keystates_[KEYSTATE_n])
                 retvalue = NO_VALUE;
-            else if(keystates[KEYSTATE_ESCAPE])
+            else if(og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
                 break;
         }
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
 
-        int dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
+        int dumbcount = og::runtime::current_session->myscreen_->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
         int j = 0;
         for(auto& line : ls)
         {
@@ -208,7 +208,7 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
 
         draw_buttons(buttons, num_buttons);
         draw_highlight_interior(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0,0,320,200);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
     }
 
@@ -246,9 +246,9 @@ void popup_dialog(const char* title, const char* message)
     }
 #endif
 
-    myscreen->darken_screen();
+    og::runtime::current_session->myscreen_->darken_screen();
 
-    text& gladtext = myscreen->text_normal;
+    text& gladtext = og::runtime::current_session->myscreen_->text_normal;
 
     std::list<std::string> ls = explode(message, '\n');
     auto [w, h, leftside, rightside] = compute_dialog_bounds(title, ls);
@@ -257,7 +257,7 @@ void popup_dialog(const char* title, const char* message)
     button* buttons = popup_dialog_buttons;
     int num_buttons = 1;
     int highlighted_button = 0;
-    localbuttons = init_buttons(buttons, num_buttons);
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
     grab_mouse();
     clear_keyboard();
@@ -267,18 +267,18 @@ void popup_dialog(const char* title, const char* message)
     while (retvalue == 0)
     {
         if(leftmouse(buttons))
-            retvalue = localbuttons->leftclick();
+            retvalue = og::runtime::current_session->localbuttons_->leftclick();
 
         if(query_key_press_event())
         {
-            if(keystates[KEYSTATE_RETURN] || keystates[KEYSTATE_SPACE] || keystates[KEYSTATE_ESCAPE])
+            if(og::runtime::current_session->keystates_[KEYSTATE_RETURN] || og::runtime::current_session->keystates_[KEYSTATE_SPACE] || og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
                 break;
         }
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
 
-        int dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
+        int dumbcount = og::runtime::current_session->myscreen_->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
         int j = 0;
         for(auto& line : ls)
         {
@@ -288,7 +288,7 @@ void popup_dialog(const char* title, const char* message)
 
         draw_buttons(buttons, num_buttons);
         draw_highlight_interior(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0,0,320,200);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
     }
 }

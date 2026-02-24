@@ -28,13 +28,13 @@ namespace {
 
 void clear_level_lists()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.level_done = 0;
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.level_done = 0;
 }
 
 walker* add_living(unsigned char team)
 {
-    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
     if (!w)
         return nullptr;
     w->team_num = team;
@@ -47,7 +47,7 @@ walker* add_living(unsigned char team)
 
 treasure* add_treasure(char family, short level)
 {
-    walker* w = myscreen->level_data.add_fx_ob(Order::Treasure, family);
+    walker* w = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, family);
     if (!w)
         return nullptr;
     w->stats()->level = level;
@@ -57,7 +57,7 @@ treasure* add_treasure(char family, short level)
 
 void set_world_tile(short world_x, short world_y, unsigned char tile)
 {
-    auto& level = myscreen->level_data;
+    auto& level = og::runtime::current_session->myscreen_->level_data;
     const int gx = world_x / GRID_SIZE;
     const int gy = world_y / GRID_SIZE;
     if (gx < 0 || gy < 0 || gx >= level.grid.w || gy >= level.grid.h)
@@ -69,12 +69,12 @@ void set_world_tile(short world_x, short world_y, unsigned char tile)
 
 void test_input_bridge_window_and_key_paths()
 {
-    const float saved_window_w = window_w;
-    const float saved_window_h = window_h;
-    const float saved_overscan = overscan_percentage;
-    const bool saved_continue = input_continue;
-    const short saved_key_press_event = key_press_event;
-    const int saved_raw_key = raw_key;
+    const float saved_window_w = og::runtime::current_session->window_w_;
+    const float saved_window_h = og::runtime::current_session->window_h_;
+    const float saved_overscan = og::runtime::current_session->overscan_percentage_;
+    const bool saved_continue = og::runtime::current_session->input_continue_;
+    const short saved_key_press_event = og::runtime::current_session->key_press_event_;
+    const int saved_raw_key = og::runtime::current_session->raw_key_;
 
     SDL_Event e{};
     e.type = SDL_WINDOWEVENT;
@@ -87,14 +87,14 @@ void test_input_bridge_window_and_key_paths()
     e.window.event = SDL_WINDOWEVENT_RESTORED;
     handle_window_event(e);
 
-    overscan_percentage = -1.0f;
+    og::runtime::current_session->overscan_percentage_ = -1.0f;
     e.window.event = SDL_WINDOWEVENT_RESIZED;
     e.window.data1 = 1280;
     e.window.data2 = 720;
     handle_window_event(e);
-    TEST_ASSERT_EQ(1280, static_cast<int>(window_w), "resize should update window_w");
-    TEST_ASSERT_EQ(720, static_cast<int>(window_h), "resize should update window_h");
-    TEST_ASSERT(overscan_percentage == 0.0f, "resize path should clamp overscan");
+    TEST_ASSERT_EQ(1280, static_cast<int>(og::runtime::current_session->window_w_), "resize should update window_w");
+    TEST_ASSERT_EQ(720, static_cast<int>(og::runtime::current_session->window_h_), "resize should update window_h");
+    TEST_ASSERT(og::runtime::current_session->overscan_percentage_ == 0.0f, "resize path should clamp overscan");
 
     SDL_Event key{};
     key.type = SDL_KEYDOWN;
@@ -103,34 +103,34 @@ void test_input_bridge_window_and_key_paths()
     handle_key_event(key);
 
     cfg.apply_setting("graphics", "overscan_percentage", "25");
-    overscan_percentage = 0.0f;
+    og::runtime::current_session->overscan_percentage_ = 0.0f;
     key.type = SDL_KEYDOWN;
     key.key.keysym.sym = SDLK_F12;
     key.key.keysym.mod = KMOD_CTRL;
     handle_key_event(key);
-    TEST_ASSERT(overscan_percentage >= 0.0f && overscan_percentage <= 0.25f,
+    TEST_ASSERT(og::runtime::current_session->overscan_percentage_ >= 0.0f && og::runtime::current_session->overscan_percentage_ <= 0.25f,
                 "F12+Ctrl should reload and clamp overscan");
 
-    input_continue = false;
-    key_press_event = 0;
+    og::runtime::current_session->input_continue_ = false;
+    og::runtime::current_session->key_press_event_ = 0;
     key.type = SDL_KEYDOWN;
     key.key.keysym.sym = SDLK_ESCAPE;
     key.key.keysym.mod = 0;
     handle_key_event(key);
-    TEST_ASSERT(input_continue, "escape keydown should set continue");
-    TEST_ASSERT_EQ(1, static_cast<int>(key_press_event), "keydown should set key_press_event");
-    TEST_ASSERT_EQ(static_cast<int>(SDLK_ESCAPE), raw_key, "keydown should update raw_key");
+    TEST_ASSERT(og::runtime::current_session->input_continue_, "escape keydown should set continue");
+    TEST_ASSERT_EQ(1, static_cast<int>(og::runtime::current_session->key_press_event_), "keydown should set key_press_event");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_ESCAPE), og::runtime::current_session->raw_key_, "keydown should update raw_key");
 
     key.type = SDL_KEYUP;
     key.key.keysym.sym = SDLK_ESCAPE;
     handle_key_event(key);
 
-    window_w = saved_window_w;
-    window_h = saved_window_h;
-    overscan_percentage = saved_overscan;
-    input_continue = saved_continue;
-    key_press_event = saved_key_press_event;
-    raw_key = saved_raw_key;
+    og::runtime::current_session->window_w_ = saved_window_w;
+    og::runtime::current_session->window_h_ = saved_window_h;
+    og::runtime::current_session->overscan_percentage_ = saved_overscan;
+    og::runtime::current_session->input_continue_ = saved_continue;
+    og::runtime::current_session->key_press_event_ = saved_key_press_event;
+    og::runtime::current_session->raw_key_ = saved_raw_key;
     update_overscan_setting();
 }
 REGISTER_TEST(test_input_bridge_window_and_key_paths);
@@ -182,13 +182,13 @@ void test_treasure_exit_and_teleporter_navigation_paths()
     static og::sim::SimEventLog sim_events;
     static ProductionRandom rng;
     sim_events.clear();
-    myscreen->level_data.set_sim_context(
-        &myscreen->save_data, &myscreen->enemy_freeze, &sim_events, &rng, &cfg);
+    og::runtime::current_session->myscreen_->level_data.set_sim_context(
+        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze, &sim_events, &rng, &cfg);
 
     // Exit flow: no enemies left + prompt accepted should emit EndGame.
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->level_data.level_done = 1;
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->level_data.level_done = 1;
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 2);
     walker* controller = add_living(0);
     controller->set_act_type(ACT_CONTROL);
@@ -231,8 +231,8 @@ void test_treasure_navigation_early_returns_and_withdraw_decline()
     static og::sim::SimEventLog sim_events;
     static ProductionRandom rng;
     sim_events.clear();
-    myscreen->level_data.set_sim_context(
-        &myscreen->save_data, &myscreen->enemy_freeze, &sim_events, &rng, &cfg);
+    og::runtime::current_session->myscreen_->level_data.set_sim_context(
+        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze, &sim_events, &rng, &cfg);
 
     // Exit early return: eater currently in act.
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 3);
@@ -253,11 +253,11 @@ void test_treasure_navigation_early_returns_and_withdraw_decline()
     TEST_ASSERT_EQ(0, static_cast<int>(eater->skip_exit), "non-control path should not update skip_exit");
 
     // Withdraw branch with decline: level is completed, current isn't, enemies still present.
-    myscreen->save_data.reset();
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 5;
-    myscreen->save_data.add_level_completed(myscreen->save_data.current_campaign, 3);
-    myscreen->level_data.level_done = 0; // enemies still present
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 5;
+    og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 3);
+    og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present
     eater->set_act_type(ACT_CONTROL);
     eater->skip_exit = 0;
     exit_fx->stats()->level = 3;
@@ -320,7 +320,7 @@ REGISTER_TEST(test_treasure_batch3_find_target_wraparound_and_no_match);
 void test_treasure_batch3_teleporter_leader_and_blocked_destination()
 {
     clear_level_lists();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     treasure* tele_src = add_treasure(FAMILY_TELEPORTER, 4);
     treasure* tele_dst = add_treasure(FAMILY_TELEPORTER, 4);
@@ -354,16 +354,16 @@ void test_treasure_batch3_exit_withdraw_accept_path()
     static og::sim::SimEventLog sim_events;
     static ProductionRandom rng;
     sim_events.clear();
-    myscreen->level_data.set_sim_context(
-        &myscreen->save_data, &myscreen->enemy_freeze, &sim_events, &rng, &cfg);
+    og::runtime::current_session->myscreen_->level_data.set_sim_context(
+        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze, &sim_events, &rng, &cfg);
 
-    myscreen->save_data.reset();
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 8; // Current level is not marked complete.
-    myscreen->save_data.add_level_completed(myscreen->save_data.current_campaign, 5);
-    (void)myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 8; // Current level is not marked complete.
+    og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 5);
+    (void)og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    myscreen->level_data.level_done = 0; // enemies still present -> guys_here != 0
+    og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present -> guys_here != 0
 
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 5);
     walker* eater = add_living(0);
@@ -381,7 +381,7 @@ void test_treasure_batch3_exit_withdraw_accept_path()
 
     TEST_ASSERT(exit_fx->eat_me(eater), "withdraw accept path should return true");
 
-    TEST_ASSERT_EQ((int)exit_fx->stats()->level, (int)myscreen->save_data.scen_num,
+    TEST_ASSERT_EQ((int)exit_fx->stats()->level, (int)og::runtime::current_session->myscreen_->save_data.scen_num,
                    "withdraw accept should switch scen_num to exit level");
 
     clear_level_lists();
@@ -405,7 +405,7 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     walker* foe = add_living(1);
     foe->team_num = 1;
 
-    og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    og::sim::TickResult r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT_EQ(1, static_cast<int>(enemy_freeze), "enemy_freeze should decrement");
     TEST_ASSERT_EQ(1, static_cast<int>(world.tick_count_), "first tick should increment tick_count");
 
@@ -420,7 +420,7 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     // end flag branch (when level_done is not 2).
     end = 1;
     events.clear();
-    r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT(r.game_ended, "end flag should terminate tick when battle not auto-finished");
 
     // Level_done==1 path via exit treasure and no enemies.
@@ -429,7 +429,7 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     enemy_freeze = 0;
     end = 0;
     events.clear();
-    r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT(r.level_done == 1, "exit with no foes should set level_done=1");
     TEST_ASSERT(!r.game_ended, "level_done=1 should not auto-end game");
 
@@ -443,8 +443,8 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     owner->collide_ob = dead_foe;
     dead_foe->dead = 1;
     dead_foe->myguy = nullptr;
-    walker* dead_fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
-    walker* dead_weap = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* dead_fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* dead_weap = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(dead_fx != nullptr, "expected fx walker");
     TEST_ASSERT(dead_weap != nullptr, "expected weapon walker");
     dead_fx->dead = 1;
@@ -453,7 +453,7 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     enemy_freeze = 0;
     end = 0;
     events.clear();
-    r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT(owner->foe == nullptr, "dead foe pointer should be cleared");
     TEST_ASSERT(owner->leader == nullptr, "dead leader pointer should be cleared");
     clear_level_lists();
@@ -505,7 +505,7 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
 
     std::int32_t enemy_freeze = 11;
     char end = 0;
-    og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    og::sim::TickResult r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT_EQ(10, (int)enemy_freeze, "enemy_freeze should decrement from 11 to 10");
     TEST_ASSERT_EQ(2, (int)r.level_done, "hostile living during freeze should stay frozen and not keep level active");
     TEST_ASSERT(r.game_ended, "when only frozen hostiles remain, tick should report level completion");
@@ -531,9 +531,9 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
     owner->owner = dead_ref;
     owner->collide_ob = dead_ref;
 
-    walker* weap_owner = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
-    walker* dead_fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
-    walker* dead_weap = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* weap_owner = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* dead_fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* dead_weap = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(weap_owner && dead_fx && dead_weap, "weapon/fx walkers created");
     if (weap_owner) {
         weap_owner->foe = dead_ref;
@@ -549,7 +549,7 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
     enemy_freeze = 0;
     end = 0;
     events.clear();
-    r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT(owner->foe == nullptr, "oblist dead foe pointer should be cleared");
     TEST_ASSERT(owner->leader == nullptr, "oblist dead leader pointer should be cleared");
     TEST_ASSERT(weap_owner == nullptr || weap_owner->foe == nullptr, "weaplist dead foe pointer should be cleared");
@@ -560,7 +560,7 @@ REGISTER_TEST(test_sim_world_freeze_countdown_notification_and_weap_cleanup);
 
 void test_runtime_score_panel_null_control_score_overlay_safe()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!v)
     {
         TEST_ASSERT(false, "view should exist");
@@ -579,7 +579,7 @@ void test_runtime_score_panel_null_control_score_overlay_safe()
     v->prefs[PREF_FOES] = PREF_FOES_ON;
     v->prefs[PREF_LIFE] = PREF_LIFE_BOTH;
 
-    TEST_ASSERT_EQ(1, static_cast<int>(new_score_panel(myscreen, 1)),
+    TEST_ASSERT_EQ(1, static_cast<int>(new_score_panel(og::runtime::current_session->myscreen_, 1)),
                    "new_score_panel should tolerate null control when score overlay is on");
 
     v->control = old_control;
@@ -602,7 +602,7 @@ void test_sim_world_batch5_game_end_paths()
     // No foes and no exits => level_done stays 2 and game ends.
     std::int32_t enemy_freeze = 0;
     char end = 0;
-    og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    og::sim::TickResult r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT(r.game_ended, "empty level should trigger game_ended path");
     TEST_ASSERT_EQ(0, (int)r.ending, "empty level ending should be 0");
 
@@ -614,7 +614,7 @@ void test_sim_world_batch5_game_end_paths()
         return;
     foe->set_act_type(ACT_CONTROL);
     end = 1;
-    r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT(r.game_ended, "end flag should force game end");
     TEST_ASSERT_EQ(0, (int)r.level_done, "hostile living should keep level_done at 0 before end flag handling");
 }
@@ -633,7 +633,7 @@ void test_treasure_batch5_default_eat_and_missing_self_target_lookup()
     // find_teleport_target should return nullptr when object is not in fxlist.
     standalone.set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     standalone.stats()->level = 4;
-    standalone.sim_level = &myscreen->level_data;
+    standalone.sim_level = &og::runtime::current_session->myscreen_->level_data;
     TEST_ASSERT(standalone.find_teleport_target() == nullptr,
                 "teleport target lookup should fail when teleporter is not present in fxlist");
 }
@@ -675,8 +675,8 @@ void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
     og::sim::SimEventLog events;
     SaveData save;
     save.my_team = 0;
-    const short saved_allied_mode = myscreen->save_data.allied_mode;
-    myscreen->save_data.allied_mode = 0;
+    const short saved_allied_mode = og::runtime::current_session->myscreen_->save_data.allied_mode;
+    og::runtime::current_session->myscreen_->save_data.allied_mode = 0;
 
     walker* ally = add_living(0);
     walker* hostile = add_living(1);
@@ -704,9 +704,9 @@ void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
     hostile->owner = dead_link;
     hostile->collide_ob = dead_link;
 
-    walker* weap_owner = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
-    walker* dead_fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
-    walker* dead_weap = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* weap_owner = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* dead_fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* dead_weap = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(weap_owner && dead_fx && dead_weap, "weapon/fx created");
     if (!(weap_owner && dead_fx && dead_weap))
         return;
@@ -727,14 +727,14 @@ void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
 
     std::int32_t enemy_freeze = 0;
     char end = 0;
-    og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    og::sim::TickResult r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     (void)r;
     TEST_ASSERT(ally->owner == nullptr && ally->collide_ob == nullptr, "dead links should be cleared on oblist entities");
     TEST_ASSERT(hostile->foe == nullptr && hostile->leader == nullptr, "all dead references should be cleared");
     (void)weap_owner;
 
     clear_level_lists();
-    myscreen->save_data.allied_mode = saved_allied_mode;
+    og::runtime::current_session->myscreen_->save_data.allied_mode = saved_allied_mode;
 }
 REGISTER_TEST(test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present);
 
@@ -747,7 +747,7 @@ void test_sim_world_freeze_branch_allows_non_living_actions()
     SaveData save;
     save.my_team = 0;
 
-    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    walker* gen = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Generator, FAMILY_TENT);
     TEST_ASSERT(gen != nullptr, "generator created");
     if (!gen)
         return;
@@ -756,7 +756,7 @@ void test_sim_world_freeze_branch_allows_non_living_actions()
 
     std::int32_t enemy_freeze = 11;
     char end = 0;
-    const og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    const og::sim::TickResult r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT_EQ(10, (int)enemy_freeze, "freeze counter should decrement");
     TEST_ASSERT(r.game_ended, "no hostile living and no exits should auto-end level");
 
@@ -794,7 +794,7 @@ void test_sim_world_assigns_far_foe_when_no_target_and_hostiles_present()
 
     std::int32_t enemy_freeze = 0;
     char end = 0;
-    const og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    const og::sim::TickResult r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT_EQ(0, (int)r.level_done, "hostile living should keep level unfinished");
     TEST_ASSERT(ally->foe != nullptr, "sim world should assign a far foe when none is set");
     TEST_ASSERT(ally->foe == foe_near, "nearest hostile should be selected as far foe");
@@ -820,7 +820,7 @@ void test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event()
 
     std::int32_t enemy_freeze = 2; // decrements to 1 -> SetPalette(0) branch
     char end = 1;                  // explicit end short-circuit branch
-    const og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    const og::sim::TickResult r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT(r.game_ended, "end flag should force game_ended");
     TEST_ASSERT_EQ(1, (int)enemy_freeze, "freeze should decrement before end short-circuit");
 
@@ -852,10 +852,10 @@ void test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero()
         return;
     ally->set_act_type(ACT_CONTROL);
 
-    myscreen->level_data.id = 41;
+    og::runtime::current_session->myscreen_->level_data.id = 41;
     std::int32_t enemy_freeze = 0;
     char end = 0;
-    const og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    const og::sim::TickResult r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
 
     TEST_ASSERT(r.game_ended, "no hostiles and no exits should end level");
     TEST_ASSERT_EQ(0, (int)r.ending, "auto-end path should set ending to zero");
@@ -880,19 +880,19 @@ void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
     static og::sim::SimEventLog sim_events;
     static ProductionRandom rng;
     sim_events.clear();
-    myscreen->level_data.set_sim_context(
-        &myscreen->save_data, &myscreen->enemy_freeze, &sim_events, &rng, &cfg);
+    og::runtime::current_session->myscreen_->level_data.set_sim_context(
+        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze, &sim_events, &rng, &cfg);
 
     // Setup: CAN_EXIT_WHENEVER flag, enemies still present, dest level completed,
     // current scenario NOT completed → both Withdraw AND Exit conditions met.
-    myscreen->level_data.type = LevelData::TYPE_CAN_EXIT_WHENEVER;
-    myscreen->level_data.level_done = 0; // enemies still present
+    og::runtime::current_session->myscreen_->level_data.type = LevelData::TYPE_CAN_EXIT_WHENEVER;
+    og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present
 
-    myscreen->save_data.reset();
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 5; // current level (not completed)
-    myscreen->save_data.add_level_completed(myscreen->save_data.current_campaign, 3);
-    (void)myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 5; // current level (not completed)
+    og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 3);
+    (void)og::runtime::current_session->myscreen_->save_data.save("save0");
 
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 3); // exit points to level 3
     walker* eater = add_living(0);
@@ -915,10 +915,10 @@ void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
     // load("save0") + scen_num = exit_level + save("save0").
     // The Exit-accept path does NOT change scen_num.
     // With the fix (Exit fires, not Withdraw), scen_num should stay at 5.
-    TEST_ASSERT_EQ(5, static_cast<int>(myscreen->save_data.scen_num),
+    TEST_ASSERT_EQ(5, static_cast<int>(og::runtime::current_session->myscreen_->save_data.scen_num),
                    "CAN_EXIT_WHENEVER should show Exit (scen_num unchanged), not Withdraw");
 
-    myscreen->level_data.type = 0;
+    og::runtime::current_session->myscreen_->level_data.type = 0;
     clear_level_lists();
 }
 REGISTER_TEST(test_issue98_can_exit_flag_should_show_exit_not_withdraw);
@@ -938,17 +938,17 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
     static og::sim::SimEventLog sim_events;
     static ProductionRandom rng;
     sim_events.clear();
-    myscreen->level_data.set_sim_context(
-        &myscreen->save_data, &myscreen->enemy_freeze, &sim_events, &rng, &cfg);
+    og::runtime::current_session->myscreen_->level_data.set_sim_context(
+        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze, &sim_events, &rng, &cfg);
 
-    myscreen->level_data.type = LevelData::TYPE_CAN_EXIT_WHENEVER;
-    myscreen->level_data.level_done = 0; // enemies still present
+    og::runtime::current_session->myscreen_->level_data.type = LevelData::TYPE_CAN_EXIT_WHENEVER;
+    og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present
 
-    myscreen->save_data.reset();
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 5;
-    myscreen->save_data.add_level_completed(myscreen->save_data.current_campaign, 3);
-    (void)myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 5;
+    og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 3);
+    (void)og::runtime::current_session->myscreen_->save_data.save("save0");
 
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 3);
     walker* eater = add_living(0);
@@ -973,7 +973,7 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
     TEST_ASSERT_EQ(1, remaining,
                    "Only one dialog should fire, not both Withdraw and Exit");
 
-    myscreen->level_data.type = 0;
+    og::runtime::current_session->myscreen_->level_data.type = 0;
     clear_level_lists();
 }
 REGISTER_TEST(test_issue98_no_double_dialog_on_withdraw_exit);

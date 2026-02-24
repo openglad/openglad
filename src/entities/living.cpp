@@ -38,7 +38,7 @@
 
 // From picker
 extern std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
-#define current_difficulty (og::runtime::current_session->current_difficulty_)
+// current_difficulty lives in GameSession — access via current_session->current_difficulty_.
 
 // rng/config wrappers removed: use SimEntity fields sim_rng/sim_config directly
 
@@ -526,7 +526,7 @@ bool living::check_special()
 void living::set_difficulty(std::uint32_t whatlevel)
 {
 	//  std::int32_t calcdelay,calcrate;  // apparently not used anymore
-	std::uint32_t dif1 = difficulty_level[current_difficulty];
+	std::uint32_t dif1 = difficulty_level[og::runtime::current_session->current_difficulty_];
 	const float levmult = static_cast<float>(whatlevel) * static_cast<float>(whatlevel);
 	const float level_f = static_cast<float>(whatlevel);
 

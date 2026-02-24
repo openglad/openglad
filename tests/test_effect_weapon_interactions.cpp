@@ -47,7 +47,7 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w)
         w->setxy(100, 100);
     return w;
@@ -55,11 +55,11 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team)
 
 void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enemies()
 {
-    TEST_ASSERT(myscreen != nullptr, "myscreen exists");
-    if (!myscreen)
+    TEST_ASSERT(og::runtime::current_session->myscreen_ != nullptr, "myscreen exists");
+    if (!og::runtime::current_session->myscreen_)
         return;
 
-    LevelData& level = myscreen->level_data;
+    LevelData& level = og::runtime::current_session->myscreen_->level_data;
     auto ob_before = snapshot_ptrs(level.oblist);
     auto fx_before = snapshot_ptrs(level.fxlist);
     auto weap_before = snapshot_ptrs(level.weaplist);

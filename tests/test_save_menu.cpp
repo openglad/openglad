@@ -29,7 +29,7 @@ static void cleanup_picker_state()
         backpics[i].free();
     }
     clear_allbuttons();
-    localbuttons = nullptr;
+    og::runtime::current_session->localbuttons_ = nullptr;
     main_columns_pix.reset();
     main_columns_data.free();
     main_title_logo_pix.reset();
@@ -95,14 +95,14 @@ void test_save_team_menu() {
     trace_clear();
 
     // Need some team data
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
-    myscreen->save_data.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    myscreen->save_data.team_size = 1;
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
     SaveMenuState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(save_menu_injector, "save_menu_test", &state);

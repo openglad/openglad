@@ -34,16 +34,16 @@ inline std::vector<Interactable> get_interactables()
     AllButtonsLock lock;
     std::vector<Interactable> result;
     for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (!allbuttons[i])
+        if (!og::runtime::current_session->allbuttons_[i])
             continue; // allbuttons[] can contain holes during transitions
         Interactable item;
-        item.id = allbuttons[i]->id;
-        item.label = allbuttons[i]->label;
-        item.x = allbuttons[i]->xloc;
-        item.y = allbuttons[i]->yloc;
-        item.width = allbuttons[i]->width;
-        item.height = allbuttons[i]->height;
-        item.hidden = allbuttons[i]->hidden;
+        item.id = og::runtime::current_session->allbuttons_[i]->id;
+        item.label = og::runtime::current_session->allbuttons_[i]->label;
+        item.x = og::runtime::current_session->allbuttons_[i]->xloc;
+        item.y = og::runtime::current_session->allbuttons_[i]->yloc;
+        item.width = og::runtime::current_session->allbuttons_[i]->width;
+        item.height = og::runtime::current_session->allbuttons_[i]->height;
+        item.hidden = og::runtime::current_session->allbuttons_[i]->hidden;
         result.push_back(item);
     }
     return result;
@@ -55,9 +55,9 @@ inline bool has_interactable(const std::string& id)
     AllButtonsLock lock;
     bool found = false;
     for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (!allbuttons[i])
+        if (!og::runtime::current_session->allbuttons_[i])
             continue;
-        if (allbuttons[i]->id == id && !allbuttons[i]->hidden) {
+        if (og::runtime::current_session->allbuttons_[i]->id == id && !og::runtime::current_session->allbuttons_[i]->hidden) {
             found = true;
             break;
         }
@@ -88,16 +88,16 @@ inline void interact(const std::string& id)
     int win_x = -1, win_y = -1;
     bool found = false;
     for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (!allbuttons[i])
+        if (!og::runtime::current_session->allbuttons_[i])
             continue;
-        if (allbuttons[i]->id == id && !allbuttons[i]->hidden) {
+        if (og::runtime::current_session->allbuttons_[i]->id == id && !og::runtime::current_session->allbuttons_[i]->hidden) {
             // Compute center in game coords (320x200 space)
-            int game_x = allbuttons[i]->xloc + allbuttons[i]->width / 2;
-            int game_y = allbuttons[i]->yloc + allbuttons[i]->height / 2;
+            int game_x = og::runtime::current_session->allbuttons_[i]->xloc + og::runtime::current_session->allbuttons_[i]->width / 2;
+            int game_y = og::runtime::current_session->allbuttons_[i]->yloc + og::runtime::current_session->allbuttons_[i]->height / 2;
 
             // Convert game coords to window coords using viewport globals
-            win_x = static_cast<int>(static_cast<float>(game_x) * (viewport_w / 320.0f) + viewport_offset_x);
-            win_y = static_cast<int>(static_cast<float>(game_y) * (viewport_h / 200.0f) + viewport_offset_y);
+            win_x = static_cast<int>(static_cast<float>(game_x) * (og::runtime::current_session->viewport_w_ / 320.0f) + og::runtime::current_session->viewport_offset_x_);
+            win_y = static_cast<int>(static_cast<float>(game_y) * (og::runtime::current_session->viewport_h_ / 200.0f) + og::runtime::current_session->viewport_offset_y_);
 
             fprintf(stderr, "  [interact] clicking '%s' at game(%d,%d) win(%d,%d)\n",
                     id.c_str(), game_x, game_y, win_x, win_y);

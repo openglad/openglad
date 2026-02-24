@@ -14,7 +14,7 @@ static std::unique_ptr<walker> make_walker(char family)
 {
     guy g(family);
     g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w) w->setxy(100, 100);
     return w;
 }
@@ -25,7 +25,7 @@ static std::unique_ptr<walker> make_walker(char family)
 
 void test_view_redraw_smoke()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
     vs->redraw();
 }
@@ -33,7 +33,7 @@ REGISTER_TEST(test_view_redraw_smoke);
 
 void test_view_display_text()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
     vs->set_display_text("Test message", 30);
 }
@@ -41,7 +41,7 @@ REGISTER_TEST(test_view_display_text);
 
 void test_view_set_display_text_twice()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
     vs->set_display_text("First", 30);
     vs->set_display_text("Second", 20);
@@ -50,7 +50,7 @@ REGISTER_TEST(test_view_set_display_text_twice);
 
 void test_view_resize()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
     Sint32 oldw = vs->endx - vs->xloc;
     vs->resize(PREF_VIEW_FULL);
@@ -68,7 +68,7 @@ REGISTER_TEST(test_view_resize);
 
 void test_view_with_control()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
 
     auto w = make_walker(FAMILY_SOLDIER);
@@ -84,7 +84,7 @@ REGISTER_TEST(test_view_with_control);
 
 void test_view_draw_with_entities()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
 
     auto w = make_walker(FAMILY_SOLDIER);
@@ -92,14 +92,14 @@ void test_view_draw_with_entities()
     walker* wp = w.get();
 
     // Add walker to the level's oblist
-    myscreen->level_data.oblist.push_back(std::move(w));
+    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(w));
 
     vs->control = wp;
     vs->redraw();
     vs->control = nullptr;
 
     // Remove without deleting (unique_ptr will handle it)
-    myscreen->level_data.oblist.pop_back();
+    og::runtime::current_session->myscreen_->level_data.oblist.pop_back();
 }
 REGISTER_TEST(test_view_draw_with_entities);
 
@@ -146,7 +146,7 @@ REGISTER_TEST(test_view_compute_mp_color_ranges);
 
 void test_view_change_speed()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
     vs->change_speed(2);
     vs->change_speed(4);

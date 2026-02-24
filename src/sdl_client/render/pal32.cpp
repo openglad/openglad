@@ -31,11 +31,7 @@
 #include <span>
 #include "SDL_types.h"
 
-// Palette globals moved into GameSession (Batch 6).
-// File-local macros keep existing code unchanged.
-#define curpal  (og::runtime::current_session->curpal_)
-#define temppal (og::runtime::current_session->temppal_)
-// gammapal removed — dead code (declared but never used).
+// Palette globals live in GameSession — access via current_session->curpal_/temppal_.
 
 unsigned char our_pal_lookup(int index);
 
@@ -56,7 +52,7 @@ short load_and_set_palette(const char * /*filename*/, std::span<unsigned char> n
 			return 0;
 		}
 
-		if (fread(temppal, 1, 768, infile) != 768 || ferror(infile))
+		if (fread(og::runtime::current_session->temppal_, 1, 768, infile) != 768 || ferror(infile))
 		{
 			Log("Error: Corrupt palette file %s!\n", filename);
 			return 0;
@@ -101,7 +97,7 @@ short load_palette(const char * /*filename*/, std::span<unsigned char> newpalett
 			return 0;
 		}
 
-		if (fread(temppal, 1, 768, infile) != 768 || ferror(infile))
+		if (fread(og::runtime::current_session->temppal_, 1, 768, infile) != 768 || ferror(infile))
 		{
 			Log("Error: Corrupt palette file %s!\n", filename);
 			return 0;
@@ -128,7 +124,7 @@ short set_palette(std::span<const unsigned char> newpalette)
 
 	// Copy over the palette info ..
 	for (i = 0; i < 768; i++)
-		curpal[i] = newpalette[i];
+		og::runtime::current_session->curpal_[i] = newpalette[i];
 
 	return 1;
 }
@@ -159,7 +155,7 @@ void adjust_palette(std::span<const unsigned char> whichpal, Sint32 amount)
 			tempcol = 63;
 
 		// Now set the current palette index to modified bit value
-		curpal[i] = static_cast<unsigned char>(tempcol);
+		og::runtime::current_session->curpal_[i] = static_cast<unsigned char>(tempcol);
 	}
 }
 
@@ -185,25 +181,25 @@ void cycle_palette(std::span<unsigned char> newpalette, short start, short end, 
 				newval += length;
 			newval *= 3;
 			const auto newval_u = static_cast<std::size_t>(newval);
-			temppal[i]   = newpalette[newval_u];
-			temppal[i+1] = newpalette[newval_u+1];
-			temppal[i+2] = newpalette[newval_u+2];
+			og::runtime::current_session->temppal_[i]   = newpalette[newval_u];
+			og::runtime::current_session->temppal_[i+1] = newpalette[newval_u+1];
+			og::runtime::current_session->temppal_[i+2] = newpalette[newval_u+2];
 		}
 		else
 		{
-			temppal[i]   = newpalette[i];
-			temppal[i+1] = newpalette[i+1];
-			temppal[i+2] = newpalette[i+2];
+			og::runtime::current_session->temppal_[i]   = newpalette[i];
+			og::runtime::current_session->temppal_[i+1] = newpalette[i+1];
+			og::runtime::current_session->temppal_[i+2] = newpalette[i+2];
 		}
 	}
 
 	// Return the modified palette
 	for (i = 0; i < 768; i++)
 	{
-		newpalette[i] = temppal[i];
+		newpalette[i] = og::runtime::current_session->temppal_[i];
 		//buffers: since this is supposed to load the pal too, we
 		//buffers: copy it over to ourpal.
-		curpal[i] = temppal[i];
+		og::runtime::current_session->curpal_[i] = og::runtime::current_session->temppal_[i];
 	}
 }
 
@@ -211,9 +207,9 @@ void query_palette_reg(unsigned char index, int *red, int *green, int *blue)
 {
 	int tred, tgreen, tblue;
 
-	tred = static_cast<int>(curpal[index*3]);
-	tgreen = static_cast<int>(curpal[index*3+1]);
-	tblue = static_cast<int>(curpal[index*3+2]);
+	tred = static_cast<int>(og::runtime::current_session->curpal_[index*3]);
+	tgreen = static_cast<int>(og::runtime::current_session->curpal_[index*3+1]);
+	tblue = static_cast<int>(og::runtime::current_session->curpal_[index*3+2]);
 
 	*red = tred;
 	*green = tgreen;
@@ -228,9 +224,9 @@ void set_palette_reg(unsigned char index,int red,int green,int blue)
 		if (v > 63) return 63;
 		return static_cast<unsigned char>(v);
 	};
-	curpal[index*3] = clamp63(red);
-	curpal[index*3+1] = clamp63(green);
-	curpal[index*3+2] = clamp63(blue);
+	og::runtime::current_session->curpal_[index*3] = clamp63(red);
+	og::runtime::current_session->curpal_[index*3+1] = clamp63(green);
+	og::runtime::current_session->curpal_[index*3+2] = clamp63(blue);
 }
 
 //buffers: this is the our.pal data in a function.

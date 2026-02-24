@@ -23,13 +23,13 @@ struct KeyBindingGuard
     int key_enum;
     int old_key;
     KeyBindingGuard(int player_, int key_enum_, int new_key)
-        : player(player_), key_enum(key_enum_), old_key(player_keys[player_][key_enum_])
+        : player(player_), key_enum(key_enum_), old_key(og::runtime::current_session->player_keys_[player_][key_enum_])
     {
-        player_keys[player][key_enum] = new_key;
+        og::runtime::current_session->player_keys_[player][key_enum] = new_key;
     }
     ~KeyBindingGuard()
     {
-        player_keys[player][key_enum] = old_key;
+        og::runtime::current_session->player_keys_[player][key_enum] = old_key;
     }
 };
 
@@ -39,13 +39,13 @@ struct KeystateOverride
     std::array<Uint8, SDL_NUM_SCANCODES> fake{};
     KeystateOverride()
     {
-        prev = keystates;
+        prev = og::runtime::current_session->keystates_;
         fake.fill(0);
-        keystates = fake.data();
+        og::runtime::current_session->keystates_ = fake.data();
     }
     ~KeystateOverride()
     {
-        keystates = prev;
+        og::runtime::current_session->keystates_ = prev;
     }
 };
 
@@ -79,7 +79,7 @@ REGISTER_TEST(test_view_get_keypress_consumes_next_key_event);
 
 void test_viewscreen_options_menu_missing_control_returns()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "view should exist");
     if (!v)
         return;
@@ -93,7 +93,7 @@ REGISTER_TEST(test_viewscreen_options_menu_missing_control_returns);
 
 void test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "view should exist");
     if (!v)
         return;
@@ -107,7 +107,7 @@ void test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns()
     // Create a control walker not present in level_data.oblist.
     PixieData px(1, 1, 1, new unsigned char[1]{0});
     walker orphan(px);
-    orphan.sim_level = &myscreen->level_data;
+    orphan.sim_level = &og::runtime::current_session->myscreen_->level_data;
     orphan.sim_rng = ctx().rng;
     orphan.sim_config = &cfg;
     orphan.team_num = 0;
@@ -133,7 +133,7 @@ REGISTER_TEST(test_viewscreen_input_switch_control_not_in_oblist_logs_and_return
 
 void test_viewscreen_options_menu_covers_view_size_label_cases()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "view should exist");
     if (!v)
         return;
@@ -141,7 +141,7 @@ void test_viewscreen_options_menu_covers_view_size_label_cases()
     // Ensure a control exists so options_menu does not early-return.
     if (!v->control)
     {
-        walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(w != nullptr, "control created");
         if (!w)
             return;

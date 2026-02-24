@@ -43,7 +43,7 @@ static void cleanup_picker_state()
         backpics[i].free();
     }
     clear_allbuttons();
-    localbuttons = nullptr;
+    og::runtime::current_session->localbuttons_ = nullptr;
     main_columns_pix.reset();
     main_columns_data.free();
     main_title_logo_pix.reset();
@@ -79,8 +79,8 @@ static bool interact_match(
         if (item.id == id && !item.hidden && predicate(item)) {
             const int game_x = item.x + item.width / 2;
             const int game_y = item.y + item.height / 2;
-            const int win_x = static_cast<int>(static_cast<float>(game_x) * (viewport_w / 320.0f) + viewport_offset_x);
-            const int win_y = static_cast<int>(static_cast<float>(game_y) * (viewport_h / 200.0f) + viewport_offset_y);
+            const int win_x = static_cast<int>(static_cast<float>(game_x) * (og::runtime::current_session->viewport_w_ / 320.0f) + og::runtime::current_session->viewport_offset_x_);
+            const int win_y = static_cast<int>(static_cast<float>(game_y) * (og::runtime::current_session->viewport_h_ / 200.0f) + og::runtime::current_session->viewport_offset_y_);
             fprintf(stderr, "  [interact] clicking matched '%s' at game(%d,%d) win(%d,%d)\n",
                     id.c_str(), game_x, game_y, win_x, win_y);
             inject_click(win_x, win_y);
@@ -169,21 +169,21 @@ void test_view_team() {
     trace_clear();
 
     // Set up a team so view has something to show
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     auto archer = std::make_unique<guy>(FAMILY_ARCHER);
     // Give the team strong stats so the launched game finishes quickly.
     soldier->strength = soldier->dexterity = soldier->constitution = soldier->intelligence = soldier->armor = 200;
     archer->strength = archer->dexterity = archer->constitution = archer->intelligence = archer->armor = 200;
-    myscreen->save_data.team_list[0] = std::move(soldier);
-    myscreen->save_data.team_list[1] = std::move(archer);
-    myscreen->save_data.team_size = 2;
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_list[1] = std::move(archer);
+    og::runtime::current_session->myscreen_->save_data.team_size = 2;
 
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
     ViewState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(view_team_injector, "view_test", &state);
@@ -280,21 +280,21 @@ static int view_team_go_injector(void* data)
 void test_view_team_go_starts_level() {
     trace_clear();
 
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     auto archer = std::make_unique<guy>(FAMILY_ARCHER);
     soldier->strength = soldier->dexterity = soldier->constitution = soldier->intelligence = soldier->armor = 200;
     archer->strength = archer->dexterity = archer->constitution = archer->intelligence = archer->armor = 200;
-    myscreen->save_data.team_list[0] = std::move(soldier);
-    myscreen->save_data.team_list[1] = std::move(archer);
-    myscreen->save_data.team_size = 2;
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_list[1] = std::move(archer);
+    og::runtime::current_session->myscreen_->save_data.team_size = 2;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    ViewTeamGoState state = { false, false, false, false, false, g_game_speed_factor };
+    ViewTeamGoState state = { false, false, false, false, false, og::runtime::current_session->g_game_speed_factor_ };
     SDL_Thread* thread = SDL_CreateThread(view_team_go_injector, "view_team_go", &state);
     TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
@@ -334,8 +334,8 @@ static int direct_menu_click_injector(void* data)
             if (item.id == state->target_id && !item.hidden && item.y >= state->min_y) {
                 const int game_x = item.x + item.width / 2;
                 const int game_y = item.y + item.height / 2;
-                const int win_x = static_cast<int>(static_cast<float>(game_x) * (viewport_w / 320.0f) + viewport_offset_x);
-                const int win_y = static_cast<int>(static_cast<float>(game_y) * (viewport_h / 200.0f) + viewport_offset_y);
+                const int win_x = static_cast<int>(static_cast<float>(game_x) * (og::runtime::current_session->viewport_w_ / 320.0f) + og::runtime::current_session->viewport_offset_x_);
+                const int win_y = static_cast<int>(static_cast<float>(game_y) * (og::runtime::current_session->viewport_h_ / 200.0f) + og::runtime::current_session->viewport_offset_y_);
                 inject_click(win_x, win_y);
                 state->clicked_target = true;
                 state->finished = true;
@@ -356,13 +356,13 @@ void test_create_view_menu_direct_back()
 {
     trace_clear();
 
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
-    myscreen->save_data.team_list[0] = std::move(soldier);
-    myscreen->save_data.team_size = 1;
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
 
     DirectMenuClickState state = { false, false, "back", 160 };
     SDL_Thread* thread = SDL_CreateThread(direct_menu_click_injector, "direct_view_back", &state);
@@ -384,13 +384,13 @@ void test_create_team_menu_direct_back()
 {
     trace_clear();
 
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
-    myscreen->save_data.team_list[0] = std::move(soldier);
-    myscreen->save_data.team_size = 1;
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
 
     DirectMenuClickState state = { false, false, "back", 100 };
     SDL_Thread* thread = SDL_CreateThread(direct_menu_click_injector, "direct_team_back", &state);
@@ -455,12 +455,12 @@ static int view_team_go_level17_injector(void* data)
     state->game_started = g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
 
     int stable_polls = 0;
-    int last_framecount = myscreen->framecount;
+    int last_framecount = og::runtime::current_session->myscreen_->framecount;
     waited_ms = 0;
     while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 90000) {
         SDL_Delay(100);
         waited_ms += 100;
-        const int cur = myscreen->framecount;
+        const int cur = og::runtime::current_session->myscreen_->framecount;
         if (cur != last_framecount) {
             state->frame_progressed = true;
             stable_polls = 0;
@@ -497,10 +497,10 @@ void test_view_team_go_level17_no_hang()
 {
     trace_clear();
 
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 17;
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 17;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     auto archer = std::make_unique<guy>(FAMILY_ARCHER);
@@ -511,15 +511,15 @@ void test_view_team_go_level17_no_hang()
         g->level = 20;
     }
 
-    myscreen->save_data.team_list[0] = std::move(soldier);
-    myscreen->save_data.team_list[1] = std::move(archer);
-    myscreen->save_data.team_list[2] = std::move(cleric);
-    myscreen->save_data.team_list[3] = std::move(mage);
-    myscreen->save_data.team_size = 4;
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_list[1] = std::move(archer);
+    og::runtime::current_session->myscreen_->save_data.team_list[2] = std::move(cleric);
+    og::runtime::current_session->myscreen_->save_data.team_list[3] = std::move(mage);
+    og::runtime::current_session->myscreen_->save_data.team_size = 4;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
     ViewTeamGoLevel17State state{};
-    state.original_speed = g_game_speed_factor;
+    state.original_speed = og::runtime::current_session->g_game_speed_factor_;
     SDL_Thread* thread = SDL_CreateThread(view_team_go_level17_injector, "view_team_go_lv17", &state);
     TEST_ASSERT(thread != nullptr, "failed to create level17 injector thread");
 

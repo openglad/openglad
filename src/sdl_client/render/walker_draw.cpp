@@ -47,7 +47,7 @@ static void draw_damage_number(walker::DamageNumber& dn, viewscreen* view_buf)
 		alpha = 255;
 	else if (dn.t > 0.0f)
 		alpha = static_cast<Uint8>(dn.t * 255.0f);
-	myscreen->text_normal.write_xy_center_alpha(xscreen, yscreen, dn.color, alpha, "%.0f", dn.value);
+	og::runtime::current_session->myscreen_->text_normal.write_xy_center_alpha(xscreen, yscreen, dn.color, alpha, "%.0f", dn.value);
 }
 
 // ---- Public API ----
@@ -112,12 +112,12 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
             if(w->last_hitpoints > w->stats()->hitpoints && last_ratio <= 1.0f)
             {
                 const Sint32 last_w = static_cast<Sint32>(width_f * last_ratio);
-                myscreen->draw_box(r.x, r.y, r.x + last_w, r.y + r.h, static_cast<unsigned char>(53), 1);
+                og::runtime::current_session->myscreen_->draw_box(r.x, r.y, r.x + last_w, r.y + r.h, static_cast<unsigned char>(53), 1);
             }
 
             const Sint32 cur_w = static_cast<Sint32>(width_f * ratio);
-            myscreen->draw_box(r.x, r.y, r.x + cur_w, r.y + r.h, whatcolor, 1);
-            myscreen->draw_box(r.x-1, r.y-1, r.x + max_w+1, r.y + r.h+1, BLACK, 0);
+            og::runtime::current_session->myscreen_->draw_box(r.x, r.y, r.x + cur_w, r.y + r.h, whatcolor, 1);
+            og::runtime::current_session->myscreen_->draw_box(r.x-1, r.y-1, r.x + max_w+1, r.y + r.h+1, BLACK, 0);
         }
     }
 }
@@ -184,7 +184,7 @@ bool draw_walker(walker& w, viewscreen* view_buf)
         }
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         myscreen->level_data.mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
+	         og::runtime::current_session->myscreen_->level_data.mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
 	         && (w.flight_left < 1) )
     {
@@ -205,7 +205,7 @@ bool draw_walker(walker& w, viewscreen* view_buf)
         w.hurt_flash = false;
 
         auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex * w.sizey)};
-        myscreen->walkputbuffer_flash(xscreen, yscreen, w.sizex, w.sizey,
+        og::runtime::current_session->myscreen_->walkputbuffer_flash(xscreen, yscreen, w.sizex, w.sizey,
                                    view_buf->xloc, view_buf->yloc,
                                    view_buf->endx, view_buf->endy,
                                    bmp_span, w.query_team_color());
@@ -215,14 +215,14 @@ bool draw_walker(walker& w, viewscreen* view_buf)
         auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex * w.sizey)};
         if(fill_mode == 0 && outline_style == 0)
         {
-            myscreen->walkputbuffer(xscreen, yscreen, w.sizex, w.sizey,
+            og::runtime::current_session->myscreen_->walkputbuffer(xscreen, yscreen, w.sizex, w.sizey,
                                    view_buf->xloc, view_buf->yloc,
                                    view_buf->endx, view_buf->endy,
                                    bmp_span, w.query_team_color());
         }
         else
         {
-	            myscreen->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+	            og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
 	                                    view_buf->xloc, view_buf->yloc,
 	                                    view_buf->endx, view_buf->endy,
 	                                    bmp_span, w.query_team_color(),
@@ -251,7 +251,7 @@ bool draw_walker(walker& w, viewscreen* view_buf)
         e++;
     }
 
-	if(debug_draw_paths)
+	if(og::runtime::current_session->debug_draw_paths_)
         draw_walker_path(w, view_buf);
 	return 1;
 }
@@ -275,7 +275,7 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 	auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex * w.sizey)};
 
 	if (w.stats()->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
-		myscreen->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp_span, w.query_team_color(),
@@ -287,7 +287,7 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 	else if (w.invisibility_left)  //WE ARE INVISIBLE
 	{
 		if (w.team_num == view_buf->control->team_num)
-			myscreen->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+			og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
 			                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 			                        bmp_span, w.query_team_color(),
@@ -297,10 +297,10 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 			                        0 ); //type of phantom
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         myscreen->level_data.mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
+	         og::runtime::current_session->myscreen_->level_data.mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
 	         && (w.flight_left < 1) )
-		myscreen->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp_span, w.query_team_color(),
@@ -311,7 +311,7 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 
 	else if (w.outline)    // WE HAVE SOME OUTLINE
 	{
-		myscreen->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp_span, w.query_team_color(),
@@ -324,7 +324,7 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 	}
 	else
 	{
-		myscreen->walkputbuffer(xscreen, yscreen, w.sizex, w.sizey,
+		og::runtime::current_session->myscreen_->walkputbuffer(xscreen, yscreen, w.sizex, w.sizey,
 		                       view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                       bmp_span, w.query_team_color());
@@ -353,8 +353,8 @@ void draw_walker_path(walker& w, viewscreen* view_buf)
         int x1 = GET_STATE_X(*e) - offsetx;
         int y1 = GET_STATE_Y(*e) - offsety;
 
-        myscreen->draw_line(px, py, x1, y1, mycolor);
-        myscreen->fastbox_outline(x1 - 1, y1 - 1, 2, 2, mycolor);
+        og::runtime::current_session->myscreen_->draw_line(px, py, x1, y1, mycolor);
+        og::runtime::current_session->myscreen_->fastbox_outline(x1 - 1, y1 - 1, 2, 2, mycolor);
         e++;
         px = x1;
         py = y1;

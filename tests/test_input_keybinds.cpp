@@ -15,14 +15,14 @@ struct KeyBindingGuard
     int old;
 
     KeyBindingGuard(int player_, int key_enum_, int new_key)
-        : player(player_), key_enum(key_enum_), old(player_keys[player_][key_enum_])
+        : player(player_), key_enum(key_enum_), old(og::runtime::current_session->player_keys_[player_][key_enum_])
     {
-        player_keys[player][key_enum] = new_key;
+        og::runtime::current_session->player_keys_[player][key_enum] = new_key;
     }
 
     ~KeyBindingGuard()
     {
-        player_keys[player][key_enum] = old;
+        og::runtime::current_session->player_keys_[player][key_enum] = old;
     }
 };
 
@@ -253,7 +253,7 @@ void test_input_mode_key_binding_updates_are_isolated_by_control_mode()
         0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
-    TEST_ASSERT_EQ(eight_before, player_keys[0][KEY_UP],
+    TEST_ASSERT_EQ(eight_before, og::runtime::current_session->player_keys_[0][KEY_UP],
         "switching to 8-direction should restore that mode's key binding");
     set_player_key_binding(0, KEY_UP, SDLK_2);
 
@@ -265,7 +265,7 @@ void test_input_mode_key_binding_updates_are_isolated_by_control_mode()
         "8-direction binding should update when editing in 8-direction mode");
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    TEST_ASSERT_EQ(static_cast<int>(SDLK_1), player_keys[0][KEY_UP],
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_1), og::runtime::current_session->player_keys_[0][KEY_UP],
         "switching back to 4-direction should restore 4-direction binding");
 }
 REGISTER_TEST(test_input_mode_key_binding_updates_are_isolated_by_control_mode);
@@ -275,23 +275,23 @@ void test_input_control_settings_cfg_roundtrip()
     cfg_store config;
     config.load_settings();
 
-    const int old_yell = player_keys[0][KEY_YELL];
+    const int old_yell = og::runtime::current_session->player_keys_[0][KEY_YELL];
     ControlModeGuard mode_guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
-    player_keys[0][KEY_YELL] = SDLK_z;
+    og::runtime::current_session->player_keys_[0][KEY_YELL] = SDLK_z;
     save_player_control_settings_to_cfg(config);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    player_keys[0][KEY_YELL] = SDLK_UNKNOWN;
+    og::runtime::current_session->player_keys_[0][KEY_YELL] = SDLK_UNKNOWN;
     load_player_control_settings_from_cfg(config);
 
     TEST_ASSERT_EQ(static_cast<int>(ControlDirectionMode::EightDirection), get_player_control_mode(0),
         "control mode should reload from config");
-    TEST_ASSERT_EQ(static_cast<int>(SDLK_z), player_keys[0][KEY_YELL],
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_z), og::runtime::current_session->player_keys_[0][KEY_YELL],
         "keybind should reload from config");
 
-    player_keys[0][KEY_YELL] = old_yell;
+    og::runtime::current_session->player_keys_[0][KEY_YELL] = old_yell;
 }
 REGISTER_TEST(test_input_control_settings_cfg_roundtrip);
 

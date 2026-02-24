@@ -39,12 +39,12 @@ REGISTER_TEST(test_input_clear_events_drains_queue);
 
 void test_input_assignKeyFromWaitEvent_updates_player_keys()
 {
-    int old = player_keys[0][KEY_FIRE];
+    int old = og::runtime::current_session->player_keys_[0][KEY_FIRE];
 
     // In TESTING builds, wait_for_key_event() returns a fake Escape event
     // so tests don't block on SDL_WaitEvent.
     assignKeyFromWaitEvent(0, KEY_FIRE);
-    TEST_ASSERT_EQ(old, (int)player_keys[0][KEY_FIRE], "fake Escape event should not update mapping");
+    TEST_ASSERT_EQ(old, (int)og::runtime::current_session->player_keys_[0][KEY_FIRE], "fake Escape event should not update mapping");
 }
 REGISTER_TEST(test_input_assignKeyFromWaitEvent_updates_player_keys);
 

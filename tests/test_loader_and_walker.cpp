@@ -12,7 +12,7 @@
 
 static std::unique_ptr<walker> create_living(char family)
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -85,13 +85,13 @@ void test_walker_attack_deals_damage_and_awards_score()
     target->stats()->hitpoints = 100;
     target->stats()->max_hitpoints = 100;
 
-    myscreen->save_data.m_score[0] = 0;
+    og::runtime::current_session->myscreen_->save_data.m_score[0] = 0;
 
     bool ok = attacker->attack(target.get());
     TEST_ASSERT(ok, "attack should succeed against enemy living target");
     TEST_ASSERT(target->stats()->hitpoints < 100, "attack should reduce target HP");
     TEST_ASSERT(attacker->myguy->total_hits >= 1, "attack should increment attacker hits");
-    TEST_ASSERT(myscreen->save_data.m_score[0] > 0, "attack should award score for team 0");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.m_score[0] > 0, "attack should award score for team 0");
 
 }
 REGISTER_TEST(test_walker_attack_deals_damage_and_awards_score);

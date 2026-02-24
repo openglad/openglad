@@ -41,18 +41,18 @@ static int scripted_poll_adapter(SDL_Event* out)
 void test_game_frame_toggles_debug_hotkeys()
 {
     // Load a minimal scenario so screen::act() is safe to call.
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.save("test_game_loop_save");
-    short load_result = load_saved_game("test_game_loop_save", myscreen);
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.save("test_game_loop_save");
+    short load_result = load_saved_game("test_game_loop_save", og::runtime::current_session->myscreen_);
     TEST_ASSERT(load_result != 0, "load_saved_game should succeed for scenario 1");
 
     // Ensure no frame delays.
-    float old_speed = g_game_speed_factor;
+    float old_speed = og::runtime::current_session->g_game_speed_factor_;
     set_game_speed(0.0f);
 
-    debug_draw_paths = false;
-    debug_draw_obmap = false;
+    og::runtime::current_session->debug_draw_paths_ = false;
+    og::runtime::current_session->debug_draw_obmap_ = false;
 
     EventScript script;
     SDL_Event e{};
@@ -70,15 +70,15 @@ void test_game_frame_toggles_debug_hotkeys()
     deps.enable_event_poll = true;
     deps.poll_event = scripted_poll_adapter;
 
-    (void)game_frame(*myscreen, st, deps);
+    (void)game_frame(*og::runtime::current_session->myscreen_, st, deps);
 
-    TEST_ASSERT(debug_draw_paths, "F11 should toggle debug_draw_paths");
-    TEST_ASSERT(debug_draw_obmap, "F12 should toggle debug_draw_obmap");
+    TEST_ASSERT(og::runtime::current_session->debug_draw_paths_, "F11 should toggle debug_draw_paths");
+    TEST_ASSERT(og::runtime::current_session->debug_draw_obmap_, "F12 should toggle debug_draw_obmap");
 
     // Cleanup.
     g_script = nullptr;
     set_game_speed(old_speed);
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_game_frame_toggles_debug_hotkeys);
 
@@ -89,15 +89,15 @@ void test_game_frame_with_result_done_when_end_is_set()
     deps.enable_render = false;
     deps.enable_event_poll = false;
 
-    const char old_end = myscreen->end;
-    myscreen->end = 1;
+    const char old_end = og::runtime::current_session->myscreen_->end;
+    og::runtime::current_session->myscreen_->end = 1;
 
-    const GameFrameResult result = game_frame_with_result(*myscreen, st, deps);
+    const GameFrameResult result = game_frame_with_result(*og::runtime::current_session->myscreen_, st, deps);
     TEST_ASSERT_EQ(static_cast<int>(GameFrameResult::Done), static_cast<int>(result),
         "game_frame_with_result should report Done when screen end is set");
     TEST_ASSERT(st.done, "state.done should be set when end is set");
 
-    myscreen->end = old_end;
+    og::runtime::current_session->myscreen_->end = old_end;
 }
 REGISTER_TEST(test_game_frame_with_result_done_when_end_is_set);
 
@@ -108,17 +108,17 @@ void test_game_frame_bool_wrapper_matches_typed_result()
     deps.enable_render = false;
     deps.enable_event_poll = false;
 
-    const char old_end = myscreen->end;
-    myscreen->end = 1;
+    const char old_end = og::runtime::current_session->myscreen_->end;
+    og::runtime::current_session->myscreen_->end = 1;
 
-    const GameFrameResult typed = game_frame_with_result(*myscreen, st, deps);
+    const GameFrameResult typed = game_frame_with_result(*og::runtime::current_session->myscreen_, st, deps);
     st.done = false;
-    const bool wrapped = game_frame(*myscreen, st, deps);
+    const bool wrapped = game_frame(*og::runtime::current_session->myscreen_, st, deps);
 
     TEST_ASSERT_EQ(static_cast<int>(typed != GameFrameResult::Continue), static_cast<int>(wrapped),
         "bool wrapper should map Continue/non-Continue exactly");
 
-    myscreen->end = old_end;
+    og::runtime::current_session->myscreen_->end = old_end;
 }
 REGISTER_TEST(test_game_frame_bool_wrapper_matches_typed_result);
 
@@ -139,15 +139,15 @@ REGISTER_TEST(test_game_frame_bool_wrapper_matches_typed_result);
 void test_game_frame_options_menu_via_key_prefs_completes()
 {
     // Load a minimal scenario so screen::act() is safe.
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.save("test_game_loop_optmenu_save");
-    short load_result = load_saved_game("test_game_loop_optmenu_save", myscreen);
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.save("test_game_loop_optmenu_save");
+    short load_result = load_saved_game("test_game_loop_optmenu_save", og::runtime::current_session->myscreen_);
     TEST_ASSERT(load_result != 0, "load_saved_game should succeed");
 
     // Ensure a player-controlled walker exists so options_menu() doesn't
     // early-return via its missing-control guard.
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewob[0] should exist");
     if (!vs)
         return;
@@ -155,7 +155,7 @@ void test_game_frame_options_menu_via_key_prefs_completes()
     walker* saved_control = vs->control;
     if (!vs->control)
     {
-        walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(w != nullptr, "control walker created");
         if (!w)
             return;
@@ -166,10 +166,10 @@ void test_game_frame_options_menu_via_key_prefs_completes()
     }
 
     // Override keystates so we can inject ESC from a background thread.
-    const Uint8* saved_keystates = keystates;
+    const Uint8* saved_keystates = og::runtime::current_session->keystates_;
     std::array<Uint8, SDL_NUM_SCANCODES> fake_keystates{};
     fake_keystates.fill(0);
-    keystates = fake_keystates.data();
+    og::runtime::current_session->keystates_ = fake_keystates.data();
 
     // Background thread: press ESC after a short delay to exit options_menu().
     std::thread esc_thread([&fake_keystates]() {
@@ -183,14 +183,14 @@ void test_game_frame_options_menu_via_key_prefs_completes()
     EventScript script;
     SDL_Event e{};
     e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = player_keys[0][KEY_PREFS];
+    e.key.keysym.sym = og::runtime::current_session->player_keys_[0][KEY_PREFS];
     e.key.keysym.scancode = SDL_GetScancodeFromKey(e.key.keysym.sym);
     e.key.repeat = 0;
     script.events.push_back(e);
 
     g_script = &script;
 
-    float old_speed = g_game_speed_factor;
+    float old_speed = og::runtime::current_session->g_game_speed_factor_;
     set_game_speed(0.0f);
 
     GameLoopFrameState st;
@@ -201,15 +201,15 @@ void test_game_frame_options_menu_via_key_prefs_completes()
 
     // This call chain goes through the std::function indirection in
     // game_frame_with_result() and must not hang.
-    (void)game_frame(*myscreen, st, deps);
+    (void)game_frame(*og::runtime::current_session->myscreen_, st, deps);
 
     esc_thread.join();
 
     // Cleanup.
     g_script = nullptr;
     set_game_speed(old_speed);
-    keystates = saved_keystates;
+    og::runtime::current_session->keystates_ = saved_keystates;
     vs->control = saved_control;
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_game_frame_options_menu_via_key_prefs_completes);

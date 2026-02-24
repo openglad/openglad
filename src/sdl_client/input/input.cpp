@@ -69,15 +69,15 @@ Sint32 mouse_buttons;
 
 void update_overscan_setting()
 {
-    if(overscan_percentage < 0.0f)
-        overscan_percentage = 0.0f;
-    else if(overscan_percentage > 0.25f)
-        overscan_percentage = 0.25f;
+    if(og::runtime::current_session->overscan_percentage_ < 0.0f)
+        og::runtime::current_session->overscan_percentage_ = 0.0f;
+    else if(og::runtime::current_session->overscan_percentage_ > 0.25f)
+        og::runtime::current_session->overscan_percentage_ = 0.25f;
     
-    viewport_offset_x = window_w * overscan_percentage/2;
-    viewport_offset_y = window_h * overscan_percentage/2;
-    viewport_w = window_w * (1.0f - overscan_percentage);
-    viewport_h = window_h * (1.0f - overscan_percentage);
+    og::runtime::current_session->viewport_offset_x_ = og::runtime::current_session->window_w_ * og::runtime::current_session->overscan_percentage_/2;
+    og::runtime::current_session->viewport_offset_y_ = og::runtime::current_session->window_h_ * og::runtime::current_session->overscan_percentage_/2;
+    og::runtime::current_session->viewport_w_ = og::runtime::current_session->window_w_ * (1.0f - og::runtime::current_session->overscan_percentage_);
+    og::runtime::current_session->viewport_h_ = og::runtime::current_session->window_h_ * (1.0f - og::runtime::current_session->overscan_percentage_);
 }
 
 JoyData player_joy[4];
@@ -270,7 +270,7 @@ void reset_default_player_controls()
         // Activate the default mode's keymap into player_keys
         const int idx = control_mode_keymap_index(kDefaultControlModes[p]);
         for (int k = 0; k < NUM_KEYS; ++k)
-            player_keys[p][k] = player_mode_keys[p][idx][k];
+            og::runtime::current_session->player_keys_[p][k] = player_mode_keys[p][idx][k];
     }
 }
 
@@ -309,7 +309,7 @@ void set_player_key_binding(int player_index, int key_enum, int keycode)
         return;
     const int mode_index = current_player_mode_keymap_index(player_index);
     player_mode_keys[player_index][mode_index][key_enum] = keycode;
-    player_keys[player_index][key_enum] = keycode;
+    og::runtime::current_session->player_keys_[player_index][key_enum] = keycode;
 }
 
 void load_player_control_settings_from_cfg(cfg_store& config)
@@ -383,14 +383,14 @@ void sync_runtime_keys_to_active_mode(int player_index)
 {
     const int mode_index = current_player_mode_keymap_index(player_index);
     for (int k = 0; k < NUM_KEYS; ++k)
-        player_mode_keys[player_index][mode_index][k] = player_keys[player_index][k];
+        player_mode_keys[player_index][mode_index][k] = og::runtime::current_session->player_keys_[player_index][k];
 }
 
 void activate_mode_keymap_for_player(int player_index, int mode)
 {
     const int mode_index = control_mode_keymap_index(mode);
     for (int k = 0; k < NUM_KEYS; ++k)
-        player_keys[player_index][k] = player_mode_keys[player_index][mode_index][k];
+        og::runtime::current_session->player_keys_[player_index][k] = player_mode_keys[player_index][mode_index][k];
 }
 } // namespace
 
@@ -402,7 +402,7 @@ void activate_mode_keymap_for_player(int player_index, int mode)
 void init_input()
 {
     reset_default_player_controls();
-    keystates = SDL_GetKeyboardState(nullptr);
+    og::runtime::current_session->keystates_ = SDL_GetKeyboardState(nullptr);
 
     // Set up joysticks
     for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
@@ -474,8 +474,8 @@ void sendFakeKeyUpEvent(int keycode)
 
 void handle_text_event(const SDL_Event& event)
 {
-    raw_text_input = event.text.text;
-    text_input_event = 1;
+    og::runtime::current_session->raw_text_input_ = event.text.text;
+    og::runtime::current_session->text_input_event_ = 1;
 }
 
 void handle_mouse_event(const SDL_Event& event)
@@ -483,15 +483,15 @@ void handle_mouse_event(const SDL_Event& event)
     switch(event.type)
     {
     case SDL_MOUSEWHEEL:
-        scroll_amount = static_cast<short>(5*event.wheel.y);
-        key_press_event = 1;
+        og::runtime::current_session->scroll_amount_ = static_cast<short>(5*event.wheel.y);
+        og::runtime::current_session->key_press_event_ = 1;
         break;
 
 #ifndef USE_TOUCH_INPUT
         // Mouse event
     case SDL_MOUSEMOTION:
-        mouse_state.x = (static_cast<float>(event.motion.x) - viewport_offset_x) * (320.0f / viewport_w);
-        mouse_state.y = (static_cast<float>(event.motion.y) - viewport_offset_y) * (200.0f / viewport_h);
+        mouse_state.x = (static_cast<float>(event.motion.x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
+        mouse_state.y = (static_cast<float>(event.motion.y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
         break;
     case SDL_MOUSEBUTTONUP:
         if (event.button.button == SDL_BUTTON_LEFT)
@@ -499,8 +499,8 @@ void handle_mouse_event(const SDL_Event& event)
         if (event.button.button == SDL_BUTTON_RIGHT)
             mouse_state.right = 0;
         
-        mouse_state.x = (static_cast<float>(event.button.x) - viewport_offset_x) * (320.0f / viewport_w);
-        mouse_state.y = (static_cast<float>(event.button.y) - viewport_offset_y) * (200.0f / viewport_h);
+        mouse_state.x = (static_cast<float>(event.button.x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
+        mouse_state.y = (static_cast<float>(event.button.y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
         break;
     case SDL_MOUSEBUTTONDOWN:
         if (event.button.button == SDL_BUTTON_LEFT)
@@ -508,8 +508,8 @@ void handle_mouse_event(const SDL_Event& event)
         else if (event.button.button == SDL_BUTTON_RIGHT)
             mouse_state.right = 1;
 
-        mouse_state.x = (static_cast<float>(event.button.x) - viewport_offset_x) * (320.0f / viewport_w);
-        mouse_state.y = (static_cast<float>(event.button.y) - viewport_offset_y) * (200.0f / viewport_h);
+        mouse_state.x = (static_cast<float>(event.button.x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
+        mouse_state.y = (static_cast<float>(event.button.y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
         break;
 #else
 #ifdef FAKE_TOUCH_EVENTS
@@ -518,10 +518,10 @@ void handle_mouse_event(const SDL_Event& event)
         {
             SDL_Event e;
             e.type = SDL_FINGERMOTION;
-            e.tfinger.x = event.motion.x/window_w;
-            e.tfinger.y = event.motion.y/window_h;
-            e.tfinger.dx = event.motion.xrel/window_w;
-            e.tfinger.dy = event.motion.yrel/window_h;
+            e.tfinger.x = event.motion.x/og::runtime::current_session->window_w_;
+            e.tfinger.y = event.motion.y/og::runtime::current_session->window_h_;
+            e.tfinger.dx = event.motion.xrel/og::runtime::current_session->window_w_;
+            e.tfinger.dy = event.motion.yrel/og::runtime::current_session->window_h_;
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -531,8 +531,8 @@ void handle_mouse_event(const SDL_Event& event)
         {
             SDL_Event e;
             e.type = SDL_FINGERUP;
-            e.tfinger.x = event.button.x/window_w;
-            e.tfinger.y = event.button.y/window_h;
+            e.tfinger.x = event.button.x/og::runtime::current_session->window_w_;
+            e.tfinger.y = event.button.y/og::runtime::current_session->window_h_;
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -542,8 +542,8 @@ void handle_mouse_event(const SDL_Event& event)
         {
             SDL_Event e;
             e.type = SDL_FINGERDOWN;
-            e.tfinger.x = event.button.x/window_w;
-            e.tfinger.y = event.button.y/window_h;
+            e.tfinger.x = event.button.x/og::runtime::current_session->window_w_;
+            e.tfinger.y = event.button.y/og::runtime::current_session->window_h_;
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -553,10 +553,10 @@ void handle_mouse_event(const SDL_Event& event)
         // Mouse event
     case SDL_FINGERMOTION:
         {
-        int x = (event.tfinger.x * window_w - viewport_offset_x) * (320 / viewport_w);
-        int y = (event.tfinger.y * window_h - viewport_offset_y) * (200 / viewport_h);
+        int x = (event.tfinger.x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
+        int y = (event.tfinger.y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
         
-        scroll_amount = y - mouse_state.y;
+        og::runtime::current_session->scroll_amount_ = y - mouse_state.y;
         
         mouse_state.x = x;
         mouse_state.y = y;
@@ -602,15 +602,15 @@ void handle_mouse_event(const SDL_Event& event)
         break;
     case SDL_FINGERUP:
         {
-            int x = (event.tfinger.x * window_w - viewport_offset_x) * (320 / viewport_w);
-            int y = (event.tfinger.y * window_h - viewport_offset_y) * (200 / viewport_h);
+            int x = (event.tfinger.x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
+            int y = (event.tfinger.y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
             if(tapping)
             {
                 tapping = false;
                 if(abs(x - start_tap_x) < 2 && abs(y - start_tap_y) < 2)
-                    input_continue = true;
+                    og::runtime::current_session->input_continue_ = true;
                 else
-                    input_continue = false;
+                    og::runtime::current_session->input_continue_ = false;
                 start_tap_x = x;
                 start_tap_y = y;
             }
@@ -641,47 +641,47 @@ void handle_mouse_event(const SDL_Event& event)
         {
             tapping = true;
             
-            int x = (event.tfinger.x * window_w - viewport_offset_x) * (320 / viewport_w);
-            int y = (event.tfinger.y * window_h - viewport_offset_y) * (200 / viewport_h);
+            int x = (event.tfinger.x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
+            int y = (event.tfinger.y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
             
             start_tap_x = x;
             start_tap_y = y;
-            input_continue = false;
+            og::runtime::current_session->input_continue_ = false;
             
             if(!firing && FIRE_BUTTON_X <= x && x <= FIRE_BUTTON_X + BUTTON_DIM
                 && FIRE_BUTTON_Y <= y && y <= FIRE_BUTTON_Y + BUTTON_DIM)
             {
                 firing = true;
-                sendFakeKeyDownEvent(player_keys[0][KEY_FIRE]);
+                sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_FIRE]);
                 touch_keystate[0][KEY_FIRE] = true;
                 firingTouch = event.tfinger.fingerId;
             }
             else if(SPECIAL_BUTTON_X <= x && x <= SPECIAL_BUTTON_X + BUTTON_DIM
                 && SPECIAL_BUTTON_Y <= y && y <= SPECIAL_BUTTON_Y + BUTTON_DIM)
             {
-                sendFakeKeyDownEvent(player_keys[0][KEY_SPECIAL]);
+                sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SPECIAL]);
             }
             else if(YO_BUTTON_X - BUTTON_DIM/2 <= x && x <= YO_BUTTON_X + BUTTON_DIM/2
                 && YO_BUTTON_Y - BUTTON_DIM/2 <= y && y <= YO_BUTTON_Y + BUTTON_DIM/2)
             {
-                sendFakeKeyDownEvent(player_keys[0][KEY_YELL]);
+                sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_YELL]);
             }
             else if(SWITCH_CHARACTER_BUTTON_X <= x && x <= SWITCH_CHARACTER_BUTTON_X + BUTTON_DIM*2
                 && SWITCH_CHARACTER_BUTTON_Y <= y && y <= SWITCH_CHARACTER_BUTTON_Y + BUTTON_DIM*2)
             {
-                sendFakeKeyDownEvent(player_keys[0][KEY_SWITCH]);
+                sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SWITCH]);
             }
             else if(NEXT_SPECIAL_BUTTON_X <= x && x <= NEXT_SPECIAL_BUTTON_X + BUTTON_DIM
                 && NEXT_SPECIAL_BUTTON_Y <= y && y <= NEXT_SPECIAL_BUTTON_Y + BUTTON_DIM)
             {
-                sendFakeKeyDownEvent(player_keys[0][KEY_SPECIAL_SWITCH]);
+                sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SPECIAL_SWITCH]);
             }
             else if(ALTERNATE_SPECIAL_BUTTON_X <= x && x <= ALTERNATE_SPECIAL_BUTTON_X + BUTTON_DIM
                 && ALTERNATE_SPECIAL_BUTTON_Y <= y && y <= ALTERNATE_SPECIAL_BUTTON_Y + BUTTON_DIM)
             {
                 // Treat KEY_SHIFTER as an action instead of a modifier
                 if(input_touch_has_alternate())
-                    sendFakeKeyDownEvent(player_keys[0][KEY_SHIFTER]);
+                    sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SHIFTER]);
             }
             else if(!moving && x < 320/2 - BUTTON_DIM/2 && y > BUTTON_DIM*2)  // Only move with the lower left corner of the screen (and offset for other buttons)
             {
@@ -700,7 +700,7 @@ void handle_mouse_event(const SDL_Event& event)
             }
             
             
-            key_press_event = 1;
+            og::runtime::current_session->key_press_event_ = 1;
             mouse_state.left = 1;
             mouse_state.x = event.tfinger.x * 320;
             mouse_state.y = event.tfinger.y * 200;
@@ -720,14 +720,14 @@ void handle_joy_event(const SDL_Event& event)
         {
             //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2] = 1;
             //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1] = 0;
-            key_press_event = 1;
+            og::runtime::current_session->key_press_event_ = 1;
             //raw_key = joy_startval[event.jaxis.which] + event.jaxis.axis * 2;
         }
         else if (event.jaxis.value < -8000)
         {
             //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2] = 0;
             //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1] = 1;
-            key_press_event = 1;
+            og::runtime::current_session->key_press_event_ = 1;
             //raw_key = joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1;
         }
         else
@@ -739,7 +739,7 @@ void handle_joy_event(const SDL_Event& event)
     case SDL_JOYBUTTONDOWN:
         //key_list[joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button] = 1;
         //raw_key = joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button;
-        key_press_event = 1;
+        og::runtime::current_session->key_press_event_ = 1;
         break;
     case SDL_JOYBUTTONUP:
         //key_list[joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button] = 0;
@@ -801,14 +801,14 @@ void handle_events(const SDL_Event& event)
         if(event.type == OuyaControllerManager::BUTTON_DOWN_EVENT)
         {
             if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::O)
-                input_continue = true;
+                og::runtime::current_session->input_continue_ = true;
             else if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::DpadUp)
-                scroll_amount = 5;
+                og::runtime::current_session->scroll_amount_ = 5;
             else if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::DpadDown)
-                scroll_amount = -5;
+                og::runtime::current_session->scroll_amount_ = -5;
             else if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::Menu)
                 sendFakeKeyDownEvent(SDLK_ESCAPE);
-            key_press_event = 1;
+            og::runtime::current_session->key_press_event_ = 1;
         }
         else if(event.type == OuyaControllerManager::AXIS_EVENT)
         {
@@ -817,7 +817,7 @@ void handle_events(const SDL_Event& event)
             // This should not be in an event or else it's jerky.
             float v = c.getAxisValue(OuyaController::AxisEnum::LsY) + c.getAxisValue(OuyaController::AxisEnum::RsY);
             if(fabs(v) > OuyaController::DEADZONE)
-                scroll_amount = -5*v;
+                og::runtime::current_session->scroll_amount_ = -5*v;
         }
     #endif
         break;
@@ -900,13 +900,13 @@ void assignKeyFromWaitEvent(int player_num, int key_enum)
 //
 void clear_keyboard()
 {
-    key_press_event = 0;
-    raw_key = 0;
+    og::runtime::current_session->key_press_event_ = 0;
+    og::runtime::current_session->raw_key_ = 0;
 
-    text_input_event = 0;
-    raw_text_input.clear();
+    og::runtime::current_session->text_input_event_ = 0;
+    og::runtime::current_session->raw_text_input_.clear();
     
-    input_continue = false;
+    og::runtime::current_session->input_continue_ = false;
     
     #ifdef USE_TOUCH_INPUT
     tapping = false;
@@ -921,11 +921,11 @@ void wait_for_key(int somekey)
     return;
 #else
     // First wait for key press ..
-    while (!keystates[SDL_GetScancodeFromKey(somekey)])
+    while (!og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(somekey)])
         get_input_events(WAIT);
 
     // And now for the key to be released ..
-    while (!keystates[SDL_GetScancodeFromKey(somekey)])
+    while (!og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(somekey)])
         get_input_events(WAIT);
 #endif
 }
@@ -1325,7 +1325,7 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     if(player_joy[player_index].hasButtonSet(key_enum))
         return player_joy[player_index].getState(key_enum);
     else
-        return keystates[SDL_GetScancodeFromKey(player_keys[player_index][key_enum])];
+        return og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(og::runtime::current_session->player_keys_[player_index][key_enum])];
     #endif
 }
 
@@ -1392,7 +1392,7 @@ bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
         {
             if(event.key.repeat) // Repeats don't count!
                 return false;
-            return (event.key.keysym.sym == player_keys[player_index][key_enum]);
+            return (event.key.keysym.sym == og::runtime::current_session->player_keys_[player_index][key_enum]);
         }
         return false;
     }
@@ -1445,7 +1445,7 @@ bool didPlayerReleaseKey(int player_index, int key_enum, const SDL_Event& event)
         // If the player is using KEYBOARD or doesn't have a joystick button set for this key, then check the keyboard.
         if(event.type == SDL_KEYUP)
         {
-            return (event.key.keysym.sym == player_keys[player_index][key_enum]);
+            return (event.key.keysym.sym == og::runtime::current_session->player_keys_[player_index][key_enum]);
         }
         return false;
     }

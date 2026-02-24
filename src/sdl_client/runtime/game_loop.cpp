@@ -74,7 +74,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     if (deps.enable_render) {
         s.redraw();
 
-        if (debug_draw_obmap)
+        if (og::runtime::current_session->debug_draw_obmap_)
             obmap_debug_draw(*s.level_data.myobmap, &s);  // debug drawing for object collision map
 
 #ifdef USE_TOUCH_INPUT
@@ -93,9 +93,9 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
             if (event.type == SDL_KEYDOWN)
             {
                 if (event.key.keysym.sym == SDLK_F11)
-                    debug_draw_paths = !debug_draw_paths;
+                    og::runtime::current_session->debug_draw_paths_ = !og::runtime::current_session->debug_draw_paths_;
                 else if (event.key.keysym.sym == SDLK_F12)
-                    debug_draw_obmap = !debug_draw_obmap;
+                    og::runtime::current_session->debug_draw_obmap_ = !og::runtime::current_session->debug_draw_obmap_;
                 else if (event.key.keysym.sym == SDLK_ESCAPE)
                 {
                     bool result = yes_or_no_prompt("Abort Mission", "Quit this mission?", false);
@@ -147,10 +147,10 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     // FPS cap — skipped when the caller manages timing externally
     // (e.g. multi-session demos that tick many sessions per display frame).
     if (deps.enable_frame_timing) {
-        if (g_game_speed_factor == 0.0f) {
+        if (og::runtime::current_session->g_game_speed_factor_ == 0.0f) {
             // Max speed: no delay
-        } else if (g_game_speed_factor != 1.0f) {
-            Sint32 adjusted_wait = static_cast<Sint32>(s.timer_wait / g_game_speed_factor);
+        } else if (og::runtime::current_session->g_game_speed_factor_ != 1.0f) {
+            Sint32 adjusted_wait = static_cast<Sint32>(s.timer_wait / og::runtime::current_session->g_game_speed_factor_);
             time_delay(adjusted_wait - query_timer());
         } else {
             time_delay(s.timer_wait - query_timer());

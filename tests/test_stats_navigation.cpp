@@ -15,7 +15,7 @@ static std::unique_ptr<walker> make_walker(char family)
 {
     guy g(family);
     g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w)
         w->setxy(100, 100);
     return w;
@@ -68,23 +68,23 @@ void test_stats_navigation_blocked_helpers_and_follow_fallback()
         }
         ~ScreenGuard()
         {
-            myscreen->numviews = old_numviews;
-            if (myscreen->viewob[0]) {
-                myscreen->viewob[0]->control = old_c0;
+            og::runtime::current_session->myscreen_->numviews = old_numviews;
+            if (og::runtime::current_session->myscreen_->viewob[0]) {
+                og::runtime::current_session->myscreen_->viewob[0]->control = old_c0;
                 if (old_c0)
                     old_c0->yo_delay = old_yo0;
             }
-            if (myscreen->viewob[1]) {
-                myscreen->viewob[1]->control = old_c1;
+            if (og::runtime::current_session->myscreen_->viewob[1]) {
+                og::runtime::current_session->myscreen_->viewob[1]->control = old_c1;
                 if (old_c1)
                     old_c1->yo_delay = old_yo1;
             }
         }
         ScreenGuard(const ScreenGuard&) = delete;
         ScreenGuard& operator=(const ScreenGuard&) = delete;
-    } guard(myscreen);
+    } guard(og::runtime::current_session->myscreen_);
 
-    if (!(myscreen->viewob[0]))
+    if (!(og::runtime::current_session->myscreen_->viewob[0]))
         return;
 
     // Always cover the numviews==1 branch deterministically.
@@ -93,8 +93,8 @@ void test_stats_navigation_blocked_helpers_and_follow_fallback()
     if (!view0_control)
         return;
     view0_control->setxy(200, 200);
-    myscreen->viewob[0]->control = view0_control.get();
-    myscreen->numviews = 1;
+    og::runtime::current_session->myscreen_->viewob[0]->control = view0_control.get();
+    og::runtime::current_session->myscreen_->numviews = 1;
 
     w->foe = nullptr;
     w->leader = nullptr;
@@ -102,18 +102,18 @@ void test_stats_navigation_blocked_helpers_and_follow_fallback()
     (void)w->stats()->do_command();
 
     // Accept either outcome; the code may clear leader when already too close.
-    TEST_ASSERT((w->leader == nullptr) || (w->leader == myscreen->viewob[0]->control),
+    TEST_ASSERT((w->leader == nullptr) || (w->leader == og::runtime::current_session->myscreen_->viewob[0]->control),
                 "single-view follow should be stable");
 
     // Optionally cover the 2-view branch where neither view has yo_delay.
-    if (myscreen->viewob[1]) {
+    if (og::runtime::current_session->myscreen_->viewob[1]) {
         auto view1_control = make_walker(FAMILY_SOLDIER);
         if (view1_control) {
             view1_control->setxy(300, 300);
-            myscreen->viewob[1]->control = view1_control.get();
-            myscreen->viewob[0]->control->yo_delay = 0;
-            myscreen->viewob[1]->control->yo_delay = 0;
-            myscreen->numviews = 2;
+            og::runtime::current_session->myscreen_->viewob[1]->control = view1_control.get();
+            og::runtime::current_session->myscreen_->viewob[0]->control->yo_delay = 0;
+            og::runtime::current_session->myscreen_->viewob[1]->control->yo_delay = 0;
+            og::runtime::current_session->myscreen_->numviews = 2;
 
             w->foe = nullptr;
             w->leader = nullptr;

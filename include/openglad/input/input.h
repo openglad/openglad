@@ -196,16 +196,8 @@ class JoyData
 // types that can't live in game_session.h without pulling in SDL.h).
 extern JoyData player_joy[4];
 
-// Input state: scalar globals moved into GameSession (Batch 3).
-// Macros dereference current_session so existing code is unchanged.
+// Input state: scalar globals live in GameSession — access via current_session->member_.
 #include <openglad/runtime/game_session.h>
-#define player_keys   (og::runtime::current_session->player_keys_)
-#define raw_key       (og::runtime::current_session->raw_key_)
-#define raw_text_input (og::runtime::current_session->raw_text_input_)
-#define key_press_event (og::runtime::current_session->key_press_event_)
-#define text_input_event (og::runtime::current_session->text_input_event_)
-#define scroll_amount (og::runtime::current_session->scroll_amount_)
-#define input_continue (og::runtime::current_session->input_continue_)
 
 // Inline trivial accessors for joystick/key/input state
 inline bool playerHasJoystick(int player_num) { return (player_joy[player_num].index >= 0); }
@@ -231,15 +223,15 @@ void handle_joy_event(const SDL_Event& event);
 void sendFakeKeyDownEvent(int keycode);
 void sendFakeKeyUpEvent(int keycode);
 
-inline int query_key() { return raw_key; }
+inline int query_key() { return og::runtime::current_session->raw_key_; }
 inline const char* query_text_input() {
-    if (raw_text_input.empty()) return nullptr;
-    return raw_text_input.c_str();
+    if (og::runtime::current_session->raw_text_input_.empty()) return nullptr;
+    return og::runtime::current_session->raw_text_input_.c_str();
 }
-inline bool query_input_continue() { return input_continue; }
+inline bool query_input_continue() { return og::runtime::current_session->input_continue_; }
 inline short get_and_reset_scroll_amount() {
-    short temp = scroll_amount;
-    scroll_amount = 0;
+    short temp = og::runtime::current_session->scroll_amount_;
+    og::runtime::current_session->scroll_amount_ = 0;
     return temp;
 }
 
@@ -283,14 +275,14 @@ inline bool query_key_event(int key, const SDL_Event& event) {
 inline bool isAnyPlayerKey(SDLKey key) {
     for (int player_num = 0; player_num < 4; player_num++)
         for (int i = 0; i < NUM_KEYS; i++)
-            if (player_keys[player_num][i] == key)
+            if (og::runtime::current_session->player_keys_[player_num][i] == key)
                 return true;
     return false;
 }
 
 inline bool isPlayerKey(int player_num, SDLKey key) {
     for (int i = 0; i < NUM_KEYS; i++)
-        if (player_keys[player_num][i] == key)
+        if (og::runtime::current_session->player_keys_[player_num][i] == key)
             return true;
     return false;
 }
@@ -309,10 +301,10 @@ void assignKeyFromWaitEvent(int player_num, int key_enum);
 
 void clear_keyboard();
 void wait_for_key(int somekey);
-inline short query_key_press_event() { return key_press_event; }
-inline void clear_key_press_event() { key_press_event = 0; }
-inline short query_text_input_event() { return text_input_event; }
-inline void clear_text_input_event() { text_input_event = 0; raw_text_input.clear(); }
+inline short query_key_press_event() { return og::runtime::current_session->key_press_event_; }
+inline void clear_key_press_event() { og::runtime::current_session->key_press_event_ = 0; }
+inline short query_text_input_event() { return og::runtime::current_session->text_input_event_; }
+inline void clear_text_input_event() { og::runtime::current_session->text_input_event_ = 0; og::runtime::current_session->raw_text_input_.clear(); }
 void init_input();
 
 void grab_mouse();
@@ -341,14 +333,6 @@ inline MouseState& query_mouse_no_poll() { return mouse_state; }
 
 unsigned char convert_to_ascii(int scancode);
 
-// keystates and viewport globals moved into GameSession (Batches 3-4).
-#define keystates          (og::runtime::current_session->keystates_)
-#define viewport_offset_x  (og::runtime::current_session->viewport_offset_x_)
-#define viewport_offset_y  (og::runtime::current_session->viewport_offset_y_)
-#define window_w            (og::runtime::current_session->window_w_)
-#define window_h            (og::runtime::current_session->window_h_)
-#define viewport_w          (og::runtime::current_session->viewport_w_)
-#define viewport_h          (og::runtime::current_session->viewport_h_)
-#define overscan_percentage (og::runtime::current_session->overscan_percentage_)
+// keystates and viewport globals live in GameSession — access via current_session->member_.
 
 void update_overscan_setting();

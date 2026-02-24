@@ -136,10 +136,10 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	}
 
 	// Have we already done this scenario?
-	if (myscreen->save_data.is_level_completed(myscreen->save_data.scen_num))
+	if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num))
 	{
 		//                Log("already done level\n");
-		for(auto& uptr : myscreen->level_data.oblist)
+		for(auto& uptr : og::runtime::current_session->myscreen_->level_data.oblist)
 		{
 		    walker* w = uptr.get();
 			if (w)

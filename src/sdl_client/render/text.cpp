@@ -285,7 +285,7 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
-	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, color);
+	og::runtime::current_session->myscreen_->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, color);
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
@@ -298,7 +298,7 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, short to_buffer)
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
-	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+	og::runtime::current_session->myscreen_->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
@@ -308,7 +308,7 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color)
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
-	myscreen->putdatatext(x, y, sizex, sizey, char_span, color);
+	og::runtime::current_session->myscreen_->putdatatext(x, y, sizex, sizey, char_span, color);
 	return 1;
 }
 
@@ -317,7 +317,7 @@ Sint32 text::write_char_xy_alpha(Sint32 x, Sint32 y, char letter, unsigned char 
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
-	myscreen->walkputbuffertext_alpha(x, y, sizex, sizey, 0, 0, 319,199, char_span, color, alpha);
+	og::runtime::current_session->myscreen_->walkputbuffertext_alpha(x, y, sizex, sizey, 0, 0, 319,199, char_span, color, alpha);
 	return 1;
 }
 
@@ -326,7 +326,7 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter)
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
-	myscreen->putdatatext(x, y, sizex, sizey, char_span);
+	og::runtime::current_session->myscreen_->putdatatext(x, y, sizex, sizey, char_span);
 	return 1;
 }
 
@@ -337,9 +337,9 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 	if (char_span.empty())
 		return 0;
 	if (!whereto)
-		myscreen->putdatatext(x, y, sizex, sizey, char_span, color);
+		og::runtime::current_session->myscreen_->putdatatext(x, y, sizex, sizey, char_span, color);
 	else
-				myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
+				og::runtime::current_session->myscreen_->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 				                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
 				                       char_span, color);
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
@@ -353,9 +353,9 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, viewscreen *whereto)
 	if (char_span.empty())
 		return 0;
 	if (!whereto)
-		myscreen->putdatatext(x, y, sizex, sizey, char_span);
+		og::runtime::current_session->myscreen_->putdatatext(x, y, sizex, sizey, char_span);
 	else
-				myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
+				og::runtime::current_session->myscreen_->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 			                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
 			                       char_span, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
@@ -400,11 +400,11 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
 	}
 	snprintf(firststring, sizeof(firststring), "%s", begin ? begin : ""); // default case
 	current_length = static_cast<short>(strlen(editstring));
-	myscreen->draw_box(x, y, x+maxlength*(sizex+1), y+sizey, backcolor, 1, 1);
+	og::runtime::current_session->myscreen_->draw_box(x, y, x+maxlength*(sizex+1), y+sizey, backcolor, 1, 1);
 	if (begin && begin[0] != '\0')
-		myscreen->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
+		og::runtime::current_session->myscreen_->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
 	write_xy(x, y, editstring, WHITE, 1);
-	myscreen->buffer_to_screen(0, 0, 320, 200);
+	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 
 	clear_keyboard();
 	clear_key_press_event();
@@ -443,7 +443,7 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
                     current_length = 0;
                     for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
                         editstring[i] = 0; // clear the string ...
-                    myscreen->draw_button(x, y, x+maxlength*(sizex+1),
+                    og::runtime::current_session->myscreen_->draw_button(x, y, x+maxlength*(sizex+1),
                                       y+sizey+1, 1);
                 }
                 else
@@ -469,7 +469,7 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
                 current_length = 0;
                 for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
                     editstring[i] = 0; // clear the string ...
-                myscreen->draw_button(x, y, x+maxlength*(sizex+1),
+                og::runtime::current_session->myscreen_->draw_button(x, y, x+maxlength*(sizex+1),
                                   y+sizey+1, 1);
             }
             
@@ -497,15 +497,15 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
             current_length = static_cast<short>(strlen(editstring));
         }
 
-		myscreen->draw_box(x, y, x+maxlength*(sizex+1), y+sizey+1, backcolor, 1, 1);
+		og::runtime::current_session->myscreen_->draw_box(x, y, x+maxlength*(sizex+1), y+sizey+1, backcolor, 1, 1);
         if(!has_typed && strlen(editstring) > 0)
         {
-            myscreen->draw_box(x, y, x+query_width(editstring), y+sizey-2, forecolor, 1, 1);
+            og::runtime::current_session->myscreen_->draw_box(x, y, x+query_width(editstring), y+sizey-2, forecolor, 1, 1);
             write_xy(x, y, editstring, WHITE, 1);
         }
 		else
             write_xy(x, y, editstring, forecolor, 1);
-		myscreen->buffer_to_screen(0, 0, 320, 200);
+		og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 	}
 
     SDL_StopTextInput();
@@ -566,13 +566,13 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	}
 	snprintf(firststring, sizeof(firststring), "%s", begin ? begin : ""); // default case
 	current_length = static_cast<short>(strlen(editstring));
-	myscreen->draw_box(x, y, x + maxlength*(sizex+1), y + sizey, backcolor, 1, 1);
-	myscreen->draw_button(x, y, x + maxlength*(sizex+1), y + sizey, 1);
+	og::runtime::current_session->myscreen_->draw_box(x, y, x + maxlength*(sizex+1), y + sizey, backcolor, 1, 1);
+	og::runtime::current_session->myscreen_->draw_button(x, y, x + maxlength*(sizex+1), y + sizey, 1);
 	if (begin && begin[0] != '\0')
-		myscreen->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
+		og::runtime::current_session->myscreen_->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
 	write_xy(x, y - 10, message, DARK_GREEN, 1);
 	write_xy(x, y, editstring, WHITE, 1);
-	myscreen->buffer_to_screen(0, 0, 320, 200);
+	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 
 	clear_keyboard();
 	clear_key_press_event();
@@ -611,7 +611,7 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
                     current_length = 0;
                     for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
                         editstring[i] = 0; // clear the string ...
-                    myscreen->draw_button(x, y, x+maxlength*(sizex+1),
+                    og::runtime::current_session->myscreen_->draw_button(x, y, x+maxlength*(sizex+1),
                                       y+sizey+1, 1);
                 }
                 else
@@ -637,7 +637,7 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
                 current_length = 0;
                 for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
                     editstring[i] = 0; // clear the string ...
-                myscreen->draw_button(x, y, x+maxlength*(sizex+1),
+                og::runtime::current_session->myscreen_->draw_button(x, y, x+maxlength*(sizex+1),
                                   y+sizey+1, 1);
             }
             
@@ -665,16 +665,16 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
             current_length = static_cast<short>(strlen(editstring));
         }
 		
-		myscreen->draw_button(x, y, x+maxlength*(sizex+1), y+sizey+1, 1);
+		og::runtime::current_session->myscreen_->draw_button(x, y, x+maxlength*(sizex+1), y+sizey+1, 1);
         write_xy(x, y - 10, message, DARK_GREEN, 1);
         if(!has_typed && strlen(editstring) > 0)
         {
-            myscreen->draw_box(x, y, x+query_width(editstring), y+sizey-2, forecolor, 1, 1);
+            og::runtime::current_session->myscreen_->draw_box(x, y, x+query_width(editstring), y+sizey-2, forecolor, 1, 1);
             write_xy(x, y, editstring, WHITE, 1);
         }
 		else
             write_xy(x, y, editstring, forecolor, 1);
-		myscreen->buffer_to_screen(0, 0, 320, 200);
+		og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 	}
 
     SDL_StopTextInput();

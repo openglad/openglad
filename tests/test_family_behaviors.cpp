@@ -26,7 +26,7 @@
 
 static std::unique_ptr<walker> make_living(char family)
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
     if (!l) return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
     if (!w) return nullptr;
@@ -297,7 +297,7 @@ static std::unique_ptr<walker> make_guy_for_death(char family, short level = 3)
     guy g(family);
     g.teamnum = 1; // non-player team (avoids endgame check)
     g.upgrade_to_level(level, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w) w->setxy(100, 100);
     return w;
 }
@@ -346,7 +346,7 @@ REGISTER_TEST(test_on_death_fire_elemental_explodes);
 // Slime death: should shrink to medium slime
 void test_on_death_slime_shrinks()
 {
-    auto w = myscreen->level_data.myloader->create_walker_owned(
+    auto w = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(
         Order::Living, FAMILY_SLIME);
     TEST_ASSERT(w != nullptr, "should create slime");
     w->setxy(100, 100);
@@ -359,7 +359,7 @@ REGISTER_TEST(test_on_death_slime_shrinks);
 // Medium slime death: should shrink to small slime
 void test_on_death_medium_slime_shrinks()
 {
-    auto w = myscreen->level_data.myloader->create_walker_owned(
+    auto w = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(
         Order::Living, FAMILY_MEDIUM_SLIME);
     TEST_ASSERT(w != nullptr, "should create medium slime");
     w->setxy(100, 100);
@@ -398,7 +398,7 @@ REGISTER_TEST(test_on_death_skeleton_no_bloodspot);
 // Helper: create a living walker via loader, add to oblist, return raw ptr
 static walker* add_living_to_level(int family, int team, short x, short y)
 {
-    walker* ob = myscreen->level_data.add_ob(Order::Living, static_cast<Sint32>(family));
+    walker* ob = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, static_cast<Sint32>(family));
     if (!ob) return nullptr;
     ob->team_num = static_cast<unsigned char>(team);
     ob->setxy(x, y);
@@ -421,7 +421,7 @@ private:
 // Soldier: foe within 20-75 → true; outside → false
 void test_check_special_soldier_range()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(soldier != nullptr, "soldier created");
     // Enemy at distance 50 (within 20-75)
@@ -448,7 +448,7 @@ REGISTER_TEST(test_check_special_soldier_range);
 // Archer/FireElemental/Ghost/Orc: foe within 130 → true
 void test_check_special_ranged_families()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     int families[] = {FAMILY_ARCHER, FAMILY_FIREELEMENTAL, FAMILY_GHOST, FAMILY_ORC};
     for (int fam : families)
     {
@@ -475,7 +475,7 @@ REGISTER_TEST(test_check_special_ranged_families);
 // Mage: 0 foes → true (teleport away), 2 foes → false (fight), 4+ foes → true (flee)
 void test_check_special_mage_foe_count()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
     TEST_ASSERT(mage != nullptr, "mage created");
     mage->stats()->magicpoints = 1000;
@@ -503,7 +503,7 @@ REGISTER_TEST(test_check_special_mage_foe_count);
 // Skeleton: no foes within 5*GRID_SIZE → true (tunnel), foes nearby → false
 void test_check_special_skeleton_tunnel()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* skel = add_living_to_level(FAMILY_SKELETON, 0, 100, 100);
     TEST_ASSERT(skel != nullptr, "skeleton created");
     skel->stats()->magicpoints = 1000;
@@ -523,7 +523,7 @@ REGISTER_TEST(test_check_special_skeleton_tunnel);
 // Default families (druid, barbarian, etc.) always return true
 void test_check_special_default_families()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     int families[] = {FAMILY_DRUID, FAMILY_BARBARIAN, FAMILY_FAERIE,
                       FAMILY_BIG_ORC, FAMILY_GOLEM};
     for (int fam : families)
@@ -541,7 +541,7 @@ REGISTER_TEST(test_check_special_default_families);
 // Slime: should return true when numobs < MAXOBS
 void test_check_special_slime_capacity()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* slime = add_living_to_level(FAMILY_SLIME, 0, 100, 100);
     TEST_ASSERT(slime != nullptr, "slime created");
     slime->stats()->magicpoints = 1000;
@@ -556,7 +556,7 @@ REGISTER_TEST(test_check_special_slime_capacity);
 // check_special: if insufficient MP, current_special resets to 1
 void test_check_special_insufficient_mp()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(soldier != nullptr, "soldier created");
     walker* enemy = add_living_to_level(FAMILY_ORC, 1, 140, 100);
@@ -579,7 +579,7 @@ REGISTER_TEST(test_check_special_insufficient_mp);
 // hit_response: default families acquire attacker as foe
 void test_hit_response_acquires_foe()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* defender = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(defender != nullptr, "defender created");
     defender->set_act_type(0); // not ACT_CONTROL (player)
@@ -597,7 +597,7 @@ REGISTER_TEST(test_hit_response_acquires_foe);
 // hit_response: archer runs when too close (distance < 64)
 void test_hit_response_archer_flees()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* archer = add_living_to_level(FAMILY_ARCHER, 0, 100, 100);
     TEST_ASSERT(archer != nullptr, "archer created");
     archer->set_act_type(0); // AI-controlled
@@ -616,7 +616,7 @@ REGISTER_TEST(test_hit_response_archer_flees);
 // hit_response: player-controlled walkers are skipped (ACT_CONTROL)
 void test_hit_response_skip_player_control()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* player = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(player != nullptr, "player created");
     player->set_act_type(ACT_CONTROL); // player-controlled
@@ -635,7 +635,7 @@ REGISTER_TEST(test_hit_response_skip_player_control);
 // hit_response: mage at full HP does NOT teleport
 void test_hit_response_mage_full_hp_no_teleport()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
     TEST_ASSERT(mage != nullptr, "mage created");
     mage->set_act_type(0);
@@ -655,7 +655,7 @@ REGISTER_TEST(test_hit_response_mage_full_hp_no_teleport);
 // hit_response: weapon owner is traced to get real foe
 void test_hit_response_weapon_owner_resolved()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* defender = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(defender != nullptr, "defender created");
     defender->set_act_type(0);
@@ -663,7 +663,7 @@ void test_hit_response_weapon_owner_resolved()
     TEST_ASSERT(shooter != nullptr, "shooter created");
 
     // Create a weapon and set its owner
-    walker* arrow = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* arrow = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(arrow != nullptr, "arrow created");
     arrow->owner = shooter;
     arrow->team_num = 1;
@@ -686,7 +686,7 @@ REGISTER_TEST(test_hit_response_weapon_owner_resolved);
 // Guard: dead walkers cannot use special
 void test_special_dead_walker_returns_false()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* w = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(w != nullptr, "soldier created");
     w->stats()->magicpoints = 1000;
@@ -700,7 +700,7 @@ REGISTER_TEST(test_special_dead_walker_returns_false);
 // Guard: insufficient MP should return false without deducting mana
 void test_special_insufficient_mp_returns_false()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* w = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(w != nullptr, "soldier created");
     w->current_special = 1;
@@ -715,7 +715,7 @@ REGISTER_TEST(test_special_insufficient_mp_returns_false);
 // Skeleton: tunnel sets ani_type to ANI_TELE_OUT
 void test_special_skeleton_tunnel()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* skel = add_living_to_level(FAMILY_SKELETON, 0, 100, 100);
     TEST_ASSERT(skel != nullptr, "skeleton created");
     skel->stats()->magicpoints = 1000;
@@ -742,7 +742,7 @@ REGISTER_TEST(test_special_skeleton_tunnel);
 // Ghost: scare spawns a ghost_scare FX
 void test_special_ghost_scare()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* ghost = add_living_to_level(FAMILY_GHOST, 0, 100, 100);
     TEST_ASSERT(ghost != nullptr, "ghost created");
     ghost->stats()->magicpoints = 1000;
@@ -761,7 +761,7 @@ REGISTER_TEST(test_special_ghost_scare);
 // Slime: split sets ani_type to ANI_SLIME_SPLIT
 void test_special_slime_split()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* slime = add_living_to_level(FAMILY_SLIME, 0, 100, 100);
     TEST_ASSERT(slime != nullptr, "slime created");
     slime->stats()->magicpoints = 1000;
@@ -777,7 +777,7 @@ REGISTER_TEST(test_special_slime_split);
 // Fire elemental: starburst fires in 8 directions (deducts mana)
 void test_special_fire_elemental_starburst()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* fe = add_living_to_level(FAMILY_FIREELEMENTAL, 0, 100, 100);
     TEST_ASSERT(fe != nullptr, "fire elemental created");
     fe->stats()->magicpoints = 1000;
@@ -795,7 +795,7 @@ REGISTER_TEST(test_special_fire_elemental_starburst);
 // Elf: special 1 fires 2 rocks (deducts mana)
 void test_special_elf_rocks()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* elf = add_living_to_level(FAMILY_ELF, 0, 100, 100);
     TEST_ASSERT(elf != nullptr, "elf created");
     elf->stats()->magicpoints = 1000;
@@ -813,7 +813,7 @@ REGISTER_TEST(test_special_elf_rocks);
 // Soldier charge: deducts mana
 void test_special_soldier_charge()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(soldier != nullptr, "soldier created");
     soldier->stats()->magicpoints = 1000;
@@ -833,7 +833,7 @@ REGISTER_TEST(test_special_soldier_charge);
 // Mage teleport: sets ani_type to ANI_TELE_OUT
 void test_special_mage_teleport()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
     TEST_ASSERT(mage != nullptr, "mage created");
     mage->stats()->magicpoints = 1000;
@@ -850,7 +850,7 @@ REGISTER_TEST(test_special_mage_teleport);
 // Thief bomb: spawns bomb FX (deducts mana)
 void test_special_thief_bomb()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     TEST_ASSERT(thief != nullptr, "thief created");
     thief->stats()->magicpoints = 1000;
@@ -868,7 +868,7 @@ REGISTER_TEST(test_special_thief_bomb);
 // Thief cloak: increases invisibility_left
 void test_special_thief_cloak()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     TEST_ASSERT(thief != nullptr, "thief created");
     thief->stats()->magicpoints = 1000;
@@ -885,7 +885,7 @@ REGISTER_TEST(test_special_thief_cloak);
 // Orc howl: sets busy and deducts mana
 void test_special_orc_howl()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
     TEST_ASSERT(orc != nullptr, "orc created");
     orc->stats()->magicpoints = 1000;
@@ -901,7 +901,7 @@ REGISTER_TEST(test_special_orc_howl);
 // Druid reveal: increments view_all
 void test_special_druid_reveal()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
     TEST_ASSERT(druid != nullptr, "druid created");
     druid->stats()->magicpoints = 1000;
@@ -1007,7 +1007,7 @@ REGISTER_TEST(test_fire_elemental_summoned_drain);
 // --- on_shoved: cleric casts heal when shoved ---
 void test_cleric_heals_when_shoved()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(soldier != nullptr, "soldier created");
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 130, 100);
@@ -1026,7 +1026,7 @@ REGISTER_TEST(test_cleric_heals_when_shoved);
 // Non-cleric should NOT cast heal when shoved
 void test_non_cleric_no_heal_when_shoved()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(soldier != nullptr, "soldier created");
     walker* archer = add_living_to_level(FAMILY_ARCHER, 0, 130, 100);
@@ -1045,7 +1045,7 @@ REGISTER_TEST(test_non_cleric_no_heal_when_shoved);
 // --- on_fire_weapon: soldier weapons_left ---
 void test_soldier_weapons_left_limits_fire()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(soldier != nullptr, "soldier created");
     static_cast<living*>(soldier)->weapons_left = 1;
@@ -1066,7 +1066,7 @@ REGISTER_TEST(test_soldier_weapons_left_limits_fire);
 // --- on_fire_weapon: archmage weapon damage boost ---
 void test_archmage_weapon_damage_boost()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* arch = add_living_to_level(FAMILY_ARCHMAGE, 0, 100, 100);
     TEST_ASSERT(arch != nullptr, "archmage created");
     arch->stats()->magicpoints = 1000;
@@ -1111,7 +1111,7 @@ REGISTER_TEST(test_archmage_on_act_low_level_periodic_gate);
 
 void test_archmage_handle_teleport_and_special_guards()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* arch = add_living_to_level(FAMILY_ARCHMAGE, 0, 100, 100);
     TEST_ASSERT(arch != nullptr, "archmage created");
     const auto* fd = get_family_descriptor(FAMILY_ARCHMAGE);
@@ -1149,7 +1149,7 @@ REGISTER_TEST(test_archmage_handle_teleport_and_special_guards);
 
 void test_archmage_special_case2_case3_case4_guard_branches()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* arch = add_living_to_level(FAMILY_ARCHMAGE, 0, 100, 100);
     TEST_ASSERT(arch != nullptr, "archmage created");
     const auto* fd = get_family_descriptor(FAMILY_ARCHMAGE);
@@ -1192,7 +1192,7 @@ REGISTER_TEST(test_archmage_special_case2_case3_case4_guard_branches);
 
 void test_archmage_hit_response_threshold_and_retarget_branches()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* arch = add_living_to_level(FAMILY_ARCHMAGE, 0, 100, 100);
     walker* foe = add_living_to_level(FAMILY_ORC, 1, 132, 100);
     TEST_ASSERT(arch != nullptr && foe != nullptr, "archmage and foe should be created");
@@ -1233,7 +1233,7 @@ REGISTER_TEST(test_archmage_hit_response_threshold_and_retarget_branches);
 
 void test_cleric_check_special_ai_branch_paths()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     TEST_ASSERT(cleric != nullptr, "cleric created");
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
@@ -1260,7 +1260,7 @@ void test_cleric_check_special_ai_branch_paths()
     TEST_ASSERT(fd->check_special_ai(lv), "heal special should return true when multiple allies nearby");
     TEST_ASSERT_EQ(0, (int)lv->shifter_down, "heal mode should clear shifter_down");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_cleric_check_special_ai_branch_paths);
 
@@ -1299,7 +1299,7 @@ void test_soldier_weapons_left_on_create()
     guy g(FAMILY_SOLDIER);
     g.teamnum = 0;
     g.upgrade_to_level(5, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     TEST_ASSERT(w != nullptr, "create soldier walker");
     TEST_ASSERT_EQ(3, (int)static_cast<living*>(w.get())->weapons_left,
                    "soldier weapons_left should be (level+1)/2 = 3 at level 5");
@@ -1308,7 +1308,7 @@ REGISTER_TEST(test_soldier_weapons_left_on_create);
 
 static walker* add_stain_to_fxlist(int team, short x, short y)
 {
-    walker* ob = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* ob = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
     if (!ob) return nullptr;
     ob->ignore = 1;
     ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
@@ -1319,7 +1319,7 @@ static walker* add_stain_to_fxlist(int team, short x, short y)
 
 void test_cleric_check_special_ai_direct_branches()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     TEST_ASSERT(cleric != nullptr, "cleric created");
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
@@ -1337,8 +1337,8 @@ void test_cleric_check_special_ai_direct_branches()
     TEST_ASSERT(ok, "special=1 with an ally nearby should pass");
     TEST_ASSERT_EQ(0, (int)cleric->shifter_down, "heal mode should set shifter_down=0");
 
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     TEST_ASSERT(cleric != nullptr, "cleric recreated");
     cleric->current_special = 1;
@@ -1356,7 +1356,7 @@ REGISTER_TEST(test_cleric_check_special_ai_direct_branches);
 
 void test_cleric_heal_special_success_and_noheal_branch()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     cfg.apply_setting("effects", "heal_numbers", "on");
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 110, 100);
@@ -1386,7 +1386,7 @@ REGISTER_TEST(test_cleric_heal_special_success_and_noheal_branch);
 
 void test_cleric_mystic_mace_gates()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     TEST_ASSERT(cleric != nullptr, "cleric created");
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
@@ -1410,7 +1410,7 @@ REGISTER_TEST(test_cleric_mystic_mace_gates);
 
 void test_cleric_turn_undead_branches()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     TEST_ASSERT(cleric != nullptr, "cleric created");
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
@@ -1438,7 +1438,7 @@ REGISTER_TEST(test_cleric_turn_undead_branches);
 
 void test_cleric_mystic_mace_success_path_direct()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     TEST_ASSERT(cleric != nullptr, "cleric created");
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
@@ -1461,7 +1461,7 @@ void test_cleric_mystic_mace_success_path_direct()
     TEST_ASSERT(cleric->busy > 0, "mystic mace success should add busy delay");
 
     bool found_shield = false;
-    for (auto& uptr : myscreen->level_data.oblist)
+    for (auto& uptr : og::runtime::current_session->myscreen_->level_data.oblist)
     {
         walker* w = uptr.get();
         if (w && w->query_order() == Order::FX && w->family == FAMILY_MAGIC_SHIELD &&
@@ -1471,7 +1471,7 @@ void test_cleric_mystic_mace_success_path_direct()
             break;
         }
     }
-    for (auto& uptr : myscreen->level_data.fxlist)
+    for (auto& uptr : og::runtime::current_session->myscreen_->level_data.fxlist)
     {
         walker* w = uptr.get();
         if (w && w->family == FAMILY_MAGIC_SHIELD && w->owner == cleric)
@@ -1486,7 +1486,7 @@ REGISTER_TEST(test_cleric_mystic_mace_success_path_direct);
 
 void test_cleric_turn_undead_success_with_undead_targets()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     walker* skeleton = add_living_to_level(FAMILY_SKELETON, 2, 108, 100);
     TEST_ASSERT(cleric != nullptr && skeleton != nullptr, "cleric and skeleton created");
@@ -1513,7 +1513,7 @@ REGISTER_TEST(test_cleric_turn_undead_success_with_undead_targets);
 
 void test_cleric_turn_undead_special2_and_3_shifter_notification_paths()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
     TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
     if (!(fd && fd->do_special))
@@ -1545,8 +1545,8 @@ void test_cleric_turn_undead_special2_and_3_shifter_notification_paths()
                 "turn undead special2 should run exp/notification block when generic is positive");
 
     // Special 3 / shifter_down path with myguy should also pass generic>0 branch.
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     walker* skeleton2 = add_living_to_level(FAMILY_SKELETON, 2, 108, 100);
     TEST_ASSERT(cleric && skeleton2, "cleric+skeleton recreated");
@@ -1575,7 +1575,7 @@ REGISTER_TEST(test_cleric_turn_undead_special2_and_3_shifter_notification_paths)
 
 void test_cleric_resurrect_penalty_underflow_clamps_to_zero()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     TEST_ASSERT(cleric != nullptr, "cleric created");
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
@@ -1602,7 +1602,7 @@ REGISTER_TEST(test_cleric_resurrect_penalty_underflow_clamps_to_zero);
 
 void test_cleric_raise_skeleton_and_ghost_from_blood()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     TEST_ASSERT(cleric != nullptr, "cleric created");
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
@@ -1618,7 +1618,7 @@ void test_cleric_raise_skeleton_and_ghost_from_blood()
     TEST_ASSERT(blood->dead, "blood should be consumed by raise skeleton");
 
     bool found_skeleton = false;
-    for (auto& uptr : myscreen->level_data.oblist)
+    for (auto& uptr : og::runtime::current_session->myscreen_->level_data.oblist)
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
@@ -1639,7 +1639,7 @@ void test_cleric_raise_skeleton_and_ghost_from_blood()
     TEST_ASSERT(blood->dead, "blood should be consumed by raise ghost");
 
     bool found_ghost = false;
-    for (auto& uptr : myscreen->level_data.oblist)
+    for (auto& uptr : og::runtime::current_session->myscreen_->level_data.oblist)
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
@@ -1655,7 +1655,7 @@ REGISTER_TEST(test_cleric_raise_skeleton_and_ghost_from_blood);
 
 void test_cleric_resurrect_friendly_and_enemy_blood()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     TEST_ASSERT(cleric != nullptr, "cleric created");
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
@@ -1670,7 +1670,7 @@ void test_cleric_resurrect_friendly_and_enemy_blood()
     TEST_ASSERT(blood_friend->dead, "friendly blood should be consumed");
 
     bool found_resurrected_friend = false;
-    for (auto& uptr : myscreen->level_data.oblist)
+    for (auto& uptr : og::runtime::current_session->myscreen_->level_data.oblist)
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
@@ -1690,7 +1690,7 @@ void test_cleric_resurrect_friendly_and_enemy_blood()
     TEST_ASSERT(blood_enemy->dead, "enemy blood should be consumed");
 
     bool found_enemy_ghost = false;
-    for (auto& uptr : myscreen->level_data.oblist)
+    for (auto& uptr : og::runtime::current_session->myscreen_->level_data.oblist)
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
@@ -1707,7 +1707,7 @@ REGISTER_TEST(test_cleric_resurrect_friendly_and_enemy_blood);
 
 void test_thief_batch3_check_special_ai_matrix()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     TEST_ASSERT(thief != nullptr, "thief created");
     const auto* fd = get_family_descriptor(FAMILY_THIEF);
@@ -1727,8 +1727,8 @@ void test_thief_batch3_check_special_ai_matrix()
     TEST_ASSERT(fd->check_special_ai(static_cast<living*>(thief)), "drop bomb AI should pass when foe is close");
 
     // special 1 without foe needs >=3 nearby foes.
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     TEST_ASSERT(thief != nullptr, "thief recreated for foe-count branch");
     thief->current_special = 1;
@@ -1742,8 +1742,8 @@ void test_thief_batch3_check_special_ai_matrix()
     TEST_ASSERT(fd->check_special_ai(static_cast<living*>(thief)), "drop bomb AI should pass with 3+ foes");
 
     // special 3 uses two different ranges depending on shifter_down.
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     TEST_ASSERT(thief != nullptr, "thief recreated");
     thief->current_special = 3;
@@ -1767,7 +1767,7 @@ REGISTER_TEST(test_thief_batch3_check_special_ai_matrix);
 
 void test_thief_batch3_special_taunt_charm_and_poison_paths()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     TEST_ASSERT(thief != nullptr, "thief created");
     const auto* fd = get_family_descriptor(FAMILY_THIEF);
@@ -1798,8 +1798,8 @@ void test_thief_batch3_special_taunt_charm_and_poison_paths()
 
     // charm no-foe guard.
     thief->busy = 0;
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     TEST_ASSERT(thief != nullptr, "thief recreated");
     thief->stats()->magicpoints = 1000;
@@ -1829,7 +1829,7 @@ REGISTER_TEST(test_thief_batch3_special_taunt_charm_and_poison_paths);
 
 void test_druid_batch3_special_branches()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
     TEST_ASSERT(druid != nullptr, "druid created");
     const auto* fd = get_family_descriptor(FAMILY_DRUID);
@@ -1869,7 +1869,7 @@ void test_druid_batch3_special_branches()
     TEST_ASSERT(fd->do_special(druid), "protection should succeed with ally in range");
 
     walker* existing_circle = nullptr;
-    for (auto& uptr : myscreen->level_data.weaplist)
+    for (auto& uptr : og::runtime::current_session->myscreen_->level_data.weaplist)
     {
         walker* w = uptr.get();
         if (w && w->family == FAMILY_CIRCLE_PROTECTION)
@@ -1888,7 +1888,7 @@ REGISTER_TEST(test_druid_batch3_special_branches);
 
 void test_orc_batch3_special_and_ai_branches()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
     TEST_ASSERT(orc != nullptr, "orc created");
     const auto* fd = get_family_descriptor(FAMILY_ORC);
@@ -1930,8 +1930,8 @@ void test_orc_batch3_special_and_ai_branches()
     far_blood->stats()->level = 3;
     TEST_ASSERT(!fd->do_special(orc), "eat corpse should fail when blood is too far");
 
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
     TEST_ASSERT(orc != nullptr, "orc recreated");
     orc->current_special = 2;
@@ -1955,8 +1955,8 @@ void test_orc_batch3_special_and_ai_branches()
 
     // check_special_ai with no foe should query nearest foe.
     orc->foe = nullptr;
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
     TEST_ASSERT(orc != nullptr, "orc recreated for nearest-foe branch");
     TEST_ASSERT(!fd->check_special_ai(static_cast<living*>(orc)), "orc AI should fail when no nearby foe exists");
@@ -1968,7 +1968,7 @@ REGISTER_TEST(test_orc_batch3_special_and_ai_branches);
 
 void test_soldier_batch3_special_ai_and_fire_callback_paths()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(soldier != nullptr, "soldier created");
     const auto* fd = get_family_descriptor(FAMILY_SOLDIER);
@@ -2017,8 +2017,8 @@ void test_soldier_batch3_special_ai_and_fire_callback_paths()
     foe->setxy(200, 100);
     TEST_ASSERT(!fd->check_special_ai(static_cast<living*>(soldier)), "soldier AI should fail when foe too far");
     soldier->foe = nullptr;
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
     TEST_ASSERT(soldier != nullptr, "soldier recreated for nearest-foe branch");
     TEST_ASSERT(!fd->check_special_ai(static_cast<living*>(soldier)), "soldier AI should fail without nearby foe");
@@ -2027,7 +2027,7 @@ void test_soldier_batch3_special_ai_and_fire_callback_paths()
     TEST_ASSERT(fd->check_special_ai(static_cast<living*>(soldier)), "soldier AI should pass after finding nearby foe");
 
     // on_fire_weapon callback: no weapons left path and decrement path.
-    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     static_cast<living*>(soldier)->weapons_left = 0;
     float mp_before = soldier->stats()->magicpoints;
@@ -2035,7 +2035,7 @@ void test_soldier_batch3_special_ai_and_fire_callback_paths()
     TEST_ASSERT(weapon->dead, "weapon should be marked dead when out of throws");
     TEST_ASSERT(soldier->stats()->magicpoints > mp_before, "failed throw should refund weapon cost");
 
-    weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+    weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(weapon != nullptr, "second weapon created");
     static_cast<living*>(soldier)->weapons_left = 2;
     TEST_ASSERT(fd->on_fire_weapon(soldier, weapon), "on_fire_weapon should succeed when throws remain");
@@ -2045,8 +2045,8 @@ REGISTER_TEST(test_soldier_batch3_special_ai_and_fire_callback_paths);
 
 void test_family_batch4_druid_refresh_oblist_and_failure_branches()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     const auto* fd = get_family_descriptor(FAMILY_DRUID);
     TEST_ASSERT(fd && fd->do_special, "druid callback present");
     if (!(fd && fd->do_special))
@@ -2079,7 +2079,7 @@ void test_family_batch4_druid_refresh_oblist_and_failure_branches()
     druid->setxy(100, 100);
 
     // Protection refresh branch requires existing circle in oblist.
-    walker* existing = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    walker* existing = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
     TEST_ASSERT(existing != nullptr, "existing protection object created");
     if (existing) {
         existing->owner = ally1;
@@ -2095,8 +2095,8 @@ REGISTER_TEST(test_family_batch4_druid_refresh_oblist_and_failure_branches);
 
 void test_family_batch4_soldier_orc_thief_edge_callbacks()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     const auto* sold_fd = get_family_descriptor(FAMILY_SOLDIER);
     const auto* orc_fd = get_family_descriptor(FAMILY_ORC);
@@ -2163,8 +2163,8 @@ REGISTER_TEST(test_family_batch4_soldier_orc_thief_edge_callbacks);
 
 void test_family_batch5_cleric_on_shoved_and_elf_fire_fail_paths()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     const auto* cleric_fd = get_family_descriptor(FAMILY_CLERIC);
     const auto* elf_fd = get_family_descriptor(FAMILY_ELF);
@@ -2204,8 +2204,8 @@ REGISTER_TEST(test_family_batch5_cleric_on_shoved_and_elf_fire_fail_paths);
 
 void test_druid_batch5_fire_fail_and_existing_protection_refresh_branch()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     const auto* fd = get_family_descriptor(FAMILY_DRUID);
     TEST_ASSERT(fd && fd->do_special, "druid callback present");
@@ -2236,7 +2236,7 @@ REGISTER_TEST(test_druid_batch5_fire_fail_and_existing_protection_refresh_branch
 
 void test_mage_batch3_special_and_promotion_branches()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* mage = add_living_to_level(FAMILY_MAGE, 1, 100, 100);
     TEST_ASSERT(mage != nullptr, "mage created");
     const auto* fd = get_family_descriptor(FAMILY_MAGE);
@@ -2282,8 +2282,8 @@ void test_mage_batch3_special_and_promotion_branches()
 
     // Heartburst guard: no foes in range.
     mage->current_special = 5;
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     mage = add_living_to_level(FAMILY_MAGE, 1, 100, 100);
     TEST_ASSERT(mage != nullptr, "mage recreated for heartburst guard");
     mage->stats()->magicpoints = 500;
@@ -2295,8 +2295,8 @@ REGISTER_TEST(test_mage_batch3_special_and_promotion_branches);
 
 void test_family_batch6_soldier_orc_mage_callback_edge_branches()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     const auto* soldier_fd = get_family_descriptor(FAMILY_SOLDIER);
     const auto* orc_fd = get_family_descriptor(FAMILY_ORC);
@@ -2348,8 +2348,8 @@ REGISTER_TEST(test_family_batch6_soldier_orc_mage_callback_edge_branches);
 
 void test_cleric_raise_and_resurrect_distance_and_busy_guards()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
     TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
     if (!(fd && fd->do_special))
@@ -2395,8 +2395,8 @@ REGISTER_TEST(test_cleric_raise_and_resurrect_distance_and_busy_guards);
 
 void test_druid_special_busy_and_friend_count_guards()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     const auto* fd = get_family_descriptor(FAMILY_DRUID);
     TEST_ASSERT(fd && fd->do_special, "druid do_special present");
     if (!(fd && fd->do_special))
@@ -2425,8 +2425,8 @@ REGISTER_TEST(test_druid_special_busy_and_friend_count_guards);
 
 void test_family_round6_mage_thief_soldier_guard_branches()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     const auto* mage_fd = get_family_descriptor(FAMILY_MAGE);
     const auto* thief_fd = get_family_descriptor(FAMILY_THIEF);
@@ -2516,8 +2516,8 @@ REGISTER_TEST(test_family_round6_mage_thief_soldier_guard_branches);
 
 void test_cleric_round6_heal_low_magic_and_undead_raise_no_target_guards()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     const auto* fd = get_family_descriptor(FAMILY_CLERIC);
     TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
@@ -2544,8 +2544,8 @@ void test_cleric_round6_heal_low_magic_and_undead_raise_no_target_guards()
     TEST_ASSERT(!fd->do_special(cleric), "heal special should fail when nobody needs healing");
 
     // Raise/ghost specials with no blood target should fail via nearest-blood null branches.
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
     TEST_ASSERT(cleric != nullptr, "cleric recreated");
     if (!cleric)
@@ -2561,8 +2561,8 @@ REGISTER_TEST(test_cleric_round6_heal_low_magic_and_undead_raise_no_target_guard
 
 void test_druid_round6_protection_existing_circle_and_blocked_faerie_paths()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     const auto* fd = get_family_descriptor(FAMILY_DRUID);
     TEST_ASSERT(fd && fd->do_special, "druid do_special present");
@@ -2576,7 +2576,7 @@ void test_druid_round6_protection_existing_circle_and_blocked_faerie_paths()
         return;
 
     // Pre-existing protection circle on ally should hit refresh/merge branch.
-    walker* existing = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    walker* existing = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
     TEST_ASSERT(existing != nullptr, "existing protection circle created");
     if (!existing)
         return;
@@ -2601,8 +2601,8 @@ REGISTER_TEST(test_druid_round6_protection_existing_circle_and_blocked_faerie_pa
 
 void test_family_round8_mage_thief_soldier_callback_edge_paths()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     const auto* mage_fd = get_family_descriptor(FAMILY_MAGE);
     const auto* thief_fd = get_family_descriptor(FAMILY_THIEF);
@@ -2631,8 +2631,8 @@ void test_family_round8_mage_thief_soldier_callback_edge_paths()
     TEST_ASSERT(!mage_fd->do_special(mage),
                 "mage teleport special should fail while already teleporting");
 
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     walker* foe = add_living_to_level(FAMILY_ORC, 1, 150, 100);
@@ -2646,7 +2646,7 @@ void test_family_round8_mage_thief_soldier_callback_edge_paths()
     }
 
     walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
-    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(soldier && weapon, "soldier and weapon created");
     if (soldier && weapon)
     {
@@ -2670,8 +2670,8 @@ REGISTER_TEST(test_family_round8_mage_thief_soldier_callback_edge_paths);
 
 void test_family_round10_orc_ghost_archer_slime_elf_edge_callbacks()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     const auto* orc_fd = get_family_descriptor(FAMILY_ORC);
     const auto* ghost_fd = get_family_descriptor(FAMILY_GHOST);
@@ -2721,14 +2721,14 @@ void test_family_round10_orc_ghost_archer_slime_elf_edge_callbacks()
     }
 
     // SLIME AI: MAXOBS guard branch.
-    auto saved_numobs = myscreen->level_data.numobs;
-    myscreen->level_data.numobs = MAXOBS;
+    auto saved_numobs = og::runtime::current_session->myscreen_->level_data.numobs;
+    og::runtime::current_session->myscreen_->level_data.numobs = MAXOBS;
     TEST_ASSERT(!slime_fd->check_special_ai(static_cast<living*>(orc)),
                 "slime check_special_ai should fail when numobs reaches MAXOBS");
-    myscreen->level_data.numobs = 0;
+    og::runtime::current_session->myscreen_->level_data.numobs = 0;
     TEST_ASSERT(slime_fd->check_special_ai(static_cast<living*>(orc)),
                 "slime check_special_ai should pass when numobs is below MAXOBS");
-    myscreen->level_data.numobs = saved_numobs;
+    og::runtime::current_session->myscreen_->level_data.numobs = saved_numobs;
 
     // ELF special basic branch should execute for case 1 when fire is available.
     walker* elf = add_living_to_level(FAMILY_ELF, 0, 100, 100);
@@ -2744,8 +2744,8 @@ REGISTER_TEST(test_family_round10_orc_ghost_archer_slime_elf_edge_callbacks);
 
 void test_family_round11_mage_and_druid_targeted_special_clusters()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     const auto* mage_fd = get_family_descriptor(FAMILY_MAGE);
     const auto* druid_fd = get_family_descriptor(FAMILY_DRUID);
@@ -2771,8 +2771,8 @@ void test_family_round11_mage_and_druid_targeted_special_clusters()
     TEST_ASSERT(!mage_fd->do_special(mage), "mage marker should fail with int < 75");
 
     // Mage case 5 heartburst success path (family_mage.cpp:260-289).
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     mage = add_living_to_level(FAMILY_MAGE, 1, 100, 100);
     walker* foe1 = add_living_to_level(FAMILY_ORC, 0, 118, 100);
     walker* foe2 = add_living_to_level(FAMILY_ORC, 0, 100, 118);
@@ -2787,14 +2787,14 @@ void test_family_round11_mage_and_druid_targeted_special_clusters()
     TEST_ASSERT(mage->stats()->magicpoints < mp_before, "heartburst should consume magic");
 
     // Druid protection refresh branch with existing circle (family_druid.cpp:147-176).
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
     walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 110, 100);
     TEST_ASSERT(druid && ally, "druid and ally created");
     if (!(druid && ally))
         return;
-    walker* circle = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    walker* circle = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
     TEST_ASSERT(circle != nullptr, "existing protection circle created");
     if (!circle)
         return;
@@ -2809,8 +2809,8 @@ REGISTER_TEST(test_family_round11_mage_and_druid_targeted_special_clusters);
 
 void test_family_round12_cleric_druid_soldier_thief_guard_and_ai_edges()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     const auto* cleric_fd = get_family_descriptor(FAMILY_CLERIC);
     const auto* druid_fd = get_family_descriptor(FAMILY_DRUID);

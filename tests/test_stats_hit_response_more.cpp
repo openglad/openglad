@@ -19,15 +19,15 @@ struct GlobalContextGuard
 
 void test_statistics_hit_response_archer_runs_away_and_queues_walk()
 {
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
     FixedRandom fixed_rng(1);
     GameContext c;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
-    walker* archer = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
-    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* archer = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* foe = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(archer != nullptr && foe != nullptr, "actors created");
     if (!(archer && foe))
         return;
@@ -40,6 +40,6 @@ void test_statistics_hit_response_archer_runs_away_and_queues_walk()
     archer->stats()->hit_response(foe);
     TEST_ASSERT(archer->stats()->has_commands(), "archer hit_response should queue a walk away command");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_statistics_hit_response_archer_runs_away_and_queues_walk);

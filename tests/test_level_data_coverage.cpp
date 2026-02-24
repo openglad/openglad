@@ -77,7 +77,7 @@ static bool write_bytes(const std::filesystem::path& p, const std::vector<unsign
 
 static walker* add_living(unsigned char family = FAMILY_SOLDIER)
 {
-    walker* w = myscreen->level_data.add_ob(Order::Living, family);
+    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, family);
     if (w) {
         w->setxy(64, 64);
         w->sizex = 1;
@@ -91,45 +91,45 @@ static walker* add_living(unsigned char family = FAMILY_SOLDIER)
 void test_level_data_save_rejects_null_fx_and_weap_entries()
 {
     std::filesystem::create_directories("temp/scen");
-    myscreen->level_data.id = 789;
-    myscreen->level_data.grid_file = "grid";
-    myscreen->level_data.title = "coverage";
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.id = 789;
+    og::runtime::current_session->myscreen_->level_data.grid_file = "grid";
+    og::runtime::current_session->myscreen_->level_data.title = "coverage";
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    myscreen->level_data.fxlist.push_back(std::unique_ptr<walker>{});
-    TEST_ASSERT(!myscreen->level_data.save(), "save should fail when fxlist contains nullptr");
+    og::runtime::current_session->myscreen_->level_data.fxlist.push_back(std::unique_ptr<walker>{});
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.save(), "save should fail when fxlist contains nullptr");
 
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.weaplist.push_back(std::unique_ptr<walker>{});
-    TEST_ASSERT(!myscreen->level_data.save(), "save should fail when weaplist contains nullptr");
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.weaplist.push_back(std::unique_ptr<walker>{});
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.save(), "save should fail when weaplist contains nullptr");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_save_rejects_null_fx_and_weap_entries);
 
 void test_level_data_range_helpers_and_null_paths()
 {
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
     std::int32_t howmany = 99;
     std::list<walker*> empty;
 
-    empty = myscreen->level_data.find_in_range(myscreen->level_data.oblist, 120, &howmany, nullptr);
+    empty = og::runtime::current_session->myscreen_->level_data.find_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 120, &howmany, nullptr);
     TEST_ASSERT(empty.empty(), "find_in_range nullptr actor should return empty");
     TEST_ASSERT_EQ(0, (int)howmany, "find_in_range should zero howmany");
 
-    empty = myscreen->level_data.find_foes_in_range(myscreen->level_data.oblist, 120, &howmany, nullptr);
+    empty = og::runtime::current_session->myscreen_->level_data.find_foes_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 120, &howmany, nullptr);
     TEST_ASSERT(empty.empty(), "find_foes_in_range nullptr actor should return empty");
 
-    empty = myscreen->level_data.find_foe_weapons_in_range(myscreen->level_data.weaplist, 120, &howmany, nullptr);
+    empty = og::runtime::current_session->myscreen_->level_data.find_foe_weapons_in_range(og::runtime::current_session->myscreen_->level_data.weaplist, 120, &howmany, nullptr);
     TEST_ASSERT(empty.empty(), "find_foe_weapons_in_range nullptr actor should return empty");
 
-    empty = myscreen->level_data.find_friends_in_range(myscreen->level_data.oblist, 120, &howmany, nullptr);
+    empty = og::runtime::current_session->myscreen_->level_data.find_friends_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 120, &howmany, nullptr);
     TEST_ASSERT(empty.empty(), "find_friends_in_range nullptr actor should return empty");
 
-    TEST_ASSERT(myscreen->level_data.find_nearest_blood(nullptr) == nullptr, "find_nearest_blood nullptr should return null");
-    TEST_ASSERT(myscreen->level_data.find_nearest_player(nullptr) == nullptr, "find_nearest_player nullptr should return null");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_nearest_blood(nullptr) == nullptr, "find_nearest_blood nullptr should return null");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_nearest_player(nullptr) == nullptr, "find_nearest_player nullptr should return null");
 
     walker* p1 = add_living(FAMILY_SOLDIER);
     walker* p2 = add_living(FAMILY_ARCHER);
@@ -140,10 +140,10 @@ void test_level_data_range_helpers_and_null_paths()
 
     walker probe;
     probe.setxy(80, 64);
-    walker* nearest = myscreen->level_data.find_nearest_player(&probe);
+    walker* nearest = og::runtime::current_session->myscreen_->level_data.find_nearest_player(&probe);
     TEST_ASSERT(nearest == p2, "find_nearest_player should select nearest controlled walker");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_range_helpers_and_null_paths);
 
@@ -243,36 +243,36 @@ REGISTER_TEST(test_level_data_load_clamps_invalid_team_ids_to_score_range);
 
 void test_level_data_query_grid_passable_edge_cases()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     walker* w = add_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "walker should be created");
 
     w->stats()->set_bit_flags(BIT_ETHEREAL, 1);
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(64.0f, 64.0f, w), "ethereal walker should pass grid");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(64.0f, 64.0f, w), "ethereal walker should pass grid");
     w->stats()->set_bit_flags(BIT_ETHEREAL, 0);
 
-    myscreen->level_data.delete_grid();
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(64.0f, 64.0f, w), "missing grid should fail passability");
+    og::runtime::current_session->myscreen_->level_data.delete_grid();
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(64.0f, 64.0f, w), "missing grid should fail passability");
 
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.grid.data[0] = PIX_TREE_M1;
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_M1;
     w->setxy(0, 0);
     w->sizex = 1;
     w->sizey = 1;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, w), "tree should block non-forestwalker");
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, w), "tree should block non-forestwalker");
 
     w->stats()->set_bit_flags(BIT_FORESTWALK, 1);
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, w), "forestwalker should pass trees");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, w), "forestwalker should pass trees");
 
     w->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     w->stats()->set_bit_flags(BIT_FLYING, 1);
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, w), "flying should pass trees");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, w), "flying should pass trees");
 
     w->stats()->set_bit_flags(BIT_FLYING, 0);
     w->dead = 1;
-    TEST_ASSERT(myscreen->level_data.query_object_passable(0.0f, 0.0f, w), "dead walker should skip object collision checks");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_object_passable(0.0f, 0.0f, w), "dead walker should skip object collision checks");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_query_grid_passable_edge_cases);
 
@@ -357,8 +357,8 @@ REGISTER_TEST(test_level_data_round8_ctor_hook_wiring_and_remove_paths);
 
 void test_level_data_batch2_misc_uncovered_paths_smoke()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
     walker* a = add_living(FAMILY_SOLDIER);
     walker* b = add_living(FAMILY_ORC);
@@ -372,27 +372,27 @@ void test_level_data_batch2_misc_uncovered_paths_smoke()
     b->setxy(96, 64);
 
     // remaining_foes helper.
-    TEST_ASSERT(remaining_foes(myscreen->level_data, a) >= 0, "remaining_foes should run");
+    TEST_ASSERT(remaining_foes(og::runtime::current_session->myscreen_->level_data, a) >= 0, "remaining_foes should run");
 
     // query_passable wrappers.
-    TEST_ASSERT(myscreen->level_data.query_passable(64.0f, 64.0f, a) == (myscreen->level_data.query_grid_passable(64.0f, 64.0f, a)
-        && myscreen->level_data.query_object_passable(64.0f, 64.0f, a)),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_passable(64.0f, 64.0f, a) == (og::runtime::current_session->myscreen_->level_data.query_grid_passable(64.0f, 64.0f, a)
+        && og::runtime::current_session->myscreen_->level_data.query_object_passable(64.0f, 64.0f, a)),
         "query_passable should compose grid/object checks");
 
     // entity search null-protected paths.
-    TEST_ASSERT(myscreen->level_data.find_near_foe(nullptr) == nullptr, "find_near_foe null should return null");
-    TEST_ASSERT(myscreen->level_data.find_far_foe(nullptr) == nullptr, "find_far_foe null should return null");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_near_foe(nullptr) == nullptr, "find_near_foe null should return null");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_far_foe(nullptr) == nullptr, "find_far_foe null should return null");
 }
 REGISTER_TEST(test_level_data_batch2_misc_uncovered_paths_smoke);
 
 void test_level_data_wall4_projectile_passability_distance_and_rng_paths()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.grid.data[0] = PIX_WALL4;
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
 
     walker* owner = add_living(FAMILY_ARCHER);
-    walker* projectile = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* projectile = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(owner != nullptr && projectile != nullptr, "owner and projectile should be created");
     if (!(owner && projectile))
         return;
@@ -408,31 +408,31 @@ void test_level_data_wall4_projectile_passability_distance_and_rng_paths()
 
     FixedRandom rng_pass(0);
     projectile->sim_rng = &rng_pass;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, projectile),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, projectile),
                 "weapon on PIX_WALL4 should pass when rng returns 0");
 
     FixedRandom rng_block(1);
     projectile->sim_rng = &rng_block;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, projectile),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, projectile),
                 "weapon on PIX_WALL4 should block when rng returns non-zero");
 
     owner->setxy(0, 0);
     owner->stats()->set_bit_flags(BIT_FLYING, 0);
     owner->flight_left = 0;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, owner),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, owner),
                 "living walker on PIX_WALL4 should be blocked immediately");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_wall4_projectile_passability_distance_and_rng_paths);
 
 void test_level_data_round8_query_grid_treeb1_and_arrow_slit_variants()
 {
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     walker* living = add_living(FAMILY_SOLDIER);
-    walker* weapon = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(living && weapon, "living and weapon should be created");
     if (!(living && weapon))
         return;
@@ -443,13 +443,13 @@ void test_level_data_round8_query_grid_treeb1_and_arrow_slit_variants()
     living->sizey = weapon->sizey = 1;
 
     // PIX_TREE_B1 branch: living blocks, weapon passes.
-    myscreen->level_data.grid.data[0] = PIX_TREE_B1;
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_B1;
     living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     living->stats()->set_bit_flags(BIT_FLYING, 0);
     living->flight_left = 0;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "TREE_B1 should block non-flying, non-forestwalk living");
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "TREE_B1 should allow weapons");
 
     // Arrow-slit distance/rng branch for weapons.
@@ -461,37 +461,37 @@ void test_level_data_round8_query_grid_treeb1_and_arrow_slit_variants()
     owner->setxy(48, 0);
     weapon->setxy(0, 0);
 
-    myscreen->level_data.grid.data[0] = PIX_WALL_ARROW_GRASS;
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL_ARROW_GRASS;
     FixedRandom rng_pass(0);
     weapon->sim_rng = &rng_pass;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "arrow-slit passability should pass when rng returns 0");
 
     FixedRandom rng_block(1);
     weapon->sim_rng = &rng_block;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "arrow-slit passability should block when rng returns non-zero");
 
     // Unknown tile type default should block.
-    myscreen->level_data.grid.data[0] = 255;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = 255;
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "unknown tile type should block in default branch");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round8_query_grid_treeb1_and_arrow_slit_variants);
 
 void test_level_data_range_helpers_positive_selection_paths()
 {
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
     walker* actor = add_living(FAMILY_SOLDIER);
     walker* friend_living = add_living(FAMILY_ARCHER);
     walker* foe_living = add_living(FAMILY_ORC);
-    walker* foe_generator = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
-    walker* friend_weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
-    walker* blood_far = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
-    walker* blood_near = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* foe_generator = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    walker* friend_weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* blood_far = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* blood_near = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
 
     TEST_ASSERT(actor && friend_living && foe_living && foe_generator && friend_weapon && blood_far && blood_near,
                 "range-helper fixtures should be created");
@@ -523,33 +523,33 @@ void test_level_data_range_helpers_positive_selection_paths()
     blood_near->setxy(68, 64);
 
     std::int32_t howmany = -1;
-    auto nearest_blood = myscreen->level_data.find_nearest_blood(actor);
+    auto nearest_blood = og::runtime::current_session->myscreen_->level_data.find_nearest_blood(actor);
     TEST_ASSERT(nearest_blood == blood_near, "find_nearest_blood should return nearest stain");
 
-    auto in_range = myscreen->level_data.find_in_range(myscreen->level_data.oblist, 80, &howmany, actor);
+    auto in_range = og::runtime::current_session->myscreen_->level_data.find_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 80, &howmany, actor);
     TEST_ASSERT(!in_range.empty() && howmany > 0, "find_in_range should collect nearby non-dead walkers");
 
-    auto foes = myscreen->level_data.find_foes_in_range(myscreen->level_data.oblist, 100, &howmany, actor);
+    auto foes = og::runtime::current_session->myscreen_->level_data.find_foes_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 100, &howmany, actor);
     TEST_ASSERT((int)foes.size() >= 2 && howmany >= 2, "find_foes_in_range should include living + generator foes");
 
-    auto foe_weapons = myscreen->level_data.find_foe_weapons_in_range(myscreen->level_data.weaplist, 80, &howmany, actor);
+    auto foe_weapons = og::runtime::current_session->myscreen_->level_data.find_foe_weapons_in_range(og::runtime::current_session->myscreen_->level_data.weaplist, 80, &howmany, actor);
     TEST_ASSERT(foe_weapons.size() == 1 && howmany == 1, "find_foe_weapons_in_range should include friendly weapon");
 
-    auto friends = myscreen->level_data.find_friends_in_range(myscreen->level_data.oblist, 80, &howmany, actor);
+    auto friends = og::runtime::current_session->myscreen_->level_data.find_friends_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 80, &howmany, actor);
     TEST_ASSERT(!friends.empty() && howmany >= 1, "find_friends_in_range should include friendly living walkers");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_range_helpers_positive_selection_paths);
 
 void test_level_data_round5_query_grid_passable_contiguous_block_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
     walker* living = add_living(FAMILY_SOLDIER);
     walker* owner = add_living(FAMILY_ARCHER);
-    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(living && owner && weapon, "fixture walkers should be created");
     if (!(living && owner && weapon))
         return;
@@ -565,90 +565,90 @@ void test_level_data_round5_query_grid_passable_contiguous_block_paths()
     weapon->sizey = 1;
     weapon->owner = owner;
 
-    myscreen->level_data.grid.data[0] = PIX_GRASS1;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_GRASS1;
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "ground tile should pass");
 
-    myscreen->level_data.grid.data[0] = PIX_TREE_M1;
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_M1;
     living->stats()->set_bit_flags(BIT_FORESTWALK, 1);
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "forestwalk should pass upper tree tiles");
     living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
 
     living->stats()->set_bit_flags(BIT_FLYING, 1);
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "flying should pass upper tree tiles");
     living->stats()->set_bit_flags(BIT_FLYING, 0);
 
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "non-flying non-forestwalk should fail upper tree tiles");
 
-    myscreen->level_data.grid.data[0] = PIX_TREE_B1;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_B1;
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "weapon should pass trunk tree tile");
 
     living->stats()->set_bit_flags(BIT_FLYING, 1);
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "flying should pass trunk tree tile");
     living->stats()->set_bit_flags(BIT_FLYING, 0);
 
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "non-flying living should fail trunk tree tile");
 
-    myscreen->level_data.grid.data[0] = PIX_H_WALL1;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_H_WALL1;
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "hard wall tile should block living");
 
-    myscreen->level_data.grid.data[0] = PIX_WALL4;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "wall4 should block living immediately");
 
     FixedRandom rng_block(1);
     weapon->sim_rng = &rng_block;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should block when rng returns non-zero");
 
     owner->setxy(8, 0); // triggers dist < GRID_SIZE adjustment branch
     FixedRandom rng_pass(0);
     weapon->sim_rng = &rng_pass;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should pass and fall through with rng zero");
 
-    myscreen->level_data.grid.data[0] = PIX_WATER1;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WATER1;
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "weapon should pass water/obstacle group");
 
     living->stats()->set_bit_flags(BIT_FLYING, 1);
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "flying living should pass water/obstacle group");
     living->stats()->set_bit_flags(BIT_FLYING, 0);
 
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "non-flying living should fail water/obstacle group");
 
-    myscreen->level_data.grid.data[0] = 255;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = 255;
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "unknown tile should use default fail branch");
 
     living->dead = 1;
-    TEST_ASSERT(myscreen->level_data.query_object_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_object_passable(0.0f, 0.0f, living),
                 "dead object should pass object-collision query");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round5_query_grid_passable_contiguous_block_paths);
 
 void test_level_data_round5_find_helpers_contiguous_block_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
     walker* actor = add_living(FAMILY_SOLDIER);
     walker* friend_living = add_living(FAMILY_ARCHER);
     walker* foe_living = add_living(FAMILY_ORC);
-    walker* foe_generator = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
-    walker* foe_weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
-    walker* blood = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* foe_generator = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    walker* foe_weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* blood = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
     TEST_ASSERT(actor && friend_living && foe_living && foe_generator && foe_weapon && blood,
                 "fixtures should be created");
     if (!(actor && friend_living && foe_living && foe_generator && foe_weapon && blood))
@@ -656,7 +656,7 @@ void test_level_data_round5_find_helpers_contiguous_block_paths()
 
     actor->team_num = 0;
     actor->setxy(64, 64);
-    actor->sim_level = &myscreen->level_data;
+    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     friend_living->team_num = 0;
     friend_living->setxy(72, 64);
@@ -674,36 +674,36 @@ void test_level_data_round5_find_helpers_contiguous_block_paths()
 
     FixedRandom rng_zero(0);
     actor->sim_rng = &rng_zero;
-    TEST_ASSERT(myscreen->level_data.find_far_foe(actor) != nullptr,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_far_foe(actor) != nullptr,
                 "find_far_foe should return nearest visible living/generator foe");
-    TEST_ASSERT(myscreen->level_data.find_nearest_blood(actor) == blood,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_nearest_blood(actor) == blood,
                 "find_nearest_blood should return stain target");
-    TEST_ASSERT(myscreen->level_data.find_nearest_player(actor) == nullptr,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_nearest_player(actor) == nullptr,
                 "find_nearest_player should return null when no controlled walkers exist");
 
     std::int32_t howmany = -1;
-    auto in_range = myscreen->level_data.find_in_range(myscreen->level_data.oblist, 128, &howmany, actor);
+    auto in_range = og::runtime::current_session->myscreen_->level_data.find_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 128, &howmany, actor);
     TEST_ASSERT(!in_range.empty() && howmany > 0, "find_in_range should count nearby non-dead walkers");
 
-    auto foes = myscreen->level_data.find_foes_in_range(myscreen->level_data.oblist, 128, &howmany, actor);
+    auto foes = og::runtime::current_session->myscreen_->level_data.find_foes_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 128, &howmany, actor);
     TEST_ASSERT(!foes.empty() && howmany > 0, "find_foes_in_range should include living/generator enemies");
 
-    auto foe_weapons = myscreen->level_data.find_foe_weapons_in_range(myscreen->level_data.weaplist, 128, &howmany, actor);
+    auto foe_weapons = og::runtime::current_session->myscreen_->level_data.find_foe_weapons_in_range(og::runtime::current_session->myscreen_->level_data.weaplist, 128, &howmany, actor);
     TEST_ASSERT(foe_weapons.empty(), "enemy weapon should be excluded because helper accepts friendly weapons");
 
     foe_weapon->team_num = actor->team_num;
-    foe_weapons = myscreen->level_data.find_foe_weapons_in_range(myscreen->level_data.weaplist, 128, &howmany, actor);
+    foe_weapons = og::runtime::current_session->myscreen_->level_data.find_foe_weapons_in_range(og::runtime::current_session->myscreen_->level_data.weaplist, 128, &howmany, actor);
     TEST_ASSERT(!foe_weapons.empty() && howmany > 0, "friendly weapon should be included by helper predicate");
 
-    auto friends = myscreen->level_data.find_friends_in_range(myscreen->level_data.oblist, 128, &howmany, actor);
+    auto friends = og::runtime::current_session->myscreen_->level_data.find_friends_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 128, &howmany, actor);
     TEST_ASSERT(!friends.empty() && howmany > 0, "find_friends_in_range should include friendly living");
 
-    TEST_ASSERT(myscreen->level_data.find_nearest_blood(nullptr) == nullptr,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_nearest_blood(nullptr) == nullptr,
                 "find_nearest_blood nullptr guard should return null");
-    TEST_ASSERT(myscreen->level_data.find_nearest_player(nullptr) == nullptr,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_nearest_player(nullptr) == nullptr,
                 "find_nearest_player nullptr guard should return null");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round5_find_helpers_contiguous_block_paths);
 
@@ -715,22 +715,22 @@ void test_level_data_round7a_constructor_overloads_and_remove_paths()
     LevelData d(14, true, static_cast<const LevelDataHooks*>(nullptr));
     TEST_ASSERT(true, "constructor overloads executed");
 
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
-    walker* weap = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* living = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* weap = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(living && fx && weap, "objects created");
     if (!(living && fx && weap))
         return;
 
-    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(weap), "remove_ob should erase weapon list item");
-    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(fx), "remove_ob should erase fx list item");
-    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(living), "remove_ob should erase oblist item");
+    TEST_ASSERT_EQ(1, (int)og::runtime::current_session->myscreen_->level_data.remove_ob(weap), "remove_ob should erase weapon list item");
+    TEST_ASSERT_EQ(1, (int)og::runtime::current_session->myscreen_->level_data.remove_ob(fx), "remove_ob should erase fx list item");
+    TEST_ASSERT_EQ(1, (int)og::runtime::current_session->myscreen_->level_data.remove_ob(living), "remove_ob should erase oblist item");
 
     walker dummy;
-    TEST_ASSERT_EQ(0, (int)myscreen->level_data.remove_ob(&dummy), "remove_ob should return 0 when not found");
+    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->level_data.remove_ob(&dummy), "remove_ob should return 0 when not found");
 }
 REGISTER_TEST(test_level_data_round7a_constructor_overloads_and_remove_paths);
 
@@ -754,13 +754,13 @@ void test_level_data_round7a_title_reader_and_error_wrappers()
                 "title reader should reject versions < 6");
 
     // save_with_error wrapper.
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.id = 9403;
-    myscreen->level_data.grid_file = "round7a";
-    myscreen->level_data.title = "Round7A";
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.id = 9403;
+    og::runtime::current_session->myscreen_->level_data.grid_file = "round7a";
+    og::runtime::current_session->myscreen_->level_data.title = "Round7A";
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     std::filesystem::create_directories("temp/scen");
-    const auto err = myscreen->level_data.save_with_error();
+    const auto err = og::runtime::current_session->myscreen_->level_data.save_with_error();
     TEST_ASSERT(err == LevelData::IoError::None || err == LevelData::IoError::OpenWriteFailed,
                 "save_with_error wrapper should return a concrete io error");
 }
@@ -836,41 +836,41 @@ REGISTER_TEST(test_level_data_round6_version6plus_and_title_read_paths);
 
 void test_level_data_round6_remove_ob_and_wrapper_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* fx = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_GOLD_BAR);
-    walker* weap = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* living = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_GOLD_BAR);
+    walker* weap = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(living && fx && weap, "fixtures should be created");
     if (!(living && fx && weap))
         return;
 
-    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(weap), "remove_ob should remove from weaplist");
-    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(fx), "remove_ob should remove from fxlist");
-    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(living), "remove_ob should remove from oblist");
+    TEST_ASSERT_EQ(1, (int)og::runtime::current_session->myscreen_->level_data.remove_ob(weap), "remove_ob should remove from weaplist");
+    TEST_ASSERT_EQ(1, (int)og::runtime::current_session->myscreen_->level_data.remove_ob(fx), "remove_ob should remove from fxlist");
+    TEST_ASSERT_EQ(1, (int)og::runtime::current_session->myscreen_->level_data.remove_ob(living), "remove_ob should remove from oblist");
 
     walker orphan;
     orphan.set_order_family(Order::Living, FAMILY_SOLDIER);
-    TEST_ASSERT_EQ(0, (int)myscreen->level_data.remove_ob(&orphan), "remove_ob should return 0 for unknown walker");
+    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->level_data.remove_ob(&orphan), "remove_ob should return 0 for unknown walker");
 
     std::filesystem::create_directories("temp/scen");
-    myscreen->level_data.id = 9410;
-    myscreen->level_data.grid_file = "grid";
-    myscreen->level_data.title = "round6";
-    TEST_ASSERT_EQ((int)LevelData::IoError::None, (int)myscreen->level_data.save_with_error(),
+    og::runtime::current_session->myscreen_->level_data.id = 9410;
+    og::runtime::current_session->myscreen_->level_data.grid_file = "grid";
+    og::runtime::current_session->myscreen_->level_data.title = "round6";
+    TEST_ASSERT_EQ((int)LevelData::IoError::None, (int)og::runtime::current_session->myscreen_->level_data.save_with_error(),
                    "save_with_error should return None on successful save");
 }
 REGISTER_TEST(test_level_data_round6_remove_ob_and_wrapper_paths);
 
 void test_level_data_round6_passable_wall4_and_water_weapon_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
-    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* owner = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* living = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT(owner && weapon && living, "fixtures should be created");
     if (!(owner && weapon && living))
         return;
@@ -884,35 +884,35 @@ void test_level_data_round6_passable_wall4_and_water_weapon_paths()
     living->sizex = 1;
     living->sizey = 1;
 
-    myscreen->level_data.grid.frames = 1;
-    myscreen->level_data.grid.w = 1;
-    myscreen->level_data.grid.h = 1;
-    myscreen->level_data.pixmaxx = GRID_SIZE;
-    myscreen->level_data.pixmaxy = GRID_SIZE;
-    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.grid.w = 1;
+    og::runtime::current_session->myscreen_->level_data.grid.h = 1;
+    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(1);
 
-    myscreen->level_data.grid.data[0] = PIX_WALL4;
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
     ConstRandom rng_block(1);
     weapon->sim_rng = &rng_block;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should block when rng yields non-zero");
 
     ConstRandom rng_zero(0);
     weapon->sim_rng = &rng_zero;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should pass when rng yields zero");
 
-    myscreen->level_data.grid.data[0] = PIX_WATER1;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WATER1;
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "weapon should pass water tile group");
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "non-flying living should fail water tile group");
 
     living->stats()->set_bit_flags(BIT_FLYING, 1);
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "flying living should pass water tile group");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round6_passable_wall4_and_water_weapon_paths);
 
@@ -925,12 +925,12 @@ void test_level_data_round6_wrapper_and_passability_edges()
                        "load_with_error should report open-read failure for missing scenario");
     }
 
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
-    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* owner = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* living = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT(owner && weapon && living, "fixtures should be created");
     if (!(owner && weapon && living))
         return;
@@ -944,31 +944,31 @@ void test_level_data_round6_wrapper_and_passability_edges()
     living->sizex = 1;
     living->sizey = 1;
 
-    myscreen->level_data.grid.frames = 1;
-    myscreen->level_data.grid.w = 1;
-    myscreen->level_data.grid.h = 1;
-    myscreen->level_data.pixmaxx = GRID_SIZE;
-    myscreen->level_data.pixmaxy = GRID_SIZE;
-    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.grid.w = 1;
+    og::runtime::current_session->myscreen_->level_data.grid.h = 1;
+    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(1);
 
     // Hard-wall branch.
-    myscreen->level_data.grid.data[0] = PIX_WALLTOP_H;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALLTOP_H;
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "wall top should block living walker");
 
     // WALL4 projectile branch using Y-distance path in dist calculation.
-    myscreen->level_data.grid.data[0] = PIX_WALL4;
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
     ConstRandom rng_block(1);
     weapon->sim_rng = &rng_block;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should block when rng is non-zero (y-distance branch)");
 
     // Weapon should pass water/obstacle bucket via weapon special-case.
-    myscreen->level_data.grid.data[0] = PIX_BOULDER_1;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_BOULDER_1;
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "weapon should pass obstacle bucket tiles");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round6_wrapper_and_passability_edges);
 
@@ -1062,50 +1062,50 @@ REGISTER_TEST(test_level_data_round6_load_version3_4_5_minimal_and_treasure_path
 
 void test_level_data_round6_find_near_foe_boundary_fallback_path()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* actor = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(actor && foe, "fixtures should be created");
     if (!(actor && foe))
         return;
 
     actor->team_num = 0;
     foe->team_num = 1;
-    actor->setxy(GRID_SIZE * 3, myscreen->level_data.pixmaxy - 1);
+    actor->setxy(GRID_SIZE * 3, og::runtime::current_session->myscreen_->level_data.pixmaxy - 1);
     foe->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
 
     ConstRandom rng_zero(0);
     actor->sim_rng = &rng_zero;
 
     // Near-search spiral should hit the y-boundary and fall back to find_far_foe().
-    walker* picked = myscreen->level_data.find_near_foe(actor);
+    walker* picked = og::runtime::current_session->myscreen_->level_data.find_near_foe(actor);
     TEST_ASSERT(picked == foe, "find_near_foe should boundary-fallback to far foe selection");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round6_find_near_foe_boundary_fallback_path);
 
 void test_level_data_round7_wall_arrow_distance_axis_and_rng_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
-    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* owner = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* living = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT(owner && weapon && living, "fixtures should be created");
     if (!(owner && weapon && living))
         return;
 
-    myscreen->level_data.grid.frames = 1;
-    myscreen->level_data.grid.w = 1;
-    myscreen->level_data.grid.h = 1;
-    myscreen->level_data.pixmaxx = GRID_SIZE;
-    myscreen->level_data.pixmaxy = GRID_SIZE;
-    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(1);
-    myscreen->level_data.grid.data[0] = PIX_WALL5;
+    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.grid.w = 1;
+    og::runtime::current_session->myscreen_->level_data.grid.h = 1;
+    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL5;
 
     owner->sizex = 1;
     owner->sizey = 1;
@@ -1117,7 +1117,7 @@ void test_level_data_round7_wall_arrow_distance_axis_and_rng_paths()
     living->setxy(0, 0);
     living->sizex = 1;
     living->sizey = 1;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "wall-arrow tiles should block living walkers");
 
     // X-axis distance branch (abs(dx) > abs(dy)); rng zero => pass.
@@ -1125,7 +1125,7 @@ void test_level_data_round7_wall_arrow_distance_axis_and_rng_paths()
     weapon->setxy(0, 0);
     ConstRandom rng_zero(0);
     weapon->sim_rng = &rng_zero;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall-arrow projectile should pass when rng returns zero");
 
     // Y-axis distance branch (abs(dy) >= abs(dx)); rng non-zero => fail.
@@ -1133,23 +1133,23 @@ void test_level_data_round7_wall_arrow_distance_axis_and_rng_paths()
     weapon->setxy(0, 0);
     ConstRandom rng_block(1);
     weapon->sim_rng = &rng_block;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall-arrow projectile should fail when rng returns non-zero");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round7_wall_arrow_distance_axis_and_rng_paths);
 
 void test_level_data_round11_wrappers_draw_and_query_grid_entry_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
     // save_with_error/load_with_error wrappers should return a concrete enum.
-    myscreen->level_data.id = 9421;
-    myscreen->level_data.grid_file = "grid";
-    myscreen->level_data.title = "round11";
-    const auto save_err = myscreen->level_data.save_with_error();
+    og::runtime::current_session->myscreen_->level_data.id = 9421;
+    og::runtime::current_session->myscreen_->level_data.grid_file = "grid";
+    og::runtime::current_session->myscreen_->level_data.title = "round11";
+    const auto save_err = og::runtime::current_session->myscreen_->level_data.save_with_error();
     TEST_ASSERT((int)save_err >= (int)LevelData::IoError::None, "save_with_error wrapper should execute");
 
     LevelData missing(9876);
@@ -1158,46 +1158,46 @@ void test_level_data_round11_wrappers_draw_and_query_grid_entry_paths()
                    "load_with_error should report open-read failure for missing scenario");
 
     // draw(nullptr) should hit early-return guard safely.
-    myscreen->level_data.draw(nullptr);
+    og::runtime::current_session->myscreen_->level_data.draw(nullptr);
 
     // get_description_line while-loop and bounds branches.
-    myscreen->level_data.description.clear();
-    myscreen->level_data.description.push_back("alpha");
-    myscreen->level_data.description.push_back("beta");
-    TEST_ASSERT(myscreen->level_data.get_description_line(1) == "beta", "second description line should be readable");
-    TEST_ASSERT(myscreen->level_data.get_description_line(5).empty(), "out-of-range description line should be empty");
+    og::runtime::current_session->myscreen_->level_data.description.clear();
+    og::runtime::current_session->myscreen_->level_data.description.push_back("alpha");
+    og::runtime::current_session->myscreen_->level_data.description.push_back("beta");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.get_description_line(1) == "beta", "second description line should be readable");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.get_description_line(5).empty(), "out-of-range description line should be empty");
 
     // query_grid_passable switch-entry path over passable terrain (lines 1907+).
-    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* living = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(living != nullptr, "living created");
     if (!living)
         return;
 
-    myscreen->level_data.grid.frames = 1;
-    myscreen->level_data.grid.w = 2;
-    myscreen->level_data.grid.h = 2;
-    myscreen->level_data.pixmaxx = GRID_SIZE * 2;
-    myscreen->level_data.pixmaxy = GRID_SIZE * 2;
-    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(4);
+    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.grid.w = 2;
+    og::runtime::current_session->myscreen_->level_data.grid.h = 2;
+    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE * 2;
+    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE * 2;
+    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(4);
     for (int i = 0; i < 4; i++)
-        myscreen->level_data.grid.data[i] = PIX_GRASS1;
+        og::runtime::current_session->myscreen_->level_data.grid.data[i] = PIX_GRASS1;
 
     living->setxy(0, 0);
     living->sizex = GRID_SIZE; // force xover/yover exact-grid-edge path
     living->sizey = GRID_SIZE;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "grass tile should be passable for living walker");
 }
 REGISTER_TEST(test_level_data_round11_wrappers_draw_and_query_grid_entry_paths);
 
 void test_level_data_round13_grid_passability_tree_wall_water_and_object_guards()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
-    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* living = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* owner = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT(living && weapon && owner, "fixtures created");
     if (!(living && weapon && owner))
         return;
@@ -1209,82 +1209,82 @@ void test_level_data_round13_grid_passability_tree_wall_water_and_object_guards(
     living->sizex = weapon->sizex = 1;
     living->sizey = weapon->sizey = 1;
 
-    myscreen->level_data.grid.frames = 1;
-    myscreen->level_data.grid.w = 1;
-    myscreen->level_data.grid.h = 1;
-    myscreen->level_data.pixmaxx = GRID_SIZE;
-    myscreen->level_data.pixmaxy = GRID_SIZE;
-    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.grid.w = 1;
+    og::runtime::current_session->myscreen_->level_data.grid.h = 1;
+    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(1);
 
     // Path tile branch (level_data.cpp:1989) should pass.
-    myscreen->level_data.grid.data[0] = PIX_PATH_4;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_PATH_4;
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "path tile should be passable");
 
     // Tree middle blocks non-forestwalking/non-flying living walkers (1995-2000).
-    myscreen->level_data.grid.data[0] = PIX_TREE_M1;
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_M1;
     living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     living->stats()->set_bit_flags(BIT_FLYING, 0);
     living->flight_left = 0;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "tree middle should block normal living walkers");
     living->stats()->set_bit_flags(BIT_FORESTWALK, 1);
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "forestwalk should pass tree middle");
 
     // Tree base branch allows weapons, blocks normal living walkers (2001-2010).
-    myscreen->level_data.grid.data[0] = PIX_TREE_B1;
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_B1;
     living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "tree base should block living walkers without forestwalk/flying");
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "tree base should allow weapons");
 
     // Wall-arrow/wall4 branch for weapons with RNG gate (2019-2044), then fallthrough.
-    myscreen->level_data.grid.data[0] = PIX_WALL4;
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
     ConstRandom rng_pass(0);
     weapon->sim_rng = &rng_pass;
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall-arrow projectile should pass when rng returns zero");
     ConstRandom rng_block(1);
     weapon->sim_rng = &rng_block;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall-arrow projectile should block when rng returns non-zero");
 
     // Water passability branch for flying vs non-flying living walkers (2046-2078).
-    myscreen->level_data.grid.data[0] = PIX_WATER2;
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WATER2;
     living->stats()->set_bit_flags(BIT_FLYING, 0);
     living->flight_left = 0;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "water should block non-flying living walkers");
     living->stats()->set_bit_flags(BIT_FLYING, 1);
-    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "water should pass flying living walkers");
 
     // query_object_passable dead-object shortcut (2089-2091).
     living->dead = 1;
-    TEST_ASSERT(myscreen->level_data.query_object_passable(0.0f, 0.0f, living),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_object_passable(0.0f, 0.0f, living),
                 "dead objects should always pass object collision checks");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round13_grid_passability_tree_wall_water_and_object_guards);
 
 void test_level_data_round13_find_helpers_selection_and_filters()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* foe_far = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* foe_near = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
-    walker* friend_living = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
-    walker* friend_weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
-    walker* enemy_weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
-    walker* blood_near = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
-    walker* blood_far = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
-    walker* player_near = myscreen->level_data.add_ob(Order::Living, FAMILY_ELF);
-    walker* player_far = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    walker* actor = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe_far = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe_near = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    walker* friend_living = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* friend_weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* enemy_weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* blood_near = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* blood_far = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* player_near = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ELF);
+    walker* player_far = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_MAGE);
     TEST_ASSERT(actor && foe_far && foe_near && friend_living && friend_weapon && enemy_weapon &&
                     blood_near && blood_far && player_near && player_far,
                 "fixtures created");
@@ -1294,7 +1294,7 @@ void test_level_data_round13_find_helpers_selection_and_filters()
 
     actor->team_num = 0;
     actor->setxy(64, 64);
-    actor->sim_level = &myscreen->level_data;
+    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
     foe_far->team_num = 2;
     foe_far->setxy(220, 64);
     foe_near->team_num = 1;
@@ -1317,52 +1317,52 @@ void test_level_data_round13_find_helpers_selection_and_filters()
     foe_far->invisibility_left = 0;
     foe_near->invisibility_left = 0;
 
-    TEST_ASSERT(myscreen->level_data.find_far_foe(actor) == foe_near,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_far_foe(actor) == foe_near,
                 "find_far_foe should return nearest visible living/generator foe");
-    TEST_ASSERT(myscreen->level_data.find_nearest_blood(actor) == blood_near,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_nearest_blood(actor) == blood_near,
                 "find_nearest_blood should return nearest alive stain");
-    TEST_ASSERT(myscreen->level_data.find_nearest_player(actor) == player_near,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_nearest_player(actor) == player_near,
                 "find_nearest_player should return nearest controlled walker");
 
     std::int32_t howmany = -1;
-    auto in_range = myscreen->level_data.find_in_range(myscreen->level_data.oblist, 40, &howmany, actor);
+    auto in_range = og::runtime::current_session->myscreen_->level_data.find_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 40, &howmany, actor);
     TEST_ASSERT(!in_range.empty() && howmany > 0, "find_in_range should collect nearby alive walkers");
 
-    auto foes = myscreen->level_data.find_foes_in_range(myscreen->level_data.oblist, 64, &howmany, actor);
+    auto foes = og::runtime::current_session->myscreen_->level_data.find_foes_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 64, &howmany, actor);
     TEST_ASSERT(!foes.empty() && howmany > 0, "find_foes_in_range should include nearby non-friendly living/generator");
 
-    auto foe_weapons = myscreen->level_data.find_foe_weapons_in_range(myscreen->level_data.weaplist, 64, &howmany, actor);
+    auto foe_weapons = og::runtime::current_session->myscreen_->level_data.find_foe_weapons_in_range(og::runtime::current_session->myscreen_->level_data.weaplist, 64, &howmany, actor);
     TEST_ASSERT(!foe_weapons.empty() && howmany > 0, "find_foe_weapons_in_range should include friendly weapons only");
     for (walker* w : foe_weapons)
         TEST_ASSERT_EQ((int)actor->team_num, (int)w->team_num, "returned weapon should be on friendly team");
 
-    auto friends = myscreen->level_data.find_friends_in_range(myscreen->level_data.oblist, 64, &howmany, actor);
+    auto friends = og::runtime::current_session->myscreen_->level_data.find_friends_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 64, &howmany, actor);
     TEST_ASSERT(!friends.empty() && howmany > 0, "find_friends_in_range should include friendly living walkers");
     for (walker* w : friends)
         TEST_ASSERT_EQ((int)Order::Living, (int)w->query_order(), "friend results should be living walkers");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round13_find_helpers_selection_and_filters);
 
 void test_level_data_round14_find_helper_exclusion_branches()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* hidden_foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* dead_blood = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
-    walker* near_friend = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
-    walker* dead_enemy = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* enemy_weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* actor = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* hidden_foe = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* dead_blood = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* near_friend = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* dead_enemy = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* enemy_weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(actor && hidden_foe && dead_blood && near_friend && dead_enemy && enemy_weapon, "fixtures created");
     if (!(actor && hidden_foe && dead_blood && near_friend && dead_enemy && enemy_weapon))
         return;
 
     actor->team_num = 0;
     actor->setxy(64, 64);
-    actor->sim_level = &myscreen->level_data;
+    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     hidden_foe->team_num = 1;
     hidden_foe->setxy(72, 64);
@@ -1383,33 +1383,33 @@ void test_level_data_round14_find_helper_exclusion_branches()
 
     ConstRandom rng_block_hidden(1);
     actor->sim_rng = &rng_block_hidden;
-    TEST_ASSERT(myscreen->level_data.find_far_foe(actor) == nullptr,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_far_foe(actor) == nullptr,
                 "find_far_foe should skip hidden foes when rng check blocks visibility");
-    TEST_ASSERT(myscreen->level_data.find_nearest_blood(actor) == nullptr,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_nearest_blood(actor) == nullptr,
                 "find_nearest_blood should ignore dead blood stains");
 
     std::int32_t howmany = -1;
-    auto in_range = myscreen->level_data.find_in_range(myscreen->level_data.oblist, 32, &howmany, actor);
+    auto in_range = og::runtime::current_session->myscreen_->level_data.find_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 32, &howmany, actor);
     for (walker* w : in_range)
         TEST_ASSERT(!w->dead, "find_in_range should exclude dead objects");
 
-    auto foes = myscreen->level_data.find_foes_in_range(myscreen->level_data.oblist, 32, &howmany, actor);
+    auto foes = og::runtime::current_session->myscreen_->level_data.find_foes_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 32, &howmany, actor);
     TEST_ASSERT_EQ(1, (int)foes.size(), "find_foes_in_range should keep one alive enemy in range");
     if (!foes.empty())
         TEST_ASSERT(foes.front() == hidden_foe, "find_foes_in_range should exclude dead and friendly walkers");
 
-    auto foe_weapons = myscreen->level_data.find_foe_weapons_in_range(myscreen->level_data.weaplist, 32, &howmany, actor);
+    auto foe_weapons = og::runtime::current_session->myscreen_->level_data.find_foe_weapons_in_range(og::runtime::current_session->myscreen_->level_data.weaplist, 32, &howmany, actor);
     TEST_ASSERT(foe_weapons.empty(), "find_foe_weapons_in_range should exclude enemy-team weapons");
 }
 REGISTER_TEST(test_level_data_round14_find_helper_exclusion_branches);
 
 void test_level_data_round15_hard_wall_and_unknown_tile_block_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* flying = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    walker* living = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* flying = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_MAGE);
     TEST_ASSERT(living && flying, "fixtures created");
     if (!(living && flying))
         return;
@@ -1418,43 +1418,43 @@ void test_level_data_round15_hard_wall_and_unknown_tile_block_paths()
     living->setxy(0, 0);
     flying->setxy(0, 0);
 
-    myscreen->level_data.grid.frames = 1;
-    myscreen->level_data.grid.w = 1;
-    myscreen->level_data.grid.h = 1;
-    myscreen->level_data.pixmaxx = GRID_SIZE;
-    myscreen->level_data.pixmaxy = GRID_SIZE;
-    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.grid.w = 1;
+    og::runtime::current_session->myscreen_->level_data.grid.h = 1;
+    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(1);
 
     // Hard wall cases return blocked immediately for all walkers.
-    myscreen->level_data.grid.data[0] = PIX_H_WALL1;
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_H_WALL1;
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "hard wall should block living walkers");
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, flying),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, flying),
                 "hard wall should block flying walkers");
 
     // Unknown/default tile path should also block.
-    myscreen->level_data.grid.data[0] = static_cast<unsigned char>(255);
-    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = static_cast<unsigned char>(255);
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "unknown tile id should hit default blocked path");
 }
 REGISTER_TEST(test_level_data_round15_hard_wall_and_unknown_tile_block_paths);
 
 void test_level_data_round16_remaining_foes_and_object_passable_collision_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* friendly = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
-    walker* dead_enemy = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* alive_enemy = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* actor = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* friendly = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* dead_enemy = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* alive_enemy = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(actor && friendly && dead_enemy && alive_enemy, "fixtures created");
     if (!(actor && friendly && dead_enemy && alive_enemy))
         return;
 
     actor->team_num = 0;
     actor->setxy(100, 100);
-    actor->sim_level = &myscreen->level_data;
+    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     friendly->team_num = 0;
     friendly->setxy(100, 100);
@@ -1467,12 +1467,12 @@ void test_level_data_round16_remaining_foes_and_object_passable_collision_paths(
     alive_enemy->setxy(100, 100);
 
     // remaining_foes should count only alive non-friendly living objects.
-    TEST_ASSERT_EQ(1, (int)remaining_foes(myscreen->level_data, actor),
+    TEST_ASSERT_EQ(1, (int)remaining_foes(og::runtime::current_session->myscreen_->level_data, actor),
                    "remaining_foes should ignore friendly and dead living walkers");
 
     // query_object_passable should fail when collision exists for a live walker.
     actor->dead = 0;
-    TEST_ASSERT(!myscreen->level_data.query_object_passable(actor->xpos, actor->ypos, actor),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_object_passable(actor->xpos, actor->ypos, actor),
                 "query_object_passable should block on occupied tile for live walker");
 }
 REGISTER_TEST(test_level_data_round16_remaining_foes_and_object_passable_collision_paths);
@@ -1497,16 +1497,16 @@ void test_level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hoo
                    "save_as_with_error should forward unpack failures");
 
     // create_new_grid + resize copy/fill + off-map erase paths.
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.grid.data[0] = PIX_TREE_M1;
-    const int old_w = myscreen->level_data.grid.w;
-    const int old_h = myscreen->level_data.grid.h;
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_M1;
+    const int old_w = og::runtime::current_session->myscreen_->level_data.grid.w;
+    const int old_h = og::runtime::current_session->myscreen_->level_data.grid.h;
 
-    walker* keep = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* drop_living = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* drop_fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
-    walker* drop_weap = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    walker* keep = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* drop_living = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* drop_fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* drop_weap = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(keep && drop_living && drop_fx && drop_weap, "fixtures created");
     if (!(keep && drop_living && drop_fx && drop_weap))
         return;
@@ -1517,16 +1517,16 @@ void test_level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hoo
     drop_weap->setxy(static_cast<short>(old_w * GRID_SIZE - 1), static_cast<short>(old_h * GRID_SIZE - 1));
 
     // Shrink by one cell in each axis so edge fixtures fall off-map.
-    myscreen->level_data.resize_grid(old_w - 1, old_h - 1);
-    TEST_ASSERT_EQ(PIX_TREE_M1, (int)myscreen->level_data.grid.data[0], "resize should copy existing tiles");
+    og::runtime::current_session->myscreen_->level_data.resize_grid(old_w - 1, old_h - 1);
+    TEST_ASSERT_EQ(PIX_TREE_M1, (int)og::runtime::current_session->myscreen_->level_data.grid.data[0], "resize should copy existing tiles");
 
     // Grow and ensure newly added cells are initialized (not left zeroed from freed memory).
-    const int resized_w = myscreen->level_data.grid.w;
-    const int resized_h = myscreen->level_data.grid.h;
-    myscreen->level_data.resize_grid(resized_w + 1, resized_h + 1);
-    const int tail_idx = myscreen->level_data.grid.w * myscreen->level_data.grid.h - 1;
-    TEST_ASSERT(myscreen->level_data.grid.data[tail_idx] >= PIX_GRASS1 &&
-                myscreen->level_data.grid.data[tail_idx] <= PIX_GRASS4,
+    const int resized_w = og::runtime::current_session->myscreen_->level_data.grid.w;
+    const int resized_h = og::runtime::current_session->myscreen_->level_data.grid.h;
+    og::runtime::current_session->myscreen_->level_data.resize_grid(resized_w + 1, resized_h + 1);
+    const int tail_idx = og::runtime::current_session->myscreen_->level_data.grid.w * og::runtime::current_session->myscreen_->level_data.grid.h - 1;
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.grid.data[tail_idx] >= PIX_GRASS1 &&
+                og::runtime::current_session->myscreen_->level_data.grid.data[tail_idx] <= PIX_GRASS4,
                 "resize should seed newly grown cells with grass variants");
 
     // delete_objects hook + stale-obmap clearing.

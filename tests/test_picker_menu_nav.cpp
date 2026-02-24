@@ -21,11 +21,11 @@ struct KeyBindingGuard
     int key_enum;
     int old_key;
     KeyBindingGuard(int player_, int key_enum_, int new_key)
-        : player(player_), key_enum(key_enum_), old_key(player_keys[player_][key_enum_])
+        : player(player_), key_enum(key_enum_), old_key(og::runtime::current_session->player_keys_[player_][key_enum_])
     {
-        player_keys[player][key_enum] = new_key;
+        og::runtime::current_session->player_keys_[player][key_enum] = new_key;
     }
-    ~KeyBindingGuard() { player_keys[player][key_enum] = old_key; }
+    ~KeyBindingGuard() { og::runtime::current_session->player_keys_[player][key_enum] = old_key; }
 };
 
 struct KeyStateGuard

@@ -13,7 +13,7 @@
 
 static std::unique_ptr<walker> create_living(char family)
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -98,7 +98,7 @@ REGISTER_TEST(test_walker_friendliness_and_attack_paths);
 
 void test_walker_specials_and_render_paths_smoke()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "viewob[0] should exist");
 
     auto w = create_living(FAMILY_SOLDIER);
@@ -174,7 +174,7 @@ void test_walker_myguy_move_and_weapon_heading_and_outline_named()
     // -----------------------------------------------------------------------
     // set_weapon_heading: deterministic switch coverage (no waver)
     // -----------------------------------------------------------------------
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
     if (!l)
         return;
@@ -493,8 +493,8 @@ void test_walker_create_weapon_myguy_and_direction_and_cleric_branches()
 
     // Clean up only what we spawned; don't wipe global state (view controls, etc.).
     if (w1)
-        myscreen->level_data.remove_ob(w1);
+        og::runtime::current_session->myscreen_->level_data.remove_ob(w1);
     if (w2)
-        myscreen->level_data.remove_ob(w2);
+        og::runtime::current_session->myscreen_->level_data.remove_ob(w2);
 }
 REGISTER_TEST(test_walker_create_weapon_myguy_and_direction_and_cleric_branches);

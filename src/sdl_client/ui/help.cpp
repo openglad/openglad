@@ -111,7 +111,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			}
 		}
 
-		if (keystates[KEYSTATE_PAGEDOWN])
+		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN])
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -143,7 +143,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 			}
 		}
 
-		if (keystates[KEYSTATE_PAGEUP])
+		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEUP])
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -184,7 +184,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 		}
 	}
 
-	while (keystates[KEYSTATE_ESCAPE])
+	while (og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
 		SDL_Delay(1);
 		get_input_events(POLL);
@@ -482,7 +482,7 @@ Sint32 show_general_help()
 	Sint32 text_delay = 1;
 	Sint32 key_presses = 0;
 
-	text& mytext = myscreen->text_normal;
+	text& mytext = og::runtime::current_session->myscreen_->text_normal;
 	Sint32 start_time, now_time;
 	Sint32 bottomrow = (screenlines - ((DISPLAY_LINES-1)*8));
 	if (bottomrow < 0) bottomrow = 0;
@@ -506,7 +506,7 @@ Sint32 show_general_help()
 	// Track previous mouse state for click detection
 	bool prev_mouse_left = false;
 
-	while (!keystates[KEYSTATE_ESCAPE])
+	while (!og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(10);
 		get_input_events(POLL);
@@ -544,23 +544,23 @@ Sint32 show_general_help()
 		static bool key2_was_pressed = false;
 		static bool key3_was_pressed = false;
 
-		if (keystates[KEYSTATE_1] && !key1_was_pressed && current_tab != HelpTab::Controls)
+		if (og::runtime::current_session->keystates_[KEYSTATE_1] && !key1_was_pressed && current_tab != HelpTab::Controls)
 		{
 			switch_tab(HelpTab::Controls);
 		}
-		key1_was_pressed = keystates[KEYSTATE_1];
+		key1_was_pressed = og::runtime::current_session->keystates_[KEYSTATE_1];
 
-		if (keystates[KEYSTATE_2] && !key2_was_pressed && current_tab != HelpTab::Classes)
+		if (og::runtime::current_session->keystates_[KEYSTATE_2] && !key2_was_pressed && current_tab != HelpTab::Classes)
 		{
 			switch_tab(HelpTab::Classes);
 		}
-		key2_was_pressed = keystates[KEYSTATE_2];
+		key2_was_pressed = og::runtime::current_session->keystates_[KEYSTATE_2];
 
-		if (keystates[KEYSTATE_3] && !key3_was_pressed && current_tab != HelpTab::Editor)
+		if (og::runtime::current_session->keystates_[KEYSTATE_3] && !key3_was_pressed && current_tab != HelpTab::Editor)
 		{
 			switch_tab(HelpTab::Editor);
 		}
-		key3_was_pressed = keystates[KEYSTATE_3];
+		key3_was_pressed = og::runtime::current_session->keystates_[KEYSTATE_3];
 
 		short scroll_delta = get_and_reset_scroll_amount();
 		if (scroll_delta < 0)
@@ -578,7 +578,7 @@ Sint32 show_general_help()
 			}
 		}
 
-		if (keystates[KEYSTATE_PAGEDOWN])
+		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEDOWN])
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -610,7 +610,7 @@ Sint32 show_general_help()
 			}
 		}
 
-		if (keystates[KEYSTATE_PAGEUP])
+		if (og::runtime::current_session->keystates_[KEYSTATE_PAGEUP])
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -632,7 +632,7 @@ Sint32 show_general_help()
 			int content_bottom = content_text_top + (DISPLAY_LINES * 7) + 10;
 
 			// Draw the main dialog background (covers everything)
-			myscreen->draw_button(HELPTEXT_LEFT-4, TAB_Y-4,
+			og::runtime::current_session->myscreen_->draw_button(HELPTEXT_LEFT-4, TAB_Y-4,
 			                      HELPTEXT_LEFT+240, content_bottom + 8, 3, 1);
 
 			// Draw tabs
@@ -641,12 +641,12 @@ Sint32 show_general_help()
 				int tab_x = TAB_START_X + t * (TAB_WIDTH + TAB_SPACING);
 
 				// Draw tab button
-				myscreen->draw_button(tab_x, TAB_Y, tab_x + TAB_WIDTH, TAB_Y + TAB_HEIGHT, 1, 1);
+				og::runtime::current_session->myscreen_->draw_button(tab_x, TAB_Y, tab_x + TAB_WIDTH, TAB_Y + TAB_HEIGHT, 1, 1);
 
 				// Highlight selected tab by drawing over bottom edge
 				if (static_cast<HelpTab>(t) == current_tab)
 				{
-					myscreen->draw_text_bar(tab_x + 1, TAB_Y + TAB_HEIGHT - 1,
+					og::runtime::current_session->myscreen_->draw_text_bar(tab_x + 1, TAB_Y + TAB_HEIGHT - 1,
 					                        tab_x + TAB_WIDTH - 1, TAB_Y + TAB_HEIGHT);
 				}
 
@@ -658,7 +658,7 @@ Sint32 show_general_help()
 			}
 
 			// Draw content area (below tabs)
-			myscreen->draw_button(HELPTEXT_LEFT-4, CONTENT_TOP,
+			og::runtime::current_session->myscreen_->draw_button(HELPTEXT_LEFT-4, CONTENT_TOP,
 			                      HELPTEXT_LEFT+240, content_bottom + 8, 3, 1);
 
 			// Draw content text
@@ -674,23 +674,23 @@ Sint32 show_general_help()
 			}
 
 			// Draw title bar (top of content area)
-			myscreen->draw_text_bar(HELPTEXT_LEFT, CONTENT_TOP,
+			og::runtime::current_session->myscreen_->draw_text_bar(HELPTEXT_LEFT, CONTENT_TOP,
 			                        HELPTEXT_LEFT+240-4, CONTENT_TOP + 6);
 			std::string title = std::format("GLADIATOR v{}", OPENGLAD_VERSION_STRING);
 			mytext.write_xy(HELPTEXT_LEFT+60, CONTENT_TOP + 1, title.c_str(), static_cast<unsigned char>(RED), 1);
 
 			// Draw footer bar (bottom of content area)
-			myscreen->draw_text_bar(HELPTEXT_LEFT, content_bottom,
+			og::runtime::current_session->myscreen_->draw_text_bar(HELPTEXT_LEFT, content_bottom,
 			                        HELPTEXT_LEFT+240-4, content_bottom + 6);
 			mytext.write_xy(HELPTEXT_LEFT+30, content_bottom + 1,
 			                "1/2/3:Tab  ESC:Exit", static_cast<unsigned char>(RED), 1);
 
-			myscreen->buffer_to_screen(0, 0, 320, 200);
+			og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 			changed = 0;
 		}
 	}
 
-	while (keystates[KEYSTATE_ESCAPE])
+	while (og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(1);
 		get_input_events(POLL);

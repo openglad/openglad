@@ -23,8 +23,8 @@
 #include <string>
 #include <unistd.h>
 
-// current_difficulty global — difficulty_level[] is now in picker_common.cpp
-std::int32_t current_difficulty = 1; // 'normal'
+// current_difficulty lives in GameSession — the text client's headless_session_buf
+// in main.cpp provides zero-initialized storage. text_picker sets it at runtime.
 // difficulty_level[] moved to src/ui/picker_common.cpp (shared with SDL client)
 
 #ifdef _WIN32

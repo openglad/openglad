@@ -100,7 +100,7 @@ static void cleanup_picker_state()
     // localbuttons == allbuttons[0] (returned by init_buttons), so just
     // delete everything via allbuttons to avoid double-free.
     clear_allbuttons();
-    localbuttons = nullptr;
+    og::runtime::current_session->localbuttons_ = nullptr;
     main_columns_pix.reset();
     main_columns_data.free();
     main_title_logo_pix.reset();
@@ -111,10 +111,10 @@ void test_level_progress_menu() {
     trace_clear();
 
     // Set up save data so "CONTINUE GAME" has something to load
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
     // Start the event injector thread
     EventSequence seq = { false, false };

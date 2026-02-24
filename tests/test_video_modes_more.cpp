@@ -55,16 +55,16 @@ void test_video_putbuffer_surface_clipping_and_blit()
     SDL_FillRect(surf.get(), nullptr, SDL_MapRGB(surf->format, 10, 20, 30));
 
     // Early-out: tile outside clipping region.
-    myscreen->putbuffer(500, 500, 16, 16, 0, 0, 319, 199, surf.get());
+    og::runtime::current_session->myscreen_->putbuffer(500, 500, 16, 16, 0, 0, 319, 199, surf.get());
 
     // Clip left/top.
-    myscreen->putbuffer(-5, -5, 16, 16, 0, 0, 319, 199, surf.get());
+    og::runtime::current_session->myscreen_->putbuffer(-5, -5, 16, 16, 0, 0, 319, 199, surf.get());
 
     // Clip right/bottom.
-    myscreen->putbuffer(310, 190, 32, 32, 0, 0, 319, 199, surf.get());
+    og::runtime::current_session->myscreen_->putbuffer(310, 190, 32, 32, 0, 0, 319, 199, surf.get());
 
     // No clipping.
-    myscreen->putbuffer(10, 10, 16, 16, 0, 0, 319, 199, surf.get());
+    og::runtime::current_session->myscreen_->putbuffer(10, 10, 16, 16, 0, 0, 319, 199, surf.get());
 }
 REGISTER_TEST(test_video_putbuffer_surface_clipping_and_blit);
 
@@ -84,51 +84,51 @@ void test_video_walkputbuffer_modes_invisible_outline_phantom()
     auto span = std::span<const unsigned char>(sprite.data(), sprite.size());
 
     // Ensure get_pixel() has something to read (phantom modes sample from the screen).
-    myscreen->clearbuffer();
-    myscreen->putdata(0, 0, 8, 8, span);
-    myscreen->swap();
+    og::runtime::current_session->myscreen_->clearbuffer();
+    og::runtime::current_session->myscreen_->putdata(0, 0, 8, 8, span);
+    og::runtime::current_session->myscreen_->swap();
 
     IRandom* old_rng = ctx().rng;
 
     // INVISIBLE_MODE: cover both the "skip draw" and "draw" paths deterministically.
     FixedRandom rng0(0);
     ctx().rng = &rng0; // rng(1) -> 0
-    myscreen->walkputbuffer(50, 50, 8, 8, 0, 0, 319, 199, span, 40,
+    og::runtime::current_session->myscreen_->walkputbuffer(50, 50, 8, 8, 0, 0, 319, 199, span, 40,
                             static_cast<unsigned char>(INVISIBLE_MODE), /*invisibility*/ 1,
                             /*outline*/ 7, /*shifttype*/ 0);
 
     FixedRandom rng9(9);
     ctx().rng = &rng9; // rng(10) -> 9 (> 8)
-    myscreen->walkputbuffer(60, 50, 8, 8, 0, 0, 319, 199, span, 40,
+    og::runtime::current_session->myscreen_->walkputbuffer(60, 50, 8, 8, 0, 0, 319, 199, span, 40,
                             static_cast<unsigned char>(INVISIBLE_MODE), /*invisibility*/ 10,
                             /*outline*/ 7, /*shifttype*/ 0);
 
     // OUTLINE_MODE: border-only drawing.
     ctx().rng = &rng0;
-    myscreen->walkputbuffer(70, 50, 8, 8, 0, 0, 319, 199, span, 40,
+    og::runtime::current_session->myscreen_->walkputbuffer(70, 50, 8, 8, 0, 0, 319, 199, span, 40,
                             static_cast<unsigned char>(OUTLINE_MODE), /*invisibility*/ 0,
                             /*outline*/ 7, /*shifttype*/ 0);
 
     // PHANTOM_MODE: exercise shift type branches.
-    myscreen->walkputbuffer(80, 50, 8, 8, 0, 0, 319, 199, span, 40,
+    og::runtime::current_session->myscreen_->walkputbuffer(80, 50, 8, 8, 0, 0, 319, 199, span, 40,
                             static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
                             /*outline*/ 0, static_cast<unsigned char>(SHIFT_LEFT));
-    myscreen->walkputbuffer(90, 50, 8, 8, 0, 0, 319, 199, span, 40,
+    og::runtime::current_session->myscreen_->walkputbuffer(90, 50, 8, 8, 0, 0, 319, 199, span, 40,
                             static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
                             /*outline*/ 0, static_cast<unsigned char>(SHIFT_RIGHT));
-    myscreen->walkputbuffer(100, 50, 8, 8, 0, 0, 319, 199, span, 40,
+    og::runtime::current_session->myscreen_->walkputbuffer(100, 50, 8, 8, 0, 0, 319, 199, span, 40,
                             static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
                             /*outline*/ 0, static_cast<unsigned char>(SHIFT_RIGHT_RANDOM));
-    myscreen->walkputbuffer(110, 50, 8, 8, 0, 0, 319, 199, span, 40,
+    og::runtime::current_session->myscreen_->walkputbuffer(110, 50, 8, 8, 0, 0, 319, 199, span, 40,
                             static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
                             /*outline*/ 0, static_cast<unsigned char>(SHIFT_RANDOM));
-    myscreen->walkputbuffer(120, 50, 8, 8, 0, 0, 319, 199, span, 40,
+    og::runtime::current_session->myscreen_->walkputbuffer(120, 50, 8, 8, 0, 0, 319, 199, span, 40,
                             static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
                             /*outline*/ 0, static_cast<unsigned char>(SHIFT_LIGHTER));
-    myscreen->walkputbuffer(130, 50, 8, 8, 0, 0, 319, 199, span, 40,
+    og::runtime::current_session->myscreen_->walkputbuffer(130, 50, 8, 8, 0, 0, 319, 199, span, 40,
                             static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
                             /*outline*/ 0, static_cast<unsigned char>(SHIFT_DARKER));
-    myscreen->walkputbuffer(140, 50, 8, 8, 0, 0, 319, 199, span, 40,
+    og::runtime::current_session->myscreen_->walkputbuffer(140, 50, 8, 8, 0, 0, 319, 199, span, 40,
                             static_cast<unsigned char>(PHANTOM_MODE), /*invisibility*/ 0,
                             /*outline*/ 0, static_cast<unsigned char>(SHIFT_BLOCKY));
 
@@ -141,7 +141,7 @@ void test_video_save_screenshot_smoke_and_cleanup()
     cleanup_screenshots();
 
     // Default engine path (NoZoom) should save using E_Screen->render.
-    (void)myscreen->save_screenshot();
+    (void)og::runtime::current_session->myscreen_->save_screenshot();
 
     cleanup_screenshots();
 }

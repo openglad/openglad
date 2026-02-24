@@ -28,7 +28,7 @@ static void cleanup_picker_state()
         backpics[i].free();
     }
     clear_allbuttons();
-    localbuttons = nullptr;
+    og::runtime::current_session->localbuttons_ = nullptr;
     main_columns_pix.reset();
     main_columns_data.free();
     main_title_logo_pix.reset();
@@ -111,10 +111,10 @@ static int difficulty_injector(void* data)
 void test_difficulty_toggle() {
     trace_clear();
 
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
     DifficultyState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(difficulty_injector, "difficulty_test", &state);

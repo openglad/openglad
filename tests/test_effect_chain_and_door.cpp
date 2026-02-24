@@ -47,16 +47,16 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    return guy_create_walker_owned(g, myscreen);
+    return guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
 }
 
 void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx()
 {
-    TEST_ASSERT(myscreen != nullptr, "myscreen exists");
-    if (!myscreen)
+    TEST_ASSERT(og::runtime::current_session->myscreen_ != nullptr, "myscreen exists");
+    if (!og::runtime::current_session->myscreen_)
         return;
 
-    LevelData& level = myscreen->level_data;
+    LevelData& level = og::runtime::current_session->myscreen_->level_data;
 
     const auto ob_before = snapshot_ptrs(level.oblist);
     const auto fx_before = snapshot_ptrs(level.fxlist);
@@ -127,11 +127,11 @@ REGISTER_TEST(test_effect_chain_hits_leader_spawns_explosion_and_secondary_chain
 
 void test_effect_chain_early_exit_and_movement_branches()
 {
-    TEST_ASSERT(myscreen != nullptr, "myscreen exists");
-    if (!myscreen)
+    TEST_ASSERT(og::runtime::current_session->myscreen_ != nullptr, "myscreen exists");
+    if (!og::runtime::current_session->myscreen_)
         return;
 
-    LevelData& level = myscreen->level_data;
+    LevelData& level = og::runtime::current_session->myscreen_->level_data;
 
     // Missing leader should kill the chain immediately.
     walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
@@ -177,11 +177,11 @@ REGISTER_TEST(test_effect_chain_early_exit_and_movement_branches);
 
 void test_effect_chain_movement_axis_delta_branches()
 {
-    TEST_ASSERT(myscreen != nullptr, "myscreen exists");
-    if (!myscreen)
+    TEST_ASSERT(og::runtime::current_session->myscreen_ != nullptr, "myscreen exists");
+    if (!og::runtime::current_session->myscreen_)
         return;
 
-    LevelData& level = myscreen->level_data;
+    LevelData& level = og::runtime::current_session->myscreen_->level_data;
     level.delete_objects();
 
     walker* owner = level.add_ob(Order::Living, FAMILY_SOLDIER);

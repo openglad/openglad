@@ -27,7 +27,7 @@
 // Get list of accessible levels (cleared levels + their exits)
 std::vector<int> get_accessible_levels()
 {
-    screen* game = myscreen;
+    screen* game = og::runtime::current_session->myscreen_;
     if (!game) {
         return {1};
     }

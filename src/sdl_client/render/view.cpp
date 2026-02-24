@@ -149,12 +149,12 @@ namespace
 {
 inline screen* active_screen()
 {
-    return myscreen;
+    return og::runtime::current_session->myscreen_;
 }
 
 inline options* active_prefs()
 {
-    return theprefs;
+    return og::runtime::current_session->theprefs_;
 }
 } // namespace
 
@@ -884,13 +884,13 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 #ifndef TESTING
 	Sint32 currentcycle = 0;
 	Sint32 cycletime = 30000;
-	while (!keystates[KEYSTATE_ESCAPE])
+	while (!og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(10);  // Yield to browser event loop
 		active_screen()->do_cycle(currentcycle++, cycletime);
 		get_input_events(POLL);
 	}
-	while (keystates[KEYSTATE_ESCAPE])
+	while (og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(1);
 		get_input_events(POLL);
@@ -1029,37 +1029,37 @@ void viewscreen::options_menu()
 	active_screen()->buffer_to_screen(0, 0, 320, 200);
 
 	// Wait for esc for now
-	while (!keystates[KEYSTATE_ESCAPE])
+	while (!og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(10);  // Yield to browser event loop
 		get_input_events(POLL);
-		if (keystates[KEYSTATE_KP_PLUS]) // faster game speed
+		if (og::runtime::current_session->keystates_[KEYSTATE_KP_PLUS]) // faster game speed
 		{
 			gamespeed = change_speed(1);
 			message = std::format("Change Game Speed (+/-): {:2d}  ", gamespeed);
 			active_screen()->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+static_cast<int>(message.size())*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (keystates[KEYSTATE_KP_PLUS])
+			while (og::runtime::current_session->keystates_[KEYSTATE_KP_PLUS])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
-		if (keystates[KEYSTATE_KP_MINUS]) // slower game speed
+		if (og::runtime::current_session->keystates_[KEYSTATE_KP_MINUS]) // slower game speed
 		{
 			gamespeed = change_speed(-1);
 			message = std::format("Change Game Speed (+/-): {:2d}  ", gamespeed);
 			active_screen()->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+static_cast<int>(message.size())*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (keystates[KEYSTATE_KP_MINUS])
+			while (og::runtime::current_session->keystates_[KEYSTATE_KP_MINUS])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
-		if (keystates[KEYSTATE_LEFTBRACKET]) // smaller view size
+		if (og::runtime::current_session->keystates_[KEYSTATE_LEFTBRACKET]) // smaller view size
 		{
 			prefs[PREF_VIEW] = prefs[PREF_VIEW]+1;
 			if (prefs[PREF_VIEW] > 4)
@@ -1091,13 +1091,13 @@ void viewscreen::options_menu()
 			active_screen()->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(3), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (keystates[KEYSTATE_LEFTBRACKET])
+			while (og::runtime::current_session->keystates_[KEYSTATE_LEFTBRACKET])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
-		if (keystates[KEYSTATE_RIGHTBRACKET]) // larger view size
+		if (og::runtime::current_session->keystates_[KEYSTATE_RIGHTBRACKET]) // larger view size
 		{
 			prefs[PREF_VIEW] = prefs[PREF_VIEW]-1;
 			if (prefs[PREF_VIEW] < 0)
@@ -1129,13 +1129,13 @@ void viewscreen::options_menu()
 			active_screen()->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(3), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (keystates[KEYSTATE_RIGHTBRACKET])
+			while (og::runtime::current_session->keystates_[KEYSTATE_RIGHTBRACKET])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
-			if (keystates[KEYSTATE_COMMA]) // darken screen
+			if (og::runtime::current_session->keystates_[KEYSTATE_COMMA]) // darken screen
 			{
 				gamma_val = change_gamma(-2);
 				prefs[PREF_GAMMA] = static_cast<signed char>(gamma_val);
@@ -1143,13 +1143,13 @@ void viewscreen::options_menu()
 			active_screen()->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (keystates[KEYSTATE_COMMA])
+			while (og::runtime::current_session->keystates_[KEYSTATE_COMMA])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
-			if (keystates[KEYSTATE_PERIOD]) // lighten screen
+			if (og::runtime::current_session->keystates_[KEYSTATE_PERIOD]) // lighten screen
 			{
 				gamma_val = change_gamma(+2);
 				prefs[PREF_GAMMA] = static_cast<signed char>(gamma_val);
@@ -1157,13 +1157,13 @@ void viewscreen::options_menu()
 			active_screen()->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (keystates[KEYSTATE_PERIOD])
+			while (og::runtime::current_session->keystates_[KEYSTATE_PERIOD])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
-			if (keystates[KEYSTATE_r]) // toggle radar display
+			if (og::runtime::current_session->keystates_[KEYSTATE_r]) // toggle radar display
 			{
 				prefs[PREF_RADAR] = static_cast<signed char>((prefs[PREF_RADAR] + 1) % 2);
 			if (prefs[PREF_RADAR])
@@ -1173,13 +1173,13 @@ void viewscreen::options_menu()
 			active_screen()->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(5), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (keystates[KEYSTATE_r])
+			while (og::runtime::current_session->keystates_[KEYSTATE_r])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
-			if (keystates[KEYSTATE_h]) // toggle HP display
+			if (og::runtime::current_session->keystates_[KEYSTATE_h]) // toggle HP display
 			{
 				prefs[PREF_LIFE] = static_cast<signed char>((prefs[PREF_LIFE] + 1) % 5);
 			switch (prefs[PREF_LIFE])
@@ -1205,13 +1205,13 @@ void viewscreen::options_menu()
 			active_screen()->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(6), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (keystates[KEYSTATE_h])
+			while (og::runtime::current_session->keystates_[KEYSTATE_h])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
-			if (keystates[KEYSTATE_f]) // toggle foes display
+			if (og::runtime::current_session->keystates_[KEYSTATE_f]) // toggle foes display
 			{
 				prefs[PREF_FOES] = static_cast<signed char>((prefs[PREF_FOES] + 1) % 2);
 			if (prefs[PREF_FOES])
@@ -1221,13 +1221,13 @@ void viewscreen::options_menu()
 			active_screen()->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(7), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (keystates[KEYSTATE_f])
+			while (og::runtime::current_session->keystates_[KEYSTATE_f])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
-			if (keystates[KEYSTATE_s]) // toggle score display
+			if (og::runtime::current_session->keystates_[KEYSTATE_s]) // toggle score display
 			{
 				prefs[PREF_SCORE] = static_cast<signed char>((prefs[PREF_SCORE] + 1) % 2);
 			if (prefs[PREF_SCORE])
@@ -1237,14 +1237,14 @@ void viewscreen::options_menu()
 			active_screen()->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(8), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (keystates[KEYSTATE_s])
+			while (og::runtime::current_session->keystates_[KEYSTATE_s])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
 
-		if (keystates[KEYSTATE_t])      // View the teamlist
+		if (og::runtime::current_session->keystates_[KEYSTATE_t])      // View the teamlist
 		{
 			view_team();
 			active_screen()->redraw();
@@ -1252,10 +1252,10 @@ void viewscreen::options_menu()
 			return;
 		}
 
-		if (keystates[KEYSTATE_c])
+		if (og::runtime::current_session->keystates_[KEYSTATE_c])
 		{
 			active_screen()->cyclemode= static_cast<short>((active_screen()->cyclemode+1) %2);
-			while (keystates[KEYSTATE_c])
+			while (og::runtime::current_session->keystates_[KEYSTATE_c])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
@@ -1270,7 +1270,7 @@ void viewscreen::options_menu()
 
 		}
 
-		if (keystates[KEYSTATE_j]) // toggle joystick display
+		if (og::runtime::current_session->keystates_[KEYSTATE_j]) // toggle joystick display
 		{
 		    if(playerHasJoystick(mynum))
                 disablePlayerJoystick(mynum);
@@ -1290,7 +1290,7 @@ void viewscreen::options_menu()
             clear_events();
 		}
 
-			if (keystates[KEYSTATE_b]) // toggle button display
+			if (og::runtime::current_session->keystates_[KEYSTATE_b]) // toggle button display
 			{
 				prefs[PREF_OVERLAY] = static_cast<signed char>((prefs[PREF_OVERLAY] + 1) % 2);
 			if (prefs[PREF_OVERLAY])
@@ -1300,7 +1300,7 @@ void viewscreen::options_menu()
 			active_screen()->draw_box(45, OPLINES(13), 275, OPLINES(13)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(13), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
-			while (keystates[KEYSTATE_b])
+			while (og::runtime::current_session->keystates_[KEYSTATE_b])
 			{
 				YIELD_SLEEP(1);
 				get_input_events(POLL);
@@ -1309,7 +1309,7 @@ void viewscreen::options_menu()
 
 	}  // end of wait for ESC press
 
-	while (keystates[KEYSTATE_ESCAPE])
+	while (og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(1);
 		get_input_events(POLL);
@@ -1643,44 +1643,44 @@ void viewscreen::view_key_bindings()
 
 	// Visual 3x3 grid for directional keys
 	// Row 1: UP-LEFT, UP, UP-RIGHT
-	keytext.write_xy(40, 54, get_key_display_name(player_keys[mynum][KEY_UP_LEFT]), static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(75, 54, get_key_display_name(player_keys[mynum][KEY_UP]), static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(100, 54, get_key_display_name(player_keys[mynum][KEY_UP_RIGHT]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(40, 54, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_UP_LEFT]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(75, 54, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_UP]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(100, 54, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_UP_RIGHT]), static_cast<unsigned char>(BLACK), 1);
 
 	// Row 2: LEFT, [center], RIGHT
-	keytext.write_xy(40, 66, get_key_display_name(player_keys[mynum][KEY_LEFT]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(40, 66, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_LEFT]), static_cast<unsigned char>(BLACK), 1);
 	keytext.write_xy(70, 66, "---", static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(100, 66, get_key_display_name(player_keys[mynum][KEY_RIGHT]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(100, 66, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_RIGHT]), static_cast<unsigned char>(BLACK), 1);
 
 	// Row 3: DOWN-LEFT, DOWN, DOWN-RIGHT
-	keytext.write_xy(40, 78, get_key_display_name(player_keys[mynum][KEY_DOWN_LEFT]), static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(75, 78, get_key_display_name(player_keys[mynum][KEY_DOWN]), static_cast<unsigned char>(BLACK), 1);
-	keytext.write_xy(100, 78, get_key_display_name(player_keys[mynum][KEY_DOWN_RIGHT]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(40, 78, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_DOWN_LEFT]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(75, 78, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_DOWN]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(100, 78, get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_DOWN_RIGHT]), static_cast<unsigned char>(BLACK), 1);
 
 	// Action keys label
 	keytext.write_xy(180, 42, "-- Actions --", static_cast<unsigned char>(COLOR_BLUE), 1);
 
 	// Action keys in right column
 	std::string msg;
-	msg = std::format("Fire: {}", get_key_display_name(player_keys[mynum][KEY_FIRE]));
+	msg = std::format("Fire: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_FIRE]));
 	keytext.write_xy(165, 54, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-	msg = std::format("Special: {}", get_key_display_name(player_keys[mynum][KEY_SPECIAL]));
+	msg = std::format("Special: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_SPECIAL]));
 	keytext.write_xy(165, 66, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-	msg = std::format("Yell: {}", get_key_display_name(player_keys[mynum][KEY_YELL]));
+	msg = std::format("Yell: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_YELL]));
 	keytext.write_xy(165, 78, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-	msg = std::format("Shifter: {}", get_key_display_name(player_keys[mynum][KEY_SHIFTER]));
+	msg = std::format("Shifter: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_SHIFTER]));
 	keytext.write_xy(165, 90, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 	// Switching keys
 	keytext.write_xy(55, 105, "-- Switching --", static_cast<unsigned char>(COLOR_BLUE), 1);
 
-	msg = std::format("Switch Char: {}", get_key_display_name(player_keys[mynum][KEY_SWITCH]));
+	msg = std::format("Switch Char: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_SWITCH]));
 	keytext.write_xy(40, 117, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-	msg = std::format("Switch Special: {}", get_key_display_name(player_keys[mynum][KEY_SPECIAL_SWITCH]));
+	msg = std::format("Switch Special: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_SPECIAL_SWITCH]));
 	keytext.write_xy(40, 129, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 	// Menu key info
@@ -1692,12 +1692,12 @@ void viewscreen::view_key_bindings()
 	active_screen()->buffer_to_screen(0, 0, 320, 200);
 
 	// Wait for ESC
-	while (!keystates[KEYSTATE_ESCAPE])
+	while (!og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(10);
 		get_input_events(POLL);
 	}
-	while (keystates[KEYSTATE_ESCAPE])
+	while (og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(1);
 		get_input_events(POLL);

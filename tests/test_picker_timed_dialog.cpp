@@ -27,7 +27,7 @@ static int timed_dialog_injector(void* data)
 
 void test_picker_timed_dialog_breaks_on_input()
 {
-    (void)myscreen; // ensure screen exists
+    (void)og::runtime::current_session->myscreen_; // ensure screen exists
 
     TimedDialogState st{false, false};
     SDL_Thread* thread = SDL_CreateThread(timed_dialog_injector, "timed_dialog_injector", &st);

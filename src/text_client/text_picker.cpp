@@ -27,7 +27,6 @@
 
 // Access current_difficulty through the headless session storage (defined in main.cpp).
 #include <openglad/runtime/game_session.h>
-#define current_difficulty (og::runtime::current_session->current_difficulty_)
 
 namespace og::ui {
 namespace {
@@ -284,7 +283,7 @@ private:
     std::string menu_item_label(const PickerMenuItem& item) const
     {
         if (item.command == PickerMenuCommand::SetDifficulty)
-            return format_difficulty_label(current_difficulty);
+            return format_difficulty_label(og::runtime::current_session->current_difficulty_);
         if (item.command == PickerMenuCommand::SetLevel)
             return std::format("{} ({})", item.label, config_.level);
         if (item.command == PickerMenuCommand::SetCampaign)
@@ -298,9 +297,9 @@ private:
     {
         switch (item.command) {
         case PickerMenuCommand::SetDifficulty:
-            current_difficulty = cycle_difficulty(current_difficulty);
+            og::runtime::current_session->current_difficulty_ = cycle_difficulty(og::runtime::current_session->current_difficulty_);
             std::printf("Difficulty set to %s.\n",
-                kDifficultyNames[current_difficulty]);
+                kDifficultyNames[og::runtime::current_session->current_difficulty_]);
             break;
         case PickerMenuCommand::SetPlayerMode:
             set_player_count(save_data_, item.arg);

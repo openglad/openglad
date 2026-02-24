@@ -3,8 +3,8 @@
  *
  * Holds state that doesn't have a legacy global equivalent: RNG interface,
  * input snapshot, simulation event log, and mounted-campaign tracking.
- * For screen, prefs, and config, use the globals directly (myscreen,
- * theprefs, cfg).
+ * For screen, prefs, and config, use the globals directly (og::runtime::current_session->myscreen_,
+ * og::runtime::current_session->theprefs_, cfg).
  *
  * Tests can call set_global_context() to substitute a context with a
  * mock RNG or custom sim-event log.

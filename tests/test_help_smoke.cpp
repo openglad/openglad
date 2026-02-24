@@ -17,22 +17,22 @@ struct ViewportGuard
 
     ViewportGuard()
     {
-        ow = window_w;
-        oh = window_h;
-        ovw = viewport_w;
-        ovh = viewport_h;
-        ox = viewport_offset_x;
-        oy = viewport_offset_y;
+        ow = og::runtime::current_session->window_w_;
+        oh = og::runtime::current_session->window_h_;
+        ovw = og::runtime::current_session->viewport_w_;
+        ovh = og::runtime::current_session->viewport_h_;
+        ox = og::runtime::current_session->viewport_offset_x_;
+        oy = og::runtime::current_session->viewport_offset_y_;
     }
 
     ~ViewportGuard()
     {
-        window_w = ow;
-        window_h = oh;
-        viewport_w = ovw;
-        viewport_h = ovh;
-        viewport_offset_x = ox;
-        viewport_offset_y = oy;
+        og::runtime::current_session->window_w_ = ow;
+        og::runtime::current_session->window_h_ = oh;
+        og::runtime::current_session->viewport_w_ = ovw;
+        og::runtime::current_session->viewport_h_ = ovh;
+        og::runtime::current_session->viewport_offset_x_ = ox;
+        og::runtime::current_session->viewport_offset_y_ = oy;
     }
 };
 
@@ -79,12 +79,12 @@ void test_help_show_general_help_smoke_exits_on_escape()
 {
     ViewportGuard guard;
     // Force 1:1 event coords to simplify tab click injection.
-    window_w = 320;
-    window_h = 200;
-    viewport_offset_x = 0;
-    viewport_offset_y = 0;
-    viewport_w = 320;
-    viewport_h = 200;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
 
     SDL_Thread* thread = SDL_CreateThread(help_injector_thread, "help_injector", nullptr);
     TEST_ASSERT(thread != nullptr, "failed to create injector thread");
@@ -108,12 +108,12 @@ static int intro_injector_thread(void* data)
 
 void test_help_read_campaign_intro_smoke_exits_on_input()
 {
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
 
     SDL_Thread* thread = SDL_CreateThread(intro_injector_thread, "intro_injector", nullptr);
     TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
-    (void)read_campaign_intro(myscreen);
+    (void)read_campaign_intro(og::runtime::current_session->myscreen_);
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);

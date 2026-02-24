@@ -37,9 +37,9 @@ REGISTER_TEST(test_smooth_query_x_y_negative);
 void test_smooth_query_x_y_with_grid()
 {
     // Use the level's grid
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     smoother s;
-    s.set_target(myscreen->level_data.grid);
+    s.set_target(og::runtime::current_session->myscreen_->level_data.grid);
 
     // Valid query
     Sint32 result = s.query_x_y(0, 0);
@@ -224,9 +224,9 @@ REGISTER_TEST(test_smooth_query_genre_light_grass);
 
 void test_smooth_smooth_full_grid()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
     smoother s;
-    s.set_target(myscreen->level_data.grid);
+    s.set_target(og::runtime::current_session->myscreen_->level_data.grid);
 
     // Should not crash
     Sint32 result = s.smooth();
@@ -479,8 +479,8 @@ REGISTER_TEST(test_smooth_smooth_mixed_terrain);
 void test_smooth_reset()
 {
     smoother s;
-    myscreen->level_data.create_new_grid();
-    s.set_target(myscreen->level_data.grid);
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    s.set_target(og::runtime::current_session->myscreen_->level_data.grid);
 
     Sint32 before = s.query_x_y(0, 0);
     (void)before;

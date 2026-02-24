@@ -31,7 +31,7 @@ static void cleanup_picker_state()
         backpics[i].free();
     }
     clear_allbuttons();
-    localbuttons = nullptr;
+    og::runtime::current_session->localbuttons_ = nullptr;
     main_columns_pix.reset();
     main_columns_data.free();
     main_title_logo_pix.reset();
@@ -105,20 +105,20 @@ void test_begin_new_game() {
     trace_clear();
 
     // Pre-populate save data so we can verify it gets reset
-    myscreen->save_data.totalcash = 99999;
-    myscreen->save_data.totalscore = 55555;
-    myscreen->save_data.scen_num = 5;
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.totalcash = 99999;
+    og::runtime::current_session->myscreen_->save_data.totalscore = 55555;
+    og::runtime::current_session->myscreen_->save_data.scen_num = 5;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
     // Make sure team_size is 0 so beginmenu doesn't prompt "restart?"
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        if (myscreen->save_data.team_list[i]) {
-            myscreen->save_data.team_list[i].reset();
-            myscreen->save_data.team_list[i].reset(nullptr);
+        if (og::runtime::current_session->myscreen_->save_data.team_list[i]) {
+            og::runtime::current_session->myscreen_->save_data.team_list[i].reset();
+            og::runtime::current_session->myscreen_->save_data.team_list[i].reset(nullptr);
         }
     }
-    myscreen->save_data.team_size = 0;
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.team_size = 0;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
     NewGameState state = { false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(new_game_injector, "new_game_test", &state);
@@ -141,7 +141,7 @@ void test_begin_new_game() {
 
     // beginmenu calls save_data.reset(), so cash should be the default (starting cash)
     // rather than our 99999
-    TEST_ASSERT(myscreen->save_data.totalcash != 99999,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.totalcash != 99999,
         "totalcash should have been reset by new game");
 }
 REGISTER_TEST(test_begin_new_game);

@@ -46,12 +46,12 @@ namespace
 {
 inline screen* active_screen()
 {
-    return myscreen;
+    return og::runtime::current_session->myscreen_;
 }
 
 inline options* active_prefs()
 {
-    return theprefs;
+    return og::runtime::current_session->theprefs_;
 }
 
 inline cfg_store& active_config()
@@ -145,10 +145,10 @@ static void emscripten_frame_wrapper() {
 		timer_wait = current_screen->timer_wait;
 	}
 	Uint32 target_frame_time;
-	if (g_game_speed_factor == 0.0f) {
+	if (og::runtime::current_session->g_game_speed_factor_ == 0.0f) {
 		target_frame_time = 0; // Max speed: run every browser frame
 	} else {
-		target_frame_time = static_cast<Uint32>(timer_wait * 13.6f / g_game_speed_factor);
+		target_frame_time = static_cast<Uint32>(timer_wait * 13.6f / og::runtime::current_session->g_game_speed_factor_);
 		if (target_frame_time < 16) target_frame_time = 16; // Minimum ~60 FPS cap
 	}
 
@@ -255,11 +255,11 @@ int main(int argc, char *argv[])
 
 		// Sync overscan from config (must be after session creation since
 		// overscan_percentage is now a macro backed by current_session).
-		overscan_percentage = static_cast<float>(
+		og::runtime::current_session->overscan_percentage_ = static_cast<float>(
 		    parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
 		update_overscan_setting();
 		cfg.apply_setting("graphics", "overscan_percentage",
-		    std::format("{:.0f}", 100 * overscan_percentage));
+		    std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
 		intro_main(argc, argv);
 
 	#ifdef __EMSCRIPTEN__

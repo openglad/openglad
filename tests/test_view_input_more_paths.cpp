@@ -20,14 +20,14 @@ struct KeystateOverride
 
     KeystateOverride()
     {
-        prev = keystates;
+        prev = og::runtime::current_session->keystates_;
         fake.fill(0);
-        keystates = fake.data();
+        og::runtime::current_session->keystates_ = fake.data();
     }
 
     ~KeystateOverride()
     {
-        keystates = prev;
+        og::runtime::current_session->keystates_ = prev;
     }
 };
 
@@ -50,15 +50,15 @@ static SDL_Event dummy_event()
 
 void test_viewscreen_input_switch_yell_and_special_switch_paths()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
 
     // Ensure we have a few living walkers to switch between.
-    walker* w0 = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* w1 = myscreen->level_data.add_ob(Order::Living, FAMILY_ELF);
-    walker* w2 = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* w0 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w1 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ELF);
+    walker* w2 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT(w0 && w1 && w2, "walkers created");
     if (!(w0 && w1 && w2))
         return;
@@ -90,7 +90,7 @@ void test_viewscreen_input_switch_yell_and_special_switch_paths()
 
     // Switch control forward (KEY_SWITCH is backquote for player 0).
     ks.fake[SDL_SCANCODE_LSHIFT] = 0;
-    (void)vs->input(keydown(static_cast<SDL_Keycode>(player_keys[0][KEY_SWITCH])));
+    (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SWITCH])));
     TEST_ASSERT(vs->control != nullptr, "control should remain valid after switch");
 
     // Reset the debounce flag by providing a non-switch event.
@@ -98,7 +98,7 @@ void test_viewscreen_input_switch_yell_and_special_switch_paths()
 
     // Switch control reverse by holding shifter.
     ks.fake[SDL_SCANCODE_LSHIFT] = 1;
-    (void)vs->input(keydown(static_cast<SDL_Keycode>(player_keys[0][KEY_SWITCH])));
+    (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SWITCH])));
     TEST_ASSERT(vs->control != nullptr, "control should remain valid after reverse switch");
     ks.fake[SDL_SCANCODE_LSHIFT] = 0;
 
@@ -106,14 +106,14 @@ void test_viewscreen_input_switch_yell_and_special_switch_paths()
     if (vs->control)
         vs->control->yo_delay = 0;
     (void)vs->input(dummy_event());
-    (void)vs->input(keydown(static_cast<SDL_Keycode>(player_keys[0][KEY_YELL])));
+    (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_YELL])));
 
     // Summon defense: hold shifter + KEY_YELL (case 0).
     (void)vs->input(dummy_event());
     ks.fake[SDL_SCANCODE_LSHIFT] = 1;
     if (vs->control)
         vs->control->action = 0;
-    (void)vs->input(keydown(static_cast<SDL_Keycode>(player_keys[0][KEY_YELL])));
+    (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_YELL])));
     ks.fake[SDL_SCANCODE_LSHIFT] = 0;
 
     // Release men: case ACTION_FOLLOW.
@@ -121,11 +121,11 @@ void test_viewscreen_input_switch_yell_and_special_switch_paths()
     ks.fake[SDL_SCANCODE_LSHIFT] = 1;
     if (vs->control)
         vs->control->action = ACTION_FOLLOW;
-    (void)vs->input(keydown(static_cast<SDL_Keycode>(player_keys[0][KEY_YELL])));
+    (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_YELL])));
     ks.fake[SDL_SCANCODE_LSHIFT] = 0;
 
     // Special switch: cycle current special (TAB for player 0).
     (void)vs->input(dummy_event());
-    (void)vs->input(keydown(static_cast<SDL_Keycode>(player_keys[0][KEY_SPECIAL_SWITCH])));
+    (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SPECIAL_SWITCH])));
 }
 REGISTER_TEST(test_viewscreen_input_switch_yell_and_special_switch_paths);

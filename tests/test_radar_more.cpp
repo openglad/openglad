@@ -104,14 +104,14 @@ void test_radar_update_and_draw_covers_key_paths()
         gold_fx->dead = 0;
     }
 
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
     vs->control = control;
     vs->radarstart = 0; // force radar::start path on first draw
 
-    radar r(vs, myscreen, 0);
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
     r.force_lower_position = true;
     r.start(&d);
     TEST_ASSERT(r.draw(&d) == 1, "radar draw should succeed");
@@ -120,13 +120,13 @@ REGISTER_TEST(test_radar_update_and_draw_covers_key_paths);
 
 void test_radar_start_default_uses_myscreen_level_data()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
 
-    radar r(vs, myscreen, 0);
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
     r.start(); // wrapper path start(&myscreen->level_data)
-    (void)r.draw(&myscreen->level_data);
+    (void)r.draw(&og::runtime::current_session->myscreen_->level_data);
 }
 REGISTER_TEST(test_radar_start_default_uses_myscreen_level_data);

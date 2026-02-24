@@ -31,7 +31,7 @@ bool g_test_remove_exits = false;
 // Initialize the game for playing (called before game loop starts).
 void glad_init()
 {
-    screen* current_screen = myscreen;
+    screen* current_screen = og::runtime::current_session->myscreen_;
     if (current_screen == nullptr)
     {
         LogError("glad_init_failed reason=missing_screen\n");
@@ -74,7 +74,7 @@ void glad_init()
 
 void glad_main(Sint32 playermode)
 {
-    screen* current_screen = myscreen;
+    screen* current_screen = og::runtime::current_session->myscreen_;
     if (current_screen == nullptr)
     {
         LogError("glad_main_failed mode={} reason=missing_screen\n", playermode);

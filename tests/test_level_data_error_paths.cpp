@@ -122,52 +122,52 @@ static bool dev_full_write_fails_as_expected()
 
 void test_level_data_save_truncates_fixed_fields_and_rejects_null_object()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
     // Ensure the temp scen directory exists (LevelData::save writes temp/scen/scen{id}.fss).
     fs::create_directories("temp/scen");
 
-    myscreen->level_data.id = 123;
-    myscreen->level_data.grid_file = "grid_file_name_too_long"; // >8, triggers truncation warning path
-    myscreen->level_data.title = std::string(100, 'T');         // >30, triggers truncation warning path
+    og::runtime::current_session->myscreen_->level_data.id = 123;
+    og::runtime::current_session->myscreen_->level_data.grid_file = "grid_file_name_too_long"; // >8, triggers truncation warning path
+    og::runtime::current_session->myscreen_->level_data.title = std::string(100, 'T');         // >30, triggers truncation warning path
 
     // Insert a nullptr object to hit the defensive serialization failure path.
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>{});
+    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::unique_ptr<walker>{});
 
-    TEST_ASSERT(!myscreen->level_data.save(), "save should fail when oblist contains nullptr");
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.save(), "save should fail when oblist contains nullptr");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_save_truncates_fixed_fields_and_rejects_null_object);
 
 void test_level_data_save_reports_failure_when_grid_write_fails()
 {
-    const int old_id = myscreen->level_data.id;
-    const std::string old_grid_file = myscreen->level_data.grid_file;
-    const std::string old_title = myscreen->level_data.title;
-    const std::list<std::string> old_description = myscreen->level_data.description;
+    const int old_id = og::runtime::current_session->myscreen_->level_data.id;
+    const std::string old_grid_file = og::runtime::current_session->myscreen_->level_data.grid_file;
+    const std::string old_title = og::runtime::current_session->myscreen_->level_data.title;
+    const std::list<std::string> old_description = og::runtime::current_session->myscreen_->level_data.description;
 
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.id = 124;
-    myscreen->level_data.grid_file = "missing_dir/grid";
-    myscreen->level_data.title = "grid save failure";
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.id = 124;
+    og::runtime::current_session->myscreen_->level_data.grid_file = "missing_dir/grid";
+    og::runtime::current_session->myscreen_->level_data.title = "grid save failure";
 
     fs::create_directories("temp/scen");
     std::error_code ec;
     fs::remove_all("temp/pix/missing_dir", ec);
 
-    TEST_ASSERT(!myscreen->level_data.save(), "save should fail when grid file cannot be written");
-    TEST_ASSERT_EQ((int)LevelData::IoError::OpenWriteFailed, (int)myscreen->level_data.last_io_error(),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.save(), "save should fail when grid file cannot be written");
+    TEST_ASSERT_EQ((int)LevelData::IoError::OpenWriteFailed, (int)og::runtime::current_session->myscreen_->level_data.last_io_error(),
         "save should propagate grid write failure as OpenWriteFailed");
-    TEST_ASSERT_EQ((int)LevelData::IoError::OpenWriteFailed, (int)myscreen->level_data.save_with_error(),
+    TEST_ASSERT_EQ((int)LevelData::IoError::OpenWriteFailed, (int)og::runtime::current_session->myscreen_->level_data.save_with_error(),
         "save_with_error should report grid write failure");
 
-    myscreen->level_data.id = old_id;
-    myscreen->level_data.grid_file = old_grid_file;
-    myscreen->level_data.title = old_title;
-    myscreen->level_data.description = old_description;
+    og::runtime::current_session->myscreen_->level_data.id = old_id;
+    og::runtime::current_session->myscreen_->level_data.grid_file = old_grid_file;
+    og::runtime::current_session->myscreen_->level_data.title = old_title;
+    og::runtime::current_session->myscreen_->level_data.description = old_description;
 }
 REGISTER_TEST(test_level_data_save_reports_failure_when_grid_write_fails);
 
@@ -178,17 +178,17 @@ void test_level_data_save_caps_object_count_to_loader_limit()
         return;
     }
 
-    const int old_id = myscreen->level_data.id;
-    const std::string old_grid_file = myscreen->level_data.grid_file;
-    const std::string old_title = myscreen->level_data.title;
-    const std::list<std::string> old_description = myscreen->level_data.description;
+    const int old_id = og::runtime::current_session->myscreen_->level_data.id;
+    const std::string old_grid_file = og::runtime::current_session->myscreen_->level_data.grid_file;
+    const std::string old_title = og::runtime::current_session->myscreen_->level_data.title;
+    const std::list<std::string> old_description = og::runtime::current_session->myscreen_->level_data.description;
 
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.id = 125;
-    myscreen->level_data.grid_file = "objcap";
-    myscreen->level_data.title = "object cap";
-    myscreen->level_data.description.clear();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.id = 125;
+    og::runtime::current_session->myscreen_->level_data.grid_file = "objcap";
+    og::runtime::current_session->myscreen_->level_data.title = "object cap";
+    og::runtime::current_session->myscreen_->level_data.description.clear();
 
     fs::create_directories("temp/scen");
     fs::create_directories("temp/pix");
@@ -197,11 +197,11 @@ void test_level_data_save_caps_object_count_to_loader_limit()
     constexpr int kObjectCount = kMaxScenarioObjects + 1;
     for (int i = 0; i < kObjectCount; ++i)
     {
-        walker* w = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+        walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::FX, FAMILY_MARKER);
         TEST_ASSERT(w != nullptr, "add_ob should succeed while building large object list");
     }
 
-    TEST_ASSERT(myscreen->level_data.save(), "save should succeed even when object count exceeds loader limit");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.save(), "save should succeed even when object count exceeds loader limit");
 
     short serialized_count = -1;
     const fs::path scen_path = fs::path("temp/scen") / "scen125.fss";
@@ -213,11 +213,11 @@ void test_level_data_save_caps_object_count_to_loader_limit()
     TEST_ASSERT(scenario_file_has_consistent_object_block(scen_path, serialized_count),
         "save should serialize object records consistently with the serialized object count");
 
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.id = old_id;
-    myscreen->level_data.grid_file = old_grid_file;
-    myscreen->level_data.title = old_title;
-    myscreen->level_data.description = old_description;
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.id = old_id;
+    og::runtime::current_session->myscreen_->level_data.grid_file = old_grid_file;
+    og::runtime::current_session->myscreen_->level_data.title = old_title;
+    og::runtime::current_session->myscreen_->level_data.description = old_description;
 }
 REGISTER_TEST(test_level_data_save_caps_object_count_to_loader_limit);
 
@@ -228,17 +228,17 @@ void test_level_data_save_reports_failure_when_scenario_write_fails()
         return;
     }
 
-    const int old_id = myscreen->level_data.id;
-    const std::string old_grid_file = myscreen->level_data.grid_file;
-    const std::string old_title = myscreen->level_data.title;
-    const std::list<std::string> old_description = myscreen->level_data.description;
+    const int old_id = og::runtime::current_session->myscreen_->level_data.id;
+    const std::string old_grid_file = og::runtime::current_session->myscreen_->level_data.grid_file;
+    const std::string old_title = og::runtime::current_session->myscreen_->level_data.title;
+    const std::list<std::string> old_description = og::runtime::current_session->myscreen_->level_data.description;
 
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.id = 125;
-    myscreen->level_data.grid_file = "grid";
-    myscreen->level_data.title = "scenario save failure";
-    myscreen->level_data.description.clear();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.id = 125;
+    og::runtime::current_session->myscreen_->level_data.grid_file = "grid";
+    og::runtime::current_session->myscreen_->level_data.title = "scenario save failure";
+    og::runtime::current_session->myscreen_->level_data.description.clear();
 
     const fs::path scen_dir = "temp/scen";
     const fs::path scen_file = scen_dir / "scen125.fss";
@@ -252,17 +252,17 @@ void test_level_data_save_reports_failure_when_scenario_write_fails()
         return;
     }
 
-    TEST_ASSERT(!myscreen->level_data.save(), "save should fail when scenario file write fails");
-    TEST_ASSERT_EQ((int)LevelData::IoError::SerializeFailed, (int)myscreen->level_data.last_io_error(),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.save(), "save should fail when scenario file write fails");
+    TEST_ASSERT_EQ((int)LevelData::IoError::SerializeFailed, (int)og::runtime::current_session->myscreen_->level_data.last_io_error(),
         "save should propagate scenario write failure as SerializeFailed");
-    TEST_ASSERT_EQ((int)LevelData::IoError::SerializeFailed, (int)myscreen->level_data.save_with_error(),
+    TEST_ASSERT_EQ((int)LevelData::IoError::SerializeFailed, (int)og::runtime::current_session->myscreen_->level_data.save_with_error(),
         "save_with_error should report scenario write failure");
 
     fs::remove(scen_file, ec);
-    myscreen->level_data.id = old_id;
-    myscreen->level_data.grid_file = old_grid_file;
-    myscreen->level_data.title = old_title;
-    myscreen->level_data.description = old_description;
+    og::runtime::current_session->myscreen_->level_data.id = old_id;
+    og::runtime::current_session->myscreen_->level_data.grid_file = old_grid_file;
+    og::runtime::current_session->myscreen_->level_data.title = old_title;
+    og::runtime::current_session->myscreen_->level_data.description = old_description;
 }
 REGISTER_TEST(test_level_data_save_reports_failure_when_scenario_write_fails);
 

@@ -71,7 +71,7 @@ struct DemoSession {
 static void init_session_game(DemoSession& demo, int scen_id)
 {
     auto scope = demo.session->activate();
-    screen* s = myscreen;
+    screen* s = og::runtime::current_session->myscreen_;
     if (!s) return;
 
     s->save_data.numplayers = 0; // spectator mode
@@ -239,7 +239,7 @@ int main(int argc, char* argv[])
                 active_count++;
 
                 auto scope = demos[i].session->activate();
-                screen* s = myscreen;
+                screen* s = og::runtime::current_session->myscreen_;
                 if (!s) continue;
 
                 GameLoopFrameState& fs = demos[i].session->frame_state_;

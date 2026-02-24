@@ -21,7 +21,7 @@ static std::unique_ptr<walker> make_living_guy(char family, unsigned char team =
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w)
         w->setxy(100, 100);
     return w;
@@ -121,12 +121,12 @@ REGISTER_TEST(test_hits_contained2);
 
 void test_effect_act_explosion()
 {
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->ani_type = ANI_EXPLODE;
     fx->act();
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_act_explosion);
 
@@ -135,7 +135,7 @@ void test_effect_act_magic_shield()
     auto owner = make_living_guy(FAMILY_MAGE, 0);
     if (!owner) return;
 
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->owner = owner.get();
@@ -143,20 +143,20 @@ void test_effect_act_magic_shield()
     fx->stats()->hitpoints = 100;
     fx->act();
 
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_act_magic_shield);
 
 void test_effect_act_magic_shield_no_owner()
 {
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->owner = nullptr;
     fx->act();
     // Should die since no owner
     TEST_ASSERT(fx->dead == 1, "shield without owner dies");
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_act_magic_shield_no_owner);
 
@@ -165,7 +165,7 @@ void test_effect_act_boomerang()
     auto owner = make_living_guy(FAMILY_SOLDIER, 0);
     if (!owner) return;
 
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->owner = owner.get();
@@ -174,20 +174,20 @@ void test_effect_act_boomerang()
     fx->drawcycle = 10;
     fx->act();
 
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_act_boomerang);
 
 void test_effect_act_boomerang_expired()
 {
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->owner = nullptr;
     fx->drawcycle = 254;
     fx->act();
     TEST_ASSERT(fx->dead == 1, "expired boomerang dies");
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_act_boomerang_expired);
 
@@ -196,7 +196,7 @@ void test_effect_act_cloud()
     auto owner = make_living_guy(FAMILY_DRUID, 0);
     if (!owner) return;
 
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_CLOUD);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_CLOUD);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->owner = owner.get();
@@ -205,20 +205,20 @@ void test_effect_act_cloud()
     fx->stats()->hitpoints = 50;
     fx->act();
 
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_act_cloud);
 
 void test_effect_act_cloud_expired()
 {
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_CLOUD);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_CLOUD);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->owner = fx;
     fx->lifetime = 0;
     fx->act();
     TEST_ASSERT(fx->dead == 1, "expired cloud dies");
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_act_cloud_expired);
 
@@ -227,13 +227,13 @@ void test_effect_act_ghost_scare()
     auto owner = make_living_guy(FAMILY_GHOST, 0);
     if (!owner) return;
 
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->owner = owner.get();
     fx->act();
 
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_act_ghost_scare);
 
@@ -243,22 +243,22 @@ REGISTER_TEST(test_effect_act_ghost_scare);
 
 void test_effect_animate_explosion()
 {
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->ani_type = ANI_EXPLODE;
     fx->animate();
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_animate_explosion);
 
 void test_effect_animate_magic_shield()
 {
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->animate();
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_animate_magic_shield);
 
@@ -271,7 +271,7 @@ void test_effect_death_explosion()
     auto owner = make_living_guy(FAMILY_MAGE, 0);
     if (!owner) return;
 
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->owner = owner.get();
@@ -280,7 +280,7 @@ void test_effect_death_explosion()
     fx->dead = 1;
     fx->death();
 
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_death_explosion);
 
@@ -289,13 +289,13 @@ void test_effect_death_ghost_scare()
     auto owner = make_living_guy(FAMILY_GHOST, 0);
     if (!owner) return;
 
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
+    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
     if (!fx) return;
     fx->setxy(100, 100);
     fx->owner = owner.get();
     fx->dead = 1;
     fx->death();
 
-    myscreen->level_data.remove_ob(fx);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(fx);
 }
 REGISTER_TEST(test_effect_death_ghost_scare);

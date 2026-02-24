@@ -57,11 +57,11 @@ struct RngGuard
 
 void test_stats_hit_response_mage_and_archmage_teleport_branches()
 {
-    TEST_ASSERT(myscreen != nullptr, "myscreen exists");
-    if (!myscreen)
+    TEST_ASSERT(og::runtime::current_session->myscreen_ != nullptr, "myscreen exists");
+    if (!og::runtime::current_session->myscreen_)
         return;
 
-    LevelData& level = myscreen->level_data;
+    LevelData& level = og::runtime::current_session->myscreen_->level_data;
     const auto ob_before = snapshot_ptrs(level.oblist);
     const auto fx_before = snapshot_ptrs(level.fxlist);
     const auto weap_before = snapshot_ptrs(level.weaplist);

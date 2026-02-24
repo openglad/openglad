@@ -53,15 +53,15 @@
 // The function is declared in stats.cpp; defined here in the SDL build.
 walker* find_follow_leader()
 {
-    if (myscreen == nullptr)
+    if (!og::runtime::current_session || og::runtime::current_session->myscreen_ == nullptr)
         return nullptr;
-    if (myscreen->numviews == 1)
-        return myscreen->viewob[0]->control;
+    if (og::runtime::current_session->myscreen_->numviews == 1)
+        return og::runtime::current_session->myscreen_->viewob[0]->control;
     // Multi-view: pick whichever view's controller has yo_delay set
-    if (myscreen->viewob[0]->control && myscreen->viewob[0]->control->yo_delay)
-        return myscreen->viewob[0]->control;
-    if (myscreen->viewob[1]->control && myscreen->viewob[1]->control->yo_delay)
-        return myscreen->viewob[1]->control;
+    if (og::runtime::current_session->myscreen_->viewob[0]->control && og::runtime::current_session->myscreen_->viewob[0]->control->yo_delay)
+        return og::runtime::current_session->myscreen_->viewob[0]->control;
+    if (og::runtime::current_session->myscreen_->viewob[1]->control && og::runtime::current_session->myscreen_->viewob[1]->control->yo_delay)
+        return og::runtime::current_session->myscreen_->viewob[1]->control;
     return nullptr;
 }
 

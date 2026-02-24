@@ -51,7 +51,7 @@ bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint3
 
 void redraw_mainmenu()
 {
-    screen* game = myscreen;
+    screen* game = og::runtime::current_session->myscreen_;
     if (!game)
         return;
 
@@ -70,66 +70,66 @@ void redraw_mainmenu()
     #ifndef DISABLE_MULTIPLAYER
     if (game->save_data.numplayers==4)
     {
-        allbuttons[2]->do_outline = 1;
-        allbuttons[3]->do_outline = 0;
-        allbuttons[4]->do_outline = 0;
-        allbuttons[5]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[2]->do_outline = 1;
+        og::runtime::current_session->allbuttons_[3]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[4]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[5]->do_outline = 0;
     }
     else if (game->save_data.numplayers==3)
     {
-        allbuttons[2]->do_outline = 0;
-        allbuttons[3]->do_outline = 1;
-        allbuttons[4]->do_outline = 0;
-        allbuttons[5]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[2]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[3]->do_outline = 1;
+        og::runtime::current_session->allbuttons_[4]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[5]->do_outline = 0;
     }
     else if (game->save_data.numplayers==2)
     {
-        allbuttons[2]->do_outline = 0;
-        allbuttons[3]->do_outline = 0;
-        allbuttons[4]->do_outline = 1;
-        allbuttons[5]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[2]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[3]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[4]->do_outline = 1;
+        og::runtime::current_session->allbuttons_[5]->do_outline = 0;
     }
     else if (game->save_data.numplayers==0)
     {
         // Spectator mode: no player count button is highlighted
-        allbuttons[2]->do_outline = 0;
-        allbuttons[3]->do_outline = 0;
-        allbuttons[4]->do_outline = 0;
-        allbuttons[5]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[2]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[3]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[4]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[5]->do_outline = 0;
     }
     else
     {
-        allbuttons[2]->do_outline = 0;
-        allbuttons[3]->do_outline = 0;
-        allbuttons[4]->do_outline = 0;
-        allbuttons[5]->do_outline = 1;
+        og::runtime::current_session->allbuttons_[2]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[3]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[4]->do_outline = 0;
+        og::runtime::current_session->allbuttons_[5]->do_outline = 1;
     }
-    allbuttons[2]->vdisplay();
-    allbuttons[3]->vdisplay();
-    allbuttons[4]->vdisplay();
-    allbuttons[5]->vdisplay();
+    og::runtime::current_session->allbuttons_[2]->vdisplay();
+    og::runtime::current_session->allbuttons_[3]->vdisplay();
+    og::runtime::current_session->allbuttons_[4]->vdisplay();
+    og::runtime::current_session->allbuttons_[5]->vdisplay();
 
-    allbuttons[6]->label = og::ui::format_difficulty_label(current_difficulty);
+    og::runtime::current_session->allbuttons_[6]->label = og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_);
 
     // Show the allied mode or spectator label
     if (game->save_data.numplayers == 0)
-        allbuttons[7]->label = "SPECTATOR";
+        og::runtime::current_session->allbuttons_[7]->label = "SPECTATOR";
     else
-        allbuttons[7]->label = og::ui::format_allied_mode_label(game->save_data);
+        og::runtime::current_session->allbuttons_[7]->label = og::ui::format_allied_mode_label(game->save_data);
     #else
 
-    allbuttons[2]->label = og::ui::format_difficulty_label(current_difficulty);
+    og::runtime::current_session->allbuttons_[2]->label = og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_);
     
     #endif
 
     count = 0;
-    while (allbuttons[count])
+    while (og::runtime::current_session->allbuttons_[count])
     {
-        allbuttons[count]->vdisplay();
+        og::runtime::current_session->allbuttons_[count]->vdisplay();
         count++;
     }
-    allbuttons[0]->set_graphic(FAMILY_NORMAL1);
-    allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
+    og::runtime::current_session->allbuttons_[0]->set_graphic(FAMILY_NORMAL1);
+    og::runtime::current_session->allbuttons_[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
 
     // On native builds, show the version number on the main menu.
     // On Emscripten/web builds, the version is displayed elsewhere (e.g. in the help UI),
@@ -141,7 +141,7 @@ void redraw_mainmenu()
 
 Sint32 mainmenu(Sint32 arg1)
 {
-	screen* game = myscreen;
+	screen* game = og::runtime::current_session->myscreen_;
 	if (!game)
 		return MENU_EXIT;
 
@@ -155,10 +155,10 @@ Sint32 mainmenu(Sint32 arg1)
 	button* buttons = mainmenu_buttons;
 	int num_buttons = MAINMENU_BUTTON_COUNT;
 	int highlighted_button = 1;
-	localbuttons = init_buttons(buttons, num_buttons);
+	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 	
-	allbuttons[0]->set_graphic(FAMILY_NORMAL1);
-    allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
+	og::runtime::current_session->allbuttons_[0]->set_graphic(FAMILY_NORMAL1);
+    og::runtime::current_session->allbuttons_[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
 
 	clear_keyboard();
 	reset_timer();
@@ -180,18 +180,18 @@ Sint32 mainmenu(Sint32 arg1)
 		{
 			Sint32 click = leftmouse(buttons);
 			if(click == 1)
-				retvalue = localbuttons->leftclick();
+				retvalue = og::runtime::current_session->localbuttons_->leftclick();
 			else if(click == 2)
-				retvalue = localbuttons->rightclick(buttons);
+				retvalue = og::runtime::current_session->localbuttons_->rightclick(buttons);
 		}
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
 
         // Reset buttons
-        if(reset_buttons(localbuttons, buttons, num_buttons, retvalue))
+        if(reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue))
         {
-            allbuttons[0]->set_graphic(FAMILY_NORMAL1);
-            allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
+            og::runtime::current_session->allbuttons_[0]->set_graphic(FAMILY_NORMAL1);
+            og::runtime::current_session->allbuttons_[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
         }
 
         // A submenu may have replaced allbuttons — skip draw if exiting
@@ -213,7 +213,7 @@ Sint32 mainmenu(Sint32 arg1)
 // Reset game data and go to create_team_menu()
 bool picker_prepare_new_game_setup()
 {
-    screen* game = myscreen;
+    screen* game = og::runtime::current_session->myscreen_;
     if (!game)
         return false;
 
@@ -237,11 +237,11 @@ bool picker_prepare_new_game_setup()
 
     // Reset the save data so we have a fresh, new team
 	og::ui::reset_for_new_game(game->save_data);
-	current_guy = nullptr;
+	og::runtime::current_session->current_guy_ = nullptr;
 	
 	// Clear the labeling counter
 	for (int i = 0; i < NUM_FAMILIES; i++)
-		numbought[i] = 0;
+		og::runtime::current_session->numbought_[i] = 0;
 
     return true;
 }

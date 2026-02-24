@@ -15,7 +15,7 @@ static walker* make_guy(char family, unsigned char team)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w)
         w->setxy(32, 32);
     return w.release();
@@ -23,7 +23,7 @@ static walker* make_guy(char family, unsigned char team)
 
 void test_walker_pathfinding_follow_and_draw_path_smoke()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "viewob[0] should exist");
 
     walker* a = make_guy(FAMILY_SOLDIER, 0);
@@ -52,7 +52,7 @@ REGISTER_TEST(test_walker_pathfinding_follow_and_draw_path_smoke);
 
 void test_walker_damage_numbers_and_compute_outline_smoke()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "viewob[0] should exist");
 
     walker* w = make_guy(FAMILY_SOLDIER, 0);

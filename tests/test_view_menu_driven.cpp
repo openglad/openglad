@@ -16,7 +16,7 @@
 
 static std::unique_ptr<walker> create_controlled_living(char family)
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -34,14 +34,14 @@ struct KeystateOverride
 
     KeystateOverride()
     {
-        prev = keystates;
+        prev = og::runtime::current_session->keystates_;
         fake.fill(0);
-        keystates = fake.data();
+        og::runtime::current_session->keystates_ = fake.data();
     }
 
     ~KeystateOverride()
     {
-        keystates = prev;
+        og::runtime::current_session->keystates_ = prev;
     }
 };
 
@@ -55,7 +55,7 @@ static void press_release_after(KeystateOverride& ks, SDL_Scancode sc, int press
 
 void test_viewscreen_options_menu_exercises_key_paths()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "viewob[0] should exist");
 
     auto control = create_controlled_living(FAMILY_SOLDIER);
@@ -91,18 +91,18 @@ void test_viewscreen_options_menu_exercises_key_paths()
     // Drive set_key_prefs and view_key_bindings paths directly.
     TEST_ASSERT_EQ(1, (int)v->set_key_prefs(), "set_key_prefs should succeed in testing mode");
 
-    int saved_up = player_keys[v->mynum][KEY_UP];
-    int saved_fire = player_keys[v->mynum][KEY_FIRE];
-    int saved_special = player_keys[v->mynum][KEY_SPECIAL];
-    int saved_yell = player_keys[v->mynum][KEY_YELL];
-    int saved_shifter = player_keys[v->mynum][KEY_SHIFTER];
+    int saved_up = og::runtime::current_session->player_keys_[v->mynum][KEY_UP];
+    int saved_fire = og::runtime::current_session->player_keys_[v->mynum][KEY_FIRE];
+    int saved_special = og::runtime::current_session->player_keys_[v->mynum][KEY_SPECIAL];
+    int saved_yell = og::runtime::current_session->player_keys_[v->mynum][KEY_YELL];
+    int saved_shifter = og::runtime::current_session->player_keys_[v->mynum][KEY_SHIFTER];
 
     // Force key-display abbreviation and truncation branches.
-    player_keys[v->mynum][KEY_UP] = SDLK_BACKSPACE;      // "BkSpc"
-    player_keys[v->mynum][KEY_FIRE] = SDLK_LCTRL;        // "LCtrl"
-    player_keys[v->mynum][KEY_SPECIAL] = SDLK_RALT;      // "RAlt"
-    player_keys[v->mynum][KEY_YELL] = SDLK_CAPSLOCK;     // "Caps"
-    player_keys[v->mynum][KEY_SHIFTER] = SDLK_AUDIONEXT; // long key name -> truncation
+    og::runtime::current_session->player_keys_[v->mynum][KEY_UP] = SDLK_BACKSPACE;      // "BkSpc"
+    og::runtime::current_session->player_keys_[v->mynum][KEY_FIRE] = SDLK_LCTRL;        // "LCtrl"
+    og::runtime::current_session->player_keys_[v->mynum][KEY_SPECIAL] = SDLK_RALT;      // "RAlt"
+    og::runtime::current_session->player_keys_[v->mynum][KEY_YELL] = SDLK_CAPSLOCK;     // "Caps"
+    og::runtime::current_session->player_keys_[v->mynum][KEY_SHIFTER] = SDLK_AUDIONEXT; // long key name -> truncation
 
     KeystateOverride ks2;
     std::thread esc_driver([&]() {
@@ -111,11 +111,11 @@ void test_viewscreen_options_menu_exercises_key_paths()
     v->view_key_bindings();
     esc_driver.join();
 
-    player_keys[v->mynum][KEY_UP] = saved_up;
-    player_keys[v->mynum][KEY_FIRE] = saved_fire;
-    player_keys[v->mynum][KEY_SPECIAL] = saved_special;
-    player_keys[v->mynum][KEY_YELL] = saved_yell;
-    player_keys[v->mynum][KEY_SHIFTER] = saved_shifter;
+    og::runtime::current_session->player_keys_[v->mynum][KEY_UP] = saved_up;
+    og::runtime::current_session->player_keys_[v->mynum][KEY_FIRE] = saved_fire;
+    og::runtime::current_session->player_keys_[v->mynum][KEY_SPECIAL] = saved_special;
+    og::runtime::current_session->player_keys_[v->mynum][KEY_YELL] = saved_yell;
+    og::runtime::current_session->player_keys_[v->mynum][KEY_SHIFTER] = saved_shifter;
 
     // Restore view pref that was mutated by the ] and [ hotkeys.
     v->prefs[PREF_VIEW] = saved_view;

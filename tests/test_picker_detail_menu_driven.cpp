@@ -29,18 +29,18 @@ struct PickerStateGuard
 
     PickerStateGuard()
     {
-        saved_current = std::move(current_guy);
+        saved_current = std::move(og::runtime::current_session->current_guy_);
         saved_old = old_guy;
-        saved_editguy = editguy;
-        saved_team_size = myscreen->save_data.team_size;
+        saved_editguy = og::runtime::current_session->editguy_;
+        saved_team_size = og::runtime::current_session->myscreen_->save_data.team_size;
     }
 
     ~PickerStateGuard()
     {
-        current_guy = std::move(saved_current);
+        og::runtime::current_session->current_guy_ = std::move(saved_current);
         old_guy = saved_old;
-        editguy = saved_editguy;
-        myscreen->save_data.team_size = saved_team_size;
+        og::runtime::current_session->editguy_ = saved_editguy;
+        og::runtime::current_session->myscreen_->save_data.team_size = saved_team_size;
     }
 };
 
@@ -48,8 +48,8 @@ struct TeamSlotGuard
 {
     int slot = 0;
     guy* saved = nullptr;
-    explicit TeamSlotGuard(int slot_) : slot(slot_), saved(myscreen->save_data.team_list[slot_].release()) {}
-    ~TeamSlotGuard() { myscreen->save_data.team_list[slot].reset(saved); }
+    explicit TeamSlotGuard(int slot_) : slot(slot_), saved(og::runtime::current_session->myscreen_->save_data.team_list[slot_].release()) {}
+    ~TeamSlotGuard() { og::runtime::current_session->myscreen_->save_data.team_list[slot].reset(saved); }
 };
 
 struct KeyStateGuard
@@ -59,14 +59,14 @@ struct KeyStateGuard
 
     KeyStateGuard()
     {
-        saved = keystates;
+        saved = og::runtime::current_session->keystates_;
         fake.fill(0);
-        keystates = fake.data();
+        og::runtime::current_session->keystates_ = fake.data();
     }
 
     ~KeyStateGuard()
     {
-        keystates = saved;
+        og::runtime::current_session->keystates_ = saved;
     }
 
     void pulse(SDL_Scancode sc, int down_ms = 25, int up_ms = 10)
@@ -92,7 +92,7 @@ static int injector_thread_exit_detail_menu(void* data)
     const Uint32 deadline = SDL_GetTicks() + 5000;
     while (SDL_GetTicks() < deadline)
     {
-        if (allbuttons[0] != nullptr) // "back" is index 0 in details_buttons
+        if (og::runtime::current_session->allbuttons_[0] != nullptr) // "back" is index 0 in details_buttons
             break;
         SDL_Delay(5);
     }
@@ -121,20 +121,20 @@ void test_picker_detail_menu_back_exercises_many_family_descriptions()
     PickerStateGuard guard;
     TeamSlotGuard slot_guard(0);
 
-    editguy = 0;
-    myscreen->save_data.team_size = 1;
-    myscreen->save_data.team_list[0].reset(new guy(FAMILY_SOLDIER));
-    myscreen->save_data.team_list[0]->name = "TEAM_SOLDIER";
-    myscreen->save_data.team_list[0]->level = 10;
+    og::runtime::current_session->editguy_ = 0;
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(new guy(FAMILY_SOLDIER));
+    og::runtime::current_session->myscreen_->save_data.team_list[0]->name = "TEAM_SOLDIER";
+    og::runtime::current_session->myscreen_->save_data.team_list[0]->level = 10;
 
-    current_guy = std::make_unique<guy>(*myscreen->save_data.team_list[0]);
+    og::runtime::current_session->current_guy_ = std::make_unique<guy>(*og::runtime::current_session->myscreen_->save_data.team_list[0]);
 
     KeyStateGuard ks;
     InjectorArgs args{&ks, false};
     SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_exit", &args);
     TEST_ASSERT(th != nullptr, "injector thread started");
 
-    Sint32 r = create_detail_menu(myscreen->save_data.team_list[0].get());
+    Sint32 r = create_detail_menu(og::runtime::current_session->myscreen_->save_data.team_list[0].get());
     int code = 0;
     if (th)
         SDL_WaitThread(th, &code);
@@ -149,20 +149,20 @@ void test_picker_detail_menu_promote_mage_to_archmage_branch()
     PickerStateGuard guard;
     TeamSlotGuard slot_guard(0);
 
-    editguy = 0;
-    myscreen->save_data.team_size = 1;
-    myscreen->save_data.team_list[0].reset(new guy(FAMILY_MAGE));
-    myscreen->save_data.team_list[0]->name = "TEAM_MAGE";
-    myscreen->save_data.team_list[0]->level = 6;
+    og::runtime::current_session->editguy_ = 0;
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(new guy(FAMILY_MAGE));
+    og::runtime::current_session->myscreen_->save_data.team_list[0]->name = "TEAM_MAGE";
+    og::runtime::current_session->myscreen_->save_data.team_list[0]->level = 6;
 
-    current_guy = std::make_unique<guy>(*myscreen->save_data.team_list[0]);
+    og::runtime::current_session->current_guy_ = std::make_unique<guy>(*og::runtime::current_session->myscreen_->save_data.team_list[0]);
 
     KeyStateGuard ks;
     InjectorArgs args{&ks, true};
     SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_promote_mage", &args);
     TEST_ASSERT(th != nullptr, "injector thread started");
 
-    Sint32 r = create_detail_menu(myscreen->save_data.team_list[0].get());
+    Sint32 r = create_detail_menu(og::runtime::current_session->myscreen_->save_data.team_list[0].get());
     int code = 0;
     if (th)
         SDL_WaitThread(th, &code);
@@ -176,20 +176,20 @@ void test_picker_detail_menu_promote_orc_to_captain_branch()
     PickerStateGuard guard;
     TeamSlotGuard slot_guard(0);
 
-    editguy = 0;
-    myscreen->save_data.team_size = 1;
-    myscreen->save_data.team_list[0].reset(new guy(FAMILY_ORC));
-    myscreen->save_data.team_list[0]->name = "TEAM_ORC";
-    myscreen->save_data.team_list[0]->level = 5;
+    og::runtime::current_session->editguy_ = 0;
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(new guy(FAMILY_ORC));
+    og::runtime::current_session->myscreen_->save_data.team_list[0]->name = "TEAM_ORC";
+    og::runtime::current_session->myscreen_->save_data.team_list[0]->level = 5;
 
-    current_guy = std::make_unique<guy>(*myscreen->save_data.team_list[0]);
+    og::runtime::current_session->current_guy_ = std::make_unique<guy>(*og::runtime::current_session->myscreen_->save_data.team_list[0]);
 
     KeyStateGuard ks;
     InjectorArgs args{&ks, true};
     SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_promote_orc", &args);
     TEST_ASSERT(th != nullptr, "injector thread started");
 
-    Sint32 r = create_detail_menu(myscreen->save_data.team_list[0].get());
+    Sint32 r = create_detail_menu(og::runtime::current_session->myscreen_->save_data.team_list[0].get());
     int code = 0;
     if (th)
         SDL_WaitThread(th, &code);

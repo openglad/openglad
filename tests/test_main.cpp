@@ -108,16 +108,16 @@ int main(int argc, char* argv[]) {
     init_input();
 
     // Now that current_session exists, apply overscan from cfg.
-    overscan_percentage = static_cast<float>(
+    og::runtime::current_session->overscan_percentage_ = static_cast<float>(
         parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
     update_overscan_setting();
     cfg.apply_setting("graphics", "overscan_percentage",
-        std::format("{:.0f}", 100 * overscan_percentage));
+        std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
 
     // Initialize sim context so walkers created for testing have a valid RNG etc.
     static og::sim::SimEventLog test_events;
     static ProductionRandom test_rng;
-    myscreen->level_data.set_sim_context(&myscreen->save_data, &myscreen->enemy_freeze,
+    og::runtime::current_session->myscreen_->level_data.set_sim_context(&og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze,
                                          &test_events, &test_rng, &cfg);
 
     run_all_tests();

@@ -63,7 +63,7 @@ void show_ending_popup(int ending, int nextlevel)
 	}
 	else if (ending == 0) // we won
 	{
-		if (myscreen->save_data.is_level_completed(myscreen->save_data.scen_num)) // this scenario is completed ..
+		if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num)) // this scenario is completed ..
 		{
 		    std::string buf = std::format("Moving on to Level {}", nextlevel);
 		    popup_dialog("Traveling on...", buf.c_str());
@@ -195,9 +195,9 @@ std::vector<std::string> TroopResult::get_gained_specials() const
     {
         test1 = (test1 / 3) + 1; // this is the special #
         if ( (test1 <= 4) // raise this when we have more than 4 specials
-                && (myscreen->special_name[family][test1] != "NONE") )
+                && (og::runtime::current_session->myscreen_->special_name[family][test1] != "NONE") )
         {
-            result.push_back(myscreen->special_name[family][test1]);
+            result.push_back(og::runtime::current_session->myscreen_->special_name[family][test1]);
         }
     }
     
@@ -284,7 +284,7 @@ void show_guy(Sint32 frames, guy* myguy, Sint32 centerx, Sint32 centery) // show
 
 	newfamily = myguy->family;
 
-	mywalker = myscreen->level_data.myloader->create_walker_owned(Order::Living,
+	mywalker = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Living,
 	           newfamily);
 	mywalker->stats()->bit_flags = 0;
 	mywalker->curdir = FACE_DOWN;
@@ -294,7 +294,7 @@ void show_guy(Sint32 frames, guy* myguy, Sint32 centerx, Sint32 centery) // show
     
 	mywalker->team_num = static_cast<unsigned char>(myguy->teamnum);
     
-    viewscreen* view_buf = myscreen->viewob[0].get();
+    viewscreen* view_buf = og::runtime::current_session->myscreen_->viewob[0].get();
 	mywalker->setxy(centerx - (mywalker->sizex/2) + view_buf->topx - view_buf->xloc, centery - (mywalker->sizey/2) + view_buf->topy - view_buf->yloc);
 	draw_walker(*mywalker, view_buf);
 }
@@ -343,14 +343,14 @@ Uint32 get_time_bonus(int playernum)
 {
     if(playernum > 0)
         return 0;
-    Uint32 frames = myscreen->framecount;
-    Uint32 time_limit = (myscreen->level_data.time_bonus_limit > 0? myscreen->level_data.time_bonus_limit : 0);
+    Uint32 frames = og::runtime::current_session->myscreen_->framecount;
+    Uint32 time_limit = (og::runtime::current_session->myscreen_->level_data.time_bonus_limit > 0? og::runtime::current_session->myscreen_->level_data.time_bonus_limit : 0);
     Log("Frames used: {}\n", frames);
     if(frames >= time_limit)
         return 0;
     
-    short par_value = myscreen->level_data.par_value;
-    Uint32 score = myscreen->save_data.m_score[playernum];
+    short par_value = og::runtime::current_session->myscreen_->level_data.par_value;
+    Uint32 score = og::runtime::current_session->myscreen_->save_data.m_score[playernum];
     float multiplier = (1.0f + static_cast<float>(par_value)/10.0f) * (static_cast<float>(time_limit - frames) / static_cast<float>(time_limit));
     Log("Time bonus: {:.0f}\n", static_cast<float>(score) * multiplier);
     return static_cast<Uint32>(static_cast<float>(score) * multiplier);
@@ -376,8 +376,8 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     SDL_Delay(50);  // Small delay to let browser events settle
     get_input_events(POLL);  // Drain event queue
 
-    LevelData& level_data = myscreen->level_data;
-    SaveData& save_data = myscreen->save_data;
+    LevelData& level_data = og::runtime::current_session->myscreen_->level_data;
+    SaveData& save_data = og::runtime::current_session->myscreen_->save_data;
     
     int num_foes_left = get_num_foes(level_data);
     int num_foes_total = 0;
@@ -387,8 +387,8 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         num_foes_total = get_num_foes(original_level);
 }
 
-	text& mytext = myscreen->text_normal;
-	text& bigtext = myscreen->text_big;
+	text& mytext = og::runtime::current_session->myscreen_->text_normal;
+	text& bigtext = og::runtime::current_session->myscreen_->text_big;
 	Uint32 bonuscash[4] = {0, 0, 0, 0};
 	Uint32 allscore = 0, allbonuscash = 0;
 
@@ -512,7 +512,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         // Reset the timer count to zero ...
         reset_timer();
 
-        if(myscreen->end)
+        if(og::runtime::current_session->myscreen_->end)
             break;
 
         // Get keys and stuff
@@ -548,13 +548,13 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
        // Ok
        if(do_ok)
        {
-           myscreen->soundp->play_sound(SOUND_BOW);
+           og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
            done = true;
        }
        // Retry
        else if(do_retry)
        {
-           myscreen->soundp->play_sound(SOUND_BOW);
+           og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
            const char* msg = (ending == 0? "Try this level again?\nYou will lose your progress\non this level." : "Try this level again?");
            if(yes_or_no_prompt("Retry level", msg, false))
            {
@@ -566,21 +566,21 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
        // Overview
        else if(do_overview)
        {
-           myscreen->soundp->play_sound(SOUND_BOW);
+           og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
            mode = 0;
        }
        // Troops
        else if(do_troops)
        {
-           myscreen->soundp->play_sound(SOUND_BOW);
+           og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
            mode = 1;
        }
        
         retvalue = 0;
 
         // Draw
-        myscreen->draw_button(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, 1, 1);
-        myscreen->draw_button_inverted(area_inner.x, area_inner.y, area_inner.w, area_inner.h);
+        og::runtime::current_session->myscreen_->draw_button(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, 1, 1);
+        og::runtime::current_session->myscreen_->draw_button_inverted(area_inner.x, area_inner.y, area_inner.w, area_inner.h);
         bigtext.write_xy_center(area.x + area.w/2, area.y + 4, RED, "RESULTS");
         
 	        int y = 0;
@@ -713,8 +713,8 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	                    x += 15;
 	                    mytext.write_xy(x, y, RED, "HP");
 	                    x += 14;
-	                    myscreen->fastbox(x, y, static_cast<Sint32>(60.0f * troops[troop_idx].get_HP()), barH, RED);
-	                    myscreen->fastbox_outline(x, y, 60, barH, PURE_BLACK);
+	                    og::runtime::current_session->myscreen_->fastbox(x, y, static_cast<Sint32>(60.0f * troops[troop_idx].get_HP()), barH, RED);
+	                    og::runtime::current_session->myscreen_->fastbox_outline(x, y, 60, barH, PURE_BLACK);
 	                    
 	                    // XP
 	                    x += 70;
@@ -724,12 +724,12 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	                    float gain = 60.0f * troops[troop_idx].get_XP_gain();
 	                    if(gain >= 0)
 	                    {
-	                        myscreen->fastbox(x, y, static_cast<Sint32>(base), barH, DARK_GREEN);
-	                        myscreen->fastbox(x + static_cast<Sint32>(base), y, static_cast<Sint32>(gain), barH, LIGHT_GREEN);
+	                        og::runtime::current_session->myscreen_->fastbox(x, y, static_cast<Sint32>(base), barH, DARK_GREEN);
+	                        og::runtime::current_session->myscreen_->fastbox(x + static_cast<Sint32>(base), y, static_cast<Sint32>(gain), barH, LIGHT_GREEN);
 	                    }
 	                    else
-	                        myscreen->fastbox(x + 60 + static_cast<Sint32>(gain), y, static_cast<Sint32>(-gain), barH, RED);
-	                    myscreen->fastbox_outline(x, y, 60, barH, PURE_BLACK);
+	                        og::runtime::current_session->myscreen_->fastbox(x + 60 + static_cast<Sint32>(gain), y, static_cast<Sint32>(-gain), barH, RED);
+	                    og::runtime::current_session->myscreen_->fastbox_outline(x, y, 60, barH, PURE_BLACK);
                     
                     if(gain > 0.0f)
                         mytext.write_xy(x + 63, y, DARK_GREEN, "+");
@@ -770,7 +770,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 y += 13;
                 
                 BEGIN_IF_IN_SCROLL_AREA;
-                myscreen->hor_line(area_inner.x + 6, y - 3, area_inner.w - 30, GREY - 4);
+                og::runtime::current_session->myscreen_->hor_line(area_inner.x + 6, y - 3, area_inner.w - 30, GREY - 4);
                 END_IF_IN_SCROLL_AREA;
             }
         }
@@ -780,7 +780,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	        {
 	            const float denom = static_cast<float>(y) + scroll - static_cast<float>(area.y);
 	            const float y_off = (denom != 0.0f) ? (static_cast<float>(area_inner.h) * scroll / denom) : 0.0f;
-	            myscreen->ver_line(area_inner.x, static_cast<Sint32>(static_cast<float>(area_inner.y) + y_off), 6, PURE_BLACK);
+	            og::runtime::current_session->myscreen_->ver_line(area_inner.x, static_cast<Sint32>(static_cast<float>(area_inner.y) + y_off), 6, PURE_BLACK);
 	        }
         
         // Limit the scrolling depending on how long 'y' is.
@@ -791,14 +791,14 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	        for(int button_i = 0; button_i < num_buttons; button_i++)
 	        {
 	            if((mode == 0 && button_i == overview_index) || (mode == 1 && button_i == troops_index))
-	                myscreen->draw_button_inverted(buttons[button_i].x, buttons[button_i].y, buttons[button_i].sizex, buttons[button_i].sizey);
+	                og::runtime::current_session->myscreen_->draw_button_inverted(buttons[button_i].x, buttons[button_i].y, buttons[button_i].sizex, buttons[button_i].sizey);
 	            else
-	                myscreen->draw_button(buttons[button_i].x, buttons[button_i].y, buttons[button_i].x + buttons[button_i].sizex - 1, buttons[button_i].y + buttons[button_i].sizey - 1, 1, 1);
+	                og::runtime::current_session->myscreen_->draw_button(buttons[button_i].x, buttons[button_i].y, buttons[button_i].x + buttons[button_i].sizex - 1, buttons[button_i].y + buttons[button_i].sizey - 1, 1, 1);
 	            mytext.write_xy(buttons[button_i].x + buttons[button_i].sizex/2 - 3*static_cast<Sint32>(buttons[button_i].label.size()), buttons[button_i].y + 2, buttons[button_i].label.c_str(), DARK_BLUE, 1);
 	        }
         
         draw_highlight(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0, 0, 320, 200);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
         SDL_Delay(10);
         
         frame++;
@@ -826,14 +826,14 @@ int results_screen_test_exercise_internal()
     PixieData one_px(1, 1, 1, new unsigned char[1]{0});
 
     // Ending popup branches.
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.current_levels.clear();
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.current_levels.clear();
     show_ending_popup(1, -1); // generic defeat
     show_ending_popup(1, 2);  // retreat
     show_ending_popup(SCEN_TYPE_SAVE_ALL, -1);
     show_ending_popup(0, 2);  // victory not completed
-    myscreen->save_data.current_levels[myscreen->save_data.current_campaign] = myscreen->save_data.scen_num;
+    og::runtime::current_session->myscreen_->save_data.current_levels[og::runtime::current_session->myscreen_->save_data.current_campaign] = og::runtime::current_session->myscreen_->save_data.scen_num;
     show_ending_popup(0, 2);  // victory completed
     score++;
 

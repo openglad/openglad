@@ -43,18 +43,18 @@ static void cleanup_picker_state()
         backpics[i].free();
     }
     clear_allbuttons();
-    localbuttons = nullptr;
+    og::runtime::current_session->localbuttons_ = nullptr;
     main_columns_pix.reset();
     main_columns_data.free();
     main_title_logo_pix.reset();
     main_title_logo_data.free();
 
     // Ensure the next test starts the hire menu from a clean state.
-    current_guy.reset();
+    og::runtime::current_session->current_guy_.reset();
     old_guy = nullptr;      // Non-owning; may point into team_list[]
-    current_type = 0;
-    editguy = 0;
-    current_team_num = 0;
+    og::runtime::current_session->current_type_ = 0;
+    og::runtime::current_session->editguy_ = 0;
+    og::runtime::current_session->current_team_num_ = 0;
 }
 
 // Test: hire a lone fairy via the UI, start level 4 at max speed, stand there,
@@ -121,7 +121,7 @@ static int fairy_injector(void* data)
     wait_for_interactable("go", 10000);
     SDL_Delay(500);
 
-    myscreen->save_data.scen_num = 4;
+    og::runtime::current_session->myscreen_->save_data.scen_num = 4;
     set_game_speed(0.0f);
 
     fprintf(stderr, "  [test] clicking go\n");
@@ -178,19 +178,19 @@ void test_fairy_death() {
 
     // Some integration tests leave the picker globals set, which changes the
     // starting class in the hire menu. Reset here so NEXT x12 always lands on FAERIE.
-    current_guy.reset();
+    og::runtime::current_session->current_guy_.reset();
     old_guy = nullptr;
-    current_type = 0;
-    editguy = 0;
-    current_team_num = 0;
+    og::runtime::current_session->current_type_ = 0;
+    og::runtime::current_session->editguy_ = 0;
+    og::runtime::current_session->current_team_num_ = 0;
 
     // Start with empty team
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    FairyState state = { false, false, g_game_speed_factor };
+    FairyState state = { false, false, og::runtime::current_session->g_game_speed_factor_ };
     SDL_Thread* thread = SDL_CreateThread(fairy_injector, "fairy_injector", &state);
     TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
@@ -209,7 +209,7 @@ void test_fairy_death() {
     TEST_ASSERT(state.finished, "injector thread should have completed");
 
     // We lost — level 4 should NOT be marked completed
-    TEST_ASSERT(!myscreen->save_data.is_level_completed(4),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->save_data.is_level_completed(4),
                 "level 4 should NOT be completed (fairy should have died)");
 
     fprintf(stderr, "  [test] Fairy died as expected via UI hire flow\n");

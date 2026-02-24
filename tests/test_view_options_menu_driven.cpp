@@ -27,13 +27,13 @@ struct KeyStateGuard
     std::array<Uint8, MAXKEYS> fake{};
     KeyStateGuard()
     {
-        saved = keystates;
+        saved = og::runtime::current_session->keystates_;
         fake.fill(0);
-        keystates = fake.data();
+        og::runtime::current_session->keystates_ = fake.data();
     }
     ~KeyStateGuard()
     {
-        keystates = saved;
+        og::runtime::current_session->keystates_ = saved;
     }
     void pulse(SDL_Scancode sc, int down_ms = 30)
     {
@@ -80,7 +80,7 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
@@ -88,7 +88,7 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
     // Ensure we have a controlled living so options_menu doesn't early-return.
     if (!vs->control)
     {
-        walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(w != nullptr, "control walker created");
         if (w)
         {

@@ -596,7 +596,7 @@ EventType handle_basic_editor_event(const SDL_Event& event);
 #endif
 
 LevelEditorData::LevelEditorData()
-    : campaign(std::make_unique<CampaignData>("org.openglad.gladiator")), level(std::make_unique<LevelData>(1, false, &sdl_level_data_hooks())), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0].get(), myscreen, 0)
+    : campaign(std::make_unique<CampaignData>("org.openglad.gladiator")), level(std::make_unique<LevelData>(1, false, &sdl_level_data_hooks())), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(og::runtime::current_session->myscreen_->viewob[0].get(), og::runtime::current_session->myscreen_, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)
@@ -1143,8 +1143,8 @@ bool activate_menu_choice(int mx, int my, LevelEditorData& data, SimpleButton& b
 
     // Close menu
     data.current_menu.clear();
-    data.draw(myscreen);
-    myscreen->refresh();
+    data.draw(og::runtime::current_session->myscreen_);
+    og::runtime::current_session->myscreen_->refresh();
     return true;
 }
 
@@ -1162,8 +1162,8 @@ bool activate_menu_toggle_choice(int mx, int my, LevelEditorData& data, SimpleBu
     }
 
     // Close menu
-    data.draw(myscreen);
-    myscreen->refresh();
+    data.draw(og::runtime::current_session->myscreen_);
+    og::runtime::current_session->myscreen_->refresh();
     return true;
 }
 
@@ -1623,8 +1623,8 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
     {
         if(mode == Mode::Select && !mouse_on_menus(mouse_last_x, mouse_last_y))
         {
-            Sint32 worldx = mx + level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
-            Sint32 worldy = my + level->topy - myscreen->viewob[0]->yloc; // - S_UP
+            Sint32 worldx = mx + level->topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
+            Sint32 worldy = my + level->topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
             
             walker* under_cursor = nullptr;
             if(!dragging && !rect_selecting)
@@ -1665,8 +1665,8 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
             if(!dragging)
             {
                 // Select with a rectangle
-                const float worldx_f = static_cast<float>(mx + level->topx - myscreen->viewob[0]->xloc);
-                const float worldy_f = static_cast<float>(my + level->topy - myscreen->viewob[0]->yloc);
+                const float worldx_f = static_cast<float>(mx + level->topx - og::runtime::current_session->myscreen_->viewob[0]->xloc);
+                const float worldy_f = static_cast<float>(my + level->topy - og::runtime::current_session->myscreen_->viewob[0]->yloc);
                 if(!rect_selecting)
                 {
                     selection_rect.x = worldx_f;
@@ -1831,7 +1831,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(!cancel)
             {
                 popup_dialog("Share Campaign", "Not yet implemented.");
-                shareCampaign(myscreen);
+                shareCampaign(og::runtime::current_session->myscreen_);
             }
         }
         else if(activate_menu_choice(mx, my, *this, fileCampaignNewButton))
@@ -1931,7 +1931,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     
                     if(!cancel)
                     {
-                        myscreen->clearbuffer();
+                        og::runtime::current_session->myscreen_->clearbuffer();
                         // Prompt to load starting level.  If we don't, then the user can transfer levels between campaigns here.
                         bool load_first_level = yes_or_no_prompt("Load Campaign", "Load first level?", false);
                         if(load_first_level && levelchanged)
@@ -2038,7 +2038,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(!cancel)
             {
                 // Browse for the level to load
-                int id = pick_level(myscreen, level->id, true);
+                int id = pick_level(og::runtime::current_session->myscreen_, level->id, true);
                 // Don't bother loading the level if it is the same, unchanged level
                 if(id >= 0 && (levelchanged || id != level->id))
                 {
@@ -2075,7 +2075,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, fileLevelSaveAsButton))
         {
-            int id = pick_level(myscreen, level->id, true);
+            int id = pick_level(og::runtime::current_session->myscreen_, level->id, true);
             
             if(id >= 0 && id != level->id)
             {
@@ -2358,8 +2358,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             // Reset the minimap
                             myradar.start(level.get());
                             
-                            draw(myscreen);
-                            myscreen->refresh();
+                            draw(og::runtime::current_session->myscreen_);
+                            og::runtime::current_session->myscreen_->refresh();
                             
                             std::string resize_msg = std::format("Resized map to {}x{}", level->grid.w, level->grid.h);
                             timed_dialog(resize_msg.c_str());
@@ -2518,16 +2518,16 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // Clicked and released off the menu
         
         // Zardus: ADD: can move map by clicking on minimap
-        if ((mode != Mode::Select || (!rect_selecting && !dragging)) && mx > myscreen->viewob[0]->endx - myradar.xview - 4
-                && my > myscreen->viewob[0]->endy - myradar.yview - 4
-                && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4)
+        if ((mode != Mode::Select || (!rect_selecting && !dragging)) && mx > og::runtime::current_session->myscreen_->viewob[0]->endx - myradar.xview - 4
+                && my > og::runtime::current_session->myscreen_->viewob[0]->endy - myradar.yview - 4
+                && mx < og::runtime::current_session->myscreen_->viewob[0]->endx - 4 && my < og::runtime::current_session->myscreen_->viewob[0]->endy - 4)
         {
             // Radar clicking is done by holding (in the level_editor function
         }
         else  // in the main window
         {
-            Sint32 windowx = mx + level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
-            Sint32 windowy = my + level->topy - myscreen->viewob[0]->yloc; // - S_UP
+            Sint32 windowx = mx + level->topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
+            Sint32 windowy = my + level->topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
             if (object_brush.snap_to_grid)
             {
                 windowx -= (windowx%GRID_SIZE);
@@ -2543,12 +2543,12 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     rect_selecting = false;
                     
                     // Select guys in the rectangle
-                    if(!keystates[KEYSTATE_LCTRL] && !keystates[KEYSTATE_RCTRL])
+                    if(!og::runtime::current_session->keystates_[KEYSTATE_LCTRL] && !og::runtime::current_session->keystates_[KEYSTATE_RCTRL])
                         selection.clear();
                     add_contained_objects_to_selection(level.get(), selection_rect, selection);
                     reset_mode_buttons();
                 }
-                else if (keystates[KEYSTATE_r]) // (re)name the current object
+                else if (og::runtime::current_session->keystates_[KEYSTATE_r]) // (re)name the current object
                 {
                     newob = level->add_ob(Order::Living, FAMILY_ELF);
                     newob->setxy(windowx, windowy);
@@ -2574,7 +2574,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         {
                             // Clicked on a guy
                             walker* w = newob->collide_ob;
-                            if(keystates[KEYSTATE_LCTRL] || keystates[KEYSTATE_RCTRL])
+                            if(og::runtime::current_session->keystates_[KEYSTATE_LCTRL] || og::runtime::current_session->keystates_[KEYSTATE_RCTRL])
                             {
                                 // Select/deselect another guy
                                 bool deselected = false;
@@ -2598,7 +2598,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                                 selection.push_back(SelectionInfo(w));
                             }
                         }
-                        else if(!(keystates[KEYSTATE_LCTRL] || keystates[KEYSTATE_RCTRL]))
+                        else if(!(og::runtime::current_session->keystates_[KEYSTATE_LCTRL] || og::runtime::current_session->keystates_[KEYSTATE_RCTRL]))
                             selection.clear();  // Deselect if not trying to grab more
                         
                         level->remove_ob(newob);
@@ -2646,8 +2646,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         }  // end of failure to put guy
                         else if(!object_brush.snap_to_grid)
                         {
-                            draw_walker(*newob, myscreen->viewob[0].get());
-                            myscreen->buffer_to_screen(0, 0, 320, 200);
+                            draw_walker(*newob, og::runtime::current_session->myscreen_->viewob[0].get());
+                            og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
                             start_time_s = query_timer();
                             MouseState& mymouse = query_mouse_no_poll();
                             while ( mymouse.left && (query_timer()-start_time_s) < 36 )
@@ -2699,8 +2699,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
 
 void LevelEditorData::pick_by_mouse(int mx, int my)
 {
-    Sint32 windowx = mx + level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
-    Sint32 windowy = my + level->topy - myscreen->viewob[0]->yloc; // - S_UP
+    Sint32 windowx = mx + level->topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
+    Sint32 windowy = my + level->topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
     
     // Set brush to the grid tile
     if(mode == Mode::Terrain)
@@ -2956,8 +2956,8 @@ EventType handle_basic_editor_event(const SDL_Event& event)
         return EventType::Handled;
     case SDL_MOUSEMOTION:
         handle_mouse_event(event);
-        mouse_motion_x = static_cast<int>(static_cast<float>(event.motion.xrel) * (320.0f / viewport_w));
-        mouse_motion_y = static_cast<int>(static_cast<float>(event.motion.yrel) * (200.0f / viewport_h));
+        mouse_motion_x = static_cast<int>(static_cast<float>(event.motion.xrel) * (320.0f / og::runtime::current_session->viewport_w_));
+        mouse_motion_y = static_cast<int>(static_cast<float>(event.motion.yrel) * (200.0f / og::runtime::current_session->viewport_h_));
         return EventType::MouseMotion;
     case SDL_MOUSEBUTTONUP:
         {
@@ -3099,7 +3099,7 @@ Sint32 level_editor()
 		// Reset the timer count to zero ...
 		reset_timer();
 
-		if (myscreen->end)
+		if (og::runtime::current_session->myscreen_->end)
 		{
 		    done = true;
 			break;
@@ -3115,8 +3115,8 @@ Sint32 level_editor()
                 
                 event.type = SDL_MOUSEBUTTONDOWN;
                 event.button.button = SDL_BUTTON_LEFT;
-                event.button.x = mymouse.x * (viewport_w / 320) + viewport_offset_x;
-                event.button.y = mymouse.y * (viewport_h / 200) + viewport_offset_y;
+                event.button.x = mymouse.x * (og::runtime::current_session->viewport_w_ / 320) + og::runtime::current_session->viewport_offset_x_;
+                event.button.y = mymouse.y * (og::runtime::current_session->viewport_h_ / 200) + og::runtime::current_session->viewport_offset_y_;
                 SDL_PushEvent(&event);
                 continue;
             }
@@ -3127,8 +3127,8 @@ Sint32 level_editor()
                 
                 event.type = SDL_MOUSEBUTTONUP;
                 event.button.button = SDL_BUTTON_LEFT;
-                event.button.x = mymouse.x * (viewport_w / 320) + viewport_offset_x;
-                event.button.y = mymouse.y * (viewport_h / 200) + viewport_offset_y;
+                event.button.x = mymouse.x * (og::runtime::current_session->viewport_w_ / 320) + og::runtime::current_session->viewport_offset_x_;
+                event.button.y = mymouse.y * (og::runtime::current_session->viewport_h_ / 200) + og::runtime::current_session->viewport_offset_y_;
                 SDL_PushEvent(&event);
                 continue;
             }
@@ -3295,7 +3295,7 @@ Sint32 level_editor()
         {
 		#endif
 		// Slide tile selector down ..
-		if (keystates[KEYSTATE_DOWN] || scroll_delta < 0)
+		if (og::runtime::current_session->keystates_[KEYSTATE_DOWN] || scroll_delta < 0)
 		{
 			rowsdown++;
 			if (rowsdown >= maxrows)
@@ -3303,7 +3303,7 @@ Sint32 level_editor()
             
             redraw = 1;
             
-			while (keystates[KEYSTATE_DOWN])
+			while (og::runtime::current_session->keystates_[KEYSTATE_DOWN])
 			{
 				SDL_Delay(1);
 				get_input_events(POLL);
@@ -3311,7 +3311,7 @@ Sint32 level_editor()
 		}
 
 		// Slide tile selector up ..
-		if (keystates[KEYSTATE_UP] || scroll_delta > 0)
+		if (og::runtime::current_session->keystates_[KEYSTATE_UP] || scroll_delta > 0)
 		{
 			rowsdown--;
 			if (rowsdown < 0)
@@ -3321,7 +3321,7 @@ Sint32 level_editor()
             
             redraw = 1;
             
-			while (keystates[KEYSTATE_UP])
+			while (og::runtime::current_session->keystates_[KEYSTATE_UP])
 			{
 				SDL_Delay(1);
 				get_input_events(POLL);
@@ -3334,10 +3334,10 @@ Sint32 level_editor()
 
 		// Scroll the screen (panning)
 		#ifndef OUYA
-		pan_left = (keystates[KEYSTATE_KP_4] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_a]);
-		pan_right = (keystates[KEYSTATE_KP_6] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_d]);
-		pan_up = (keystates[KEYSTATE_KP_8] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_w]);
-		pan_down = (keystates[KEYSTATE_KP_2] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_s]);
+		pan_left = (og::runtime::current_session->keystates_[KEYSTATE_KP_4] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_a]);
+		pan_right = (og::runtime::current_session->keystates_[KEYSTATE_KP_6] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_d]);
+		pan_up = (og::runtime::current_session->keystates_[KEYSTATE_KP_8] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_w]);
+		pan_down = (og::runtime::current_session->keystates_[KEYSTATE_KP_2] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_s]);
 		#endif
 		if (pan_up && data.level->topy >= PAN_LIMIT_UP) // top of the screen
         {
@@ -3436,12 +3436,12 @@ Sint32 level_editor()
             else if(off_menu)
             {
                 // Zardus: ADD: can move map by clicking on minimap
-                if ((mode != Mode::Select || (!data.rect_selecting && !data.dragging)) && mx > myscreen->viewob[0]->endx - myradar.xview - 4
-                        && my > myscreen->viewob[0]->endy - myradar.yview - 4
-                        && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4)
+                if ((mode != Mode::Select || (!data.rect_selecting && !data.dragging)) && mx > og::runtime::current_session->myscreen_->viewob[0]->endx - myradar.xview - 4
+                        && my > og::runtime::current_session->myscreen_->viewob[0]->endy - myradar.yview - 4
+                        && mx < og::runtime::current_session->myscreen_->viewob[0]->endx - 4 && my < og::runtime::current_session->myscreen_->viewob[0]->endy - 4)
                 {
-                    mx -= myscreen->viewob[0]->endx - myradar.xview - 4;
-                    my -= myscreen->viewob[0]->endy - myradar.yview - 4;
+                    mx -= og::runtime::current_session->myscreen_->viewob[0]->endx - myradar.xview - 4;
+                    my -= og::runtime::current_session->myscreen_->viewob[0]->endy - myradar.yview - 4;
 
                     // Zardus: above set_screen_pos doesn't take into account that minimap scrolls too. This one does.
                     data.level->set_draw_pos(myradar.radarx * GRID_SIZE + mx * GRID_SIZE - 160,
@@ -3449,9 +3449,9 @@ Sint32 level_editor()
                 }
                 else  // in the main window
                 {
-                    windowx = static_cast<Sint32>(mymouse.x) + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
+                    windowx = static_cast<Sint32>(mymouse.x) + data.level->topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
                     windowx -= (windowx%GRID_SIZE);
-                    windowy = static_cast<Sint32>(mymouse.y) + data.level->topy - myscreen->viewob[0]->yloc; // - S_UP
+                    windowy = static_cast<Sint32>(mymouse.y) + data.level->topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
                     windowy -= (windowy%GRID_SIZE);
 
                     if (mode == Mode::Terrain)
@@ -3505,13 +3505,13 @@ Sint32 level_editor()
 		if (redraw)
 		{
             redraw = 0;
-			data.draw(myscreen);
+			data.draw(og::runtime::current_session->myscreen_);
 			
             #ifdef USE_CONTROLLER_INPUT
-            myscreen->fastbox(mymouse.x-1, mymouse.y-1, 4, 4, PURE_WHITE);
-            myscreen->fastbox(mymouse.x, mymouse.y, 2, 2, PURE_BLACK);
+            og::runtime::current_session->myscreen_->fastbox(mymouse.x-1, mymouse.y-1, 4, 4, PURE_WHITE);
+            og::runtime::current_session->myscreen_->fastbox(mymouse.x, mymouse.y, 2, 2, PURE_BLACK);
             #endif
-            myscreen->refresh();
+            og::runtime::current_session->myscreen_->refresh();
 		}
         
         SDL_Delay(10);
@@ -3524,9 +3524,9 @@ Sint32 level_editor()
 	// Reset the screen position so it doesn't ruin the main menu
     data.level->set_draw_pos(0, 0);
     // Update the screen's position
-    data.level->draw(myscreen);
+    data.level->draw(og::runtime::current_session->myscreen_);
     // Clear the background
-    myscreen->clearbuffer();
+    og::runtime::current_session->myscreen_->clearbuffer();
     
     (void)unmount_campaign_package_with_error(data.campaign->id);
     (void)mount_campaign_package_with_error(old_campaign);

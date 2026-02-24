@@ -89,7 +89,7 @@ REGISTER_TEST(test_compute_mp_color_over_max);
 
 void test_viewscreen_set_display_text()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen 0 should exist");
 
     // Clear first
@@ -103,7 +103,7 @@ REGISTER_TEST(test_viewscreen_set_display_text);
 
 void test_viewscreen_clear_text()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen 0 should exist");
 
     vs->set_display_text("Test", 20);
@@ -117,7 +117,7 @@ REGISTER_TEST(test_viewscreen_clear_text);
 
 void test_viewscreen_set_display_text_multiple()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen 0 should exist");
 
     vs->clear_text();
@@ -133,7 +133,7 @@ REGISTER_TEST(test_viewscreen_set_display_text_multiple);
 
 void test_viewscreen_set_display_text_overflow()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen 0 should exist");
 
     vs->clear_text();
@@ -148,7 +148,7 @@ REGISTER_TEST(test_viewscreen_set_display_text_overflow);
 
 void test_viewscreen_shift_text()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen 0 should exist");
 
     vs->clear_text();
@@ -168,7 +168,7 @@ REGISTER_TEST(test_viewscreen_shift_text);
 
 void test_viewscreen_change_speed_report()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen 0 should exist");
 
     Sint32 speed = vs->change_speed(0);
@@ -178,7 +178,7 @@ REGISTER_TEST(test_viewscreen_change_speed_report);
 
 void test_viewscreen_change_speed_increase()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     Sint32 speed1 = vs->change_speed(0);
     Sint32 speed2 = vs->change_speed(1);
     TEST_ASSERT(speed2 >= speed1, "increasing speed should give >= current speed");
@@ -193,24 +193,24 @@ REGISTER_TEST(test_viewscreen_change_speed_increase);
 
 void test_viewscreen_resize_full()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
-    short old_numviews = myscreen->numviews;
-    myscreen->numviews = 1;
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    short old_numviews = og::runtime::current_session->myscreen_->numviews;
+    og::runtime::current_session->myscreen_->numviews = 1;
 
     vs->resize(PREF_VIEW_FULL);
     // Full screen mode for 1 player
     TEST_ASSERT(vs->xview > 200, "full view width should be > 200");
     TEST_ASSERT(vs->yview > 150, "full view height should be > 150");
 
-    myscreen->numviews = old_numviews;
+    og::runtime::current_session->myscreen_->numviews = old_numviews;
 }
 REGISTER_TEST(test_viewscreen_resize_full);
 
 void test_viewscreen_resize_panels()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
-    short old_numviews = myscreen->numviews;
-    myscreen->numviews = 1;
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    short old_numviews = og::runtime::current_session->myscreen_->numviews;
+    og::runtime::current_session->myscreen_->numviews = 1;
 
     vs->resize(PREF_VIEW_PANELS);
     TEST_ASSERT_EQ(232, (int)vs->xview, "panels mode width should be 232");
@@ -218,15 +218,15 @@ void test_viewscreen_resize_panels()
 
     // Restore
     vs->resize(PREF_VIEW_FULL);
-    myscreen->numviews = old_numviews;
+    og::runtime::current_session->myscreen_->numviews = old_numviews;
 }
 REGISTER_TEST(test_viewscreen_resize_panels);
 
 void test_viewscreen_resize_small_modes()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
-    short old_numviews = myscreen->numviews;
-    myscreen->numviews = 1;
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    short old_numviews = og::runtime::current_session->myscreen_->numviews;
+    og::runtime::current_session->myscreen_->numviews = 1;
 
     vs->resize(PREF_VIEW_1);
     TEST_ASSERT_EQ(192, (int)vs->xview, "mode 1 width should be 192");
@@ -239,6 +239,6 @@ void test_viewscreen_resize_small_modes()
 
     // Restore
     vs->resize(PREF_VIEW_FULL);
-    myscreen->numviews = old_numviews;
+    og::runtime::current_session->myscreen_->numviews = old_numviews;
 }
 REGISTER_TEST(test_viewscreen_resize_small_modes);

@@ -79,7 +79,7 @@ REGISTER_TEST(test_family_data_names_match_get_family_string);
 
 // Verify walker init matches registry for special_cost, weapon_cost, default_weapon
 static void teardown_family_walker() {
-    if (myscreen) myscreen->level_data.delete_objects();
+    if (og::runtime::current_session->myscreen_) og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 
 void test_family_data_walker_init_matches_registry()
@@ -90,7 +90,7 @@ void test_family_data_walker_init_matches_registry()
         auto* d = get_family_descriptor(fam);
         guy g(fam);
         g.teamnum = 0;
-        auto w = guy_create_walker_owned(g, myscreen);
+        auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
         if (!w) continue;
 
         char msg[128];
@@ -107,7 +107,7 @@ void test_family_data_walker_init_matches_registry()
         std::snprintf(msg, sizeof(msg), "family %d weapon_cost mismatch", fam);
         TEST_ASSERT_EQ(d->weapon_cost, w->stats()->weapon_cost, msg);
     }
-    if (myscreen) myscreen->level_data.delete_objects();
+    if (og::runtime::current_session->myscreen_) og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST_WITH_FIXTURE(test_family_data_walker_init_matches_registry, nullptr, teardown_family_walker);
 
@@ -115,7 +115,7 @@ REGISTER_TEST_WITH_FIXTURE(test_family_data_walker_init_matches_registry, nullpt
 void test_family_data_special_names_match_screen()
 {
     init_family_registry();
-    if (!myscreen) return;
+    if (!og::runtime::current_session->myscreen_) return;
 
     for (int fam = 0; fam < NUM_FAMILIES; fam++)
     {
@@ -124,12 +124,12 @@ void test_family_data_special_names_match_screen()
         {
             char msg[128];
             std::snprintf(msg, sizeof(msg), "family %d special_name[%d] mismatch: '%s' vs '%s'",
-                          fam, s, d->special_names[s], myscreen->special_name[fam][s].c_str());
-            TEST_ASSERT_STR_EQ(d->special_names[s], myscreen->special_name[fam][s].c_str(), msg);
+                          fam, s, d->special_names[s], og::runtime::current_session->myscreen_->special_name[fam][s].c_str());
+            TEST_ASSERT_STR_EQ(d->special_names[s], og::runtime::current_session->myscreen_->special_name[fam][s].c_str(), msg);
 
             std::snprintf(msg, sizeof(msg), "family %d alternate_name[%d] mismatch: '%s' vs '%s'",
-                          fam, s, d->alternate_names[s], myscreen->alternate_name[fam][s].c_str());
-            TEST_ASSERT_STR_EQ(d->alternate_names[s], myscreen->alternate_name[fam][s].c_str(), msg);
+                          fam, s, d->alternate_names[s], og::runtime::current_session->myscreen_->alternate_name[fam][s].c_str());
+            TEST_ASSERT_STR_EQ(d->alternate_names[s], og::runtime::current_session->myscreen_->alternate_name[fam][s].c_str(), msg);
         }
     }
 }

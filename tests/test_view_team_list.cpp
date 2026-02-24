@@ -9,18 +9,18 @@
 
 void test_viewscreen_view_team_renders_entries_for_my_team()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
 
     // Ensure the level has a grid so view code doesn't depend on prior tests.
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
 
     // Add a few living walkers on our team and another team.
-    walker* w0 = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* w1 = myscreen->level_data.add_ob(Order::Living, FAMILY_ELF);
-    walker* w_other = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* w0 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w1 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ELF);
+    walker* w_other = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(w0 && w1 && w_other, "walkers created");
     if (!(w0 && w1 && w_other))
         return;

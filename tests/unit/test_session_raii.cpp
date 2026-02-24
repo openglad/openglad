@@ -15,8 +15,8 @@
 
 OG_UNIT_TEST(test_game_session_headless_restores_legacy_globals)
 {
-    screen* prev_screen = myscreen;
-    options* prev_prefs = theprefs;
+    screen* prev_screen = og::runtime::current_session->myscreen_;
+    options* prev_prefs = og::runtime::current_session->theprefs_;
 
     {
         og::runtime::GameSession::Config session_cfg;
@@ -26,13 +26,13 @@ OG_UNIT_TEST(test_game_session_headless_restores_legacy_globals)
         session_cfg.install_global_context = true;
         og::runtime::GameSession session(session_cfg);
 
-        OG_ASSERT(myscreen == nullptr);
-        OG_ASSERT(theprefs == nullptr);
+        OG_ASSERT(og::runtime::current_session->myscreen_ == nullptr);
+        OG_ASSERT(og::runtime::current_session->theprefs_ == nullptr);
         OG_ASSERT(session.ctx_.rng != nullptr);
     }
 
-    OG_ASSERT(myscreen == prev_screen);
-    OG_ASSERT(theprefs == prev_prefs);
+    OG_ASSERT(og::runtime::current_session->myscreen_ == prev_screen);
+    OG_ASSERT(og::runtime::current_session->theprefs_ == prev_prefs);
 }
 
 OG_UNIT_TEST(test_game_session_seeded_rng_is_deterministic)
@@ -64,8 +64,8 @@ OG_UNIT_TEST(test_game_session_repeated_create_destroy)
 {
     // Verify sessions can be created and destroyed repeatedly without leaking
     // or corrupting global state. (Headless: skip screen/prefs which need SDL/PhysFS.)
-    screen* baseline_screen = myscreen;
-    options* baseline_prefs = theprefs;
+    screen* baseline_screen = og::runtime::current_session->myscreen_;
+    options* baseline_prefs = og::runtime::current_session->theprefs_;
 
     for (int i = 0; i < 5; ++i) {
         og::runtime::GameSession::Config session_cfg;
@@ -77,16 +77,16 @@ OG_UNIT_TEST(test_game_session_repeated_create_destroy)
         session_cfg.rng_seed = static_cast<Uint32>(i);
         og::runtime::GameSession session(session_cfg);
 
-        OG_ASSERT(myscreen == nullptr);
-        OG_ASSERT(theprefs == nullptr);
+        OG_ASSERT(og::runtime::current_session->myscreen_ == nullptr);
+        OG_ASSERT(og::runtime::current_session->theprefs_ == nullptr);
         OG_ASSERT(session.ctx_.rng != nullptr);
         // Verify RNG works within session
         session.ctx_.rng->next(100);
     }
 
     // After all sessions destroyed, globals should be restored
-    OG_ASSERT(myscreen == baseline_screen);
-    OG_ASSERT(theprefs == baseline_prefs);
+    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen);
+    OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
 }
 
 OG_UNIT_TEST(test_game_session_cfg_accessible)
@@ -102,8 +102,8 @@ OG_UNIT_TEST(test_game_session_cfg_accessible)
 
 OG_UNIT_TEST(test_session_scope_activates_and_restores_globals)
 {
-    screen* baseline_screen = myscreen;
-    options* baseline_prefs = theprefs;
+    screen* baseline_screen = og::runtime::current_session->myscreen_;
+    options* baseline_prefs = og::runtime::current_session->theprefs_;
 
     // Headless: skip prefs allocation (options constructor needs PhysFS).
     og::runtime::GameSession::Config session_cfg;
@@ -114,20 +114,20 @@ OG_UNIT_TEST(test_session_scope_activates_and_restores_globals)
     og::runtime::GameSession session(session_cfg);
 
     // Before activation: globals should still be baseline
-    OG_ASSERT(myscreen == baseline_screen);
-    OG_ASSERT(theprefs == baseline_prefs);
+    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen);
+    OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
 
     {
         auto scope = session.activate();
         // During activation: myscreen should be session's screen (nullptr since no alloc)
-        OG_ASSERT(myscreen == session.screen_ptr());
+        OG_ASSERT(og::runtime::current_session->myscreen_ == session.screen_ptr());
         // theprefs is nullptr (session has no allocated prefs), same as baseline
-        OG_ASSERT(theprefs == baseline_prefs);
+        OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
     }
 
     // After scope destruction: globals should be restored
-    OG_ASSERT(myscreen == baseline_screen);
-    OG_ASSERT(theprefs == baseline_prefs);
+    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen);
+    OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
 }
 
 OG_UNIT_TEST(test_session_scope_context_isolation)
@@ -172,8 +172,8 @@ OG_UNIT_TEST(test_session_scope_context_isolation)
 OG_UNIT_TEST(test_multiple_sessions_coexist_headless)
 {
     // Create multiple sessions simultaneously without conflicts
-    screen* baseline_screen = myscreen;
-    options* baseline_prefs = theprefs;
+    screen* baseline_screen = og::runtime::current_session->myscreen_;
+    options* baseline_prefs = og::runtime::current_session->theprefs_;
 
     og::runtime::GameSession::Config session_cfg;
     session_cfg.allocate_screen = false;
@@ -210,8 +210,8 @@ OG_UNIT_TEST(test_multiple_sessions_coexist_headless)
     sessions.clear();
 
     // Globals should be unchanged
-    OG_ASSERT(myscreen == baseline_screen);
-    OG_ASSERT(theprefs == baseline_prefs);
+    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen);
+    OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
 }
 
 OG_UNIT_TEST(test_session_scope_nested_activation)
@@ -235,7 +235,7 @@ OG_UNIT_TEST(test_session_scope_nested_activation)
     cfg2.rng_seed = 222;
     og::runtime::GameSession session2(cfg2);
 
-    screen* baseline = myscreen;
+    screen* baseline = og::runtime::current_session->myscreen_;
 
     {
         auto scope1 = session1.activate();
@@ -254,7 +254,7 @@ OG_UNIT_TEST(test_session_scope_nested_activation)
         OG_ASSERT(ctx().rng == rng1);
     }
     // After outer scope: baseline restored
-    OG_ASSERT(myscreen == baseline);
+    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline);
 }
 
 OG_UNIT_TEST(test_session_frame_state_independence)
@@ -289,8 +289,8 @@ OG_UNIT_TEST(test_twelve_sessions_coexist)
 {
     // Verify that 12 GameSession instances can be created concurrently
     // with independent state (matches the openglad_demo configuration).
-    screen* baseline_screen = myscreen;
-    options* baseline_prefs = theprefs;
+    screen* baseline_screen = og::runtime::current_session->myscreen_;
+    options* baseline_prefs = og::runtime::current_session->theprefs_;
 
     og::runtime::GameSession::Config session_cfg;
     session_cfg.allocate_screen = false;
@@ -336,8 +336,8 @@ OG_UNIT_TEST(test_twelve_sessions_coexist)
     }
 
     sessions.clear();
-    OG_ASSERT(myscreen == baseline_screen);
-    OG_ASSERT(theprefs == baseline_prefs);
+    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen);
+    OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
 }
 
 OG_UNIT_TEST(test_session_state_modification_isolation)

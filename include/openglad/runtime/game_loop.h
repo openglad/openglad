@@ -6,7 +6,7 @@
  * - Provide a seam for tests to step frames with injected event sources.
  *
  * Non-goals:
- * - Remove globals like `myscreen`.
+ * - Remove globals like `og::runtime::current_session->myscreen_`.
  * - Rewrite subsystems (walker/screen/etc).
  */
 

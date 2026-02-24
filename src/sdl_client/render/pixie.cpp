@@ -115,14 +115,14 @@ short pixie::draw(viewscreen * view_buf)
 
 	if(accel)
 	{
-		myscreen->putbuffer(xscreen, yscreen, sizex, sizey,
+		og::runtime::current_session->myscreen_->putbuffer(xscreen, yscreen, sizex, sizey,
 		                             view_buf->xloc, view_buf->yloc,
 		                             view_buf->endx, view_buf->endy,
 		                             bmp_surface);
 	}
 	else
 	{
-		myscreen->putbuffer(xscreen, yscreen, sizex, sizey,
+		og::runtime::current_session->myscreen_->putbuffer(xscreen, yscreen, sizex, sizey,
 		                             view_buf->xloc, view_buf->yloc,
 		                             view_buf->endx, view_buf->endy,
 		                             {bmp, static_cast<size_t>(sizex * sizey)});
@@ -150,7 +150,7 @@ short pixie::drawMix(viewscreen * view_buf)
 	xscreen = static_cast<Sint32>(xpos - view_buf->topx + view_buf->xloc);
 	yscreen = static_cast<Sint32>(ypos - view_buf->topy + view_buf->yloc);
 
-	myscreen->walkputbuffer(xscreen, yscreen, sizex, sizey,
+	og::runtime::current_session->myscreen_->walkputbuffer(xscreen, yscreen, sizex, sizey,
 	                                 view_buf->xloc, view_buf->yloc,
 	                                 view_buf->endx, view_buf->endy,
 	                                 {bmp, static_cast<size_t>(sizex * sizey)}, RED);
@@ -161,16 +161,16 @@ short pixie::drawMix(viewscreen * view_buf)
 
 short pixie::put_screen(short x, short y)
 {
-	myscreen->putdata(x, y, sizex, sizey, {bmp, static_cast<size_t>(sizex * sizey)});
+	og::runtime::current_session->myscreen_->putdata(x, y, sizex, sizey, {bmp, static_cast<size_t>(sizex * sizey)});
 	return 1;
 }
 
 short pixie::on_screen()
 {
 	short i;
-	for (i=0; i < myscreen->numviews; i++)
+	for (i=0; i < og::runtime::current_session->myscreen_->numviews; i++)
 	{
-		if (on_screen(myscreen->viewob[i].get()))
+		if (on_screen(og::runtime::current_session->myscreen_->viewob[i].get()))
 			return 1;
 	}
 	return 0;

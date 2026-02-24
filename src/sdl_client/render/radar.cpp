@@ -56,7 +56,7 @@ radar::radar(viewscreen * myview, screen * screen_ctx, short whatnum)
 
 void radar::start()
 {
-    start(&myscreen->level_data);
+    start(&og::runtime::current_session->myscreen_->level_data);
 }
 
 void radar::start(LevelData* data)
@@ -123,7 +123,7 @@ radar::~radar()
 
 short radar::draw()
 {
-    return draw(&myscreen->level_data);
+    return draw(&og::runtime::current_session->myscreen_->level_data);
 }
 
 short radar::draw(LevelData* data)
@@ -168,14 +168,14 @@ short radar::draw(LevelData* data)
 		radary = 0;
     
     unsigned char alpha = 255;
-    if(myscreen->numviews > 2 && !(myscreen->numviews == 3 && mynum == 0))
+    if(og::runtime::current_session->myscreen_->numviews > 2 && !(og::runtime::current_session->myscreen_->numviews == 3 && mynum == 0))
     {
         alpha = 127;
     }
 	{
 		size_t offset = radarx + (radary * sizex);
 		auto radar_span = std::span<const unsigned char>{bmp.data() + offset, static_cast<size_t>(sizex * sizey) - offset};
-		myscreen->putbuffer_alpha(xloc, yloc,
+		og::runtime::current_session->myscreen_->putbuffer_alpha(xloc, yloc,
 		                   sizex,sizey,
 		                   xloc,yloc,xloc + xview,yloc + yview,
 		                   radar_span, alpha);
@@ -235,43 +235,43 @@ short radar::draw(LevelData* data)
 						tempcolor = static_cast<unsigned char>(rng(256));
 						if (tempx >= (xloc + xview - 1) && tempy < (yloc+yview) )
 						{
-							myscreen->pointb(tempx-1,tempy,tempcolor, alpha);
-							myscreen->pointb(tempx,tempy,tempcolor, alpha);
-							myscreen->pointb(tempx-1,tempy+1,tempcolor, alpha);
-							myscreen->pointb(tempx,tempy+1,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx-1,tempy,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx,tempy,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx-1,tempy+1,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx,tempy+1,tempcolor, alpha);
 
 						}
 						else if (tempx >= (xloc + xview -1) )
 						{
-							myscreen->pointb(tempx,tempy,tempcolor, alpha);
-							myscreen->pointb(tempx-1,tempy,tempcolor, alpha);
-							myscreen->pointb(tempx,tempy-1,tempcolor, alpha);
-							myscreen->pointb(tempx-1,tempy-1,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx,tempy,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx-1,tempy,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx,tempy-1,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx-1,tempy-1,tempcolor, alpha);
 
 						}
 						else if (tempy >= (yloc + yview -1) && tempx < (xloc+xview) )
 						{
-							myscreen->pointb(tempx,tempy,tempcolor, alpha);
-							myscreen->pointb(tempx+1,tempy,tempcolor, alpha);
-							myscreen->pointb(tempx,tempy-1,tempcolor, alpha);
-							myscreen->pointb(tempx+1,tempy-1,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx,tempy,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx+1,tempy,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx,tempy-1,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx+1,tempy-1,tempcolor, alpha);
 						}
 						else
 						{
-							myscreen->pointb(tempx,tempy,tempcolor, alpha);
-							myscreen->pointb(tempx+1,tempy,tempcolor, alpha);
-							myscreen->pointb(tempx,tempy+1,tempcolor, alpha);
-							myscreen->pointb(tempx+1,tempy+1,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx,tempy,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx+1,tempy,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx,tempy+1,tempcolor, alpha);
+							og::runtime::current_session->myscreen_->pointb(tempx+1,tempy+1,tempcolor, alpha);
 						}
 					}
 					else if (oborder == Order::Living)
-						myscreen->pointb(tempx,tempy,tempcolor, alpha);
+						og::runtime::current_session->myscreen_->pointb(tempx,tempy,tempcolor, alpha);
 					else if (oborder == Order::Generator)
-						myscreen->pointb(tempx,tempy,static_cast<char>(tempcolor+1), alpha);
+						og::runtime::current_session->myscreen_->pointb(tempx,tempy,static_cast<char>(tempcolor+1), alpha);
 					else if (oborder == Order::Treasure) // currently life gems
-						myscreen->pointb(tempx,tempy,COLOR_FIRE, alpha);
+						og::runtime::current_session->myscreen_->pointb(tempx,tempy,COLOR_FIRE, alpha);
 					else
-						myscreen->pointb(tempx,tempy,COLOR_WHITE, alpha);
+						og::runtime::current_session->myscreen_->pointb(tempx,tempy,COLOR_WHITE, alpha);
 				}//draw the blob onto the radar
 			}
 		}
@@ -335,7 +335,7 @@ short radar::draw(LevelData* data)
 						Log("bad radar, bad\n");
 						return 1;
 					}
-					myscreen->pointb(tempx,tempy,static_cast<char>(do_show), alpha);
+					og::runtime::current_session->myscreen_->pointb(tempx,tempy,static_cast<char>(do_show), alpha);
 				}//draw the blob onto the radar
 			} // end of valid do_show
 		}  // end of if here->ob
@@ -372,7 +372,7 @@ short radar::on_screen(short whatx, short whaty,
 // call it often, as it is very slow ..
 void radar::update()
 {
-    update(&myscreen->level_data);
+    update(&og::runtime::current_session->myscreen_->level_data);
 }
 
 // This function re-initializes the radar map data.  Do not

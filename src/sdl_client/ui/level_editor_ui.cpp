@@ -26,7 +26,7 @@
 
 static screen* active_screen()
 {
-    return myscreen;
+    return og::runtime::current_session->myscreen_;
 }
 
 #ifdef TESTING
@@ -210,9 +210,9 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             #endif
         }
         
-        if(keystates[KEYSTATE_ESCAPE])
+        if(og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
         {
-            while(keystates[KEYSTATE_ESCAPE])
+            while(og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
             {
                 SDL_Delay(1);
                 get_input_events(POLL);
@@ -221,18 +221,18 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             done = true;
             break;
         }
-        if(keystates[KEYSTATE_DELETE])
+        if(og::runtime::current_session->keystates_[KEYSTATE_DELETE])
         {
             if(cursor_pos < s->size())
                 s->erase(cursor_pos, 1);
             
-            while(keystates[KEYSTATE_DELETE])
+            while(og::runtime::current_session->keystates_[KEYSTATE_DELETE])
             {
                 SDL_Delay(1);
                 get_input_events(POLL);
             }
         }
-        if(keystates[KEYSTATE_UP])
+        if(og::runtime::current_session->keystates_[KEYSTATE_UP])
         {
             if(current_line > 0)
             {
@@ -242,13 +242,13 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                     cursor_pos = s->size();
             }
             
-            while(keystates[KEYSTATE_UP])
+            while(og::runtime::current_session->keystates_[KEYSTATE_UP])
             {
                 SDL_Delay(1);
                 get_input_events(POLL);
             }
         }
-        if(keystates[KEYSTATE_DOWN])
+        if(og::runtime::current_session->keystates_[KEYSTATE_DOWN])
         {
             if(current_line+1 < result.size())
             {
@@ -261,13 +261,13 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             if(s->size() < cursor_pos)
                 cursor_pos = s->size();
             
-            while(keystates[KEYSTATE_DOWN])
+            while(og::runtime::current_session->keystates_[KEYSTATE_DOWN])
             {
                 SDL_Delay(1);
                 get_input_events(POLL);
             }
         }
-        if(keystates[KEYSTATE_LEFT])
+        if(og::runtime::current_session->keystates_[KEYSTATE_LEFT])
         {
             if(cursor_pos > 0)
                 cursor_pos--;
@@ -278,13 +278,13 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                 cursor_pos = s->size();
             }
             
-            while(keystates[KEYSTATE_LEFT])
+            while(og::runtime::current_session->keystates_[KEYSTATE_LEFT])
             {
                 SDL_Delay(1);
                 get_input_events(POLL);
             }
         }
-        if(keystates[KEYSTATE_RIGHT])
+        if(og::runtime::current_session->keystates_[KEYSTATE_RIGHT])
         {
             cursor_pos++;
             if(cursor_pos > s->size())
@@ -300,7 +300,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                     cursor_pos = s->size();
             }
             
-            while(keystates[KEYSTATE_RIGHT])
+            while(og::runtime::current_session->keystates_[KEYSTATE_RIGHT])
             {
                 SDL_Delay(1);
                 get_input_events(POLL);

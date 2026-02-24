@@ -63,15 +63,15 @@ static og::ui::TrainSession* g_train_session = nullptr;
 static void sync_current_guy_from_hire()
 {
     if (g_hire_session && g_hire_session->current_recruit())
-        current_guy = std::make_unique<guy>(*g_hire_session->current_recruit());
+        og::runtime::current_session->current_guy_ = std::make_unique<guy>(*g_hire_session->current_recruit());
 }
 
 static void sync_current_guy_from_train()
 {
     if (g_train_session && !g_train_session->empty()) {
-        current_guy = std::make_unique<guy>(g_train_session->working_copy());
+        og::runtime::current_session->current_guy_ = std::make_unique<guy>(g_train_session->working_copy());
         old_guy = &const_cast<guy&>(g_train_session->original());
-        editguy = g_train_session->current_slot();
+        og::runtime::current_session->editguy_ = g_train_session->current_slot();
     }
 }
 #ifdef __EMSCRIPTEN__
@@ -109,9 +109,7 @@ Sint32 create_detail_menu(guy *arg1);
 void glad_main(Sint32 playermode);
 void statscopy(guy *dest, guy *source);
 
-// File-local alias for the per-session picker message buffer.
-// Not in base.h because 'message' is too common as a parameter name.
-#define message (og::runtime::current_session->message_)
+// Per-session picker message buffer: access via current_session->message_.
 
 #define STAT_NUM_OFFSET 42
 #define STAT_COLOR   DARK_BLUE // color for normal stat text
@@ -125,10 +123,10 @@ static og::ui::DerivedStats compute_guy_derived_stats(const guy& g)
 {
     auto pix = PIX(Order::Living, g.family);
     return og::ui::compute_derived_stats(g,
-        myscreen->level_data.myloader->hitpoints[pix],
-        myscreen->level_data.myloader->damage[pix],
-        myscreen->level_data.myloader->stepsizes[pix],
-        myscreen->level_data.myloader->fire_frequency[pix]);
+        og::runtime::current_session->myscreen_->level_data.myloader->hitpoints[pix],
+        og::runtime::current_session->myscreen_->level_data.myloader->damage[pix],
+        og::runtime::current_session->myscreen_->level_data.myloader->stepsizes[pix],
+        og::runtime::current_session->myscreen_->level_data.myloader->fire_frequency[pix]);
 }
 
 // Draw the HP/MP/ATK/DEF/SPD/ATK_SPD derived stats block.
@@ -170,62 +168,62 @@ Sint32 create_team_menu(Sint32 arg1)
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 
-	myscreen->fadeblack(0);
+	og::runtime::current_session->myscreen_->fadeblack(0);
 	
-	text& mytext = myscreen->text_normal;
+	text& mytext = og::runtime::current_session->myscreen_->text_normal;
 	
 	button* buttons = createmenu_buttons;
 	int num_buttons = 10;
 	int highlighted_button = 1;
-	localbuttons = init_buttons(buttons, num_buttons);
+	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 	draw_backdrop();
 	draw_buttons(buttons, num_buttons);
 	
 	int last_level_id = -1;
 	
-	myscreen->fadeblack(1);
+	og::runtime::current_session->myscreen_->fadeblack(1);
 	
 	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		if(leftmouse(buttons))
-			retvalue = localbuttons->leftclick();
+			retvalue = og::runtime::current_session->localbuttons_->leftclick();
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
         
         
         // Reset buttons
-        bool buttons_were_reset = reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+        bool buttons_were_reset = reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
 
         // Nested menus can replace the global vbutton array with a different
         // layout before returning MENU_EXIT. Avoid drawing with mismatched arrays.
         if (retvalue & MENU_EXIT)
             break;
 		
-        if(last_level_id != myscreen->save_data.scen_num || buttons_were_reset)
+        if(last_level_id != og::runtime::current_session->myscreen_->save_data.scen_num || buttons_were_reset)
         {
             retvalue = 0;
-            last_level_id = myscreen->save_data.scen_num;
-            myscreen->level_data.id = last_level_id;
-            myscreen->level_data.load();
+            last_level_id = og::runtime::current_session->myscreen_->save_data.scen_num;
+            og::runtime::current_session->myscreen_->level_data.id = last_level_id;
+            og::runtime::current_session->myscreen_->level_data.load();
         }
         
 		// Draw
-		myscreen->clearbuffer();
+		og::runtime::current_session->myscreen_->clearbuffer();
         draw_backdrop();
         draw_buttons(buttons, num_buttons);
         
         // Level name
-        int len = static_cast<int>(myscreen->level_data.title.size());
-        myscreen->draw_rect_filled(buttons[7].x + buttons[7].sizex - 6*len - 2, buttons[7].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
-        mytext.write_xy(buttons[7].x + buttons[7].sizex - 6*len, buttons[7].y - 8, WHITE, "%s", myscreen->level_data.title.c_str());
+        int len = static_cast<int>(og::runtime::current_session->myscreen_->level_data.title.size());
+        og::runtime::current_session->myscreen_->draw_rect_filled(buttons[7].x + buttons[7].sizex - 6*len - 2, buttons[7].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
+        mytext.write_xy(buttons[7].x + buttons[7].sizex - 6*len, buttons[7].y - 8, WHITE, "%s", og::runtime::current_session->myscreen_->level_data.title.c_str());
         // Campaign name
-        len = static_cast<int>(myscreen->save_data.current_campaign.size());
-        myscreen->draw_rect_filled(buttons[8].x + buttons[8].sizex - 6*len - 2, buttons[8].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
-        mytext.write_xy(buttons[8].x + buttons[8].sizex - 6*static_cast<int>(myscreen->save_data.current_campaign.size()), buttons[8].y - 8, WHITE, "%s", myscreen->save_data.current_campaign.c_str());
+        len = static_cast<int>(og::runtime::current_session->myscreen_->save_data.current_campaign.size());
+        og::runtime::current_session->myscreen_->draw_rect_filled(buttons[8].x + buttons[8].sizex - 6*len - 2, buttons[8].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
+        mytext.write_xy(buttons[8].x + buttons[8].sizex - 6*static_cast<int>(og::runtime::current_session->myscreen_->save_data.current_campaign.size()), buttons[8].y - 8, WHITE, "%s", og::runtime::current_session->myscreen_->save_data.current_campaign.c_str());
         
         draw_highlight(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0,0,320,200);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
 
@@ -243,20 +241,20 @@ Sint32 create_view_menu(Sint32 arg1)
 	if (arg1)
 		arg1 = 1;
 
-	myscreen->clearbuffer();
+	og::runtime::current_session->myscreen_->clearbuffer();
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 
 	button* buttons = viewteam_buttons;
 	int num_buttons = 2;
 	int highlighted_button = 1;
-	localbuttons = init_buttons(buttons, num_buttons);
+	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		if(leftmouse(buttons))
-			retvalue = localbuttons->leftclick();
+			retvalue = og::runtime::current_session->localbuttons_->leftclick();
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
 
@@ -266,18 +264,18 @@ Sint32 create_view_menu(Sint32 arg1)
             break;
 
         // Reset buttons (relevant after go_menu returns from game)
-        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
 
 		// Draw
-		myscreen->clearbuffer();
+		og::runtime::current_session->myscreen_->clearbuffer();
         draw_backdrop();
         draw_buttons(buttons, num_buttons);
         view_team(5,5,314, 160);
         draw_highlight(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0,0,320,200);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
-	myscreen->clearbuffer();
+	og::runtime::current_session->myscreen_->clearbuffer();
 
 	// Propagate MENU_EXIT so TeamBuild interception can map GO -> StartGame.
 	// BACK returns MENU_REDRAW to keep parent create_team_menu running.
@@ -301,12 +299,12 @@ std::vector<int> get_accessible_levels();
 Sint32 create_progress_menu(Sint32 arg1)
 {
     Sint32 retvalue = 0;
-    text& mytext = myscreen->text_normal;
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
 
     if (arg1)
         arg1 = 1;
 
-    myscreen->clearbuffer();
+    og::runtime::current_session->myscreen_->clearbuffer();
 
 	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 
@@ -321,8 +319,8 @@ Sint32 create_progress_menu(Sint32 arg1)
     for (int level_id : level_ids) {
         LevelProgress lp;
         lp.id = level_id;
-        lp.is_cleared = myscreen->save_data.is_level_completed(level_id);
-        lp.is_current = (level_id == myscreen->save_data.scen_num);
+        lp.is_cleared = og::runtime::current_session->myscreen_->save_data.is_level_completed(level_id);
+        lp.is_current = (level_id == og::runtime::current_session->myscreen_->save_data.scen_num);
 
         if (lp.is_cleared)
             num_cleared++;
@@ -365,13 +363,13 @@ Sint32 create_progress_menu(Sint32 arg1)
     };
     int num_buttons = 3;
     int highlighted_button = 2;
-    localbuttons = init_buttons(buttons, num_buttons);
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
     while (!(retvalue & MENU_EXIT))
     {
         // Input
         if (leftmouse(buttons))
-            retvalue = localbuttons->leftclick();
+            retvalue = og::runtime::current_session->localbuttons_->leftclick();
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
 
@@ -419,8 +417,8 @@ Sint32 create_progress_menu(Sint32 arg1)
                     if (mx >= go_btn_x && mx <= go_btn_x + go_btn_w &&
                         my >= row_y && my <= row_y + row_height) {
                         // Set current level and exit
-                        myscreen->save_data.scen_num = static_cast<short>(lp.id);
-                        myscreen->clearbuffer();
+                        og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(lp.id);
+                        og::runtime::current_session->myscreen_->clearbuffer();
                         return MENU_REDRAW;
                     }
                 }
@@ -433,7 +431,7 @@ Sint32 create_progress_menu(Sint32 arg1)
             retvalue = 0;
 
         // Draw
-        myscreen->clearbuffer();
+        og::runtime::current_session->myscreen_->clearbuffer();
 
         // Header
         std::string header = std::format("Level Progress: {} cleared of {} discovered",
@@ -441,7 +439,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         mytext.write_xy(160 - static_cast<int>(header.size()) * 3, 8, header.c_str(), DARK_GREEN, 1);
 
         // Column headers
-        myscreen->draw_text_bar(10, 22, 310, 32);
+        og::runtime::current_session->myscreen_->draw_text_bar(10, 22, 310, 32);
         mytext.write_xy(12, 24, "ID", DARK_BLUE, 1);
         mytext.write_xy(36, 24, "Status", DARK_BLUE, 1);
         mytext.write_xy(100, 24, "Title", DARK_BLUE, 1);
@@ -483,7 +481,7 @@ Sint32 create_progress_menu(Sint32 arg1)
                 mytext.write_xy(258, y + 2, buf.c_str(), WHITE, 1);
 
                 // GO button for non-cleared levels (right edge aligns with BACK button at x=310)
-                myscreen->draw_button(292, y + 1, 310, y + 10, 1, 1);
+                og::runtime::current_session->myscreen_->draw_button(292, y + 1, 310, y + 10, 1, 1);
                 mytext.write_xy(296, y + 2, "GO", DARK_BLUE, 1);
             }
 
@@ -503,11 +501,11 @@ Sint32 create_progress_menu(Sint32 arg1)
         draw_buttons(buttons, num_buttons);
         draw_highlight(buttons[highlighted_button]);
 
-        myscreen->buffer_to_screen(0, 0, 320, 200);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
         SDL_Delay(10);
     }
 
-    myscreen->clearbuffer();
+    og::runtime::current_session->myscreen_->clearbuffer();
     return MENU_REDRAW;
 }
 
@@ -575,9 +573,9 @@ Sint32 create_hire_menu(Sint32 arg1)
     hiremenu_buttons[1].x = description_box.x + description_box.w/2 + 4 + 30;
     hiremenu_buttons[1].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - hiremenu_buttons[1].sizey/2;
     
-    hiremenu_buttons[2].hidden = (myscreen->save_data.numplayers == 1);
+    hiremenu_buttons[2].hidden = (og::runtime::current_session->myscreen_->save_data.numplayers == 1);
     
-	myscreen->clearbuffer();
+	og::runtime::current_session->myscreen_->clearbuffer();
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
@@ -588,15 +586,15 @@ Sint32 create_hire_menu(Sint32 arg1)
 	button* buttons = hiremenu_buttons;
 	int num_buttons = 5;
 	int highlighted_button = 1;
-	localbuttons = init_buttons(buttons, num_buttons);
+	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
-    og::ui::HireSession hire_session(myscreen->save_data, current_team_num);
+    og::ui::HireSession hire_session(og::runtime::current_session->myscreen_->save_data, og::runtime::current_session->current_team_num_);
     g_hire_session = &hire_session;
     sync_current_guy_from_hire();
     change_hire_teamnum(0);
     
     
-    unsigned char last_family = current_guy->family;
+    unsigned char last_family = og::runtime::current_session->current_guy_->family;
     std::string description = get_class_description(last_family);
     std::list<std::string> desc = explode(description);
     const char* family_name = get_family_string(last_family);
@@ -608,9 +606,9 @@ Sint32 create_hire_menu(Sint32 arg1)
 	    // Input
 		clickvalue = leftmouse(buttons);
 		if (clickvalue == 1)
-			retvalue = localbuttons->leftclick();
+			retvalue = og::runtime::current_session->localbuttons_->leftclick();
 		else if (clickvalue == 2)
-			retvalue = localbuttons->rightclick();
+			retvalue = og::runtime::current_session->localbuttons_->rightclick();
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
         
@@ -618,7 +616,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         if(retvalue == MENU_OK || retvalue == MENU_REDRAW)
         {
 	            // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-	            localbuttons = init_buttons(buttons, num_buttons);
+	            og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
             // Update our team-number display ..
             change_hire_teamnum(0);
@@ -627,19 +625,19 @@ Sint32 create_hire_menu(Sint32 arg1)
         }
 		
 		// Draw
-		myscreen->clearbuffer();
+		og::runtime::current_session->myscreen_->clearbuffer();
 		
         draw_backdrop();
         draw_buttons(buttons, num_buttons);
         
-        if (!current_guy)
+        if (!og::runtime::current_session->current_guy_)
             sync_current_guy_from_hire();
         
         // Name box
-        myscreen->draw_button(name_box, 1);
-        myscreen->draw_button_inverted(name_box_inner);
+        og::runtime::current_session->myscreen_->draw_button(name_box, 1);
+        og::runtime::current_session->myscreen_->draw_button_inverted(name_box_inner);
         
-        text& mytext = myscreen->text_normal;
+        text& mytext = og::runtime::current_session->myscreen_->text_normal;
         mytext.write_xy(name_box.x + name_box.w/2 - 3*static_cast<Sint32>(strlen(family_name)), name_box.y + 6, family_name, static_cast<unsigned char>(DARK_BLUE), 1);
         
 		show_guy(query_timer()-start_time, 0, description_box.x + description_box.w/2, name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2); // 0 means current_guy
@@ -647,13 +645,13 @@ Sint32 create_hire_menu(Sint32 arg1)
         
         
         // Description box
-        myscreen->draw_button(description_box, 1);
-        myscreen->draw_button_inverted(description_box_inner);
+        og::runtime::current_session->myscreen_->draw_button(description_box, 1);
+        og::runtime::current_session->myscreen_->draw_button_inverted(description_box_inner);
         
-        if(current_guy->family != last_family)
+        if(og::runtime::current_session->current_guy_->family != last_family)
         {
             // Update description
-            last_family = current_guy->family;
+            last_family = og::runtime::current_session->current_guy_->family;
             description = get_class_description(last_family);
             desc = explode(description);
             
@@ -668,23 +666,23 @@ Sint32 create_hire_menu(Sint32 arg1)
         }
         
         // Cost box
-        myscreen->draw_button(cost_box, 1);
-        myscreen->draw_button_inverted(cost_box_inner);
+        og::runtime::current_session->myscreen_->draw_button(cost_box, 1);
+        og::runtime::current_session->myscreen_->draw_button_inverted(cost_box_inner);
         
-        message = std::format("CASH: {}", myscreen->save_data.m_totalcash[current_team_num]);
-        mytext.write_xy(cost_box_content.x, cost_box_content.y, message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
+        og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_team_num_]);
+        mytext.write_xy(cost_box_content.x, cost_box_content.y, og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
         current_cost = g_hire_session ? g_hire_session->current_cost() : 0;
         mytext.write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
-        message = std::format("      {}", current_cost );
-        if (current_cost > myscreen->save_data.m_totalcash[current_team_num])
-            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message.c_str(), STAT_CHANGED, 1);
+        og::runtime::current_session->message_ = std::format("      {}", current_cost );
+        if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_team_num_])
+            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
         else
-            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message.c_str(), STAT_COLOR, 1);
+            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
 
         // Stat box
-        myscreen->draw_button(stat_box, 1);
+        og::runtime::current_session->myscreen_->draw_button(stat_box, 1);
         mytext.write_xy(stat_box.x + 65, stat_box.y + 2, DARK_BLUE, "Train");
-        myscreen->draw_button_inverted(stat_box_inner);
+        og::runtime::current_session->myscreen_->draw_button_inverted(stat_box_inner);
 
         // Stat box content
         linesdown = 0;
@@ -693,18 +691,18 @@ Sint32 create_hire_menu(Sint32 arg1)
         showcolor = STAT_COLOR;
 
         struct { const char* label; short value; } hire_stats[] = {
-            {"STR:",  current_guy->strength},
-            {"DEX:",  current_guy->dexterity},
-            {"CON:",  current_guy->constitution},
-            {"INT:",  current_guy->intelligence},
-            {"ARMOR:", current_guy->armor},
+            {"STR:",  og::runtime::current_session->current_guy_->strength},
+            {"DEX:",  og::runtime::current_session->current_guy_->dexterity},
+            {"CON:",  og::runtime::current_session->current_guy_->constitution},
+            {"INT:",  og::runtime::current_session->current_guy_->intelligence},
+            {"ARMOR:", og::runtime::current_session->current_guy_->armor},
         };
         for (int si = 0; si < 5; si++) {
             int y = stat_box_content.y + linesdown * line_height;
-            message = std::format("{}", hire_stats[si].value);
+            og::runtime::current_session->message_ = std::format("{}", hire_stats[si].value);
             mytext.write_xy(stat_box_content.x, y, hire_stats[si].label,
                              static_cast<unsigned char>(STAT_COLOR), 1);
-            mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, y, message.c_str(), showcolor, 1);
+            mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, y, og::runtime::current_session->message_.c_str(), showcolor, 1);
             if (si < 4) // cost rating for STR/DEX/CON/INT only
                 mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, y,
                                 get_training_cost_rating(last_family, si), showcolor, 1);
@@ -714,10 +712,10 @@ Sint32 create_hire_menu(Sint32 arg1)
 		
 		// Separator bar
 		SDL_Rect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*line_height - 2, stat_box_content.w - 20, 2};
-		myscreen->draw_button_inverted(r);
+		og::runtime::current_session->myscreen_->draw_button_inverted(r);
 		
 		int derived_offset = 3*STAT_NUM_OFFSET/4;
-		auto ds = compute_guy_derived_stats(*current_guy);
+		auto ds = compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
 
         linesdown++;
         int hire_line = linesdown;
@@ -727,7 +725,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 
 
         draw_highlight(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0,0,320,200);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
         
         if(arg1 == 1)
@@ -737,12 +735,12 @@ Sint32 create_hire_menu(Sint32 arg1)
             popup_dialog("HIRE TROOPS", "Get your team started here\nby hiring some fresh recruits.");
             
 	            // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-	            localbuttons = init_buttons(buttons, num_buttons);
+	            og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
         }
 	}
 	
 	g_hire_session = nullptr;
-	myscreen->clearbuffer();
+	og::runtime::current_session->myscreen_->clearbuffer();
 	//myscreen->clearscreen();
 	return MENU_REDRAW;
 }
@@ -767,14 +765,14 @@ Sint32 create_train_menu(Sint32 arg1)
 		arg1 = 1;
 
 	// Make sure we have a valid team
-	if (myscreen->save_data.team_size < 1)
+	if (og::runtime::current_session->myscreen_->save_data.team_size < 1)
 	{
 		popup_dialog("NEED A TEAM!", "You need to\nhire a team\nto train");
 		
 		return MENU_OK;
 	}
 
-	myscreen->clearbuffer();
+	og::runtime::current_session->myscreen_->clearbuffer();
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 	
@@ -785,23 +783,23 @@ Sint32 create_train_menu(Sint32 arg1)
 	button* buttons = trainmenu_buttons;
 	int num_buttons = 20;
 	int highlighted_button = 1;
-	localbuttons = init_buttons(buttons, num_buttons);
+	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 	
 	for (i=2; i < 14; i++)
 	{
 		if (!(i%2)) // 2, 4, ..., 12
-			allbuttons[i]->set_graphic(FAMILY_MINUS);
+			og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_MINUS);
 		else
-			allbuttons[i]->set_graphic(FAMILY_PLUS);
+			og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_PLUS);
 	}
 
 	
-	auto& ourteam = myscreen->save_data.team_list;
+	auto& ourteam = og::runtime::current_session->myscreen_->save_data.team_list;
 
-    og::ui::TrainSession train_session(myscreen->save_data);
+    og::ui::TrainSession train_session(og::runtime::current_session->myscreen_->save_data);
     g_train_session = &train_session;
     sync_current_guy_from_train();
-    guy* here = ourteam[editguy].get();
+    guy* here = ourteam[og::runtime::current_session->editguy_].get();
     current_cost = g_train_session->current_cost();
 
 	grab_mouse();
@@ -815,33 +813,33 @@ Sint32 create_train_menu(Sint32 arg1)
 	    // Input
 		clickvalue = leftmouse(buttons);
 		if (clickvalue == 1)
-			retvalue = localbuttons->leftclick();
+			retvalue = og::runtime::current_session->localbuttons_->leftclick();
 		else if (clickvalue == 2)
-			retvalue = localbuttons->rightclick();
+			retvalue = og::runtime::current_session->localbuttons_->rightclick();
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
         
         // Reset buttons
-        if(localbuttons && (retvalue == MENU_OK || retvalue == MENU_REDRAW))
+        if(og::runtime::current_session->localbuttons_ && (retvalue == MENU_OK || retvalue == MENU_REDRAW))
         {
             if(retvalue == MENU_REDRAW)
             {
-					localbuttons = init_buttons(buttons, num_buttons);
+					og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
 				for (i=2; i < 14; i++)
 				{
 					if (!(i%2)) // 2, 4, ..., 12
-						allbuttons[i]->set_graphic(FAMILY_MINUS);
+						og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_MINUS);
 					else
-						allbuttons[i]->set_graphic(FAMILY_PLUS);
+						og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_PLUS);
 				}
 				sync_current_guy_from_train();
             }
 
-            if (!current_guy)
+            if (!og::runtime::current_session->current_guy_)
                 sync_current_guy_from_train();
-            if (here != ourteam[editguy].get())
-                here = ourteam[editguy].get();
+            if (here != ourteam[og::runtime::current_session->editguy_].get())
+                here = ourteam[og::runtime::current_session->editguy_].get();
             current_cost = g_train_session->current_cost();
             retvalue = 0;
         }
@@ -849,7 +847,7 @@ Sint32 create_train_menu(Sint32 arg1)
         //current_cost = calculate_train_cost(here);
         
 		// Draw
-		myscreen->clearbuffer();
+		og::runtime::current_session->myscreen_->clearbuffer();
 		
         draw_backdrop();
         draw_buttons(buttons, num_buttons);
@@ -859,28 +857,28 @@ Sint32 create_train_menu(Sint32 arg1)
 
         linesdown = 0;
 
-        myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
-        myscreen->draw_text_bar(36, 10, 124, 22);
+        og::runtime::current_session->myscreen_->draw_button(34,  8, 126, 24, 1, 1);  // name box
+        og::runtime::current_session->myscreen_->draw_text_bar(36, 10, 124, 22);
         
-        text& mytext = myscreen->text_normal;
-        mytext.write_xy(80 - mytext.query_width(current_guy->name.c_str())/2, 14,
-                         current_guy->name.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
-        myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
-        myscreen->draw_text_bar(42, 70, 116, 156);
+        text& mytext = og::runtime::current_session->myscreen_->text_normal;
+        mytext.write_xy(80 - mytext.query_width(og::runtime::current_session->current_guy_->name.c_str())/2, 14,
+                         og::runtime::current_session->current_guy_->name.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
+        og::runtime::current_session->myscreen_->draw_button(38, 66, 120, 160, 1, 1); // stats box
+        og::runtime::current_session->myscreen_->draw_text_bar(42, 70, 116, 156);
 
         
         bool level_increased = g_train_session->level_increased();
         bool stat_increased = g_train_session->stats_increased();
 
         struct { const char* label; short cur_val; short old_val; } train_stats[] = {
-            {"  STR:", current_guy->strength,     here->strength},
-            {"  DEX:", current_guy->dexterity,    here->dexterity},
-            {"  CON:", current_guy->constitution, here->constitution},
-            {"  INT:", current_guy->intelligence, here->intelligence},
-            {"ARMOR:", current_guy->armor,        here->armor},
+            {"  STR:", og::runtime::current_session->current_guy_->strength,     here->strength},
+            {"  DEX:", og::runtime::current_session->current_guy_->dexterity,    here->dexterity},
+            {"  CON:", og::runtime::current_session->current_guy_->constitution, here->constitution},
+            {"  INT:", og::runtime::current_session->current_guy_->intelligence, here->intelligence},
+            {"ARMOR:", og::runtime::current_session->current_guy_->armor,        here->armor},
         };
         for (auto& s : train_stats) {
-            message = std::format("{}", s.cur_val);
+            og::runtime::current_session->message_ = std::format("{}", s.cur_val);
             mytext.write_xy(stat_box_content.x, DOWN(linesdown), s.label,
                              static_cast<unsigned char>(STAT_COLOR), 1);
             if (level_increased)
@@ -889,11 +887,11 @@ Sint32 create_train_menu(Sint32 arg1)
                 showcolor = STAT_CHANGED;
             else
                 showcolor = STAT_COLOR;
-            mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
+            mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), og::runtime::current_session->message_.c_str(), showcolor, 1);
         }
 
         // Level (different color logic: no STAT_LEVELED, uses STAT_DISABLED)
-        message = std::format("{}", current_guy->level);
+        og::runtime::current_session->message_ = std::format("{}", og::runtime::current_session->current_guy_->level);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "LEVEL:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
@@ -902,12 +900,12 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_DISABLED;
         else
             showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), og::runtime::current_session->message_.c_str(), showcolor, 1);
 
 
         // Info box
-        myscreen->draw_button(174, 32, 306, 114+22, 1, 1); // info box
-        myscreen->draw_text_bar(176, 34, 304, 112+22); // main text box
+        og::runtime::current_session->myscreen_->draw_button(174, 32, 306, 114+22, 1, 1); // info box
+        og::runtime::current_session->myscreen_->draw_text_bar(176, 34, 304, 112+22); // main text box
         
 	        showcolor = DARK_BLUE;
 	        linesdown = 0.0f;
@@ -918,15 +916,15 @@ Sint32 create_train_menu(Sint32 arg1)
 		
 		int derived_offset = 3*STAT_NUM_OFFSET/4;
 		
-        message = std::format("Total Kills: {}", current_guy->kills);
-	        mytext.write_xy(180, info_y(linesdown), message.c_str(), DARK_BLUE, 1);
+        og::runtime::current_session->message_ = std::format("Total Kills: {}", og::runtime::current_session->current_guy_->kills);
+	        mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), DARK_BLUE, 1);
 
         linesdown++;
-        if (current_guy->total_hits && current_guy->total_shots) // have we at least hit something? :)
+        if (og::runtime::current_session->current_guy_->total_hits && og::runtime::current_session->current_guy_->total_shots) // have we at least hit something? :)
         {
-            message = std::format("   Accuracy: {}% ",
-                    (current_guy->total_hits*100)/current_guy->total_shots);
-	            mytext.write_xy(180, info_y(linesdown), message.c_str(), DARK_BLUE, 1);
+            og::runtime::current_session->message_ = std::format("   Accuracy: {}% ",
+                    (og::runtime::current_session->current_guy_->total_hits*100)/og::runtime::current_session->current_guy_->total_shots);
+	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), DARK_BLUE, 1);
         }
         else // haven't ever hit anyone
         {
@@ -934,19 +932,19 @@ Sint32 create_train_menu(Sint32 arg1)
         }
 
         linesdown++;
-        message = std::format(" EXPERIENCE: {}", current_guy->exp);
-	        mytext.write_xy(180, info_y(linesdown), message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
+        og::runtime::current_session->message_ = std::format(" EXPERIENCE: {}", og::runtime::current_session->current_guy_->exp);
+	        mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
         
         
         linesdown++;
 		// Separator bar
 			SDL_Rect r = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
-			myscreen->draw_button_inverted(r);
+			og::runtime::current_session->myscreen_->draw_button_inverted(r);
         
         linesdown += 0.4f;
 
         {
-            auto ds = compute_guy_derived_stats(*current_guy);
+            auto ds = compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
             float base_line = linesdown;
             int train_line = 0;
             draw_derived_stats_block(mytext, ds, info_box_content.x, derived_offset, showcolor,
@@ -958,31 +956,31 @@ Sint32 create_train_menu(Sint32 arg1)
         linesdown++;
 		// Separator bar
 			SDL_Rect r2 = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
-			myscreen->draw_button_inverted(r2);
+			og::runtime::current_session->myscreen_->draw_button_inverted(r2);
         
         linesdown += 0.4f;
-        message = std::format("CASH: {}", myscreen->save_data.m_totalcash[current_guy->teamnum]);
-	        mytext.write_xy(180, info_y(linesdown), message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
+        og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_guy_->teamnum]);
+	        mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
 
         linesdown++;
 	        mytext.write_xy(180, info_y(linesdown), "COST: ", DARK_BLUE, 1);
-        message = std::format("      {}", current_cost );
-        if (current_cost > myscreen->save_data.m_totalcash[current_guy->teamnum])
-	            mytext.write_xy(180, info_y(linesdown), message.c_str(), STAT_CHANGED, 1);
+        og::runtime::current_session->message_ = std::format("      {}", current_cost );
+        if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_guy_->teamnum])
+	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
 	        else
-	            mytext.write_xy(180, info_y(linesdown), message.c_str(), STAT_COLOR, 1);
+	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
 
         // Display our team setting ..
-        message = std::format("Playing on Team {}", current_guy->teamnum+1);
-        allbuttons[18]->label = message;
-        allbuttons[18]->vdisplay();
+        og::runtime::current_session->message_ = std::format("Playing on Team {}", og::runtime::current_session->current_guy_->teamnum+1);
+        og::runtime::current_session->allbuttons_[18]->label = og::runtime::current_session->message_;
+        og::runtime::current_session->allbuttons_[18]->vdisplay();
 
         draw_highlight(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0,0,320,200);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
 	g_train_session = nullptr;
-	myscreen->clearbuffer();
+	og::runtime::current_session->myscreen_->clearbuffer();
 	//myscreen->clearscreen();
 	return MENU_REDRAW;
 }
@@ -990,19 +988,19 @@ Sint32 create_train_menu(Sint32 arg1)
 static Sint32 create_slot_menu(button* buttons, const char* title)
 {
 	Sint32 retvalue=0;
-	text& menutext = myscreen->text_normal;
+	text& menutext = og::runtime::current_session->myscreen_->text_normal;
 
 	// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 	int num_buttons = 11;
 	int highlighted_button = 10;
-	localbuttons = init_buttons(buttons, num_buttons);
+	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
 	    // Input
 		if(leftmouse(buttons))
         {
-			retvalue = localbuttons->leftclick();
+			retvalue = og::runtime::current_session->localbuttons_->leftclick();
 			if(retvalue == MENU_REDRAW)
             {
                 return MENU_REDRAW;
@@ -1016,37 +1014,37 @@ static Sint32 create_slot_menu(button* buttons, const char* title)
         }
 
         // Reset buttons
-        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
 
 		// Draw
-		myscreen->clearbuffer();
+		og::runtime::current_session->myscreen_->clearbuffer();
         draw_backdrop();
         draw_buttons(buttons, num_buttons);
 
-        myscreen->draw_button(15,  9, 255, 199, 1, 1);
-        myscreen->draw_text_bar(19, 13, 251, 21);
+        og::runtime::current_session->myscreen_->draw_button(15,  9, 255, 199, 1, 1);
+        og::runtime::current_session->myscreen_->draw_text_bar(19, 13, 251, 21);
         int title_len = static_cast<int>(std::strlen(title));
         menutext.write_xy(135-(title_len*3), 15, title, RED, 1);
         for (Sint32 i=0; i < 10; i++)
         {
             std::string temp_filename = std::format("save{}", i+1);
-            allbuttons[i]->label = get_saved_name(temp_filename.c_str());
-            myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
-            allbuttons[i]->vdisplay();
-            myscreen->draw_box(allbuttons[i]->xloc-1,
-                               allbuttons[i]->yloc-1,
-                               allbuttons[i]->xend,
-                               allbuttons[i]->yend, 0, 0, 1);
+            og::runtime::current_session->allbuttons_[i]->label = get_saved_name(temp_filename.c_str());
+            og::runtime::current_session->myscreen_->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
+            og::runtime::current_session->allbuttons_[i]->vdisplay();
+            og::runtime::current_session->myscreen_->draw_box(og::runtime::current_session->allbuttons_[i]->xloc-1,
+                               og::runtime::current_session->allbuttons_[i]->yloc-1,
+                               og::runtime::current_session->allbuttons_[i]->xend,
+                               og::runtime::current_session->allbuttons_[i]->yend, 0, 0, 1);
         }
-        myscreen->draw_text_bar(23, allbuttons[10]->yloc-2, 66, allbuttons[10]->yend+1);
-        allbuttons[10]->vdisplay();
-        myscreen->draw_box(allbuttons[10]->xloc-1,
-                           allbuttons[10]->yloc-1,
-                           allbuttons[10]->xend,
-                           allbuttons[10]->yend, 0, 0, 1);
+        og::runtime::current_session->myscreen_->draw_text_bar(23, og::runtime::current_session->allbuttons_[10]->yloc-2, 66, og::runtime::current_session->allbuttons_[10]->yend+1);
+        og::runtime::current_session->allbuttons_[10]->vdisplay();
+        og::runtime::current_session->myscreen_->draw_box(og::runtime::current_session->allbuttons_[10]->xloc-1,
+                           og::runtime::current_session->allbuttons_[10]->yloc-1,
+                           og::runtime::current_session->allbuttons_[10]->xend,
+                           og::runtime::current_session->allbuttons_[10]->yend, 0, 0, 1);
 
         draw_highlight(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0,0,320,200);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
 
@@ -1101,10 +1099,10 @@ Sint32 cycle_guy(Sint32 whichway)
     if (!g_hire_session) {
         // Fallback: create recruit directly (for any code calling this outside a session)
         constexpr auto& guys = og::ui::kAllowableGuys;
-        current_type = (current_type + whichway + static_cast<Sint32>(guys.size())) % static_cast<Sint32>(guys.size());
-        if (current_type < 0)
-            current_type = static_cast<Sint32>(guys.size()) - 1;
-        current_guy = og::ui::create_recruit(guys[current_type], current_team_num, myscreen->save_data);
+        og::runtime::current_session->current_type_ = (og::runtime::current_session->current_type_ + whichway + static_cast<Sint32>(guys.size())) % static_cast<Sint32>(guys.size());
+        if (og::runtime::current_session->current_type_ < 0)
+            og::runtime::current_session->current_type_ = static_cast<Sint32>(guys.size()) - 1;
+        og::runtime::current_session->current_guy_ = og::ui::create_recruit(guys[og::runtime::current_session->current_type_], og::runtime::current_session->current_team_num_, og::runtime::current_session->myscreen_->save_data);
         show_guy(0, 0);
         grab_mouse();
         return MENU_OK;
@@ -1114,7 +1112,7 @@ Sint32 cycle_guy(Sint32 whichway)
     else if (whichway < 0) g_hire_session->prev_family();
     // whichway == 0: session constructor already initialized
 
-    current_type = g_hire_session->family_index();
+    og::runtime::current_session->current_type_ = g_hire_session->family_index();
     sync_current_guy_from_hire();
     show_guy(0, 0);
     grab_mouse();
@@ -1127,27 +1125,27 @@ Sint32 cycle_guy(Sint32 whichway)
 		Sint32 i;
 		char newfamily;
 
-	if (!current_guy)
+	if (!og::runtime::current_session->current_guy_)
 		return;
 
 	frames = abs(frames);
 
 		(void)who; // always show current_guy
-		newfamily = current_guy->family;
+		newfamily = og::runtime::current_session->current_guy_->family;
 
-		mywalker = myscreen->level_data.myloader->create_walker_owned(Order::Living, newfamily);
+		mywalker = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Living, newfamily);
 		mywalker->stats()->bit_flags = 0;
 		mywalker->curdir = static_cast<signed char>(((frames/192) + FACE_DOWN)%8);
 		mywalker->ani_type = ANI_WALK;
 		for (i=0; i <= (frames/12)%4; i++)
 			mywalker->animate();
 		//mywalker->team_num = ourteam[editguy]->teamnum;
-		mywalker->team_num = static_cast<unsigned char>(current_guy->teamnum);
+		mywalker->team_num = static_cast<unsigned char>(og::runtime::current_session->current_guy_->teamnum);
 
 	mywalker->setxy(centerx - (mywalker->sizex/2), centery - (mywalker->sizey/2));
-	myscreen->draw_button(centerx - 80 + 54, centery - 45 + 26, centerx - 80 + 106, centery - 45 + 64, 1, 1);
-	myscreen->draw_text_bar(centerx - 80 + 56, centery - 45 + 28, centerx - 80 + 104, centery - 45 + 62);
-	draw_walker(*mywalker, myscreen->viewob[0].get());
+	og::runtime::current_session->myscreen_->draw_button(centerx - 80 + 54, centery - 45 + 26, centerx - 80 + 106, centery - 45 + 64, 1, 1);
+	og::runtime::current_session->myscreen_->draw_text_bar(centerx - 80 + 56, centery - 45 + 28, centerx - 80 + 104, centery - 45 + 62);
+	draw_walker(*mywalker, og::runtime::current_session->myscreen_->viewob[0].get());
 }
 Sint32 cycle_team_guy(Sint32 whichway)
 {
@@ -1160,11 +1158,11 @@ Sint32 cycle_team_guy(Sint32 whichway)
 	sync_current_guy_from_train();
 	show_guy(0, 0);
 
-	current_team_num = current_guy->teamnum;
+	og::runtime::current_session->current_team_num_ = og::runtime::current_session->current_guy_->teamnum;
 
 	// Set our team button back to normal color
-	if (allbuttons[18])
-		allbuttons[18]->do_outline = 0;
+	if (og::runtime::current_session->allbuttons_[18])
+		og::runtime::current_session->allbuttons_[18]->do_outline = 0;
 
 	return MENU_OK;
 }
@@ -1173,36 +1171,36 @@ Sint32 add_guy(guy *newguy)
 {
 	short team_num = newguy->teamnum;
 	std::unique_ptr<guy> owned(newguy);
-	int slot = og::ui::add_recruit_to_team(myscreen->save_data, std::move(owned), team_num);
+	int slot = og::ui::add_recruit_to_team(og::runtime::current_session->myscreen_->save_data, std::move(owned), team_num);
 	return static_cast<Sint32>(slot);
 }
 
 Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 {
-	text& nametext = myscreen->text_normal;
+	text& nametext = og::runtime::current_session->myscreen_->text_normal;
 	guy *someguy;
 
 	if (arg)
-		someguy = myscreen->save_data.team_list[editguy].get();
+		someguy = og::runtime::current_session->myscreen_->save_data.team_list[og::runtime::current_session->editguy_].get();
 	else
-		someguy = current_guy.get();
+		someguy = og::runtime::current_session->current_guy_.get();
 
 	if (!someguy)
 		return MENU_REDRAW;
 
 	release_mouse();
 	
-	myscreen->draw_button(174,  8, 306, 30, 1, 1); // text box
+	og::runtime::current_session->myscreen_->draw_button(174,  8, 306, 30, 1, 1); // text box
 	nametext.write_xy(176, 12, "NAME THIS CHARACTER:", DARK_BLUE, 1);
-	myscreen->buffer_to_screen(0, 0, 320, 200);
+	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 	
 	clear_keyboard();
     std::optional<std::string> new_text = nametext.input_string_value(176, 20, 11, someguy->name.c_str());
 	if(new_text.has_value())
 		someguy->name = *new_text;
-	myscreen->draw_button(174,  8, 306, 30, 1, 1); // text box
+	og::runtime::current_session->myscreen_->draw_button(174,  8, 306, 30, 1, 1); // text box
 
-	myscreen->buffer_to_screen(0, 0, 320, 200);
+	og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 	grab_mouse();
 
 	return MENU_REDRAW;
@@ -1215,11 +1213,11 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 
 	int slot = g_hire_session->hire();
 	if (slot < 0)
-		return (myscreen->save_data.team_size >= MAX_TEAM_SIZE) ? -1 : MENU_OK;
+		return (og::runtime::current_session->myscreen_->save_data.team_size >= MAX_TEAM_SIZE) ? -1 : MENU_OK;
 
 	// SDL-specific: prompt for name
 	release_mouse();
-	auto& hired = myscreen->save_data.team_list[slot];
+	auto& hired = og::runtime::current_session->myscreen_->save_data.team_list[slot];
 	std::string name = hired->name;
 	if (prompt_for_string("NAME THIS CHARACTER", name))
 		g_hire_session->rename_hired(slot, name);
@@ -1251,14 +1249,14 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 	sync_current_guy_from_train();
 
 	// Color our team button normally
-	allbuttons[18]->do_outline = 0;
+	og::runtime::current_session->allbuttons_[18]->do_outline = 0;
 
 	return MENU_OK;
 }
 
 Sint32 how_many(Sint32 whatfamily)    // how many guys of family X on the team?
 {
-	return static_cast<Sint32>(og::ui::count_family_members(whatfamily, myscreen->save_data));
+	return static_cast<Sint32>(og::ui::count_family_members(whatfamily, og::runtime::current_session->myscreen_->save_data));
 }
 
 Sint32 do_save(Sint32 arg1)
@@ -1266,13 +1264,13 @@ Sint32 do_save(Sint32 arg1)
 	release_mouse();
 	clear_keyboard();
 	
-	std::string name = allbuttons[arg1-1]->label;
+	std::string name = og::runtime::current_session->allbuttons_[arg1-1]->label;
 	if(prompt_for_string("NAME YOUR SAVED GAME", name))
     {
-        myscreen->save_data.save_name = name;
+        og::runtime::current_session->myscreen_->save_data.save_name = name;
         
         std::string newname = std::format("save{}", arg1);
-        if(myscreen->save_data.save(newname))
+        if(og::runtime::current_session->myscreen_->save_data.save(newname))
             timed_dialog("GAME SAVED");
         else
             timed_dialog("SAVE FAILED");
@@ -1291,7 +1289,7 @@ Sint32 do_load(Sint32 arg1)
 {
 	std::string newname = std::format("save{}", arg1);
 
-	if(myscreen->save_data.load(newname))
+	if(og::runtime::current_session->myscreen_->save_data.load(newname))
     {
         timed_dialog("GAME LOADED");
     }
@@ -1365,14 +1363,14 @@ std::string get_saved_name(const char * filename)
 
 Sint32 delete_all()
 {
-	Sint32 counter = myscreen->save_data.team_size;
+	Sint32 counter = og::runtime::current_session->myscreen_->save_data.team_size;
 
-	for (int i = 0; i < myscreen->save_data.team_size; i++)
+	for (int i = 0; i < og::runtime::current_session->myscreen_->save_data.team_size; i++)
     {
-        myscreen->save_data.team_list[i].reset();
+        og::runtime::current_session->myscreen_->save_data.team_list[i].reset();
     }
     
-    myscreen->save_data.team_size = 0;
+    og::runtime::current_session->myscreen_->save_data.team_size = 0;
 
 	return counter;
 }
@@ -1386,7 +1384,7 @@ Sint32 go_menu(Sint32 arg1)
 		arg1 = 1;
 
     // Make sure we have a valid team
-    if (myscreen->save_data.team_size < 1)
+    if (og::runtime::current_session->myscreen_->save_data.team_size < 1)
     {
         popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
 
@@ -1396,9 +1394,9 @@ Sint32 go_menu(Sint32 arg1)
 #ifdef __EMSCRIPTEN__
     // For Emscripten: Set flag and return MENU_EXIT to unwind all menu loops
     // The state machine in main() will handle starting the game
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    current_guy.reset();
+    og::runtime::current_session->current_guy_.reset();
 
     picker_request_start_game();
     Log("go_menu: Setting g_start_game_requested, returning MENU_EXIT\n");
@@ -1407,7 +1405,7 @@ Sint32 go_menu(Sint32 arg1)
     // Native build: use blocking loop
     do
     {
-        myscreen->save_data.save("save0");
+        og::runtime::current_session->myscreen_->save_data.save("save0");
         release_mouse();
 
         //*******************************
@@ -1417,32 +1415,32 @@ Sint32 go_menu(Sint32 arg1)
         //clear_keyboard();
         //myscreen->fadeblack(0);
 
-        current_guy.reset();
+        og::runtime::current_session->current_guy_.reset();
 
         // Reset viewscreen prefs
         {
-            short numviews = (myscreen->save_data.numplayers == 0) ? 1 : myscreen->save_data.numplayers;
-            myscreen->ready_for_battle(numviews);
+            short numviews = (og::runtime::current_session->myscreen_->save_data.numplayers == 0) ? 1 : og::runtime::current_session->myscreen_->save_data.numplayers;
+            og::runtime::current_session->myscreen_->ready_for_battle(numviews);
         }
 
 #ifdef TESTING
         picker_testing_mark_game_start();
 #endif
-        glad_main(myscreen->save_data.numplayers);
+        glad_main(og::runtime::current_session->myscreen_->save_data.numplayers);
 #ifdef TESTING
         picker_testing_mark_game_end();
 #endif
 
-        Log("Returned from glad_main, retry={}\n", myscreen->retry);
+        Log("Returned from glad_main, retry={}\n", og::runtime::current_session->myscreen_->retry);
 
         //*******************************
         // Fade out from ACTION loop
         //*******************************
         // Zardus: PORT: new fade code
-        myscreen->fadeblack(0);
+        og::runtime::current_session->myscreen_->fadeblack(0);
 
         // Zardus: PORT: doesn't seem to be neccessary
-        myscreen->clearbuffer();
+        og::runtime::current_session->myscreen_->clearbuffer();
 
         // Zardus: PORT: they had this in just so that the pallettes got reset to
         // normal. It actually faded in a black screen, since fading in the menu
@@ -1456,17 +1454,17 @@ Sint32 go_menu(Sint32 arg1)
 
         grab_mouse();
 
-        myscreen->reset(1);
-        myscreen->viewob[0]->resize(PREF_VIEW_FULL);
+        og::runtime::current_session->myscreen_->reset(1);
+        og::runtime::current_session->myscreen_->viewob[0]->resize(PREF_VIEW_FULL);
 
         SDL_RWops* loadgame = open_read_file("save/", "save0.gtl");
         if (loadgame)
         {
             SDL_RWclose(loadgame);
-            myscreen->save_data.load("save0");
+            og::runtime::current_session->myscreen_->save_data.load("save0");
         }
     }
-    while(myscreen->retry);
+    while(og::runtime::current_session->myscreen_->retry);
 
 	return button_action_id(ButtonAction::CreateTeamMenu);
 #endif

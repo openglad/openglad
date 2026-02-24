@@ -13,8 +13,7 @@
 extern void putpixel(SDL_Surface* surface, int x, int y, Uint32 pixel);
 extern void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha);
 
-// videoptr moved into GameSession. Define the same file-local macro as video.cpp.
-#define videoptr (og::runtime::current_session->videoptr_)
+// videoptr lives in GameSession — access via current_session->videoptr_.
 
 namespace
 {
@@ -87,27 +86,27 @@ void test_video_putblack_uses_overridden_videoptr_buffer()
 {
     // Legacy putblack writes to `videoptr`. In the original DOS codebase this
     // was linear VGA memory. Override it in tests to ensure it remains safe.
-    unsigned char* saved = videoptr;
+    unsigned char* saved = og::runtime::current_session->videoptr_;
     std::array<unsigned char, 64000> buffer{};
     buffer.fill(42);
-    videoptr = buffer.data();
+    og::runtime::current_session->videoptr_ = buffer.data();
 
-    myscreen->putblack(0, 0, 10, 10);
-    myscreen->putblack(-10, -10, 10, 10); // bounds check via curpoint
-    myscreen->putblack(319, 199, 5, 5);   // partial bounds
+    og::runtime::current_session->myscreen_->putblack(0, 0, 10, 10);
+    og::runtime::current_session->myscreen_->putblack(-10, -10, 10, 10); // bounds check via curpoint
+    og::runtime::current_session->myscreen_->putblack(319, 199, 5, 5);   // partial bounds
 
-    videoptr = saved;
+    og::runtime::current_session->videoptr_ = saved;
 }
 REGISTER_TEST(test_video_putblack_uses_overridden_videoptr_buffer);
 
 void test_video_darken_and_fastbox_negative_inputs_smoke()
 {
-    myscreen->darken_screen();
+    og::runtime::current_session->myscreen_->darken_screen();
 
     // Exercise fastbox early-return for invalid sizes/coords.
-    myscreen->fastbox(-1, 0, 10, 10, 1, 1);
-    myscreen->fastbox(0, -1, 10, 10, 1, 1);
-    myscreen->fastbox(0, 0, -10, 10, 1, 1);
-    myscreen->fastbox(0, 0, 10, -10, 1, 1);
+    og::runtime::current_session->myscreen_->fastbox(-1, 0, 10, 10, 1, 1);
+    og::runtime::current_session->myscreen_->fastbox(0, -1, 10, 10, 1, 1);
+    og::runtime::current_session->myscreen_->fastbox(0, 0, -10, 10, 1, 1);
+    og::runtime::current_session->myscreen_->fastbox(0, 0, 10, -10, 1, 1);
 }
 REGISTER_TEST(test_video_darken_and_fastbox_negative_inputs_smoke);

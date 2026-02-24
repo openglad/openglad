@@ -29,7 +29,7 @@ static void cleanup_picker_state()
         backpics[i].free();
     }
     clear_allbuttons();
-    localbuttons = nullptr;
+    og::runtime::current_session->localbuttons_ = nullptr;
     main_columns_pix.reset();
     main_columns_data.free();
     main_title_logo_pix.reset();
@@ -52,12 +52,12 @@ void test_save_team_then_load() {
     trace_clear();
 
     // Build a team with specific guys
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 3;
-    myscreen->save_data.totalcash = 77777;
-    myscreen->save_data.totalscore = 42000;
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 3;
+    og::runtime::current_session->myscreen_->save_data.totalcash = 77777;
+    og::runtime::current_session->myscreen_->save_data.totalscore = 42000;
 
     auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     soldier->name = "TESTGUY1";
@@ -72,52 +72,52 @@ void test_save_team_then_load() {
     auto mage = std::make_unique<guy>(FAMILY_MAGE);
     mage->name = "TESTGUY3";
 
-    myscreen->save_data.team_list[0] = std::move(soldier);
-    myscreen->save_data.team_list[1] = std::move(archer);
-    myscreen->save_data.team_list[2] = std::move(mage);
-    myscreen->save_data.team_size = 3;
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_list[1] = std::move(archer);
+    og::runtime::current_session->myscreen_->save_data.team_list[2] = std::move(mage);
+    og::runtime::current_session->myscreen_->save_data.team_size = 3;
 
     // Save to a non-default slot
-    bool saved = myscreen->save_data.save("save5");
+    bool saved = og::runtime::current_session->myscreen_->save_data.save("save5");
     TEST_ASSERT(saved, "save should succeed");
 
     // Now reset everything -- simulating starting a new game
-    myscreen->save_data.reset();
-    TEST_ASSERT_EQ(0, myscreen->save_data.team_size, "team_size should be 0 after reset");
-    TEST_ASSERT_EQ(0, static_cast<int>(myscreen->save_data.totalcash), "totalcash should be 0 after reset");
+    og::runtime::current_session->myscreen_->save_data.reset();
+    TEST_ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.team_size, "team_size should be 0 after reset");
+    TEST_ASSERT_EQ(0, static_cast<int>(og::runtime::current_session->myscreen_->save_data.totalcash), "totalcash should be 0 after reset");
 
     // Load the saved team back
     trace_clear();
-    bool loaded = myscreen->save_data.load("save5");
+    bool loaded = og::runtime::current_session->myscreen_->save_data.load("save5");
     TEST_ASSERT(loaded, "load should succeed");
 
     // Verify team data was restored
-    TEST_ASSERT_EQ(3, myscreen->save_data.team_size, "team should have 3 members");
-    TEST_ASSERT_EQ(3, myscreen->save_data.scen_num, "scen_num should be restored");
-    TEST_ASSERT_EQ(77777, static_cast<int>(myscreen->save_data.totalcash), "totalcash should be restored");
-    TEST_ASSERT_EQ(42000, static_cast<int>(myscreen->save_data.totalscore), "totalscore should be restored");
+    TEST_ASSERT_EQ(3, og::runtime::current_session->myscreen_->save_data.team_size, "team should have 3 members");
+    TEST_ASSERT_EQ(3, og::runtime::current_session->myscreen_->save_data.scen_num, "scen_num should be restored");
+    TEST_ASSERT_EQ(77777, static_cast<int>(og::runtime::current_session->myscreen_->save_data.totalcash), "totalcash should be restored");
+    TEST_ASSERT_EQ(42000, static_cast<int>(og::runtime::current_session->myscreen_->save_data.totalscore), "totalscore should be restored");
 
     // Verify individual guy data was restored
-    TEST_ASSERT(myscreen->save_data.team_list[0] != nullptr, "first guy should exist");
-    TEST_ASSERT_STR_EQ("TESTGUY1", myscreen->save_data.team_list[0]->name.c_str(),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.team_list[0] != nullptr, "first guy should exist");
+    TEST_ASSERT_STR_EQ("TESTGUY1", og::runtime::current_session->myscreen_->save_data.team_list[0]->name.c_str(),
         "first guy name should be restored");
-    TEST_ASSERT_EQ(25, myscreen->save_data.team_list[0]->strength,
+    TEST_ASSERT_EQ(25, og::runtime::current_session->myscreen_->save_data.team_list[0]->strength,
         "first guy strength should be restored");
-    TEST_ASSERT_EQ(15, myscreen->save_data.team_list[0]->dexterity,
+    TEST_ASSERT_EQ(15, og::runtime::current_session->myscreen_->save_data.team_list[0]->dexterity,
         "first guy dexterity should be restored");
 
-    TEST_ASSERT(myscreen->save_data.team_list[1] != nullptr, "second guy should exist");
-    TEST_ASSERT_STR_EQ("TESTGUY2", myscreen->save_data.team_list[1]->name.c_str(),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.team_list[1] != nullptr, "second guy should exist");
+    TEST_ASSERT_STR_EQ("TESTGUY2", og::runtime::current_session->myscreen_->save_data.team_list[1]->name.c_str(),
         "second guy name should be restored");
-    TEST_ASSERT_EQ(FAMILY_ARCHER, myscreen->save_data.team_list[1]->family,
+    TEST_ASSERT_EQ(FAMILY_ARCHER, og::runtime::current_session->myscreen_->save_data.team_list[1]->family,
         "second guy should be an archer");
-    TEST_ASSERT_EQ(20, myscreen->save_data.team_list[1]->intelligence,
+    TEST_ASSERT_EQ(20, og::runtime::current_session->myscreen_->save_data.team_list[1]->intelligence,
         "second guy intelligence should be restored");
 
-    TEST_ASSERT(myscreen->save_data.team_list[2] != nullptr, "third guy should exist");
-    TEST_ASSERT_STR_EQ("TESTGUY3", myscreen->save_data.team_list[2]->name.c_str(),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.team_list[2] != nullptr, "third guy should exist");
+    TEST_ASSERT_STR_EQ("TESTGUY3", og::runtime::current_session->myscreen_->save_data.team_list[2]->name.c_str(),
         "third guy name should be restored");
-    TEST_ASSERT_EQ(FAMILY_MAGE, myscreen->save_data.team_list[2]->family,
+    TEST_ASSERT_EQ(FAMILY_MAGE, og::runtime::current_session->myscreen_->save_data.team_list[2]->family,
         "third guy should be a mage");
 }
 REGISTER_TEST(test_save_team_then_load);
@@ -176,10 +176,10 @@ void test_load_team_menu() {
     trace_clear();
 
     // Need a save so continue_game works
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
     LoadMenuState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(load_menu_injector, "load_menu_test", &state);

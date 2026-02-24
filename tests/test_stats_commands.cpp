@@ -14,7 +14,7 @@ static std::unique_ptr<walker> make_walker(char family)
 {
     guy g(family);
     g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w)
         w->setxy(100, 100);
     return w;

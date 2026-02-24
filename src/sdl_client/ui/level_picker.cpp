@@ -200,7 +200,7 @@ class BrowserEntry
 };
 
 BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
-	    : level_data(scen_num, false, &sdl_level_data_hooks()), myradar(nullptr, myscreen, 0)
+	    : level_data(scen_num, false, &sdl_level_data_hooks()), myradar(nullptr, og::runtime::current_session->myscreen_, 0)
 {
 	(void)screenp;
 	    level_data.load();
@@ -260,11 +260,11 @@ void BrowserEntry::draw(screen* screenp)
 	    int y = myradar.yloc;
     int w = myradar.xview;
     int h = myradar.yview;
-    myscreen->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
+    og::runtime::current_session->myscreen_->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw radar
     myradar.draw(&level_data);
     
-    text& loadtext = myscreen->text_normal;
+    text& loadtext = og::runtime::current_session->myscreen_->text_normal;
     loadtext.write_xy(mapAreas.x, mapAreas.y, level_name.c_str(), DARK_BLUE, 1);
     
     std::string buf = std::format("ID: {}", level_data.id);
@@ -303,7 +303,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	(void)screenp;
 	    int result = default_level;
     
-	text& loadtext = myscreen->text_normal;
+	text& loadtext = og::runtime::current_session->myscreen_->text_normal;
     
     // Here are the browser variables
     std::array<std::unique_ptr<BrowserEntry>, NUM_BROWSE_RADARS> entries;
@@ -325,7 +325,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)
     {
         if(i < level_list_length)
-            entries[i] = std::make_unique<BrowserEntry>(myscreen, i, level_list[current_level_index + i]);
+            entries[i] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, i, level_list[current_level_index + i]);
         else
             entries[i].reset();
     }
@@ -336,9 +336,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     int army_power = 0;
 	for(int i=0; i<MAX_TEAM_SIZE; i++)
 	{
-		if (myscreen->save_data.team_list[i])
+		if (og::runtime::current_session->myscreen_->save_data.team_list[i])
 		{
-		    army_power += 3*myscreen->save_data.team_list[i]->level;
+		    army_power += 3*og::runtime::current_session->myscreen_->save_data.team_list[i]->level;
 		}
 	}
     
@@ -387,7 +387,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 		// Reset the timer count to zero ...
 		reset_timer();
 
-		if (myscreen->end)
+		if (og::runtime::current_session->myscreen_->end)
 			break;
 
 		// Get keys and stuff
@@ -396,7 +396,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         handle_menu_nav(buttons, highlighted_button, retvalue, false);
 		
 		// Quit if 'q' is pressed
-		if(keystates[KEYSTATE_q])
+		if(og::runtime::current_session->keystates_[KEYSTATE_q])
             done = true;
 		
 		// Mouse stuff ..
@@ -412,7 +412,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         bool do_choose = selected_entry >= 0 && ((do_click && choose.x <= mx && mx <= choose.x + choose.w
                && choose.y <= my && my <= choose.y + choose.h) || (retvalue == OK && highlighted_button == choose_index));
         bool do_cancel = (do_click && cancel.x <= mx && mx <= cancel.x + cancel.w
-               && cancel.y <= my && my <= cancel.y + cancel.h) || (retvalue == OK && highlighted_button == cancel_index) || keystates[buttons[cancel_index].hotkey];
+               && cancel.y <= my && my <= cancel.y + cancel.h) || (retvalue == OK && highlighted_button == cancel_index) || og::runtime::current_session->keystates_[buttons[cancel_index].hotkey];
         bool do_delete = selected_entry >= 0 && ((do_click && enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
                && delete_button.y <= my && my <= delete_button.y + delete_button.h) || (retvalue == OK && highlighted_button == delete_index));
         bool do_id = (do_click && id_button.x <= mx && mx <= id_button.x + id_button.w
@@ -448,7 +448,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	                    }
 	                    // Load the new top one
 	                    if(current_level_index < level_list_length)
-	                        entries[0] = std::make_unique<BrowserEntry>(myscreen, 0, level_list[current_level_index]);
+	                        entries[0] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, 0, level_list[current_level_index]);
 	                }
 	           }
         // Next
@@ -471,7 +471,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	                    }
 	                    // Load the new bottom one
 	                    if(current_level_index + NUM_BROWSE_RADARS-1 < level_list_length)
-	                        entries[NUM_BROWSE_RADARS-1] = std::make_unique<BrowserEntry>(myscreen, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
+	                        entries[NUM_BROWSE_RADARS-1] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
 	                }
 	           }
         // Choose
@@ -487,7 +487,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         // Cancel
         else if(do_cancel)
            {
-                while(keystates[buttons[cancel_index].hotkey])
+                while(og::runtime::current_session->keystates_[buttons[cancel_index].hotkey])
                 {
                     SDL_Delay(1);
                     get_input_events(POLL);
@@ -519,7 +519,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	                    for(int i = 0; i < NUM_BROWSE_RADARS; i++)
 	                    {
 	                        if(i < level_list_length)
-	                            entries[i] = std::make_unique<BrowserEntry>(myscreen, i, level_list[current_level_index + i]);
+	                            entries[i] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, i, level_list[current_level_index + i]);
 	                        else
 	                            entries[i].reset();
 	                    }
@@ -584,30 +584,30 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             buttons[choose_index].hidden = true;
         
         // Draw
-        myscreen->clearbuffer();
+        og::runtime::current_session->myscreen_->clearbuffer();
         
         std::string buf = std::format("Army power: {}", army_power);
         loadtext.write_xy(prev.x + 50, prev.y + 2, buf.c_str(), RED, 1);
         
-        myscreen->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
+        og::runtime::current_session->myscreen_->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
         loadtext.write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
-        myscreen->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
+        og::runtime::current_session->myscreen_->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
         loadtext.write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
         if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != nullptr)
         {
-            myscreen->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
+            og::runtime::current_session->myscreen_->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
             loadtext.write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
             loadtext.write_xy(next.x, choose.y + 20, entries[selected_entry]->level_name.c_str(), DARK_GREEN, 1);
         }
-        myscreen->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
+        og::runtime::current_session->myscreen_->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
         loadtext.write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
         if(selected_entry >= 0 && enable_delete)
         {
-            myscreen->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
+            og::runtime::current_session->myscreen_->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
             loadtext.write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
         }
         
-        myscreen->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
+        og::runtime::current_session->myscreen_->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
         loadtext.write_xy(id_button.x + 2, id_button.y + 2, "Enter ID", DARK_BLUE, 1);
         
         if(selected_entry != -1)
@@ -619,19 +619,19 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                 int y = entries[i]->myradar.yloc - 4;
                 int w = entries[i]->myradar.xview + 8;
                 int h = entries[i]->myradar.yview + 8;
-                myscreen->draw_box(x, y, x + w, y + h, DARK_BLUE, 1, 1);
+                og::runtime::current_session->myscreen_->draw_box(x, y, x + w, y + h, DARK_BLUE, 1, 1);
             }
         }
         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
         {
             if(i < level_list_length && entries[i] != nullptr)
-                entries[i]->draw(myscreen);
+                entries[i]->draw(og::runtime::current_session->myscreen_);
         }
         
         // Description
         if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != nullptr)
         {
-            myscreen->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
+            og::runtime::current_session->myscreen_->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
             for(int i = 0; i < entries[selected_entry]->scentextlines; i++)
             {
                 if(prev.y + 20 + 10*i+1 > descbox.y + descbox.h)
@@ -642,11 +642,11 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         
         
         draw_highlight(buttons[highlighted_button]);
-		myscreen->buffer_to_screen(0, 0, 320, 200);
+		og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 		SDL_Delay(10);
 	}
 	
-    while (keystates[KEYSTATE_q])
+    while (og::runtime::current_session->keystates_[KEYSTATE_q])
     {
         SDL_Delay(1);
         get_input_events(POLL);

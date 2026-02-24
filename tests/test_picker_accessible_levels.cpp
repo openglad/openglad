@@ -16,9 +16,9 @@ static bool contains(const std::vector<int>& v, int x)
 
 void test_picker_get_accessible_levels_always_has_level1_and_current()
 {
-    myscreen->save_data.reset();
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 3;
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 3;
 
     std::vector<int> levels = get_accessible_levels();
     TEST_ASSERT(contains(levels, 1), "level 1 should always be accessible");
@@ -28,12 +28,12 @@ REGISTER_TEST(test_picker_get_accessible_levels_always_has_level1_and_current);
 
 void test_picker_get_accessible_levels_includes_exits_of_cleared_levels()
 {
-    myscreen->save_data.reset();
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
     // Mark level 1 as cleared; get_accessible_levels should attempt to load it and add exits.
-    myscreen->save_data.add_level_completed(myscreen->save_data.current_campaign, 1);
+    og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 1);
 
     std::vector<int> levels = get_accessible_levels();
     TEST_ASSERT(contains(levels, 1), "level 1 should be accessible");
@@ -50,12 +50,12 @@ REGISTER_TEST(test_picker_get_accessible_levels_includes_exits_of_cleared_levels
 
 void test_picker_get_accessible_levels_handles_missing_leveldata()
 {
-    myscreen->save_data.reset();
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
     // Add a bogus "completed" level id to force LevelData::load() failure path.
-    myscreen->save_data.completed_levels[myscreen->save_data.current_campaign].insert(9999);
+    og::runtime::current_session->myscreen_->save_data.completed_levels[og::runtime::current_session->myscreen_->save_data.current_campaign].insert(9999);
 
     std::vector<int> levels = get_accessible_levels();
     TEST_ASSERT(contains(levels, 1), "level 1 should still be accessible");

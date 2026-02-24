@@ -48,8 +48,7 @@ static cfg_store& active_config()
 #define CY_SCREEN 200
 
 
-// videoptr moved into GameSession (Batch 6). File-local macro for compatibility.
-#define videoptr (og::runtime::current_session->videoptr_)
+// videoptr lives in GameSession — access via current_session->videoptr_.
 
 std::unique_ptr<Screen> E_Screen;
 
@@ -158,8 +157,8 @@ void video::set_fullscreen(bool enable_fullscreen)
     
     int w, h;
     SDL_GetWindowSize(E_Screen->window, &w, &h);
-    window_w = w;
-    window_h = h;
+    og::runtime::current_session->window_w_ = w;
+    og::runtime::current_session->window_h_ = h;
     update_overscan_setting();*/
 }
 
@@ -381,7 +380,7 @@ void video::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize)
 		{
 			curpoint = (curx + (cury*VIDEO_WIDTH));
 			if (curpoint > 0 && curpoint < VIDEO_SIZE)
-				videoptr[curpoint] = 0;
+				og::runtime::current_session->videoptr_[curpoint] = 0;
 		}
 	}
 }

@@ -18,7 +18,7 @@ void test_video_walkputbuffer_basic()
     memset(testbmp, 100, sizeof(testbmp));
 
     auto bmp_span = std::span<const unsigned char>(testbmp, 256);
-    myscreen->walkputbuffer(50, 50, 16, 16,
+    og::runtime::current_session->myscreen_->walkputbuffer(50, 50, 16, 16,
                            0, 0, 319, 199,
                            bmp_span, 40);
 }
@@ -30,7 +30,7 @@ void test_video_walkputbuffer_outline()
     memset(testbmp, 100, sizeof(testbmp));
 
     auto bmp_span = std::span<const unsigned char>(testbmp, 256);
-    myscreen->walkputbuffer(50, 50, 16, 16,
+    og::runtime::current_session->myscreen_->walkputbuffer(50, 50, 16, 16,
                            0, 0, 319, 199,
                            bmp_span, 40,
                            OUTLINE_MODE, 0, OUTLINE_NAMED, 0);
@@ -43,7 +43,7 @@ void test_video_walkputbuffer_phantom()
     memset(testbmp, 100, sizeof(testbmp));
 
     auto bmp_span = std::span<const unsigned char>(testbmp, 256);
-    myscreen->walkputbuffer(50, 50, 16, 16,
+    og::runtime::current_session->myscreen_->walkputbuffer(50, 50, 16, 16,
                            0, 0, 319, 199,
                            bmp_span, 40,
                            PHANTOM_MODE, 0, 0, SHIFT_RANDOM);
@@ -56,7 +56,7 @@ void test_video_walkputbuffer_invisible()
     memset(testbmp, 100, sizeof(testbmp));
 
     auto bmp_span = std::span<const unsigned char>(testbmp, 256);
-    myscreen->walkputbuffer(50, 50, 16, 16,
+    og::runtime::current_session->myscreen_->walkputbuffer(50, 50, 16, 16,
                            0, 0, 319, 199,
                            bmp_span, 40,
                            INVISIBLE_MODE, 128, 1, 0);
@@ -69,7 +69,7 @@ void test_video_walkputbuffer_flash()
     memset(testbmp, 100, sizeof(testbmp));
 
     auto bmp_span = std::span<const unsigned char>(testbmp, 256);
-    myscreen->walkputbuffer_flash(50, 50, 16, 16,
+    og::runtime::current_session->myscreen_->walkputbuffer_flash(50, 50, 16, 16,
                                   0, 0, 319, 199,
                                   bmp_span, 40);
 }
@@ -84,7 +84,7 @@ void test_video_putdata_basic()
     unsigned char testbmp[16*16];
     memset(testbmp, 50, sizeof(testbmp));
 
-    myscreen->putdata(50, 50, 16, 16, testbmp);
+    og::runtime::current_session->myscreen_->putdata(50, 50, 16, 16, testbmp);
 }
 REGISTER_TEST(test_video_putdata_basic);
 
@@ -93,7 +93,7 @@ void test_video_putdata_at_origin()
     unsigned char testbmp[8*8];
     memset(testbmp, 75, sizeof(testbmp));
 
-    myscreen->putdata(0, 0, 8, 8, testbmp);
+    og::runtime::current_session->myscreen_->putdata(0, 0, 8, 8, testbmp);
 }
 REGISTER_TEST(test_video_putdata_at_origin);
 
@@ -103,13 +103,13 @@ REGISTER_TEST(test_video_putdata_at_origin);
 
 void test_video_draw_box_zero_size()
 {
-    myscreen->draw_box(50, 50, 50, 50, 100, 0, 1);
+    og::runtime::current_session->myscreen_->draw_box(50, 50, 50, 50, 100, 0, 1);
 }
 REGISTER_TEST(test_video_draw_box_zero_size);
 
 void test_video_draw_box_large()
 {
-    myscreen->draw_box(0, 0, 319, 199, 50, 1, 1);
+    og::runtime::current_session->myscreen_->draw_box(0, 0, 319, 199, 50, 1, 1);
 }
 REGISTER_TEST(test_video_draw_box_large);
 
@@ -119,13 +119,13 @@ REGISTER_TEST(test_video_draw_box_large);
 
 void test_video_draw_button_depth0()
 {
-    myscreen->draw_button(10, 10, 50, 30, 0, 1);
+    og::runtime::current_session->myscreen_->draw_button(10, 10, 50, 30, 0, 1);
 }
 REGISTER_TEST(test_video_draw_button_depth0);
 
 void test_video_draw_button_depth3()
 {
-    myscreen->draw_button(60, 10, 100, 30, 3, 1);
+    og::runtime::current_session->myscreen_->draw_button(60, 10, 100, 30, 3, 1);
 }
 REGISTER_TEST(test_video_draw_button_depth3);
 
@@ -135,14 +135,14 @@ REGISTER_TEST(test_video_draw_button_depth3);
 
 void test_video_draw_dialog_small()
 {
-    int result = myscreen->draw_dialog(10, 10, 100, 60, "Small");
+    int result = og::runtime::current_session->myscreen_->draw_dialog(10, 10, 100, 60, "Small");
     TEST_ASSERT(result > 0, "draw_dialog should return positive margin");
 }
 REGISTER_TEST(test_video_draw_dialog_small);
 
 void test_video_draw_dialog_large()
 {
-    int result = myscreen->draw_dialog(5, 5, 310, 190, "Large Dialog Title");
+    int result = og::runtime::current_session->myscreen_->draw_dialog(5, 5, 310, 190, "Large Dialog Title");
     TEST_ASSERT(result > 0, "draw_dialog should return positive margin");
 }
 REGISTER_TEST(test_video_draw_dialog_large);
@@ -153,19 +153,19 @@ REGISTER_TEST(test_video_draw_dialog_large);
 
 void test_video_draw_line_steep_positive()
 {
-    myscreen->draw_line(50, 10, 60, 100, 77);
+    og::runtime::current_session->myscreen_->draw_line(50, 10, 60, 100, 77);
 }
 REGISTER_TEST(test_video_draw_line_steep_positive);
 
 void test_video_draw_line_steep_negative()
 {
-    myscreen->draw_line(60, 100, 50, 10, 88);
+    og::runtime::current_session->myscreen_->draw_line(60, 100, 50, 10, 88);
 }
 REGISTER_TEST(test_video_draw_line_steep_negative);
 
 void test_video_draw_line_single_point()
 {
-    myscreen->draw_line(50, 50, 50, 50, 99);
+    og::runtime::current_session->myscreen_->draw_line(50, 50, 50, 50, 99);
 }
 REGISTER_TEST(test_video_draw_line_single_point);
 
@@ -175,19 +175,19 @@ REGISTER_TEST(test_video_draw_line_single_point);
 
 void test_video_draw_rect_filled_zero_alpha()
 {
-    myscreen->draw_rect_filled(50, 50, 30, 20, 150, 0);
+    og::runtime::current_session->myscreen_->draw_rect_filled(50, 50, 30, 20, 150, 0);
 }
 REGISTER_TEST(test_video_draw_rect_filled_zero_alpha);
 
 void test_video_draw_rect_filled_half_alpha()
 {
-    myscreen->draw_rect_filled(80, 50, 30, 20, 200, 128);
+    og::runtime::current_session->myscreen_->draw_rect_filled(80, 50, 30, 20, 200, 128);
 }
 REGISTER_TEST(test_video_draw_rect_filled_half_alpha);
 
 void test_video_draw_rect_filled_opaque()
 {
-    myscreen->draw_rect_filled(110, 50, 30, 20, 250, 255);
+    og::runtime::current_session->myscreen_->draw_rect_filled(110, 50, 30, 20, 250, 255);
 }
 REGISTER_TEST(test_video_draw_rect_filled_opaque);
 
@@ -197,13 +197,13 @@ REGISTER_TEST(test_video_draw_rect_filled_opaque);
 
 void test_video_fastbox_large()
 {
-    myscreen->fastbox(0, 0, 100, 100, 50);
+    og::runtime::current_session->myscreen_->fastbox(0, 0, 100, 100, 50);
 }
 REGISTER_TEST(test_video_fastbox_large);
 
 void test_video_fastbox_small()
 {
-    myscreen->fastbox(100, 100, 1, 1, 200);
+    og::runtime::current_session->myscreen_->fastbox(100, 100, 1, 1, 200);
 }
 REGISTER_TEST(test_video_fastbox_small);
 
@@ -213,24 +213,24 @@ REGISTER_TEST(test_video_fastbox_small);
 
 void test_video_text_write_xy()
 {
-    myscreen->text_normal.write_xy(10, 10, "Test text", WHITE);
+    og::runtime::current_session->myscreen_->text_normal.write_xy(10, 10, "Test text", WHITE);
 }
 REGISTER_TEST(test_video_text_write_xy);
 
 void test_video_text_write_xy_center()
 {
-    myscreen->text_normal.write_xy_center(160, 100, WHITE, "Centered");
+    og::runtime::current_session->myscreen_->text_normal.write_xy_center(160, 100, WHITE, "Centered");
 }
 REGISTER_TEST(test_video_text_write_xy_center);
 
 void test_video_text_write_xy_shadow()
 {
-    myscreen->text_normal.write_xy_shadow(10, 30, WHITE, "Shadow text");
+    og::runtime::current_session->myscreen_->text_normal.write_xy_shadow(10, 30, WHITE, "Shadow text");
 }
 REGISTER_TEST(test_video_text_write_xy_shadow);
 
 void test_video_text_big()
 {
-    myscreen->text_big.write_xy(10, 50, "Big text", WHITE);
+    og::runtime::current_session->myscreen_->text_big.write_xy(10, 50, "Big text", WHITE);
 }
 REGISTER_TEST(test_video_text_big);

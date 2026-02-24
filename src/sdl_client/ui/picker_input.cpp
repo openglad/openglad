@@ -53,12 +53,12 @@ Sint32 leftmouse(button* buttons)
     grab_mouse();
     MouseState& mymouse = query_mouse();
 
-    while (allbuttons[i])
+    while (og::runtime::current_session->allbuttons_[i])
     {
         if(buttons != nullptr && !buttons[i].hidden)
         {
-            allbuttons[i]->mouse_on();
-            if (keystates[allbuttons[i]->hotkey])
+            og::runtime::current_session->allbuttons_[i]->mouse_on();
+            if (og::runtime::current_session->keystates_[og::runtime::current_session->allbuttons_[i]->hotkey])
                 somebutton = i;
         }
         i++;
@@ -93,7 +93,7 @@ void draw_highlight_interior(const button& b)
     const float t = (1.0f + sinf(ticks / 300.0f)) * 0.5f;
     const float size = 3.0f;
     const float inset = t * size;
-    myscreen->draw_box(static_cast<Sint32>(static_cast<float>(b.x) + inset),
+    og::runtime::current_session->myscreen_->draw_box(static_cast<Sint32>(static_cast<float>(b.x) + inset),
                        static_cast<Sint32>(static_cast<float>(b.y) + inset),
                        static_cast<Sint32>(static_cast<float>(b.x + b.sizex) - inset),
                        static_cast<Sint32>(static_cast<float>(b.y + b.sizey) - inset),
@@ -110,7 +110,7 @@ void draw_highlight(const button& b)
     const float t = (1.0f + sinf(ticks / 300.0f)) * 0.5f;
     const float size = 3.0f;
     const float inset = t * size;
-    myscreen->draw_box(static_cast<Sint32>(static_cast<float>(b.x) - inset),
+    og::runtime::current_session->myscreen_->draw_box(static_cast<Sint32>(static_cast<float>(b.x) - inset),
                        static_cast<Sint32>(static_cast<float>(b.y) - inset),
                        static_cast<Sint32>(static_cast<float>(b.x + b.sizex) + inset),
                        static_cast<Sint32>(static_cast<float>(b.y + b.sizey) + inset),
@@ -179,14 +179,14 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
             pressed = true;
         else
         {
-            myscreen->soundp->play_sound(SOUND_BOW);
+            og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
             if(use_global_vbuttons)
             {
-                allbuttons[highlighted_button]->vdisplay(1);
-                allbuttons[highlighted_button]->vdisplay();
-                if(allbuttons[highlighted_button]->myfunc)
+                og::runtime::current_session->allbuttons_[highlighted_button]->vdisplay(1);
+                og::runtime::current_session->allbuttons_[highlighted_button]->vdisplay();
+                if(og::runtime::current_session->allbuttons_[highlighted_button]->myfunc)
                 {
-                    retvalue = allbuttons[highlighted_button]->do_call(allbuttons[highlighted_button]->myfunc, allbuttons[highlighted_button]->arg);
+                    retvalue = og::runtime::current_session->allbuttons_[highlighted_button]->do_call(og::runtime::current_session->allbuttons_[highlighted_button]->myfunc, og::runtime::current_session->allbuttons_[highlighted_button]->arg);
                 }
             }
             else

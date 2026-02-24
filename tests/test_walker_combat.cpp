@@ -20,7 +20,7 @@ static walker* make_guy(char family, unsigned char team = 0)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w) w->setxy(100, 100);
     return w.release();
 }
@@ -30,7 +30,7 @@ static void remove_and_delete(walker* w)
     if (w == nullptr) {
         return;
     }
-    myscreen->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
 }
 
 class SequenceRandomCombat : public IRandom {
@@ -59,7 +59,7 @@ private:
 static int count_family_in_oblist(char family)
 {
     int count = 0;
-    for (auto& uptr : myscreen->level_data.oblist) {
+    for (auto& uptr : og::runtime::current_session->myscreen_->level_data.oblist) {
         walker* w = uptr.get();
         if (w && w->family == family)
             count++;
@@ -69,8 +69,8 @@ static int count_family_in_oblist(char family)
 
 static Uint32 total_team_score()
 {
-    return myscreen->save_data.m_score[0] + myscreen->save_data.m_score[1] +
-           myscreen->save_data.m_score[2] + myscreen->save_data.m_score[3];
+    return og::runtime::current_session->myscreen_->save_data.m_score[0] + og::runtime::current_session->myscreen_->save_data.m_score[1] +
+           og::runtime::current_session->myscreen_->save_data.m_score[2] + og::runtime::current_session->myscreen_->save_data.m_score[3];
 }
 
 static void set_world_tile(short world_x, short world_y, unsigned char tile)
@@ -78,7 +78,7 @@ static void set_world_tile(short world_x, short world_y, unsigned char tile)
     if (world_x < 0 || world_y < 0) {
         return;
     }
-    auto& level = myscreen->level_data;
+    auto& level = og::runtime::current_session->myscreen_->level_data;
     const int gx = world_x / GRID_SIZE;
     const int gy = world_y / GRID_SIZE;
     if (gx < 0 || gy < 0 || gx >= level.grid.w || gy >= level.grid.h)
@@ -117,7 +117,7 @@ void test_walker_attack_basic()
     TEST_ASSERT(blood_after >= blood_before, "kill path should not reduce blood objects");
 
     // Treasure targets are never valid attack targets.
-    walker* treasure = myscreen->level_data.add_ob(Order::Treasure, FAMILY_STAIN);
+    walker* treasure = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Treasure, FAMILY_STAIN);
     TEST_ASSERT(treasure != nullptr, "treasure created");
     if (treasure) {
         bool treasure_result = attacker->attack(treasure);
@@ -126,7 +126,7 @@ void test_walker_attack_basic()
 
     delete attacker;
     delete target;
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_attack_basic);
 
@@ -163,7 +163,7 @@ void test_walker_attack_slime_magic_bonus()
     attacker->attack(slime);
 
     // Weapon-owner combat path and FAMILY_SPRINKLE freeze special-case.
-    walker* sprinkle = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_SPRINKLE);
+    walker* sprinkle = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_SPRINKLE);
     TEST_ASSERT(sprinkle != nullptr, "sprinkle weapon created");
     if (sprinkle) {
         sprinkle->owner = attacker;
@@ -181,7 +181,7 @@ void test_walker_attack_slime_magic_bonus()
     // Magic does 2x damage to slimes - just verify no crash
     delete attacker;
     delete slime;
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_attack_slime_magic_bonus);
 
@@ -301,7 +301,7 @@ void test_walker_act_with_commands()
         (void)w->act();
     }
 
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
     if (l) {
         auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);
@@ -322,7 +322,7 @@ void test_walker_act_with_commands()
             set_global_context(nullptr);
         }
 
-        walker* proj = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+        walker* proj = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
         TEST_ASSERT(proj != nullptr, "weapon created");
         if (proj) {
             proj->setxy(120, 120);
@@ -357,7 +357,7 @@ void test_walker_act_with_commands()
         }
 
         // Exercise base walker ACT_RANDOM path via Generator (non-living subclass).
-        walker* base_rand = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+        walker* base_rand = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Generator, FAMILY_TENT);
         walker* base_foe = make_guy(FAMILY_ORC, 3);
         TEST_ASSERT(base_rand != nullptr && base_foe != nullptr, "base ACT_RANDOM walkers created");
         if (base_rand && base_foe) {
@@ -425,7 +425,7 @@ void test_walker_act_with_commands()
 
     remove_and_delete(foe);
     remove_and_delete(w);
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_act_with_commands);
 
@@ -545,8 +545,8 @@ REGISTER_TEST(test_walker_fire_check_all_dirs);
 
 void test_walker_fire_check_blocks_on_intermediate_step()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
     walker* shooter = make_guy(FAMILY_ARCHER, 0);
     walker* foe = make_guy(FAMILY_ORC, 1);
@@ -554,8 +554,8 @@ void test_walker_fire_check_blocks_on_intermediate_step()
     if (!(shooter && foe))
         return;
 
-    shooter->sim_level = &myscreen->level_data;
-    foe->sim_level = &myscreen->level_data;
+    shooter->sim_level = &og::runtime::current_session->myscreen_->level_data;
+    foe->sim_level = &og::runtime::current_session->myscreen_->level_data;
     shooter->setxy(96, 96);
     shooter->lastx = 1;
     shooter->lasty = 0;
@@ -582,7 +582,7 @@ void test_walker_fire_check_blocks_on_intermediate_step()
     const short start_y = probe->ypos;
     const short step_x = static_cast<short>(probe->lastx);
     const short step_y = static_cast<short>(probe->lasty);
-    myscreen->level_data.remove_ob(probe);
+    og::runtime::current_session->myscreen_->level_data.remove_ob(probe);
 
     TEST_ASSERT(step_x != 0 || step_y != 0, "probe step should be non-zero");
 
@@ -676,7 +676,7 @@ REGISTER_TEST(test_walker_is_friendly_different_teams);
 
 void test_walker_set_difficulty_all_families()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
     if (!l) return;
 
     short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
@@ -761,13 +761,13 @@ void test_walker_animate_smoke()
     int small_slime_after = count_family_in_oblist(FAMILY_SMALL_SLIME);
     TEST_ASSERT(small_slime_after >= small_slime_before, "slime split should preserve/increase small slimes");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_animate_smoke);
 
 void test_walker_act_random_generator_paths()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
 
     auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);
@@ -834,7 +834,7 @@ void test_walker_combat_effect_helpers_and_recoil_branches()
 
     delete attacker;
     delete target;
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_combat_effect_helpers_and_recoil_branches);
 
@@ -846,7 +846,7 @@ void test_walker_attack_weapon_owner_chain_and_nonliving_target()
     if (!(owner && living_target))
         return;
 
-    walker* weapon = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     if (weapon) {
         owner->user = 0;
@@ -860,7 +860,7 @@ void test_walker_attack_weapon_owner_chain_and_nonliving_target()
         (void)weapon->attack(living_target);
         TEST_ASSERT(living_target->stats()->hitpoints <= 100, "weapon attack path should execute safely");
 
-        walker* nonliving = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
+        walker* nonliving = og::runtime::current_session->myscreen_->level_data.add_ob(Order::FX, FAMILY_FLASH);
         TEST_ASSERT(nonliving != nullptr, "nonliving target created");
         if (nonliving)
             (void)weapon->attack(nonliving);
@@ -868,7 +868,7 @@ void test_walker_attack_weapon_owner_chain_and_nonliving_target()
 
     delete owner;
     delete living_target;
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_attack_weapon_owner_chain_and_nonliving_target);
 
@@ -893,7 +893,7 @@ void test_walker_combat_batch5_heal_and_hit_effect_variants()
     cfg.apply_setting("effects", "hit_anim", "on");
     cfg.apply_setting("effects", "hit_flash", "on");
     cfg.apply_setting("effects", "hit_recoil", "on");
-    walker* projectile = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* projectile = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(projectile != nullptr, "projectile created");
     if (projectile)
     {
@@ -931,8 +931,8 @@ REGISTER_TEST(test_walker_combat_batch5_do_combat_damage_target_myguy_stats);
 
 void test_walker_combat_batch6_attack_branches_enemy_and_weapon_paths()
 {
-    const short saved_allied_mode = myscreen->save_data.allied_mode;
-    myscreen->save_data.allied_mode = 0;
+    const short saved_allied_mode = og::runtime::current_session->myscreen_->save_data.allied_mode;
+    og::runtime::current_session->myscreen_->save_data.allied_mode = 0;
 
     // Enemy kill path: magical modifier, kill awards, notifications, and remaining-foe branch.
     walker* attacker = make_guy(FAMILY_MAGE, 0);
@@ -952,8 +952,8 @@ void test_walker_combat_batch6_attack_branches_enemy_and_weapon_paths()
 
     // Non-living default branch and weapon durability/death/on-hit callbacks.
     walker* owner = make_guy(FAMILY_SOLDIER, 0);
-    walker* fx_target = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
-    walker* weapon = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_SPRINKLE);
+    walker* fx_target = og::runtime::current_session->myscreen_->level_data.add_ob(Order::FX, FAMILY_FLASH);
+    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_SPRINKLE);
     TEST_ASSERT(owner && fx_target && weapon, "owner/fx_target/weapon created");
     if (owner && fx_target && weapon)
     {
@@ -970,15 +970,15 @@ void test_walker_combat_batch6_attack_branches_enemy_and_weapon_paths()
         TEST_ASSERT(weapon->dead == 1, "weapon durability path should kill mortal weapon at <=0 hp");
     }
 
-    myscreen->save_data.allied_mode = saved_allied_mode;
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->save_data.allied_mode = saved_allied_mode;
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_combat_batch6_attack_branches_enemy_and_weapon_paths);
 
 void test_walker_combat_batch6_attack_friendly_team_death_messages_and_clamps()
 {
-    const short saved_allied_mode = myscreen->save_data.allied_mode;
-    myscreen->save_data.allied_mode = 1;
+    const short saved_allied_mode = og::runtime::current_session->myscreen_->save_data.allied_mode;
+    og::runtime::current_session->myscreen_->save_data.allied_mode = 1;
 
     // Build an attacker that is not considered friendly to team 0 even when allied mode is on.
     walker* attacker = make_guy(FAMILY_SOLDIER, 1);
@@ -1031,24 +1031,24 @@ void test_walker_combat_batch6_attack_friendly_team_death_messages_and_clamps()
     attacker->do_heal_effects(attacker, attacker, 5);
     cfg.apply_setting("effects", "heal_numbers", "on");
 
-    myscreen->save_data.allied_mode = saved_allied_mode;
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->save_data.allied_mode = saved_allied_mode;
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_combat_batch6_attack_friendly_team_death_messages_and_clamps);
 
 void test_walker_combat_attack_rewards_single_credit_weapon_hit()
 {
-    const short saved_allied_mode = myscreen->save_data.allied_mode;
-    myscreen->save_data.allied_mode = 0;
+    const short saved_allied_mode = og::runtime::current_session->myscreen_->save_data.allied_mode;
+    og::runtime::current_session->myscreen_->save_data.allied_mode = 0;
 
     walker* owner = make_guy(FAMILY_SOLDIER, 0);
     walker* target = make_guy(FAMILY_ORC, 1);
-    walker* weapon = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(owner && target && weapon, "owner/target/weapon created");
     if (!(owner && target && weapon))
     {
-        myscreen->level_data.delete_objects();
-        myscreen->save_data.allied_mode = saved_allied_mode;
+        og::runtime::current_session->myscreen_->level_data.delete_objects();
+        og::runtime::current_session->myscreen_->save_data.allied_mode = saved_allied_mode;
         return;
     }
 
@@ -1066,7 +1066,7 @@ void test_walker_combat_attack_rewards_single_credit_weapon_hit()
     target->setxy(static_cast<short>(owner->xpos + 8), static_cast<short>(owner->ypos));
 
     const int exp_before = owner->myguy ? owner->myguy->exp : 0;
-    const Uint32 score_before = myscreen->save_data.m_score[owner->team_num];
+    const Uint32 score_before = og::runtime::current_session->myscreen_->save_data.m_score[owner->team_num];
     const float hp_before = target->stats()->hitpoints;
 
     TEST_ASSERT(weapon->attack(target), "weapon attack should succeed");
@@ -1081,28 +1081,28 @@ void test_walker_combat_attack_rewards_single_credit_weapon_hit()
     TEST_ASSERT_EQ((int)expected_attack_xp, exp_after - exp_before,
                    "weapon hit should award attack XP exactly once");
 
-    const Uint32 score_after = myscreen->save_data.m_score[owner->team_num];
+    const Uint32 score_after = og::runtime::current_session->myscreen_->save_data.m_score[owner->team_num];
     const Uint32 expected_score = static_cast<Uint32>(dealt) + static_cast<Uint32>(target->stats()->level);
     TEST_ASSERT_EQ((int)expected_score, static_cast<int>(score_after - score_before),
                    "weapon hit should award score once per hit");
 
-    myscreen->level_data.delete_objects();
-    myscreen->save_data.allied_mode = saved_allied_mode;
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->save_data.allied_mode = saved_allied_mode;
 }
 REGISTER_TEST(test_walker_combat_attack_rewards_single_credit_weapon_hit);
 
 void test_walker_combat_attack_ignores_out_of_range_team_score_index()
 {
-    const short saved_allied_mode = myscreen->save_data.allied_mode;
-    myscreen->save_data.allied_mode = 0;
+    const short saved_allied_mode = og::runtime::current_session->myscreen_->save_data.allied_mode;
+    og::runtime::current_session->myscreen_->save_data.allied_mode = 0;
 
     walker* attacker = make_guy(FAMILY_SOLDIER, 0);
     walker* target = make_guy(FAMILY_ORC, 1);
     TEST_ASSERT(attacker && target, "attacker/target created");
     if (!(attacker && target))
     {
-        myscreen->level_data.delete_objects();
-        myscreen->save_data.allied_mode = saved_allied_mode;
+        og::runtime::current_session->myscreen_->level_data.delete_objects();
+        og::runtime::current_session->myscreen_->save_data.allied_mode = saved_allied_mode;
         return;
     }
 
@@ -1116,33 +1116,33 @@ void test_walker_combat_attack_ignores_out_of_range_team_score_index()
     target->stats()->max_hitpoints = 40;
     target->setxy(static_cast<short>(attacker->xpos + 10), static_cast<short>(attacker->ypos));
 
-    myscreen->save_data.m_score[0] = 10;
-    myscreen->save_data.m_score[1] = 20;
-    myscreen->save_data.m_score[2] = 30;
-    myscreen->save_data.m_score[3] = 40;
+    og::runtime::current_session->myscreen_->save_data.m_score[0] = 10;
+    og::runtime::current_session->myscreen_->save_data.m_score[1] = 20;
+    og::runtime::current_session->myscreen_->save_data.m_score[2] = 30;
+    og::runtime::current_session->myscreen_->save_data.m_score[3] = 40;
     const Uint32 score_before = total_team_score();
 
     TEST_ASSERT(attacker->attack(target), "attack should still succeed with invalid team id");
     TEST_ASSERT_EQ(score_before, total_team_score(),
                    "invalid team id should not write outside m_score bounds");
 
-    myscreen->level_data.delete_objects();
-    myscreen->save_data.allied_mode = saved_allied_mode;
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->save_data.allied_mode = saved_allied_mode;
 }
 REGISTER_TEST(test_walker_combat_attack_ignores_out_of_range_team_score_index);
 
 void test_walker_combat_attack_rewards_single_credit_melee_kill()
 {
-    const short saved_allied_mode = myscreen->save_data.allied_mode;
-    myscreen->save_data.allied_mode = 0;
+    const short saved_allied_mode = og::runtime::current_session->myscreen_->save_data.allied_mode;
+    og::runtime::current_session->myscreen_->save_data.allied_mode = 0;
 
     walker* attacker = make_guy(FAMILY_SOLDIER, 0);
     walker* target = make_guy(FAMILY_ORC, 1);
     TEST_ASSERT(attacker && target, "attacker/target created");
     if (!(attacker && target))
     {
-        myscreen->level_data.delete_objects();
-        myscreen->save_data.allied_mode = saved_allied_mode;
+        og::runtime::current_session->myscreen_->level_data.delete_objects();
+        og::runtime::current_session->myscreen_->save_data.allied_mode = saved_allied_mode;
         return;
     }
 
@@ -1160,7 +1160,7 @@ void test_walker_combat_attack_rewards_single_credit_melee_kill()
     const int kills_before = attacker->myguy ? attacker->myguy->kills : 0;
     const int scen_kills_before = attacker->myguy ? attacker->myguy->scen_kills : 0;
     const int level_kills_before = attacker->myguy ? attacker->myguy->level_kills : 0;
-    const Uint32 score_before = myscreen->save_data.m_score[attacker->team_num];
+    const Uint32 score_before = og::runtime::current_session->myscreen_->save_data.m_score[attacker->team_num];
     const float hp_before = target->stats()->hitpoints;
 
     TEST_ASSERT(attacker->attack(target), "melee attack should succeed");
@@ -1176,7 +1176,7 @@ void test_walker_combat_attack_rewards_single_credit_melee_kill()
     TEST_ASSERT_EQ((int)(expected_attack_xp + expected_kill_xp), exp_after - exp_before,
                    "melee kill should award attack XP once plus one kill XP");
 
-    const Uint32 score_after = myscreen->save_data.m_score[attacker->team_num];
+    const Uint32 score_after = og::runtime::current_session->myscreen_->save_data.m_score[attacker->team_num];
     const Uint32 expected_score =
         static_cast<Uint32>(dealt + target->stats()->level) +
         static_cast<Uint32>(dealt + 10 * target->stats()->level);
@@ -1191,8 +1191,8 @@ void test_walker_combat_attack_rewards_single_credit_melee_kill()
                    (attacker->myguy ? attacker->myguy->level_kills : 0) - level_kills_before,
                    "level_kills should increase by defeated target level");
 
-    myscreen->level_data.delete_objects();
-    myscreen->save_data.allied_mode = saved_allied_mode;
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->save_data.allied_mode = saved_allied_mode;
 }
 REGISTER_TEST(test_walker_combat_attack_rewards_single_credit_melee_kill);
 
@@ -1290,7 +1290,7 @@ REGISTER_TEST(test_walker_batch8_act_default_and_animate_invalid_sequence_bounds
 
 void test_walker_combat_round8_attack_early_return_guards()
 {
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 
     walker* attacker = make_guy(FAMILY_SOLDIER, 0);
     walker* living_target = make_guy(FAMILY_ORC, 1);
@@ -1309,7 +1309,7 @@ void test_walker_combat_round8_attack_early_return_guards()
     living_target->team_num = 1;
 
     // Treasure target guard.
-    walker* treasure_target = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_GOLD_BAR);
+    walker* treasure_target = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_GOLD_BAR);
     TEST_ASSERT(treasure_target != nullptr, "treasure target created");
     if (treasure_target)
         TEST_ASSERT(!attacker->attack(treasure_target), "attack should fail against treasure targets");
@@ -1323,6 +1323,6 @@ void test_walker_combat_round8_attack_early_return_guards()
     living_target->invulnerable_left = 3;
     TEST_ASSERT(!attacker->attack(living_target), "attack should fail while invulnerable_left is active");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_combat_round8_attack_early_return_guards);

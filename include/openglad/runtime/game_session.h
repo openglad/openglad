@@ -56,8 +56,7 @@ public:
     class SessionScope;
     [[nodiscard]] SessionScope activate();
 
-    // Per-session state (public for macro-based access from legacy globals).
-    // Names use trailing underscores to avoid collision with legacy macros.
+    // Per-session state — accessed directly via current_session->member_.
     ::screen* myscreen_ = nullptr;
     options* theprefs_ = nullptr;
 
@@ -130,8 +129,8 @@ private:
     std::unique_ptr<::screen> screen_owner_;
 };
 
-// The currently-active session. Legacy global macros (#define myscreen, etc.)
-// dereference this pointer.  Set by GameSession constructor / SessionScope.
+// The currently-active session.  Code accesses members directly, e.g.
+// og::runtime::current_session->myscreen_.  Set by GameSession ctor / SessionScope.
 extern GameSession* current_session;
 
 // RAII guard: while alive, the associated session's globals are installed.

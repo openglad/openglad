@@ -46,7 +46,7 @@ static int results_ui_injector(void* data)
 
     // Failsafe in case click misses.
     SDL_Delay(500);
-    myscreen->end = 1;
+    og::runtime::current_session->myscreen_->end = 1;
 
     st->finished = true;
     return 0;
@@ -55,23 +55,23 @@ static int results_ui_injector(void* data)
 
 void test_results_screen_full_ui_overview_and_troops_paths()
 {
-    const char saved_end = myscreen->end;
-    myscreen->end = 0;
+    const char saved_end = og::runtime::current_session->myscreen_->end;
+    og::runtime::current_session->myscreen_->end = 0;
 
     // Ensure deterministic campaign/level context used by results_screen internals.
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.current_levels.clear();
-    myscreen->save_data.m_score[0] = 200;
-    myscreen->save_data.m_score[1] = 50;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.current_levels.clear();
+    og::runtime::current_session->myscreen_->save_data.m_score[0] = 200;
+    og::runtime::current_session->myscreen_->save_data.m_score[1] = 50;
 
     // Build before/after maps with mixed outcomes: gain level, loss, recruit.
     std::map<int, guy*> before;
     std::map<int, walker*> after;
 
-    auto* w1 = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    auto* w2 = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
-    auto* w3 = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    auto* w1 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    auto* w2 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    auto* w3 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT(w1 != nullptr && w2 != nullptr && w3 != nullptr, "expected walkers for results test");
     w1->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     w2->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
@@ -139,7 +139,7 @@ void test_results_screen_full_ui_overview_and_troops_paths()
     SDL_WaitThread(thread, &rc);
 
     results_screen_testing_set_force_full(false);
-    myscreen->end = saved_end;
+    og::runtime::current_session->myscreen_->end = saved_end;
 
     TEST_ASSERT(st.started && st.finished, "results UI injector should run");
     TEST_ASSERT(!retry, "OK path should not request retry");

@@ -724,8 +724,8 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
         throw std::runtime_error(std::string("Fatal: SDL_CreateWindow failed: ") + SDL_GetError());
     
 	    SDL_GetWindowSize(window, &w, &h);
-	    window_w = static_cast<float>(w);
-	    window_h = static_cast<float>(h);
+	    og::runtime::current_session->window_w_ = static_cast<float>(w);
+	    og::runtime::current_session->window_h_ = static_cast<float>(h);
 	    
 	    update_overscan_setting();
     
@@ -816,7 +816,7 @@ void Screen::swap(int x, int y, int w, int h)
 
     SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
 
-    SDL_Rect dest = {int(viewport_offset_x), int(viewport_offset_y), int(viewport_w), int(viewport_h)};
+    SDL_Rect dest = {int(og::runtime::current_session->viewport_offset_x_), int(og::runtime::current_session->viewport_offset_y_), int(og::runtime::current_session->viewport_w_), int(og::runtime::current_session->viewport_h_)};
 
     SDL_RenderCopy(renderer, dest_texture, nullptr, &dest);
     SDL_RenderPresent(renderer);
@@ -831,7 +831,7 @@ void Screen::clear_window()
     
     SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
     
-    SDL_Rect dest = {0, 0, int(window_w), int(window_h)};
+    SDL_Rect dest = {0, 0, int(og::runtime::current_session->window_w_), int(og::runtime::current_session->window_h_)};
 
     SDL_RenderCopy(renderer, dest_texture, nullptr, &dest);
 }

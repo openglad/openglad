@@ -53,18 +53,9 @@
 // Globals required by entity/runtime code
 // ---------------------------------------------------------------------------
 
-// Entity code references myscreen for legacy reasons (all commented out,
-// but the symbol must exist at link time).
-class screen;
-screen* myscreen = nullptr;
-
-// options type needed for GameContext destructor
-class options;
-options* theprefs = nullptr;
-
-// Entity code (living/walker) dereferences current_session->current_difficulty_.
-// The text client doesn't use the full GameSession but needs the symbol +
-// storage so set_difficulty() works at runtime.
+// Entity code references session members for legacy reasons.  The headless
+// session buffer below provides zero-initialized storage for myscreen_,
+// theprefs_, current_difficulty_, etc.
 #include <openglad/runtime/game_session.h>
 namespace og::runtime {
     // Zero-initialized storage that satisfies the symbol.  text_picker sets

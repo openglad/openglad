@@ -45,12 +45,12 @@ void intro_main(Sint32 argc, char** argv)
 	(void)argv;
 	// Zardus: PORT: doesn't seem to be used, and causes a memory leak
 	//char **args = (char **)new int;
-	text& mytext = myscreen->text_normal;
+	text& mytext = og::runtime::current_session->myscreen_->text_normal;
 	PixieData uldata, urdata, lldata, lrdata;
 	PixieData gladdata, bigdata;
 	const char* message;
 
-	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
+	og::runtime::current_session->myscreen_->viewob[0]->resize(PREF_VIEW_FULL);
 	grab_timer();
 	
 	load_and_set_palette("our.pal", mypalette);
@@ -58,14 +58,14 @@ void intro_main(Sint32 argc, char** argv)
 	//buffers: PORT:  for (i=0;i<256;i++)
 	//buffers: PORT:         set_palette_reg(i,0,0,0);
     
-    myscreen->fadeblack(FADE_TO);
+    og::runtime::current_session->myscreen_->fadeblack(FADE_TO);
     
-	myscreen->clear();
+	og::runtime::current_session->myscreen_->clear();
 
 	gladdata = read_pixie_file("3mages2.pix");
 	pixie gladiator(gladdata);
-	gladiator.drawMix(120,55,myscreen->viewob[0].get());
-	mytext.write_y(100,"FORGOTTEN SAGES PRESENTS", 230, myscreen->viewob[0].get());
+	gladiator.drawMix(120,55,og::runtime::current_session->myscreen_->viewob[0].get());
+	mytext.write_y(100,"FORGOTTEN SAGES PRESENTS", 230, og::runtime::current_session->myscreen_->viewob[0].get());
 	//myscreen->refresh();
 	gladdata.free();
 
@@ -80,10 +80,10 @@ void intro_main(Sint32 argc, char** argv)
 	bigdata = read_pixie_file("bigfoot.pix");
 	pixie gladiator2(gladdata);
 	pixie bigfoot(bigdata);
-	myscreen->clear();
-	bigfoot.drawMix(120,50,myscreen->viewob[0].get());
+	og::runtime::current_session->myscreen_->clear();
+	bigfoot.drawMix(120,50,og::runtime::current_session->myscreen_->viewob[0].get());
 	//gladiator->drawMix(110,65,myscreen->viewob[0].get());
-	gladiator2.drawMix(100, 110, myscreen->viewob[0].get());
+	gladiator2.drawMix(100, 110, og::runtime::current_session->myscreen_->viewob[0].get());
 	//myscreen->refresh();
 
 	gladdata.free();
@@ -95,8 +95,8 @@ void intro_main(Sint32 argc, char** argv)
 		return;
 	}
 
-	myscreen->clear();
-	mytext.write_y(70,"THOSE WHO ARE ABOUT TO DIE SALUTE YOU", 230, myscreen->viewob[0].get());
+	og::runtime::current_session->myscreen_->clear();
+	mytext.write_y(70,"THOSE WHO ARE ABOUT TO DIE SALUTE YOU", 230, og::runtime::current_session->myscreen_->viewob[0].get());
 	//myscreen->refresh();
 
 	if (show() < 0)
@@ -106,10 +106,10 @@ void intro_main(Sint32 argc, char** argv)
 	}
 
 	// Programming Credits, Page 1
-	myscreen->clear();
-	mytext.write_y(80,"Programming By:", 230, myscreen->viewob[0].get());
-	mytext.write_y(100,"Chad Lawrence  Doug McCreary", 230, myscreen->viewob[0].get());
-	mytext.write_y(110,"Tom Ricket  Michael Scandizzo", 230, myscreen->viewob[0].get());
+	og::runtime::current_session->myscreen_->clear();
+	mytext.write_y(80,"Programming By:", 230, og::runtime::current_session->myscreen_->viewob[0].get());
+	mytext.write_y(100,"Chad Lawrence  Doug McCreary", 230, og::runtime::current_session->myscreen_->viewob[0].get());
+	mytext.write_y(110,"Tom Ricket  Michael Scandizzo", 230, og::runtime::current_session->myscreen_->viewob[0].get());
 
 	//myscreen->refresh();
 
@@ -120,29 +120,29 @@ void intro_main(Sint32 argc, char** argv)
 	}
 
 	// First 'interlude' snapshot
-	myscreen->clear();
+	og::runtime::current_session->myscreen_->clear();
 	uldata = read_pixie_file("game2ul.pix");
 	pixie ul(uldata);
 	ul.setxy(41, 12);
-	ul.draw(myscreen->viewob[0].get());
+	ul.draw(og::runtime::current_session->myscreen_->viewob[0].get());
 	uldata.free();
 
 	urdata = read_pixie_file("game2ur.pix");
 	pixie ur(urdata);
 	ur.setxy(160, 12);
-	ur.draw(myscreen->viewob[0].get());
+	ur.draw(og::runtime::current_session->myscreen_->viewob[0].get());
 	urdata.free();
 
 	lldata = read_pixie_file("game2ll.pix");
 	pixie ll(lldata);
 	ll.setxy(41, 103);
-	ll.draw(myscreen->viewob[0].get());
+	ll.draw(og::runtime::current_session->myscreen_->viewob[0].get());
 	lldata.free();
 
 	lrdata = read_pixie_file("game2lr.pix");
 	pixie lr(lrdata);
 	lr.setxy(160, 103);
-	lr.draw(myscreen->viewob[0].get());
+	lr.draw(og::runtime::current_session->myscreen_->viewob[0].get());
 	lrdata.free();
 
 	//myscreen->refresh();
@@ -154,10 +154,10 @@ void intro_main(Sint32 argc, char** argv)
 	}
 
 	// Programming Credits, Page 2
-	myscreen->clear();
-	mytext.write_y(90,"Additional Coding by Doug Ricket", 230, myscreen->viewob[0].get());
+	og::runtime::current_session->myscreen_->clear();
+	mytext.write_y(90,"Additional Coding by Doug Ricket", 230, og::runtime::current_session->myscreen_->viewob[0].get());
 	//buffers: PORT: w00t w00t
-	mytext.write_y(110,"SDL port by Odo and Zardus",230,myscreen->viewob[0].get());
+	mytext.write_y(110,"SDL port by Odo and Zardus",230,og::runtime::current_session->myscreen_->viewob[0].get());
 	//myscreen->refresh();
 
 	if (show() < 0)
@@ -167,39 +167,39 @@ void intro_main(Sint32 argc, char** argv)
 	}
 
 	// Second 'interlude' & extra credits
-	myscreen->clear();
+	og::runtime::current_session->myscreen_->clear();
 	uldata = read_pixie_file("game4.pix");
 	pixie ul2(uldata);
 	ul2.setxy(0, 0);
-	ul2.draw(myscreen->viewob[0].get());
+	ul2.draw(og::runtime::current_session->myscreen_->viewob[0].get());
 	uldata.free();
 
 	lldata = read_pixie_file("game5.pix");
 	pixie ll2(lldata);
 	ll2.setxy(160, 78);
-	ll2.draw(myscreen->viewob[0].get());
+	ll2.draw(og::runtime::current_session->myscreen_->viewob[0].get());
 	lldata.free();
 
 	message = "Additional Artwork By:";
 	mytext.write_xy(310-mytext.query_width(message),
-	                 30, message, 230, myscreen->viewob[0].get());
+	                 30, message, 230, og::runtime::current_session->myscreen_->viewob[0].get());
 	message = "Doug Ricket";
 	mytext.write_xy(310-mytext.query_width(message),
-	                 50, message, 230, myscreen->viewob[0].get());
+	                 50, message, 230, og::runtime::current_session->myscreen_->viewob[0].get());
 	message = "Stefan Scandizzo";
 	mytext.write_xy(310-mytext.query_width(message),
-	                 60, message, 230, myscreen->viewob[0].get());
+	                 60, message, 230, og::runtime::current_session->myscreen_->viewob[0].get());
 
 	message = "Special Thanks To:";
-	mytext.write_xy(2, 130, message, 230, myscreen->viewob[0].get());
+	mytext.write_xy(2, 130, message, 230, og::runtime::current_session->myscreen_->viewob[0].get());
 	message = "Kim Kelly  Lara Kirkendall";
-	mytext.write_xy(2, 150, message, 230, myscreen->viewob[0].get());
+	mytext.write_xy(2, 150, message, 230, og::runtime::current_session->myscreen_->viewob[0].get());
 	message = "Lee Martin  Karyn McCreary";
-	mytext.write_xy(2, 160, message, 230, myscreen->viewob[0].get());
+	mytext.write_xy(2, 160, message, 230, og::runtime::current_session->myscreen_->viewob[0].get());
 	message = "Loki, Ishara, & Mootz";
-	mytext.write_xy(2, 170, message, 230, myscreen->viewob[0].get());
+	mytext.write_xy(2, 170, message, 230, og::runtime::current_session->myscreen_->viewob[0].get());
 	message = "And many others!";
-	mytext.write_xy(2, 180, message, 230, myscreen->viewob[0].get());
+	mytext.write_xy(2, 180, message, 230, og::runtime::current_session->myscreen_->viewob[0].get());
 
 	//myscreen->refresh();
 
@@ -230,8 +230,8 @@ int cleanup()
 	int red,green,blue; //buffers: PORT: changed to ints
 	query_palette_reg(static_cast<unsigned char>(0), &red, &green, &blue); // Resets palette to read mode
 	release_timer();
-	myscreen->clear();
-	myscreen->refresh();
+	og::runtime::current_session->myscreen_->clear();
+	og::runtime::current_session->myscreen_->refresh();
 
 		for (i = 0; i<256; i++)
 		{
@@ -251,7 +251,7 @@ int show() // default uses SHOW_TIME
 
 int show(int howlong)
 {
-	if (myscreen->fadeblack(FADE_FROM) == -1) return -1;
+	if (og::runtime::current_session->myscreen_->fadeblack(FADE_FROM) == -1) return -1;
 
 	reset_timer();
 	while (query_timer() < howlong)
@@ -261,6 +261,6 @@ int show(int howlong)
 			return -1;
 	}
 
-	if (myscreen->fadeblack(FADE_TO) == -1) return -1;
+	if (og::runtime::current_session->myscreen_->fadeblack(FADE_TO) == -1) return -1;
 	return 1;
 }

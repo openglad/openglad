@@ -29,7 +29,7 @@ static void cleanup_picker_state()
         backpics[i].free();
     }
     clear_allbuttons();
-    localbuttons = nullptr;
+    og::runtime::current_session->localbuttons_ = nullptr;
     main_columns_pix.reset();
     main_columns_data.free();
     main_title_logo_pix.reset();
@@ -89,12 +89,12 @@ void test_go_without_team() {
     trace_clear();
 
     // Set up save with NO team members
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.team_size = 0;
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.team_size = 0;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
     GoNoTeamState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(go_no_team_injector, "go_no_team", &state);
@@ -164,12 +164,12 @@ static int train_no_team_injector(void* data)
 void test_train_without_team() {
     trace_clear();
 
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.team_size = 0;
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.team_size = 0;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
     TrainNoTeamState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(train_no_team_injector, "train_no_team", &state);

@@ -63,21 +63,21 @@ struct ViewportGuard
     float ow, oh, ovw, ovh, ox, oy;
     ViewportGuard()
     {
-        ow = window_w;
-        oh = window_h;
-        ovw = viewport_w;
-        ovh = viewport_h;
-        ox = viewport_offset_x;
-        oy = viewport_offset_y;
+        ow = og::runtime::current_session->window_w_;
+        oh = og::runtime::current_session->window_h_;
+        ovw = og::runtime::current_session->viewport_w_;
+        ovh = og::runtime::current_session->viewport_h_;
+        ox = og::runtime::current_session->viewport_offset_x_;
+        oy = og::runtime::current_session->viewport_offset_y_;
     }
     ~ViewportGuard()
     {
-        window_w = ow;
-        window_h = oh;
-        viewport_w = ovw;
-        viewport_h = ovh;
-        viewport_offset_x = ox;
-        viewport_offset_y = oy;
+        og::runtime::current_session->window_w_ = ow;
+        og::runtime::current_session->window_h_ = oh;
+        og::runtime::current_session->viewport_w_ = ovw;
+        og::runtime::current_session->viewport_h_ = ovh;
+        og::runtime::current_session->viewport_offset_x_ = ox;
+        og::runtime::current_session->viewport_offset_y_ = oy;
     }
 };
 
@@ -169,10 +169,10 @@ void test_campaign_picker_cancel_esc_does_not_crash()
     show_ending_popup(0, 2);
 
     // Keep picker exit deterministic in headless CI while still exercising setup paths.
-    char old_end = myscreen->end;
-    myscreen->end = 1;
-    CampaignResult canceled = pick_campaign(&myscreen->save_data, false);
-    myscreen->end = old_end;
+    char old_end = og::runtime::current_session->myscreen_->end;
+    og::runtime::current_session->myscreen_->end = 1;
+    CampaignResult canceled = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
+    og::runtime::current_session->myscreen_->end = old_end;
     TEST_ASSERT(canceled.id.empty(), "campaign picker early-exit should return empty campaign id");
 }
 REGISTER_TEST(test_campaign_picker_cancel_esc_does_not_crash);
@@ -181,17 +181,17 @@ void test_campaign_picker_draw_loop_exits_on_q()
 {
     cleanup_leftover_test_campaigns();
 
-    char old_end = myscreen->end;
-    myscreen->end = 0;
+    char old_end = og::runtime::current_session->myscreen_->end;
+    og::runtime::current_session->myscreen_->end = 0;
 
     SDL_Thread* thread = SDL_CreateThread(hold_q_key_for_picker, "picker_q_hold", nullptr);
     TEST_ASSERT(thread != nullptr, "failed to create picker q-hold thread");
 
-    CampaignResult out = pick_campaign(&myscreen->save_data, false);
+    CampaignResult out = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
-    myscreen->end = old_end;
+    og::runtime::current_session->myscreen_->end = old_end;
 
     TEST_ASSERT(out.id.empty(), "q exit path should not select a campaign");
 }
@@ -204,19 +204,19 @@ void test_campaign_picker_mouse_choose_and_cancel_paths()
     const std::string old_campaign = get_mounted_campaign();
 
     ViewportGuard guard;
-    window_w = 320;
-    window_h = 200;
-    viewport_offset_x = 0;
-    viewport_offset_y = 0;
-    viewport_w = 320;
-    viewport_h = 200;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
 
-    char old_end = myscreen->end;
-    myscreen->end = 0;
+    char old_end = og::runtime::current_session->myscreen_->end;
+    og::runtime::current_session->myscreen_->end = 0;
 
     SDL_Thread* choose_thread = SDL_CreateThread(picker_choose_injector, "picker_choose", nullptr);
     TEST_ASSERT(choose_thread != nullptr, "failed to create choose injector");
-    CampaignResult chosen = pick_campaign(&myscreen->save_data, false);
+    CampaignResult chosen = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
     int choose_rc = 0;
     SDL_WaitThread(choose_thread, &choose_rc);
     TEST_ASSERT(!chosen.id.empty(), "choose path should return a selected campaign id");
@@ -225,13 +225,13 @@ void test_campaign_picker_mouse_choose_and_cancel_paths()
 
     SDL_Thread* cancel_thread = SDL_CreateThread(picker_cancel_injector, "picker_cancel", nullptr);
     TEST_ASSERT(cancel_thread != nullptr, "failed to create cancel injector");
-    CampaignResult canceled = pick_campaign(&myscreen->save_data, false);
+    CampaignResult canceled = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
     int cancel_rc = 0;
     SDL_WaitThread(cancel_thread, &cancel_rc);
     TEST_ASSERT(canceled.id.empty(), "cancel path should not return a campaign id");
     TEST_ASSERT(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None, "failed to restore mounted campaign after cancel path");
 
-    myscreen->end = old_end;
+    og::runtime::current_session->myscreen_->end = old_end;
 }
 REGISTER_TEST(test_campaign_picker_mouse_choose_and_cancel_paths);
 
@@ -240,31 +240,31 @@ void test_campaign_picker_delete_and_reset_prompt_paths()
     cleanup_leftover_test_campaigns();
 
     ViewportGuard guard;
-    window_w = 320;
-    window_h = 200;
-    viewport_offset_x = 0;
-    viewport_offset_y = 0;
-    viewport_w = 320;
-    viewport_h = 200;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
 
-    char old_end = myscreen->end;
-    myscreen->end = 0;
+    char old_end = og::runtime::current_session->myscreen_->end;
+    og::runtime::current_session->myscreen_->end = 0;
 
     SDL_Thread* delete_thread = SDL_CreateThread(campaign_delete_then_cancel_injector, "picker_delete_cancel", nullptr);
     TEST_ASSERT(delete_thread != nullptr, "failed to create campaign delete injector");
-    CampaignResult after_delete_prompt = pick_campaign(&myscreen->save_data, true);
+    CampaignResult after_delete_prompt = pick_campaign(&og::runtime::current_session->myscreen_->save_data, true);
     int delete_rc = 0;
     SDL_WaitThread(delete_thread, &delete_rc);
     TEST_ASSERT(after_delete_prompt.id.empty(), "delete+cancel path should return empty campaign id");
 
     SDL_Thread* reset_thread = SDL_CreateThread(campaign_reset_then_cancel_injector, "picker_reset_cancel", nullptr);
     TEST_ASSERT(reset_thread != nullptr, "failed to create campaign reset injector");
-    CampaignResult after_reset_prompt = pick_campaign(&myscreen->save_data, false);
+    CampaignResult after_reset_prompt = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
     int reset_rc = 0;
     SDL_WaitThread(reset_thread, &reset_rc);
     TEST_ASSERT(after_reset_prompt.id.empty(), "reset+cancel path should return empty campaign id");
 
-    myscreen->end = old_end;
+    og::runtime::current_session->myscreen_->end = old_end;
 }
 REGISTER_TEST(test_campaign_picker_delete_and_reset_prompt_paths);
 
@@ -342,10 +342,10 @@ void test_level_picker_cancel_esc_returns_default()
     TEST_ASSERT_EQ(9, exits.back(), "getLevelStats exits should include highest exit level");
     ld.delete_objects();
 
-    char old_end = myscreen->end;
-    myscreen->end = 1;
-    int canceled = pick_level(myscreen, 1, false);
-    myscreen->end = old_end;
+    char old_end = og::runtime::current_session->myscreen_->end;
+    og::runtime::current_session->myscreen_->end = 1;
+    int canceled = pick_level(og::runtime::current_session->myscreen_, 1, false);
+    og::runtime::current_session->myscreen_->end = old_end;
     TEST_ASSERT_EQ(1, canceled, "level cancel should return default level");
 }
 REGISTER_TEST(test_level_picker_cancel_esc_returns_default);
@@ -353,30 +353,30 @@ REGISTER_TEST(test_level_picker_cancel_esc_returns_default);
 void test_level_picker_choose_and_delete_prompt_paths()
 {
     ViewportGuard guard;
-    window_w = 320;
-    window_h = 200;
-    viewport_offset_x = 0;
-    viewport_offset_y = 0;
-    viewport_w = 320;
-    viewport_h = 200;
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    og::runtime::current_session->viewport_offset_x_ = 0;
+    og::runtime::current_session->viewport_offset_y_ = 0;
+    og::runtime::current_session->viewport_w_ = 320;
+    og::runtime::current_session->viewport_h_ = 200;
 
-    char old_end = myscreen->end;
-    myscreen->end = 0;
+    char old_end = og::runtime::current_session->myscreen_->end;
+    og::runtime::current_session->myscreen_->end = 0;
 
     SDL_Thread* choose_thread = SDL_CreateThread(level_picker_choose_injector, "level_picker_choose", nullptr);
     TEST_ASSERT(choose_thread != nullptr, "failed to create level picker choose injector");
-    int chosen = pick_level(myscreen, 1, false);
+    int chosen = pick_level(og::runtime::current_session->myscreen_, 1, false);
     int choose_rc = 0;
     SDL_WaitThread(choose_thread, &choose_rc);
     TEST_ASSERT(chosen > 0, "choose path should return a valid level id");
 
     SDL_Thread* delete_thread = SDL_CreateThread(level_picker_delete_then_cancel_injector, "level_picker_delete_cancel", nullptr);
     TEST_ASSERT(delete_thread != nullptr, "failed to create level picker delete injector");
-    int canceled_after_delete_prompt = pick_level(myscreen, 1, true);
+    int canceled_after_delete_prompt = pick_level(og::runtime::current_session->myscreen_, 1, true);
     int delete_rc = 0;
     SDL_WaitThread(delete_thread, &delete_rc);
     TEST_ASSERT_EQ(1, canceled_after_delete_prompt, "delete prompt + cancel should keep default level");
 
-    myscreen->end = old_end;
+    og::runtime::current_session->myscreen_->end = old_end;
 }
 REGISTER_TEST(test_level_picker_choose_and_delete_prompt_paths);

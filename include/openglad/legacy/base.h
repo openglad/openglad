@@ -86,27 +86,10 @@ struct meminfo
 	unsigned Reserved[3];
 };
 
-// Legacy global shims: dereference current_session so existing code
-// (`myscreen->foo`, `if (myscreen)`, etc.) continues to work unchanged.
+// Access session state via og::runtime::current_session->member_ directly.
 #include <openglad/runtime/game_session.h>
-#define myscreen (og::runtime::current_session ? og::runtime::current_session->myscreen_ : static_cast<screen*>(nullptr))
 
-// Game speed + debug globals (Batch 7) — moved from core/util + entities.
-#define g_game_speed_factor (og::runtime::current_session->g_game_speed_factor_)
-#define debug_draw_paths    (og::runtime::current_session->debug_draw_paths_)
-#define debug_draw_obmap    (og::runtime::current_session->debug_draw_obmap_)
 void set_game_speed(float factor);
-
-// Picker state globals (Batch 8) — moved from picker.cpp.
-#define current_difficulty  (og::runtime::current_session->current_difficulty_)
-#define numbought           (og::runtime::current_session->numbought_)
-#define current_guy         (og::runtime::current_session->current_guy_)
-#define current_type        (og::runtime::current_session->current_type_)
-#define current_team_num    (og::runtime::current_session->current_team_num_)
-#define localbuttons        (og::runtime::current_session->localbuttons_)
-#define editguy             (og::runtime::current_session->editguy_)
-// Note: 'message' is NOT macro'd here — too common as a parameter name.
-// Picker files that need the global use og::runtime::current_session->message_ directly.
 
 inline constexpr int MAX_LEVELS = 500; // Maximum number of scenarios allowed ..
 

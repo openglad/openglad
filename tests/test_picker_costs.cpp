@@ -12,10 +12,10 @@ void test_picker_increase_decrease_stats_and_levels()
     // Put a soldier on the team so TrainSession has something to edit
     auto* team0 = new guy(FAMILY_SOLDIER);
     team0->upgrade_to_level(2);
-    myscreen->save_data.team_list[0].reset(team0);
-    myscreen->save_data.team_size = 1;
+    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(team0);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
 
-    og::ui::TrainSession session(myscreen->save_data);
+    og::ui::TrainSession session(og::runtime::current_session->myscreen_->save_data);
     TEST_ASSERT(!session.empty(), "session should not be empty");
 
     using S = og::ui::TrainSession::Stat;
@@ -52,8 +52,8 @@ void test_picker_increase_decrease_stats_and_levels()
     TEST_ASSERT_EQ(dex0, (int)session.working_copy().dexterity,
                    "stat decrease should be blocked when level increased");
 
-    myscreen->save_data.team_list[0].reset();
-    myscreen->save_data.team_size = 0;
+    og::runtime::current_session->myscreen_->save_data.team_list[0].reset();
+    og::runtime::current_session->myscreen_->save_data.team_size = 0;
 }
 REGISTER_TEST(test_picker_increase_decrease_stats_and_levels);
 
@@ -61,7 +61,7 @@ void test_picker_calculate_hire_cost_clamps_to_minimums()
 {
     // HireSession creates a recruit with stats clamped to family base.
     // Verify the cost is positive and stats are at least the base values.
-    og::ui::HireSession session(myscreen->save_data, 0);
+    og::ui::HireSession session(og::runtime::current_session->myscreen_->save_data, 0);
     const guy* recruit = session.current_recruit();
     TEST_ASSERT(recruit != nullptr, "recruit should exist");
 
@@ -80,10 +80,10 @@ void test_picker_calculate_train_cost_basic_and_level_upgrade_paths()
 {
     auto* team0 = new guy(FAMILY_SOLDIER);
     team0->upgrade_to_level(2);
-    myscreen->save_data.team_list[0].reset(team0);
-    myscreen->save_data.team_size = 1;
+    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(team0);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
 
-    og::ui::TrainSession session(myscreen->save_data);
+    og::ui::TrainSession session(og::runtime::current_session->myscreen_->save_data);
     TEST_ASSERT(!session.empty(), "session should not be empty");
 
     using S = og::ui::TrainSession::Stat;
@@ -99,7 +99,7 @@ void test_picker_calculate_train_cost_basic_and_level_upgrade_paths()
     std::uint32_t cost_level = session.current_cost();
     (void)cost_level; // just exercise the level-up path
 
-    myscreen->save_data.team_list[0].reset();
-    myscreen->save_data.team_size = 0;
+    og::runtime::current_session->myscreen_->save_data.team_list[0].reset();
+    og::runtime::current_session->myscreen_->save_data.team_size = 0;
 }
 REGISTER_TEST(test_picker_calculate_train_cost_basic_and_level_upgrade_paths);
