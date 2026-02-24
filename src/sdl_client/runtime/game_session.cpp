@@ -17,6 +17,9 @@
 #include <openglad/input/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
 #include "SDL.h"
 
+// Defined in view.cpp — loads allkeys from defaults + keyprefs.dat.
+void init_allkeys(int allkeys[][16]);
+
 // The legacy global macros (myscreen, theprefs) expand through current_session.
 // This file manages current_session itself, so we #undef the macros to avoid
 // accidental expansion in the implementation below.
@@ -43,6 +46,7 @@ GameSession::GameSession(const Config& session_cfg)
 
     if (cfg_.allocate_prefs) {
         prefs_owner_ = std::make_unique<options>();
+        init_allkeys(allkeys_);
     }
     ctx_.mounted_campaign = prev_ctx.mounted_campaign;
 

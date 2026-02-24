@@ -99,6 +99,9 @@ public:
     int guy_id_counter_ = 0;
     short changedteam_[6] = {};
 
+    // Keybinding storage (Phase 5) — moved from view.cpp allkeys global.
+    int allkeys_[4][kNumKeys] = {};
+
     // Picker state (Batch 8) — moved from picker.cpp globals.
     static constexpr int kNumFamilies = 14;  // == NUM_FAMILIES from constants.h
     std::int32_t current_difficulty_ = 1;

@@ -139,8 +139,9 @@ inline constexpr const char* KEY_FILE = "keyprefs.dat";
 //   for our prefs object (grumble grumble)
 // Zardus: these used to be static chars too
 const int *normalkeys[] = {key1,key2,key3,key4};
-// Zardus: keys is a sys var (apparently) so we'll use allkeys
-int allkeys[4][16];
+// allkeys now lives in GameSession::allkeys_ (Phase 5 migration).
+// File-local accessor for convenience.
+static inline auto& allkeys() { return og::runtime::current_session->allkeys_; }
 
 // theprefs is now a macro defined in view.h (dereferences current_session).
 // myscreen is now a macro defined in base.h (dereferences current_session).
@@ -187,7 +188,7 @@ viewscreen::viewscreen(short x, short y, short width,
 
 	// Key entries ..
 	mynum = whatnum;              // what viewscreen am I?
-	mykeys = allkeys[mynum]; // assign keyboard mappings
+	mykeys = allkeys()[mynum]; // assign keyboard mappings
 
 	// Set preferences to default values
 	/*
@@ -1361,12 +1362,31 @@ Sint32 viewscreen::change_gamma(Sint32 whichway)
 // Options object
 // **************************************************
 
+// Initialize allkeys from defaults, then override from keyprefs.dat if available.
+// Called from GameSession constructor with direct pointer to session's allkeys_.
+// File format: [allkeys[0](64B), prefs[0](10B), allkeys[1](64B), prefs[1](10B), ...]
+void init_allkeys(int allkeys[][16])
+{
+	for (int i = 0; i < 4; i++)
+		std::copy_n(normalkeys[i], 16, allkeys[i]);
+
+	SDL_RWops* infile = open_read_file(KEY_FILE);
+	if (!infile)
+		return;
+
+	for (int i = 0; i < 4; i++)
+	{
+		SDL_RWread(infile, allkeys[i], 16 * sizeof(int), 1);
+		SDL_RWseek(infile, 10, RW_SEEK_CUR);  // skip prefs block
+	}
+
+	SDL_RWclose(infile);
+}
+
 options::options()
 {
 	int i;
 	SDL_RWops *infile;
-	for(i = 0; i < 4; i++)
-		std::copy_n(normalkeys[i], 16, allkeys[i]); // Copy default keys for each player
 
 	// Set up preference defaults
 	for(i=0; i<4; i++)
@@ -1389,7 +1409,8 @@ options::options()
 	// Read the blobs of data ..
 	for (i=0; i < 4; i++)
 	{
-		SDL_RWread(infile, allkeys[i], 16 * sizeof(int), 1);
+		// Skip allkeys data — now loaded separately by init_allkeys()
+		SDL_RWseek(infile, 16 * sizeof(int), RW_SEEK_CUR);
 		SDL_RWread(infile, prefs[i], 10, 1);
 	}
 
@@ -1405,7 +1426,7 @@ short options::load(viewscreen *viewp)
 	short prefnum = viewp->mynum;
 	// Yes, we are ACTUALLY COPYING the data
 	std::copy_n(prefs[prefnum], 10, viewp->prefs);
-	std::copy_n(allkeys[prefnum], 16, viewp->mykeys);
+	std::copy_n(allkeys()[prefnum], 16, viewp->mykeys);
 	return 1;
 }
 
@@ -1422,7 +1443,7 @@ short options::save(viewscreen *viewp)
 
 	// Yes, we are ACTUALLY COPYING the data
 	std::copy_n(viewp->prefs, 10, prefs[prefnum]);
-	std::copy_n(viewp->mykeys, 16, allkeys[prefnum]);
+	std::copy_n(viewp->mykeys, 16, allkeys()[prefnum]);
 
 	outfile = open_write_file(KEY_FILE);
 
@@ -1432,7 +1453,7 @@ short options::save(viewscreen *viewp)
 	// Write the blobs of data ..
 	for (i=0; i < 4; i++)
 	{
-		SDL_RWwrite(outfile, allkeys[i], 16 * sizeof(int), 1);
+		SDL_RWwrite(outfile, allkeys()[i], 16 * sizeof(int), 1);
 		SDL_RWwrite(outfile, prefs[i], 10, 1);
 	}
 
@@ -1578,7 +1599,7 @@ Sint32 viewscreen::set_key_prefs()
 	assignKeyFromWaitEvent(mynum, KEY_SHIFTER);
 
 	//  keytext.write_xy(LEFT_OPS, OPLINES(8), "Press your 'MENU (PREFS)' key:", static_cast<unsigned char>(RED), 1);
-	//  allkeys[mynum][KEY_PREFS] = get_keypress();
+	//  allkeys()[mynum][KEY_PREFS] = get_keypress();
 
 	if (CHEAT_MODE) // are cheats enabled?
 	{
