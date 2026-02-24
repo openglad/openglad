@@ -22,7 +22,7 @@ OG_UNIT_TEST(test_event_kind_request_redraw_value)
 OG_UNIT_TEST(test_sim_event_log_set_palette_event)
 {
     og::sim::SimEventLog log;
-    log.set_tick(1);
+    log.current_tick_ = 1;
     log.push(og::sim::EventKind::SetPalette, 0, 0);
 
     OG_ASSERT(log.size() == 1);
@@ -35,7 +35,7 @@ OG_UNIT_TEST(test_sim_event_log_set_palette_event)
 OG_UNIT_TEST(test_sim_event_log_set_palette_blue)
 {
     og::sim::SimEventLog log;
-    log.set_tick(2);
+    log.current_tick_ = 2;
     log.push(og::sim::EventKind::SetPalette, 1, 0);
 
     OG_ASSERT(log.size() == 1);
@@ -47,7 +47,7 @@ OG_UNIT_TEST(test_sim_event_log_set_palette_blue)
 OG_UNIT_TEST(test_sim_event_log_request_redraw_event)
 {
     og::sim::SimEventLog log;
-    log.set_tick(3);
+    log.current_tick_ = 3;
     log.push(og::sim::EventKind::RequestRedraw, 0, 0);
 
     OG_ASSERT(log.size() == 1);
@@ -61,7 +61,7 @@ OG_UNIT_TEST(test_sim_event_log_request_redraw_event)
 OG_UNIT_TEST(test_emit_event_set_palette)
 {
     og::sim::SimEventLog log;
-    log.set_tick(5);
+    log.current_tick_ = 5;
 
     og::sim::emit_event(&log, og::sim::EventKind::SetPalette, 1);
 
@@ -73,7 +73,7 @@ OG_UNIT_TEST(test_emit_event_set_palette)
 OG_UNIT_TEST(test_emit_event_request_redraw)
 {
     og::sim::SimEventLog log;
-    log.set_tick(7);
+    log.current_tick_ = 7;
 
     og::sim::emit_event(&log, og::sim::EventKind::RequestRedraw);
 
@@ -86,7 +86,7 @@ OG_UNIT_TEST(test_emit_event_request_redraw)
 OG_UNIT_TEST(test_mixed_event_stream_with_new_types)
 {
     og::sim::SimEventLog log;
-    log.set_tick(1);
+    log.current_tick_ = 1;
 
     log.push_sound(10);
     log.push_notification("freeze!");
@@ -130,7 +130,7 @@ OG_UNIT_TEST(test_sim_random_reset_reproduces)
     auto v2 = rng.next(1000);
     auto v3 = rng.next(1000);
 
-    rng.reset(123);
+    rng.state_ = 123;
     OG_ASSERT(rng.next(1000) == v1);
     OG_ASSERT(rng.next(1000) == v2);
     OG_ASSERT(rng.next(1000) == v3);
@@ -148,11 +148,11 @@ OG_UNIT_TEST(test_sim_world_owns_rng)
     og::sim::SimWorld world2(42);
 
     // Both worlds should have the same RNG state
-    OG_ASSERT(world1.rng().state() == world2.rng().state());
+    OG_ASSERT(world1.rng_.state_ == world2.rng_.state_);
 
     // After advancing one, they should differ
-    world1.rng().next(100);
-    OG_ASSERT(world1.rng().state() != world2.rng().state());
+    world1.rng_.next(100);
+    OG_ASSERT(world1.rng_.state_ != world2.rng_.state_);
 }
 
 // --- EndGame, DamageTile, SetEnd event kinds (Phase 2: G5, G6) ---
@@ -175,7 +175,7 @@ OG_UNIT_TEST(test_event_kind_set_end_value)
 OG_UNIT_TEST(test_emit_endgame_event)
 {
     og::sim::SimEventLog log;
-    log.set_tick(10);
+    log.current_tick_ = 10;
     og::sim::emit_event(&log, og::sim::EventKind::EndGame, 0, 5);
 
     OG_ASSERT(log.size() == 1);
@@ -190,7 +190,7 @@ OG_UNIT_TEST(test_emit_endgame_save_all_failure)
 {
     // Simulates walker::death() emitting EndGame with SCEN_TYPE_SAVE_ALL
     og::sim::SimEventLog log;
-    log.set_tick(20);
+    log.current_tick_ = 20;
     og::sim::emit_event(&log, og::sim::EventKind::EndGame,
                         4, static_cast<std::uint32_t>(-1));
 
@@ -204,7 +204,7 @@ OG_UNIT_TEST(test_emit_endgame_save_all_failure)
 OG_UNIT_TEST(test_emit_damage_tile_event)
 {
     og::sim::SimEventLog log;
-    log.set_tick(15);
+    log.current_tick_ = 15;
     og::sim::emit_event(&log, og::sim::EventKind::DamageTile, 120, 240);
 
     OG_ASSERT(log.size() == 1);
@@ -217,7 +217,7 @@ OG_UNIT_TEST(test_emit_damage_tile_event)
 OG_UNIT_TEST(test_emit_set_end_event)
 {
     og::sim::SimEventLog log;
-    log.set_tick(25);
+    log.current_tick_ = 25;
     og::sim::emit_event(&log, og::sim::EventKind::SetEnd);
 
     OG_ASSERT(log.size() == 1);
@@ -230,7 +230,7 @@ OG_UNIT_TEST(test_emit_set_end_event)
 OG_UNIT_TEST(test_mixed_stream_with_phase2_events)
 {
     og::sim::SimEventLog log;
-    log.set_tick(1);
+    log.current_tick_ = 1;
 
     log.push_sound(10);
     log.push(og::sim::EventKind::DamageTile, 50, 60);

@@ -64,7 +64,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
 {
     TickResult result;
     tick_count_++;
-    events.set_tick(tick_count_);
+    events.current_tick_ = tick_count_;
     if (last_level_id_ != level.id)
     {
         last_level_id_ = level.id;

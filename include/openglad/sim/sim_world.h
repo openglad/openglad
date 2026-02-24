@@ -26,10 +26,6 @@ public:
         return (state_ >> 16) % max_exclusive;
     }
 
-    void reset(std::uint32_t seed) { state_ = seed; }
-    std::uint32_t state() const { return state_; }
-
-private:
     std::uint32_t state_;
 };
 
@@ -91,18 +87,12 @@ public:
                     std::int32_t& enemy_freeze, char end,
                     SimEventLog& events);
 
-    // Accumulated tick counter.
-    std::uint32_t tick_count() const { return tick_count_; }
-
-    // Access the sim-layer RNG (for testing / seeding).
-    SimRandom& rng() { return rng_; }
-    const SimRandom& rng() const { return rng_; }
+    std::uint32_t tick_count_ = 0;
+    SimRandom rng_;
 
 private:
-    std::uint32_t tick_count_ = 0;
     std::uint32_t level_tick_count_ = 0;
     int last_level_id_ = -1;
-    SimRandom rng_;
 };
 
 } // namespace og::sim

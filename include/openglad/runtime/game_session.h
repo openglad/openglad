@@ -50,14 +50,6 @@ public:
 
     ::screen* screen_ptr() const;
     options* prefs_ptr() const;
-    GameContext& context() { return ctx_; }
-    const GameContext& context() const { return ctx_; }
-
-    GameLoopFrameState& frame_state() { return frame_state_; }
-
-    // Per-session render surface (320x200 32-bit).
-    // Non-null only for sessions that don't own the display (create_display=false).
-    SDL_Surface* render_surface() const { return session_surface_; }
 
     // Activate this session: install its globals as current.
     // Returns an RAII guard that restores the previous session on destruction.
@@ -114,10 +106,15 @@ public:
     std::int32_t editguy_ = 0;
     std::string message_;
 
-private:
-    Config cfg_;
     GameContext ctx_;
     GameLoopFrameState frame_state_;
+
+    // Per-session render surface (320x200 32-bit).
+    // Non-null only for sessions that don't own the display (create_display=false).
+    SDL_Surface* session_surface_ = nullptr;
+
+private:
+    Config cfg_;
 
     // Default RNG for sessions that install a global context but don't opt into a seeded RNG.
     ProductionRandom production_rng_;
@@ -131,9 +128,6 @@ private:
     // Owned runtime state.
     std::unique_ptr<options> prefs_owner_;
     std::unique_ptr<::screen> screen_owner_;
-
-    // Per-session 320x200 render target for sub-sessions sharing a display.
-    SDL_Surface* session_surface_ = nullptr;
 };
 
 // The currently-active session. Legacy global macros (#define myscreen, etc.)

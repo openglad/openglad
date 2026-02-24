@@ -83,7 +83,7 @@ static void init_session_game(DemoSession& demo, int scen_id)
     s->redrawme = 1;
     s->framecount = 0;
     s->timerstart = query_timer_control();
-    demo.session->frame_state() = {};
+    demo.session->frame_state_ = {};
     demo.finished = false;
 }
 
@@ -242,7 +242,7 @@ int main(int argc, char* argv[])
                 screen* s = myscreen;
                 if (!s) continue;
 
-                GameLoopFrameState& fs = demos[i].session->frame_state();
+                GameLoopFrameState& fs = demos[i].session->frame_state_;
                 bool done = game_frame(*s, fs, deps);
                 if (done) {
                     demos[i].finished = true;
@@ -255,7 +255,7 @@ int main(int argc, char* argv[])
             // Composite all session surfaces into the composite surface
             SDL_FillRect(composite_surface, nullptr, 0x000000);
             for (int i = 0; i < NUM_SESSIONS; i++) {
-                SDL_Surface* src = demos[i].session->render_surface();
+                SDL_Surface* src = demos[i].session->session_surface_;
                 int col = i % GRID_COLS;
                 int row = i / GRID_COLS;
                 composite_session(composite_surface, src, col, row);

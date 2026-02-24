@@ -8,7 +8,7 @@ OG_UNIT_TEST(test_sim_event_log_push_and_clear)
     OG_ASSERT(log.empty());
     OG_ASSERT(log.size() == 0);
 
-    log.set_tick(1);
+    log.current_tick_ = 1;
     log.push(og::sim::EventKind::SetPalette, 1, 0);
     OG_ASSERT(!log.empty());
     OG_ASSERT(log.size() == 1);
@@ -26,7 +26,7 @@ OG_UNIT_TEST(test_sim_event_log_push_and_clear)
 OG_UNIT_TEST(test_sim_event_log_push_sound)
 {
     og::sim::SimEventLog log;
-    log.set_tick(5);
+    log.current_tick_ = 5;
     log.push_sound(42);
 
     OG_ASSERT(log.size() == 1);
@@ -39,7 +39,7 @@ OG_UNIT_TEST(test_sim_event_log_push_sound)
 OG_UNIT_TEST(test_sim_event_log_push_notification)
 {
     og::sim::SimEventLog log;
-    log.set_tick(10);
+    log.current_tick_ = 10;
     log.push_notification("Hello, world!");
 
     OG_ASSERT(log.size() == 1);
@@ -52,7 +52,7 @@ OG_UNIT_TEST(test_sim_event_log_push_notification)
 OG_UNIT_TEST(test_sim_event_log_drain)
 {
     og::sim::SimEventLog log;
-    log.set_tick(1);
+    log.current_tick_ = 1;
     log.push_sound(1);
     log.push_sound(2);
     log.push_sound(3);
@@ -70,15 +70,15 @@ OG_UNIT_TEST(test_sim_event_log_drain)
 OG_UNIT_TEST(test_sim_event_log_tick_tracking)
 {
     og::sim::SimEventLog log;
-    OG_ASSERT(log.tick() == 0);
+    OG_ASSERT(log.current_tick_ == 0);
 
-    log.set_tick(42);
-    OG_ASSERT(log.tick() == 42);
+    log.current_tick_ = 42;
+    OG_ASSERT(log.current_tick_ == 42);
 
     log.push(og::sim::EventKind::SetPalette, 1, 0);
     OG_ASSERT(log.events()[0].tick == 42);
 
-    log.set_tick(43);
+    log.current_tick_ = 43;
     log.push(og::sim::EventKind::RequestRedraw, 0, 0);
     OG_ASSERT(log.events()[1].tick == 43);
 }
@@ -86,7 +86,7 @@ OG_UNIT_TEST(test_sim_event_log_tick_tracking)
 OG_UNIT_TEST(test_sim_event_log_multiple_event_types)
 {
     og::sim::SimEventLog log;
-    log.set_tick(1);
+    log.current_tick_ = 1;
 
     log.push_sound(10);
     log.push_notification("test msg");

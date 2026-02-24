@@ -407,7 +407,7 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
 
     og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
     TEST_ASSERT_EQ(1, static_cast<int>(enemy_freeze), "enemy_freeze should decrement");
-    TEST_ASSERT_EQ(1, static_cast<int>(world.tick_count()), "first tick should increment tick_count");
+    TEST_ASSERT_EQ(1, static_cast<int>(world.tick_count_), "first tick should increment tick_count");
 
     bool saw_set_palette = false;
     for (const auto& ev : events.events())

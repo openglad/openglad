@@ -28,7 +28,7 @@ OG_UNIT_TEST(test_game_session_headless_restores_legacy_globals)
 
         OG_ASSERT(myscreen == nullptr);
         OG_ASSERT(theprefs == nullptr);
-        OG_ASSERT(session.context().rng != nullptr);
+        OG_ASSERT(session.ctx_.rng != nullptr);
     }
 
     OG_ASSERT(myscreen == prev_screen);
@@ -46,14 +46,14 @@ OG_UNIT_TEST(test_game_session_seeded_rng_is_deterministic)
     session_cfg.rng_seed = 123u;
     og::runtime::GameSession session(session_cfg);
 
-    const Uint32 a0 = session.context().rng->next(1000);
-    const Uint32 a1 = session.context().rng->next(1000);
-    const Uint32 a2 = session.context().rng->next(1000);
+    const Uint32 a0 = session.ctx_.rng->next(1000);
+    const Uint32 a1 = session.ctx_.rng->next(1000);
+    const Uint32 a2 = session.ctx_.rng->next(1000);
 
     og::runtime::GameSession session2(session_cfg);
-    const Uint32 b0 = session2.context().rng->next(1000);
-    const Uint32 b1 = session2.context().rng->next(1000);
-    const Uint32 b2 = session2.context().rng->next(1000);
+    const Uint32 b0 = session2.ctx_.rng->next(1000);
+    const Uint32 b1 = session2.ctx_.rng->next(1000);
+    const Uint32 b2 = session2.ctx_.rng->next(1000);
 
     OG_ASSERT(a0 == b0);
     OG_ASSERT(a1 == b1);
@@ -79,9 +79,9 @@ OG_UNIT_TEST(test_game_session_repeated_create_destroy)
 
         OG_ASSERT(myscreen == nullptr);
         OG_ASSERT(theprefs == nullptr);
-        OG_ASSERT(session.context().rng != nullptr);
+        OG_ASSERT(session.ctx_.rng != nullptr);
         // Verify RNG works within session
-        session.context().rng->next(100);
+        session.ctx_.rng->next(100);
     }
 
     // After all sessions destroyed, globals should be restored
@@ -241,13 +241,13 @@ OG_UNIT_TEST(test_session_scope_nested_activation)
         auto scope1 = session1.activate();
         // session1's context should be active
         IRandom* rng1 = ctx().rng;
-        OG_ASSERT(rng1 == session1.context().rng);
+        OG_ASSERT(rng1 == session1.ctx_.rng);
 
         {
             auto scope2 = session2.activate();
             // session2's context should now be active
             IRandom* rng2 = ctx().rng;
-            OG_ASSERT(rng2 == session2.context().rng);
+            OG_ASSERT(rng2 == session2.ctx_.rng);
             OG_ASSERT(rng2 != rng1);
         }
         // After inner scope: session1 should be active again
@@ -268,17 +268,17 @@ OG_UNIT_TEST(test_session_frame_state_independence)
     og::runtime::GameSession session2(session_cfg);
 
     // Modify frame states independently
-    session1.frame_state().done = true;
-    session1.frame_state().currentcycle = 42;
+    session1.frame_state_.done = true;
+    session1.frame_state_.currentcycle = 42;
 
-    session2.frame_state().done = false;
-    session2.frame_state().currentcycle = 7;
+    session2.frame_state_.done = false;
+    session2.frame_state_.currentcycle = 7;
 
     // Verify they're independent
-    OG_ASSERT(session1.frame_state().done == true);
-    OG_ASSERT(session1.frame_state().currentcycle == 42);
-    OG_ASSERT(session2.frame_state().done == false);
-    OG_ASSERT(session2.frame_state().currentcycle == 7);
+    OG_ASSERT(session1.frame_state_.done == true);
+    OG_ASSERT(session1.frame_state_.currentcycle == 42);
+    OG_ASSERT(session2.frame_state_.done == false);
+    OG_ASSERT(session2.frame_state_.currentcycle == 7);
 }
 
 // ---------------------------------------------------------------------------
@@ -310,7 +310,7 @@ OG_UNIT_TEST(test_twelve_sessions_coexist)
     OG_ASSERT(sessions.size() == N);
     for (int i = 0; i < N; i++) {
         OG_ASSERT(sessions[static_cast<size_t>(i)] != nullptr);
-        OG_ASSERT(sessions[static_cast<size_t>(i)]->context().rng != nullptr);
+        OG_ASSERT(sessions[static_cast<size_t>(i)]->ctx_.rng != nullptr);
     }
 
     // Each session has independent RNG state
@@ -327,11 +327,11 @@ OG_UNIT_TEST(test_twelve_sessions_coexist)
 
     // Each session has independent frame state
     for (int i = 0; i < N; i++) {
-        sessions[static_cast<size_t>(i)]->frame_state().currentcycle =
+        sessions[static_cast<size_t>(i)]->frame_state_.currentcycle =
             static_cast<short>(i);
     }
     for (int i = 0; i < N; i++) {
-        OG_ASSERT(sessions[static_cast<size_t>(i)]->frame_state().currentcycle ==
+        OG_ASSERT(sessions[static_cast<size_t>(i)]->frame_state_.currentcycle ==
                   static_cast<short>(i));
     }
 
@@ -380,8 +380,8 @@ OG_UNIT_TEST(test_session_state_modification_isolation)
     OG_ASSERT(b_val == b_fresh_val);
 
     // Session A's frame state changes don't affect B
-    session_a.frame_state().done = true;
-    OG_ASSERT(session_b.frame_state().done == false);
+    session_a.frame_state_.done = true;
+    OG_ASSERT(session_b.frame_state_.done == false);
 }
 
 OG_UNIT_TEST(test_demo_grid_layout_non_overlapping)

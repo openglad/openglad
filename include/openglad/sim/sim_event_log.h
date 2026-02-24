@@ -47,12 +47,10 @@ public:
     std::size_t size() const { return events_.size(); }
 
     // Current simulation tick (set by the simulation loop each frame).
-    void set_tick(std::uint32_t tick) { current_tick_ = tick; }
-    std::uint32_t tick() const { return current_tick_; }
+    std::uint32_t current_tick_ = 0;
 
 private:
     std::vector<Event> events_;
-    std::uint32_t current_tick_ = 0;
 };
 
 } // namespace og::sim

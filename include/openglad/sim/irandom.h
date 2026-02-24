@@ -35,7 +35,5 @@ public:
         state_ = state_ * 1103515245u + 12345u;
         return (state_ >> 16) % max_exclusive;
     }
-    void reset(std::uint32_t seed) { state_ = seed; }
-private:
     std::uint32_t state_;
 };

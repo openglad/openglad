@@ -94,7 +94,7 @@ void test_seeded_rng_reset()
     rng.next(100); // advance
     rng.next(100);
 
-    rng.reset(42);
+    rng.state_ = 42;
     Uint32 after_reset = rng.next(100);
     TEST_ASSERT_EQ(static_cast<int>(first), static_cast<int>(after_reset),
                     "reset(42) should reproduce the same first value");

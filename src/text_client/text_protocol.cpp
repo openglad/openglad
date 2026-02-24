@@ -79,7 +79,7 @@ static void cmd_tick(og::sim::SimWorld& sim, LevelData& level, SaveData& save,
         if (i > 0) std::cout << ",";
         auto result = sim.tick(level, save, enemy_freeze, end, events);
         level.level_done = result.level_done;
-        std::cout << "{\"tick\":" << sim.tick_count()
+        std::cout << "{\"tick\":" << sim.tick_count_
                   << ",\"level_done\":" << result.level_done
                   << ",\"game_ended\":" << (result.game_ended ? "true" : "false")
                   << ",\"next_level\":" << result.next_level
