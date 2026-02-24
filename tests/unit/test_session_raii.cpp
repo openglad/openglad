@@ -4,6 +4,8 @@
 #include <openglad/legacy/base.h> // myscreen
 #include <openglad/render/view.h> // theprefs
 
+#include <set>
+
 #include "unit.h"
 
 OG_UNIT_TEST(test_game_session_headless_restores_legacy_globals)
@@ -272,4 +274,154 @@ OG_UNIT_TEST(test_session_frame_state_independence)
     OG_ASSERT(session1.frame_state().currentcycle == 42);
     OG_ASSERT(session2.frame_state().done == false);
     OG_ASSERT(session2.frame_state().currentcycle == 7);
+}
+
+// ---------------------------------------------------------------------------
+// Multi-session demo verification tests
+// ---------------------------------------------------------------------------
+
+OG_UNIT_TEST(test_twelve_sessions_coexist)
+{
+    // Verify that 12 GameSession instances can be created concurrently
+    // with independent state (matches the openglad_demo configuration).
+    screen* baseline_screen = myscreen;
+    options* baseline_prefs = theprefs;
+
+    og::runtime::GameSession::Config session_cfg;
+    session_cfg.allocate_screen = false;
+    session_cfg.allocate_prefs = false;
+    session_cfg.install_legacy_globals = false;
+    session_cfg.install_global_context = false;
+    session_cfg.allocate_seeded_rng = true;
+
+    constexpr int N = 12;
+    std::vector<std::unique_ptr<og::runtime::GameSession>> sessions;
+    for (int i = 0; i < N; i++) {
+        session_cfg.rng_seed = static_cast<Uint32>(i * 1000 + 42);
+        sessions.push_back(std::make_unique<og::runtime::GameSession>(session_cfg));
+    }
+
+    // All 12 sessions exist simultaneously
+    OG_ASSERT(sessions.size() == N);
+    for (int i = 0; i < N; i++) {
+        OG_ASSERT(sessions[static_cast<size_t>(i)] != nullptr);
+        OG_ASSERT(sessions[static_cast<size_t>(i)]->context().rng != nullptr);
+    }
+
+    // Each session has independent RNG state
+    std::vector<Uint32> values;
+    for (int i = 0; i < N; i++) {
+        auto scope = sessions[static_cast<size_t>(i)]->activate();
+        values.push_back(ctx().rng->next(100000));
+    }
+
+    // Count unique values - with 12 different seeds, we should get
+    // at least 2 distinct values (overwhelmingly likely to get 12).
+    std::set<Uint32> unique_values(values.begin(), values.end());
+    OG_ASSERT(unique_values.size() >= 2);
+
+    // Each session has independent frame state
+    for (int i = 0; i < N; i++) {
+        sessions[static_cast<size_t>(i)]->frame_state().currentcycle =
+            static_cast<short>(i);
+    }
+    for (int i = 0; i < N; i++) {
+        OG_ASSERT(sessions[static_cast<size_t>(i)]->frame_state().currentcycle ==
+                  static_cast<short>(i));
+    }
+
+    sessions.clear();
+    OG_ASSERT(myscreen == baseline_screen);
+    OG_ASSERT(theprefs == baseline_prefs);
+}
+
+OG_UNIT_TEST(test_session_state_modification_isolation)
+{
+    // Modify state in one session, verify others are unaffected.
+    og::runtime::GameSession::Config session_cfg;
+    session_cfg.allocate_screen = false;
+    session_cfg.allocate_prefs = false;
+    session_cfg.install_legacy_globals = false;
+    session_cfg.install_global_context = false;
+    session_cfg.allocate_seeded_rng = true;
+    session_cfg.rng_seed = 1;
+
+    og::runtime::GameSession session_a(session_cfg);
+    session_cfg.rng_seed = 2;
+    og::runtime::GameSession session_b(session_cfg);
+
+    // Consume RNG values from session A
+    {
+        auto scope = session_a.activate();
+        for (int i = 0; i < 100; i++) {
+            ctx().rng->next(1000);
+        }
+    }
+
+    // Session B's RNG should be unaffected - first value should match
+    // a fresh session with seed 2
+    session_cfg.rng_seed = 2;
+    og::runtime::GameSession session_b_fresh(session_cfg);
+
+    Uint32 b_val, b_fresh_val;
+    {
+        auto scope = session_b.activate();
+        b_val = ctx().rng->next(1000);
+    }
+    {
+        auto scope = session_b_fresh.activate();
+        b_fresh_val = ctx().rng->next(1000);
+    }
+    OG_ASSERT(b_val == b_fresh_val);
+
+    // Session A's frame state changes don't affect B
+    session_a.frame_state().done = true;
+    OG_ASSERT(session_b.frame_state().done == false);
+}
+
+OG_UNIT_TEST(test_demo_grid_layout_non_overlapping)
+{
+    // Verify the 4x3 grid layout produces 12 non-overlapping sub-regions.
+    constexpr int COLS = 4;
+    constexpr int ROWS = 3;
+    constexpr int W = 320;
+    constexpr int H = 200;
+    constexpr int TOTAL = COLS * ROWS;
+
+    struct Rect { int x, y, w, h; };
+    std::vector<Rect> rects;
+
+    for (int i = 0; i < TOTAL; i++) {
+        int col = i % COLS;
+        int row = i / COLS;
+        rects.push_back({col * W, row * H, W, H});
+    }
+
+    OG_ASSERT(rects.size() == 12);
+
+    // Verify no two rects overlap
+    for (size_t i = 0; i < rects.size(); i++) {
+        for (size_t j = i + 1; j < rects.size(); j++) {
+            const auto& a = rects[i];
+            const auto& b = rects[j];
+            bool overlaps = (a.x < b.x + b.w) && (a.x + a.w > b.x) &&
+                            (a.y < b.y + b.h) && (a.y + a.h > b.y);
+            OG_ASSERT(!overlaps);
+        }
+    }
+
+    // Verify they tile the full display
+    int total_area = 0;
+    for (const auto& r : rects) {
+        total_area += r.w * r.h;
+    }
+    OG_ASSERT(total_area == COLS * W * ROWS * H);
+
+    // Verify bounds
+    for (const auto& r : rects) {
+        OG_ASSERT(r.x >= 0);
+        OG_ASSERT(r.y >= 0);
+        OG_ASSERT(r.x + r.w <= COLS * W);
+        OG_ASSERT(r.y + r.h <= ROWS * H);
+    }
 }

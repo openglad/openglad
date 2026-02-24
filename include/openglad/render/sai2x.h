@@ -30,6 +30,10 @@ class Screen
         // A larger texture for the doubled result
         SDL_Texture* render2_tex;
         
+		// When true, swap() renders to the surface but skips SDL_RenderPresent.
+		// Used by multi-session demos to composite multiple sessions before presenting.
+		bool suppress_present = false;
+
 		Screen(RenderEngine engine, int width, int height, int fullscreen);
 		~Screen();
 
@@ -38,7 +42,7 @@ class Screen
         void clear();
         void clear(int x, int y, int w, int h);
 		void swap(int x, int y, int w, int h);
-		
+
 		void clear_window();
 
 };

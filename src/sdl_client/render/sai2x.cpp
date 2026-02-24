@@ -771,9 +771,15 @@ void Screen::clear(int x, int y, int w, int h)
 
 void Screen::swap(int x, int y, int w, int h)
 {
+    // When suppress_present is set, rendering still goes to the surface
+    // (E_Screen->render) but we skip presentation to the physical display.
+    // This is used by multi-session demos that composite multiple session
+    // surfaces before presenting once.
+    if (suppress_present) return;
+
     SDL_Surface* source_surface = render;
     SDL_Texture* dest_texture = render_tex;
-    
+
 	switch(Engine) {
 		case RenderEngine::SAI:
                 if(render2 == nullptr)
@@ -786,7 +792,7 @@ void Screen::swap(int x, int y, int w, int h)
                         reinterpret_cast<unsigned char*>(render->pixels), x, y, w, h, render->pitch, render->h,
                         reinterpret_cast<unsigned char*>(render2->pixels), 2*x, 2*y, render2->pitch);
                 SDL_UnlockSurface( render2 );
-                
+
                 source_surface = render2;
                 dest_texture = render2_tex;
             break;
@@ -800,16 +806,16 @@ void Screen::swap(int x, int y, int w, int h)
                 Scale_SuperEagle(reinterpret_cast<unsigned char*>(render->pixels), x, y, w, h, render->pitch, render->h,
                                  reinterpret_cast<unsigned char*>(render2->pixels), 2*x, 2*y, render2->pitch);
                 SDL_UnlockSurface( render2 );
-                
+
                 source_surface = render2;
                 dest_texture = render2_tex;
 			break;
         default:
             break;
 	}
-	
+
     SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
-    
+
     SDL_Rect dest = {int(viewport_offset_x), int(viewport_offset_y), int(viewport_w), int(viewport_h)};
 
     SDL_RenderCopy(renderer, dest_texture, nullptr, &dest);
