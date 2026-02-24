@@ -6,8 +6,6 @@
 #include "test_interact.h"
 #include <openglad/input/input.h>
 #include <openglad/runtime/screen.h>
-extern MouseState mouse_state;
-
 Sint32 yes_or_no(Sint32 arg);
 void toggle_rendering_engine();
 void toggle_effect(const std::string& category, const std::string& setting);

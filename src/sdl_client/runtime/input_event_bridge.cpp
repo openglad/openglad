@@ -5,13 +5,12 @@
 // runtime module) to keep the input module free of runtime/render deps.
 
 #include <openglad/input/input.h>
+#include <openglad/runtime/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/data/gparser.h>
 #include <openglad/platform/io.h>
 #include <openglad/legacy/base.h>
-
-// Globals defined in input.cpp
 
 static inline screen* active_screen()
 {
@@ -104,25 +103,19 @@ void handle_key_event(const SDL_Event& event)
 #include <openglad/core/stats.h>
 #include <openglad/entities/walker.h>
 
-// Touch globals defined in input.cpp
-extern bool moving;
-extern int moving_touch_x;
-extern int moving_touch_y;
-extern int moving_touch_target_x;
-extern int moving_touch_target_y;
-
 void draw_touch_controls(screen* vob)
 {
     walker* control = vob->viewob[0]->control;
     if(control == nullptr || control->dead)
         return;
 
-    if(moving)
+    auto& hw = *og::runtime::current_session->input_hw_;
+    if(hw.moving)
     {
         // Touch movement feedback
-        vob->fastbox(moving_touch_x - MOVE_AREA_DIM/2, moving_touch_y - MOVE_AREA_DIM/2, MOVE_AREA_DIM, MOVE_AREA_DIM, 17);
-        vob->fastbox(moving_touch_x - 4, moving_touch_y - 4, 8, 8, 16);
-        vob->fastbox(moving_touch_target_x - 2, moving_touch_target_y - 2, 4, 4, 15);
+        vob->fastbox(hw.moving_touch_x - MOVE_AREA_DIM/2, hw.moving_touch_y - MOVE_AREA_DIM/2, MOVE_AREA_DIM, MOVE_AREA_DIM, 17);
+        vob->fastbox(hw.moving_touch_x - 4, hw.moving_touch_y - 4, 8, 8, 16);
+        vob->fastbox(hw.moving_touch_target_x - 2, hw.moving_touch_target_y - 2, 4, 4, 15);
     }
 
     // Touch buttons

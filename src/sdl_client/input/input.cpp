@@ -21,6 +21,7 @@
 //
 
 #include <openglad/input/input.h>
+#include <openglad/runtime/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
 #include <openglad/data/gparser.h>
@@ -48,24 +49,10 @@ void quit(Sint32 arg1);
 // Input scalar globals (raw_key, player_keys, keystates, viewport_*, etc.)
 // are now members of GameSession, accessed via macros defined in input.h.
 
-#ifdef USE_TOUCH_INPUT
-bool tapping = false;
-int start_tap_x = 0;
-int start_tap_y = 0;
-
-bool moving = false;
-int moving_touch_x = 0;
-int moving_touch_y = 0;
-int moving_touch_target_x = 0;
-int moving_touch_target_y = 0;
-SDL_FingerID movingTouch = 0;
-bool firing = false;
-SDL_FingerID firingTouch = 0;
-#endif
-
-// These remain as true globals (SDL-dependent types).
-MouseState mouse_state;
-Sint32 mouse_buttons;
+// Input hardware state now lives in GameSession::input_hw_ (InputHardwareState).
+// Access via hw() helper for fields without macros; mouse_state and player_joy
+// are already macros defined in input.h.
+static inline auto& hw() { return *og::runtime::current_session->input_hw_; }
 
 void update_overscan_setting()
 {
@@ -79,8 +66,6 @@ void update_overscan_setting()
     og::runtime::current_session->viewport_w_ = og::runtime::current_session->window_w_ * (1.0f - og::runtime::current_session->overscan_percentage_);
     og::runtime::current_session->viewport_h_ = og::runtime::current_session->window_h_ * (1.0f - og::runtime::current_session->overscan_percentage_);
 }
-
-JoyData player_joy[4];
 
 #define JOY_DEAD_ZONE 8000
 #define MAX_NUM_JOYSTICKS 10  // Just in case there are joysticks attached that are not useable (e.g. accelerometer)
@@ -198,64 +183,10 @@ void sync_runtime_keys_to_active_mode(int player_index);
 void activate_mode_keymap_for_player(int player_index, int mode);
 } // namespace
 
-// player_keys is now a macro → current_session->player_keys_.
-// Default values are set by reset_default_player_controls() called from init_input().
-int player_control_modes[4] = {
-    static_cast<int>(ControlDirectionMode::FourDirection),
-    static_cast<int>(ControlDirectionMode::FourDirection),
-    static_cast<int>(ControlDirectionMode::FourDirection),
-    static_cast<int>(ControlDirectionMode::FourDirection),
-};
-int player_mode_keys[4][kNumControlModeKeymaps][NUM_KEYS] = {};
+// player_control_modes and player_mode_keys now live in InputHardwareState,
+// accessed via hw().player_control_modes and hw().player_mode_keys.
 
-#ifdef USE_TOUCH_INPUT
-bool touch_keystate[4][NUM_KEYS] = {
-    {
-        false, false, false, false,  // movements
-        false, false, false, false,
-        false, false,                  // fire & special
-        false,                         // switch guys
-        false,                               // change special
-        false,                                 // Yell
-        false,                            // Shifter
-        false,                                 // Options menu
-        false,                                // Cheat key
-    },
-    {
-        false, false, false, false,  // movements
-        false, false, false, false,
-        false, false,                // fire & special
-        false,                            // switch guys
-        false,                             // change special
-        false,                         // Yell
-        false,                            // Shifter
-        false,                                 // Options menu
-        false,                                // Cheat key
-    },
-    {
-        false, false, false, false,  // movements
-        false, false, false, false,
-        false, false,             // fire & special
-        false,                             // switch guys
-        false,                                 // change special
-        false,                                 // Yell
-        false,                                 // Shifter
-        false,                                 // Options menu
-        false,                                // Cheat key
-    },
-    {
-        false, false, false, false,  // movements
-        false, false, false, false,
-        false, false,                         // fire & special
-        false,                            // switch guys
-        false,                                 // change special
-        false,                                 // Yell
-        false,                                 // Shifter
-        false,                                 // Options menu
-        false,                                // Cheat key
-    }
-};
-#endif
+// touch_keystate now lives in InputHardwareState, accessed via hw().touch_keystate.
 
 void reset_default_player_controls()
 {
@@ -263,14 +194,14 @@ void reset_default_player_controls()
     {
         for (int k = 0; k < NUM_KEYS; ++k)
         {
-            player_mode_keys[p][kModeFourIndex][k] = kDefaultFourDirKeys[p][k];
-            player_mode_keys[p][kModeEightIndex][k] = kDefaultEightDirKeys[p][k];
+            hw().player_mode_keys[p][kModeFourIndex][k] = kDefaultFourDirKeys[p][k];
+            hw().player_mode_keys[p][kModeEightIndex][k] = kDefaultEightDirKeys[p][k];
         }
-        player_control_modes[p] = kDefaultControlModes[p];
+        hw().player_control_modes[p] = kDefaultControlModes[p];
         // Activate the default mode's keymap into player_keys
         const int idx = control_mode_keymap_index(kDefaultControlModes[p]);
         for (int k = 0; k < NUM_KEYS; ++k)
-            og::runtime::current_session->player_keys_[p][k] = player_mode_keys[p][idx][k];
+            og::runtime::current_session->player_keys_[p][k] = hw().player_mode_keys[p][idx][k];
     }
 }
 
@@ -278,7 +209,7 @@ int get_player_control_mode(int player_index)
 {
     if (player_index < 0 || player_index >= 4)
         return static_cast<int>(ControlDirectionMode::FourDirection);
-    return player_control_modes[player_index];
+    return hw().player_control_modes[player_index];
 }
 
 void set_player_control_mode(int player_index, int mode)
@@ -286,8 +217,8 @@ void set_player_control_mode(int player_index, int mode)
     if (player_index < 0 || player_index >= 4)
         return;
     sync_runtime_keys_to_active_mode(player_index);
-    player_control_modes[player_index] = normalize_control_mode(mode);
-    activate_mode_keymap_for_player(player_index, player_control_modes[player_index]);
+    hw().player_control_modes[player_index] = normalize_control_mode(mode);
+    activate_mode_keymap_for_player(player_index, hw().player_control_modes[player_index]);
 }
 
 bool player_allows_diagonal_movement(int player_index)
@@ -300,7 +231,7 @@ int get_player_key_binding_for_mode(int player_index, int mode, int key_enum)
     if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
         return SDLK_UNKNOWN;
     const int mode_index = control_mode_keymap_index(mode);
-    return player_mode_keys[player_index][mode_index][key_enum];
+    return hw().player_mode_keys[player_index][mode_index][key_enum];
 }
 
 void set_player_key_binding(int player_index, int key_enum, int keycode)
@@ -308,7 +239,7 @@ void set_player_key_binding(int player_index, int key_enum, int keycode)
     if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
         return;
     const int mode_index = current_player_mode_keymap_index(player_index);
-    player_mode_keys[player_index][mode_index][key_enum] = keycode;
+    hw().player_mode_keys[player_index][mode_index][key_enum] = keycode;
     og::runtime::current_session->player_keys_[player_index][key_enum] = keycode;
 }
 
@@ -328,15 +259,15 @@ void load_player_control_settings_from_cfg(cfg_store& config)
             {
                 const int four_fallback = kDefaultFourDirKeys[p][k];
                 const int eight_fallback = kDefaultEightDirKeys[p][k];
-                player_mode_keys[p][kModeFourIndex][k] = parse_int_strict(legacy_key_value).value_or(four_fallback);
-                player_mode_keys[p][kModeEightIndex][k] = parse_int_strict(legacy_key_value).value_or(eight_fallback);
+                hw().player_mode_keys[p][kModeFourIndex][k] = parse_int_strict(legacy_key_value).value_or(four_fallback);
+                hw().player_mode_keys[p][kModeEightIndex][k] = parse_int_strict(legacy_key_value).value_or(eight_fallback);
             }
 
             const std::string mode4_key_name = std::format("player{}_mode4_key{}", p + 1, k);
             const std::string mode4_key_value = config.get_setting("controls", mode4_key_name);
             if (!mode4_key_value.empty())
             {
-                player_mode_keys[p][kModeFourIndex][k] =
+                hw().player_mode_keys[p][kModeFourIndex][k] =
                     parse_int_strict(mode4_key_value).value_or(kDefaultFourDirKeys[p][k]);
             }
 
@@ -344,16 +275,16 @@ void load_player_control_settings_from_cfg(cfg_store& config)
             const std::string mode8_key_value = config.get_setting("controls", mode8_key_name);
             if (!mode8_key_value.empty())
             {
-                player_mode_keys[p][kModeEightIndex][k] =
+                hw().player_mode_keys[p][kModeEightIndex][k] =
                     parse_int_strict(mode8_key_value).value_or(kDefaultEightDirKeys[p][k]);
             }
         }
 
-        player_control_modes[p] = mode_str.empty()
+        hw().player_control_modes[p] = mode_str.empty()
             ? static_cast<int>(ControlDirectionMode::FourDirection)
             : normalize_control_mode(parse_int_strict(mode_str).value_or(
                 static_cast<int>(ControlDirectionMode::FourDirection)));
-        activate_mode_keymap_for_player(p, player_control_modes[p]);
+        activate_mode_keymap_for_player(p, hw().player_control_modes[p]);
     }
 }
 
@@ -368,11 +299,11 @@ void save_player_control_settings_to_cfg(cfg_store& config)
         {
             const int mode_index = current_player_mode_keymap_index(p);
             config.apply_setting("controls", std::format("player{}_key{}", p + 1, k),
-                std::to_string(player_mode_keys[p][mode_index][k]));
+                std::to_string(hw().player_mode_keys[p][mode_index][k]));
             config.apply_setting("controls", std::format("player{}_mode4_key{}", p + 1, k),
-                std::to_string(player_mode_keys[p][kModeFourIndex][k]));
+                std::to_string(hw().player_mode_keys[p][kModeFourIndex][k]));
             config.apply_setting("controls", std::format("player{}_mode8_key{}", p + 1, k),
-                std::to_string(player_mode_keys[p][kModeEightIndex][k]));
+                std::to_string(hw().player_mode_keys[p][kModeEightIndex][k]));
         }
     }
 }
@@ -383,14 +314,14 @@ void sync_runtime_keys_to_active_mode(int player_index)
 {
     const int mode_index = current_player_mode_keymap_index(player_index);
     for (int k = 0; k < NUM_KEYS; ++k)
-        player_mode_keys[player_index][mode_index][k] = og::runtime::current_session->player_keys_[player_index][k];
+        hw().player_mode_keys[player_index][mode_index][k] = og::runtime::current_session->player_keys_[player_index][k];
 }
 
 void activate_mode_keymap_for_player(int player_index, int mode)
 {
     const int mode_index = control_mode_keymap_index(mode);
     for (int k = 0; k < NUM_KEYS; ++k)
-        og::runtime::current_session->player_keys_[player_index][k] = player_mode_keys[player_index][mode_index][k];
+        og::runtime::current_session->player_keys_[player_index][k] = hw().player_mode_keys[player_index][mode_index][k];
 }
 } // namespace
 
@@ -561,41 +492,41 @@ void handle_mouse_event(const SDL_Event& event)
         mouse_state.x = x;
         mouse_state.y = y;
         
-        if(moving && event.tfinger.fingerId == movingTouch)
+        if(hw().moving && event.tfinger.fingerId == hw().movingTouch)
         {
-            moving_touch_target_x = x;
-            moving_touch_target_y = y;
+            hw().moving_touch_target_x = x;
+            hw().moving_touch_target_y = y;
             
-            touch_keystate[0][KEY_UP] = false;
-            touch_keystate[0][KEY_UP_RIGHT] = false;
-            touch_keystate[0][KEY_RIGHT] = false;
-            touch_keystate[0][KEY_DOWN_RIGHT] = false;
-            touch_keystate[0][KEY_DOWN] = false;
-            touch_keystate[0][KEY_DOWN_LEFT] = false;
-            touch_keystate[0][KEY_LEFT] = false;
-            touch_keystate[0][KEY_UP_LEFT] = false;
+            hw().touch_keystate[0][KEY_UP] = false;
+            hw().touch_keystate[0][KEY_UP_RIGHT] = false;
+            hw().touch_keystate[0][KEY_RIGHT] = false;
+            hw().touch_keystate[0][KEY_DOWN_RIGHT] = false;
+            hw().touch_keystate[0][KEY_DOWN] = false;
+            hw().touch_keystate[0][KEY_DOWN_LEFT] = false;
+            hw().touch_keystate[0][KEY_LEFT] = false;
+            hw().touch_keystate[0][KEY_UP_LEFT] = false;
             
-            if(abs(x - moving_touch_x) > MOVE_DEAD_ZONE || abs(y - moving_touch_y) > MOVE_DEAD_ZONE)
+            if(abs(x - hw().moving_touch_x) > MOVE_DEAD_ZONE || abs(y - hw().moving_touch_y) > MOVE_DEAD_ZONE)
             {
                 float offset = -M_PI + M_PI/8;
                 float interval = M_PI/4;
-                float angle = atan2(y - moving_touch_y, x - moving_touch_x);
+                float angle = atan2(y - hw().moving_touch_y, x - hw().moving_touch_x);
                 if(angle < -M_PI + M_PI/8 || angle >= M_PI - M_PI/8)
-                    touch_keystate[0][KEY_LEFT] = true;
+                    hw().touch_keystate[0][KEY_LEFT] = true;
                 else if(angle >= offset && angle < offset + interval)
-                    touch_keystate[0][KEY_UP_LEFT] = true;
+                    hw().touch_keystate[0][KEY_UP_LEFT] = true;
                 else if(angle >= offset + interval && angle < offset + 2*interval)
-                    touch_keystate[0][KEY_UP] = true;
+                    hw().touch_keystate[0][KEY_UP] = true;
                 else if(angle >= offset + 2*interval && angle < offset + 3*interval)
-                    touch_keystate[0][KEY_UP_RIGHT] = true;
+                    hw().touch_keystate[0][KEY_UP_RIGHT] = true;
                 else if(angle >= offset + 3*interval && angle < offset + 4*interval)
-                    touch_keystate[0][KEY_RIGHT] = true;
+                    hw().touch_keystate[0][KEY_RIGHT] = true;
                 else if(angle >= offset + 4*interval && angle < offset + 5*interval)
-                    touch_keystate[0][KEY_DOWN_RIGHT] = true;
+                    hw().touch_keystate[0][KEY_DOWN_RIGHT] = true;
                 else if(angle >= offset + 5*interval && angle < offset + 6*interval)
-                    touch_keystate[0][KEY_DOWN] = true;
+                    hw().touch_keystate[0][KEY_DOWN] = true;
                 else if(angle >= offset + 6*interval && angle < offset + 7*interval)
-                    touch_keystate[0][KEY_DOWN_LEFT] = true;
+                    hw().touch_keystate[0][KEY_DOWN_LEFT] = true;
             }
         }
         }
@@ -604,34 +535,34 @@ void handle_mouse_event(const SDL_Event& event)
         {
             int x = (event.tfinger.x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
             int y = (event.tfinger.y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
-            if(tapping)
+            if(hw().tapping)
             {
-                tapping = false;
-                if(abs(x - start_tap_x) < 2 && abs(y - start_tap_y) < 2)
+                hw().tapping = false;
+                if(abs(x - hw().start_tap_x) < 2 && abs(y - hw().start_tap_y) < 2)
                     og::runtime::current_session->input_continue_ = true;
                 else
                     og::runtime::current_session->input_continue_ = false;
-                start_tap_x = x;
-                start_tap_y = y;
+                hw().start_tap_x = x;
+                hw().start_tap_y = y;
             }
             
-            if(moving && event.tfinger.fingerId == movingTouch)
+            if(hw().moving && event.tfinger.fingerId == hw().movingTouch)
             {
-                moving = false;
+                hw().moving = false;
                 
-                touch_keystate[0][KEY_UP] = false;
-                touch_keystate[0][KEY_UP_RIGHT] = false;
-                touch_keystate[0][KEY_RIGHT] = false;
-                touch_keystate[0][KEY_DOWN_RIGHT] = false;
-                touch_keystate[0][KEY_DOWN] = false;
-                touch_keystate[0][KEY_DOWN_LEFT] = false;
-                touch_keystate[0][KEY_LEFT] = false;
-                touch_keystate[0][KEY_UP_LEFT] = false;
+                hw().touch_keystate[0][KEY_UP] = false;
+                hw().touch_keystate[0][KEY_UP_RIGHT] = false;
+                hw().touch_keystate[0][KEY_RIGHT] = false;
+                hw().touch_keystate[0][KEY_DOWN_RIGHT] = false;
+                hw().touch_keystate[0][KEY_DOWN] = false;
+                hw().touch_keystate[0][KEY_DOWN_LEFT] = false;
+                hw().touch_keystate[0][KEY_LEFT] = false;
+                hw().touch_keystate[0][KEY_UP_LEFT] = false;
             }
-            if(firing && event.tfinger.fingerId == firingTouch)
+            if(hw().firing && event.tfinger.fingerId == hw().firingTouch)
             {
-                firing = false;
-                touch_keystate[0][KEY_FIRE] = false;
+                hw().firing = false;
+                hw().touch_keystate[0][KEY_FIRE] = false;
             }
             
             mouse_state.left = 0;
@@ -639,22 +570,22 @@ void handle_mouse_event(const SDL_Event& event)
         break;
     case SDL_FINGERDOWN:
         {
-            tapping = true;
+            hw().tapping = true;
             
             int x = (event.tfinger.x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
             int y = (event.tfinger.y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
             
-            start_tap_x = x;
-            start_tap_y = y;
+            hw().start_tap_x = x;
+            hw().start_tap_y = y;
             og::runtime::current_session->input_continue_ = false;
             
-            if(!firing && FIRE_BUTTON_X <= x && x <= FIRE_BUTTON_X + BUTTON_DIM
+            if(!hw().firing && FIRE_BUTTON_X <= x && x <= FIRE_BUTTON_X + BUTTON_DIM
                 && FIRE_BUTTON_Y <= y && y <= FIRE_BUTTON_Y + BUTTON_DIM)
             {
-                firing = true;
+                hw().firing = true;
                 sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_FIRE]);
-                touch_keystate[0][KEY_FIRE] = true;
-                firingTouch = event.tfinger.fingerId;
+                hw().touch_keystate[0][KEY_FIRE] = true;
+                hw().firingTouch = event.tfinger.fingerId;
             }
             else if(SPECIAL_BUTTON_X <= x && x <= SPECIAL_BUTTON_X + BUTTON_DIM
                 && SPECIAL_BUTTON_Y <= y && y <= SPECIAL_BUTTON_Y + BUTTON_DIM)
@@ -683,20 +614,20 @@ void handle_mouse_event(const SDL_Event& event)
                 if(input_touch_has_alternate())
                     sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SHIFTER]);
             }
-            else if(!moving && x < 320/2 - BUTTON_DIM/2 && y > BUTTON_DIM*2)  // Only move with the lower left corner of the screen (and offset for other buttons)
+            else if(!hw().moving && x < 320/2 - BUTTON_DIM/2 && y > BUTTON_DIM*2)  // Only move with the lower left corner of the screen (and offset for other buttons)
             {
-                moving_touch_x = x;
-                moving_touch_y = y;
-                moving_touch_target_x = x;
-                moving_touch_target_y = y;
-                if(moving_touch_x < MOVE_AREA_DIM/2 + 1)
-                    moving_touch_x = MOVE_AREA_DIM/2 + 1;
-                if(moving_touch_y < MOVE_AREA_DIM/2 + 1)
-                    moving_touch_y = MOVE_AREA_DIM/2 + 1;
-                else if(moving_touch_y > 200 - (MOVE_AREA_DIM/2 + 1))
-                    moving_touch_y = 200 - (MOVE_AREA_DIM/2 + 1);
-                moving = true;
-                movingTouch = event.tfinger.fingerId;
+                hw().moving_touch_x = x;
+                hw().moving_touch_y = y;
+                hw().moving_touch_target_x = x;
+                hw().moving_touch_target_y = y;
+                if(hw().moving_touch_x < MOVE_AREA_DIM/2 + 1)
+                    hw().moving_touch_x = MOVE_AREA_DIM/2 + 1;
+                if(hw().moving_touch_y < MOVE_AREA_DIM/2 + 1)
+                    hw().moving_touch_y = MOVE_AREA_DIM/2 + 1;
+                else if(hw().moving_touch_y > 200 - (MOVE_AREA_DIM/2 + 1))
+                    hw().moving_touch_y = 200 - (MOVE_AREA_DIM/2 + 1);
+                hw().moving = true;
+                hw().movingTouch = event.tfinger.fingerId;
             }
             
             
@@ -909,7 +840,7 @@ void clear_keyboard()
     og::runtime::current_session->input_continue_ = false;
     
     #ifdef USE_TOUCH_INPUT
-    tapping = false;
+    hw().tapping = false;
     #endif
 }
 
@@ -1320,7 +1251,7 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     
     // FIXME: Enable gamepads for Android/iOS, but be careful not to use accelerometer...
     #ifdef USE_TOUCH_INPUT
-        return touch_keystate[player_index][key_enum];
+        return hw().touch_keystate[player_index][key_enum];
     #else
     if(player_joy[player_index].hasButtonSet(key_enum))
         return player_joy[player_index].getState(key_enum);

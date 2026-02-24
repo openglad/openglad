@@ -14,6 +14,7 @@
 #include <openglad/render/view.h>    // options class (defines theprefs macro)
 #include <openglad/render/sai2x.h>   // E_Screen
 #include <openglad/runtime/game_context.h>
+#include <openglad/input/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
 #include "SDL.h"
 
 // The legacy global macros (myscreen, theprefs) expand through current_session.
@@ -36,6 +37,9 @@ GameSession::GameSession(const Config& session_cfg)
     GameContext& prev_ctx = ::ctx();
 
     prev_session_ = current_session;
+
+    // Allocate input hardware state.
+    input_hw_ = std::make_unique<InputHardwareState>();
 
     if (cfg_.allocate_prefs) {
         prefs_owner_ = std::make_unique<options>();

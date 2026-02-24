@@ -10,6 +10,7 @@
 #include <openglad/runtime/game_loop_state.h>
 
 struct SDL_Surface;
+struct InputHardwareState;
 
 class screen;
 class options;
@@ -107,6 +108,7 @@ public:
 
     GameContext ctx_;
     GameLoopFrameState frame_state_;
+    std::unique_ptr<InputHardwareState> input_hw_;
 
     // Per-session render surface (320x200 32-bit).
     // Non-null only for sessions that don't own the display (create_display=false).

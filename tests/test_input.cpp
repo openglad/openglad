@@ -4,8 +4,6 @@
 #include "test_framework.h"
 
 
-extern MouseState mouse_state;
-
 extern unsigned char convert_to_ascii(int scancode);
 
 void test_input_handle_key_event_sets_continue_on_escape()

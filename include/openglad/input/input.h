@@ -192,12 +192,28 @@ class JoyData
     bool hasButtonSet(int key_enum) const;
 };
 
-// Input state globals: JoyData/MouseState stay as true globals (SDL-dependent
-// types that can't live in game_session.h without pulling in SDL.h).
-extern JoyData player_joy[4];
+struct MouseState
+{
+    float x, y;
+    bool left;
+    bool right;
 
-// Input state: scalar globals live in GameSession — access via current_session->member_.
+    bool in(const SDL_Rect& r) const
+    {
+        const float rx = static_cast<float>(r.x);
+        const float ry = static_cast<float>(r.y);
+        const float rw = static_cast<float>(r.w);
+        const float rh = static_cast<float>(r.h);
+        return (rx <= x && x < rx + rw && ry <= y && y < ry + rh);
+    }
+};
+
+// Input hardware state now lives in GameSession::input_hw_.
+// Macros preserve existing access patterns (mouse_state.x, player_joy[i], etc.).
 #include <openglad/runtime/game_session.h>
+#include <openglad/runtime/input_hardware_state.h>
+#define mouse_state (og::runtime::current_session->input_hw_->mouse)
+#define player_joy (og::runtime::current_session->input_hw_->player_joy)
 
 // Inline trivial accessors for joystick/key/input state
 inline bool playerHasJoystick(int player_num) { return (player_joy[player_num].index >= 0); }
@@ -309,24 +325,6 @@ void init_input();
 
 void grab_mouse();
 void release_mouse();
-
-struct MouseState
-{
-    float x, y;
-    bool left;
-    bool right;
-    
-	    bool in(const SDL_Rect& r) const
-	    {
-	        const float rx = static_cast<float>(r.x);
-	        const float ry = static_cast<float>(r.y);
-	        const float rw = static_cast<float>(r.w);
-	        const float rh = static_cast<float>(r.h);
-	        return (rx <= x && x < rx + rw && ry <= y && y < ry + rh);
-	    }
-	};
-
-extern MouseState mouse_state;  // Stays as true global (SDL-dependent type)
 
 MouseState& query_mouse();
 inline MouseState& query_mouse_no_poll() { return mouse_state; }
