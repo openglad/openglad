@@ -121,7 +121,7 @@ OG_UNIT_TEST(test_session_scope_activates_and_restores_globals)
         auto scope = session.activate();
         // During activation: myscreen should be session's screen (nullptr since no alloc)
         OG_ASSERT(myscreen == session.screen_ptr());
-        // theprefs should remain at baseline_prefs since prefs are not allocated
+        // theprefs is nullptr (session has no allocated prefs), same as baseline
         OG_ASSERT(theprefs == baseline_prefs);
     }
 
