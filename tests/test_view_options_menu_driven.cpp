@@ -46,6 +46,7 @@ struct KeyStateGuard
 
 static int injector_thread_options_menu(void* data)
 {
+    og::runtime::ensure_thread_session();
     KeyStateGuard* ks = static_cast<KeyStateGuard*>(data);
     SDL_Delay(50);
 

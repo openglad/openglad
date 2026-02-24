@@ -38,6 +38,7 @@ struct ViewportGuard
 
 static int help_injector_thread(void* data)
 {
+    og::runtime::ensure_thread_session();
     (void)data;
     SDL_Delay(100);
 
@@ -98,6 +99,7 @@ REGISTER_TEST(test_help_show_general_help_smoke_exits_on_escape);
 
 static int intro_injector_thread(void* data)
 {
+    og::runtime::ensure_thread_session();
     (void)data;
     SDL_Delay(100);
 

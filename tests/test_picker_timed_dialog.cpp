@@ -14,6 +14,7 @@ struct TimedDialogState {
 
 static int timed_dialog_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     TimedDialogState* st = static_cast<TimedDialogState*>(data);
     st->started = true;
     SDL_Delay(50);

@@ -86,6 +86,7 @@ struct InjectorArgs
 
 static int injector_thread_exit_detail_menu(void* data)
 {
+    og::runtime::ensure_thread_session();
     InjectorArgs* a = static_cast<InjectorArgs*>(data);
     // Wait until init_buttons has created vbuttons for this menu. If we pulse too
     // early, handle_menu_nav/leftmouse won't observe the press.

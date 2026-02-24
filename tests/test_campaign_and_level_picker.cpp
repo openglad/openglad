@@ -45,6 +45,7 @@ void cleanup_leftover_test_campaigns()
 
 static int hold_q_key_for_picker(void* data)
 {
+    og::runtime::ensure_thread_session();
     (void)data;
     int numkeys = 0;
     Uint8* keys = const_cast<Uint8*>(SDL_GetKeyboardState(&numkeys));
@@ -83,6 +84,7 @@ struct ViewportGuard
 
 static int picker_choose_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     (void)data;
     SDL_Delay(120);
     inject_click(211, 40, 20); // NEXT
@@ -95,6 +97,7 @@ static int picker_choose_injector(void* data)
 
 static int picker_cancel_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     (void)data;
     SDL_Delay(120);
     inject_click(121, 190, 20); // CANCEL
@@ -103,6 +106,7 @@ static int picker_cancel_injector(void* data)
 
 static int campaign_delete_then_cancel_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     (void)data;
     SDL_Delay(120);
     inject_click(280, 15, 20);  // DELETE
@@ -113,6 +117,7 @@ static int campaign_delete_then_cancel_injector(void* data)
 
 static int campaign_reset_then_cancel_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     (void)data;
     SDL_Delay(120);
     inject_click(280, 15, 20);  // RESET (same location as delete)
@@ -123,6 +128,7 @@ static int campaign_reset_then_cancel_injector(void* data)
 
 static int level_picker_choose_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     (void)data;
     SDL_Delay(140);
     inject_click(175, 150, 20); // NEXT
@@ -135,6 +141,7 @@ static int level_picker_choose_injector(void* data)
 
 static int level_picker_delete_then_cancel_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     (void)data;
     SDL_Delay(140);
     inject_click(24, 23, 20);   // Select entry 1

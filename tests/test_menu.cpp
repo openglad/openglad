@@ -15,6 +15,7 @@ Sint32 leftmouse(button* buttons);
 
 static int release_scancode_after_delay(void* data)
 {
+    og::runtime::ensure_thread_session();
     SDL_Scancode scancode = *static_cast<SDL_Scancode*>(data);
     SDL_Delay(20);
     int numkeys = 0;

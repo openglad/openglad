@@ -86,6 +86,7 @@ struct OwnedButtonReplacementGuard
 
 int name_guy_injector(void*)
 {
+    og::runtime::ensure_thread_session();
     SDL_Delay(40);
     inject_key_press(SDLK_RETURN, 10);
     return 0;

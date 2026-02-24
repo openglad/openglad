@@ -39,6 +39,7 @@ static SDL_Event keydown(SDL_Keycode key)
 
 static int injector_press_and_release_escape(void* data)
 {
+    og::runtime::ensure_thread_session();
     auto* ks = static_cast<KeyStateGuard*>(data);
     SDL_Delay(40);
     ks->fake[KEYSTATE_ESCAPE] = 1;

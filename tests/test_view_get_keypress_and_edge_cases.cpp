@@ -61,6 +61,7 @@ static SDL_Event keydown(SDL_Keycode key)
 
 static int injector_clear_escape(void* data)
 {
+    og::runtime::ensure_thread_session();
     auto* arr = static_cast<std::array<Uint8, SDL_NUM_SCANCODES>*>(data);
     SDL_Delay(20);
     (*arr)[SDL_SCANCODE_ESCAPE] = 0;

@@ -47,6 +47,7 @@ struct PromptBlockInjectData
 
 int prompt_block_escape_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     PromptBlockInjectData* d = static_cast<PromptBlockInjectData*>(data);
     PromptBlockInjectState* st = d->state;
     st->started = true;
@@ -74,6 +75,7 @@ int prompt_block_escape_injector(void* data)
 
 int prompt_block_editing_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     PromptBlockInjectData* d = static_cast<PromptBlockInjectData*>(data);
     PromptBlockInjectState* st = d->state;
     st->started = true;
