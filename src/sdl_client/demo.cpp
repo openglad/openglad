@@ -1,11 +1,12 @@
 /*
- * openglad_demo: Runs 12 independent AI-controlled game sessions in a 4x3 grid.
+ * openglad_demo: Runs N independent AI-controlled game sessions in a grid,
+ * sized dynamically to fit the display at native resolution.
  *
- * Each session runs its game simulation in its own thread, leveraging the
- * thread_local current_session to avoid cross-thread state pollution.
+ * Each session loads a random scenario and spawns a random player team
+ * (matching the enemy count and levels) to fight AI-vs-AI battles.
  *
  * Threading model:
- *   - 12 worker threads: each runs one session's simulation (act, AI, input)
+ *   - N worker threads: each runs one session's simulation (act, AI, input)
  *   - 1 main thread: SDL event polling, per-session rendering, compositing
  *
  * Per-frame synchronization:
@@ -24,9 +25,12 @@
  *   - SDL_mixer (Mix_PlayChannel): thread-safe in SDL_mixer 2.x
  */
 
+#include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/core/version.h>
 #include <openglad/data/gparser.h>
+#include <openglad/entities/guy.h>
+#include <openglad/entities/walker.h>
 #include <openglad/input/input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/platform/io.h>
@@ -35,6 +39,7 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/game_loop.h>
 #include <openglad/runtime/game_session.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/runtime/screen.h>
 #include "SDL.h"
 
@@ -58,13 +63,8 @@
 void init_input();
 short load_saved_game(const char* filename, screen* scr);
 
-inline constexpr int GRID_COLS = 4;
-inline constexpr int GRID_ROWS = 3;
-inline constexpr int NUM_SESSIONS = GRID_COLS * GRID_ROWS;
 inline constexpr int CELL_W = 320;
 inline constexpr int CELL_H = 200;
-inline constexpr int DISPLAY_W = GRID_COLS * CELL_W;
-inline constexpr int DISPLAY_H = GRID_ROWS * CELL_H;
 
 // Scenario pool — diverse levels from the main campaign plus bonus maps.
 static const std::array<int, 20> SCENARIO_POOL = {
@@ -72,6 +72,15 @@ static const std::array<int, 20> SCENARIO_POOL = {
     11, 12, 13, 14, 15, 16,
     9411, 9412, 9413, 9414,
 };
+
+// Playable families for random team generation.
+static constexpr int PLAYABLE_FAMILIES[] = {
+    FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL, FAMILY_FAERIE,
+    FAMILY_SLIME, FAMILY_THIEF, FAMILY_GHOST, FAMILY_DRUID,
+    FAMILY_ORC, FAMILY_BARBARIAN,
+};
+static constexpr int NUM_PLAYABLE = static_cast<int>(std::size(PLAYABLE_FAMILIES));
 
 struct DemoSession {
     std::unique_ptr<og::runtime::GameSession> session;
@@ -89,14 +98,50 @@ struct WorkerSync {
     std::condition_variable start_cv;   // main → workers: "start ticking"
     std::condition_variable done_cv;    // workers → main: "I'm done"
     int generation = 0;                 // incremented each frame by main
-    int workers_done = 0;               // count of workers finished this frame
+    int workers_done = 0;              // count of workers finished this frame
+    int num_workers = 0;               // total worker count
     bool shutdown = false;              // signal workers to exit
 };
 
 // ---------------------------------------------------------------------------
+// Spawn a random player team that matches the enemy composition
+// ---------------------------------------------------------------------------
+// Scans the level for enemy living entities, then creates a player team
+// with the same size and roughly matching levels but randomized classes.
+static void spawn_random_player_team(screen* s, std::mt19937& rng)
+{
+    // Collect enemy levels
+    std::vector<int> enemy_levels;
+    for (auto& uptr : s->level_data.oblist) {
+        walker* w = uptr.get();
+        if (w && !w->dead && w->order == Order::Living && w->team_num != 0) {
+            enemy_levels.push_back(static_cast<int>(w->stats()->level));
+        }
+    }
+
+    if (enemy_levels.empty()) return;
+
+    std::uniform_int_distribution<int> fam_dist(0, NUM_PLAYABLE - 1);
+
+    for (int enemy_level : enemy_levels) {
+        int fam = PLAYABLE_FAMILIES[fam_dist(rng)];
+        guy g(fam);
+        g.teamnum = 0;
+        if (enemy_level > g.level)
+            g.upgrade_to_level(static_cast<short>(enemy_level));
+
+        walker* w = guy_create_and_add_walker(g, s);
+        if (w) {
+            w->team_num = 0;
+            w->teleport();
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Session initialization (called from main thread)
 // ---------------------------------------------------------------------------
-static void init_session_game(DemoSession& demo, int scen_id)
+static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
 {
     auto scope = demo.session->activate();
     screen* s = og::runtime::current_session->myscreen_;
@@ -107,6 +152,16 @@ static void init_session_game(DemoSession& demo, int scen_id)
     s->save_data.current_campaign = "org.openglad.gladiator";
 
     load_saved_game("save0", s);
+
+    // Spawn a random player team to fight the enemies
+    spawn_random_player_team(s, rng);
+
+    // Point the camera at a player team member.  load_saved_game set
+    // view->control before the team existed, so it's still nullptr.
+    if (s->viewob[0]) {
+        s->viewob[0]->control = s->viewob[0]->find_next_control();
+    }
+
     s->continuous_input();
     s->redrawme = 1;
     s->framecount = 0;
@@ -206,11 +261,31 @@ int main(int argc, char* argv[])
 
         cfg.load_settings();
 
-        // Override display size for the 4x3 grid
-        cfg.apply_setting("graphics", "width", std::format("{}", DISPLAY_W));
-        cfg.apply_setting("graphics", "height", std::format("{}", DISPLAY_H));
+        // Detect native display resolution for fullscreen grid layout
+        SDL_Init(SDL_INIT_VIDEO);
+        SDL_DisplayMode dm;
+        if (SDL_GetDesktopDisplayMode(0, &dm) != 0) {
+            LogError("SDL_GetDesktopDisplayMode failed: {}\n", SDL_GetError());
+            return 1;
+        }
+        const int display_w = dm.w;
+        const int display_h = dm.h;
+        const int grid_cols = display_w / CELL_W;
+        const int grid_rows = display_h / CELL_H;
+        const int num_sessions = grid_cols * grid_rows;
+
+        Log("Display: {}x{}, grid: {}x{} = {} sessions\n",
+            display_w, display_h, grid_cols, grid_rows, num_sessions);
+
+        if (num_sessions <= 0) {
+            LogError("Display too small for even one {}x{} cell\n", CELL_W, CELL_H);
+            return 1;
+        }
+
+        cfg.apply_setting("graphics", "width", std::format("{}", display_w));
+        cfg.apply_setting("graphics", "height", std::format("{}", display_h));
         cfg.apply_setting("graphics", "render", "normal");
-        cfg.apply_setting("graphics", "fullscreen", "off");
+        cfg.apply_setting("graphics", "fullscreen", "on");
 
         srand(static_cast<unsigned int>(time(nullptr)));
 
@@ -229,19 +304,19 @@ int main(int argc, char* argv[])
 
         // Create composite surface and texture at the full display resolution.
         SDL_Surface* composite_surface = SDL_CreateRGBSurface(
-            SDL_SWSURFACE, DISPLAY_W, DISPLAY_H, 32, 0, 0, 0, 0);
+            SDL_SWSURFACE, display_w, display_h, 32, 0, 0, 0, 0);
         SDL_Texture* composite_tex = SDL_CreateTexture(
             E_Screen->renderer, SDL_PIXELFORMAT_ARGB8888,
-            SDL_TEXTUREACCESS_STREAMING, DISPLAY_W, DISPLAY_H);
+            SDL_TEXTUREACCESS_STREAMING, display_w, display_h);
         if (!composite_surface || !composite_tex) {
             LogError("Failed to create composite surface/texture\n");
             return 1;
         }
 
-        // --- Create 12 sub-sessions (main thread) ---
-        std::array<DemoSession, NUM_SESSIONS> demos;
+        // --- Create sub-sessions (main thread) ---
+        std::vector<DemoSession> demos(static_cast<size_t>(num_sessions));
 
-        for (int i = 0; i < NUM_SESSIONS; i++) {
+        for (int i = 0; i < num_sessions; i++) {
             og::runtime::GameSession::Config sub_cfg;
             sub_cfg.numviews = 1;
             sub_cfg.allocate_screen = true;
@@ -252,7 +327,8 @@ int main(int argc, char* argv[])
             sub_cfg.allocate_seeded_rng = true;
             sub_cfg.rng_seed = static_cast<std::uint32_t>(rand());
 
-            demos[i].session = std::make_unique<og::runtime::GameSession>(sub_cfg);
+            demos[static_cast<size_t>(i)].session =
+                std::make_unique<og::runtime::GameSession>(sub_cfg);
         }
 
         // Build a shuffled list of scenario IDs.
@@ -261,7 +337,7 @@ int main(int argc, char* argv[])
             std::vector<int> picks;
             std::vector<int> pool(SCENARIO_POOL.begin(), SCENARIO_POOL.end());
             std::shuffle(pool.begin(), pool.end(), demo_rng);
-            for (int i = 0; i < NUM_SESSIONS; i++)
+            for (int i = 0; i < num_sessions; i++)
                 picks.push_back(pool[static_cast<size_t>(i) % pool.size()]);
             return picks;
         };
@@ -269,23 +345,26 @@ int main(int argc, char* argv[])
         // Initialize each session with a unique scenario (main thread).
         std::vector<int> chosen = pick_scenarios();
         E_Screen->suppress_present = true;
-        for (int i = 0; i < NUM_SESSIONS; i++) {
-            init_session_game(demos[i], chosen[static_cast<size_t>(i)]);
+        for (int i = 0; i < num_sessions; i++) {
+            init_session_game(demos[static_cast<size_t>(i)],
+                              chosen[static_cast<size_t>(i)], demo_rng);
         }
         E_Screen->suppress_present = false;
 
-        for (int i = 0; i < NUM_SESSIONS; i++) {
+        for (int i = 0; i < num_sessions; i++) {
             Log("  session {}: scenario {}\n", i, chosen[static_cast<size_t>(i)]);
         }
         Log("openglad_demo: {} sessions initialized, spawning {} worker threads\n",
-            NUM_SESSIONS, NUM_SESSIONS);
+            num_sessions, num_sessions);
 
         // --- Spawn worker threads ---
         WorkerSync sync;
-        std::array<std::thread, NUM_SESSIONS> workers;
-        for (int i = 0; i < NUM_SESSIONS; i++) {
-            workers[i] = std::thread(worker_thread_func,
-                                     std::ref(sync), std::ref(demos[i]), i);
+        sync.num_workers = num_sessions;
+        std::vector<std::thread> workers(static_cast<size_t>(num_sessions));
+        for (int i = 0; i < num_sessions; i++) {
+            workers[static_cast<size_t>(i)] = std::thread(
+                worker_thread_func,
+                std::ref(sync), std::ref(demos[static_cast<size_t>(i)]), i);
         }
 
         // --- Main loop ---
@@ -297,14 +376,18 @@ int main(int argc, char* argv[])
             auto frame_start = std::chrono::steady_clock::now();
 
             // --- Phase 1: Poll SDL events (main thread only) ---
+            // The demo manages its own shutdown — don't forward quit events
+            // to handle_events() which would call exit(0) via quit().
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
                 if (event.type == SDL_QUIT) {
                     running = false;
+                    continue;
                 }
                 if (event.type == SDL_KEYDOWN &&
                     event.key.keysym.sym == SDLK_ESCAPE) {
                     running = false;
+                    continue;
                 }
                 handle_events(event);
             }
@@ -323,7 +406,7 @@ int main(int argc, char* argv[])
             {
                 std::unique_lock lock(sync.mtx);
                 sync.done_cv.wait(lock, [&] {
-                    return sync.workers_done >= NUM_SESSIONS;
+                    return sync.workers_done >= num_sessions;
                 });
             }
 
@@ -331,11 +414,12 @@ int main(int argc, char* argv[])
             // This is sequential: only the main thread touches E_Screen.
             E_Screen->suppress_present = true;
             int active_count = 0;
-            for (int i = 0; i < NUM_SESSIONS; i++) {
-                if (demos[i].finished.load(std::memory_order_relaxed)) continue;
+            for (int i = 0; i < num_sessions; i++) {
+                if (demos[static_cast<size_t>(i)].finished.load(std::memory_order_relaxed))
+                    continue;
                 active_count++;
 
-                auto scope = demos[i].session->activate();
+                auto scope = demos[static_cast<size_t>(i)].session->activate();
                 screen* s = og::runtime::current_session->myscreen_;
                 if (!s) continue;
 
@@ -345,10 +429,10 @@ int main(int argc, char* argv[])
 
             // --- Phase 5: Composite and present (main thread only) ---
             SDL_FillRect(composite_surface, nullptr, 0x000000);
-            for (int i = 0; i < NUM_SESSIONS; i++) {
-                SDL_Surface* src = demos[i].session->session_surface_;
-                int col = i % GRID_COLS;
-                int row = i / GRID_COLS;
+            for (int i = 0; i < num_sessions; i++) {
+                SDL_Surface* src = demos[static_cast<size_t>(i)].session->session_surface_;
+                int col = i % grid_cols;
+                int row = i / grid_cols;
                 composite_session(composite_surface, src, col, row);
             }
 
@@ -365,8 +449,9 @@ int main(int argc, char* argv[])
                 Log("All sessions finished, restarting...\n");
                 chosen = pick_scenarios();
                 E_Screen->suppress_present = true;
-                for (int i = 0; i < NUM_SESSIONS; i++) {
-                    init_session_game(demos[i], chosen[static_cast<size_t>(i)]);
+                for (int i = 0; i < num_sessions; i++) {
+                    init_session_game(demos[static_cast<size_t>(i)],
+                                      chosen[static_cast<size_t>(i)], demo_rng);
                 }
                 E_Screen->suppress_present = false;
             }

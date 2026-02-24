@@ -484,8 +484,8 @@ void viewscreen::process_input(const InputState& input_state)
 			if (control && control->dead)
 				control = find_next_control();
 		}
-		// If the current control died between frames, re-acquire
-		if (control && control->dead)
+		// If the current control died or was never set, re-acquire
+		if (!control || control->dead)
 			control = find_next_control();
 		return; // No further input processing in spectator mode
 	}
