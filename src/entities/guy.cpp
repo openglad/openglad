@@ -25,6 +25,7 @@
 #include <openglad/core/util.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
+#include <openglad/runtime/game_session.h>
 #include <cmath>
 #include <cstring>
 #define RAISE 1.85  // please also change in picker.cpp
@@ -33,8 +34,6 @@
 
 
 const char* get_family_string(std::int32_t family);
-
-static int guy_id_counter = 0;
 
 int MAX(int a,int b)
 {
@@ -66,7 +65,7 @@ guy::guy()
     scen_shots = 0;
     scen_hits = 0;
 	
-	id = guy_id_counter++;
+	id = og::runtime::current_session->guy_id_counter_++;
 }
 
 // Set defaults for various types
@@ -110,7 +109,7 @@ guy::guy(int whatfamily)
         name = "BEAST";
     }
 	
-	id = guy_id_counter++;
+	id = og::runtime::current_session->guy_id_counter_++;
 }
 
 

@@ -95,6 +95,10 @@ public:
     bool debug_draw_paths_ = false;
     bool debug_draw_obmap_ = false;
 
+    // Entity-layer state (Phase 4) — moved from guy.cpp and cheat_handler.cpp.
+    int guy_id_counter_ = 0;
+    short changedteam_[6] = {};
+
     // Picker state (Batch 8) — moved from picker.cpp globals.
     static constexpr int kNumFamilies = 14;  // == NUM_FAMILIES from constants.h
     std::int32_t current_difficulty_ = 1;

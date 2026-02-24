@@ -11,6 +11,7 @@
 
 #include <openglad/runtime/cheat_handler.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_session.h>
 #include <openglad/input/input.h>
 #include <openglad/input/input_state.h>
 #include <openglad/entities/walker.h>
@@ -18,8 +19,6 @@
 #include <openglad/data/level_data.h>
 #include <openglad/render/pal32.h>
 #include <openglad/legacy/base.h>
-
-static short changedteam[6] = {0, 0, 0, 0, 0, 0};
 
 void handle_cheat_keys(walker*& control, short mynum,
                        const SDL_Event& event, const PlayerInput& pi,
@@ -31,11 +30,11 @@ void handle_cheat_keys(walker*& control, short mynum,
 	walker* newob;
 
 	// Change team (Cheat+Switch)
-	if (changedteam[mynum] && !pi.was_pressed(InputAction::SwitchChar))
-		changedteam[mynum] = 0;
-	if (pi.was_pressed(InputAction::SwitchChar) && !changedteam[mynum])
+	if (og::runtime::current_session->changedteam_[mynum] && !pi.was_pressed(InputAction::SwitchChar))
+		og::runtime::current_session->changedteam_[mynum] = 0;
+	if (pi.was_pressed(InputAction::SwitchChar) && !og::runtime::current_session->changedteam_[mynum])
 	{
-		changedteam[mynum] = 1;
+		og::runtime::current_session->changedteam_[mynum] = 1;
 
 		walker* result = nullptr;
 		control->user = -1;
