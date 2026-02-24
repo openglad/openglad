@@ -114,8 +114,10 @@ void glad_main(screen *scr, Sint32 playermode);
 
 // theprefs is now a macro defined in view.h (via game_session.h)
 
-// Frame state for main game loop (used by Emscripten and native builds)
-extern GameLoopFrameState g_frame_state;
+// Frame state lives in GameSession::frame_state_
+static inline GameLoopFrameState& g_frame_state() {
+    return og::runtime::current_session->frame_state_;
+}
 
 // Forward declarations
 void glad_init();
@@ -134,9 +136,9 @@ static void emscripten_frame_wrapper() {
 	screen* current_screen = active_screen();
 	// Calculate time since last call
 	Uint32 current_time = SDL_GetTicks();
-	Uint32 delta = current_time - g_frame_state.last_frame_time;
-	g_frame_state.last_frame_time = current_time;
-	g_frame_state.accumulated_time += delta;
+	Uint32 delta = current_time - g_frame_state().last_frame_time;
+	g_frame_state().last_frame_time = current_time;
+	g_frame_state().accumulated_time += delta;
 
 	// Calculate target frame time based on timer_wait (in ticks, 1 tick = 13.6ms)
 	// timer_wait defaults to 6, giving ~82ms per frame (~12 FPS)
@@ -153,7 +155,7 @@ static void emscripten_frame_wrapper() {
 	}
 
 	// Only run logic if enough time has accumulated
-	if (g_frame_state.accumulated_time >= target_frame_time) {
+	if (g_frame_state().accumulated_time >= target_frame_time) {
 		switch (g_game_state) {
 			case GameState::Picker:
 				if (!g_state_initialized) {
@@ -185,13 +187,13 @@ static void emscripten_frame_wrapper() {
 					current_screen->ready_for_battle(numviews);
 				}
 					glad_init();
-					g_frame_state.done = false;
-					g_frame_state.currentcycle = 0;
-					g_frame_state.cycletime = 3;
+					g_frame_state().done = false;
+					g_frame_state().currentcycle = 0;
+					g_frame_state().cycletime = 3;
 					g_state_initialized = true;
 				}
-				game_frame(*current_screen, g_frame_state);
-				if (g_frame_state.done) {
+				game_frame(*current_screen, g_frame_state());
+				if (g_frame_state().done) {
 					Log("Game done, transitioning back to PICKER\n");
 					clear_keyboard();
 					current_screen->level_data.delete_objects();
@@ -209,10 +211,10 @@ static void emscripten_frame_wrapper() {
 		}
 
 		// Subtract one frame's worth of time (don't reset to 0 to handle remainder)
-		g_frame_state.accumulated_time -= target_frame_time;
+		g_frame_state().accumulated_time -= target_frame_time;
 		// Clamp to prevent spiral of death if frames take too long
-		if (g_frame_state.accumulated_time > target_frame_time * 2) {
-			g_frame_state.accumulated_time = 0;
+		if (g_frame_state().accumulated_time > target_frame_time * 2) {
+			g_frame_state().accumulated_time = 0;
 		}
 	}
 }
@@ -279,8 +281,8 @@ int main(int argc, char *argv[])
 	}
 
 	// Initialize timing
-	g_frame_state.last_frame_time = SDL_GetTicks();
-	g_frame_state.accumulated_time = 0;
+	g_frame_state().last_frame_time = SDL_GetTicks();
+	g_frame_state().accumulated_time = 0;
 
 		// Start the unified main loop - handles all game states
 		emscripten_set_main_loop(emscripten_frame_wrapper, 0, 1);

@@ -21,7 +21,10 @@
 
 // theprefs is now a macro defined in view.h (via game_session.h)
 
-GameLoopFrameState g_frame_state{};
+// g_frame_state removed — now lives in GameSession::frame_state_
+static inline GameLoopFrameState& g_frame_state() {
+    return og::runtime::current_session->frame_state_;
+}
 
 #ifdef TESTING
 // Remove exits so levels can auto-complete when all enemies die.
@@ -67,9 +70,9 @@ void glad_init()
     current_screen->framecount = 0;
     current_screen->timerstart = query_timer_control();
 
-    g_frame_state.done = false;
-    g_frame_state.currentcycle = 0;
-    g_frame_state.cycletime = 3;
+    g_frame_state().done = false;
+    g_frame_state().currentcycle = 0;
+    g_frame_state().cycletime = 3;
 }
 
 void glad_main(Sint32 playermode)
@@ -87,9 +90,9 @@ void glad_main(Sint32 playermode)
     // For Emscripten, the unified main loop in main() handles game_frame() calls
     // via the state machine. We just need to initialize - don't start another loop.
 #else
-    while (!g_frame_state.done)
+    while (!g_frame_state().done)
     {
-        game_frame(*current_screen, g_frame_state);
+        game_frame(*current_screen, g_frame_state());
     }
 
     clear_keyboard();
