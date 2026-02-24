@@ -44,6 +44,9 @@ GameSession::GameSession(const Config& session_cfg)
     // Allocate input hardware state.
     input_hw_ = std::make_unique<InputHardwareState>();
 
+    // Wire up the timer anchor so reset_timer()/query_timer() use this session's time.
+    g_reset_time_ptr = &reset_time_;
+
     if (cfg_.allocate_prefs) {
         prefs_owner_ = std::make_unique<options>();
         init_allkeys(allkeys_);
