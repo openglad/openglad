@@ -71,10 +71,10 @@ static void video_create_display()
 	RenderEngine render = RenderEngine::NoZoom;
 	int fullscreen_flag = 0;
 
-	if(cfg.is_on("graphics","fullscreen"))
+	if(active_config().is_on("graphics","fullscreen"))
 		fullscreen_flag = 1;
 
-	std::string qresult = cfg.get_setting("graphics", "render");
+	std::string qresult = active_config().get_setting("graphics", "render");
 	if(qresult == "normal")
 		render = RenderEngine::NoZoom;
 	else if(qresult == "sai")
@@ -91,11 +91,11 @@ static void video_create_display()
 	w = 320;
 	h = 200;
 #else
-	qresult = cfg.get_setting("graphics", "width");
+	qresult = active_config().get_setting("graphics", "width");
 	if(qresult.size() > 0)
 	    w = stoi(qresult);
 
-	qresult = cfg.get_setting("graphics", "height");
+	qresult = active_config().get_setting("graphics", "height");
 	if(qresult.size() > 0)
 	    h = stoi(qresult);
 #endif
@@ -130,6 +130,11 @@ video::video(bool create_display)
 
 video::~video()
 {
+	// Only the display-owning video instance tears down SDL.
+	// IMPORTANT: All non-owning video instances (sub-sessions with
+	// owns_display_=false) must be destroyed BEFORE the owning instance,
+	// because SDL_Quit() shuts down all subsystems globally.  The demo
+	// enforces this by destroying sub-sessions before the host session.
 	if (owns_display_) {
 		E_Screen.reset();
 		SDL_Quit();

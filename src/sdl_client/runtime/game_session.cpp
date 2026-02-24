@@ -7,6 +7,7 @@
  */
 #include <openglad/runtime/game_session.h>
 
+#include <openglad/core/util.h> // LogError
 #include <openglad/legacy/base.h> // legacy globals: myscreen
 #include <openglad/data/gparser.h> // cfg legacy global
 #include <openglad/runtime/screen.h>
@@ -61,6 +62,10 @@ GameSession::GameSession(const Config& session_cfg)
     if (cfg_.allocate_screen && !cfg_.create_display) {
         session_surface_ = SDL_CreateRGBSurface(
             SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
+        if (!session_surface_) {
+            LogError("GameSession: SDL_CreateRGBSurface failed: {}\n",
+                     SDL_GetError());
+        }
     }
 
     if (cfg_.install_legacy_globals) {
@@ -111,16 +116,23 @@ GameSession::SessionScope::SessionScope(GameSession& session)
     saved_theprefs_ = theprefs;
     saved_context_ = &::ctx();
 
-    // Install this session's globals
+    // Install this session's globals.
+    // Set both myscreen and theprefs unconditionally to keep the
+    // save/set/restore cycle symmetric. If the session doesn't own prefs,
+    // theprefs is left as the session's prefs_ptr (nullptr), ensuring the
+    // destructor's unconditional restore is always correct.
     myscreen = session_->screen_owner_.get();
-    if (session_->prefs_owner_) {
-        theprefs = session_->prefs_owner_.get();
-    }
+    theprefs = session_->prefs_owner_ ? session_->prefs_owner_.get() : saved_theprefs_;
     set_global_context(&session_->ctx_);
 
-    // Swap render surface if this session has its own
+    // Swap render surface if this session has its own.
+    // Save E_Screen->render even if it is nullptr so the destructor can
+    // restore it correctly.  We use a separate flag to track whether a
+    // swap was performed rather than relying on saved_render_surface_
+    // being non-null.
     if (session_->session_surface_ && E_Screen) {
         saved_render_surface_ = E_Screen->render;
+        did_swap_render_ = true;
         E_Screen->render = session_->session_surface_;
     }
 }
@@ -129,8 +141,8 @@ GameSession::SessionScope::~SessionScope()
 {
     if (!session_) return; // moved-from
 
-    // Restore render surface
-    if (saved_render_surface_ && E_Screen) {
+    // Restore render surface — mirror the activation condition.
+    if (did_swap_render_ && E_Screen) {
         E_Screen->render = saved_render_surface_;
     }
 
@@ -150,6 +162,7 @@ GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
     , saved_theprefs_(other.saved_theprefs_)
     , saved_context_(other.saved_context_)
     , saved_render_surface_(other.saved_render_surface_)
+    , did_swap_render_(other.did_swap_render_)
 {
     other.session_ = nullptr;
 }

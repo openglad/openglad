@@ -106,6 +106,9 @@ int main(int argc, char* argv[])
         cfg.apply_setting("graphics", "render", "normal");
         cfg.apply_setting("graphics", "fullscreen", "off");
 
+        // Seed rand() for non-deterministic session variety. The demo is
+        // intentionally non-deterministic: each run produces different RNG seeds
+        // and scenario selections. Determinism is not a goal here.
         srand(static_cast<unsigned int>(time(nullptr)));
 
         // --- Create the display-owning "host" session ---

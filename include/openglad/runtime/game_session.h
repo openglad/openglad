@@ -102,6 +102,7 @@ private:
     options* saved_theprefs_ = nullptr;
     GameContext* saved_context_ = nullptr;
     SDL_Surface* saved_render_surface_ = nullptr;
+    bool did_swap_render_ = false;
 };
 
 } // namespace og::runtime

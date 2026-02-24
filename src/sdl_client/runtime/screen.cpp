@@ -148,17 +148,19 @@ void screen::init_common(short howmany, bool has_display)
 	// Load the palette ..
 	load_and_set_palette("our.pal", newpalette);
 
+	// Loading-screen text references (only used when has_display is true).
+	text& load_text = text_normal;
+	constexpr Sint32 load_left = 66;
+
 	if (has_display) {
-		text& first_text = text_normal;
-		Sint32 left = 66;
 		draw_button(60, 50, 260, 110, 2, 1);
 		draw_text_bar(64, 54, 256, 62);
-		first_text.write_y(56, "Loading Gladiator..Please Wait", RED, 1);
+		load_text.write_y(56, "Loading Gladiator..Please Wait", RED, 1);
 		draw_text_bar(64, 64, 256, 106);
-		first_text.write_xy(left, 70, "Loading Graphics...", DARK_BLUE, 1);
+		load_text.write_xy(load_left, 70, "Loading Graphics...", DARK_BLUE, 1);
 		buffer_to_screen(0, 0, 320, 200);
-		first_text.write_xy(left, 70, "Loading Graphics...Done", DARK_BLUE, 1);
-		first_text.write_xy(left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
+		load_text.write_xy(load_left, 70, "Loading Graphics...Done", DARK_BLUE, 1);
+		load_text.write_xy(load_left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
 		buffer_to_screen(0, 0, 320, 200);
 	}
 
@@ -179,11 +181,9 @@ void screen::init_common(short howmany, bool has_display)
     initialize_views();
 
 	if (has_display) {
-		text& first_text = text_normal;
-		Sint32 left = 66;
-		first_text.write_xy(left, 78, "Loading Gameplay Info...Done", DARK_BLUE, 1);
-		first_text.write_xy(left, 86, "Initializing Display...Done", DARK_BLUE, 1);
-		first_text.write_xy(left, 94, "Initializing Sound...", DARK_BLUE, 1);
+		load_text.write_xy(load_left, 78, "Loading Gameplay Info...Done", DARK_BLUE, 1);
+		load_text.write_xy(load_left, 86, "Initializing Display...Done", DARK_BLUE, 1);
+		load_text.write_xy(load_left, 94, "Initializing Sound...", DARK_BLUE, 1);
 		buffer_to_screen(0, 0, 320, 200);
 	}
 
@@ -192,9 +192,7 @@ void screen::init_common(short howmany, bool has_display)
         soundp->set_sound(1);
 
 	if (has_display) {
-		text& first_text = text_normal;
-		Sint32 left = 66;
-		first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
+		load_text.write_xy(load_left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
 		buffer_to_screen(0, 0, 320, 200);
 	}
 
