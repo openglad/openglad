@@ -29,11 +29,14 @@
 #include <openglad/runtime/screen.h>
 #include "SDL.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <ctime>
 #include <format>
 #include <memory>
+#include <numeric>
+#include <random>
 #include <stdexcept>
 #include <vector>
 
@@ -50,8 +53,13 @@ inline constexpr int CELL_H = 200;
 inline constexpr int DISPLAY_W = GRID_COLS * CELL_W;
 inline constexpr int DISPLAY_H = GRID_ROWS * CELL_H;
 
-// Available scenario IDs (the ones shipped with the game data)
-static const std::array<int, 4> SCENARIO_IDS = {9411, 9412, 9413, 9414};
+// Scenario pool — diverse levels from the main campaign plus bonus maps.
+// These are all present in the gladiator campaign archive or scen/ directory.
+static const std::array<int, 20> SCENARIO_POOL = {
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    11, 12, 13, 14, 15, 16,
+    9411, 9412, 9413, 9414,
+};
 
 struct DemoSession {
     std::unique_ptr<og::runtime::GameSession> session;
@@ -155,15 +163,30 @@ int main(int argc, char* argv[])
             demos[i].session = std::make_unique<og::runtime::GameSession>(sub_cfg);
         }
 
-        // Initialize each session with a scenario.
+        // Build a shuffled list of scenario IDs so each session gets a
+        // different level.  We sample without replacement from the pool.
+        std::mt19937 demo_rng(static_cast<unsigned>(time(nullptr)));
+        auto pick_scenarios = [&]() {
+            std::vector<int> picks;
+            std::vector<int> pool(SCENARIO_POOL.begin(), SCENARIO_POOL.end());
+            std::shuffle(pool.begin(), pool.end(), demo_rng);
+            for (int i = 0; i < NUM_SESSIONS; i++)
+                picks.push_back(pool[static_cast<size_t>(i) % pool.size()]);
+            return picks;
+        };
+
+        // Initialize each session with a unique scenario.
         // Suppress presentation during init to avoid flashing individual sessions.
+        std::vector<int> chosen = pick_scenarios();
         E_Screen->suppress_present = true;
         for (int i = 0; i < NUM_SESSIONS; i++) {
-            int scen_id = SCENARIO_IDS[static_cast<size_t>(i) % SCENARIO_IDS.size()];
-            init_session_game(demos[i], scen_id);
+            init_session_game(demos[i], chosen[static_cast<size_t>(i)]);
         }
         E_Screen->suppress_present = false;
 
+        for (int i = 0; i < NUM_SESSIONS; i++) {
+            Log("  session {}: scenario {}\n", i, chosen[static_cast<size_t>(i)]);
+        }
         Log("openglad_demo: {} sessions initialized\n", NUM_SESSIONS);
 
         // --- Main loop ---
@@ -172,8 +195,11 @@ int main(int argc, char* argv[])
         // All rendering still goes to E_Screen->render (which is swapped to
         // the session's own surface via SessionScope).
         GameLoopDeps deps;
-        deps.enable_event_poll = false; // We handle events ourselves
+        deps.enable_event_poll = false;   // We handle events ourselves
         deps.enable_render = true;
+        deps.enable_frame_timing = false; // We cap the frame rate externally;
+                                          // per-session time_delay (~82ms each)
+                                          // would otherwise kill performance.
 
         bool running = true;
         while (running) {
@@ -236,10 +262,9 @@ int main(int argc, char* argv[])
             // If all sessions are done, restart them with new scenarios
             if (active_count == 0) {
                 Log("All sessions finished, restarting...\n");
+                chosen = pick_scenarios();
                 for (int i = 0; i < NUM_SESSIONS; i++) {
-                    int scen_id = SCENARIO_IDS[
-                        static_cast<size_t>(rand()) % SCENARIO_IDS.size()];
-                    init_session_game(demos[i], scen_id);
+                    init_session_game(demos[i], chosen[static_cast<size_t>(i)]);
                 }
             }
 

@@ -37,6 +37,10 @@ struct GameLoopDeps {
     // Optional: allows tests to bypass expensive rendering even in non-TESTING builds.
     bool enable_render = true;
     bool enable_event_poll = true;
+    // When false, skip the per-frame time_delay() call.  Used by multi-session
+    // demos that run many sessions per display frame and apply their own
+    // frame-rate cap externally.
+    bool enable_frame_timing = true;
 };
 
 enum class GameFrameResult {

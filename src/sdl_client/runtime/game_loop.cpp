@@ -146,14 +146,17 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         s.do_cycle(st.currentcycle++, st.cycletime);
 
 #ifndef __EMSCRIPTEN__
-    // FPS cap
-    if (g_game_speed_factor == 0.0f) {
-        // Max speed: no delay
-    } else if (g_game_speed_factor != 1.0f) {
-        Sint32 adjusted_wait = static_cast<Sint32>(s.timer_wait / g_game_speed_factor);
-        time_delay(adjusted_wait - query_timer());
-    } else {
-        time_delay(s.timer_wait - query_timer());
+    // FPS cap — skipped when the caller manages timing externally
+    // (e.g. multi-session demos that tick many sessions per display frame).
+    if (deps.enable_frame_timing) {
+        if (g_game_speed_factor == 0.0f) {
+            // Max speed: no delay
+        } else if (g_game_speed_factor != 1.0f) {
+            Sint32 adjusted_wait = static_cast<Sint32>(s.timer_wait / g_game_speed_factor);
+            time_delay(adjusted_wait - query_timer());
+        } else {
+            time_delay(s.timer_wait - query_timer());
+        }
     }
 #endif
 
