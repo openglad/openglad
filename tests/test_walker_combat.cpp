@@ -1281,7 +1281,7 @@ void test_walker_batch8_act_default_and_animate_invalid_sequence_bounds()
     const int ani_index = w->curdir + w->ani_type * NUM_FACINGS;
     // Create a local table with the no-sentinel sequence at the target index.
     const signed char * custom_rows[32] = {};
-    for (int i = 0; i < 32; i++)
+    for (int i = 0; i <= ani_index; i++)
         custom_rows[i] = w->ani[i];
     custom_rows[ani_index] = no_sentinel_seq;
     auto saved_ani = w->ani;
