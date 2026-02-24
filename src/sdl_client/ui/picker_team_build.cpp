@@ -28,6 +28,8 @@
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_session.h>
+#include <openglad/runtime/picker_ui_state.h>
 #include <openglad/render/walker_draw.h>
 
 #include "SDL.h"
@@ -53,25 +55,21 @@
 #define VIEW_DOWN(x) (10 + static_cast<Sint32>((x) * 20))
 
 
-extern guy* old_guy;
-
-// Session pointers — set during the respective menu loops, null otherwise.
-static og::ui::HireSession* g_hire_session = nullptr;
-static og::ui::TrainSession* g_train_session = nullptr;
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 // Sync current_guy from the active session's state.
 static void sync_current_guy_from_hire()
 {
-    if (g_hire_session && g_hire_session->current_recruit())
-        og::runtime::current_session->current_guy_ = std::make_unique<guy>(*g_hire_session->current_recruit());
+    if (pks().hire_session && pks().hire_session->current_recruit())
+        og::runtime::current_session->current_guy_ = std::make_unique<guy>(*pks().hire_session->current_recruit());
 }
 
 static void sync_current_guy_from_train()
 {
-    if (g_train_session && !g_train_session->empty()) {
-        og::runtime::current_session->current_guy_ = std::make_unique<guy>(g_train_session->working_copy());
-        old_guy = &const_cast<guy&>(g_train_session->original());
-        og::runtime::current_session->editguy_ = g_train_session->current_slot();
+    if (pks().train_session && !pks().train_session->empty()) {
+        og::runtime::current_session->current_guy_ = std::make_unique<guy>(pks().train_session->working_copy());
+        pks().old_guy = &const_cast<guy&>(pks().train_session->original());
+        og::runtime::current_session->editguy_ = pks().train_session->current_slot();
     }
 }
 #ifdef __EMSCRIPTEN__
@@ -589,7 +587,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
     og::ui::HireSession hire_session(og::runtime::current_session->myscreen_->save_data, og::runtime::current_session->current_team_num_);
-    g_hire_session = &hire_session;
+    pks().hire_session = &hire_session;
     sync_current_guy_from_hire();
     change_hire_teamnum(0);
     
@@ -671,7 +669,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         
         og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_team_num_]);
         mytext.write_xy(cost_box_content.x, cost_box_content.y, og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
-        current_cost = g_hire_session ? g_hire_session->current_cost() : 0;
+        current_cost = pks().hire_session ? pks().hire_session->current_cost() : 0;
         mytext.write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
         og::runtime::current_session->message_ = std::format("      {}", current_cost );
         if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_team_num_])
@@ -739,7 +737,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         }
 	}
 	
-	g_hire_session = nullptr;
+	pks().hire_session = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();
 	//myscreen->clearscreen();
 	return MENU_REDRAW;
@@ -797,10 +795,10 @@ Sint32 create_train_menu(Sint32 arg1)
 	auto& ourteam = og::runtime::current_session->myscreen_->save_data.team_list;
 
     og::ui::TrainSession train_session(og::runtime::current_session->myscreen_->save_data);
-    g_train_session = &train_session;
+    pks().train_session = &train_session;
     sync_current_guy_from_train();
     guy* here = ourteam[og::runtime::current_session->editguy_].get();
-    current_cost = g_train_session->current_cost();
+    current_cost = pks().train_session->current_cost();
 
 	grab_mouse();
 	
@@ -840,7 +838,7 @@ Sint32 create_train_menu(Sint32 arg1)
                 sync_current_guy_from_train();
             if (here != ourteam[og::runtime::current_session->editguy_].get())
                 here = ourteam[og::runtime::current_session->editguy_].get();
-            current_cost = g_train_session->current_cost();
+            current_cost = pks().train_session->current_cost();
             retvalue = 0;
         }
 		
@@ -867,8 +865,8 @@ Sint32 create_train_menu(Sint32 arg1)
         og::runtime::current_session->myscreen_->draw_text_bar(42, 70, 116, 156);
 
         
-        bool level_increased = g_train_session->level_increased();
-        bool stat_increased = g_train_session->stats_increased();
+        bool level_increased = pks().train_session->level_increased();
+        bool stat_increased = pks().train_session->stats_increased();
 
         struct { const char* label; short cur_val; short old_val; } train_stats[] = {
             {"  STR:", og::runtime::current_session->current_guy_->strength,     here->strength},
@@ -979,7 +977,7 @@ Sint32 create_train_menu(Sint32 arg1)
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
-	g_train_session = nullptr;
+	pks().train_session = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();
 	//myscreen->clearscreen();
 	return MENU_REDRAW;
@@ -1078,25 +1076,25 @@ static og::ui::TrainSession::Stat but_to_stat(Sint32 whatstat)
 
 Sint32 increase_stat(Sint32 whatstat, Sint32 howmuch)
 {
-    if (!g_train_session)
+    if (!pks().train_session)
         return MENU_OK;
-    g_train_session->increase_stat(but_to_stat(whatstat), howmuch);
+    pks().train_session->increase_stat(but_to_stat(whatstat), howmuch);
     sync_current_guy_from_train();
     return MENU_OK;
 }
 
 Sint32 decrease_stat(Sint32 whatstat, Sint32 howmuch)
 {
-    if (!g_train_session)
+    if (!pks().train_session)
         return MENU_OK;
-    g_train_session->decrease_stat(but_to_stat(whatstat), howmuch);
+    pks().train_session->decrease_stat(but_to_stat(whatstat), howmuch);
     sync_current_guy_from_train();
     return MENU_OK;
 }
 
 Sint32 cycle_guy(Sint32 whichway)
 {
-    if (!g_hire_session) {
+    if (!pks().hire_session) {
         // Fallback: create recruit directly (for any code calling this outside a session)
         constexpr auto& guys = og::ui::kAllowableGuys;
         og::runtime::current_session->current_type_ = (og::runtime::current_session->current_type_ + whichway + static_cast<Sint32>(guys.size())) % static_cast<Sint32>(guys.size());
@@ -1108,11 +1106,11 @@ Sint32 cycle_guy(Sint32 whichway)
         return MENU_OK;
     }
 
-    if (whichway > 0) g_hire_session->next_family();
-    else if (whichway < 0) g_hire_session->prev_family();
+    if (whichway > 0) pks().hire_session->next_family();
+    else if (whichway < 0) pks().hire_session->prev_family();
     // whichway == 0: session constructor already initialized
 
-    og::runtime::current_session->current_type_ = g_hire_session->family_index();
+    og::runtime::current_session->current_type_ = pks().hire_session->family_index();
     sync_current_guy_from_hire();
     show_guy(0, 0);
     grab_mouse();
@@ -1149,11 +1147,11 @@ Sint32 cycle_guy(Sint32 whichway)
 }
 Sint32 cycle_team_guy(Sint32 whichway)
 {
-	if (!g_train_session || g_train_session->empty())
+	if (!pks().train_session || pks().train_session->empty())
 		return -1;
 
-	if (whichway > 0) g_train_session->next_member();
-	else if (whichway < 0) g_train_session->prev_member();
+	if (whichway > 0) pks().train_session->next_member();
+	else if (whichway < 0) pks().train_session->prev_member();
 
 	sync_current_guy_from_train();
 	show_guy(0, 0);
@@ -1208,10 +1206,10 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 
 Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 {
-	if (!g_hire_session)
+	if (!pks().hire_session)
 		return -1;
 
-	int slot = g_hire_session->hire();
+	int slot = pks().hire_session->hire();
 	if (slot < 0)
 		return (og::runtime::current_session->myscreen_->save_data.team_size >= MAX_TEAM_SIZE) ? -1 : MENU_OK;
 
@@ -1220,7 +1218,7 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 	auto& hired = og::runtime::current_session->myscreen_->save_data.team_list[slot];
 	std::string name = hired->name;
 	if (prompt_for_string("NAME THIS CHARACTER", name))
-		g_hire_session->rename_hired(slot, name);
+		pks().hire_session->rename_hired(slot, name);
 	grab_mouse();
 
 	// Sync current_guy from the session's next recruit
@@ -1232,7 +1230,7 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 // Accept changes ..
 Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 {
-	if (!g_train_session || g_train_session->empty())
+	if (!pks().train_session || pks().train_session->empty())
 		return -1;
 
 	// SDL-specific: cheat mode (hold right mouse → free changes)
@@ -1242,7 +1240,7 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 		force = cheatmouse.right;
 	}
 
-	if (!g_train_session->accept(force))
+	if (!pks().train_session->accept(force))
 		return MENU_OK;  // can't afford
 
 	// Sync working copy back after accept

@@ -31,6 +31,8 @@
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_session.h>
+#include <openglad/runtime/picker_ui_state.h>
 
 #include "SDL.h"
 #include <openglad/data/gparser.h>
@@ -87,22 +89,13 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
 bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue);
 const char* family_name_copy(short family);
 
-// Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
-PixieData backpics[5];
-std::array<std::unique_ptr<pixieN>, 5> backdrops;
-
-// Zardus: FIX: this is from view.cpp, so that we can delete it here
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 // Flag to signal that game should start (for state machine)
 bool g_start_game_requested = false;
 #endif
-
-guy  *old_guy = nullptr;
-PixieData main_title_logo_data, main_columns_data;
-std::unique_ptr<pixieN> main_title_logo_pix;
-std::unique_ptr<pixieN> main_columns_pix;
 
 
 #ifdef TESTING
@@ -150,8 +143,12 @@ enum class PickerInterceptScope
     TeamBuild,
 };
 
-static PickerInterceptScope g_picker_intercept_scope = PickerInterceptScope::None;
-static const og::ui::PickerMenuItem* g_picker_selected_menu_item = nullptr;
+static inline PickerInterceptScope get_intercept_scope() {
+    return static_cast<PickerInterceptScope>(pks().intercept_scope);
+}
+static inline void set_intercept_scope(PickerInterceptScope s) {
+    pks().intercept_scope = static_cast<int>(s);
+}
 
 static cfg_store& active_config()
 {
@@ -178,30 +175,30 @@ static void picker_initialize_shared_menu_state()
     clear_allbuttons();
 
     // Set backdrops to nullptr
-    backpics[0] = read_pixie_file("mainul.pix");
-    backpics[1] = read_pixie_file("mainur.pix");
-    backpics[2] = read_pixie_file("mainll.pix");
-    backpics[3] = read_pixie_file("mainlr.pix");
+    pks().backpics[0] = read_pixie_file("mainul.pix");
+    pks().backpics[1] = read_pixie_file("mainur.pix");
+    pks().backpics[2] = read_pixie_file("mainll.pix");
+    pks().backpics[3] = read_pixie_file("mainlr.pix");
 
-    backdrops[0] = std::make_unique<pixieN>(backpics[0]);
-    backdrops[0]->setxy(0, 0);
-    backdrops[1] = std::make_unique<pixieN>(backpics[1]);
-    backdrops[1]->setxy(160, 0);
-    backdrops[2] = std::make_unique<pixieN>(backpics[2]);
-    backdrops[2]->setxy(0, 100);
-    backdrops[3] = std::make_unique<pixieN>(backpics[3]);
-    backdrops[3]->setxy(160, 100);
+    pks().backdrops[0] = std::make_unique<pixieN>(pks().backpics[0]);
+    pks().backdrops[0]->setxy(0, 0);
+    pks().backdrops[1] = std::make_unique<pixieN>(pks().backpics[1]);
+    pks().backdrops[1]->setxy(160, 0);
+    pks().backdrops[2] = std::make_unique<pixieN>(pks().backpics[2]);
+    pks().backdrops[2]->setxy(0, 100);
+    pks().backdrops[3] = std::make_unique<pixieN>(pks().backpics[3]);
+    pks().backdrops[3]->setxy(160, 100);
 
     og::runtime::current_session->myscreen_->viewob[0]->resize(PREF_VIEW_FULL);
     og::runtime::current_session->myscreen_->clearbuffer();
 
     //main_title_logo_data = read_pixie_file("glad.pix");
-    main_title_logo_data = read_pixie_file("title.pix"); // marbled gladiator title
-    main_title_logo_pix = std::make_unique<pixieN>(main_title_logo_data);
+    pks().main_title_logo_data = read_pixie_file("title.pix"); // marbled gladiator title
+    pks().main_title_logo_pix = std::make_unique<pixieN>(pks().main_title_logo_data);
 
     //main_columns_data = read_pixie_file("mage.pix");
-    main_columns_data = read_pixie_file("columns.pix");
-    main_columns_pix = std::make_unique<pixieN>(main_columns_data);
+    pks().main_columns_data = read_pixie_file("columns.pix");
+    pks().main_columns_pix = std::make_unique<pixieN>(pks().main_columns_data);
 
     // Get the mouse, timer, & keyboard ..
     grab_mouse();
@@ -220,7 +217,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
 {
     (void)call_arg;
     const ButtonAction action = static_cast<ButtonAction>(whatfunc);
-    if (g_picker_intercept_scope == PickerInterceptScope::MainMenu) {
+    if (get_intercept_scope() == PickerInterceptScope::MainMenu) {
         const og::ui::PickerMenuItem* menu_item = nullptr;
         switch (action) {
         case ButtonAction::BeginMenu:
@@ -248,13 +245,13 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         }
         if (!menu_item)
             return false;
-        g_picker_selected_menu_item = menu_item;
+        pks().selected_menu_item = menu_item;
         retvalue = MENU_EXIT;
         return true;
     }
-    if (g_picker_intercept_scope == PickerInterceptScope::TeamBuild) {
+    if (get_intercept_scope() == PickerInterceptScope::TeamBuild) {
         if (action == ButtonAction::GoMenu) {
-            g_picker_selected_menu_item = og::ui::find_picker_menu_item(
+            pks().selected_menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::TeamBuild, og::ui::PickerMenuCommand::StartGame);
             retvalue = MENU_EXIT;
             return true;
@@ -276,26 +273,26 @@ public:
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Quit);
         }
 #endif
-        g_picker_selected_menu_item = nullptr;
+        pks().selected_menu_item = nullptr;
         if (menu_id == og::ui::PickerMenuId::Main) {
-            g_picker_intercept_scope = PickerInterceptScope::MainMenu;
+            set_intercept_scope(PickerInterceptScope::MainMenu);
             mainmenu(1);
-            g_picker_intercept_scope = PickerInterceptScope::None;
+            set_intercept_scope(PickerInterceptScope::None);
 #ifdef TESTING
             g_picker_mainmenu_calls++;
 #endif
-            if (g_picker_selected_menu_item)
-                return g_picker_selected_menu_item;
+            if (pks().selected_menu_item)
+                return pks().selected_menu_item;
             return og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Quit);
         }
 
-        g_picker_intercept_scope = PickerInterceptScope::TeamBuild;
+        set_intercept_scope(PickerInterceptScope::TeamBuild);
         create_team_menu(start_team_build_in_hire_menu_ ? 1 : 0);
-        g_picker_intercept_scope = PickerInterceptScope::None;
+        set_intercept_scope(PickerInterceptScope::None);
         start_team_build_in_hire_menu_ = false;
-        if (g_picker_selected_menu_item)
-            return g_picker_selected_menu_item;
+        if (pks().selected_menu_item)
+            return pks().selected_menu_item;
         return og::ui::find_picker_menu_item(
             og::ui::PickerMenuId::TeamBuild, og::ui::PickerMenuCommand::Back);
     }
@@ -382,22 +379,22 @@ void picker_main(Sint32 argc, char  **argv)
 // Tests and PickerSession use this instead of duplicating cleanup logic.
 void picker_cleanup_resources()
 {
-	for (auto& backdrop : backdrops)
+	for (auto& backdrop : pks().backdrops)
     {
         backdrop.reset();
     }
 
-    for (auto& backpic : backpics)
+    for (auto& backpic : pks().backpics)
     {
         backpic.free();
     }
 
     clear_allbuttons();
 
-	main_columns_pix.reset();
-	main_columns_data.free();
-	main_title_logo_pix.reset();
-	main_title_logo_data.free();
+	pks().main_columns_pix.reset();
+	pks().main_columns_data.free();
+	pks().main_title_logo_pix.reset();
+	pks().main_title_logo_data.free();
 }
 
 void picker_quit()

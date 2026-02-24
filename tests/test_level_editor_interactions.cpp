@@ -1,13 +1,15 @@
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/level_editor_state.h>
+#include <openglad/runtime/game_session.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
+static inline LevelEditorState& eds() { return *og::runtime::current_session->editor_; }
+
 // From level_editor.cpp
 Sint32 level_editor();
-extern Sint32 levelchanged;
-extern Sint32 campaignchanged;
 
 struct EditorThreadState {
     bool started;
@@ -145,8 +147,8 @@ static int editor_injector_thread(void* data)
     inject_click(85, 105, 20);  // Save As...
 
     // Force the ESC quit prompt path (TESTING returns default without blocking).
-    levelchanged = 1;
-    campaignchanged = 1;
+    eds().levelchanged = 1;
+    eds().campaignchanged = 1;
 
     // Right-click pick path.
     SDL_Event right_down{};

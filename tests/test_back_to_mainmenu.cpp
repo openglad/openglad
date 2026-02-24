@@ -16,11 +16,9 @@ void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
-// Globals defined in picker.cpp that we need for cleanup
-extern PixieData main_title_logo_data, main_columns_data;
-extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
-extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
-extern PixieData backpics[5];
+#include <openglad/runtime/picker_ui_state.h>
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
 
 // Test: Continue -> Back should return to the main menu, not exit.
 //
@@ -95,15 +93,15 @@ static int back_test_injector(void* data)
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        backdrops[i].reset();
-        backpics[i].free();
+        pks().backdrops[i].reset();
+        pks().backpics[i].free();
     }
     clear_allbuttons();
     og::runtime::current_session->localbuttons_ = nullptr;
-    main_columns_pix.reset();
-    main_columns_data.free();
-    main_title_logo_pix.reset();
-    main_title_logo_data.free();
+    pks().main_columns_pix.reset();
+    pks().main_columns_data.free();
+    pks().main_title_logo_pix.reset();
+    pks().main_title_logo_data.free();
 }
 
 void test_continue_then_back_returns_to_mainmenu() {

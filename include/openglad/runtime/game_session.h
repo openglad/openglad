@@ -12,6 +12,8 @@
 
 struct SDL_Surface;
 struct InputHardwareState;
+struct PickerState;
+struct LevelEditorState;
 
 class screen;
 class options;
@@ -86,6 +88,9 @@ public:
     static constexpr int kMaxButtons = 50;  // == MAX_BUTTONS from button.h
     std::array<::vbutton*, kMaxButtons> allbuttons_ = {};
 
+    // Button ownership (Phase 7d) — moved from button.cpp anonymous namespace.
+    std::array<std::unique_ptr<::vbutton>, kMaxButtons> owned_buttons_{};
+
     // Render/palette state (Batch 6) — moved from pal32.cpp/video.cpp.
     unsigned char curpal_[768] = {};
     unsigned char temppal_[768] = {};
@@ -105,6 +110,12 @@ public:
 
     // Timer anchor (Phase 6) — moved from util.cpp thread_local g_reset_time.
     std::chrono::steady_clock::time_point reset_time_ = std::chrono::steady_clock::now();
+
+    // Picker UI state (Phase 7a) — moved from picker*.cpp globals.
+    std::unique_ptr<PickerState> picker_;
+
+    // Level editor state (Phase 7b) — moved from level_editor*.cpp globals.
+    std::unique_ptr<LevelEditorState> editor_;
 
     // Picker state (Batch 8) — moved from picker.cpp globals.
     static constexpr int kNumFamilies = 14;  // == NUM_FAMILIES from constants.h

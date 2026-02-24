@@ -23,18 +23,16 @@
 #include <openglad/legacy/test_trace.h>
 #include <openglad/data/gparser.h>
 #include <openglad/platform/io.h>
+#include <openglad/runtime/picker_ui_state.h>
 #include <array>
 #include <utility>
 
-extern short scen_level;
-extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
+// Per-session picker state accessor.
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 // allbuttons is now a macro → current_session->allbuttons_
-namespace
-{
-std::array<std::unique_ptr<vbutton>, MAX_BUTTONS> owned_buttons;
-}
-short dumbcount;
+static inline auto& owned_buttons() { return og::runtime::current_session->owned_buttons_; }
+
 void get_input_events(bool);
 
 
@@ -138,7 +136,7 @@ vbutton::vbutton() //for pointers
 
 vbutton::~vbutton()
 {
-    // No manual ownership; menu buttons are owned by `owned_buttons` in this TU.
+    // No manual ownership; menu buttons are owned by `owned_buttons_` in GameSession.
 }
 
 void vbutton::set_graphic(char family)
@@ -402,7 +400,7 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
                                                       buttons[i].myfun, buttons[i].arg1,
                                                       buttons[i].label, buttons[i].hotkey);
         og::runtime::current_session->allbuttons_[i] = owned_button.get();
-        owned_buttons[static_cast<size_t>(i)] = std::move(owned_button);
+        owned_buttons()[static_cast<size_t>(i)] = std::move(owned_button);
         og::runtime::current_session->allbuttons_[i]->id = buttons[i].id;
         og::runtime::current_session->allbuttons_[i]->hidden = buttons[i].hidden;
         og::runtime::current_session->allbuttons_[i]->no_draw = buttons[i].no_draw;
@@ -413,9 +411,9 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
 
 void clear_allbuttons()
 {
-    for (size_t i = 0; i < owned_buttons.size(); i++)
+    for (size_t i = 0; i < owned_buttons().size(); i++)
     {
-        owned_buttons[i].reset();
+        owned_buttons()[i].reset();
         og::runtime::current_session->allbuttons_[i] = nullptr;
     }
 }
@@ -424,8 +422,8 @@ void draw_backdrop()
 {
     Sint32 i;
     for (i=0; i < 5; i++)
-        if (backdrops[i])
-            backdrops[i]->draw(og::runtime::current_session->myscreen_->viewob[0].get());
+        if (pks().backdrops[i])
+            pks().backdrops[i]->draw(og::runtime::current_session->myscreen_->viewob[0].get());
 }
 
 void draw_buttons(button * buttons, Sint32 numbuttons)

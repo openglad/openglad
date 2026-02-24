@@ -25,13 +25,10 @@ extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
 #endif
 
-// Globals defined in picker.cpp that we need for cleanup
-extern PixieData main_title_logo_data, main_columns_data;
-extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
-extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
-extern PixieData backpics[5];
+#include <openglad/runtime/picker_ui_state.h>
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
 // Picker globals that can leak across integration tests and affect menu start state
-extern guy* old_guy;
 
 // FAERIE is at index 12 in allowable_guys[]
 #define FAERIE_INDEX 12
@@ -39,19 +36,19 @@ extern guy* old_guy;
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        backdrops[i].reset();
-        backpics[i].free();
+        pks().backdrops[i].reset();
+        pks().backpics[i].free();
     }
     clear_allbuttons();
     og::runtime::current_session->localbuttons_ = nullptr;
-    main_columns_pix.reset();
-    main_columns_data.free();
-    main_title_logo_pix.reset();
-    main_title_logo_data.free();
+    pks().main_columns_pix.reset();
+    pks().main_columns_data.free();
+    pks().main_title_logo_pix.reset();
+    pks().main_title_logo_data.free();
 
     // Ensure the next test starts the hire menu from a clean state.
     og::runtime::current_session->current_guy_.reset();
-    old_guy = nullptr;      // Non-owning; may point into team_list[]
+    pks().old_guy = nullptr;      // Non-owning; may point into team_list[]
     og::runtime::current_session->current_type_ = 0;
     og::runtime::current_session->editguy_ = 0;
     og::runtime::current_session->current_team_num_ = 0;
@@ -180,7 +177,7 @@ void test_fairy_death() {
     // Some integration tests leave the picker globals set, which changes the
     // starting class in the hire menu. Reset here so NEXT x12 always lands on FAERIE.
     og::runtime::current_session->current_guy_.reset();
-    old_guy = nullptr;
+    pks().old_guy = nullptr;
     og::runtime::current_session->current_type_ = 0;
     og::runtime::current_session->editguy_ = 0;
     og::runtime::current_session->current_team_num_ = 0;

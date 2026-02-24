@@ -10,6 +10,10 @@
 #include <openglad/core/util.h> // LogError
 #include <algorithm>            // std::copy
 #include <openglad/entities/guy.h> // complete type for unique_ptr<guy> destructor
+#include <openglad/input/button.h> // complete type for unique_ptr<vbutton> destructor
+#include <openglad/runtime/picker_ui_state.h>
+#include <openglad/runtime/level_editor_state.h>
+#include <openglad/render/pixien.h>  // complete type for PickerState's unique_ptr<pixieN>
 #include <openglad/runtime/screen.h> // screen class (pulls in base.h → myscreen macro)
 #include <openglad/render/view.h>    // options class (defines theprefs macro)
 #include <openglad/render/sai2x.h>   // E_Screen
@@ -43,6 +47,10 @@ GameSession::GameSession(const Config& session_cfg)
 
     // Allocate input hardware state.
     input_hw_ = std::make_unique<InputHardwareState>();
+
+    // Allocate UI sub-objects (Phase 7).
+    picker_ = std::make_unique<PickerState>();
+    editor_ = std::make_unique<LevelEditorState>();
 
     // Wire up the timer anchor so reset_timer()/query_timer() use this session's time.
     g_reset_time_ptr = &reset_time_;

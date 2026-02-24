@@ -21,6 +21,8 @@
 #include <openglad/legacy/base.h>
 #include <openglad/render/pixien.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_session.h>
+#include <openglad/runtime/picker_ui_state.h>
 #include <openglad/ui/picker_common.h>
 #include "SDL.h"
 #include <array>
@@ -36,8 +38,8 @@ constexpr int MAINMENU_BUTTON_COUNT = 6;
 
 #include "picker_sdl_defs.h"
 
-extern std::unique_ptr<pixieN> main_title_logo_pix;
-extern std::unique_ptr<pixieN> main_columns_pix;
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
 // difficulty_names removed — use og::ui::kDifficultyNames from picker_common.h
 
 void draw_version_number();
@@ -57,15 +59,15 @@ void redraw_mainmenu()
 
     int count = 0;
     
-    main_title_logo_pix->set_frame(0);
-    main_title_logo_pix->drawMix(15,  8, game->viewob[0].get());
-    main_title_logo_pix->set_frame(1);
-    main_title_logo_pix->drawMix(151,  8, game->viewob[0].get());
-    main_columns_pix->set_frame(0);
-    main_columns_pix->drawMix(12,40, game->viewob[0].get());
-    main_columns_pix->set_frame(1);
-    main_columns_pix->drawMix(242,40, game->viewob[0].get());
-    //main_columns_pix->next_frame();
+    pks().main_title_logo_pix->set_frame(0);
+    pks().main_title_logo_pix->drawMix(15,  8, game->viewob[0].get());
+    pks().main_title_logo_pix->set_frame(1);
+    pks().main_title_logo_pix->drawMix(151,  8, game->viewob[0].get());
+    pks().main_columns_pix->set_frame(0);
+    pks().main_columns_pix->drawMix(12,40, game->viewob[0].get());
+    pks().main_columns_pix->set_frame(1);
+    pks().main_columns_pix->drawMix(242,40, game->viewob[0].get());
+    //pks().main_columns_pix->next_frame();
     
     #ifndef DISABLE_MULTIPLAYER
     if (game->save_data.numplayers==4)

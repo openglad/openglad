@@ -37,10 +37,14 @@
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/data/gparser.h>
 #include <openglad/render/sai2x.h>
+#include <openglad/runtime/level_editor_state.h>
+#include <openglad/runtime/game_session.h>
 #include <algorithm>
 #include <cstring>
 #include <format>
 #include <memory>
+
+static inline LevelEditorState& eds() { return *og::runtime::current_session->editor_; }
 
 // scroll_amount is now a macro via input.h → current_session->scroll_amount_
 
@@ -106,14 +110,8 @@ void set_name(walker  *target, screen * scr);
 
 // myscreen and theprefs are now macros defined in base.h / view.h
 
-unsigned char scenpalette[768];
-Sint32 redraw = 1;  // need to redraw?
-Sint32 campaignchanged = 0;  // has campaign changed?
-Sint32 levelchanged = 0;  // has level changed?
-Sint32 cyclemode = 1;      // for color cycling
-//buffers: PORT: changed start_time to start_time_s to avoid conflict with
-//input.cpp
-Sint32 start_time_s; // for timer ops
+// eds().scenpalette, eds().redraw, eds().campaignchanged, eds().levelchanged, eds().cyclemode, start_time_s
+// moved into LevelEditorState (per-session via eds())
 
 class Rect
 {
@@ -251,8 +249,7 @@ public:
 
 std::vector<ObjectType> object_pane;
 
-Sint32 rowsdown = 0;
-Sint32 maxrows = ((sizeof(backgrounds)/4) / 4);
+// eds().rowsdown and eds().maxrows moved into LevelEditorState (per-session via eds())
 
 bool save_level_and_map(screen* ascreen);
 bool does_campaign_exist(const std::string& campaign_id);
@@ -932,7 +929,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 {
                     obj->stats()->name = name;
                     selection.front().name = obj->stats()->name;
-                    levelchanged = 1;
+                    eds().levelchanged = 1;
                 }
             }
         }
@@ -950,7 +947,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                         obj->team_num = obj->team_num - 1;
                     else
                         obj->team_num = MAX_TEAM;
-                    levelchanged = 1;
+                    eds().levelchanged = 1;
                 }
             }
         }
@@ -975,7 +972,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                         obj->team_num = obj->team_num + 1;
                     else
                         obj->team_num = 0;
-                    levelchanged = 1;
+                    eds().levelchanged = 1;
                 }
             }
         }
@@ -998,7 +995,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 {
                     obj->stats()->level--;
                     sel.level = obj->stats()->level;
-                    levelchanged = 1;
+                    eds().levelchanged = 1;
                 }
             }
         }
@@ -1012,7 +1009,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             {
                 obj->stats()->level++;
                 sel.level = obj->stats()->level;
-                levelchanged = 1;
+                eds().levelchanged = 1;
             }
         }
     }
@@ -1034,7 +1031,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 obj->setxy(sel.x, sel.y);
                 sel.set(obj);
 
-                levelchanged = 1;
+                eds().levelchanged = 1;
             }
         }
     }
@@ -1056,7 +1053,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 obj->setxy(sel.x, sel.y);
                 sel.set(obj);
 
-                levelchanged = 1;
+                eds().levelchanged = 1;
             }
         }
     }
@@ -1072,7 +1069,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 else
                     obj->curdir = FACE_UP;
 				obj->set_frame(obj->ani[obj->curdir][0]);
-                levelchanged = 1;
+                eds().levelchanged = 1;
             }
         }
     }
@@ -1084,7 +1081,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             if(obj != nullptr)
             {
                 level->remove_ob(obj);
-                levelchanged = 1;
+                eds().levelchanged = 1;
             }
         }
         selection.clear();
@@ -1267,7 +1264,7 @@ void LevelEditorData::draw(screen* s)
         const Sint32 x2 = static_cast<Sint32>(r.x + r.w);
         const Sint32 y2 = static_cast<Sint32>(r.y + r.h);
         s->draw_box(x1, y1, x2, y2, ORANGE_START, 0, 1);
-        redraw = 1;
+        eds().redraw = 1;
     }
     
     display_panel(s);
@@ -1446,7 +1443,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         {
             for (j=0; j < 4; j++)
             {
-                whichback = (i+(j+rowsdown)*4) % (sizeof(backgrounds)/4);
+                whichback = (i+(j+eds().rowsdown)*4) % (sizeof(backgrounds)/4);
                 {
                     auto& pix = s->level_data.pixdata[ backgrounds[whichback] ];
                     s->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
@@ -1510,7 +1507,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
                 int index = 0;
                 if(pane_size > 0)
                 {
-                    index = (i + ((j+rowsdown) * PIX_OVER)) % pane_size;
+                    index = (i + ((j+eds().rowsdown) * PIX_OVER)) % pane_size;
                     newob->setxy(S_RIGHT+i*GRID_SIZE + level->topx, PIX_TOP+j*GRID_SIZE + level->topy);
                     newob->set_data(level->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
                     level->myloader->set_walker(newob, object_pane[index].order, object_pane[index].family);
@@ -1600,8 +1597,7 @@ void LevelEditorData::resmooth_terrain()
     myradar.update(level.get());
 }
 
-// For released button
-int mouse_up_button = 0;
+// eds().mouse_up_button moved into LevelEditorState (per-session via eds())
 
 void LevelEditorData::mouse_down(int mx, int my)
 {
@@ -1610,18 +1606,14 @@ void LevelEditorData::mouse_down(int mx, int my)
     dragging = false;
 }
 
-// Deltas for motion
-int mouse_motion_x = 0;
-int mouse_motion_y = 0;
-int mouse_last_x = 0;
-int mouse_last_y = 0;
+// eds().mouse_motion_x/y, eds().mouse_last_x/y moved into LevelEditorState (per-session via eds())
 
 void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
 {
     MouseState& mymouse = query_mouse_no_poll();
     if(mymouse.left)
     {
-        if(mode == Mode::Select && !mouse_on_menus(mouse_last_x, mouse_last_y))
+        if(mode == Mode::Select && !mouse_on_menus(eds().mouse_last_x, eds().mouse_last_y))
         {
             Sint32 worldx = mx + level->topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
             Sint32 worldy = my + level->topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
@@ -1769,12 +1761,12 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, fileCampaignImportButton))
         {
             bool cancel = false;
-            if(levelchanged)
+            if(eds().levelchanged)
             {
                 cancel = !yes_or_no_prompt("Import", "Discard unsaved level changes?", false);
             }
             
-            if(campaignchanged)
+            if(eds().campaignchanged)
             {
                 cancel = !yes_or_no_prompt("Import", "Discard unsaved campaign changes?", false);
             }
@@ -1788,40 +1780,40 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, fileCampaignShareButton))
         {
             bool cancel = false;
-            if(levelchanged)
+            if(eds().levelchanged)
             {
                 if(yes_or_no_prompt("Share", "Save level first?", false))
                 {
                     if(saveLevel())
                     {
                         timed_dialog("Level saved.");
-                        redraw = 1;
-                        levelchanged = 0;
+                        eds().redraw = 1;
+                        eds().levelchanged = 0;
                     }
                     else
                     {
                         timed_dialog("Save failed.");
-                        redraw = 1;
+                        eds().redraw = 1;
                         
                         cancel = true;
                     }
                 }
             }
             
-            if(campaignchanged)
+            if(eds().campaignchanged)
             {
                 if(yes_or_no_prompt("Share", "Save campaign first?", false))
                 {
                     if(saveCampaign())
                     {
                         timed_dialog("Campaign saved.");
-                        redraw = 1;
-                        campaignchanged = 0;
+                        eds().redraw = 1;
+                        eds().campaignchanged = 0;
                     }
                     else
                     {
                         timed_dialog("Save failed.");
-                        redraw = 1;
+                        eds().redraw = 1;
                         
                         cancel = true;
                     }
@@ -1838,7 +1830,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             // Confirm if unsaved
             bool cancel = false;
-            if (levelchanged)
+            if (eds().levelchanged)
             {
                 cancel = !yes_or_no_prompt("New Campaign", "Discard unsaved changes?", false);
             }
@@ -1877,25 +1869,25 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                                     // Update minimap
                                     myradar.start(level.get());
                                     timed_dialog("Campaign created.");
-                                    campaignchanged = 0;
-                                    levelchanged = 0;
+                                    eds().campaignchanged = 0;
+                                    eds().levelchanged = 0;
                                 }
                                 else
                                 {
                                     timed_dialog("Campaign has no scenarios!");
-                                    redraw = 1;
+                                    eds().redraw = 1;
                                 }
                             }
                             else
                             {
                                 timed_dialog("Failed to load new campaign.");
-                                redraw = 1;
+                                eds().redraw = 1;
                             }
                         }
                         else
                         {
                             timed_dialog("Failed to create new campaign.");
-                            redraw = 1;
+                            eds().redraw = 1;
                         }
                     }
                 }
@@ -1905,9 +1897,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, fileCampaignLoadButton))
         {
             // Pick a campaign, then load it and load the first level
-            redraw = 1;
+            eds().redraw = 1;
             bool cancel = false;
-            if(campaignchanged)
+            if(eds().campaignchanged)
             {
                 cancel = !yes_or_no_prompt("Load Campaign", "Discard unsaved changes?", false);
             }
@@ -1921,7 +1913,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     {
                         (void)unmount_campaign_package_with_error(get_mounted_campaign());
                         (void)mount_campaign_package_with_error(result.id);
-                        campaignchanged = 0;
+                        eds().campaignchanged = 0;
                     }
                     else
                     {
@@ -1934,7 +1926,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         og::runtime::current_session->myscreen_->clearbuffer();
                         // Prompt to load starting level.  If we don't, then the user can transfer levels between campaigns here.
                         bool load_first_level = yes_or_no_prompt("Load Campaign", "Load first level?", false);
-                        if(load_first_level && levelchanged)
+                        if(load_first_level && eds().levelchanged)
                         {
                             load_first_level = yes_or_no_prompt("Load Level", "Discard unsaved changes?", false);
                         }
@@ -1947,7 +1939,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                                 // Update minimap
                                 myradar.start(level.get());
                                 timed_dialog("Campaign loaded.");
-                                levelchanged = 0;
+                                eds().levelchanged = 0;
                             }
                             else
                             {
@@ -1965,13 +1957,13 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(saveCampaign())
             {
                 timed_dialog("Campaign saved.");
-                campaignchanged = 0;
-                redraw = 1;
+                eds().campaignchanged = 0;
+                eds().redraw = 1;
             }
             else
             {
                 timed_dialog("Failed to save campaign.");
-                redraw = 1;
+                eds().redraw = 1;
             }
         }
         else if(activate_menu_choice(mx, my, *this, fileCampaignSaveAsButton))
@@ -1986,13 +1978,13 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     if(saveCampaignAs(result.id))
                     {
                         timed_dialog("Campaign saved.");
-                        campaignchanged = 0;
-                        redraw = 1;
+                        eds().campaignchanged = 0;
+                        eds().redraw = 1;
                     }
                     else
                     {
                         timed_dialog("Failed to save campaign.");
-                        redraw = 1;
+                        eds().redraw = 1;
                     }
                 }
             }
@@ -2011,7 +2003,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             // Confirm if unsaved
             bool cancel = false;
-            if (levelchanged)
+            if (eds().levelchanged)
             {
                 cancel = !yes_or_no_prompt("Load Level", "Discard unsaved changes?", false);
             }
@@ -2022,15 +2014,15 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 level->clear();
                 level->create_new_grid();
                 myradar.start(level.get());
-                levelchanged = 1;
-                redraw = 1;
+                eds().levelchanged = 1;
+                eds().redraw = 1;
             }
         }
         else if(activate_menu_choice(mx, my, *this, fileLevelLoadButton))
         {
             // Confirm if unsaved
             bool cancel = false;
-            if (levelchanged)
+            if (eds().levelchanged)
             {
                 cancel = !yes_or_no_prompt("Load Level", "Discard unsaved changes?", false);
             }
@@ -2040,22 +2032,22 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 // Browse for the level to load
                 int id = pick_level(og::runtime::current_session->myscreen_, level->id, true);
                 // Don't bother loading the level if it is the same, unchanged level
-                if(id >= 0 && (levelchanged || id != level->id))
+                if(id >= 0 && (eds().levelchanged || id != level->id))
                 {
                     if(loadLevel(id))
                     {
                         timed_dialog("Level loaded.");
-                        levelchanged = 0;
-                        redraw = 1;
+                        eds().levelchanged = 0;
+                        eds().redraw = 1;
                     }
                     else
                     {
                         timed_dialog("Failed to load level.");
-                        redraw = 1;
+                        eds().redraw = 1;
                     }
                     
                     myradar.start(level.get());
-                    redraw = 1;
+                    eds().redraw = 1;
                 }
             }
         }
@@ -2064,13 +2056,13 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(saveLevel())
             {
                 timed_dialog("Level saved.");
-                redraw = 1;
-                levelchanged = 0;
+                eds().redraw = 1;
+                eds().levelchanged = 0;
             }
             else
             {
                 timed_dialog("Save failed.");
-                redraw = 1;
+                eds().redraw = 1;
             }
         }
         else if(activate_menu_choice(mx, my, *this, fileLevelSaveAsButton))
@@ -2086,20 +2078,20 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     if(saveLevelAs(id))
                     {
                         timed_dialog("Level saved.");
-                        redraw = 1;
-                        levelchanged = 0;
+                        eds().redraw = 1;
+                        eds().levelchanged = 0;
                     }
                     else
                     {
                         timed_dialog("Save failed.");
-                        redraw = 1;
+                        eds().redraw = 1;
                     }
                 }
             }
         }
         else if(activate_menu_choice(mx, my, *this, fileQuitButton))
         {
-            if((!levelchanged && !campaignchanged)
+            if((!eds().levelchanged && !eds().campaignchanged)
                 || yes_or_no_prompt("Exit", "Quit without saving?", false))
             {
                 done = true;
@@ -2118,7 +2110,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, campaignInfoButton))
         {
             std::string buf = std::format("{}\nID: {}\nTitle: {}\nVersion: {}\nAuthors: {}\nContributors: {}\nSugg. Power: {}\nFirst level: {}",
-                        (campaignchanged? "(unsaved)" : ""), campaign->id, campaign->title, campaign->version, campaign->authors, campaign->contributors, campaign->suggested_power, campaign->first_level);
+                        (eds().campaignchanged? "(unsaved)" : ""), campaign->id, campaign->title, campaign->version, campaign->authors, campaign->contributors, campaign->suggested_power, campaign->first_level);
             popup_dialog("Campaign Info", buf.c_str());
         }
         // Profile >
@@ -2138,7 +2130,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(prompt_for_string("Campaign Title", title))
             {
                 campaign->title = title;
-                campaignchanged = 1;
+                eds().campaignchanged = 1;
             }
         }
         else if(activate_menu_choice(mx, my, *this, campaignProfileDescriptionButton))
@@ -2147,9 +2139,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(prompt_for_string_block("Campaign Description", desc))
             {
                 campaign->description = desc;
-                campaignchanged = 1;
+                eds().campaignchanged = 1;
             }
-            redraw = 1;
+            eds().redraw = 1;
         }
         else if(activate_menu_choice(mx, my, *this, campaignProfileIconButton))
         {
@@ -2161,7 +2153,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(prompt_for_string("Campaign Authors", authors))
             {
                 campaign->authors = authors;
-                campaignchanged = 1;
+                eds().campaignchanged = 1;
             }
         }
         else if(activate_menu_choice(mx, my, *this, campaignProfileContributorsButton))
@@ -2170,7 +2162,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(prompt_for_string("Campaign Contributors", contributors))
             {
                 campaign->contributors = contributors;
-                campaignchanged = 1;
+                eds().campaignchanged = 1;
             }
         }
         // Details >
@@ -2188,7 +2180,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(prompt_for_string("Campaign Version", version))
             {
                 campaign->version = version;
-                campaignchanged = 1;
+                eds().campaignchanged = 1;
             }
         }
         else if(activate_menu_choice(mx, my, *this, campaignDetailsSuggestedPowerButton))
@@ -2197,7 +2189,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(prompt_for_string("Suggested Power", power))
             {
                 campaign->suggested_power = toInt(power);
-                campaignchanged = 1;
+                eds().campaignchanged = 1;
             }
         }
         else if(activate_menu_choice(mx, my, *this, campaignDetailsFirstLevelButton))
@@ -2206,7 +2198,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(prompt_for_string("First Level", level_str))
             {
                 campaign->first_level = toInt(level_str);
-                campaignchanged = 1;
+                eds().campaignchanged = 1;
             }
         }
         else if(activate_menu_choice(mx, my, *this, campaignValidateButton))
@@ -2271,7 +2263,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, levelInfoButton))
         {
             std::string buf = std::format("{}\nID number: {}\nTitle: {}\nSize: {}x{}",
-                     (levelchanged? "(unsaved)" : ""), level->id, level->title, level->grid.w, level->grid.h);
+                     (eds().levelchanged? "(unsaved)" : ""), level->id, level->title, level->grid.w, level->grid.h);
             popup_dialog("Level Info", buf.c_str());
         }
         // Profile >
@@ -2288,7 +2280,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(prompt_for_string("Level Title", title))
             {
                 level->title = title;
-                levelchanged = 1;
+                eds().levelchanged = 1;
             }
         }
         else if(activate_menu_choice(mx, my, *this, levelProfileDescriptionButton))
@@ -2297,9 +2289,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(prompt_for_string_block("Level Description", desc))
             {
                 level->description = desc;
-                levelchanged = 1;
+                eds().levelchanged = 1;
             }
-            redraw = 1;
+            eds().redraw = 1;
         }
         // Details >
         else if(activate_sub_menu_button(mx, my, current_menu, levelDetailsButton))
@@ -2363,26 +2355,26 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             
                             std::string resize_msg = std::format("Resized map to {}x{}", level->grid.w, level->grid.h);
                             timed_dialog(resize_msg.c_str());
-                            redraw = 1;
-                            levelchanged = 1;
+                            eds().redraw = 1;
+                            eds().levelchanged = 1;
                         }
                         else
                         {
                             timed_dialog("Resize canceled.");
-                            redraw = 1;
+                            eds().redraw = 1;
                         }
                     }
                 }
                 else
                 {
                     timed_dialog("Resize canceled.");
-                    redraw = 1;
+                    eds().redraw = 1;
                 }
             }
             else
             {
                 timed_dialog("Resize canceled.");
-                redraw = 1;
+                eds().redraw = 1;
             }
         }
         // Goals >
@@ -2418,7 +2410,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 if(v > 0)
                 {
                     level->par_value = static_cast<short>(v);
-                    levelchanged = 1;
+                    eds().levelchanged = 1;
                 }
             }
         }
@@ -2431,15 +2423,15 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 if(v > 0)
                 {
                     level->time_bonus_limit = static_cast<short>(v);
-                    levelchanged = 1;
+                    eds().levelchanged = 1;
                 }
             }
         }
         else if(activate_menu_choice(mx, my, *this, levelResmoothButton))
         {
             resmooth_terrain();
-            levelchanged = 1;
-            redraw = 1;
+            eds().levelchanged = 1;
+            eds().redraw = 1;
         }
         else if(activate_menu_choice(mx, my, *this, levelDeleteTerrainButton))
         {
@@ -2447,9 +2439,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             {
                 clear_terrain();
                 myradar.update(level.get());
-                levelchanged = 1;
+                eds().levelchanged = 1;
             }
-            redraw = 1;
+            eds().redraw = 1;
         }
         else if(activate_menu_choice(mx, my, *this, levelDeleteObjectsButton))
         {
@@ -2457,9 +2449,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             {
                 level->delete_objects();
                 myradar.update(level.get());
-                levelchanged = 1;
+                eds().levelchanged = 1;
             }
-            redraw = 1;
+            eds().redraw = 1;
         }
         // MODE
         else if(activate_sub_menu_button(mx, my, current_menu, modeButton, true))
@@ -2496,7 +2488,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 if(btn->contains(mx, my))
                 {
                     activate_mode_button(btn);
-                    redraw = 1;
+                    eds().redraw = 1;
                     break;
                 }
             }
@@ -2558,7 +2550,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         if(prompt_for_string("Rename", name))
                         {
                             newob->collide_ob->stats()->name = name;
-                            levelchanged = 1;
+                            eds().levelchanged = 1;
                         }
                     }
                     level->remove_ob(newob);
@@ -2617,7 +2609,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     const int pane_size = static_cast<int>(object_pane.size());
                     if(pane_size > 0)
                     {
-                        const int index = (windowx + ((windowy+rowsdown) * PIX_OVER)) % pane_size;
+                        const int index = (windowx + ((windowy+eds().rowsdown) * PIX_OVER)) % pane_size;
                         object_brush.order = object_pane[index].order;
                         object_brush.family = object_pane[index].family;
                     }
@@ -2628,7 +2620,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     if(!object_brush.picking)
                     {
                         // Create new object here (apply brush)
-                        levelchanged = 1;
+                        eds().levelchanged = 1;
                         newob = level->add_ob(object_brush.order, object_brush.family);
                         newob->setxy(windowx, windowy);
                         newob->team_num = static_cast<unsigned char>(object_brush.team);
@@ -2648,14 +2640,14 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         {
                             draw_walker(*newob, og::runtime::current_session->myscreen_->viewob[0].get());
                             og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-                            start_time_s = query_timer();
+                            eds().start_time_s = query_timer();
                             MouseState& mymouse = query_mouse_no_poll();
-                            while ( mymouse.left && (query_timer()-start_time_s) < 36 )
+                            while ( mymouse.left && (query_timer()-eds().start_time_s) < 36 )
                             {
                                 SDL_Delay(1);
                                 mymouse = query_mouse();
                             }
-                            levelchanged = 1;
+                            eds().levelchanged = 1;
                         }
                     }
                     else
@@ -2673,7 +2665,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     //windowx = (mx - PIX_LEFT) / GRID_SIZE;
                     windowx = (mx-S_RIGHT) / GRID_SIZE;
                     windowy = (my - PIX_TOP) / GRID_SIZE;
-                    terrain_brush.terrain = backgrounds[ (windowx + ((windowy+rowsdown) * PIX_OVER))
+                    terrain_brush.terrain = backgrounds[ (windowx + ((windowy+eds().rowsdown) * PIX_OVER))
                                              % (sizeof(backgrounds)/4)];
                     terrain_brush.terrain %= NUM_BACKGROUNDS;
                 } // end of background grid window
@@ -2928,8 +2920,8 @@ EventType handle_basic_editor_event(const SDL_Event& event)
         return EventType::Scroll;
     case SDL_FINGERMOTION:
         handle_mouse_event(event);
-        mouse_motion_x = static_cast<int>(event.tfinger.dx * 320.0f);
-        mouse_motion_y = static_cast<int>(event.tfinger.dy * 200.0f);
+        eds().mouse_motion_x = static_cast<int>(event.tfinger.dx * 320.0f);
+        eds().mouse_motion_y = static_cast<int>(event.tfinger.dy * 200.0f);
         return EventType::MouseMotion;
     case SDL_FINGERUP:
         {
@@ -2938,11 +2930,11 @@ EventType handle_basic_editor_event(const SDL_Event& event)
             int right_state = mymouse.right;
             handle_mouse_event(event);
             if(left_state != mymouse.left)
-                mouse_up_button = MOUSE_LEFT;
+                eds().mouse_up_button = MOUSE_LEFT;
             else if(right_state != mymouse.right)
-                mouse_up_button = MOUSE_RIGHT;
+                eds().mouse_up_button = MOUSE_RIGHT;
             else
-                mouse_up_button = 0;
+                eds().mouse_up_button = 0;
         }
         return EventType::MouseUp;
     case SDL_FINGERDOWN:
@@ -2956,8 +2948,8 @@ EventType handle_basic_editor_event(const SDL_Event& event)
         return EventType::Handled;
     case SDL_MOUSEMOTION:
         handle_mouse_event(event);
-        mouse_motion_x = static_cast<int>(static_cast<float>(event.motion.xrel) * (320.0f / og::runtime::current_session->viewport_w_));
-        mouse_motion_y = static_cast<int>(static_cast<float>(event.motion.yrel) * (200.0f / og::runtime::current_session->viewport_h_));
+        eds().mouse_motion_x = static_cast<int>(static_cast<float>(event.motion.xrel) * (320.0f / og::runtime::current_session->viewport_w_));
+        eds().mouse_motion_y = static_cast<int>(static_cast<float>(event.motion.yrel) * (200.0f / og::runtime::current_session->viewport_h_));
         return EventType::MouseMotion;
     case SDL_MOUSEBUTTONUP:
         {
@@ -2966,11 +2958,11 @@ EventType handle_basic_editor_event(const SDL_Event& event)
             int right_state = mymouse.right;
             handle_mouse_event(event);
             if(left_state != mymouse.left)
-                mouse_up_button = MOUSE_LEFT;
+                eds().mouse_up_button = MOUSE_LEFT;
             else if(right_state != mymouse.right)
-                mouse_up_button = MOUSE_RIGHT;
+                eds().mouse_up_button = MOUSE_RIGHT;
             else
-                mouse_up_button = 0;
+                eds().mouse_up_button = 0;
         }
         return EventType::MouseUp;
     case SDL_MOUSEBUTTONDOWN:
@@ -2998,10 +2990,7 @@ EventType handle_basic_editor_event(const SDL_Event& event)
 #define PAN_LIMIT_LEFT -60
 #define PAN_LIMIT_RIGHT (GRID_SIZE*data.level->grid.w - 320 + 80)
 
-bool pan_left = false;
-bool pan_right = false;
-bool pan_up = false;
-bool pan_down = false;
+// eds().pan_left/right/up/down moved into LevelEditorState (per-session via eds())
 
 Sint32 level_editor()
 {
@@ -3017,7 +3006,8 @@ Sint32 level_editor()
 	Sint32 mx, my;
     
     // Initialize palette for cycling
-    load_and_set_palette("our.pal", scenpalette);
+    load_and_set_palette("our.pal", eds().scenpalette);
+    eds().maxrows = ((sizeof(backgrounds)/4) / 4);
     
     if(data.reloadCampaign())
         Log("Loaded campaign data successfully.\n");
@@ -3045,7 +3035,7 @@ Sint32 level_editor()
         Log("Campaign has no valid levels!\n");
     }
 
-	redraw = 1;  // Redraw right away
+	eds().redraw = 1;  // Redraw right away
 	
 	object_pane.clear();
 	for(int family_idx = 0; family_idx < NUM_FAMILIES; family_idx++)
@@ -3081,8 +3071,8 @@ Sint32 level_editor()
     mymouse.y = 100;
     #endif
     
-    mouse_last_x = static_cast<int>(mymouse.x);
-    mouse_last_y = static_cast<int>(mymouse.y);
+    eds().mouse_last_x = static_cast<int>(mymouse.x);
+    eds().mouse_last_y = static_cast<int>(mymouse.y);
     
     float cycletimer = 0.0f;
 	grab_mouse();
@@ -3136,36 +3126,36 @@ Sint32 level_editor()
             switch(handle_basic_editor_event(event))
             {
             case EventType::MouseMotion:
-                data.mouse_motion(static_cast<int>(mymouse.x), static_cast<int>(mymouse.y), mouse_motion_x, mouse_motion_y);
+                data.mouse_motion(static_cast<int>(mymouse.x), static_cast<int>(mymouse.y), eds().mouse_motion_x, eds().mouse_motion_y);
                 break;
             case EventType::MouseDown:
                 if(mymouse.left)
                 {
-                    mouse_last_x = static_cast<int>(mymouse.x);
-                    mouse_last_y = static_cast<int>(mymouse.y);
+                    eds().mouse_last_x = static_cast<int>(mymouse.x);
+                    eds().mouse_last_y = static_cast<int>(mymouse.y);
                     
                     data.mouse_down(static_cast<int>(mymouse.x), static_cast<int>(mymouse.y));
                 }
                 break;
             case EventType::MouseUp:
                 
-                if(mouse_up_button == MOUSE_LEFT)
+                if(eds().mouse_up_button == MOUSE_LEFT)
                 {
-                    data.mouse_up(static_cast<int>(mymouse.x), static_cast<int>(mymouse.y), mouse_last_x, mouse_last_y, done);
-                    redraw = 1;
+                    data.mouse_up(static_cast<int>(mymouse.x), static_cast<int>(mymouse.y), eds().mouse_last_x, eds().mouse_last_y, done);
+                    eds().redraw = 1;
                 }
-                else if(mouse_up_button == MOUSE_RIGHT)
+                else if(eds().mouse_up_button == MOUSE_RIGHT)
                 {
                     // Picking with right mouse button
                     data.pick_by_mouse(static_cast<int>(mymouse.x), static_cast<int>(mymouse.y));
-                    redraw = 1;
+                    eds().redraw = 1;
                 }
                 break;
             case EventType::KeyDown:
-                redraw = 1;
+                eds().redraw = 1;
                 if(event.key.keysym.sym == SDLK_ESCAPE)
                 {
-                    if((!levelchanged && !campaignchanged)
+                    if((!eds().levelchanged && !eds().campaignchanged)
                         || yes_or_no_prompt("Exit", "Quit without saving?", false))
                     {
                         done = true;
@@ -3200,21 +3190,21 @@ Sint32 level_editor()
                 else if(event.key.keysym.sym == SDLK_s && (event.key.keysym.mod & KMOD_CTRL))
                 {
                     bool saved = false;
-                    if(levelchanged)
+                    if(eds().levelchanged)
                     {
                         if(data.saveLevel())
                         {
-                            levelchanged = 0;
+                            eds().levelchanged = 0;
                             saved = true;
                         }
                         else
                             timed_dialog("Failed to save level.");
                     }
-                    if(campaignchanged)
+                    if(eds().campaignchanged)
                     {
                         if(data.saveCampaign())
                         {
-                            campaignchanged = 0;
+                            eds().campaignchanged = 0;
                             saved = true;
                         }
                         else
@@ -3223,7 +3213,7 @@ Sint32 level_editor()
                     
                     if(saved)
                         timed_dialog("Saved.");
-                    else if(!levelchanged && !campaignchanged)
+                    else if(!eds().levelchanged && !eds().campaignchanged)
                         timed_dialog("No changes to save.");
                 }  // end of saving routines
 
@@ -3275,12 +3265,12 @@ Sint32 level_editor()
                 else if(event.key.keysym.sym == SDLK_F5)
                 {
                     data.resmooth_terrain();
-                    levelchanged = 1;
+                    eds().levelchanged = 1;
                 }
                 // Change to new palette ..
                 else if(event.key.keysym.sym == SDLK_F9)
                 {
-                    load_and_set_palette("our.pal", scenpalette);
+                    load_and_set_palette("our.pal", eds().scenpalette);
                 }
                 break;
             default:
@@ -3291,17 +3281,17 @@ Sint32 level_editor()
 		short scroll_delta = get_and_reset_scroll_amount();
 		#if defined(USE_TOUCH_INPUT)
 		// Only scroll the tile selector when touching it and you've already moved a bit
-		if(mymouse.left && Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse.x, mymouse.y) && fabs(mouse_last_y - mymouse.y) > 4)
+		if(mymouse.left && Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse.x, mymouse.y) && fabs(eds().mouse_last_y - mymouse.y) > 4)
         {
 		#endif
 		// Slide tile selector down ..
 		if (og::runtime::current_session->keystates_[KEYSTATE_DOWN] || scroll_delta < 0)
 		{
-			rowsdown++;
-			if (rowsdown >= maxrows)
-				rowsdown -= maxrows;
+			eds().rowsdown++;
+			if (eds().rowsdown >= eds().maxrows)
+				eds().rowsdown -= eds().maxrows;
             
-            redraw = 1;
+            eds().redraw = 1;
             
 			while (og::runtime::current_session->keystates_[KEYSTATE_DOWN])
 			{
@@ -3313,13 +3303,13 @@ Sint32 level_editor()
 		// Slide tile selector up ..
 		if (og::runtime::current_session->keystates_[KEYSTATE_UP] || scroll_delta > 0)
 		{
-			rowsdown--;
-			if (rowsdown < 0)
-				rowsdown += maxrows;
-			if (rowsdown <0 || rowsdown >= maxrows) // bad case
-				rowsdown = 0;
+			eds().rowsdown--;
+			if (eds().rowsdown < 0)
+				eds().rowsdown += eds().maxrows;
+			if (eds().rowsdown <0 || eds().rowsdown >= eds().maxrows) // bad case
+				eds().rowsdown = 0;
             
-            redraw = 1;
+            eds().redraw = 1;
             
 			while (og::runtime::current_session->keystates_[KEYSTATE_UP])
 			{
@@ -3334,29 +3324,29 @@ Sint32 level_editor()
 
 		// Scroll the screen (panning)
 		#ifndef OUYA
-		pan_left = (og::runtime::current_session->keystates_[KEYSTATE_KP_4] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_a]);
-		pan_right = (og::runtime::current_session->keystates_[KEYSTATE_KP_6] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_d]);
-		pan_up = (og::runtime::current_session->keystates_[KEYSTATE_KP_8] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_w]);
-		pan_down = (og::runtime::current_session->keystates_[KEYSTATE_KP_2] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_s]);
+		eds().pan_left = (og::runtime::current_session->keystates_[KEYSTATE_KP_4] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_a]);
+		eds().pan_right = (og::runtime::current_session->keystates_[KEYSTATE_KP_6] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_d]);
+		eds().pan_up = (og::runtime::current_session->keystates_[KEYSTATE_KP_8] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_w]);
+		eds().pan_down = (og::runtime::current_session->keystates_[KEYSTATE_KP_2] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_s]);
 		#endif
-		if (pan_up && data.level->topy >= PAN_LIMIT_UP) // top of the screen
+		if (eds().pan_up && data.level->topy >= PAN_LIMIT_UP) // top of the screen
         {
-            redraw = 1;
+            eds().redraw = 1;
 			data.level->add_draw_pos(0, -SCROLLSIZE);
         }
-		if (pan_down && data.level->topy <= PAN_LIMIT_DOWN) // scroll down
+		if (eds().pan_down && data.level->topy <= PAN_LIMIT_DOWN) // scroll down
         {
-            redraw = 1;
+            eds().redraw = 1;
 			data.level->add_draw_pos(0, SCROLLSIZE);
         }
-		if (pan_left && data.level->topx >= PAN_LIMIT_LEFT) // scroll left
+		if (eds().pan_left && data.level->topx >= PAN_LIMIT_LEFT) // scroll left
         {
-            redraw = 1;
+            eds().redraw = 1;
 			data.level->add_draw_pos(-SCROLLSIZE, 0);
         }
-		if (pan_right && data.level->topx <= PAN_LIMIT_RIGHT) // scroll right
+		if (eds().pan_right && data.level->topx <= PAN_LIMIT_RIGHT) // scroll right
         {
-            redraw = 1;
+            eds().redraw = 1;
 			data.level->add_draw_pos(SCROLLSIZE, 0);
         }
 
@@ -3366,13 +3356,13 @@ Sint32 level_editor()
 		
 			if (mymouse.left)       // put or remove the current guy
 			{
-				redraw = 1;
+				eds().redraw = 1;
 				mx = static_cast<Sint32>(mymouse.x);
 				my = static_cast<Sint32>(mymouse.y);
             
             // Holding on menu items
             bool mouse_on_menu = data.mouse_on_menus(mx, my);
-            bool old_mouse_on_menu = data.mouse_on_menus(mouse_last_x, mouse_last_y);
+            bool old_mouse_on_menu = data.mouse_on_menus(eds().mouse_last_x, eds().mouse_last_y);
             bool on_menu = mouse_on_menu && old_mouse_on_menu;
             bool off_menu = !mouse_on_menu && !old_mouse_on_menu;
             
@@ -3381,12 +3371,12 @@ Sint32 level_editor()
                 // Panning with mouse (touch)
                 if(data.panUpButton.contains(mx, my) && data.level->topy >= PAN_LIMIT_UP) // top of the screen
                 {
-                    redraw = 1;
+                    eds().redraw = 1;
                     data.level->add_draw_pos(0, -SCROLLSIZE);
                 }
                 else if(data.panUpRightButton.contains(mx, my))
                 {
-                    redraw = 1;
+                    eds().redraw = 1;
                     if(data.level->topy >= PAN_LIMIT_UP)
                         data.level->add_draw_pos(0, -SCROLLSIZE);
                     if(data.level->topx <= PAN_LIMIT_RIGHT)
@@ -3394,7 +3384,7 @@ Sint32 level_editor()
                 }
                 else if(data.panUpLeftButton.contains(mx, my))
                 {
-                    redraw = 1;
+                    eds().redraw = 1;
                     if(data.level->topy >= PAN_LIMIT_UP)
                         data.level->add_draw_pos(0, -SCROLLSIZE);
                     if(data.level->topx >= PAN_LIMIT_LEFT)
@@ -3402,12 +3392,12 @@ Sint32 level_editor()
                 }
                 else if(data.panDownButton.contains(mx, my) && data.level->topy <= PAN_LIMIT_DOWN) // scroll down
                 {
-                    redraw = 1;
+                    eds().redraw = 1;
                     data.level->add_draw_pos(0, SCROLLSIZE);
                 }
                 else if(data.panDownRightButton.contains(mx, my))
                 {
-                    redraw = 1;
+                    eds().redraw = 1;
                     if(data.level->topy <= PAN_LIMIT_DOWN)
                         data.level->add_draw_pos(0, SCROLLSIZE);
                     if(data.level->topx <= PAN_LIMIT_RIGHT)
@@ -3415,7 +3405,7 @@ Sint32 level_editor()
                 }
                 else if(data.panDownLeftButton.contains(mx, my))
                 {
-                    redraw = 1;
+                    eds().redraw = 1;
                     if(data.level->topy <= PAN_LIMIT_DOWN)
                         data.level->add_draw_pos(0, SCROLLSIZE);
                     if(data.level->topx >= PAN_LIMIT_LEFT)
@@ -3423,12 +3413,12 @@ Sint32 level_editor()
                 }
                 else if(data.panLeftButton.contains(mx, my) && data.level->topx >= PAN_LIMIT_LEFT) // scroll left
                 {
-                    redraw = 1;
+                    eds().redraw = 1;
                     data.level->add_draw_pos(-SCROLLSIZE, 0);
                 }
                 else if(data.panRightButton.contains(mx, my) && data.level->topx <= PAN_LIMIT_RIGHT) // scroll right
                 {
-                    redraw = 1;
+                    eds().redraw = 1;
                     data.level->add_draw_pos(SCROLLSIZE, 0);
                 }
                     
@@ -3469,7 +3459,7 @@ Sint32 level_editor()
                             {
                                 // Set to our current selection (apply brush)
                                 data.set_terrain(windowx, windowy, static_cast<unsigned char>(get_random_matching_tile(terrain_brush.terrain)));
-                                levelchanged = 1;
+                                eds().levelchanged = 1;
                                 if (terrain_brush.use_smoothing) // smooth a few squares, if not control
                                 {
                                     for (i=windowx-1; i <= windowx+1; i++)
@@ -3489,22 +3479,22 @@ Sint32 level_editor()
 		}      // end of left mouse button
 
 		// Now perform color cycling if selected
-			if (cyclemode)
+			if (eds().cyclemode)
 			{
 			    cycletimer -= static_cast<float>(start_ticks - last_ticks) / 1000.0f;
 			    if(cycletimer <= 0)
 	            {
 	                cycletimer = 0.5f;
-	                cycle_palette(scenpalette, WATER_START, WATER_END, 1);
-                cycle_palette(scenpalette, ORANGE_START, ORANGE_END, 1);
+	                cycle_palette(eds().scenpalette, WATER_START, WATER_END, 1);
+                cycle_palette(eds().scenpalette, ORANGE_START, ORANGE_END, 1);
             }
-			redraw = 1;
+			eds().redraw = 1;
 		}
 		
 		// Redraw screen
-		if (redraw)
+		if (eds().redraw)
 		{
-            redraw = 0;
+            eds().redraw = 0;
 			data.draw(og::runtime::current_session->myscreen_);
 			
             #ifdef USE_CONTROLLER_INPUT

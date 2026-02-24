@@ -10,7 +10,9 @@
 #include <memory>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
-extern guy* old_guy;
+#include <openglad/runtime/picker_ui_state.h>
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
 
 Sint32 name_guy(Sint32 arg);
 Sint32 do_pick_campaign(Sint32 arg1);
@@ -32,7 +34,7 @@ struct PickerStateGuard
     PickerStateGuard()
     {
         saved_current = std::move(og::runtime::current_session->current_guy_);
-        saved_old = old_guy;
+        saved_old = pks().old_guy;
         saved_editguy = og::runtime::current_session->editguy_;
         saved_end = og::runtime::current_session->myscreen_->end;
         saved_team_size = og::runtime::current_session->myscreen_->save_data.team_size;
@@ -42,7 +44,7 @@ struct PickerStateGuard
     ~PickerStateGuard()
     {
         og::runtime::current_session->current_guy_ = std::move(saved_current);
-        old_guy = saved_old;
+        pks().old_guy = saved_old;
         og::runtime::current_session->editguy_ = saved_editguy;
         og::runtime::current_session->myscreen_->end = saved_end;
         og::runtime::current_session->myscreen_->save_data.team_size = saved_team_size;

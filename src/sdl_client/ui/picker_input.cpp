@@ -24,6 +24,8 @@
 #include <openglad/input/button.h>
 #include <openglad/input/input.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_session.h>
+#include <openglad/runtime/picker_ui_state.h>
 #include "SDL.h"
 
 namespace {
@@ -37,8 +39,7 @@ constexpr bool MENU_NAV_DEFAULT = false;
 #endif
 } // namespace
 
-bool menu_nav_enabled = MENU_NAV_DEFAULT;
-Uint32 menu_nav_enabled_time = 0;
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 Sint32 leftmouse(button* buttons)
 {
@@ -86,7 +87,7 @@ Sint32 leftmouse(button* buttons)
 
 void draw_highlight_interior(const button& b)
 {
-    if(!menu_nav_enabled)
+    if(!pks().menu_nav_enabled)
         return;
 
     const float ticks = static_cast<float>(SDL_GetTicks());
@@ -103,7 +104,7 @@ void draw_highlight_interior(const button& b)
 
 void draw_highlight(const button& b)
 {
-    if(!menu_nav_enabled)
+    if(!pks().menu_nav_enabled)
         return;
 
     const float ticks = static_cast<float>(SDL_GetTicks());
@@ -175,7 +176,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
             get_input_events(POLL);
         }
 
-        if(!menu_nav_enabled)
+        if(!pks().menu_nav_enabled)
             pressed = true;
         else
         {
@@ -205,14 +206,14 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
     // Turn menu_nav on if something was pressed.
     if(pressed)
     {
-        menu_nav_enabled = true;
-        menu_nav_enabled_time = SDL_GetTicks();
+        pks().menu_nav_enabled = true;
+        pks().menu_nav_enabled_time = SDL_GetTicks();
     }
     // Turn it off if it's been a while since something was pressed.
-    else if(menu_nav_enabled)
+    else if(pks().menu_nav_enabled)
     {
-        if(SDL_GetTicks() - menu_nav_enabled_time > 5000)
-            menu_nav_enabled = MENU_NAV_DEFAULT;
+        if(SDL_GetTicks() - pks().menu_nav_enabled_time > 5000)
+            pks().menu_nav_enabled = MENU_NAV_DEFAULT;
     }
 
     return activated;
