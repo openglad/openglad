@@ -108,7 +108,6 @@ int main(int argc, char* argv[])
         io_init(argc, argv);
 
         cfg.load_settings();
-        load_player_control_settings_from_cfg(cfg);
 
         // Override display size for the 4x3 grid
         cfg.apply_setting("graphics", "width", std::format("{}", DISPLAY_W));
@@ -134,6 +133,7 @@ int main(int argc, char* argv[])
         og::runtime::GameSession host_session(host_cfg);
 
         init_input();
+        load_player_control_settings_from_cfg(cfg);
 
         // Create a composite surface and texture at the full display resolution.
         // E_Screen->render is only 320x200 (for single-session rendering).

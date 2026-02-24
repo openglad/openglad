@@ -227,9 +227,6 @@ int main(int argc, char *argv[])
 		io_init(argc, argv);
 
 		cfg.load_settings();
-		load_player_control_settings_from_cfg(cfg);
-		save_player_control_settings_to_cfg(cfg);
-		cfg.save_settings();
 		cfg.commandline(argc, argv);
 
 		// GameSession is the RAII root for all runtime state.
@@ -253,6 +250,8 @@ int main(int argc, char *argv[])
 
 		init_input();
 		load_player_control_settings_from_cfg(cfg);
+		save_player_control_settings_to_cfg(cfg);
+		cfg.save_settings();
 
 		// Sync overscan from config (must be after session creation since
 		// overscan_percentage is now a macro backed by current_session).
