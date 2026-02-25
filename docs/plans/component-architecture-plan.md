@@ -88,7 +88,7 @@ before entering gameplay.
 | `og_sim` (SimWorld, events, IRandom) | **gameplay** | SimWorld absorbed into GameWorld |
 | `og_entities` (walker hierarchy, families) | **gameplay** | Remove render/save/UI coupling |
 | `og_data` — in-memory types: guy, statistics | **gameplay** | LevelData eliminated — replaced by GameWorld |
-| `og_data` — file I/O: gloader, gparser, pixie_data, level/save serialization | **resources** | |
+| `og_data` — file I/O: gloader, gparser, pixie_data, level/save serialization | **resources** | gloader source is in `og_runtime` (`src/runtime/gloader.cpp`), header in `og_data` (`include/openglad/data/gloader.h`) |
 | `og_io` (PhysFS, zip, yaml) | **resources** | As-is |
 | `og_render` (video, pixie, view, text, walker_draw, pal32, radar) | **interface** | Logical rendering |
 | `og_input` (input mapping, buttons) | **interface** | User interaction |
@@ -155,6 +155,7 @@ public:
     bool retry = false;
     float control_hp = 0;
     bool withdraw_requested = false;    // set by WithdrawToLevel event; tick() early-outs
+    bool create_hit_effects = true;    // gates FX entity creation in combat (from cfg hit_anim)
 
     // Per-team score accumulator (read back by outer layer after level ends)
     std::uint32_t m_score[4] = {};
@@ -164,7 +165,7 @@ public:
     unsigned char allied_mode = 0;
     short current_scenario = 0;
     std::set<int> completed_levels;
-    short difficulty = 100;               // enemy stat multiplier (50-200)
+    short difficulty = 100;               // enemy stat multiplier — resolved from difficulty_level[current_difficulty_] (values: 50, 100, 200)
 
     // Entity factory (wired by platform at setup time, backed by gloader in resources)
     std::function<std::unique_ptr<walker>(Order, int family)> entity_factory;
@@ -203,24 +204,46 @@ public:
   Renamed for clarity.
 - **`type` field** holds level flags (`TYPE_CAN_EXIT_WHENEVER`,
   `TYPE_MUST_DESTROY_GENERATORS`, etc.) used by tick logic and exit treasure.
-- **`difficulty`** is the enemy stat multiplier (50-200%), populated by the
-  outer layer from `GameSession::current_difficulty_`. Gameplay code reads this
-  instead of reaching into `current_session`.
-- **No `GameplayConfig`.** All `cfg_store` effect settings (`attack_lunge`,
-  `hit_recoil`, `damage_numbers`, `hit_flash`, `hit_anim`, `heal_numbers`) do
-  not affect `worldx_`/`worldy_` or damage calculations. Currently the config
-  gates whether sim code sets these fields on walker at all (e.g.
+- **`difficulty`** is the resolved enemy stat multiplier (50, 100, or 200),
+  looked up from `difficulty_level[current_difficulty_]` (defined in
+  `src/ui/picker_common.cpp`) where `current_difficulty_` is an index (0, 1, 2)
+  on `GameSession`. The outer layer resolves this index to the multiplier value
+  and populates `GameWorld::difficulty` before level start. Entity code in
+  `living.cpp:526-537` currently does this lookup inline — after migration it
+  reads the pre-resolved value from `current_game->world->difficulty`.
+- **No `GameplayConfig`.** Most `cfg_store` effect settings (`attack_lunge`,
+  `hit_recoil`, `damage_numbers`, `hit_flash`, `heal_numbers`) do not affect
+  `worldx_`/`worldy_` or damage calculations. Currently the config gates whether
+  sim code sets these fields on walker at all (e.g.
   `if (sim_config->is_on("effects", "attack_lunge")) attack_lunge = ...`).
   **Migration approach:** sim code sets these fields unconditionally (remove
   the config gates), and the interface layer checks cfg before reading them
   for display. The fields accumulate even when visually disabled — this is
   harmless since they're only consumed by render code. The `sim_config`
   pointer is removed from `SimEntity`.
+  **Exception — `hit_anim`:** At `walker_combat.cpp:90-96`, the `hit_anim`
+  config gate controls creation of FX entities (`add_ob(Order::FX, FAMILY_HIT)`).
+  This is NOT rendering-only — it creates entities that appear in entity lists,
+  affecting gameplay (entity counts, iteration, potential performance). Removing
+  this gate unconditionally would change behavior. Instead, a
+  `bool create_hit_effects` flag on GameWorld (see field list above) is populated
+  from the config by the outer layer. Sim code checks
+  `current_game->world->create_hit_effects` instead of `sim_config->is_on()`.
 - **No `special_name`/`alternate_name` tables.** These were redundant copies of
   data already in the family descriptor registry. Entity code fetches names
-  directly from `FamilyDescriptorRegistry::get(family).specials[index].name`.
+  directly from `get_family_descriptor(family)->special_names[index]`.
+  Note: `special_name[NUM_FAMILIES][NUM_SPECIALS]` on `screen` and
+  `special_names[FD_NUM_SPECIALS]` on `FamilyDescriptor` are separate arrays.
+  Entity code (27 family files in `src/entities/families/`) already uses
+  `get_family_descriptor()`. The `screen` arrays are consumed by UI code
+  (`view.cpp`, `score_panel.cpp`, `input_event_bridge.cpp`, etc.). Consumer
+  migration needs to route UI code to `get_family_descriptor()` directly.
 - **No `description` field.** Level description text is UI-only — loaded from
   the level file by resources and handed to the interface layer for display.
+  Note: `LevelData::description` (`std::list<std::string>`) is currently loaded
+  by `load()` and saved by `save()`. The resources layer's `load_level()`
+  function must return/populate the description separately from GameWorld,
+  passing it to the interface layer for display.
 - **`dead_list`** grows throughout a level and is only cleared when the outer
   layer calls a cleanup method at level end (`delete_objects()`). Stale pointer
   cleanup (nullifying `foe_`, `owner_`, etc.) happens during the tick before
@@ -233,9 +256,16 @@ public:
   time, pointing to `gloader` in the resources layer. `GameWorld::add_ob()`
   calls it to create entities mid-tick (generators spawning enemies, slimes
   duplicating, etc.). Headless mode provides a minimal factory.
-- **Pathfinding state** (`path_walker`, `path_map`, `pather` thread-locals)
-  moves onto GameWorld. These are gameplay state used by entity AI pathfinding
-  and should not be process-wide thread-locals. Moved in Phase 1.
+- **Pathfinding state** (`path_walker`, `path_map`, `pather` thread-locals in
+  `walker_pathing.cpp`) moves onto **GameplayContext**, not GameWorld. Reasons:
+  `MicroPather` has internal pointers and is not trivially moveable — putting it
+  on GameWorld would make GameWorld non-moveable. These are scratch computation
+  state, not game state (no serialization needed). Moving to GameplayContext
+  eliminates the `path_walker` thread-local hack — `Map::AdjacentCost()` can
+  access `current_game->world->query_grid_passable()` and
+  `current_game->world->myobmap->obmap_get_list()` directly instead of going
+  through a thread-local walker pointer. `pather.Reset()` is still needed per
+  call (graph validity, not storage location). See GameplayContext struct below.
 - **Sound is already event-driven.** Entity code uses `emit_sound(sim_events,
   SOUND_ID)` to push `PlaySound` events into `SimEventLog`. The outer layer
   drains these after each tick. No direct audio calls exist in entity code —
@@ -245,13 +275,13 @@ public:
 
 Holds the rendering data that was previously on `LevelData`. Named
 `LevelVisuals` (not `LevelRender`) to avoid confusion with the existing
-`LevelRenderer` class that it wraps:
+`LevelRender` class that it wraps:
 
 ```cpp
 // include/openglad/interface/level_visuals.h
 struct LevelVisuals {
     PixieData pixdata[PIX_MAX];          // tile sprite graphics
-    std::unique_ptr<LevelRenderer> renderer_;
+    std::unique_ptr<LevelRender> renderer_;
     std::int32_t topx, topy;             // draw offset
 };
 ```
@@ -284,6 +314,9 @@ namespace og::gameplay {
 struct GameplayContext {
     GameWorld*    world = nullptr;
     SimEventLog*  sim_events = nullptr;
+
+    // Pathfinding scratch state (eliminates thread-local hack in walker_pathing.cpp)
+    std::unique_ptr<PathfindingState> pathfinding;  // owns Map + MicroPather
 };
 
 extern thread_local GameplayContext* current_game;
@@ -326,15 +359,16 @@ interface layer.
 
 ## Phase Plan
 
-### Phases 1–3: Create GameWorld (keeping LevelData alive)
+### Phases 1a–3: Create GameWorld (keeping LevelData alive)
 
 **Goal:** Create `GameWorld` with entity lists, spatial data, tick logic (from
 `SimWorld`), RNG, and game state flags. `screen` holds both `GameWorld` and
 `LevelData` temporarily during the transition.
 
-These three phases keep each change independently testable and bisectable.
+These four phases (1a, 1b, 2, 3) keep each change independently testable and
+bisectable.
 
-**What moves into GameWorld (across Phases 1–3):**
+**What moves into GameWorld (across Phases 1a–3):**
 - Entity lists (`oblist`, `weaplist`, `fxlist`, `dead_list`) from `LevelData`
 - `living_count` (renamed from `numobs`) from `LevelData`
 - Spatial data (`myobmap`, `grid`, `mysmoother`, `pixmaxx/pixmaxy`) from `LevelData`
@@ -348,24 +382,30 @@ These three phases keep each change independently testable and bisectable.
 - `renderer_`, `pixdata[]`, `topx/topy` — moves to `LevelVisuals` in Phase 7
 - Sim context wiring fields (`sim_ctx_*`) — transitional (eliminated by Phase 4)
 
-### Phase 1: Move entity lists and spatial data to GameWorld
+### Phase 1a: Move entity lists to GameWorld
 
-**Goal:** Create the GameWorld class. Move entity lists, spatial data, level
-metadata, and passability queries from `LevelData` into `GameWorld`. `screen`
-gets a `GameWorld world_;` member. `LevelData` keeps forwarding accessors
-temporarily.
+**Goal:** Create the GameWorld class. Move entity lists and `living_count` from
+`LevelData` into `GameWorld`. Also move `delete_objects()` (list clearing
+portion) and `remaining_foes()` (operates on oblist). `screen` gets a
+`GameWorld world_;` member. `LevelData` keeps forwarding accessors temporarily.
 
 **Steps:**
 1. Create `include/openglad/gameplay/game_world.h` with GameWorld class (entity
-   lists, spatial data, level metadata, `living_count`, `type`, `difficulty`)
+   lists, `living_count`)
 2. Create `src/gameplay/game_world.cpp`
 3. Add `GameWorld world_;` member to `screen`
-4. Move entity lists, spatial data (including `mysmoother`), level metadata,
-   `living_count` from `LevelData` into `GameWorld`
-5. Passability queries and entity finders move to GameWorld
+4. Move entity lists (`oblist`, `weaplist`, `fxlist`, `dead_list`) and
+   `living_count` (renamed from `numobs`) from `LevelData` into `GameWorld`
+5. Move `delete_objects()` (list clearing portion) and `remaining_foes()` free
+   function to GameWorld
 6. Provide forwarding accessors on both `screen` and `LevelData` to minimize
    churn (callers migrate incrementally)
 7. `GameWorld::add_ob()` delegates to `LevelData::myloader` temporarily
+
+**`add_ob()` callsite scope:** `add_ob()` is called from ~28 locations across
+entity code, loader code, and level editor code. Entity code goes through
+`sim_level->add_ob()` which will forward to `world_->add_ob()` via LevelData
+forwarding during the transition. This is a high-touch migration point.
 
 **Entity wiring during transition:** Entity creation flows
 `GameWorld::add_ob()` → `LevelData::myloader->create_walker_owned()` →
@@ -385,6 +425,37 @@ alive as a shell with forwarding accessors makes this incremental.
 
 **Testing:** Full ctest. Create `TestGameplayContext` RAII helper early in this
 phase for use in all subsequent test updates.
+
+---
+
+### Phase 1b: Move spatial data, queries, finders, and metadata to GameWorld
+
+**Goal:** Complete the GameWorld shell by moving spatial data, passability
+queries, entity finders, and level metadata from `LevelData` into `GameWorld`.
+The end result is identical to the original Phase 1 — the split just makes
+each commit smaller and independently testable.
+
+**Steps:**
+1. Move spatial data (`myobmap`, `grid`, `mysmoother`, `pixmaxx`/`pixmaxy`)
+   from `LevelData` into `GameWorld`
+2. Move level metadata (`id`, `type`, `title`, `par_value`, `time_bonus_limit`,
+   `difficulty`) into `GameWorld`
+3. Move passability queries: `query_passable()`, `query_object_passable()`,
+   `query_grid_passable()` to GameWorld
+4. Move entity finders: `find_near_foe()`, `find_far_foe()`,
+   `find_nearest_blood()`, `find_nearest_player()`, `find_in_range()`,
+   `find_foes_in_range()`, `find_foe_weapons_in_range()`,
+   `find_friends_in_range()` to GameWorld
+5. Update forwarding accessors on `LevelData` for new fields
+
+**Files changed (major):**
+- Modified: `include/openglad/gameplay/game_world.h` (spatial + metadata fields added)
+- Modified: `include/openglad/data/level_data.h` (more fields removed, forwarding added)
+- Modified: All files that reference passability queries or entity finders
+
+**Risk:** Medium — lower than Phase 1a since the GameWorld shell already exists.
+
+**Testing:** Full ctest.
 
 ---
 
@@ -431,7 +502,7 @@ level_done = result.level_done;
 level_data.level_done = result.level_done;
 ```
 This sub-phase consolidates to a single authoritative location on `GameWorld`.
-The `LevelData` forwarding accessor (from Phase 1) points to `world_.level_done`.
+The `LevelData` forwarding accessor (from Phase 1a/1b) points to `world_.level_done`.
 The `screen`-level field is removed and replaced by `world_.level_done` access.
 
 **Steps:**
@@ -499,6 +570,9 @@ completes the evolution: `tick()` takes no args and reads `sim_events` from
    `sim_enemy_freeze` fields from `SimEntity`
 7. Remove the per-entity wiring in `sdl_context_services.cpp` that sets
    these pointers
+8. Migrate `walker::myobmap` (walker.h line 196) — a raw `obmap*` set by
+   `wire_entity()` (`level_data.cpp:519`). Replace with
+   `current_game->world->myobmap.get()` access and remove from walker
 
 **Note:** This phase migrates four of the six `sim_*` pointers. The remaining
 two (`sim_save`, `sim_config`) are left on `SimEntity` until Phase 5, which
@@ -655,11 +729,17 @@ walker* GameWorld::add_ob(Order order, int family) {
 }
 ```
 
-**Animation tables:** The ~91 animation frame arrays in `gloader.cpp` are
+**Animation tables:** The animation frame arrays (~23 animation tables + ~30 frame cycle arrays) in `gloader.cpp` are
 authored in gloader but baked into entities at creation time via the `ani`
 pointer. Entity code indexes `ani[curdir + ani_type * NUM_FACINGS][cycle]`
 at runtime but never goes back to gloader. The tables stay with gloader
 in resources — no cross-component dependency.
+
+**`popup_dialog()` layering violation:** `gloader.cpp:553` calls
+`popup_dialog()` (a UI function) when entity creation fails due to missing
+graphics. This must be resolved when moving gloader to resources. Options:
+- Return a null/error and let the caller handle the dialog
+- Use an error callback wired by platform
 
 **Steps:**
 1. Move `gloader` from `LevelData` to resources layer
@@ -986,13 +1066,15 @@ All phases run sequentially, one at a time. Each phase must pass full ctest
 before the next begins.
 
 ```
-Phase 1  (GameWorld shell, entity lists, spatial data)
+Phase 1a (GameWorld shell, entity lists)
+   ▼
+Phase 1b (spatial data, queries, finders, metadata)
    ▼
 Phase 2  (absorb SimWorld into GameWorld)
    ▼
 Phase 3  (game state flags, eliminate TickResult)
    ▼
-Phase 4  (current_game thread-local)          ← moved up: only needs Phases 1–3
+Phase 4  (current_game thread-local)          ← moved up: only needs Phases 1a–3
    ▼
 Phase 5  (SaveData decoupling + sim_config removal)
    ▼
@@ -1013,11 +1095,13 @@ Phase 12 (enforcement + cleanup)
 
 **Why this order:**
 
-- **Phases 1–3** create GameWorld incrementally: entity data, then tick logic,
-  then state flags. Each is independently testable and bisectable.
+- **Phases 1a–3** create GameWorld incrementally: entity lists (1a), spatial
+  data + queries (1b), then tick logic (2), then state flags (3). Each is
+  independently testable and bisectable.
 - **Phase 4** (current_game) comes right after Phase 3. It only needs GameWorld
-  to exist with the right fields — it does NOT need gloader moved or LevelData
-  killed. Moving it up front unblocks Phase 5 (SaveData decoupling) earlier.
+  to exist with the right fields (Phases 1a–3) — it does NOT need gloader moved
+  or LevelData killed. Moving it up front unblocks Phase 5 (SaveData decoupling)
+  earlier.
 - **Phase 5** (SaveData decoupling) needs `current_game->world->` to replace
   `sim_save->` references — entities have no other path to reach GameWorld fields.
 - **Phase 6** (gloader) can now use the cleaner wiring: since Phase 4 already
@@ -1064,8 +1148,9 @@ state and display state, referenced from everywhere.
 
 **Mitigation (Phases 1–3):** Keep `screen` as a forwarding shell initially.
 Add `GameWorld` as a member. Provide forwarding accessors on `screen` so
-existing code doesn't break. Phases 1–3 split the work into three steps
-(entity data → tick logic → state flags) to keep changes bisectable.
+existing code doesn't break. Phases 1a–3 split the work into four steps
+(entity lists → spatial data/queries → tick logic → state flags) to keep
+changes bisectable.
 
 **Mitigation (Phase 10):** The `screen` → `video` inheritance must be broken
 to move `screen` to the interface layer. `video` splits into an abstract base
@@ -1126,7 +1211,7 @@ incrementally — each phase owns its test updates.
 
 ### TestGameplayContext (RAII helper)
 
-Created in Phase 1 and used throughout all subsequent phases:
+Created in Phase 1a and used throughout all subsequent phases:
 
 ```cpp
 // tests/unit/test_gameplay_context.h
@@ -1160,8 +1245,8 @@ OG_UNIT_TEST(test_enemy_scaling) {
 
 ### Migration per Phase
 
-- **Phase 1:** Tests that access `myscreen->level_data.*` update to
-  `myscreen->world().*`. `TestGameplayContext` helper created.
+- **Phase 1a/1b:** Tests that access `myscreen->level_data.*` update to
+  `myscreen->world().*`. `TestGameplayContext` helper created in 1a.
 - **Phase 2:** Tests that reference `sim_world_` update to `world_.tick()`.
 - **Phase 3:** Tests that read `level_done` etc. from screen update to
   read from `world_`. `TickResult` assertions removed.
