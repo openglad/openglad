@@ -1,9 +1,11 @@
 #include <openglad/render/radar.h>
+#include <openglad/data/gloader.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/render/view.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
@@ -21,7 +23,7 @@ struct GlobalContextGuard
     GlobalContextGuard& operator=(const GlobalContextGuard&) = delete;
 };
 
-static void set_tile(LevelData& d, int x, int y, unsigned char t)
+static void set_tile(og::gameplay::GameWorld& d, int x, int y, unsigned char t)
 {
     if (x < 0 || y < 0 || x >= d.grid.w || y >= d.grid.h)
         return;
@@ -36,8 +38,14 @@ void test_radar_update_and_draw_covers_key_paths()
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
-    LevelData d(1);
+    og::gameplay::GameWorld d;
+    d.id = 1;
     d.create_new_grid();
+    loader* l = og::runtime::current_session->myscreen_->myloader.get();
+    if (l)
+    {
+        d.entity_factory = [l](Order order, int family) { return l->create_walker_owned(order, family); };
+    }
 
     // Place representative tiles to cover many radar::update() switch cases.
     const std::vector<unsigned char> tiles = {
@@ -115,6 +123,9 @@ void test_radar_update_and_draw_covers_key_paths()
     r.force_lower_position = true;
     r.start(&d);
     TEST_ASSERT(r.draw(&d) == 1, "radar draw should succeed");
+
+    // Avoid leaving a dangling control pointer to this local world.
+    vs->control = nullptr;
 }
 REGISTER_TEST(test_radar_update_and_draw_covers_key_paths);
 
@@ -126,7 +137,7 @@ void test_radar_start_default_uses_myscreen_level_data()
         return;
 
     radar r(vs, og::runtime::current_session->myscreen_, 0);
-    r.start(); // wrapper path start(&myscreen->level_data)
-    (void)r.draw(&og::runtime::current_session->myscreen_->level_data);
+    r.start(); // wrapper path start(&myscreen->world())
+    (void)r.draw(&og::runtime::current_session->myscreen_->world());
 }
 REGISTER_TEST(test_radar_start_default_uses_myscreen_level_data);

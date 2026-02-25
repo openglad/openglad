@@ -290,7 +290,7 @@ bool viewscreen::redraw()
 
 }
 
-bool viewscreen::redraw(LevelData* data, bool draw_radar)
+bool viewscreen::redraw(og::gameplay::GameWorld* data, bool draw_radar)
 {
 	Sint32 i,j;
 	Sint32 xneg = 0;
@@ -392,7 +392,7 @@ bool viewscreen::refresh()
 
 walker* viewscreen::find_next_control()
 {
-    return sim_find_next_control(active_screen()->level_data, my_team);
+    return sim_find_next_control(active_screen()->world(), my_team);
 }
 
 short viewscreen::input(const SDL_Event& event)
@@ -503,7 +503,7 @@ void viewscreen::process_input(const InputState& input_state)
 
 	// Delegate all entity-driving logic to the sim layer
 	SimInputResult result = sim_process_player_input(
-		pi, control, active_screen()->level_data,
+		pi, control, active_screen()->world(),
 		mynum, my_team, debounce[mynum],
 		active_screen()->special_name,
 		ctx().sim_events.get());
@@ -589,7 +589,7 @@ bool viewscreen::draw_obs(og::gameplay::GameWorld& world)
 	return 1;
 }
 
-bool viewscreen::draw_obs(LevelData* data)
+bool viewscreen::draw_obs(og::gameplay::GameWorld* data)
 {
 	// First draw the special effects
 	for(auto& uptr : data->fxlist)

@@ -587,7 +587,7 @@ void set_neighbors_mask(PixieData& pd, int cx, int cy, unsigned char center,
 
 int g_clear_stale_view_controls_calls = 0;
 
-void test_clear_stale_view_controls(LevelData*)
+void test_clear_stale_view_controls(og::gameplay::GameWorld*)
 {
     ++g_clear_stale_view_controls_calls;
 }

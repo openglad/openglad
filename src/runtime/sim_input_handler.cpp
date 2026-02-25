@@ -12,6 +12,7 @@
 #include <openglad/sim/sim_input_handler.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/entities/walker.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
@@ -19,7 +20,7 @@
 #include <openglad/input/input_state.h>
 #include <algorithm>
 
-walker* sim_find_next_control(LevelData& level, short my_team)
+walker* sim_find_next_control(og::gameplay::GameWorld& level, short my_team)
 {
     TRACE("sim_input", "find_next_control for team %d", my_team);
 
@@ -67,6 +68,11 @@ walker* sim_find_next_control(LevelData& level, short my_team)
 
     TRACE("sim_input", "found no one");
     return nullptr;
+}
+
+walker* sim_find_next_control(LevelData& level, short my_team)
+{
+    return sim_find_next_control(level.game_world(), my_team);
 }
 
 walker* sim_cycle_next_character(
@@ -121,7 +127,7 @@ walker* sim_cycle_next_character(
 SimInputResult sim_process_player_input(
     const PlayerInput& pi,
     walker*& control,
-    LevelData& level,
+    og::gameplay::GameWorld& level,
     short player_num,
     short my_team,
     SimInputDebounce& debounce,
@@ -350,4 +356,18 @@ SimInputResult sim_process_player_input(
 
     result.new_control = control;
     return result;
+}
+
+SimInputResult sim_process_player_input(
+    const PlayerInput& pi,
+    walker*& control,
+    LevelData& level,
+    short player_num,
+    short my_team,
+    SimInputDebounce& debounce,
+    const std::string (*special_names)[6],
+    [[maybe_unused]] og::sim::SimEventLog* sim_events)
+{
+    return sim_process_player_input(pi, control, level.game_world(), player_num, my_team,
+                                    debounce, special_names, sim_events);
 }

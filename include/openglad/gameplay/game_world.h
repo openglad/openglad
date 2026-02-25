@@ -27,6 +27,9 @@
 enum class Order : unsigned char;
 class walker;
 class obmap;
+struct SaveData;
+class IRandom;
+class cfg_store;
 
 #include <openglad/data/pixie_data.h>
 #include <openglad/data/smooth.h>
@@ -65,6 +68,10 @@ namespace og::gameplay {
 // will also move here, eventually replacing both LevelData and GameWorld.
 class GameWorld {
 public:
+    static const char TYPE_CAN_EXIT_WHENEVER = 0x1;  // Can exit without defeating all enemies
+    static const char TYPE_MUST_DESTROY_GENERATORS = 0x2;  // Must destroy generators to exit
+    static const char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;  // Must protect named NPCs or else you lose
+
     GameWorld();
     ~GameWorld();
 
@@ -121,6 +128,11 @@ public:
     std::function<void(walker*, Order, int)> entity_derived_stats;
     std::function<const PixieData*(Order, int)> entity_graphics;
 
+    // Transitional sim-context bridge used by legacy callers/tests.
+    void set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
+                         og::sim::SimEventLog* events, IRandom* rng,
+                         cfg_store* config);
+
     // Clear all entity lists and reset living_count.
     // Note: this clears only entity storage. Hooks (e.g. stale view control
     // cleanup) and obmap cleanup remain on LevelData::delete_objects().
@@ -133,6 +145,7 @@ public:
     walker* add_ob(Order order, std::int32_t family, bool atstart = false);
     walker* add_fx_ob(Order order, std::int32_t family);
     walker* add_weap_ob(Order order, std::int32_t family);
+    short remove_ob(walker* ob);
     walker* configure_entity(walker* ob, Order order, std::int32_t family);
     void apply_derived_stats(walker* ob, Order order, std::int32_t family);
     const PixieData* lookup_entity_graphics(Order order, std::int32_t family) const;

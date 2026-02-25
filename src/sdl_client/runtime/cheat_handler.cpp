@@ -47,7 +47,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 			game_screen->save_data.my_team++;
 			game_screen->save_data.my_team %= MAX_TEAM;
 
-			for (auto& uptr : game_screen->level_data.oblist)
+			for (auto& uptr : game_screen->world().oblist)
 			{
 				walker* w = uptr.get();
 				if ((w->team_num == game_screen->save_data.my_team) &&
@@ -69,7 +69,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 
 	if (query_key_event(SDLK_F12, event))
 	{
-		for (auto& uptr : game_screen->level_data.oblist)
+		for (auto& uptr : game_screen->world().oblist)
 		{
 			walker* w = uptr.get();
 			if (w && w->query_order() == Order::Living && !control->is_friendly(w))
@@ -98,7 +98,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 
 	if (query_key_event(SDLK_F2, event))
 	{
-		newob = game_screen->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+		newob = game_screen->world().add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
 		newob->owner = control;
 		newob->team_num = control->team_num;
 		newob->ani_type = 1;

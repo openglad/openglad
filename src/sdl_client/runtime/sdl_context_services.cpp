@@ -14,7 +14,7 @@
 #include <openglad/data/gparser.h>
 #include <openglad/input/input.h>
 #include <openglad/render/view.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_render.h>
 #include <openglad/data/level_data_hooks.h>
@@ -62,11 +62,11 @@ void install_sdl_context_services()
 
 namespace
 {
-void sdl_clear_stale_view_controls(LevelData* level)
+void sdl_clear_stale_view_controls(og::gameplay::GameWorld* world)
 {
     if (og::runtime::current_session &&
         og::runtime::current_session->myscreen_ != nullptr &&
-        &og::runtime::current_session->myscreen_->level_data == level)
+        &og::runtime::current_session->myscreen_->world() == world)
     {
         for (auto& view : og::runtime::current_session->myscreen_->viewob)
         {
@@ -76,10 +76,10 @@ void sdl_clear_stale_view_controls(LevelData* level)
     }
 }
 
-void sdl_level_data_draw(LevelData* level, screen* screenp)
+void sdl_level_data_draw(og::gameplay::GameWorld* world, screen* screenp)
 {
     for (short i = 0; i < screenp->numviews; i++)
-        screenp->viewob[i]->redraw(level, false);
+        screenp->viewob[i]->redraw(world, false);
 }
 
 std::unique_ptr<LevelRender> sdl_create_level_render(PixieData pixdata[])

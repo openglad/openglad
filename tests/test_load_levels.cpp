@@ -33,7 +33,7 @@ void test_load_multiple_levels() {
         TEST_ASSERT(trace_contains("game", "level loaded"), msg);
 
         // Clean up loaded objects before loading the next level
-        og::runtime::current_session->myscreen_->level_data.delete_objects();
+        og::runtime::current_session->myscreen_->world().delete_objects();
     }
 }
 REGISTER_TEST(test_load_multiple_levels);
@@ -50,16 +50,16 @@ void test_level_data_integrity() {
     load_saved_game("test_level_integrity", og::runtime::current_session->myscreen_);
 
     // Level 1 should have a valid grid
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.grid.valid(), "level 1 should have a valid grid");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().grid.valid(), "level 1 should have a valid grid");
 
     // Level 1 should have some objects (enemies)
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.oblist.empty(),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(),
         "level 1 should have objects (enemies/npcs)");
 
     // Level ID should match what we requested
-    TEST_ASSERT_EQ(1, og::runtime::current_session->myscreen_->level_data.id, "level id should be 1");
+    TEST_ASSERT_EQ(1, og::runtime::current_session->myscreen_->world().id, "level id should be 1");
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_level_data_integrity);
 
@@ -75,10 +75,10 @@ void test_level_fallback() {
     load_saved_game("test_level_fallback", og::runtime::current_session->myscreen_);
 
     // Should have fallen back to level 1
-    TEST_ASSERT_EQ(1, og::runtime::current_session->myscreen_->level_data.id,
+    TEST_ASSERT_EQ(1, og::runtime::current_session->myscreen_->world().id,
         "nonexistent level should fall back to level 1");
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_level_fallback);
 
@@ -110,7 +110,7 @@ void test_load_saved_game_maps_views_to_saved_team_ids() {
     TEST_ASSERT(og::runtime::current_session->myscreen_->viewob[0] != nullptr, "view 0 should exist");
     TEST_ASSERT(og::runtime::current_session->myscreen_->viewob[1] != nullptr, "view 1 should exist");
     if (!og::runtime::current_session->myscreen_->viewob[0] || !og::runtime::current_session->myscreen_->viewob[1]) {
-        og::runtime::current_session->myscreen_->level_data.delete_objects();
+        og::runtime::current_session->myscreen_->world().delete_objects();
         return;
     }
 
@@ -119,6 +119,6 @@ void test_load_saved_game_maps_views_to_saved_team_ids() {
     TEST_ASSERT_EQ(3, (int)og::runtime::current_session->myscreen_->viewob[1]->my_team,
         "view 1 should map to second distinct saved team id");
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_load_saved_game_maps_views_to_saved_team_ids);

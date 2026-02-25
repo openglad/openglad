@@ -69,7 +69,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
     exits.clear();
     
     // Go through objects
-		for(auto& uptr : level_data.oblist)
+		for(auto& uptr : level_data.game_world().oblist)
 		{
 		    walker* ob = uptr.get();
 	        switch(ob->query_order())
@@ -94,7 +94,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
 		}
 	
 	// Go through effects
-		for(auto& uptr : level_data.fxlist)
+		for(auto& uptr : level_data.game_world().fxlist)
 		{
 		    walker* ob = uptr.get();
 	        switch(ob->query_order())
@@ -205,7 +205,7 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
 	(void)screenp;
 	    level_data.load();
     
-    myradar.start(&level_data);
+    myradar.start(&level_data.game_world());
     
 
 	    const int w = myradar.xview;
@@ -262,7 +262,7 @@ void BrowserEntry::draw(screen* screenp)
     int h = myradar.yview;
     og::runtime::current_session->myscreen_->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw radar
-    myradar.draw(&level_data);
+    myradar.draw(&level_data.game_world());
     
     text& loadtext = og::runtime::current_session->myscreen_->text_normal;
     loadtext.write_xy(mapAreas.x, mapAreas.y, level_name.c_str(), DARK_BLUE, 1);

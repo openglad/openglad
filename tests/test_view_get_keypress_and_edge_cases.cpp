@@ -139,7 +139,7 @@ void test_viewscreen_options_menu_covers_view_size_label_cases()
     // Ensure a control exists so options_menu does not early-return.
     if (!v->control)
     {
-        walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(w != nullptr, "control created");
         if (!w)
             return;

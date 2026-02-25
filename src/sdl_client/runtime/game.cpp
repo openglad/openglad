@@ -69,17 +69,17 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	screenp->initialize_views();
 
 	// And load the scenario ..
-	screenp->level_data.id = screenp->save_data.scen_num;
-	if(!screenp->level_data.load())
+	screenp->world().id = screenp->save_data.scen_num;
+	if(!screenp->load_level())
 	{
 	    short old_scen = screenp->save_data.scen_num;
 	    LogError("load_saved_game_level_load_failed file={} scen={} action=fallback_to_1\n",
 	        filename ? filename : "(null)", old_scen);
 	    // Failed?  Try level 1.
 		screenp->save_data.scen_num = 1;
-        screenp->level_data.id = 1;
+        screenp->world().id = 1;
         used_fallback_level = true;
-        if(!screenp->level_data.load())
+        if(!screenp->load_level())
         {
 				LogError("load_saved_game_failed file={} scen={} fallback=1 reason=fallback_level_load_failed\n",
 					filename ? filename : "(null)", old_scen);
@@ -87,8 +87,8 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
         }
 	}
 
-	TRACE("game", "level loaded: scen%d", screenp->level_data.id);
-	for(auto& uptr : screenp->level_data.oblist)
+	TRACE("game", "level loaded: scen%d", screenp->world().id);
+	for(auto& uptr : screenp->world().oblist)
 	{
 	    walker* w = uptr.get();
 		if (w)
@@ -152,7 +152,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num))
 	{
 		//                Log("already done level\n");
-		for(auto& uptr : og::runtime::current_session->myscreen_->level_data.oblist)
+		for(auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
 		{
 		    walker* w = uptr.get();
 			if (w)
@@ -172,7 +172,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			}
 		}
 
-			for(auto& uptr : screenp->level_data.weaplist)
+			for(auto& uptr : screenp->world().weaplist)
 			{
 			    walker* w = uptr.get();
 			if (w)
@@ -192,7 +192,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			}
 		}
 
-			for(auto& uptr : screenp->level_data.fxlist)
+			for(auto& uptr : screenp->world().fxlist)
 			{
 			    walker* w = uptr.get();
 			if (w)

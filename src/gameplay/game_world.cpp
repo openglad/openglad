@@ -70,6 +70,24 @@ GameWorld::GameWorld()
 
 GameWorld::~GameWorld() = default;
 
+void GameWorld::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
+                                og::sim::SimEventLog* events, IRandom* rng,
+                                cfg_store* config)
+{
+    (void)save;
+    (void)enemy_freeze;
+    (void)rng;
+    (void)config;
+
+    if (og::gameplay::current_game &&
+        (og::gameplay::current_game->world == nullptr ||
+         og::gameplay::current_game->world == this))
+    {
+        og::gameplay::current_game->world = this;
+        og::gameplay::current_game->sim_events = events;
+    }
+}
+
 void GameWorld::delete_objects()
 {
     oblist.clear();
@@ -354,6 +372,37 @@ walker* GameWorld::add_weap_ob(Order order, std::int32_t family)
     walker* raw = w.get();
     weaplist.push_back(std::move(w));
     return raw;
+}
+
+short GameWorld::remove_ob(walker* ob)
+{
+    if (ob && ob->query_order() == Order::Living)
+        living_count--;
+
+    auto pred = [ob](const std::unique_ptr<walker>& p) { return p.get() == ob; };
+
+    auto e = std::find_if(weaplist.begin(), weaplist.end(), pred);
+    if (e != weaplist.end())
+    {
+        weaplist.erase(e);
+        return 1;
+    }
+
+    auto f = std::find_if(fxlist.begin(), fxlist.end(), pred);
+    if (f != fxlist.end())
+    {
+        fxlist.erase(f);
+        return 1;
+    }
+
+    auto g = std::find_if(oblist.begin(), oblist.end(), pred);
+    if (g != oblist.end())
+    {
+        oblist.erase(g);
+        return 1;
+    }
+
+    return 0;
 }
 
 walker* GameWorld::configure_entity(walker* ob, Order order, std::int32_t family)

@@ -23,7 +23,7 @@ short score_panel(screen* scr);
 short score_panel(screen* scr, short do_it);
 short new_score_panel(screen* scr, short do_it);
 
-static bool control_pointer_is_live(LevelData& level_data, const walker* candidate)
+static bool control_pointer_is_live(og::gameplay::GameWorld& level_data, const walker* candidate)
 {
     if (candidate == nullptr)
         return false;
@@ -59,7 +59,7 @@ static std::unique_ptr<walker> make_player(unsigned char team)
 
 static std::unique_ptr<walker> make_living(unsigned char family, unsigned char team)
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader.get();
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -79,11 +79,11 @@ void test_glad_remaining_counts()
         std::list<std::unique_ptr<walker>> saved;
         ObListSwap()
         {
-            saved.splice(saved.end(), og::runtime::current_session->myscreen_->level_data.oblist);
+            saved.splice(saved.end(), og::runtime::current_session->myscreen_->world().oblist);
         }
         ~ObListSwap()
         {
-            og::runtime::current_session->myscreen_->level_data.oblist.splice(og::runtime::current_session->myscreen_->level_data.oblist.end(), saved);
+            og::runtime::current_session->myscreen_->world().oblist.splice(og::runtime::current_session->myscreen_->world().oblist.end(), saved);
         }
     } swap;
 
@@ -98,17 +98,17 @@ void test_glad_remaining_counts()
     walker* foe1p = foe1.get();
     walker* foe2p = foe2.get();
 
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(control));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(ally));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(foe1));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(foe2));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(foe1));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(foe2));
 
     TEST_ASSERT_EQ(2, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp), "should count non-friendly living foes");
     TEST_ASSERT_EQ(2, (int)remaining_team(og::runtime::current_session->myscreen_, 0), "should count living on team 0 (including control)");
 
     foe2p->dead = 1;
     TEST_ASSERT_EQ(1, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp), "dead foes should not be counted");
-    og::runtime::current_session->myscreen_->level_data.oblist.clear();
+    og::runtime::current_session->myscreen_->world().oblist.clear();
 }
 REGISTER_TEST(test_glad_remaining_counts);
 
@@ -158,7 +158,7 @@ void test_glad_draw_gems_and_value_bars_smoke()
     new_draw_value_bar(80, 28, controlp, 1, og::runtime::current_session->myscreen_);
     draw_percentage_bar(80, 36, 12, 30, og::runtime::current_session->myscreen_);
 
-    v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_data, old_control) ? old_control : nullptr;
+    v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->world(), old_control) ? old_control : nullptr;
 }
 REGISTER_TEST(test_glad_draw_gems_and_value_bars_smoke);
 
@@ -205,6 +205,6 @@ void test_glad_score_panel_and_new_score_panel_modes()
     TEST_ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_), "score_panel wrapper");
     TEST_ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_, 1), "score_panel overload");
 
-    v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_data, old_control) ? old_control : nullptr;
+    v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->world(), old_control) ? old_control : nullptr;
 }
 REGISTER_TEST(test_glad_score_panel_and_new_score_panel_modes);

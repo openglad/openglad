@@ -409,13 +409,17 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks,
 {
     hooks_ = hooks;
     headless_ = headless;
+    restore_external_world_callbacks_ = false;
 
     id = level_id;
 
     if (!myobmap)
 	    myobmap = std::make_unique<obmap>();
-    myloader = std::make_unique<loader>();
-    wire_entity_factory_callbacks();
+    if (!external_world)
+    {
+        myloader = std::make_unique<loader>();
+        wire_entity_factory_callbacks();
+    }
 
 }
 
@@ -429,15 +433,27 @@ LevelData::~LevelData()
         og::gameplay::current_game->world = nullptr;
     }
 
-    delete_objects();
-    delete_grid();
-    world_ref_.entity_factory = nullptr;
-    world_ref_.entity_configure = nullptr;
-    world_ref_.entity_derived_stats = nullptr;
-    world_ref_.entity_graphics = nullptr;
-    myloader.reset();
+    // External-world adapters are non-owning views. They must not tear down
+    // screen/world resources when the adapter goes out of scope.
+    if (owned_world_)
+    {
+        delete_objects();
+        delete_grid();
+        world_ref_.entity_factory = nullptr;
+        world_ref_.entity_configure = nullptr;
+        world_ref_.entity_derived_stats = nullptr;
+        world_ref_.entity_graphics = nullptr;
+        myobmap.reset();
+    }
+    else if (restore_external_world_callbacks_)
+    {
+        world_ref_.entity_factory = std::move(prev_entity_factory_);
+        world_ref_.entity_configure = std::move(prev_entity_configure_);
+        world_ref_.entity_derived_stats = std::move(prev_entity_derived_stats_);
+        world_ref_.entity_graphics = std::move(prev_entity_graphics_);
+    }
 
-    myobmap.reset();
+    myloader.reset();
 
 }
 
@@ -564,7 +580,7 @@ void LevelData::delete_objects()
     // If this is the active screen level, clear any stale control pointers
     // that may reference walkers just deleted above.
     if (hooks_ && hooks_->clear_stale_view_controls)
-        hooks_->clear_stale_view_controls(this);
+        hooks_->clear_stale_view_controls(&world_ref_);
 
 	    // Clear the obmap references
 	    // Since the walker destructor removes itself from the obmap, this should be empty already.

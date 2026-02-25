@@ -112,7 +112,7 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng)
 {
     // Collect enemy levels
     std::vector<int> enemy_levels;
-    for (auto& uptr : s->level_data.oblist) {
+    for (auto& uptr : s->world().oblist) {
         walker* w = uptr.get();
         if (w && !w->dead && w->order == Order::Living && w->team_num != 0) {
             enemy_levels.push_back(static_cast<int>(w->stats()->level));

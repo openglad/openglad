@@ -16,6 +16,7 @@
 class walker;
 class LevelData;
 struct PlayerInput;
+namespace og::gameplay { class GameWorld; }
 
 namespace og::sim {
 class SimEventLog;
@@ -50,7 +51,7 @@ struct SimInputDebounce
 // Parameters:
 //   pi           - SDL-independent input state for this player
 //   control      - in/out: current controlled walker (may be reassigned)
-//   level        - the current level data (for entity iteration)
+//   level        - the current world data (for entity iteration)
 //   player_num   - player index (0-3)
 //   my_team      - team number for this player
 //   debounce     - per-player debounce state
@@ -68,9 +69,20 @@ SimInputResult sim_process_player_input(
     const std::string (*special_names)[6],
     [[maybe_unused]] og::sim::SimEventLog* sim_events);
 
+SimInputResult sim_process_player_input(
+    const PlayerInput& pi,
+    walker*& control,
+    og::gameplay::GameWorld& level,
+    short player_num,
+    short my_team,
+    SimInputDebounce& debounce,
+    const std::string (*special_names)[6],
+    [[maybe_unused]] og::sim::SimEventLog* sim_events);
+
 // Find the next available control walker for a player.
-// Searches level_data.oblist for: player chars, team members, then any alive.
+// Searches world.oblist for: player chars, team members, then any alive.
 walker* sim_find_next_control(LevelData& level, short my_team);
+walker* sim_find_next_control(og::gameplay::GameWorld& level, short my_team);
 
 // Cycle through the oblist starting after `current`, wrapping around,
 // returning the first living walker that satisfies `pred`.

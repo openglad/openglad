@@ -56,9 +56,9 @@ void test_viewscreen_input_switch_yell_and_special_switch_paths()
         return;
 
     // Ensure we have a few living walkers to switch between.
-    walker* w0 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* w1 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ELF);
-    walker* w2 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* w0 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ELF);
+    walker* w2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT(w0 && w1 && w2, "walkers created");
     if (!(w0 && w1 && w2))
         return;

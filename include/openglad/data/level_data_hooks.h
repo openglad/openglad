@@ -11,16 +11,16 @@
 #include <functional>
 #include <memory>
 
-class LevelData;
+namespace og::gameplay { class GameWorld; }
 class walker;
 class screen;
 class PixieData;
 
 struct LevelDataHooks
 {
-    using ClearStaleViewControlsFn = void (*)(LevelData* level);
+    using ClearStaleViewControlsFn = void (*)(og::gameplay::GameWorld* world);
     using WireEntityFromScreenFn = void (*)(walker* w);
-    using DrawFn = void (*)(LevelData* level, screen* screenp);
+    using DrawFn = void (*)(og::gameplay::GameWorld* world, screen* screenp);
     using CreateLevelRenderFn = std::unique_ptr<LevelRender> (*)(PixieData pixdata[]);
 
     ClearStaleViewControlsFn clear_stale_view_controls = nullptr;

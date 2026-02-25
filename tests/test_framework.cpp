@@ -1,6 +1,9 @@
 #include "test_framework.h"
 #include "SDL.h"
 #include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/sim/sim_event_log.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 static SDL_mutex* s_allbuttons_mutex = nullptr;
@@ -149,7 +152,23 @@ void run_all_tests() {
         // Clear spawned objects and spatial index after each test so no test can
         // leak walkers into later tests (ASan/UAF + order-dependent failures).
         if (og::runtime::current_session->myscreen_ != nullptr)
-            og::runtime::current_session->myscreen_->level_data.delete_objects();
+        {
+            screen* s = og::runtime::current_session->myscreen_;
+            s->world().clear();
+            s->level_file_metadata_ = {};
+            for (auto& v : s->viewob)
+            {
+                if (v)
+                    v->control = nullptr;
+            }
+            s->rewire_entity_factory_for_tests();
+
+            static og::sim::SimEventLog test_events;
+            static og::gameplay::GameplayContext stable_game_ctx;
+            stable_game_ctx.world = &s->world();
+            stable_game_ctx.sim_events = &test_events;
+            og::gameplay::current_game = &stable_game_ctx;
+        }
 
         if (g_tests_failed == failed_before) {
             g_tests_passed++;

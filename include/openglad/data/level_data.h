@@ -18,6 +18,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <memory>
 #include <string>
@@ -200,6 +201,8 @@ public:
     // Access the underlying GameWorld.
     og::gameplay::GameWorld& game_world() { return world_ref_; }
     const og::gameplay::GameWorld& game_world() const { return world_ref_; }
+    operator og::gameplay::GameWorld&() { return world_ref_; }
+    operator const og::gameplay::GameWorld&() const { return world_ref_; }
 
 private:
     void wire_entity_factory_callbacks();
@@ -211,6 +214,15 @@ private:
 
     // Sim context pointer retained for event bridge wiring.
     og::sim::SimEventLog*  sim_ctx_events_ = nullptr;
+
+    // When adapting an external GameWorld, preserve and restore any existing
+    // entity callback wiring so temporary adapters do not leave dangling
+    // captures behind.
+    bool restore_external_world_callbacks_ = false;
+    std::function<std::unique_ptr<walker>(Order, int)> prev_entity_factory_;
+    std::function<walker*(walker*, Order, int)> prev_entity_configure_;
+    std::function<void(walker*, Order, int)> prev_entity_derived_stats_;
+    std::function<const PixieData*(Order, int)> prev_entity_graphics_;
 };
 
 // Read a scenario title from a .fss file. Returns "none" on failure.

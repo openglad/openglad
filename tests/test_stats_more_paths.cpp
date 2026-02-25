@@ -82,7 +82,7 @@ REGISTER_TEST(test_stats_do_command_follow_early_exit_when_foe_present);
 void test_stats_do_command_fire_nonliving_logs_and_returns()
 {
     // Cover COMMAND_FIRE branch for non-living order.
-    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    walker* weapon = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     if (!weapon)
         return;
@@ -115,9 +115,9 @@ void test_stats_right_walk_exercises_direction_switch_when_direct_walk_fails()
     // Exercise the large direction switch in statistics::right_walk() by ensuring:
     // - right/forward/right-back checks are false (open grid)
     // - direct_walk() returns false (foe is null)
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
 
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
         return;
@@ -186,7 +186,7 @@ void test_stats_blocked_helpers_default_dir_branches()
     if (!w)
         return;
 
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     w->setxy(128, 128);
     w->curdir = 99;
 
@@ -204,7 +204,7 @@ void test_stats_forward_and_side_blocked_invalid_direction_defaults()
     if (!w)
         return;
 
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     w->setxy(GRID_SIZE * 4, GRID_SIZE * 4);
     w->curdir = static_cast<char>(127);
     w->enddir = static_cast<char>(127);
@@ -350,10 +350,10 @@ REGISTER_TEST(test_stats_walk_to_foe_short_circuit_and_path_branches);
 
 void test_stats_right_walk_round7_right_back_and_forward_direction_maps()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr, "actor created");
     if (!actor)
         return;
@@ -365,7 +365,7 @@ void test_stats_right_walk_round7_right_back_and_forward_direction_maps()
     actor->stats()->commands.clear();
 
     // Force only right_back_blocked() to be true for FACE_UP.
-    walker* blocker = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* blocker = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(blocker != nullptr, "blocker created");
     if (!blocker)
         return;
@@ -410,7 +410,7 @@ void test_stats_right_walk_round7_right_back_and_forward_direction_maps()
     }
 
     // Remove blocker and force the direct_walk()==false fallback switch for FACE_UP.
-    og::runtime::current_session->myscreen_->level_data.remove_ob(blocker);
+    og::runtime::current_session->myscreen_->world().remove_ob(blocker);
     actor->foe = nullptr;
     actor->curdir = FACE_UP;
     actor->enddir = FACE_UP;
@@ -418,13 +418,13 @@ void test_stats_right_walk_round7_right_back_and_forward_direction_maps()
     TEST_ASSERT(actor->stats()->right_walk(), "right_walk direct-walk fallback should return true");
     TEST_ASSERT(actor->ypos <= y_before, "FACE_UP fallback should walk in negative y direction");
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_stats_right_walk_round7_right_back_and_forward_direction_maps);
 
 void test_stats_right_walk_round8_negative_enddir_default_switch_path()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     auto actor = make_walker(FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr, "actor created");
     if (!actor)
@@ -433,7 +433,7 @@ void test_stats_right_walk_round8_negative_enddir_default_switch_path()
     // Geometry setup:
     // - right/right-forward/forward are passable
     // - right-back is blocked by bottom boundary
-    actor->setxy(GRID_SIZE * 6, static_cast<std::int32_t>(og::runtime::current_session->myscreen_->level_data.pixmaxy - 1));
+    actor->setxy(GRID_SIZE * 6, static_cast<std::int32_t>(og::runtime::current_session->myscreen_->world().pixmaxy - 1));
     actor->curdir = FACE_UP;
     actor->enddir = static_cast<char>(-127);
     actor->stats()->commands.clear();
@@ -444,8 +444,8 @@ REGISTER_TEST(test_stats_right_walk_round8_negative_enddir_default_switch_path);
 
 void test_stats_round11_follow_force_walk_and_right_walk_distance_branches()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto leader = make_walker(FAMILY_SOLDIER);
     auto follower = make_walker(FAMILY_ELF);
@@ -500,8 +500,8 @@ REGISTER_TEST(test_stats_round11_follow_force_walk_and_right_walk_distance_branc
 
 void test_stats_round12_add_command_walk_clamps_and_follow_shortcuts()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto follower = make_walker(FAMILY_ELF);
     auto foe = make_walker(FAMILY_ORC);
@@ -550,11 +550,11 @@ REGISTER_TEST(test_stats_round12_add_command_walk_clamps_and_follow_shortcuts);
 
 void test_stats_round13_die_and_non_living_fire_command_branches()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto living = make_walker(FAMILY_SOLDIER);
-    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* weapon = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(living && weapon, "fixtures created");
     if (!(living && weapon))
         return;
@@ -576,8 +576,8 @@ REGISTER_TEST(test_stats_round13_die_and_non_living_fire_command_branches);
 
 void test_stats_round14_quickfire_multido_rush_and_walk_to_foe_firstfoe_fallback()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto actor = make_walker(FAMILY_SOLDIER);
     auto foe = make_walker(FAMILY_ORC);
@@ -593,7 +593,7 @@ void test_stats_round14_quickfire_multido_rush_and_walk_to_foe_firstfoe_fallback
     (void)actor->stats()->do_command();
 
     // COMMAND_RUSH with collide_ob target.
-    walker* rush_target = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* rush_target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(rush_target != nullptr, "rush target created");
     if (rush_target)
     {

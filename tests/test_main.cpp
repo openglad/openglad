@@ -114,12 +114,6 @@ int main(int argc, char* argv[]) {
     cfg.apply_setting("graphics", "overscan_percentage",
         std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
 
-    // Initialize sim context so walkers created for testing have a valid RNG etc.
-    static og::sim::SimEventLog test_events;
-    static ProductionRandom test_rng;
-    og::runtime::current_session->myscreen_->level_data.set_sim_context(&og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world_.enemy_freeze,
-                                         &test_events, &test_rng, &cfg);
-
     run_all_tests();
 
     // Default behavior uses _exit() to avoid SDL shutdown hangs seen in some

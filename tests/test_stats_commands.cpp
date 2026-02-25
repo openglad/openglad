@@ -215,7 +215,7 @@ void test_stats_hit_response_all_families()
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
-    auto& level_data = og::runtime::current_session->myscreen_->level_data;
+    auto& level_data = og::runtime::current_session->myscreen_->world();
     level_data.delete_objects();
 
     for (int i = 0; i < 14; i++) {

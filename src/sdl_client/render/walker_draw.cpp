@@ -190,7 +190,7 @@ bool draw_walker(walker& w, viewscreen* view_buf)
         }
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         og::runtime::current_session->myscreen_->level_data.mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
+	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
 	         && (w.flight_left < 1) )
     {
@@ -307,7 +307,7 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 			                        0 ); //type of phantom
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         og::runtime::current_session->myscreen_->level_data.mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
+	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
 	         && (w.flight_left < 1) )
 		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,

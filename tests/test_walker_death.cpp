@@ -71,7 +71,7 @@ REGISTER_TEST(test_walker_death_small_slime);
 
 void test_walker_death_medium_slime()
 {
-    auto w = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Living, FAMILY_MEDIUM_SLIME);
+    auto w = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Living, FAMILY_MEDIUM_SLIME);
     if (!w) return;
     w->setxy(100, 100);
     w->dead = 1;
@@ -81,7 +81,7 @@ REGISTER_TEST(test_walker_death_medium_slime);
 
 void test_walker_death_large_slime()
 {
-    auto w = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Living, FAMILY_SLIME);
+    auto w = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Living, FAMILY_SLIME);
     if (!w) return;
     w->setxy(100, 100);
     w->dead = 1;

@@ -44,7 +44,6 @@
 #include <openglad/ui/results_screen.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/render/pal32.h>
-#include <openglad/data/level_data_hooks.h>
 #include <openglad/data/level_render.h>
 #include <algorithm>
 #include <string>
@@ -138,10 +137,6 @@ inline constexpr int S_WIDTH = (S_RIGHT - S_LEFT);
 inline constexpr int S_HEIGHT = (S_DOWN - S_UP);
 inline constexpr int MAX_SPREAD = 10; // this controls find_near_foe
 
-// load_version_* functions now live in level_data.cpp and take OgFile& + LevelData*
-
-
-
 Uint32 random(Uint32 x)
 {
 	if (x < 1)
@@ -211,7 +206,8 @@ void screen::init_common(short howmany, bool has_display)
 	level_visuals_.topy = 0;
 	load_map_data(level_visuals_.pixdata);
 	level_visuals_.renderer_ = create_sdl_level_render(level_visuals_.pixdata);
-	level_data.set_level_visuals(&level_visuals_);
+	myloader = std::make_unique<loader>();
+	wire_entity_factory_callbacks();
 
 	numviews = howmany;
     for (auto& view : viewob)
@@ -247,13 +243,13 @@ void screen::init_common(short howmany, bool has_display)
 }
 
 screen::screen(short howmany)
-    : video(), level_data(1, false, &sdl_level_data_hooks(), &world_)
+    : video()
 {
 	init_common(howmany, true);
 }
 
 screen::screen(short howmany, bool create_display)
-    : video(create_display), level_data(1, false, &sdl_level_data_hooks(), &world_)
+    : video(create_display)
 {
 	init_common(howmany, create_display);
 }
@@ -372,7 +368,8 @@ void screen::reset(short howmany)
 	redrawme = 1;
 	
 	save_data.reset();
-	level_data.clear();
+	world_.clear();
+	level_file_metadata_ = {};
 	set_draw_pos(0, 0);
 
 	timerstart = query_timer_control();
@@ -392,17 +389,17 @@ void screen::reset(short howmany)
 
 bool screen::query_grid_passable(float x, float y, walker  *ob)
 {
-	return level_data.query_grid_passable(x, y, ob);
+	return world_.query_grid_passable(x, y, ob);
 }
 
 bool screen::query_object_passable(float x, float y, walker  *ob)
 {
-	return level_data.query_object_passable(x, y, ob);
+	return world_.query_object_passable(x, y, ob);
 }
 
 bool screen::query_passable(float x, float y, walker  *ob)
 {
-	return level_data.query_passable(x, y, ob);
+	return world_.query_passable(x, y, ob);
 }
 
 void screen::clear()
@@ -445,12 +442,12 @@ void screen::add_draw_pos(std::int32_t dx, std::int32_t dy)
 	level_visuals_.topy += dy;
 }
 
-void screen::draw_level_data(LevelData* level)
+void screen::draw_level_data(og::gameplay::GameWorld* world)
 {
-	if (!level)
+	if (!world)
 		return;
 	for (short i = 0; i < numviews; i++)
-		viewob[i]->redraw(level, false);
+		viewob[i]->redraw(world, false);
 }
 
 void screen::reload_level_visuals()
@@ -582,7 +579,7 @@ bool screen::act()
 					if (req.prompt.empty())
 					{
 						std::string scen_key = std::format("scen{}", req.dest_level);
-						std::string title = get_scenario_title(scen_key.c_str());
+						std::string title = og::data::load_scenario_title(scen_key.c_str());
 						if (title == "none")
 							title = std::format("Level {}", req.dest_level);
 						req.prompt = std::format("{} to {}?", req.withdraw ? "Withdraw" : "Exit", title);
@@ -657,8 +654,7 @@ short screen::endgame(short ending, short nextlevel)
 	        return 1;
 	    }
 
-	// LevelData id tracks the currently loaded scenario throughout gameplay.
-	world_.current_scenario = static_cast<short>(level_data.id);
+	world_.current_scenario = static_cast<short>(world_.id);
 	sync_save_from_world();
 	
 	
@@ -673,7 +669,7 @@ short screen::endgame(short ending, short nextlevel)
     }
 	
     // Get guys from the battle
-    for(auto& uptr : level_data.oblist)
+    for(auto& uptr : world_.oblist)
 	{
 	    walker* ob = uptr.get();
 		if (ob && ob->myguy)
@@ -737,8 +733,8 @@ short screen::endgame(short ending, short nextlevel)
         
         // Grab our team out of the level.
         std::vector<const guy*> team_members;
-        team_members.reserve(level_data.oblist.size());
-        for (const auto& uptr : level_data.oblist)
+        team_members.reserve(world_.oblist.size());
+        for (const auto& uptr : world_.oblist)
         {
             const walker* ob = uptr.get();
             if (ob && !ob->dead && ob->myguy)
@@ -758,12 +754,12 @@ short screen::endgame(short ending, short nextlevel)
 
 walker *screen::find_near_foe(walker  *ob)
 {
-	return level_data.find_near_foe(ob);
+	return world_.find_near_foe(ob);
 }
 
 walker  *screen::find_far_foe(walker  *ob)
 {
-	return level_data.find_far_foe(ob);
+	return world_.find_far_foe(ob);
 }
 
 walker* screen::set_walker(walker *ob, Order order, Sint32 family)
@@ -859,7 +855,7 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 walker  * screen::first_of(Order whatorder, unsigned char whatfamily,
                            int team_num)
 {
-	for(auto& uptr : level_data.oblist)
+	for(auto& uptr : world_.oblist)
 	{
 	    walker* ob = uptr.get();
 		if (ob && !ob->dead)
@@ -903,33 +899,33 @@ void screen::draw_panels(short howmany)
 
 walker  * screen::find_nearest_blood(walker  *who)
 {
-	return level_data.find_nearest_blood(who);
+	return world_.find_nearest_blood(who);
 }
 
 std::list<walker*> screen::find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
-	return level_data.find_in_range(somelist, range, howmany, ob);
+	return world_.find_in_range(somelist, range, howmany, ob);
 }
 
 walker* screen::find_nearest_player(walker *ob)
 {
-	return level_data.find_nearest_player(ob);
+	return world_.find_nearest_player(ob);
 }
 
 std::list<walker*> screen::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
-	return level_data.find_foes_in_range(somelist, range, howmany, ob);
+	return world_.find_foes_in_range(somelist, range, howmany, ob);
 }
 
 std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range,
                                       Sint32* howmany, walker* ob)
 {
-	return level_data.find_friends_in_range(somelist, range, howmany, ob);
+	return world_.find_friends_in_range(somelist, range, howmany, ob);
 }
 
 std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
-    return level_data.find_foe_weapons_in_range(somelist, range, howmany, ob);
+    return world_.find_foe_weapons_in_range(somelist, range, howmany, ob);
 }
 
 
@@ -944,24 +940,24 @@ char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 
 	if (xover < 0 || yover < 0)
 		return 0;
-	if (xover >= level_data.grid.w || yover >= level_data.grid.h)
+	if (xover >= world_.grid.w || yover >= world_.grid.h)
 		return 0;
 
-	gridloc = static_cast<short>(yover*level_data.grid.w+xover);
+	gridloc = static_cast<short>(yover*world_.grid.w+xover);
 
-	switch (static_cast<unsigned char>(level_data.grid.data[gridloc]))
+	switch (static_cast<unsigned char>(world_.grid.data[gridloc]))
 	{
 		case PIX_GRASS1: // grass
 		case PIX_GRASS2:
 		case PIX_GRASS3:
 		case PIX_GRASS4:
-			level_data.grid.data[gridloc] = PIX_GRASS1_DAMAGED;
+			world_.grid.data[gridloc] = PIX_GRASS1_DAMAGED;
 			break;
 		default:
 			break;
 	}
 
-	return level_data.grid.data[gridloc];
+	return world_.grid.data[gridloc];
 }
 
 void screen::do_notify(std::string_view message, walker  *who)
@@ -1027,4 +1023,106 @@ void screen::report_mem()
 	       Log( "Size of paging/file partition (pages): %lu\n",
 	                MemInfo.SizeOfPageFile );
 	 */
+}
+
+void screen::wire_entity_factory_callbacks()
+{
+    if (!myloader)
+    {
+        world_.entity_factory = nullptr;
+        world_.entity_configure = nullptr;
+        world_.entity_derived_stats = nullptr;
+        world_.entity_graphics = nullptr;
+        return;
+    }
+
+    EntityFactory factory;
+    factory.attach_render = [](walker& w, const PixieData& data) { w.attach_render(data); };
+    myloader->set_entity_factory(std::move(factory));
+
+    world_.entity_factory = [this](Order order, int family) -> std::unique_ptr<walker> {
+        if (!myloader)
+            return nullptr;
+        return myloader->create_walker_owned(order, family);
+    };
+    world_.entity_configure = [this](walker* w, Order order, int family) -> walker* {
+        if (!myloader || !w)
+            return nullptr;
+        return myloader->set_walker(w, order, family);
+    };
+    world_.entity_derived_stats = [this](walker* w, Order order, int family) {
+        if (!myloader || !w)
+            return;
+        myloader->set_derived_stats(w, order, family);
+    };
+    world_.entity_graphics = [this](Order order, int family) -> const PixieData* {
+        if (!myloader)
+            return nullptr;
+        if (family < 0 || family >= NUM_FAMILIES)
+            return nullptr;
+        const int order_i = static_cast<int>(order);
+        constexpr int kOrderCount = static_cast<int>(Order::Button1) + 1;
+        if (order_i < 0 || order_i >= kOrderCount)
+            return nullptr;
+        const PixieData& data = myloader->graphics[PIX(order, family)];
+        return data.valid() ? &data : nullptr;
+    };
+}
+
+void screen::clear_stale_view_controls()
+{
+    for (auto& view : viewob)
+    {
+        if (view)
+            view->control = nullptr;
+    }
+}
+
+bool screen::load_level()
+{
+    TRACE("game", "LevelData::load id=%d headless=0", world_.id);
+
+    if (!myloader)
+        myloader = std::make_unique<loader>();
+    wire_entity_factory_callbacks();
+    clear_stale_view_controls();
+
+    const std::string file = std::format("scen{}.fss", world_.id);
+    last_level_io_error_ = og::data::LevelFileIoError::None;
+    const bool ok = og::data::load_level(file, world_, level_visuals_, level_file_metadata_, &last_level_io_error_);
+    if (ok)
+    {
+        level_visuals_.topx = 0;
+        level_visuals_.topy = 0;
+        TRACE("game", "LevelData::load complete");
+    }
+    return ok;
+}
+
+bool screen::save_level()
+{
+    const std::string file = std::format("scen{}.fss", world_.id);
+    last_level_io_error_ = og::data::LevelFileIoError::None;
+    return og::data::save_level(world_, level_visuals_, file, level_file_metadata_, &last_level_io_error_);
+}
+
+void screen::rewire_entity_factory_for_tests()
+{
+    if (!myloader)
+        myloader = std::make_unique<loader>();
+    wire_entity_factory_callbacks();
+}
+
+std::string screen::get_description_line(int i) const
+{
+    if (i >= static_cast<int>(level_file_metadata_.description.size()))
+        return "";
+
+    auto it = level_file_metadata_.description.begin();
+    while (i > 0 && it != level_file_metadata_.description.end())
+    {
+        --i;
+        ++it;
+    }
+    return *it;
 }

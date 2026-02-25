@@ -48,7 +48,7 @@ REGISTER_TEST(test_load_saved_game_with_error_null_screen);
 void test_load_saved_game_with_error_reports_fallback_level()
 {
     const short old_scen = og::runtime::current_session->myscreen_->save_data.scen_num;
-    const int old_level_id = og::runtime::current_session->myscreen_->level_data.id;
+    const int old_level_id = og::runtime::current_session->myscreen_->world().id;
 
     // Use an invalid scenario id so loader falls back to scenario 1.
     og::runtime::current_session->myscreen_->save_data.scen_num = 9999;
@@ -61,6 +61,6 @@ void test_load_saved_game_with_error_reports_fallback_level()
     TEST_ASSERT_EQ(1, og::runtime::current_session->myscreen_->save_data.scen_num, "fallback should update save_data.scen_num to 1");
 
     og::runtime::current_session->myscreen_->save_data.scen_num = old_scen;
-    og::runtime::current_session->myscreen_->level_data.id = old_level_id;
+    og::runtime::current_session->myscreen_->world().id = old_level_id;
 }
 REGISTER_TEST(test_load_saved_game_with_error_reports_fallback_level);

@@ -92,14 +92,14 @@ void test_view_draw_with_entities()
     walker* wp = w.get();
 
     // Add walker to the level's oblist
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(w));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
     vs->control = wp;
     vs->redraw();
     vs->control = nullptr;
 
     // Remove without deleting (unique_ptr will handle it)
-    og::runtime::current_session->myscreen_->level_data.oblist.pop_back();
+    og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
 REGISTER_TEST(test_view_draw_with_entities);
 

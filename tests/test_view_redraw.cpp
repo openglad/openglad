@@ -28,10 +28,10 @@ void test_view_redraw_with_level_data()
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
 
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.grid);
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
 
-    bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_data, false);
+    bool result = vs->redraw(&og::runtime::current_session->myscreen_->world(), false);
     TEST_ASSERT(result, "redraw with level data should succeed");
 }
 REGISTER_TEST(test_view_redraw_with_level_data);
@@ -41,15 +41,15 @@ void test_view_redraw_with_control()
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
 
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.grid);
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
 
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     w->setxy(100, 100);
 
     vs->control = w;
-    bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_data, false);
+    bool result = vs->redraw(&og::runtime::current_session->myscreen_->world(), false);
     TEST_ASSERT(result, "redraw with control should succeed");
     vs->control = nullptr;
 
@@ -61,13 +61,13 @@ void test_view_redraw_no_control()
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
 
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.grid);
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
     og::runtime::current_session->myscreen_->level_visuals_.topx = 50;
     og::runtime::current_session->myscreen_->level_visuals_.topy = 50;
 
     vs->control = nullptr;
-    bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_data, false);
+    bool result = vs->redraw(&og::runtime::current_session->myscreen_->world(), false);
     TEST_ASSERT(result, "redraw without control uses level data pos");
 
     og::runtime::current_session->myscreen_->level_visuals_.topx = 0;
@@ -80,8 +80,8 @@ void test_view_redraw_negative_pos()
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
 
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.grid);
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
 
     // Force negative topx/topy by positioning control near edge
     walker* w = make_guy(FAMILY_SOLDIER, 0);
@@ -89,7 +89,7 @@ void test_view_redraw_negative_pos()
     w->setxy(5, 5); // near edge, topx/topy may go negative
 
     vs->control = w;
-    vs->redraw(&og::runtime::current_session->myscreen_->level_data, false);
+    vs->redraw(&og::runtime::current_session->myscreen_->world(), false);
     vs->control = nullptr;
 
 }
@@ -104,8 +104,8 @@ void test_view_draw_obs_with_level_data()
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
 
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    vs->draw_obs(&og::runtime::current_session->myscreen_->level_data);
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    vs->draw_obs(&og::runtime::current_session->myscreen_->world());
 }
 REGISTER_TEST(test_view_draw_obs_with_level_data);
 
@@ -114,16 +114,16 @@ void test_view_draw_obs_with_entities()
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
 
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
 
     // Add a living entity
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     if (!w) return;
     w->setxy(100, 100);
 
-    vs->draw_obs(&og::runtime::current_session->myscreen_->level_data);
+    vs->draw_obs(&og::runtime::current_session->myscreen_->world());
 
-    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_view_draw_obs_with_entities);
 

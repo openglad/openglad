@@ -50,7 +50,7 @@ void glad_init()
 
 #ifdef TESTING
     if (g_test_remove_exits) {
-        for (auto& uptr : current_screen->level_data.fxlist) {
+        for (auto& uptr : current_screen->world().fxlist) {
             walker* w = uptr.get();
             if (w && w->query_order() == Order::Treasure && w->family == FAMILY_EXIT)
                 w->dead = 1;
@@ -96,17 +96,13 @@ void glad_main(Sint32 playermode)
     }
 
     clear_keyboard();
-    current_screen->level_data.delete_objects();
+    current_screen->world().delete_objects();
 #endif
 }
 
-// remaining_foes (LevelData overload) is in level_data.cpp.
-// This screen* overload delegates to it for backward compatibility.
-short remaining_foes(LevelData& level, walker* myguy);
-
 short remaining_foes(screen* s, walker* myguy)
 {
-    return remaining_foes(s->level_data, myguy);
+    return s->world().remaining_foes(myguy);
 }
 
 // remaining_team returns # of livings left on team myteam.
@@ -114,7 +110,7 @@ short remaining_team(screen* s, char myteam)
 {
     short myfoes = 0;
 
-    const auto& foelist = s->level_data.oblist;
+    const auto& foelist = s->world().oblist;
     for (auto& uptr : foelist)
     {
         walker* w = uptr.get();

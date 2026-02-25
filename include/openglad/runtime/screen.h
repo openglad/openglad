@@ -22,8 +22,8 @@
 #include <openglad/platform/soundob_sdl.h> // soundob class for soundp member
 #include <openglad/render/video.h>
 #include <openglad/data/gloader.h>
+#include <openglad/data/level_file_io.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/interface/level_visuals.h>
 #include <array>
@@ -72,8 +72,11 @@ class screen : public video
 		bool redraw();
 		void set_draw_pos(std::int32_t new_topx, std::int32_t new_topy);
 		void add_draw_pos(std::int32_t dx, std::int32_t dy);
-		void draw_level_data(LevelData* level);
+		void draw_level_data(og::gameplay::GameWorld* world);
 		void reload_level_visuals();
+		bool load_level();
+		bool save_level();
+		std::string get_description_line(int i) const;
 		void refresh();
 		walker  * first_of(Order whatorder, unsigned char whatfamily,
 		                   int team_num = -1);
@@ -102,6 +105,7 @@ class screen : public video
 		bool is_level_completed(int level_index) const;
 		int get_num_levels_completed(const std::string& campaign) const;
 		void add_level_completed(const std::string& campaign, int level_index);
+		void rewire_entity_factory_for_tests();
 
 		// GameWorld accessor
 		og::gameplay::GameWorld& world() { return world_; }
@@ -111,12 +115,13 @@ class screen : public video
 		std::array<unsigned char, 768> newpalette{};
 		short palmode;
 
-		// Game world — owns entity lists. Must be declared before level_data
-		// so it is constructed first and destroyed last.
+		// Game world — owns gameplay data and entities.
 		og::gameplay::GameWorld world_;
 
-		// Level data
-		LevelData level_data;
+		// Level file data and loader wiring
+		std::unique_ptr<loader> myloader;
+		og::data::LevelFileMetadata level_file_metadata_;
+		og::data::LevelFileIoError last_level_io_error_ = og::data::LevelFileIoError::None;
 		LevelVisuals level_visuals_;
 
 		// Save data
@@ -133,6 +138,8 @@ class screen : public video
 
 	private:
 		void init_common(short howmany, bool has_display);
+		void wire_entity_factory_callbacks();
+		void clear_stale_view_controls();
 		void sync_world_from_save();
 		void sync_save_from_world();
 };

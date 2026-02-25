@@ -1274,7 +1274,7 @@ bool LevelEditorData::saveLevel()
 void LevelEditorData::draw(screen* s)
 {
     s->clearbuffer();
-    s->draw_level_data(level.get());
+    s->draw_level_data(&level->game_world());
     
     if(rect_selecting)
     {
@@ -1328,7 +1328,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
     }
     
     // Draw minimap
-    myradar.draw(level.get());
+    myradar.draw(&level->game_world());
     
     // Draw mode-specific buttons
     for(auto* btn : mode_buttons)
@@ -1630,7 +1630,7 @@ void LevelEditorData::clear_terrain()
 void LevelEditorData::resmooth_terrain()
 {
     og::runtime::current_session->myscreen_->world().mysmoother.smooth();
-    myradar.update(level.get());
+    myradar.update(&level->game_world());
 }
 
 // eds().mouse_up_button moved into LevelEditorState (per-session via eds())
@@ -1903,7 +1903,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                                 {
                                     loadLevel(levels.front());
                                     // Update minimap
-                                    myradar.start(level.get());
+                                    myradar.start(&level->game_world());
                                     timed_dialog("Campaign created.");
                                     eds().campaignchanged = 0;
                                     eds().levelchanged = 0;
@@ -1973,7 +1973,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             if(loadLevel(result.first_level))
                             {
                                 // Update minimap
-                                myradar.start(level.get());
+                                myradar.start(&level->game_world());
                                 timed_dialog("Campaign loaded.");
                                 eds().levelchanged = 0;
                             }
@@ -2049,7 +2049,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 // New level
                 level->clear();
                 level->game_world().create_new_grid();
-                myradar.start(level.get());
+                myradar.start(&level->game_world());
                 eds().levelchanged = 1;
                 eds().redraw = 1;
             }
@@ -2082,7 +2082,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         eds().redraw = 1;
                     }
                     
-                    myradar.start(level.get());
+                    myradar.start(&level->game_world());
                     eds().redraw = 1;
                 }
             }
@@ -2387,7 +2387,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             og::runtime::current_session->myscreen_->world().resize_grid(w, h);
                             
                             // Reset the minimap
-                            myradar.start(level.get());
+                            myradar.start(&level->game_world());
                             
                             draw(og::runtime::current_session->myscreen_);
                             og::runtime::current_session->myscreen_->refresh();
@@ -2479,7 +2479,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(yes_or_no_prompt("Clear Terrain", "Delete all terrain?", false))
             {
                 clear_terrain();
-                myradar.update(level.get());
+                myradar.update(&level->game_world());
                 eds().levelchanged = 1;
             }
             eds().redraw = 1;
@@ -2489,7 +2489,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(yes_or_no_prompt("Clear Objects", "Delete all objects?", false))
             {
                 level->game_world().delete_objects();
-                myradar.update(level.get());
+                myradar.update(&level->game_world());
                 eds().levelchanged = 1;
             }
             eds().redraw = 1;
@@ -3104,7 +3104,7 @@ Sint32 level_editor()
     object_pane.push_back(ObjectType(Order::Special, FAMILY_RESERVED_TEAM));
 	
 	// Minimap
-		myradar.start(data.level.get());
+		myradar.start(&data.level->game_world());
 	
 	// GUI
 	using std::set;
@@ -3518,7 +3518,7 @@ Sint32 level_editor()
                                                 og::runtime::current_session->myscreen_->world().mysmoother.smooth(i, j);
                                 }
                                 
-                                myradar.update(data.level.get());
+                                myradar.update(&data.level->game_world());
                             }
                         }
                     }  // end of setting grid square
@@ -3563,7 +3563,7 @@ Sint32 level_editor()
 	// Reset the screen position so it doesn't ruin the main menu
     og::runtime::current_session->myscreen_->set_draw_pos(0, 0);
     // Update the screen's position
-    og::runtime::current_session->myscreen_->draw_level_data(data.level.get());
+    og::runtime::current_session->myscreen_->draw_level_data(&data.level->game_world());
     // Clear the background
     og::runtime::current_session->myscreen_->clearbuffer();
     

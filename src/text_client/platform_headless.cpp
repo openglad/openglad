@@ -14,6 +14,7 @@
 
 #include <openglad/core/util.h>
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/game_world.h>
 
 #include <algorithm>
 #include <memory>
@@ -107,7 +108,7 @@ std::string get_asset_path()
 #include <openglad/data/level_data_hooks.h>
 
 // Safe no-op: view controls are an SDL render concern; headless has no views.
-void headless_clear_stale_view_controls(LevelData*) {}
+void headless_clear_stale_view_controls(og::gameplay::GameWorld*) {}
 
 // Safe no-op: keyboard buffer is an SDL input concern.
 void clear_keyboard() {}
@@ -124,7 +125,7 @@ std::once_flag warn_input_state;
 std::once_flag warn_find_follow;
 } // namespace
 
-void headless_level_data_draw(LevelData*, screen*)
+void headless_level_data_draw(og::gameplay::GameWorld*, screen*)
 {
     std::call_once(warn_draw_impl, [] {
         LogWarn("level_data_draw_impl: not supported in headless mode\n");

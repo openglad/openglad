@@ -16,7 +16,7 @@
 
 static std::unique_ptr<walker> create_controlled_living(char family)
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader.get();
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);

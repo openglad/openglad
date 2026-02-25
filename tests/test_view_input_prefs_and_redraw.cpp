@@ -61,7 +61,7 @@ void test_viewscreen_input_key_prefs_triggers_options_menu_branch()
     // doesn't hit its missing-control guard.
     if (!vs->control)
     {
-        walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(w != nullptr, "control walker created");
         if (!w)
             return;
@@ -96,7 +96,7 @@ void test_viewscreen_input_shift_slash_triggers_read_scenario_branch()
 
     if (!vs->control)
     {
-        walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(w != nullptr, "control walker created");
         if (!w)
             return;
@@ -125,7 +125,7 @@ void test_viewscreen_redraw_negative_scroll_draws_wall_edges_smoke()
         return;
 
     // Ensure the level has a grid so redraw doesn't depend on prior tests.
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
 
     const Sint32 saved_topx = og::runtime::current_session->myscreen_->level_visuals_.topx;
     const Sint32 saved_topy = og::runtime::current_session->myscreen_->level_visuals_.topy;

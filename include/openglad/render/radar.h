@@ -18,7 +18,7 @@
 
 // Definition of RADAR class
 
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <vector>
 
 class screen;
@@ -30,7 +30,7 @@ class radar
 		radar(viewscreen * myview, screen * screen_ctx, short whatnum);
 		~radar();
 		short draw();
-		short draw(LevelData* data);
+		short draw(og::gameplay::GameWorld* data);
 		short sizex, sizey;
 		short xpos,ypos;
 		short xloc, yloc;        // where on the screen to display
@@ -40,9 +40,9 @@ class radar
 		short on_screen(short whatx, short whaty, short hor, short ver);
 		short refresh();
 		void update(); // slow function to update radar/map info
-		void update(LevelData* data);
+		void update(og::gameplay::GameWorld* data);
 		void start();
-		void start(LevelData* data);
+		void start(og::gameplay::GameWorld* data);
 
 		screen * screenp;
 		viewscreen * viewscreenp;
