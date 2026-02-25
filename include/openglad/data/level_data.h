@@ -204,6 +204,7 @@ public:
     operator const og::gameplay::GameWorld&() const { return world_ref_; }
 
 private:
+    void prepare_for_load();
     void wire_entity_factory_callbacks();
 
     IoError last_io_error_ = IoError::None;

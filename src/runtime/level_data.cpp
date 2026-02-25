@@ -599,6 +599,16 @@ void LevelData::delete_objects()
 	myobmap->walker_to_pos.clear();
 }
 
+void LevelData::prepare_for_load()
+{
+    // Clear any stale view control pointers before world data is replaced.
+    delete_objects();
+
+    if (!myloader)
+        myloader = std::make_unique<loader>();
+    wire_entity_factory_callbacks();
+}
+
 namespace {
 
 LevelData::IoError map_level_file_error(og::data::LevelFileIoError err)
@@ -636,29 +646,17 @@ bool LevelData::load(LevelVisuals* visuals)
     TRACE("game", "LevelData::load id=%d headless=%d", id, headless_ ? 1 : 0);
     last_io_error_ = IoError::None;
 
-    // Clear any stale view control pointers before world data is replaced.
-    delete_objects();
-
-    if (!myloader)
-        myloader = std::make_unique<loader>();
-    wire_entity_factory_callbacks();
-
     std::string thefile = std::format("scen{}.fss", id);
-
-    og::data::LevelFileMetadata metadata;
-    metadata.grid_file = grid_file;
-    metadata.description = description;
 
     og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
     if (!og::data::load_level(thefile, world_ref_, fallback_level_visuals(visuals),
-                              metadata, &io_error))
+                              grid_file, description,
+                              [this]() { prepare_for_load(); },
+                              &io_error))
     {
         last_io_error_ = map_level_file_error(io_error);
         return false;
     }
-
-    grid_file = metadata.grid_file;
-    description = metadata.description;
 
     TRACE("game", "LevelData::load complete");
     last_io_error_ = IoError::None;

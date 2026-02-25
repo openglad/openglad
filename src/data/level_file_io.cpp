@@ -365,6 +365,29 @@ bool load_level(const std::string& path,
     return true;
 }
 
+bool load_level(const std::string& path,
+                og::gameplay::GameWorld& world,
+                LevelVisuals& visuals,
+                std::string& grid_file,
+                std::list<std::string>& description,
+                const std::function<void()>& prepare_for_load,
+                LevelFileIoError* out_error)
+{
+    LevelFileMetadata metadata;
+    metadata.grid_file = grid_file;
+    metadata.description = description;
+
+    if (prepare_for_load)
+        prepare_for_load();
+
+    if (!load_level(path, world, visuals, metadata, out_error))
+        return false;
+
+    grid_file = std::move(metadata.grid_file);
+    description = std::move(metadata.description);
+    return true;
+}
+
 bool save_level(og::gameplay::GameWorld& world,
                 LevelVisuals& visuals,
                 const std::string& path,
