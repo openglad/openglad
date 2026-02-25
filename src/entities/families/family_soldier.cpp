@@ -22,7 +22,7 @@
 
 #define BASE_GUY_HP 30
 
-// rng wrapper removed: use SimEntity field sim_rng directly
+// rng wrapper removed: use og::gameplay::current_game->world->rng_ directly
 
 static bool soldier_do_special(walker* self)
 {

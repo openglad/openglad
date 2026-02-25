@@ -1,7 +1,8 @@
 /* Convenience helpers for the find-foes-in-range-and-iterate pattern.
  *
  * Every call site was previously spelling out:
- *   self->sim_level->find_foes_in_range(self->sim_level->oblist, range, &howmany, self);
+ *   og::gameplay::current_game->world->find_foes_in_range(
+ *       og::gameplay::current_game->world->oblist, range, &howmany, self);
  * These thin wrappers eliminate that boilerplate.
  */
 #pragma once

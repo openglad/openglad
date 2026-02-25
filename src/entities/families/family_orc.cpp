@@ -27,7 +27,8 @@
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
-// rng/config wrappers removed: use SimEntity fields sim_rng/sim_config directly
+// rng/config wrappers removed: use og::gameplay::current_game->world->rng_ and
+// og::gameplay::current_game->config.
 
 static bool orc_do_special(walker* self)
 {

@@ -40,7 +40,8 @@
 extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
 // current_difficulty lives in GameSession — access via current_session->current_difficulty_.
 
-// rng/config wrappers removed: use SimEntity fields sim_rng/sim_config directly
+// rng/config wrappers removed: use og::gameplay::current_game->world->rng_ and
+// og::gameplay::current_game->config.
 
 living::living(const PixieData& data)
     : walker(data)
