@@ -99,9 +99,10 @@ class viewscreen
 		void set_display_text(std::string_view newtext, short numcycles);
 		void display_text(); // put the text to the buffer, if there
 		void shift_text(Sint32 row); // cycle text upward
-		void clear_text(void); // clear all text in buffer
-		bool draw_obs(); //moved here to fix radar
-		bool draw_obs(LevelData* data);
+			void clear_text(void); // clear all text in buffer
+			bool draw_obs(); //moved here to fix radar
+			bool draw_obs(og::gameplay::GameWorld& world);
+			bool draw_obs(LevelData* data);
 		void resize(short x, short y, short length, short height);
 		void resize(char whatmode); // set according to preferences ..
 		void view_team();

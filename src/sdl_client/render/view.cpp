@@ -238,7 +238,7 @@ bool viewscreen::redraw()
 	walker  *controlob = control;
 	auto* renderer = active_screen()->level_visuals_.renderer_.get();
 	if (!renderer) return false;
-	PixieData& gridp = active_screen()->level_data.grid;
+	PixieData& gridp = active_screen()->world().grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
 
@@ -478,8 +478,8 @@ void viewscreen::process_input(const InputState& input_state)
 				return !w->dead && w->query_order() == Order::Living
 				       && w->team_num == team;
 			};
-			walker* found = sim_cycle_next_character(
-				active_screen()->level_data.oblist, oldcontrol, reverse, filter);
+				walker* found = sim_cycle_next_character(
+					active_screen()->level_data.oblist, oldcontrol, reverse, filter);
 			if (found)
 				control = found;
 			if (control && control->dead)
@@ -557,7 +557,36 @@ void viewscreen::clear_text()
 
 bool viewscreen::draw_obs()
 {
-    return draw_obs(&active_screen()->level_data);
+    return draw_obs(active_screen()->world());
+}
+
+bool viewscreen::draw_obs(og::gameplay::GameWorld& world)
+{
+	// First draw the special effects
+	for(auto& uptr : world.fxlist)
+	{
+	    walker* w = uptr.get();
+		if(w && !w->dead)
+			draw_walker(*w, this);
+	}
+
+	// Now do real objects
+	for(auto& uptr : world.oblist)
+	{
+	    walker* w = uptr.get();
+		if(w && !w->dead)
+			draw_walker(*w, this);
+	}
+
+	// Finally draw the weapons
+	for(auto& uptr : world.weaplist)
+	{
+	    walker* w = uptr.get();
+		if(w && !w->dead)
+			draw_walker(*w, this);
+	}
+
+	return 1;
 }
 
 bool viewscreen::draw_obs(LevelData* data)
