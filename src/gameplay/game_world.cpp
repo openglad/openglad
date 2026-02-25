@@ -7,18 +7,60 @@
  */
 #include <openglad/gameplay/game_world.h>
 #include <openglad/data/level_data.h>
+#include <openglad/data/save_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
+#include <openglad/sim/sim_event_log.h>
 #include <algorithm>
 #include <cstdlib>
+#include <format>
 
 namespace {
 constexpr short MAX_SPREAD = 10;
+
+static walker* find_far_foe_for_tick(og::gameplay::GameWorld& world, walker* ob, og::sim::SimRandom& rng)
+{
+    if (!ob)
+        return nullptr;
+
+    walker* endfoe = nullptr;
+    std::int32_t distance = 10000;
+    ob->stats()->last_distance = 10000;
+
+    for (auto& uptr : world.oblist)
+    {
+        walker* foe = uptr.get();
+        if (foe == nullptr || foe->dead)
+            continue;
+
+        if (ob->is_friendly(foe) == 0)
+        {
+            if ((foe->query_order() == Order::Living ||
+                 foe->query_order() == Order::Generator) &&
+                (!(rng.next(foe->invisibility_left / 20))))
+            {
+                std::int32_t tempdistance = ob->distance_to_ob(foe);
+                if (tempdistance < distance)
+                {
+                    distance = tempdistance;
+                    endfoe = foe;
+                }
+            }
+        }
+    }
+    return endfoe;
 }
+}
+
+namespace og::sim {
+#ifdef TESTING
+std::int32_t g_test_level_tick_limit_override = 0;
+#endif
+} // namespace og::sim
 
 namespace og::gameplay {
 
@@ -50,6 +92,191 @@ short GameWorld::remaining_foes(walker* myguy) const
             myfoes++;
     }
     return myfoes;
+}
+
+og::sim::TickResult GameWorld::tick(SaveData& save, std::int32_t& enemy_freeze,
+                                    char end, og::sim::SimEventLog& events)
+{
+    og::sim::TickResult result;
+    tick_count_++;
+    events.current_tick_ = tick_count_;
+    if (last_level_id_ != id)
+    {
+        last_level_id_ = id;
+        level_tick_count_ = 0;
+    }
+    level_tick_count_++;
+
+    std::uint32_t max_level_ticks = 36000;
+#ifdef TESTING
+    if (og::sim::g_test_level_tick_limit_override > 0)
+    {
+        max_level_ticks = static_cast<std::uint32_t>(og::sim::g_test_level_tick_limit_override);
+    }
+#endif
+    if (level_tick_count_ > max_level_ticks)
+    {
+        result.game_ended = true;
+        result.ending = 1;
+        result.next_level = -1;
+        events.push_notification("Mission timed out. Retreating.", 40);
+        return result;
+    }
+
+    result.level_done = 2;
+
+    if (enemy_freeze)
+        enemy_freeze--;
+    if (enemy_freeze == 1)
+        events.push(og::sim::EventKind::SetPalette, 0, 0);
+
+    bool printed_time = false;
+    for (auto& uptr : oblist)
+    {
+        walker* ob = uptr.get();
+        if (!enemy_freeze)
+        {
+            if (ob && !ob->dead)
+            {
+                ob->in_act = true;
+                ob->act();
+                ob->in_act = false;
+                if (ob && !ob->dead)
+                {
+                    if (!ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team)) &&
+                        ob->query_order() == Order::Living)
+                    {
+                        result.level_done = 0;
+                    }
+                    if (ob->foe == nullptr && ob->leader == nullptr)
+                        ob->foe = find_far_foe_for_tick(*this, ob, rng_);
+                }
+            }
+        }
+        else
+        {
+            if (!(enemy_freeze % 10) && !printed_time)
+            {
+                std::string obmessage = std::format("TIME LEFT: {}", enemy_freeze);
+                events.push_notification(obmessage, 10);
+                printed_time = true;
+            }
+            if (ob && !ob->dead &&
+                (((ob->query_order() != Order::Living) &&
+                  (ob->query_order() != Order::Generator)) ||
+                 ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team))))
+            {
+                ob->act();
+                if (ob && !ob->dead)
+                {
+                    if (!ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team)) &&
+                        ob->query_order() == Order::Living)
+                    {
+                        result.level_done = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    for (auto& uptr : weaplist)
+    {
+        walker* ob = uptr.get();
+        if (ob && !ob->dead)
+        {
+            ob->act();
+            if (ob && !ob->dead)
+            {
+                if (!ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team)) &&
+                    ob->query_order() == Order::Living)
+                {
+                    result.level_done = 0;
+                }
+            }
+        }
+    }
+
+    for (auto& uptr : fxlist)
+    {
+        walker* ob = uptr.get();
+        if (ob && !ob->dead)
+        {
+            if (ob->query_order() == Order::Treasure &&
+                ob->family == FAMILY_EXIT &&
+                result.level_done != 0)
+            {
+                result.level_done = 1;
+            }
+        }
+    }
+
+    if (result.level_done == 2)
+    {
+        result.game_ended = true;
+        result.ending = 0;
+        result.next_level = static_cast<short>(id + 1);
+        return result;
+    }
+
+    if (end)
+    {
+        result.game_ended = true;
+        return result;
+    }
+
+    for (auto& uptr : oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob->foe && ob->foe->dead)
+            ob->foe = nullptr;
+        if (ob->leader && ob->leader->dead)
+            ob->leader = nullptr;
+        if (ob->owner && ob->owner->dead)
+            ob->owner = nullptr;
+        if (ob->collide_ob && ob->collide_ob->dead)
+            ob->collide_ob = nullptr;
+    }
+
+    for (auto& uptr : weaplist)
+    {
+        walker* ob = uptr.get();
+        if (ob->foe && ob->foe->dead)
+            ob->foe = nullptr;
+        if (ob->leader && ob->leader->dead)
+            ob->leader = nullptr;
+        if (ob->owner && ob->owner->dead)
+            ob->owner = nullptr;
+        if (ob->collide_ob && ob->collide_ob->dead)
+            ob->collide_ob = nullptr;
+    }
+
+    for (auto e = oblist.begin(); e != oblist.end();)
+    {
+        walker* ob = e->get();
+        if (ob && ob->dead && ob->myguy == nullptr)
+        {
+            dead_list.push_back(std::move(*e));
+
+            if (ob->query_order() == Order::Living)
+                living_count--;
+
+            e = oblist.erase(e);
+            continue;
+        }
+        e++;
+    }
+
+    std::erase_if(fxlist, [](const auto& uptr) {
+        walker* ob = uptr.get();
+        return ob && ob->dead;
+    });
+
+    std::erase_if(weaplist, [](const auto& uptr) {
+        walker* ob = uptr.get();
+        return ob && ob->dead;
+    });
+
+    return result;
 }
 
 walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart)

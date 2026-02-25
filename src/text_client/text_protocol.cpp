@@ -5,7 +5,7 @@
 
 #include <openglad/ui/text_protocol.h>
 
-#include <openglad/sim/sim_world.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/irandom.h>
@@ -69,16 +69,16 @@ static void wire_all_entities(LevelData& level)
     for (auto& uptr : level.weaplist) level.wire_entity(uptr.get());
 }
 
-static void cmd_tick(og::sim::SimWorld& sim, LevelData& level, SaveData& save,
+static void cmd_tick(og::gameplay::GameWorld& world, LevelData& level, SaveData& save,
                      std::int32_t& enemy_freeze, char& end,
                      og::sim::SimEventLog& events, int count)
 {
     std::cout << "{\"cmd\":\"tick\",\"count\":" << count << ",\"results\":[";
     for (int i = 0; i < count; i++) {
         if (i > 0) std::cout << ",";
-        auto result = sim.tick(level, save, enemy_freeze, end, events);
+        auto result = world.tick(save, enemy_freeze, end, events);
         level.level_done = result.level_done;
-        std::cout << "{\"tick\":" << sim.tick_count_
+        std::cout << "{\"tick\":" << world.tick_count_
                   << ",\"level_done\":" << result.level_done
                   << ",\"game_ended\":" << (result.game_ended ? "true" : "false")
                   << ",\"next_level\":" << result.next_level
@@ -139,7 +139,6 @@ int run_text_protocol_session(const TextProtocolArgs& args)
 {
     // Set up sim infrastructure
     og::sim::SimEventLog events;
-    og::sim::SimWorld sim(args.seed);
 
     // Set up a seeded RNG for entities
     class TextRandom : public IRandom {
@@ -190,6 +189,8 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     // Wire up sim pointers on all entities
     std::int32_t enemy_freeze = 0;
     char end = 0;
+    og::gameplay::GameWorld& world = level.game_world();
+    world.rng_.state_ = args.seed;
 
     level.set_sim_context(&save, &enemy_freeze, &events, &entity_rng, &cfg);
     wire_all_entities(level);
@@ -218,7 +219,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             int count = 1;
             iss >> count;
             if (count < 1) count = 1;
-            cmd_tick(sim, level, save, enemy_freeze, end, events, count);
+            cmd_tick(world, level, save, enemy_freeze, end, events, count);
             wire_all_entities(level);
         } else if (cmd == "state") {
             cmd_state(level);

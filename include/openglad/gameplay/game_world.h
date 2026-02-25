@@ -26,9 +26,39 @@ enum class Order : unsigned char;
 class walker;
 class LevelData;
 class obmap;
+class SaveData;
 
 #include <openglad/data/pixie_data.h>
 #include <openglad/data/smooth.h>
+
+namespace og::sim {
+class SimEventLog;
+
+// Deterministic LCG RNG used by simulation logic.
+class SimRandom final {
+public:
+    explicit SimRandom(std::uint32_t seed = 0) : state_(seed) {}
+
+    std::uint32_t next(std::uint32_t max_exclusive) {
+        if (max_exclusive == 0) return 0;
+        state_ = state_ * 1103515245u + 12345u;
+        return (state_ >> 16) % max_exclusive;
+    }
+
+    std::uint32_t state_;
+};
+
+struct TickResult {
+    short level_done = 0;
+    bool game_ended = false;
+    short next_level = -1;
+    short ending = 0;
+};
+
+#ifdef TESTING
+extern std::int32_t g_test_level_tick_limit_override;
+#endif
+} // namespace og::sim
 
 namespace og::gameplay {
 
@@ -72,6 +102,8 @@ public:
     short par_value = 1;
     short time_bonus_limit = 4000;
     short difficulty = 100;
+    std::uint32_t tick_count_ = 0;
+    og::sim::SimRandom rng_;
 
     // Clear all entity lists and reset living_count.
     // Note: this clears only entity storage. Hooks (e.g. stale view control
@@ -120,6 +152,10 @@ public:
     std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist,
                                              std::int32_t range, std::int32_t* howmany, walker* ob);
 
+    // Simulation tick (migrated from SimWorld in Phase 2).
+    og::sim::TickResult tick(SaveData& save, std::int32_t& enemy_freeze,
+                             char end, og::sim::SimEventLog& events);
+
     // Grid/world lifecycle
     void create_new_grid();
     void resize_grid(int width, int height);
@@ -132,6 +168,8 @@ public:
 
 private:
     LevelData* level_data_ = nullptr;
+    std::uint32_t level_tick_count_ = 0;
+    int last_level_id_ = -1;
 };
 
 } // namespace og::gameplay

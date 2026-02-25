@@ -40,7 +40,6 @@
 #include <openglad/legacy/view_sizes.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/ui/results_screen.h>
-#include <openglad/sim/sim_world.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/render/pal32.h>
 #include <openglad/data/level_data_hooks.h>
@@ -442,12 +441,9 @@ void screen::process_input(const InputState& input_state)
 
 bool screen::act()
 {
-	// Delegate simulation tick to SimWorld.
-	// SimWorld encapsulates the deterministic entity update logic that
-	// was previously embedded directly in this method.
+	// Delegate simulation tick to GameWorld.
 	og::sim::SimEventLog& events = *ctx().sim_events;
-	og::sim::TickResult result = sim_world_.tick(level_data, save_data,
-	                                             enemy_freeze, end, events);
+	og::sim::TickResult result = world_.tick(save_data, enemy_freeze, end, events);
 
 	// Post-tick: clean up viewscreen control pointers for dead player entities.
 	// This is a rendering concern that doesn't belong in the simulation layer.

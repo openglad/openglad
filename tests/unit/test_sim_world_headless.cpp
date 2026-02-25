@@ -1,7 +1,7 @@
 #include <openglad/sim/event.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/sim_emit.h>
-#include <openglad/sim/sim_world.h>
+#include <openglad/gameplay/game_world.h>
 
 #include "unit.h"
 
@@ -144,8 +144,10 @@ OG_UNIT_TEST(test_sim_random_zero_max_returns_zero)
 
 OG_UNIT_TEST(test_sim_world_owns_rng)
 {
-    og::sim::SimWorld world1(42);
-    og::sim::SimWorld world2(42);
+    og::gameplay::GameWorld world1;
+    og::gameplay::GameWorld world2;
+    world1.rng_.state_ = 42;
+    world2.rng_.state_ = 42;
 
     // Both worlds should have the same RNG state
     OG_ASSERT(world1.rng_.state_ == world2.rng_.state_);
