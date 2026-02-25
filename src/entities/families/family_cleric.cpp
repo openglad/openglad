@@ -121,15 +121,12 @@ static bool cleric_do_special(walker* self)
                         return false;
                     else
                     {
-                        if (self->sim_config && self->sim_config->is_on("effects", "heal_numbers"))
-                        {
-                            if (didheal == 1)
-                                message = "Cleric healed 1 man!";
-                            else
-                                message = std::format("Cleric healed {} men!", didheal);
-                            if (self->team_num == 0 || self->myguy)
-                                og::sim::emit_notification(og::gameplay::current_game->sim_events, message);
-                        }
+                        if (didheal == 1)
+                            message = "Cleric healed 1 man!";
+                        else
+                            message = std::format("Cleric healed {} men!", didheal);
+                        if (self->team_num == 0 || self->myguy)
+                            og::sim::emit_notification(og::gameplay::current_game->sim_events, message);
                         og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_HEAL);
                     }
                 }

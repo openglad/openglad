@@ -374,6 +374,9 @@ void test_treasure_batch3_exit_withdraw_accept_path()
     og::runtime::current_session->myscreen_->save_data.scen_num = 8; // Current level is not marked complete.
     og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 5);
     (void)og::runtime::current_session->myscreen_->save_data.save("save0");
+    og::runtime::current_session->myscreen_->world().current_scenario =
+        og::runtime::current_session->myscreen_->save_data.scen_num;
+    og::runtime::current_session->myscreen_->world().completed_levels = {5};
 
     og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present -> guys_here != 0
 
@@ -388,13 +391,26 @@ void test_treasure_batch3_exit_withdraw_accept_path()
     eater->in_act = false;
     eater->skip_exit = 0;
 
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(true);
-
     TEST_ASSERT(exit_fx->eat_me(eater), "withdraw accept path should return true");
+    TEST_ASSERT_EQ(8, static_cast<int>(og::runtime::current_session->myscreen_->save_data.scen_num),
+                   "entity-side withdraw should defer transition; scen_num remains unchanged");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().withdraw_requested,
+                "withdraw branch should set world.withdraw_requested");
 
-    TEST_ASSERT_EQ((int)exit_fx->stats()->level, (int)og::runtime::current_session->myscreen_->save_data.scen_num,
-                   "withdraw accept should switch scen_num to exit level");
+    bool saw_request = false;
+    bool saw_withdraw = false;
+    for (const auto& ev : sim_events.events())
+    {
+        if (ev.kind == og::sim::EventKind::RequestExitConfirmation &&
+            ev.b == 1 &&
+            static_cast<short>(ev.a) == static_cast<short>(exit_fx->stats()->level))
+            saw_request = true;
+        if (ev.kind == og::sim::EventKind::WithdrawToLevel &&
+            static_cast<short>(ev.a) == static_cast<short>(exit_fx->stats()->level))
+            saw_withdraw = true;
+    }
+    TEST_ASSERT(saw_request, "withdraw branch should emit RequestExitConfirmation");
+    TEST_ASSERT(saw_withdraw, "withdraw branch should emit WithdrawToLevel");
 
     clear_level_lists();
 }
@@ -1037,11 +1053,19 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
 
     exit_fx->eat_me(eater);
 
-    // With the bug, both Withdraw and Exit dialogs fire (2 consumed, 0 remaining).
-    // With the fix, only one dialog fires (1 consumed, 1 remaining).
+    // Event-driven exits defer prompting to the outer layer, so none of the
+    // queued answers should be consumed by entity code.
     int remaining = picker_testing_yes_or_no_queue_remaining();
-    TEST_ASSERT_EQ(1, remaining,
-                   "Only one dialog should fire, not both Withdraw and Exit");
+    TEST_ASSERT_EQ(2, remaining,
+                   "entity code should not consume prompt answers directly");
+
+    int request_count = 0;
+    for (const auto& ev : sim_events.events())
+    {
+        if (ev.kind == og::sim::EventKind::RequestExitConfirmation)
+            request_count++;
+    }
+    TEST_ASSERT_EQ(1, request_count, "only one RequestExitConfirmation should be emitted");
 
     og::runtime::current_session->myscreen_->level_data.type = 0;
     clear_level_lists();

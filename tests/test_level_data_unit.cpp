@@ -274,7 +274,7 @@ OG_UNIT_TEST(test_level_data_r11_object_passability_and_search_sets)
 
     ally->user = 0;
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
-    self->sim_save->allied_mode = 0;
+    fx.level.game_world().allied_mode = 0;
 
     // query_object_passable dead-ob fast path
     self->dead = 1;

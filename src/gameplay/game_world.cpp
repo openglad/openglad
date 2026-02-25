@@ -78,6 +78,8 @@ void GameWorld::delete_objects()
     weaplist.clear();
     dead_list.clear();
     living_count = 0;
+    // Withdrawal is a per-level transient signal and must not survive object resets.
+    withdraw_requested = false;
 }
 
 short GameWorld::remaining_foes(walker* myguy) const
@@ -112,6 +114,17 @@ void GameWorld::tick()
     }
     level_tick_count_++;
 
+    std::size_t processed_events = events.events().size();
+    auto refresh_withdraw_request = [&]() {
+        const auto& pending = events.events();
+        for (; processed_events < pending.size(); ++processed_events)
+        {
+            if (pending[processed_events].kind == og::sim::EventKind::WithdrawToLevel)
+                withdraw_requested = true;
+        }
+        return withdraw_requested;
+    };
+
     std::uint32_t max_level_ticks = 36000;
 #ifdef TESTING
     if (og::sim::g_test_level_tick_limit_override > 0)
@@ -138,6 +151,8 @@ void GameWorld::tick()
     bool printed_time = false;
     for (auto& uptr : oblist)
     {
+        if (refresh_withdraw_request())
+            return;
         walker* ob = uptr.get();
         if (!enemy_freeze)
         {
@@ -146,6 +161,8 @@ void GameWorld::tick()
                 ob->in_act = true;
                 ob->act();
                 ob->in_act = false;
+                if (refresh_withdraw_request())
+                    return;
                 if (ob && !ob->dead)
                 {
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
@@ -172,6 +189,8 @@ void GameWorld::tick()
                  ob->is_friendly_to_team(static_cast<unsigned char>(my_team))))
             {
                 ob->act();
+                if (refresh_withdraw_request())
+                    return;
                 if (ob && !ob->dead)
                 {
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
@@ -186,10 +205,14 @@ void GameWorld::tick()
 
     for (auto& uptr : weaplist)
     {
+        if (refresh_withdraw_request())
+            return;
         walker* ob = uptr.get();
         if (ob && !ob->dead)
         {
             ob->act();
+            if (refresh_withdraw_request())
+                return;
             if (ob && !ob->dead)
             {
                 if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
@@ -203,6 +226,8 @@ void GameWorld::tick()
 
     for (auto& uptr : fxlist)
     {
+        if (refresh_withdraw_request())
+            return;
         walker* ob = uptr.get();
         if (ob && !ob->dead)
         {
@@ -916,6 +941,8 @@ void GameWorld::clear()
     end = 0;
     retry = false;
     control_hp = 0;
+    withdraw_requested = false;
+    create_hit_effects = true;
 }
 
 } // namespace og::gameplay

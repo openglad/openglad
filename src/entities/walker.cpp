@@ -375,13 +375,10 @@ walker  * walker::fire()
 			{
 				og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_CLANG);
 
-                if(sim_config && sim_config->is_on("effects", "attack_lunge"))
+                if(query_order() == Order::Living)
                 {
-                    if(query_order() == Order::Living)
-                    {
-                        attack_lunge = 1.0f;
-                        attack_lunge_angle = get_current_angle();
-                    }
+                    attack_lunge = 1.0f;
+                    attack_lunge_angle = get_current_angle();
                 }
 
 				// Family-specific melee hit callback
@@ -1528,7 +1525,9 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// Is allied mode set to zero (enemy)?
 	// If so, then if our team numbers don't match,
 	// we are not friendly
-	if (sim_save->allied_mode == 0 || has_myguy == 0)
+	const unsigned char allied_mode = (og::gameplay::current_game && og::gameplay::current_game->world)
+		? og::gameplay::current_game->world->allied_mode : 0;
+	if (allied_mode == 0 || has_myguy == 0)
 	{
 		return (headus->team_num == headtarget->team_num);
 	}
@@ -1584,7 +1583,9 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 
 	// Is allied mode set to zero (enemy) or were we not hired (!myguy)?
 	// If so, then our team number must match.
-	if (sim_save->allied_mode == 0 || has_myguy == 0)
+	const unsigned char allied_mode = (og::gameplay::current_game && og::gameplay::current_game->world)
+		? og::gameplay::current_game->world->allied_mode : 0;
+	if (allied_mode == 0 || has_myguy == 0)
 	{
 		return (headus->team_num == team);
 	}

@@ -12,7 +12,6 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
 #include <format>
@@ -29,8 +28,8 @@ static bool gold_bar_on_eat(treasure* self, walker* eater)
 {
     if (eater->team_num == 0 || eater->myguy)
     {
-        if (eater->sim_save && is_valid_score_team(eater->team_num))
-            eater->sim_save->m_score[eater->team_num] += (200 * self->stats()->level);
+        if (is_valid_score_team(eater->team_num))
+            og::gameplay::current_game->world->m_score[eater->team_num] += (200 * self->stats()->level);
         self->dead = 1;
         og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_MONEY);
     }
@@ -41,8 +40,8 @@ static bool silver_bar_on_eat(treasure* self, walker* eater)
 {
     if (eater->team_num == 0 || eater->myguy)
     {
-        if (eater->sim_save && is_valid_score_team(eater->team_num))
-            eater->sim_save->m_score[eater->team_num] += (50 * self->stats()->level);
+        if (is_valid_score_team(eater->team_num))
+            og::gameplay::current_game->world->m_score[eater->team_num] += (50 * self->stats()->level);
         self->dead = 1;
         og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_MONEY);
     }
@@ -53,8 +52,8 @@ static bool life_gem_on_eat(treasure* self, walker* eater)
 {
     if (eater->team_num != self->team_num) // only our team can get these
         return true;
-    if (eater->sim_save && is_valid_score_team(eater->team_num))
-        eater->sim_save->m_score[eater->team_num] += static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints));
+    if (is_valid_score_team(eater->team_num))
+        og::gameplay::current_game->world->m_score[eater->team_num] += static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints));
     walker* flash = og::gameplay::current_game->world->add_ob(Order::FX, FAMILY_FLASH);
     flash->ani_type = ANI_EXPAND_8;
     flash->center_on(self);

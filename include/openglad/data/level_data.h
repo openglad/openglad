@@ -31,7 +31,7 @@ class loader;
 class walker;
 class statistics;
 class obmap;
-class SaveData;
+struct SaveData;
 class IRandom;
 class cfg_store;
 struct LevelDataHooks;
@@ -200,7 +200,7 @@ public:
     bool is_headless() const { return headless_; }
     void wire_entity(walker* w);  // Wire all stored sim context onto an entity.
 
-    // Set sim context that will be auto-wired onto newly created entities.
+    // Set sim context used by transitional headless/runtime wiring.
     void set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                          og::sim::SimEventLog* events, IRandom* rng,
                          cfg_store* config);
@@ -214,9 +214,7 @@ private:
     bool headless_ = false;  // When true, skip render component creation
     const LevelDataHooks* hooks_ = nullptr;
 
-    // Sim context pointers for wiring newly created entities.
-    SaveData*              sim_ctx_save_ = nullptr;
-    cfg_store*             sim_ctx_config_ = nullptr;
+    // Sim context pointer retained for event bridge wiring.
     og::sim::SimEventLog*  sim_ctx_events_ = nullptr;
 };
 

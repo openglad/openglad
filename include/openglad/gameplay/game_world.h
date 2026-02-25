@@ -113,6 +113,8 @@ public:
     char end = 0;
     bool retry = false;
     float control_hp = 0;
+    bool withdraw_requested = false;
+    bool create_hit_effects = true;
 
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;

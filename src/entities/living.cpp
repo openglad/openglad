@@ -161,8 +161,7 @@ bool living::act()
 	{
 		flight_left++;
 		stats_->hitpoints--;
-		if(sim_config && sim_config->is_on("effects", "damage_numbers"))
-            damage_numbers.push_back(DamageNumber(xpos + sizex/2, ypos, 1, RED));
+        damage_numbers.push_back(DamageNumber(xpos + sizex/2, ypos, 1, RED));
 		
 		if (stats_->hitpoints <= 0)
 		{

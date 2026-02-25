@@ -20,8 +20,6 @@
 #include <cstdint>
 
 class LevelData;
-struct SaveData;
-class cfg_store;
 
 namespace og::sim {
 class SimEntity
@@ -53,10 +51,6 @@ public:
     short invisibility_left = 0;
     short flight_left = 0;
     short bonus_rounds = 0;
-
-    // Sim context pointers retained until Phase 5.
-    SaveData*     sim_save = nullptr;
-    cfg_store*    sim_config = nullptr;
 
     // Identity
     Order order = Order::Living;

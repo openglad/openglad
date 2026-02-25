@@ -26,7 +26,6 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/irandom.h>
@@ -82,9 +81,6 @@ static bool is_valid_score_team(unsigned char team_num)
 
 void walker::do_heal_effects(walker* healer, walker* target, short amount)
 {
-    if(!sim_config || !sim_config->is_on("effects", "heal_numbers"))
-        return;
-
     if(healer)
         healer->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, amount, 56));
     target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, amount, 56));
@@ -92,18 +88,15 @@ void walker::do_heal_effects(walker* healer, walker* target, short amount)
 
 void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 {
-    if(sim_config && sim_config->is_on("effects", "damage_numbers"))
-    {
-        // Orange numbers for the attacker to see
-        if(attacker)
-            attacker->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, 235));
-        // RED numbers for the target to see
-        target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, RED));
-    }
+    // Orange numbers for the attacker to see
+    if(attacker)
+        attacker->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, 235));
+    // RED numbers for the target to see
+    target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, RED));
     if (target->stats()->hitpoints < 0)
         tempdamage = static_cast<short>(static_cast<float>(tempdamage) + target->stats()->hitpoints);
 
-    if(sim_config && sim_config->is_on("effects", "hit_anim"))
+    if(og::gameplay::current_game->world->create_hit_effects)
     {
         // Create hit effect
         const auto* efd = (query_order() == Order::FX) ? get_effect_family_descriptor(family) : nullptr;
@@ -134,20 +127,16 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 
     if(tempdamage > 0)
     {
-        if(sim_config && sim_config->is_on("effects", "hit_flash"))
-            target->hurt_flash = true;
+        target->hurt_flash = true;
 
-        if(sim_config && sim_config->is_on("effects", "hit_recoil"))
+        if(target->query_order() == Order::Living)
         {
-            if(target->query_order() == Order::Living)
-            {
-                target->hit_recoil = 1.0f;
-                const float dy = (static_cast<float>(target->ypos) + static_cast<float>(target->sizey) * 0.5f) -
-                                 (static_cast<float>(ypos) + static_cast<float>(sizey) * 0.5f);
-                const float dx = (static_cast<float>(target->xpos) + static_cast<float>(target->sizex) * 0.5f) -
-                                 (static_cast<float>(xpos) + static_cast<float>(sizex) * 0.5f);
-                target->hit_recoil_angle = atan2f(dy, dx);
-            }
+            target->hit_recoil = 1.0f;
+            const float dy = (static_cast<float>(target->ypos) + static_cast<float>(target->sizey) * 0.5f) -
+                             (static_cast<float>(ypos) + static_cast<float>(sizey) * 0.5f);
+            const float dx = (static_cast<float>(target->xpos) + static_cast<float>(target->sizex) * 0.5f) -
+                             (static_cast<float>(xpos) + static_cast<float>(sizex) * 0.5f);
+            target->hit_recoil_angle = atan2f(dy, dx);
         }
     }
 }
@@ -298,9 +287,9 @@ bool walker::attack(walker  *target)
     {
         if (headguy->myguy)
             headguy->myguy->exp += attack_exp;
-        if (getscore && sim_save && is_valid_score_team(team_num))
+        if (getscore && is_valid_score_team(team_num))
         {
-            sim_save->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i)
+            og::gameplay::current_game->world->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i)
                 + static_cast<std::uint32_t>(target->stats()->level);
         }
     }
@@ -326,9 +315,10 @@ bool walker::attack(walker  *target)
                     //  myguy->kills++;
                     //  myguy->level_kills += target->stats()->level;
                     //}
-                    if (getscore && sim_save && is_valid_score_team(team_num))
+                    if (getscore && is_valid_score_team(team_num))
                     {
-                        sim_save->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i) + static_cast<std::uint32_t>(10 * target->stats()->level);
+                        og::gameplay::current_game->world->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i)
+                            + static_cast<std::uint32_t>(10 * target->stats()->level);
                     }
                     // If named, alert us of the enemy's death
                     if (target->stats()->name.size() && !(target->lifetime)

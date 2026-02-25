@@ -99,8 +99,14 @@ OG_UNIT_TEST(test_walker_friendliness_and_distance_paths)
     OG_ASSERT(!a->is_friendly(b));
     OG_ASSERT(a->is_friendly_to_team(0));
 
-    fx.save.allied_mode = 1;
+    og::gameplay::GameplayContext ctx;
+    ctx.world = &fx.level.game_world();
+    ctx.sim_events = &fx.events;
+    og::gameplay::GameplayContext* prev = og::gameplay::current_game;
+    og::gameplay::current_game = &ctx;
+    fx.level.game_world().allied_mode = 1;
     OG_ASSERT(a->is_friendly(b));
+    og::gameplay::current_game = prev;
 }
 
 OG_UNIT_TEST(test_walker_death_save_all_and_misc_paths)

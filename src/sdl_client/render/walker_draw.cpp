@@ -127,6 +127,12 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
 
 bool draw_walker(walker& w, viewscreen* view_buf)
 {
+    const bool show_attack_lunge = active_config().is_on("effects", "attack_lunge");
+    const bool show_hit_recoil = active_config().is_on("effects", "hit_recoil");
+    const bool show_hit_flash = active_config().is_on("effects", "hit_flash");
+    const bool show_damage_numbers = active_config().is_on("effects", "damage_numbers");
+    const bool show_heal_numbers = active_config().is_on("effects", "heal_numbers");
+
     // Update the drawing coords from the real position
     w.xpos = static_cast<short>(w.worldx());
     w.ypos = static_cast<short>(w.worldy());
@@ -143,7 +149,7 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	xscreen = static_cast<Sint32>(w.xpos - view_buf->topx + view_buf->xloc);
 	yscreen = static_cast<Sint32>(w.ypos - view_buf->topy + view_buf->yloc);
 
-	if(w.attack_lunge > 0.0f)
+	if(show_attack_lunge && w.attack_lunge > 0.0f)
 	    {
 	        const float dx = w.attack_lunge * ATTACK_LUNGE_SIZE * cosf(w.attack_lunge_angle);
 	        const float dy = w.attack_lunge * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle);
@@ -151,7 +157,7 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	        yscreen += static_cast<Sint32>(dy);
 	    }
 
-	if(w.hit_recoil > 0.0f)
+	if(show_hit_recoil && w.hit_recoil > 0.0f)
 	    {
 	        const float dx = w.hit_recoil * HIT_RECOIL_SIZE * cosf(w.hit_recoil_angle);
 	        const float dy = w.hit_recoil * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle);
@@ -200,10 +206,11 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	}
 
 	// Draw me
-	if(w.hurt_flash)
-    {
+    const bool had_hurt_flash = w.hurt_flash;
+    if (had_hurt_flash)
         w.hurt_flash = false;
-
+	if(had_hurt_flash && show_hit_flash)
+    {
         auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex * w.sizey)};
         og::runtime::current_session->myscreen_->walkputbuffer_flash(xscreen, yscreen, w.sizex, w.sizey,
                                    view_buf->xloc, view_buf->yloc,
@@ -246,7 +253,10 @@ bool draw_walker(walker& w, viewscreen* view_buf)
         }
 
         e->y -= 1.5f;
-        if(view_buf->control == &w)
+        constexpr unsigned char HEAL_COLOR = 56;
+        const bool is_heal_number = (e->color == HEAL_COLOR);
+        const bool should_draw_number = is_heal_number ? show_heal_numbers : show_damage_numbers;
+        if(view_buf->control == &w && should_draw_number)
             draw_damage_number(*e, view_buf);
         e++;
     }

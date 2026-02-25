@@ -10,7 +10,6 @@
 #include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/sim/sim_emit.h>
 #include <format>
@@ -18,10 +17,14 @@
 
 std::string get_scenario_title(const char* filename);
 
-// These are defined in the input module (SDL build) or stubbed by the text client.
-void get_input_events(bool);
-bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
-void clear_keyboard();
+static std::string scenario_name_for_level(short level)
+{
+    std::string message = std::format("scen{}", level);
+    std::string exitname = get_scenario_title(message.c_str());
+    if (exitname == "none")
+        exitname = std::format("Level {}", level);
+    return exitname;
+}
 
 static bool exit_on_eat(treasure* self, walker* eater)
 {
@@ -35,36 +38,22 @@ static bool exit_on_eat(treasure* self, walker* eater)
         guys_here = 1;
     else
         guys_here = 0;
-    // Get the name of our exit..
-    std::string message = std::format("scen{}", self->stats()->level);
-    std::string exitname = get_scenario_title(message.c_str());
-
-    if (exitname == "none")
-    {
-        exitname = std::format("Level {}", self->stats()->level);
-    }
-
-    std::int32_t leftside  = 160 - ( (static_cast<int>(exitname.size()) + 18) * 3);
-    std::int32_t rightside = 160 + ( (static_cast<int>(exitname.size()) + 18) * 3);
+    const short dest_level = static_cast<short>(self->stats()->level);
+    const std::string exitname = scenario_name_for_level(dest_level);
 
     // Exit path: all enemies dead, or scenario allows free exit.
     // Check this BEFORE the withdraw path so that CAN_EXIT_WHENEVER levels
     // show the normal "Exit to X?" dialog instead of "Withdraw to X?".
     if (!guys_here || (og::gameplay::current_game->world->type & LevelData::TYPE_CAN_EXIT_WHENEVER))
     {
-        std::string buf = std::format("Exit to {}?", exitname);
-        bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
-        // Redraw screen ..
-        og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::RequestRedraw);
-
-        if(result) // accepted level change
+        if (og::gameplay::current_game->sim_events)
         {
-            clear_keyboard();
-            og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::EndGame,
-                                0, static_cast<std::uint32_t>(self->stats()->level));
-            return true;
+            og::gameplay::current_game->sim_events->push(
+                og::sim::EventKind::RequestExitConfirmation,
+                static_cast<std::uint32_t>(dest_level),
+                0,
+                std::format("Exit to {}?", exitname));
         }
-        clear_keyboard();
         return true;
     }
 
@@ -73,49 +62,23 @@ static bool exit_on_eat(treasure* self, walker* eater)
     // to the autosave, then jump to the exit's destination level.
     // This is mutually exclusive with the exit path above — if the exit path
     // didn't fire, we know guys_here != 0 and CAN_EXIT_WHENEVER is not set.
-    if ( self->sim_save->is_level_completed(self->stats()->level)
-            && !self->sim_save->is_level_completed(self->sim_save->scen_num)
-       )
+    if (og::gameplay::current_game->world->completed_levels.count(dest_level) != 0
+            && og::gameplay::current_game->world->completed_levels.count(
+                og::gameplay::current_game->world->current_scenario) == 0)
     {
-        leftside -= 12;
-        rightside += 12;
-
-        std::string buf = std::format("Withdraw to {}?", exitname);
-        bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
-        // Redraw screen ..
-        og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::RequestRedraw);
-
-        if (result) // accepted level change
+        og::sim::emit_event(og::gameplay::current_game->sim_events,
+                            og::sim::EventKind::WithdrawToLevel,
+                            static_cast<std::uint32_t>(dest_level),
+                            0);
+        og::gameplay::current_game->world->withdraw_requested = true;
+        if (og::gameplay::current_game->sim_events)
         {
-            clear_keyboard();
-            // Delete all of our current information and abort ..
-            for(auto& uptr : og::gameplay::current_game->world->oblist)
-            {
-                walker* w = uptr.get();
-                if (w && w->query_order() == Order::Living)
-                {
-                    w->dead = 1;
-                    og::gameplay::current_game->world->myobmap->remove(w);
-                }
-            }
-
-            // Now reload the autosave to revert our changes during battle (don't use SaveData::update_guys())
-            self->sim_save->load("save0");
-
-            // Go to the exit's level
-            self->sim_save->scen_num = static_cast<short>(self->stats()->level);
-
-            // Autosave because we escaped to a new level
-            // Save with the new current level
-            self->sim_save->save("save0");
-
-            // Signal end and emit endgame event for retreat
-            og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::SetEnd);
-            og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::EndGame,
-                                1, static_cast<std::uint32_t>(self->stats()->level));
-            return true;
-        }  // end of accepted withdraw to new level ..
-        clear_keyboard();
+            og::gameplay::current_game->sim_events->push(
+                og::sim::EventKind::RequestExitConfirmation,
+                static_cast<std::uint32_t>(dest_level),
+                1,
+                std::format("Withdraw to {}?", exitname));
+        }
     } // end of checking for withdrawal to completed level
     return true;
 }

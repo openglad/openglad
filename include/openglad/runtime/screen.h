@@ -127,4 +127,6 @@ class screen : public video
 
 	private:
 		void init_common(short howmany, bool has_display);
+		void sync_world_from_save();
+		void sync_save_from_world();
 };

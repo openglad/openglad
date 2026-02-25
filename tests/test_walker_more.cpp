@@ -332,20 +332,20 @@ void test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes()
     owner_a->team_num = 0;
     owner_b->team_num = 1;
 
-    const int old_allied_mode = a->sim_save->allied_mode;
+    const int old_allied_mode = og::gameplay::current_game->world->allied_mode;
 
     // Allied mode with one myguy missing (has_myguy == 2 path).
     owner_a->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     owner_b->clear_myguy();
     owner_b->team_num = 0;
-    a->sim_save->allied_mode = 1;
+    og::gameplay::current_game->world->allied_mode = 1;
     TEST_ASSERT(a->is_friendly(b.get()) != 0, "allied mode should treat team-0 non-myguy as friendly");
 
     owner_b->team_num = 1;
     TEST_ASSERT_EQ(0, (int)a->is_friendly(b.get()), "allied mode should reject non-team-0 when only one side has myguy");
 
     // Enemy mode path (allied_mode==0).
-    a->sim_save->allied_mode = 0;
+    og::gameplay::current_game->world->allied_mode = 0;
     owner_b->team_num = owner_a->team_num;
     TEST_ASSERT(a->is_friendly(b.get()) != 0, "enemy mode uses team equality");
 
@@ -354,10 +354,10 @@ void test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes()
     TEST_ASSERT_EQ(0, (int)a->is_friendly_to_team(0), "dead walker should not be friendly to any team");
     a->dead = 0;
     owner_a->clear_myguy();
-    a->sim_save->allied_mode = 0;
+    og::gameplay::current_game->world->allied_mode = 0;
     TEST_ASSERT(a->is_friendly_to_team(owner_a->team_num) != 0, "non-myguy path should still compare team");
 
-    a->sim_save->allied_mode = old_allied_mode;
+    og::gameplay::current_game->world->allied_mode = static_cast<unsigned char>(old_allied_mode);
 }
 REGISTER_TEST(test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes);
 

@@ -48,10 +48,10 @@ void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                                 og::sim::SimEventLog* events, IRandom* rng,
                                 cfg_store* config)
 {
+    (void)save;
     (void)enemy_freeze;
     (void)rng;
-    sim_ctx_save_ = save;
-    sim_ctx_config_ = config;
+    (void)config;
     sim_ctx_events_ = events;
 
     // Synchronize when this LevelData is already active, or when the current
@@ -554,8 +554,7 @@ walker* LevelData::add_weap_ob(Order order, std::int32_t family)
 
 void LevelData::wire_entity(walker* w)
 {
-    w->sim_save = sim_ctx_save_;
-    w->sim_config = sim_ctx_config_;
+    (void)w;
 }
 
 short LevelData::remove_ob(walker  *ob)

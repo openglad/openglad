@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <format>
 #include <iterator>
+#include <set>
 #include <vector>
 
 void popup_dialog(const char* title, const char* message);
@@ -51,6 +52,18 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	// Spectator mode (numplayers==0) still needs 1 viewscreen for the camera
 	screenp->numviews = (screenp->save_data.numplayers == 0)
 	    ? 1 : screenp->save_data.numplayers;
+
+	screenp->world_.my_team = screenp->save_data.my_team;
+	screenp->world_.allied_mode = static_cast<unsigned char>(screenp->save_data.allied_mode);
+	screenp->world_.current_scenario = screenp->save_data.scen_num;
+	{
+		auto it = screenp->save_data.completed_levels.find(screenp->save_data.current_campaign);
+		screenp->world_.completed_levels = (it != screenp->save_data.completed_levels.end())
+			? it->second : std::set<int>{};
+	}
+	std::copy(std::begin(screenp->save_data.m_score),
+	          std::end(screenp->save_data.m_score),
+	          std::begin(screenp->world_.m_score));
 
 	screenp->cleanup(screenp->numviews);
 	screenp->initialize_views();

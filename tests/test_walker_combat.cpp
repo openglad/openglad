@@ -69,8 +69,8 @@ static int count_family_in_oblist(char family)
 
 static Uint32 total_team_score()
 {
-    return og::runtime::current_session->myscreen_->save_data.m_score[0] + og::runtime::current_session->myscreen_->save_data.m_score[1] +
-           og::runtime::current_session->myscreen_->save_data.m_score[2] + og::runtime::current_session->myscreen_->save_data.m_score[3];
+    return og::runtime::current_session->myscreen_->world_.m_score[0] + og::runtime::current_session->myscreen_->world_.m_score[1] +
+           og::runtime::current_session->myscreen_->world_.m_score[2] + og::runtime::current_session->myscreen_->world_.m_score[3];
 }
 
 static void set_world_tile(short world_x, short world_y, unsigned char tile)
@@ -822,10 +822,9 @@ void test_walker_combat_effect_helpers_and_recoil_branches()
     attacker->do_hit_effects(attacker, target, 12);
     TEST_ASSERT(target->hit_recoil > 0.0f, "hit_recoil should be set for living targets when enabled");
 
-    // do_heal_effects early-return path when sim_config is null.
+    // do_heal_effects should always append numbers now.
     walker stack_a;
     walker stack_b;
-    stack_a.sim_config = nullptr;
     stack_a.do_heal_effects(&stack_a, &stack_b, 5);
 
     delete attacker;
@@ -1061,7 +1060,7 @@ void test_walker_combat_attack_rewards_single_credit_weapon_hit()
     target->setxy(static_cast<short>(owner->xpos + 8), static_cast<short>(owner->ypos));
 
     const int exp_before = owner->myguy ? owner->myguy->exp : 0;
-    const Uint32 score_before = og::runtime::current_session->myscreen_->save_data.m_score[owner->team_num];
+    const Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[owner->team_num];
     const float hp_before = target->stats()->hitpoints;
 
     TEST_ASSERT(weapon->attack(target), "weapon attack should succeed");
@@ -1076,7 +1075,7 @@ void test_walker_combat_attack_rewards_single_credit_weapon_hit()
     TEST_ASSERT_EQ((int)expected_attack_xp, exp_after - exp_before,
                    "weapon hit should award attack XP exactly once");
 
-    const Uint32 score_after = og::runtime::current_session->myscreen_->save_data.m_score[owner->team_num];
+    const Uint32 score_after = og::runtime::current_session->myscreen_->world_.m_score[owner->team_num];
     const Uint32 expected_score = static_cast<Uint32>(dealt) + static_cast<Uint32>(target->stats()->level);
     TEST_ASSERT_EQ((int)expected_score, static_cast<int>(score_after - score_before),
                    "weapon hit should award score once per hit");
@@ -1110,10 +1109,10 @@ void test_walker_combat_attack_ignores_out_of_range_team_score_index()
     target->stats()->max_hitpoints = 40;
     target->setxy(static_cast<short>(attacker->xpos + 10), static_cast<short>(attacker->ypos));
 
-    og::runtime::current_session->myscreen_->save_data.m_score[0] = 10;
-    og::runtime::current_session->myscreen_->save_data.m_score[1] = 20;
-    og::runtime::current_session->myscreen_->save_data.m_score[2] = 30;
-    og::runtime::current_session->myscreen_->save_data.m_score[3] = 40;
+    og::runtime::current_session->myscreen_->world_.m_score[0] = 10;
+    og::runtime::current_session->myscreen_->world_.m_score[1] = 20;
+    og::runtime::current_session->myscreen_->world_.m_score[2] = 30;
+    og::runtime::current_session->myscreen_->world_.m_score[3] = 40;
     const Uint32 score_before = total_team_score();
 
     TEST_ASSERT(attacker->attack(target), "attack should still succeed with invalid team id");
@@ -1152,7 +1151,7 @@ void test_walker_combat_attack_rewards_single_credit_melee_kill()
     const int kills_before = attacker->myguy ? attacker->myguy->kills : 0;
     const int scen_kills_before = attacker->myguy ? attacker->myguy->scen_kills : 0;
     const int level_kills_before = attacker->myguy ? attacker->myguy->level_kills : 0;
-    const Uint32 score_before = og::runtime::current_session->myscreen_->save_data.m_score[attacker->team_num];
+    const Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[attacker->team_num];
     const float hp_before = target->stats()->hitpoints;
 
     TEST_ASSERT(attacker->attack(target), "melee attack should succeed");
@@ -1168,7 +1167,7 @@ void test_walker_combat_attack_rewards_single_credit_melee_kill()
     TEST_ASSERT_EQ((int)(expected_attack_xp + expected_kill_xp), exp_after - exp_before,
                    "melee kill should award attack XP once plus one kill XP");
 
-    const Uint32 score_after = og::runtime::current_session->myscreen_->save_data.m_score[attacker->team_num];
+    const Uint32 score_after = og::runtime::current_session->myscreen_->world_.m_score[attacker->team_num];
     const Uint32 expected_score =
         static_cast<Uint32>(dealt + target->stats()->level) +
         static_cast<Uint32>(dealt + 10 * target->stats()->level);

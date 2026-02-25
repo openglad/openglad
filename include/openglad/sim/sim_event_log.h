@@ -23,7 +23,8 @@ public:
     SimEventLog() = default;
 
     // Push a structured event.
-    void push(EventKind kind, std::uint32_t a = 0, std::uint32_t b = 0);
+    void push(EventKind kind, std::uint32_t a = 0, std::uint32_t b = 0,
+              const std::string& text = "");
 
     // Push a notification event with a text message.
     // If duration is non-zero, it overrides the default display time.

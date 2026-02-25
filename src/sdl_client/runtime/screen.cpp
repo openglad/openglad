@@ -48,6 +48,7 @@
 #include <string>
 #include <cstring>
 #include <format>
+#include <optional>
 
 // Used by statistics::do_command() COMMAND_FOLLOW to find a leader walker.
 // The function is declared in stats.cpp; defined here in the SDL build.
@@ -96,9 +97,33 @@ static inline cfg_store& active_config()
     return cfg;
 }
 
+void screen::sync_world_from_save()
+{
+	world_.my_team = save_data.my_team;
+	world_.allied_mode = static_cast<unsigned char>(save_data.allied_mode);
+	world_.current_scenario = save_data.scen_num;
+	world_.withdraw_requested = false;
+	world_.create_hit_effects = active_config().is_on("effects", "hit_anim");
+	{
+		auto it = save_data.completed_levels.find(save_data.current_campaign);
+		world_.completed_levels = (it != save_data.completed_levels.end()) ? it->second : std::set<int>{};
+	}
+	std::copy(std::begin(save_data.m_score), std::end(save_data.m_score), std::begin(world_.m_score));
+}
+
+void screen::sync_save_from_world()
+{
+	save_data.my_team = world_.my_team;
+	save_data.allied_mode = static_cast<short>(world_.allied_mode);
+	save_data.scen_num = world_.current_scenario;
+	std::copy(std::begin(world_.m_score), std::end(world_.m_score), std::begin(save_data.m_score));
+	save_data.completed_levels[save_data.current_campaign] = world_.completed_levels;
+}
+
 
 // From picker.cpp
 extern Sint32 calculate_level(Uint32 temp_exp);
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
 // Screen window boundries
 inline constexpr int MAX_VIEWS = 5;
@@ -178,14 +203,7 @@ void screen::init_common(short howmany, bool has_display)
 	world_.enemy_freeze = 0;
 	world_.level_done = 0;
 	world_.retry = false;
-	world_.my_team = save_data.my_team;
-	world_.allied_mode = static_cast<unsigned char>(save_data.allied_mode);
-	world_.current_scenario = save_data.scen_num;
-	{
-		auto it = save_data.completed_levels.find(save_data.current_campaign);
-		world_.completed_levels = (it != save_data.completed_levels.end()) ? it->second : std::set<int>{};
-	}
-	std::copy(std::begin(save_data.m_score), std::end(save_data.m_score), std::begin(world_.m_score));
+	sync_world_from_save();
 
 	numviews = howmany;
     for (auto& view : viewob)
@@ -302,14 +320,7 @@ void screen::ready_for_battle(short howmany)
 	world_.enemy_freeze = 0;
 
 	world_.control_hp = 0;
-	world_.my_team = save_data.my_team;
-	world_.allied_mode = static_cast<unsigned char>(save_data.allied_mode);
-	world_.current_scenario = save_data.scen_num;
-	{
-		auto it = save_data.completed_levels.find(save_data.current_campaign);
-		world_.completed_levels = (it != save_data.completed_levels.end()) ? it->second : std::set<int>{};
-	}
-	std::copy(std::begin(save_data.m_score), std::end(save_data.m_score), std::begin(world_.m_score));
+	sync_world_from_save();
 
 	palmode = 0;
 
@@ -360,14 +371,7 @@ void screen::reset(short howmany)
 	world_.enemy_freeze = 0;
 
 	world_.control_hp = 0;
-	world_.my_team = save_data.my_team;
-	world_.allied_mode = static_cast<unsigned char>(save_data.allied_mode);
-	world_.current_scenario = save_data.scen_num;
-	{
-		auto it = save_data.completed_levels.find(save_data.current_campaign);
-		world_.completed_levels = (it != save_data.completed_levels.end()) ? it->second : std::set<int>{};
-	}
-	std::copy(std::begin(save_data.m_score), std::end(save_data.m_score), std::begin(world_.m_score));
+	sync_world_from_save();
 
 	palmode = 0;
 
@@ -469,10 +473,18 @@ bool screen::act()
 	// Delegate simulation tick to GameWorld.
 	og::sim::SimEventLog& events = *og::gameplay::current_game->sim_events;
 	world_.my_team = save_data.my_team;
-	world_.allied_mode = static_cast<unsigned char>(save_data.allied_mode);
-	world_.current_scenario = save_data.scen_num;
-	std::copy(std::begin(save_data.m_score), std::end(save_data.m_score), std::begin(world_.m_score));
+	world_.create_hit_effects = active_config().is_on("effects", "hit_anim");
 	world_.tick();
+	sync_save_from_world();
+
+	struct ExitRequest
+	{
+		short dest_level = -1;
+		bool withdraw = false;
+		std::string prompt;
+	};
+	std::optional<ExitRequest> pending_exit_request;
+	std::optional<short> pending_withdraw_level;
 
 	// Post-tick: clean up viewscreen control pointers for dead player entities.
 	// This is a rendering concern that doesn't belong in the simulation layer.
@@ -521,10 +533,64 @@ bool screen::act()
 			case og::sim::EventKind::SetEnd:
 				world_.end = 1;
 				break;
+			case og::sim::EventKind::RequestExitConfirmation:
+				// First request wins; duplicates in this tick are ignored.
+				if (!pending_exit_request.has_value())
+				{
+					ExitRequest req;
+					req.dest_level = static_cast<short>(static_cast<std::int32_t>(ev.a));
+					req.withdraw = (ev.b != 0);
+					req.prompt = ev.text;
+					if (req.prompt.empty())
+					{
+						std::string scen_key = std::format("scen{}", req.dest_level);
+						std::string title = get_scenario_title(scen_key.c_str());
+						if (title == "none")
+							title = std::format("Level {}", req.dest_level);
+						req.prompt = std::format("{} to {}?", req.withdraw ? "Withdraw" : "Exit", title);
+					}
+					pending_exit_request = req;
+				}
+				break;
+			case og::sim::EventKind::WithdrawToLevel:
+				world_.withdraw_requested = true;
+				if (!pending_withdraw_level.has_value())
+					pending_withdraw_level = static_cast<short>(static_cast<std::int32_t>(ev.a));
+				break;
 			default:
 				break;
 		}
 	}
+
+	if (pending_exit_request.has_value())
+	{
+		const ExitRequest& req = *pending_exit_request;
+		const bool accepted = yes_or_no_prompt("Exit Field", req.prompt.c_str(), false);
+		redrawme = 1;
+		if (accepted)
+		{
+			if (req.withdraw)
+			{
+				world_.withdraw_requested = true;
+				const short dest_level = pending_withdraw_level.has_value()
+					? *pending_withdraw_level : req.dest_level;
+				save_data.load("save0");
+				sync_world_from_save();
+				save_data.scen_num = dest_level;
+				save_data.save("save0");
+				sync_world_from_save();
+				events.clear();
+				return endgame(1, dest_level);
+			}
+
+			events.clear();
+			return endgame(0, req.dest_level);
+		}
+
+		// User declined the prompt; clear any pending withdrawal state.
+		world_.withdraw_requested = false;
+	}
+
 	events.clear();
 
 	// Handle level completion / game ending
@@ -552,6 +618,10 @@ short screen::endgame(short ending, short nextlevel)
 	    {
 	        return 1;
 	    }
+
+	// LevelData id tracks the currently loaded scenario throughout gameplay.
+	world_.current_scenario = static_cast<short>(level_data.id);
+	sync_save_from_world();
 	
 	
 	std::map<int, guy*> before;
@@ -636,7 +706,7 @@ short screen::endgame(short ending, short nextlevel)
 		world_.end = 1;
 	}
 
-    
+	sync_world_from_save();
 	return 1;
 }
 

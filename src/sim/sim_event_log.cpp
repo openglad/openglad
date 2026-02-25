@@ -11,13 +11,14 @@
 
 namespace og::sim {
 
-void SimEventLog::push(EventKind kind, std::uint32_t a, std::uint32_t b)
+void SimEventLog::push(EventKind kind, std::uint32_t a, std::uint32_t b, const std::string& text)
 {
     Event ev;
     ev.tick = current_tick_;
     ev.kind = kind;
     ev.a = a;
     ev.b = b;
+    ev.text = text;
     events_.push_back(std::move(ev));
 }
 

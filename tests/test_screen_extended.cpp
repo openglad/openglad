@@ -167,6 +167,7 @@ void test_screen_endgame_clears_mission_score_after_payout()
 
     og::runtime::current_session->myscreen_->save_data.m_totalscore[0] = 1000;
     og::runtime::current_session->myscreen_->save_data.m_score[0] = 250;
+    og::runtime::current_session->myscreen_->world_.m_score[0] = 250;
     og::runtime::current_session->myscreen_->world_.end = 0;
     (void)og::runtime::current_session->myscreen_->endgame(0, -1);
 

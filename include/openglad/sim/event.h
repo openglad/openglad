@@ -16,6 +16,8 @@ enum class EventKind : std::uint32_t {
     EndGame = 13,      // End game: a=ending type, b=next_level (-1 if unset)
     DamageTile = 14,   // Damage tile at grid position: a=x_pixel, b=y_pixel
     SetEnd = 15,       // Signal level end: screen sets end=1
+    RequestExitConfirmation = 16, // Prompt request: a=dest_level, b=0 exit / 1 withdraw, text=prompt
+    WithdrawToLevel = 17, // Withdrawal requested: a=dest_level
 };
 
 // Simulation event record, pushed into SimEventLog during a tick.
