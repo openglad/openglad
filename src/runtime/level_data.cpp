@@ -33,7 +33,6 @@
 #include <openglad/io/ogfile_yaml.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/data/level_render.h>
 #include <openglad/data/level_data_hooks.h>
 #include <algorithm>
 #include <cstring>
@@ -455,7 +454,6 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks,
     , weaplist(world_ref_.weaplist)
     , dead_list(world_ref_.dead_list)
     , myobmap(world_ref_.myobmap)
-    , topx(0), topy(0)
 {
     hooks_ = hooks;
     headless_ = headless;
@@ -467,12 +465,6 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks,
     myloader = std::make_unique<loader>();
     wire_entity_factory_callbacks();
 
-    if (!headless)
-    {
-        load_map_data(pixdata);
-        if (hooks_ && hooks_->create_level_render)
-            renderer_ = hooks_->create_level_render(pixdata);
-    }
 }
 
 LevelData::~LevelData()
@@ -495,18 +487,12 @@ LevelData::~LevelData()
 
     myobmap.reset();
 
-    renderer_.reset();
-    for (int i = 0; i < PIX_MAX; i++)
-        pixdata[i].free();
-
 }
 
 void LevelData::clear()
 {
     world_ref_.clear();
 
-    topx = 0;
-    topy = 0;
 }
 
 walker* LevelData::add_ob(Order order, std::int32_t family, bool atstart)
@@ -1476,18 +1462,6 @@ bool LevelData::load()
         return false;
     }
 
-    // Reload background tiles (only when rendering)
-    if (!headless_)
-    {
-        renderer_.reset();
-        for (int i = 0; i < PIX_MAX; i++)
-            pixdata[i].free();
-
-        load_map_data(pixdata);
-        if (hooks_ && hooks_->create_level_render)
-            renderer_ = hooks_->create_level_render(pixdata);
-    }
-
 	TRACE("game", "LevelData::load complete");
     last_io_error_ = IoError::None;
 	return true;
@@ -1716,25 +1690,6 @@ LevelData::IoError LevelData::save_with_error()
 {
     save();
     return last_io_error_;
-}
-
-void LevelData::set_draw_pos(std::int32_t new_topx, std::int32_t new_topy)
-{
-    this->topx = new_topx;
-    this->topy = new_topy;
-}
-
-void LevelData::add_draw_pos(std::int32_t dx, std::int32_t dy)
-{
-    this->topx += dx;
-    this->topy += dy;
-}
-
-void LevelData::draw(screen* screenp)
-{
-    if (!screenp) return;
-    if (hooks_ && hooks_->draw)
-        hooks_->draw(this, screenp);
 }
 
 std::string LevelData::get_description_line(int i)

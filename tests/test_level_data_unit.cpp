@@ -80,10 +80,6 @@ OG_UNIT_TEST(test_level_data_grid_and_description_paths)
     OG_ASSERT(fx.level.get_description_line(0) == "line-1");
     OG_ASSERT(fx.level.get_description_line(3).empty());
 
-    fx.level.set_draw_pos(3, 4);
-    fx.level.add_draw_pos(2, -1);
-    OG_ASSERT(fx.level.topx == 5);
-    OG_ASSERT(fx.level.topy == 3);
 }
 
 OG_UNIT_TEST(test_level_data_passable_and_range_queries)
@@ -881,7 +877,7 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
 
     LevelData level_non_headless(9415, &hooks);
     LevelData level_headless(9416, true, &hooks);
-    OG_ASSERT(g_render_calls >= 1);
+    OG_ASSERT(g_render_calls == 0);
 
     SaveData save;
     std::int32_t freeze = 0;
@@ -900,16 +896,12 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     level_non_headless.type = 7;
     level_non_headless.par_value = 9;
     level_non_headless.time_bonus_limit = 123;
-    level_non_headless.topx = 44;
-    level_non_headless.topy = 55;
     level_non_headless.clear();
 
     OG_ASSERT(level_non_headless.title == "New Level");
     OG_ASSERT(level_non_headless.type == 0);
     OG_ASSERT(level_non_headless.par_value == 1);
     OG_ASSERT(level_non_headless.time_bonus_limit == 4000);
-    OG_ASSERT(level_non_headless.topx == 0);
-    OG_ASSERT(level_non_headless.topy == 0);
 
     // Exercise delegating constructor overloads.
     LevelData plain_ctor(9417);

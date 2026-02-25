@@ -347,7 +347,7 @@ void test_level_data_round8_ctor_hook_wiring_and_remove_paths()
         TEST_ASSERT(living != nullptr, "headless hooks ctor should still create walkers");
     }
 
-    TEST_ASSERT(render_count >= 1, "non-headless constructors should invoke create_level_render hook");
+    TEST_ASSERT_EQ(0, render_count, "LevelData no longer owns render creation");
     TEST_ASSERT_EQ(render_before_headless, render_count, "headless ctor should skip create_level_render hook");
     TEST_ASSERT_EQ(0, wired_count, "wire_entity_from_screen should not run in phase-04");
 }
@@ -1165,8 +1165,8 @@ void test_level_data_round11_wrappers_draw_and_query_grid_entry_paths()
     TEST_ASSERT_EQ((int)LevelData::IoError::OpenReadFailed, (int)load_err,
                    "load_with_error should report open-read failure for missing scenario");
 
-    // draw(nullptr) should hit early-return guard safely.
-    og::runtime::current_session->myscreen_->level_data.draw(nullptr);
+    // draw_level_data(nullptr) should hit early-return guard safely.
+    og::runtime::current_session->myscreen_->draw_level_data(nullptr);
 
     // get_description_line while-loop and bounds branches.
     og::runtime::current_session->myscreen_->level_data.description.clear();

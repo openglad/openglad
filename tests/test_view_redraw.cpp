@@ -63,15 +63,15 @@ void test_view_redraw_no_control()
 
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
     og::runtime::current_session->myscreen_->level_data.mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.grid);
-    og::runtime::current_session->myscreen_->level_data.topx = 50;
-    og::runtime::current_session->myscreen_->level_data.topy = 50;
+    og::runtime::current_session->myscreen_->level_visuals_.topx = 50;
+    og::runtime::current_session->myscreen_->level_visuals_.topy = 50;
 
     vs->control = nullptr;
     bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_data, false);
     TEST_ASSERT(result, "redraw without control uses level data pos");
 
-    og::runtime::current_session->myscreen_->level_data.topx = 0;
-    og::runtime::current_session->myscreen_->level_data.topy = 0;
+    og::runtime::current_session->myscreen_->level_visuals_.topx = 0;
+    og::runtime::current_session->myscreen_->level_visuals_.topy = 0;
 }
 REGISTER_TEST(test_view_redraw_no_control);
 

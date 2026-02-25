@@ -45,6 +45,7 @@
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/render/pal32.h>
 #include <openglad/data/level_data_hooks.h>
+#include <openglad/data/level_render.h>
 #include <algorithm>
 #include <string>
 #include <cstring>
@@ -205,6 +206,10 @@ void screen::init_common(short howmany, bool has_display)
 	world_.level_done = 0;
 	world_.retry = false;
 	sync_world_from_save();
+	level_visuals_.topx = 0;
+	level_visuals_.topy = 0;
+	load_map_data(level_visuals_.pixdata);
+	level_visuals_.renderer_ = create_sdl_level_render(level_visuals_.pixdata);
 
 	numviews = howmany;
     for (auto& view : viewob)
@@ -366,6 +371,7 @@ void screen::reset(short howmany)
 	
 	save_data.reset();
 	level_data.clear();
+	set_draw_pos(0, 0);
 
 	timerstart = query_timer_control();
 	framecount = 0;
@@ -423,6 +429,35 @@ bool screen::redraw()
 		viewob[i]->redraw();
 
 	return 1;
+}
+
+void screen::set_draw_pos(std::int32_t new_topx, std::int32_t new_topy)
+{
+	level_visuals_.topx = new_topx;
+	level_visuals_.topy = new_topy;
+}
+
+void screen::add_draw_pos(std::int32_t dx, std::int32_t dy)
+{
+	level_visuals_.topx += dx;
+	level_visuals_.topy += dy;
+}
+
+void screen::draw_level_data(LevelData* level)
+{
+	if (!level)
+		return;
+	for (short i = 0; i < numviews; i++)
+		viewob[i]->redraw(level, false);
+}
+
+void screen::reload_level_visuals()
+{
+	level_visuals_.renderer_.reset();
+	for (int i = 0; i < PIX_MAX; i++)
+		level_visuals_.pixdata[i].free();
+	load_map_data(level_visuals_.pixdata);
+	level_visuals_.renderer_ = create_sdl_level_render(level_visuals_.pixdata);
 }
 
 

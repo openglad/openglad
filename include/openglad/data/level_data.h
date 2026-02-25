@@ -26,7 +26,6 @@
 enum class Order : unsigned char;
 
 class screen;
-class LevelRender;
 class loader;
 class walker;
 class statistics;
@@ -144,11 +143,6 @@ public:
     std::unique_ptr<obmap>& myobmap;
     std::list<std::string> description;
 
-    // Drawing details
-    PixieData pixdata[PIX_MAX];
-    std::unique_ptr<LevelRender> renderer_;  // Tile rendering (null for headless)
-    std::int32_t topx, topy;
-
     LevelData(int level_id);
     LevelData(int level_id, const LevelDataHooks* hooks);
     LevelData(int level_id, bool headless);  // Headless constructor (no tile graphics)
@@ -191,10 +185,6 @@ public:
     void delete_grid();
     void delete_objects();
     void clear();
-
-    void set_draw_pos(std::int32_t new_topx, std::int32_t new_topy);
-    void add_draw_pos(std::int32_t dx, std::int32_t dy);
-    void draw(screen* scr);
 
     std::string get_description_line(int i);
     bool is_headless() const { return headless_; }

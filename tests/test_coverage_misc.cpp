@@ -1315,17 +1315,12 @@ OG_UNIT_TEST(test_coverage_r20_level_data_add_paths_and_clear_reset)
     fx.level.type = 7;
     fx.level.par_value = 9;
     fx.level.time_bonus_limit = 10;
-    fx.level.topx = 5;
-    fx.level.topy = 6;
     fx.level.clear();
 
     OG_ASSERT(fx.level.title == "New Level");
     OG_ASSERT(fx.level.type == 0);
     OG_ASSERT(fx.level.par_value == 1);
     OG_ASSERT(fx.level.time_bonus_limit == 4000);
-    OG_ASSERT(fx.level.topx == 0);
-    OG_ASSERT(fx.level.topy == 0);
-
     walker dummy;
     OG_ASSERT(fx.level.remove_ob(&dummy) == 0);
 }

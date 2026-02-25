@@ -154,8 +154,8 @@ short radar::draw(LevelData* data)
 	}
 	else
 	{
-		radarx = static_cast<short>(data->topx/GRID_SIZE - xview/2);
-		radary = static_cast<short>(data->topy/GRID_SIZE - yview/2);
+		radarx = static_cast<short>(og::runtime::current_session->myscreen_->level_visuals_.topx / GRID_SIZE - xview / 2);
+		radary = static_cast<short>(og::runtime::current_session->myscreen_->level_visuals_.topy / GRID_SIZE - yview / 2);
 		obteam = 0;
 	}
 	if (radarx > (sizex - xview))

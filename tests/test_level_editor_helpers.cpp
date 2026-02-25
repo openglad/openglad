@@ -38,8 +38,8 @@ static bool in_set(unsigned char v, unsigned char a, unsigned char b, unsigned c
 void test_level_editor_set_screen_pos_and_tile_matching()
 {
     set_screen_pos(og::runtime::current_session->myscreen_, 123, -45);
-    TEST_ASSERT_EQ(123, (int)og::runtime::current_session->myscreen_->level_data.topx, "set_screen_pos should update topx");
-    TEST_ASSERT_EQ(-45, (int)og::runtime::current_session->myscreen_->level_data.topy, "set_screen_pos should update topy");
+    TEST_ASSERT_EQ(123, (int)og::runtime::current_session->myscreen_->level_visuals_.topx, "set_screen_pos should update topx");
+    TEST_ASSERT_EQ(-45, (int)og::runtime::current_session->myscreen_->level_visuals_.topy, "set_screen_pos should update topy");
 
     unsigned char t = (unsigned char)get_random_matching_tile(PIX_GRASS1);
     TEST_ASSERT(in_set(t, PIX_GRASS1, PIX_GRASS2, PIX_GRASS3, PIX_GRASS4), "grass variant should be one of grass tiles");

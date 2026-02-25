@@ -170,8 +170,8 @@ void test_level_data_clear()
     og::runtime::current_session->myscreen_->level_data.type = 5;
     og::runtime::current_session->myscreen_->level_data.par_value = 99;
     og::runtime::current_session->myscreen_->level_data.time_bonus_limit = 9999;
-    og::runtime::current_session->myscreen_->level_data.topx = 50;
-    og::runtime::current_session->myscreen_->level_data.topy = 50;
+    og::runtime::current_session->myscreen_->level_visuals_.topx = 50;
+    og::runtime::current_session->myscreen_->level_visuals_.topy = 50;
 
     og::runtime::current_session->myscreen_->level_data.clear();
 
@@ -179,8 +179,8 @@ void test_level_data_clear()
     TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->level_data.type, "type reset");
     TEST_ASSERT_EQ(1, (int)og::runtime::current_session->myscreen_->level_data.par_value, "par_value reset");
     TEST_ASSERT_EQ(4000, (int)og::runtime::current_session->myscreen_->level_data.time_bonus_limit, "time_bonus_limit reset");
-    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->level_data.topx, "topx reset");
-    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->level_data.topy, "topy reset");
+    TEST_ASSERT_EQ(50, (int)og::runtime::current_session->myscreen_->level_visuals_.topx, "topx is screen-owned and unaffected by level_data.clear()");
+    TEST_ASSERT_EQ(50, (int)og::runtime::current_session->myscreen_->level_visuals_.topy, "topy is screen-owned and unaffected by level_data.clear()");
     TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->level_data.numobs, "numobs reset");
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.oblist.empty(), "oblist reset");
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.fxlist.empty(), "fxlist reset");
@@ -389,26 +389,26 @@ REGISTER_TEST(test_level_data_delete_objects);
 
 void test_level_data_set_draw_pos()
 {
-    og::runtime::current_session->myscreen_->level_data.set_draw_pos(100, 200);
-    TEST_ASSERT_EQ(100, (int)og::runtime::current_session->myscreen_->level_data.topx, "topx set");
-    TEST_ASSERT_EQ(200, (int)og::runtime::current_session->myscreen_->level_data.topy, "topy set");
+    og::runtime::current_session->myscreen_->set_draw_pos(100, 200);
+    TEST_ASSERT_EQ(100, (int)og::runtime::current_session->myscreen_->level_visuals_.topx, "topx set");
+    TEST_ASSERT_EQ(200, (int)og::runtime::current_session->myscreen_->level_visuals_.topy, "topy set");
 
-    og::runtime::current_session->myscreen_->level_data.set_draw_pos(0, 0);
+    og::runtime::current_session->myscreen_->set_draw_pos(0, 0);
 }
 REGISTER_TEST(test_level_data_set_draw_pos);
 
 void test_level_data_add_draw_pos()
 {
-    og::runtime::current_session->myscreen_->level_data.set_draw_pos(100, 200);
-    og::runtime::current_session->myscreen_->level_data.add_draw_pos(10, 20);
-    TEST_ASSERT_EQ(110, (int)og::runtime::current_session->myscreen_->level_data.topx, "topx added");
-    TEST_ASSERT_EQ(220, (int)og::runtime::current_session->myscreen_->level_data.topy, "topy added");
+    og::runtime::current_session->myscreen_->set_draw_pos(100, 200);
+    og::runtime::current_session->myscreen_->add_draw_pos(10, 20);
+    TEST_ASSERT_EQ(110, (int)og::runtime::current_session->myscreen_->level_visuals_.topx, "topx added");
+    TEST_ASSERT_EQ(220, (int)og::runtime::current_session->myscreen_->level_visuals_.topy, "topy added");
 
-    og::runtime::current_session->myscreen_->level_data.add_draw_pos(-5, -10);
-    TEST_ASSERT_EQ(105, (int)og::runtime::current_session->myscreen_->level_data.topx, "topx supports negative deltas");
-    TEST_ASSERT_EQ(210, (int)og::runtime::current_session->myscreen_->level_data.topy, "topy supports negative deltas");
+    og::runtime::current_session->myscreen_->add_draw_pos(-5, -10);
+    TEST_ASSERT_EQ(105, (int)og::runtime::current_session->myscreen_->level_visuals_.topx, "topx supports negative deltas");
+    TEST_ASSERT_EQ(210, (int)og::runtime::current_session->myscreen_->level_visuals_.topy, "topy supports negative deltas");
 
-    og::runtime::current_session->myscreen_->level_data.set_draw_pos(0, 0);
+    og::runtime::current_session->myscreen_->set_draw_pos(0, 0);
 }
 REGISTER_TEST(test_level_data_add_draw_pos);
 

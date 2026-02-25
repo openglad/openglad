@@ -25,6 +25,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
+#include <openglad/interface/level_visuals.h>
 #include <array>
 #include <list>
 #include <map>
@@ -69,6 +70,10 @@ class screen : public video
 		bool query_object_passable(Sint32 x, Sint32 y, walker* ob) { return query_object_passable(static_cast<float>(x), static_cast<float>(y), ob); }
 		bool query_grid_passable(Sint32 x, Sint32 y, walker* ob) { return query_grid_passable(static_cast<float>(x), static_cast<float>(y), ob); }
 		bool redraw();
+		void set_draw_pos(std::int32_t new_topx, std::int32_t new_topy);
+		void add_draw_pos(std::int32_t dx, std::int32_t dy);
+		void draw_level_data(LevelData* level);
+		void reload_level_visuals();
 		void refresh();
 		walker  * first_of(Order whatorder, unsigned char whatfamily,
 		                   int team_num = -1);
@@ -112,6 +117,7 @@ class screen : public video
 
 		// Level data
 		LevelData level_data;
+		LevelVisuals level_visuals_;
 
 		// Save data
 		SaveData save_data;

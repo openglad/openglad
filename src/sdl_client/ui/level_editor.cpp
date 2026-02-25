@@ -1242,12 +1242,12 @@ bool LevelEditorData::saveLevel()
 void LevelEditorData::draw(screen* s)
 {
     s->clearbuffer();
-    level->draw(s);
+    s->draw_level_data(level.get());
     
     if(rect_selecting)
     {
-        Rectf r(selection_rect.x - static_cast<float>(level->topx) + static_cast<float>(s->viewob[0]->xloc),
-                selection_rect.y - static_cast<float>(level->topy) + static_cast<float>(s->viewob[0]->yloc),
+        Rectf r(selection_rect.x - static_cast<float>(og::runtime::current_session->myscreen_->level_visuals_.topx) + static_cast<float>(s->viewob[0]->xloc),
+                selection_rect.y - static_cast<float>(og::runtime::current_session->myscreen_->level_visuals_.topy) + static_cast<float>(s->viewob[0]->yloc),
                 selection_rect.w, selection_rect.h);
         if(r.w < 0.0f)
         {
@@ -1281,15 +1281,15 @@ Sint32 LevelEditorData::display_panel(screen* s)
         {
             // Draw cursor
             int mx, my;
-            mx = sel.x - level->topx;
-            my = sel.y - level->topy;
+            mx = sel.x - og::runtime::current_session->myscreen_->level_visuals_.topx;
+            my = sel.y - og::runtime::current_session->myscreen_->level_visuals_.topy;
 
             {
                 // Draw target tile
-                int worldx = mx + level->topx;
-                int worldy = my + level->topy;
-                int screenx = worldx - level->topx;
-                int screeny = worldy - level->topy;
+                int worldx = mx + og::runtime::current_session->myscreen_->level_visuals_.topx;
+                int worldy = my + og::runtime::current_session->myscreen_->level_visuals_.topy;
+                int screenx = worldx - og::runtime::current_session->myscreen_->level_visuals_.topx;
+                int screeny = worldy - og::runtime::current_session->myscreen_->level_visuals_.topy;
                 s->draw_box(screenx, screeny, screenx + sel.w, screeny + sel.h, dragging? ORANGE_START : YELLOW, 0, 1);
             }
         }
@@ -1431,7 +1431,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
     {
         // Show the current brush
         {
-            auto& pix = s->level_data.pixdata[terrain_brush.terrain];
+            auto& pix = s->level_visuals_.pixdata[terrain_brush.terrain];
             s->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
                                 0, 0, 320, 200, {pix.data.get(), static_cast<size_t>(pix.w * pix.h * pix.frames)});
         }
@@ -1445,7 +1445,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
             {
                 whichback = (i+(j+eds().rowsdown)*4) % (sizeof(backgrounds)/4);
                 {
-                    auto& pix = s->level_data.pixdata[ backgrounds[whichback] ];
+                    auto& pix = s->level_visuals_.pixdata[ backgrounds[whichback] ];
                     s->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
                                         GRID_SIZE, GRID_SIZE,
                                         0, 0, 320, 200,
@@ -1469,12 +1469,12 @@ Sint32 LevelEditorData::display_panel(screen* s)
         if(!over_radar && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my))
         {
             // Draw target tile
-            int worldx = mx + level->topx;
-            int worldy = my + level->topy;
+            int worldx = mx + og::runtime::current_session->myscreen_->level_visuals_.topx;
+            int worldy = my + og::runtime::current_session->myscreen_->level_visuals_.topy;
             int gridx = worldx - (worldx)%GRID_SIZE;
             int gridy = worldy - (worldy)%GRID_SIZE;
-            int screenx = gridx - level->topx;
-            int screeny = gridy - level->topy;
+            int screenx = gridx - og::runtime::current_session->myscreen_->level_visuals_.topx;
+            int screeny = gridy - og::runtime::current_session->myscreen_->level_visuals_.topy;
             s->draw_box(screenx, screeny, screenx + GRID_SIZE, screeny + GRID_SIZE, YELLOW, 0, 1);
         }
         #endif
@@ -1486,7 +1486,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         s->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, PURE_BLACK, 1, 1);
         // Guy
         walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
-        newob->setxy(lm+25 + level->topx, PIX_TOP-16-1 + level->topy);
+        newob->setxy(lm+25 + og::runtime::current_session->myscreen_->level_visuals_.topx, PIX_TOP-16-1 + og::runtime::current_session->myscreen_->level_visuals_.topy);
         newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
         level->myloader->set_walker(newob, object_brush.order, object_brush.family);
         newob->team_num = static_cast<unsigned char>(object_brush.team);
@@ -1508,7 +1508,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
                 if(pane_size > 0)
                 {
                     index = (i + ((j+eds().rowsdown) * PIX_OVER)) % pane_size;
-                    newob->setxy(S_RIGHT+i*GRID_SIZE + level->topx, PIX_TOP+j*GRID_SIZE + level->topy);
+                    newob->setxy(S_RIGHT+i*GRID_SIZE + og::runtime::current_session->myscreen_->level_visuals_.topx, PIX_TOP+j*GRID_SIZE + og::runtime::current_session->myscreen_->level_visuals_.topy);
                     newob->set_data(level->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
                     level->myloader->set_walker(newob, object_pane[index].order, object_pane[index].family);
                     newob->team_num = static_cast<unsigned char>(object_brush.team);
@@ -1531,7 +1531,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         if(!over_radar && !over_info && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my))
         {
             // Prepare object sprite
-            newob->setxy(mx + level->topx, my + level->topy);
+            newob->setxy(mx + og::runtime::current_session->myscreen_->level_visuals_.topx, my + og::runtime::current_session->myscreen_->level_visuals_.topy);
             newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
             level->myloader->set_walker(newob, object_brush.order, object_brush.family);
             newob->team_num = static_cast<unsigned char>(object_brush.team);
@@ -1545,12 +1545,12 @@ Sint32 LevelEditorData::display_panel(screen* s)
             // Draw target tile
             if(object_brush.snap_to_grid)
             {
-                int worldx = mx + level->topx;
-                int worldy = my + level->topy;
+                int worldx = mx + og::runtime::current_session->myscreen_->level_visuals_.topx;
+                int worldy = my + og::runtime::current_session->myscreen_->level_visuals_.topy;
                 int gridx = worldx - (worldx)%GRID_SIZE;
                 int gridy = worldy - (worldy)%GRID_SIZE;
-                int screenx = gridx - level->topx;
-                int screeny = gridy - level->topy;
+                int screenx = gridx - og::runtime::current_session->myscreen_->level_visuals_.topx;
+                int screeny = gridy - og::runtime::current_session->myscreen_->level_visuals_.topy;
                 s->draw_box(screenx, screeny, screenx + w, screeny + h, YELLOW, 0, 1);
             }
             
@@ -1615,8 +1615,8 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
     {
         if(mode == Mode::Select && !mouse_on_menus(eds().mouse_last_x, eds().mouse_last_y))
         {
-            Sint32 worldx = mx + level->topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
-            Sint32 worldy = my + level->topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
+            Sint32 worldx = mx + og::runtime::current_session->myscreen_->level_visuals_.topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
+            Sint32 worldy = my + og::runtime::current_session->myscreen_->level_visuals_.topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
             
             walker* under_cursor = nullptr;
             if(!dragging && !rect_selecting)
@@ -1657,8 +1657,8 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
             if(!dragging)
             {
                 // Select with a rectangle
-                const float worldx_f = static_cast<float>(mx + level->topx - og::runtime::current_session->myscreen_->viewob[0]->xloc);
-                const float worldy_f = static_cast<float>(my + level->topy - og::runtime::current_session->myscreen_->viewob[0]->yloc);
+                const float worldx_f = static_cast<float>(mx + og::runtime::current_session->myscreen_->level_visuals_.topx - og::runtime::current_session->myscreen_->viewob[0]->xloc);
+                const float worldy_f = static_cast<float>(my + og::runtime::current_session->myscreen_->level_visuals_.topy - og::runtime::current_session->myscreen_->viewob[0]->yloc);
                 if(!rect_selecting)
                 {
                     selection_rect.x = worldx_f;
@@ -2518,8 +2518,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else  // in the main window
         {
-            Sint32 windowx = mx + level->topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
-            Sint32 windowy = my + level->topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
+            Sint32 windowx = mx + og::runtime::current_session->myscreen_->level_visuals_.topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
+            Sint32 windowy = my + og::runtime::current_session->myscreen_->level_visuals_.topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
             if (object_brush.snap_to_grid)
             {
                 windowx -= (windowx%GRID_SIZE);
@@ -2691,8 +2691,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
 
 void LevelEditorData::pick_by_mouse(int mx, int my)
 {
-    Sint32 windowx = mx + level->topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
-    Sint32 windowy = my + level->topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
+    Sint32 windowx = mx + og::runtime::current_session->myscreen_->level_visuals_.topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
+    Sint32 windowy = my + og::runtime::current_session->myscreen_->level_visuals_.topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
     
     // Set brush to the grid tile
     if(mode == Mode::Terrain)
@@ -3329,25 +3329,25 @@ Sint32 level_editor()
 		eds().pan_up = (og::runtime::current_session->keystates_[KEYSTATE_KP_8] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_w]);
 		eds().pan_down = (og::runtime::current_session->keystates_[KEYSTATE_KP_2] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_s]);
 		#endif
-		if (eds().pan_up && data.level->topy >= PAN_LIMIT_UP) // top of the screen
+		if (eds().pan_up && og::runtime::current_session->myscreen_->level_visuals_.topy >= PAN_LIMIT_UP) // top of the screen
         {
             eds().redraw = 1;
-			data.level->add_draw_pos(0, -SCROLLSIZE);
+			og::runtime::current_session->myscreen_->add_draw_pos(0, -SCROLLSIZE);
         }
-		if (eds().pan_down && data.level->topy <= PAN_LIMIT_DOWN) // scroll down
+		if (eds().pan_down && og::runtime::current_session->myscreen_->level_visuals_.topy <= PAN_LIMIT_DOWN) // scroll down
         {
             eds().redraw = 1;
-			data.level->add_draw_pos(0, SCROLLSIZE);
+			og::runtime::current_session->myscreen_->add_draw_pos(0, SCROLLSIZE);
         }
-		if (eds().pan_left && data.level->topx >= PAN_LIMIT_LEFT) // scroll left
+		if (eds().pan_left && og::runtime::current_session->myscreen_->level_visuals_.topx >= PAN_LIMIT_LEFT) // scroll left
         {
             eds().redraw = 1;
-			data.level->add_draw_pos(-SCROLLSIZE, 0);
+			og::runtime::current_session->myscreen_->add_draw_pos(-SCROLLSIZE, 0);
         }
-		if (eds().pan_right && data.level->topx <= PAN_LIMIT_RIGHT) // scroll right
+		if (eds().pan_right && og::runtime::current_session->myscreen_->level_visuals_.topx <= PAN_LIMIT_RIGHT) // scroll right
         {
             eds().redraw = 1;
-			data.level->add_draw_pos(SCROLLSIZE, 0);
+			og::runtime::current_session->myscreen_->add_draw_pos(SCROLLSIZE, 0);
         }
 
 
@@ -3369,57 +3369,57 @@ Sint32 level_editor()
             if(on_menu)
             {
                 // Panning with mouse (touch)
-                if(data.panUpButton.contains(mx, my) && data.level->topy >= PAN_LIMIT_UP) // top of the screen
+                if(data.panUpButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topy >= PAN_LIMIT_UP) // top of the screen
                 {
                     eds().redraw = 1;
-                    data.level->add_draw_pos(0, -SCROLLSIZE);
+                    og::runtime::current_session->myscreen_->add_draw_pos(0, -SCROLLSIZE);
                 }
                 else if(data.panUpRightButton.contains(mx, my))
                 {
                     eds().redraw = 1;
-                    if(data.level->topy >= PAN_LIMIT_UP)
-                        data.level->add_draw_pos(0, -SCROLLSIZE);
-                    if(data.level->topx <= PAN_LIMIT_RIGHT)
-                        data.level->add_draw_pos(SCROLLSIZE, 0);
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topy >= PAN_LIMIT_UP)
+                        og::runtime::current_session->myscreen_->add_draw_pos(0, -SCROLLSIZE);
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topx <= PAN_LIMIT_RIGHT)
+                        og::runtime::current_session->myscreen_->add_draw_pos(SCROLLSIZE, 0);
                 }
                 else if(data.panUpLeftButton.contains(mx, my))
                 {
                     eds().redraw = 1;
-                    if(data.level->topy >= PAN_LIMIT_UP)
-                        data.level->add_draw_pos(0, -SCROLLSIZE);
-                    if(data.level->topx >= PAN_LIMIT_LEFT)
-                        data.level->add_draw_pos(-SCROLLSIZE, 0);
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topy >= PAN_LIMIT_UP)
+                        og::runtime::current_session->myscreen_->add_draw_pos(0, -SCROLLSIZE);
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topx >= PAN_LIMIT_LEFT)
+                        og::runtime::current_session->myscreen_->add_draw_pos(-SCROLLSIZE, 0);
                 }
-                else if(data.panDownButton.contains(mx, my) && data.level->topy <= PAN_LIMIT_DOWN) // scroll down
+                else if(data.panDownButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topy <= PAN_LIMIT_DOWN) // scroll down
                 {
                     eds().redraw = 1;
-                    data.level->add_draw_pos(0, SCROLLSIZE);
+                    og::runtime::current_session->myscreen_->add_draw_pos(0, SCROLLSIZE);
                 }
                 else if(data.panDownRightButton.contains(mx, my))
                 {
                     eds().redraw = 1;
-                    if(data.level->topy <= PAN_LIMIT_DOWN)
-                        data.level->add_draw_pos(0, SCROLLSIZE);
-                    if(data.level->topx <= PAN_LIMIT_RIGHT)
-                        data.level->add_draw_pos(SCROLLSIZE, 0);
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topy <= PAN_LIMIT_DOWN)
+                        og::runtime::current_session->myscreen_->add_draw_pos(0, SCROLLSIZE);
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topx <= PAN_LIMIT_RIGHT)
+                        og::runtime::current_session->myscreen_->add_draw_pos(SCROLLSIZE, 0);
                 }
                 else if(data.panDownLeftButton.contains(mx, my))
                 {
                     eds().redraw = 1;
-                    if(data.level->topy <= PAN_LIMIT_DOWN)
-                        data.level->add_draw_pos(0, SCROLLSIZE);
-                    if(data.level->topx >= PAN_LIMIT_LEFT)
-                        data.level->add_draw_pos(-SCROLLSIZE, 0);
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topy <= PAN_LIMIT_DOWN)
+                        og::runtime::current_session->myscreen_->add_draw_pos(0, SCROLLSIZE);
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topx >= PAN_LIMIT_LEFT)
+                        og::runtime::current_session->myscreen_->add_draw_pos(-SCROLLSIZE, 0);
                 }
-                else if(data.panLeftButton.contains(mx, my) && data.level->topx >= PAN_LIMIT_LEFT) // scroll left
+                else if(data.panLeftButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topx >= PAN_LIMIT_LEFT) // scroll left
                 {
                     eds().redraw = 1;
-                    data.level->add_draw_pos(-SCROLLSIZE, 0);
+                    og::runtime::current_session->myscreen_->add_draw_pos(-SCROLLSIZE, 0);
                 }
-                else if(data.panRightButton.contains(mx, my) && data.level->topx <= PAN_LIMIT_RIGHT) // scroll right
+                else if(data.panRightButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topx <= PAN_LIMIT_RIGHT) // scroll right
                 {
                     eds().redraw = 1;
-                    data.level->add_draw_pos(SCROLLSIZE, 0);
+                    og::runtime::current_session->myscreen_->add_draw_pos(SCROLLSIZE, 0);
                 }
                     
             }
@@ -3434,14 +3434,14 @@ Sint32 level_editor()
                     my -= og::runtime::current_session->myscreen_->viewob[0]->endy - myradar.yview - 4;
 
                     // Zardus: above set_screen_pos doesn't take into account that minimap scrolls too. This one does.
-                    data.level->set_draw_pos(myradar.radarx * GRID_SIZE + mx * GRID_SIZE - 160,
+                    og::runtime::current_session->myscreen_->set_draw_pos(myradar.radarx * GRID_SIZE + mx * GRID_SIZE - 160,
                                     myradar.radary * GRID_SIZE + my * GRID_SIZE - 100);
                 }
                 else  // in the main window
                 {
-                    windowx = static_cast<Sint32>(mymouse.x) + data.level->topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
+                    windowx = static_cast<Sint32>(mymouse.x) + og::runtime::current_session->myscreen_->level_visuals_.topx - og::runtime::current_session->myscreen_->viewob[0]->xloc; // - S_LEFT
                     windowx -= (windowx%GRID_SIZE);
-                    windowy = static_cast<Sint32>(mymouse.y) + data.level->topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
+                    windowy = static_cast<Sint32>(mymouse.y) + og::runtime::current_session->myscreen_->level_visuals_.topy - og::runtime::current_session->myscreen_->viewob[0]->yloc; // - S_UP
                     windowy -= (windowy%GRID_SIZE);
 
                     if (mode == Mode::Terrain)
@@ -3512,9 +3512,9 @@ Sint32 level_editor()
 	}
 	
 	// Reset the screen position so it doesn't ruin the main menu
-    data.level->set_draw_pos(0, 0);
+    og::runtime::current_session->myscreen_->set_draw_pos(0, 0);
     // Update the screen's position
-    data.level->draw(og::runtime::current_session->myscreen_);
+    og::runtime::current_session->myscreen_->draw_level_data(data.level.get());
     // Clear the background
     og::runtime::current_session->myscreen_->clearbuffer();
     

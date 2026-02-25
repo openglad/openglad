@@ -236,7 +236,7 @@ bool viewscreen::redraw()
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
 	walker  *controlob = control;
-	auto* renderer = active_screen()->level_data.renderer_.get();
+	auto* renderer = active_screen()->level_visuals_.renderer_.get();
 	if (!renderer) return false;
 	PixieData& gridp = active_screen()->level_data.grid;
 	unsigned short maxx = gridp.w;
@@ -251,8 +251,8 @@ bool viewscreen::redraw()
 	}
 	else // no control object now ..
 	{
-		topx = active_screen()->level_data.topx;
-		topy = active_screen()->level_data.topy;
+		topx = active_screen()->level_visuals_.topx;
+		topy = active_screen()->level_visuals_.topy;
 	}
 
 
@@ -296,7 +296,7 @@ bool viewscreen::redraw(LevelData* data, bool draw_radar)
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
 	walker  *controlob = control;
-	auto* renderer = data->renderer_.get();
+	auto* renderer = active_screen()->level_visuals_.renderer_.get();
 	if (!renderer) return false;
 	PixieData& gridp = data->grid;
 	unsigned short maxx = gridp.w;
@@ -311,8 +311,8 @@ bool viewscreen::redraw(LevelData* data, bool draw_radar)
 	}
 	else // no control object now ..
 	{
-		topx = data->topx;
-		topy = data->topy;
+		topx = active_screen()->level_visuals_.topx;
+		topy = active_screen()->level_visuals_.topy;
 	}
 
 
