@@ -3,7 +3,8 @@
 **Branch:** `feat/desingletonize`
 **Date:** 2026-02-24
 **Builds on:** `docs/plans/desingletonize-globals-plan.md` (largely complete),
-`docs/audits/remaining-singletons-audit.md`
+`docs/audits/remaining-singletons-audit.md` (deleted — relevant content inlined
+into Phase 12 below)
 
 ---
 
@@ -290,11 +291,14 @@ struct LevelVisuals {
 
 **What stays in `screen`:**
 - `video` base class (pixel buffer, SDL surface, draw primitives)
-- `viewscreen[4]` (cameras into the game world)
-- `redraw()` (rendering pipeline)
-- `soundp` (sound playback)
-- `newpalette`, `palmode` (rendering state)
-- `numviews`, `framecount`, `timerstart` (display config)
+- `viewob[5]` (`std::unique_ptr<viewscreen>` — camera viewports)
+- `numviews` (current viewport count)
+- `redraw()` and the rendering pipeline
+- `soundp` (`std::unique_ptr<soundob>` — audio subsystem)
+- `newpalette`, `palmode` (palette/rendering state)
+- `framecount`, `timerstart` (frame timing)
+- `redrawme` (redraw flag)
+- `special_name[NUM_FAMILIES][NUM_SPECIALS]`, `alternate_name[NUM_FAMILIES][NUM_SPECIALS]` (UI display names — consumed by `view.cpp`, `score_panel.cpp`, `input_event_bridge.cpp`; eventually routed to `get_family_descriptor()` directly)
 - `LevelVisuals level_visuals_` (rendering data extracted from old LevelData)
 
 `screen` holds a `GameWorld*` (non-owning — platform owns the world) and
@@ -568,15 +572,36 @@ completes the evolution: `tick()` takes no args and reads `sim_events` from
    - `sim_enemy_freeze` → `current_game->world->enemy_freeze` (direct field)
 6. Remove `sim_level`, `sim_rng`, `sim_events`,
    `sim_enemy_freeze` fields from `SimEntity`
-7. Remove the per-entity wiring in `sdl_context_services.cpp` that sets
-   these pointers
+7. Remove entity wiring from **both** sites that set `sim_*` pointers:
+   - `LevelData::wire_entity()` (`level_data.cpp:517-526`) — sets `myobmap`,
+     `sim_level`, and copies of `sim_ctx_*` stored on LevelData
+   - `sdl_level_data_wire_entity_from_screen()` (`sdl_context_services.cpp:79-89`)
+     — **overwrites** `sim_save`, `sim_enemy_freeze`, `sim_events`, `sim_rng`,
+     `sim_config` with values from `current_session` and `ctx()`
+   Both sites must be eliminated — removing only one leaves stale pointers
 8. Migrate `walker::myobmap` (walker.h line 196) — a raw `obmap*` set by
    `wire_entity()` (`level_data.cpp:519`). Replace with
    `current_game->world->myobmap.get()` access and remove from walker
 
+**CMake dependency shift:** Currently `og_entities` has
+`target_include_directories(PRIVATE third_party/micropather)` for the
+pathfinding scratch state (`walker_pathing.cpp`). When pathfinding state moves
+to `GameplayContext` in this phase, the micropather include dependency shifts
+from `og_entities` to the gameplay component target. Update `CMakeLists.txt`
+accordingly.
+
 **Note:** This phase migrates four of the six `sim_*` pointers. The remaining
 two (`sim_save`, `sim_config`) are left on `SimEntity` until Phase 5, which
 removes them as part of the SaveData decoupling.
+
+**Threading note:** There is a `std::atomic<GameSession*> primary_session`
+(`game_session.cpp:37`) with an `ensure_thread_session()` helper
+(`game_session.h:167-171`). Child threads (test injectors, potentially demo
+rendering) use this to inherit session context when their `thread_local
+current_session` is null. If `current_game` becomes the gameplay entry point,
+child threads that need gameplay access will need an analogous
+`ensure_thread_game()` pattern, or the threading model needs to be documented as
+single-threaded-only for gameplay.
 
 **Subsumes desingletonize Phase 1:** The existing `ctx()` global accessor and
 `set_global_context()` are retired. Code that used `ctx().rng` uses
@@ -840,6 +865,14 @@ resources in Phase 6. This phase moves the remaining serialization code.
 
 **(gloader already moved in Phase 6.)**
 
+**Note on `grid_file`:** `LevelData::grid_file` (`std::string`,
+`level_data.h:114`) stores the source filename for the grid tilemap. It's a
+resources concern — loaded from the level file, used by save. It does NOT
+belong on `GameWorld` since it's a file path, not gameplay state. The resources
+layer's `load_level()` / `save_level()` functions pass it alongside GameWorld
+data during load/save (e.g. as a separate output/input parameter or in a
+`LevelFileMetadata` bag).
+
 **Steps:**
 1. Move `SaveData` entirely to resources
 2. Move `gparser`, `pixie_data` to resources
@@ -948,9 +981,18 @@ move (step 3 above), not deferred to Phase 11.
 currently creates/reinitializes `world_` inside `screen` must move to
 `GameSession`. Plan this as a dedicated sub-step before the physical file moves.
 
-**Risk:** High churn on include paths and CMake. The video split and ownership
-transfer add logic changes on top of the mechanical moves. Run full ctest after
-each batch.
+**Note on `og_runtime` SDL mixing:** `og_runtime` currently has 11 source files
+from `src/sdl_client/runtime/` (`game_loop.cpp`, `game_session.cpp`,
+`glad_gameplay.cpp`, `legacy_globals.cpp`, `score_panel.cpp`,
+`screen_lifecycle.cpp`, `screen.cpp`, `guy_create.cpp`, `game.cpp`,
+`input_event_bridge.cpp`, `walker_render_bridge.cpp`, `sdl_context_services.cpp`,
+`cheat_handler.cpp`). The Phase 10 directory reorganization needs to split these
+between interface and platform — it's not a matter of moving whole directories.
+Each file needs individual triage based on its dependencies.
+
+**Risk:** High churn on include paths and CMake. The video split, ownership
+transfer, and per-file `og_runtime` triage add logic changes on top of the
+mechanical moves. Run full ctest after each batch.
 
 ---
 
@@ -1036,25 +1078,81 @@ remaining global state identified in the singletons audit.
    declarations
 4. Remove `set_global_context()` and the `ctx()` fallback path
 
-**Remaining globals cleanup (from `remaining-singletons-audit.md`):**
+**Remaining globals cleanup (inlined from `remaining-singletons-audit.md`):**
 
-5. Fix `g_reset_time_ptr` (thread-local in `src/core/util.cpp`) — should access
-   `current_session->reset_time_` directly or be eliminated
-6. Fix `s_test_context_override` (thread-local in `src/runtime/game_context.cpp`)
-   — retire along with `ctx()` fallback
-7. Migrate UI globals to interface-layer owned state:
-   - `helptext`, `end_of_file` in `help.cpp` → interface component state
-   - `backgrounds[]`, `object_pane` in `level_editor.cpp` → editor state
-   - Button descriptor arrays (13 arrays in `picker.cpp`, `picker_dialogs.cpp`)
-     → const-ify or move to interface component state
-8. Const-ify remaining file-local render caches (`letters1`, `text_buffer`,
-   color masks in `sai2x.cpp`, etc.) where possible
-9. Update `docs/ARCHITECTURE.md` with the new component model
-10. Final audit: re-run the global state audit to verify:
+**Thread-locals to resolve:**
+
+5. `g_reset_time_ptr` (`thread_local` in `src/core/util.cpp:46`) — remove
+   indirection, wire timer through session APIs or pass timer anchor explicitly.
+   Currently points at `GameSession::reset_time_`.
+6. `s_test_context_override` (`static thread_local` in
+   `src/runtime/game_context.cpp:38`) — retire along with `ctx()` fallback
+   (step 4 above).
+7. `path_walker`, `path_map`, `pather` (`thread_local` in
+   `src/entities/walker_pathing.cpp:31,106,107`) — moved to
+   `GameplayContext` in Phase 4 (already handled by step 5 of Phase 4).
+8. `grass_rng` (`static thread_local std::mt19937` in
+   `src/sdl_client/io/platform_io.cpp:432`) — **accepted exception**.
+   Rendering scratch RNG, not game state. Document as legitimate.
+
+**Session state still standalone:**
+
+9. Migrate UI globals to interface-layer owned state:
+   - `helptext` (`char[HELP_WIDTH][MAX_LINES]`), `end_of_file` (`short`) in
+     `help.cpp:43-44` → interface component state
+   - `backgrounds[]` (`Sint32[]`) in `level_editor.cpp:175`, `object_pane`
+     (`std::vector<ObjectType>`) in `level_editor.cpp:250` → editor state
+
+**UI layout globals:**
+
+10. 13 button descriptor arrays in `picker.cpp` (lines 416–627) and
+    `picker_dialogs.cpp` (lines 37–49) → const-ify where possible. These are
+    `button[]` structs used for menu layout. Some have mutable fields
+    updated at runtime; those stay mutable but move to interface component state.
+
+**Renderer/hardware globals (accepted — process-level):**
+
+11. These are legitimate process globals and stay as-is. Document them:
+    - `E_Screen` (`std::unique_ptr<Screen>`, `video.cpp:53`)
+    - `joysticks` (`SDL_Joystick*[MAX_NUM_JOYSTICKS]`, `input.cpp:72`)
+    - `letters1`, `letters_big` (`PixieData`, `text.cpp:27-28`)
+    - `text_buffer` (`char[255]`, `text.cpp:115`)
+    - sai2x color masks and line buffers (`sai2x.cpp:18-28`)
+    - `pal`, `mypalette` (`intro.cpp:38-39`)
+
+**Process config:**
+
+12. `cfg` (`cfg_store`, `gparser.cpp:40`) — keep as process global. Reduce
+    `active_config()` wrapper indirection where it adds no value.
+
+**Immutable registries (no action needed):**
+
+13. Family registries (`s_registry` in `family_registry.cpp`,
+    `effect_family_registry.cpp`, `treasure_family_registry.cpp`,
+    `generator_family_registry.cpp`, `weapon_family_registry.cpp`) — init-once
+    static data. Acceptable as-is.
+
+**Test-only and platform-specific globals (no action needed):**
+
+14. All `#ifdef TESTING` globals (`g_test_remove_exits`, `g_picker_mainmenu_calls`,
+    `g_picker_max_mainmenu_calls`, `g_test_in_game`, `g_test_game_epoch`,
+    `s_yes_or_no_overrides`, `s_force_real_dialogs`, `g_trace_buffer`,
+    `g_trace_mutex`, `g_test_level_tick_limit_override`) and `#ifdef __EMSCRIPTEN__`
+    globals (`g_start_game_requested`, `g_game_state`, `g_state_initialized`,
+    `idbfs_sync_done`) — acceptable, no migration needed.
+
+15. Update `docs/ARCHITECTURE.md` with the new component model.
+
+**Final audit checklist (replaces re-run step):**
+
+16. Verify final state:
     - `current_game` is the only thread-local in gameplay
-    - `current_session` is the only thread-local in platform
-    - All other globals are either const, `#ifdef TESTING`-only, or
-      documented process globals (`cfg`, `E_Screen`, `joysticks`)
+    - `current_session` is the only thread-local in platform (game-state
+      category)
+    - `grass_rng` is an accepted rendering scratch exception
+    - All other globals are: const/init-once, `#ifdef TESTING`-only,
+      `#ifdef __EMSCRIPTEN__`-only, or documented process globals
+      (`cfg`, `E_Screen`, `joysticks`, family registries)
 
 **Risk:** Low — enforcement catches violations at compile time.
 
@@ -1117,6 +1215,37 @@ Phase 12 (enforcement + cleanup)
   (1–9) are in place. Includes the video/screen inheritance split and the
   GameWorld ownership transfer from screen to GameSession.
 - **Phases 11–12** are cleanup/enforcement after reorganization.
+
+---
+
+## Known Cyclic Dependencies
+
+The CMakeLists.txt uses `--start-group`/`--end-group` (`CMakeLists.txt:749-766`)
+to paper over link-order issues caused by these inter-module cycles. Phase 12
+wants to enforce acyclic dependencies — these are the cycles to break:
+
+1. **og_render ↔ og_runtime** — `view.h` includes `game_session.h`; runtime
+   includes render headers
+2. **og_input ↔ og_runtime** — `input.h` includes `game_session.h` and
+   `input_hardware_state.h`; runtime includes input headers
+3. **og_entities ↔ og_data** — entity source files include `level_data.h`,
+   `save_data.h`, `gparser.h`; data code includes `walker.h`, `guy.h`
+4. **og_entities ↔ og_runtime** — entity code includes `game_session.h`;
+   runtime includes entity headers
+5. **og_ui ↔ og_runtime** — UI headers include `screen.h`; runtime includes UI
+   headers
+6. **og_ui → og_entities** — `results_screen.h` includes `guy.h`
+7. **og_render → og_data** — `view.h` and `radar.h` include `level_data.h`;
+   `pixie.h` includes `pixie_data.h`
+
+**Which phases break each cycle:**
+- **Cycles 3, 4:** Broken by Phases 1–5. Entities stop reaching into
+  data/runtime for `sim_*` access — they use `current_game->` instead.
+- **Cycles 1, 2:** Broken by Phase 10. Render/input stop needing
+  `game_session.h` directly after the directory reorg and video split.
+- **Cycles 5, 6, 7:** Broken by Phase 10. UI/render references to
+  `screen.h`, `level_data.h`, `guy.h` resolve when files move to their
+  target components and dependencies flow inward.
 
 ---
 
