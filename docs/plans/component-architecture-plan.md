@@ -2,9 +2,10 @@
 
 **Branch:** `feat/desingletonize`
 **Date:** 2026-02-24
-**Builds on:** `docs/plans/desingletonize-globals-plan.md` (largely complete),
-`docs/audits/remaining-singletons-audit.md` (deleted — relevant content inlined
-into Phase 12 below)
+**Builds on:** desingletonize-globals work (largely complete; original plan file
+deleted — relevant remaining items subsumed by Phase 4 and Phase 12 below),
+remaining-singletons audit (deleted — relevant content inlined into Phase 12
+below)
 
 ---
 
@@ -199,7 +200,10 @@ public:
   `query_genre_x_y()` for gameplay decisions (forest walk, weapon visibility,
   door orientation). The `smooth()` method is editor-only but keeping it here
   avoids splitting a small class. The smoother is a terrain type grid, not a
-  rendering interpolator.
+  rendering interpolator. Note: `smooth()` uses `ctx().rng` for tile variant
+  selection — this is NOT migrated to `current_game->world->rng_` because
+  it only runs in the editor, never during gameplay ticks. See Phase 4 notes
+  on non-migrated `ctx().rng` call sites.
 - **`living_count` replaces `numobs`.** Tracks only `Order::Living` entities,
   not all objects in `oblist`. Used by generators and slimes for spawn caps.
   Renamed for clarity.
@@ -235,7 +239,7 @@ public:
   directly from `get_family_descriptor(family)->special_names[index]`.
   Note: `special_name[NUM_FAMILIES][NUM_SPECIALS]` on `screen` and
   `special_names[FD_NUM_SPECIALS]` on `FamilyDescriptor` are separate arrays.
-  Entity code (27 family files in `src/entities/families/`) already uses
+  Entity code (35 family files in `src/entities/families/`) already uses
   `get_family_descriptor()`. The `screen` arrays are consumed by UI code
   (`view.cpp`, `score_panel.cpp`, `input_event_bridge.cpp`, etc.). Consumer
   migration needs to route UI code to `get_family_descriptor()` directly.
@@ -386,6 +390,14 @@ bisectable.
 - `renderer_`, `pixdata[]`, `topx/topy` — moves to `LevelVisuals` in Phase 7
 - Sim context wiring fields (`sim_ctx_*`) — transitional (eliminated by Phase 4)
 
+**Forwarding accessor strategy:** Phases 1a–3 create forwarding accessors on
+`LevelData` and `screen` to minimize churn. These are temporary scaffolding —
+each phase should migrate the callers it touches to use the new canonical path
+(`world().*`) and remove the corresponding forwarding accessor once no callers
+remain. Do not accumulate stale forwarders across phases. By Phase 7 (LevelData
+deletion), all LevelData forwarding accessors must be gone. By Phase 10
+(screen refactoring), all screen forwarding accessors must be gone.
+
 ### Phase 1a: Move entity lists to GameWorld
 
 **Goal:** Create the GameWorld class. Move entity lists and `living_count` from
@@ -406,7 +418,7 @@ portion) and `remaining_foes()` (operates on oblist). `screen` gets a
    churn (callers migrate incrementally)
 7. `GameWorld::add_ob()` delegates to `LevelData::myloader` temporarily
 
-**`add_ob()` callsite scope:** `add_ob()` is called from ~28 locations across
+**`add_ob()` callsite scope:** `add_ob()` is called from ~34 locations across
 entity code, loader code, and level editor code. Entity code goes through
 `sim_level->add_ob()` which will forward to `world_->add_ob()` via LevelData
 forwarding during the transition. This is a high-touch migration point.
@@ -438,8 +450,10 @@ and Phase 6 replaces the loader path entirely.
 **Risk:** High — `LevelData` is referenced widely. But keeping `LevelData`
 alive as a shell with forwarding accessors makes this incremental.
 
-**Testing:** Full ctest. Create `TestGameplayContext` RAII helper early in this
-phase for use in all subsequent test updates.
+**Testing:** Full ctest. Create a `TestGameWorld` RAII helper early in this phase
+(creates a minimal GameWorld + SimEventLog for use in unit tests). In Phase 4,
+this helper is extended into `TestGameplayContext` which also installs the
+`current_game` thread-local.
 
 ---
 
@@ -589,8 +603,6 @@ completes the evolution: `tick()` takes no args and reads `sim_events` from
    - `sim_enemy_freeze` → `current_game->world->enemy_freeze` (direct field)
    - `stats.cpp:38` — `ctx().rng->next()` → `current_game->world->rng_.next()`
      (stat calculations during gameplay)
-   - `smooth.cpp:25` — `ctx().rng->next()` → `current_game->world->rng_.next()`
-     (terrain smoothing during gameplay)
 6. Remove `sim_level`, `sim_rng`, `sim_events`,
    `sim_enemy_freeze` fields from `SimEntity`
 7. Remove entity wiring from **both** sites that set `sim_*` pointers:
@@ -639,12 +651,20 @@ intentional (enables replay-safe gameplay) but is a behavioral change that
 could affect game feel and should be regression-tested.
 
 **`ctx().rng` call sites NOT migrated to `current_game`:** The following
-render/platform `ctx().rng` usages use RNG for visual effects, not gameplay.
-They are not migrated to `current_game->world->rng_`:
-- `score_panel.cpp:31`, `view.cpp:410/509`, `video.cpp:36`, `radar.cpp:30`,
-  `glad.cpp:64`
+`ctx().rng` usages are for visual effects or editor tooling, not gameplay
+simulation. They are not migrated to `current_game->world->rng_`:
+- `score_panel.cpp:31`, `video.cpp:36`, `radar.cpp:30`, `glad.cpp:64`
+  (render-layer visual randomness)
+- `smooth.cpp:25` (editor-only terrain smoothing — `smooth()` is never called
+  during gameplay ticks, only in the level editor; `query_genre_x_y()` which
+  entities call does not use RNG)
+
 After `ctx()` retirement (Phase 12), these switch to
-`current_session->ctx_.rng` or a dedicated render-layer RNG.
+`current_session->ctx_.rng` or a dedicated render/editor-layer RNG.
+
+**Note:** `view.cpp` uses `ctx().input` (line 410) and `ctx().sim_events`
+(line 509), not `ctx().rng`. Those usages are addressed separately when `ctx()`
+is retired in Phase 12.
 
 **Risk:** High churn — touches most entity/sim files. But fully mechanical
 (search-replace per pointer).
@@ -730,6 +750,13 @@ emission), it skips entity updates for the remainder of the current tick. This
 preserves the current behavior of "nothing happens after withdrawal" without
 requiring mid-tick save I/O. The outer layer checks `withdraw_requested` after
 tick, performs the save, and loads the target level.
+
+**Multiple exit events in one tick:** If two players step on different exit
+tiles in the same tick, or one player touches two exits, multiple
+`RequestExitConfirmation` events could be emitted. The outer layer processes
+only the first `RequestExitConfirmation` per tick and discards duplicates.
+This matches the current behavior where the first `yes_or_no_prompt()` call
+blocks and preempts any subsequent exit interactions.
 
 **Steps:**
 1. Add score accumulators, `allied_mode`, `current_scenario`, `completed_levels`
@@ -853,6 +880,21 @@ grid references become `world()` access. Smoother calls (`smooth()`,
 `set_target()`) go through `world().mysmoother`. Rendering data
 (`pixdata[]`, `renderer_`, `topx/topy`) goes through `level_visuals_`. This
 is mechanical but high-churn for the editor file specifically.
+
+**Editor and GameWorld access model:** The level editor operates outside the
+gameplay tick loop — it directly manipulates entity lists, grids, and the
+smoother. After Phase 4, gameplay code reaches GameWorld through
+`current_game->world`, but editor code does NOT run under a GameplayContext.
+The editor accesses GameWorld through `screen::world()` (the non-owning pointer
+or member) directly, bypassing `current_game`. This is fine because the editor
+never calls `tick()` or entity `act()` methods that depend on the thread-local.
+Editor-specific operations (`add_ob()`, `resize_grid()`, `smooth()`) must
+remain callable without `current_game` being set. In particular,
+`GameWorld::add_ob()` must handle the case where `current_game` is null —
+the entity_factory callback is still valid (wired by platform at setup time),
+but the created entity won't have `current_game` available until the next
+gameplay session. Editor-created entities are serialized to disk and
+re-instantiated when the level is loaded for play.
 
 **Files changed (major):**
 - New: `include/openglad/interface/level_visuals.h`
@@ -1409,9 +1451,14 @@ injection or `PlatformBridge`.
 **All tests must pass at the end of every phase.** Test migration happens
 incrementally — each phase owns its test updates.
 
-### TestGameplayContext (RAII helper)
+### Test Helpers (RAII)
 
-Created in Phase 1a and used throughout all subsequent phases:
+**Phase 1a** creates `TestGameWorld` — a minimal RAII helper that sets up a
+GameWorld and SimEventLog for unit tests. No thread-local installation needed
+at this stage.
+
+**Phase 4** extends this into `TestGameplayContext` — additionally installs
+and tears down the `current_game` thread-local:
 
 ```cpp
 // tests/unit/test_gameplay_context.h
@@ -1446,11 +1493,12 @@ OG_UNIT_TEST(test_enemy_scaling) {
 ### Migration per Phase
 
 - **Phase 1a/1b:** Tests that access `myscreen->level_data.*` update to
-  `myscreen->world().*`. `TestGameplayContext` helper created in 1a.
+  `myscreen->world().*`. `TestGameWorld` RAII helper created in 1a.
 - **Phase 2:** Tests that reference `sim_world_` update to `world_.tick()`.
 - **Phase 3:** Tests that read `level_done` etc. from screen update to
   read from `world_`. `TickResult` assertions removed.
-- **Phase 4:** Tests switch from `ctx()` / `sim_*` pointer setup to
+- **Phase 4:** `TestGameWorld` extended to `TestGameplayContext` (installs
+  `current_game`). Tests switch from `ctx()` / `sim_*` pointer setup to
   `current_game->` access. Wiring code in test fixtures simplified.
 - **Phase 5:** Tests for exit/withdrawal behavior added. Tests stop
   referencing `sim_save` and `sim_config` from entity code.
