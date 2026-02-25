@@ -36,6 +36,11 @@ const unsigned char* WalkerRender::bmp_data() const { return impl_->pix->bmp_dat
 void WalkerRender::set_frame(short framenum) { impl_->pix->set_frame(framenum); }
 void WalkerRender::set_data(const PixieData& data) { impl_->pix->set_data(data); }
 
+static WalkerRender* as_walker_render(og::gameplay::IRenderComponent* render_component)
+{
+	return static_cast<WalkerRender*>(render_component);
+}
+
 void walker::attach_render(const PixieData& data)
 {
 	render_ = std::make_unique<WalkerRender>(data);
@@ -53,12 +58,12 @@ void walker::set_data(const PixieData& data)
 	sizey = data.h;
 	frames = data.frames;
 	if (render_)
-		render_->set_data(data);
+		as_walker_render(render_.get())->set_data(data);
 }
 
 const unsigned char* walker::bmp_data() const
 {
-	return render_ ? render_->bmp_data() : nullptr;
+	return render_ ? as_walker_render(render_.get())->bmp_data() : nullptr;
 }
 
 short walker::set_frame(short framenum)
@@ -67,7 +72,7 @@ short walker::set_frame(short framenum)
 		return 0;
 	frame = framenum;
 	if (render_)
-		render_->set_frame(framenum);
+		as_walker_render(render_.get())->set_frame(framenum);
 	return 1;
 }
 
@@ -77,7 +82,7 @@ void walker::set_direct_frame(short whichframe)
 
 	// Update render component's bmp pointer if available
 	if (render_)
-		render_->set_frame(whichframe);
+		as_walker_render(render_.get())->set_frame(whichframe);
 }
 
 walker::~walker()

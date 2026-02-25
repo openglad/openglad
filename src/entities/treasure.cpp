@@ -24,12 +24,10 @@
 #include <openglad/data/gloader.h>
 #include <openglad/data/level_data.h>
 #include <openglad/entities/treasure.h>
-#include <openglad/entities/walker_render.h>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/family_registries.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-// pixieN include not needed; render access is through WalkerRender
 #include <algorithm>
 #include <format>
 #include <cstring>
@@ -70,11 +68,7 @@ bool treasure::eat_me(walker  * eater)
 
 void treasure::set_direct_frame(short whatframe)
 {
-	frame = whatframe;
-
-	// Update render component's bmp pointer if available
-	if (render_)
-		render_->set_frame(whatframe);
+	walker::set_direct_frame(whatframe);
 }
 
 // Finds the next connected teleporter in the fxlist for you to warp to.

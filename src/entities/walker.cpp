@@ -30,7 +30,7 @@
 #include <openglad/entities/generator_family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
-#include <openglad/entities/walker_render.h>
+#include <openglad/gameplay/render_component_base.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
