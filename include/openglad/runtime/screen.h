@@ -116,18 +116,8 @@ class screen : public video
 		// Save data
 		SaveData save_data;
 
-
-		// Game state
-		float control_hp; // last turn's hitpoints
-		char end;
-		signed char timer_wait;
-		short level_done; // set true when all our foes are dead
-		bool retry;  // we should reset the level and go again
-
-
 		std::string special_name[NUM_FAMILIES][NUM_SPECIALS];
 		std::string alternate_name[NUM_FAMILIES][NUM_SPECIALS];
-		Sint32 enemy_freeze; // stops enemies from acting
 		std::unique_ptr<soundob> soundp;
 		short redrawme;
 		std::unique_ptr<viewscreen> viewob[5];

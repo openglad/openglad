@@ -125,7 +125,7 @@ public:
     PixieData& grid;
     std::int32_t& pixmaxx;
     std::int32_t& pixmaxy;
-    short level_done = 0;  // Set by sim tick: 0=foes remain, 1=all foes dead+exit, 2=no foes
+    short& level_done;  // Forwarding ref to GameWorld::level_done
 
     smoother& mysmoother;
     std::unique_ptr<loader> myloader;

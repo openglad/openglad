@@ -146,7 +146,7 @@ void screen::init_common(short howmany, bool has_display)
 	timerstart = query_timer_control();
 	framecount = 0;
 
-	control_hp = 0;
+	world_.control_hp = 0;
 
 	// Load the palette ..
 	load_and_set_palette("our.pal", newpalette);
@@ -170,13 +170,21 @@ void screen::init_common(short howmany, bool has_display)
 	update_overscan_setting();
 
 	palmode = 0;
-	end = 0;
-	timer_wait = 6;
+	world_.end = 0;
+	world_.timer_wait = 6;
 	redrawme = 1;
 	cyclemode = 1;
-	enemy_freeze = 0;
-	level_done = 0;
-	retry = false;
+	world_.enemy_freeze = 0;
+	world_.level_done = 0;
+	world_.retry = false;
+	world_.my_team = save_data.my_team;
+	world_.allied_mode = static_cast<unsigned char>(save_data.allied_mode);
+	world_.current_scenario = save_data.scen_num;
+	{
+		auto it = save_data.completed_levels.find(save_data.current_campaign);
+		world_.completed_levels = (it != save_data.completed_levels.end()) ? it->second : std::set<int>{};
+	}
+	std::copy(std::begin(save_data.m_score), std::end(save_data.m_score), std::begin(world_.m_score));
 
 	numviews = howmany;
     for (auto& view : viewob)
@@ -282,17 +290,25 @@ void screen::ready_for_battle(short howmany)
     
     initialize_views();
 
-	end = 0;
+	world_.end = 0;
 	
-	retry = false;
+	world_.retry = false;
 
 	redrawme = 1;
 
 	timerstart = query_timer_control();
 	framecount = 0;
-	enemy_freeze = 0;
+	world_.enemy_freeze = 0;
 
-	control_hp = 0;
+	world_.control_hp = 0;
+	world_.my_team = save_data.my_team;
+	world_.allied_mode = static_cast<unsigned char>(save_data.allied_mode);
+	world_.current_scenario = save_data.scen_num;
+	{
+		auto it = save_data.completed_levels.find(save_data.current_campaign);
+		world_.completed_levels = (it != save_data.completed_levels.end()) ? it->second : std::set<int>{};
+	}
+	std::copy(std::begin(save_data.m_score), std::end(save_data.m_score), std::begin(world_.m_score));
 
 	palmode = 0;
 
@@ -331,7 +347,7 @@ void screen::reset(short howmany)
 		viewob[3] = std::make_unique<viewscreen>( 112, 16, 100, 168, 3);
 	}
 
-	end = 0;
+	world_.end = 0;
 
 	redrawme = 1;
 	
@@ -340,13 +356,21 @@ void screen::reset(short howmany)
 
 	timerstart = query_timer_control();
 	framecount = 0;
-	enemy_freeze = 0;
+	world_.enemy_freeze = 0;
 
-	control_hp = 0;
+	world_.control_hp = 0;
+	world_.my_team = save_data.my_team;
+	world_.allied_mode = static_cast<unsigned char>(save_data.allied_mode);
+	world_.current_scenario = save_data.scen_num;
+	{
+		auto it = save_data.completed_levels.find(save_data.current_campaign);
+		world_.completed_levels = (it != save_data.completed_levels.end()) ? it->second : std::set<int>{};
+	}
+	std::copy(std::begin(save_data.m_score), std::end(save_data.m_score), std::begin(world_.m_score));
 
 	palmode = 0;
 
-	end = 0;
+	world_.end = 0;
 
 	redrawme = 1;
 
@@ -443,7 +467,11 @@ bool screen::act()
 {
 	// Delegate simulation tick to GameWorld.
 	og::sim::SimEventLog& events = *ctx().sim_events;
-	og::sim::TickResult result = world_.tick(save_data, enemy_freeze, end, events);
+	world_.my_team = save_data.my_team;
+	world_.allied_mode = static_cast<unsigned char>(save_data.allied_mode);
+	world_.current_scenario = save_data.scen_num;
+	std::copy(std::begin(save_data.m_score), std::end(save_data.m_score), std::begin(world_.m_score));
+	world_.tick(events);
 
 	// Post-tick: clean up viewscreen control pointers for dead player entities.
 	// This is a rendering concern that doesn't belong in the simulation layer.
@@ -490,7 +518,7 @@ bool screen::act()
 				damage_tile(static_cast<short>(ev.a), static_cast<short>(ev.b));
 				break;
 			case og::sim::EventKind::SetEnd:
-				end = 1;
+				world_.end = 1;
 				break;
 			default:
 				break;
@@ -499,15 +527,12 @@ bool screen::act()
 	events.clear();
 
 	// Handle level completion / game ending
-	level_done = result.level_done;
-	level_data.level_done = result.level_done;
-
-	if (result.game_ended && !end)
+	if (world_.game_ended && !world_.end)
 	{
-		return endgame(result.ending, result.next_level);
+		return endgame(world_.ending, world_.next_level);
 	}
 
-	if (end)
+	if (world_.end)
 		return 1;
 
 	return 1;
@@ -522,7 +547,7 @@ short screen::endgame(short ending)
 
 short screen::endgame(short ending, short nextlevel)
 {
-	    if(end)
+	    if(world_.end)
 	    {
 	        return 1;
 	    }
@@ -547,12 +572,12 @@ short screen::endgame(short ending, short nextlevel)
 	}
 	
 	// Let's show the results!
-    retry = results_screen(ending, nextlevel, before, after);
+    world_.retry = results_screen(ending, nextlevel, before, after);
     
-    if(retry)
+    if(world_.retry)
     {
         // Retry without updating the roster and saving the game
-        end = 1;
+        world_.end = 1;
         return 1;
     }
     
@@ -560,16 +585,16 @@ short screen::endgame(short ending, short nextlevel)
 	{
 		if (nextlevel == -1) // generic defeat
 		{
-			end = 1;
+			world_.end = 1;
 		}
 		else // we're withdrawing to another level
 		{
-			end = 1;
+			world_.end = 1;
 		}
 	}
 	else if (ending == SCEN_TYPE_SAVE_ALL) // failed to save a guy
 	{
-		end = 1;
+		world_.end = 1;
 	}
 		else if (ending == 0) // we won
 		{
@@ -607,7 +632,7 @@ short screen::endgame(short ending, short nextlevel)
         // Autosave because we won
 		save_data.save("save0");
 
-		end = 1;
+		world_.end = 1;
 	}
 
     

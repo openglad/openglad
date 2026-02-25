@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <set>
 #include <string>
 
 // Forward declarations
@@ -26,7 +27,6 @@ enum class Order : unsigned char;
 class walker;
 class LevelData;
 class obmap;
-class SaveData;
 
 #include <openglad/data/pixie_data.h>
 #include <openglad/data/smooth.h>
@@ -46,13 +46,6 @@ public:
     }
 
     std::uint32_t state_;
-};
-
-struct TickResult {
-    short level_done = 0;
-    bool game_ended = false;
-    short next_level = -1;
-    short ending = 0;
 };
 
 #ifdef TESTING
@@ -102,6 +95,23 @@ public:
     short par_value = 1;
     short time_bonus_limit = 4000;
     short difficulty = 100;
+    short my_team = 0;
+    unsigned char allied_mode = 0;
+    short current_scenario = 0;
+    std::set<int> completed_levels;
+    std::uint32_t m_score[4] = {};
+
+    // Game state flags (moved from screen in Phase 3)
+    short level_done = 0;
+    bool game_ended = false;
+    short next_level = -1;
+    short ending = 0;
+    std::int32_t enemy_freeze = 0;
+    signed char timer_wait = 6;
+    char end = 0;
+    bool retry = false;
+    float control_hp = 0;
+
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
 
@@ -153,8 +163,7 @@ public:
                                              std::int32_t range, std::int32_t* howmany, walker* ob);
 
     // Simulation tick (migrated from GameWorld in Phase 2).
-    og::sim::TickResult tick(SaveData& save, std::int32_t& enemy_freeze,
-                             char end, og::sim::SimEventLog& events);
+    void tick(og::sim::SimEventLog& events);
 
     // Grid/world lifecycle
     void create_new_grid();

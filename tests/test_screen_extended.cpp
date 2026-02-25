@@ -159,7 +159,7 @@ REGISTER_TEST(test_screen_save_data_score);
 
 void test_screen_endgame_clears_mission_score_after_payout()
 {
-    const char saved_end = og::runtime::current_session->myscreen_->end;
+    const char saved_end = og::runtime::current_session->myscreen_->world_.end;
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
@@ -167,7 +167,7 @@ void test_screen_endgame_clears_mission_score_after_payout()
 
     og::runtime::current_session->myscreen_->save_data.m_totalscore[0] = 1000;
     og::runtime::current_session->myscreen_->save_data.m_score[0] = 250;
-    og::runtime::current_session->myscreen_->end = 0;
+    og::runtime::current_session->myscreen_->world_.end = 0;
     (void)og::runtime::current_session->myscreen_->endgame(0, -1);
 
     TEST_ASSERT_EQ(1250, static_cast<int>(og::runtime::current_session->myscreen_->save_data.m_totalscore[0]),
@@ -175,13 +175,13 @@ void test_screen_endgame_clears_mission_score_after_payout()
     TEST_ASSERT_EQ(0, static_cast<int>(og::runtime::current_session->myscreen_->save_data.m_score[0]),
                    "mission score should reset after payout");
 
-    og::runtime::current_session->myscreen_->end = 0;
+    og::runtime::current_session->myscreen_->world_.end = 0;
     (void)og::runtime::current_session->myscreen_->endgame(0, -1);
 
     TEST_ASSERT_EQ(1250, static_cast<int>(og::runtime::current_session->myscreen_->save_data.m_totalscore[0]),
                    "subsequent wins must not re-credit previous mission score");
 
-    og::runtime::current_session->myscreen_->end = saved_end;
+    og::runtime::current_session->myscreen_->world_.end = saved_end;
 }
 REGISTER_TEST(test_screen_endgame_clears_mission_score_after_payout);
 

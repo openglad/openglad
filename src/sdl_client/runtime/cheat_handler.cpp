@@ -92,7 +92,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 
 	if (query_key_event(SDLK_F1, event))
 	{
-		game_screen->enemy_freeze += 50;
+		game_screen->world_.enemy_freeze += 50;
 		set_palette(game_screen->bluepalette);
 	}
 
@@ -116,7 +116,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 	if (query_key_event(SDLK_h, event))
 	{
 		control->stats()->hitpoints += 100;
-		game_screen->control_hp += 100;
+		game_screen->world_.control_hp += 100;
 	}
 
 	if (query_key_event(SDLK_i, event))

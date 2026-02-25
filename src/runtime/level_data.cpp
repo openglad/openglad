@@ -435,6 +435,7 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks,
     , grid(world_ref_.grid)
     , pixmaxx(world_ref_.pixmaxx)
     , pixmaxy(world_ref_.pixmaxy)
+    , level_done(world_ref_.level_done)
     , mysmoother(world_ref_.mysmoother)
     , myloader(nullptr)
     , numobs(world_ref_.living_count)

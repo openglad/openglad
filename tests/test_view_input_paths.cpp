@@ -241,10 +241,10 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     TEST_ASSERT(v->control->stats()->level >= 1, "left bracket should keep level >= 1");
 
     // Extra cheat keys for additional input branches.
-    const int freeze_before = og::runtime::current_session->myscreen_->enemy_freeze;
+    const int freeze_before = og::runtime::current_session->myscreen_->world_.enemy_freeze;
     e.key.keysym.sym = SDLK_F1;
     v->input(e);
-    TEST_ASSERT(og::runtime::current_session->myscreen_->enemy_freeze >= freeze_before + 50, "F1 should increase enemy freeze time");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world_.enemy_freeze >= freeze_before + 50, "F1 should increase enemy freeze time");
 
     const size_t ob_count_before = og::runtime::current_session->myscreen_->level_data.oblist.size();
     e.key.keysym.sym = SDLK_F2;

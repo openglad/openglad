@@ -47,7 +47,7 @@ static int results_ui_injector(void* data)
 
     // Failsafe in case click misses.
     SDL_Delay(500);
-    og::runtime::current_session->myscreen_->end = 1;
+    og::runtime::current_session->myscreen_->world_.end = 1;
 
     st->finished = true;
     return 0;
@@ -56,8 +56,8 @@ static int results_ui_injector(void* data)
 
 void test_results_screen_full_ui_overview_and_troops_paths()
 {
-    const char saved_end = og::runtime::current_session->myscreen_->end;
-    og::runtime::current_session->myscreen_->end = 0;
+    const char saved_end = og::runtime::current_session->myscreen_->world_.end;
+    og::runtime::current_session->myscreen_->world_.end = 0;
 
     // Ensure deterministic campaign/level context used by results_screen internals.
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
@@ -140,7 +140,7 @@ void test_results_screen_full_ui_overview_and_troops_paths()
     SDL_WaitThread(thread, &rc);
 
     results_screen_testing_set_force_full(false);
-    og::runtime::current_session->myscreen_->end = saved_end;
+    og::runtime::current_session->myscreen_->world_.end = saved_end;
 
     TEST_ASSERT(st.started && st.finished, "results UI injector should run");
     TEST_ASSERT(!retry, "OK path should not request retry");

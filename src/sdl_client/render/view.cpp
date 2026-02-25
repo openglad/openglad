@@ -516,7 +516,7 @@ void viewscreen::process_input(const InputState& input_state)
 	}
 
 	if (result.control_hp_changed)
-		active_screen()->control_hp = result.control_hp;
+		active_screen()->world_.control_hp = result.control_hp;
 
 	if (!result.notify_text.empty())
 	{
@@ -1324,17 +1324,17 @@ Sint32 viewscreen::change_speed(Sint32 whichway)
 {
 	if (whichway > 0)
 	{
-		active_screen()->timer_wait -= 2;
-		if (active_screen()->timer_wait < 0)
-			active_screen()->timer_wait = 0;
+		active_screen()->world_.timer_wait -= 2;
+		if (active_screen()->world_.timer_wait < 0)
+			active_screen()->world_.timer_wait = 0;
 	}
 	else if (whichway < 0)
 	{
-		active_screen()->timer_wait += 2;
-		if (active_screen()->timer_wait > 20)
-			active_screen()->timer_wait = 20;
+		active_screen()->world_.timer_wait += 2;
+		if (active_screen()->world_.timer_wait > 20)
+			active_screen()->world_.timer_wait = 20;
 	}
-	return static_cast<Sint32>((20-active_screen()->timer_wait)/2+1);
+	return static_cast<Sint32>((20-active_screen()->world_.timer_wait)/2+1);
 }
 
 Sint32 viewscreen::change_gamma(Sint32 whichway)

@@ -7,7 +7,6 @@
  */
 #include <openglad/gameplay/game_world.h>
 #include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/obmap.h>
@@ -94,10 +93,11 @@ short GameWorld::remaining_foes(walker* myguy) const
     return myfoes;
 }
 
-og::sim::TickResult GameWorld::tick(SaveData& save, std::int32_t& enemy_freeze,
-                                    char end, og::sim::SimEventLog& events)
+void GameWorld::tick(og::sim::SimEventLog& events)
 {
-    og::sim::TickResult result;
+    game_ended = false;
+    next_level = -1;
+    ending = 0;
     tick_count_++;
     events.current_tick_ = tick_count_;
     if (last_level_id_ != id)
@@ -116,14 +116,14 @@ og::sim::TickResult GameWorld::tick(SaveData& save, std::int32_t& enemy_freeze,
 #endif
     if (level_tick_count_ > max_level_ticks)
     {
-        result.game_ended = true;
-        result.ending = 1;
-        result.next_level = -1;
+        game_ended = true;
+        ending = 1;
+        next_level = -1;
         events.push_notification("Mission timed out. Retreating.", 40);
-        return result;
+        return;
     }
 
-    result.level_done = 2;
+    level_done = 2;
 
     if (enemy_freeze)
         enemy_freeze--;
@@ -143,10 +143,10 @@ og::sim::TickResult GameWorld::tick(SaveData& save, std::int32_t& enemy_freeze,
                 ob->in_act = false;
                 if (ob && !ob->dead)
                 {
-                    if (!ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team)) &&
+                    if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                         ob->query_order() == Order::Living)
                     {
-                        result.level_done = 0;
+                        level_done = 0;
                     }
                     if (ob->foe == nullptr && ob->leader == nullptr)
                         ob->foe = find_far_foe_for_tick(*this, ob, rng_);
@@ -164,15 +164,15 @@ og::sim::TickResult GameWorld::tick(SaveData& save, std::int32_t& enemy_freeze,
             if (ob && !ob->dead &&
                 (((ob->query_order() != Order::Living) &&
                   (ob->query_order() != Order::Generator)) ||
-                 ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team))))
+                 ob->is_friendly_to_team(static_cast<unsigned char>(my_team))))
             {
                 ob->act();
                 if (ob && !ob->dead)
                 {
-                    if (!ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team)) &&
+                    if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                         ob->query_order() == Order::Living)
                     {
-                        result.level_done = 0;
+                        level_done = 0;
                     }
                 }
             }
@@ -187,10 +187,10 @@ og::sim::TickResult GameWorld::tick(SaveData& save, std::int32_t& enemy_freeze,
             ob->act();
             if (ob && !ob->dead)
             {
-                if (!ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team)) &&
+                if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                     ob->query_order() == Order::Living)
                 {
-                    result.level_done = 0;
+                    level_done = 0;
                 }
             }
         }
@@ -203,25 +203,25 @@ og::sim::TickResult GameWorld::tick(SaveData& save, std::int32_t& enemy_freeze,
         {
             if (ob->query_order() == Order::Treasure &&
                 ob->family == FAMILY_EXIT &&
-                result.level_done != 0)
+                level_done != 0)
             {
-                result.level_done = 1;
+                level_done = 1;
             }
         }
     }
 
-    if (result.level_done == 2)
+    if (level_done == 2)
     {
-        result.game_ended = true;
-        result.ending = 0;
-        result.next_level = static_cast<short>(id + 1);
-        return result;
+        game_ended = true;
+        ending = 0;
+        next_level = static_cast<short>(id + 1);
+        return;
     }
 
     if (end)
     {
-        result.game_ended = true;
-        return result;
+        game_ended = true;
+        return;
     }
 
     for (auto& uptr : oblist)
@@ -276,7 +276,7 @@ og::sim::TickResult GameWorld::tick(SaveData& save, std::int32_t& enemy_freeze,
         return ob && ob->dead;
     });
 
-    return result;
+    return;
 }
 
 walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart)
@@ -897,6 +897,20 @@ void GameWorld::clear()
     par_value = 1;
     time_bonus_limit = 4000;
     difficulty = 100;
+    my_team = 0;
+    allied_mode = 0;
+    current_scenario = 0;
+    completed_levels.clear();
+    m_score[0] = m_score[1] = m_score[2] = m_score[3] = 0;
+    level_done = 0;
+    game_ended = false;
+    next_level = -1;
+    ending = 0;
+    enemy_freeze = 0;
+    timer_wait = 6;
+    end = 0;
+    retry = false;
+    control_hp = 0;
 }
 
 } // namespace og::gameplay

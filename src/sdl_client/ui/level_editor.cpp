@@ -3089,7 +3089,7 @@ Sint32 level_editor()
 		// Reset the timer count to zero ...
 		reset_timer();
 
-		if (og::runtime::current_session->myscreen_->end)
+		if (og::runtime::current_session->myscreen_->world_.end)
 		{
 		    done = true;
 			break;

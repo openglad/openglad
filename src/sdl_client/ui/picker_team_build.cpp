@@ -1429,7 +1429,7 @@ Sint32 go_menu(Sint32 arg1)
         picker_testing_mark_game_end();
 #endif
 
-        Log("Returned from glad_main, retry={}\n", og::runtime::current_session->myscreen_->retry);
+        Log("Returned from glad_main, retry={}\n", og::runtime::current_session->myscreen_->world_.retry);
 
         //*******************************
         // Fade out from ACTION loop
@@ -1462,7 +1462,7 @@ Sint32 go_menu(Sint32 arg1)
             og::runtime::current_session->myscreen_->save_data.load("save0");
         }
     }
-    while(og::runtime::current_session->myscreen_->retry);
+    while(og::runtime::current_session->myscreen_->world_.retry);
 
 	return button_action_id(ButtonAction::CreateTeamMenu);
 #endif

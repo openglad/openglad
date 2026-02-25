@@ -220,7 +220,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
         {
             // Spectator mode: set a camera target but don't claim player control
             if (view->control && view_idx == 0)
-                screenp->control_hp = view->control->stats()->hitpoints;
+                screenp->world_.control_hp = view->control->stats()->hitpoints;
         }
         else if (view->control && view->control->user == -1)
         {
@@ -228,7 +228,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
             view->control->set_act_type(ACT_CONTROL);
             view->control->stats()->clear_command();
             if (view_idx == 0)
-                screenp->control_hp = view->control->stats()->hitpoints;
+                screenp->world_.control_hp = view->control->stats()->hitpoints;
         }
         ++view_idx;
     }

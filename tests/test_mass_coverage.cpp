@@ -184,17 +184,17 @@ MASS_TEST(test_mass_screen_redraw, { (void)og::runtime::current_session->myscree
 MASS_TEST(test_mass_screen_refresh, { og::runtime::current_session->myscreen_->refresh(); });
 
 MASS_TEST(test_mass_screen_endgame_one_arg, {
-    const char saved_end = og::runtime::current_session->myscreen_->end;
-    og::runtime::current_session->myscreen_->end = 1;
+    const char saved_end = og::runtime::current_session->myscreen_->world_.end;
+    og::runtime::current_session->myscreen_->world_.end = 1;
     (void)og::runtime::current_session->myscreen_->endgame(0);
-    og::runtime::current_session->myscreen_->end = saved_end;
+    og::runtime::current_session->myscreen_->world_.end = saved_end;
 });
 
 MASS_TEST(test_mass_screen_endgame_two_args, {
-    const char saved_end = og::runtime::current_session->myscreen_->end;
-    og::runtime::current_session->myscreen_->end = 1;
+    const char saved_end = og::runtime::current_session->myscreen_->world_.end;
+    og::runtime::current_session->myscreen_->world_.end = 1;
     (void)og::runtime::current_session->myscreen_->endgame(0, -1);
-    og::runtime::current_session->myscreen_->end = saved_end;
+    og::runtime::current_session->myscreen_->world_.end = saved_end;
 });
 
 MASS_TEST(test_mass_screen_find_near_foe, {

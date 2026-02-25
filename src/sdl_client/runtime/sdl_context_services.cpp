@@ -80,7 +80,7 @@ void sdl_level_data_wire_entity_from_screen(walker* w)
 {
     if (og::runtime::current_session && og::runtime::current_session->myscreen_) {
         w->sim_save = &og::runtime::current_session->myscreen_->save_data;
-        w->sim_enemy_freeze = &og::runtime::current_session->myscreen_->enemy_freeze;
+        w->sim_enemy_freeze = &og::runtime::current_session->myscreen_->world_.enemy_freeze;
     }
     if (ctx().sim_events)
         w->sim_events = ctx().sim_events.get();
