@@ -4,6 +4,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include <openglad/legacy/base.h> // Order + family constants used for test data
 #include <openglad/platform/io.h>
@@ -531,8 +532,17 @@ void test_save_data_update_guys_copies_only_live_entries_with_myguy()
     oblist.push_back(std::move(dead_with_guy));
     oblist.push_back(std::move(live_no_guy));
 
+    std::vector<const guy*> guys;
+    guys.reserve(oblist.size());
+    for (const auto& uptr : oblist)
+    {
+        const walker* w = uptr.get();
+        if (w && !w->dead && w->myguy)
+            guys.push_back(w->myguy);
+    }
+
     SaveData data;
-    data.update_guys(oblist);
+    data.update_guys(guys);
 
     TEST_ASSERT_EQ(1, (int)data.team_size, "update_guys should copy only live walkers with myguy");
     TEST_ASSERT(data.team_list[0] != nullptr, "copied guy should exist");

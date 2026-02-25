@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <vector>
 #include "unit/unit.h"
 
 OG_UNIT_TEST(test_save_data_update_guys_clamps_to_max_team_size)
@@ -24,7 +25,16 @@ OG_UNIT_TEST(test_save_data_update_guys_clamps_to_max_team_size)
         oblist.push_back(std::move(w));
     }
 
-    save.update_guys(oblist);
+    std::vector<const guy*> guys;
+    guys.reserve(oblist.size());
+    for (const auto& uptr : oblist)
+    {
+        const walker* w = uptr.get();
+        if (w && !w->dead && w->myguy)
+            guys.push_back(w->myguy);
+    }
+
+    save.update_guys(guys);
 
     OG_ASSERT(static_cast<int>(save.team_size) == MAX_TEAM_SIZE);
     OG_ASSERT(save.team_list.front() != nullptr);

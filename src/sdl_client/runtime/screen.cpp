@@ -51,6 +51,7 @@
 #include <cstring>
 #include <format>
 #include <optional>
+#include <vector>
 
 // Used by statistics::do_command() COMMAND_FOLLOW to find a leader walker.
 // The function is declared in stats.cpp; defined here in the SDL build.
@@ -734,8 +735,16 @@ short screen::endgame(short ending, short nextlevel)
 		if (nextlevel != -1)
 			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
         
-        // Grab our team out of the level
-        save_data.update_guys(level_data.oblist);
+        // Grab our team out of the level.
+        std::vector<const guy*> team_members;
+        team_members.reserve(level_data.oblist.size());
+        for (const auto& uptr : level_data.oblist)
+        {
+            const walker* ob = uptr.get();
+            if (ob && !ob->dead && ob->myguy)
+                team_members.push_back(ob->myguy);
+        }
+        save_data.update_guys(team_members);
         
         // Autosave because we won
 		save_data.save("save0");

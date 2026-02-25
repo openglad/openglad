@@ -20,7 +20,6 @@
 #include <openglad/legacy/test_trace.h>
 #include <format>
 
-#include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
 #include <openglad/io/og_file.h>
 #include <openglad/platform/io_common.h>
@@ -30,6 +29,7 @@
 #include <cstring>
 #include <iterator>
 #include <string>
+#include <vector>
 
 
 #ifdef USE_TOUCH_INPUT
@@ -476,7 +476,7 @@ bool SaveData::load(const std::string& filename)
 
 std::int32_t calculate_level(std::uint32_t temp_exp);
 
-void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
+void SaveData::update_guys(const std::vector<const guy*>& guys)
 {
     // Delete our old guys
 	for(int i = 0; i < team_size; i++)
@@ -486,18 +486,17 @@ void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
     team_size = 0;
 
 
-    // Remove new (or existing) "guys" from the list and store them in this SaveData to be saved and trained.
-    for(auto& uptr : oblist)
+    // Replace the current roster with the supplied runtime guys.
+    for(const guy* source : guys)
 	{
-	    walker* ob = uptr.get();
-        if (ob && !ob->dead && ob->myguy)
+        if (source != nullptr)
 		{
             if (team_size >= MAX_TEAM_SIZE)
             {
                 continue;
             }
 		    // Take this one
-			team_list[team_size] = std::make_unique<guy>(*ob->myguy);
+			team_list[team_size] = std::make_unique<guy>(*source);
 			// Update his level from the experience
 			std::uint32_t exp = team_list[team_size]->exp;
 			team_list[team_size]->upgrade_to_level(static_cast<short>(calculate_level(team_list[team_size]->exp)));
