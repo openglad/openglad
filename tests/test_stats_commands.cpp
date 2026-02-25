@@ -215,6 +215,8 @@ void test_stats_hit_response_all_families()
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
+    auto& level_data = og::runtime::current_session->myscreen_->level_data;
+    level_data.delete_objects();
 
     for (int i = 0; i < 14; i++) {
         auto target = make_walker(families[i]);
@@ -225,6 +227,10 @@ void test_stats_hit_response_all_families()
             attacker->setxy(105, 100);
             target->stats()->hit_response(attacker.get());
         }
+        // hit_response can spawn/world-register entities that retain raw links
+        // (owner/foe/leader) to attacker/target. Clear world-owned objects before
+        // these loop-local unique_ptr instances are destroyed.
+        level_data.delete_objects();
     }
 }
 REGISTER_TEST(test_stats_hit_response_all_families);
