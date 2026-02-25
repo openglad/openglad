@@ -210,6 +210,7 @@ void screen::init_common(short howmany, bool has_display)
 	level_visuals_.topy = 0;
 	load_map_data(level_visuals_.pixdata);
 	level_visuals_.renderer_ = create_sdl_level_render(level_visuals_.pixdata);
+	level_data.set_level_visuals(&level_visuals_);
 
 	numviews = howmany;
     for (auto& view : viewob)

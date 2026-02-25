@@ -374,7 +374,7 @@ const LevelDataHooks& headless_level_data_hooks()
     return kHeadlessLevelDataHooks;
 }
 
-// SaveData is now provided by the real src/runtime/save_data.cpp
+// SaveData is now provided by the real src/data/save_data.cpp
 // (linked into openglad_text via HEADLESS_SOURCES).
 
 // popup_dialog is defined in main.cpp for the text client

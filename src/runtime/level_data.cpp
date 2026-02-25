@@ -17,6 +17,7 @@
 
 #include <openglad/data/level_data.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/interface/level_visuals.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/platform/io_common.h>
@@ -26,7 +27,6 @@
 #include <openglad/core/stats.h>
 #include <openglad/data/smooth.h>
 #include <openglad/entities/obmap.h>
-#include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 
 #include <openglad/io/yaml_stream.h>
@@ -38,7 +38,7 @@
 #include <cstring>
 #include <format>
 #include <string>
-#include <string_view>
+#include <utility>
 
 
 int toInt(const std::string& s);
@@ -63,54 +63,6 @@ void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
         og::gameplay::current_game->sim_events = events;
     }
 }
-
-static constexpr char VERSION_NUM = 9; // save scenario type info
-
-static constexpr short MAX_SCENARIO_OBJECTS = 4096;
-
-static bool rw_read_exact_or_log(og::io::OgFile& file, void* dst, size_t size, size_t count)
-{
-    const size_t got = file.read(dst, size, count);
-    if (got != count)
-    {
-        Log("Read error: expected {} items, got {}\n", count, got);
-        return false;
-    }
-    return true;
-}
-
-static unsigned char sanitize_loaded_team_num(unsigned char team_num)
-{
-    if (team_num <= MAX_TEAM)
-        return team_num;
-    LogWarn("Scenario object uses invalid team id {}. Clamping to team 0.\n", static_cast<int>(team_num));
-    return 0;
-}
-
-static void fill_fixed_field(char* dst, size_t fixed_len, std::string_view src, const char* field_name)
-{
-    if (dst == nullptr || fixed_len == 0)
-        return;
-
-    memset(dst, 0, fixed_len);
-    const size_t to_copy = std::min(src.size(), fixed_len);
-    memcpy(dst, src.data(), to_copy);
-    if (src.size() > fixed_len)
-        LogWarn("Truncating {} to {} bytes for scenario serialization.\n", field_name, fixed_len);
-}
-
-static std::string ensure_pix_extension(std::string_view name)
-{
-    // Scenario files store an 8-byte "grid name" field; some content uses "foo",
-    // others may include "foo.pix". Be tolerant and avoid ".pix.pix".
-    std::string s(name);
-    if (s.size() >= 4 && s.compare(s.size() - 4, 4, ".pix") == 0)
-        return s;
-    return s + ".pix";
-}
-
-
-
 
 CampaignData::CampaignData(const std::string& campaign_id)
     : id(campaign_id), title("New Campaign"), rating(0.0f), version("1.0"), suggested_power(0), first_level(1), num_levels(0)
@@ -631,1053 +583,92 @@ void LevelData::delete_objects()
 	myobmap->walker_to_pos.clear();
 }
 
-short load_version_2(og::io::OgFile& infile, LevelData* data)
+namespace {
+
+LevelData::IoError map_level_file_error(og::data::LevelFileIoError err)
 {
-	short currentx, currenty;
-	unsigned char temporder, tempfamily;
-	unsigned char tempteam;
-	char tempfacing, tempcommand;
-	char tempreserved[20];
-	short listsize;
-	short i;
-	walker * new_guy;
-	char newgrid[9] = "grid";  // default grid (8-byte field, no implicit NUL)
-
-	// Format of a scenario object list file version 2 is:
-	// 3-byte header: 'FSS'
-	// 1-byte version #
-	// ----- (above is already determined by now)
-	// 8-byte string = grid name to load
-	// 2-bytes (short) = total objects to follow
-	// List of n objects, each of 7-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte short xpos
-	// 2-byte short ypos
-	// 1-byte TEAM
-	// 1-byte facing
-	// 1-byte command
-	// ---
-	// 11 bytes reserved
-
-	// Get grid file to load
-	if (!rw_read_exact_or_log(infile, newgrid, 8, 1))
-		return 0;
-	newgrid[8] = '\0';
-	//buffers: PORT: make sure grid name is lowercase
-	lowercase(newgrid);
-	data->grid_file = newgrid;
-
-	// Determine number of objects to load ...
-	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
-		return 0;
-	if (listsize < 0 || listsize > MAX_SCENARIO_OBJECTS)
-	{
-		Log("Invalid scenario object count: {}\n", listsize);
-		return 0;
-	}
-	
-    data->delete_objects();
-
-	// Now read in the objects one at a time
-	for (i=0; i < listsize; i++)
-	{
-		if (!rw_read_exact_or_log(infile, &temporder, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempfamily, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &currentx, 2, 1) ||
-		    !rw_read_exact_or_log(infile, &currenty, 2, 1) ||
-		    !rw_read_exact_or_log(infile, &tempteam, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempfacing, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempcommand, 1, 1) ||
-		    !rw_read_exact_or_log(infile, tempreserved, 11, 1))
-			return 0;
-		if (static_cast<Order>(temporder) == Order::Treasure)
-			new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);  // create new object
-		else
-			new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily);  // create new object
-		if (!new_guy)
-		{
-			Log("Error creating object!\n");
-			return 0;
-		}
-		new_guy ->setxy(currentx, currenty);
-		//       Log("X: %d  Y: %d  \n", currentx, currenty);
-		new_guy->team_num = sanitize_loaded_team_num(tempteam);
-	}
-
-	// Now read the grid file to our master screen ..
-	std::string gridpix = ensure_pix_extension(newgrid);
-
-    data->delete_grid();
-
-	data->grid = read_pixie_file(gridpix.c_str());
-	data->pixmaxx = data->grid.w * GRID_SIZE;
-	data->pixmaxy = data->grid.h * GRID_SIZE;
-
-	return 1;
+    switch (err)
+    {
+        case og::data::LevelFileIoError::None:
+            return LevelData::IoError::None;
+        case og::data::LevelFileIoError::OpenReadFailed:
+            return LevelData::IoError::OpenReadFailed;
+        case og::data::LevelFileIoError::OpenWriteFailed:
+            return LevelData::IoError::OpenWriteFailed;
+        case og::data::LevelFileIoError::InvalidHeader:
+            return LevelData::IoError::InvalidHeader;
+        case og::data::LevelFileIoError::UnsupportedVersion:
+            return LevelData::IoError::UnsupportedVersion;
+        case og::data::LevelFileIoError::SerializeFailed:
+            return LevelData::IoError::SerializeFailed;
+        case og::data::LevelFileIoError::ParseFailed:
+        default:
+            return LevelData::IoError::ParseFailed;
+    }
 }
 
-// Version 3 scenarios have a block of text which can be displayed
-// at the start, etc.  Format is
-// # of lines,
-//  1-byte character width
-//  n bytes specified from above
-short load_version_3(og::io::OgFile& infile, LevelData* data)
+LevelVisuals& fallback_level_visuals(LevelVisuals* visuals)
 {
-	short currentx, currenty;
-	unsigned char temporder, tempfamily;
-	unsigned char tempteam;
-	char tempfacing, tempcommand;
-	char templevel;
-	char tempreserved[20];
-	short listsize;
-	short i;
-	walker * new_guy;
-	char newgrid[9] = "grid";  // default grid (8-byte field, no implicit NUL)
-	char oneline[80];
-	char numlines, tempwidth;
-
-
-	// Format of a scenario object list file version 2 is:
-	// 3-byte header: 'FSS'
-	// 1-byte version #
-	// ----- (above is already determined by now)
-	// 8-byte string = grid name to load
-	// 2-bytes (short) = total objects to follow
-	// List of n objects, each of 7-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte short xpos
-	// 2-byte short ypos
-	// 1-byte TEAM
-	// 1-byte facing
-	// 1-byte command
-	// 1-byte level
-	// ---
-	// 10 bytes reserved
-	// 1-byte # of lines of text to load
-	// List of n lines of text, each of form:
-	// 1-byte character width of line
-	// m bytes == characters on this line
-
-
-	// Get grid file to load
-	if (!rw_read_exact_or_log(infile, newgrid, 8, 1))
-		return 0;
-	newgrid[8] = '\0';
-	//buffers: PORT: make sure grid name is lowercase
-	lowercase(newgrid);
-	data->grid_file = newgrid;
-
-	// Determine number of objects to load ...
-	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
-		return 0;
-	if (listsize < 0 || listsize > MAX_SCENARIO_OBJECTS)
-	{
-		Log("Invalid scenario object count: {}\n", listsize);
-		return 0;
-	}
-	
-    data->delete_objects();
-
-	// Now read in the objects one at a time
-	for (i=0; i < listsize; i++)
-	{
-		if (!rw_read_exact_or_log(infile, &temporder, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempfamily, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &currentx, 2, 1) ||
-		    !rw_read_exact_or_log(infile, &currenty, 2, 1) ||
-		    !rw_read_exact_or_log(infile, &tempteam, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempfacing, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempcommand, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &templevel, 1, 1) ||
-		    !rw_read_exact_or_log(infile, tempreserved, 10, 1))
-			return 0;
-		if (static_cast<Order>(temporder) == Order::Treasure)
-			//              new_guy = master->add_fx_ob(static_cast<Order>(temporder), tempfamily);  // create new object
-			new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily, 1); // add to top of list
-		else
-			new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily);  // create new object
-		if (!new_guy)
-		{
-			Log("Error creating object!\n");
-			return 0;
-		}
-		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = sanitize_loaded_team_num(tempteam);
-		new_guy->stats()->level = templevel;
-	}
-
-	// Now get the lines of text to read ..
-	if (!rw_read_exact_or_log(infile, &numlines, 1, 1))
-		return 0;
-
-	for (i=0; i < numlines; i++)
-	{
-		if (!rw_read_exact_or_log(infile, &tempwidth, 1, 1))
-			return 0;
-		const int original_width = static_cast<unsigned char>(tempwidth);
-		int width = original_width;
-		if (width >= static_cast<int>(sizeof(oneline)))
-			width = sizeof(oneline) - 1;
-		if (width > 0)
-		{
-			if (!rw_read_exact_or_log(infile, oneline, width, 1))
-				return 0;
-			oneline[width] = 0;
-			// Skip any remaining bytes to keep the stream aligned
-			if (original_width > width)
-			{
-				char discard[256];
-				int remaining = original_width - width;
-				while (remaining > 0)
-				{
-					const int chunk = remaining < static_cast<int>(sizeof(discard)) ? remaining : static_cast<int>(sizeof(discard));
-					if (!rw_read_exact_or_log(infile, discard, chunk, 1))
-						return 0;
-					remaining -= chunk;
-				}
-			}
-		}
-		else
-		{
-			oneline[0] = 0;
-		}
-		data->description.push_back(oneline);
-	}
-
-
-	// Now read the grid file to our master screen ..
-	std::string gridpix2 = ensure_pix_extension(newgrid);
-
-    data->delete_grid();
-
-	data->grid = read_pixie_file(gridpix2.c_str());
-	data->pixmaxx = data->grid.w * GRID_SIZE;
-	data->pixmaxy = data->grid.h * GRID_SIZE;
-
-	return 1;
+    static LevelVisuals fallback;
+    return visuals ? *visuals : fallback;
 }
 
-// Version 4 scenarios include a 12-byte name for EVERY walker..
-short load_version_4(og::io::OgFile& infile, LevelData* data)
-{
-	short currentx, currenty;
-	unsigned char temporder, tempfamily;
-	unsigned char tempteam;
-	char tempfacing, tempcommand;
-	char templevel;
-	char tempreserved[20];
-	short listsize;
-	short i;
-	walker * new_guy;
-	char newgrid[9] = "grid";  // default grid (8-byte field, no implicit NUL)
-	char oneline[80] = {};
-	char numlines, tempwidth;
-	char tempname[13] = {};
-
-
-	// Format of a scenario object list file version 4 is:
-	// 3-byte header: 'FSS'
-	// 1-byte version #
-	// ----- (above is already determined by now)
-	// 8-byte string = grid name to load
-	// 2-bytes (short) = total objects to follow
-	// List of n objects, each of 7-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte short xpos
-	// 2-byte short ypos
-	// 1-byte TEAM
-	// 1-byte facing
-	// 1-byte command
-	// 1-byte level
-	// 12-bytes name
-	// ---
-	// 10 bytes reserved
-	// 1-byte # of lines of text to load
-	// List of n lines of text, each of form:
-	// 1-byte character width of line
-	// m bytes == characters on this line
-
-
-	// Get grid file to load
-	if (!rw_read_exact_or_log(infile, newgrid, 8, 1))
-		return 0;
-	newgrid[8] = '\0';
-	//buffers: PORT: make sure grid name is lowercase
-	lowercase(newgrid);
-	data->grid_file = newgrid;
-
-	// Determine number of objects to load ...
-	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
-		return 0;
-	if (listsize < 0 || listsize > MAX_SCENARIO_OBJECTS)
-	{
-		Log("Invalid scenario object count: {}\n", listsize);
-		return 0;
-	}
-	
-    data->delete_objects();
-
-	// Now read in the objects one at a time
-	for (i=0; i < listsize; i++)
-	{
-		if (!rw_read_exact_or_log(infile, &temporder, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempfamily, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &currentx, 2, 1) ||
-		    !rw_read_exact_or_log(infile, &currenty, 2, 1) ||
-		    !rw_read_exact_or_log(infile, &tempteam, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempfacing, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempcommand, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &templevel, 1, 1) ||
-		    !rw_read_exact_or_log(infile, tempname, 12, 1) ||
-		    !rw_read_exact_or_log(infile, tempreserved, 10, 1))
-			return 0;
-		tempname[12] = '\0';
-		if (static_cast<Order>(temporder) == Order::Treasure)
-			//new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily, 1); // add to top of list
-			new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);
-		else
-			new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily);  // create new object
-		if (!new_guy)
-		{
-			Log("Error creating object!\n");
-			return 0;
-		}
-		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = sanitize_loaded_team_num(tempteam);
-		new_guy->stats()->level = templevel;
-		new_guy->stats()->name = tempname;
-		if (new_guy->stats()->name.size() > 1)           //chad 5/25/95
-			new_guy->stats()->set_bit_flags(BIT_NAMED, 1);
-
-	}
-
-	// Now get the lines of text to read ..
-	if (!rw_read_exact_or_log(infile, &numlines, 1, 1))
-		return 0;
-
-	for (i=0; i < numlines; i++)
-	{
-		if (!rw_read_exact_or_log(infile, &tempwidth, 1, 1))
-			return 0;
-		const int original_width = static_cast<unsigned char>(tempwidth);
-		int width = original_width;
-		if (width >= static_cast<int>(sizeof(oneline)))
-			width = sizeof(oneline) - 1;
-		if (width > 0)
-		{
-			if (!rw_read_exact_or_log(infile, oneline, width, 1))
-				return 0;
-			oneline[width] = 0;
-			// Skip any remaining bytes to keep the stream aligned
-			if (original_width > width)
-			{
-				char discard[256];
-				int remaining = original_width - width;
-				while (remaining > 0)
-				{
-					const int chunk = remaining < static_cast<int>(sizeof(discard)) ? remaining : static_cast<int>(sizeof(discard));
-					if (!rw_read_exact_or_log(infile, discard, chunk, 1))
-						return 0;
-					remaining -= chunk;
-				}
-			}
-		}
-		else
-		{
-			oneline[0] = 0;
-		}
-		data->description.push_back(oneline);
-	}
-
-	// Now read the grid file...
-	std::string gridpix3 = ensure_pix_extension(newgrid);
-
-    data->delete_grid();
-
-	data->grid = read_pixie_file(gridpix3.c_str());
-	data->pixmaxx = data->grid.w * GRID_SIZE;
-	data->pixmaxy = data->grid.h * GRID_SIZE;
-
-	return 1;
-} // end load_version_4
-
-// Version 5 scenarios include a 1-byte 'scenario-type' specifier after
-// the grid name.
-short load_version_5(og::io::OgFile& infile, LevelData* data)
-{
-	short currentx, currenty;
-	unsigned char temporder, tempfamily;
-	unsigned char tempteam;
-	char tempfacing, tempcommand;
-	char templevel;
-	char tempreserved[20];
-	short listsize;
-	short i;
-	walker * new_guy;
-	char newgrid[9] = "grid";  // default grid (8-byte field, no implicit NUL)
-	char new_scen_type; // read the scenario type
-	char oneline[80] = {};
-	char numlines, tempwidth;
-	char tempname[13] = {};
-
-	// Format of a scenario object list file version 5 is:
-	// 3-byte header: 'FSS'
-	// 1-byte version #
-	// ----- (above is already determined by now)
-	// 8-byte string = grid name to load
-	// 1-byte char = scenario type, default is 0
-	// 2-bytes (short) = total objects to follow
-	// List of n objects, each of 7-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte short xpos
-	// 2-byte short ypos
-	// 1-byte TEAM
-	// 1-byte facing
-	// 1-byte command
-	// 1-byte level
-	// 12-bytes name
-	// ---
-	// 10 bytes reserved
-	// 1-byte # of lines of text to load
-	// List of n lines of text, each of form:
-	// 1-byte character width of line
-	// m bytes == characters on this line
-
-
-	// Get grid file to load
-	if (!rw_read_exact_or_log(infile, newgrid, 8, 1))
-		return 0;
-	newgrid[8] = '\0';
-	//buffers: PORT: make sure grid name is lowercase
-	lowercase(newgrid);
-	data->grid_file = newgrid;
-
-	// Get the scenario type information
-	if (!rw_read_exact_or_log(infile, &new_scen_type, 1, 1))
-		return 0;
-	data->type = new_scen_type;
-
-	// Determine number of objects to load ...
-	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
-		return 0;
-	if (listsize < 0 || listsize > MAX_SCENARIO_OBJECTS)
-	{
-		Log("Invalid scenario object count: {}\n", listsize);
-		return 0;
-	}
-	
-    data->delete_objects();
-
-	// Now read in the objects one at a time
-	for (i=0; i < listsize; i++)
-	{
-		if (!rw_read_exact_or_log(infile, &temporder, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempfamily, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &currentx, 2, 1) ||
-		    !rw_read_exact_or_log(infile, &currenty, 2, 1) ||
-		    !rw_read_exact_or_log(infile, &tempteam, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempfacing, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &tempcommand, 1, 1) ||
-		    !rw_read_exact_or_log(infile, &templevel, 1, 1) ||
-		    !rw_read_exact_or_log(infile, tempname, 12, 1) ||
-		    !rw_read_exact_or_log(infile, tempreserved, 10, 1))
-			return 0;
-		tempname[12] = '\0';
-		if (static_cast<Order>(temporder) == Order::Treasure)
-			new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);
-		else
-			new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily);  // create new object
-		if (!new_guy)
-		{
-			Log("Error creating object!\n");
-			return 0;
-		}
-		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = sanitize_loaded_team_num(tempteam);
-		new_guy->stats()->level = templevel;
-		new_guy->stats()->name = tempname;
-		if (new_guy->stats()->name.size() > 1)           //chad 5/25/95
-			new_guy->stats()->set_bit_flags(BIT_NAMED, 1);
-
-	}
-
-	// Now get the lines of text to read ..
-	if (!rw_read_exact_or_log(infile, &numlines, 1, 1))
-		return 0;
-
-	for (i=0; i < numlines; i++)
-	{
-		if (!rw_read_exact_or_log(infile, &tempwidth, 1, 1))
-			return 0;
-		const int original_width = static_cast<unsigned char>(tempwidth);
-		int width = original_width;
-		if (width >= static_cast<int>(sizeof(oneline)))
-			width = sizeof(oneline) - 1;
-		if (width > 0)
-		{
-			if (!rw_read_exact_or_log(infile, oneline, width, 1))
-				return 0;
-			oneline[width] = 0;
-			// Skip any remaining bytes to keep the stream aligned
-			if (original_width > width)
-			{
-				char discard[256];
-				int remaining = original_width - width;
-				while (remaining > 0)
-				{
-					const int chunk = remaining < static_cast<int>(sizeof(discard)) ? remaining : static_cast<int>(sizeof(discard));
-					if (!rw_read_exact_or_log(infile, discard, chunk, 1))
-						return 0;
-					remaining -= chunk;
-				}
-			}
-		}
-		else
-		{
-			oneline[0] = 0;
-		}
-		data->description.push_back(oneline);
-	}
-
-	// Now read the grid file to our master screen ..
-	std::string gridpix4 = ensure_pix_extension(newgrid);
-
-    data->delete_grid();
-
-	data->grid = read_pixie_file(gridpix4.c_str());
-	data->pixmaxx = data->grid.w * GRID_SIZE;
-	data->pixmaxy = data->grid.h * GRID_SIZE;
-
-	data->mysmoother.set_target(data->grid);
-
-	// Fix up doors, etc.
-	for(auto& uptr : data->weaplist)
-	{
-	    walker* w = uptr.get();
-		if (w && w->family==FAMILY_DOOR)
-		{
-			if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
-			        (w->ypos/GRID_SIZE)-1)==TYPE_WALL)
-			{
-				w->set_frame(1);  // turn sideways ..
-			}
-		}
-	}
-
-	return 1;
-} // end load_version_5
-
-#define READ_OR_RETURN(ctx, ptr, size, n) \
-do{ \
-    if(!rw_read_exact_or_log((ctx), (ptr), (size), (n))) \
-        return 0; \
-} while(0)
-
-// Version 6 includes a 30-byte scenario title after the grid name.
-// Also load version 7 and 8 here, since it's a simple change ..
-short load_version_6(og::io::OgFile& infile, LevelData* data, short version)
-{
-    short currentx, currenty;
-    unsigned char temporder, tempfamily;
-    unsigned char tempteam;
-    char tempfacing, tempcommand;
-    char templevel;
-    short shortlevel;
-    char tempreserved[20];
-    short listsize;
-    short i;
-    walker * new_guy;
-    char newgrid[9] = "grid"; // 8-byte grid name + NUL
-    char new_scen_type; // read the scenario type
-    char oneline[80] = {};
-    char numlines = 0, tempwidth;
-    char tempname[12] = {};
-    char scentitle[30] = {};
-    short temp_par = 1;
-    short temp_time_limit = 4000;
-
-    // Format of a scenario object list file version 6/7 is:
-    // 3-byte header: 'FSS'
-    // 1-byte version #
-    // ----- (above is already determined by now)
-    // 8-byte string = grid name to load
-    // 30-byte scenario title (ver 6+)
-    // 1-byte char = scenario type, default is 0
-    // 2-bytes par-value, v.8+
-	// 2-bytes time limit for bonus points, v9+
-    // 2-bytes (short) = total objects to follow
-    // List of n objects, each of 7-bytes of form:
-    // 1-byte ORDER
-    // 1-byte FAMILY
-    // 2-byte short xpos
-    // 2-byte short ypos
-    // 1-byte TEAM
-    // 1-byte facing
-    // 1-byte command
-    // 1-byte level // 2 bytes in version 7+
-    // 12-bytes name
-    // ---
-    // 10 bytes reserved
-    // 1-byte # of lines of text to load
-    // List of n lines of text, each of form:
-    // 1-byte character width of line
-    // m bytes == characters on this line
-
-
-    // Get grid file to load
-    READ_OR_RETURN(infile, newgrid, 8, 1);
-    newgrid[8] = '\0';
-    // Zardus: FIX: make sure they're lowercased
-    lowercase(newgrid);
-	data->grid_file = newgrid;
-
-    // Get scenario title, if it exists
-    READ_OR_RETURN(infile, scentitle, 30, 1);
-
-    // Get the scenario type information
-    READ_OR_RETURN(infile, &new_scen_type, 1, 1);
-
-    if (version >= 8)
-    {
-        READ_OR_RETURN(infile, &temp_par, 2, 1);
-    }
-    // else we're using the value of the level ..
-
-    if (version >= 9)
-    {
-        READ_OR_RETURN(infile, &temp_time_limit, 2, 1);
-    }
-
-    // Determine number of objects to load ...
-    READ_OR_RETURN(infile, &listsize, 2, 1);
-    if (listsize < 0 || listsize > MAX_SCENARIO_OBJECTS)
-    {
-        Log("Invalid scenario object count: {}\n", listsize);
-        return 0;
-    }
-
-    // Now read in the objects one at a time
-    for (i=0; i < listsize; i++)
-    {
-        READ_OR_RETURN(infile, &temporder, 1, 1);
-        READ_OR_RETURN(infile, &tempfamily, 1, 1);
-        READ_OR_RETURN(infile, &currentx, 2, 1);
-        READ_OR_RETURN(infile, &currenty, 2, 1);
-        READ_OR_RETURN(infile, &tempteam, 1, 1);
-        READ_OR_RETURN(infile, &tempfacing, 1, 1);
-        READ_OR_RETURN(infile, &tempcommand, 1, 1);
-        if (version >= 7)
-            READ_OR_RETURN(infile, &shortlevel, 2, 1);
-        else
-            READ_OR_RETURN(infile, &templevel, 1, 1);
-        READ_OR_RETURN(infile, tempname, 12, 1);
-        READ_OR_RETURN(infile, tempreserved, 10, 1);
-        if (static_cast<Order>(temporder) == Order::Treasure)
-            new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);
-        else
-            new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily);  // create new object
-        if (!new_guy)
-        {
-            Log("Error creating object when loading.\n");
-            return 0;
-        }
-        
-        new_guy->setxy(currentx, currenty);
-        new_guy->team_num = sanitize_loaded_team_num(tempteam);
-        if (version >= 7)
-            new_guy->stats()->level = shortlevel;
-        else
-            new_guy->stats()->level = templevel;
-        new_guy->stats()->name = std::string(tempname, strnlen(tempname, sizeof(tempname)));
-        if (new_guy->stats()->name.size() > 1)           //chad 5/25/95
-            new_guy->stats()->set_bit_flags(BIT_NAMED, 1);
-
-    }
-    
-    
-    // Now get the lines of text to read ..
-    READ_OR_RETURN(infile, &numlines, 1, 1);
-    std::list<std::string> desc_lines;
-    for (i=0; i < numlines; i++)
-    {
-        READ_OR_RETURN(infile, &tempwidth, 1, 1);
-        if(tempwidth > 0)
-        {
-            int original_width = static_cast<unsigned char>(tempwidth);
-            int width = original_width;
-            if(width >= static_cast<int>(sizeof(oneline)))
-                width = sizeof(oneline) - 1;
-            READ_OR_RETURN(infile, oneline, width, 1);
-            oneline[width] = 0;
-            // Skip any remaining bytes to keep the stream aligned
-            if(original_width > width)
-            {
-                char discard[256];
-                int remaining = original_width - width;
-                while(remaining > 0)
-                {
-                    int chunk = remaining < static_cast<int>(sizeof(discard)) ? remaining : static_cast<int>(sizeof(discard));
-                    READ_OR_RETURN(infile, discard, chunk, 1);
-                    remaining -= chunk;
-                }
-            }
-        }
-        else
-            oneline[0] = 0;
-        desc_lines.push_back(oneline);
-    }
-
-    
-    // Now read the grid file to our master screen ..
-    std::string gridpix5 = ensure_pix_extension(newgrid);
-
-    data->grid = read_pixie_file(gridpix5.c_str());
-    data->pixmaxx = data->grid.w * GRID_SIZE;
-    data->pixmaxy = data->grid.h * GRID_SIZE;
-    
-    // The collected data so far
-    data->title = std::string(scentitle, strnlen(scentitle, sizeof(scentitle)));
-    data->type = new_scen_type;
-    data->par_value = temp_par;
-    data->time_bonus_limit = temp_time_limit;
-    data->description = desc_lines;
-    data->mysmoother.set_target(data->grid);
-
-    // Fix up doors, etc.
-	for(auto& uptr : data->weaplist)
-	{
-	    walker* w = uptr.get();
-        if (w && w->family==FAMILY_DOOR)
-        {
-            if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
-                    (w->ypos/GRID_SIZE)-1)==TYPE_WALL)
-            {
-                w->set_frame(1);  // turn sideways ..
-            }
-        }
-    }
-
-    return 1;
-} // end load_version_6
-
-short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version)
-{
-    if(data == nullptr)
-        return 0;
-    
-    short result = 0;
-	switch (version)
-	{
-		case 2:
-			result = load_version_2(infile, data);
-			break;
-		case 3:
-			result = load_version_3(infile, data);
-			break;
-		case 4:
-			result = load_version_4(infile, data);
-			break;
-		case 5:
-			result = load_version_5(infile, data);
-			break;
-		case 6:
-		case 7:
-		case 8:
-		case 9:
-			result = load_version_6(infile, data, version);
-			break;
-		default:
-			Log("Scenario {} is version-level {}, and cannot be read.\n",
-			       data->id, version);
-			break;
-	}
-    
-	return result;
-}
+} // namespace
 
 bool LevelData::load()
 {
-	TRACE("game", "LevelData::load id=%d headless=%d", id, headless_ ? 1 : 0);
+    TRACE("game", "LevelData::load id=%d headless=%d", id, headless_ ? 1 : 0);
     last_io_error_ = IoError::None;
-	char temptext[10] = {};
-	char versionnumber = 0;
 
-	std::string thefile = std::format("scen{}.fss", id);
-
-	auto infile = og::io::og_open_read("scen/", thefile.c_str());
-	if (!infile)
-    {
-        LogError("Cannot open level file for reading: {}\n", thefile);
-        last_io_error_ = IoError::OpenReadFailed;
-        return false;
-    }
-
-	if (!rw_read_exact_or_log(*infile, temptext, 1, 3))
-	{
-        last_io_error_ = IoError::ParseFailed;
-		return false;
-	}
-	if (std::string(temptext) != "FSS")
-	{
-		LogError("File {} is not a valid scenario!\n", thefile);
-        last_io_error_ = IoError::InvalidHeader;
-		return false;
-	}
-
-	if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1))
-	{
-        last_io_error_ = IoError::ParseFailed;
-		return false;
-	}
-    if(versionnumber < 2 || versionnumber > VERSION_NUM)
-    {
-        Log("Scenario {} is version-level {}, and cannot be read.\n",
-            id, static_cast<int>(versionnumber));
-        last_io_error_ = IoError::UnsupportedVersion;
-        return false;
-    }
-    Log("Loading version {} scenario", static_cast<int>(versionnumber));
+    // Clear any stale view control pointers before world data is replaced.
+    delete_objects();
 
     if (!myloader)
-    {
         myloader = std::make_unique<loader>();
-        wire_entity_factory_callbacks();
-    }
-    else
-    {
-        wire_entity_factory_callbacks();
-    }
-    clear();
-    par_value = static_cast<short>(id);
+    wire_entity_factory_callbacks();
 
-    short tempvalue = load_scenario_version(*infile, this, versionnumber);
-    if(tempvalue == 0)
+    std::string thefile = std::format("scen{}.fss", id);
+
+    og::data::LevelFileMetadata metadata;
+    metadata.grid_file = grid_file;
+    metadata.description = description;
+
+    og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
+    if (!og::data::load_level(thefile, world_ref_, fallback_level_visuals(level_visuals_),
+                              metadata, &io_error))
     {
-        if(last_io_error_ == IoError::None)
-            last_io_error_ = IoError::ParseFailed;
+        last_io_error_ = map_level_file_error(io_error);
         return false;
     }
 
-	TRACE("game", "LevelData::load complete");
+    grid_file = metadata.grid_file;
+    description = metadata.description;
+
+    TRACE("game", "LevelData::load complete");
     last_io_error_ = IoError::None;
-	return true;
-}
-
-bool save_grid_file(const char* gridname, const PixieData& grid)
-{
-	// File data in form:
-	// <# of frames>      1 byte
-	// <x size>                   1 byte
-	// <y size>                   1 byte
-	// <pixie data>               <x*y*frames> bytes
-
-	char numframes, x, y;
-	std::string fullpath(gridname);
-
-	// Create the full pathname for the pixie file
-	fullpath += ".pix";
-
-	lowercase (fullpath);
-
-	auto outfile = og::io::og_open_write("temp/pix/", fullpath.c_str());
-	if (!outfile)
-	{
-		Log("Failed to save map file: temp/pix/{}\n", fullpath);
-		return false;
-	}
-
-	x = grid.w;
-	y = grid.h;
-	numframes = 1;
-	outfile->write(&numframes, 1, 1);
-	outfile->write(&x, 1, 1);
-	outfile->write(&y, 1, 1);
-
-	outfile->write(grid.data.get(), 1, (x*y));
-
-	return true;
+    return true;
 }
 
 bool LevelData::save()
 {
     last_io_error_ = IoError::None;
-	std::int32_t currentx, currenty;
-	unsigned char temporder;
-	char tempfamily;
-	char tempteam, tempfacing, tempcommand;
-	short shortlevel;
-	char filler[20] = "MSTRMSTRMSTRMSTR"; // for RESERVED
-	char temptext[10] = "FSS";
-	char temp_grid[20] = {};
-	char temp_scen_type = 0;
-	short listsize = 0;
-	char temp_version = VERSION_NUM;
-	std::string temp_filename;
-	std::uint8_t numlines = 0;
-	std::uint8_t tempwidth = 0;
-	char tempname[12] = {};
-	char scentitle[30] = {};
-	short temp_par;
-	short temp_time_limit;
 
-	// Format of a scenario object list file is: (ver. 8)
-	// 3-byte header: 'FSS'
-	// 1-byte version number
-	// 8-byte grid file name
-	// 30-byte scenario title
-	// 1-byte scenario_type
-	// 2-bytes par-value for level
-	// 2-bytes time limit for bonus points, v9+
-	// 2-bytes (std::int32_t) = total objects to follow
-	// List of n objects, each of 20-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte std::int32_t xpos
-	// 2-byte std::int32_t ypos
-	// 1-byte TEAM
-	// 1-byte current facing
-	// 1-byte current command
-	// 1-byte level // this is 2 bytes in version 7+
-	// 12-bytes name
-	// ---
-	// 10 bytes RESERVED
-	// 1-byte # of lines of text to load
-	// List of n lines of text, each of form:
-	// 1-byte character width of line
-	// m bytes == characters on this line
+    std::string temp_filename = std::format("scen{}.fss", id);
 
-	// Zardus: PORT: no longer need to put in scen/ in this part
-	//strcpy(temp_filename, scen_directory);
-	temp_filename = std::format("scen{}.fss", this->id);
+    og::data::LevelFileMetadata metadata;
+    metadata.grid_file = grid_file;
+    metadata.description = description;
 
-	auto outfile = og::io::og_open_write("temp/scen/", temp_filename.c_str());
-	if (!outfile)
-	{
-		Log("Could not open file for writing: temp/scen/{}\n", temp_filename);
-        last_io_error_ = IoError::OpenWriteFailed;
-		return false;
-	}
-
-#define WRITE_FIELD(src, size, count)                                                                    \
-    do {                                                                                                 \
-        if (outfile->write((src), (size), (count)) != static_cast<std::size_t>(count)) {               \
-            Log("Failed to write scenario file: temp/scen/{}\n", temp_filename);                        \
-            last_io_error_ = IoError::SerializeFailed;                                                   \
-            return false;                                                                                \
-        }                                                                                                \
-    } while (0)
-
-	// Write id header
-	WRITE_FIELD(temptext, 3, 1);
-
-	// Write version number
-	WRITE_FIELD(&temp_version, 1, 1);
-
-	// Write name of current grid...
-	fill_fixed_field(temp_grid, 8, this->grid_file, "grid_file");  // Do NOT include extension (max 8 chars)
-	WRITE_FIELD(temp_grid, 8, 1);
-
-	// Write the scenario title, if it exists
-	fill_fixed_field(scentitle, 30, this->title, "title");
-	WRITE_FIELD(scentitle, 30, 1);
-
-	// Write the scenario type info
-	temp_scen_type = this->type;
-	WRITE_FIELD(&temp_scen_type, 1, 1);
-
-	// Write our par value (version 8+)
-	temp_par = this->par_value;
-	WRITE_FIELD(&temp_par, 2, 1);
-
-	// Write the time limit (version 9+)
-	temp_time_limit = this->time_bonus_limit;
-	WRITE_FIELD(&temp_time_limit, 2, 1);
-
-	// Determine size of object list and clamp to loader's accepted range.
-	const size_t total_objects = oblist.size() + fxlist.size() + weaplist.size();
-	const size_t serialized_objects = std::min(total_objects, static_cast<size_t>(MAX_SCENARIO_OBJECTS));
-	if (serialized_objects != total_objects)
-		Log("Scenario object count {} exceeds {}, truncating on save.\n", total_objects, MAX_SCENARIO_OBJECTS);
-	listsize = static_cast<short>(serialized_objects);
-	WRITE_FIELD(&listsize, 2, 1);
-
-	size_t remaining_objects = serialized_objects;
-	auto write_object_list = [&](std::list<std::unique_ptr<walker>>& list, const char* null_label) -> bool
-	{
-		for (auto& uptr : list)
-		{
-			if (remaining_objects == 0)
-				break;
-
-			walker* ob = uptr.get();
-			if (ob == nullptr)
-			{
-				Log("Unexpected nullptr {} object.\n", null_label);
-				last_io_error_ = IoError::SerializeFailed;
-				return false;
-			}
-			temporder = static_cast<unsigned char>(ob->query_order());
-			tempfacing= ob->curdir;
-			tempfamily= ob->family;
-			tempteam  = ob->team_num;
-			tempcommand = static_cast<char>(ob->act_type);
-			currentx  = ob->xpos;
-			currenty  = ob->ypos;
-			shortlevel = static_cast<short>(ob->stats()->level);
-			snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
-			WRITE_FIELD( &temporder, 1, 1);
-			WRITE_FIELD( &tempfamily, 1, 1);
-			WRITE_FIELD( &currentx, 2, 1);
-			WRITE_FIELD( &currenty, 2, 1);
-			WRITE_FIELD( &tempteam, 1, 1);
-			WRITE_FIELD( &tempfacing, 1, 1);
-			WRITE_FIELD( &tempcommand, 1, 1);
-			WRITE_FIELD( &shortlevel, 2, 1);
-			WRITE_FIELD( tempname, 12, 1);
-			WRITE_FIELD( filler, 10, 1);
-			remaining_objects--;
-		}
-		return true;
-	};
-
-	// Okay, we've written header .. now dump the data ..
-	if (!write_object_list(oblist, "regular") ||
-	    !write_object_list(fxlist, "fx") ||
-	    !write_object_list(weaplist, "weap"))
-	{
-		return false;
-	}
-
-	numlines = static_cast<Uint8>(this->description.size());
-	//printf("saving %d lines\n", numlines);
-
-	WRITE_FIELD( &numlines, 1, 1);
-	for (auto& line : this->description)
-	{
-		const size_t serialized_width = std::min<size_t>(line.size(), 0xffu);
-		tempwidth = static_cast<Uint8>(serialized_width);
-		WRITE_FIELD( &tempwidth, 1, 1);
-		if(serialized_width > 0)
-			WRITE_FIELD(line.data(), serialized_width, 1);
-	}
-
-	// Save map (grid) file
-	if (!save_grid_file(grid_file.c_str(), grid))
-	{
-		last_io_error_ = IoError::OpenWriteFailed;
-#undef WRITE_FIELD
-		return false;
-	}
-
-	Log("Scenario saved.\n");
+    og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
+    if (!og::data::save_level(world_ref_, fallback_level_visuals(level_visuals_),
+                              temp_filename, metadata, &io_error))
+    {
+        last_io_error_ = map_level_file_error(io_error);
+        return false;
+    }
 
     last_io_error_ = IoError::None;
-#undef WRITE_FIELD
-	return true;
+    return true;
 }
 
 LevelData::IoError LevelData::load_with_error()
@@ -1710,31 +701,7 @@ std::string LevelData::get_description_line(int i)
 
 std::string get_scenario_title(const char* filename)
 {
-    if (filename == nullptr || filename[0] == '\0')
-        return "none";
-
-    std::string tempfile = std::string(filename) + ".fss";
-    auto infile = og::io::og_open_read("scen/", tempfile.c_str());
-    if (!infile)
-        return "none";
-
-    char temptext[4] = {};
-    char versionnumber = 0;
-    char gridname[8] = {};
-    char buffer[31] = {};
-    std::string result = "none";
-
-    if (!rw_read_exact_or_log(*infile, temptext, 1, 3) ||
-        std::string(temptext, 3) != "FSS")
-        return result;
-    if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1) || versionnumber < 6)
-        return result;
-    if (!rw_read_exact_or_log(*infile, gridname, 1, 8))
-        return result;
-    if (!rw_read_exact_or_log(*infile, buffer, 1, 30))
-        return result;
-    result = std::string(buffer);
-    return result;
+    return og::data::load_scenario_title(filename);
 }
 
 // ---- remaining_foes (moved from glad_gameplay for sim/render split) ----

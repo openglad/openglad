@@ -39,6 +39,7 @@ namespace og::gameplay { class GameWorld; }
 
 #include <openglad/data/smooth.h>
 #include <openglad/data/pixie_data.h>
+#include <openglad/data/level_file_io.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/legacy/pixdefs.h>
 
@@ -188,6 +189,7 @@ public:
 
     std::string get_description_line(int i);
     bool is_headless() const { return headless_; }
+    void set_level_visuals(LevelVisuals* visuals) { level_visuals_ = visuals; }
     void wire_entity(walker* w);  // Wire all stored sim context onto an entity.
 
     // Set sim context used by transitional headless/runtime wiring.
@@ -205,6 +207,7 @@ private:
     IoError last_io_error_ = IoError::None;
     bool headless_ = false;  // When true, skip render component creation
     const LevelDataHooks* hooks_ = nullptr;
+    LevelVisuals* level_visuals_ = nullptr;
 
     // Sim context pointer retained for event bridge wiring.
     og::sim::SimEventLog*  sim_ctx_events_ = nullptr;
