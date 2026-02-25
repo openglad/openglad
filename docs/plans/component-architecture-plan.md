@@ -110,7 +110,7 @@ before entering gameplay.
 **Replaces `LevelData` entirely.** GameWorld absorbs all gameplay-relevant fields
 from both `screen` and `LevelData`, plus the tick logic from `SimWorld`.
 `LevelData` and `SimWorld` both cease to exist as classes. Rendering data
-(`renderer_`, `pixdata[]`, draw offsets) moves to a new `LevelRender` type
+(`renderer_`, `pixdata[]`, draw offsets) moves to a new `LevelVisuals` type
 owned by `screen` in the interface layer.
 
 ```cpp
@@ -207,10 +207,15 @@ public:
   outer layer from `GameSession::current_difficulty_`. Gameplay code reads this
   instead of reaching into `current_session`.
 - **No `GameplayConfig`.** All `cfg_store` effect settings (`attack_lunge`,
-  `hit_recoil`, `damage_numbers`, etc.) are purely visual — they only affect
-  screen draw offsets and cosmetic sprites, never `worldx_`/`worldy_` or damage
-  calculations. These checks move to the interface layer (`walker_draw.cpp`
-  etc.). The `sim_config` pointer is removed from `SimEntity`.
+  `hit_recoil`, `damage_numbers`, `hit_flash`, `hit_anim`, `heal_numbers`) do
+  not affect `worldx_`/`worldy_` or damage calculations. Currently the config
+  gates whether sim code sets these fields on walker at all (e.g.
+  `if (sim_config->is_on("effects", "attack_lunge")) attack_lunge = ...`).
+  **Migration approach:** sim code sets these fields unconditionally (remove
+  the config gates), and the interface layer checks cfg before reading them
+  for display. The fields accumulate even when visually disabled — this is
+  harmless since they're only consumed by render code. The `sim_config`
+  pointer is removed from `SimEntity`.
 - **No `special_name`/`alternate_name` tables.** These were redundant copies of
   data already in the family descriptor registry. Entity code fetches names
   directly from `FamilyDescriptorRegistry::get(family).specials[index].name`.
@@ -236,13 +241,15 @@ public:
   drains these after each tick. No direct audio calls exist in entity code —
   no migration needed.
 
-### LevelRender (new — interface component)
+### LevelVisuals (new — interface component)
 
-Holds the rendering data that was previously on `LevelData`:
+Holds the rendering data that was previously on `LevelData`. Named
+`LevelVisuals` (not `LevelRender`) to avoid confusion with the existing
+`LevelRenderer` class that it wraps:
 
 ```cpp
-// include/openglad/interface/level_render.h
-struct LevelRender {
+// include/openglad/interface/level_visuals.h
+struct LevelVisuals {
     PixieData pixdata[PIX_MAX];          // tile sprite graphics
     std::unique_ptr<LevelRenderer> renderer_;
     std::int32_t topx, topy;             // draw offset
@@ -258,7 +265,7 @@ struct LevelRender {
 - `soundp` (sound playback)
 - `newpalette`, `palmode` (rendering state)
 - `numviews`, `framecount`, `timerstart` (display config)
-- `LevelRender level_render_` (rendering data extracted from old LevelData)
+- `LevelVisuals level_visuals_` (rendering data extracted from old LevelData)
 
 `screen` holds a `GameWorld*` (non-owning — platform owns the world) and
 delegates game logic to it.
@@ -337,9 +344,9 @@ These three phases keep each change independently testable and bisectable.
 - `tick()` writes `level_done`, `game_ended`, `next_level`, and `ending` directly on GameWorld instead of returning `TickResult`
 
 **What stays on `LevelData` temporarily:**
-- `myloader` (entity factory) — moves to resources in Phase 4
-- `renderer_`, `pixdata[]`, `topx/topy` — moves to `LevelRender` in Phase 5
-- Sim context wiring fields (`sim_ctx_*`) — transitional
+- `myloader` (entity factory) — moves to resources in Phase 6
+- `renderer_`, `pixdata[]`, `topx/topy` — moves to `LevelVisuals` in Phase 7
+- Sim context wiring fields (`sim_ctx_*`) — transitional (eliminated by Phase 4)
 
 ### Phase 1: Move entity lists and spatial data to GameWorld
 
@@ -359,6 +366,13 @@ temporarily.
 6. Provide forwarding accessors on both `screen` and `LevelData` to minimize
    churn (callers migrate incrementally)
 7. `GameWorld::add_ob()` delegates to `LevelData::myloader` temporarily
+
+**Entity wiring during transition:** Entity creation flows
+`GameWorld::add_ob()` → `LevelData::myloader->create_walker_owned()` →
+`LevelData::wire_entity()` (sets `sim_*` pointers via `LevelDataHooks`).
+This circular delegation (`GameWorld` → `LevelData` → hooks → back to screen
+state) is ugly but temporary — Phase 4 eliminates `sim_*` pointer wiring,
+and Phase 6 replaces the loader path entirely.
 
 **Files changed (major):**
 - New: `include/openglad/gameplay/game_world.h`, `src/gameplay/game_world.cpp`
@@ -383,15 +397,17 @@ at this point — the signature change comes in Phase 3.
 **Steps:**
 1. Move `tick()`, `tick_count_`, `level_tick_count_`, `rng_` from `SimWorld`
    onto `GameWorld`
-2. `GameWorld::tick()` takes the same parameters `SimWorld::tick()` currently
+2. Move `TickResult` struct definition from `sim_world.h` to `game_world.h`
+   (temporary home — Phase 3 eliminates it)
+3. `GameWorld::tick()` takes the same parameters `SimWorld::tick()` currently
    takes (LevelData&, SaveData&, enemy_freeze&, end, SimEventLog&) — except
    LevelData references become self-references since entity lists are now local
-3. `screen::act()` calls `world_.tick(...)` instead of `sim_world_.tick(...)`
-4. Delete `SimWorld` class
+4. `screen::act()` calls `world_.tick(...)` instead of `sim_world_.tick(...)`
+5. Delete `SimWorld` class and `sim_world.h`
 
 **Files changed (major):**
 - Deleted: `include/openglad/sim/sim_world.h`, `src/runtime/sim_world.cpp`
-- Modified: `include/openglad/gameplay/game_world.h` (tick logic added)
+- Modified: `include/openglad/gameplay/game_world.h` (tick logic + TickResult added)
 - Modified: `include/openglad/runtime/screen.h` (remove `sim_world_` member)
 - Modified: `src/sdl_client/runtime/screen.cpp` (act() delegation)
 
@@ -432,8 +448,8 @@ The `screen`-level field is removed and replaced by `world_.level_done` access.
 - Modified: `include/openglad/gameplay/game_world.h` (state flags added)
 - Modified: `include/openglad/runtime/screen.h` (state fields removed)
 - Modified: `src/sdl_client/runtime/screen.cpp` (act() reads from world_)
-- Deleted: `TickResult` struct from `sim_world.h` (already deleted in Phase 2,
-  but tick() return type changes here)
+- Deleted: `TickResult` struct from `game_world.h` (moved there in Phase 2,
+  now eliminated — tick() writes state flags in place)
 
 **Risk:** Medium — touching screen's state fields affects many callers, but
 forwarding accessors on screen ease the transition.
@@ -446,18 +462,162 @@ forwarding accessors on screen ease the transition.
 screen
 ├── world_ (GameWorld) — entity lists, grid, smoother, obmap, tick logic, RNG, game state
 ├── level_data (LevelData) — temporarily holds myloader + rendering data
-├── save_data (SaveData) — stays on screen for now (moves in Phase 3/5)
+├── save_data (SaveData) — stays on screen for now (moves in Phase 5/9)
 └── viewscreens, video base, sound, palette (display state — stays)
 ```
 
 ---
 
-### Phase 4: Move gloader to resources
+### Phase 4: Introduce GameplayContext and current_game
+
+**Goal:** Entity and sim code accesses shared state through a single
+`thread_local GameplayContext* current_game` instead of per-entity injected
+pointers. This phase must run before Phase 5 (SaveData decoupling) because
+Phase 5 needs `current_game->world->` to replace `sim_save->` references —
+without `current_game`, entities have no path to reach GameWorld fields.
+
+This phase only needs Phases 1–3 (GameWorld with entity lists, tick logic, and
+game state flags). It does NOT need gloader moved or LevelData killed.
+
+**`tick()` signature evolution:** Phase 2 absorbed `SimWorld` into `GameWorld`.
+`GameWorld::tick()` currently takes `SimEventLog&` as an argument. This phase
+completes the evolution: `tick()` takes no args and reads `sim_events` from
+`current_game`.
+
+**Steps:**
+1. Create `include/openglad/gameplay/gameplay_context.h` with the struct and
+   thread_local declaration
+2. Define `current_game` in `src/gameplay/gameplay_context.cpp`
+3. Platform code (GameSession) creates GameplayContext and sets `current_game`
+4. `GameWorld::tick()` drops all args — reads from `current_game` instead
+5. Migrate entity code from `sim_*` pointers to `current_game->` access:
+   - `sim_level->query_passable(...)` → `current_game->world->query_passable(...)`
+   - `sim_rng->next(n)` → `current_game->world->rng_.next(n)`
+   - `sim_events` → `current_game->sim_events`
+   - `sim_enemy_freeze` → `current_game->world->enemy_freeze` (direct field)
+6. Remove `sim_level`, `sim_rng`, `sim_events`,
+   `sim_enemy_freeze` fields from `SimEntity`
+7. Remove the per-entity wiring in `sdl_context_services.cpp` that sets
+   these pointers
+
+**Note:** This phase migrates four of the six `sim_*` pointers. The remaining
+two (`sim_save`, `sim_config`) are left on `SimEntity` until Phase 5, which
+removes them as part of the SaveData decoupling.
+
+**Subsumes desingletonize Phase 1:** The existing `ctx()` global accessor and
+`set_global_context()` are retired. Code that used `ctx().rng` uses
+`current_game->world->rng_`. Code that used `ctx().sim_events` uses
+`current_game->sim_events`.
+
+**Risk:** High churn — touches most entity/sim files. But fully mechanical
+(search-replace per pointer).
+
+**Testing:** Full ctest. Headless unit tests verify thread_local works.
+
+---
+
+### Phase 5: Decouple SaveData from Gameplay
+
+**Goal:** Entity code stops referencing `SaveData`. Gameplay is save-agnostic.
+`current_game` (introduced in Phase 4) provides the access path for
+replacements.
+
+**Current `sim_save` usages in entity code:**
+
+| Usage | File | Replacement |
+|---|---|---|
+| `sim_save->m_score[team_num] += N` | `walker_combat.cpp:287,315` | `current_game->world->m_score[team_num] += N` |
+| `sim_save->m_score[team_num] += N` | `treasure_family_valuables.cpp:33,45,57` | Same |
+| `sim_save->allied_mode` | `walker.cpp:1531,1587` | `current_game->world->allied_mode` |
+| `sim_save->is_level_completed(n)` | `treasure_family_navigation.cpp:76,77` | `current_game->world->completed_levels.count(n)` |
+| `sim_save->scen_num` | `treasure_family_navigation.cpp:77,106` | `current_game->world->current_scenario` |
+| `sim_save->load("save0")` | `treasure_family_navigation.cpp:103` | Emit `WithdrawToLevel` event |
+| `sim_save->save("save0")` | `treasure_family_navigation.cpp:110` | Emit `WithdrawToLevel` event |
+
+**Layering violations in `treasure_family_navigation.cpp` (also fix):**
+
+| Violation | Replacement |
+|---|---|
+| `yes_or_no_prompt()` — UI call from entity code | Emit `RequestExitConfirmation` event; outer layer shows prompt and handles transition |
+| `clear_keyboard()` — input call from entity code | Remove (becomes unnecessary once prompt is event-driven) |
+
+**Also in this phase:** Remove `sim_config` pointer from `SimEntity`. The
+`cfg_store` effect settings (`attack_lunge`, `hit_recoil`, `damage_numbers`,
+`hit_flash`, `hit_anim`, `heal_numbers`) don't affect `worldx_`/`worldy_` or
+damage calculations. **Migration:** Remove the `sim_config->is_on()` gates
+from entity code — sim code unconditionally sets `attack_lunge`, `hit_recoil`,
+pushes `DamageNumber` entries, etc. The interface layer (`walker_draw.cpp`
+etc.) checks `cfg.is_on()` before reading these fields for display. This
+means the fields accumulate even when visually disabled, which is harmless.
+
+**The navigation treasure redesign** is the hardest part of this phase. The
+current EXIT treasure behavior is a blocking interaction: entity code calls a UI
+prompt and waits for the answer.
+
+**New model — deferred action queue:** The treasure entity is a dumb sensor. It
+detects "player stepped on exit" and emits an event. The outer layer owns the
+entire exit orchestration flow. Entity code never re-enters for this decision.
+
+1. Entity detects player on exit tile
+2. Entity emits `RequestExitConfirmation { dest_level, prompt_text }` event
+3. Tick finishes normally — treasure's job is done
+4. Outer layer (platform) drains events, sees `RequestExitConfirmation`
+5. Outer layer shows the prompt via interface layer
+6. Player confirms → outer layer handles the level transition directly
+   (it already owns the game loop, SaveData, level loading)
+7. Player denies → outer layer does nothing, next tick proceeds normally
+
+**Why this approach:** No state machine on the entity, no "pending response"
+field on GameWorld, no multi-tick continuation protocol. The exit/withdrawal
+logic (`sim_save->load/save`) was already an outer-layer concern shoved into
+entity code — this moves it where it belongs.
+
+**Behavior change note:** In the current code, the withdrawal path immediately
+kills all living entities mid-tick. In the new model, the tick finishes normally
+and the outer layer handles the transition afterward. This means other entities
+get one extra tick of actions before the level is discarded.
+
+**Withdrawal edge case:** During that extra tick, enemies can damage the player,
+the player can die, and score can change — all in a tick whose results are about
+to be discarded. The save happens in the outer layer AFTER the tick, so those
+spurious changes would be persisted. **Mitigation:** When `tick()` sees a
+`withdraw_requested` flag on GameWorld (set by the `WithdrawToLevel` event
+emission), it skips entity updates for the remainder of the current tick. This
+preserves the current behavior of "nothing happens after withdrawal" without
+requiring mid-tick save I/O. The outer layer checks `withdraw_requested` after
+tick, performs the save, and loads the target level.
+
+**Steps:**
+1. Add score accumulators, `allied_mode`, `current_scenario`, `completed_levels`
+   to GameWorld (may already be done in Phase 3)
+2. Replace `sim_save->m_score` and `sim_save->allied_mode` references in entity
+   code with `current_game->world->` access (mechanical find-and-replace)
+3. Remove `sim_config->is_on()` gates from entity code (sim sets fields
+   unconditionally); add `cfg.is_on()` checks in interface layer before
+   reading those fields for display (`walker_draw.cpp` etc.)
+4. Remove `sim_config` pointer from `SimEntity`
+5. Redesign exit treasure as event-driven (the hard part)
+6. Remove `sim_save` pointer from `SimEntity`
+7. Update outer layer (screen::act / platform code) to populate GameWorld from
+   SaveData before level start and read results back after level end
+
+**Risk:** Medium-High — the exit treasure redesign requires careful thought.
+Score/allied_mode migration is trivial. `sim_config` removal is mechanical.
+
+**Testing:** Full ctest. Add specific tests for exit and withdrawal behavior.
+
+---
+
+### Phase 6: Move gloader to resources
 
 **Goal:** Move the entity factory (`gloader`) out of `LevelData` into the
 resources layer. `GameWorld::add_ob()` uses a factory callback instead of
 owning a loader directly. This establishes clean gameplay-layer dependencies
 from the start.
+
+Since Phase 4 already introduced `current_game` and eliminated `sim_*` pointer
+wiring, the factory callback does NOT need transitional entity wiring logic.
+Newly created entities use `current_game->` from the start.
 
 **The gloader challenge:** `gloader` is a factory that touches all layers:
 - Reads pixel data from disk → **resources**
@@ -516,162 +676,38 @@ in both SDL and headless modes.
 
 ---
 
-### Phase 5: Kill LevelData
+### Phase 7: Kill LevelData
 
-**Goal:** Move remaining rendering data from `LevelData` to a new `LevelRender`
+**Goal:** Move remaining rendering data from `LevelData` to a new `LevelVisuals`
 type on `screen`. Delete the `LevelData` class entirely.
 
 **Steps:**
-1. Create `include/openglad/interface/level_render.h` with the LevelRender struct
-2. Move `renderer_`, `pixdata[]`, `topx/topy` from `LevelData` into `LevelRender`
-3. Add `LevelRender level_render_;` member to `screen`
+1. Create `include/openglad/interface/level_visuals.h` with the LevelVisuals struct
+2. Move `renderer_`, `pixdata[]`, `topx/topy` from `LevelData` into `LevelVisuals`
+3. Add `LevelVisuals level_visuals_;` member to `screen`
 4. Delete the `LevelData` class — it is fully replaced
 5. Update all remaining code that references `level_data.*` to go through
-   either `world()` (gameplay data) or `level_render_` (rendering data)
+   either `world()` (gameplay data) or `level_visuals_` (rendering data)
+
+**Editor migration:** `level_editor.cpp` heavily manipulates `LevelData`
+(entity lists, grid operations, `mysmoother.smooth()`). All entity-list and
+grid references become `world()` access. Smoother calls (`smooth()`,
+`set_target()`) go through `world().mysmoother`. Rendering data
+(`pixdata[]`, `renderer_`, `topx/topy`) goes through `level_visuals_`. This
+is mechanical but high-churn for the editor file specifically.
 
 **Files changed (major):**
-- New: `include/openglad/interface/level_render.h`
+- New: `include/openglad/interface/level_visuals.h`
 - Deleted: `include/openglad/data/level_data.h`, `src/data/level_data.cpp`
 - Modified: `include/openglad/runtime/screen.h`, `src/sdl_client/runtime/screen.cpp`
+- Modified: `src/sdl_client/ui/level_editor.cpp` (heavy — entity list + grid +
+  rendering data references all change)
 - Modified: All remaining files that reference `level_data.` (should be few by now)
 
-**Risk:** Low-Medium — most references were already migrated in Phases 1–3.
-This is cleanup.
+**Risk:** Medium — most references were already migrated in Phases 1–3, but
+the level editor is a significant remaining consumer of `LevelData`.
 
 **Testing:** Full ctest.
-
----
-
-### Phase 6: Introduce GameplayContext and current_game
-
-**Goal:** Entity and sim code accesses shared state through a single
-`thread_local GameplayContext* current_game` instead of per-entity injected
-pointers. This phase must run before Phase 7 (SaveData decoupling) because
-Phase 7 needs `current_game->world->` to replace `sim_save->` references —
-without `current_game`, entities have no path to reach GameWorld fields.
-
-**`tick()` signature evolution:** Phase 2 absorbed `SimWorld` into `GameWorld`.
-`GameWorld::tick()` currently takes `SimEventLog&` as an argument. This phase
-completes the evolution: `tick()` takes no args and reads `sim_events` from
-`current_game`.
-
-**Steps:**
-1. Create `include/openglad/gameplay/gameplay_context.h` with the struct and
-   thread_local declaration
-2. Define `current_game` in `src/gameplay/gameplay_context.cpp`
-3. Platform code (GameSession) creates GameplayContext and sets `current_game`
-4. `GameWorld::tick()` drops all args — reads from `current_game` instead
-5. Migrate entity code from `sim_*` pointers to `current_game->` access:
-   - `sim_level->query_passable(...)` → `current_game->world->query_passable(...)`
-   - `sim_rng->next(n)` → `current_game->world->rng_.next(n)`
-   - `sim_events` → `current_game->sim_events`
-   - `sim_enemy_freeze` → `current_game->world->enemy_freeze` (direct field)
-6. Remove `sim_level`, `sim_rng`, `sim_events`,
-   `sim_enemy_freeze` fields from `SimEntity`
-7. Remove the per-entity wiring in `sdl_context_services.cpp` that sets
-   these pointers
-
-**Note:** This phase migrates four of the six `sim_*` pointers. The remaining
-two (`sim_save`, `sim_config`) are left on `SimEntity` until Phase 7, which
-removes them as part of the SaveData decoupling.
-
-**Subsumes desingletonize Phase 1:** The existing `ctx()` global accessor and
-`set_global_context()` are retired. Code that used `ctx().rng` uses
-`current_game->world->rng_`. Code that used `ctx().sim_events` uses
-`current_game->sim_events`.
-
-**Risk:** High churn — touches most entity/sim files. But fully mechanical
-(search-replace per pointer).
-
-**Testing:** Full ctest. Headless unit tests verify thread_local works.
-
----
-
-### Phase 7: Decouple SaveData from Gameplay
-
-**Goal:** Entity code stops referencing `SaveData`. Gameplay is save-agnostic.
-`current_game` (introduced in Phase 6) provides the access path for
-replacements.
-
-**Current `sim_save` usages in entity code:**
-
-| Usage | File | Replacement |
-|---|---|---|
-| `sim_save->m_score[team_num] += N` | `walker_combat.cpp:287,315` | `current_game->world->m_score[team_num] += N` |
-| `sim_save->m_score[team_num] += N` | `treasure_family_valuables.cpp:33,45,57` | Same |
-| `sim_save->allied_mode` | `walker.cpp:1531,1587` | `current_game->world->allied_mode` |
-| `sim_save->is_level_completed(n)` | `treasure_family_navigation.cpp:76,77` | `current_game->world->completed_levels.count(n)` |
-| `sim_save->scen_num` | `treasure_family_navigation.cpp:77,106` | `current_game->world->current_scenario` |
-| `sim_save->load("save0")` | `treasure_family_navigation.cpp:103` | Emit `WithdrawToLevel` event |
-| `sim_save->save("save0")` | `treasure_family_navigation.cpp:110` | Emit `WithdrawToLevel` event |
-
-**Layering violations in `treasure_family_navigation.cpp` (also fix):**
-
-| Violation | Replacement |
-|---|---|
-| `yes_or_no_prompt()` — UI call from entity code | Emit `RequestExitConfirmation` event; outer layer shows prompt and handles transition |
-| `clear_keyboard()` — input call from entity code | Remove (becomes unnecessary once prompt is event-driven) |
-
-**Also in this phase:** Remove `sim_config` pointer from `SimEntity`. All
-`cfg_store` effect settings (`attack_lunge`, `hit_recoil`, `damage_numbers`,
-`hit_flash`, `hit_anim`, `heal_numbers`) are purely visual — they only offset
-screen draw positions and create cosmetic sprites, never affecting actual world
-positions or damage calculations. The config checks move to the interface layer
-(`walker_draw.cpp`, `walker_combat.cpp` render paths, etc.).
-
-**The navigation treasure redesign** is the hardest part of this phase. The
-current EXIT treasure behavior is a blocking interaction: entity code calls a UI
-prompt and waits for the answer.
-
-**New model — deferred action queue:** The treasure entity is a dumb sensor. It
-detects "player stepped on exit" and emits an event. The outer layer owns the
-entire exit orchestration flow. Entity code never re-enters for this decision.
-
-1. Entity detects player on exit tile
-2. Entity emits `RequestExitConfirmation { dest_level, prompt_text }` event
-3. Tick finishes normally — treasure's job is done
-4. Outer layer (platform) drains events, sees `RequestExitConfirmation`
-5. Outer layer shows the prompt via interface layer
-6. Player confirms → outer layer handles the level transition directly
-   (it already owns the game loop, SaveData, level loading)
-7. Player denies → outer layer does nothing, next tick proceeds normally
-
-**Why this approach:** No state machine on the entity, no "pending response"
-field on GameWorld, no multi-tick continuation protocol. The exit/withdrawal
-logic (`sim_save->load/save`) was already an outer-layer concern shoved into
-entity code — this moves it where it belongs.
-
-**Behavior change note:** In the current code, the withdrawal path immediately
-kills all living entities mid-tick. In the new model, the tick finishes normally
-and the outer layer handles the transition afterward. This means other entities
-get one extra tick of actions before the level is discarded.
-
-**Withdrawal edge case:** During that extra tick, enemies can damage the player,
-the player can die, and score can change — all in a tick whose results are about
-to be discarded. The save happens in the outer layer AFTER the tick, so those
-spurious changes would be persisted. **Mitigation:** When `tick()` sees a
-`withdraw_requested` flag on GameWorld (set by the `WithdrawToLevel` event
-emission), it skips entity updates for the remainder of the current tick. This
-preserves the current behavior of "nothing happens after withdrawal" without
-requiring mid-tick save I/O. The outer layer checks `withdraw_requested` after
-tick, performs the save, and loads the target level.
-
-**Steps:**
-1. Add score accumulators, `allied_mode`, `current_scenario`, `completed_levels`
-   to GameWorld (may already be done in Phase 3)
-2. Replace `sim_save->m_score` and `sim_save->allied_mode` references in entity
-   code with `current_game->world->` access (mechanical find-and-replace)
-3. Move `sim_config` effect checks to interface layer (`walker_draw.cpp` etc.)
-4. Remove `sim_config` pointer from `SimEntity`
-5. Redesign exit treasure as event-driven (the hard part)
-6. Remove `sim_save` pointer from `SimEntity`
-7. Update outer layer (screen::act / platform code) to populate GameWorld from
-   SaveData before level start and read results back after level end
-
-**Risk:** Medium-High — the exit treasure redesign requires careful thought.
-Score/allied_mode migration is trivial. `sim_config` removal is mechanical.
-
-**Testing:** Full ctest. Add specific tests for exit and withdrawal behavior.
 
 ---
 
@@ -688,14 +724,14 @@ component. Concrete implementation stays in the interface layer.
 3. Update `WalkerRender` to extend `IRenderComponent` (in interface layer)
 4. Interface rendering code downcasts:
    `static_cast<WalkerRender*>(w->render_component())`
-5. Same pattern for `LevelRender` → `ILevelRender` base in gameplay
+5. Same pattern for `LevelVisuals` → `ILevelVisuals` base in gameplay
 6. Remove `#include <openglad/entities/walker_render.h>` from walker.h
    (only forward-declare `IRenderComponent`)
 
 **Note:** This phase modifies `walker.h` in its current location
 (`include/openglad/entities/`). The physical move to `gameplay/` happens in
-Phase 10. This phase runs **after Phases 6–7** (not parallel) because all
-three modify `walker.h` / `SimEntity` — sequencing avoids merge conflicts.
+Phase 10. This phase runs after Phases 4–5 because all three modify
+`walker.h` / `SimEntity` — sequencing avoids merge conflicts.
 
 **Risk:** Low — small, mechanical change. The hard part is making sure all
 downcast sites are updated.
@@ -705,8 +741,8 @@ downcast sites are updated.
 ### Phase 9: Split the Data Layer
 
 **Goal:** Separate gameplay data structures from file I/O serialization.
-`LevelData` was already eliminated in Phase 5. `gloader` was already moved to
-resources in Phase 4. This phase moves the remaining serialization code.
+`LevelData` was already eliminated in Phase 7. `gloader` was already moved to
+resources in Phase 6. This phase moves the remaining serialization code.
 
 **Gameplay keeps:**
 - `GameWorld` (the in-memory game state — already exists from Phases 1–3)
@@ -722,7 +758,7 @@ resources in Phase 4. This phase moves the remaining serialization code.
 - `pixie_data` loading from .pix files
 - All PhysFS/zip/yaml code (already in `io`)
 
-**(gloader already moved in Phase 4.)**
+**(gloader already moved in Phase 6.)**
 
 **Steps:**
 1. Move `SaveData` entirely to resources
@@ -733,7 +769,7 @@ resources in Phase 4. This phase moves the remaining serialization code.
 **Risk:** Low-Medium — straightforward moves. Smaller than originally planned
 since gloader was already handled.
 
-**Depends on Phase 7.** SaveData must be fully decoupled from entity code
+**Depends on Phase 5.** SaveData must be fully decoupled from entity code
 before moving it to resources — otherwise you'd move a type that still has
 entity-layer coupling and need to rework the boundary.
 
@@ -761,7 +797,7 @@ include/openglad/
 │   ├── sim_entity.h, sim_event_log.h, event.h
 │   ├── sim_emit.h, irandom.h
 │   └── families/             (descriptors, registries)
-│   (no level_data.h — eliminated in Phase 5)
+│   (no level_data.h — eliminated in Phase 7)
 │   (no sim_world.h — absorbed into GameWorld in Phase 2)
 ├── resources/
 │   ├── io.h                  (filesystem abstraction API)
@@ -944,52 +980,55 @@ remaining global state identified in the singletons audit.
 
 ---
 
-## Phase Dependencies
+## Phase Sequence
+
+All phases run sequentially, one at a time. Each phase must pass full ctest
+before the next begins.
 
 ```
-Phase 1 (GameWorld shell, entity lists, spatial data)
-    │
-    ▼
-Phase 2 (absorb SimWorld into GameWorld)
-    │
-    ▼
-Phase 3 (game state flags, eliminate TickResult)
-    │
-    ├──→ Phase 4 (move gloader to resources)
-    │        │
-    │        ▼
-    │    Phase 5 (kill LevelData, create LevelRender)
-    │        │
-    │        ├──→ Phase 6 (current_game thread-local)
-    │        │        │
-    │        │        ▼
-    │        │    Phase 7 (SaveData decoupling + sim_config removal)
-    │        │        │
-    │        │        ├──→ Phase 8 (IRenderComponent) ← sequenced after 6-7
-    │        │        │
-    │        │        └──→ Phase 9 (remaining data layer split) ← needs SaveData decoupled
-    │        │
-    │        └──→ (all above must complete before Phase 10)
-    │
-    └──→ Phase 10 (directory reorganization + video split + ownership transfer)
-              │
-              ▼
-         Phase 11 (inter-component interfaces)
-              │
-              ▼
-         Phase 12 (enforcement + cleanup)
+Phase 1  (GameWorld shell, entity lists, spatial data)
+   ▼
+Phase 2  (absorb SimWorld into GameWorld)
+   ▼
+Phase 3  (game state flags, eliminate TickResult)
+   ▼
+Phase 4  (current_game thread-local)          ← moved up: only needs Phases 1–3
+   ▼
+Phase 5  (SaveData decoupling + sim_config removal)
+   ▼
+Phase 6  (move gloader to resources)
+   ▼
+Phase 7  (kill LevelData, create LevelVisuals)
+   ▼
+Phase 8  (IRenderComponent)
+   ▼
+Phase 9  (remaining data layer split)
+   ▼
+Phase 10 (directory reorganization + video split + ownership transfer)
+   ▼
+Phase 11 (inter-component interfaces)
+   ▼
+Phase 12 (enforcement + cleanup)
 ```
+
+**Why this order:**
 
 - **Phases 1–3** create GameWorld incrementally: entity data, then tick logic,
   then state flags. Each is independently testable and bisectable.
-- **Phase 4** depends on Phase 3. **Phase 5** depends on Phase 4.
-- **Phase 6** (current_game) must come before **Phase 7** (SaveData decoupling).
-  Phase 7 needs `current_game->world->` to replace `sim_save->` references —
-  without `current_game`, entities have no path to reach GameWorld fields.
-- **Phase 8** runs after Phases 6–7 to avoid merge conflicts in `walker.h`.
-- **Phase 9** depends on Phase 7. SaveData must be fully decoupled from entity
-  code before moving it to resources — otherwise you'd move a type that still
-  has entity-layer coupling and need to rework the boundary.
+- **Phase 4** (current_game) comes right after Phase 3. It only needs GameWorld
+  to exist with the right fields — it does NOT need gloader moved or LevelData
+  killed. Moving it up front unblocks Phase 5 (SaveData decoupling) earlier.
+- **Phase 5** (SaveData decoupling) needs `current_game->world->` to replace
+  `sim_save->` references — entities have no other path to reach GameWorld fields.
+- **Phase 6** (gloader) can now use the cleaner wiring: since Phase 4 already
+  introduced `current_game`, no transitional `sim_*` pointer wiring is needed
+  in the factory callback. Entities use `current_game->` from the start.
+- **Phase 7** (kill LevelData) depends on Phase 6 (gloader moved out of
+  LevelData).
+- **Phase 8** (IRenderComponent) runs after Phases 4–5 to avoid merge conflicts
+  in `walker.h` / `SimEntity` — all three modify these files.
+- **Phase 9** depends on Phase 5. SaveData must be fully decoupled from entity
+  code before moving it to resources.
 - **Phase 10** is the big mechanical move — much easier after the logical splits
   (1–9) are in place. Includes the video/screen inheritance split and the
   GameWorld ownership transfer from screen to GameSession.
@@ -1005,7 +1044,7 @@ desingletonize phases are subsumed:
 | Desingletonize Phase | Status | Disposition |
 |---|---|---|
 | Phase 0 (const sweep) | Done | N/A |
-| Phase 1 (eliminate ctx globals) | Partial | Subsumed by Phase 6 here (`current_game` replaces `ctx()`) |
+| Phase 1 (eliminate ctx globals) | Partial | Subsumed by Phase 4 here (`current_game` replaces `ctx()`) |
 | Phases 2-9 | Done | N/A |
 | Phase 10 (final verification) | Not started | Subsumed by Phase 12 here |
 
@@ -1034,7 +1073,7 @@ to move `screen` to the interface layer. `video` splits into an abstract base
 `screen` to `GameSession`. Both changes happen as dedicated sub-steps before
 the physical file moves.
 
-### 2. Navigation treasure redesign (Phase 7)
+### 2. Navigation treasure redesign (Phase 5)
 
 `treasure_family_navigation.cpp` currently makes blocking UI calls
 (`yes_or_no_prompt()`) and does save I/O (`sim_save->load/save`) from inside
@@ -1050,7 +1089,7 @@ No state machine on the entity, no "pending response" field on GameWorld, no
 multi-tick continuation. The exit/withdrawal logic was already an outer-layer
 concern — this moves it where it belongs.
 
-### 3. gloader factory pattern (Phase 4)
+### 3. gloader factory pattern (Phase 6)
 
 `gloader` creates entities with graphics — it touches all layers.
 
@@ -1126,12 +1165,13 @@ OG_UNIT_TEST(test_enemy_scaling) {
 - **Phase 2:** Tests that reference `sim_world_` update to `world_.tick()`.
 - **Phase 3:** Tests that read `level_done` etc. from screen update to
   read from `world_`. `TickResult` assertions removed.
-- **Phase 4:** Entity creation tests verify factory callback path.
-- **Phase 5:** Remaining `level_data.*` references cleaned up in tests.
-- **Phase 6:** Tests switch from `ctx()` / `sim_*` pointer setup to
+- **Phase 4:** Tests switch from `ctx()` / `sim_*` pointer setup to
   `current_game->` access. Wiring code in test fixtures simplified.
-- **Phase 7:** Tests for exit/withdrawal behavior added. Tests stop
+- **Phase 5:** Tests for exit/withdrawal behavior added. Tests stop
   referencing `sim_save` and `sim_config` from entity code.
+- **Phase 6:** Entity creation tests verify factory callback path.
+- **Phase 7:** Remaining `level_data.*` references cleaned up in tests
+  (including level editor test paths).
 - **Phase 8:** Rendering tests update downcast patterns.
 - **Phase 9:** Data loading tests use new free functions in resources.
 - **Phase 10:** Include paths updated in test files.
@@ -1160,7 +1200,7 @@ Global accessor: ctx() with fallback/override machinery
 4 components + core (gameplay, resources, interface, platform)
 GameWorld class: pure game state + tick logic + RNG, no rendering, no I/O
 No SimWorld class (absorbed into GameWorld)
-No LevelData class (replaced by GameWorld + LevelRender)
+No LevelData class (replaced by GameWorld + LevelVisuals)
 Entity code: accesses current_game->world-> for everything (including RNG),
   no SaveData, no UI calls, no sim_config (effects checks in interface layer)
 Thread-local in gameplay: current_game (GameplayContext*)
