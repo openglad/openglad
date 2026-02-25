@@ -162,12 +162,6 @@ int run_text_protocol_session(const TextProtocolArgs& args)
 
     // Create level data and load (headless — no tile graphics)
     LevelData level(args.level, true, &headless_level_data_hooks());
-    if (level.myloader)
-    {
-        EntityFactory headless_factory;
-        headless_factory.attach_render = [](walker&, const PixieData&) {};
-        level.myloader->set_entity_factory(std::move(headless_factory));
-    }
     SaveData save;
     save.current_campaign = args.campaign;
     save.scen_num = static_cast<short>(args.level);

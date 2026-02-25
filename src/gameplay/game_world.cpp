@@ -356,6 +356,27 @@ walker* GameWorld::add_weap_ob(Order order, std::int32_t family)
     return raw;
 }
 
+walker* GameWorld::configure_entity(walker* ob, Order order, std::int32_t family)
+{
+    if (!entity_configure || !ob)
+        return nullptr;
+    return entity_configure(ob, order, family);
+}
+
+void GameWorld::apply_derived_stats(walker* ob, Order order, std::int32_t family)
+{
+    if (!entity_derived_stats || !ob)
+        return;
+    entity_derived_stats(ob, order, family);
+}
+
+const PixieData* GameWorld::lookup_entity_graphics(Order order, std::int32_t family) const
+{
+    if (!entity_graphics)
+        return nullptr;
+    return entity_graphics(order, family);
+}
+
 bool GameWorld::query_grid_passable(float x, float y, walker* ob)
 {
     std::int32_t i, j;

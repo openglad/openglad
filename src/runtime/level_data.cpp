@@ -465,9 +465,7 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks,
     if (!myobmap)
 	    myobmap = std::make_unique<obmap>();
     myloader = std::make_unique<loader>();
-    configure_loader_entity_factory();
-    world_ref_.myloader = myloader.get();
-    bind_world_entity_factory();
+    wire_entity_factory_callbacks();
 
     if (!headless)
     {
@@ -490,8 +488,10 @@ LevelData::~LevelData()
     delete_objects();
     delete_grid();
     world_ref_.entity_factory = nullptr;
+    world_ref_.entity_configure = nullptr;
+    world_ref_.entity_derived_stats = nullptr;
+    world_ref_.entity_graphics = nullptr;
     myloader.reset();
-    world_ref_.myloader = nullptr;
 
     myobmap.reset();
 
@@ -529,23 +529,16 @@ void LevelData::wire_entity(walker* w)
     (void)w;
 }
 
-void LevelData::bind_world_entity_factory()
-{
-    world_ref_.entity_factory = [this](Order order, int family) -> std::unique_ptr<walker> {
-        if (!myloader)
-            return nullptr;
-        auto w = myloader->create_walker_owned(order, family);
-        if (!w)
-            return nullptr;
-        wire_entity(w.get());
-        return w;
-    };
-}
-
-void LevelData::configure_loader_entity_factory()
+void LevelData::wire_entity_factory_callbacks()
 {
     if (!myloader)
+    {
+        world_ref_.entity_factory = nullptr;
+        world_ref_.entity_configure = nullptr;
+        world_ref_.entity_derived_stats = nullptr;
+        world_ref_.entity_graphics = nullptr;
         return;
+    }
 
     EntityFactory factory;
     if (!headless_)
@@ -555,6 +548,38 @@ void LevelData::configure_loader_entity_factory()
         };
     }
     myloader->set_entity_factory(std::move(factory));
+
+    world_ref_.entity_factory = [this](Order order, int family) -> std::unique_ptr<walker> {
+        if (!myloader)
+            return nullptr;
+        auto w = myloader->create_walker_owned(order, family);
+        if (!w)
+            return nullptr;
+        wire_entity(w.get());
+        return w;
+    };
+    world_ref_.entity_configure = [this](walker* w, Order order, int family) -> walker* {
+        if (!myloader || !w)
+            return nullptr;
+        return myloader->set_walker(w, order, family);
+    };
+    world_ref_.entity_derived_stats = [this](walker* w, Order order, int family) {
+        if (!myloader || !w)
+            return;
+        myloader->set_derived_stats(w, order, family);
+    };
+    world_ref_.entity_graphics = [this](Order order, int family) -> const PixieData* {
+        if (!myloader)
+            return nullptr;
+        if (family < 0 || family >= NUM_FAMILIES)
+            return nullptr;
+        const int order_i = static_cast<int>(order);
+        constexpr int kOrderCount = static_cast<int>(Order::Button1) + 1;
+        if (order_i < 0 || order_i >= kOrderCount)
+            return nullptr;
+        const PixieData& data = myloader->graphics[PIX(order, family)];
+        return data.valid() ? &data : nullptr;
+    };
 }
 
 short LevelData::remove_ob(walker  *ob)
@@ -1434,14 +1459,12 @@ bool LevelData::load()
     if (!myloader)
     {
         myloader = std::make_unique<loader>();
-        configure_loader_entity_factory();
-        world_ref_.myloader = myloader.get();
+        wire_entity_factory_callbacks();
     }
     else
     {
-        configure_loader_entity_factory();
+        wire_entity_factory_callbacks();
     }
-    bind_world_entity_factory();
     clear();
     par_value = static_cast<short>(id);
 

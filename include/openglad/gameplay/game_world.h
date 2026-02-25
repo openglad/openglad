@@ -27,7 +27,6 @@
 enum class Order : unsigned char;
 class walker;
 class obmap;
-class loader;
 
 #include <openglad/data/pixie_data.h>
 #include <openglad/data/smooth.h>
@@ -84,7 +83,6 @@ public:
 
     // Spatial data (moved from LevelData in Phase 1b)
     std::unique_ptr<obmap> myobmap;
-    loader* myloader = nullptr; // Transitional: set by platform/resources setup.
     PixieData grid;
     smoother mysmoother;
     std::int32_t pixmaxx = 0;
@@ -119,6 +117,9 @@ public:
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
     std::function<std::unique_ptr<walker>(Order, int)> entity_factory;
+    std::function<walker*(walker*, Order, int)> entity_configure;
+    std::function<void(walker*, Order, int)> entity_derived_stats;
+    std::function<const PixieData*(Order, int)> entity_graphics;
 
     // Clear all entity lists and reset living_count.
     // Note: this clears only entity storage. Hooks (e.g. stale view control
@@ -132,6 +133,9 @@ public:
     walker* add_ob(Order order, std::int32_t family, bool atstart = false);
     walker* add_fx_ob(Order order, std::int32_t family);
     walker* add_weap_ob(Order order, std::int32_t family);
+    walker* configure_entity(walker* ob, Order order, std::int32_t family);
+    void apply_derived_stats(walker* ob, Order order, std::int32_t family);
+    const PixieData* lookup_entity_graphics(Order order, std::int32_t family) const;
 
     // Collision/passability queries
     bool query_passable(float x, float y, walker* ob);

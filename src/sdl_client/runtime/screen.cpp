@@ -206,15 +206,6 @@ void screen::init_common(short howmany, bool has_display)
 	world_.retry = false;
 	sync_world_from_save();
 
-	if (level_data.myloader)
-	{
-		EntityFactory factory;
-		factory.attach_render = [](walker& w, const PixieData& data) {
-			w.attach_render(data);
-		};
-		level_data.myloader->set_entity_factory(std::move(factory));
-	}
-
 	numviews = howmany;
     for (auto& view : viewob)
         view.reset();

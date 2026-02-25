@@ -314,7 +314,8 @@ float guy::get_fire_frequency_bonus() const
 void guy::update_derived_stats(walker* w)
 {
     guy* temp_guy = w->myguy;
-    og::gameplay::current_game->world->myloader->set_derived_stats(w, Order::Living, temp_guy->family);
+    if (og::gameplay::current_game && og::gameplay::current_game->world)
+        og::gameplay::current_game->world->apply_derived_stats(w, Order::Living, temp_guy->family);
     
     
     w->stats()->max_hitpoints += temp_guy->get_hp_bonus();

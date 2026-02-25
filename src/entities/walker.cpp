@@ -1230,17 +1230,21 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	// Do this before resetting graphic so illegal
 	//  family values don't try to set graphics.
 	//  order and family are only set if legal
-	og::gameplay::current_game->world->myloader->set_walker(this, whatorder, whatfamily);
+	if (og::gameplay::current_game && og::gameplay::current_game->world)
+		og::gameplay::current_game->world->configure_entity(this, whatorder, whatfamily);
 
 	// Reset the graphics
-	const PixieData& data = og::gameplay::current_game->world->myloader->graphics[PIX(order, family)];
+	const PixieData* data = (og::gameplay::current_game && og::gameplay::current_game->world)
+		? og::gameplay::current_game->world->lookup_entity_graphics(order, family)
+		: nullptr;
 
 	// Save center before resize (uses old sizex/sizey)
 	xcenter = xpos + sizex/2;
 	ycenter = ypos + sizey/2;
 
 	// Update sim fields + sync render component
-	set_data(data);
+	if (data)
+		set_data(*data);
 	frame = 0;
 	cycle = 0;
 
@@ -1370,7 +1374,7 @@ void walker::generate_bloodspot()
 	bloodstain->team_num = team_num;
 	bloodstain->dead = 0;
 	bloodstain->setxy(xpos, ypos);
-	//data = myscreen->myloader->graphics[PIX(Order::Treasure, FAMILY_STAIN)];
+	//data = graphics[PIX(Order::Treasure, FAMILY_STAIN)];
 	// We can't select other 'bloodspot' frames, because set_frame
 	// appears to check the order and family and reset our picture
 	// to a living guy .. we need to find a way around this ..
