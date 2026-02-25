@@ -424,6 +424,17 @@ and Phase 6 replaces the loader path entirely.
 - Modified: `include/openglad/runtime/screen.h` (new `world_` member)
 - Modified: All files that reference `level_data.oblist` etc. (high churn but mechanical)
 
+**Screen lifecycle methods:**
+- `screen::ready_for_battle()` — display-only (views, UI flags, timer). Not
+  affected by GameWorld extraction.
+- `screen::reset()` — calls `save_data.reset()` and `level_data.clear()`.
+  After Phase 1a, the `level_data.clear()` call must also clear `world_`
+  state (or be replaced by a `world_.clear()` + `level_data.clear()` pair).
+- `screen::endgame()` — mixed concerns: shows results_screen (display),
+  updates save_data scores (persistence), calls save_data.save() (I/O).
+  Stays on screen during Phases 1-3 but needs splitting in Phase 10 when
+  screen moves to interface.
+
 **Risk:** High — `LevelData` is referenced widely. But keeping `LevelData`
 alive as a shell with forwarding accessors makes this incremental.
 
@@ -451,6 +462,12 @@ each commit smaller and independently testable.
    `find_foes_in_range()`, `find_foe_weapons_in_range()`,
    `find_friends_in_range()` to GameWorld
 5. Update forwarding accessors on `LevelData` for new fields
+6. Move grid management methods to GameWorld: `create_new_grid()`,
+   `resize_grid()`, `delete_grid()`, `clear()`. Note: these currently touch
+   `mysmoother` (rendering state) — the `mysmoother.set_target(grid)` calls
+   stay since `mysmoother` moves to GameWorld (plan already specifies this).
+   `resize_grid()` also removes entities that fall off the map — pure
+   gameplay concern.
 
 **Files changed (major):**
 - Modified: `include/openglad/gameplay/game_world.h` (spatial + metadata fields added)
@@ -570,6 +587,10 @@ completes the evolution: `tick()` takes no args and reads `sim_events` from
    - `sim_rng->next(n)` → `current_game->world->rng_.next(n)`
    - `sim_events` → `current_game->sim_events`
    - `sim_enemy_freeze` → `current_game->world->enemy_freeze` (direct field)
+   - `stats.cpp:38` — `ctx().rng->next()` → `current_game->world->rng_.next()`
+     (stat calculations during gameplay)
+   - `smooth.cpp:25` — `ctx().rng->next()` → `current_game->world->rng_.next()`
+     (terrain smoothing during gameplay)
 6. Remove `sim_level`, `sim_rng`, `sim_events`,
    `sim_enemy_freeze` fields from `SimEntity`
 7. Remove entity wiring from **both** sites that set `sim_*` pointers:
@@ -607,6 +628,23 @@ single-threaded-only for gameplay.
 `set_global_context()` are retired. Code that used `ctx().rng` uses
 `current_game->world->rng_`. Code that used `ctx().sim_events` uses
 `current_game->sim_events`.
+
+**RNG behavioral change:** Currently, `SimWorld` owns a deterministic
+`SimRandom rng_` (LCG), but entity code uses `sim_rng` which is overwritten by
+site 2 (`sdl_context_services.cpp:79-89`) to point at `ctx().rng` — a
+`ProductionRandom` that wraps a non-deterministic global `random()` function.
+After migration, entities use `current_game->world->rng_` (SimRandom). This
+switches entity code from non-deterministic to deterministic RNG. This is
+intentional (enables replay-safe gameplay) but is a behavioral change that
+could affect game feel and should be regression-tested.
+
+**`ctx().rng` call sites NOT migrated to `current_game`:** The following
+render/platform `ctx().rng` usages use RNG for visual effects, not gameplay.
+They are not migrated to `current_game->world->rng_`:
+- `score_panel.cpp:31`, `view.cpp:410/509`, `video.cpp:36`, `radar.cpp:30`,
+  `glad.cpp:64`
+After `ctx()` retirement (Phase 12), these switch to
+`current_session->ctx_.rng` or a dedicated render-layer RNG.
 
 **Risk:** High churn — touches most entity/sim files. But fully mechanical
 (search-replace per pointer).
@@ -648,6 +686,13 @@ from entity code — sim code unconditionally sets `attack_lunge`, `hit_recoil`,
 pushes `DamageNumber` entries, etc. The interface layer (`walker_draw.cpp`
 etc.) checks `cfg.is_on()` before reading these fields for display. This
 means the fields accumulate even when visually disabled, which is harmless.
+
+**Additional `sim_config` call sites:**
+
+| Usage | File | Migration |
+|---|---|---|
+| `sim_config->is_on("effects", "heal_numbers")` | `family_orc.cpp:94` | Remove gate — set heal number unconditionally |
+| `sim_config->is_on("effects", "heal_numbers")` | `family_cleric.cpp:123` | Remove gate — set heal number unconditionally |
 
 **The navigation treasure redesign** is the hardest part of this phase. The
 current EXIT treasure behavior is a blocking interaction: entity code calls a UI
@@ -766,6 +811,14 @@ graphics. This must be resolved when moving gloader to resources. Options:
 - Return a null/error and let the caller handle the dialog
 - Use an error callback wired by platform
 
+**Note:** `loader` currently takes `LevelData*` in its constructor
+(`explicit loader(LevelData* owner)`) and stores it as `owner_level`. This
+pointer is used in `create_walker_owned()` to call
+`owner_level->wire_entity()`. Phase 6 must eliminate this constructor
+parameter entirely — the factory callback pattern replaces both the
+`LevelData*` owner and the wire_entity call (since Phase 4 already
+removed sim_* wiring in favor of `current_game`).
+
 **Steps:**
 1. Move `gloader` from `LevelData` to resources layer
 2. Define `EntityFactory` callback struct for render component attachment
@@ -877,6 +930,14 @@ data during load/save (e.g. as a separate output/input parameter or in a
 1. Move `SaveData` entirely to resources
 2. Move `gparser`, `pixie_data` to resources
 3. Move level file format code (`load_scenario_data()` etc.) to resources
+
+**Note:** `LevelData::load()` / `save()` currently serialize both gameplay data
+(entity lists, grid, metadata) and visual data (pixdata[], grid_file). The
+resources-layer `load_level()` must populate both `GameWorld` and
+`LevelVisuals` (or return visual data separately). Similarly `save_level()`
+must read from both. Consider a `LevelFileData` bag struct that holds
+`GameWorld&` + `LevelVisuals&` + `LevelFileMetadata` (grid_file, description)
+as the serialization interface.
    as free functions operating on `GameWorld&`
 
 **Risk:** Low-Medium — straightforward moves. Smaller than originally planned
@@ -981,14 +1042,17 @@ move (step 3 above), not deferred to Phase 11.
 currently creates/reinitializes `world_` inside `screen` must move to
 `GameSession`. Plan this as a dedicated sub-step before the physical file moves.
 
-**Note on `og_runtime` SDL mixing:** `og_runtime` currently has 11 source files
-from `src/sdl_client/runtime/` (`game_loop.cpp`, `game_session.cpp`,
-`glad_gameplay.cpp`, `legacy_globals.cpp`, `score_panel.cpp`,
-`screen_lifecycle.cpp`, `screen.cpp`, `guy_create.cpp`, `game.cpp`,
-`input_event_bridge.cpp`, `walker_render_bridge.cpp`, `sdl_context_services.cpp`,
-`cheat_handler.cpp`). The Phase 10 directory reorganization needs to split these
-between interface and platform — it's not a matter of moving whole directories.
-Each file needs individual triage based on its dependencies.
+**Note on `og_runtime` SDL mixing:** `og_runtime` currently has 13 source files
+from `src/sdl_client/runtime/` (`guy_create.cpp`, `walker_render_bridge.cpp`,
+`score_panel.cpp`, `legacy_globals.cpp`, `game_loop.cpp`, `game.cpp`,
+`sdl_context_services.cpp`, `screen.cpp`, `glad_gameplay.cpp`,
+`screen_lifecycle.cpp`, `game_session.cpp`, `input_event_bridge.cpp`,
+`cheat_handler.cpp`). Additionally, `og_runtime` includes 8 files from
+`src/runtime/` (non-SDL): `game_context.cpp`, `game_session_core.cpp`,
+`screen_core.cpp`, etc. So Phase 10 triage covers ~21 files total. The
+directory reorganization needs to split these between interface and platform —
+it's not a matter of moving whole directories. Each file needs individual
+triage based on its dependencies.
 
 **Risk:** High churn on include paths and CMake. The video split, ownership
 transfer, and per-file `og_runtime` triage add logic changes on top of the
@@ -1076,7 +1140,12 @@ remaining global state identified in the singletons audit.
    component includes headers from a component it doesn't depend on
 3. Remove legacy shims: `myscreen` macro, `theprefs` macro, dead extern
    declarations
-4. Remove `set_global_context()` and the `ctx()` fallback path
+4. Remove `set_global_context()` and the `ctx()` fallback path.
+   **Note:** `src/io/platform_io_common.cpp` has 5 call sites to
+   `ctx().mounted_campaign`. After `ctx()` retirement, these switch to a
+   resources-layer API that receives the campaign identifier from the platform
+   layer (e.g., a `set_mounted_campaign()` / `get_mounted_campaign()` pair on
+   a resources namespace, populated by GameSession at mount time).
 
 **Remaining globals cleanup (inlined from `remaining-singletons-audit.md`):**
 
@@ -1226,8 +1295,10 @@ wants to enforce acyclic dependencies — these are the cycles to break:
 
 1. **og_render ↔ og_runtime** — `view.h` includes `game_session.h`; runtime
    includes render headers
-2. **og_input ↔ og_runtime** — `input.h` includes `game_session.h` and
-   `input_hardware_state.h`; runtime includes input headers
+2. **og_input ↔ og_runtime** — Header-level cycle path: `input.h` →
+   `game_session.h` → (runtime depends on) `game_context.h` →
+   `input/input_state.h`. Link-level cycle: `og_input` uses `GameSession`
+   types, `og_runtime` uses `InputState` types.
 3. **og_entities ↔ og_data** — entity source files include `level_data.h`,
    `save_data.h`, `gparser.h`; data code includes `walker.h`, `guy.h`
 4. **og_entities ↔ og_runtime** — entity code includes `game_session.h`;
