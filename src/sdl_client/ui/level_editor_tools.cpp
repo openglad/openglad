@@ -23,28 +23,28 @@
 
 static inline LevelEditorState& eds() { return *og::runtime::current_session->editor_; }
 
-bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
+bool are_objects_outside_area(const og::gameplay::GameWorld& world, int x, int y, int w, int h)
 {
     x *= GRID_SIZE;
     y *= GRID_SIZE;
     w *= GRID_SIZE;
     h *= GRID_SIZE;
 
-    for(auto& uptr : level->oblist)
+    for(auto& uptr : world.oblist)
     {
         walker* ob = uptr.get();
         if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
             return true;
     }
 
-    for(auto& uptr : level->fxlist)
+    for(auto& uptr : world.fxlist)
     {
         walker* ob = uptr.get();
         if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
             return true;
     }
 
-    for(auto& uptr : level->weaplist)
+    for(auto& uptr : world.weaplist)
     {
         walker* ob = uptr.get();
         if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
@@ -52,6 +52,13 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
     }
 
     return false;
+}
+
+bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
+{
+    if(level == nullptr)
+        return false;
+    return are_objects_outside_area(level->game_world(), x, y, w, h);
 }
 
 void set_screen_pos(screen *screenp, Sint32 x, Sint32 y)

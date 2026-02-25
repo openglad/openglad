@@ -100,7 +100,8 @@ void timed_dialog(const char* message, float delay_seconds = 3.0f);
 enum class Mode { Terrain, Object, Select };
 
 void set_screen_pos(screen *scr, Sint32 x, Sint32 y);
-walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data);
+walker * some_hit(Sint32 x, Sint32 y, walker* ob, og::gameplay::GameWorld& world);
+walker * some_hit(Sint32 x, Sint32 y, walker* ob, LevelData* data);
 Sint32 get_random_matching_tile(Sint32 whatback);
 
 class EditorTerrainBrush;
@@ -580,6 +581,7 @@ public:
     walker* get_object(int x, int y);
 };
 
+bool are_objects_outside_area(const og::gameplay::GameWorld& world, int x, int y, int w, int h);
 bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
 enum class EventType;
 EventType handle_basic_editor_event(const SDL_Event& event);
@@ -1313,7 +1315,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	std::string message;
 	Sint32 i, j; // for loops
 	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
-	Sint32 numobs = s->level_data.numobs;
+	Sint32 numobs = s->world().living_count;
 	Sint32 lm = 245;
 	Sint32 curline = 0;
 	Sint32 whichback;
@@ -1421,7 +1423,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         if(!message.empty())
             scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
 
-        numobs = s->level_data.numobs;
+        numobs = s->world().living_count;
         //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
         message = std::format("OB: {}", numobs);
         scentext.write_xy(lm,L_D(curline++),message.c_str(), DARK_BLUE, 1);
@@ -1584,16 +1586,17 @@ Sint32 LevelEditorData::display_panel(screen* s)
 
 void LevelEditorData::clear_terrain()
 {
-    int w = level->grid.w;
-    int h = level->grid.h;
-    
-    std::fill_n(level->grid.data.get(), w*h, static_cast<unsigned char>(1));
+    auto& world = og::runtime::current_session->myscreen_->world();
+    int w = world.grid.w;
+    int h = world.grid.h;
+
+    std::fill_n(world.grid.data.get(), w * h, static_cast<unsigned char>(1));
     resmooth_terrain();
 }
 
 void LevelEditorData::resmooth_terrain()
 {
-    level->mysmoother.smooth();
+    og::runtime::current_session->myscreen_->world().mysmoother.smooth();
     myradar.update(level.get());
 }
 
@@ -1687,9 +1690,9 @@ bool is_in_selection(walker* w, const std::vector<SelectionInfo>& selection)
 }
 
 // Make sure to use reset_mode_buttons() after this
-void add_contained_objects_to_selection(LevelData* level, const Rectf& area, std::vector<SelectionInfo>& selection)
+void add_contained_objects_to_selection(og::gameplay::GameWorld& world, const Rectf& area, std::vector<SelectionInfo>& selection)
 {
-    for(auto& uptr : level->oblist)
+    for(auto& uptr : world.oblist)
 	{
 	    walker* w = uptr.get();
 		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
@@ -1699,7 +1702,7 @@ void add_contained_objects_to_selection(LevelData* level, const Rectf& area, std
 		}
 	}
 
-    for(auto& uptr : level->fxlist)
+    for(auto& uptr : world.fxlist)
 	{
 	    walker* w = uptr.get();
 		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
@@ -1709,7 +1712,7 @@ void add_contained_objects_to_selection(LevelData* level, const Rectf& area, std
 		}
 	}
 
-    for(auto& uptr : level->weaplist)
+    for(auto& uptr : world.weaplist)
 	{
 	    walker* w = uptr.get();
 		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
@@ -2263,7 +2266,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, levelInfoButton))
         {
             std::string buf = std::format("{}\nID number: {}\nTitle: {}\nSize: {}x{}",
-                     (eds().levelchanged? "(unsaved)" : ""), level->id, level->title, level->grid.w, level->grid.h);
+                     (eds().levelchanged ? "(unsaved)" : ""), level->id, level->title,
+                     og::runtime::current_session->myscreen_->world().grid.w,
+                     og::runtime::current_session->myscreen_->world().grid.h);
             popup_dialog("Level Info", buf.c_str());
         }
         // Profile >
@@ -2306,8 +2311,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             // Using two prompts sequentially
             
-            std::string width = std::format("{}", level->grid.w);
-            std::string height = std::format("{}", level->grid.h);
+            std::string width = std::format("{}", og::runtime::current_session->myscreen_->world().grid.w);
+            std::string height = std::format("{}", og::runtime::current_session->myscreen_->world().grid.h);
             
             if(prompt_for_string("Map Width", width))
             {
@@ -2340,12 +2345,13 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     }
                     else
                     {
-                        if((w >= level->grid.w && h >= level->grid.h)
-                            || !are_objects_outside_area(level.get(), 0, 0, w, h)
+                        if((w >= og::runtime::current_session->myscreen_->world().grid.w
+                                && h >= og::runtime::current_session->myscreen_->world().grid.h)
+                            || !are_objects_outside_area(og::runtime::current_session->myscreen_->world(), 0, 0, w, h)
                             || yes_or_no_prompt("Resize Map", "Delete objects outside of map?", false))
                         {
                             // Now change it
-                            level->resize_grid(w, h);
+                            og::runtime::current_session->myscreen_->world().resize_grid(w, h);
                             
                             // Reset the minimap
                             myradar.start(level.get());
@@ -2353,7 +2359,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             draw(og::runtime::current_session->myscreen_);
                             og::runtime::current_session->myscreen_->refresh();
                             
-                            std::string resize_msg = std::format("Resized map to {}x{}", level->grid.w, level->grid.h);
+                            std::string resize_msg = std::format("Resized map to {}x{}",
+                                                                 og::runtime::current_session->myscreen_->world().grid.w,
+                                                                 og::runtime::current_session->myscreen_->world().grid.h);
                             timed_dialog(resize_msg.c_str());
                             eds().redraw = 1;
                             eds().levelchanged = 1;
@@ -2537,14 +2545,14 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     // Select guys in the rectangle
                     if(!og::runtime::current_session->keystates_[KEYSTATE_LCTRL] && !og::runtime::current_session->keystates_[KEYSTATE_RCTRL])
                         selection.clear();
-                    add_contained_objects_to_selection(level.get(), selection_rect, selection);
+                    add_contained_objects_to_selection(og::runtime::current_session->myscreen_->world(), selection_rect, selection);
                     reset_mode_buttons();
                 }
                 else if (og::runtime::current_session->keystates_[KEYSTATE_r]) // (re)name the current object
                 {
                     newob = level->add_ob(Order::Living, FAMILY_ELF);
                     newob->setxy(windowx, windowy);
-                    if (some_hit(windowx, windowy, newob, level.get()))
+                    if (some_hit(windowx, windowy, newob, og::runtime::current_session->myscreen_->world()))
                     {
                         std::string name = newob->collide_ob->stats()->name;
                         if(prompt_for_string("Rename", name))
@@ -2562,7 +2570,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     {
                         newob = level->add_ob(Order::Living, FAMILY_ELF);
                         newob->setxy(windowx, windowy);
-                        if (some_hit(windowx, windowy, newob, level.get()))
+                        if (some_hit(windowx, windowy, newob, og::runtime::current_session->myscreen_->world()))
                         {
                             // Clicked on a guy
                             walker* w = newob->collide_ob;
@@ -2628,7 +2636,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         newob->dead = 0; // just in case
                         newob->collide_ob = nullptr;
                         // Is there already something there?
-                        if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, level.get()))
+                        if (object_brush.snap_to_grid
+                            && some_hit(windowx, windowy, newob, og::runtime::current_session->myscreen_->world()))
                         {
                             if (newob)
                             {
@@ -2730,7 +2739,8 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
 
 bool LevelEditorData::is_in_grid(int x, int y)
 {
-    return (x >= 0 && y >= 0 && x < level->grid.w && y < level->grid.h);
+    const auto& world = og::runtime::current_session->myscreen_->world();
+    return (x >= 0 && y >= 0 && x < world.grid.w && y < world.grid.h);
 }
 
 unsigned char LevelEditorData::get_terrain(int x, int y)
@@ -2738,7 +2748,8 @@ unsigned char LevelEditorData::get_terrain(int x, int y)
     if(!is_in_grid(x, y))
         return 0;
     
-    return level->grid.data[y*level->grid.w + x];
+    const auto& world = og::runtime::current_session->myscreen_->world();
+    return world.grid.data[y * world.grid.w + x];
 }
 
 void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
@@ -2746,7 +2757,8 @@ void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
     if(!is_in_grid(x, y))
         return;
     
-    level->grid.data[y*level->grid.w + x] = terrain;
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.grid.data[y * world.grid.w + x] = terrain;
 }
 
 walker* LevelEditorData::get_object(int x, int y)
@@ -2754,7 +2766,7 @@ walker* LevelEditorData::get_object(int x, int y)
     walker* result = nullptr;
     walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
     newob->setxy(x, y);
-    if (some_hit(x, y, newob, level.get()))
+    if (some_hit(x, y, newob, og::runtime::current_session->myscreen_->world()))
     {
         result = newob->collide_ob;
     }
@@ -2800,8 +2812,9 @@ int level_editor_test_exercise_internal_helpers()
         data.level->create_new_grid();
         // Avoid smoother/radar update paths in this helper; those are exercised elsewhere
         // and have global UI dependencies that make this test nondeterministic.
-        std::fill_n(data.level->grid.data.get(),
-                    data.level->grid.w * data.level->grid.h,
+        std::fill_n(og::runtime::current_session->myscreen_->world().grid.data.get(),
+                    og::runtime::current_session->myscreen_->world().grid.w
+                        * og::runtime::current_session->myscreen_->world().grid.h,
                     static_cast<unsigned char>(1));
         data.set_terrain(0, 0, PIX_GRASS2);
         if (data.get_terrain(0, 0) == PIX_GRASS2)
@@ -2821,7 +2834,7 @@ int level_editor_test_exercise_internal_helpers()
                        static_cast<float>(inside->ypos - 2),
                        static_cast<float>(inside->sizex + 4),
                        static_cast<float>(inside->sizey + 4));
-            add_contained_objects_to_selection(data.level.get(), area, selection);
+            add_contained_objects_to_selection(og::runtime::current_session->myscreen_->world(), area, selection);
             if (is_in_selection(inside, selection))
                 score++;
             if (data.get_object(inside->xpos, inside->ypos) == inside)
@@ -2986,9 +2999,9 @@ EventType handle_basic_editor_event(const SDL_Event& event)
 }
 
 #define PAN_LIMIT_UP -60
-#define PAN_LIMIT_DOWN (GRID_SIZE*data.level->grid.h - 200 + 80)
+#define PAN_LIMIT_DOWN (GRID_SIZE * og::runtime::current_session->myscreen_->world().grid.h - 200 + 80)
 #define PAN_LIMIT_LEFT -60
-#define PAN_LIMIT_RIGHT (GRID_SIZE*data.level->grid.w - 320 + 80)
+#define PAN_LIMIT_RIGHT (GRID_SIZE * og::runtime::current_session->myscreen_->world().grid.w - 320 + 80)
 
 // eds().pan_left/right/up/down moved into LevelEditorState (per-session via eds())
 
@@ -3464,9 +3477,9 @@ Sint32 level_editor()
                                 {
                                     for (i=windowx-1; i <= windowx+1; i++)
                                         for (j=windowy-1; j <=windowy+1; j++)
-                                            if (i >= 0 && i < data.level->grid.w &&
-                                                    j >= 0 && j < data.level->grid.h)
-                                                data.level->mysmoother.smooth(i, j);
+                                            if (i >= 0 && i < og::runtime::current_session->myscreen_->world().grid.w &&
+                                                    j >= 0 && j < og::runtime::current_session->myscreen_->world().grid.h)
+                                                og::runtime::current_session->myscreen_->world().mysmoother.smooth(i, j);
                                 }
                                 
                                 myradar.update(data.level.get());
@@ -3702,9 +3715,9 @@ Sint32 check_collide(Sint32 x,  Sint32 y,  Sint32 xsize,  Sint32 ysize,
 }
 
 // The old-fashioned hit check ..
-walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
+walker * some_hit(Sint32 x, Sint32 y, walker* ob, og::gameplay::GameWorld& world)
 {
-    for(auto& uptr : data->oblist)
+    for(auto& uptr : world.oblist)
 	{
 	    walker* w = uptr.get();
 		if (w && w != ob
@@ -3717,7 +3730,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
         }
 	}
 
-    for(auto& uptr : data->fxlist)
+    for(auto& uptr : world.fxlist)
 	{
 	    walker* w = uptr.get();
 		if (w && w != ob
@@ -3730,7 +3743,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
         }
 	}
 
-    for(auto& uptr : data->weaplist)
+    for(auto& uptr : world.weaplist)
 	{
 	    walker* w = uptr.get();
 		if (w && w != ob
@@ -3745,4 +3758,15 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 
 	ob->collide_ob = nullptr;
 	return nullptr;
+}
+
+walker * some_hit(Sint32 x, Sint32 y, walker* ob, LevelData* data)
+{
+    if(data == nullptr)
+    {
+        if(ob != nullptr)
+            ob->collide_ob = nullptr;
+        return nullptr;
+    }
+    return some_hit(x, y, ob, data->game_world());
 }
