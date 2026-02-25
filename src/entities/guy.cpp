@@ -251,7 +251,7 @@ bool check_special_ai_distance(living* self, std::uint32_t threshold)
         std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
         return (distance < threshold);
     }
-    self->foe = self->sim_level->find_near_foe(self);
+    self->foe = og::gameplay::current_game->world->find_near_foe(self);
     if (!self->foe)
         return false;
     std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
@@ -314,7 +314,7 @@ float guy::get_fire_frequency_bonus() const
 void guy::update_derived_stats(walker* w)
 {
     guy* temp_guy = w->myguy;
-    w->sim_level->myloader->set_derived_stats(w, Order::Living, temp_guy->family);
+    og::gameplay::current_game->world->myloader->set_derived_stats(w, Order::Living, temp_guy->family);
     
     
     w->stats()->max_hitpoints += temp_guy->get_hp_bonus();

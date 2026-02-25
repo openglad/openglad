@@ -25,6 +25,7 @@
 */
 
 #include <openglad/runtime/game_context.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/gparser.h>
@@ -466,12 +467,12 @@ void screen::process_input(const InputState& input_state)
 bool screen::act()
 {
 	// Delegate simulation tick to GameWorld.
-	og::sim::SimEventLog& events = *ctx().sim_events;
+	og::sim::SimEventLog& events = *og::gameplay::current_game->sim_events;
 	world_.my_team = save_data.my_team;
 	world_.allied_mode = static_cast<unsigned char>(save_data.allied_mode);
 	world_.current_scenario = save_data.scen_num;
 	std::copy(std::begin(save_data.m_score), std::end(save_data.m_score), std::begin(world_.m_score));
-	world_.tick(events);
+	world_.tick();
 
 	// Post-tick: clean up viewscreen control pointers for dead player entities.
 	// This is a rendering concern that doesn't belong in the simulation layer.

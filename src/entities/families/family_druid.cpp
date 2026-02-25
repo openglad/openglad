@@ -71,7 +71,7 @@ static bool druid_do_special(walker* self)
             alive->setxy(newob->xpos, newob->ypos);
             alive->lifetime = 50 + self->stats()->level * 40;
             newob->dead = 1;
-            if (!self->sim_level->query_passable(alive->xpos, alive->ypos, alive))
+            if (!og::gameplay::current_game->world->query_passable(alive->xpos, alive->ypos, alive))
             {
                 alive->dead = 1;
                 return false;
@@ -90,7 +90,7 @@ static bool druid_do_special(walker* self)
                 return false;
             {
                 std::int32_t howmany;
-                std::list<walker*> newlist = self->sim_level->find_friends_in_range(self->sim_level->oblist,
+                std::list<walker*> newlist = og::gameplay::current_game->world->find_friends_in_range(og::gameplay::current_game->world->oblist,
                           60, &howmany, self);
                 didheal = 0;
                 if (howmany > 1)
@@ -101,7 +101,7 @@ static bool druid_do_special(walker* self)
                         if (newob != self)
                         {
                             tempwalk = nullptr;
-                            for (auto& uptr : self->sim_level->oblist)
+                            for (auto& uptr : og::gameplay::current_game->world->oblist)
                             {
                                 walker* ob = uptr.get();
                                 if (ob && ob->owner == newob
@@ -121,7 +121,7 @@ static bool druid_do_special(walker* self)
                             }
                             else
                             {
-                                alive = self->sim_level->add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+                                alive = og::gameplay::current_game->world->add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
                                 if (!alive)
                                     return false;
                                 tempwalk->stats()->hitpoints += alive->stats()->hitpoints;
@@ -141,8 +141,8 @@ static bool druid_do_special(walker* self)
                         else
                             message = std::format("Druid protected {} men!", didheal);
                         if (self->team_num == 0 || self->myguy)
-                            og::sim::emit_notification(self->sim_events, message);
-                        og::sim::emit_sound(self->sim_events, SOUND_HEAL);
+                            og::sim::emit_notification(og::gameplay::current_game->sim_events, message);
+                        og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_HEAL);
                     }
                 }
                 else

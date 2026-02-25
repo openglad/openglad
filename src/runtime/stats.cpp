@@ -24,18 +24,19 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/guy.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
+#include <openglad/gameplay/gameplay_context.h>
 // find_follow_leader is defined in the SDL build (screen.cpp) and stubbed
 // by the text client. Returns a walker to follow, or nullptr if none.
 walker* find_follow_leader();
 #include <cmath>
-#include <openglad/runtime/game_context.h>
 #include <openglad/sim/sim_event_log.h>
 #include <format>
 
 static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
+    return og::gameplay::current_game->world->rng_.next(max_exclusive);
 }
 
 #define CHECK_STEP_SIZE 1 // (controller->stepsize) // was 1
@@ -499,8 +500,8 @@ void statistics::yell_for_help(walker *foe)
 	controller->yo_delay = controller->yo_delay + 80;
 	
 	// Get AI-controlled allies to target my foe
-	std::list<walker*> helplist = controller->sim_level->find_friends_in_range(
-	               controller->sim_level->oblist, 160, &howmany, controller);
+	std::list<walker*> helplist = og::gameplay::current_game->world->find_friends_in_range(
+	               og::gameplay::current_game->world->oblist, 160, &howmany, controller);
 	for(auto* w : helplist)
 	{
 		w->leader = controller;
@@ -524,8 +525,8 @@ void statistics::yell_for_help(walker *foe)
 	if (controller->myguy && (controller->team_num == 0) )
 	{
 		std::string message = std::format("{} yells for help!", controller->myguy->name);
-		if (controller->sim_events)
-			controller->sim_events->push_notification(message, 10);
+		if (og::gameplay::current_game->sim_events)
+			og::gameplay::current_game->sim_events->push_notification(message, 10);
 	}
 
 }
@@ -600,7 +601,7 @@ bool statistics::right_blocked()
 			break;
 	}
 
-	return !controller->sim_level->query_passable(controlx + xdelta, controly + ydelta, controller);
+	return !og::gameplay::current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller);
 }
 
 // Returns whether our right-forward is blocked
@@ -613,22 +614,22 @@ bool statistics::right_forward_blocked()
 	switch (controller->curdir)
 	{
 		case FACE_UP:
-			return !controller->sim_level->query_passable(controlx+mystep, controly-mystep, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx+mystep, controly-mystep, controller);
 		case FACE_UP_RIGHT:
-			return !controller->sim_level->query_passable(controlx+mystep, controly, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx+mystep, controly, controller);
 
 		case FACE_RIGHT:
-			return !controller->sim_level->query_passable(controlx+mystep, controly+mystep, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx+mystep, controly+mystep, controller);
 		case FACE_DOWN_RIGHT:
-			return !controller->sim_level->query_passable(controlx, controly+mystep, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx, controly+mystep, controller);
 		case FACE_DOWN:
-			return !controller->sim_level->query_passable(controlx-mystep, controly+mystep, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx-mystep, controly+mystep, controller);
 		case FACE_DOWN_LEFT:
-			return !controller->sim_level->query_passable(controlx-mystep, controly, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx-mystep, controly, controller);
 		case FACE_LEFT:
-			return !controller->sim_level->query_passable(controlx-mystep, controly-mystep, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx-mystep, controly-mystep, controller);
 		case FACE_UP_LEFT:
-			return !controller->sim_level->query_passable(controlx, controly-mystep, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx, controly-mystep, controller);
 		default:
 			break;
 
@@ -646,23 +647,23 @@ bool statistics::right_back_blocked()
 	switch (controller->curdir)
 	{
 		case FACE_UP:
-			return !controller->sim_level->query_passable(controlx+mystep, controly+mystep, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx+mystep, controly+mystep, controller);
 		case FACE_UP_RIGHT:
-			return !controller->sim_level->query_passable(controlx, controly+mystep, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx, controly+mystep, controller);
 
 		case FACE_RIGHT:
-			return !controller->sim_level->query_passable(controlx-mystep, controly+mystep, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx-mystep, controly+mystep, controller);
 		case FACE_DOWN_RIGHT:
-			return !controller->sim_level->query_passable(controlx-mystep, controly, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx-mystep, controly, controller);
 		case FACE_DOWN:
-			return !controller->sim_level->query_passable(controlx-mystep, controly-mystep, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx-mystep, controly-mystep, controller);
 		case FACE_DOWN_LEFT:
-			return !controller->sim_level->query_passable(controlx, controly-mystep,
+			return !og::gameplay::current_game->world->query_passable(controlx, controly-mystep,
 			                                controller);
 		case FACE_LEFT:
-			return !controller->sim_level->query_passable(controlx+mystep, controly-mystep, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx+mystep, controly-mystep, controller);
 		case FACE_UP_LEFT:
-			return !controller->sim_level->query_passable(controlx+mystep, controly, controller);
+			return !og::gameplay::current_game->world->query_passable(controlx+mystep, controly, controller);
 		default:
 			break;
 	}
@@ -717,7 +718,7 @@ bool statistics::forward_blocked()
 			break;
 	}
 
-	return !controller->sim_level->query_passable(controlx + xdelta, controly + ydelta, controller);
+	return !og::gameplay::current_game->world->query_passable(controlx + xdelta, controly + ydelta, controller);
 }
 
 bool statistics::right_walk()
@@ -899,11 +900,11 @@ bool statistics::direct_walk()
 	// replaced by some sort of single "if forward_blocked()"
 	// check, otherwise I'm not sure if this works regardless of
 	// current facing ...
-	if (!controller->sim_level->query_grid_passable(controlx+xdeltastep, controly+ydeltastep, controller) )
+	if (!og::gameplay::current_game->world->query_grid_passable(controlx+xdeltastep, controly+ydeltastep, controller) )
 	{
-		if (!controller->sim_level->query_grid_passable(controlx+xdeltastep,controly+0,controller) )
+		if (!og::gameplay::current_game->world->query_grid_passable(controlx+xdeltastep,controly+0,controller) )
 		{
-			if (!controller->sim_level->query_grid_passable(controlx+0,controly+ydeltastep,controller) )
+			if (!og::gameplay::current_game->world->query_grid_passable(controlx+0,controly+ydeltastep,controller) )
 			{
 				walkrounds = 0;
 				return 0;
@@ -984,9 +985,9 @@ bool statistics::walk_to_foe()
         
 		tempdistance = static_cast<Uint32>(controller->distance_to_ob(foe));
 		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
-		if (tempdistance < PATHING_MIN_DISTANCE || controller->sim_level->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
+		if (tempdistance < PATHING_MIN_DISTANCE || og::gameplay::current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
 		{
-			std::list<walker*> foelist = controller->sim_level->find_foes_in_range(controller->sim_level->oblist,
+			std::list<walker*> foelist = og::gameplay::current_game->world->find_foes_in_range(og::gameplay::current_game->world->oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller);
 			if (howmany > 0)
 			{
@@ -994,7 +995,7 @@ bool statistics::walk_to_foe()
 				clear_command();
 				controller->turn(controller->facing(xdelta, ydelta));
 				controller->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ rng(25)), 1, 1);
-				controller->sim_level->find_near_foe(controller);
+				og::gameplay::current_game->world->find_near_foe(controller);
 				if (!controller->foe && firstfoe)
 				{
 					controller->foe = firstfoe;

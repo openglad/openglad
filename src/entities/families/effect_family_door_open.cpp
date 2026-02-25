@@ -15,7 +15,7 @@ static bool door_open_on_act(effect* self)
     if (self->ani_type != ANI_WALK)
         return false; // let default animate() handle it
 
-    walker* newob = self->sim_level->add_fx_ob(Order::FX, FAMILY_DOOR_OPEN);
+    walker* newob = og::gameplay::current_game->world->add_fx_ob(Order::FX, FAMILY_DOOR_OPEN);
     if (!newob)
         return true; // handled (nothing to spawn)
     newob->ani_type = ANI_WALK;

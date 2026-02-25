@@ -109,10 +109,6 @@ std::string get_asset_path()
 // Safe no-op: view controls are an SDL render concern; headless has no views.
 void headless_clear_stale_view_controls(LevelData*) {}
 
-// Safe no-op: entity-to-screen wiring is only needed for SDL rendering.
-// Sim pointers are set separately via LevelData::set_sim_context().
-void headless_wire_entity_from_screen(walker*) {}
-
 // Safe no-op: keyboard buffer is an SDL input concern.
 void clear_keyboard() {}
 
@@ -153,7 +149,7 @@ std::unique_ptr<LevelRender> headless_create_level_render(PixieData[])
 
 const LevelDataHooks kHeadlessLevelDataHooks{
     .clear_stale_view_controls = headless_clear_stale_view_controls,
-    .wire_entity_from_screen = headless_wire_entity_from_screen,
+    .wire_entity_from_screen = nullptr,
     .draw = headless_level_data_draw,
     .create_level_render = headless_create_level_render,
 };

@@ -27,7 +27,7 @@ static bool skeleton_handle_teleport(walker* self)
 static bool skeleton_check_special_ai(living* self)
 {
     std::int32_t howmany = 0;
-    self->sim_level->find_foes_in_range(self->sim_level->oblist,
+    og::gameplay::current_game->world->find_foes_in_range(og::gameplay::current_game->world->oblist,
                                  5 * GRID_SIZE, &howmany, self);
     if (howmany < 1)
         return true;

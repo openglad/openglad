@@ -29,6 +29,7 @@
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_emit.h>
+#include <openglad/sim/irandom.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
@@ -41,16 +42,31 @@
 // from level_data.cpp (LevelData overload for sim/render split)
 short remaining_foes(LevelData& level, walker* myguy);
 
+namespace {
+class WorldRandomAdapter final : public IRandom {
+public:
+    explicit WorldRandomAdapter(og::sim::SimRandom& sim_rng) : sim_rng_(sim_rng) {}
+    std::uint32_t next(std::uint32_t max_exclusive) override { return sim_rng_.next(max_exclusive); }
+private:
+    og::sim::SimRandom& sim_rng_;
+};
+} // namespace
+
 // Thin adapter: delegates to combat_math pure functions
 short exp_from_action(ExpAction action, walker* w, walker* target, short value)
 {
-    return compute_xp_from_action(action, w->stats()->level, target->stats()->level,
-                                  value, *w->sim_rng);
+    if (!w)
+        return 0;
+    WorldRandomAdapter rng_adapter(og::gameplay::current_game->world->rng_);
+    const std::uint32_t target_level = target ? target->stats()->level : w->stats()->level;
+    return compute_xp_from_action(action, w->stats()->level, target_level,
+                                  value, rng_adapter);
 }
 
 float get_base_damage(walker* w)
 {
-    return compute_base_damage(w->damage, *w->sim_rng);
+    WorldRandomAdapter rng_adapter(og::gameplay::current_game->world->rng_);
+    return compute_base_damage(w->damage, rng_adapter);
 }
 
 float get_damage_reduction(walker* w, float damage, walker* target)
@@ -93,7 +109,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
         const auto* efd = (query_order() == Order::FX) ? get_effect_family_descriptor(family) : nullptr;
         if(query_order() != Order::FX || (efd && efd->creates_hit_effect))
         {
-           walker* newob = sim_level->add_ob(Order::FX, FAMILY_HIT);
+           walker* newob = og::gameplay::current_game->world->add_ob(Order::FX, FAMILY_HIT);
             if (newob)
             {
                 newob->owner = target;
@@ -319,12 +335,12 @@ bool walker::attack(walker  *target)
                             && (!target->owner) ) // do we have an NPC name?
                     {
                         message = std::format("ENEMY DEATH: {} DIED!", target->stats()->name);
-                        og::sim::emit_notification(sim_events, message);
+                        og::sim::emit_notification(og::gameplay::current_game->sim_events, message);
                     }
-                    if(remaining_foes(*sim_level, this) == 1)  // This is the last foe
+                    if(og::gameplay::current_game->world->remaining_foes(this) == 1)  // This is the last foe
                     {
                         message = "All foes defeated!";
-                        og::sim::emit_notification(sim_events, message);
+                        og::sim::emit_notification(og::gameplay::current_game->sim_events, message);
                     }
                 }
                 else
@@ -342,13 +358,13 @@ bool walker::attack(walker  *target)
                         const auto* fd = get_family_descriptor(target->family);
                         message = fd ? fd->death_message : "SOMEONE DIED";
                     }
-                    og::sim::emit_notification(sim_events, message);
+                    og::sim::emit_notification(og::gameplay::current_game->sim_events, message);
                 }
             }
 
             /* Blood splats at death */
             // Make temporary stain:
-            blood = sim_level->add_ob(Order::Weapon, FAMILY_BLOOD);
+            blood = og::gameplay::current_game->world->add_ob(Order::Weapon, FAMILY_BLOOD);
             blood->team_num = target->team_num;
             blood->ani_type = ANI_GROW;
             blood->ignore = 1; // so that we can be walked over .. ?
@@ -356,10 +372,10 @@ bool walker::attack(walker  *target)
         }
         if (targetorder == Order::Living)
         {
-            if (sim_rng->next(2))
-                og::sim::emit_sound(sim_events, SOUND_DIE1);
+            if (og::gameplay::current_game->world->rng_.next(2))
+                og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_DIE1);
             else
-                og::sim::emit_sound(sim_events, SOUND_DIE2);
+                og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_DIE2);
         }
 
         target->dead = 1;

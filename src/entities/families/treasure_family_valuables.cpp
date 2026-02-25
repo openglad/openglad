@@ -32,7 +32,7 @@ static bool gold_bar_on_eat(treasure* self, walker* eater)
         if (eater->sim_save && is_valid_score_team(eater->team_num))
             eater->sim_save->m_score[eater->team_num] += (200 * self->stats()->level);
         self->dead = 1;
-        og::sim::emit_sound(self->sim_events, SOUND_MONEY);
+        og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_MONEY);
     }
     return true;
 }
@@ -44,7 +44,7 @@ static bool silver_bar_on_eat(treasure* self, walker* eater)
         if (eater->sim_save && is_valid_score_team(eater->team_num))
             eater->sim_save->m_score[eater->team_num] += (50 * self->stats()->level);
         self->dead = 1;
-        og::sim::emit_sound(self->sim_events, SOUND_MONEY);
+        og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_MONEY);
     }
     return true;
 }
@@ -55,7 +55,7 @@ static bool life_gem_on_eat(treasure* self, walker* eater)
         return true;
     if (eater->sim_save && is_valid_score_team(eater->team_num))
         eater->sim_save->m_score[eater->team_num] += static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints));
-    walker* flash = self->sim_level->add_ob(Order::FX, FAMILY_FLASH);
+    walker* flash = og::gameplay::current_game->world->add_ob(Order::FX, FAMILY_FLASH);
     flash->ani_type = ANI_EXPAND_8;
     flash->center_on(self);
     self->dead = 1;
@@ -76,8 +76,8 @@ static bool key_on_eat(treasure* self, walker* eater)
             message = std::format("{} picks up key {}", eater->stats()->name, self->stats()->level);
         if (eater->team_num == 0) // only show players picking up keys
         {
-            og::sim::emit_notification(self->sim_events, message);
-            og::sim::emit_sound(self->sim_events, SOUND_MONEY);
+            og::sim::emit_notification(og::gameplay::current_game->sim_events, message);
+            og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_MONEY);
         }
     }
     return true;

@@ -51,13 +51,13 @@ static bool knife_back_on_act(effect* self)
                 yd = self->owner->ypos - self->ypos;
         }
         self->setworldxy(self->worldx()+xd, self->worldy()+yd);
-        walker* newob = self->sim_level->add_ob(Order::Weapon, FAMILY_KNIFE);
+        walker* newob = og::gameplay::current_game->world->add_ob(Order::Weapon, FAMILY_KNIFE);
         newob->damage = self->damage;
         newob->owner = self->owner;
         newob->team_num = self->team_num;
         newob->death_called = 1; // to ensure no spawning of more ..
         newob->setworldxy(self->worldx(), self->worldy());
-        if (!self->sim_level->query_object_passable(self->xpos+xd, self->ypos+yd, newob))
+        if (!og::gameplay::current_game->world->query_object_passable(self->xpos+xd, self->ypos+yd, newob))
         {
             newob->attack(newob->collide_ob);
             self->damage /= 4.0f;

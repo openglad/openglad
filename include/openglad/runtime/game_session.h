@@ -9,6 +9,7 @@
 
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/game_loop_state.h>
+#include <openglad/gameplay/gameplay_context.h>
 
 struct SDL_Surface;
 struct InputHardwareState;
@@ -130,6 +131,7 @@ public:
     std::string message_;
 
     GameContext ctx_;
+    og::gameplay::GameplayContext gameplay_;
     GameLoopFrameState frame_state_;
     std::unique_ptr<InputHardwareState> input_hw_;
 
@@ -169,6 +171,13 @@ extern std::atomic<GameSession*> primary_session;
 inline void ensure_thread_session() {
     if (!current_session) {
         current_session = primary_session.load(std::memory_order_acquire);
+    }
+}
+
+inline void ensure_thread_game() {
+    ensure_thread_session();
+    if (current_session) {
+        og::gameplay::current_game = &current_session->gameplay_;
     }
 }
 

@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/stats.h>
@@ -93,8 +94,12 @@ short GameWorld::remaining_foes(walker* myguy) const
     return myfoes;
 }
 
-void GameWorld::tick(og::sim::SimEventLog& events)
+void GameWorld::tick()
 {
+    if (!og::gameplay::current_game || og::gameplay::current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& events = *og::gameplay::current_game->sim_events;
+
     game_ended = false;
     next_level = -1;
     ending = 0;
@@ -457,7 +462,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                         dist += GRID_SIZE;
                     }
 
-                    if (ob->sim_rng->next(dist / GRID_SIZE))
+                    if (rng_.next(dist / GRID_SIZE))
                     {
                         return 0;
                     }
@@ -556,7 +561,7 @@ walker* GameWorld::find_near_foe(walker* ob)
             for (auto* w : ls)
             {
                 if (!(w->dead) && (ob->is_friendly(w) == 0) &&
-                    (ob->sim_rng->next(w->invisibility_left / 20) == 0))
+                    (rng_.next(w->invisibility_left / 20) == 0))
                 {
                     if (w->query_order() == Order::Living ||
                         w->query_order() == Order::Generator)
@@ -600,7 +605,7 @@ walker* GameWorld::find_far_foe(walker* ob)
         {
             if ((foe->query_order() == Order::Living ||
                  foe->query_order() == Order::Generator) &&
-                (!(ob->sim_rng->next(foe->invisibility_left / 20))))
+                (!(rng_.next(foe->invisibility_left / 20))))
             {
                 tempdistance = ob->distance_to_ob(foe);
                 if (tempdistance < distance)

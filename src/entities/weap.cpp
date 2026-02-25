@@ -71,7 +71,7 @@ bool weap::act()
 
 	//  Log("weap %d is ani %d\n", family, ani_type);
 
-	if (sim_level->mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
+	if (og::gameplay::current_game->world->mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
 		if (lineofsight)
 			lineofsight--;
 
@@ -87,7 +87,7 @@ bool weap::act()
 			{
 				const auto* wfd = get_weapon_family_descriptor(family);
 				if (!wfd || !wfd->skip_sit_notify)
-					og::sim::emit_notification(sim_events, "Weapon sitting");
+					og::sim::emit_notification(og::gameplay::current_game->sim_events, "Weapon sitting");
 				return 1;
 			}
 
@@ -123,7 +123,7 @@ bool weap::act()
 			{
 				std::string msg = std::format("Weapon {} doing act random?", family);
 				//Log("Weapon doing act_random?\n");
-				og::sim::emit_notification(sim_events, msg);
+				og::sim::emit_notification(og::gameplay::current_game->sim_events, msg);
 				return 1;
 			}  // END RANDOM
 			//break;
@@ -131,7 +131,7 @@ bool weap::act()
 		default:
 			{
 				//Log("No act type set for weapon.\n");
-				og::sim::emit_notification(sim_events, "No act type set for weapon");
+				og::sim::emit_notification(og::gameplay::current_game->sim_events, "No act type set for weapon");
 				return 0;
 			}
 	}  // END SWITCH

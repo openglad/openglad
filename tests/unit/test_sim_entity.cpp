@@ -17,8 +17,8 @@ OG_UNIT_TEST(test_sim_entity_default_construction)
     OG_ASSERT(e.user == -1);
     OG_ASSERT(e.team_num == 0);
     OG_ASSERT(e.real_team_num == 255);
-    OG_ASSERT(e.sim_level == nullptr);
-    OG_ASSERT(e.sim_events == nullptr);
+    OG_ASSERT(e.sim_save == nullptr);
+    OG_ASSERT(e.sim_config == nullptr);
 }
 
 OG_UNIT_TEST(test_sim_entity_set_position)
@@ -68,16 +68,9 @@ OG_UNIT_TEST(test_sim_entity_state_flags)
 OG_UNIT_TEST(test_sim_entity_event_log_binding)
 {
     og::sim::SimEventLog log;
-    og::sim::SimEntity e;
-    e.sim_events = &log;
-
-    OG_ASSERT(e.sim_events != nullptr);
-    OG_ASSERT(e.sim_events == &log);
-
-    // Verify we can emit events through the bound log
-    e.sim_events->push(og::sim::EventKind::PlaySound, 42);
-    OG_ASSERT(e.sim_events->size() == 1);
-    OG_ASSERT(e.sim_events->events()[0].a == 42);
+    log.push(og::sim::EventKind::PlaySound, 42);
+    OG_ASSERT(log.size() == 1);
+    OG_ASSERT(log.events()[0].a == 42);
 }
 
 // ---------------------------------------------------------------------------
@@ -113,11 +106,7 @@ OG_UNIT_TEST(test_walker_headless_position_and_movement)
 OG_UNIT_TEST(test_walker_headless_with_rng)
 {
     SeededRandom rng(42);
-    walker w;
-    w.sim_rng = &rng;
-
-    OG_ASSERT(w.sim_rng != nullptr);
-    std::uint32_t val = w.sim_rng->next(100);
+    std::uint32_t val = rng.next(100);
     OG_ASSERT(val < 100);
 }
 

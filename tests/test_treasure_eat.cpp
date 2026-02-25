@@ -304,7 +304,6 @@ void test_treasure_find_teleport_target_loop_and_missing_self()
 
     treasure detached;
     detached.stats()->level = 5;
-    detached.sim_level = &og::runtime::current_session->myscreen_->level_data;
     TEST_ASSERT(detached.find_teleport_target() == nullptr,
                 "teleporter lookup should return null when self is not in fx list");
 
@@ -345,7 +344,6 @@ void test_treasure_batch7_explicit_fxlist_teleporter_branches()
     fx.clear();
 
     auto before = std::make_unique<treasure>();
-    before->sim_level = &og::runtime::current_session->myscreen_->level_data;
     before->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     before->stats()->level = 7;
     before->setxy(60, 60);
@@ -353,7 +351,6 @@ void test_treasure_batch7_explicit_fxlist_teleporter_branches()
     fx.push_back(std::move(before));
 
     auto self = std::make_unique<treasure>();
-    self->sim_level = &og::runtime::current_session->myscreen_->level_data;
     self->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     self->stats()->level = 7;
     self->setxy(80, 60);
@@ -361,7 +358,6 @@ void test_treasure_batch7_explicit_fxlist_teleporter_branches()
     fx.push_back(std::move(self));
 
     auto mismatch = std::make_unique<treasure>();
-    mismatch->sim_level = &og::runtime::current_session->myscreen_->level_data;
     mismatch->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     mismatch->stats()->level = 8; // level mismatch should be skipped
     mismatch->setxy(100, 60);
@@ -375,7 +371,6 @@ void test_treasure_batch7_explicit_fxlist_teleporter_branches()
     TEST_ASSERT(found == nullptr, "dead and mismatched teleporters should be rejected");
 
     treasure detached;
-    detached.sim_level = &og::runtime::current_session->myscreen_->level_data;
     detached.stats()->level = 7;
     TEST_ASSERT(detached.find_teleport_target() == nullptr,
                 "find_teleport_target should return null when self is not in fx list");
@@ -404,14 +399,12 @@ void test_treasure_find_teleport_target_filters_invalid_candidates_and_wraps()
     fx.clear();
 
     auto before = std::make_unique<treasure>();
-    before->sim_level = &og::runtime::current_session->myscreen_->level_data;
     before->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     before->stats()->level = 4;
     walker* before_ptr = before.get();
     fx.push_back(std::move(before));
 
     auto self = std::make_unique<treasure>();
-    self->sim_level = &og::runtime::current_session->myscreen_->level_data;
     self->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     self->stats()->level = 4;
     walker* self_ptr = self.get();
@@ -420,26 +413,22 @@ void test_treasure_find_teleport_target_filters_invalid_candidates_and_wraps()
     fx.push_back(std::unique_ptr<walker>{}); // null entry
 
     auto dead = std::make_unique<treasure>();
-    dead->sim_level = &og::runtime::current_session->myscreen_->level_data;
     dead->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     dead->stats()->level = 4;
     dead->dead = 1;
     fx.push_back(std::move(dead));
 
     auto wrong_family = std::make_unique<treasure>();
-    wrong_family->sim_level = &og::runtime::current_session->myscreen_->level_data;
     wrong_family->set_order_family(Order::Treasure, FAMILY_GOLD_BAR);
     wrong_family->stats()->level = 4;
     fx.push_back(std::move(wrong_family));
 
     auto wrong_level = std::make_unique<treasure>();
-    wrong_level->sim_level = &og::runtime::current_session->myscreen_->level_data;
     wrong_level->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     wrong_level->stats()->level = 5;
     fx.push_back(std::move(wrong_level));
 
     auto after = std::make_unique<treasure>();
-    after->sim_level = &og::runtime::current_session->myscreen_->level_data;
     after->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     after->stats()->level = 4;
     walker* after_ptr = after.get();
@@ -463,14 +452,12 @@ void test_treasure_round10_find_teleport_target_forward_wrap_and_empty_paths()
     fx.clear();
 
     auto self = std::make_unique<treasure>();
-    self->sim_level = &og::runtime::current_session->myscreen_->level_data;
     self->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     self->stats()->level = 6;
     walker* self_ptr = self.get();
     fx.push_back(std::move(self));
 
     auto match_after = std::make_unique<treasure>();
-    match_after->sim_level = &og::runtime::current_session->myscreen_->level_data;
     match_after->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     match_after->stats()->level = 6;
     walker* after_ptr = match_after.get();

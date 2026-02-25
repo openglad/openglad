@@ -6,6 +6,7 @@
 #include <openglad/ui/text_protocol.h>
 
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/irandom.h>
@@ -77,7 +78,7 @@ static void cmd_tick(og::gameplay::GameWorld& world, LevelData& level, SaveData&
     for (int i = 0; i < count; i++) {
         if (i > 0) std::cout << ",";
         world.my_team = save.my_team;
-        world.tick(events);
+        world.tick();
         std::cout << "{\"tick\":" << world.tick_count_
                   << ",\"level_done\":" << world.level_done
                   << ",\"game_ended\":" << (world.game_ended ? "true" : "false")
@@ -156,6 +157,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     text_ctx.rng = &entity_rng;
     text_ctx.sim_events = std::make_unique<og::sim::SimEventLog>();
     set_global_context(&text_ctx);
+    og::gameplay::GameplayContext gameplay_ctx;
 
     // Create level data and load (headless — no tile graphics)
     LevelData level(args.level, true, &headless_level_data_hooks());
@@ -189,6 +191,10 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     // Wire up sim pointers on all entities
     og::gameplay::GameWorld& world = level.game_world();
     world.rng_.state_ = args.seed;
+    gameplay_ctx.world = &world;
+    gameplay_ctx.sim_events = &events;
+    og::gameplay::GameplayContext* prev_game = og::gameplay::current_game;
+    og::gameplay::current_game = &gameplay_ctx;
 
     level.set_sim_context(&save, &world.enemy_freeze, &events, &entity_rng, &cfg);
     wire_all_entities(level);
@@ -239,6 +245,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     }
 
     set_global_context(nullptr);
+    og::gameplay::current_game = prev_game;
     return 0;
 }
 

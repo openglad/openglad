@@ -623,7 +623,6 @@ void test_stats_round14_quickfire_multido_rush_and_walk_to_foe_firstfoe_fallback
     actor->stats()->last_distance = 99999;
     foe->invisibility_left = 64; // allows near-foe scan to skip via rng
     SeqRandom rng({1, 1, 1, 1, 1});
-    actor->sim_rng = &rng;
     const bool walked = actor->stats()->walk_to_foe();
     TEST_ASSERT(walked, "walk_to_foe should still succeed when using firstfoe fallback path");
     TEST_ASSERT(actor->foe != nullptr, "walk_to_foe should restore foe from firstfoe fallback");

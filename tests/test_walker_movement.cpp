@@ -765,7 +765,6 @@ void test_walker_movement_round6_scripted_walkstep_switch_coverage()
 {
     PixieData px = one_px_for_scripted();
     ScriptedWalkWalker w(px);
-    w.sim_level = &og::runtime::current_session->myscreen_->level_data;
     w.stepsize = 1.0f;
 
     // NPC fallback switch: first two attempts fail, case body executes.
@@ -806,7 +805,6 @@ void test_walker_movement_round8_user_slide_switch_default_branch()
 {
     PixieData px = one_px_for_scripted();
     ScriptedWalkWalker w(px);
-    w.sim_level = &og::runtime::current_session->myscreen_->level_data;
     w.stepsize = 1.0f;
     w.user = 0;
 

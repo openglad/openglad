@@ -104,12 +104,12 @@ static bool mage_do_special(walker* self)
                 if (self->myguy && (self->myguy->intelligence < 75))
                 {
                     if (self->user != -1)
-                        og::sim::emit_notification(self->sim_events, "Need 75 Int for Marker!");
+                        og::sim::emit_notification(og::gameplay::current_game->sim_events, "Need 75 Int for Marker!");
                     return false;
                 }
                 // Remove a marker, if present
                 generic = 0;
-                for (auto& uptr : self->sim_level->oblist)
+                for (auto& uptr : og::gameplay::current_game->world->oblist)
                 {
                     walker* ob = uptr.get();
                     if (ob &&
@@ -121,7 +121,7 @@ static bool mage_do_special(walker* self)
                         ob->dead = 1;
                         ob->death();
                         if ((self->team_num == 0 || self->myguy) && self->user != -1)
-                            og::sim::emit_notification(self->sim_events, "(Old Marker Removed)");
+                            og::sim::emit_notification(og::gameplay::current_game->sim_events, "(Old Marker Removed)");
                         self->busy += 8;
                         break;
                     }
@@ -139,9 +139,9 @@ static bool mage_do_special(walker* self)
                     newob->ani_type = ANI_SPIN;
                     if ((self->team_num == 0 || self->myguy) && self->user != -1)
                     {
-                        og::sim::emit_notification(self->sim_events, "Teleport Marker Placed");
+                        og::sim::emit_notification(og::gameplay::current_game->sim_events, "Teleport Marker Placed");
                         message = std::format("({} Uses)", newob->lifetime);
-                        og::sim::emit_notification(self->sim_events, message);
+                        og::sim::emit_notification(og::gameplay::current_game->sim_events, message);
                     }
                     self->busy += 8;
                     generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
@@ -151,7 +151,7 @@ static bool mage_do_special(walker* self)
             }
             else
             {
-                og::sim::emit_sound(self->sim_events, SOUND_TELEPORT);
+                og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_TELEPORT);
                 self->ani_type = ANI_TELE_OUT;
                 self->cycle = 0;
             }
@@ -195,8 +195,8 @@ static bool mage_do_special(walker* self)
         case 3: // freeze time
             if (self->team_num == 0 || self->myguy)
             {
-                *self->sim_enemy_freeze += 20 + 11 * self->stats()->level;
-                og::sim::emit_event(self->sim_events, og::sim::EventKind::SetPalette, 1);
+                og::gameplay::current_game->world->enemy_freeze += 20 + 11 * self->stats()->level;
+                og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::SetPalette, 1);
             }
             else
             {
@@ -204,10 +204,10 @@ static bool mage_do_special(walker* self)
                 if (generic > 50)
                     generic = 50;
                 message = std::format("TIME IS FROZEN! ({} rounds)", generic);
-                og::sim::emit_notification(self->sim_events, message, 2);
-                og::sim::emit_event(self->sim_events, og::sim::EventKind::RequestRedraw);
-                std::list<walker*> newlist = self->sim_level->find_friends_in_range(
-                              self->sim_level->oblist, 30000, &howmany, self);
+                og::sim::emit_notification(og::gameplay::current_game->sim_events, message, 2);
+                og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::RequestRedraw);
+                std::list<walker*> newlist = og::gameplay::current_game->world->find_friends_in_range(
+                              og::gameplay::current_game->world->oblist, 30000, &howmany, self);
                 for (auto* w : newlist)
                 {
                     if (w)
@@ -219,7 +219,7 @@ static bool mage_do_special(walker* self)
             newob = self->fire();
             if (!newob)
                 return false;
-            alive = self->sim_level->add_ob(Order::Weapon, FAMILY_WAVE);
+            alive = og::gameplay::current_game->world->add_ob(Order::Weapon, FAMILY_WAVE);
             alive->center_on(newob);
             alive->owner = self;
             alive->stats()->level = self->stats()->level;
@@ -230,7 +230,7 @@ static bool mage_do_special(walker* self)
         case 5:
         default: // heartburst
         {
-            std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
+            std::list<walker*> newlist = og::gameplay::current_game->world->find_foes_in_range(og::gameplay::current_game->world->oblist,
                                                   80 + 2 * self->stats()->level, &howmany, self);
             if (!howmany)
                 return false;
@@ -250,7 +250,7 @@ static bool mage_do_special(walker* self)
                     return false;
                 newob->damage = static_cast<float>(generic);
                 newob->center_on(ob);
-                og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);
+                og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_EXPLODE);
                 newob->ani_type = ANI_EXPLODE;
                 newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                 newob->skip_exit = 100;

@@ -31,7 +31,7 @@ static bool exit_on_eat(treasure* self, walker* eater)
     eater->skip_exit = 10;
     // See if there are any enemies left ...
     short guys_here;
-    if (self->sim_level->level_done == 0)
+    if (og::gameplay::current_game->world->level_done == 0)
         guys_here = 1;
     else
         guys_here = 0;
@@ -50,17 +50,17 @@ static bool exit_on_eat(treasure* self, walker* eater)
     // Exit path: all enemies dead, or scenario allows free exit.
     // Check this BEFORE the withdraw path so that CAN_EXIT_WHENEVER levels
     // show the normal "Exit to X?" dialog instead of "Withdraw to X?".
-    if (!guys_here || (self->sim_level->type & LevelData::TYPE_CAN_EXIT_WHENEVER))
+    if (!guys_here || (og::gameplay::current_game->world->type & LevelData::TYPE_CAN_EXIT_WHENEVER))
     {
         std::string buf = std::format("Exit to {}?", exitname);
         bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
         // Redraw screen ..
-        og::sim::emit_event(self->sim_events, og::sim::EventKind::RequestRedraw);
+        og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::RequestRedraw);
 
         if(result) // accepted level change
         {
             clear_keyboard();
-            og::sim::emit_event(self->sim_events, og::sim::EventKind::EndGame,
+            og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::EndGame,
                                 0, static_cast<std::uint32_t>(self->stats()->level));
             return true;
         }
@@ -83,19 +83,19 @@ static bool exit_on_eat(treasure* self, walker* eater)
         std::string buf = std::format("Withdraw to {}?", exitname);
         bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
         // Redraw screen ..
-        og::sim::emit_event(self->sim_events, og::sim::EventKind::RequestRedraw);
+        og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::RequestRedraw);
 
         if (result) // accepted level change
         {
             clear_keyboard();
             // Delete all of our current information and abort ..
-            for(auto& uptr : self->sim_level->oblist)
+            for(auto& uptr : og::gameplay::current_game->world->oblist)
             {
                 walker* w = uptr.get();
                 if (w && w->query_order() == Order::Living)
                 {
                     w->dead = 1;
-                    self->sim_level->myobmap->remove(w);
+                    og::gameplay::current_game->world->myobmap->remove(w);
                 }
             }
 
@@ -110,8 +110,8 @@ static bool exit_on_eat(treasure* self, walker* eater)
             self->sim_save->save("save0");
 
             // Signal end and emit endgame event for retreat
-            og::sim::emit_event(self->sim_events, og::sim::EventKind::SetEnd);
-            og::sim::emit_event(self->sim_events, og::sim::EventKind::EndGame,
+            og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::SetEnd);
+            og::sim::emit_event(og::gameplay::current_game->sim_events, og::sim::EventKind::EndGame,
                                 1, static_cast<std::uint32_t>(self->stats()->level));
             return true;
         }  // end of accepted withdraw to new level ..
@@ -143,13 +143,13 @@ static bool teleporter_on_eat(treasure* self, walker* eater)
         return true;
     self->leader = target;
     eater->center_on(target);
-    if (!self->sim_level->query_passable(eater->xpos, eater->ypos, eater))
+    if (!og::gameplay::current_game->world->query_passable(eater->xpos, eater->ypos, eater))
     {
         eater->center_on(self);
         return true;
     }
     // Now do special effects
-    walker* flash = self->sim_level->add_ob(Order::FX, FAMILY_FLASH);
+    walker* flash = og::gameplay::current_game->world->add_ob(Order::FX, FAMILY_FLASH);
     flash->ani_type = ANI_EXPAND_8;
     flash->center_on(self);
     return true;

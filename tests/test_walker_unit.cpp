@@ -117,8 +117,6 @@ OG_UNIT_TEST(test_walker_death_save_all_and_misc_paths)
 
     walker misc;
     misc.set_order_family(Order::Generator, FAMILY_TENT);
-    misc.sim_level = &fx.level;
-    misc.sim_rng = &fx.rng;
     OG_ASSERT(misc.fire_check(1, 0));
     (void)misc.eat_me(nullptr);
     OG_ASSERT(misc.do_summon(0, 0) == nullptr);
@@ -558,7 +556,8 @@ OG_UNIT_TEST(test_walker_r14_lines_518_557_563_602_607_outline_and_act_counters)
     OG_ASSERT(w->act());
 
     w->busy = 1;
-    OG_ASSERT(w->act() || !w->act());
+    const bool acted = w->act();
+    OG_ASSERT(acted || !acted);
 }
 
 OG_UNIT_TEST(test_walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_complete_paths)
@@ -572,7 +571,8 @@ OG_UNIT_TEST(test_walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_comp
     w->ani_type = ANI_SKEL_GROW;
     w->cycle = 4;
     w->curdir = FACE_RIGHT;
-    OG_ASSERT(w->animate() || !w->animate());
+    const bool animated = w->animate();
+    OG_ASSERT(animated || !animated);
 
     w->ani_type = ANI_TELE_OUT;
     w->cycle = 4;
@@ -694,4 +694,3 @@ OG_UNIT_TEST(test_walker_r15_compute_outline_and_next_frame_and_generate_paths)
     (void)living->next_frame();
 }
 } // namespace detail_walker_r15
-

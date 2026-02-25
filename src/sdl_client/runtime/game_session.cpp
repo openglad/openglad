@@ -19,6 +19,7 @@
 #include <openglad/render/view.h>    // options class (defines theprefs macro)
 #include <openglad/render/sai2x.h>   // E_Screen
 #include <openglad/runtime/game_context.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/input/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
 #include "SDL.h"
 
@@ -69,6 +70,7 @@ GameSession::GameSession(const Config& session_cfg)
     if (!ctx_.rng) {
         ctx_.rng = &production_rng_;
     }
+    gameplay_.sim_events = ctx_.sim_events.get();
 
     // ctx() now reads from current_session->ctx_ directly; no need to
     // call set_global_context.
@@ -89,11 +91,14 @@ GameSession::GameSession(const Config& session_cfg)
     if (cfg_.install_legacy_globals) {
         current_session = this;
         primary_session.store(this, std::memory_order_release);
+        og::gameplay::current_game = &gameplay_;
     }
 
     if (cfg_.allocate_screen) {
         screen_owner_ = std::make_unique<::screen>(cfg_.numviews, cfg_.create_display);
         myscreen_ = screen_owner_.get();
+        gameplay_.world = &myscreen_->world_;
+        gameplay_.sim_events = ctx_.sim_events.get();
 
         // Ensure this session's curpal_ matches the screen's palette.
         // video_init_palettes() populates video::ourpalette per-instance,
@@ -123,8 +128,10 @@ const cfg_store& GameSession::config() const { return ::cfg; }
 GameSession::~GameSession()
 {
     if (cfg_.install_legacy_globals) {
-        if (current_session == this)
+        if (current_session == this) {
             current_session = prev_session_;
+            og::gameplay::current_game = prev_session_ ? &prev_session_->gameplay_ : nullptr;
+        }
     }
 
     screen_owner_.reset();
@@ -157,6 +164,7 @@ GameSession::SessionScope::SessionScope(GameSession& session)
     // ctx() also reads from current_session->ctx_, so no separate context
     // installation is needed.
     current_session = session_;
+    og::gameplay::current_game = &session_->gameplay_;
 
     // Swap render surface if this session has its own.
     if (session_->session_surface_ && E_Screen) {
@@ -177,6 +185,7 @@ GameSession::SessionScope::~SessionScope()
 
     // Restore previous session.  ctx() follows current_session automatically.
     current_session = saved_session_;
+    og::gameplay::current_game = saved_session_ ? &saved_session_->gameplay_ : nullptr;
 }
 
 GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept

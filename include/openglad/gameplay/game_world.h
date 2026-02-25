@@ -27,6 +27,7 @@ enum class Order : unsigned char;
 class walker;
 class LevelData;
 class obmap;
+class loader;
 
 #include <openglad/data/pixie_data.h>
 #include <openglad/data/smooth.h>
@@ -83,6 +84,7 @@ public:
 
     // Spatial data (moved from LevelData in Phase 1b)
     std::unique_ptr<obmap> myobmap;
+    loader* myloader = nullptr; // Transitional: set by LevelData.
     PixieData grid;
     smoother mysmoother;
     std::int32_t pixmaxx = 0;
@@ -163,7 +165,7 @@ public:
                                              std::int32_t range, std::int32_t* howmany, walker* ob);
 
     // Simulation tick (migrated from GameWorld in Phase 2).
-    void tick(og::sim::SimEventLog& events);
+    void tick();
 
     // Grid/world lifecycle
     void create_new_grid();

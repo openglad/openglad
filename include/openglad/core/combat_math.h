@@ -9,6 +9,7 @@
 #include <cstdint>
 
 class IRandom;
+namespace og::sim { class SimRandom; }
 
 using RandomU32 = std::uint32_t(*)(std::uint32_t);
 
@@ -31,6 +32,7 @@ float compute_base_damage(float base_damage, IRandom& rng);
 // level: attacker's level
 // Returns: freeze delay in ticks (clamped to >= 0)
 std::int32_t compute_freeze_duration(std::int32_t level, std::int32_t constitution, IRandom& rng);
+std::int32_t compute_freeze_duration(std::int32_t level, std::int32_t constitution, og::sim::SimRandom& rng);
 
 // Compute cleric heal amount for one target.
 // magicpoints: caster's current MP
@@ -41,11 +43,13 @@ struct HealResult {
     std::int32_t cost;
 };
 HealResult compute_heal_amount(std::int32_t magicpoints, std::int32_t level, IRandom& rng);
+HealResult compute_heal_amount(std::int32_t magicpoints, std::int32_t level, og::sim::SimRandom& rng);
 
 // Compute charm duration.
 // level_diff: caster_level - target_level (can be negative)
 // Returns: charm duration in ticks
 std::int32_t compute_charm_duration(std::int32_t level_diff, IRandom& rng);
+std::int32_t compute_charm_duration(std::int32_t level_diff, og::sim::SimRandom& rng);
 
 // Regeneration tick result.
 struct RegenTickResult {
@@ -95,4 +99,3 @@ enum class ExpAction {
 // rng: needed only for Heal action
 short compute_xp_from_action(ExpAction action, std::int32_t attacker_level, std::int32_t target_level,
                              short value, IRandom& rng);
-

@@ -71,7 +71,7 @@ static bool sprinkle_on_hit_target([[maybe_unused]] walker* weapon, walker* targ
     {
         std::int32_t con = target->myguy ? target->myguy->constitution : 0;
         target->stats()->frozen_delay =
-            static_cast<short>(compute_freeze_duration(owner->stats()->level, con, *owner->sim_rng));
+            static_cast<short>(compute_freeze_duration(owner->stats()->level, con, og::gameplay::current_game->world->rng_));
     }
     return true;
 }

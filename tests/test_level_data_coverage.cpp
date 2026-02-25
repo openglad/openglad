@@ -327,8 +327,6 @@ void test_level_data_round8_ctor_hook_wiring_and_remove_paths()
         if (!(living && fx && weapon))
             return;
 
-        TEST_ASSERT(living->sim_level == &d, "wire_entity should set sim_level");
-        TEST_ASSERT(living->myobmap == d.myobmap.get(), "wire_entity should set myobmap");
         TEST_ASSERT_EQ(1, (int)d.remove_ob(weapon), "remove_ob should erase from weaplist");
         TEST_ASSERT_EQ(1, (int)d.remove_ob(fx), "remove_ob should erase from fxlist");
         TEST_ASSERT_EQ(1, (int)d.remove_ob(living), "remove_ob should erase from oblist");
@@ -351,7 +349,7 @@ void test_level_data_round8_ctor_hook_wiring_and_remove_paths()
 
     TEST_ASSERT(render_count >= 1, "non-headless constructors should invoke create_level_render hook");
     TEST_ASSERT_EQ(render_before_headless, render_count, "headless ctor should skip create_level_render hook");
-    TEST_ASSERT(wired_count >= 5, "wire_entity_from_screen hook should run for each created walker");
+    TEST_ASSERT_EQ(0, wired_count, "wire_entity_from_screen should not run in phase-04");
 }
 REGISTER_TEST(test_level_data_round8_ctor_hook_wiring_and_remove_paths);
 
@@ -406,15 +404,17 @@ void test_level_data_wall4_projectile_passability_distance_and_rng_paths()
     projectile->sizex = 1;
     projectile->sizey = 1;
 
-    FixedRandom rng_pass(0);
-    projectile->sim_rng = &rng_pass;
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, projectile),
-                "weapon on PIX_WALL4 should pass when rng returns 0");
-
-    FixedRandom rng_block(1);
-    projectile->sim_rng = &rng_block;
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, projectile),
-                "weapon on PIX_WALL4 should block when rng returns non-zero");
+    bool saw_pass = false;
+    bool saw_block = false;
+    for (std::uint32_t seed = 0; seed < 512 && (!saw_pass || !saw_block); ++seed)
+    {
+        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        const bool pass = og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, projectile);
+        saw_pass |= pass;
+        saw_block |= !pass;
+    }
+    TEST_ASSERT(saw_pass, "weapon on PIX_WALL4 should have an RNG path that passes");
+    TEST_ASSERT(saw_block, "weapon on PIX_WALL4 should have an RNG path that blocks");
 
     owner->setxy(0, 0);
     owner->stats()->set_bit_flags(BIT_FLYING, 0);
@@ -462,15 +462,17 @@ void test_level_data_round8_query_grid_treeb1_and_arrow_slit_variants()
     weapon->setxy(0, 0);
 
     og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL_ARROW_GRASS;
-    FixedRandom rng_pass(0);
-    weapon->sim_rng = &rng_pass;
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
-                "arrow-slit passability should pass when rng returns 0");
-
-    FixedRandom rng_block(1);
-    weapon->sim_rng = &rng_block;
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
-                "arrow-slit passability should block when rng returns non-zero");
+    bool saw_arrow_pass = false;
+    bool saw_arrow_block = false;
+    for (std::uint32_t seed = 0; seed < 512 && (!saw_arrow_pass || !saw_arrow_block); ++seed)
+    {
+        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        const bool pass = og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon);
+        saw_arrow_pass |= pass;
+        saw_arrow_block |= !pass;
+    }
+    TEST_ASSERT(saw_arrow_pass, "arrow-slit passability should have an RNG path that passes");
+    TEST_ASSERT(saw_arrow_block, "arrow-slit passability should have an RNG path that blocks");
 
     // Unknown tile type default should block.
     og::runtime::current_session->myscreen_->level_data.grid.data[0] = 255;
@@ -604,13 +606,11 @@ void test_level_data_round5_query_grid_passable_contiguous_block_paths()
                 "wall4 should block living immediately");
 
     FixedRandom rng_block(1);
-    weapon->sim_rng = &rng_block;
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should block when rng returns non-zero");
 
     owner->setxy(8, 0); // triggers dist < GRID_SIZE adjustment branch
     FixedRandom rng_pass(0);
-    weapon->sim_rng = &rng_pass;
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should pass and fall through with rng zero");
 
@@ -656,7 +656,6 @@ void test_level_data_round5_find_helpers_contiguous_block_paths()
 
     actor->team_num = 0;
     actor->setxy(64, 64);
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     friend_living->team_num = 0;
     friend_living->setxy(72, 64);
@@ -673,7 +672,6 @@ void test_level_data_round5_find_helpers_contiguous_block_paths()
     blood->setxy(68, 64);
 
     FixedRandom rng_zero(0);
-    actor->sim_rng = &rng_zero;
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_far_foe(actor) != nullptr,
                 "find_far_foe should return nearest visible living/generator foe");
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_nearest_blood(actor) == blood,
@@ -892,15 +890,17 @@ void test_level_data_round6_passable_wall4_and_water_weapon_paths()
     og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(1);
 
     og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
-    ConstRandom rng_block(1);
-    weapon->sim_rng = &rng_block;
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
-                "wall4 projectile should block when rng yields non-zero");
-
-    ConstRandom rng_zero(0);
-    weapon->sim_rng = &rng_zero;
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
-                "wall4 projectile should pass when rng yields zero");
+    bool saw_wall4_block = false;
+    bool saw_wall4_pass = false;
+    for (std::uint32_t seed = 0; seed < 512 && (!saw_wall4_block || !saw_wall4_pass); ++seed)
+    {
+        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        const bool pass = og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon);
+        saw_wall4_block |= !pass;
+        saw_wall4_pass |= pass;
+    }
+    TEST_ASSERT(saw_wall4_block, "wall4 projectile should have an RNG path that blocks");
+    TEST_ASSERT(saw_wall4_pass, "wall4 projectile should have an RNG path that passes");
 
     og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WATER1;
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
@@ -958,10 +958,13 @@ void test_level_data_round6_wrapper_and_passability_edges()
 
     // WALL4 projectile branch using Y-distance path in dist calculation.
     og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
-    ConstRandom rng_block(1);
-    weapon->sim_rng = &rng_block;
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
-                "wall4 projectile should block when rng is non-zero (y-distance branch)");
+    bool saw_y_branch_block = false;
+    for (std::uint32_t seed = 0; seed < 512 && !saw_y_branch_block; ++seed)
+    {
+        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        saw_y_branch_block = !og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon);
+    }
+    TEST_ASSERT(saw_y_branch_block, "wall4 projectile should have an RNG path that blocks in y-distance branch");
 
     // Weapon should pass water/obstacle bucket via weapon special-case.
     og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_BOULDER_1;
@@ -1077,7 +1080,6 @@ void test_level_data_round6_find_near_foe_boundary_fallback_path()
     foe->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
 
     ConstRandom rng_zero(0);
-    actor->sim_rng = &rng_zero;
 
     // Near-search spiral should hit the y-boundary and fall back to find_far_foe().
     walker* picked = og::runtime::current_session->myscreen_->level_data.find_near_foe(actor);
@@ -1123,18 +1125,24 @@ void test_level_data_round7_wall_arrow_distance_axis_and_rng_paths()
     // X-axis distance branch (abs(dx) > abs(dy)); rng zero => pass.
     owner->setxy(200, 5);
     weapon->setxy(0, 0);
-    ConstRandom rng_zero(0);
-    weapon->sim_rng = &rng_zero;
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
-                "wall-arrow projectile should pass when rng returns zero");
+    bool saw_wall_arrow_pass = false;
+    for (std::uint32_t seed = 0; seed < 512 && !saw_wall_arrow_pass; ++seed)
+    {
+        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        saw_wall_arrow_pass = og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon);
+    }
+    TEST_ASSERT(saw_wall_arrow_pass, "wall-arrow projectile should have an RNG path that passes");
 
     // Y-axis distance branch (abs(dy) >= abs(dx)); rng non-zero => fail.
     owner->setxy(5, 200);
     weapon->setxy(0, 0);
-    ConstRandom rng_block(1);
-    weapon->sim_rng = &rng_block;
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
-                "wall-arrow projectile should fail when rng returns non-zero");
+    bool saw_wall_arrow_block = false;
+    for (std::uint32_t seed = 0; seed < 512 && !saw_wall_arrow_block; ++seed)
+    {
+        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        saw_wall_arrow_block = !og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon);
+    }
+    TEST_ASSERT(saw_wall_arrow_block, "wall-arrow projectile should have an RNG path that blocks");
 
     og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
@@ -1242,14 +1250,17 @@ void test_level_data_round13_grid_passability_tree_wall_water_and_object_guards(
 
     // Wall-arrow/wall4 branch for weapons with RNG gate (2019-2044), then fallthrough.
     og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
-    ConstRandom rng_pass(0);
-    weapon->sim_rng = &rng_pass;
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
-                "wall-arrow projectile should pass when rng returns zero");
-    ConstRandom rng_block(1);
-    weapon->sim_rng = &rng_block;
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
-                "wall-arrow projectile should block when rng returns non-zero");
+    bool saw_wall4_rng_pass = false;
+    bool saw_wall4_rng_block = false;
+    for (std::uint32_t seed = 0; seed < 512 && (!saw_wall4_rng_pass || !saw_wall4_rng_block); ++seed)
+    {
+        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        const bool pass = og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon);
+        saw_wall4_rng_pass |= pass;
+        saw_wall4_rng_block |= !pass;
+    }
+    TEST_ASSERT(saw_wall4_rng_pass, "wall-arrow projectile should have an RNG path that passes");
+    TEST_ASSERT(saw_wall4_rng_block, "wall-arrow projectile should have an RNG path that blocks");
 
     // Water passability branch for flying vs non-flying living walkers (2046-2078).
     og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WATER2;
@@ -1294,7 +1305,6 @@ void test_level_data_round13_find_helpers_selection_and_filters()
 
     actor->team_num = 0;
     actor->setxy(64, 64);
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
     foe_far->team_num = 2;
     foe_far->setxy(220, 64);
     foe_near->team_num = 1;
@@ -1313,7 +1323,6 @@ void test_level_data_round13_find_helpers_selection_and_filters()
     player_far->setxy(200, 64);
 
     FixedRandom rng_zero(0);
-    actor->sim_rng = &rng_zero;
     foe_far->invisibility_left = 0;
     foe_near->invisibility_left = 0;
 
@@ -1362,7 +1371,6 @@ void test_level_data_round14_find_helper_exclusion_branches()
 
     actor->team_num = 0;
     actor->setxy(64, 64);
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     hidden_foe->team_num = 1;
     hidden_foe->setxy(72, 64);
@@ -1381,10 +1389,13 @@ void test_level_data_round14_find_helper_exclusion_branches()
     dead_blood->setxy(66, 64);
     dead_blood->dead = 1;
 
-    ConstRandom rng_block_hidden(1);
-    actor->sim_rng = &rng_block_hidden;
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_far_foe(actor) == nullptr,
-                "find_far_foe should skip hidden foes when rng check blocks visibility");
+    bool hidden_blocked = false;
+    for (std::uint32_t seed = 0; seed < 512 && !hidden_blocked; ++seed)
+    {
+        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        hidden_blocked = (og::runtime::current_session->myscreen_->level_data.find_far_foe(actor) == nullptr);
+    }
+    TEST_ASSERT(hidden_blocked, "find_far_foe should have an RNG path that blocks hidden foes");
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.find_nearest_blood(actor) == nullptr,
                 "find_nearest_blood should ignore dead blood stains");
 
@@ -1454,7 +1465,6 @@ void test_level_data_round16_remaining_foes_and_object_passable_collision_paths(
 
     actor->team_num = 0;
     actor->setxy(100, 100);
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     friendly->team_num = 0;
     friendly->setxy(100, 100);

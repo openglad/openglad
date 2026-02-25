@@ -20,14 +20,14 @@ static bool drumstick_on_eat(treasure* self, walker* eater)
 {
     if (eater->stats()->hitpoints >= eater->stats()->max_hitpoints)
         return true;
-    const std::int32_t heal_amount = 10 * self->stats()->level + static_cast<std::int32_t>(self->sim_rng->next(static_cast<std::uint32_t>(10 * self->stats()->level)));
+    const std::int32_t heal_amount = 10 * self->stats()->level + static_cast<std::int32_t>(og::gameplay::current_game->world->rng_.next(static_cast<std::uint32_t>(10 * self->stats()->level)));
     const short amount = static_cast<short>(heal_amount);
     eater->stats()->hitpoints += amount;
     if (eater->stats()->hitpoints > eater->stats()->max_hitpoints)
         eater->stats()->hitpoints = eater->stats()->max_hitpoints;
     self->do_heal_effects(nullptr, eater, amount);
     self->dead = 1;
-    og::sim::emit_sound(self->sim_events, SOUND_EAT);
+    og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_EAT);
     return true;
 }
 
@@ -36,7 +36,7 @@ static void notify_potion_consume(treasure* self, walker* eater, std::string_vie
     if (eater->user != -1)
     {
         std::string message = std::format("Potion of {}({})!", name, self->stats()->level);
-        og::sim::emit_notification(self->sim_events, message);
+        og::sim::emit_notification(og::gameplay::current_game->sim_events, message);
     }
     self->dead = 1;
 }

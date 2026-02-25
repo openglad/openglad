@@ -16,6 +16,7 @@
 #include <openglad/entities/treasure.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/gameplay/gameplay_context.h>
 
 // --- From test_family_cleric_coverage_push.cpp ---
 const FamilyDescriptor& describe_family_cleric();
@@ -83,12 +84,23 @@ struct ClericFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     ClericFixture()
     {
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level.game_world();
+        gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+
+    ~ClericFixture()
+    {
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -272,11 +284,22 @@ struct ClericR12Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     ClericR12Fixture()
     {
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level.game_world();
+        gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+
+    ~ClericR12Fixture()
+    {
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -450,7 +473,6 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
 
     // treasure.cpp paths
     treasure lonely;
-    lonely.sim_level = &fx.level;
     lonely.stats()->level = 2;
     OG_ASSERT(lonely.find_teleport_target() == nullptr);
     OG_ASSERT(lonely.act());
@@ -538,9 +560,15 @@ struct ClericR14Fixture {
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     GameContext gc;
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     ClericR14Fixture()
     {
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level.game_world();
+        gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
@@ -551,6 +579,7 @@ struct ClericR14Fixture {
     ~ClericR14Fixture()
     {
         set_global_context(nullptr);
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -684,9 +713,15 @@ struct ClericR15Fixture {
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     GameContext gc;
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     ClericR15Fixture()
     {
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level.game_world();
+        gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
@@ -697,6 +732,7 @@ struct ClericR15Fixture {
     ~ClericR15Fixture()
     {
         set_global_context(nullptr);
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -793,4 +829,3 @@ OG_UNIT_TEST(test_family_cleric_r15_turn_undead_raise_and_resurrect_branches)
     (void)desc.do_special(cleric);
 }
 } // namespace detail_family_cleric_r15
-

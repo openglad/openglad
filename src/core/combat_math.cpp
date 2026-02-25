@@ -7,6 +7,7 @@
  */
 #include <openglad/core/combat_math.h>
 #include <openglad/sim/irandom.h>
+#include <openglad/gameplay/game_world.h>
 #include <cmath>
 
 float compute_base_damage(float base_damage, RandomU32 rng)
@@ -64,6 +65,20 @@ std::int32_t compute_freeze_duration(std::int32_t level, std::int32_t constituti
     return (result < 0) ? 0 : result;
 }
 
+std::int32_t compute_freeze_duration(std::int32_t level, std::int32_t constitution, og::sim::SimRandom& rng)
+{
+    class SimRandomAdapter final : public IRandom {
+    public:
+        explicit SimRandomAdapter(og::sim::SimRandom& sim_rng) : sim_rng_(sim_rng) {}
+        std::uint32_t next(std::uint32_t max_exclusive) override { return sim_rng_.next(max_exclusive); }
+    private:
+        og::sim::SimRandom& sim_rng_;
+    };
+
+    SimRandomAdapter adapter(rng);
+    return compute_freeze_duration(level, constitution, adapter);
+}
+
 HealResult compute_heal_amount(std::int32_t magicpoints, std::int32_t level, IRandom& rng)
 {
     std::int32_t base = magicpoints / 4 + static_cast<std::int32_t>(rng.next(static_cast<std::uint32_t>(magicpoints / 4)));
@@ -73,10 +88,38 @@ HealResult compute_heal_amount(std::int32_t magicpoints, std::int32_t level, IRa
     return {amount, cost};
 }
 
+HealResult compute_heal_amount(std::int32_t magicpoints, std::int32_t level, og::sim::SimRandom& rng)
+{
+    class SimRandomAdapter final : public IRandom {
+    public:
+        explicit SimRandomAdapter(og::sim::SimRandom& sim_rng) : sim_rng_(sim_rng) {}
+        std::uint32_t next(std::uint32_t max_exclusive) override { return sim_rng_.next(max_exclusive); }
+    private:
+        og::sim::SimRandom& sim_rng_;
+    };
+
+    SimRandomAdapter adapter(rng);
+    return compute_heal_amount(magicpoints, level, adapter);
+}
+
 std::int32_t compute_charm_duration(std::int32_t level_diff, IRandom& rng)
 {
     std::int32_t generic = (level_diff > 0) ? level_diff : 0;
     return 25 + static_cast<std::int32_t>(rng.next(static_cast<std::uint32_t>(generic * 20)));
+}
+
+std::int32_t compute_charm_duration(std::int32_t level_diff, og::sim::SimRandom& rng)
+{
+    class SimRandomAdapter final : public IRandom {
+    public:
+        explicit SimRandomAdapter(og::sim::SimRandom& sim_rng) : sim_rng_(sim_rng) {}
+        std::uint32_t next(std::uint32_t max_exclusive) override { return sim_rng_.next(max_exclusive); }
+    private:
+        og::sim::SimRandom& sim_rng_;
+    };
+
+    SimRandomAdapter adapter(rng);
+    return compute_charm_duration(level_diff, adapter);
 }
 
 RegenTickResult compute_regen_tick(float current, float max_val, float per_round,

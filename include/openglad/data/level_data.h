@@ -40,6 +40,7 @@ namespace og::gameplay { class GameWorld; }
 
 #include <openglad/data/smooth.h>
 #include <openglad/data/pixie_data.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/legacy/pixdefs.h>
 
 class CampaignData
@@ -215,10 +216,8 @@ private:
 
     // Sim context pointers for wiring newly created entities.
     SaveData*              sim_ctx_save_ = nullptr;
-    std::int32_t*          sim_ctx_enemy_freeze_ = nullptr;
-    og::sim::SimEventLog*  sim_ctx_events_ = nullptr;
-    IRandom*               sim_ctx_rng_ = nullptr;
     cfg_store*             sim_ctx_config_ = nullptr;
+    og::sim::SimEventLog*  sim_ctx_events_ = nullptr;
 };
 
 // Read a scenario title from a .fss file. Returns "none" on failure.

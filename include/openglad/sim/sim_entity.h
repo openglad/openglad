@@ -17,7 +17,6 @@
 // deterministic testing and replay.
 
 #include <openglad/core/order.h>
-#include <openglad/sim/irandom.h>
 #include <cstdint>
 
 class LevelData;
@@ -25,8 +24,6 @@ struct SaveData;
 class cfg_store;
 
 namespace og::sim {
-class SimEventLog;
-
 class SimEntity
 {
 public:
@@ -57,12 +54,8 @@ public:
     short flight_left = 0;
     short bonus_rounds = 0;
 
-    // Sim context (non-owning pointers set by the runtime layer)
-    LevelData*    sim_level = nullptr;
+    // Sim context pointers retained until Phase 5.
     SaveData*     sim_save = nullptr;
-    std::int32_t* sim_enemy_freeze = nullptr;
-    SimEventLog*  sim_events = nullptr;
-    IRandom*      sim_rng = nullptr;
     cfg_store*    sim_config = nullptr;
 
     // Identity

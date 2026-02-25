@@ -76,7 +76,7 @@ bool walker::teleport()
 
 	// First check to see if we have a marker to go to
 	// NOTE: it must be a bit away from us ..
-	for(auto& uptr : sim_level->oblist)
+	for(auto& uptr : og::gameplay::current_game->world->oblist)
 	{
 	    walker* ob = uptr.get();
 		if (ob &&
@@ -88,7 +88,7 @@ bool walker::teleport()
 		{
 			// Found our marker!
 				distance = distance_to_ob(ob);
-				if (sim_level->query_passable(ob->xpos, ob->ypos, this) && (distance > 64))
+				if (og::gameplay::current_game->world->query_passable(ob->xpos, ob->ypos, this) && (distance > 64))
 				{
 					center_on(ob);
 					ob->lifetime--;
@@ -102,7 +102,7 @@ bool walker::teleport()
 			else  // blocked somehow?
 			{
 				if (user != -1 && (distance > 64) ) // only tell players
-					og::sim::emit_notification(sim_events, "Marker is Blocked!");
+					og::sim::emit_notification(og::gameplay::current_game->sim_events, "Marker is Blocked!");
 			}
 			}
 			} // end of checking for marker (we failed)
@@ -110,19 +110,20 @@ bool walker::teleport()
 	// No marker: pick a random passable grid cell. Historically this was an
 	// unbounded loop, which can hang tests (and gameplay) if level/grid state
 	// isn't initialized or nothing is passable.
-	if (!sim_level || !sim_level->grid.valid() ||
-	    sim_level->grid.w <= 0 || sim_level->grid.h <= 0 ||
-	    sim_level->pixmaxx <= 0 || sim_level->pixmaxy <= 0)
+	if (!og::gameplay::current_game || !og::gameplay::current_game->world ||
+	    !og::gameplay::current_game->world->grid.valid() ||
+	    og::gameplay::current_game->world->grid.w <= 0 || og::gameplay::current_game->world->grid.h <= 0 ||
+	    og::gameplay::current_game->world->pixmaxx <= 0 || og::gameplay::current_game->world->pixmaxy <= 0)
 		return 0;
 
 	std::int32_t keep_going = 200; // maxtries
 	do
 	{
-		newx = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(sim_level->grid.w))) * GRID_SIZE;
-		newy = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(sim_level->grid.h))) * GRID_SIZE;
+		newx = static_cast<std::int32_t>(og::gameplay::current_game->world->rng_.next(static_cast<std::uint32_t>(og::gameplay::current_game->world->grid.w))) * GRID_SIZE;
+		newy = static_cast<std::int32_t>(og::gameplay::current_game->world->rng_.next(static_cast<std::uint32_t>(og::gameplay::current_game->world->grid.h))) * GRID_SIZE;
 		keep_going--;
 	} while (keep_going > 0 &&
-	         !sim_level->query_passable(static_cast<float>(newx), static_cast<float>(newy), this));
+	         !og::gameplay::current_game->world->query_passable(static_cast<float>(newx), static_cast<float>(newy), this));
 
 	if (keep_going > 0)
 	{
@@ -137,13 +138,13 @@ bool walker::teleport_ranged(std::int32_t range)
 	std::int32_t newx = 0, newy = 0;
 	std::int32_t keep_going = 200; // maxtries
 
-	newx = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + xpos;
-	newy = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + ypos;
+	newx = static_cast<std::int32_t>(og::gameplay::current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + xpos;
+	newy = static_cast<std::int32_t>(og::gameplay::current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + ypos;
 
-	while(!sim_level->query_passable(static_cast<float>(newx), static_cast<float>(newy), this) && keep_going)
+	while(!og::gameplay::current_game->world->query_passable(static_cast<float>(newx), static_cast<float>(newy), this) && keep_going)
 	{
-		newx = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + xpos;
-		newy = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + ypos;
+		newx = static_cast<std::int32_t>(og::gameplay::current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + xpos;
+		newy = static_cast<std::int32_t>(og::gameplay::current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + ypos;
 		keep_going--;
 	}
 	if (keep_going)
@@ -161,7 +162,7 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
 	std::int32_t killed = 0;
 	std::int32_t targets = 0;
 
-	std::list<walker*> deadlist = sim_level->find_foes_in_range(sim_level->oblist, range,
+	std::list<walker*> deadlist = og::gameplay::current_game->world->find_foes_in_range(og::gameplay::current_game->world->oblist, range,
 	                                       &targets, this);
 	if (!targets)
 		return -1;
@@ -171,7 +172,7 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
 		const auto* target_fd = w ? get_family_descriptor(w->family) : nullptr;
 		if (w && target_fd && target_fd->is_undead)
 		{
-			if (sim_rng->next(range*40) > sim_rng->next(w->stats()->level*10) )
+			if (og::gameplay::current_game->world->rng_.next(range*40) > og::gameplay::current_game->world->rng_.next(w->stats()->level*10) )
 			{
 				w->dead = 1;
 				w->stats()->hitpoints = 0;

@@ -9,6 +9,8 @@
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_event_log.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/legacy/base.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
@@ -65,9 +67,16 @@ OG_UNIT_TEST(test_family_thief_check_special_ai_foe_distance_paths)
 OG_UNIT_TEST(test_family_thief_do_special_busy_and_cloak_paths)
 {
     const FamilyDescriptor& desc = describe_family_thief();
+    og::gameplay::GameWorld world;
+    og::sim::SimEventLog events;
+    og::gameplay::GameplayContext local_ctx;
+    local_ctx.world = &world;
+    local_ctx.sim_events = &events;
+    og::gameplay::GameplayContext* prev_ctx = og::gameplay::current_game;
+    og::gameplay::current_game = &local_ctx;
+
     living self;
     FixedRandom rng(7);
-    self.sim_rng = &rng;
     self.stats()->level = 3;
 
     self.current_special = 2; // cloak
@@ -82,6 +91,8 @@ OG_UNIT_TEST(test_family_thief_do_special_busy_and_cloak_paths)
     self.current_special = 4; // poison cloud/default
     self.busy = 1;
     OG_ASSERT(!desc.do_special(&self));
+
+    og::gameplay::current_game = prev_ctx;
 }
 } // namespace detail_family_thief_coverage_push
 
@@ -174,4 +185,3 @@ OG_UNIT_TEST(test_family_thief_r12_check_ai_and_special_paths)
     OG_ASSERT(desc.do_special(thief));
 }
 } // namespace detail_family_thief_r12
-

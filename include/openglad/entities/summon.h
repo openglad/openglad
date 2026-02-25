@@ -9,6 +9,7 @@
 
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/core/stats.h>
 #include <cstdint>
 
@@ -17,7 +18,7 @@
 // Returns nullptr if add_ob fails.
 inline walker* summon_entity(walker* summoner, Order order, std::int32_t family)
 {
-    walker* ob = summoner->sim_level->add_ob(order, family);
+    walker* ob = og::gameplay::current_game->world->add_ob(order, family);
     if (!ob) return nullptr;
     ob->owner = summoner;
     ob->team_num = summoner->team_num;

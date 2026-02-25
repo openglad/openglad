@@ -13,6 +13,7 @@
 #include <openglad/sim/event.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
 
 #include "test_framework.h"
 
@@ -25,6 +26,17 @@ void picker_testing_yes_or_no_queue_push(bool value);
 int picker_testing_yes_or_no_queue_remaining();
 
 namespace {
+
+void tick_world(og::gameplay::GameWorld& world, og::sim::SimEventLog& events)
+{
+    og::gameplay::GameplayContext local_ctx;
+    local_ctx.world = &world;
+    local_ctx.sim_events = &events;
+    og::gameplay::GameplayContext* prev = og::gameplay::current_game;
+    og::gameplay::current_game = &local_ctx;
+    world.tick();
+    og::gameplay::current_game = prev;
+}
 
 void clear_level_lists()
 {
@@ -409,7 +421,7 @@ void test_game_world_tick_branches_for_end_freeze_and_cleanup()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT_EQ(1, static_cast<int>(enemy_freeze), "enemy_freeze should decrement");
     TEST_ASSERT_EQ(1, static_cast<int>(world.tick_count_), "first tick should increment tick_count");
@@ -428,7 +440,7 @@ void test_game_world_tick_branches_for_end_freeze_and_cleanup()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT(world.game_ended, "end flag should terminate tick when battle not auto-finished");
 
@@ -441,7 +453,7 @@ void test_game_world_tick_branches_for_end_freeze_and_cleanup()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT(world.level_done == 1, "exit with no foes should set level_done=1");
     TEST_ASSERT(!world.game_ended, "level_done=1 should not auto-end game");
@@ -469,7 +481,7 @@ void test_game_world_tick_branches_for_end_freeze_and_cleanup()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT(owner->foe == nullptr, "dead foe pointer should be cleared");
     TEST_ASSERT(owner->leader == nullptr, "dead leader pointer should be cleared");
@@ -526,7 +538,7 @@ void test_game_world_freeze_countdown_notification_and_weap_cleanup()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT_EQ(10, (int)enemy_freeze, "enemy_freeze should decrement from 11 to 10");
     TEST_ASSERT_EQ(2, (int)world.level_done, "hostile living during freeze should stay frozen and not keep level active");
@@ -574,7 +586,7 @@ void test_game_world_freeze_countdown_notification_and_weap_cleanup()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT(owner->foe == nullptr, "oblist dead foe pointer should be cleared");
     TEST_ASSERT(owner->leader == nullptr, "oblist dead leader pointer should be cleared");
@@ -632,7 +644,7 @@ void test_game_world_batch5_game_end_paths()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT(world.game_ended, "empty level should trigger game_ended path");
     TEST_ASSERT_EQ(0, (int)world.ending, "empty level ending should be 0");
@@ -648,7 +660,7 @@ void test_game_world_batch5_game_end_paths()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT(world.game_ended, "end flag should force game end");
     TEST_ASSERT_EQ(0, (int)world.level_done, "hostile living should keep level_done at 0 before end flag handling");
@@ -668,7 +680,6 @@ void test_treasure_batch5_default_eat_and_missing_self_target_lookup()
     // find_teleport_target should return nullptr when object is not in fxlist.
     standalone.set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     standalone.stats()->level = 4;
-    standalone.sim_level = &og::runtime::current_session->myscreen_->level_data;
     TEST_ASSERT(standalone.find_teleport_target() == nullptr,
                 "teleport target lookup should fail when teleporter is not present in fxlist");
 }
@@ -766,7 +777,7 @@ void test_game_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT(ally->owner == nullptr && ally->collide_ob == nullptr, "dead links should be cleared on oblist entities");
     TEST_ASSERT(hostile->foe == nullptr && hostile->leader == nullptr, "all dead references should be cleared");
@@ -799,7 +810,7 @@ void test_game_world_freeze_branch_allows_non_living_actions()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT_EQ(10, (int)enemy_freeze, "freeze counter should decrement");
     TEST_ASSERT(world.game_ended, "no hostile living and no exits should auto-end level");
@@ -842,7 +853,7 @@ void test_game_world_assigns_far_foe_when_no_target_and_hostiles_present()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT_EQ(0, (int)world.level_done, "hostile living should keep level unfinished");
     TEST_ASSERT(ally->foe != nullptr, "sim world should assign a far foe when none is set");
@@ -873,7 +884,7 @@ void test_game_world_round8_end_flag_short_circuit_and_palette_unfreeze_event()
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
     TEST_ASSERT(world.game_ended, "end flag should force game_ended");
     TEST_ASSERT_EQ(1, (int)enemy_freeze, "freeze should decrement before end short-circuit");
@@ -913,7 +924,7 @@ void test_game_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero(
     world.my_team = save.my_team;
     world.enemy_freeze = enemy_freeze;
     world.end = end;
-    world.tick(events);
+    tick_world(world, events);
     enemy_freeze = world.enemy_freeze;
 
     TEST_ASSERT(world.game_ended, "no hostiles and no exits should end level");

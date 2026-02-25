@@ -32,6 +32,7 @@
 #include <openglad/io/yaml_stream.h>
 #include <openglad/io/ogfile_yaml.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/data/level_render.h>
 #include <openglad/data/level_data_hooks.h>
 #include <algorithm>
@@ -47,11 +48,21 @@ void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                                 og::sim::SimEventLog* events, IRandom* rng,
                                 cfg_store* config)
 {
+    (void)enemy_freeze;
+    (void)rng;
     sim_ctx_save_ = save;
-    sim_ctx_enemy_freeze_ = enemy_freeze;
-    sim_ctx_events_ = events;
-    sim_ctx_rng_ = rng;
     sim_ctx_config_ = config;
+    sim_ctx_events_ = events;
+
+    // Synchronize when this LevelData is already active, or when the current
+    // gameplay context has no world bound yet (unit/headless fixtures).
+    if (og::gameplay::current_game &&
+        (og::gameplay::current_game->world == nullptr ||
+         og::gameplay::current_game->world == &world_ref_))
+    {
+        og::gameplay::current_game->world = &world_ref_;
+        og::gameplay::current_game->sim_events = events;
+    }
 }
 
 static constexpr char VERSION_NUM = 9; // save scenario type info
@@ -455,6 +466,8 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks,
     if (!myobmap)
 	    myobmap = std::make_unique<obmap>();
     myloader = std::make_unique<loader>(this);
+    world_ref_.myloader = myloader.get();
+    world_ref_.myloader = myloader.get();
 
     if (!headless)
     {
@@ -466,9 +479,18 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks,
 
 LevelData::~LevelData()
 {
+    if (og::gameplay::current_game &&
+        og::gameplay::current_game->world == &world_ref_)
+    {
+        if (og::gameplay::current_game->sim_events == sim_ctx_events_)
+            og::gameplay::current_game->sim_events = nullptr;
+        og::gameplay::current_game->world = nullptr;
+    }
+
     delete_objects();
     delete_grid();
     myloader.reset();
+    world_ref_.myloader = nullptr;
 
     myobmap.reset();
 
@@ -498,8 +520,6 @@ walker* LevelData::add_ob(Order order, std::int32_t family, bool atstart)
         return nullptr;
 
     wire_entity(w.get());
-    if (hooks_ && hooks_->wire_entity_from_screen)
-        hooks_->wire_entity_from_screen(w.get());
     if (order == Order::Living)
         numobs++;
 
@@ -515,9 +535,6 @@ walker* LevelData::add_fx_ob(Order order, std::int32_t family)
 		return nullptr;
 
 	wire_entity(w.get());
-	if (hooks_ && hooks_->wire_entity_from_screen)
-		hooks_->wire_entity_from_screen(w.get());
-
 	walker* raw = w.get();
 	fxlist.push_back(std::move(w));
 	return raw;
@@ -530,9 +547,6 @@ walker* LevelData::add_weap_ob(Order order, std::int32_t family)
         return nullptr;
 
     wire_entity(w.get());
-    if (hooks_ && hooks_->wire_entity_from_screen)
-        hooks_->wire_entity_from_screen(w.get());
-
     walker* raw = w.get();
     weaplist.push_back(std::move(w));
 	return raw;
@@ -540,12 +554,7 @@ walker* LevelData::add_weap_ob(Order order, std::int32_t family)
 
 void LevelData::wire_entity(walker* w)
 {
-    w->myobmap = myobmap.get();
-    w->sim_level = this;
     w->sim_save = sim_ctx_save_;
-    w->sim_enemy_freeze = sim_ctx_enemy_freeze_;
-    w->sim_events = sim_ctx_events_;
-    w->sim_rng = sim_ctx_rng_;
     w->sim_config = sim_ctx_config_;
 }
 
@@ -1424,6 +1433,7 @@ bool LevelData::load()
     Log("Loading version {} scenario", static_cast<int>(versionnumber));
 
     myloader = std::make_unique<loader>(this);
+    world_ref_.myloader = myloader.get();
     clear();
     par_value = static_cast<short>(id);
 
