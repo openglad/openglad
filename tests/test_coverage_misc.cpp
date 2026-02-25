@@ -94,7 +94,7 @@ living* add_living(R17Fixture& fx, char family, unsigned char team, short x, sho
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -110,7 +110,7 @@ walker* add_fx(R17Fixture& fx, char family, short x, short y)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -511,7 +511,7 @@ walker* add_living(MovementFixture& fx, short x, short y)
     w->stepsize = 1.0f;
     w->setxy(x, y);
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -830,19 +830,19 @@ OG_UNIT_TEST(test_coverage_r18_level_data_resize_and_delete_cleanup_branches)
     walker* off_map = add_living(fx, 400, 400);
     OG_ASSERT(keep && off_map);
 
-    fx.level.oblist.push_back(std::unique_ptr<walker>{});
-    fx.level.fxlist.push_back(std::unique_ptr<walker>{});
-    fx.level.weaplist.push_back(std::unique_ptr<walker>{});
+    fx.level.game_world().oblist.push_back(std::unique_ptr<walker>{});
+    fx.level.game_world().fxlist.push_back(std::unique_ptr<walker>{});
+    fx.level.game_world().weaplist.push_back(std::unique_ptr<walker>{});
 
     fx.level.resize_grid(3, 3);
-    for (auto& uptr : fx.level.oblist)
+    for (auto& uptr : fx.level.game_world().oblist)
     {
         OG_ASSERT(uptr != nullptr);
         OG_ASSERT(uptr.get() != off_map);
     }
-    for (auto& uptr : fx.level.fxlist)
+    for (auto& uptr : fx.level.game_world().fxlist)
         OG_ASSERT(uptr != nullptr);
-    for (auto& uptr : fx.level.weaplist)
+    for (auto& uptr : fx.level.game_world().weaplist)
         OG_ASSERT(uptr != nullptr);
 
     LevelDataHooks hooks{};
@@ -1002,7 +1002,7 @@ living* add_living(R19Fixture& fx, char family, unsigned char team, short x, sho
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1190,9 +1190,9 @@ walker* add_walker(R20Fixture& fx, Order order, char family, unsigned char team,
     w->dead = 0;
     walker* out = w.get();
     if (order == Order::Weapon)
-        fx.level.weaplist.push_back(std::move(w));
+        fx.level.game_world().weaplist.push_back(std::move(w));
     else
-        fx.level.oblist.push_back(std::move(w));
+        fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1211,7 +1211,7 @@ living* add_living(R20Fixture& fx, char family, unsigned char team, short x, sho
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1534,7 +1534,7 @@ living* add_living(FinalR16Fixture& fx, char family, unsigned char team, short x
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1550,7 +1550,7 @@ walker* add_fx(FinalR16Fixture& fx, char family, short x, short y)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1726,7 +1726,7 @@ OG_UNIT_TEST(test_final_r16_walker_specials_teleport_and_turn_undead)
     const std::int32_t killed = self->turn_undead(120, 5);
     OG_ASSERT(killed >= 0);
 
-    for (auto& uptr : fx.level.oblist)
+    for (auto& uptr : fx.level.game_world().oblist)
         uptr->dead = 1;
     OG_ASSERT(self->turn_undead(120, 5) == -1);
 }
@@ -1847,7 +1847,7 @@ OG_UNIT_TEST(test_final_r16_stats_walker_level_data_and_picker_state)
 
     OG_ASSERT(fx.level.find_near_foe(a) == b);
     std::int32_t howmany = 0;
-    OG_ASSERT(!fx.level.find_foes_in_range(fx.level.oblist, 120, &howmany, a).empty());
+    OG_ASSERT(!fx.level.find_foes_in_range(fx.level.game_world().oblist, 120, &howmany, a).empty());
 
     MenuClient client;
     static const og::ui::PickerMenuItem unknown{"u", "u", og::ui::PickerMenuCommand::SetDifficulty, 0};

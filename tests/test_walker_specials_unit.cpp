@@ -42,7 +42,7 @@ living* add_living(SpecialsFixture& fx, char family, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 

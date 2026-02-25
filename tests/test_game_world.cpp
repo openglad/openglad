@@ -59,7 +59,7 @@ TickWalker* add_ob(GameWorldR15Fixture& fx, Order order, char family, unsigned c
     w->real_team_num = 255;
     w->dead = dead ? 1 : 0;
     TickWalker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -71,7 +71,7 @@ TickWalker* add_weap(GameWorldR15Fixture& fx, Order order, char family, unsigned
     w->team_num = team;
     w->dead = dead ? 1 : 0;
     TickWalker* out = w.get();
-    fx.level.weaplist.push_back(std::move(w));
+    fx.level.game_world().weaplist.push_back(std::move(w));
     return out;
 }
 
@@ -83,7 +83,7 @@ TickWalker* add_fx(GameWorldR15Fixture& fx, Order order, char family, unsigned c
     w->team_num = team;
     w->dead = dead ? 1 : 0;
     TickWalker* out = w.get();
-    fx.level.fxlist.push_back(std::move(w));
+    fx.level.game_world().fxlist.push_back(std::move(w));
     return out;
 }
 
@@ -144,9 +144,9 @@ OG_UNIT_TEST(test_game_world_r15_normal_tick_cleanup_and_dead_entity_removal)
     OG_ASSERT(live_weap->leader == nullptr);
     OG_ASSERT(live_weap->owner == nullptr);
     OG_ASSERT(live_weap->collide_ob == nullptr);
-    OG_ASSERT(!fx.level.dead_list.empty());
-    OG_ASSERT(fx.level.weaplist.size() == 1);
-    OG_ASSERT(fx.level.fxlist.empty());
+    OG_ASSERT(!fx.level.game_world().dead_list.empty());
+    OG_ASSERT(fx.level.game_world().weaplist.size() == 1);
+    OG_ASSERT(fx.level.game_world().fxlist.empty());
 }
 
 OG_UNIT_TEST(test_game_world_r15_freeze_tick_and_level_done_paths)

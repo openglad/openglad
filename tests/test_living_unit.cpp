@@ -50,7 +50,7 @@ living* add_living(LivingFixture& fx, char family, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -205,7 +205,7 @@ living* add_living(LivingR14Fixture& fx, char family, unsigned char team, short 
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 

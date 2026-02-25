@@ -42,7 +42,7 @@ walker* add_living(MovementFixture& fx, char family = FAMILY_SOLDIER)
     w->stepsize = 1.0f;
     w->setxy(64, 64);
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -141,7 +141,7 @@ walker* add_living(WalkerMovementR11Fixture& fx, char family = FAMILY_SOLDIER)
     w->stepsize = 1.0f;
     w->setxy(96, 96);
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -266,7 +266,7 @@ walker* add_living(MovementR12Fixture& fx, char family = FAMILY_SOLDIER)
     w->stepsize = 1.0f;
     w->setxy(64, 64);
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -393,7 +393,7 @@ walker* add_living(MovementR14Fixture& fx, short x, short y)
     w->stepsize = 1.0f;
     w->setxy(x, y);
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 

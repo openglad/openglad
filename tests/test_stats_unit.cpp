@@ -46,7 +46,7 @@ walker* add_living(StatsFixture& fx, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -150,7 +150,7 @@ walker* add_living(StatsFixture& fx, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -289,7 +289,7 @@ walker* add_living(StatsR12Fixture& fx, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -421,7 +421,7 @@ walker* add_living(StatsR14Fixture& fx, unsigned char team, short x, short y)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -438,7 +438,7 @@ walker* add_weapon(StatsR14Fixture& fx, unsigned char team, short x, short y)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.weaplist.push_back(std::move(w));
+    fx.level.game_world().weaplist.push_back(std::move(w));
     return out;
 }
 

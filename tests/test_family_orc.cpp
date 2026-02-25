@@ -55,7 +55,7 @@ living* add_living(OrcR15Fixture& fx, unsigned char team, char family, short x, 
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.game_world().oblist.push_back(std::move(w));
     return out;
 }
 

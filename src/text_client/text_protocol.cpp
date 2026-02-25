@@ -66,9 +66,9 @@ static void json_event(std::ostream& os, const og::sim::Event& ev)
 
 static void wire_all_entities(LevelData& level)
 {
-    for (auto& uptr : level.oblist) level.wire_entity(uptr.get());
-    for (auto& uptr : level.fxlist) level.wire_entity(uptr.get());
-    for (auto& uptr : level.weaplist) level.wire_entity(uptr.get());
+    for (auto& uptr : level.game_world().oblist) level.wire_entity(uptr.get());
+    for (auto& uptr : level.game_world().fxlist) level.wire_entity(uptr.get());
+    for (auto& uptr : level.game_world().weaplist) level.wire_entity(uptr.get());
 }
 
 static void cmd_tick(og::gameplay::GameWorld& world, LevelData& level, SaveData& save,
@@ -100,19 +100,19 @@ static void cmd_state(const LevelData& level)
     std::ostringstream os;
     os << "{\"cmd\":\"state\",\"entities\":[";
     int idx = 0;
-    for (auto& uptr : level.oblist) {
+    for (auto& uptr : level.game_world().oblist) {
         if (idx > 0) os << ",";
         json_entity(os, uptr.get(), idx++);
     }
     os << "],\"weapons\":[";
     idx = 0;
-    for (auto& uptr : level.weaplist) {
+    for (auto& uptr : level.game_world().weaplist) {
         if (idx > 0) os << ",";
         json_entity(os, uptr.get(), idx++);
     }
     os << "],\"fx\":[";
     idx = 0;
-    for (auto& uptr : level.fxlist) {
+    for (auto& uptr : level.game_world().fxlist) {
         if (idx > 0) os << ",";
         json_entity(os, uptr.get(), idx++);
     }
@@ -204,7 +204,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     std::cout << "{\"status\":\"ready\""
               << ",\"level\":" << args.level
               << ",\"title\":\"" << level.title << "\""
-              << ",\"num_entities\":" << level.oblist.size()
+              << ",\"num_entities\":" << level.game_world().oblist.size()
               << ",\"seed\":" << args.seed
               << "}\n";
     std::cout.flush();
