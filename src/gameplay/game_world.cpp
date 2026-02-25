@@ -7,7 +7,6 @@
  */
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/obmap.h>
@@ -311,20 +310,50 @@ void GameWorld::tick()
 
 walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart)
 {
-    if (!level_data_) return nullptr;
-    return level_data_->add_ob(order, family, atstart);
+    (void)atstart;
+    if (order == Order::Weapon)
+        return add_weap_ob(order, family);
+    if (!entity_factory)
+        return nullptr;
+
+    auto w = entity_factory(order, family);
+    if (!w)
+        return nullptr;
+
+    if (order == Order::Living)
+        living_count++;
+
+    walker* raw = w.get();
+    oblist.push_back(std::move(w));
+    return raw;
 }
 
 walker* GameWorld::add_fx_ob(Order order, std::int32_t family)
 {
-    if (!level_data_) return nullptr;
-    return level_data_->add_fx_ob(order, family);
+    if (!entity_factory)
+        return nullptr;
+
+    auto w = entity_factory(order, family);
+    if (!w)
+        return nullptr;
+
+    walker* raw = w.get();
+    fxlist.push_back(std::move(w));
+    return raw;
 }
 
 walker* GameWorld::add_weap_ob(Order order, std::int32_t family)
 {
-    if (!level_data_) return nullptr;
-    return level_data_->add_weap_ob(order, family);
+    if (!entity_factory)
+        return nullptr;
+
+    auto w = entity_factory(order, family);
+    if (!w)
+        return nullptr;
+
+    walker* raw = w.get();
+    weaplist.push_back(std::move(w));
+    return raw;
 }
 
 bool GameWorld::query_grid_passable(float x, float y, walker* ob)

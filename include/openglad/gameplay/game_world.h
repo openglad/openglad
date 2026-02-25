@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <memory>
 #include <set>
@@ -25,7 +26,6 @@
 // Forward declarations
 enum class Order : unsigned char;
 class walker;
-class LevelData;
 class obmap;
 class loader;
 
@@ -84,7 +84,7 @@ public:
 
     // Spatial data (moved from LevelData in Phase 1b)
     std::unique_ptr<obmap> myobmap;
-    loader* myloader = nullptr; // Transitional: set by LevelData.
+    loader* myloader = nullptr; // Transitional: set by platform/resources setup.
     PixieData grid;
     smoother mysmoother;
     std::int32_t pixmaxx = 0;
@@ -118,6 +118,7 @@ public:
 
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
+    std::function<std::unique_ptr<walker>(Order, int)> entity_factory;
 
     // Clear all entity lists and reset living_count.
     // Note: this clears only entity storage. Hooks (e.g. stale view control
@@ -127,10 +128,7 @@ public:
     // Count living foes not friendly to the given walker.
     short remaining_foes(walker* myguy) const;
 
-    // Entity creation — delegates to LevelData::myloader temporarily.
-    // This circular delegation (GameWorld -> LevelData -> loader) is ugly
-    // but temporary: Phase 4 eliminates sim_* pointer wiring, and Phase 6
-    // replaces the loader path entirely with an entity_factory callback.
+    // Entity creation — delegates to platform-wired factory callback.
     walker* add_ob(Order order, std::int32_t family, bool atstart = false);
     walker* add_fx_ob(Order order, std::int32_t family);
     walker* add_weap_ob(Order order, std::int32_t family);
@@ -175,12 +173,7 @@ public:
     void delete_grid();
     void clear();
 
-    // Temporary back-pointer to LevelData for loader delegation.
-    // Set by LevelData's constructor; cleared by its destructor.
-    void set_level_data(LevelData* ld) { level_data_ = ld; }
-
 private:
-    LevelData* level_data_ = nullptr;
     std::uint32_t level_tick_count_ = 0;
     int last_level_id_ = -1;
 };

@@ -28,6 +28,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
+#include <openglad/data/gloader.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registries.h>
@@ -204,6 +205,15 @@ void screen::init_common(short howmany, bool has_display)
 	world_.level_done = 0;
 	world_.retry = false;
 	sync_world_from_save();
+
+	if (level_data.myloader)
+	{
+		EntityFactory factory;
+		factory.attach_render = [](walker& w, const PixieData& data) {
+			w.attach_render(data);
+		};
+		level_data.myloader->set_entity_factory(std::move(factory));
+	}
 
 	numviews = howmany;
     for (auto& view : viewob)

@@ -210,6 +210,9 @@ public:
     const og::gameplay::GameWorld& game_world() const { return world_ref_; }
 
 private:
+    void configure_loader_entity_factory();
+    void bind_world_entity_factory();
+
     IoError last_io_error_ = IoError::None;
     bool headless_ = false;  // When true, skip render component creation
     const LevelDataHooks* hooks_ = nullptr;

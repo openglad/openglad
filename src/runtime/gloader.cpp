@@ -27,7 +27,6 @@
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/generator_family_descriptor.h>
-#include <format>
 #include <openglad/entities/living.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/entities/weap.h>
@@ -39,8 +38,6 @@ static inline cfg_store& active_config()
 {
     return cfg;
 }
-
-void popup_dialog(const char* title, const char* message);
 
 #define SIZE_ORDERS 7 // see constants.h
 #define SIZE_FAMILIES 21  // see also NUM_FAMILIES in constants.h
@@ -369,14 +366,15 @@ PixieData data_copy(const PixieData& d)
 }
 
 
-loader::loader()
+loader::loader(EntityFactory factory)
     : graphics(SIZE_ORDERS*SIZE_FAMILIES),
       animations(SIZE_ORDERS*SIZE_FAMILIES, nullptr),
       stepsizes(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
       lineofsight(SIZE_ORDERS*SIZE_FAMILIES, 0),
       act_types(SIZE_ORDERS*SIZE_FAMILIES, static_cast<char>(ACT_RANDOM)),
       damage(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
-      fire_frequency(SIZE_ORDERS*SIZE_FAMILIES, 0.0f)
+      fire_frequency(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
+      entity_factory_(std::move(factory))
 {
 	std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f);
 
@@ -505,13 +503,6 @@ loader::loader()
 	graphics[PIX(Order::Treasure, FAMILY_FLIGHT_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 	graphics[PIX(Order::Treasure, FAMILY_SPEED_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 
-
-}
-
-loader::loader(LevelData* owner)
-    : loader()
-{
-    owner_level = owner;
 }
 
 loader::~loader(void)
@@ -535,6 +526,11 @@ void loader::set_derived_stats(walker* w, Order order, std::int32_t family)
 	w->fire_frequency = fire_frequency[PIX(order, family)];
 }
 
+void loader::set_entity_factory(EntityFactory factory)
+{
+	entity_factory_ = std::move(factory);
+}
+
 std::unique_ptr<walker> loader::create_walker_owned(Order order,
                                                     std::int32_t family)
 {
@@ -549,41 +545,38 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 
 	if (!graphics[PIX(order, family)].valid())
 	{
-	    std::string buf = std::format("No valid graphics for walker!\nOrder: {}, Family {}\nPlease report this to the developer!", static_cast<int>(order), static_cast<int>(family));
-		popup_dialog("ERROR", buf.c_str());
+		LogError("No valid graphics for walker. order={} family={}\n",
+		         static_cast<int>(order), static_cast<int>(family));
 		return nullptr;
 	}
 
-	// Pass PixieData to constructors. In SDL builds, the constructor calls
-	// attach_render() which creates a PixieNWalkerRender. In headless builds,
-	// attach_render() is a no-op so no render component is created.
 	const auto& pix = graphics[PIX(order, family)];
 
 	if (order == Order::Living)
-		ob = std::make_unique<living>(pix);
+		ob = std::make_unique<living>();
 	else if (order == Order::Weapon)
-	    ob = std::make_unique<weap>(pix);
+	    ob = std::make_unique<weap>();
 	else if (order == Order::Treasure)
-		ob = std::make_unique<treasure>(pix);
+		ob = std::make_unique<treasure>();
 	else if (order == Order::FX)
-		ob = std::make_unique<effect>(pix);
+		ob = std::make_unique<effect>();
 	else
-		ob = std::make_unique<walker>(pix);
+		ob = std::make_unique<walker>();
 	if (!ob)
 		return nullptr;
 
-	// Always set size from PixieData (needed for collision in both render and headless)
-	ob->sizex = pix.w;
-	ob->sizey = pix.h;
+	if (entity_factory_.attach_render)
+		entity_factory_.attach_render(*ob, pix);
 
-	ob->stats()->hitpoints = hitpoints[PIX(order, family)];
+	// Keep sim dimensions and frame count in sync regardless of render mode.
+	ob->set_data(pix);
+	ob->set_frame(0);
+
+	const int pix_index = PIX(order, family);
+	ob->stats()->hitpoints = hitpoints[pix_index];
 	ob->stats()->max_hitpoints = hitpoints[PIX(order, family)];
 	ob->stats()->special_cost[0] = 0; // shouldn't be used
 	ob->stats()->weapon_cost = 1; // default value
-
-	// Wire sim context from owning LevelData if available.
-	if (owner_level)
-		owner_level->wire_entity(ob.get());
 
 	set_walker(ob.get(), order, family);
 

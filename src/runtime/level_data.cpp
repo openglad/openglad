@@ -460,14 +460,14 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks,
     hooks_ = hooks;
     headless_ = headless;
 
-    world_ref_.set_level_data(this);
     id = level_id;
 
     if (!myobmap)
 	    myobmap = std::make_unique<obmap>();
-    myloader = std::make_unique<loader>(this);
+    myloader = std::make_unique<loader>();
+    configure_loader_entity_factory();
     world_ref_.myloader = myloader.get();
-    world_ref_.myloader = myloader.get();
+    bind_world_entity_factory();
 
     if (!headless)
     {
@@ -489,6 +489,7 @@ LevelData::~LevelData()
 
     delete_objects();
     delete_grid();
+    world_ref_.entity_factory = nullptr;
     myloader.reset();
     world_ref_.myloader = nullptr;
 
@@ -498,7 +499,6 @@ LevelData::~LevelData()
     for (int i = 0; i < PIX_MAX; i++)
         pixdata[i].free();
 
-    world_ref_.set_level_data(nullptr);
 }
 
 void LevelData::clear()
@@ -511,50 +511,50 @@ void LevelData::clear()
 
 walker* LevelData::add_ob(Order order, std::int32_t family, bool atstart)
 {
-	(void)atstart;
-	if (order == Order::Weapon)
-		return add_weap_ob(order, family);
-
-    auto w = myloader->create_walker_owned(order, family);
-    if (!w)
-        return nullptr;
-
-    wire_entity(w.get());
-    if (order == Order::Living)
-        numobs++;
-
-    walker* raw = w.get();
-    oblist.push_back(std::move(w));
-    return raw;
+    return world_ref_.add_ob(order, family, atstart);
 }
 
 walker* LevelData::add_fx_ob(Order order, std::int32_t family)
 {
-	auto w = myloader->create_walker_owned(order, family);
-	if (!w)
-		return nullptr;
-
-	wire_entity(w.get());
-	walker* raw = w.get();
-	fxlist.push_back(std::move(w));
-	return raw;
+    return world_ref_.add_fx_ob(order, family);
 }
 
 walker* LevelData::add_weap_ob(Order order, std::int32_t family)
 {
-	auto w = myloader->create_walker_owned(order, family);
-    if (!w)
-        return nullptr;
-
-    wire_entity(w.get());
-    walker* raw = w.get();
-    weaplist.push_back(std::move(w));
-	return raw;
+    return world_ref_.add_weap_ob(order, family);
 }
 
 void LevelData::wire_entity(walker* w)
 {
     (void)w;
+}
+
+void LevelData::bind_world_entity_factory()
+{
+    world_ref_.entity_factory = [this](Order order, int family) -> std::unique_ptr<walker> {
+        if (!myloader)
+            return nullptr;
+        auto w = myloader->create_walker_owned(order, family);
+        if (!w)
+            return nullptr;
+        wire_entity(w.get());
+        return w;
+    };
+}
+
+void LevelData::configure_loader_entity_factory()
+{
+    if (!myloader)
+        return;
+
+    EntityFactory factory;
+    if (!headless_)
+    {
+        factory.attach_render = [](walker& w, const PixieData& data) {
+            w.attach_render(data);
+        };
+    }
+    myloader->set_entity_factory(std::move(factory));
 }
 
 short LevelData::remove_ob(walker  *ob)
@@ -1431,8 +1431,17 @@ bool LevelData::load()
     }
     Log("Loading version {} scenario", static_cast<int>(versionnumber));
 
-    myloader = std::make_unique<loader>(this);
-    world_ref_.myloader = myloader.get();
+    if (!myloader)
+    {
+        myloader = std::make_unique<loader>();
+        configure_loader_entity_factory();
+        world_ref_.myloader = myloader.get();
+    }
+    else
+    {
+        configure_loader_entity_factory();
+    }
+    bind_world_entity_factory();
     clear();
     par_value = static_cast<short>(id);
 
