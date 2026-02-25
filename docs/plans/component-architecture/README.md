@@ -28,7 +28,7 @@ input, sound, file I/O, or UI. It is a pure simulation sandbox.
 | [key-types.md](key-types.md) | GameWorld, LevelVisuals, screen, GameplayContext, IRenderComponent |
 | [phase-01a.md](phase-01a.md) | Phase 1a: Move entity lists to GameWorld |
 | [phase-01b.md](phase-01b.md) | Phase 1b: Spatial data, queries, finders, metadata |
-| [phase-02.md](phase-02.md) | Phase 2: Absorb SimWorld into GameWorld |
+| [phase-02.md](phase-02.md) | Phase 2: Absorb legacy simulation layer into GameWorld |
 | [phase-03.md](phase-03.md) | Phase 3: Game state flags, eliminate TickResult |
 | [phase-04.md](phase-04.md) | Phase 4: GameplayContext and current_game |
 | [phase-05.md](phase-05.md) | Phase 5: Decouple SaveData from Gameplay |
@@ -55,7 +55,7 @@ Phase 1a (GameWorld shell, entity lists)
    ▼
 Phase 1b (spatial data, queries, finders, metadata)
    ▼
-Phase 2  (absorb SimWorld into GameWorld)
+Phase 2  (absorb legacy simulation layer into GameWorld)
    ▼
 Phase 3  (game state flags, eliminate TickResult)
    ▼
@@ -132,7 +132,7 @@ that needs session state.
 10 modules (core, sim, data, entities, io, runtime, render, input, ui, platform)
 + sdl_client/ and text_client/ overlays
 screen class: game state + rendering + sound in one object
-SimWorld: separate class with tick logic, tick counters, RNG
+legacy simulation layer: separate class with tick logic, tick counters, RNG
 LevelData: entity lists + rendering data + loader in one class
 Entity code: holds 6 sim_* pointers, references SaveData, calls UI prompts
 Thread-local: current_session (GameSession*) at platform level
@@ -144,7 +144,7 @@ Global accessor: ctx() with fallback/override machinery
 ```
 4 components + core (gameplay, resources, interface, platform)
 GameWorld class: pure game state + tick logic + RNG, no rendering, no I/O
-No SimWorld class (absorbed into GameWorld)
+No legacy simulation layer class (absorbed into GameWorld)
 No LevelData class (replaced by GameWorld + LevelVisuals)
 Entity code: accesses current_game->world-> for everything (including RNG),
   no SaveData, no UI calls, no sim_config (effects checks in interface layer)

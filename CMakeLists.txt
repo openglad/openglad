@@ -946,7 +946,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
@@ -962,7 +962,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_living_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_game_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_unit.cpp

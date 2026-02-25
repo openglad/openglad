@@ -30,7 +30,7 @@ include/openglad/
 │   ├── sim_emit.h, irandom.h
 │   └── families/             (descriptors, registries)
 │   (no level_data.h — eliminated in Phase 7)
-│   (no sim_world.h — absorbed into GameWorld in Phase 2)
+│   (no game_world.h — absorbed into GameWorld in Phase 2)
 ├── resources/
 │   ├── io.h                  (filesystem abstraction API)
 │   ├── gloader.h
@@ -51,7 +51,7 @@ include/openglad/
 src/
 ├── core/                    (unchanged)
 ├── gameplay/
-│   ├── game_world.cpp        (includes absorbed sim_world tick logic)
+│   ├── game_world.cpp        (includes absorbed game_world tick logic)
 │   ├── gameplay_context.cpp
 │   ├── walker*.cpp, living.cpp, weap.cpp, treasure.cpp, effect.cpp
 │   ├── guy.cpp, obmap.cpp, combat_math.cpp, stats.cpp

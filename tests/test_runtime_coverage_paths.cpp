@@ -388,7 +388,7 @@ void test_treasure_batch3_exit_withdraw_accept_path()
 }
 REGISTER_TEST(test_treasure_batch3_exit_withdraw_accept_path);
 
-void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
+void test_game_world_tick_branches_for_end_freeze_and_cleanup()
 {
     clear_level_lists();
 
@@ -459,7 +459,7 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     TEST_ASSERT(owner->leader == nullptr, "dead leader pointer should be cleared");
     clear_level_lists();
 }
-REGISTER_TEST(test_sim_world_tick_branches_for_end_freeze_and_cleanup);
+REGISTER_TEST(test_game_world_tick_branches_for_end_freeze_and_cleanup);
 
 void test_treasure_find_teleport_target_wraparound_and_missing_self()
 {
@@ -484,7 +484,7 @@ void test_treasure_find_teleport_target_wraparound_and_missing_self()
 }
 REGISTER_TEST(test_treasure_find_teleport_target_wraparound_and_missing_self);
 
-void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
+void test_game_world_freeze_countdown_notification_and_weap_cleanup()
 {
     clear_level_lists();
 
@@ -558,7 +558,7 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
 
     clear_level_lists();
 }
-REGISTER_TEST(test_sim_world_freeze_countdown_notification_and_weap_cleanup);
+REGISTER_TEST(test_game_world_freeze_countdown_notification_and_weap_cleanup);
 
 void test_runtime_score_panel_null_control_score_overlay_safe()
 {
@@ -592,7 +592,7 @@ void test_runtime_score_panel_null_control_score_overlay_safe()
 }
 REGISTER_TEST(test_runtime_score_panel_null_control_score_overlay_safe);
 
-void test_sim_world_batch5_game_end_paths()
+void test_game_world_batch5_game_end_paths()
 {
     clear_level_lists();
 
@@ -621,7 +621,7 @@ void test_sim_world_batch5_game_end_paths()
     TEST_ASSERT(r.game_ended, "end flag should force game end");
     TEST_ASSERT_EQ(0, (int)r.level_done, "hostile living should keep level_done at 0 before end flag handling");
 }
-REGISTER_TEST(test_sim_world_batch5_game_end_paths);
+REGISTER_TEST(test_game_world_batch5_game_end_paths);
 
 void test_treasure_batch5_default_eat_and_missing_self_target_lookup()
 {
@@ -670,7 +670,7 @@ void test_treasure_batch6_find_teleport_target_full_loop_paths()
 }
 REGISTER_TEST(test_treasure_batch6_find_teleport_target_full_loop_paths);
 
-void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
+void test_game_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
 {
     clear_level_lists();
 
@@ -740,9 +740,9 @@ void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
     clear_level_lists();
     og::runtime::current_session->myscreen_->save_data.allied_mode = saved_allied_mode;
 }
-REGISTER_TEST(test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present);
+REGISTER_TEST(test_game_world_batch6_cleanup_and_erase_paths_with_hostiles_present);
 
-void test_sim_world_freeze_branch_allows_non_living_actions()
+void test_game_world_freeze_branch_allows_non_living_actions()
 {
     clear_level_lists();
 
@@ -773,9 +773,9 @@ void test_sim_world_freeze_branch_allows_non_living_actions()
     }
     TEST_ASSERT(saw_time_left, "freeze branch should emit countdown notification on modulo-10 ticks");
 }
-REGISTER_TEST(test_sim_world_freeze_branch_allows_non_living_actions);
+REGISTER_TEST(test_game_world_freeze_branch_allows_non_living_actions);
 
-void test_sim_world_assigns_far_foe_when_no_target_and_hostiles_present()
+void test_game_world_assigns_far_foe_when_no_target_and_hostiles_present()
 {
     clear_level_lists();
 
@@ -805,9 +805,9 @@ void test_sim_world_assigns_far_foe_when_no_target_and_hostiles_present()
     TEST_ASSERT(ally->foe != nullptr, "sim world should assign a far foe when none is set");
     TEST_ASSERT(ally->foe == foe_near, "nearest hostile should be selected as far foe");
 }
-REGISTER_TEST(test_sim_world_assigns_far_foe_when_no_target_and_hostiles_present);
+REGISTER_TEST(test_game_world_assigns_far_foe_when_no_target_and_hostiles_present);
 
-void test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event()
+void test_game_world_round8_end_flag_short_circuit_and_palette_unfreeze_event()
 {
     clear_level_lists();
 
@@ -841,9 +841,9 @@ void test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event()
 
     clear_level_lists();
 }
-REGISTER_TEST(test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event);
+REGISTER_TEST(test_game_world_round8_end_flag_short_circuit_and_palette_unfreeze_event);
 
-void test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero()
+void test_game_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero()
 {
     clear_level_lists();
 
@@ -871,7 +871,7 @@ void test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero()
 
     clear_level_lists();
 }
-REGISTER_TEST(test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero);
+REGISTER_TEST(test_game_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero);
 
 // --- Issue #98 regression tests: exits triggerable without beating scenario ---
 

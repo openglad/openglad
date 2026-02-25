@@ -8,8 +8,8 @@
 ## GameWorld (new — gameplay component)
 
 **Replaces `LevelData` entirely.** GameWorld absorbs all gameplay-relevant fields
-from both `screen` and `LevelData`, plus the tick logic from `SimWorld`.
-`LevelData` and `SimWorld` both cease to exist as classes. Rendering data
+from both `screen` and `LevelData`, plus the tick logic from `legacy simulation layer`.
+`LevelData` and `legacy simulation layer` both cease to exist as classes. Rendering data
 (`renderer_`, `pixdata[]`, draw offsets) moves to a new `LevelVisuals` type
 owned by `screen` in the interface layer.
 
@@ -39,7 +39,7 @@ public:
     smoother mysmoother;                  // terrain type grid + genre queries
     std::int32_t pixmaxx, pixmaxy;
 
-    // Simulation state (absorbed from SimWorld)
+    // Simulation state (absorbed from legacy simulation layer)
     SimRandom rng_;                       // deterministic LCG
     std::uint32_t tick_count_ = 0;        // total ticks across all levels
     std::uint32_t level_tick_count_ = 0;  // ticks in current level
@@ -83,7 +83,7 @@ public:
     walker* add_fx_ob(Order order, int family);
     walker* add_weap_ob(Order order, int family);
 
-    // Tick (absorbed from SimWorld — updates level_done, entity lists, etc.)
+    // Tick (absorbed from legacy simulation layer — updates level_done, entity lists, etc.)
     void tick(SimEventLog& events);
 };
 
@@ -92,8 +92,8 @@ public:
 
 **Key design decisions:**
 
-- **`SimWorld` is absorbed.** The tick logic, tick counters, and RNG all live
-  directly on GameWorld. `SimWorld` as a separate class is deleted.
+- **`legacy simulation layer` is absorbed.** The tick logic, tick counters, and RNG all live
+  directly on GameWorld. `legacy simulation layer` as a separate class is deleted.
 - **`smoother` stays whole in GameWorld.** Entity code needs
   `query_genre_x_y()` for gameplay decisions (forest walk, weapon visibility,
   door orientation). The `smooth()` method is editor-only but keeping it here

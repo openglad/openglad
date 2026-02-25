@@ -50,7 +50,7 @@ OG_UNIT_TEST(test_enemy_scaling) {
 
 - **Phase 1a/1b:** Tests that access `myscreen->level_data.*` update to
   `myscreen->world().*`. `TestGameWorld` RAII helper created in 1a.
-- **Phase 2:** Tests that reference `sim_world_` update to `world_.tick()`.
+- **Phase 2:** Tests that reference `world_` update to `world_.tick()`.
 - **Phase 3:** Tests that read `level_done` etc. from screen update to
   read from `world_`. `TickResult` assertions removed.
 - **Phase 4:** `TestGameWorld` extended to `TestGameplayContext` (installs

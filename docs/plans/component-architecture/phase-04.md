@@ -20,7 +20,7 @@ game state flags). It does NOT need gloader moved or LevelData killed.
 
 ## `tick()` Signature Evolution
 
-Phase 2 absorbed `SimWorld` into `GameWorld`.
+Phase 2 absorbed `legacy simulation layer` into `GameWorld`.
 `GameWorld::tick()` currently takes `SimEventLog&` as an argument. This phase
 completes the evolution: `tick()` takes no args and reads `sim_events` from
 `current_game`.
@@ -87,7 +87,7 @@ The existing `ctx()` global accessor and
 
 ## RNG Behavioral Change
 
-Currently, `SimWorld` owns a deterministic
+Currently, `legacy simulation layer` owns a deterministic
 `SimRandom rng_` (LCG), but entity code uses `sim_rng` which is overwritten by
 site 2 (`sdl_context_services.cpp:79-89`) to point at `ctx().rng` — a
 `ProductionRandom` that wraps a non-deterministic global `random()` function.

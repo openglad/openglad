@@ -24,7 +24,7 @@ struct TickWalker : walker {
     }
 };
 
-struct SimWorldR15Fixture {
+struct GameWorldR15Fixture {
     LevelData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
@@ -32,7 +32,7 @@ struct SimWorldR15Fixture {
     FixedRandom rng{0};
     GameContext gc;
 
-    SimWorldR15Fixture()
+    GameWorldR15Fixture()
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -40,13 +40,13 @@ struct SimWorldR15Fixture {
         set_global_context(&gc);
     }
 
-    ~SimWorldR15Fixture()
+    ~GameWorldR15Fixture()
     {
         set_global_context(nullptr);
     }
 };
 
-TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned char team, short x, short y, bool dead = false)
+TickWalker* add_ob(GameWorldR15Fixture& fx, Order order, char family, unsigned char team, short x, short y, bool dead = false)
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
@@ -62,7 +62,7 @@ TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
     return out;
 }
 
-TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, char family, unsigned char team, bool dead = false)
+TickWalker* add_weap(GameWorldR15Fixture& fx, Order order, char family, unsigned char team, bool dead = false)
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
@@ -74,7 +74,7 @@ TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, char family, unsigned 
     return out;
 }
 
-TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, char family, unsigned char team, bool dead = false)
+TickWalker* add_fx(GameWorldR15Fixture& fx, Order order, char family, unsigned char team, bool dead = false)
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
@@ -88,9 +88,9 @@ TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
 
 } // namespace
 
-OG_UNIT_TEST(test_sim_world_r15_normal_tick_cleanup_and_dead_entity_removal)
+OG_UNIT_TEST(test_game_world_r15_normal_tick_cleanup_and_dead_entity_removal)
 {
-    SimWorldR15Fixture fx;
+    GameWorldR15Fixture fx;
     og::gameplay::GameWorld& world = fx.level.game_world();
     world.rng_.state_ = 42;
     fx.save.my_team = 0;
@@ -136,9 +136,9 @@ OG_UNIT_TEST(test_sim_world_r15_normal_tick_cleanup_and_dead_entity_removal)
     OG_ASSERT(fx.level.fxlist.empty());
 }
 
-OG_UNIT_TEST(test_sim_world_r15_freeze_tick_and_level_done_paths)
+OG_UNIT_TEST(test_game_world_r15_freeze_tick_and_level_done_paths)
 {
-    SimWorldR15Fixture fx;
+    GameWorldR15Fixture fx;
     og::gameplay::GameWorld& world = fx.level.game_world();
     world.rng_.state_ = 7;
     fx.save.my_team = 0;
@@ -161,9 +161,9 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_tick_and_level_done_paths)
     OG_ASSERT(fx.events.size() > before_events);
 }
 
-OG_UNIT_TEST(test_sim_world_r15_freeze_uses_friendliness_not_team_zero)
+OG_UNIT_TEST(test_game_world_r15_freeze_uses_friendliness_not_team_zero)
 {
-    SimWorldR15Fixture fx;
+    GameWorldR15Fixture fx;
     og::gameplay::GameWorld& world = fx.level.game_world();
     world.rng_.state_ = 11;
     fx.save.my_team = 1;
@@ -181,9 +181,9 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_uses_friendliness_not_team_zero)
     OG_ASSERT(hostile->acts == 0);
 }
 
-OG_UNIT_TEST(test_sim_world_r15_end_flag_and_auto_advance_paths)
+OG_UNIT_TEST(test_game_world_r15_end_flag_and_auto_advance_paths)
 {
-    SimWorldR15Fixture fx;
+    GameWorldR15Fixture fx;
     og::gameplay::GameWorld& world = fx.level.game_world();
     world.rng_.state_ = 9;
     fx.save.my_team = 0;
@@ -194,7 +194,7 @@ OG_UNIT_TEST(test_sim_world_r15_end_flag_and_auto_advance_paths)
     og::sim::TickResult ended = world.tick(fx.save, fx.enemy_freeze, 1, fx.events);
     OG_ASSERT(ended.game_ended);
 
-    SimWorldR15Fixture empty_fx;
+    GameWorldR15Fixture empty_fx;
     og::gameplay::GameWorld& world2 = empty_fx.level.game_world();
     world2.rng_.state_ = 9;
     og::sim::TickResult auto_advance = world2.tick(empty_fx.save, empty_fx.enemy_freeze, 0, empty_fx.events);

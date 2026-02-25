@@ -69,7 +69,7 @@ namespace og::gameplay {
 // forwarding reference members so existing callers work unchanged.
 //
 // In later phases, spatial data, tick logic, RNG, and game state flags
-// will also move here, eventually replacing both LevelData and SimWorld.
+// will also move here, eventually replacing both LevelData and GameWorld.
 class GameWorld {
 public:
     GameWorld();
@@ -152,7 +152,7 @@ public:
     std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist,
                                              std::int32_t range, std::int32_t* howmany, walker* ob);
 
-    // Simulation tick (migrated from SimWorld in Phase 2).
+    // Simulation tick (migrated from GameWorld in Phase 2).
     og::sim::TickResult tick(SaveData& save, std::int32_t& enemy_freeze,
                              char end, og::sim::SimEventLog& events);
 

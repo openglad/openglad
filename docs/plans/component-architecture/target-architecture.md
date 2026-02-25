@@ -69,7 +69,7 @@ before entering gameplay.
 | Current Module | Target Component | Notes |
 |---|---|---|
 | `og_core` (math, logging, util) | **core** | Unchanged |
-| `og_sim` (SimWorld, events, IRandom) | **gameplay** | SimWorld absorbed into GameWorld |
+| `og_sim` (legacy simulation layer, events, IRandom) | **gameplay** | legacy simulation layer absorbed into GameWorld |
 | `og_entities` (walker hierarchy, families) | **gameplay** | Remove render/save/UI coupling |
 | `og_data` — in-memory types: guy, statistics | **gameplay** | LevelData eliminated — replaced by GameWorld |
 | `og_data` — file I/O: gloader, gparser, pixie_data, level/save serialization | **resources** | gloader source is in `og_runtime` (`src/runtime/gloader.cpp`), header in `og_data` (`include/openglad/data/gloader.h`) |

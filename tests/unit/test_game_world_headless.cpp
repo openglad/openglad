@@ -142,7 +142,7 @@ OG_UNIT_TEST(test_sim_random_zero_max_returns_zero)
     OG_ASSERT(rng.next(0) == 0);
 }
 
-OG_UNIT_TEST(test_sim_world_owns_rng)
+OG_UNIT_TEST(test_game_world_owns_rng)
 {
     og::gameplay::GameWorld world1;
     og::gameplay::GameWorld world2;

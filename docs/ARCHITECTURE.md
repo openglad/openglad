@@ -39,7 +39,7 @@ openglad/
 │
 ├── src/                    Private implementation
 │   ├── core/               combat_math.cpp, stats.cpp, util.cpp
-│   ├── sim/                sim_world, sim_event_log
+│   ├── sim/                game_world, sim_event_log
 │   ├── data/               gloader, gparser, level_data, pixie_data, save_data
 │   ├── entities/           walker, living, weap, treasure, effect, guy, obmap
 │   ├── io/                 physfs_api, platform_io, yaml_stream, zip_api
@@ -99,13 +99,13 @@ Pure math, logging, time helpers, and compile-time constants. No SDL, no filesys
 
 Headless, SDL-free simulation layer. Given a seed + input sequence, produces identical state and typed events. This is the foundation for separating game logic from rendering.
 
-`screen::act()` delegates to `SimWorld::tick()`, which executes all entity logic, handles dead entity cleanup, checks level completion, and emits events into a `SimEventLog`. The runtime layer then drains events and dispatches them to sound, HUD, and visual effects.
+`screen::act()` delegates to `GameWorld::tick()`, which executes all entity logic, handles dead entity cleanup, checks level completion, and emits events into a `SimEventLog`. The runtime layer then drains events and dispatches them to sound, HUD, and visual effects.
 
 Entity code emits events via `sim_emit.h` helpers (`emit_sound()`, `emit_notification()`, `emit_event()`) instead of making direct rendering/audio calls, completing the decoupling of simulation from presentation.
 
 | File | Purpose |
 |------|---------|
-| `sim/sim_world.cpp` | `SimWorld::tick()` — live game simulation tick (extracted from `screen::act()`) |
+| `sim/game_world.cpp` | `GameWorld::tick()` — live game simulation tick (extracted from `screen::act()`) |
 | `sim/sim_event_log.cpp` | `SimEventLog` — accumulates events during a tick for deferred dispatch |
 | `sim/sim_emit.h` | Convenience helpers: `emit_sound()`, `emit_notification()`, `emit_event()` |
 | `sim/event.h` | `EventKind` enum: PlaySound, Notification, SetPalette, RequestRedraw |
@@ -172,7 +172,7 @@ Owns the game session lifecycle, wires services together, manages the game loop 
 
 | File | Purpose |
 |------|---------|
-| `runtime/screen.cpp` | Game world: delegates to `SimWorld::tick()` for logic, owns redraw/event dispatch |
+| `runtime/screen.cpp` | Game world: delegates to `GameWorld::tick()` for logic, owns redraw/event dispatch |
 | `runtime/game_loop.cpp` | Per-frame loop: `game_frame()` → input → act → render |
 | `runtime/game_session.cpp` | `GameSession` — RAII root owning screen, prefs, RNG |
 | `runtime/game_context.cpp` | `GameContext` — dependency injection container (`ctx()`) |
@@ -186,7 +186,7 @@ Owns the game session lifecycle, wires services together, manages the game loop 
 
 - **`GameSession`** — RAII root for all runtime state. Owns the `screen`, `options`, and RNG. Installs legacy global shims (`myscreen`, `theprefs`). Production `main()` constructs one; tests construct one per test.
 - **`GameContext`** — Dependency injection container. Holds direct references to screen, prefs, config, RNG, and input state. Accessed globally via `ctx()`.
-- **`screen`** — The game world container. Extends `video` (graphics layer). Contains `level_data`, `save_data`, and up to 4 `viewscreen` objects for split-screen. The `act()` method delegates to `SimWorld::tick()` for game logic; `redraw()` handles rendering and event dispatch.
+- **`screen`** — The game world container. Extends `video` (graphics layer). Contains `level_data`, `save_data`, and up to 4 `viewscreen` objects for split-screen. The `act()` method delegates to `GameWorld::tick()` for game logic; `redraw()` handles rendering and event dispatch.
 
 ### og_render — Graphics and Display
 
@@ -410,7 +410,7 @@ Entity code (walker::act, combat, specials, treasure pickup, ...)
   → og::sim::emit_event(kind, a, b)   // generic structured event
   → SimEventLog accumulates events
        ↓
-Runtime layer (after SimWorld::tick() returns)
+Runtime layer (after GameWorld::tick() returns)
   → drain SimEventLog
   → dispatch: play sounds, show notifications, apply palette/redraw requests
 ```
@@ -446,7 +446,7 @@ game_frame(screen& s, GameLoopFrameState& st)
   ├── SDL_PollEvent → screen::input()    Handle input events
   ├── screen::continuous_input()         Process held keys
   ├── screen::act()                      Game logic tick
-  │   └── SimWorld::tick(level, save, ...)  Deterministic simulation
+  │   └── GameWorld::tick(level, save, ...)  Deterministic simulation
   │       ├── for each entity in oblist:
   │       │   └── walker::act()            AI, movement, combat, specials
   │       ├── dead entity cleanup
@@ -699,7 +699,7 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | File | Purpose |
 |------|---------|
 | `src/glad.cpp` | **Entry point.** `main()`, Emscripten frame wrapper, game state machine |
-| `src/runtime/screen.cpp` | Game world: `act()` delegates to `SimWorld::tick()`, `redraw()` renders + dispatches events |
+| `src/runtime/screen.cpp` | Game world: `act()` delegates to `GameWorld::tick()`, `redraw()` renders + dispatches events |
 | `src/runtime/game_loop.cpp` | Per-frame loop: `game_frame()` and `game_frame_with_result()` |
 | `src/runtime/game_session.cpp` | RAII root: creates screen, prefs, installs legacy globals |
 | `src/runtime/game_context.cpp` | `GameContext` and `ctx()` global accessor |
@@ -712,7 +712,7 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `src/data/level_data.cpp` | Level file loading and saving |
 | `src/data/save_data.cpp` | Save game serialization |
 | `src/input/input.cpp` | Keyboard/controller event handling |
-| `src/sim/sim_world.cpp` | Live game simulation tick (extracted from `screen::act()`) |
+| `src/sim/game_world.cpp` | Live game simulation tick (extracted from `screen::act()`) |
 | `src/sim/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
 | `src/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
 | `CMakeLists.txt` | Build system — module targets, test binaries, install rules |

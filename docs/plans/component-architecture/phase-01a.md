@@ -9,7 +9,7 @@
 ## Context: Phases 1a–3
 
 **Goal:** Create `GameWorld` with entity lists, spatial data, tick logic (from
-`SimWorld`), RNG, and game state flags. `screen` holds both `GameWorld` and
+`legacy simulation layer`), RNG, and game state flags. `screen` holds both `GameWorld` and
 `LevelData` temporarily during the transition.
 
 These four phases (1a, 1b, 2, 3) keep each change independently testable and
@@ -20,7 +20,7 @@ bisectable.
 - `living_count` (renamed from `numobs`) from `LevelData`
 - Spatial data (`myobmap`, `grid`, `mysmoother`, `pixmaxx/pixmaxy`) from `LevelData`
 - Level metadata (`id`, `title`, `par_value`, `time_bonus_limit`, `type`) from `LevelData`
-- Tick logic, tick counters, and RNG from `SimWorld` (absorbing `SimWorld` entirely)
+- Tick logic, tick counters, and RNG from `legacy simulation layer` (absorbing `legacy simulation layer` entirely)
 - Game state flags (`level_done`, `enemy_freeze`, `end`, etc.) from `screen`
 - `tick()` writes `level_done`, `game_ended`, `next_level`, and `ending` directly on GameWorld instead of returning `TickResult`
 
