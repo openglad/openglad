@@ -479,7 +479,7 @@ void viewscreen::process_input(const InputState& input_state)
 				       && w->team_num == team;
 			};
 				walker* found = sim_cycle_next_character(
-					active_screen()->level_data.oblist, oldcontrol, reverse, filter);
+					active_screen()->world().oblist, oldcontrol, reverse, filter);
 			if (found)
 				control = found;
 			if (control && control->dead)
@@ -855,7 +855,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
     
     // Build the list of characters
     std::list<walker*> ls;
-	for(auto& uptr : active_screen()->level_data.oblist)
+	for(auto& uptr : active_screen()->world().oblist)
 	{
 	    walker* w = uptr.get();
 		if (w && !w->dead
