@@ -34,7 +34,6 @@
 #include <openglad/entities/obmap.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
-#include <openglad/data/gloader.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>

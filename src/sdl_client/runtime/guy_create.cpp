@@ -11,12 +11,15 @@
 #include <openglad/core/stats.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
-#include <openglad/data/gloader.h>
+#include <openglad/gameplay/game_world.h>
 
 std::unique_ptr<walker> guy_create_walker_owned(guy& g, screen* screen_)
 {
 	    auto temp_guy = std::make_unique<guy>(g);
-	    auto temp_walker = screen_->level_data.myloader->create_walker_owned(Order::Living, temp_guy->family);
+	    auto& world = screen_->level_data.game_world();
+	    if (!world.entity_factory)
+	        return nullptr;
+	    auto temp_walker = world.entity_factory(Order::Living, temp_guy->family);
 	    if (!temp_walker)
 	        return nullptr;
 	    temp_walker->set_owned_myguy(std::move(temp_guy));

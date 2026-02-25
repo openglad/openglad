@@ -965,6 +965,14 @@ void GameWorld::resize_grid(int width, int height)
     std::erase_if(oblist, off_map);
     std::erase_if(fxlist, off_map);
     std::erase_if(weaplist, off_map);
+
+    living_count = 0;
+    for (const auto& uptr : oblist)
+    {
+        const walker* ob = uptr.get();
+        if (ob && !ob->dead && ob->query_order() == Order::Living)
+            living_count++;
+    }
 }
 
 void GameWorld::clear()
