@@ -1131,7 +1131,7 @@ Sint32 cycle_guy(Sint32 whichway)
 		(void)who; // always show current_guy
 		newfamily = og::runtime::current_session->current_guy_->family;
 
-		mywalker = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Living, newfamily);
+		mywalker = og::runtime::current_session->myscreen_->world().entity_factory(Order::Living, newfamily);
 		mywalker->stats()->bit_flags = 0;
 		mywalker->curdir = static_cast<signed char>(((frames/192) + FACE_DOWN)%8);
 		mywalker->ani_type = ANI_WALK;
