@@ -29,6 +29,13 @@
 
 // Per-session picker state accessor.
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+static std::unique_ptr<pixieN> create_button_pixie(char family)
+{
+    const PixieData* data = og::runtime::current_session->myscreen_->world().lookup_entity_graphics(Order::Button1, family);
+    if (!data)
+        return nullptr;
+    return std::make_unique<pixieN>(*data);
+}
 
 // allbuttons is now a macro → current_session->allbuttons_
 static inline auto& owned_buttons() { return og::runtime::current_session->owned_buttons_; }
@@ -114,14 +121,17 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     do_outline = 0;
     depressed = 0;
 
-    mypixie = og::runtime::current_session->myscreen_->level_data.myloader->create_pixieN_owned(Order::Button1, family);
+    mypixie = create_button_pixie(family);
 
     hotkey = hot;
 
-    width = mypixie->sizex;
-    height = mypixie->sizey;
-    xend = xloc + width;
-    yend = yloc + height;
+    if (mypixie)
+    {
+        width = mypixie->sizex;
+        height = mypixie->sizey;
+        xend = xloc + width;
+        yend = yloc + height;
+    }
     //vdisplay();
     color = BUTTON_FACING;
     hidden = false;
@@ -141,7 +151,9 @@ vbutton::~vbutton()
 
 void vbutton::set_graphic(char family)
 {
-    mypixie = og::runtime::current_session->myscreen_->level_data.myloader->create_pixieN_owned(Order::Button1, family);
+    mypixie = create_button_pixie(family);
+    if (!mypixie)
+        return;
     width = mypixie->sizex;
     height= mypixie->sizey;
     xend = xloc + width;

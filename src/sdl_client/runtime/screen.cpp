@@ -768,7 +768,7 @@ walker  *screen::find_far_foe(walker  *ob)
 
 walker* screen::set_walker(walker *ob, Order order, Sint32 family)
 {
-    return level_data.myloader->set_walker(ob, order, family);
+    return world_.configure_entity(ob, order, family);
 }
 
 screen::ScenarioTitleError screen::get_scen_title_with_error(const char *filename, std::string& out_title)
