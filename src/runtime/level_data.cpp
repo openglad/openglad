@@ -16,6 +16,7 @@
  */
 
 #include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/platform/io_common.h>
@@ -402,26 +403,44 @@ std::string CampaignData::get_description_line(int i)
 
 
 LevelData::LevelData(int level_id)
-    : LevelData(level_id, false, nullptr)
+    : LevelData(level_id, false, nullptr, nullptr)
 {
 }
 
 LevelData::LevelData(int level_id, const LevelDataHooks* hooks)
-    : LevelData(level_id, false, hooks)
+    : LevelData(level_id, false, hooks, nullptr)
 {
 }
 
 LevelData::LevelData(int level_id, bool headless)
-    : LevelData(level_id, headless, nullptr)
+    : LevelData(level_id, headless, nullptr, nullptr)
 {
 }
 
 LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks)
-    : id(level_id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
-    , myloader(nullptr), numobs(0), topx(0), topy(0)
+    : LevelData(level_id, headless, hooks, nullptr)
+{
+}
+
+LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks,
+                     og::gameplay::GameWorld* external_world)
+    : owned_world_(external_world ? nullptr : std::make_unique<og::gameplay::GameWorld>())
+    , world_ref_(external_world ? *external_world : *owned_world_)
+    , id(level_id), title("New Level"), type(0)
+    , par_value(1), time_bonus_limit(4000)
+    , pixmaxx(0), pixmaxy(0)
+    , myloader(nullptr)
+    , numobs(world_ref_.living_count)
+    , oblist(world_ref_.oblist)
+    , fxlist(world_ref_.fxlist)
+    , weaplist(world_ref_.weaplist)
+    , dead_list(world_ref_.dead_list)
+    , topx(0), topy(0)
 {
     hooks_ = hooks;
     headless_ = headless;
+
+    world_ref_.set_level_data(this);
 
 	myobmap = std::make_unique<obmap>();
     myloader = std::make_unique<loader>(this);
@@ -445,6 +464,8 @@ LevelData::~LevelData()
     renderer_.reset();
     for (int i = 0; i < PIX_MAX; i++)
         pixdata[i].free();
+
+    world_ref_.set_level_data(nullptr);
 }
 
 void LevelData::clear()
@@ -672,12 +693,7 @@ void LevelData::resize_grid(int width, int height)
 
 void LevelData::delete_objects()
 {
-	oblist.clear();
-	fxlist.clear();
-	weaplist.clear();
-    dead_list.clear();
-
-	numobs = 0;
+	world_ref_.delete_objects();
 
     // If this is the active screen level, clear any stale control pointers
     // that may reference walkers just deleted above.
@@ -1834,16 +1850,7 @@ std::string get_scenario_title(const char* filename)
 
 short remaining_foes(LevelData& level, walker* myguy)
 {
-    short myfoes = 0;
-    for (auto& uptr : level.oblist)
-    {
-        walker* w = uptr.get();
-        if (w && !w->dead &&
-            (w->query_order() == Order::Living) &&
-            !myguy->is_friendly(w))
-            myfoes++;
-    }
-    return myfoes;
+    return level.game_world().remaining_foes(myguy);
 }
 
 // ---- Collision / passability queries ----

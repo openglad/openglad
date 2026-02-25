@@ -36,6 +36,7 @@ class IRandom;
 class cfg_store;
 struct LevelDataHooks;
 namespace og::sim { class SimEventLog; }
+namespace og::gameplay { class GameWorld; }
 
 #include <openglad/data/smooth.h>
 #include <openglad/data/pixie_data.h>
@@ -91,6 +92,12 @@ private:
 
 class LevelData
 {
+    // GameWorld ownership — declared first for member initialization order.
+    // owned_world_ is set only in standalone construction (no external GameWorld).
+    // world_ref_ is always valid and references either owned_world_ or an external GameWorld.
+    std::unique_ptr<og::gameplay::GameWorld> owned_world_;
+    og::gameplay::GameWorld& world_ref_;
+
 public:
     enum class IoError
     {
@@ -120,12 +127,16 @@ public:
 
     smoother mysmoother;
     std::unique_ptr<loader> myloader;
-    int numobs;
-    std::list<std::unique_ptr<walker>> oblist;
-    std::list<std::unique_ptr<walker>> fxlist;  // fx--explosions, etc.
-    std::list<std::unique_ptr<walker>> weaplist;  // weapons
+
+    // Entity lists — forwarding references to GameWorld storage.
+    // These allow existing callers (level_data.oblist, etc.) to work unchanged.
+    // The actual storage lives in the GameWorld referenced by world_ref_.
+    int& numobs;  // Forwards to GameWorld::living_count
+    std::list<std::unique_ptr<walker>>& oblist;
+    std::list<std::unique_ptr<walker>>& fxlist;  // fx--explosions, etc.
+    std::list<std::unique_ptr<walker>>& weaplist;  // weapons
     // Keep a list of dead guys so weapons can still have valid owners
-    std::list<std::unique_ptr<walker>> dead_list;
+    std::list<std::unique_ptr<walker>>& dead_list;
 
     std::unique_ptr<obmap> myobmap;
     std::list<std::string> description;
@@ -139,6 +150,8 @@ public:
     LevelData(int level_id, const LevelDataHooks* hooks);
     LevelData(int level_id, bool headless);  // Headless constructor (no tile graphics)
     LevelData(int level_id, bool headless, const LevelDataHooks* hooks);
+    LevelData(int level_id, bool headless, const LevelDataHooks* hooks,
+              og::gameplay::GameWorld* external_world);
     ~LevelData();
 
     bool load();
@@ -188,6 +201,10 @@ public:
     void set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                          og::sim::SimEventLog* events, IRandom* rng,
                          cfg_store* config);
+
+    // Access the underlying GameWorld.
+    og::gameplay::GameWorld& game_world() { return world_ref_; }
+    const og::gameplay::GameWorld& game_world() const { return world_ref_; }
 
 private:
     IoError last_io_error_ = IoError::None;

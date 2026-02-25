@@ -213,13 +213,13 @@ void screen::init_common(short howmany, bool has_display)
 }
 
 screen::screen(short howmany)
-    : video(), level_data(1, false, &sdl_level_data_hooks())
+    : video(), level_data(1, false, &sdl_level_data_hooks(), &world_)
 {
 	init_common(howmany, true);
 }
 
 screen::screen(short howmany, bool create_display)
-    : video(create_display), level_data(1, false, &sdl_level_data_hooks())
+    : video(create_display), level_data(1, false, &sdl_level_data_hooks(), &world_)
 {
 	init_common(howmany, create_display);
 }

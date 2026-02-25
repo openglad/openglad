@@ -22,6 +22,7 @@
 #include <openglad/platform/soundob_sdl.h> // soundob class for soundp member
 #include <openglad/render/video.h>
 #include <openglad/data/gloader.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/sim/sim_world.h>
@@ -98,24 +99,32 @@ class screen : public video
 		int get_num_levels_completed(const std::string& campaign) const;
 		void add_level_completed(const std::string& campaign, int level_index);
 
+		// GameWorld accessor
+		og::gameplay::GameWorld& world() { return world_; }
+		const og::gameplay::GameWorld& world() const { return world_; }
+
         // General drawing data
 		std::array<unsigned char, 768> newpalette{};
 		short palmode;
-		
+
+		// Game world — owns entity lists. Must be declared before level_data
+		// so it is constructed first and destroyed last.
+		og::gameplay::GameWorld world_;
+
 		// Level data
 		LevelData level_data;
-		
+
 		// Save data
 		SaveData save_data;
-		
-		
+
+
 		// Game state
 		float control_hp; // last turn's hitpoints
 		char end;
 		signed char timer_wait;
 		short level_done; // set true when all our foes are dead
 		bool retry;  // we should reset the level and go again
-		
+
 
 		std::string special_name[NUM_FAMILIES][NUM_SPECIALS];
 		std::string alternate_name[NUM_FAMILIES][NUM_SPECIALS];
