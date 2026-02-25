@@ -110,22 +110,24 @@ public:
         SerializeFailed
     };
 
-    int id;
-    std::string title;
+    int& id;
+    std::string& title;
 
     static const char TYPE_CAN_EXIT_WHENEVER = 0x1;  // Can exit without defeating all enemies
     static const char TYPE_MUST_DESTROY_GENERATORS = 0x2;  // Must destroy generators to exit
     static const char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;  // Must protect named NPCs or else you lose
-    char type;
+    char& type;
 
     std::string grid_file;
-    short par_value;
-    short time_bonus_limit;  // frames until you get no time bonus
-    PixieData grid;
-    std::int32_t pixmaxx, pixmaxy;
+    short& par_value;
+    short& time_bonus_limit;  // frames until you get no time bonus
+    short& difficulty;
+    PixieData& grid;
+    std::int32_t& pixmaxx;
+    std::int32_t& pixmaxy;
     short level_done = 0;  // Set by sim tick: 0=foes remain, 1=all foes dead+exit, 2=no foes
 
-    smoother mysmoother;
+    smoother& mysmoother;
     std::unique_ptr<loader> myloader;
 
     // Entity lists — forwarding references to GameWorld storage.
@@ -138,7 +140,7 @@ public:
     // Keep a list of dead guys so weapons can still have valid owners
     std::list<std::unique_ptr<walker>>& dead_list;
 
-    std::unique_ptr<obmap> myobmap;
+    std::unique_ptr<obmap>& myobmap;
     std::list<std::string> description;
 
     // Drawing details

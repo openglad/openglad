@@ -19,11 +19,16 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <string>
 
 // Forward declarations
 enum class Order : unsigned char;
 class walker;
 class LevelData;
+class obmap;
+
+#include <openglad/data/pixie_data.h>
+#include <openglad/data/smooth.h>
 
 namespace og::gameplay {
 
@@ -37,7 +42,7 @@ namespace og::gameplay {
 // will also move here, eventually replacing both LevelData and SimWorld.
 class GameWorld {
 public:
-    GameWorld() = default;
+    GameWorld();
     ~GameWorld();
 
     // Non-copyable, non-moveable (entity lists contain unique_ptrs)
@@ -52,6 +57,21 @@ public:
     std::list<std::unique_ptr<walker>> fxlist;
     std::list<std::unique_ptr<walker>> dead_list;
     int living_count = 0;  // Count of Order::Living entities only (was numobs)
+
+    // Spatial data (moved from LevelData in Phase 1b)
+    std::unique_ptr<obmap> myobmap;
+    PixieData grid;
+    smoother mysmoother;
+    std::int32_t pixmaxx = 0;
+    std::int32_t pixmaxy = 0;
+
+    // Level metadata (moved from LevelData in Phase 1b)
+    int id = 1;
+    char type = 0;
+    std::string title = "New Level";
+    short par_value = 1;
+    short time_bonus_limit = 4000;
+    short difficulty = 100;
 
     // Clear all entity lists and reset living_count.
     // Note: this clears only entity storage. Hooks (e.g. stale view control
@@ -68,6 +88,43 @@ public:
     walker* add_ob(Order order, std::int32_t family, bool atstart = false);
     walker* add_fx_ob(Order order, std::int32_t family);
     walker* add_weap_ob(Order order, std::int32_t family);
+
+    // Collision/passability queries
+    bool query_passable(float x, float y, walker* ob);
+    bool query_object_passable(float x, float y, walker* ob);
+    bool query_grid_passable(float x, float y, walker* ob);
+    bool query_passable(std::int32_t x, std::int32_t y, walker* ob)
+    {
+        return query_passable(static_cast<float>(x), static_cast<float>(y), ob);
+    }
+    bool query_object_passable(std::int32_t x, std::int32_t y, walker* ob)
+    {
+        return query_object_passable(static_cast<float>(x), static_cast<float>(y), ob);
+    }
+    bool query_grid_passable(std::int32_t x, std::int32_t y, walker* ob)
+    {
+        return query_grid_passable(static_cast<float>(x), static_cast<float>(y), ob);
+    }
+
+    // Entity search
+    walker* find_near_foe(walker* ob);
+    walker* find_far_foe(walker* ob);
+    walker* find_nearest_blood(walker* who);
+    walker* find_nearest_player(walker* ob);
+    std::list<walker*> find_in_range(std::list<std::unique_ptr<walker>>& somelist,
+                                     std::int32_t range, std::int32_t* howmany, walker* ob);
+    std::list<walker*> find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist,
+                                          std::int32_t range, std::int32_t* howmany, walker* ob);
+    std::list<walker*> find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist,
+                                                 std::int32_t range, std::int32_t* howmany, walker* ob);
+    std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist,
+                                             std::int32_t range, std::int32_t* howmany, walker* ob);
+
+    // Grid/world lifecycle
+    void create_new_grid();
+    void resize_grid(int width, int height);
+    void delete_grid();
+    void clear();
 
     // Temporary back-pointer to LevelData for loader delegation.
     // Set by LevelData's constructor; cleared by its destructor.

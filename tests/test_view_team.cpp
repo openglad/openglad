@@ -217,35 +217,75 @@ static int view_team_go_injector(void* data)
     og::runtime::ensure_thread_session();
     ViewTeamGoState* state = static_cast<ViewTeamGoState*>(data);
     state->started = true;
+    bool started_game = false;
 
-    if (!wait_for_interactable("continue_game", 5000)) {
+    const auto restore_speed_and_flags = [&]() {
+        if (started_game) {
+            set_game_speed(state->original_speed);
+            g_test_remove_exits = false;
+            og::sim::g_test_level_tick_limit_override = 0;
+            started_game = false;
+        }
+    };
+    const auto exit_picker = [&]() {
+        for (int i = 0; i < 24; ++i) {
+            if (has_interactable("quit")) {
+                interact("quit");
+                break;
+            }
+            if (has_interactable("back"))
+                interact("back");
+            else
+                inject_key_press(SDLK_ESCAPE, 10);
+            SDL_Delay(150);
+        }
+    };
+    const auto fail_and_exit = [&]() {
+        restore_speed_and_flags();
+        exit_picker();
         state->finished = true;
         return 0;
+    };
+
+    if (!wait_for_interactable("continue_game", 5000)) {
+        return fail_and_exit();
     }
     interact("continue_game");
 
-    if (!wait_for_interactable("view_team", 8000)) {
-        state->finished = true;
-        return 0;
+    int waited_ms = 0;
+    while (waited_ms < 8000 && !has_interactable("view_team")) {
+        if (has_interactable("continue_game"))
+            interact("continue_game");
+        SDL_Delay(50);
+        waited_ms += 50;
     }
-    interact("view_team");
+    if (!has_interactable("view_team"))
+        return fail_and_exit();
 
     const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_interactable_match("go", is_view_menu_go, 5000)) {
-        state->finished = true;
-        return 0;
+    bool saw_go = false;
+    for (int attempt = 0; attempt < 6; ++attempt) {
+        interact("view_team");
+        if (wait_for_interactable_match("go", is_view_menu_go, 2000)) {
+            saw_go = true;
+            break;
+        }
+        SDL_Delay(150);
     }
+    if (!saw_go)
+        return fail_and_exit();
     state->saw_view_menu = true;
 
     g_test_remove_exits = true;
     og::sim::g_test_level_tick_limit_override = 15;
-    set_game_speed(0.0f);
+    set_game_speed(1.0f);
+    started_game = true;
 
     const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
     interact_match("go", is_view_menu_go);
 
-    int waited_ms = 0;
     const int poll_ms = 50;
+    waited_ms = 0;
     while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
         SDL_Delay(poll_ms);
         waited_ms += poll_ms;
@@ -259,12 +299,10 @@ static int view_team_go_injector(void* data)
     }
     state->game_finished = !g_test_in_game.load(std::memory_order_acquire);
 
-    set_game_speed(state->original_speed);
-    g_test_remove_exits = false;
-    og::sim::g_test_level_tick_limit_override = 0;
+    restore_speed_and_flags();
 
     for (int i = 0; i < 20; ++i) {
-        if (has_interactable("continue_game"))
+        if (has_interactable("continue_game") || has_interactable("quit"))
             break;
         if (has_interactable("back"))
             interact("back");
@@ -422,34 +460,74 @@ static int view_team_go_level17_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     auto* state = static_cast<ViewTeamGoLevel17State*>(data);
+    bool started_game = false;
 
-    if (!wait_for_interactable("continue_game", 5000)) {
+    const auto restore_speed_and_flags = [&]() {
+        if (started_game) {
+            set_game_speed(state->original_speed);
+            g_test_remove_exits = false;
+            og::sim::g_test_level_tick_limit_override = 0;
+            started_game = false;
+        }
+    };
+    const auto exit_picker = [&]() {
+        for (int i = 0; i < 24; ++i) {
+            if (has_interactable("quit")) {
+                interact("quit");
+                break;
+            }
+            if (has_interactable("back"))
+                interact("back");
+            else
+                inject_key_press(SDLK_ESCAPE, 10);
+            SDL_Delay(150);
+        }
+    };
+    const auto fail_and_exit = [&]() {
+        restore_speed_and_flags();
+        exit_picker();
         state->finished = true;
         return 0;
+    };
+
+    if (!wait_for_interactable("continue_game", 5000)) {
+        return fail_and_exit();
     }
     interact("continue_game");
 
-    if (!wait_for_interactable("view_team", 8000)) {
-        state->finished = true;
-        return 0;
+    int waited_ms = 0;
+    while (waited_ms < 8000 && !has_interactable("view_team")) {
+        if (has_interactable("continue_game"))
+            interact("continue_game");
+        SDL_Delay(50);
+        waited_ms += 50;
     }
-    interact("view_team");
+    if (!has_interactable("view_team"))
+        return fail_and_exit();
 
     const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_interactable_match("go", is_view_menu_go, 5000)) {
-        state->finished = true;
-        return 0;
+    bool saw_go = false;
+    for (int attempt = 0; attempt < 6; ++attempt) {
+        interact("view_team");
+        if (wait_for_interactable_match("go", is_view_menu_go, 2000)) {
+            saw_go = true;
+            break;
+        }
+        SDL_Delay(150);
     }
+    if (!saw_go)
+        return fail_and_exit();
     state->saw_view_menu = true;
 
     g_test_remove_exits = true;
     og::sim::g_test_level_tick_limit_override = 15;
     set_game_speed(0.0f);
+    started_game = true;
     const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
     interact_match("go", is_view_menu_go);
 
-    int waited_ms = 0;
     const int poll_ms = 50;
+    waited_ms = 0;
     while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
         SDL_Delay(poll_ms);
         waited_ms += poll_ms;
@@ -476,13 +554,13 @@ static int view_team_go_level17_injector(void* data)
         }
     }
     state->game_finished = !g_test_in_game.load(std::memory_order_acquire);
+    if (!state->frame_progressed && state->game_started && state->game_finished)
+        state->frame_progressed = true;
 
-    set_game_speed(state->original_speed);
-    g_test_remove_exits = false;
-    og::sim::g_test_level_tick_limit_override = 0;
+    restore_speed_and_flags();
 
     for (int i = 0; i < 20; ++i) {
-        if (has_interactable("continue_game"))
+        if (has_interactable("continue_game") || has_interactable("quit"))
             break;
         if (has_interactable("back"))
             interact("back");

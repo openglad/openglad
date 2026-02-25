@@ -791,29 +791,7 @@ std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walke
 
 std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
-    std::list<walker*> result;
-    *howmany = 0;
-
-	if(!ob)
-		return result;
-
-	for(auto& uptr : somelist)
-	{
-	    walker* w = uptr.get();
-		if (w && !w->dead &&
-		        (w->query_order() == Order::Weapon)
-		        && ( ob->is_friendly(w) )
-		   )
-		{
-			if (ob->distance_to_ob(w) <= range)
-			{
-			    result.push_back(w);
-				(*howmany)++;
-			}
-		}
-	}
-
-	return result;
+    return level_data.find_foe_weapons_in_range(somelist, range, howmany, ob);
 }
 
 

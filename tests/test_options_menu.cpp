@@ -62,6 +62,17 @@ static int options_injector(void* data)
     fprintf(stderr, "  [test] clicking options\n");
     interact("options");
 
+    // Main menu transition can miss under load; retry until options entries exist.
+    int open_elapsed = 0;
+    while (open_elapsed < 8000 && !has_interactable("toggle_hit_flash")) {
+        if (has_interactable("options"))
+            interact("options");
+        else
+            inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(150);
+        open_elapsed += 150;
+    }
+
     // Options menu buttons
     SDL_Delay(500);
     if (wait_for_interactable("toggle_hit_flash", 10000)) {
@@ -78,6 +89,18 @@ static int options_injector(void* data)
             SDL_Delay(150);
             interact("controls_back");
             SDL_Delay(250);
+        }
+
+        // Control menu dismissal can be timing-sensitive; ensure we are back
+        // in the options menu before trying toggle buttons.
+        bool in_options_menu = wait_for_interactable("toggle_hit_flash", 2000);
+        for (int attempt = 0; !in_options_menu && attempt < 8; ++attempt) {
+            if (has_interactable("controls_back"))
+                interact("controls_back");
+            else
+                inject_key_press(SDLK_ESCAPE, 10);
+            SDL_Delay(200);
+            in_options_menu = wait_for_interactable("toggle_hit_flash", 1200);
         }
 
         // Toggle a few settings
@@ -130,8 +153,17 @@ static int options_injector(void* data)
 
     // Ensure mainmenu() returns so picker_main() can complete.
     // In test mode, QUIT does not exit the process; it just returns EXIT_VALUE.
-    if (wait_for_interactable("quit", 10000)) {
-        SDL_Delay(200);
+    bool saw_quit = wait_for_interactable("quit", 2500);
+    for (int attempt = 0; !saw_quit && attempt < 10; ++attempt) {
+        if (has_interactable("options_back"))
+            interact("options_back");
+        else
+            inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(150);
+        saw_quit = wait_for_interactable("quit", 1200);
+    }
+    if (saw_quit) {
+        SDL_Delay(150);
         fprintf(stderr, "  [test] clicking quit\n");
         interact("quit");
     }

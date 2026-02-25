@@ -186,7 +186,6 @@ std::string get_asset_path()
     }
     s += '/';
 
-    Log("get_asset_path: {}\n", s);
     return s;
 #endif
 }
@@ -616,4 +615,3 @@ NewFileIoError create_new_scen_file_with_error(const std::string& scenfile, cons
 	
     return NewFileIoError::None;
 }
-
