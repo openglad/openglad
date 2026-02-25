@@ -1215,7 +1215,7 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
     
     // Get the exits
     std::set<int> exits;
-    for(auto& uptr : d.fxlist)
+    for(auto& uptr : d.game_world().fxlist)
     {
         walker* w = uptr.get();
         if(w->query_order() == Order::Treasure && w->family == FAMILY_EXIT && w->stats() != nullptr)

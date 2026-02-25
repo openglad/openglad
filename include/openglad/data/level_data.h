@@ -153,10 +153,10 @@ public:
               og::gameplay::GameWorld* external_world);
     ~LevelData();
 
-    bool load();
-    bool save();
-    [[nodiscard]] IoError save_with_error();
-    [[nodiscard]] IoError load_with_error();
+    bool load(LevelVisuals* visuals = nullptr);
+    bool save(LevelVisuals* visuals = nullptr);
+    [[nodiscard]] IoError save_with_error(LevelVisuals* visuals = nullptr);
+    [[nodiscard]] IoError load_with_error(LevelVisuals* visuals = nullptr);
     [[nodiscard]] IoError last_io_error() const { return last_io_error_; }
 
     walker* add_ob(Order order, std::int32_t family, bool atstart = false);
@@ -190,7 +190,6 @@ public:
 
     std::string get_description_line(int i);
     bool is_headless() const { return headless_; }
-    void set_level_visuals(LevelVisuals* visuals) { level_visuals_ = visuals; }
     void wire_entity(walker* w);  // Wire all stored sim context onto an entity.
 
     // Set sim context used by transitional headless/runtime wiring.
@@ -210,7 +209,6 @@ private:
     IoError last_io_error_ = IoError::None;
     bool headless_ = false;  // When true, skip render component creation
     const LevelDataHooks* hooks_ = nullptr;
-    LevelVisuals* level_visuals_ = nullptr;
 
     // Sim context pointer retained for event bridge wiring.
     og::sim::SimEventLog*  sim_ctx_events_ = nullptr;

@@ -631,7 +631,7 @@ LevelVisuals& fallback_level_visuals(LevelVisuals* visuals)
 
 } // namespace
 
-bool LevelData::load()
+bool LevelData::load(LevelVisuals* visuals)
 {
     TRACE("game", "LevelData::load id=%d headless=%d", id, headless_ ? 1 : 0);
     last_io_error_ = IoError::None;
@@ -650,7 +650,7 @@ bool LevelData::load()
     metadata.description = description;
 
     og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
-    if (!og::data::load_level(thefile, world_ref_, fallback_level_visuals(level_visuals_),
+    if (!og::data::load_level(thefile, world_ref_, fallback_level_visuals(visuals),
                               metadata, &io_error))
     {
         last_io_error_ = map_level_file_error(io_error);
@@ -665,7 +665,7 @@ bool LevelData::load()
     return true;
 }
 
-bool LevelData::save()
+bool LevelData::save(LevelVisuals* visuals)
 {
     last_io_error_ = IoError::None;
 
@@ -676,7 +676,7 @@ bool LevelData::save()
     metadata.description = description;
 
     og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
-    if (!og::data::save_level(world_ref_, fallback_level_visuals(level_visuals_),
+    if (!og::data::save_level(world_ref_, fallback_level_visuals(visuals),
                               temp_filename, metadata, &io_error))
     {
         last_io_error_ = map_level_file_error(io_error);
@@ -687,15 +687,15 @@ bool LevelData::save()
     return true;
 }
 
-LevelData::IoError LevelData::load_with_error()
+LevelData::IoError LevelData::load_with_error(LevelVisuals* visuals)
 {
-    load();
+    load(visuals);
     return last_io_error_;
 }
 
-LevelData::IoError LevelData::save_with_error()
+LevelData::IoError LevelData::save_with_error(LevelVisuals* visuals)
 {
-    save();
+    save(visuals);
     return last_io_error_;
 }
 
