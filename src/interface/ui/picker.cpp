@@ -414,7 +414,9 @@ void picker_quit()
 
 #ifdef __EMSCRIPTEN__
 // Web build: Replace QUIT with HELP (QUIT doesn't make sense in browser)
-button mainmenu_buttons[] =
+button* get_mainmenu_buttons()
+{
+    static const button buttons[] =
     {
         button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
         button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=5}),
@@ -432,10 +434,14 @@ button mainmenu_buttons[] =
         button("help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 20, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=7, .left=10}),
         button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 20, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=7, .right=9})
     };
+    return const_cast<button*>(buttons);
+}
 #define OPTIONS_BUTTON_INDEX 10
 
 #else // Native build
-button mainmenu_buttons[] =
+button* get_mainmenu_buttons()
+{
+    static const button buttons[] =
     {
         button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
         button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=5}),
@@ -453,6 +459,8 @@ button mainmenu_buttons[] =
         button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, button_action_id(ButtonAction::QuitMenu), 0 , MenuNav{.up=7, .left=10}),
         button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 20, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=7, .right=9})
     };
+    return const_cast<button*>(buttons);
+}
 #define OPTIONS_BUTTON_INDEX 10
 #endif // __EMSCRIPTEN__
 
@@ -460,7 +468,9 @@ button mainmenu_buttons[] =
 
 #ifdef __EMSCRIPTEN__
 // Web build without multiplayer: Replace QUIT with HELP
-button mainmenu_buttons[] =
+button* get_mainmenu_buttons()
+{
+    static const button buttons[] =
     {
         button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 70, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
         button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 95, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
@@ -470,10 +480,14 @@ button mainmenu_buttons[] =
         button("help", "HELP", KEYSTATE_UNKNOWN, 120, 154, 60, 20, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=3, .left=5}),
         button("options", "", KEYSTATE_UNKNOWN, 90, 154, 20, 20, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
     };
+    return const_cast<button*>(buttons);
+}
 #define OPTIONS_BUTTON_INDEX 5
 
 #else // Native build without multiplayer
-button mainmenu_buttons[] =
+button* get_mainmenu_buttons()
+{
+    static const button buttons[] =
     {
         button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 70, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
         button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 95, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
@@ -483,6 +497,8 @@ button mainmenu_buttons[] =
         button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 154, 60, 20, button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up=3, .left=5}),
         button("options", "", KEYSTATE_UNKNOWN, 90, 154, 20, 20, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
     };
+    return const_cast<button*>(buttons);
+}
 #define OPTIONS_BUTTON_INDEX 5
 #endif // __EMSCRIPTEN__
 
@@ -492,7 +508,9 @@ button mainmenu_buttons[] =
 inline constexpr Sint32 BUTTON_PADDING = 8;
 inline constexpr Sint32 BUTTON_PITCH = BUTTON_HEIGHT + BUTTON_PADDING;
 
-button main_options_buttons[] =
+button* get_main_options_buttons()
+{
+    static button buttons[] =
 {
     button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=12, .down=1, .right=15}),
     button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2}),
@@ -512,13 +530,17 @@ button main_options_buttons[] =
     button("player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 100, 10, 80, 15,
         button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=13, .down=1, .left=0, .right=14}),
 };
+    return const_cast<button*>(buttons);
+}
 
 // Control options: 4 player sections at 28px pitch, each with mode + remap buttons.
 // Text labels ("Px", key info) drawn in main_controls_options() below each section's buttons.
 #define CTRL_PLAYER_PITCH 28
 #define CTRL_PLAYER_Y(i) (40 + (i) * CTRL_PLAYER_PITCH)
 
-button control_options_buttons[] =
+button* get_control_options_buttons()
+{
+    static button buttons[] =
 {
     button("controls_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.down=1}),
     button("player1_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(0), 100, 15,
@@ -540,9 +562,13 @@ button control_options_buttons[] =
     button("controls_restore_defaults", "RESET DEFAULTS", KEYSTATE_UNKNOWN, 80, 170, 160, 15,
         button_action_id(ButtonAction::RestoreDefaultControls), -1, MenuNav{.up=7}),
 };
+    return const_cast<button*>(buttons);
+}
 
 // beginmenu (first menu of new game), create_team_menu
-button createmenu_buttons[] =
+button* get_createmenu_buttons()
+{
+    static const button buttons[] =
     {
         button("view_team", "VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, button_action_id(ButtonAction::CreateViewMenu), -1, MenuNav{.down=3, .right=1}),
         button("train_team", "TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, button_action_id(ButtonAction::CreateTrainMenu), -1, MenuNav{.down=4, .left=0, .right=2}),
@@ -557,8 +583,12 @@ button createmenu_buttons[] =
         button("set_campaign", "SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, button_action_id(ButtonAction::DoPickCampaign), MENU_EXIT, MenuNav{.up=8, .left=7}),
 
     };
+    return const_cast<button*>(buttons);
+}
 
-button viewteam_buttons[] =
+button* get_viewteam_buttons()
+{
+    static const button buttons[] =
     {
         //  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, button_action_id(ButtonAction::CreateTrainMenu), -1},
         //  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, button_action_id(ButtonAction::CreateHireMenu), -1},
@@ -566,14 +596,22 @@ button viewteam_buttons[] =
         button("back", "BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_REDRAW, MenuNav{.right=0}),
 
     };
+    return const_cast<button*>(buttons);
+}
 
-button details_buttons[] =
+button* get_details_buttons()
+{
+    static button buttons[] =
     {
         button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=1, .right=1}),
         button("promote", 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav{.down=0, .left=0}, false, true) // PROMOTE
     };
+    return const_cast<button*>(buttons);
+}
 
-button trainmenu_buttons[] =
+button* get_trainmenu_buttons()
+{
+    static button buttons[] =
     {
         button("prev", "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, button_action_id(ButtonAction::CycleTeamGuy), -1, MenuNav{.down=2, .right=1}),
         button("next", "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, button_action_id(ButtonAction::CycleTeamGuy), 1, MenuNav{.down=3, .left=0, .right=16}),
@@ -597,8 +635,12 @@ button trainmenu_buttons[] =
         button("back", "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=12, .right=15}),
 
     };
+    return const_cast<button*>(buttons);
+}
 
-button hiremenu_buttons[] =
+button* get_hiremenu_buttons()
+{
+    static button buttons[] =
     {
         button("prev", "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, button_action_id(ButtonAction::CycleGuy), -1, MenuNav{.down=4, .right=1}),
         button("next", "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, button_action_id(ButtonAction::CycleGuy), 1, MenuNav{.down=3, .left=0, .right=3}),
@@ -607,9 +649,13 @@ button hiremenu_buttons[] =
         button("back", "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=0, .right=3}),
 
     };
+    return const_cast<button*>(buttons);
+}
 
 
-button saveteam_buttons[] =
+button* get_saveteam_buttons()
+{
+    static const button buttons[] =
     {
         button("save_slot_1", "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, button_action_id(ButtonAction::DoSave), 1, MenuNav{.up=10, .down=1}),
         button("save_slot_2", "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, button_action_id(ButtonAction::DoSave), 2, MenuNav{.up=0, .down=2}),
@@ -624,8 +670,12 @@ button saveteam_buttons[] =
         button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=9, .down=0}),
 
     };
+    return const_cast<button*>(buttons);
+}
 
-button loadteam_buttons[] =
+button* get_loadteam_buttons()
+{
+    static const button buttons[] =
     {
         button("load_slot_1", "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, button_action_id(ButtonAction::DoLoad), 1, MenuNav{.up=10, .down=1}),
         button("load_slot_2", "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, button_action_id(ButtonAction::DoLoad), 2, MenuNav{.up=0, .down=2}),
@@ -640,6 +690,8 @@ button loadteam_buttons[] =
         button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=9, .down=0}),
 
     };
+    return const_cast<button*>(buttons);
+}
 
 
 void view_team(short left, short top, short right, short bottom)
@@ -926,8 +978,8 @@ Sint32 edit_player_keymap(Sint32 arg)
 Sint32 main_controls_options()
 {
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    button* buttons = control_options_buttons;
-    const int num_buttons = array_size(control_options_buttons);
+    button* buttons = get_control_options_buttons();
+    const int num_buttons = 10;
     int highlighted_button = 0;
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
     clear_keyboard();
@@ -990,13 +1042,16 @@ Sint32 main_options()
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
     #if defined(OUYA) || defined(ANDROID)
-    main_options_buttons[3].hidden = main_options_buttons[3].no_draw = true;
-    main_options_buttons[2].nav.right = -1;
-    main_options_buttons[5].nav.up = 2;
+    button* buttons = get_main_options_buttons();
+    buttons[3].hidden = buttons[3].no_draw = true;
+    buttons[2].nav.right = -1;
+    buttons[5].nav.up = 2;
     #endif
-    
-	button* buttons = main_options_buttons;
-	int num_buttons = array_size(main_options_buttons);
+
+    #if !defined(OUYA) && !defined(ANDROID)
+	button* buttons = get_main_options_buttons();
+    #endif
+	int num_buttons = 16;
 	int highlighted_button = 0;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
@@ -1261,7 +1316,7 @@ Sint32 create_detail_menu(guy *arg1)
 
 	   // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
-	button* buttons = details_buttons;
+	button* buttons = get_details_buttons();
 	int num_buttons = 2;
 	int highlighted_button = 0;
 	

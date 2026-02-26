@@ -11,12 +11,14 @@ inline constexpr int32_t BUTTON_HEIGHT = 15;
 // Forward declare button for extern arrays.
 struct button;
 
-// Button arrays defined in picker.cpp.
-extern button mainmenu_buttons[];
-extern button createmenu_buttons[];
-extern button viewteam_buttons[];
-extern button details_buttons[];
-extern button trainmenu_buttons[];
-extern button hiremenu_buttons[];
-extern button saveteam_buttons[];
-extern button loadteam_buttons[];
+// Session-local button layout accessors defined in picker.cpp.
+button* get_mainmenu_buttons();
+button* get_createmenu_buttons();
+button* get_viewteam_buttons();
+button* get_details_buttons();
+button* get_trainmenu_buttons();
+button* get_hiremenu_buttons();
+button* get_saveteam_buttons();
+button* get_loadteam_buttons();
+button* get_main_options_buttons();
+button* get_control_options_buttons();

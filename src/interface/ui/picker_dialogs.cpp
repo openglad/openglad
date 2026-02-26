@@ -24,6 +24,7 @@
 
 #include "SDL.h"
 
+#include <array>
 #include <cstring>
 #include <list>
 #include <string>
@@ -34,22 +35,31 @@ constexpr int YES_VALUE = 5;
 constexpr int NO_VALUE = 6;
 constexpr int PIX_PER_CHAR = 6;
 
-button yes_or_no_buttons[] =
-    {
+const std::array<button, 2>& yes_or_no_button_template()
+{
+    static const std::array<button, 2> buttons = {
         button("yes", "YES", KEYSTATE_UNKNOWN,  70, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), YES_VALUE, MenuNav{.right=1}),
-        button("no", "NO", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), NO_VALUE, MenuNav{.left=0})
+        button("no", "NO", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), NO_VALUE, MenuNav{.left=0}),
     };
+    return buttons;
+}
 
-button no_or_yes_buttons[] =
-    {
+const std::array<button, 2>& no_or_yes_button_template()
+{
+    static const std::array<button, 2> buttons = {
         button("no", "NO", KEYSTATE_UNKNOWN,  70, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), NO_VALUE, MenuNav{.right=1}),
-        button("yes", "YES", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), YES_VALUE, MenuNav{.left=0})
+        button("yes", "YES", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), YES_VALUE, MenuNav{.left=0}),
     };
+    return buttons;
+}
 
-button popup_dialog_buttons[] =
-    {
-        button("ok", "OK", KEYSTATE_ESCAPE,  160 - 25, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), YES_VALUE, MenuNav{})
+const std::array<button, 1>& popup_dialog_button_template()
+{
+    static const std::array<button, 1> buttons = {
+        button("ok", "OK", KEYSTATE_ESCAPE,  160 - 25, 130, 50, 20, button_action_id(ButtonAction::YesOrNo), YES_VALUE, MenuNav{}),
     };
+    return buttons;
+}
 
 // Compute centered dialog bounds from a title and message lines.
 struct DialogBounds {
@@ -169,7 +179,9 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
     auto [w, h, leftside, rightside] = compute_dialog_bounds(title, ls);
 
     // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    button* buttons = yes_first ? yes_or_no_buttons : no_or_yes_buttons;
+    std::array<button, 2> button_storage =
+        yes_first ? yes_or_no_button_template() : no_or_yes_button_template();
+    button* buttons = button_storage.data();
     int num_buttons = 2;
     int highlighted_button = yes_first ? (default_value ? 0 : 1)
                                        : (default_value ? 1 : 0);
@@ -254,7 +266,8 @@ void popup_dialog(const char* title, const char* message)
     auto [w, h, leftside, rightside] = compute_dialog_bounds(title, ls);
 
     // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    button* buttons = popup_dialog_buttons;
+    std::array<button, 1> button_storage = popup_dialog_button_template();
+    button* buttons = button_storage.data();
     int num_buttons = 1;
     int highlighted_button = 0;
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);

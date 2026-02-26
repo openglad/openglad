@@ -6,6 +6,5 @@
  * (at your option) any later version.
  */
 
-// Legacy global definitions have been consolidated into GameSession.
-// myscreen and theprefs are now macros that dereference current_session.
-// This file is kept as a placeholder; remove once all globals are migrated.
+// Legacy runtime ownership now lives in GameSession/screen_lifecycle.
+// This placeholder translation unit remains only for build-system continuity.

@@ -154,7 +154,7 @@ Sint32 mainmenu(Sint32 arg1)
 
 	// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
-	button* buttons = mainmenu_buttons;
+	button* buttons = get_mainmenu_buttons();
 	int num_buttons = MAINMENU_BUTTON_COUNT;
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);

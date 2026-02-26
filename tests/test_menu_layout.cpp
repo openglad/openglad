@@ -3,9 +3,8 @@
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 
-// Button arrays and their sizes defined in picker.cpp
-extern button main_options_buttons[];
-extern button control_options_buttons[];
+extern button* get_main_options_buttons();
+extern button* get_control_options_buttons();
 
 // Counts derived from the arrays (we know exact sizes from the source)
 static constexpr int NUM_MAIN_OPTIONS = 16;
@@ -145,6 +144,7 @@ static void check_nav_in_range(button* buttons, int count, const char* menu_name
 
 void test_main_options_buttons_no_overlap()
 {
+    button* main_options_buttons = get_main_options_buttons();
     check_no_overlaps(main_options_buttons, NUM_MAIN_OPTIONS, "main_options");
     check_bounds(main_options_buttons, NUM_MAIN_OPTIONS, "main_options");
 }
@@ -152,6 +152,7 @@ REGISTER_TEST(test_main_options_buttons_no_overlap);
 
 void test_control_options_buttons_no_overlap()
 {
+    button* control_options_buttons = get_control_options_buttons();
     check_no_overlaps(control_options_buttons, NUM_CONTROL_OPTIONS, "control_options");
     check_bounds(control_options_buttons, NUM_CONTROL_OPTIONS, "control_options");
 }
@@ -159,12 +160,14 @@ REGISTER_TEST(test_control_options_buttons_no_overlap);
 
 void test_main_options_nav_indices_in_range()
 {
+    button* main_options_buttons = get_main_options_buttons();
     check_nav_in_range(main_options_buttons, NUM_MAIN_OPTIONS, "main_options");
 }
 REGISTER_TEST(test_main_options_nav_indices_in_range);
 
 void test_control_options_nav_indices_in_range()
 {
+    button* control_options_buttons = get_control_options_buttons();
     check_nav_in_range(control_options_buttons, NUM_CONTROL_OPTIONS, "control_options");
 }
 REGISTER_TEST(test_control_options_nav_indices_in_range);

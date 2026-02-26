@@ -4,7 +4,7 @@
 
 #include <cstring>
 
-extern short end_of_file;
+extern short& help_end_of_file_flag();
 
 // Simple memory-backed OgFile for testing.
 class MemOgFile : public og::io::OgFile {
@@ -39,7 +39,7 @@ void test_help_read_one_line_stops_on_newline_and_sets_eof()
     const char* text = "abc\ndef";
     MemOgFile file(text, strlen(text));
 
-    end_of_file = 0;
+    help_end_of_file_flag() = 0;
     std::string l1 = read_one_line(file, HELP_WIDTH);
     TEST_ASSERT_STR_EQ("abc", l1.c_str(), "first line should be 'abc'");
 
@@ -48,7 +48,7 @@ void test_help_read_one_line_stops_on_newline_and_sets_eof()
 
     // Reading again should hit EOF and set end_of_file.
     (void)read_one_line(file, HELP_WIDTH);
-    TEST_ASSERT(end_of_file == 1, "end_of_file should be set after EOF");
+    TEST_ASSERT(help_end_of_file_flag() == 1, "end_of_file should be set after EOF");
 }
 REGISTER_TEST(test_help_read_one_line_stops_on_newline_and_sets_eof);
 
@@ -59,7 +59,7 @@ void test_help_fill_help_array_reads_multiple_lines()
 
     char arr[HELP_WIDTH][MAX_LINES];
     memset(arr, 0, sizeof(arr));
-    end_of_file = 0;
+    help_end_of_file_flag() = 0;
 
     short n = fill_help_array(arr, file);
     TEST_ASSERT(n >= 2, "fill_help_array should read at least 2 lines");

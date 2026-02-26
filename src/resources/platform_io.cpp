@@ -31,6 +31,7 @@ std::string get_asset_path();
 
 namespace og::resources {
 namespace {
+// Sessionless fallback for resources-layer campaign mount state.
 std::string s_mounted_campaign;
 } // namespace
 

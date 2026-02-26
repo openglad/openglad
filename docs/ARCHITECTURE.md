@@ -290,6 +290,8 @@ Accepted process globals:
 - Process config global: `cfg`
 - Immutable registries: family/effect/treasure/generator/weapon init-once registries
 - Rendering scratch exception: `grass_rng` thread-local in SDL rendering
+- Lightweight-client context override: `set_global_context()` thread-local override for text/headless clients that do not construct a `GameSession` (must be set/cleared by the client session boundary)
+- Resources-layer fallback mount cache: `s_mounted_campaign` in `src/resources/platform_io.cpp` for campaign mount operations that run before any runtime session exists
 - Test-only globals under `#ifdef TESTING` and Emscripten-only globals under `#ifdef __EMSCRIPTEN__`
 
 Final thread-local audit state:

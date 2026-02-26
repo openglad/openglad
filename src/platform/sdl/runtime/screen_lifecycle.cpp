@@ -13,12 +13,16 @@
 #include <openglad/interface/screen.h>
 namespace
 {
-std::unique_ptr<og::runtime::GameSession> g_session_owner;
+std::unique_ptr<og::runtime::GameSession>& session_owner_storage()
+{
+    static std::unique_ptr<og::runtime::GameSession> owner;
+    return owner;
+}
 }
 
 std::unique_ptr<og::runtime::GameSession>& global_session_owner()
 {
-    return g_session_owner;
+    return session_owner_storage();
 }
 
 og::runtime::GameSession* create_global_session(short numviews)
@@ -27,13 +31,14 @@ og::runtime::GameSession* create_global_session(short numviews)
     session_cfg.numviews = numviews;
     session_cfg.install_legacy_globals = true;
 
-    g_session_owner = std::make_unique<og::runtime::GameSession>(session_cfg);
-    return g_session_owner.get();
+    auto& owner = session_owner_storage();
+    owner = std::make_unique<og::runtime::GameSession>(session_cfg);
+    return owner.get();
 }
 
 void destroy_global_session()
 {
-    g_session_owner.reset();
+    session_owner_storage().reset();
 }
 
 screen* create_global_screen(short numviews)

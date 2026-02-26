@@ -178,7 +178,9 @@ bool Rectf::contains(float X, float Y) const
     return (x <= X && x + w >= X && y + h <= Y && y >= Y);
 }
 
-Sint32 backgrounds[] = {
+static const std::vector<Sint32>& editor_backgrounds()
+{
+    static const std::vector<Sint32> backgrounds = {
                          PIX_GRASS1, PIX_GRASS2, PIX_GRASS_DARK_1, PIX_GRASS_DARK_2,
                          //PIX_GRASS_DARK_B1, PIX_GRASS_DARK_BR, PIX_GRASS_DARK_R1, PIX_GRASS_DARK_R2,
                          PIX_BOULDER_1, PIX_GRASS_DARK_LL, PIX_GRASS_DARK_UR, PIX_GRASS_RUBBLE,
@@ -238,6 +240,8 @@ Sint32 backgrounds[] = {
                          PIX_CLIFF_LEFT, PIX_CLIFF_BOTTOM, PIX_CLIFF_TOP, PIX_CLIFF_RIGHT,
                          PIX_CLIFF_LEFT, PIX_CLIFF_TOP_L, PIX_CLIFF_TOP_R, PIX_CLIFF_RIGHT,
                      };
+    return backgrounds;
+}
 
 class ObjectType
 {
@@ -253,7 +257,11 @@ public:
 	    {}
 };
 
-std::vector<ObjectType> object_pane;
+static std::vector<ObjectType>& editor_object_pane()
+{
+    static std::vector<ObjectType> object_pane;
+    return object_pane;
+}
 
 // eds().rowsdown and eds().maxrows moved into LevelEditorState (per-session via eds())
 
@@ -1506,9 +1514,9 @@ Sint32 LevelEditorData::display_panel(screen* s)
         {
             for (j=0; j < 4; j++)
             {
-                whichback = (i+(j+eds().rowsdown)*4) % (sizeof(backgrounds)/4);
+                whichback = (i+(j+eds().rowsdown)*4) % static_cast<Sint32>(editor_backgrounds().size());
                 {
-                    auto& pix = s->level_visuals_.pixdata[ backgrounds[whichback] ];
+                    auto& pix = s->level_visuals_.pixdata[ editor_backgrounds()[whichback] ];
                     s->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
                                         GRID_SIZE, GRID_SIZE,
                                         0, 0, 320, 200,
@@ -1567,6 +1575,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         {
             for (j=0; j < 4; j++)
             {
+                auto& object_pane = editor_object_pane();
                 const int pane_size = static_cast<int>(object_pane.size());
                 int index = 0;
                 if(pane_size > 0)
@@ -2678,6 +2687,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     //windowx = (mx - PIX_LEFT) / GRID_SIZE;
                     windowx = (mx-S_RIGHT) / GRID_SIZE;
                     windowy = (my - PIX_TOP) / GRID_SIZE;
+                    auto& object_pane = editor_object_pane();
                     const int pane_size = static_cast<int>(object_pane.size());
                     if(pane_size > 0)
                     {
@@ -2738,8 +2748,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     //windowx = (mx - PIX_LEFT) / GRID_SIZE;
                     windowx = (mx-S_RIGHT) / GRID_SIZE;
                     windowy = (my - PIX_TOP) / GRID_SIZE;
-                    terrain_brush.terrain = backgrounds[ (windowx + ((windowy+eds().rowsdown) * PIX_OVER))
-                                             % (sizeof(backgrounds)/4)];
+                    terrain_brush.terrain = editor_backgrounds()[ (windowx + ((windowy+eds().rowsdown) * PIX_OVER))
+                                             % static_cast<Sint32>(editor_backgrounds().size())];
                     terrain_brush.terrain %= NUM_BACKGROUNDS;
                 } // end of background grid window
                 else
@@ -3081,7 +3091,7 @@ Sint32 level_editor()
     
     // Initialize palette for cycling
     load_and_set_palette("our.pal", eds().scenpalette);
-    eds().maxrows = ((sizeof(backgrounds)/4) / 4);
+    eds().maxrows = static_cast<Sint32>(editor_backgrounds().size()) / 4;
     
     if(data.reloadCampaign())
         Log("Loaded campaign data successfully.\n");
@@ -3111,6 +3121,7 @@ Sint32 level_editor()
 
 	eds().redraw = 1;  // Redraw right away
 	
+    auto& object_pane = editor_object_pane();
 	object_pane.clear();
 	for(int family_idx = 0; family_idx < NUM_FAMILIES; family_idx++)
     {

@@ -16,8 +16,8 @@
 #include <openglad/platform/picker_ui_state.h>
 #include <openglad/platform/level_editor_state.h>
 #include <openglad/interface/render/pixien.h>  // complete type for PickerState's unique_ptr<pixieN>
-#include <openglad/interface/screen.h> // screen class (pulls in base.h → myscreen macro)
-#include <openglad/interface/render/view.h>    // options class (defines theprefs macro)
+#include <openglad/interface/screen.h> // screen class
+#include <openglad/interface/render/view.h>    // options class
 #include <openglad/interface/render/sai2x.h>   // E_Screen
 #include <openglad/platform/game_context.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -28,9 +28,8 @@
 // Defined in view.cpp — loads allkeys from defaults + keyprefs.dat.
 void init_allkeys(int allkeys[][16]);
 
-// The legacy global macros (myscreen, theprefs) expand through current_session.
-// This file manages current_session itself, so we #undef the macros to avoid
-// accidental expansion in the implementation below.
+// This file owns current_session directly, so undef any transitional aliases to
+// avoid accidental expansion inside this implementation unit.
 #undef myscreen
 #undef theprefs
 
@@ -70,8 +69,8 @@ GameSession::GameSession(const Config& session_cfg)
     // ctx() now reads from current_session->ctx_ directly; no need to
     // call set_global_context.
 
-    // Set session members before creating the screen, because the screen
-    // constructor creates viewscreens whose constructors read theprefs (macro).
+    // Set session members before creating the screen; screen construction reads
+    // session preferences during nested view initialization.
     theprefs_ = prefs_owner_.get();
 
     // Initialize legacy video pointer (VGA linear buffer address from DOS era).
@@ -81,8 +80,8 @@ GameSession::GameSession(const Config& session_cfg)
     // to SDL's internal array — it's the same for all sessions.
     keystates_ = SDL_GetKeyboardState(nullptr);
 
-    // Install current_session so the theprefs macro resolves to this session's
-    // prefs during screen construction (viewscreen ctors read theprefs).
+    // Install current_session so nested constructors resolve this session's
+    // preferences during screen boot.
     if (cfg_.install_legacy_globals) {
         current_session = this;
         primary_session.store(this, std::memory_order_release);
@@ -204,8 +203,8 @@ GameSession::SessionScope::SessionScope(GameSession& session)
     // Save current session
     saved_session_ = current_session;
 
-    // Install this session as current.  The legacy macros (myscreen, theprefs)
-    // dereference current_session, so this single pointer swap is sufficient.
+    // Install this session as current; legacy accessors follow current_session,
+    // so this pointer swap is sufficient.
     // ctx() also reads from current_session->ctx_, so no separate context
     // installation is needed.
     current_session = session_;

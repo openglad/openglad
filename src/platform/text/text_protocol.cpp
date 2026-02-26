@@ -158,6 +158,8 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     GameContext text_ctx;
     text_ctx.rng = &entity_rng;
     text_ctx.sim_events = std::make_unique<og::sim::SimEventLog>();
+    // Text protocol is a lightweight client (no GameSession); it installs a
+    // scoped ctx() override for this session.
     set_global_context(&text_ctx);
     og::gameplay::GameplayContext gameplay_ctx;
 

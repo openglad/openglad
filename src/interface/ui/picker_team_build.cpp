@@ -180,7 +180,7 @@ Sint32 create_team_menu(Sint32 arg1)
 	
 	text& mytext = og::runtime::current_session->myscreen_->text_normal;
 	
-	button* buttons = createmenu_buttons;
+	button* buttons = get_createmenu_buttons();
 	int num_buttons = 10;
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
@@ -253,7 +253,7 @@ Sint32 create_view_menu(Sint32 arg1)
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 
-	button* buttons = viewteam_buttons;
+	button* buttons = get_viewteam_buttons();
 	int num_buttons = 2;
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
@@ -585,23 +585,23 @@ Sint32 create_hire_menu(Sint32 arg1)
     SDL_Rect name_box = {description_box.x + description_box.w/2 - (126-34)/2, description_box.y - 71 + 8, 126 - 34, 24 - 8};
     SDL_Rect name_box_inner = {name_box.x + 2, name_box.y + 2, name_box.w - 4, name_box.h - 4};
     
-    hiremenu_buttons[0].x = description_box.x + description_box.w/2 - hiremenu_buttons[0].sizex - 4 - 30;
-    hiremenu_buttons[0].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - hiremenu_buttons[0].sizey/2;
+    button* buttons = get_hiremenu_buttons();
+    buttons[0].x = description_box.x + description_box.w/2 - buttons[0].sizex - 4 - 30;
+    buttons[0].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buttons[0].sizey/2;
     
-    hiremenu_buttons[1].x = description_box.x + description_box.w/2 + 4 + 30;
-    hiremenu_buttons[1].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - hiremenu_buttons[1].sizey/2;
+    buttons[1].x = description_box.x + description_box.w/2 + 4 + 30;
+    buttons[1].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buttons[1].sizey/2;
     
-    hiremenu_buttons[2].hidden = (og::runtime::current_session->myscreen_->save_data.numplayers == 1);
+    buttons[2].hidden = (og::runtime::current_session->myscreen_->save_data.numplayers == 1);
     
 	og::runtime::current_session->myscreen_->clearbuffer();
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
 	#ifdef DISABLE_MULTIPLAYER
-	hiremenu_buttons[2].hidden = true;
+	buttons[2].hidden = true;
 	#endif
-    
-	button* buttons = hiremenu_buttons;
+
 	int num_buttons = 5;
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
@@ -795,10 +795,13 @@ Sint32 create_train_menu(Sint32 arg1)
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 	
 	#ifdef DISABLE_MULTIPLAYER
-	trainmenu_buttons[18].hidden = true;
+    button* buttons = get_trainmenu_buttons();
+	buttons[18].hidden = true;
 	#endif
-    
-	button* buttons = trainmenu_buttons;
+
+    #if !defined(DISABLE_MULTIPLAYER)
+	button* buttons = get_trainmenu_buttons();
+    #endif
 	int num_buttons = 20;
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
@@ -1071,12 +1074,12 @@ static Sint32 create_slot_menu(button* buttons, const char* title)
 
 Sint32 create_load_menu(Sint32 /*arg1*/)
 {
-	return create_slot_menu(loadteam_buttons, "Gladiator: Load Game");
+	return create_slot_menu(get_loadteam_buttons(), "Gladiator: Load Game");
 }
 
 Sint32 create_save_menu(Sint32 /*arg1*/)
 {
-	return create_slot_menu(saveteam_buttons, "Gladiator: Save Game");
+	return create_slot_menu(get_saveteam_buttons(), "Gladiator: Save Game");
 }
 
 // --- Session-based thin wrappers for button callbacks ---
