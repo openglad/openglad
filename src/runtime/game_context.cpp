@@ -9,6 +9,8 @@
 #include <openglad/platform/game_session.h>
 #include <openglad/gameplay/session_access.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/core/util.h>
+#include <cassert>
 
 // The existing global random() function (defined in screen.cpp or text_client main)
 std::uint32_t random(std::uint32_t x);
@@ -34,6 +36,9 @@ void GameContext::poll_input()
 // ---------------------------------------------------------------------------
 
 static thread_local GameContext* s_test_context_override = nullptr;
+#ifndef NDEBUG
+static thread_local GameContext* s_test_context_override_live = nullptr;
+#endif
 
 namespace {
 GameContext& fallback_context()
@@ -50,17 +55,29 @@ GameContext& fallback_context()
 
 GameContext& ctx()
 {
-    if (s_test_context_override)
+    if (s_test_context_override) {
+#ifndef NDEBUG
+        assert(s_test_context_override_live == s_test_context_override &&
+               "set_global_context() override is stale; clear it before context destruction");
+#endif
         return *s_test_context_override;
+    }
     og::runtime::ensure_thread_session();
     if (og::runtime::current_session)
         return og::runtime::current_session->ctx_;
+    LogWarn("ctx(): no thread session installed; using fallback GameContext\n");
+#ifndef NDEBUG
+    assert(false && "ctx() fell back to thread-local fallback_context()");
+#endif
     return fallback_context();
 }
 
 void set_global_context(GameContext* context)
 {
     s_test_context_override = context;
+#ifndef NDEBUG
+    s_test_context_override_live = context;
+#endif
 }
 
 namespace og::gameplay {

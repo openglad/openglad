@@ -177,8 +177,9 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
 // current_session and waits for the main thread to signal each frame.
 static void worker_thread_func(WorkerSync& sync, DemoSession& demo, int session_idx)
 {
-    // Install this session as thread_local current_session.
-    og::runtime::current_session = demo.session.get();
+    // Install this session into thread-local runtime/gameplay TLS in one step.
+    og::runtime::install_thread_session(demo.session.get());
+    og::runtime::ensure_thread_game();
 
     // Simulation-only deps: no rendering, no event polling, no frame timing.
     // The main thread handles all of these.

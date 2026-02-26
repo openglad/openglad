@@ -69,6 +69,7 @@ namespace og::gameplay {
 
 GameWorld::GameWorld()
     : myobmap(std::make_unique<obmap>())
+    , pathfinding(std::make_unique<PathfindingState>())
 {
 #ifndef NDEBUG
     entity_thread_owner_ = std::this_thread::get_id();
@@ -82,6 +83,7 @@ GameWorld::~GameWorld()
     {
         og::gameplay::current_game->world = nullptr;
         og::gameplay::current_game->sim_events = nullptr;
+        og::gameplay::current_game->pathfinding = nullptr;
     }
 }
 
@@ -138,6 +140,7 @@ void GameWorld::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
     {
         og::gameplay::current_game->world = this;
         og::gameplay::current_game->sim_events = events;
+        og::gameplay::current_game->pathfinding = pathfinding.get();
     }
 }
 

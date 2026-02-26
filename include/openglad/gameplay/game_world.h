@@ -59,6 +59,8 @@ extern std::int32_t g_test_level_tick_limit_override;
 
 namespace og::gameplay {
 
+class PathfindingState;
+
 // GameWorld: owns entity lists, spatial data, level metadata, and game logic.
 //
 // Central game state container for a single level. Owns entity storage,
@@ -122,6 +124,7 @@ public:
 
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
+    std::unique_ptr<PathfindingState> pathfinding;
     std::function<std::unique_ptr<walker>(Order, int)> entity_factory;
     std::function<walker*(walker*, Order, int)> entity_configure;
     std::function<void(walker*, Order, int)> entity_derived_stats;

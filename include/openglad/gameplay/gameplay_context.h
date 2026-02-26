@@ -37,9 +37,7 @@ private:
 struct GameplayContext {
     GameWorld* world = nullptr;
     og::sim::SimEventLog* sim_events = nullptr;
-
-    // Pathfinding scratch state that belongs to gameplay thread context.
-    std::unique_ptr<PathfindingState> pathfinding = std::make_unique<PathfindingState>();
+    PathfindingState* pathfinding = nullptr;
 };
 
 extern thread_local GameplayContext* current_game;
