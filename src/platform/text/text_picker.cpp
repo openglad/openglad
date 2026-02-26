@@ -20,6 +20,7 @@
 #include <format>
 #include <iostream>
 #include <list>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -560,7 +561,7 @@ private:
             return;
 
         const auto level = parse_int_strict(line);
-        if (!level || *level < 1) {
+        if (!level || *level < 1 || *level > std::numeric_limits<short>::max()) {
             std::printf("Invalid level.\n");
             return;
         }

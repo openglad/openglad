@@ -97,6 +97,8 @@ void sdl_play_sound(int sound_id)
     }
 }
 
+// TODO: Keep this process-global intentionally. SDL_mixer exposes process-global
+// music playback state, so cross-session music control is last-writer-wins by design.
 std::mutex g_bridge_music_mutex;
 Mix_Music* g_bridge_music = nullptr;
 

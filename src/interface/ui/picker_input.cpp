@@ -49,13 +49,13 @@ Sint32 leftmouse(button* buttons)
     static bool was_left_down = false;
     static bool was_right_down = false;
 
-    Sint32 i = 0;
+    const Sint32 count = static_cast<Sint32>(og::runtime::current_session->active_button_count_);
     Sint32 somebutton = -1;
 
     grab_mouse();
     MouseState& mymouse = query_mouse();
 
-    while (og::runtime::current_session->allbuttons_[i])
+    for (Sint32 i = 0; i < count; ++i)
     {
         if(buttons != nullptr && !buttons[i].hidden)
         {
@@ -63,7 +63,6 @@ Sint32 leftmouse(button* buttons)
             if (og::runtime::current_session->keystates_[og::runtime::current_session->allbuttons_[i]->hotkey])
                 somebutton = i;
         }
-        i++;
     }
 
     if (somebutton != -1)

@@ -521,7 +521,7 @@ inline constexpr Sint32 BUTTON_PITCH = BUTTON_HEIGHT + BUTTON_PADDING;
 
 button* get_main_options_buttons()
 {
-    static button buttons[] =
+    static const button buttons[] =
 {
     button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=12, .down=1, .right=15}),
     button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2}),
@@ -551,7 +551,7 @@ button* get_main_options_buttons()
 
 button* get_control_options_buttons()
 {
-    static button buttons[] =
+    static const button buttons[] =
 {
     button("controls_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.down=1}),
     button("player1_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(0), 100, 15,
@@ -612,7 +612,7 @@ button* get_viewteam_buttons()
 
 button* get_details_buttons()
 {
-    static button buttons[] =
+    static const button buttons[] =
     {
         button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=1, .right=1}),
         button("promote", 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav{.down=0, .left=0}, false, true) // PROMOTE
@@ -622,7 +622,7 @@ button* get_details_buttons()
 
 button* get_trainmenu_buttons()
 {
-    static button buttons[] =
+    static const button buttons[] =
     {
         button("prev", "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, button_action_id(ButtonAction::CycleTeamGuy), -1, MenuNav{.down=2, .right=1}),
         button("next", "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, button_action_id(ButtonAction::CycleTeamGuy), 1, MenuNav{.down=3, .left=0, .right=16}),
@@ -651,7 +651,7 @@ button* get_trainmenu_buttons()
 
 button* get_hiremenu_buttons()
 {
-    static button buttons[] =
+    static const button buttons[] =
     {
         button("prev", "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, button_action_id(ButtonAction::CycleGuy), -1, MenuNav{.down=4, .right=1}),
         button("next", "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, button_action_id(ButtonAction::CycleGuy), 1, MenuNav{.down=3, .left=0, .right=3}),
@@ -989,8 +989,9 @@ Sint32 edit_player_keymap(Sint32 arg)
 Sint32 main_controls_options()
 {
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    button* buttons = get_control_options_buttons();
     const int num_buttons = 10;
+    std::vector<button> buttons_storage(get_control_options_buttons(), get_control_options_buttons() + num_buttons);
+    button* buttons = buttons_storage.data();
     int highlighted_button = 0;
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
     clear_keyboard();
@@ -1052,20 +1053,17 @@ Sint32 main_controls_options()
 Sint32 main_options()
 {
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    
-		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
+
+    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+    int num_buttons = 16;
+    std::vector<button> buttons_storage(get_main_options_buttons(), get_main_options_buttons() + num_buttons);
+    button* buttons = buttons_storage.data();
+
     #if defined(OUYA) || defined(ANDROID)
-    button* buttons = get_main_options_buttons();
     buttons[3].hidden = buttons[3].no_draw = true;
     buttons[2].nav.right = -1;
     buttons[5].nav.up = 2;
     #endif
-
-    #if !defined(OUYA) && !defined(ANDROID)
-	button* buttons = get_main_options_buttons();
-    #endif
-	int num_buttons = 16;
 	int highlighted_button = 0;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
@@ -1149,7 +1147,8 @@ Sint32 set_player_mode(Sint32 howmany)
 	Sint32 count = 0;
 	og::ui::set_player_count(og::runtime::current_session->myscreen_->save_data, howmany);
 
-	while (og::runtime::current_session->allbuttons_[count])
+	const Sint32 button_count = static_cast<Sint32>(og::runtime::current_session->active_button_count_);
+	while (count < button_count)
 	{
 		og::runtime::current_session->allbuttons_[count]->vdisplay();
 		count++;
@@ -1329,10 +1328,10 @@ Sint32 create_detail_menu(guy *arg1)
    release_mouse();
 
 	   // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
-	button* buttons = get_details_buttons();
-	int num_buttons = 2;
-	int highlighted_button = 0;
+       std::vector<button> buttons_storage(get_details_buttons(), get_details_buttons() + 2);
+		button* buttons = buttons_storage.data();
+		int num_buttons = 2;
+		int highlighted_button = 0;
 	
 	{
 	    const auto* fd = get_family_descriptor(thisguy->family);
