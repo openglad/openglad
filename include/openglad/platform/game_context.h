@@ -58,4 +58,6 @@ struct GameContext {
 // ---------------------------------------------------------------------------
 
 GameContext& ctx();
+// Test-only override for ctx(). Caller owns `context` and must keep it alive
+// until set_global_context(nullptr) clears the override on the same thread.
 void set_global_context(GameContext* context);

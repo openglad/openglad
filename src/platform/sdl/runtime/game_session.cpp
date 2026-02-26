@@ -119,6 +119,7 @@ GameSession::GameSession(const Config& session_cfg)
     }
     gameplay_.sim_events = ctx_.sim_events.get();
     gameplay_.world = &world_;
+    gameplay_.pathfinding = world_.pathfinding.get();
 
     // ctx() now reads from current_session->ctx_ directly; no need to
     // call set_global_context.
@@ -157,6 +158,7 @@ GameSession::GameSession(const Config& session_cfg)
             auto screen_ptr = std::make_unique<::screen>(cfg_.numviews, &world_, cfg_.create_display);
             myscreen_ = screen_ptr.get();
             gameplay_.sim_events = ctx_.sim_events.get();
+            gameplay_.pathfinding = world_.pathfinding.get();
 
             // Ensure this session's curpal_ matches the screen's palette.
             // video_init_palettes() populates video::ourpalette per-instance,

@@ -21,6 +21,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/stats.h>
 #include <openglad/platform/game_context.h>
+#include <openglad/platform/game_session.h>
 
 #include <cstdio>
 #include <cstddef>
@@ -212,6 +213,14 @@ static void cmd_events(std::vector<og::sim::Event>& pending_events)
 
 int run_text_protocol_session(const TextProtocolArgs& args)
 {
+    og::runtime::ensure_thread_game();
+    auto* thread_session = og::runtime::current_session;
+    if (!thread_session) {
+        std::fprintf(stderr, "Missing thread session for text protocol\n");
+        return 1;
+    }
+    og::runtime::install_thread_session(thread_session);
+
     // Set up sim infrastructure
     og::sim::SimEventLog events;
 
@@ -230,10 +239,12 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     GameContext text_ctx;
     text_ctx.rng = &entity_rng;
     text_ctx.sim_events = std::make_unique<og::sim::SimEventLog>();
-    // Text protocol is a lightweight client (no GameSession); it installs a
-    // scoped ctx() override for this session.
+    // Text protocol is a lightweight client (no constructed GameSession ctx_); it
+    // installs a scoped ctx() override for this session.
     set_global_context(&text_ctx);
-    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameWorld* prev_world = thread_session->gameplay_.world;
+    og::sim::SimEventLog* prev_events = thread_session->gameplay_.sim_events;
+    og::gameplay::PathfindingState* prev_pathfinding = thread_session->gameplay_.pathfinding;
 
     // Create GameWorld and load (headless — no tile graphics)
     og::gameplay::GameWorld world;
@@ -258,6 +269,10 @@ int run_text_protocol_session(const TextProtocolArgs& args)
         if (!og::data::load_level(thefile, world, dummy_visuals, meta)) {
             std::fprintf(stderr, "Failed to load level %d\n", args.level);
             set_global_context(nullptr);
+            thread_session->gameplay_.world = prev_world;
+            thread_session->gameplay_.sim_events = prev_events;
+            thread_session->gameplay_.pathfinding = prev_pathfinding;
+            og::runtime::install_thread_session(thread_session);
             return 1;
         }
     }
@@ -280,10 +295,10 @@ int run_text_protocol_session(const TextProtocolArgs& args)
 
     // Wire up sim pointers on all entities
     world.rng_.state_ = args.seed;
-    gameplay_ctx.world = &world;
-    gameplay_ctx.sim_events = &events;
-    og::gameplay::GameplayContext* prev_game = og::gameplay::current_game;
-    og::gameplay::current_game = &gameplay_ctx;
+    thread_session->gameplay_.world = &world;
+    thread_session->gameplay_.sim_events = &events;
+    thread_session->gameplay_.pathfinding = world.pathfinding.get();
+    og::runtime::install_thread_session(thread_session);
 
     world.set_sim_context(&save, &world.enemy_freeze, &events, &entity_rng, &cfg);
 
@@ -342,7 +357,10 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     }
 
     set_global_context(nullptr);
-    og::gameplay::current_game = prev_game;
+    thread_session->gameplay_.world = prev_world;
+    thread_session->gameplay_.sim_events = prev_events;
+    thread_session->gameplay_.pathfinding = prev_pathfinding;
+    og::runtime::install_thread_session(thread_session);
     return 0;
 }
 
