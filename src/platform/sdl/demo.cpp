@@ -312,6 +312,10 @@ int main(int argc, char* argv[])
             SDL_TEXTUREACCESS_STREAMING, display_w, display_h);
         if (!composite_surface || !composite_tex) {
             LogError("Failed to create composite surface/texture\n");
+            if (composite_tex)
+                SDL_DestroyTexture(composite_tex);
+            if (composite_surface)
+                SDL_FreeSurface(composite_surface);
             return 1;
         }
 

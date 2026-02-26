@@ -1,12 +1,17 @@
 # OpenGlad Architecture
 
-This document describes the architecture as implemented in `CMakeLists.txt`, `src/`, and `include/openglad/` on branch `fix/architecture-docs-v2`.
+This document describes the architecture as implemented in `CMakeLists.txt`, `src/`, and `include/openglad/`.
 
 ## Repository Layout
 
 ```text
 openglad/
-├── src/
+├── builtin/
+├── cfg/
+├── docs/
+│   └── plans/
+├── extra_campaigns/
+├── include/openglad/
 │   ├── core/
 │   ├── gameplay/
 │   │   └── families/
@@ -14,35 +19,39 @@ openglad/
 │   │   ├── input/
 │   │   ├── render/
 │   │   └── ui/
+│   ├── legacy/
+│   ├── platform/
+│   │   └── sdl/
 │   ├── resources/
-│   │   └── io/
+│   ├── sim/                   (event/sim bridge headers)
+├── pix/
+├── scen/
+├── scripts/
+├── sound/
+├── src/
+│   ├── core/
+│   ├── fuzz/
+│   ├── gameplay/
+│   │   └── families/
+│   ├── interface/
+│   │   ├── input/
+│   │   ├── render/
+│   │   └── ui/
 │   ├── platform/
 │   │   ├── sdl/
 │   │   │   ├── io/
 │   │   │   └── runtime/
 │   │   └── text/
-│   ├── runtime/
-│   ├── fuzz/
-│   └── render/                (legacy transitional headers)
-│
-├── include/openglad/
-│   ├── core/
-│   ├── gameplay/
-│   │   └── families/
+│   ├── render/                (legacy transitional headers)
 │   ├── resources/
-│   ├── interface/
-│   │   ├── input/
-│   │   ├── render/
-│   │   └── ui/
-│   ├── platform/
-│   │   └── sdl/
-│   ├── sim/                   (event/sim bridge headers)
-│   └── legacy/
-│
+│   │   └── io/
+│   └── runtime/
 ├── tests/
+│   ├── e2e/
 │   └── unit/
-├── scripts/
 ├── third_party/
+├── util/
+├── web/
 ├── CMakeLists.txt
 └── CMakePresets.json
 ```
@@ -86,7 +95,7 @@ The native build creates these internal libraries:
 : `src/platform/sdl/io/platform_io.cpp`, `src/resources/platform_io.cpp`, `src/resources/io/{physfs_api.cpp,filesystem.cpp,zip_api.cpp,yaml_stream.cpp,og_file.cpp}`
 
 - `og_runtime`
-: `src/runtime/{game_context.cpp,platform_bridge.cpp,sim_input_handler.cpp}`, `src/interface/screen.cpp`, `src/gameplay/{stats.cpp,game_world.cpp,gameplay_context.cpp}`, and `src/platform/sdl/runtime/{game.cpp,game_loop.cpp,game_session.cpp,glad_gameplay.cpp,legacy_globals.cpp,score_panel.cpp,screen_lifecycle.cpp,guy_create.cpp,input_event_bridge.cpp,walker_render_bridge.cpp,sdl_context_services.cpp,cheat_handler.cpp}`
+: `src/runtime/{game_context.cpp,platform_bridge.cpp,sim_input_handler.cpp}`, `src/interface/{screen.cpp,render/smooth.cpp}`, `src/gameplay/{stats.cpp,game_world.cpp,gameplay_context.cpp}`, and `src/platform/sdl/runtime/{game.cpp,game_loop.cpp,game_session.cpp,glad_gameplay.cpp,legacy_globals.cpp,score_panel.cpp,screen_lifecycle.cpp,guy_create.cpp,input_event_bridge.cpp,walker_render_bridge.cpp,sdl_context_services.cpp,cheat_handler.cpp}`
 
 - `og_render`
 : `src/interface/render/{graphlib.cpp,pal32.cpp,pixie.cpp,pixien.cpp,radar.cpp,sai2x.cpp,text.cpp,view.cpp,walker_draw.cpp,obmap_debug_draw.cpp,sdl_level_render.cpp}`, `src/platform/sdl/video.cpp`
@@ -177,7 +186,7 @@ Current persisted in-memory fields:
 
 ## Component Boundaries (Enforced)
 
-`scripts/check_vendor_leaks.sh` enforces four rule groups:
+`scripts/check_vendor_leaks.sh` enforces five rule groups:
 
 1. Public headers in `include/openglad/` may not include vendor headers (`physfs`, `libzip`, `libyaml`, `yam`, `zlib`).
 2. Filesystem/archive vendor headers may only be included from `src/resources/io/` and `src/platform/sdl/io/` (plus `ogfile_yaml` exception).
@@ -187,6 +196,7 @@ Current persisted in-memory fields:
 - `src/interface/*` may include only `openglad/core`, `openglad/gameplay`, `openglad/resources`, `openglad/interface`.
 - `src/platform/sdl/*` is unrestricted.
 4. Public header graph guardrail: headers under `include/openglad/{core,gameplay,resources,interface}` may not include `openglad/platform`.
+5. SDL boundary: SDL headers must not be included from non-platform code (`src/platform/sdl/*` and SDL-specific platform headers are the allowed boundary).
 
 ## Build System
 
@@ -248,9 +258,6 @@ These globals remain intentionally, with current rationale:
 - `std::unique_ptr<Screen> E_Screen` (`src/platform/sdl/video.cpp`)
 : SDL display/render backend singleton used by legacy video path.
 
-- `SDL_Joystick* joysticks[MAX_NUM_JOYSTICKS]` (`src/interface/input/input.cpp`)
-: process-level SDL joystick handles.
-
 - `extern const int32_t difficulty_level[DIFFICULTY_SETTINGS]` and `kDifficultyNames`
 : shared immutable difficulty tables for picker/UI logic.
 
@@ -267,4 +274,3 @@ These globals remain intentionally, with current rationale:
 - Frame loop: `src/platform/sdl/runtime/game_loop.cpp`
 - Runtime world adapter: `src/interface/screen.cpp`
 - Simulation tick: `src/gameplay/game_world.cpp`
-

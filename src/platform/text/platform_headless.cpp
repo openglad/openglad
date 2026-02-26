@@ -16,6 +16,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/render/video_base.h>
 #include <openglad/resources/level_render.h>
 
 #include <algorithm>
@@ -374,7 +375,7 @@ const og::interface::PlatformBridge kHeadlessPlatformBridge{
     .play_sound = [](int) {},
     .play_music = [](const char*) {},
     .stop_music = []() {},
-    .create_surface = [](int, int) -> og::render::VideoBase* { return nullptr; },
+    .create_surface = [](int, int) -> std::unique_ptr<og::render::VideoBase> { return nullptr; },
     .clear_stale_view_controls = headless_clear_stale_view_controls,
 };
 }
