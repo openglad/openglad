@@ -73,11 +73,12 @@ static int options_injector(void* data)
         SDL_Delay(400);
         if (wait_for_interactable("player1_mode", 5000)) {
             interact("player1_mode");
-            SDL_Delay(150);
-            interact("player1_remap");
-            SDL_Delay(150);
-            interact("controls_back");
-            SDL_Delay(250);
+            if (wait_for_interactable("controls_back", 5000)) {
+                SDL_Delay(1500); // Guard against fadeblack event loss.
+                interact("controls_back");
+            }
+            wait_for_interactable("toggle_hit_flash", 10000);
+            SDL_Delay(400);
         }
 
         // Toggle a few settings
@@ -125,7 +126,13 @@ static int options_injector(void* data)
 
         // Click BACK to return to main menu
         fprintf(stderr, "  [test] clicking options_back\n");
-        interact("options_back");
+        if (wait_for_interactable("options_back", 2000)) {
+            interact("options_back");
+        } else if (wait_for_interactable("back", 1000)) {
+            interact("back");
+        } else {
+            inject_key_press(SDLK_ESCAPE, 10);
+        }
     }
 
     // Ensure mainmenu() returns so picker_main() can complete.

@@ -1,6 +1,6 @@
 /* openglad_text: Headless text-based simulation client for OpenGlad.
  *
- * Runs the full game simulation via SimWorld::tick() without any
+ * Runs the full game simulation via GameWorld::tick() without any
  * rendering or audio. Communicates via line-based stdin/stdout protocol.
  *
  * Usage:
@@ -19,7 +19,6 @@
  * Licensed under GPL v2.
  */
 
-#include <openglad/sim/sim_world.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/irandom.h>

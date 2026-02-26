@@ -19,8 +19,52 @@
 enum class Order : unsigned char;
 
 class LevelData;
+class SaveData;
 class obmap;
 class walker;
+namespace og::sim { class SimEventLog; }
+
+namespace og::sim {
+
+// Simple LCG random number generator.
+// Given the same seed, produces the same deterministic sequence.
+class SimRandom final {
+public:
+    explicit SimRandom(std::uint32_t seed = 0) : state_(seed) {}
+
+    std::uint32_t next(std::uint32_t max_exclusive) {
+        if (max_exclusive == 0) return 0;
+        // LCG: same constants as glibc.
+        state_ = state_ * 1103515245u + 12345u;
+        return (state_ >> 16) % max_exclusive;
+    }
+
+    std::uint32_t state_;
+};
+
+// Result of a single simulation tick.
+struct TickResult {
+    // Level completion status after this tick:
+    //   0 = foes remain
+    //   1 = no foes, but exits exist
+    //   2 = no foes and no exits (auto-advance)
+    short level_done = 0;
+
+    // True if the game ended during this tick (victory, defeat, or abort).
+    bool game_ended = false;
+
+    // Next level index if the game ended with a level transition.
+    short next_level = -1;
+
+    // Ending type (0=win, 1=loss, SCEN_TYPE_SAVE_ALL=save-all failure)
+    short ending = 0;
+};
+
+#ifdef TESTING
+extern std::int32_t g_test_level_tick_limit_override;
+#endif
+
+} // namespace og::sim
 
 // Phase 1a shell for gameplay-owned entity lists.
 // LevelData temporarily forwards to this object while loader/render data
@@ -28,6 +72,7 @@ class walker;
 class GameWorld
 {
 public:
+    explicit GameWorld(std::uint32_t seed = 0);
     ~GameWorld();
 
     // Level metadata
@@ -84,10 +129,23 @@ public:
     void clear();
     short remaining_foes(walker* myguy) const;
 
+    // Reset per-level run counters when starting a fresh mission attempt.
+    // Without this, same-level retries can inherit timeout progress.
+    void reset_level_progress();
+
+    // Run one simulation tick.
+    og::sim::TickResult tick(SaveData& save, std::int32_t& enemy_freeze,
+                             char end, og::sim::SimEventLog& events);
+
+    std::uint32_t tick_count_ = 0;
+    og::sim::SimRandom rng_;
+
 private:
     walker* add_to_list(Order order, std::int32_t family,
                         std::list<std::unique_ptr<walker>>& target_list,
                         bool count_living, bool atstart);
 
+    std::uint32_t level_tick_count_ = 0;
+    int last_level_id_ = -1;
     LevelData* level_data_ = nullptr;
 };
