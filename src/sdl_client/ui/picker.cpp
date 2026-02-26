@@ -1385,19 +1385,19 @@ Sint32 do_set_scen_level(Sint32 arg1)
 	(void)arg1;
    Sint32 templevel = og::runtime::current_session->myscreen_->save_data.scen_num;
    
-   templevel = pick_level(og::runtime::current_session->myscreen_, og::runtime::current_session->myscreen_->level_data.id);
+   templevel = pick_level(og::runtime::current_session->myscreen_, og::runtime::current_session->myscreen_->level_data.world().id);
    
    // Have some feedback if the level changed
-   if(templevel != og::runtime::current_session->myscreen_->level_data.id)
+   if(templevel != og::runtime::current_session->myscreen_->level_data.world().id)
    {
-       int old_id = og::runtime::current_session->myscreen_->level_data.id;
-       og::runtime::current_session->myscreen_->level_data.id = templevel;
+       int old_id = og::runtime::current_session->myscreen_->level_data.world().id;
+       og::runtime::current_session->myscreen_->level_data.world().id = templevel;
        if (templevel < 0 || !og::runtime::current_session->myscreen_->level_data.load())
        {
             og::runtime::current_session->myscreen_->clearbuffer();
             popup_dialog("Load Failed", "Invalid level file.");
             
-           og::runtime::current_session->myscreen_->level_data.id = old_id;
+           og::runtime::current_session->myscreen_->level_data.world().id = old_id;
            if(!og::runtime::current_session->myscreen_->level_data.load())
            {
                 og::runtime::current_session->myscreen_->clearbuffer();

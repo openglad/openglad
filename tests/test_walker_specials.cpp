@@ -15,10 +15,10 @@ static void ensure_level_loaded()
 {
     if (og::runtime::current_session->myscreen_ == nullptr)
         return;
-    if (og::runtime::current_session->myscreen_->level_data.grid.valid() && og::runtime::current_session->myscreen_->level_data.pixmaxx > 0 && og::runtime::current_session->myscreen_->level_data.pixmaxy > 0)
+    if (og::runtime::current_session->myscreen_->level_data.world().grid.valid() && og::runtime::current_session->myscreen_->level_data.world().pixmaxx > 0 && og::runtime::current_session->myscreen_->level_data.world().pixmaxy > 0)
         return;
 
-    og::runtime::current_session->myscreen_->level_data.id = 1;
+    og::runtime::current_session->myscreen_->level_data.world().id = 1;
     (void)og::runtime::current_session->myscreen_->level_data.load();
 }
 
@@ -206,14 +206,14 @@ void test_walker_special_mage_teleport()
         marker->lifetime = 1;
         // Place marker somewhere passable and sufficiently far away; do not
         // assume (x+96,y+96) is in-bounds or passable for every level.
-        Sint32 mx = std::min<Sint32>(w->xpos + 96, og::runtime::current_session->myscreen_->level_data.pixmaxx - w->sizex - 2);
-        Sint32 my = std::min<Sint32>(w->ypos + 96, og::runtime::current_session->myscreen_->level_data.pixmaxy - w->sizey - 2);
+        Sint32 mx = std::min<Sint32>(w->xpos + 96, og::runtime::current_session->myscreen_->level_data.world().pixmaxx - w->sizex - 2);
+        Sint32 my = std::min<Sint32>(w->ypos + 96, og::runtime::current_session->myscreen_->level_data.world().pixmaxy - w->sizey - 2);
         if (!og::runtime::current_session->myscreen_->query_passable(static_cast<float>(mx), static_cast<float>(my), w))
         {
             bool found = false;
-            for (Sint32 x = 0; x < og::runtime::current_session->myscreen_->level_data.pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
+            for (Sint32 x = 0; x < og::runtime::current_session->myscreen_->level_data.world().pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
             {
-                for (Sint32 y = 0; y < og::runtime::current_session->myscreen_->level_data.pixmaxy - w->sizey - 2; y += GRID_SIZE)
+                for (Sint32 y = 0; y < og::runtime::current_session->myscreen_->level_data.world().pixmaxy - w->sizey - 2; y += GRID_SIZE)
                 {
                     const Sint32 dx = x - w->xpos;
                     const Sint32 dy = y - w->ypos;
@@ -1362,14 +1362,14 @@ void test_walker_special_success_returns_true_and_spends_mp()
     marker->dead = 0;
     marker->lifetime = 1;
 
-    Sint32 mx = std::min<Sint32>(w->xpos + 96, og::runtime::current_session->myscreen_->level_data.pixmaxx - w->sizex - 2);
-    Sint32 my = std::min<Sint32>(w->ypos + 96, og::runtime::current_session->myscreen_->level_data.pixmaxy - w->sizey - 2);
+    Sint32 mx = std::min<Sint32>(w->xpos + 96, og::runtime::current_session->myscreen_->level_data.world().pixmaxx - w->sizex - 2);
+    Sint32 my = std::min<Sint32>(w->ypos + 96, og::runtime::current_session->myscreen_->level_data.world().pixmaxy - w->sizey - 2);
     if (!og::runtime::current_session->myscreen_->query_passable(static_cast<float>(mx), static_cast<float>(my), w))
     {
         bool found = false;
-        for (Sint32 x = 0; x < og::runtime::current_session->myscreen_->level_data.pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
+        for (Sint32 x = 0; x < og::runtime::current_session->myscreen_->level_data.world().pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
         {
-            for (Sint32 y = 0; y < og::runtime::current_session->myscreen_->level_data.pixmaxy - w->sizey - 2; y += GRID_SIZE)
+            for (Sint32 y = 0; y < og::runtime::current_session->myscreen_->level_data.world().pixmaxy - w->sizey - 2; y += GRID_SIZE)
             {
                 const Sint32 dx = x - w->xpos;
                 const Sint32 dy = y - w->ypos;

@@ -1297,7 +1297,7 @@ bool walker::death()
 	// Ensure we are removed from collision bookkeeping as soon as we "die".
 	// This prevents stale pointers in the obmap when callers manage walker
 	// lifetimes outside LevelData's owning lists (common in tests).
-	obmap* active = (sim_level != nullptr) ? sim_level->myobmap.get() : nullptr;
+	obmap* active = (sim_level != nullptr) ? sim_level->world().myobmap.get() : nullptr;
 	if (active != nullptr)
 		active->remove(this);
 	if (myobmap != nullptr && myobmap != active)
@@ -1316,7 +1316,7 @@ bool walker::death()
 	{
 		case Order::Living:
 			if (   (team_num == 0 || myguy) // our team
-			        && (sim_level->type & SCEN_TYPE_SAVE_ALL)
+			        && (sim_level->world().type & SCEN_TYPE_SAVE_ALL)
 			        && (stats_->name.size()) // we were named
 			   )
 			{

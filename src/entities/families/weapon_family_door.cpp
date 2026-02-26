@@ -22,7 +22,7 @@ static bool door_on_death(weap* self)
     newob->stats()->level = self->stats()->level;
     newob->team_num = self->team_num;
     // What way are we 'facing'?
-    if (self->sim_level->mysmoother.query_genre_x_y((self->xpos/GRID_SIZE),(self->ypos/GRID_SIZE)-1)
+    if (self->sim_level->world().mysmoother.query_genre_x_y((self->xpos/GRID_SIZE),(self->ypos/GRID_SIZE)-1)
             == TYPE_WALL) // a wall above us?
     {
         newob->curdir = FACE_RIGHT;

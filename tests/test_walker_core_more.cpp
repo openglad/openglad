@@ -932,8 +932,8 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
     }
 
     // Save-all early-return event branch in living death path.
-    const short old_type = og::runtime::current_session->myscreen_->level_data.type;
-    og::runtime::current_session->myscreen_->level_data.type = static_cast<short>(SCEN_TYPE_SAVE_ALL);
+    const short old_type = og::runtime::current_session->myscreen_->level_data.world().type;
+    og::runtime::current_session->myscreen_->level_data.world().type = static_cast<short>(SCEN_TYPE_SAVE_ALL);
     walker* named = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(named != nullptr, "named living created");
     if (named)
@@ -944,7 +944,7 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
         named->death_called = 0;
         TEST_ASSERT(named->death(), "save-all named death path should return true");
     }
-    og::runtime::current_session->myscreen_->level_data.type = old_type;
+    og::runtime::current_session->myscreen_->level_data.world().type = old_type;
 
     // FX-order death branch (log-only, returns success).
     walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
@@ -1050,11 +1050,11 @@ void test_walker_round8_death_obmap_cleanup_and_act_control_fallthrough_paths()
     w->myobmap = &spare_map;
     w->dead = 1;
     w->death_called = 0;
-    const size_t active_before = og::runtime::current_session->myscreen_->level_data.myobmap->size();
+    const size_t active_before = og::runtime::current_session->myscreen_->level_data.world().myobmap->size();
     const size_t spare_before = spare_map.size();
     TEST_ASSERT(w->death(), "death should succeed with alternate myobmap");
     TEST_ASSERT(spare_map.size() < spare_before, "death should remove from alternate myobmap");
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.myobmap->size() <= active_before, "death should remove from active obmap");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.world().myobmap->size() <= active_before, "death should remove from active obmap");
 
     og::runtime::current_session->myscreen_->level_data.delete_objects();
 }

@@ -50,7 +50,7 @@ static bool exit_on_eat(treasure* self, walker* eater)
     // Exit path: all enemies dead, or scenario allows free exit.
     // Check this BEFORE the withdraw path so that CAN_EXIT_WHENEVER levels
     // show the normal "Exit to X?" dialog instead of "Withdraw to X?".
-    if (!guys_here || (self->sim_level->type & LevelData::TYPE_CAN_EXIT_WHENEVER))
+    if (!guys_here || (self->sim_level->world().type & LevelData::TYPE_CAN_EXIT_WHENEVER))
     {
         std::string buf = std::format("Exit to {}?", exitname);
         bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
@@ -95,7 +95,7 @@ static bool exit_on_eat(treasure* self, walker* eater)
                 if (w && w->query_order() == Order::Living)
                 {
                     w->dead = 1;
-                    self->sim_level->myobmap->remove(w);
+                    self->sim_level->world().myobmap->remove(w);
                 }
             }
 

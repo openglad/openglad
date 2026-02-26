@@ -61,8 +61,8 @@ void radar::start()
 
 void radar::start(LevelData* data)
 {
-	sizex = static_cast<unsigned short>(data->grid.w);
-	sizey = static_cast<unsigned short>(data->grid.h);
+	sizex = static_cast<unsigned short>(data->world().grid.w);
+	sizey = static_cast<unsigned short>(data->world().grid.h);
 	size = (unsigned short) ((static_cast<unsigned short>(sizex))*(static_cast<unsigned short>(sizey)));
 	xview = RADAR_X;
 	yview = RADAR_Y;
@@ -385,7 +385,7 @@ void radar::update(LevelData* data)
 		for (j = 0; j < sizey; j++)
 		{
 			// Check if item in background grid
-			switch (static_cast<unsigned char>(data->grid.data[i+sizex*j]))
+			switch (static_cast<unsigned char>(data->world().grid.data[i+sizex*j]))
 			{
 				case PIX_GRASS1:  // grass is green
 				case PIX_GRASS_DARK_1:

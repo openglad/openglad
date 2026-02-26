@@ -197,7 +197,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     // Output ready message
     std::cout << "{\"status\":\"ready\""
               << ",\"level\":" << args.level
-              << ",\"title\":\"" << level.title << "\""
+              << ",\"title\":\"" << level.world().title << "\""
               << ",\"num_entities\":" << level.oblist.size()
               << ",\"seed\":" << args.seed
               << "}\n";

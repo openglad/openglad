@@ -794,29 +794,7 @@ std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walke
 
 std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
-    std::list<walker*> result;
-    *howmany = 0;
-
-	if(!ob)
-		return result;
-
-	for(auto& uptr : somelist)
-	{
-	    walker* w = uptr.get();
-		if (w && !w->dead &&
-		        (w->query_order() == Order::Weapon)
-		        && ( ob->is_friendly(w) )
-		   )
-		{
-			if (ob->distance_to_ob(w) <= range)
-			{
-			    result.push_back(w);
-				(*howmany)++;
-			}
-		}
-	}
-
-	return result;
+    return level_data.find_foe_weapons_in_range(somelist, range, howmany, ob);
 }
 
 
@@ -831,24 +809,24 @@ char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 
 	if (xover < 0 || yover < 0)
 		return 0;
-	if (xover >= level_data.grid.w || yover >= level_data.grid.h)
+	if (xover >= level_data.world().grid.w || yover >= level_data.world().grid.h)
 		return 0;
 
-	gridloc = static_cast<short>(yover*level_data.grid.w+xover);
+	gridloc = static_cast<short>(yover*level_data.world().grid.w+xover);
 
-	switch (static_cast<unsigned char>(level_data.grid.data[gridloc]))
+	switch (static_cast<unsigned char>(level_data.world().grid.data[gridloc]))
 	{
 		case PIX_GRASS1: // grass
 		case PIX_GRASS2:
 		case PIX_GRASS3:
 		case PIX_GRASS4:
-			level_data.grid.data[gridloc] = PIX_GRASS1_DAMAGED;
+			level_data.world().grid.data[gridloc] = PIX_GRASS1_DAMAGED;
 			break;
 		default:
 			break;
 	}
 
-	return level_data.grid.data[gridloc];
+	return level_data.world().grid.data[gridloc];
 }
 
 void screen::do_notify(std::string_view message, walker  *who)

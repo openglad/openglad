@@ -433,7 +433,7 @@ void test_stats_right_walk_round8_negative_enddir_default_switch_path()
     // Geometry setup:
     // - right/right-forward/forward are passable
     // - right-back is blocked by bottom boundary
-    actor->setxy(GRID_SIZE * 6, static_cast<std::int32_t>(og::runtime::current_session->myscreen_->level_data.pixmaxy - 1));
+    actor->setxy(GRID_SIZE * 6, static_cast<std::int32_t>(og::runtime::current_session->myscreen_->level_data.world().pixmaxy - 1));
     actor->curdir = FACE_UP;
     actor->enddir = static_cast<char>(-127);
     actor->stats()->commands.clear();

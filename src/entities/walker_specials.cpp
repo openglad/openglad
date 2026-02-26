@@ -110,16 +110,16 @@ bool walker::teleport()
 	// No marker: pick a random passable grid cell. Historically this was an
 	// unbounded loop, which can hang tests (and gameplay) if level/grid state
 	// isn't initialized or nothing is passable.
-	if (!sim_level || !sim_level->grid.valid() ||
-	    sim_level->grid.w <= 0 || sim_level->grid.h <= 0 ||
-	    sim_level->pixmaxx <= 0 || sim_level->pixmaxy <= 0)
+	if (!sim_level || !sim_level->world().grid.valid() ||
+	    sim_level->world().grid.w <= 0 || sim_level->world().grid.h <= 0 ||
+	    sim_level->world().pixmaxx <= 0 || sim_level->world().pixmaxy <= 0)
 		return 0;
 
 	std::int32_t keep_going = 200; // maxtries
 	do
 	{
-		newx = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(sim_level->grid.w))) * GRID_SIZE;
-		newy = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(sim_level->grid.h))) * GRID_SIZE;
+		newx = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(sim_level->world().grid.w))) * GRID_SIZE;
+		newy = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(sim_level->world().grid.h))) * GRID_SIZE;
 		keep_going--;
 	} while (keep_going > 0 &&
 	         !sim_level->query_passable(static_cast<float>(newx), static_cast<float>(newy), this));

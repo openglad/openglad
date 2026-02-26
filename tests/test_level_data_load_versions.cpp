@@ -357,7 +357,7 @@ void test_level_data_load_version5_success_with_treasure_weapon_and_truncated_te
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_5(rw, &data);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_5 should succeed on valid buffer");
-    TEST_ASSERT_EQ(3, (int)data.type, "load_version_5 should set scenario type");
+    TEST_ASSERT_EQ(3, (int)data.world().type, "load_version_5 should set scenario type");
     TEST_ASSERT(!data.fxlist.empty(), "treasure object should populate fxlist");
     TEST_ASSERT(!data.weaplist.empty(), "weapon object should populate weaplist");
     TEST_ASSERT(!data.description.empty(), "description line should be read");

@@ -60,9 +60,9 @@ void set_world_tile(short world_x, short world_y, unsigned char tile)
     auto& level = og::runtime::current_session->myscreen_->level_data;
     const int gx = world_x / GRID_SIZE;
     const int gy = world_y / GRID_SIZE;
-    if (gx < 0 || gy < 0 || gx >= level.grid.w || gy >= level.grid.h)
+    if (gx < 0 || gy < 0 || gx >= level.world().grid.w || gy >= level.world().grid.h)
         return;
-    level.grid.data[gx + level.grid.w * gy] = tile;
+    level.world().grid.data[gx + level.world().grid.w * gy] = tile;
 }
 
 } // namespace
@@ -852,7 +852,7 @@ void test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero()
         return;
     ally->set_act_type(ACT_CONTROL);
 
-    og::runtime::current_session->myscreen_->level_data.id = 41;
+    og::runtime::current_session->myscreen_->level_data.world().id = 41;
     std::int32_t enemy_freeze = 0;
     char end = 0;
     const og::sim::TickResult r = world.tick(og::runtime::current_session->myscreen_->level_data, save, enemy_freeze, end, events);
@@ -885,7 +885,7 @@ void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
 
     // Setup: CAN_EXIT_WHENEVER flag, enemies still present, dest level completed,
     // current scenario NOT completed → both Withdraw AND Exit conditions met.
-    og::runtime::current_session->myscreen_->level_data.type = LevelData::TYPE_CAN_EXIT_WHENEVER;
+    og::runtime::current_session->myscreen_->level_data.world().type = LevelData::TYPE_CAN_EXIT_WHENEVER;
     og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present
 
     og::runtime::current_session->myscreen_->save_data.reset();
@@ -918,7 +918,7 @@ void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
     TEST_ASSERT_EQ(5, static_cast<int>(og::runtime::current_session->myscreen_->save_data.scen_num),
                    "CAN_EXIT_WHENEVER should show Exit (scen_num unchanged), not Withdraw");
 
-    og::runtime::current_session->myscreen_->level_data.type = 0;
+    og::runtime::current_session->myscreen_->level_data.world().type = 0;
     clear_level_lists();
 }
 REGISTER_TEST(test_issue98_can_exit_flag_should_show_exit_not_withdraw);
@@ -941,7 +941,7 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
     og::runtime::current_session->myscreen_->level_data.set_sim_context(
         &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze, &sim_events, &rng, &cfg);
 
-    og::runtime::current_session->myscreen_->level_data.type = LevelData::TYPE_CAN_EXIT_WHENEVER;
+    og::runtime::current_session->myscreen_->level_data.world().type = LevelData::TYPE_CAN_EXIT_WHENEVER;
     og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present
 
     og::runtime::current_session->myscreen_->save_data.reset();
@@ -973,7 +973,7 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
     TEST_ASSERT_EQ(1, remaining,
                    "Only one dialog should fire, not both Withdraw and Exit");
 
-    og::runtime::current_session->myscreen_->level_data.type = 0;
+    og::runtime::current_session->myscreen_->level_data.world().type = 0;
     clear_level_lists();
 }
 REGISTER_TEST(test_issue98_no_double_dialog_on_withdraw_exit);

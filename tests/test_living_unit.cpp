@@ -280,14 +280,14 @@ OG_UNIT_TEST(test_living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_3
     self->attack_lunge = 1.0f;
     self->hit_recoil = 1.0f;
 
-    fx.level.grid.frames = 1;
-    fx.level.grid.w = 1;
-    fx.level.grid.h = 1;
-    fx.level.grid.data = std::make_unique<unsigned char[]>(1);
-    fx.level.grid.data[0] = PIX_TREE_M1;
-    fx.level.pixmaxx = GRID_SIZE;
-    fx.level.pixmaxy = GRID_SIZE;
-    fx.level.mysmoother.set_target(fx.level.grid);
+    fx.level.world().grid.frames = 1;
+    fx.level.world().grid.w = 1;
+    fx.level.world().grid.h = 1;
+    fx.level.world().grid.data = std::make_unique<unsigned char[]>(1);
+    fx.level.world().grid.data[0] = PIX_TREE_M1;
+    fx.level.world().pixmaxx = GRID_SIZE;
+    fx.level.world().pixmaxy = GRID_SIZE;
+    fx.level.world().mysmoother.set_target(fx.level.world().grid);
 
     cfg.apply_setting("effects", "damage_numbers", "on");
 

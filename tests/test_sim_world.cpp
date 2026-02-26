@@ -181,7 +181,7 @@ OG_UNIT_TEST(test_sim_world_r15_end_flag_and_auto_advance_paths)
     og::sim::TickResult auto_advance = world2.tick(empty_fx.level, empty_fx.save, empty_fx.enemy_freeze, 0, empty_fx.events);
     OG_ASSERT(auto_advance.game_ended);
     OG_ASSERT(auto_advance.level_done == 2);
-    OG_ASSERT(auto_advance.next_level == static_cast<short>(empty_fx.level.id + 1));
+    OG_ASSERT(auto_advance.next_level == static_cast<short>(empty_fx.level.world().id + 1));
 }
 
 OG_UNIT_TEST(test_sim_world_r15_reset_level_progress_clears_timeout_for_same_level)

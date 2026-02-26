@@ -334,9 +334,9 @@ bool walker::walk(float x, float y)
     {
         // check if off map
         if (x+xpos < 0 ||
-                x+xpos >= sim_level->grid.w*GRID_SIZE ||
+                x+xpos >= sim_level->world().grid.w*GRID_SIZE ||
                 y+ypos < 0 ||
-                y+ypos >= sim_level->grid.h*GRID_SIZE)
+                y+ypos >= sim_level->world().grid.h*GRID_SIZE)
         {
             return 0;
         }

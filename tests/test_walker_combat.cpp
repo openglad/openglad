@@ -81,9 +81,9 @@ static void set_world_tile(short world_x, short world_y, unsigned char tile)
     auto& level = og::runtime::current_session->myscreen_->level_data;
     const int gx = world_x / GRID_SIZE;
     const int gy = world_y / GRID_SIZE;
-    if (gx < 0 || gy < 0 || gx >= level.grid.w || gy >= level.grid.h)
+    if (gx < 0 || gy < 0 || gx >= level.world().grid.w || gy >= level.world().grid.h)
         return;
-    level.grid.data[gx + level.grid.w * gy] = tile;
+    level.world().grid.data[gx + level.world().grid.w * gy] = tile;
 }
 
 // ---------------------------------------------------------------------------

@@ -56,7 +56,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	screenp->initialize_views();
 
 	// And load the scenario ..
-	screenp->level_data.id = screenp->save_data.scen_num;
+	screenp->level_data.world().id = screenp->save_data.scen_num;
 	if(!screenp->level_data.load())
 	{
 	    short old_scen = screenp->save_data.scen_num;
@@ -64,7 +64,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	        filename ? filename : "(null)", old_scen);
 	    // Failed?  Try level 1.
 		screenp->save_data.scen_num = 1;
-        screenp->level_data.id = 1;
+        screenp->level_data.world().id = 1;
         used_fallback_level = true;
         if(!screenp->level_data.load())
         {
@@ -74,7 +74,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
         }
 	}
 
-	TRACE("game", "level loaded: scen%d", screenp->level_data.id);
+	TRACE("game", "level loaded: scen%d", screenp->level_data.world().id);
 	for(auto& uptr : screenp->level_data.oblist)
 	{
 	    walker* w = uptr.get();

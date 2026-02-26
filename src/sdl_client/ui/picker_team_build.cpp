@@ -202,7 +202,7 @@ Sint32 create_team_menu(Sint32 arg1)
         {
             retvalue = 0;
             last_level_id = og::runtime::current_session->myscreen_->save_data.scen_num;
-            og::runtime::current_session->myscreen_->level_data.id = last_level_id;
+            og::runtime::current_session->myscreen_->level_data.world().id = last_level_id;
             og::runtime::current_session->myscreen_->level_data.load();
         }
         
@@ -212,9 +212,9 @@ Sint32 create_team_menu(Sint32 arg1)
         draw_buttons(buttons, num_buttons);
         
         // Level name
-        int len = static_cast<int>(og::runtime::current_session->myscreen_->level_data.title.size());
+        int len = static_cast<int>(og::runtime::current_session->myscreen_->level_data.world().title.size());
         og::runtime::current_session->myscreen_->draw_rect_filled(buttons[7].x + buttons[7].sizex - 6*len - 2, buttons[7].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
-        mytext.write_xy(buttons[7].x + buttons[7].sizex - 6*len, buttons[7].y - 8, WHITE, "%s", og::runtime::current_session->myscreen_->level_data.title.c_str());
+        mytext.write_xy(buttons[7].x + buttons[7].sizex - 6*len, buttons[7].y - 8, WHITE, "%s", og::runtime::current_session->myscreen_->level_data.world().title.c_str());
         // Campaign name
         len = static_cast<int>(og::runtime::current_session->myscreen_->save_data.current_campaign.size());
         og::runtime::current_session->myscreen_->draw_rect_filled(buttons[8].x + buttons[8].sizex - 6*len - 2, buttons[8].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
@@ -326,10 +326,10 @@ Sint32 create_progress_menu(Sint32 arg1)
         // Load level to get title and enemy count
         LevelData ld(level_id);
         if (ld.load()) {
-            if (ld.title.size() > 20) {
-                lp.title = ld.title.substr(0, 17) + "...";
+            if (ld.world().title.size() > 20) {
+                lp.title = ld.world().title.substr(0, 17) + "...";
             } else {
-                lp.title = ld.title;
+                lp.title = ld.world().title;
             }
 
             // Count enemies

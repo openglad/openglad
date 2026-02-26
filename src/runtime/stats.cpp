@@ -984,7 +984,7 @@ bool statistics::walk_to_foe()
         
 		tempdistance = static_cast<Uint32>(controller->distance_to_ob(foe));
 		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
-		if (tempdistance < PATHING_MIN_DISTANCE || controller->sim_level->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
+		if (tempdistance < PATHING_MIN_DISTANCE || controller->sim_level->world().myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
 		{
 			std::list<walker*> foelist = controller->sim_level->find_foes_in_range(controller->sim_level->oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller);

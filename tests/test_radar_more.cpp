@@ -23,9 +23,9 @@ struct GlobalContextGuard
 
 static void set_tile(LevelData& d, int x, int y, unsigned char t)
 {
-    if (x < 0 || y < 0 || x >= d.grid.w || y >= d.grid.h)
+    if (x < 0 || y < 0 || x >= d.world().grid.w || y >= d.world().grid.h)
         return;
-    d.grid.data[y * d.grid.w + x] = t;
+    d.world().grid.data[y * d.world().grid.w + x] = t;
 }
 } // namespace
 
@@ -53,8 +53,8 @@ void test_radar_update_and_draw_covers_key_paths()
         PIX_WALLSIDE1, PIX_TORCH1,
     };
     int idx = 0;
-    for (int y = 0; y < d.grid.h && idx < (int)tiles.size(); y++)
-        for (int x = 0; x < d.grid.w && idx < (int)tiles.size(); x++)
+    for (int y = 0; y < d.world().grid.h && idx < (int)tiles.size(); y++)
+        for (int x = 0; x < d.world().grid.w && idx < (int)tiles.size(); x++)
             set_tile(d, x, y, tiles[idx++]);
 
     // Place a few objects to exercise radar::draw object filtering and colors.

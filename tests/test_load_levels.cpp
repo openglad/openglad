@@ -50,14 +50,14 @@ void test_level_data_integrity() {
     load_saved_game("test_level_integrity", og::runtime::current_session->myscreen_);
 
     // Level 1 should have a valid grid
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.grid.valid(), "level 1 should have a valid grid");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.world().grid.valid(), "level 1 should have a valid grid");
 
     // Level 1 should have some objects (enemies)
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.oblist.empty(),
         "level 1 should have objects (enemies/npcs)");
 
     // Level ID should match what we requested
-    TEST_ASSERT_EQ(1, og::runtime::current_session->myscreen_->level_data.id, "level id should be 1");
+    TEST_ASSERT_EQ(1, og::runtime::current_session->myscreen_->level_data.world().id, "level id should be 1");
 
     og::runtime::current_session->myscreen_->level_data.delete_objects();
 }
@@ -75,7 +75,7 @@ void test_level_fallback() {
     load_saved_game("test_level_fallback", og::runtime::current_session->myscreen_);
 
     // Should have fallen back to level 1
-    TEST_ASSERT_EQ(1, og::runtime::current_session->myscreen_->level_data.id,
+    TEST_ASSERT_EQ(1, og::runtime::current_session->myscreen_->level_data.world().id,
         "nonexistent level should fall back to level 1");
 
     og::runtime::current_session->myscreen_->level_data.delete_objects();

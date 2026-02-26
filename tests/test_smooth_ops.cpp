@@ -39,7 +39,7 @@ void test_smooth_query_x_y_with_grid()
     // Use the level's grid
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
     smoother s;
-    s.set_target(og::runtime::current_session->myscreen_->level_data.grid);
+    s.set_target(og::runtime::current_session->myscreen_->level_data.world().grid);
 
     // Valid query
     Sint32 result = s.query_x_y(0, 0);
@@ -226,7 +226,7 @@ void test_smooth_smooth_full_grid()
 {
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
     smoother s;
-    s.set_target(og::runtime::current_session->myscreen_->level_data.grid);
+    s.set_target(og::runtime::current_session->myscreen_->level_data.world().grid);
 
     // Should not crash
     Sint32 result = s.smooth();
@@ -480,7 +480,7 @@ void test_smooth_reset()
 {
     smoother s;
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    s.set_target(og::runtime::current_session->myscreen_->level_data.grid);
+    s.set_target(og::runtime::current_session->myscreen_->level_data.world().grid);
 
     Sint32 before = s.query_x_y(0, 0);
     (void)before;

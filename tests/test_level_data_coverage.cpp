@@ -91,9 +91,9 @@ static walker* add_living(unsigned char family = FAMILY_SOLDIER)
 void test_level_data_save_rejects_null_fx_and_weap_entries()
 {
     std::filesystem::create_directories("temp/scen");
-    og::runtime::current_session->myscreen_->level_data.id = 789;
+    og::runtime::current_session->myscreen_->level_data.world().id = 789;
     og::runtime::current_session->myscreen_->level_data.grid_file = "grid";
-    og::runtime::current_session->myscreen_->level_data.title = "coverage";
+    og::runtime::current_session->myscreen_->level_data.world().title = "coverage";
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
     og::runtime::current_session->myscreen_->level_data.delete_objects();
 
@@ -255,7 +255,7 @@ void test_level_data_query_grid_passable_edge_cases()
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(64.0f, 64.0f, w), "missing grid should fail passability");
 
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_M1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_TREE_M1;
     w->setxy(0, 0);
     w->sizex = 1;
     w->sizey = 1;
@@ -328,7 +328,7 @@ void test_level_data_round8_ctor_hook_wiring_and_remove_paths()
             return;
 
         TEST_ASSERT(living->sim_level == &d, "wire_entity should set sim_level");
-        TEST_ASSERT(living->myobmap == d.myobmap.get(), "wire_entity should set myobmap");
+        TEST_ASSERT(living->myobmap == d.world().myobmap.get(), "wire_entity should set myobmap");
         TEST_ASSERT_EQ(1, (int)d.remove_ob(weapon), "remove_ob should erase from weaplist");
         TEST_ASSERT_EQ(1, (int)d.remove_ob(fx), "remove_ob should erase from fxlist");
         TEST_ASSERT_EQ(1, (int)d.remove_ob(living), "remove_ob should erase from oblist");
@@ -389,7 +389,7 @@ void test_level_data_wall4_projectile_passability_distance_and_rng_paths()
 {
     og::runtime::current_session->myscreen_->level_data.delete_objects();
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_WALL4;
 
     walker* owner = add_living(FAMILY_ARCHER);
     walker* projectile = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
@@ -443,7 +443,7 @@ void test_level_data_round8_query_grid_treeb1_and_arrow_slit_variants()
     living->sizey = weapon->sizey = 1;
 
     // PIX_TREE_B1 branch: living blocks, weapon passes.
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_B1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_TREE_B1;
     living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     living->stats()->set_bit_flags(BIT_FLYING, 0);
     living->flight_left = 0;
@@ -461,7 +461,7 @@ void test_level_data_round8_query_grid_treeb1_and_arrow_slit_variants()
     owner->setxy(48, 0);
     weapon->setxy(0, 0);
 
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL_ARROW_GRASS;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_WALL_ARROW_GRASS;
     FixedRandom rng_pass(0);
     weapon->sim_rng = &rng_pass;
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
@@ -473,7 +473,7 @@ void test_level_data_round8_query_grid_treeb1_and_arrow_slit_variants()
                 "arrow-slit passability should block when rng returns non-zero");
 
     // Unknown tile type default should block.
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = 255;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = 255;
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "unknown tile type should block in default branch");
 
@@ -565,11 +565,11 @@ void test_level_data_round5_query_grid_passable_contiguous_block_paths()
     weapon->sizey = 1;
     weapon->owner = owner;
 
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_GRASS1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_GRASS1;
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "ground tile should pass");
 
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_M1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_TREE_M1;
     living->stats()->set_bit_flags(BIT_FORESTWALK, 1);
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "forestwalk should pass upper tree tiles");
@@ -583,7 +583,7 @@ void test_level_data_round5_query_grid_passable_contiguous_block_paths()
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "non-flying non-forestwalk should fail upper tree tiles");
 
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_B1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_TREE_B1;
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "weapon should pass trunk tree tile");
 
@@ -595,11 +595,11 @@ void test_level_data_round5_query_grid_passable_contiguous_block_paths()
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "non-flying living should fail trunk tree tile");
 
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_H_WALL1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_H_WALL1;
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "hard wall tile should block living");
 
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_WALL4;
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "wall4 should block living immediately");
 
@@ -614,7 +614,7 @@ void test_level_data_round5_query_grid_passable_contiguous_block_paths()
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should pass and fall through with rng zero");
 
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WATER1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_WATER1;
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "weapon should pass water/obstacle group");
 
@@ -626,7 +626,7 @@ void test_level_data_round5_query_grid_passable_contiguous_block_paths()
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "non-flying living should fail water/obstacle group");
 
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = 255;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = 255;
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "unknown tile should use default fail branch");
 
@@ -755,9 +755,9 @@ void test_level_data_round7a_title_reader_and_error_wrappers()
 
     // save_with_error wrapper.
     og::runtime::current_session->myscreen_->level_data.delete_objects();
-    og::runtime::current_session->myscreen_->level_data.id = 9403;
+    og::runtime::current_session->myscreen_->level_data.world().id = 9403;
     og::runtime::current_session->myscreen_->level_data.grid_file = "round7a";
-    og::runtime::current_session->myscreen_->level_data.title = "Round7A";
+    og::runtime::current_session->myscreen_->level_data.world().title = "Round7A";
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
     std::filesystem::create_directories("temp/scen");
     const auto err = og::runtime::current_session->myscreen_->level_data.save_with_error();
@@ -855,9 +855,9 @@ void test_level_data_round6_remove_ob_and_wrapper_paths()
     TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->level_data.remove_ob(&orphan), "remove_ob should return 0 for unknown walker");
 
     std::filesystem::create_directories("temp/scen");
-    og::runtime::current_session->myscreen_->level_data.id = 9410;
+    og::runtime::current_session->myscreen_->level_data.world().id = 9410;
     og::runtime::current_session->myscreen_->level_data.grid_file = "grid";
-    og::runtime::current_session->myscreen_->level_data.title = "round6";
+    og::runtime::current_session->myscreen_->level_data.world().title = "round6";
     TEST_ASSERT_EQ((int)LevelData::IoError::None, (int)og::runtime::current_session->myscreen_->level_data.save_with_error(),
                    "save_with_error should return None on successful save");
 }
@@ -884,14 +884,14 @@ void test_level_data_round6_passable_wall4_and_water_weapon_paths()
     living->sizex = 1;
     living->sizey = 1;
 
-    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
-    og::runtime::current_session->myscreen_->level_data.grid.w = 1;
-    og::runtime::current_session->myscreen_->level_data.grid.h = 1;
-    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE;
-    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE;
-    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+    og::runtime::current_session->myscreen_->level_data.world().grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.w = 1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.h = 1;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxx = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxy = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data = std::make_unique<unsigned char[]>(1);
 
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_WALL4;
     ConstRandom rng_block(1);
     weapon->sim_rng = &rng_block;
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
@@ -902,7 +902,7 @@ void test_level_data_round6_passable_wall4_and_water_weapon_paths()
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should pass when rng yields zero");
 
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WATER1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_WATER1;
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "weapon should pass water tile group");
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
@@ -944,27 +944,27 @@ void test_level_data_round6_wrapper_and_passability_edges()
     living->sizex = 1;
     living->sizey = 1;
 
-    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
-    og::runtime::current_session->myscreen_->level_data.grid.w = 1;
-    og::runtime::current_session->myscreen_->level_data.grid.h = 1;
-    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE;
-    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE;
-    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+    og::runtime::current_session->myscreen_->level_data.world().grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.w = 1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.h = 1;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxx = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxy = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data = std::make_unique<unsigned char[]>(1);
 
     // Hard-wall branch.
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALLTOP_H;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_WALLTOP_H;
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "wall top should block living walker");
 
     // WALL4 projectile branch using Y-distance path in dist calculation.
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_WALL4;
     ConstRandom rng_block(1);
     weapon->sim_rng = &rng_block;
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should block when rng is non-zero (y-distance branch)");
 
     // Weapon should pass water/obstacle bucket via weapon special-case.
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_BOULDER_1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_BOULDER_1;
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
                 "weapon should pass obstacle bucket tiles");
 
@@ -1073,7 +1073,7 @@ void test_level_data_round6_find_near_foe_boundary_fallback_path()
 
     actor->team_num = 0;
     foe->team_num = 1;
-    actor->setxy(GRID_SIZE * 3, og::runtime::current_session->myscreen_->level_data.pixmaxy - 1);
+    actor->setxy(GRID_SIZE * 3, og::runtime::current_session->myscreen_->level_data.world().pixmaxy - 1);
     foe->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
 
     ConstRandom rng_zero(0);
@@ -1099,13 +1099,13 @@ void test_level_data_round7_wall_arrow_distance_axis_and_rng_paths()
     if (!(owner && weapon && living))
         return;
 
-    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
-    og::runtime::current_session->myscreen_->level_data.grid.w = 1;
-    og::runtime::current_session->myscreen_->level_data.grid.h = 1;
-    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE;
-    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE;
-    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(1);
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL5;
+    og::runtime::current_session->myscreen_->level_data.world().grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.w = 1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.h = 1;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxx = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxy = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data = std::make_unique<unsigned char[]>(1);
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_WALL5;
 
     owner->sizex = 1;
     owner->sizey = 1;
@@ -1146,9 +1146,9 @@ void test_level_data_round11_wrappers_draw_and_query_grid_entry_paths()
     og::runtime::current_session->myscreen_->level_data.delete_objects();
 
     // save_with_error/load_with_error wrappers should return a concrete enum.
-    og::runtime::current_session->myscreen_->level_data.id = 9421;
+    og::runtime::current_session->myscreen_->level_data.world().id = 9421;
     og::runtime::current_session->myscreen_->level_data.grid_file = "grid";
-    og::runtime::current_session->myscreen_->level_data.title = "round11";
+    og::runtime::current_session->myscreen_->level_data.world().title = "round11";
     const auto save_err = og::runtime::current_session->myscreen_->level_data.save_with_error();
     TEST_ASSERT((int)save_err >= (int)LevelData::IoError::None, "save_with_error wrapper should execute");
 
@@ -1173,14 +1173,14 @@ void test_level_data_round11_wrappers_draw_and_query_grid_entry_paths()
     if (!living)
         return;
 
-    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
-    og::runtime::current_session->myscreen_->level_data.grid.w = 2;
-    og::runtime::current_session->myscreen_->level_data.grid.h = 2;
-    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE * 2;
-    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE * 2;
-    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(4);
+    og::runtime::current_session->myscreen_->level_data.world().grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.w = 2;
+    og::runtime::current_session->myscreen_->level_data.world().grid.h = 2;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxx = GRID_SIZE * 2;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxy = GRID_SIZE * 2;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data = std::make_unique<unsigned char[]>(4);
     for (int i = 0; i < 4; i++)
-        og::runtime::current_session->myscreen_->level_data.grid.data[i] = PIX_GRASS1;
+        og::runtime::current_session->myscreen_->level_data.world().grid.data[i] = PIX_GRASS1;
 
     living->setxy(0, 0);
     living->sizex = GRID_SIZE; // force xover/yover exact-grid-edge path
@@ -1209,20 +1209,20 @@ void test_level_data_round13_grid_passability_tree_wall_water_and_object_guards(
     living->sizex = weapon->sizex = 1;
     living->sizey = weapon->sizey = 1;
 
-    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
-    og::runtime::current_session->myscreen_->level_data.grid.w = 1;
-    og::runtime::current_session->myscreen_->level_data.grid.h = 1;
-    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE;
-    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE;
-    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+    og::runtime::current_session->myscreen_->level_data.world().grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.w = 1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.h = 1;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxx = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxy = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data = std::make_unique<unsigned char[]>(1);
 
     // Path tile branch (level_data.cpp:1989) should pass.
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_PATH_4;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_PATH_4;
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "path tile should be passable");
 
     // Tree middle blocks non-forestwalking/non-flying living walkers (1995-2000).
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_M1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_TREE_M1;
     living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     living->stats()->set_bit_flags(BIT_FLYING, 0);
     living->flight_left = 0;
@@ -1233,7 +1233,7 @@ void test_level_data_round13_grid_passability_tree_wall_water_and_object_guards(
                 "forestwalk should pass tree middle");
 
     // Tree base branch allows weapons, blocks normal living walkers (2001-2010).
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_B1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_TREE_B1;
     living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "tree base should block living walkers without forestwalk/flying");
@@ -1241,7 +1241,7 @@ void test_level_data_round13_grid_passability_tree_wall_water_and_object_guards(
                 "tree base should allow weapons");
 
     // Wall-arrow/wall4 branch for weapons with RNG gate (2019-2044), then fallthrough.
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WALL4;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_WALL4;
     ConstRandom rng_pass(0);
     weapon->sim_rng = &rng_pass;
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, weapon),
@@ -1252,7 +1252,7 @@ void test_level_data_round13_grid_passability_tree_wall_water_and_object_guards(
                 "wall-arrow projectile should block when rng returns non-zero");
 
     // Water passability branch for flying vs non-flying living walkers (2046-2078).
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_WATER2;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_WATER2;
     living->stats()->set_bit_flags(BIT_FLYING, 0);
     living->flight_left = 0;
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
@@ -1418,22 +1418,22 @@ void test_level_data_round15_hard_wall_and_unknown_tile_block_paths()
     living->setxy(0, 0);
     flying->setxy(0, 0);
 
-    og::runtime::current_session->myscreen_->level_data.grid.frames = 1;
-    og::runtime::current_session->myscreen_->level_data.grid.w = 1;
-    og::runtime::current_session->myscreen_->level_data.grid.h = 1;
-    og::runtime::current_session->myscreen_->level_data.pixmaxx = GRID_SIZE;
-    og::runtime::current_session->myscreen_->level_data.pixmaxy = GRID_SIZE;
-    og::runtime::current_session->myscreen_->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+    og::runtime::current_session->myscreen_->level_data.world().grid.frames = 1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.w = 1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.h = 1;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxx = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.world().pixmaxy = GRID_SIZE;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data = std::make_unique<unsigned char[]>(1);
 
     // Hard wall cases return blocked immediately for all walkers.
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_H_WALL1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_H_WALL1;
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "hard wall should block living walkers");
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, flying),
                 "hard wall should block flying walkers");
 
     // Unknown/default tile path should also block.
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = static_cast<unsigned char>(255);
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = static_cast<unsigned char>(255);
     TEST_ASSERT(!og::runtime::current_session->myscreen_->level_data.query_grid_passable(0.0f, 0.0f, living),
                 "unknown tile id should hit default blocked path");
 }
@@ -1499,9 +1499,9 @@ void test_level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hoo
     // create_new_grid + resize copy/fill + off-map erase paths.
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
     og::runtime::current_session->myscreen_->level_data.delete_objects();
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_M1;
-    const int old_w = og::runtime::current_session->myscreen_->level_data.grid.w;
-    const int old_h = og::runtime::current_session->myscreen_->level_data.grid.h;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_TREE_M1;
+    const int old_w = og::runtime::current_session->myscreen_->level_data.world().grid.w;
+    const int old_h = og::runtime::current_session->myscreen_->level_data.world().grid.h;
 
     walker* keep = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* drop_living = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
@@ -1518,15 +1518,15 @@ void test_level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hoo
 
     // Shrink by one cell in each axis so edge fixtures fall off-map.
     og::runtime::current_session->myscreen_->level_data.resize_grid(old_w - 1, old_h - 1);
-    TEST_ASSERT_EQ(PIX_TREE_M1, (int)og::runtime::current_session->myscreen_->level_data.grid.data[0], "resize should copy existing tiles");
+    TEST_ASSERT_EQ(PIX_TREE_M1, (int)og::runtime::current_session->myscreen_->level_data.world().grid.data[0], "resize should copy existing tiles");
 
     // Grow and ensure newly added cells are initialized (not left zeroed from freed memory).
-    const int resized_w = og::runtime::current_session->myscreen_->level_data.grid.w;
-    const int resized_h = og::runtime::current_session->myscreen_->level_data.grid.h;
+    const int resized_w = og::runtime::current_session->myscreen_->level_data.world().grid.w;
+    const int resized_h = og::runtime::current_session->myscreen_->level_data.world().grid.h;
     og::runtime::current_session->myscreen_->level_data.resize_grid(resized_w + 1, resized_h + 1);
-    const int tail_idx = og::runtime::current_session->myscreen_->level_data.grid.w * og::runtime::current_session->myscreen_->level_data.grid.h - 1;
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.grid.data[tail_idx] >= PIX_GRASS1 &&
-                og::runtime::current_session->myscreen_->level_data.grid.data[tail_idx] <= PIX_GRASS4,
+    const int tail_idx = og::runtime::current_session->myscreen_->level_data.world().grid.w * og::runtime::current_session->myscreen_->level_data.world().grid.h - 1;
+    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.world().grid.data[tail_idx] >= PIX_GRASS1 &&
+                og::runtime::current_session->myscreen_->level_data.world().grid.data[tail_idx] <= PIX_GRASS4,
                 "resize should seed newly grown cells with grass variants");
 
     // delete_objects hook + stale-obmap clearing.
@@ -1538,9 +1538,9 @@ void test_level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hoo
     walker* hw = hooked_level.add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(hw != nullptr, "hooked level fixture created");
     if (hw)
-        hooked_level.myobmap->walker_to_pos[hw] = {};
+        hooked_level.world().myobmap->walker_to_pos[hw] = {};
     hooked_level.delete_objects();
     TEST_ASSERT(g_clear_stale_called, "delete_objects should invoke clear_stale_view_controls hook");
-    TEST_ASSERT(hooked_level.myobmap->walker_to_pos.empty(), "delete_objects should clear stale obmap indices");
+    TEST_ASSERT(hooked_level.world().myobmap->walker_to_pos.empty(), "delete_objects should clear stale obmap indices");
 }
 REGISTER_TEST(test_level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hooks);

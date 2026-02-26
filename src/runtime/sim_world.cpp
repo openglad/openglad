@@ -71,9 +71,9 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
     TickResult result;
     tick_count_++;
     events.current_tick_ = tick_count_;
-    if (last_level_id_ != level.id)
+    if (last_level_id_ != level.world().id)
     {
-        last_level_id_ = level.id;
+        last_level_id_ = level.world().id;
         level_tick_count_ = 0;
     }
     level_tick_count_++;
@@ -182,7 +182,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
     {
         result.game_ended = true;
         result.ending = 0;
-        result.next_level = static_cast<short>(level.id + 1);
+        result.next_level = static_cast<short>(level.world().id + 1);
         return result;
     }
 

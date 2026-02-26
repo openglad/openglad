@@ -718,7 +718,7 @@ bool LevelEditorData::reloadCampaign()
 
 bool LevelEditorData::loadLevel(int id)
 {
-    level->id = id;
+    level->world().id = id;
     bool result = level->load();
     update_menu_buttons();
     return result;
@@ -763,7 +763,7 @@ bool LevelEditorData::saveCampaign()
 
 bool LevelEditorData::saveLevelAs(int id)
 {
-    level->id = id;
+    level->world().id = id;
     level->grid_file = std::format("scen{}", id);
     
     std::string old_campaign = get_mounted_campaign();
@@ -827,13 +827,13 @@ bool LevelEditorData::mouse_on_menus(int mx, int my)
 void LevelEditorData::update_menu_buttons()
 {
     levelGoalsEnemiesButton.label = "Defeat enemies: ";
-    levelGoalsEnemiesButton.label += (level->type & LevelData::TYPE_CAN_EXIT_WHENEVER? "Off" : "On");
+    levelGoalsEnemiesButton.label += (level->world().type & LevelData::TYPE_CAN_EXIT_WHENEVER? "Off" : "On");
     
     levelGoalsGeneratorsButton.label = "Beat generators: ";
-    levelGoalsGeneratorsButton.label += (level->type & LevelData::TYPE_MUST_DESTROY_GENERATORS? "On" : "Off");
+    levelGoalsGeneratorsButton.label += (level->world().type & LevelData::TYPE_MUST_DESTROY_GENERATORS? "On" : "Off");
     
     levelGoalsNPCsButton.label = "Protect NPCs: ";
-    levelGoalsNPCsButton.label += (level->type & LevelData::TYPE_MUST_PROTECT_NAMED_NPCS? "On" : "Off");
+    levelGoalsNPCsButton.label += (level->world().type & LevelData::TYPE_MUST_PROTECT_NAMED_NPCS? "On" : "Off");
 }
 
 void LevelEditorData::reset_mode_buttons()
@@ -1224,7 +1224,7 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
 
 bool LevelEditorData::saveLevel()
 {
-    level->grid_file = std::format("scen{}", level->id);
+    level->grid_file = std::format("scen{}", level->world().id);
 
     std::string old_campaign = get_mounted_campaign();
     unpack_campaign(old_campaign);
@@ -1584,16 +1584,16 @@ Sint32 LevelEditorData::display_panel(screen* s)
 
 void LevelEditorData::clear_terrain()
 {
-    int w = level->grid.w;
-    int h = level->grid.h;
+    int w = level->world().grid.w;
+    int h = level->world().grid.h;
     
-    std::fill_n(level->grid.data.get(), w*h, static_cast<unsigned char>(1));
+    std::fill_n(level->world().grid.data.get(), w*h, static_cast<unsigned char>(1));
     resmooth_terrain();
 }
 
 void LevelEditorData::resmooth_terrain()
 {
-    level->mysmoother.smooth();
+    level->world().mysmoother.smooth();
     myradar.update(level.get());
 }
 
@@ -2030,9 +2030,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(!cancel)
             {
                 // Browse for the level to load
-                int id = pick_level(og::runtime::current_session->myscreen_, level->id, true);
+                int id = pick_level(og::runtime::current_session->myscreen_, level->world().id, true);
                 // Don't bother loading the level if it is the same, unchanged level
-                if(id >= 0 && (eds().levelchanged || id != level->id))
+                if(id >= 0 && (eds().levelchanged || id != level->world().id))
                 {
                     if(loadLevel(id))
                     {
@@ -2067,9 +2067,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, fileLevelSaveAsButton))
         {
-            int id = pick_level(og::runtime::current_session->myscreen_, level->id, true);
+            int id = pick_level(og::runtime::current_session->myscreen_, level->world().id, true);
             
-            if(id >= 0 && id != level->id)
+            if(id >= 0 && id != level->world().id)
             {
                 std::list<int> levels = list_levels();
                 if(std::find(levels.begin(), levels.end(), id) == levels.end()
@@ -2263,7 +2263,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, levelInfoButton))
         {
             std::string buf = std::format("{}\nID number: {}\nTitle: {}\nSize: {}x{}",
-                     (eds().levelchanged? "(unsaved)" : ""), level->id, level->title, level->grid.w, level->grid.h);
+                     (eds().levelchanged? "(unsaved)" : ""), level->world().id, level->world().title, level->world().grid.w, level->world().grid.h);
             popup_dialog("Level Info", buf.c_str());
         }
         // Profile >
@@ -2276,10 +2276,10 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, levelProfileTitleButton))
         {
-            std::string title = level->title;
+            std::string title = level->world().title;
             if(prompt_for_string("Level Title", title))
             {
-                level->title = title;
+                level->world().title = title;
                 eds().levelchanged = 1;
             }
         }
@@ -2306,8 +2306,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             // Using two prompts sequentially
             
-            std::string width = std::format("{}", level->grid.w);
-            std::string height = std::format("{}", level->grid.h);
+            std::string width = std::format("{}", level->world().grid.w);
+            std::string height = std::format("{}", level->world().grid.h);
             
             if(prompt_for_string("Map Width", width))
             {
@@ -2340,7 +2340,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     }
                     else
                     {
-                        if((w >= level->grid.w && h >= level->grid.h)
+                        if((w >= level->world().grid.w && h >= level->world().grid.h)
                             || !are_objects_outside_area(level.get(), 0, 0, w, h)
                             || yes_or_no_prompt("Resize Map", "Delete objects outside of map?", false))
                         {
@@ -2353,7 +2353,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             draw(og::runtime::current_session->myscreen_);
                             og::runtime::current_session->myscreen_->refresh();
                             
-                            std::string resize_msg = std::format("Resized map to {}x{}", level->grid.w, level->grid.h);
+                            std::string resize_msg = std::format("Resized map to {}x{}", level->world().grid.w, level->world().grid.h);
                             timed_dialog(resize_msg.c_str());
                             eds().redraw = 1;
                             eds().levelchanged = 1;
@@ -2388,41 +2388,41 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsEnemiesButton))
         {
-            level->type ^= LevelData::TYPE_CAN_EXIT_WHENEVER;
+            level->world().type ^= LevelData::TYPE_CAN_EXIT_WHENEVER;
             update_menu_buttons();
         }
         else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsGeneratorsButton))
         {
-            level->type ^= LevelData::TYPE_MUST_DESTROY_GENERATORS;
+            level->world().type ^= LevelData::TYPE_MUST_DESTROY_GENERATORS;
             update_menu_buttons();
         }
         else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsNPCsButton))
         {
-            level->type ^= LevelData::TYPE_MUST_PROTECT_NAMED_NPCS;
+            level->world().type ^= LevelData::TYPE_MUST_PROTECT_NAMED_NPCS;
             update_menu_buttons();
         }
         else if(activate_menu_choice(mx, my, *this, levelDetailsParValueButton))
         {
-            std::string par = std::format("{}", level->par_value);
+            std::string par = std::format("{}", level->world().par_value);
             if(prompt_for_string("Par Value (num)", par))
             {
                 int v = toInt(par);
                 if(v > 0)
                 {
-                    level->par_value = static_cast<short>(v);
+                    level->world().par_value = static_cast<short>(v);
                     eds().levelchanged = 1;
                 }
             }
         }
         else if(activate_menu_choice(mx, my, *this, levelDetailsTimeLimitButton))
         {
-            std::string par = std::format("{}", level->time_bonus_limit);
+            std::string par = std::format("{}", level->world().time_bonus_limit);
             if(prompt_for_string("Time Bonus Limit (num)", par))
             {
                 int v = toInt(par);
                 if(v > 0)
                 {
-                    level->time_bonus_limit = static_cast<short>(v);
+                    level->world().time_bonus_limit = static_cast<short>(v);
                     eds().levelchanged = 1;
                 }
             }
@@ -2730,7 +2730,7 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
 
 bool LevelEditorData::is_in_grid(int x, int y)
 {
-    return (x >= 0 && y >= 0 && x < level->grid.w && y < level->grid.h);
+    return (x >= 0 && y >= 0 && x < level->world().grid.w && y < level->world().grid.h);
 }
 
 unsigned char LevelEditorData::get_terrain(int x, int y)
@@ -2738,7 +2738,7 @@ unsigned char LevelEditorData::get_terrain(int x, int y)
     if(!is_in_grid(x, y))
         return 0;
     
-    return level->grid.data[y*level->grid.w + x];
+    return level->world().grid.data[y*level->world().grid.w + x];
 }
 
 void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
@@ -2746,7 +2746,7 @@ void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
     if(!is_in_grid(x, y))
         return;
     
-    level->grid.data[y*level->grid.w + x] = terrain;
+    level->world().grid.data[y*level->world().grid.w + x] = terrain;
 }
 
 walker* LevelEditorData::get_object(int x, int y)
@@ -2800,8 +2800,8 @@ int level_editor_test_exercise_internal_helpers()
         data.level->create_new_grid();
         // Avoid smoother/radar update paths in this helper; those are exercised elsewhere
         // and have global UI dependencies that make this test nondeterministic.
-        std::fill_n(data.level->grid.data.get(),
-                    data.level->grid.w * data.level->grid.h,
+        std::fill_n(data.level->world().grid.data.get(),
+                    data.level->world().grid.w * data.level->world().grid.h,
                     static_cast<unsigned char>(1));
         data.set_terrain(0, 0, PIX_GRASS2);
         if (data.get_terrain(0, 0) == PIX_GRASS2)
@@ -2986,9 +2986,9 @@ EventType handle_basic_editor_event(const SDL_Event& event)
 }
 
 #define PAN_LIMIT_UP -60
-#define PAN_LIMIT_DOWN (GRID_SIZE*data.level->grid.h - 200 + 80)
+#define PAN_LIMIT_DOWN (GRID_SIZE*data.level->world().grid.h - 200 + 80)
 #define PAN_LIMIT_LEFT -60
-#define PAN_LIMIT_RIGHT (GRID_SIZE*data.level->grid.w - 320 + 80)
+#define PAN_LIMIT_RIGHT (GRID_SIZE*data.level->world().grid.w - 320 + 80)
 
 // eds().pan_left/right/up/down moved into LevelEditorState (per-session via eds())
 
@@ -3464,9 +3464,9 @@ Sint32 level_editor()
                                 {
                                     for (i=windowx-1; i <= windowx+1; i++)
                                         for (j=windowy-1; j <=windowy+1; j++)
-                                            if (i >= 0 && i < data.level->grid.w &&
-                                                    j >= 0 && j < data.level->grid.h)
-                                                data.level->mysmoother.smooth(i, j);
+                                            if (i >= 0 && i < data.level->world().grid.w &&
+                                                    j >= 0 && j < data.level->world().grid.h)
+                                                data.level->world().mysmoother.smooth(i, j);
                                 }
                                 
                                 myradar.update(data.level.get());

@@ -30,14 +30,12 @@ class screen;
 class LevelRender;
 class loader;
 class statistics;
-class obmap;
 class SaveData;
 class IRandom;
 class cfg_store;
 struct LevelDataHooks;
 namespace og::sim { class SimEventLog; }
 
-#include <openglad/data/smooth.h>
 #include <openglad/data/pixie_data.h>
 #include <openglad/entities/walker.h>
 #include <openglad/gameplay/game_world.h>
@@ -268,22 +266,13 @@ public:
         SerializeFailed
     };
 
-    int id;
-    std::string title;
-
     static const char TYPE_CAN_EXIT_WHENEVER = 0x1;  // Can exit without defeating all enemies
     static const char TYPE_MUST_DESTROY_GENERATORS = 0x2;  // Must destroy generators to exit
     static const char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;  // Must protect named NPCs or else you lose
-    char type;
 
     std::string grid_file;
-    short par_value;
-    short time_bonus_limit;  // frames until you get no time bonus
-    PixieData grid;
-    std::int32_t pixmaxx, pixmaxy;
     short level_done = 0;  // Set by sim tick: 0=foes remain, 1=all foes dead+exit, 2=no foes
 
-    smoother mysmoother;
     std::unique_ptr<loader> myloader;
     LivingCountForwarder numobs;
     WalkerListForwarder oblist;
@@ -292,7 +281,6 @@ public:
     // Keep a list of dead guys so weapons can still have valid owners
     WalkerListForwarder dead_list;
 
-    std::unique_ptr<obmap> myobmap;
     std::list<std::string> description;
 
     // Drawing details

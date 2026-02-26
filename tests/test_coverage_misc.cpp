@@ -273,12 +273,12 @@ OG_UNIT_TEST(test_coverage_r17_walker_movement_and_act_cleanup)
 
     assign_basic_ani(actor);
     actor->user = -1;
-    actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.pixmaxy - 1));
+    actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.world().pixmaxy - 1));
     actor->curdir = FACE_DOWN_LEFT;
     (void)actor->walkstep(-1.0f, 1.0f);
 
     actor->user = 0;
-    actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.pixmaxy - 1));
+    actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.world().pixmaxy - 1));
     actor->curdir = FACE_DOWN_LEFT;
     (void)actor->walkstep(-1.0f, 1.0f);
 
@@ -730,7 +730,7 @@ OG_UNIT_TEST(test_coverage_r18_family_cleric_check_special_default_false)
 OG_UNIT_TEST(test_coverage_r18_walker_movement_blocked_user_paths)
 {
     MovementFixture fx;
-    walker* user = add_living(fx, static_cast<short>(fx.level.pixmaxx - 1), static_cast<short>(fx.level.pixmaxy - 1));
+    walker* user = add_living(fx, static_cast<short>(fx.level.world().pixmaxx - 1), static_cast<short>(fx.level.world().pixmaxy - 1));
     OG_ASSERT(user != nullptr);
     assign_basic_ani(user);
 
@@ -743,15 +743,15 @@ OG_UNIT_TEST(test_coverage_r18_walker_movement_blocked_user_paths)
     OG_ASSERT(!user->walkstep(0.0f, -1.0f));
 
     // Hit user-slide branches where only one axis can move.
-    user->setxy(static_cast<short>(fx.level.pixmaxx - 1), static_cast<short>(10));
+    user->setxy(static_cast<short>(fx.level.world().pixmaxx - 1), static_cast<short>(10));
     user->curdir = FACE_DOWN_RIGHT;
     (void)user->walkstep(1.0f, 1.0f);
 
-    user->setxy(static_cast<short>(10), static_cast<short>(fx.level.pixmaxy - 1));
+    user->setxy(static_cast<short>(10), static_cast<short>(fx.level.world().pixmaxy - 1));
     user->curdir = FACE_DOWN_LEFT;
     (void)user->walkstep(-1.0f, 1.0f);
 
-    user->setxy(static_cast<short>(fx.level.pixmaxx - 1), static_cast<short>(10));
+    user->setxy(static_cast<short>(fx.level.world().pixmaxx - 1), static_cast<short>(10));
     user->curdir = FACE_UP_RIGHT;
     (void)user->walkstep(1.0f, -1.0f);
 
@@ -767,8 +767,8 @@ OG_UNIT_TEST(test_coverage_r18_walker_movement_blocked_user_paths)
     assign_resetting_ani(user);
     const int blocked_x = (user->xpos - 1) / GRID_SIZE;
     const int blocked_y = user->ypos / GRID_SIZE;
-    const int blocked_index = blocked_x + blocked_y * fx.level.grid.w;
-    fx.level.grid.data[blocked_index] = PIX_H_WALL1;
+    const int blocked_index = blocked_x + blocked_y * fx.level.world().grid.w;
+    fx.level.world().grid.data[blocked_index] = PIX_H_WALL1;
     user->curdir = FACE_LEFT;
     OG_ASSERT(!user->walk(-1.0f, 0.0f));
 }
@@ -850,11 +850,11 @@ OG_UNIT_TEST(test_coverage_r18_level_data_resize_and_delete_cleanup_branches)
     g_clear_stale_view_controls_calls = 0;
     LevelData with_hooks(1, true, &hooks);
     with_hooks.create_new_grid();
-    with_hooks.myobmap->walker_to_pos[reinterpret_cast<walker*>(0x1)] = {};
+    with_hooks.world().myobmap->walker_to_pos[reinterpret_cast<walker*>(0x1)] = {};
     with_hooks.delete_objects();
     OG_ASSERT(g_clear_stale_view_controls_calls == 1);
-    OG_ASSERT(with_hooks.myobmap->walker_to_pos.empty());
-    OG_ASSERT(with_hooks.myobmap->pos_to_walker.empty());
+    OG_ASSERT(with_hooks.world().myobmap->walker_to_pos.empty());
+    OG_ASSERT(with_hooks.world().myobmap->pos_to_walker.empty());
 }
 
 OG_UNIT_TEST(test_coverage_r18_smooth_targeted_mask_branches)
@@ -1317,18 +1317,18 @@ OG_UNIT_TEST(test_coverage_r20_level_data_add_paths_and_clear_reset)
     walker* weap = fx.level.add_weap_ob(Order::Weapon, FAMILY_ARROW);
     OG_ASSERT(weap != nullptr);
 
-    fx.level.title = "changed";
-    fx.level.type = 7;
-    fx.level.par_value = 9;
-    fx.level.time_bonus_limit = 10;
+    fx.level.world().title = "changed";
+    fx.level.world().type = 7;
+    fx.level.world().par_value = 9;
+    fx.level.world().time_bonus_limit = 10;
     fx.level.topx = 5;
     fx.level.topy = 6;
     fx.level.clear();
 
-    OG_ASSERT(fx.level.title == "New Level");
-    OG_ASSERT(fx.level.type == 0);
-    OG_ASSERT(fx.level.par_value == 1);
-    OG_ASSERT(fx.level.time_bonus_limit == 4000);
+    OG_ASSERT(fx.level.world().title == "New Level");
+    OG_ASSERT(fx.level.world().type == 0);
+    OG_ASSERT(fx.level.world().par_value == 1);
+    OG_ASSERT(fx.level.world().time_bonus_limit == 4000);
     OG_ASSERT(fx.level.topx == 0);
     OG_ASSERT(fx.level.topy == 0);
 

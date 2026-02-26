@@ -29,7 +29,7 @@ void test_view_redraw_with_level_data()
     if (!vs) return;
 
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.grid);
+    og::runtime::current_session->myscreen_->level_data.world().mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.world().grid);
 
     bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_data, false);
     TEST_ASSERT(result, "redraw with level data should succeed");
@@ -42,7 +42,7 @@ void test_view_redraw_with_control()
     if (!vs) return;
 
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.grid);
+    og::runtime::current_session->myscreen_->level_data.world().mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.world().grid);
 
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -62,7 +62,7 @@ void test_view_redraw_no_control()
     if (!vs) return;
 
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.grid);
+    og::runtime::current_session->myscreen_->level_data.world().mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.world().grid);
     og::runtime::current_session->myscreen_->level_data.topx = 50;
     og::runtime::current_session->myscreen_->level_data.topy = 50;
 
@@ -81,7 +81,7 @@ void test_view_redraw_negative_pos()
     if (!vs) return;
 
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.grid);
+    og::runtime::current_session->myscreen_->level_data.world().mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.world().grid);
 
     // Force negative topx/topy by positioning control near edge
     walker* w = make_guy(FAMILY_SOLDIER, 0);

@@ -185,10 +185,10 @@ bool living::act()
 
 	if ( stats_->query_bit_flags(BIT_FORESTWALK) &&
 	        (
-	            sim_level->mysmoother.query_genre_x_y( xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	            || sim_level->mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	            || sim_level->mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
-	            || sim_level->mysmoother.query_genre_x_y( xpos/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
+	            sim_level->world().mysmoother.query_genre_x_y( xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	            || sim_level->world().mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	            || sim_level->world().mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
+	            || sim_level->world().mysmoother.query_genre_x_y( xpos/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
 	        )
 	   )
 	{
@@ -411,9 +411,9 @@ bool living::walk(float x, float y)
 	{
 		// check if off map
 		if (x+xpos < 0 ||
-		        x+xpos >= sim_level->grid.w*GRID_SIZE ||
+		        x+xpos >= sim_level->world().grid.w*GRID_SIZE ||
 		        y+ypos < 0 ||
-		        y+ypos >= sim_level->grid.h*GRID_SIZE)
+		        y+ypos >= sim_level->world().grid.h*GRID_SIZE)
 		{
 			return 0;
 		}

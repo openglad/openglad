@@ -71,7 +71,7 @@ bool weap::act()
 
 	//  Log("weap %d is ani %d\n", family, ani_type);
 
-	if (sim_level->mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
+	if (sim_level->world().mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
 		if (lineofsight)
 			lineofsight--;
 

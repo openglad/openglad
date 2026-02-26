@@ -426,15 +426,15 @@ OG_UNIT_TEST(test_walker_movement_r14_lines_175_186_198_210_npc_fallback_cases)
     npc->curdir = FACE_UP;
     (void)npc->walkstep(0.0f, -1.0f);
 
-    npc->setxy(fx.level.pixmaxx - 1, 0);
+    npc->setxy(fx.level.world().pixmaxx - 1, 0);
     npc->curdir = FACE_RIGHT;
     (void)npc->walkstep(1.0f, 0.0f);
 
-    npc->setxy(0, fx.level.pixmaxy - 1);
+    npc->setxy(0, fx.level.world().pixmaxy - 1);
     npc->curdir = FACE_DOWN;
     (void)npc->walkstep(0.0f, 1.0f);
 
-    npc->setxy(0, fx.level.pixmaxy - 1);
+    npc->setxy(0, fx.level.world().pixmaxy - 1);
     npc->curdir = FACE_DOWN_RIGHT;
     (void)npc->walkstep(1.0f, 1.0f);
 

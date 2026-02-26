@@ -417,8 +417,7 @@ LevelData::LevelData(int level_id, bool headless)
 }
 
 LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks)
-    : id(level_id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
-    , myloader(nullptr)
+    : myloader(nullptr)
     , numobs(this)
     , oblist(this, WalkerListForwarder::Kind::Objects)
     , fxlist(this, WalkerListForwarder::Kind::Effects)
@@ -429,9 +428,10 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks)
 {
     hooks_ = hooks;
     headless_ = headless;
+    world_->id = level_id;
     world_->set_level_data(this);
 
-	myobmap = std::make_unique<obmap>();
+	world_->myobmap = std::make_unique<obmap>();
     myloader = std::make_unique<loader>(this);
 
     if (!headless)
@@ -455,8 +455,6 @@ LevelData::~LevelData()
 
     myloader.reset();
 
-    myobmap.reset();
-
     renderer_.reset();
     for (int i = 0; i < PIX_MAX; i++)
         pixdata[i].free();
@@ -464,16 +462,7 @@ LevelData::~LevelData()
 
 void LevelData::clear()
 {
-    delete_objects();
-    delete_grid();
-    
-	myobmap = std::make_unique<obmap>();
-    
-    title = "New Level";
-    type = 0;
-    par_value = 1;
-    time_bonus_limit = 4000;
-    
+    world().clear();
     topx = 0;
     topy = 0;
 }
@@ -491,12 +480,32 @@ void LevelData::attach_world(GameWorld* world)
 
     if (old_world != nullptr)
     {
+        next_world->id = old_world->id;
+        next_world->title = old_world->title;
+        next_world->type = old_world->type;
+        next_world->par_value = old_world->par_value;
+        next_world->time_bonus_limit = old_world->time_bonus_limit;
+        next_world->difficulty = old_world->difficulty;
         next_world->oblist.splice(next_world->oblist.end(), old_world->oblist);
         next_world->fxlist.splice(next_world->fxlist.end(), old_world->fxlist);
         next_world->weaplist.splice(next_world->weaplist.end(), old_world->weaplist);
         next_world->dead_list.splice(next_world->dead_list.end(), old_world->dead_list);
         next_world->living_count = old_world->living_count;
+        next_world->grid = std::move(old_world->grid);
+        next_world->pixmaxx = old_world->pixmaxx;
+        next_world->pixmaxy = old_world->pixmaxy;
+        next_world->myobmap = std::move(old_world->myobmap);
+        if (next_world->grid.valid())
+            next_world->mysmoother.set_target(next_world->grid);
+        else
+            next_world->mysmoother.reset();
+
         old_world->living_count = 0;
+        old_world->pixmaxx = 0;
+        old_world->pixmaxy = 0;
+        old_world->mysmoother.reset();
+        if (!old_world->myobmap)
+            old_world->myobmap = std::make_unique<obmap>();
         old_world->set_level_data(nullptr);
     }
 
@@ -521,7 +530,7 @@ walker* LevelData::add_weap_ob(Order order, std::int32_t family)
 
 void LevelData::wire_entity(walker* w)
 {
-    w->myobmap = myobmap.get();
+    w->myobmap = world().myobmap.get();
     w->sim_level = this;
     w->sim_save = sim_ctx_save_;
     w->sim_enemy_freeze = sim_ctx_enemy_freeze_;
@@ -544,116 +553,17 @@ short LevelData::remove_ob(walker  *ob)
 
 void LevelData::delete_grid()
 {
-    grid.free();
-    pixmaxx = 0;
-    pixmaxy = 0;
-    // mysmoother stores a raw pointer to grid data; keep it in sync.
-    mysmoother.reset();
+    world().delete_grid();
 }
 
 void LevelData::create_new_grid()
 {
-    grid.free();
-    
-    grid.frames = 1;
-    grid.w = 40;
-    grid.h = 60;
-	pixmaxx = grid.w * GRID_SIZE;
-	pixmaxy = grid.h * GRID_SIZE;
-	
-	int size = grid.w*grid.h;
-	    grid.data = std::make_unique<unsigned char[]>(size);
-	for(int i = 0; i < size; i++)
-    {
-        // Color
-        switch(rand()%4)
-        {
-            case 0:
-            grid.data[i] = PIX_GRASS1;
-            break;
-            case 1:
-            grid.data[i] = PIX_GRASS2;
-            break;
-            case 2:
-            grid.data[i] = PIX_GRASS3;
-            break;
-            case 3:
-            grid.data[i] = PIX_GRASS4;
-            break;
-        }
-    }
-
-    // mysmoother stores a raw pointer to grid data; keep it in sync.
-    mysmoother.set_target(grid);
+    world().create_new_grid();
 }
 
 void LevelData::resize_grid(int width, int height)
 {
-    // Size is limited to one byte in the file format
-    if(width < 3 || height < 3 || width > 255 || height > 255)
-    {
-        Log("Can't resize grid to these dimensions: {}x{}\n", width, height);
-        return;
-    }
-    
-    auto random_grass_tile = []() -> unsigned char {
-        switch(rand()%4)
-        {
-            case 0: return PIX_GRASS1;
-            case 1: return PIX_GRASS2;
-            case 2: return PIX_GRASS3;
-            case 3: return PIX_GRASS4;
-        }
-        return PIX_GRASS1;
-    };
-
-    // Create new grid
-	int size = width*height;
-    auto new_grid = std::make_unique<unsigned char[]>(size);
-    
-    // Copy the map data
-	for(int i = 0; i < width; i++)
-    {
-        for(int j = 0; j < height; j++)
-        {
-            if(i < grid.w && j < grid.h)
-            {
-                new_grid[j*width + i] = grid.data[j*grid.w + i];
-            }
-            else
-            {
-                new_grid[j*width + i] = random_grass_tile();
-            }
-        }
-    }
-    
-    // Delete the old, use the new
-    grid.free();
-    grid.data = std::move(new_grid);
-    grid.frames = 1;
-    grid.w = static_cast<unsigned char>(width);
-    grid.h = static_cast<unsigned char>(height);
-	pixmaxx = grid.w * GRID_SIZE;
-	pixmaxy = grid.h * GRID_SIZE;
-
-    // mysmoother stores a raw pointer to grid data; keep it in sync.
-    mysmoother.set_target(grid);
-    
-    
-    // Delete objects that fell off the map
-    int x = 0;
-    int y = 0;
-    int w = grid.w * GRID_SIZE;
-    int h = grid.h * GRID_SIZE;
-
-    auto off_map = [x, y, w, h](const std::unique_ptr<walker>& uptr) {
-        walker* ob = uptr.get();
-        return ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h);
-    };
-
-    std::erase_if(world().oblist, off_map);
-    std::erase_if(world().fxlist, off_map);
-    std::erase_if(world().weaplist, off_map);
+    world().resize_grid(width, height);
 }
 
 void LevelData::delete_objects()
@@ -667,9 +577,9 @@ void LevelData::delete_objects()
 
 	    // Clear the obmap references
 	    // Since the walker destructor removes itself from the obmap, this should be empty already.
-	    if(myobmap->walker_to_pos.size() > 0)
+	    if(world().myobmap->walker_to_pos.size() > 0)
 	    {
-	        Log("obmap::walker_to_pos has {} elements left.\n", myobmap->walker_to_pos.size());
+	        Log("obmap::walker_to_pos has {} elements left.\n", world().myobmap->walker_to_pos.size());
 
 	        // FIXME: Freeing them here does naughty things!
 	        // obmap only indexes walkers; it doesn't own them. If we see leftovers here it usually
@@ -678,8 +588,8 @@ void LevelData::delete_objects()
 	        // attempt to delete walkers from the obmap to "fix" this (double-frees / UAF risk).
 	    }
     // pos_to_walker will have a bunch of 0-size lists in it
-	myobmap->pos_to_walker.clear();
-	myobmap->walker_to_pos.clear();
+	world().myobmap->pos_to_walker.clear();
+	world().myobmap->walker_to_pos.clear();
 }
 
 short load_version_2(og::io::OgFile& infile, LevelData* data)
@@ -761,9 +671,9 @@ short load_version_2(og::io::OgFile& infile, LevelData* data)
 
     data->delete_grid();
 
-	data->grid = read_pixie_file(gridpix.c_str());
-	data->pixmaxx = data->grid.w * GRID_SIZE;
-	data->pixmaxy = data->grid.h * GRID_SIZE;
+	data->world().grid = read_pixie_file(gridpix.c_str());
+	data->world().pixmaxx = data->world().grid.w * GRID_SIZE;
+	data->world().pixmaxy = data->world().grid.h * GRID_SIZE;
 
 	return 1;
 }
@@ -903,9 +813,9 @@ short load_version_3(og::io::OgFile& infile, LevelData* data)
 
     data->delete_grid();
 
-	data->grid = read_pixie_file(gridpix2.c_str());
-	data->pixmaxx = data->grid.w * GRID_SIZE;
-	data->pixmaxy = data->grid.h * GRID_SIZE;
+	data->world().grid = read_pixie_file(gridpix2.c_str());
+	data->world().pixmaxx = data->world().grid.w * GRID_SIZE;
+	data->world().pixmaxy = data->world().grid.h * GRID_SIZE;
 
 	return 1;
 }
@@ -1048,9 +958,9 @@ short load_version_4(og::io::OgFile& infile, LevelData* data)
 
     data->delete_grid();
 
-	data->grid = read_pixie_file(gridpix3.c_str());
-	data->pixmaxx = data->grid.w * GRID_SIZE;
-	data->pixmaxy = data->grid.h * GRID_SIZE;
+	data->world().grid = read_pixie_file(gridpix3.c_str());
+	data->world().pixmaxx = data->world().grid.w * GRID_SIZE;
+	data->world().pixmaxy = data->world().grid.h * GRID_SIZE;
 
 	return 1;
 } // end load_version_4
@@ -1110,7 +1020,7 @@ short load_version_5(og::io::OgFile& infile, LevelData* data)
 	// Get the scenario type information
 	if (!rw_read_exact_or_log(infile, &new_scen_type, 1, 1))
 		return 0;
-	data->type = new_scen_type;
+	data->world().type = new_scen_type;
 
 	// Determine number of objects to load ...
 	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
@@ -1199,11 +1109,11 @@ short load_version_5(og::io::OgFile& infile, LevelData* data)
 
     data->delete_grid();
 
-	data->grid = read_pixie_file(gridpix4.c_str());
-	data->pixmaxx = data->grid.w * GRID_SIZE;
-	data->pixmaxy = data->grid.h * GRID_SIZE;
+	data->world().grid = read_pixie_file(gridpix4.c_str());
+	data->world().pixmaxx = data->world().grid.w * GRID_SIZE;
+	data->world().pixmaxy = data->world().grid.h * GRID_SIZE;
 
-	data->mysmoother.set_target(data->grid);
+	data->world().mysmoother.set_target(data->world().grid);
 
 	// Fix up doors, etc.
 	for(auto& uptr : data->weaplist)
@@ -1211,7 +1121,7 @@ short load_version_5(og::io::OgFile& infile, LevelData* data)
 	    walker* w = uptr.get();
 		if (w && w->family==FAMILY_DOOR)
 		{
-			if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
+			if (data->world().mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
 			        (w->ypos/GRID_SIZE)-1)==TYPE_WALL)
 			{
 				w->set_frame(1);  // turn sideways ..
@@ -1386,17 +1296,17 @@ short load_version_6(og::io::OgFile& infile, LevelData* data, short version)
     // Now read the grid file to our master screen ..
     std::string gridpix5 = ensure_pix_extension(newgrid);
 
-    data->grid = read_pixie_file(gridpix5.c_str());
-    data->pixmaxx = data->grid.w * GRID_SIZE;
-    data->pixmaxy = data->grid.h * GRID_SIZE;
+    data->world().grid = read_pixie_file(gridpix5.c_str());
+    data->world().pixmaxx = data->world().grid.w * GRID_SIZE;
+    data->world().pixmaxy = data->world().grid.h * GRID_SIZE;
     
     // The collected data so far
-    data->title = std::string(scentitle, strnlen(scentitle, sizeof(scentitle)));
-    data->type = new_scen_type;
-    data->par_value = temp_par;
-    data->time_bonus_limit = temp_time_limit;
+    data->world().title = std::string(scentitle, strnlen(scentitle, sizeof(scentitle)));
+    data->world().type = new_scen_type;
+    data->world().par_value = temp_par;
+    data->world().time_bonus_limit = temp_time_limit;
     data->description = desc_lines;
-    data->mysmoother.set_target(data->grid);
+    data->world().mysmoother.set_target(data->world().grid);
 
     // Fix up doors, etc.
 	for(auto& uptr : data->weaplist)
@@ -1404,7 +1314,7 @@ short load_version_6(og::io::OgFile& infile, LevelData* data, short version)
 	    walker* w = uptr.get();
         if (w && w->family==FAMILY_DOOR)
         {
-            if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
+            if (data->world().mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
                     (w->ypos/GRID_SIZE)-1)==TYPE_WALL)
             {
                 w->set_frame(1);  // turn sideways ..
@@ -1443,7 +1353,7 @@ short load_scenario_version(og::io::OgFile& infile, LevelData* data, short versi
 			break;
 		default:
 			Log("Scenario {} is version-level {}, and cannot be read.\n",
-			       data->id, version);
+			       data->world().id, version);
 			break;
 	}
     
@@ -1452,12 +1362,12 @@ short load_scenario_version(og::io::OgFile& infile, LevelData* data, short versi
 
 bool LevelData::load()
 {
-	TRACE("game", "LevelData::load id=%d headless=%d", id, headless_ ? 1 : 0);
+	TRACE("game", "LevelData::load id=%d headless=%d", world().id, headless_ ? 1 : 0);
     last_io_error_ = IoError::None;
 	char temptext[10] = {};
 	char versionnumber = 0;
 
-	std::string thefile = std::format("scen{}.fss", id);
+	std::string thefile = std::format("scen{}.fss", world().id);
 
 	auto infile = og::io::og_open_read("scen/", thefile.c_str());
 	if (!infile)
@@ -1487,7 +1397,7 @@ bool LevelData::load()
     if(versionnumber < 2 || versionnumber > VERSION_NUM)
     {
         Log("Scenario {} is version-level {}, and cannot be read.\n",
-            id, static_cast<int>(versionnumber));
+            world().id, static_cast<int>(versionnumber));
         last_io_error_ = IoError::UnsupportedVersion;
         return false;
     }
@@ -1495,7 +1405,7 @@ bool LevelData::load()
 
     myloader = std::make_unique<loader>(this);
     clear();
-    par_value = static_cast<short>(id);
+    world().par_value = static_cast<short>(world().id);
 
     short tempvalue = load_scenario_version(*infile, this, versionnumber);
     if(tempvalue == 0)
@@ -1607,7 +1517,7 @@ bool LevelData::save()
 
 	// Zardus: PORT: no longer need to put in scen/ in this part
 	//strcpy(temp_filename, scen_directory);
-	temp_filename = std::format("scen{}.fss", this->id);
+	temp_filename = std::format("scen{}.fss", this->world().id);
 
 	auto outfile = og::io::og_open_write("temp/scen/", temp_filename.c_str());
 	if (!outfile)
@@ -1637,19 +1547,19 @@ bool LevelData::save()
 	WRITE_FIELD(temp_grid, 8, 1);
 
 	// Write the scenario title, if it exists
-	fill_fixed_field(scentitle, 30, this->title, "title");
+	fill_fixed_field(scentitle, 30, this->world().title, "title");
 	WRITE_FIELD(scentitle, 30, 1);
 
 	// Write the scenario type info
-	temp_scen_type = this->type;
+	temp_scen_type = this->world().type;
 	WRITE_FIELD(&temp_scen_type, 1, 1);
 
 	// Write our par value (version 8+)
-	temp_par = this->par_value;
+	temp_par = this->world().par_value;
 	WRITE_FIELD(&temp_par, 2, 1);
 
 	// Write the time limit (version 9+)
-	temp_time_limit = this->time_bonus_limit;
+	temp_time_limit = this->world().time_bonus_limit;
 	WRITE_FIELD(&temp_time_limit, 2, 1);
 
 	// Determine size of object list and clamp to loader's accepted range.
@@ -1721,7 +1631,7 @@ bool LevelData::save()
 	}
 
 	// Save map (grid) file
-	if (!save_grid_file(grid_file.c_str(), grid))
+	if (!save_grid_file(grid_file.c_str(), world().grid))
 	{
 		last_io_error_ = IoError::OpenWriteFailed;
 #undef WRITE_FIELD
@@ -1820,492 +1730,61 @@ short remaining_foes(LevelData& level, walker* myguy)
 
 // ---- Collision / passability queries ----
 
-static constexpr short MAX_SPREAD = 10;
-
 bool LevelData::query_grid_passable(float x, float y, walker  *ob)
 {
-	std::int32_t i,j;
-	std::int32_t xtrax = 1;
-	std::int32_t xtray = 1;
-	std::int32_t xtarg;
-	std::int32_t ytarg;
-	std::int32_t dist;
-	const std::int32_t x_i = static_cast<std::int32_t>(x);
-	const std::int32_t y_i = static_cast<std::int32_t>(y);
-	std::int32_t xover = x_i + ob->sizex;
-	std::int32_t yover = y_i + ob->sizey;
-
-	if (x_i < 0 || y_i < 0 || xover >= pixmaxx || yover >= pixmaxy)
-		return 0;
-
-	if (ob->stats()->query_bit_flags(BIT_ETHEREAL) )
-		return 1;
-
-	if (!grid.valid())
-		return 0;
-
-	if (!((xover)%GRID_SIZE))
-		xtrax = 0;
-	if (!((yover)%GRID_SIZE))
-		xtray = 0;
-
-	xtarg = (xover/GRID_SIZE) + xtrax;
-	ytarg = (yover/GRID_SIZE) + xtray;
-
-	for (i = x_i/GRID_SIZE; i < xtarg; i++)
-		for (j = y_i/GRID_SIZE; j < ytarg; j++)
-		{
-			switch (static_cast<unsigned char>(grid.data[i+grid.w*j]))
-			{
-				case PIX_GRASS1:
-				case PIX_GRASS2:
-				case PIX_GRASS3:
-				case PIX_GRASS4:
-				case PIX_GRASS_DARK_1:
-				case PIX_GRASS_DARK_2:
-				case PIX_GRASS_DARK_3:
-				case PIX_GRASS_DARK_4:
-				case PIX_GRASS_DARK_LL:
-				case PIX_GRASS_DARK_UR:
-				case PIX_GRASS_DARK_B1:
-				case PIX_GRASS_DARK_B2:
-				case PIX_GRASS_DARK_BR:
-				case PIX_GRASS_DARK_R1:
-				case PIX_GRASS_DARK_R2:
-				case PIX_GRASS_RUBBLE:
-				case PIX_GRASS1_DAMAGED:
-				case PIX_GRASS_LIGHT_1:
-				case PIX_GRASS_LIGHT_TOP:
-				case PIX_GRASS_LIGHT_RIGHT_TOP:
-				case PIX_GRASS_LIGHT_RIGHT:
-				case PIX_GRASS_LIGHT_RIGHT_BOTTOM:
-				case PIX_GRASS_LIGHT_BOTTOM:
-				case PIX_GRASS_LIGHT_LEFT_BOTTOM:
-				case PIX_GRASS_LIGHT_LEFT:
-				case PIX_GRASS_LIGHT_LEFT_TOP:
-				case PIX_GRASSWATER_LL:
-				case PIX_GRASSWATER_LR:
-				case PIX_GRASSWATER_UL:
-				case PIX_GRASSWATER_UR:
-				case PIX_PAVEMENT1:
-				case PIX_PAVEMENT2:
-				case PIX_PAVEMENT3:
-				case PIX_COBBLE_1:
-				case PIX_COBBLE_2:
-				case PIX_COBBLE_3:
-				case PIX_COBBLE_4:
-				case PIX_FLOOR_PAVEL:
-				case PIX_FLOOR_PAVER:
-				case PIX_FLOOR_PAVEU:
-				case PIX_FLOOR_PAVED:
-				case PIX_PAVESTEPS1:
-				case PIX_PAVESTEPS2:
-				case PIX_PAVESTEPS2L:
-				case PIX_PAVESTEPS2R:
-				case PIX_FLOOR1:
-				case PIX_CARPET_LL:
-				case PIX_CARPET_B:
-				case PIX_CARPET_LR:
-				case PIX_CARPET_UR:
-				case PIX_CARPET_U:
-				case PIX_CARPET_UL:
-				case PIX_CARPET_L:
-				case PIX_CARPET_M:
-				case PIX_CARPET_M2:
-				case PIX_CARPET_R:
-				case PIX_CARPET_SMALL_HOR:
- 				case PIX_CARPET_SMALL_VER:
-				case PIX_CARPET_SMALL_CUP:
-				case PIX_CARPET_SMALL_CAP:
-				case PIX_CARPET_SMALL_LEFT:
-				case PIX_CARPET_SMALL_RIGHT:
-				case PIX_CARPET_SMALL_TINY:
-				case PIX_DIRT_1:
-				case PIX_DIRTGRASS_UL1:
-				case PIX_DIRTGRASS_UR1:
-				case PIX_DIRTGRASS_LL1:
-				case PIX_DIRTGRASS_LR1:
-				case PIX_DIRT_DARK_1:
-				case PIX_DIRTGRASS_DARK_UL1:
-				case PIX_DIRTGRASS_DARK_UR1:
-				case PIX_DIRTGRASS_DARK_LL1:
-				case PIX_DIRTGRASS_DARK_LR1:
-				case PIX_PATH_1:
-				case PIX_PATH_2:
-				case PIX_PATH_3:
-				case PIX_PATH_4:
-					break;
-				case PIX_TREE_M1:
-				case PIX_TREE_ML:
-				case PIX_TREE_MR:
-				case PIX_TREE_MT:
-				case PIX_TREE_T1:
-					if (ob->stats()->query_bit_flags(BIT_FORESTWALK) )
-						break;
-					else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
-						break;
-					else
-						return 0;
-				case PIX_TREE_B1:
-					{
-						if (ob->query_order() == Order::Weapon
-						        || ob->stats()->query_bit_flags(BIT_FORESTWALK) )
-							break;
-						else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
-							break;
-						else
-							return 0;
-					}
-
-				case PIX_H_WALL1:
-				case PIX_WALL2:
-				case PIX_WALL3:
-				case PIX_WALL_LL:
-				case PIX_WALLTOP_H:
-					return 0;
-
-					case PIX_WALL4:
-					case PIX_WALL5:
-					case PIX_WALL_ARROW_GRASS:
-					case PIX_WALL_ARROW_FLOOR:
-					case PIX_WALL_ARROW_GRASS_DARK:
-						{
-							if (ob->query_order()==Order::Living)
-								return 0;
-
-							if (abs(ob->xpos - ob->owner->xpos) >
-							        abs(ob->ypos - ob->owner->ypos))
-								dist = abs(ob->xpos - ob->owner->xpos);
-							else
-								dist = abs(ob->ypos - ob->owner->ypos);
-
-							dist -= (GRID_SIZE/2);
-							if (dist < GRID_SIZE)
-							{
-								dist += GRID_SIZE;
-							}
-
-							if (ob->sim_rng->next(dist/GRID_SIZE))
-							{
-								return 0;
-							}
-						}
-						[[fallthrough]];
-					case PIX_WATER1:
-				case PIX_WATER2:
-				case PIX_WATER3:
-				case PIX_WATERGRASS_LL:
-				case PIX_WATERGRASS_LR:
-				case PIX_WATERGRASS_UL:
-				case PIX_WATERGRASS_UR:
-				case PIX_WATERGRASS_U:
-				case PIX_WATERGRASS_L:
-				case PIX_WATERGRASS_R:
-				case PIX_WATERGRASS_D:
-				case PIX_WALLSIDE_L:
-				case PIX_WALLSIDE1:
-				case PIX_WALLSIDE_R:
-				case PIX_WALLSIDE_C:
-				case PIX_WALLSIDE_CRACK_C1:
-				case PIX_TORCH1:
-				case PIX_TORCH2:
-				case PIX_TORCH3:
-				case PIX_BRAZIER1:
-				case PIX_COLUMN1:
-				case PIX_COLUMN2:
-				case PIX_BOULDER_1:
-				case PIX_BOULDER_2:
-				case PIX_BOULDER_3:
-				case PIX_BOULDER_4:
-					{
-						if (ob->query_order() == Order::Weapon)
-							break;
-						else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
-							break;
-						else
-							return 0;
-					}
-				default:
-					return 0;
-			}
-
-		}
-	return 1;
+    return world().query_grid_passable(x, y, ob);
 }
 
 bool LevelData::query_object_passable(float x, float y, walker  *ob)
 {
-	if (ob->dead)
-		return 1;
-	return myobmap->query_list(ob, static_cast<short>(x), static_cast<short>(y));
+    return world().query_object_passable(x, y, ob);
 }
 
 bool LevelData::query_passable(float x, float y, walker  *ob)
 {
-	return query_grid_passable(x, y, ob) && query_object_passable(x, y, ob);
+    return world().query_passable(x, y, ob);
 }
 
 // ---- Entity search ----
 
 walker *LevelData::find_near_foe(walker  *ob)
 {
-	short targx, targy;
-	short spread=1,xchange=0;
-	short loop=0;
-	short resolution = myobmap->obmapres;
-
-	if (!ob)
-	{
-		Log("no ob in find near foe.\n");
-		return nullptr;
-	}
-	targx = ob->xpos;
-	targy = ob->ypos;
-	spread = 1;
-
-	while (spread < MAX_SPREAD)
-	{
-		for (loop=0;loop<spread;loop++)
-		{
-			if (!(xchange%2))
-			{
-				targx += resolution;
-				if (targx<=0)
-					return find_far_foe(ob);
-				if (targx>=pixmaxx)
-					return find_far_foe(ob);
-			}
-			else
-			{
-				targy += resolution;
-				if (targy<=0)
-					return find_far_foe(ob);
-				if (targy>=pixmaxy)
-					return find_far_foe(ob);
-			}
-
-			std::list<walker*>& ls = myobmap->obmap_get_list(targx,targy);
-			for(auto* w : ls)
-			{
-				if (!(w->dead) && (ob->is_friendly(w)==0)  &&
-				        (ob->sim_rng->next(w->invisibility_left/20)==0)
-				   )
-				{
-					if (w->query_order() == Order::Living ||
-					        w->query_order() == Order::Generator)
-						return w;
-				}
-			}
-
-		}
-		xchange++;
-		if (!(xchange%2))
-		{
-			resolution = static_cast<short>(-resolution);
-			spread++;
-		}
-	}
-	return find_far_foe(ob);
+    return world().find_near_foe(ob);
 }
 
 walker  *LevelData::find_far_foe(walker  *ob)
 {
-	std::int32_t distance, tempdistance;
-	walker  *endfoe;
-
-	if (!ob)
-	{
-		Log("no ob in find far foe.\n");
-		return nullptr;
-	}
-
-	endfoe = nullptr;
-	distance = 10000;
-	ob->stats()->last_distance = 10000;
-
-    for(auto& uptr : oblist)
-	{
-	    walker* foe = uptr.get();
-		if (foe == nullptr || foe->dead)
-			continue;
-
-		if (ob->is_friendly(foe) == 0)
-		{
-			if (
-			    (foe->query_order() == Order::Living ||
-			     foe->query_order() == Order::Generator)  &&
-			    (!(ob->sim_rng->next(foe->invisibility_left/20)))
-			)
-			{
-				tempdistance = ob->distance_to_ob(foe);
-				if (tempdistance < distance)
-				{
-					distance = tempdistance;
-					endfoe = foe;
-				}
-			}
-		}
-	}
-	return endfoe;
+    return world().find_far_foe(ob);
 }
 
 walker  * LevelData::find_nearest_blood(walker  *who)
 {
-	std::int32_t distance, newdistance;
-	walker  *returnob = nullptr;
-
-	if (!who)
-		return nullptr;
-
-	distance = 800;
-
-	for(auto& uptr : fxlist)
-	{
-	    walker* w = uptr.get();
-		if (w && w->query_order() == Order::Treasure &&
-		        w->family == FAMILY_STAIN && !w->dead)
-		{
-			newdistance = static_cast<std::int32_t>(who->distance_to_ob_center(w));
-			if (newdistance < distance)
-			{
-				distance = newdistance;
-				returnob = w;
-			}
-		}
-	}
-	return returnob;
+    return world().find_nearest_blood(who);
 }
 
 walker* LevelData::find_nearest_player(walker *ob)
 {
-	walker *returnob = nullptr;
-	std::uint32_t distance = 32000;
-	std::uint32_t tempdistance;
-
-	if (!ob)
-		return nullptr;
-
-	for(auto& uptr : oblist)
-	{
-	    walker* w = uptr.get();
-		if (w && (w->user != -1) )
-		{
-			tempdistance = ob->distance_to_ob(w);
-			if (tempdistance < distance)
-			{
-				distance = tempdistance;
-				returnob = w;
-			}
-		}
-	}
-
-	return returnob;
+    return world().find_nearest_player(ob);
 }
 
 std::list<walker*> LevelData::find_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
 {
-    std::list<walker*> result;
-
-	*howmany = 0;
-
-	if(!ob)
-		return result;
-
-	for(auto& uptr : somelist)
-	{
-	    walker* w = uptr.get();
-		if (w && !w->dead)
-		{
-			if (ob->distance_to_ob(w) <= range)
-			{
-			    result.push_back(w);
-				(*howmany)++;
-			}
-		}
-	}
-
-	return result;
+    return world().find_in_range(somelist, range, howmany, ob);
 }
 
 std::list<walker*> LevelData::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
 {
-    std::list<walker*> result;
-    *howmany = 0;
-
-	if(!ob)
-		return result;
-
-	for(auto& uptr : somelist)
-	{
-	    walker* w = uptr.get();
-		if (w && !w->dead &&
-		        (w->query_order() == Order::Living ||
-		         w->query_order() == Order::Generator)
-		        && (ob->is_friendly(w) == 0)
-		   )
-		{
-			if (ob->distance_to_ob(w) <= range)
-			{
-			    result.push_back(w);
-				(*howmany)++;
-			}
-		}
-	}
-
-	return result;
+    return world().find_foes_in_range(somelist, range, howmany, ob);
 }
 
 std::list<walker*> LevelData::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
                                       std::int32_t* howmany, walker* ob)
 {
-    std::list<walker*> result;
-    *howmany = 0;
-
-	if(!ob)
-		return result;
-
-	for(auto& uptr : somelist)
-	{
-	    walker* w = uptr.get();
-		if (w && !w->dead &&
-		        (w->query_order() == Order::Weapon)
-		        && ( ob->is_friendly(w) )
-		   )
-		{
-			if (ob->distance_to_ob(w) <= range)
-			{
-			    result.push_back(w);
-				(*howmany)++;
-			}
-		}
-	}
-
-	return result;
+    return world().find_foe_weapons_in_range(somelist, range, howmany, ob);
 }
 
 std::list<walker*> LevelData::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
                                       std::int32_t* howmany, walker* ob)
 {
-    std::list<walker*> result;
-    *howmany = 0;
-
-	if(!ob)
-		return result;
-
-	for(auto& uptr : somelist)
-	{
-	    walker* w = uptr.get();
-		if (w && !w->dead && w->query_order() == Order::Living
-		        && ( ob->is_friendly(w) )
-		   )
-		{
-			if (ob->distance_to_ob(w) <= range)
-			{
-			    result.push_back(w);
-				(*howmany)++;
-			}
-		}
-	}
-
-	return result;
+    return world().find_friends_in_range(somelist, range, howmany, ob);
 }

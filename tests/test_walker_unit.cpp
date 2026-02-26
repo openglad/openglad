@@ -110,7 +110,7 @@ OG_UNIT_TEST(test_walker_death_save_all_and_misc_paths)
     OG_ASSERT(w != nullptr);
     w->stats()->name = "Named";
     w->dead = 1;
-    fx.level.type = static_cast<char>(SCEN_TYPE_SAVE_ALL);
+    fx.level.world().type = static_cast<char>(SCEN_TYPE_SAVE_ALL);
 
     OG_ASSERT(w->death());
     OG_ASSERT(fx.events.size() >= 1);

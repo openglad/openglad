@@ -24,21 +24,21 @@ static PixieData one_px()
 static void set_all_tiles(unsigned char tile)
 {
     auto& lvl = og::runtime::current_session->myscreen_->level_data;
-    if (!lvl.grid.valid())
+    if (!lvl.world().grid.valid())
         lvl.create_new_grid();
-    const int size = static_cast<int>(lvl.grid.w) * static_cast<int>(lvl.grid.h);
+    const int size = static_cast<int>(lvl.world().grid.w) * static_cast<int>(lvl.world().grid.h);
     for (int i = 0; i < size; i++)
-        lvl.grid.data[i] = tile;
+        lvl.world().grid.data[i] = tile;
 }
 
 static void set_tile(int tx, int ty, unsigned char tile)
 {
     auto& lvl = og::runtime::current_session->myscreen_->level_data;
-    if (!lvl.grid.valid())
+    if (!lvl.world().grid.valid())
         lvl.create_new_grid();
-    if (tx < 0 || ty < 0 || tx >= lvl.grid.w || ty >= lvl.grid.h)
+    if (tx < 0 || ty < 0 || tx >= lvl.world().grid.w || ty >= lvl.world().grid.h)
         return;
-    lvl.grid.data[ty * lvl.grid.w + tx] = tile;
+    lvl.world().grid.data[ty * lvl.world().grid.w + tx] = tile;
 }
 } // namespace
 

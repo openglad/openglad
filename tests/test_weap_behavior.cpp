@@ -264,7 +264,7 @@ void test_weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight()
     w->owner = dead_living.get();
     w->setxy(0, 0);
     w->lineofsight = 5;
-    og::runtime::current_session->myscreen_->level_data.grid.data[0] = PIX_TREE_M1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_TREE_M1;
     w->set_act_type(ACT_RANDOM);
 
     (void)w->act();
@@ -335,9 +335,9 @@ static void set_world_tile(short world_x, short world_y, unsigned char tile)
     auto& level = og::runtime::current_session->myscreen_->level_data;
     const int gx = world_x / GRID_SIZE;
     const int gy = world_y / GRID_SIZE;
-    if (gx < 0 || gy < 0 || gx >= level.grid.w || gy >= level.grid.h)
+    if (gx < 0 || gy < 0 || gx >= level.world().grid.w || gy >= level.world().grid.h)
         return;
-    level.grid.data[gx + level.grid.w * gy] = tile;
+    level.world().grid.data[gx + level.world().grid.w * gy] = tile;
 }
 
 void test_weapon_family_rock_death_bounce_matrix()

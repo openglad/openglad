@@ -223,7 +223,7 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
     getLevelStats(level_data, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty, exits);
     
     // Store this level's info
-    level_name = level_data.title;
+    level_name = level_data.world().title;
     if(level_name.size() > 20)
     {
         level_name = level_name.substr(0, 20) + "...";
@@ -267,7 +267,7 @@ void BrowserEntry::draw(screen* screenp)
     text& loadtext = og::runtime::current_session->myscreen_->text_normal;
     loadtext.write_xy(mapAreas.x, mapAreas.y, level_name.c_str(), DARK_BLUE, 1);
     
-    std::string buf = std::format("ID: {}", level_data.id);
+    std::string buf = std::format("ID: {}", level_data.world().id);
     loadtext.write_xy(x + w + 5, y, buf.c_str(), WHITE, 1);
     buf = std::format("Enemies: {}", num_enemies);
     loadtext.write_xy(x + w + 5, y + 8, buf.c_str(), WHITE, 1);

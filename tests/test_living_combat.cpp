@@ -725,7 +725,7 @@ void test_living_round8_dead_outline_forestwalk_and_offmap_walk_paths()
     if (w->myguy)
         w->myguy->dexterity = 120;
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.grid.data[(w->ypos / GRID_SIZE) * og::runtime::current_session->myscreen_->level_data.grid.w + (w->xpos / GRID_SIZE)] = PIX_TREE_B1;
+    og::runtime::current_session->myscreen_->level_data.world().grid.data[(w->ypos / GRID_SIZE) * og::runtime::current_session->myscreen_->level_data.world().grid.w + (w->xpos / GRID_SIZE)] = PIX_TREE_B1;
     const float normal = lv->normal_stepsize;
     (void)w->act();
     TEST_ASSERT(lv->stepsize >= 1.0f, "forestwalk path should keep stepsize >= 1");
@@ -947,7 +947,7 @@ void test_obmap_query_list_no_hang_when_pile_erased_during_collision()
 
     // Use the level's own obmap so that death() → remove() hits the same
     // map that query_list is iterating.
-    obmap* map = og::runtime::current_session->myscreen_->level_data.myobmap.get();
+    obmap* map = og::runtime::current_session->myscreen_->level_data.world().myobmap.get();
     map->add(actor, actor->xpos, actor->ypos);
     map->add(door, door->xpos, door->ypos);
 

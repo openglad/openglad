@@ -238,7 +238,7 @@ bool viewscreen::redraw()
 	walker  *controlob = control;
 	auto* renderer = active_screen()->level_data.renderer_.get();
 	if (!renderer) return false;
-	PixieData& gridp = active_screen()->level_data.grid;
+	PixieData& gridp = active_screen()->level_data.world().grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
 
@@ -298,7 +298,7 @@ bool viewscreen::redraw(LevelData* data, bool draw_radar)
 	walker  *controlob = control;
 	auto* renderer = data->renderer_.get();
 	if (!renderer) return false;
-	PixieData& gridp = data->grid;
+	PixieData& gridp = data->world().grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
 

@@ -68,12 +68,12 @@ OG_UNIT_TEST(test_level_data_grid_and_description_paths)
 {
     LevelFixture fx;
     fx.level.resize_grid(2, 2); // invalid no-op
-    OG_ASSERT(fx.level.grid.w == 40);
-    OG_ASSERT(fx.level.grid.h == 60);
+    OG_ASSERT(fx.level.world().grid.w == 40);
+    OG_ASSERT(fx.level.world().grid.h == 60);
 
     fx.level.resize_grid(50, 50);
-    OG_ASSERT(fx.level.grid.w == 50);
-    OG_ASSERT(fx.level.grid.h == 50);
+    OG_ASSERT(fx.level.world().grid.w == 50);
+    OG_ASSERT(fx.level.world().grid.h == 50);
 
     fx.level.description.clear();
     fx.level.description.push_back("line-1");
@@ -102,8 +102,8 @@ OG_UNIT_TEST(test_level_data_passable_and_range_queries)
     self->stats()->set_bit_flags(BIT_ETHEREAL, 0);
     OG_ASSERT(!fx.level.query_grid_passable(-1, 10, self));
 
-    const int tile = 4 + 4 * fx.level.grid.w;
-    fx.level.grid.data[tile] = PIX_H_WALL1;
+    const int tile = 4 + 4 * fx.level.world().grid.w;
+    fx.level.world().grid.data[tile] = PIX_H_WALL1;
     self->setxy(4 * GRID_SIZE, 4 * GRID_SIZE);
     OG_ASSERT(!fx.level.query_grid_passable(self->xpos, self->ypos, self));
 
@@ -241,7 +241,7 @@ OG_UNIT_TEST(test_level_data_r11_query_grid_passable_terrain_branches)
     ob->setxy(static_cast<short>(gx * GRID_SIZE), static_cast<short>(gy * GRID_SIZE));
 
     // tree branch blocked/unblocked by forestwalk/flying
-    fx.level.grid.data[gx + gy * fx.level.grid.w] = PIX_TREE_M1;
+    fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_TREE_M1;
     OG_ASSERT(!fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
     ob->stats()->set_bit_flags(BIT_FORESTWALK, 1);
     OG_ASSERT(fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
@@ -249,15 +249,15 @@ OG_UNIT_TEST(test_level_data_r11_query_grid_passable_terrain_branches)
 
     // tree_b branch with weapon
     walker* weap = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 1, ob->xpos, ob->ypos);
-    fx.level.grid.data[gx + gy * fx.level.grid.w] = PIX_TREE_B1;
+    fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_TREE_B1;
     OG_ASSERT(fx.level.query_grid_passable(weap->xpos, weap->ypos, weap));
 
     // hard wall path
-    fx.level.grid.data[gx + gy * fx.level.grid.w] = PIX_H_WALL1;
+    fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_H_WALL1;
     OG_ASSERT(!fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
 
     // arrow wall + weapon owner branch
-    fx.level.grid.data[gx + gy * fx.level.grid.w] = PIX_WALL4;
+    fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_WALL4;
     weap->owner = ob;
     OG_ASSERT(!fx.level.query_grid_passable(weap->xpos, weap->ypos, weap) || fx.level.query_grid_passable(weap->xpos, weap->ypos, weap));
 }
@@ -481,9 +481,9 @@ OG_UNIT_TEST(test_level_data_r12_save_null_entries_and_query_passable_branches)
     std::filesystem::create_directories("temp/scen");
     std::filesystem::create_directories("temp/pix");
 
-    fx.level.id = 9450;
+    fx.level.world().id = 9450;
     fx.level.grid_file = "grid";
-    fx.level.title = "r12";
+    fx.level.world().title = "r12";
 
     fx.level.fxlist.push_back(std::unique_ptr<walker>{});
     OG_ASSERT(!fx.level.save());
@@ -503,14 +503,14 @@ OG_UNIT_TEST(test_level_data_r12_save_null_entries_and_query_passable_branches)
     weapon->sizey = 1;
     weapon->owner = owner;
 
-    fx.level.grid.frames = 1;
-    fx.level.grid.w = 1;
-    fx.level.grid.h = 1;
-    fx.level.pixmaxx = GRID_SIZE;
-    fx.level.pixmaxy = GRID_SIZE;
-    fx.level.grid.data = std::make_unique<unsigned char[]>(1);
+    fx.level.world().grid.frames = 1;
+    fx.level.world().grid.w = 1;
+    fx.level.world().grid.h = 1;
+    fx.level.world().pixmaxx = GRID_SIZE;
+    fx.level.world().pixmaxy = GRID_SIZE;
+    fx.level.world().grid.data = std::make_unique<unsigned char[]>(1);
 
-    fx.level.grid.data[0] = PIX_TREE_M1;
+    fx.level.world().grid.data[0] = PIX_TREE_M1;
     OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
     living->stats()->set_bit_flags(BIT_FORESTWALK, 1);
     OG_ASSERT(fx.level.query_grid_passable(0, 0, living));
@@ -519,24 +519,24 @@ OG_UNIT_TEST(test_level_data_r12_save_null_entries_and_query_passable_branches)
     OG_ASSERT(fx.level.query_grid_passable(0, 0, living));
 
     living->stats()->set_bit_flags(BIT_FLYING, 0);
-    fx.level.grid.data[0] = PIX_TREE_B1;
+    fx.level.world().grid.data[0] = PIX_TREE_B1;
     OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
     OG_ASSERT(fx.level.query_grid_passable(0, 0, weapon));
 
-    fx.level.grid.data[0] = PIX_WALL4;
+    fx.level.world().grid.data[0] = PIX_WALL4;
     OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
     weapon->setxy(200, 0);
     owner->setxy(0, 0);
     OG_ASSERT(!fx.level.query_grid_passable(0, 0, weapon));
 
-    fx.level.grid.data[0] = PIX_WATER1;
+    fx.level.world().grid.data[0] = PIX_WATER1;
     OG_ASSERT(fx.level.query_grid_passable(0, 0, weapon));
     OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
     living->flight_left = 1;
     OG_ASSERT(fx.level.query_grid_passable(0, 0, living));
 
     living->flight_left = 0;
-    fx.level.grid.data[0] = 255;
+    fx.level.world().grid.data[0] = 255;
     OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
 
     living->dead = 1;
@@ -754,7 +754,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_s
         MemoryOgFile mem(bytes);
         LevelData data(3, true);
         OG_ASSERT(load_scenario_version(mem, &data, 5) == 1);
-        OG_ASSERT(data.type == 7);
+        OG_ASSERT(data.world().type == 7);
     }
 
     // v9 title/par/time-limit + long line width skip path.
@@ -765,10 +765,10 @@ OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_s
         MemoryOgFile mem(bytes);
         LevelData data(4, true);
         OG_ASSERT(load_scenario_version(mem, &data, 9) == 1);
-        OG_ASSERT(data.title == "R14 Title");
-        OG_ASSERT(data.par_value == 77);
-        OG_ASSERT(data.time_bonus_limit == 1234);
-        OG_ASSERT(data.type == 5);
+        OG_ASSERT(data.world().title == "R14 Title");
+        OG_ASSERT(data.world().par_value == 77);
+        OG_ASSERT(data.world().time_bonus_limit == 1234);
+        OG_ASSERT(data.world().type == 5);
     }
 }
 
@@ -913,26 +913,26 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     OG_ASSERT(g_wire_calls >= 3);
     OG_ASSERT(level_non_headless.numobs >= 1);
 
-    level_non_headless.title = "Mutated";
-    level_non_headless.type = 7;
-    level_non_headless.par_value = 9;
-    level_non_headless.time_bonus_limit = 123;
+    level_non_headless.world().title = "Mutated";
+    level_non_headless.world().type = 7;
+    level_non_headless.world().par_value = 9;
+    level_non_headless.world().time_bonus_limit = 123;
     level_non_headless.topx = 44;
     level_non_headless.topy = 55;
     level_non_headless.clear();
 
-    OG_ASSERT(level_non_headless.title == "New Level");
-    OG_ASSERT(level_non_headless.type == 0);
-    OG_ASSERT(level_non_headless.par_value == 1);
-    OG_ASSERT(level_non_headless.time_bonus_limit == 4000);
+    OG_ASSERT(level_non_headless.world().title == "New Level");
+    OG_ASSERT(level_non_headless.world().type == 0);
+    OG_ASSERT(level_non_headless.world().par_value == 1);
+    OG_ASSERT(level_non_headless.world().time_bonus_limit == 4000);
     OG_ASSERT(level_non_headless.topx == 0);
     OG_ASSERT(level_non_headless.topy == 0);
 
     // Exercise delegating constructor overloads.
     LevelData plain_ctor(9417);
     LevelData hooks_ctor(9418, &hooks);
-    OG_ASSERT(plain_ctor.id == 9417);
-    OG_ASSERT(hooks_ctor.id == 9418);
+    OG_ASSERT(plain_ctor.world().id == 9417);
+    OG_ASSERT(hooks_ctor.world().id == 9418);
 
     (void)level_headless;
 }
