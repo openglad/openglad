@@ -86,4 +86,41 @@ done < <(find src -type f \( -name '*.cpp' -o -name '*.h' \))
 if [ $status -eq 0 ]; then
     echo "Component include check: OK"
 fi
+
+# 4. Public header graph checks for include/openglad/<layer>/.
+# Transitional guardrail: public component headers must not depend on platform.
+while IFS= read -r file; do
+    case "$file" in
+        include/openglad/core/*)
+            ;;
+        include/openglad/gameplay/*)
+            ;;
+        include/openglad/resources/*)
+            ;;
+        include/openglad/interface/*)
+            ;;
+        *)
+            continue
+            ;;
+    esac
+
+    while IFS= read -r include_root; do
+        [ -z "$include_root" ] && continue
+        case "$include_root" in
+            core|gameplay|resources|interface|legacy|platform) ;;
+            *) continue ;;
+        esac
+
+        if [ "$include_root" = "platform" ]; then
+            echo "ERROR: header include violation: $file includes openglad/platform" >&2
+            status=1
+        fi
+    done < <(grep -Eo '#include[[:space:]]+<openglad/[a-z_]+/' "$file" \
+        | sed -E 's@#include[[:space:]]+<openglad/([a-z_]+)/@\1@' \
+        | sort -u)
+done < <(find include/openglad -type f -name '*.h')
+
+if [ $status -eq 0 ]; then
+    echo "Header include graph check: OK"
+fi
 exit $status

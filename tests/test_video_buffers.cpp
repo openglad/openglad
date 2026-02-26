@@ -1,4 +1,5 @@
 #include <openglad/interface/screen.h>
+#include <openglad/platform/game_session.h>
 #include "test_framework.h"
 
 #include <array>

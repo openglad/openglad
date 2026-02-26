@@ -13,8 +13,7 @@
  * (at your option) any later version.
  */
 
-#include <openglad/platform/io_common.h>
-#include <openglad/platform/game_session.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/zip_api.h>
@@ -37,22 +36,16 @@ std::string s_mounted_campaign;
 
 std::string get_mounted_campaign()
 {
-    if (og::runtime::current_session)
-        return og::runtime::current_session->ctx_.mounted_campaign;
     return s_mounted_campaign;
 }
 
 void set_mounted_campaign(const std::string& id)
 {
-    if (og::runtime::current_session)
-        og::runtime::current_session->ctx_.mounted_campaign = id;
     s_mounted_campaign = id;
 }
 
 void clear_mounted_campaign()
 {
-    if (og::runtime::current_session)
-        og::runtime::current_session->ctx_.mounted_campaign.clear();
     s_mounted_campaign.clear();
 }
 } // namespace og::resources

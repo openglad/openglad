@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include <openglad/interface/render/text.h>
+#include <openglad/platform/game_session.h>
 #include "SDL.h"
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>

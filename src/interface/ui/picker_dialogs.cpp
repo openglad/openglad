@@ -16,6 +16,7 @@
  */
 
 #include <openglad/interface/input/button.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/input/input.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>

@@ -86,9 +86,6 @@ struct meminfo
 	unsigned Reserved[3];
 };
 
-// Access session state via og::runtime::current_session->member_ directly.
-#include <openglad/platform/game_session.h>
-
 void set_game_speed(float factor);
 
 inline constexpr int MAX_LEVELS = 500; // Maximum number of scenarios allowed ..

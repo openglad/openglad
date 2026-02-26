@@ -10,6 +10,7 @@
 // This file is compiled only in the SDL build (not in openglad_text).
 
 #include <openglad/platform/game_context.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/soundob_sdl.h>
 #include <openglad/platform/sdl/video.h>

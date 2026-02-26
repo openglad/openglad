@@ -1,4 +1,5 @@
 #include "SDL.h"
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"

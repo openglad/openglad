@@ -16,6 +16,7 @@
  */
 
 #include <openglad/interface/ui/campaign_picker.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/platform/io.h>
 #include <openglad/resources/yaml_stream.h>
 #include <openglad/interface/render/pixie.h>

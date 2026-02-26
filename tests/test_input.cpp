@@ -1,4 +1,5 @@
 #include <cstring>
+#include <openglad/platform/game_session.h>
 
 #include "SDL.h"
 #include <openglad/interface/input/input.h>

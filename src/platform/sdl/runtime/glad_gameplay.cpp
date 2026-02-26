@@ -10,6 +10,7 @@
  */
 
 #include <openglad/platform/game_loop.h>
+#include <openglad/platform/game_session.h>
 
 #include <openglad/core/util.h>
 #include <openglad/resources/gparser.h>

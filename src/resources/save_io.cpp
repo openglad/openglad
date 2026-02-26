@@ -22,7 +22,7 @@
 
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/og_file.h>
-#include <openglad/platform/io_common.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/legacy/base.h>
 #include <algorithm>
 #include <cstdint>

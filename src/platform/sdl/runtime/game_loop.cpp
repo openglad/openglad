@@ -7,6 +7,7 @@
  */
 #include "SDL.h"
 #include <openglad/platform/game_loop.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/input/input.h>

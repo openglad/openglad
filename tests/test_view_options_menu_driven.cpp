@@ -1,4 +1,5 @@
 #include "SDL.h"
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/input/input.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/gameplay/walker.h>

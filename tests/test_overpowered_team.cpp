@@ -1,4 +1,5 @@
 #include "SDL.h"
+#include <openglad/platform/game_session.h>
 #include <memory>
 #include <array>
 #include <openglad/interface/input/button.h>

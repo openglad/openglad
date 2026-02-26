@@ -16,6 +16,7 @@
  */
 
 #include <openglad/interface/ui/level_picker.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/resources/level_io.h>

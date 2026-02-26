@@ -1,4 +1,5 @@
 #include <openglad/platform/game_context.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/platform/guy_create.h>

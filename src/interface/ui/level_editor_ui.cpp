@@ -17,6 +17,7 @@
 
 #include "SDL.h"
 #include <openglad/interface/screen.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/input/input.h>
 #include <cstring>
 #include <list>
@@ -421,4 +422,3 @@ std::vector<std::string>& level_editor_testing_prompt_queue_ref()
     return s_prompt_queue;
 }
 #endif
-

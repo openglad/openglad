@@ -1,4 +1,5 @@
 #include <openglad/legacy/base.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/core/stats.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/walker.h>

@@ -17,6 +17,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/platform/guy_create.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>

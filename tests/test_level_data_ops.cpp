@@ -1,4 +1,5 @@
 #include "SDL.h"
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/campaign_data.h>
 #include <openglad/resources/level_io.h>

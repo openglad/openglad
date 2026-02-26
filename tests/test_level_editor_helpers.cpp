@@ -1,4 +1,5 @@
 #include <openglad/resources/gloader.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/platform/io.h>
