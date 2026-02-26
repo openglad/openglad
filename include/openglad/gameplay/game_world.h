@@ -151,6 +151,7 @@ public:
     walker* add_fx_ob(Order order, std::int32_t family);
     walker* add_weap_ob(Order order, std::int32_t family);
     short remove_ob(walker* ob);
+    void clear_backlinks_to(walker* victim);
     walker* configure_entity(walker* ob, Order order, std::int32_t family);
     void apply_derived_stats(walker* ob, Order order, std::int32_t family);
     const PixieData* lookup_entity_graphics(Order order, std::int32_t family) const;
@@ -197,7 +198,6 @@ public:
 
 private:
     void clear_single_backlink(walker* source, walker* victim);
-    void clear_backlinks_to(walker* victim);
 #ifndef NDEBUG
     void assert_entity_thread_() const;
     std::thread::id entity_thread_owner_{};

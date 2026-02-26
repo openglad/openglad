@@ -604,32 +604,7 @@ EventType handle_basic_editor_event(const SDL_Event& event);
 
 short remove_ob(og::gameplay::GameWorld& world, walker* ob)
 {
-    if (ob && ob->query_order() == Order::Living)
-        world.living_count--;
-
-    auto pred = [ob](const std::unique_ptr<walker>& p) { return p.get() == ob; };
-    auto e = std::find_if(world.weaplist.begin(), world.weaplist.end(), pred);
-    if (e != world.weaplist.end())
-    {
-        world.weaplist.erase(e);
-        return 1;
-    }
-
-    auto f = std::find_if(world.fxlist.begin(), world.fxlist.end(), pred);
-    if (f != world.fxlist.end())
-    {
-        world.fxlist.erase(f);
-        return 1;
-    }
-
-    auto g = std::find_if(world.oblist.begin(), world.oblist.end(), pred);
-    if (g != world.oblist.end())
-    {
-        world.oblist.erase(g);
-        return 1;
-    }
-
-    return 0;
+    return world.remove_ob(ob);
 }
 
 #define DEFAULT_EDITOR_MENU_BUTTON_HEIGHT 20

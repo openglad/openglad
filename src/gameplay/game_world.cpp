@@ -25,6 +25,17 @@
 namespace {
 constexpr short MAX_SPREAD = 10;
 
+#ifndef NDEBUG
+thread_local std::uint32_t g_tick_iteration_depth = 0;
+
+class TickIterationScope final
+{
+public:
+    TickIterationScope() { ++g_tick_iteration_depth; }
+    ~TickIterationScope() { --g_tick_iteration_depth; }
+};
+#endif
+
 static walker* find_far_foe_for_tick(og::gameplay::GameWorld& world, walker* ob, og::sim::SimRandom& rng)
 {
     if (!ob)
@@ -241,6 +252,12 @@ void GameWorld::tick()
     }
 
     level_done = 2;
+
+#ifndef NDEBUG
+    // Contract: do not call remove_ob() while iterating entity lists in tick().
+    // Entities should be marked dead and removed by the deferred sweep below.
+    TickIterationScope tick_iteration_scope;
+#endif
 
     if (enemy_freeze)
         enemy_freeze--;
@@ -506,6 +523,10 @@ walker* GameWorld::add_weap_ob(Order order, std::int32_t family)
 
 short GameWorld::remove_ob(walker* ob)
 {
+#ifndef NDEBUG
+    assert(g_tick_iteration_depth == 0 &&
+           "GameWorld::remove_ob() must not run during tick list iteration; mark dead and defer removal.");
+#endif
     clear_backlinks_to(ob);
 #ifndef NDEBUG
     assert_entity_thread_();
