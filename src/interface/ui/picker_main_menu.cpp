@@ -178,6 +178,9 @@ Sint32 mainmenu(Sint32 arg1)
 
 	while(!(retvalue & MENU_EXIT))
 	{
+        if (!og::runtime::current_session->localbuttons_)
+            continue;
+
 	    // Input
 		{
 			Sint32 click = leftmouse(buttons);

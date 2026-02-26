@@ -53,6 +53,8 @@
 #include <set>
 #include <vector>
 #include <algorithm>
+#include <cassert>
+#include <cstdlib>
 #ifdef TESTING
 #include <atomic>
 #endif
@@ -90,7 +92,13 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
 bool reset_buttons(vbutton*& local_btns, button* buttons, int num_buttons, Sint32& retvalue);
 const char* family_name_copy(short family);
 
-static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+static inline PickerState& pks()
+{
+    assert(og::runtime::current_session && og::runtime::current_session->picker_);
+    if (!og::runtime::current_session || !og::runtime::current_session->picker_)
+        std::abort();
+    return *og::runtime::current_session->picker_;
+}
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -990,6 +998,9 @@ Sint32 main_controls_options()
     Sint32 retvalue = 0;
 	while(!(retvalue & MENU_EXIT))
 	{
+        if (!og::runtime::current_session->localbuttons_)
+            continue;
+
         if(leftmouse(buttons))
         {
             const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();

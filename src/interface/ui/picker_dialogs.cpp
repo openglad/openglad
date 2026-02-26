@@ -195,6 +195,9 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
     int retvalue = 0;
     while (retvalue == 0)
     {
+        if (!og::runtime::current_session->localbuttons_)
+            continue;
+
         if(leftmouse(buttons))
             retvalue = og::runtime::current_session->localbuttons_->leftclick();
 
