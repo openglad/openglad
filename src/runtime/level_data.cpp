@@ -446,6 +446,13 @@ LevelData::~LevelData()
 {
     delete_objects();
     delete_grid();
+
+    if (world_ != nullptr)
+    {
+        world_->set_level_data(nullptr);
+        world_ = nullptr;
+    }
+
     myloader.reset();
 
     myobmap.reset();
@@ -473,21 +480,24 @@ void LevelData::clear()
 
 void LevelData::attach_world(GameWorld* world)
 {
+    GameWorld* old_world = world_;
     GameWorld* next_world = world ? world : &owned_world_;
-    if (next_world == world_)
+    if (next_world == old_world)
     {
-        world_->set_level_data(this);
+        if (old_world != nullptr)
+            old_world->set_level_data(this);
         return;
     }
 
-    if (world_ != nullptr)
+    if (old_world != nullptr)
     {
-        next_world->oblist.splice(next_world->oblist.end(), world_->oblist);
-        next_world->fxlist.splice(next_world->fxlist.end(), world_->fxlist);
-        next_world->weaplist.splice(next_world->weaplist.end(), world_->weaplist);
-        next_world->dead_list.splice(next_world->dead_list.end(), world_->dead_list);
-        next_world->living_count = world_->living_count;
-        world_->living_count = 0;
+        next_world->oblist.splice(next_world->oblist.end(), old_world->oblist);
+        next_world->fxlist.splice(next_world->fxlist.end(), old_world->fxlist);
+        next_world->weaplist.splice(next_world->weaplist.end(), old_world->weaplist);
+        next_world->dead_list.splice(next_world->dead_list.end(), old_world->dead_list);
+        next_world->living_count = old_world->living_count;
+        old_world->living_count = 0;
+        old_world->set_level_data(nullptr);
     }
 
     world_ = next_world;
