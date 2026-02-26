@@ -39,6 +39,7 @@ std::string get_mounted_campaign();
 enum class CampaignPackageIoError {
     None = 0,
     EmptyId,
+    Busy,
     MountFailed,
     UnmountFailed,
 };

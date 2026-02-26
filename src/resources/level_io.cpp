@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <string_view>
 
@@ -37,6 +38,28 @@ bool rw_read_exact_or_log(og::io::OgFile& file, void* dst, size_t size, size_t c
         return false;
     }
     return true;
+}
+
+bool rw_read_checked_or_log(og::io::OgFile& file,
+                            void* dst,
+                            size_t dst_bytes,
+                            size_t read_size,
+                            size_t count)
+{
+    if (dst == nullptr)
+    {
+        LogError("Read error: destination buffer is null.\n");
+        return false;
+    }
+    if (read_size == 0 || count == 0)
+        return true;
+    if (read_size > dst_bytes || count > (dst_bytes / read_size))
+    {
+        LogError("Read error: destination buffer too small (dst_bytes={}, read_size={}, count={}).\n",
+            dst_bytes, read_size, count);
+        return false;
+    }
+    return rw_read_exact_or_log(file, dst, read_size, count);
 }
 
 unsigned char sanitize_loaded_team_num(unsigned char team_num)
@@ -93,22 +116,30 @@ bool read_level_body(og::io::OgFile& infile,
     short temp_par = static_cast<short>(world.id);
     short temp_time_limit = 4000;
 
-#define READ_OR_FAIL(ptr, size, n)                                             \
-    do {                                                                        \
-        if (!rw_read_exact_or_log(infile, (ptr), (size), (n))) {               \
-            err = LevelFileIoError::ParseFailed;                                \
-            return false;                                                       \
-        }                                                                       \
+#define READ_OR_FAIL(ptr, size, n)                                              \
+    do {                                                                         \
+        if (!rw_read_checked_or_log(infile, (ptr), sizeof(*(ptr)), (size), (n))) { \
+            err = LevelFileIoError::ParseFailed;                                 \
+            return false;                                                        \
+        }                                                                        \
     } while (0)
 
-    READ_OR_FAIL(newgrid, 8, 1);
+#define READ_BUF_OR_FAIL(ptr, dst_bytes, size, n)                               \
+    do {                                                                         \
+        if (!rw_read_checked_or_log(infile, (ptr), (dst_bytes), (size), (n))) { \
+            err = LevelFileIoError::ParseFailed;                                 \
+            return false;                                                        \
+        }                                                                        \
+    } while (0)
+
+    READ_BUF_OR_FAIL(newgrid, sizeof(newgrid), 8, 1);
     newgrid[8] = '\0';
     lowercase(newgrid);
     metadata.grid_file = newgrid;
 
     if (version >= 6)
     {
-        READ_OR_FAIL(scentitle.data(), 30, 1);
+        READ_BUF_OR_FAIL(scentitle.data(), scentitle.size(), 30, 1);
         world.title = std::string(scentitle.data(), strnlen(scentitle.data(), 30));
     }
     else
@@ -160,14 +191,14 @@ bool read_level_body(og::io::OgFile& infile,
         std::string obj_name;
         if (version >= 4)
         {
-            READ_OR_FAIL(tempname.data(), 12, 1);
+            READ_BUF_OR_FAIL(tempname.data(), tempname.size(), 12, 1);
             tempname[12] = '\0';
             obj_name = std::string(tempname.data(), strnlen(tempname.data(), 12));
         }
 
         const int reserved_width = (version == 2) ? 11 : 10;
         std::array<char, 20> reserved{};
-        READ_OR_FAIL(reserved.data(), reserved_width, 1);
+        READ_BUF_OR_FAIL(reserved.data(), reserved.size(), reserved_width, 1);
 
         walker* new_guy = nullptr;
         if (static_cast<Order>(temporder) == Order::Treasure)
@@ -219,7 +250,7 @@ bool read_level_body(og::io::OgFile& infile,
 
             if (width > 0)
             {
-                READ_OR_FAIL(oneline.data(), width, 1);
+                READ_BUF_OR_FAIL(oneline.data(), oneline.size(), static_cast<size_t>(width), 1);
                 oneline[static_cast<size_t>(width)] = 0;
 
                 if (original_width > width)
@@ -229,7 +260,7 @@ bool read_level_body(og::io::OgFile& infile,
                     while (remaining > 0)
                     {
                         const int chunk = std::min(remaining, static_cast<int>(discard.size()));
-                        READ_OR_FAIL(discard.data(), chunk, 1);
+                        READ_BUF_OR_FAIL(discard.data(), discard.size(), static_cast<size_t>(chunk), 1);
                         remaining -= chunk;
                     }
                 }
@@ -267,6 +298,7 @@ bool read_level_body(og::io::OgFile& infile,
     }
 
 #undef READ_OR_FAIL
+#undef READ_BUF_OR_FAIL
     return true;
 }
 
@@ -321,7 +353,7 @@ bool load_level(const std::string& path,
 
     char header[4] = {};
     char versionnumber = 0;
-    if (!rw_read_exact_or_log(*infile, header, 1, 3))
+    if (!rw_read_checked_or_log(*infile, header, sizeof(header), 1, 3))
     {
         set_error(out_error, LevelFileIoError::ParseFailed);
         return false;
@@ -334,7 +366,7 @@ bool load_level(const std::string& path,
         return false;
     }
 
-    if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1))
+    if (!rw_read_checked_or_log(*infile, &versionnumber, sizeof(versionnumber), 1, 1))
     {
         set_error(out_error, LevelFileIoError::ParseFailed);
         return false;
@@ -463,8 +495,43 @@ bool save_level(og::gameplay::GameWorld& world,
 
             unsigned char temporder = static_cast<unsigned char>(ob->query_order());
             char tempfamily = ob->family;
-            std::int32_t currentx = ob->xpos;
-            std::int32_t currenty = ob->ypos;
+            const std::int32_t raw_x = ob->xpos;
+            const std::int32_t raw_y = ob->ypos;
+            std::int16_t currentx = 0;
+            std::int16_t currenty = 0;
+            if (raw_x < std::numeric_limits<std::int16_t>::min())
+            {
+                currentx = std::numeric_limits<std::int16_t>::min();
+                LogWarn("Scenario object x {} below int16 min; clamping to {}.\n",
+                    raw_x, static_cast<int>(currentx));
+            }
+            else if (raw_x > std::numeric_limits<std::int16_t>::max())
+            {
+                currentx = std::numeric_limits<std::int16_t>::max();
+                LogWarn("Scenario object x {} above int16 max; clamping to {}.\n",
+                    raw_x, static_cast<int>(currentx));
+            }
+            else
+            {
+                currentx = static_cast<std::int16_t>(raw_x);
+            }
+
+            if (raw_y < std::numeric_limits<std::int16_t>::min())
+            {
+                currenty = std::numeric_limits<std::int16_t>::min();
+                LogWarn("Scenario object y {} below int16 min; clamping to {}.\n",
+                    raw_y, static_cast<int>(currenty));
+            }
+            else if (raw_y > std::numeric_limits<std::int16_t>::max())
+            {
+                currenty = std::numeric_limits<std::int16_t>::max();
+                LogWarn("Scenario object y {} above int16 max; clamping to {}.\n",
+                    raw_y, static_cast<int>(currenty));
+            }
+            else
+            {
+                currenty = static_cast<std::int16_t>(raw_y);
+            }
             char tempteam = static_cast<char>(ob->team_num);
             char tempfacing = ob->curdir;
             char tempcommand = static_cast<char>(ob->act_type);
@@ -585,13 +652,13 @@ std::string load_scenario_title(const char* filename)
     char gridname[8] = {};
     char buffer[31] = {};
 
-    if (!rw_read_exact_or_log(*infile, header, 1, 3) || std::string(header, 3) != "FSS")
+    if (!rw_read_checked_or_log(*infile, header, sizeof(header), 1, 3) || std::string(header, 3) != "FSS")
         return "none";
-    if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1) || versionnumber < 6)
+    if (!rw_read_checked_or_log(*infile, &versionnumber, sizeof(versionnumber), 1, 1) || versionnumber < 6)
         return "none";
-    if (!rw_read_exact_or_log(*infile, gridname, 1, 8))
+    if (!rw_read_checked_or_log(*infile, gridname, sizeof(gridname), 1, 8))
         return "none";
-    if (!rw_read_exact_or_log(*infile, buffer, 1, 30))
+    if (!rw_read_checked_or_log(*infile, buffer, sizeof(buffer), 1, 30))
         return "none";
     return std::string(buffer);
 }

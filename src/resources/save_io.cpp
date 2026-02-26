@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -39,6 +40,8 @@
 namespace
 {
 constexpr unsigned char kMaxPlayers = 4;
+constexpr std::uint8_t kMinSaveVersion = 2;
+constexpr std::uint8_t kMaxSaveVersion = 9;
 }
 
 
@@ -214,6 +217,13 @@ bool SaveData::load(const std::string& filename)
 
 	// Read version number
 	READ_OR_FAIL(&temp_version, 1, 1);
+	if (temp_version < kMinSaveVersion || temp_version > kMaxSaveVersion)
+	{
+		LogError("Save file version not supported: {} (version={})\n",
+            filename, static_cast<int>(temp_version));
+        last_io_error_ = SaveDataIoError::UnsupportedVersion;
+        return 0;
+	}
 
 	// Versions 7+ have a registered mark ..
 	if (temp_version >= 7)
@@ -287,6 +297,8 @@ bool SaveData::load(const std::string& filename)
     {
         LogError("save_load_team_size_invalid file={} listsize={} max={}\n",
             filename, listsize, MAX_TEAM_SIZE);
+        last_io_error_ = SaveDataIoError::ReadFailed;
+        return false;
     }
 
 	// Read the # of players
@@ -392,12 +404,6 @@ bool SaveData::load(const std::string& filename)
 			    }
             }
 		}
-
-    if (invalid_team_size)
-    {
-        last_io_error_ = SaveDataIoError::ReadFailed;
-        return false;
-    }
 
     // Make sure the default campaign is included
 	completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
@@ -728,6 +734,13 @@ bool SaveData::save(const std::string& filename)
     }
 
 	// Number of campaigns
+    if (completed_levels.size() > static_cast<size_t>(std::numeric_limits<short>::max()))
+    {
+        LogError("save_campaign_count_overflow file={} campaigns={} max={}\n",
+            filename, completed_levels.size(), static_cast<int>(std::numeric_limits<short>::max()));
+        last_io_error_ = SaveDataIoError::WriteFailed;
+        return false;
+    }
 	short num_campaigns = static_cast<short>(completed_levels.size());
     WRITE_OR_FAIL(&num_campaigns, 2, 1);
 	for(std::map<std::string, std::set<int> >::const_iterator e = completed_levels.begin(); e != completed_levels.end(); e++)
@@ -741,15 +754,42 @@ bool SaveData::save(const std::string& filename)
 	        short index = 1;
 	        std::map<std::string, int>::const_iterator g = current_levels.find(e->first);
 	        if(g != current_levels.end())
+            {
+                if (g->second < std::numeric_limits<short>::min() || g->second > std::numeric_limits<short>::max())
+                {
+                    LogError("save_current_level_overflow file={} campaign={} level={} min={} max={}\n",
+                        filename, e->first, g->second,
+                        static_cast<int>(std::numeric_limits<short>::min()),
+                        static_cast<int>(std::numeric_limits<short>::max()));
+                    last_io_error_ = SaveDataIoError::WriteFailed;
+                    return false;
+                }
 	            index = static_cast<short>(g->second);
+            }
 	        WRITE_OR_FAIL(&index, 2, 1);
 
 	        // Number of levels
+            if (e->second.size() > static_cast<size_t>(std::numeric_limits<short>::max()))
+            {
+                LogError("save_completed_level_count_overflow file={} campaign={} levels={} max={}\n",
+                    filename, e->first, e->second.size(), static_cast<int>(std::numeric_limits<short>::max()));
+                last_io_error_ = SaveDataIoError::WriteFailed;
+                return false;
+            }
 	        short num_levels = static_cast<short>(e->second.size());
 	        WRITE_OR_FAIL(&num_levels, 2, 1);
         for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
 	        {
 	            // Level index
+                if (*f < std::numeric_limits<short>::min() || *f > std::numeric_limits<short>::max())
+                {
+                    LogError("save_level_index_overflow file={} campaign={} level={} min={} max={}\n",
+                        filename, e->first, *f,
+                        static_cast<int>(std::numeric_limits<short>::min()),
+                        static_cast<int>(std::numeric_limits<short>::max()));
+                    last_io_error_ = SaveDataIoError::WriteFailed;
+                    return false;
+                }
 	            index = static_cast<short>(*f);
 	            WRITE_OR_FAIL(&index, 2, 1);
 	        }

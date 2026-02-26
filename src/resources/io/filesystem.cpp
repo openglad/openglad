@@ -23,6 +23,21 @@ std::string last_error()
     return msg ? std::string(msg) : std::string();
 }
 
+int last_error_code()
+{
+    return static_cast<int>(PHYSFS_getLastErrorCode());
+}
+
+bool last_error_is_files_still_open()
+{
+    return PHYSFS_getLastErrorCode() == PHYSFS_ERR_FILES_STILL_OPEN;
+}
+
+bool last_error_is_not_mounted()
+{
+    return PHYSFS_getLastErrorCode() == PHYSFS_ERR_NOT_MOUNTED;
+}
+
 bool init(const char* argv0)
 {
     return PHYSFS_init(argv0) != 0;
