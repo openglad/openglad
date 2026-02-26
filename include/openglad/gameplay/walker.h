@@ -175,11 +175,11 @@ class walker : public og::sim::SimEntity
 		signed char cycle;
 		char action;                   // no special action mode
 		char ani_type;
-		float stepsize;
-		float normal_stepsize;         // used for elven forestwalk
-		std::int32_t lineofsight;
-		float damage;
-		float fire_frequency;
+		float stepsize = 0;
+		float normal_stepsize = 0;     // used for elven forestwalk
+		std::int32_t lineofsight = 0;
+		float damage = 0;
+		float fire_frequency = 0;
 		float busy;
 		char ignore;                   // for non-colliding objects
 		unsigned short current_weapon;
