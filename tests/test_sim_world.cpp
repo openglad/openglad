@@ -1,6 +1,5 @@
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/sim/sim_event_log.h>
@@ -11,6 +10,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
+#include "test_game_world_fixture.h"
 #include "unit/unit.h"
 
 namespace {
@@ -24,27 +24,7 @@ struct TickWalker : walker {
     }
 };
 
-struct SimWorldR15Fixture {
-    LevelData level{1, true};
-    SaveData save;
-    std::int32_t enemy_freeze = 0;
-    og::sim::SimEventLog events;
-    FixedRandom rng{0};
-    GameContext gc;
-
-    SimWorldR15Fixture()
-    {
-        level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
-        gc.rng = &rng;
-        set_global_context(&gc);
-    }
-
-    ~SimWorldR15Fixture()
-    {
-        set_global_context(nullptr);
-    }
-};
+using SimWorldR15Fixture = TestGameWorld;
 
 TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned char team, short x, short y, bool dead = false)
 {

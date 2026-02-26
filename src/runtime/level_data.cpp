@@ -418,10 +418,18 @@ LevelData::LevelData(int level_id, bool headless)
 
 LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks)
     : id(level_id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
-    , myloader(nullptr), numobs(0), topx(0), topy(0)
+    , myloader(nullptr)
+    , numobs(this)
+    , oblist(this, WalkerListForwarder::Kind::Objects)
+    , fxlist(this, WalkerListForwarder::Kind::Effects)
+    , weaplist(this, WalkerListForwarder::Kind::Weapons)
+    , dead_list(this, WalkerListForwarder::Kind::Dead)
+    , topx(0), topy(0)
+    , world_(&owned_world_)
 {
     hooks_ = hooks;
     headless_ = headless;
+    world_->set_level_data(this);
 
 	myobmap = std::make_unique<obmap>();
     myloader = std::make_unique<loader>(this);
@@ -463,55 +471,42 @@ void LevelData::clear()
     topy = 0;
 }
 
+void LevelData::attach_world(GameWorld* world)
+{
+    GameWorld* next_world = world ? world : &owned_world_;
+    if (next_world == world_)
+    {
+        world_->set_level_data(this);
+        return;
+    }
+
+    if (world_ != nullptr)
+    {
+        next_world->oblist.splice(next_world->oblist.end(), world_->oblist);
+        next_world->fxlist.splice(next_world->fxlist.end(), world_->fxlist);
+        next_world->weaplist.splice(next_world->weaplist.end(), world_->weaplist);
+        next_world->dead_list.splice(next_world->dead_list.end(), world_->dead_list);
+        next_world->living_count = world_->living_count;
+        world_->living_count = 0;
+    }
+
+    world_ = next_world;
+    world_->set_level_data(this);
+}
+
 walker* LevelData::add_ob(Order order, std::int32_t family, bool atstart)
 {
-	(void)atstart;
-	if (order == Order::Weapon)
-		return add_weap_ob(order, family);
-
-    auto w = myloader->create_walker_owned(order, family);
-    if (!w)
-        return nullptr;
-
-    wire_entity(w.get());
-    if (hooks_ && hooks_->wire_entity_from_screen)
-        hooks_->wire_entity_from_screen(w.get());
-    if (order == Order::Living)
-        numobs++;
-
-    walker* raw = w.get();
-    oblist.push_back(std::move(w));
-    return raw;
+    return world().add_ob(order, family, atstart);
 }
 
 walker* LevelData::add_fx_ob(Order order, std::int32_t family)
 {
-	auto w = myloader->create_walker_owned(order, family);
-	if (!w)
-		return nullptr;
-
-	wire_entity(w.get());
-	if (hooks_ && hooks_->wire_entity_from_screen)
-		hooks_->wire_entity_from_screen(w.get());
-
-	walker* raw = w.get();
-	fxlist.push_back(std::move(w));
-	return raw;
+    return world().add_fx_ob(order, family);
 }
 
 walker* LevelData::add_weap_ob(Order order, std::int32_t family)
 {
-	auto w = myloader->create_walker_owned(order, family);
-    if (!w)
-        return nullptr;
-
-    wire_entity(w.get());
-    if (hooks_ && hooks_->wire_entity_from_screen)
-        hooks_->wire_entity_from_screen(w.get());
-
-    walker* raw = w.get();
-    weaplist.push_back(std::move(w));
-	return raw;
+    return world().add_weap_ob(order, family);
 }
 
 void LevelData::wire_entity(walker* w)
@@ -525,35 +520,16 @@ void LevelData::wire_entity(walker* w)
     w->sim_config = sim_ctx_config_;
 }
 
+void LevelData::wire_spawned_entity(walker* w)
+{
+    wire_entity(w);
+    if (hooks_ && hooks_->wire_entity_from_screen)
+        hooks_->wire_entity_from_screen(w);
+}
+
 short LevelData::remove_ob(walker  *ob)
 {
-	if (ob && ob->query_order() == Order::Living)
-		numobs--;
-
-    auto pred = [ob](const std::unique_ptr<walker>& p) { return p.get() == ob; };
-
-    auto e = std::find_if(weaplist.begin(), weaplist.end(), pred);
-    if(e != weaplist.end())
-    {
-        weaplist.erase(e);
-        return 1;
-    }
-
-    auto f = std::find_if(fxlist.begin(), fxlist.end(), pred);
-    if(f != fxlist.end())
-    {
-        fxlist.erase(f);
-        return 1;
-    }
-
-    auto g = std::find_if(oblist.begin(), oblist.end(), pred);
-    if(g != oblist.end())
-    {
-        oblist.erase(g);
-        return 1;
-    }
-
-	return 0;
+    return world().remove_ob(ob);
 }
 
 void LevelData::delete_grid()
@@ -665,19 +641,14 @@ void LevelData::resize_grid(int width, int height)
         return ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h);
     };
 
-    std::erase_if(oblist, off_map);
-    std::erase_if(fxlist, off_map);
-    std::erase_if(weaplist, off_map);
+    std::erase_if(world().oblist, off_map);
+    std::erase_if(world().fxlist, off_map);
+    std::erase_if(world().weaplist, off_map);
 }
 
 void LevelData::delete_objects()
 {
-	oblist.clear();
-	fxlist.clear();
-	weaplist.clear();
-    dead_list.clear();
-
-	numobs = 0;
+    world().delete_objects();
 
     // If this is the active screen level, clear any stale control pointers
     // that may reference walkers just deleted above.
@@ -1834,16 +1805,7 @@ std::string get_scenario_title(const char* filename)
 
 short remaining_foes(LevelData& level, walker* myguy)
 {
-    short myfoes = 0;
-    for (auto& uptr : level.oblist)
-    {
-        walker* w = uptr.get();
-        if (w && !w->dead &&
-            (w->query_order() == Order::Living) &&
-            !myguy->is_friendly(w))
-            myfoes++;
-    }
-    return myfoes;
+    return level.world().remaining_foes(myguy);
 }
 
 // ---- Collision / passability queries ----

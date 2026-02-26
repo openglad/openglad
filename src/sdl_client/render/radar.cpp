@@ -184,17 +184,17 @@ short radar::draw(LevelData* data)
 	// Now determine what objects are visible on the radar ..
 	while (listtype <= 1)
 	{
-	    std::list<std::unique_ptr<walker>>* ls;
-		if (listtype == 0) // do oblist, standard
-		{
-			ls = &data->oblist;
-			listtype++;
-		}
-		else if (listtype == 1) // do weapons
-		{
-			ls = &data->weaplist;
-			listtype++;
-		}
+			std::list<std::unique_ptr<walker>>* ls;
+			if (listtype == 0) // do oblist, standard
+			{
+				ls = &data->world().oblist;
+				listtype++;
+			}
+			else if (listtype == 1) // do weapons
+			{
+				ls = &data->world().weaplist;
+				listtype++;
+			}
 		else
 			continue;
 

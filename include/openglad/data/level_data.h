@@ -21,6 +21,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <utility>
 
 // Forward-declare Order enum class (defined in base.h)
 enum class Order : unsigned char;
@@ -28,7 +29,6 @@ enum class Order : unsigned char;
 class screen;
 class LevelRender;
 class loader;
-class walker;
 class statistics;
 class obmap;
 class SaveData;
@@ -39,6 +39,8 @@ namespace og::sim { class SimEventLog; }
 
 #include <openglad/data/smooth.h>
 #include <openglad/data/pixie_data.h>
+#include <openglad/entities/walker.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/legacy/pixdefs.h>
 
 class CampaignData
@@ -92,6 +94,169 @@ private:
 class LevelData
 {
 public:
+    using WalkerList = std::list<std::unique_ptr<walker>>;
+
+    class WalkerListForwarder
+    {
+    public:
+        enum class Kind
+        {
+            Objects,
+            Effects,
+            Weapons,
+            Dead
+        };
+
+        WalkerListForwarder(LevelData* owner, Kind kind)
+            : owner_(owner), kind_(kind)
+        {
+        }
+
+        WalkerListForwarder(const WalkerListForwarder&) = delete;
+        WalkerListForwarder& operator=(const WalkerListForwarder&) = delete;
+        WalkerListForwarder(WalkerListForwarder&&) = delete;
+        WalkerListForwarder& operator=(WalkerListForwarder&&) = delete;
+
+        operator WalkerList&() { return list(); }
+        operator const WalkerList&() const { return list(); }
+
+        WalkerList& list()
+        {
+            switch (kind_)
+            {
+                case Kind::Objects: return owner_->world().oblist;
+                case Kind::Effects: return owner_->world().fxlist;
+                case Kind::Weapons: return owner_->world().weaplist;
+                case Kind::Dead: return owner_->world().dead_list;
+            }
+            return owner_->world().oblist;
+        }
+
+        const WalkerList& list() const
+        {
+            switch (kind_)
+            {
+                case Kind::Objects: return owner_->world().oblist;
+                case Kind::Effects: return owner_->world().fxlist;
+                case Kind::Weapons: return owner_->world().weaplist;
+                case Kind::Dead: return owner_->world().dead_list;
+            }
+            return owner_->world().oblist;
+        }
+
+        auto begin() { return list().begin(); }
+        auto begin() const { return list().begin(); }
+        auto end() { return list().end(); }
+        auto end() const { return list().end(); }
+        auto rbegin() { return list().rbegin(); }
+        auto rbegin() const { return list().rbegin(); }
+        auto rend() { return list().rend(); }
+        auto rend() const { return list().rend(); }
+
+        bool empty() const { return list().empty(); }
+        std::size_t size() const { return list().size(); }
+        void clear() { list().clear(); }
+
+        auto front() -> WalkerList::reference { return list().front(); }
+        auto front() const -> WalkerList::const_reference { return list().front(); }
+        auto back() -> WalkerList::reference { return list().back(); }
+        auto back() const -> WalkerList::const_reference { return list().back(); }
+
+        template <typename T>
+        void push_back(T&& value)
+        {
+            list().push_back(std::forward<T>(value));
+        }
+
+        template <typename... Args>
+        auto emplace_back(Args&&... args)
+        {
+            return list().emplace_back(std::forward<Args>(args)...);
+        }
+
+        void pop_back() { list().pop_back(); }
+
+        template <typename... Args>
+        auto erase(Args&&... args)
+        {
+            return list().erase(std::forward<Args>(args)...);
+        }
+
+        template <typename... Args>
+        void splice(Args&&... args)
+        {
+            list().splice(std::forward<Args>(args)...);
+        }
+
+    private:
+        LevelData* owner_ = nullptr;
+        Kind kind_ = Kind::Objects;
+    };
+
+    class LivingCountForwarder
+    {
+    public:
+        explicit LivingCountForwarder(LevelData* owner)
+            : owner_(owner)
+        {
+        }
+
+        LivingCountForwarder(const LivingCountForwarder&) = delete;
+        LivingCountForwarder& operator=(const LivingCountForwarder&) = delete;
+        LivingCountForwarder(LivingCountForwarder&&) = delete;
+        LivingCountForwarder& operator=(LivingCountForwarder&&) = delete;
+
+        operator int&() { return owner_->world().living_count; }
+        operator const int&() const { return owner_->world().living_count; }
+
+        LivingCountForwarder& operator=(int value)
+        {
+            owner_->world().living_count = value;
+            return *this;
+        }
+
+        LivingCountForwarder& operator+=(int value)
+        {
+            owner_->world().living_count += value;
+            return *this;
+        }
+
+        LivingCountForwarder& operator-=(int value)
+        {
+            owner_->world().living_count -= value;
+            return *this;
+        }
+
+        LivingCountForwarder& operator++()
+        {
+            ++owner_->world().living_count;
+            return *this;
+        }
+
+        int operator++(int)
+        {
+            const int old_value = owner_->world().living_count;
+            ++owner_->world().living_count;
+            return old_value;
+        }
+
+        LivingCountForwarder& operator--()
+        {
+            --owner_->world().living_count;
+            return *this;
+        }
+
+        int operator--(int)
+        {
+            const int old_value = owner_->world().living_count;
+            --owner_->world().living_count;
+            return old_value;
+        }
+
+    private:
+        LevelData* owner_ = nullptr;
+    };
+
     enum class IoError
     {
         None = 0,
@@ -120,12 +285,12 @@ public:
 
     smoother mysmoother;
     std::unique_ptr<loader> myloader;
-    int numobs;
-    std::list<std::unique_ptr<walker>> oblist;
-    std::list<std::unique_ptr<walker>> fxlist;  // fx--explosions, etc.
-    std::list<std::unique_ptr<walker>> weaplist;  // weapons
+    LivingCountForwarder numobs;
+    WalkerListForwarder oblist;
+    WalkerListForwarder fxlist;  // fx--explosions, etc.
+    WalkerListForwarder weaplist;  // weapons
     // Keep a list of dead guys so weapons can still have valid owners
-    std::list<std::unique_ptr<walker>> dead_list;
+    WalkerListForwarder dead_list;
 
     std::unique_ptr<obmap> myobmap;
     std::list<std::string> description;
@@ -182,7 +347,11 @@ public:
 
     std::string get_description_line(int i);
     bool is_headless() const { return headless_; }
+    GameWorld& world() { return *world_; }
+    const GameWorld& world() const { return *world_; }
+    void attach_world(GameWorld* world);
     void wire_entity(walker* w);  // Wire all stored sim context onto an entity.
+    void wire_spawned_entity(walker* w); // Wire base context + transitional screen hooks.
 
     // Set sim context that will be auto-wired onto newly created entities.
     void set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
@@ -193,6 +362,8 @@ private:
     IoError last_io_error_ = IoError::None;
     bool headless_ = false;  // When true, skip render component creation
     const LevelDataHooks* hooks_ = nullptr;
+    GameWorld owned_world_;
+    GameWorld* world_ = nullptr;
 
     // Sim context pointers for wiring newly created entities.
     SaveData*              sim_ctx_save_ = nullptr;

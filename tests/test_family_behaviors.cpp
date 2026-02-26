@@ -2721,7 +2721,7 @@ void test_family_round10_orc_ghost_archer_slime_elf_edge_callbacks()
     }
 
     // SLIME AI: MAXOBS guard branch.
-    auto saved_numobs = og::runtime::current_session->myscreen_->level_data.numobs;
+    const int saved_numobs = og::runtime::current_session->myscreen_->level_data.numobs;
     og::runtime::current_session->myscreen_->level_data.numobs = MAXOBS;
     TEST_ASSERT(!slime_fd->check_special_ai(static_cast<living*>(orc)),
                 "slime check_special_ai should fail when numobs reaches MAXOBS");

@@ -22,6 +22,7 @@
 #include <openglad/platform/soundob_sdl.h> // soundob class for soundp member
 #include <openglad/render/video.h>
 #include <openglad/data/gloader.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/sim/sim_world.h>
@@ -97,12 +98,25 @@ class screen : public video
 		bool is_level_completed(int level_index) const;
 		int get_num_levels_completed(const std::string& campaign) const;
 		void add_level_completed(const std::string& campaign, int level_index);
+		GameWorld& world() { return world_; }
+		const GameWorld& world() const { return world_; }
+		auto& oblist() { return world_.oblist; }
+		const auto& oblist() const { return world_.oblist; }
+		auto& fxlist() { return world_.fxlist; }
+		const auto& fxlist() const { return world_.fxlist; }
+		auto& weaplist() { return world_.weaplist; }
+		const auto& weaplist() const { return world_.weaplist; }
+		auto& dead_list() { return world_.dead_list; }
+		const auto& dead_list() const { return world_.dead_list; }
+		int& living_count() { return world_.living_count; }
+		const int& living_count() const { return world_.living_count; }
 
         // General drawing data
 		std::array<unsigned char, 768> newpalette{};
 		short palmode;
 		
 		// Level data
+		GameWorld world_;
 		LevelData level_data;
 		
 		// Save data

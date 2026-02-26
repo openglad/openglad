@@ -34,7 +34,7 @@ static walker* find_far_foe(LevelData& level, walker* ob, SimRandom& rng)
     std::int32_t distance = 10000;
     ob->stats()->last_distance = 10000;
 
-    for (auto& uptr : level.oblist)
+    for (auto& uptr : level.world().oblist)
     {
         walker* foe = uptr.get();
         if (foe == nullptr || foe->dead)
@@ -96,7 +96,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
 
     // --- Entity act phase ---
     bool printed_time = false;
-    for (auto& uptr : level.oblist)
+    for (auto& uptr : level.world().oblist)
     {
         walker* ob = uptr.get();
         if (!enemy_freeze) // normal functionality
@@ -141,7 +141,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
     }
 
     // --- Weapon act phase ---
-    for (auto& uptr : level.weaplist)
+    for (auto& uptr : level.world().weaplist)
     {
         walker* ob = uptr.get();
         if (ob && !ob->dead)
@@ -157,7 +157,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
     }
 
     // --- Check background for exits ---
-    for (auto& uptr : level.fxlist)
+    for (auto& uptr : level.world().fxlist)
     {
         walker* ob = uptr.get();
         if (ob && !ob->dead)
@@ -187,7 +187,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
     }
 
     // --- Cleanup stale pointers ---
-    for (auto& uptr : level.oblist)
+    for (auto& uptr : level.world().oblist)
     {
         walker* ob = uptr.get();
         if (ob->foe && ob->foe->dead)
@@ -200,7 +200,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
             ob->collide_ob = nullptr;
     }
 
-    for (auto& uptr : level.weaplist)
+    for (auto& uptr : level.world().weaplist)
     {
         walker* ob = uptr.get();
         if (ob->foe && ob->foe->dead)
@@ -216,28 +216,28 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
     // --- Remove dead entities ---
     // Note: viewscreen control pointer cleanup is handled by the caller
     // (screen::act) since viewscreens are a rendering concern.
-    for (auto e = level.oblist.begin(); e != level.oblist.end();)
+    for (auto e = level.world().oblist.begin(); e != level.world().oblist.end();)
     {
         walker* ob = e->get();
         if (ob && ob->dead && ob->myguy == nullptr)
         {
-            level.dead_list.push_back(std::move(*e));
+            level.world().dead_list.push_back(std::move(*e));
 
             if (ob->query_order() == Order::Living)
-                level.numobs--;
+                level.world().living_count--;
 
-            e = level.oblist.erase(e);
+            e = level.world().oblist.erase(e);
             continue;
         }
         e++;
     }
 
-    std::erase_if(level.fxlist, [](const auto& uptr) {
+    std::erase_if(level.world().fxlist, [](const auto& uptr) {
         walker* ob = uptr.get();
         return ob && ob->dead;
     });
 
-    std::erase_if(level.weaplist, [](const auto& uptr) {
+    std::erase_if(level.world().weaplist, [](const auto& uptr) {
         walker* ob = uptr.get();
         return ob && ob->dead;
     });
