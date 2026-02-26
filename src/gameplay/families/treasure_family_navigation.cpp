@@ -11,18 +11,14 @@
 #include <openglad/core/stats.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/scenario_title.h>
 #include <openglad/gameplay/sim_emit.h>
-#include <openglad/resources/level_io.h>
 #include <format>
 #include <string>
 
 static std::string scenario_name_for_level(short level)
 {
-    std::string message = std::format("scen{}", level);
-    std::string exitname = og::data::load_scenario_title(message.c_str());
-    if (exitname == "none")
-        exitname = std::format("Level {}", level);
-    return exitname;
+    return og::gameplay::scenario_title_for_level(level);
 }
 
 static bool exit_on_eat(treasure* self, walker* eater)

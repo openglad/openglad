@@ -26,7 +26,6 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/resources/gparser.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/test_trace.h>

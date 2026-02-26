@@ -21,7 +21,7 @@
 #include <openglad/interface/render/sai2x.h>   // E_Screen
 #include <openglad/platform/game_context.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/interface/input/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
+#include <openglad/platform/input_hardware_state.h>
 #include <openglad/platform/io_common.h>
 #include "SDL.h"
 
@@ -42,6 +42,7 @@ GameSession::GameSession(const Config& session_cfg)
     : cfg_(session_cfg)
 {
     prev_session_ = current_session;
+    prev_primary_session_ = primary_session.load(std::memory_order_acquire);
 
     // Allocate input hardware state.
     input_hw_ = std::make_unique<InputHardwareState>();
@@ -172,6 +173,13 @@ const cfg_store& GameSession::config() const { return ::cfg; }
 GameSession::~GameSession()
 {
     if (cfg_.install_legacy_globals) {
+        GameSession* expected = this;
+        primary_session.compare_exchange_strong(
+            expected, prev_primary_session_, std::memory_order_acq_rel,
+            std::memory_order_acquire);
+    }
+
+    if (cfg_.install_legacy_globals) {
         if (current_session == this) {
             current_session = prev_session_;
             og::gameplay::current_game = prev_session_ ? &prev_session_->gameplay_ : nullptr;
@@ -202,12 +210,14 @@ GameSession::SessionScope::SessionScope(GameSession& session)
 {
     // Save current session
     saved_session_ = current_session;
+    saved_primary_session_ = primary_session.load(std::memory_order_acquire);
 
     // Install this session as current; legacy accessors follow current_session,
     // so this pointer swap is sufficient.
     // ctx() also reads from current_session->ctx_, so no separate context
     // installation is needed.
     current_session = session_;
+    primary_session.store(session_, std::memory_order_release);
     og::gameplay::current_game = &session_->gameplay_;
 
     // Swap render surface if this session has its own.
@@ -228,6 +238,10 @@ GameSession::SessionScope::~SessionScope()
     }
 
     // Restore previous session.  ctx() follows current_session automatically.
+    GameSession* expected = session_;
+    primary_session.compare_exchange_strong(
+        expected, saved_primary_session_, std::memory_order_acq_rel,
+        std::memory_order_acquire);
     current_session = saved_session_;
     og::gameplay::current_game = saved_session_ ? &saved_session_->gameplay_ : nullptr;
 }
@@ -235,6 +249,7 @@ GameSession::SessionScope::~SessionScope()
 GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
     : session_(other.session_)
     , saved_session_(other.saved_session_)
+    , saved_primary_session_(other.saved_primary_session_)
     , saved_render_surface_(other.saved_render_surface_)
     , did_swap_render_(other.did_swap_render_)
 {

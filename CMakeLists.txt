@@ -194,6 +194,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/campaign_data.cpp
     ${SRC_DIR}/resources/level_io.cpp
+    ${SRC_DIR}/resources/scenario_title_bridge.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
@@ -240,6 +241,7 @@ set(OG_RESOURCES_SOURCES
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/level_io.cpp
+    ${SRC_DIR}/resources/scenario_title_bridge.cpp
     ${SRC_DIR}/resources/save_io.cpp
 )
 

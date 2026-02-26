@@ -17,10 +17,9 @@
  
 #pragma once
 
-#include <openglad/platform/io_common.h>  // CampaignLoadError, CampaignLoadResult, load_campaign
-#include <openglad/interface/screen.h>
-#include <map>
 #include <string>
+
+struct SaveData;
 
 struct CampaignResult
 {
@@ -31,8 +30,5 @@ struct CampaignResult
         : first_level(1)
     {}
 };
-
-// CampaignLoadError, CampaignLoadResult, load_campaign_with_error, and
-// load_campaign are declared in io_common.h (shared by SDL and headless).
 
 CampaignResult pick_campaign(SaveData* save_data, bool enable_delete = false);

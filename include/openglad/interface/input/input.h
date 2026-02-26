@@ -203,12 +203,13 @@ struct MouseState
     bool in(const SDL_Rect& r) const;
 };
 
-// Input hardware state now lives in GameSession::input_hw_.
+// Input hardware state accessors are implemented in input.cpp.
+MouseState& input_mouse_state();
+JoyData* input_player_joy();
+
 // Macros preserve existing access patterns (mouse_state.x, player_joy[i], etc.).
-#include <openglad/platform/game_session.h>
-#include <openglad/platform/input_hardware_state.h>
-#define mouse_state (og::runtime::current_session->input_hw_->mouse)
-#define player_joy (og::runtime::current_session->input_hw_->player_joy)
+#define mouse_state (input_mouse_state())
+#define player_joy (input_player_joy())
 
 // Inline trivial accessors for joystick/key/input state
 inline bool playerHasJoystick(int player_num) { return (player_joy[player_num].index >= 0); }
@@ -234,17 +235,10 @@ void handle_joy_event(const SDL_Event& event);
 void sendFakeKeyDownEvent(int keycode);
 void sendFakeKeyUpEvent(int keycode);
 
-inline int query_key() { return og::runtime::current_session->raw_key_; }
-inline const char* query_text_input() {
-    if (og::runtime::current_session->raw_text_input_.empty()) return nullptr;
-    return og::runtime::current_session->raw_text_input_.c_str();
-}
-inline bool query_input_continue() { return og::runtime::current_session->input_continue_; }
-inline short get_and_reset_scroll_amount() {
-    short temp = og::runtime::current_session->scroll_amount_;
-    og::runtime::current_session->scroll_amount_ = 0;
-    return temp;
-}
+int query_key();
+const char* query_text_input();
+bool query_input_continue();
+short get_and_reset_scroll_amount();
 
 #ifdef USE_TOUCH_INPUT
 
@@ -279,20 +273,8 @@ bool input_touch_has_alternate();
 
 bool query_key_event(int key, const SDL_Event& event);
 
-inline bool isAnyPlayerKey(SDLKey key) {
-    for (int player_num = 0; player_num < 4; player_num++)
-        for (int i = 0; i < NUM_KEYS; i++)
-            if (og::runtime::current_session->player_keys_[player_num][i] == key)
-                return true;
-    return false;
-}
-
-inline bool isPlayerKey(int player_num, SDLKey key) {
-    for (int i = 0; i < NUM_KEYS; i++)
-        if (og::runtime::current_session->player_keys_[player_num][i] == key)
-            return true;
-    return false;
-}
+bool isAnyPlayerKey(SDLKey key);
+bool isPlayerKey(int player_num, SDLKey key);
 
 SDL_Event wait_for_key_event();
 void quit_if_quit_event(const SDL_Event& event);
@@ -306,17 +288,17 @@ void assignKeyFromWaitEvent(int player_num, int key_enum);
 
 void clear_keyboard();
 void wait_for_key(int somekey);
-inline short query_key_press_event() { return og::runtime::current_session->key_press_event_; }
-inline void clear_key_press_event() { og::runtime::current_session->key_press_event_ = 0; }
-inline short query_text_input_event() { return og::runtime::current_session->text_input_event_; }
-inline void clear_text_input_event() { og::runtime::current_session->text_input_event_ = 0; og::runtime::current_session->raw_text_input_.clear(); }
+short query_key_press_event();
+void clear_key_press_event();
+short query_text_input_event();
+void clear_text_input_event();
 void init_input();
 
 void grab_mouse();
 void release_mouse();
 
 MouseState& query_mouse();
-inline MouseState& query_mouse_no_poll() { return mouse_state; }
+MouseState& query_mouse_no_poll();
 
 unsigned char convert_to_ascii(int scancode);
 

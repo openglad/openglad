@@ -160,6 +160,7 @@ private:
 
     // Saved previous session pointer for constructor/destructor restore.
     GameSession* prev_session_ = nullptr;
+    GameSession* prev_primary_session_ = nullptr;
 
     // Owned runtime state.
     std::unique_ptr<options> prefs_owner_;
@@ -207,6 +208,7 @@ private:
 
     GameSession* session_ = nullptr;
     GameSession* saved_session_ = nullptr;
+    GameSession* saved_primary_session_ = nullptr;
     SDL_Surface* saved_render_surface_ = nullptr;
     bool did_swap_render_ = false;
 };

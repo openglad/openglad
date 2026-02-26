@@ -22,6 +22,7 @@
 
 #include <openglad/interface/input/input.h>
 #include "SDL.h"
+#include <openglad/platform/game_session.h>
 #include <openglad/platform/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
@@ -54,6 +55,78 @@ void quit(Sint32 arg1);
 // Access via hw() helper for fields without macros; mouse_state and player_joy
 // are already macros defined in input.h.
 static inline auto& hw() { return *og::runtime::current_session->input_hw_; }
+
+MouseState& input_mouse_state()
+{
+    return hw().mouse;
+}
+
+JoyData* input_player_joy()
+{
+    return hw().player_joy_state;
+}
+
+int query_key()
+{
+    return og::runtime::current_session->raw_key_;
+}
+
+const char* query_text_input()
+{
+    if (og::runtime::current_session->raw_text_input_.empty())
+        return nullptr;
+    return og::runtime::current_session->raw_text_input_.c_str();
+}
+
+bool query_input_continue()
+{
+    return og::runtime::current_session->input_continue_;
+}
+
+short get_and_reset_scroll_amount()
+{
+    const short temp = og::runtime::current_session->scroll_amount_;
+    og::runtime::current_session->scroll_amount_ = 0;
+    return temp;
+}
+
+bool isAnyPlayerKey(SDLKey key)
+{
+    for (int player_num = 0; player_num < 4; player_num++)
+        for (int i = 0; i < NUM_KEYS; i++)
+            if (og::runtime::current_session->player_keys_[player_num][i] == key)
+                return true;
+    return false;
+}
+
+bool isPlayerKey(int player_num, SDLKey key)
+{
+    for (int i = 0; i < NUM_KEYS; i++)
+        if (og::runtime::current_session->player_keys_[player_num][i] == key)
+            return true;
+    return false;
+}
+
+short query_key_press_event()
+{
+    return og::runtime::current_session->key_press_event_;
+}
+
+void clear_key_press_event()
+{
+    og::runtime::current_session->key_press_event_ = 0;
+}
+
+short query_text_input_event()
+{
+    return og::runtime::current_session->text_input_event_;
+}
+
+void clear_text_input_event()
+{
+    og::runtime::current_session->text_input_event_ = 0;
+    og::runtime::current_session->raw_text_input_.clear();
+}
 
 bool MouseState::in(const SDL_Rect& r) const
 {
@@ -1430,6 +1503,11 @@ MouseState& query_mouse()
     // The mouse_state thing is set using get_input_events, though
     // it should probably get its own function
     get_input_events(POLL);
+    return mouse_state;
+}
+
+MouseState& query_mouse_no_poll()
+{
     return mouse_state;
 }
 

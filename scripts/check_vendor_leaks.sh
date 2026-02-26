@@ -75,19 +75,6 @@ while IFS= read -r file; do
             fi
         done
         if [ $ok -ne 0 ]; then
-            case "$file:$include_root" in
-                src/gameplay/walker.cpp:resources|\
-                src/gameplay/walker_combat.cpp:resources|\
-                src/gameplay/families/family_cleric.cpp:resources|\
-                src/gameplay/families/family_orc.cpp:resources|\
-                src/gameplay/families/treasure_family_navigation.cpp:resources|\
-                src/gameplay/living.cpp:resources|\
-                src/resources/level_io.cpp:interface)
-                    ok=0
-                    ;;
-            esac
-        fi
-        if [ $ok -ne 0 ]; then
             echo "ERROR: component include violation: $file includes openglad/$include_root (allowed: $allowed)" >&2
             status=1
         fi

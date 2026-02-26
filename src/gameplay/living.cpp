@@ -30,7 +30,6 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/core/stats.h>
 #include <openglad/gameplay/guy.h>
-#include <openglad/resources/gparser.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/game_session.h> // current_difficulty macro

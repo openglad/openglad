@@ -33,7 +33,6 @@
 #include <openglad/gameplay/render_component_base.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/resources/gparser.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/core/constants.h>

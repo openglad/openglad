@@ -9,7 +9,7 @@
 
 struct InputHardwareState {
     MouseState mouse{};
-    JoyData player_joy[4]{};
+    JoyData player_joy_state[4]{};
     int player_control_modes[4]{};
     int player_mode_keys[4][2][16]{};  // [player][mode][key]
     Sint32 mouse_buttons{0};

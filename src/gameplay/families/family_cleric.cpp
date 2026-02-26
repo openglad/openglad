@@ -18,10 +18,6 @@
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/gameplay/sim_emit.h>
-#include <openglad/resources/gparser.h>
-
-#include <openglad/resources/gparser.h>
-
 #include <format>
 #include <string>
 #include <list>
