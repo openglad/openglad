@@ -42,6 +42,25 @@ namespace
 constexpr unsigned char kMaxPlayers = 4;
 constexpr std::uint8_t kMinSaveVersion = 2;
 constexpr std::uint8_t kMaxSaveVersion = 9;
+
+std::int16_t clamp_to_int16_or_warn(std::int64_t value, const char* field_name, const std::string& context)
+{
+    constexpr std::int64_t kMinI16 = std::numeric_limits<std::int16_t>::min();
+    constexpr std::int64_t kMaxI16 = std::numeric_limits<std::int16_t>::max();
+    if (value < kMinI16)
+    {
+        LogWarn("{} out of int16 range in {}: {} < {}. Clamping.\n",
+            field_name, context, value, kMinI16);
+        return std::numeric_limits<std::int16_t>::min();
+    }
+    if (value > kMaxI16)
+    {
+        LogWarn("{} out of int16 range in {}: {} > {}. Clamping.\n",
+            field_name, context, value, kMaxI16);
+        return std::numeric_limits<std::int16_t>::max();
+    }
+    return static_cast<std::int16_t>(value);
+}
 }
 
 
@@ -501,11 +520,14 @@ void SaveData::update_guys(const std::vector<const guy*>& guys)
             {
                 continue;
             }
-		    // Take this one
+			// Take this one
 			team_list[team_size] = std::make_unique<guy>(*source);
 			// Update his level from the experience
 			std::uint32_t exp = team_list[team_size]->exp;
-			team_list[team_size]->upgrade_to_level(static_cast<short>(calculate_level(team_list[team_size]->exp)));
+            const std::int32_t calculated_level = calculate_level(team_list[team_size]->exp);
+            const std::int16_t clamped_level = clamp_to_int16_or_warn(
+                static_cast<std::int64_t>(calculated_level), "calculated_level", "SaveData::update_guys");
+			team_list[team_size]->upgrade_to_level(clamped_level);
 			team_list[team_size]->exp = exp;
 			team_size++;
 		}
@@ -637,7 +659,8 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(temp_campaign, 40, 1);
 
 	// Write scenario number
-	short temp_scenario = scen_num;
+	std::int16_t temp_scenario = clamp_to_int16_or_warn(
+        static_cast<std::int64_t>(scen_num), "scen_num", std::string("save file ") + filename);
 	WRITE_OR_FAIL(&temp_scenario, 2, 1);
 
 	// Write cash
@@ -655,11 +678,13 @@ bool SaveData::save(const std::string& filename)
 	}
 
 	// Versions 7+ include the allied mode information
-	temp_allied = allied_mode;
+	temp_allied = clamp_to_int16_or_warn(
+        static_cast<std::int64_t>(allied_mode), "allied_mode", std::string("save file ") + filename);
 	WRITE_OR_FAIL(&temp_allied, 2, 1);
 
 	// Determine size of team list ...
-	listsize = static_cast<std::int16_t>(team_size);
+	listsize = clamp_to_int16_or_warn(
+        static_cast<std::int64_t>(team_size), "team_size", std::string("save file ") + filename);
 
 	//gotoxy(1, 22);
 	//Log("Team size: %d  ", listsize);
@@ -681,15 +706,22 @@ bool SaveData::save(const std::string& filename)
         // Write name of current guy...
         std::fill_n(guyname, 12, '\0');
         snprintf(guyname, sizeof(guyname), "%s", temp_guy->name.c_str());
-        temp_str = temp_guy->strength;
-        temp_dex = temp_guy->dexterity;
-        temp_con = temp_guy->constitution;
-        temp_short = temp_guy->intelligence;
-        temp_arm = temp_guy->armor;
-        temp_lev = temp_guy->level;
+        temp_str = clamp_to_int16_or_warn(
+            static_cast<std::int64_t>(temp_guy->strength), "strength", std::string("save file ") + filename);
+        temp_dex = clamp_to_int16_or_warn(
+            static_cast<std::int64_t>(temp_guy->dexterity), "dexterity", std::string("save file ") + filename);
+        temp_con = clamp_to_int16_or_warn(
+            static_cast<std::int64_t>(temp_guy->constitution), "constitution", std::string("save file ") + filename);
+        temp_short = clamp_to_int16_or_warn(
+            static_cast<std::int64_t>(temp_guy->intelligence), "intelligence", std::string("save file ") + filename);
+        temp_arm = clamp_to_int16_or_warn(
+            static_cast<std::int64_t>(temp_guy->armor), "armor", std::string("save file ") + filename);
+        temp_lev = clamp_to_int16_or_warn(
+            static_cast<std::int64_t>(temp_guy->level), "level", std::string("save file ") + filename);
         temp_exp = temp_guy->exp;
         // Version 3+ below here
-        temp_kills = temp_guy->kills;
+        temp_kills = clamp_to_int16_or_warn(
+            static_cast<std::int64_t>(temp_guy->kills), "kills", std::string("save file ") + filename);
         temp_level_kills = temp_guy->level_kills;
         // Version 4+ below here
         temp_td = temp_guy->total_damage;
@@ -697,7 +729,8 @@ bool SaveData::save(const std::string& filename)
         temp_ts = temp_guy->total_shots;
 
         // Version 5+ below here
-        temp_teamnum = temp_guy->teamnum;
+        temp_teamnum = clamp_to_int16_or_warn(
+            static_cast<std::int64_t>(temp_guy->teamnum), "teamnum", std::string("save file ") + filename);
 
         // Now write all those values
         WRITE_OR_FAIL(&temp_order, 1, 1);

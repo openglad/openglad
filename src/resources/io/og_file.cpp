@@ -15,8 +15,10 @@
 
 #include "physfs.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -224,6 +226,23 @@ OgFilePtr og_open_write(const char* path, const char* file)
 PixieData read_pixie_file(const char* filename)
 {
     using namespace og::io;
+
+    constexpr std::size_t kMaxPixieDimension = 10000;
+    constexpr std::size_t kMaxPixieFrames = 1000;
+    constexpr std::size_t kMaxPixiePixels = 10'000'000;
+
+    const auto safe_mul = [](std::size_t a, std::size_t b, std::size_t& out) -> bool {
+        if (a == 0 || b == 0)
+        {
+            out = 0;
+            return true;
+        }
+        if (a > (std::numeric_limits<std::size_t>::max() / b))
+            return false;
+        out = a * b;
+        return true;
+    };
+
     PixieData result;
 
     auto infile = og_open_read("pix/", filename);
@@ -242,7 +261,43 @@ PixieData read_pixie_file(const char* filename)
         return result;
     }
 
-    std::size_t size = result.w * result.h * result.frames;
+    const std::size_t width = static_cast<std::size_t>(result.w);
+    const std::size_t height = static_cast<std::size_t>(result.h);
+    const std::size_t frames = static_cast<std::size_t>(result.frames);
+    if (width == 0 || height == 0 || frames == 0)
+    {
+        LogError("Invalid pixie dimensions: pix/{} (w={}, h={}, frames={})\n",
+            filename, width, height, frames);
+        return result;
+    }
+    if (width > kMaxPixieDimension || height > kMaxPixieDimension || frames > kMaxPixieFrames)
+    {
+        LogError("Pixie header exceeds limits: pix/{} (w={}, h={}, frames={}, max_w_h={}, max_frames={})\n",
+            filename, width, height, frames, kMaxPixieDimension, kMaxPixieFrames);
+        return result;
+    }
+
+    std::size_t wh = 0;
+    if (!safe_mul(width, height, wh))
+    {
+        LogError("Pixie size overflow (w*h): pix/{} (w={}, h={})\n", filename, width, height);
+        return result;
+    }
+
+    std::size_t size = 0;
+    if (!safe_mul(wh, frames, size))
+    {
+        LogError("Pixie size overflow (w*h*frames): pix/{} (w={}, h={}, frames={})\n",
+            filename, width, height, frames);
+        return result;
+    }
+    if (size > kMaxPixiePixels)
+    {
+        LogError("Pixie payload too large: pix/{} (pixels={}, max={})\n",
+            filename, size, kMaxPixiePixels);
+        return result;
+    }
+
     result.data = std::make_unique<unsigned char[]>(size);
 
     if (!og_read_exact(*infile, result.data.get(), 1, size))

@@ -304,9 +304,46 @@ bool read_level_body(og::io::OgFile& infile,
 
 bool save_grid_file_internal(const char* gridname, const PixieData& grid)
 {
-    char numframes = 1;
-    char x = static_cast<char>(grid.w);
-    char y = static_cast<char>(grid.h);
+    constexpr std::size_t kMaxGridPixels = 10'000'000;
+
+    const auto safe_mul = [](std::size_t a, std::size_t b, std::size_t& out) -> bool {
+        if (a == 0 || b == 0)
+        {
+            out = 0;
+            return true;
+        }
+        if (a > (std::numeric_limits<std::size_t>::max() / b))
+            return false;
+        out = a * b;
+        return true;
+    };
+
+    const std::size_t width = static_cast<std::size_t>(grid.w);
+    const std::size_t height = static_cast<std::size_t>(grid.h);
+    if (width == 0 || height == 0)
+    {
+        LogError("Refusing to save grid with invalid dimensions: {} (w={}, h={})\n",
+            gridname, width, height);
+        return false;
+    }
+    if (!grid.data)
+    {
+        LogError("Refusing to save grid with null tile data: {} (w={}, h={})\n",
+            gridname, width, height);
+        return false;
+    }
+
+    std::size_t tile_count = 0;
+    if (!safe_mul(width, height, tile_count) || tile_count > kMaxGridPixels)
+    {
+        LogError("Refusing to save grid with invalid tile count: {} (w={}, h={}, tiles={}, max={})\n",
+            gridname, width, height, tile_count, kMaxGridPixels);
+        return false;
+    }
+
+    unsigned char numframes = 1;
+    unsigned char x = grid.w;
+    unsigned char y = grid.h;
     std::string fullpath(gridname);
     fullpath += ".pix";
     lowercase(fullpath);
@@ -321,7 +358,7 @@ bool save_grid_file_internal(const char* gridname, const PixieData& grid)
     outfile->write(&numframes, 1, 1);
     outfile->write(&x, 1, 1);
     outfile->write(&y, 1, 1);
-    outfile->write(grid.data.get(), 1, static_cast<size_t>(x * y));
+    outfile->write(grid.data.get(), 1, tile_count);
     return true;
 }
 
