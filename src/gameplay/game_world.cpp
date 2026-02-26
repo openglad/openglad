@@ -14,6 +14,12 @@
 
 #include <algorithm>
 
+GameWorld::~GameWorld()
+{
+    if (level_data_ != nullptr)
+        level_data_->attach_world(nullptr);
+}
+
 void GameWorld::set_level_data(LevelData* level_data)
 {
     level_data_ = level_data;

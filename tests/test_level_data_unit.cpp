@@ -937,3 +937,38 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     (void)level_headless;
 }
 } // namespace detail_level_data_r15
+
+// --- From test_level_data_r16.cpp ---
+namespace detail_level_data_r16 {
+OG_UNIT_TEST(test_level_data_r16_external_world_teardown_detaches_level)
+{
+    LevelData level(9510, true);
+    SaveData save;
+    std::int32_t freeze = 0;
+    og::sim::SimEventLog events;
+    FixedRandom rng{0};
+    level.create_new_grid();
+    level.set_sim_context(&save, &freeze, &events, &rng, &cfg);
+
+    {
+        GameWorld external_world;
+        level.attach_world(&external_world);
+        OG_ASSERT(&level.world() == &external_world);
+        OG_ASSERT(external_world.level_data() == &level);
+
+        walker* spawned = level.add_ob(Order::Living, FAMILY_SOLDIER);
+        OG_ASSERT(spawned != nullptr);
+        OG_ASSERT(level.numobs == 1);
+        OG_ASSERT(level.oblist.size() == 1);
+    }
+
+    OG_ASSERT(level.world().level_data() == &level);
+    OG_ASSERT(level.numobs == 1);
+    OG_ASSERT(level.oblist.size() == 1);
+
+    walker* spawned2 = level.add_ob(Order::Living, FAMILY_ARCHER);
+    OG_ASSERT(spawned2 != nullptr);
+    OG_ASSERT(level.numobs == 2);
+    OG_ASSERT(level.oblist.size() == 2);
+}
+} // namespace detail_level_data_r16

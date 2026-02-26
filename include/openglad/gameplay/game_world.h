@@ -23,6 +23,8 @@ class walker;
 class GameWorld
 {
 public:
+    ~GameWorld();
+
     int living_count = 0;
     std::list<std::unique_ptr<walker>> oblist;
     std::list<std::unique_ptr<walker>> fxlist;
