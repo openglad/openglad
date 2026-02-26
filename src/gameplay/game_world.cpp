@@ -81,6 +81,36 @@ GameWorld::~GameWorld()
     }
 }
 
+void GameWorld::clear_single_backlink(walker* source, walker* victim)
+{
+    if (!source || !victim)
+        return;
+    if (source->foe == victim)
+        source->foe = nullptr;
+    if (source->leader == victim)
+        source->leader = nullptr;
+    if (source->owner == victim)
+        source->owner = nullptr;
+    if (source->collide_ob == victim)
+        source->collide_ob = nullptr;
+}
+
+void GameWorld::clear_backlinks_to(walker* victim)
+{
+    if (!victim)
+        return;
+
+    clear_single_backlink(victim, victim);
+    for (auto& uptr : oblist)
+        clear_single_backlink(uptr.get(), victim);
+    for (auto& uptr : weaplist)
+        clear_single_backlink(uptr.get(), victim);
+    for (auto& uptr : fxlist)
+        clear_single_backlink(uptr.get(), victim);
+    for (auto& uptr : dead_list)
+        clear_single_backlink(uptr.get(), victim);
+}
+
 void GameWorld::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                                 og::sim::SimEventLog* events, IRandom* rng,
                                 cfg_store* config)
@@ -341,15 +371,29 @@ void GameWorld::tick()
         e++;
     }
 
-    std::erase_if(fxlist, [](const auto& uptr) {
-        walker* ob = uptr.get();
-        return ob && ob->dead;
-    });
+    for (auto it = fxlist.begin(); it != fxlist.end();)
+    {
+        walker* ob = it->get();
+        if (ob && ob->dead)
+        {
+            clear_backlinks_to(ob);
+            it = fxlist.erase(it);
+            continue;
+        }
+        ++it;
+    }
 
-    std::erase_if(weaplist, [](const auto& uptr) {
-        walker* ob = uptr.get();
-        return ob && ob->dead;
-    });
+    for (auto it = weaplist.begin(); it != weaplist.end();)
+    {
+        walker* ob = it->get();
+        if (ob && ob->dead)
+        {
+            clear_backlinks_to(ob);
+            it = weaplist.erase(it);
+            continue;
+        }
+        ++it;
+    }
 
     return;
 }
@@ -428,6 +472,8 @@ walker* GameWorld::add_weap_ob(Order order, std::int32_t family)
 
 short GameWorld::remove_ob(walker* ob)
 {
+    clear_backlinks_to(ob);
+
     if (ob && ob->query_order() == Order::Living)
         living_count--;
 

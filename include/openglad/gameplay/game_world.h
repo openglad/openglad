@@ -190,6 +190,9 @@ public:
     void clear();
 
 private:
+    void clear_single_backlink(walker* source, walker* victim);
+    void clear_backlinks_to(walker* victim);
+
     std::uint32_t level_tick_count_ = 0;
     int last_level_id_ = -1;
 };

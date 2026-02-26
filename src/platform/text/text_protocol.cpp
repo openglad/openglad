@@ -23,6 +23,7 @@
 #include <openglad/platform/game_context.h>
 
 #include <cstdio>
+#include <cstddef>
 #include <format>
 #include <iostream>
 #include <memory>
@@ -71,6 +72,7 @@ static void cmd_tick(og::gameplay::GameWorld& world, SaveData& save,
                      og::sim::SimEventLog& events,
                      std::vector<og::sim::Event>& pending_events, int count)
 {
+    constexpr std::size_t kMaxPendingEvents = 10000;
     std::cout << "{\"cmd\":\"tick\",\"count\":" << count << ",\"results\":[";
     for (int i = 0; i < count; i++) {
         if (i > 0) std::cout << ",";
@@ -81,6 +83,11 @@ static void cmd_tick(og::gameplay::GameWorld& world, SaveData& save,
         pending_events.insert(pending_events.end(),
                               drained_events.begin(),
                               drained_events.end());
+        if (pending_events.size() > kMaxPendingEvents) {
+            const std::size_t drop_count = pending_events.size() - kMaxPendingEvents;
+            pending_events.erase(pending_events.begin(),
+                                 pending_events.begin() + static_cast<std::ptrdiff_t>(drop_count));
+        }
         std::cout << "{\"tick\":" << world.tick_count_
                   << ",\"level_done\":" << world.level_done
                   << ",\"game_ended\":" << (world.game_ended ? "true" : "false")

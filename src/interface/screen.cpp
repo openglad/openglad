@@ -52,10 +52,13 @@
 #include <algorithm>
 #include <cassert>
 #include <string>
+#include <cstdio>
 #include <cstring>
+#include <exception>
 #include <format>
 #include <optional>
 #include <vector>
+#include <cstdlib>
 
 // Used by statistics::do_command() COMMAND_FOLLOW to find a leader walker.
 // The function is declared in stats.cpp; defined here in the SDL build.
@@ -258,6 +261,36 @@ screen::screen(short howmany, og::gameplay::GameWorld* world, bool create_displa
 {
 	assert(world_ != nullptr);
 	init_common(howmany, create_display);
+}
+
+void screen::attach_world(og::gameplay::GameWorld* world)
+{
+	world_ = world;
+}
+
+void screen::detach_world()
+{
+	world_ = nullptr;
+}
+
+og::gameplay::GameWorld& screen::world()
+{
+	if (!world_)
+	{
+		std::fprintf(stderr, "screen::world() called with no attached GameWorld\n");
+		std::terminate();
+	}
+	return *world_;
+}
+
+const og::gameplay::GameWorld& screen::world() const
+{
+	if (!world_)
+	{
+		std::fprintf(stderr, "screen::world() const called with no attached GameWorld\n");
+		std::terminate();
+	}
+	return *world_;
 }
 
 screen::~screen()

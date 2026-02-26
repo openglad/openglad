@@ -212,8 +212,10 @@ class screen : public og::render::VideoBase
 		int fadeblack(bool fade_in);
 
 		// GameWorld accessor
-		og::gameplay::GameWorld& world() { return *world_; }
-		const og::gameplay::GameWorld& world() const { return *world_; }
+		void attach_world(og::gameplay::GameWorld* world);
+		void detach_world();
+		og::gameplay::GameWorld& world();
+		const og::gameplay::GameWorld& world() const;
 
 		std::array<unsigned char, 768>& ourpalette;
 		std::array<unsigned char, 768>& redpalette;

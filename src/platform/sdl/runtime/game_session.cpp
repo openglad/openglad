@@ -37,10 +37,15 @@ namespace og::runtime {
 
 thread_local GameSession* current_session = nullptr;
 std::atomic<GameSession*> primary_session{nullptr};
+std::atomic<std::uint64_t> GameSession::s_next_generation_{1};
+std::mutex GameSession::s_live_sessions_mutex_;
+std::unordered_map<const GameSession*, std::uint64_t> GameSession::s_live_sessions_;
 
 GameSession::GameSession(const Config& session_cfg)
     : cfg_(session_cfg)
 {
+    generation_ = s_next_generation_.fetch_add(1, std::memory_order_relaxed);
+
     prev_session_ = current_session;
     prev_primary_session_ = primary_session.load(std::memory_order_acquire);
 
@@ -132,6 +137,8 @@ GameSession::GameSession(const Config& session_cfg)
                      SDL_GetError());
         }
     }
+
+    mark_session_live(this, generation_);
 }
 
 void GameSession::sync_world_from_save(const SaveData& save_data, bool create_hit_effects)
@@ -177,11 +184,17 @@ void GameSession::prepare_world_for_battle(const SaveData& save_data, bool creat
 
 void GameSession::reset_world_for_new_game(const SaveData& save_data, bool create_hit_effects)
 {
+    if (myscreen_) {
+        myscreen_->detach_world();
+    }
     world_.end = 0;
     world_.clear();
     world_.enemy_freeze = 0;
     world_.control_hp = 0;
     sync_world_from_save(save_data, create_hit_effects);
+    if (myscreen_) {
+        myscreen_->attach_world(&world_);
+    }
     world_.end = 0;
 }
 
@@ -191,6 +204,8 @@ const cfg_store& GameSession::config() const { return ::cfg; }
 
 GameSession::~GameSession()
 {
+    mark_session_dead(this);
+
     if (cfg_.install_legacy_globals) {
         GameSession* expected = this;
         primary_session.compare_exchange_strong(
@@ -229,7 +244,9 @@ GameSession::SessionScope::SessionScope(GameSession& session)
 {
     // Save current session
     saved_session_ = current_session;
+    saved_session_generation_ = saved_session_ ? saved_session_->generation_ : 0;
     saved_primary_session_ = primary_session.load(std::memory_order_acquire);
+    saved_primary_session_generation_ = saved_primary_session_ ? saved_primary_session_->generation_ : 0;
 
     // Install this session as current; legacy accessors follow current_session,
     // so this pointer swap is sufficient.
@@ -257,22 +274,51 @@ GameSession::SessionScope::~SessionScope()
     }
 
     // Restore previous session.  ctx() follows current_session automatically.
+    GameSession* restore_primary = saved_primary_session_;
+    if (!GameSession::is_session_live(restore_primary, saved_primary_session_generation_))
+        restore_primary = nullptr;
     GameSession* expected = session_;
     primary_session.compare_exchange_strong(
-        expected, saved_primary_session_, std::memory_order_acq_rel,
+        expected, restore_primary, std::memory_order_acq_rel,
         std::memory_order_acquire);
-    current_session = saved_session_;
-    og::gameplay::current_game = saved_session_ ? &saved_session_->gameplay_ : nullptr;
+    GameSession* restore_session = saved_session_;
+    if (!GameSession::is_session_live(restore_session, saved_session_generation_))
+        restore_session = nullptr;
+    current_session = restore_session;
+    og::gameplay::current_game = restore_session ? &restore_session->gameplay_ : nullptr;
 }
 
 GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
     : session_(other.session_)
     , saved_session_(other.saved_session_)
     , saved_primary_session_(other.saved_primary_session_)
+    , saved_session_generation_(other.saved_session_generation_)
+    , saved_primary_session_generation_(other.saved_primary_session_generation_)
     , saved_render_surface_(other.saved_render_surface_)
     , did_swap_render_(other.did_swap_render_)
 {
     other.session_ = nullptr;
+}
+
+bool GameSession::is_session_live(const GameSession* session, std::uint64_t generation)
+{
+    if (!session)
+        return true;
+    std::lock_guard<std::mutex> lock(s_live_sessions_mutex_);
+    const auto it = s_live_sessions_.find(session);
+    return it != s_live_sessions_.end() && it->second == generation;
+}
+
+void GameSession::mark_session_live(const GameSession* session, std::uint64_t generation)
+{
+    std::lock_guard<std::mutex> lock(s_live_sessions_mutex_);
+    s_live_sessions_[session] = generation;
+}
+
+void GameSession::mark_session_dead(const GameSession* session)
+{
+    std::lock_guard<std::mutex> lock(s_live_sessions_mutex_);
+    s_live_sessions_.erase(session);
 }
 
 } // namespace og::runtime

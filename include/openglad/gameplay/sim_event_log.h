@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace og::sim {
@@ -34,24 +35,30 @@ public:
     void push_sound(std::uint32_t sound_id);
 
     // Access the accumulated events.
-    const std::vector<Event>& events() const { return events_; }
+    const std::vector<Event>& events() const { debug_assert_single_thread(); return events_; }
 
     // Drain all events (returns them and clears the internal buffer).
     std::vector<Event> drain();
 
     // Clear without returning.
-    void clear() { events_.clear(); }
+    void clear() { debug_assert_single_thread(); events_.clear(); }
 
     // Check if any events have been accumulated.
-    bool empty() const { return events_.empty(); }
+    bool empty() const { debug_assert_single_thread(); return events_.empty(); }
 
-    std::size_t size() const { return events_.size(); }
+    std::size_t size() const { debug_assert_single_thread(); return events_.size(); }
 
     // Current simulation tick (set by the simulation loop each frame).
     std::uint32_t current_tick_ = 0;
 
 private:
+    void debug_assert_single_thread() const;
+
     std::vector<Event> events_;
+#ifndef NDEBUG
+    mutable std::thread::id owner_thread_id_;
+    mutable bool owner_thread_initialized_ = false;
+#endif
 };
 
 } // namespace og::sim

@@ -7,12 +7,28 @@
  */
 #include <openglad/gameplay/sim_event_log.h>
 
+#include <cassert>
 #include <utility>
 
 namespace og::sim {
 
+void SimEventLog::debug_assert_single_thread() const
+{
+#ifndef NDEBUG
+    const std::thread::id current_thread = std::this_thread::get_id();
+    if (!owner_thread_initialized_)
+    {
+        owner_thread_id_ = current_thread;
+        owner_thread_initialized_ = true;
+    }
+    assert(owner_thread_id_ == current_thread &&
+           "SimEventLog is single-threaded: access from multiple threads is not supported");
+#endif
+}
+
 void SimEventLog::push(EventKind kind, std::uint32_t a, std::uint32_t b, const std::string& text)
 {
+    debug_assert_single_thread();
     Event ev;
     ev.tick = current_tick_;
     ev.kind = kind;
@@ -24,6 +40,7 @@ void SimEventLog::push(EventKind kind, std::uint32_t a, std::uint32_t b, const s
 
 void SimEventLog::push_notification(const std::string& message, std::uint32_t duration)
 {
+    debug_assert_single_thread();
     Event ev;
     ev.tick = current_tick_;
     ev.kind = EventKind::Notification;
@@ -39,6 +56,7 @@ void SimEventLog::push_sound(std::uint32_t sound_id)
 
 std::vector<Event> SimEventLog::drain()
 {
+    debug_assert_single_thread();
     std::vector<Event> result;
     result.swap(events_);
     return result;

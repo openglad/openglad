@@ -4,8 +4,10 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <mutex>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/game_loop_state.h>
@@ -150,6 +152,10 @@ public:
     SDL_Surface* session_surface_ = nullptr;
 
 private:
+    static bool is_session_live(const GameSession* session, std::uint64_t generation);
+    static void mark_session_live(const GameSession* session, std::uint64_t generation);
+    static void mark_session_dead(const GameSession* session);
+
     Config cfg_;
 
     // Default RNG for sessions that install a global context but don't opt into a seeded RNG.
@@ -161,10 +167,15 @@ private:
     // Saved previous session pointer for constructor/destructor restore.
     GameSession* prev_session_ = nullptr;
     GameSession* prev_primary_session_ = nullptr;
+    std::uint64_t generation_ = 0;
 
     // Owned runtime state.
     std::unique_ptr<options> prefs_owner_;
     std::unique_ptr<::screen> screen_owner_;
+
+    static std::atomic<std::uint64_t> s_next_generation_;
+    static std::mutex s_live_sessions_mutex_;
+    static std::unordered_map<const GameSession*, std::uint64_t> s_live_sessions_;
 };
 
 // The currently-active session.  Code accesses members directly, e.g.
@@ -209,6 +220,8 @@ private:
     GameSession* session_ = nullptr;
     GameSession* saved_session_ = nullptr;
     GameSession* saved_primary_session_ = nullptr;
+    std::uint64_t saved_session_generation_ = 0;
+    std::uint64_t saved_primary_session_generation_ = 0;
     SDL_Surface* saved_render_surface_ = nullptr;
     bool did_swap_render_ = false;
 };

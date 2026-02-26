@@ -34,12 +34,27 @@ void GameContext::poll_input()
 
 static thread_local GameContext* s_test_context_override = nullptr;
 
+namespace {
+GameContext& fallback_context()
+{
+    static thread_local GameContext fallback;
+    static thread_local ProductionRandom fallback_rng;
+    if (!fallback.rng)
+        fallback.rng = &fallback_rng;
+    if (!fallback.sim_events)
+        fallback.sim_events = std::make_unique<og::sim::SimEventLog>();
+    return fallback;
+}
+} // namespace
+
 GameContext& ctx()
 {
     if (s_test_context_override)
         return *s_test_context_override;
     og::runtime::ensure_thread_session();
-    return og::runtime::current_session->ctx_;
+    if (og::runtime::current_session)
+        return og::runtime::current_session->ctx_;
+    return fallback_context();
 }
 
 void set_global_context(GameContext* context)
