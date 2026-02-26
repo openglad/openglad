@@ -301,8 +301,19 @@ bool unpack_campaign(const std::string& campaign_id)
 bool repack_campaign(const std::string& campaign_id)
 {
     std::string outfile = get_user_path() + "campaigns/" + campaign_id + ".glad";
-    std::remove(outfile.c_str());
-    return zip_contents_with_error(get_user_path() + "temp/", outfile) == ArchiveIoError::None;
+    std::string tmp_outfile = outfile + ".tmp";
+    std::error_code ec;
+    std::filesystem::remove(tmp_outfile, ec);
+    if (zip_contents_with_error(get_user_path() + "temp/", tmp_outfile) != ArchiveIoError::None)
+    {
+        std::filesystem::remove(tmp_outfile, ec);
+        return false;
+    }
+
+    std::filesystem::copy_file(tmp_outfile, outfile,
+        std::filesystem::copy_options::overwrite_existing, ec);
+    std::filesystem::remove(tmp_outfile, ec);
+    return !ec;
 }
 
 void cleanup_unpacked_campaign()
@@ -322,7 +333,8 @@ void delete_level(int id)
         return;
 
     cleanup_unpacked_campaign();
-    unpack_campaign(campaign);
+    if(!unpack_campaign(campaign))
+        return;
     // Delete data file
     std::string path = std::format("{}temp/scen/scen{}.fss", get_user_path(), id);
     std::error_code ec;

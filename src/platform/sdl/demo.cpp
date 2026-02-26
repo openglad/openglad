@@ -257,6 +257,9 @@ int main(int argc, char* argv[])
     {
         init_logging();
         io_init(argc, argv);
+        struct IoExitGuard {
+            ~IoExitGuard() { io_exit(); }
+        } io_exit_guard;
 
         cfg.load_settings();
 
@@ -480,7 +483,6 @@ int main(int argc, char* argv[])
         }
 
         text_shutdown();
-        io_exit();
     }
     catch (const std::runtime_error& e)
     {

@@ -153,6 +153,12 @@ bool CampaignData::save()
             yaml.emit_pair("contributors", contributors.c_str());
 
             std::string desc;
+            std::size_t desc_len = 0;
+            for(const auto& line : description)
+                desc_len += line.size() + 1;
+            if(desc_len > 0)
+                --desc_len;
+            desc.reserve(desc_len);
             for(auto e = description.begin(); e != description.end();)
             {
                 desc += *e;
@@ -236,6 +242,12 @@ bool CampaignData::save_as(const std::string& new_id)
                 yaml.emit_pair("contributors", contributors.c_str());
 
                 std::string desc;
+                std::size_t desc_len = 0;
+                for(const auto& line : description)
+                    desc_len += line.size() + 1;
+                if(desc_len > 0)
+                    --desc_len;
+                desc.reserve(desc_len);
                 for(auto e = description.begin(); e != description.end();)
                 {
                     desc += *e;

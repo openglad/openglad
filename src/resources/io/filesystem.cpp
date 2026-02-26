@@ -14,6 +14,14 @@ struct PhysfsFileListDeleter {
             PHYSFS_freeList(list);
     }
 };
+
+struct PhysfsFileDeleter {
+    void operator()(PHYSFS_File* file) const
+    {
+        if (file)
+            PHYSFS_close(file);
+    }
+};
 } // namespace
 
 std::string last_error()
@@ -59,19 +67,16 @@ std::vector<std::uint8_t> read_file(const char* path)
     if (!path)
         return out;
 
-    PHYSFS_File* f = PHYSFS_openRead(path);
-    if (!f)
+    std::unique_ptr<PHYSFS_File, PhysfsFileDeleter> file(PHYSFS_openRead(path));
+    if (!file)
         return out;
 
-    const PHYSFS_sint64 len = PHYSFS_fileLength(f);
-    if (len <= 0) {
-        PHYSFS_close(f);
+    const PHYSFS_sint64 len = PHYSFS_fileLength(file.get());
+    if (len <= 0)
         return out;
-    }
 
     out.resize(static_cast<std::size_t>(len));
-    const PHYSFS_sint64 got = PHYSFS_readBytes(f, out.data(), len);
-    PHYSFS_close(f);
+    const PHYSFS_sint64 got = PHYSFS_readBytes(file.get(), out.data(), len);
     if (got != len)
         out.clear();
     return out;

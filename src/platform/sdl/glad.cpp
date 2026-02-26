@@ -227,6 +227,14 @@ int main(int argc, char *argv[])
 	{
 		init_logging();  // Set up logging output (uses JS console on web)
 		io_init(argc, argv);
+		struct IoExitGuard {
+			bool active = true;
+			~IoExitGuard()
+			{
+				if (active)
+					io_exit();
+			}
+		} io_exit_guard;
 
 		cfg.load_settings();
 		cfg.commandline(argc, argv);
@@ -290,7 +298,6 @@ int main(int argc, char *argv[])
 		// Native build: use traditional blocking calls
 		picker_main(argc, argv);
 		text_shutdown();
-		io_exit();
 	#endif
 
 	// Session destructor restores previous globals and frees owned resources.
