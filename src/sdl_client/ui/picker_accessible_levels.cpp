@@ -16,8 +16,15 @@
  */
 
 #include <openglad/ui/level_picker.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/data/level_file_io.h>
+#include <openglad/data/gloader.h>
+#include <openglad/data/level_data_hooks.h>
+#include <openglad/interface/level_visuals.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/legacy/base.h>
 #include <algorithm>
+#include <format>
 #include <list>
 #include <set>
 #include <vector>
@@ -58,10 +65,20 @@ std::vector<int> get_accessible_levels()
         to_process.erase(to_process.begin());
 
         if (game->save_data.is_level_completed(level_id)) {
-            LevelData ld(level_id);
-            if (ld.load()) {
+            og::gameplay::GameWorld world;
+            world.id = level_id;
+            world.myobmap = std::make_unique<obmap>();
+            loader ldr;
+            wire_loader_to_world(world, ldr, false);
+            const LevelDataHooks& hooks = sdl_level_data_hooks();
+            if (hooks.clear_stale_view_controls)
+                world.on_pre_delete_objects = [&hooks](og::gameplay::GameWorld* w) { hooks.clear_stale_view_controls(w); };
+            LevelVisuals dummy_visuals;
+            og::data::LevelFileMetadata meta;
+            std::string thefile = std::format("scen{}.fss", level_id);
+            if (og::data::load_level(thefile, world, dummy_visuals, meta)) {
                 std::list<int> exits;
-                getLevelStats(ld, nullptr, nullptr, nullptr, nullptr, exits);
+                getLevelStats(world, nullptr, nullptr, nullptr, nullptr, exits);
                 for (int exit_id : exits) {
                     if (accessible.find(exit_id) == accessible.end()) {
                         accessible.insert(exit_id);

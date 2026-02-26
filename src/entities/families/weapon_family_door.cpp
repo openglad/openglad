@@ -8,7 +8,7 @@
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/entities/weap.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/core/terrain_types.h>
 #include <openglad/legacy/soundob.h>
 

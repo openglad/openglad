@@ -11,8 +11,10 @@
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/irandom.h>
 #include <openglad/data/gloader.h>
-#include <openglad/data/level_data.h>
+#include <openglad/data/level_file_io.h>
 #include <openglad/data/level_data_hooks.h>
+#include <openglad/interface/level_visuals.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/data/save_data.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
@@ -64,17 +66,9 @@ static void json_event(std::ostream& os, const og::sim::Event& ev)
     os << "}";
 }
 
-static void wire_all_entities(LevelData& level)
-{
-    for (auto& uptr : level.game_world().oblist) level.wire_entity(uptr.get());
-    for (auto& uptr : level.game_world().fxlist) level.wire_entity(uptr.get());
-    for (auto& uptr : level.game_world().weaplist) level.wire_entity(uptr.get());
-}
-
-static void cmd_tick(og::gameplay::GameWorld& world, LevelData& level, SaveData& save,
+static void cmd_tick(og::gameplay::GameWorld& world, SaveData& save,
                      og::sim::SimEventLog& events, int count)
 {
-    (void)level;
     std::cout << "{\"cmd\":\"tick\",\"count\":" << count << ",\"results\":[";
     for (int i = 0; i < count; i++) {
         if (i > 0) std::cout << ",";
@@ -95,24 +89,24 @@ static void cmd_tick(og::gameplay::GameWorld& world, LevelData& level, SaveData&
     std::cout.flush();
 }
 
-static void cmd_state(const LevelData& level)
+static void cmd_state(const og::gameplay::GameWorld& world)
 {
     std::ostringstream os;
     os << "{\"cmd\":\"state\",\"entities\":[";
     int idx = 0;
-    for (auto& uptr : level.game_world().oblist) {
+    for (auto& uptr : world.oblist) {
         if (idx > 0) os << ",";
         json_entity(os, uptr.get(), idx++);
     }
     os << "],\"weapons\":[";
     idx = 0;
-    for (auto& uptr : level.game_world().weaplist) {
+    for (auto& uptr : world.weaplist) {
         if (idx > 0) os << ",";
         json_entity(os, uptr.get(), idx++);
     }
     os << "],\"fx\":[";
     idx = 0;
-    for (auto& uptr : level.game_world().fxlist) {
+    for (auto& uptr : world.fxlist) {
         if (idx > 0) os << ",";
         json_entity(os, uptr.get(), idx++);
     }
@@ -160,23 +154,37 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     set_global_context(&text_ctx);
     og::gameplay::GameplayContext gameplay_ctx;
 
-    // Create level data and load (headless — no tile graphics)
-    LevelData level(args.level, true, &headless_level_data_hooks());
+    // Create GameWorld and load (headless — no tile graphics)
+    og::gameplay::GameWorld world;
+    world.myobmap = std::make_unique<obmap>();
+    world.id = args.level;
+    loader ldr;
+    wire_loader_to_world(world, ldr, true);
+    // Wire pre-delete hook for headless (no view controls to clear)
+    const LevelDataHooks& hooks = headless_level_data_hooks();
+    if (hooks.clear_stale_view_controls)
+        world.on_pre_delete_objects = [&hooks](og::gameplay::GameWorld* w) { hooks.clear_stale_view_controls(w); };
+
     SaveData save;
     save.current_campaign = args.campaign;
     save.scen_num = static_cast<short>(args.level);
     save.numplayers = 1;
 
-    if (!level.load()) {
-        std::fprintf(stderr, "Failed to load level %d\n", args.level);
-        set_global_context(nullptr);
-        return 1;
+    {
+        LevelVisuals dummy_visuals;
+        og::data::LevelFileMetadata meta;
+        std::string thefile = std::format("scen{}.fss", args.level);
+        if (!og::data::load_level(thefile, world, dummy_visuals, meta)) {
+            std::fprintf(stderr, "Failed to load level %d\n", args.level);
+            set_global_context(nullptr);
+            return 1;
+        }
     }
 
     // Create team walkers and add to the level
     for (size_t i = 0; i < args.team_families.size(); i++) {
         int family = args.team_families[i];
-        walker* w = level.add_ob(Order::Living, family);
+        walker* w = world.add_ob(Order::Living, family);
         if (w) {
             w->team_num = 0;
             w->real_team_num = 0;
@@ -190,21 +198,19 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     }
 
     // Wire up sim pointers on all entities
-    og::gameplay::GameWorld& world = level.game_world();
     world.rng_.state_ = args.seed;
     gameplay_ctx.world = &world;
     gameplay_ctx.sim_events = &events;
     og::gameplay::GameplayContext* prev_game = og::gameplay::current_game;
     og::gameplay::current_game = &gameplay_ctx;
 
-    level.set_sim_context(&save, &world.enemy_freeze, &events, &entity_rng, &cfg);
-    wire_all_entities(level);
+    world.set_sim_context(&save, &world.enemy_freeze, &events, &entity_rng, &cfg);
 
     // Output ready message
     std::cout << "{\"status\":\"ready\""
               << ",\"level\":" << args.level
-              << ",\"title\":\"" << level.title << "\""
-              << ",\"num_entities\":" << level.game_world().oblist.size()
+              << ",\"title\":\"" << world.title << "\""
+              << ",\"num_entities\":" << world.oblist.size()
               << ",\"seed\":" << args.seed
               << "}\n";
     std::cout.flush();
@@ -224,10 +230,9 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             int count = 1;
             iss >> count;
             if (count < 1) count = 1;
-            cmd_tick(world, level, save, events, count);
-            wire_all_entities(level);
+            cmd_tick(world, save, events, count);
         } else if (cmd == "state") {
-            cmd_state(level);
+            cmd_state(world);
         } else if (cmd == "events") {
             cmd_events(events);
         } else if (cmd == "quit") {

@@ -11,7 +11,12 @@
 #include <openglad/input/button.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/render/text.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/data/gloader.h>
+#include <openglad/data/level_file_io.h>
+#include <openglad/interface/level_visuals.h>
+#include <openglad/data/level_render.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
 #include <openglad/core/stats.h>
@@ -383,10 +388,17 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     int num_foes_left = get_num_foes(level_data);
     int num_foes_total = 0;
     {
-        LevelData original_level(level_data.id);
-        original_level.load();
-        num_foes_total = get_num_foes(original_level.game_world());
-}
+        og::gameplay::GameWorld original_world;
+        original_world.myobmap = std::make_unique<obmap>();
+        original_world.id = level_data.id;
+        loader ldr;
+        wire_loader_to_world(original_world, ldr, false);
+        LevelVisuals dummy_visuals;
+        og::data::LevelFileMetadata meta;
+        og::data::load_level(std::format("scen{}.fss", original_world.id),
+                             original_world, dummy_visuals, meta);
+        num_foes_total = get_num_foes(original_world);
+    }
 
 	text& mytext = og::runtime::current_session->myscreen_->text_normal;
 	text& bigtext = og::runtime::current_session->myscreen_->text_big;

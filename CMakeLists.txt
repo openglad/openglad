@@ -195,7 +195,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/data/pixie_data.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
-    ${SRC_DIR}/runtime/level_data.cpp
+
     ${SRC_DIR}/sdl_client/ui/level_picker.cpp
     ${SRC_DIR}/sdl_client/ui/level_editor.cpp
     ${SRC_DIR}/sdl_client/ui/level_editor_ui.cpp
@@ -309,7 +309,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/runtime/gloader.cpp
-    ${SRC_DIR}/runtime/level_data.cpp
+
     ${SRC_DIR}/sdl_client/runtime/walker_render_bridge.cpp
     ${SRC_DIR}/sdl_client/runtime/sdl_context_services.cpp
     ${SRC_DIR}/sdl_client/runtime/cheat_handler.cpp
@@ -846,7 +846,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/game_world.cpp
         ${SRC_DIR}/gameplay/gameplay_context.cpp
         ${SRC_DIR}/runtime/gloader.cpp
-        ${SRC_DIR}/runtime/level_data.cpp
+    
         ${SRC_DIR}/runtime/smooth.cpp
         ${SRC_DIR}/runtime/stats.cpp
         ${SRC_DIR}/data/save_data.cpp

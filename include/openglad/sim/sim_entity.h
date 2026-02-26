@@ -19,8 +19,6 @@
 #include <openglad/core/order.h>
 #include <cstdint>
 
-class LevelData;
-
 namespace og::sim {
 class SimEntity
 {

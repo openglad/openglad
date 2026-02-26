@@ -58,7 +58,7 @@ public:
     std::uint32_t totalscore;
     std::uint32_t m_totalscore[4];
     short my_team;
-    // Guys used for training and stuff.  After a mission, the team is picked from the LevelData's oblist for saving.
+    // Guys used for training and stuff.  After a mission, the team is picked from the GameWorld's oblist for saving.
     std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> team_list;
     unsigned char team_size;
     unsigned char numplayers; //numviews

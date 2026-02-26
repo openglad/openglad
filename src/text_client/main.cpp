@@ -22,8 +22,7 @@
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/irandom.h>
-#include <openglad/data/level_data.h>
-#include <openglad/data/level_data_hooks.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gloader.h>
 #include <openglad/data/gparser.h>

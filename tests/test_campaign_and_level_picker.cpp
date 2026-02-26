@@ -1,8 +1,14 @@
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/ui/level_picker.h>
 #include <openglad/ui/results_screen.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/entities/effect.h>
+#include <openglad/entities/living.h>
+#include <openglad/entities/obmap.h>
+#include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/weap.h>
 #include <openglad/input/input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/screen.h>
@@ -14,6 +20,25 @@
 #include <string>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
+
+// Minimal entity factory for standalone GameWorld tests (no loader/graphics needed).
+static void wire_test_entity_factory(og::gameplay::GameWorld& w)
+{
+    w.entity_factory = [](Order order, int family) -> std::unique_ptr<walker> {
+        std::unique_ptr<walker> ob;
+        switch (order) {
+            case Order::Living:  ob = std::make_unique<living>(); break;
+            case Order::Weapon:  ob = std::make_unique<weap>(); break;
+            case Order::Treasure: ob = std::make_unique<treasure>(); break;
+            case Order::FX:      ob = std::make_unique<effect>(); break;
+            default:             ob = std::make_unique<walker>(); break;
+        }
+        ob->set_order_family(order, static_cast<char>(family));
+        PixieData stub(8, 1, 1, nullptr); // 8 frames so set_frame() works
+        ob->set_data(stub);
+        return ob;
+    };
+}
 
 // level_picker.cpp helpers
 bool isDir(const std::string& filename);
@@ -310,7 +335,10 @@ REGISTER_TEST(test_load_campaign_with_error_typed_result_paths);
 
 void test_level_picker_cancel_esc_returns_default()
 {
-    LevelData ld(1);
+    og::gameplay::GameWorld ld;
+    ld.id = 1;
+    ld.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(ld);
     ld.create_new_grid();
     walker* e1 = ld.add_ob(Order::Living, FAMILY_ORC);
     walker* e2 = ld.add_ob(Order::Living, FAMILY_BIG_ORC);

@@ -1,5 +1,6 @@
 #include <openglad/sim/sim_input_handler.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
@@ -23,7 +24,7 @@ namespace detail_sim_input_coverage_push {
 namespace {
 
 struct SimInputFixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -31,6 +32,8 @@ struct SimInputFixture {
 
     SimInputFixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -41,7 +44,6 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -52,7 +54,7 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
     w->user = user;
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     walker* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -155,7 +157,7 @@ namespace detail_sim_input_r11 {
 namespace {
 
 struct SimInputFixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -163,6 +165,8 @@ struct SimInputFixture {
 
     SimInputFixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -173,7 +177,6 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -184,7 +187,7 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
     w->user = user;
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     walker* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 

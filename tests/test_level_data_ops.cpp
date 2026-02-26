@@ -1,11 +1,14 @@
 #include "SDL.h"
 #include <openglad/entities/guy.h>
-#include <openglad/data/level_data.h>
+#include <openglad/data/campaign_data.h>
+#include <openglad/data/level_file_io.h>
 #include <openglad/data/gloader.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/platform/io.h>
+#include <openglad/platform/io_common.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
@@ -19,7 +22,7 @@
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
-short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
+short load_scenario_version(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata, short version);
 
 // Memory-backed OgFile for testing (replaces SDL_RWFromConstMem)
 class MemoryOgFile final : public og::io::OgFile {
@@ -478,19 +481,14 @@ void test_level_data_get_description_line()
     TEST_ASSERT(updated.getDescriptionLine(0) == "line c", "updated description should persist");
 
     // Directly exercise load_scenario_version branches 3/4/5 and unknown version.
-    auto make_world_adapter = []() {
-        return LevelData(og::runtime::current_session->myscreen_->world().id, false,
-                         static_cast<const LevelDataHooks*>(nullptr),
-                         &og::runtime::current_session->myscreen_->world());
-    };
     {
         std::vector<uint8_t> blob3 = make_scenario_blob_with_one_object(false, false);
         MemoryOgFile rw3(blob3.data(), blob3.size());
         og::runtime::current_session->myscreen_->world().delete_objects();
         og::runtime::current_session->myscreen_->level_file_metadata_.description.clear();
-        auto level_adapter = make_world_adapter();
-        short r3 = load_scenario_version(rw3, &level_adapter, 3);
-        og::runtime::current_session->myscreen_->level_file_metadata_.description = level_adapter.description;
+        og::data::LevelFileMetadata level_adapter_meta;
+        short r3 = load_scenario_version(rw3, &og::runtime::current_session->myscreen_->world(), &level_adapter_meta, 3);
+        og::runtime::current_session->myscreen_->level_file_metadata_.description = level_adapter_meta.description;
         TEST_ASSERT_EQ(1, (int)r3, "load_scenario_version v3 should succeed");
         TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(), "v3 should load at least one object");
         TEST_ASSERT(!og::runtime::current_session->myscreen_->level_file_metadata_.description.empty(), "v3 should load description lines");
@@ -500,8 +498,8 @@ void test_level_data_get_description_line()
         MemoryOgFile rw4(blob4.data(), blob4.size());
         og::runtime::current_session->myscreen_->world().delete_objects();
         og::runtime::current_session->myscreen_->level_file_metadata_.description.clear();
-        auto level_adapter = make_world_adapter();
-        short r4 = load_scenario_version(rw4, &level_adapter, 4);
+        og::data::LevelFileMetadata level_adapter_meta;
+        short r4 = load_scenario_version(rw4, &og::runtime::current_session->myscreen_->world(), &level_adapter_meta, 4);
         TEST_ASSERT_EQ(1, (int)r4, "load_scenario_version v4 should succeed");
         TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(), "v4 should load at least one object");
     }
@@ -510,8 +508,8 @@ void test_level_data_get_description_line()
         MemoryOgFile rw5(blob5.data(), blob5.size());
         og::runtime::current_session->myscreen_->world().delete_objects();
         og::runtime::current_session->myscreen_->level_file_metadata_.description.clear();
-        auto level_adapter = make_world_adapter();
-        short r5 = load_scenario_version(rw5, &level_adapter, 5);
+        og::data::LevelFileMetadata level_adapter_meta;
+        short r5 = load_scenario_version(rw5, &og::runtime::current_session->myscreen_->world(), &level_adapter_meta, 5);
         TEST_ASSERT_EQ(1, (int)r5, "load_scenario_version v5 should succeed");
         TEST_ASSERT_EQ(2, (int)og::runtime::current_session->myscreen_->world().type, "v5 should load scenario type");
         TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(), "v5 should load at least one object");
@@ -520,8 +518,8 @@ void test_level_data_get_description_line()
         // Unknown version should hit default branch and report failure.
         std::vector<uint8_t> tiny = {0};
         MemoryOgFile rw_bad(tiny.data(), tiny.size());
-        auto level_adapter = make_world_adapter();
-        short bad = load_scenario_version(rw_bad, &level_adapter, 42);
+        og::data::LevelFileMetadata level_adapter_meta;
+        short bad = load_scenario_version(rw_bad, &og::runtime::current_session->myscreen_->world(), &level_adapter_meta, 42);
         TEST_ASSERT_EQ(0, (int)bad, "unknown scenario version should fail");
     }
 
@@ -621,12 +619,6 @@ REGISTER_TEST(test_level_data_save_description_serialization_bounds);
 
 void test_level_data_load_version4_5_name_field_without_nul_is_bounded()
 {
-    auto make_world_adapter = []() {
-        return LevelData(og::runtime::current_session->myscreen_->world().id, false,
-                         static_cast<const LevelDataHooks*>(nullptr),
-                         &og::runtime::current_session->myscreen_->world());
-    };
-
     auto make_blob = [](bool include_type_byte) {
         std::vector<uint8_t> b;
         push_bytes(b, "16grass1", 8); // grid
@@ -659,8 +651,8 @@ void test_level_data_load_version4_5_name_field_without_nul_is_bounded()
         MemoryOgFile rw4(blob4.data(), blob4.size());
         og::runtime::current_session->myscreen_->world().delete_objects();
         og::runtime::current_session->myscreen_->level_file_metadata_.description.clear();
-        auto level_adapter = make_world_adapter();
-        short r4 = load_scenario_version(rw4, &level_adapter, 4);
+        og::data::LevelFileMetadata level_adapter_meta;
+        short r4 = load_scenario_version(rw4, &og::runtime::current_session->myscreen_->world(), &level_adapter_meta, 4);
         TEST_ASSERT_EQ(1, (int)r4, "v4 should load with full 12-byte non-NUL name");
         TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(), "v4 should create an object");
         TEST_ASSERT(og::runtime::current_session->myscreen_->world().oblist.front()->stats()->name == expected_name,
@@ -672,8 +664,8 @@ void test_level_data_load_version4_5_name_field_without_nul_is_bounded()
         MemoryOgFile rw5(blob5.data(), blob5.size());
         og::runtime::current_session->myscreen_->world().delete_objects();
         og::runtime::current_session->myscreen_->level_file_metadata_.description.clear();
-        auto level_adapter = make_world_adapter();
-        short r5 = load_scenario_version(rw5, &level_adapter, 5);
+        og::data::LevelFileMetadata level_adapter_meta;
+        short r5 = load_scenario_version(rw5, &og::runtime::current_session->myscreen_->world(), &level_adapter_meta, 5);
         TEST_ASSERT_EQ(1, (int)r5, "v5 should load with full 12-byte non-NUL name");
         TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(), "v5 should create an object");
         TEST_ASSERT(og::runtime::current_session->myscreen_->world().oblist.front()->stats()->name == expected_name,

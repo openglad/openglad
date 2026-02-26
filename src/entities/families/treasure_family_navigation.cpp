@@ -12,15 +12,14 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/sim/sim_emit.h>
+#include <openglad/data/level_file_io.h>
 #include <format>
 #include <string>
-
-std::string get_scenario_title(const char* filename);
 
 static std::string scenario_name_for_level(short level)
 {
     std::string message = std::format("scen{}", level);
-    std::string exitname = get_scenario_title(message.c_str());
+    std::string exitname = og::data::load_scenario_title(message.c_str());
     if (exitname == "none")
         exitname = std::format("Level {}", level);
     return exitname;

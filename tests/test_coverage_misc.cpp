@@ -1,7 +1,8 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/gparser.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/data/pixie_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/smooth.h>
@@ -24,7 +25,6 @@
 #include "unit/unit.h"
 #include <openglad/ui/picker_state.h>
 #include <openglad/ui/menu_model.h>
-#include <openglad/data/level_data_hooks.h>
 #include <string>
 #include <openglad/core/combat_math.h>
 #include <openglad/input/input_action.h>
@@ -56,7 +56,7 @@ struct SeqRandom final : IRandom {
 };
 
 struct R17Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -65,6 +65,8 @@ struct R17Fixture {
 
     R17Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         init_family_registry();
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -83,7 +85,7 @@ living* add_living(R17Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -94,7 +96,7 @@ living* add_living(R17Fixture& fx, char family, unsigned char team, short x, sho
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -102,7 +104,7 @@ walker* add_fx(R17Fixture& fx, char family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -110,7 +112,7 @@ walker* add_fx(R17Fixture& fx, char family, short x, short y)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -476,7 +478,7 @@ public:
 };
 
 struct MovementFixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -484,6 +486,8 @@ struct MovementFixture {
 
     MovementFixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
@@ -505,13 +509,13 @@ walker* add_living(MovementFixture& fx, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
     w->setxy(x, y);
     walker* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -720,7 +724,6 @@ OG_UNIT_TEST(test_coverage_r18_family_cleric_check_special_default_false)
     MovementFixture fx;
     living self;
     self.set_order_family(Order::Living, FAMILY_CLERIC);
-    fx.level.wire_entity(&self);
     self.current_special = 1;
     self.stats()->max_magicpoints = 100.0f;
     self.stats()->magicpoints = 1.0f;
@@ -830,25 +833,26 @@ OG_UNIT_TEST(test_coverage_r18_level_data_resize_and_delete_cleanup_branches)
     walker* off_map = add_living(fx, 400, 400);
     OG_ASSERT(keep && off_map);
 
-    fx.level.game_world().oblist.push_back(std::unique_ptr<walker>{});
-    fx.level.game_world().fxlist.push_back(std::unique_ptr<walker>{});
-    fx.level.game_world().weaplist.push_back(std::unique_ptr<walker>{});
+    fx.level.oblist.push_back(std::unique_ptr<walker>{});
+    fx.level.fxlist.push_back(std::unique_ptr<walker>{});
+    fx.level.weaplist.push_back(std::unique_ptr<walker>{});
 
     fx.level.resize_grid(3, 3);
-    for (auto& uptr : fx.level.game_world().oblist)
+    for (auto& uptr : fx.level.oblist)
     {
         OG_ASSERT(uptr != nullptr);
         OG_ASSERT(uptr.get() != off_map);
     }
-    for (auto& uptr : fx.level.game_world().fxlist)
+    for (auto& uptr : fx.level.fxlist)
         OG_ASSERT(uptr != nullptr);
-    for (auto& uptr : fx.level.game_world().weaplist)
+    for (auto& uptr : fx.level.weaplist)
         OG_ASSERT(uptr != nullptr);
 
-    LevelDataHooks hooks{};
-    hooks.clear_stale_view_controls = test_clear_stale_view_controls;
     g_clear_stale_view_controls_calls = 0;
-    LevelData with_hooks(1, true, &hooks);
+    og::gameplay::GameWorld with_hooks;
+    with_hooks.myobmap = std::make_unique<obmap>();
+    with_hooks.id = 1;
+    with_hooks.on_pre_delete_objects = [](og::gameplay::GameWorld*) { test_clear_stale_view_controls(nullptr); };
     with_hooks.create_new_grid();
     with_hooks.myobmap->walker_to_pos[reinterpret_cast<walker*>(0x1)] = {};
     with_hooks.delete_objects();
@@ -965,7 +969,7 @@ struct SeqRandom final : IRandom {
 };
 
 struct R19Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -974,6 +978,8 @@ struct R19Fixture {
 
     R19Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         init_family_registry();
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -992,7 +998,7 @@ living* add_living(R19Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -1002,7 +1008,7 @@ living* add_living(R19Fixture& fx, char family, unsigned char team, short x, sho
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1149,7 +1155,7 @@ struct SequenceRandom final : IRandom {
 };
 
 struct R20Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -1158,6 +1164,8 @@ struct R20Fixture {
 
     R20Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         init_family_registry();
         level.create_new_grid();
         save.allied_mode = 0;
@@ -1178,7 +1186,7 @@ walker* add_walker(R20Fixture& fx, Order order, char family, unsigned char team,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(order, family);
-    fx.level.wire_entity(w.get());
+
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -1190,9 +1198,9 @@ walker* add_walker(R20Fixture& fx, Order order, char family, unsigned char team,
     w->dead = 0;
     walker* out = w.get();
     if (order == Order::Weapon)
-        fx.level.game_world().weaplist.push_back(std::move(w));
+        fx.level.weaplist.push_back(std::move(w));
     else
-        fx.level.game_world().oblist.push_back(std::move(w));
+        fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1200,7 +1208,7 @@ living* add_living(R20Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -1211,7 +1219,7 @@ living* add_living(R20Fixture& fx, char family, unsigned char team, short x, sho
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1495,7 +1503,7 @@ struct SeqRandom final : IRandom {
 };
 
 struct FinalR16Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -1504,6 +1512,8 @@ struct FinalR16Fixture {
 
     FinalR16Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         init_family_registry();
         level.create_new_grid();
         save.allied_mode = 0;
@@ -1523,7 +1533,7 @@ living* add_living(FinalR16Fixture& fx, char family, unsigned char team, short x
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -1534,7 +1544,7 @@ living* add_living(FinalR16Fixture& fx, char family, unsigned char team, short x
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1542,7 +1552,7 @@ walker* add_fx(FinalR16Fixture& fx, char family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -1550,7 +1560,7 @@ walker* add_fx(FinalR16Fixture& fx, char family, short x, short y)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1726,7 +1736,7 @@ OG_UNIT_TEST(test_final_r16_walker_specials_teleport_and_turn_undead)
     const std::int32_t killed = self->turn_undead(120, 5);
     OG_ASSERT(killed >= 0);
 
-    for (auto& uptr : fx.level.game_world().oblist)
+    for (auto& uptr : fx.level.oblist)
         uptr->dead = 1;
     OG_ASSERT(self->turn_undead(120, 5) == -1);
 }
@@ -1847,7 +1857,7 @@ OG_UNIT_TEST(test_final_r16_stats_walker_level_data_and_picker_state)
 
     OG_ASSERT(fx.level.find_near_foe(a) == b);
     std::int32_t howmany = 0;
-    OG_ASSERT(!fx.level.find_foes_in_range(fx.level.game_world().oblist, 120, &howmany, a).empty());
+    OG_ASSERT(!fx.level.find_foes_in_range(fx.level.oblist, 120, &howmany, a).empty());
 
     MenuClient client;
     static const og::ui::PickerMenuItem unknown{"u", "u", og::ui::PickerMenuCommand::SetDifficulty, 0};

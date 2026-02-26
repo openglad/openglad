@@ -1,7 +1,8 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/runtime/game_context.h>
@@ -21,7 +22,7 @@ const FamilyDescriptor& describe_family_big_orc();
 namespace {
 
 struct OrcR15Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -30,6 +31,8 @@ struct OrcR15Fixture {
 
     OrcR15Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
@@ -46,7 +49,7 @@ living* add_living(OrcR15Fixture& fx, unsigned char team, char family, short x, 
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -55,7 +58,7 @@ living* add_living(OrcR15Fixture& fx, unsigned char team, char family, short x, 
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 

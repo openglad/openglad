@@ -16,7 +16,7 @@
 #include <openglad/input/input_state.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/render/pal32.h>
 #include <openglad/legacy/base.h>
 

@@ -14,7 +14,6 @@
 #include <openglad/input/input_action.h>
 
 class walker;
-class LevelData;
 struct PlayerInput;
 namespace og::gameplay { class GameWorld; }
 
@@ -62,16 +61,6 @@ struct SimInputDebounce
 SimInputResult sim_process_player_input(
     const PlayerInput& pi,
     walker*& control,
-    LevelData& level,
-    short player_num,
-    short my_team,
-    SimInputDebounce& debounce,
-    const std::string (*special_names)[6],
-    [[maybe_unused]] og::sim::SimEventLog* sim_events);
-
-SimInputResult sim_process_player_input(
-    const PlayerInput& pi,
-    walker*& control,
     og::gameplay::GameWorld& level,
     short player_num,
     short my_team,
@@ -81,7 +70,6 @@ SimInputResult sim_process_player_input(
 
 // Find the next available control walker for a player.
 // Searches world.oblist for: player chars, team members, then any alive.
-walker* sim_find_next_control(LevelData& level, short my_team);
 walker* sim_find_next_control(og::gameplay::GameWorld& level, short my_team);
 
 // Cycle through the oblist starting after `current`, wrapping around,

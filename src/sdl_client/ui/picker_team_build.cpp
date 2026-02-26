@@ -35,6 +35,12 @@
 #include "SDL.h"
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/ui/level_picker.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/data/level_file_io.h>
+#include <openglad/data/gloader.h>
+#include <openglad/data/level_data_hooks.h>
+#include <openglad/interface/level_visuals.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/ui/picker_common.h>
@@ -328,18 +334,28 @@ Sint32 create_progress_menu(Sint32 arg1)
             num_cleared++;
 
         // Load level to get title and enemy count
-        LevelData ld(level_id);
-        if (ld.load()) {
-            if (ld.title.size() > 20) {
-                lp.title = ld.title.substr(0, 17) + "...";
+        og::gameplay::GameWorld world;
+        world.id = level_id;
+        world.myobmap = std::make_unique<obmap>();
+        loader ldr;
+        wire_loader_to_world(world, ldr, false);
+        const LevelDataHooks& hooks = sdl_level_data_hooks();
+        if (hooks.clear_stale_view_controls)
+            world.on_pre_delete_objects = [&hooks](og::gameplay::GameWorld* w) { hooks.clear_stale_view_controls(w); };
+        LevelVisuals dummy_visuals;
+        og::data::LevelFileMetadata meta;
+        std::string thefile = std::format("scen{}.fss", level_id);
+        if (og::data::load_level(thefile, world, dummy_visuals, meta)) {
+            if (world.title.size() > 20) {
+                lp.title = world.title.substr(0, 17) + "...";
             } else {
-                lp.title = ld.title;
+                lp.title = world.title;
             }
 
             // Count enemies
             int num_enemies = 0;
             std::list<int> unused_exits;
-            getLevelStats(ld, nullptr, nullptr, &num_enemies, nullptr, unused_exits);
+            getLevelStats(world, nullptr, nullptr, &num_enemies, nullptr, unused_exits);
             lp.num_enemies = lp.is_cleared ? 0 : num_enemies;
         } else {
             lp.title = std::format("Level {}", level_id);

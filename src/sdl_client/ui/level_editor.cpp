@@ -30,7 +30,11 @@
 #include <openglad/platform/io.h>
 #include <openglad/render/text.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/level_data.h>
+#include <openglad/data/level_file_io.h>
+#include <openglad/data/gloader.h>
+#include <openglad/data/campaign_data.h>
+#include <openglad/interface/level_visuals.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/data/level_data_hooks.h>
 #include <openglad/ui/level_picker.h>
@@ -102,7 +106,6 @@ enum class Mode { Terrain, Object, Select };
 
 void set_screen_pos(screen *scr, Sint32 x, Sint32 y);
 walker * some_hit(Sint32 x, Sint32 y, walker* ob, og::gameplay::GameWorld& world);
-walker * some_hit(Sint32 x, Sint32 y, walker* ob, LevelData* data);
 Sint32 get_random_matching_tile(Sint32 whatback);
 
 class EditorTerrainBrush;
@@ -457,11 +460,11 @@ public:
         }
     }
     
-    walker* get_object(LevelData* /*level_data*/)
+    walker* get_object()
     {
         if(!valid)
             return nullptr;
-        
+
         return target;
     }
 };
@@ -473,7 +476,9 @@ class LevelEditorData
 {
 public:
     std::unique_ptr<CampaignData> campaign;
-    std::unique_ptr<LevelData> level;
+    std::unique_ptr<og::gameplay::GameWorld> level;
+    std::unique_ptr<loader> level_loader;
+    og::data::LevelFileMetadata level_meta;
     
 	Mode mode;
     EditorTerrainBrush terrain_brush;
@@ -583,7 +588,6 @@ public:
 };
 
 bool are_objects_outside_area(const og::gameplay::GameWorld& world, int x, int y, int w, int h);
-bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
 enum class EventType;
 EventType handle_basic_editor_event(const SDL_Event& event);
 
@@ -626,7 +630,7 @@ short remove_ob(og::gameplay::GameWorld& world, walker* ob)
 #endif
 
 LevelEditorData::LevelEditorData()
-    : campaign(std::make_unique<CampaignData>("org.openglad.gladiator")), level(std::make_unique<LevelData>(1, false, &sdl_level_data_hooks())), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(og::runtime::current_session->myscreen_->viewob[0].get(), og::runtime::current_session->myscreen_, 0)
+    : campaign(std::make_unique<CampaignData>("org.openglad.gladiator")), level(std::make_unique<og::gameplay::GameWorld>()), level_loader(std::make_unique<loader>()), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(og::runtime::current_session->myscreen_->viewob[0].get(), og::runtime::current_session->myscreen_, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)
@@ -715,10 +719,10 @@ LevelEditorData::LevelEditorData()
 	menu_buttons.insert(&campaignButton);
 	menu_buttons.insert(&levelButton);
 	menu_buttons.insert(&modeButton);
-	
+
     gridSnapButton.set_colors_enabled();
     terrainSmoothButton.set_colors_enabled();
-    
+
     #if defined(USE_TOUCH_INPUT) || defined(USE_CONTROLLER_INPUT)
     pan_buttons.insert(&panUpButton);
     pan_buttons.insert(&panDownButton);
@@ -729,8 +733,15 @@ LevelEditorData::LevelEditorData()
     pan_buttons.insert(&panDownRightButton);
     pan_buttons.insert(&panDownLeftButton);
     #endif
-    
+
     myradar.force_lower_position = true;
+
+    level->id = 1;
+    level->myobmap = std::make_unique<obmap>();
+    wire_loader_to_world(*level, *level_loader, false);
+    const LevelDataHooks& hooks = sdl_level_data_hooks();
+    if (hooks.clear_stale_view_controls)
+        level->on_pre_delete_objects = [&hooks](og::gameplay::GameWorld* w) { hooks.clear_stale_view_controls(w); };
 }
 
 LevelEditorData::~LevelEditorData()
@@ -752,14 +763,18 @@ bool LevelEditorData::reloadCampaign()
 bool LevelEditorData::loadLevel(int id)
 {
     level->id = id;
-    bool result = level->load();
+    LevelVisuals dummy_visuals;
+    std::string thefile = std::format("scen{}.fss", id);
+    bool result = og::data::load_level(thefile, *level, dummy_visuals, level_meta);
     update_menu_buttons();
     return result;
 }
 
 bool LevelEditorData::reloadLevel()
 {
-    bool result = level->load();
+    LevelVisuals dummy_visuals;
+    std::string thefile = std::format("scen{}.fss", level->id);
+    bool result = og::data::load_level(thefile, *level, dummy_visuals, level_meta);
     update_menu_buttons();
     return result;
 }
@@ -797,11 +812,14 @@ bool LevelEditorData::saveCampaign()
 bool LevelEditorData::saveLevelAs(int id)
 {
     level->id = id;
-    level->grid_file = std::format("scen{}", id);
-    
+    level_meta.grid_file = std::format("scen{}", id);
+
     std::string old_campaign = get_mounted_campaign();
     unpack_campaign(old_campaign);
-    bool result = level->save();
+
+    LevelVisuals dummy_visuals;
+    std::string thefile = std::format("scen{}.fss", id);
+    bool result = og::data::save_level(*level, dummy_visuals, thefile, level_meta);
     if(result)
         result = repack_campaign(old_campaign);
     cleanup_unpacked_campaign();
@@ -954,7 +972,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         if(selection.size() == 1 && selection.front().order == Order::Living)
         {
-            walker* obj = selection.front().get_object(level.get());
+            walker* obj = selection.front().get_object();
             if(obj != nullptr)
             {
                 std::string name = obj->stats()->name;
@@ -973,7 +991,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         {
             for(auto& sel : selection)
             {
-                walker* obj = sel.get_object(level.get());
+                walker* obj = sel.get_object();
                 if(obj != nullptr)
                 {
                     if(obj->team_num > 0)
@@ -998,7 +1016,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         {
             for(auto& sel : selection)
             {
-                walker* obj = sel.get_object(level.get());
+                walker* obj = sel.get_object();
                 if(obj != nullptr)
                 {
                     if(obj->team_num < MAX_TEAM)
@@ -1021,7 +1039,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level.get());
+            walker* obj = sel.get_object();
             if(obj != nullptr)
             {
                 if(obj->stats()->level > 1)
@@ -1037,7 +1055,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level.get());
+            walker* obj = sel.get_object();
             if(obj != nullptr)
             {
                 obj->stats()->level++;
@@ -1050,14 +1068,14 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level.get());
+            walker* obj = sel.get_object();
             if(obj != nullptr && obj->query_order() == Order::Living)
             {
                 if(sel.family > 0)
                     sel.family--;
                 else
                     sel.family = NUM_FAMILIES-1;
-                level->game_world().configure_entity(obj, sel.order, sel.family);
+                level->configure_entity(obj, sel.order, sel.family);
                 obj->ani_type = ANI_WALK;
                 obj->transform_to(sel.order, sel.family);
                 obj->set_frame(obj->ani[obj->curdir][0]);
@@ -1072,14 +1090,14 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level.get());
+            walker* obj = sel.get_object();
             if(obj != nullptr && obj->query_order() == Order::Living)
             {
                 if(sel.family+1 < NUM_FAMILIES)
                     sel.family++;
                 else
                     sel.family = 0;
-                level->game_world().configure_entity(obj, sel.order, sel.family);
+                level->configure_entity(obj, sel.order, sel.family);
                 obj->ani_type = ANI_WALK;
                 obj->transform_to(sel.order, sel.family);
                 obj->set_frame(obj->ani[obj->curdir][0]);
@@ -1094,7 +1112,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level.get());
+            walker* obj = sel.get_object();
             if(obj != nullptr)
             {
                 if(obj->curdir < FACE_UP_LEFT)
@@ -1110,10 +1128,10 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level.get());
+            walker* obj = sel.get_object();
             if(obj != nullptr)
             {
-                remove_ob(level->game_world(), obj);
+                remove_ob(*level, obj);
                 eds().levelchanged = 1;
             }
         }
@@ -1207,16 +1225,25 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
     connected.insert(current_level);
     
     // Load level
-    LevelData d(current_level);
-    if(!d.load())
+    og::gameplay::GameWorld temp_world;
+    temp_world.id = current_level;
+    temp_world.myobmap = std::make_unique<obmap>();
+    {
+        loader temp_ldr;
+        wire_loader_to_world(temp_world, temp_ldr, false);
+        LevelVisuals dummy_visuals;
+        og::data::LevelFileMetadata temp_meta;
+        std::string thefile = std::format("scen{}.fss", current_level);
+        if(!og::data::load_level(thefile, temp_world, dummy_visuals, temp_meta))
     {
         problems.push_back(std::format("Level {} failed to load.", current_level));
         return;
     }
-    
+    }
+
     // Get the exits
     std::set<int> exits;
-    for(auto& uptr : d.game_world().fxlist)
+    for(auto& uptr : temp_world.fxlist)
     {
         walker* w = uptr.get();
         if(w->query_order() == Order::Treasure && w->family == FAMILY_EXIT && w->stats() != nullptr)
@@ -1257,11 +1284,13 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
 
 bool LevelEditorData::saveLevel()
 {
-    level->grid_file = std::format("scen{}", level->id);
+    level_meta.grid_file = std::format("scen{}", level->id);
 
     std::string old_campaign = get_mounted_campaign();
     unpack_campaign(old_campaign);
-    bool result = level->save();
+    LevelVisuals dummy_visuals;
+    std::string thefile = std::format("scen{}.fss", level->id);
+    bool result = og::data::save_level(*level, dummy_visuals, thefile, level_meta);
     if(result)
         result = repack_campaign(get_mounted_campaign());
     cleanup_unpacked_campaign();
@@ -1275,7 +1304,7 @@ bool LevelEditorData::saveLevel()
 void LevelEditorData::draw(screen* s)
 {
     s->clearbuffer();
-    s->draw_level_data(&level->game_world());
+    s->draw_level_data(level.get());
     
     if(rect_selecting)
     {
@@ -1329,7 +1358,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
     }
     
     // Draw minimap
-    myradar.draw(&level->game_world());
+    myradar.draw(level.get());
     
     // Draw mode-specific buttons
     for(auto* btn : mode_buttons)
@@ -1518,11 +1547,11 @@ Sint32 LevelEditorData::display_panel(screen* s)
         // Background
         s->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, PURE_BLACK, 1, 1);
         // Guy
-        walker* newob = level->game_world().add_ob(Order::Living, FAMILY_ELF);
+        walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
         newob->setxy(lm+25 + og::runtime::current_session->myscreen_->level_visuals_.topx, PIX_TOP-16-1 + og::runtime::current_session->myscreen_->level_visuals_.topy);
-        if (const PixieData* data = level->game_world().lookup_entity_graphics(object_brush.order, object_brush.family))
+        if (const PixieData* data = level->lookup_entity_graphics(object_brush.order, object_brush.family))
             newob->set_data(*data);
-        level->game_world().configure_entity(newob, object_brush.order, object_brush.family);
+        level->configure_entity(newob, object_brush.order, object_brush.family);
         newob->team_num = static_cast<unsigned char>(object_brush.team);
         draw_walker_tile(*newob, s->viewob[0].get());
         // Border
@@ -1543,9 +1572,9 @@ Sint32 LevelEditorData::display_panel(screen* s)
                 {
                     index = (i + ((j+eds().rowsdown) * PIX_OVER)) % pane_size;
                     newob->setxy(S_RIGHT+i*GRID_SIZE + og::runtime::current_session->myscreen_->level_visuals_.topx, PIX_TOP+j*GRID_SIZE + og::runtime::current_session->myscreen_->level_visuals_.topy);
-                    if (const PixieData* data = level->game_world().lookup_entity_graphics(object_pane[index].order, object_pane[index].family))
+                    if (const PixieData* data = level->lookup_entity_graphics(object_pane[index].order, object_pane[index].family))
                         newob->set_data(*data);
-                    level->game_world().configure_entity(newob, object_pane[index].order, object_pane[index].family);
+                    level->configure_entity(newob, object_pane[index].order, object_pane[index].family);
                     newob->team_num = static_cast<unsigned char>(object_brush.team);
                     draw_walker_tile(*newob, s->viewob[0].get());
                 }
@@ -1567,9 +1596,9 @@ Sint32 LevelEditorData::display_panel(screen* s)
         {
             // Prepare object sprite
             newob->setxy(mx + og::runtime::current_session->myscreen_->level_visuals_.topx, my + og::runtime::current_session->myscreen_->level_visuals_.topy);
-            if (const PixieData* data = level->game_world().lookup_entity_graphics(object_brush.order, object_brush.family))
+            if (const PixieData* data = level->lookup_entity_graphics(object_brush.order, object_brush.family))
                 newob->set_data(*data);
-            level->game_world().configure_entity(newob, object_brush.order, object_brush.family);
+            level->configure_entity(newob, object_brush.order, object_brush.family);
             newob->team_num = static_cast<unsigned char>(object_brush.team);
             
             // Get size rounded up to nearest GRID_SIZE
@@ -1595,7 +1624,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         }
         #endif
         
-        remove_ob(level->game_world(), newob);
+        remove_ob(*level, newob);
     }
     
     
@@ -1631,7 +1660,7 @@ void LevelEditorData::clear_terrain()
 void LevelEditorData::resmooth_terrain()
 {
     og::runtime::current_session->myscreen_->world().mysmoother.smooth();
-    myradar.update(&level->game_world());
+    myradar.update(level.get());
 }
 
 // eds().mouse_up_button moved into LevelEditorState (per-session via eds())
@@ -1679,7 +1708,7 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
                 dragging = true;
                 for(auto& sel : selection)
                 {
-                    walker* w = sel.get_object(level.get());
+                    walker* w = sel.get_object();
                     if(w != nullptr)
                     {
                         w->setxy(w->xpos + dx, w->ypos + dy);
@@ -1904,7 +1933,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                                 {
                                     loadLevel(levels.front());
                                     // Update minimap
-                                    myradar.start(&level->game_world());
+                                    myradar.start(level.get());
                                     timed_dialog("Campaign created.");
                                     eds().campaignchanged = 0;
                                     eds().levelchanged = 0;
@@ -1974,7 +2003,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             if(loadLevel(result.first_level))
                             {
                                 // Update minimap
-                                myradar.start(&level->game_world());
+                                myradar.start(level.get());
                                 timed_dialog("Campaign loaded.");
                                 eds().levelchanged = 0;
                             }
@@ -2049,8 +2078,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             {
                 // New level
                 level->clear();
-                level->game_world().create_new_grid();
-                myradar.start(&level->game_world());
+                level->create_new_grid();
+                myradar.start(level.get());
                 eds().levelchanged = 1;
                 eds().redraw = 1;
             }
@@ -2083,7 +2112,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         eds().redraw = 1;
                     }
                     
-                    myradar.start(&level->game_world());
+                    myradar.start(level.get());
                     eds().redraw = 1;
                 }
             }
@@ -2324,10 +2353,10 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, levelProfileDescriptionButton))
         {
-            std::list<std::string> desc = level->description;
+            std::list<std::string> desc = level_meta.description;
             if(prompt_for_string_block("Level Description", desc))
             {
-                level->description = desc;
+                level_meta.description = desc;
                 eds().levelchanged = 1;
             }
             eds().redraw = 1;
@@ -2388,7 +2417,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             og::runtime::current_session->myscreen_->world().resize_grid(w, h);
                             
                             // Reset the minimap
-                            myradar.start(&level->game_world());
+                            myradar.start(level.get());
                             
                             draw(og::runtime::current_session->myscreen_);
                             og::runtime::current_session->myscreen_->refresh();
@@ -2480,7 +2509,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(yes_or_no_prompt("Clear Terrain", "Delete all terrain?", false))
             {
                 clear_terrain();
-                myradar.update(&level->game_world());
+                myradar.update(level.get());
                 eds().levelchanged = 1;
             }
             eds().redraw = 1;
@@ -2489,8 +2518,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             if(yes_or_no_prompt("Clear Objects", "Delete all objects?", false))
             {
-                level->game_world().delete_objects();
-                myradar.update(&level->game_world());
+                level->delete_objects();
+                myradar.update(level.get());
                 eds().levelchanged = 1;
             }
             eds().redraw = 1;
@@ -2584,7 +2613,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 }
                 else if (og::runtime::current_session->keystates_[KEYSTATE_r]) // (re)name the current object
                 {
-                    newob = level->game_world().add_ob(Order::Living, FAMILY_ELF);
+                    newob = level->add_ob(Order::Living, FAMILY_ELF);
                     newob->setxy(windowx, windowy);
                     if (some_hit(windowx, windowy, newob, og::runtime::current_session->myscreen_->world()))
                     {
@@ -2595,14 +2624,14 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             eds().levelchanged = 1;
                         }
                     }
-                    remove_ob(level->game_world(), newob);
+                    remove_ob(*level, newob);
                 }
                 else // select this object
                 {
                     rect_selecting = false;
                     if(mx < 245-4 || my > L_D(7)-2)
                     {
-                        newob = level->game_world().add_ob(Order::Living, FAMILY_ELF);
+                        newob = level->add_ob(Order::Living, FAMILY_ELF);
                         newob->setxy(windowx, windowy);
                         if (some_hit(windowx, windowy, newob, og::runtime::current_session->myscreen_->world()))
                         {
@@ -2635,7 +2664,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         else if(!(og::runtime::current_session->keystates_[KEYSTATE_LCTRL] || og::runtime::current_session->keystates_[KEYSTATE_RCTRL]))
                             selection.clear();  // Deselect if not trying to grab more
                         
-                        remove_ob(level->game_world(), newob);
+                        remove_ob(*level, newob);
 
                         reset_mode_buttons();
                     }
@@ -2663,7 +2692,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     {
                         // Create new object here (apply brush)
                         eds().levelchanged = 1;
-                        newob = level->game_world().add_ob(object_brush.order, object_brush.family);
+                        newob = level->add_ob(object_brush.order, object_brush.family);
                         newob->setxy(windowx, windowy);
                         newob->team_num = static_cast<unsigned char>(object_brush.team);
                         newob->stats()->level = object_brush.level;
@@ -2675,7 +2704,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         {
                             if (newob)
                             {
-                                remove_ob(level->game_world(), newob);
+                                remove_ob(*level, newob);
                                 newob = nullptr;
                             }
                         }  // end of failure to put guy
@@ -2773,7 +2802,7 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
 
 bool LevelEditorData::is_in_grid(int x, int y)
 {
-    const auto& world = level->game_world();
+    const auto& world = *level;
     return (x >= 0 && y >= 0 && x < world.grid.w && y < world.grid.h);
 }
 
@@ -2782,7 +2811,7 @@ unsigned char LevelEditorData::get_terrain(int x, int y)
     if(!is_in_grid(x, y))
         return 0;
     
-    const auto& world = level->game_world();
+    const auto& world = *level;
     return world.grid.data[y * world.grid.w + x];
 }
 
@@ -2791,20 +2820,20 @@ void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
     if(!is_in_grid(x, y))
         return;
     
-    auto& world = level->game_world();
+    auto& world = *level;
     world.grid.data[y * world.grid.w + x] = terrain;
 }
 
 walker* LevelEditorData::get_object(int x, int y)
 {
     walker* result = nullptr;
-    walker* newob = level->game_world().add_ob(Order::Living, FAMILY_ELF);
+    walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
     newob->setxy(x, y);
     if (some_hit(x, y, newob, og::runtime::current_session->myscreen_->world()))
     {
         result = newob->collide_ob;
     }
-    remove_ob(level->game_world(), newob);
+    remove_ob(*level, newob);
     return result;
 }
 
@@ -2843,7 +2872,7 @@ int level_editor_test_exercise_internal_helpers()
     LevelEditorData data;
     if (data.level != nullptr)
     {
-        data.level->game_world().create_new_grid();
+        data.level->create_new_grid();
         // Avoid smoother/radar update paths in this helper; those are exercised elsewhere
         // and have global UI dependencies that make this test nondeterministic.
         std::fill_n(og::runtime::current_session->myscreen_->world().grid.data.get(),
@@ -2856,12 +2885,12 @@ int level_editor_test_exercise_internal_helpers()
         if (data.get_terrain(-1, -1) == 0)
             score++;
 
-        walker* inside = data.level->game_world().add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* inside = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
         if (inside != nullptr)
         {
             inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
             SelectionInfo sel(inside);
-            if (sel.get_object(data.level.get()) == inside)
+            if (sel.get_object() == inside)
                 score++;
             std::vector<SelectionInfo> selection;
             Rectf area(static_cast<float>(inside->xpos - 2),
@@ -3105,7 +3134,7 @@ Sint32 level_editor()
     object_pane.push_back(ObjectType(Order::Special, FAMILY_RESERVED_TEAM));
 	
 	// Minimap
-		myradar.start(&data.level->game_world());
+		myradar.start(data.level.get());
 	
 	// GUI
 	using std::set;
@@ -3519,7 +3548,7 @@ Sint32 level_editor()
                                                 og::runtime::current_session->myscreen_->world().mysmoother.smooth(i, j);
                                 }
                                 
-                                myradar.update(&data.level->game_world());
+                                myradar.update(data.level.get());
                             }
                         }
                     }  // end of setting grid square
@@ -3564,7 +3593,7 @@ Sint32 level_editor()
 	// Reset the screen position so it doesn't ruin the main menu
     og::runtime::current_session->myscreen_->set_draw_pos(0, 0);
     // Update the screen's position
-    og::runtime::current_session->myscreen_->draw_level_data(&data.level->game_world());
+    og::runtime::current_session->myscreen_->draw_level_data(data.level.get());
     // Clear the background
     og::runtime::current_session->myscreen_->clearbuffer();
     
@@ -3797,13 +3826,3 @@ walker * some_hit(Sint32 x, Sint32 y, walker* ob, og::gameplay::GameWorld& world
 	return nullptr;
 }
 
-walker * some_hit(Sint32 x, Sint32 y, walker* ob, LevelData* data)
-{
-    if(data == nullptr)
-    {
-        if(ob != nullptr)
-            ob->collide_ob = nullptr;
-        return nullptr;
-    }
-    return some_hit(x, y, ob, data->game_world());
-}

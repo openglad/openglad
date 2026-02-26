@@ -10,7 +10,7 @@
 #include <openglad/io/og_file.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 
 #include <algorithm>
 #include <array>
@@ -548,78 +548,73 @@ std::string load_scenario_title(const char* filename)
 
 namespace {
 
-short load_version_bridge(og::io::OgFile& infile, LevelData* data, short version)
+short load_version_bridge(og::io::OgFile& infile, og::gameplay::GameWorld* world,
+                          og::data::LevelFileMetadata* metadata, short version)
 {
-    if (!data)
+    if (!world || !metadata)
         return 0;
 
-    og::data::LevelFileMetadata metadata;
-    metadata.grid_file = data->grid_file;
-    metadata.description = data->description;
-
-    // Preserve legacy helper behavior of replacing loaded entities/grid data.
-    data->delete_objects();
-    data->delete_grid();
+    world->delete_objects();
+    world->delete_grid();
 
     LevelFileIoError err = LevelFileIoError::None;
-    if (!read_level_body(infile, version, data->game_world(), metadata, err))
+    if (!read_level_body(infile, version, *world, *metadata, err))
         return 0;
 
-    data->grid_file = std::move(metadata.grid_file);
-    data->description = std::move(metadata.description);
     return 1;
 }
 
 } // namespace
 
-short load_version_2(og::io::OgFile& infile, LevelData* data)
+short load_version_2(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata)
 {
-    return load_version_bridge(infile, data, 2);
+    return load_version_bridge(infile, world, metadata, 2);
 }
 
-short load_version_3(og::io::OgFile& infile, LevelData* data)
+short load_version_3(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata)
 {
-    return load_version_bridge(infile, data, 3);
+    return load_version_bridge(infile, world, metadata, 3);
 }
 
-short load_version_4(og::io::OgFile& infile, LevelData* data)
+short load_version_4(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata)
 {
-    return load_version_bridge(infile, data, 4);
+    return load_version_bridge(infile, world, metadata, 4);
 }
 
-short load_version_5(og::io::OgFile& infile, LevelData* data)
+short load_version_5(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata)
 {
-    return load_version_bridge(infile, data, 5);
+    return load_version_bridge(infile, world, metadata, 5);
 }
 
-short load_version_6(og::io::OgFile& infile, LevelData* data, short version)
+short load_version_6(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata, short version)
 {
-    return load_version_bridge(infile, data, version);
+    return load_version_bridge(infile, world, metadata, version);
 }
 
-short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version)
+short load_scenario_version(og::io::OgFile& infile, og::gameplay::GameWorld* world,
+                            og::data::LevelFileMetadata* metadata, short version)
 {
-    if (data == nullptr)
+    if (world == nullptr)
         return 0;
 
     switch (version)
     {
         case 2:
-            return load_version_2(infile, data);
+            return load_version_2(infile, world, metadata);
         case 3:
-            return load_version_3(infile, data);
+            return load_version_3(infile, world, metadata);
         case 4:
-            return load_version_4(infile, data);
+            return load_version_4(infile, world, metadata);
         case 5:
-            return load_version_5(infile, data);
+            return load_version_5(infile, world, metadata);
         case 6:
         case 7:
         case 8:
         case 9:
-            return load_version_6(infile, data, version);
+            return load_version_6(infile, world, metadata, version);
         default:
             Log("Scenario {} is version-level {}, and cannot be read.\n",
-                data->id, version);
+                world->id, version);
             return 0;
     }
 }

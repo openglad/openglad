@@ -1,4 +1,4 @@
-#include <openglad/data/level_data.h>
+#include <openglad/data/campaign_data.h>
 #include <openglad/entities/walker.h>
 #include <openglad/platform/io.h>
 #include <openglad/runtime/screen.h>

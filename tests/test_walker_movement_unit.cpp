@@ -1,4 +1,5 @@
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
@@ -18,7 +19,7 @@ namespace detail_walker_movement_push {
 namespace {
 
 struct MovementFixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -26,6 +27,8 @@ struct MovementFixture {
 
     MovementFixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -36,13 +39,13 @@ walker* add_living(MovementFixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
     w->setxy(64, 64);
     walker* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -117,7 +120,7 @@ namespace detail_walker_movement_r11 {
 namespace {
 
 struct WalkerMovementR11Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -125,6 +128,8 @@ struct WalkerMovementR11Fixture {
 
     WalkerMovementR11Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -135,13 +140,13 @@ walker* add_living(WalkerMovementR11Fixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
     w->setxy(96, 96);
     walker* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -243,7 +248,7 @@ namespace detail_walker_movement_r12 {
 namespace {
 
 struct MovementR12Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -251,6 +256,8 @@ struct MovementR12Fixture {
 
     MovementR12Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
@@ -260,13 +267,13 @@ walker* add_living(MovementR12Fixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
     w->setxy(64, 64);
     walker* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -370,7 +377,7 @@ namespace detail_walker_movement_r14 {
 namespace {
 
 struct MovementR14Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -378,6 +385,8 @@ struct MovementR14Fixture {
 
     MovementR14Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
@@ -387,13 +396,13 @@ walker* add_living(MovementR14Fixture& fx, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
     w->setxy(x, y);
     walker* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 

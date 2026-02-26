@@ -1,10 +1,10 @@
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/sim/sim_event_log.h>
-#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/sim/irandom.h>
 #include <openglad/core/constants.h>
@@ -26,7 +26,7 @@ struct TickWalker : walker {
 };
 
 struct GameWorldR15Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
@@ -34,9 +34,11 @@ struct GameWorldR15Fixture {
 
     GameWorldR15Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
-        level.game_world().enemy_freeze = 0;
-        level.set_sim_context(&save, &level.game_world().enemy_freeze, &events, &rng, &cfg);
+        level.enemy_freeze = 0;
+        level.set_sim_context(&save, &level.enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
         set_global_context(&gc);
     }
@@ -51,7 +53,7 @@ TickWalker* add_ob(GameWorldR15Fixture& fx, Order order, char family, unsigned c
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -59,7 +61,7 @@ TickWalker* add_ob(GameWorldR15Fixture& fx, Order order, char family, unsigned c
     w->real_team_num = 255;
     w->dead = dead ? 1 : 0;
     TickWalker* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -67,11 +69,11 @@ TickWalker* add_weap(GameWorldR15Fixture& fx, Order order, char family, unsigned
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    fx.level.wire_entity(w.get());
+
     w->team_num = team;
     w->dead = dead ? 1 : 0;
     TickWalker* out = w.get();
-    fx.level.game_world().weaplist.push_back(std::move(w));
+    fx.level.weaplist.push_back(std::move(w));
     return out;
 }
 
@@ -79,11 +81,11 @@ TickWalker* add_fx(GameWorldR15Fixture& fx, Order order, char family, unsigned c
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    fx.level.wire_entity(w.get());
+
     w->team_num = team;
     w->dead = dead ? 1 : 0;
     TickWalker* out = w.get();
-    fx.level.game_world().fxlist.push_back(std::move(w));
+    fx.level.fxlist.push_back(std::move(w));
     return out;
 }
 
@@ -103,7 +105,7 @@ static void tick_world(og::gameplay::GameWorld& world, og::sim::SimEventLog& eve
 OG_UNIT_TEST(test_game_world_r15_normal_tick_cleanup_and_dead_entity_removal)
 {
     GameWorldR15Fixture fx;
-    og::gameplay::GameWorld& world = fx.level.game_world();
+    og::gameplay::GameWorld& world = fx.level;
     world.rng_.state_ = 42;
     fx.save.my_team = 0;
     world.my_team = fx.save.my_team;
@@ -128,7 +130,7 @@ OG_UNIT_TEST(test_game_world_r15_normal_tick_cleanup_and_dead_entity_removal)
     live_weap->owner = dead_ob;
     live_weap->collide_ob = dead_ob;
 
-    fx.level.numobs = 3;
+    fx.level.living_count = 3;
 
     tick_world(world, fx.events);
     OG_ASSERT(world.level_done == 0);
@@ -144,15 +146,15 @@ OG_UNIT_TEST(test_game_world_r15_normal_tick_cleanup_and_dead_entity_removal)
     OG_ASSERT(live_weap->leader == nullptr);
     OG_ASSERT(live_weap->owner == nullptr);
     OG_ASSERT(live_weap->collide_ob == nullptr);
-    OG_ASSERT(!fx.level.game_world().dead_list.empty());
-    OG_ASSERT(fx.level.game_world().weaplist.size() == 1);
-    OG_ASSERT(fx.level.game_world().fxlist.empty());
+    OG_ASSERT(!fx.level.dead_list.empty());
+    OG_ASSERT(fx.level.weaplist.size() == 1);
+    OG_ASSERT(fx.level.fxlist.empty());
 }
 
 OG_UNIT_TEST(test_game_world_r15_freeze_tick_and_level_done_paths)
 {
     GameWorldR15Fixture fx;
-    og::gameplay::GameWorld& world = fx.level.game_world();
+    og::gameplay::GameWorld& world = fx.level;
     world.rng_.state_ = 7;
     fx.save.my_team = 0;
     world.my_team = fx.save.my_team;
@@ -178,7 +180,7 @@ OG_UNIT_TEST(test_game_world_r15_freeze_tick_and_level_done_paths)
 OG_UNIT_TEST(test_game_world_r15_freeze_uses_friendliness_not_team_zero)
 {
     GameWorldR15Fixture fx;
-    og::gameplay::GameWorld& world = fx.level.game_world();
+    og::gameplay::GameWorld& world = fx.level;
     world.rng_.state_ = 11;
     fx.save.my_team = 1;
     world.my_team = fx.save.my_team;
@@ -199,7 +201,7 @@ OG_UNIT_TEST(test_game_world_r15_freeze_uses_friendliness_not_team_zero)
 OG_UNIT_TEST(test_game_world_r15_end_flag_and_auto_advance_paths)
 {
     GameWorldR15Fixture fx;
-    og::gameplay::GameWorld& world = fx.level.game_world();
+    og::gameplay::GameWorld& world = fx.level;
     world.rng_.state_ = 9;
     fx.save.my_team = 0;
     world.my_team = fx.save.my_team;
@@ -212,7 +214,7 @@ OG_UNIT_TEST(test_game_world_r15_end_flag_and_auto_advance_paths)
     OG_ASSERT(world.game_ended);
 
     GameWorldR15Fixture empty_fx;
-    og::gameplay::GameWorld& world2 = empty_fx.level.game_world();
+    og::gameplay::GameWorld& world2 = empty_fx.level;
     world2.rng_.state_ = 9;
     world2.my_team = empty_fx.save.my_team;
     tick_world(world2, empty_fx.events);

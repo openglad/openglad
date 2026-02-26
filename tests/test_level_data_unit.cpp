@@ -1,14 +1,20 @@
-#include <openglad/data/level_data.h>
+#include <openglad/data/campaign_data.h>
+#include <openglad/data/level_file_io.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
 #include <openglad/core/stats.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/irandom.h>
 #include <openglad/legacy/base.h>
+#include <openglad/interface/level_visuals.h>
+#include <openglad/data/level_render.h>
 #include <memory>
 #include <string>
+#include <format>
 #include "unit/unit.h"
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
@@ -20,8 +26,6 @@
 #include <cstring>
 #include <filesystem>
 #include <vector>
-#include <openglad/data/level_data_hooks.h>
-#include <openglad/data/level_render.h>
 #include <openglad/core/constants.h>
 
 // --- From test_level_data_coverage_push.cpp ---
@@ -29,7 +33,7 @@ namespace detail_level_data_coverage_push {
 namespace {
 
 struct LevelFixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -37,6 +41,8 @@ struct LevelFixture {
 
     LevelFixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -48,7 +54,6 @@ walker* add_to_list(LevelFixture& fx, std::list<std::unique_ptr<walker>>& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    fx.level.wire_entity(w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->setxy(x, y);
@@ -58,7 +63,7 @@ walker* add_to_list(LevelFixture& fx, std::list<std::unique_ptr<walker>>& ls,
     walker* out = w.get();
     ls.push_back(std::move(w));
     if (o == Order::Living)
-        fx.level.numobs++;
+        fx.level.living_count++;
     return out;
 }
 
@@ -75,21 +80,23 @@ OG_UNIT_TEST(test_level_data_grid_and_description_paths)
     OG_ASSERT(fx.level.grid.w == 50);
     OG_ASSERT(fx.level.grid.h == 50);
 
-    fx.level.description.clear();
-    fx.level.description.push_back("line-1");
-    OG_ASSERT(fx.level.get_description_line(0) == "line-1");
-    OG_ASSERT(fx.level.get_description_line(3).empty());
+    // Direct description testing (get_description_line was deleted with LevelData).
+    og::data::LevelFileMetadata meta;
+    meta.description.clear();
+    meta.description.push_back("line-1");
+    OG_ASSERT(meta.description.front() == "line-1");
+    OG_ASSERT(meta.description.size() == 1);
 
 }
 
 OG_UNIT_TEST(test_level_data_passable_and_range_queries)
 {
     LevelFixture fx;
-    walker* self = add_to_list(fx, fx.level.game_world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    walker* foe = add_to_list(fx, fx.level.game_world().oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
-    walker* player = add_to_list(fx, fx.level.game_world().oblist, Order::Living, FAMILY_SOLDIER, 0, 96, 64);
-    walker* weapon = add_to_list(fx, fx.level.game_world().weaplist, Order::Weapon, FAMILY_KNIFE, 1, 72, 64);
-    walker* stain = add_to_list(fx, fx.level.game_world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 70, 64);
+    walker* self = add_to_list(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* foe = add_to_list(fx, fx.level.oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
+    walker* player = add_to_list(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 96, 64);
+    walker* weapon = add_to_list(fx, fx.level.weaplist, Order::Weapon, FAMILY_KNIFE, 1, 72, 64);
+    walker* stain = add_to_list(fx, fx.level.fxlist, Order::Treasure, FAMILY_STAIN, 0, 70, 64);
     OG_ASSERT(self && foe && player && weapon && stain);
 
     player->user = 0;
@@ -114,33 +121,33 @@ OG_UNIT_TEST(test_level_data_passable_and_range_queries)
     OG_ASSERT(fx.level.find_nearest_player(self) == player);
 
     std::int32_t count = 0;
-    (void)fx.level.find_in_range(fx.level.game_world().oblist, 200, &count, self);
+    (void)fx.level.find_in_range(fx.level.oblist, 200, &count, self);
     OG_ASSERT(count >= 2);
-    (void)fx.level.find_foes_in_range(fx.level.game_world().oblist, 200, &count, self);
+    (void)fx.level.find_foes_in_range(fx.level.oblist, 200, &count, self);
     OG_ASSERT(count >= 1);
-    (void)fx.level.find_foe_weapons_in_range(fx.level.game_world().weaplist, 200, &count, self);
-    (void)fx.level.find_friends_in_range(fx.level.game_world().oblist, 200, &count, self);
+    (void)fx.level.find_foe_weapons_in_range(fx.level.weaplist, 200, &count, self);
+    (void)fx.level.find_friends_in_range(fx.level.oblist, 200, &count, self);
 }
 
 OG_UNIT_TEST(test_level_data_remove_and_remaining_foes_paths)
 {
     LevelFixture fx;
-    walker* self = add_to_list(fx, fx.level.game_world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    walker* foe = add_to_list(fx, fx.level.game_world().oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
+    walker* self = add_to_list(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* foe = add_to_list(fx, fx.level.oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
     OG_ASSERT(self && foe);
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
 
-    const short foes_before = remaining_foes(fx.level, self);
+    const short foes_before = fx.level.remaining_foes(self);
     OG_ASSERT(foes_before >= 1);
 
     OG_ASSERT(fx.level.remove_ob(foe) == 1);
-    const short foes_after = remaining_foes(fx.level, self);
+    const short foes_after = fx.level.remaining_foes(self);
     OG_ASSERT(foes_after <= foes_before);
 
     fx.level.delete_objects();
-    OG_ASSERT(fx.level.game_world().oblist.empty());
-    OG_ASSERT(fx.level.game_world().fxlist.empty());
-    OG_ASSERT(fx.level.game_world().weaplist.empty());
+    OG_ASSERT(fx.level.oblist.empty());
+    OG_ASSERT(fx.level.fxlist.empty());
+    OG_ASSERT(fx.level.weaplist.empty());
 }
 } // namespace detail_level_data_coverage_push
 
@@ -149,7 +156,7 @@ namespace detail_level_data_r11 {
 namespace {
 
 struct LevelR11Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -157,6 +164,8 @@ struct LevelR11Fixture {
 
     LevelR11Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -168,7 +177,6 @@ walker* add_to(LevelR11Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    fx.level.wire_entity(w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -179,7 +187,7 @@ walker* add_to(LevelR11Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
     walker* out = w.get();
     ls.push_back(std::move(w));
     if (o == Order::Living)
-        fx.level.numobs++;
+        fx.level.living_count++;
     return out;
 }
 
@@ -189,11 +197,12 @@ OG_UNIT_TEST(test_level_data_r11_basic_construction_remove_and_helpers)
 {
     LevelR11Fixture fx;
 
-    // get_description_line out of range and in range
-    fx.level.description.clear();
-    fx.level.description.push_back("a");
-    OG_ASSERT(fx.level.get_description_line(0) == "a");
-    OG_ASSERT(fx.level.get_description_line(9).empty());
+    // Direct description testing (get_description_line was deleted with LevelData).
+    og::data::LevelFileMetadata meta;
+    meta.description.clear();
+    meta.description.push_back("a");
+    OG_ASSERT(meta.description.front() == "a");
+    OG_ASSERT(meta.description.size() == 1);
 
     // remove_ob miss path
     walker dummy;
@@ -201,10 +210,10 @@ OG_UNIT_TEST(test_level_data_r11_basic_construction_remove_and_helpers)
 
     // null guards for searches
     std::int32_t hm = 0;
-    auto none1 = fx.level.find_in_range(fx.level.game_world().oblist, 10, &hm, nullptr);
-    auto none2 = fx.level.find_foes_in_range(fx.level.game_world().oblist, 10, &hm, nullptr);
-    auto none3 = fx.level.find_foe_weapons_in_range(fx.level.game_world().weaplist, 10, &hm, nullptr);
-    auto none4 = fx.level.find_friends_in_range(fx.level.game_world().oblist, 10, &hm, nullptr);
+    auto none1 = fx.level.find_in_range(fx.level.oblist, 10, &hm, nullptr);
+    auto none2 = fx.level.find_foes_in_range(fx.level.oblist, 10, &hm, nullptr);
+    auto none3 = fx.level.find_foe_weapons_in_range(fx.level.weaplist, 10, &hm, nullptr);
+    auto none4 = fx.level.find_friends_in_range(fx.level.oblist, 10, &hm, nullptr);
     OG_ASSERT(none1.empty() && none2.empty() && none3.empty() && none4.empty());
 
     OG_ASSERT(fx.level.find_near_foe(nullptr) == nullptr);
@@ -216,7 +225,7 @@ OG_UNIT_TEST(test_level_data_r11_basic_construction_remove_and_helpers)
 OG_UNIT_TEST(test_level_data_r11_query_grid_passable_terrain_branches)
 {
     LevelR11Fixture fx;
-    walker* ob = add_to(fx, fx.level.game_world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* ob = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     OG_ASSERT(ob != nullptr);
 
     // grid invalid branch
@@ -244,7 +253,7 @@ OG_UNIT_TEST(test_level_data_r11_query_grid_passable_terrain_branches)
     ob->stats()->set_bit_flags(BIT_FORESTWALK, 0);
 
     // tree_b branch with weapon
-    walker* weap = add_to(fx, fx.level.game_world().weaplist, Order::Weapon, FAMILY_ARROW, 1, ob->xpos, ob->ypos);
+    walker* weap = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 1, ob->xpos, ob->ypos);
     fx.level.grid.data[gx + gy * fx.level.grid.w] = PIX_TREE_B1;
     OG_ASSERT(fx.level.query_grid_passable(weap->xpos, weap->ypos, weap));
 
@@ -261,16 +270,16 @@ OG_UNIT_TEST(test_level_data_r11_query_grid_passable_terrain_branches)
 OG_UNIT_TEST(test_level_data_r11_object_passability_and_search_sets)
 {
     LevelR11Fixture fx;
-    walker* self = add_to(fx, fx.level.game_world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    walker* foe = add_to(fx, fx.level.game_world().oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
-    walker* ally = add_to(fx, fx.level.game_world().oblist, Order::Living, FAMILY_SOLDIER, 0, 96, 64);
-    walker* weapon = add_to(fx, fx.level.game_world().weaplist, Order::Weapon, FAMILY_ARROW, 1, 70, 64);
-    walker* stain = add_to(fx, fx.level.game_world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
+    walker* self = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* foe = add_to(fx, fx.level.oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
+    walker* ally = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 96, 64);
+    walker* weapon = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 1, 70, 64);
+    walker* stain = add_to(fx, fx.level.fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
     OG_ASSERT(self && foe && ally && weapon && stain);
 
     ally->user = 0;
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
-    fx.level.game_world().allied_mode = 0;
+    fx.level.allied_mode = 0;
 
     // query_object_passable dead-ob fast path
     self->dead = 1;
@@ -285,22 +294,22 @@ OG_UNIT_TEST(test_level_data_r11_object_passability_and_search_sets)
     OG_ASSERT(fx.level.find_nearest_player(self) == ally);
 
     std::int32_t c = 0;
-    auto inr = fx.level.find_in_range(fx.level.game_world().oblist, 200, &c, self);
+    auto inr = fx.level.find_in_range(fx.level.oblist, 200, &c, self);
     OG_ASSERT(c >= 1 && !inr.empty());
-    auto foes = fx.level.find_foes_in_range(fx.level.game_world().oblist, 200, &c, self);
+    auto foes = fx.level.find_foes_in_range(fx.level.oblist, 200, &c, self);
     OG_ASSERT(c >= 1 && !foes.empty());
-    (void)fx.level.find_foe_weapons_in_range(fx.level.game_world().weaplist, 200, &c, self);
-    auto friends = fx.level.find_friends_in_range(fx.level.game_world().oblist, 200, &c, self);
+    (void)fx.level.find_foe_weapons_in_range(fx.level.weaplist, 200, &c, self);
+    auto friends = fx.level.find_friends_in_range(fx.level.oblist, 200, &c, self);
     OG_ASSERT(!friends.empty());
 
     // helper functions
-    (void)get_scenario_title("nonexistent_file");
-    OG_ASSERT(remaining_foes(fx.level, self) >= 0);
+    (void)og::data::load_scenario_title("nonexistent_file");
+    OG_ASSERT(fx.level.remaining_foes(self) >= 0);
 }
 } // namespace detail_level_data_r11
 
 // --- From test_level_data_r12.cpp ---
-short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
+short load_scenario_version(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata, short version);
 bool save_grid_file(const char* gridname, const PixieData& grid);
 
 namespace detail_level_data_r12 {
@@ -374,7 +383,7 @@ bool write_bytes(const std::filesystem::path& p, const std::vector<unsigned char
 }
 
 struct LevelR12Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -382,6 +391,8 @@ struct LevelR12Fixture {
 
     LevelR12Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
@@ -392,7 +403,6 @@ walker* add_to(LevelR12Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    fx.level.wire_entity(w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -403,7 +413,7 @@ walker* add_to(LevelR12Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
     walker* out = w.get();
     ls.push_back(std::move(w));
     if (o == Order::Living)
-        fx.level.numobs++;
+        fx.level.living_count++;
     return out;
 }
 
@@ -430,23 +440,38 @@ OG_UNIT_TEST(test_level_data_r12_load_title_dispatch_and_save_grid_paths)
     titled.insert(titled.end(), title, title + 30);
     OG_ASSERT(write_bytes(std::filesystem::path("scen") / "scen9414.fss", titled));
 
-    LevelData parse_fail(id_parse, true);
-    OG_ASSERT(parse_fail.load_with_error() == LevelData::IoError::ParseFailed);
-    LevelData bad_header(id_bad, true);
-    OG_ASSERT(bad_header.load_with_error() == LevelData::IoError::InvalidHeader);
-    LevelData unsupported(id_ver, true);
-    OG_ASSERT(unsupported.load_with_error() == LevelData::IoError::UnsupportedVersion);
+    {
+        og::gameplay::GameWorld w; w.id = id_parse; w.myobmap = std::make_unique<obmap>();
+        LevelVisuals vis; og::data::LevelFileMetadata m; og::data::LevelFileIoError err;
+        og::data::load_level(std::format("scen{}.fss", id_parse), w, vis, m, &err);
+        OG_ASSERT(err == og::data::LevelFileIoError::ParseFailed);
+    }
+    {
+        og::gameplay::GameWorld w; w.id = id_bad; w.myobmap = std::make_unique<obmap>();
+        LevelVisuals vis; og::data::LevelFileMetadata m; og::data::LevelFileIoError err;
+        og::data::load_level(std::format("scen{}.fss", id_bad), w, vis, m, &err);
+        OG_ASSERT(err == og::data::LevelFileIoError::InvalidHeader);
+    }
+    {
+        og::gameplay::GameWorld w; w.id = id_ver; w.myobmap = std::make_unique<obmap>();
+        LevelVisuals vis; og::data::LevelFileMetadata m; og::data::LevelFileIoError err;
+        og::data::load_level(std::format("scen{}.fss", id_ver), w, vis, m, &err);
+        OG_ASSERT(err == og::data::LevelFileIoError::UnsupportedVersion);
+    }
 
-    OG_ASSERT(get_scenario_title(nullptr) == "none");
-    OG_ASSERT(get_scenario_title("does_not_exist") == "none");
-    OG_ASSERT(get_scenario_title("scen9412") == "none");
-    OG_ASSERT(get_scenario_title("scen9414") == "Coverage R12");
+    OG_ASSERT(og::data::load_scenario_title(nullptr) == "none");
+    OG_ASSERT(og::data::load_scenario_title("does_not_exist") == "none");
+    OG_ASSERT(og::data::load_scenario_title("scen9412") == "none");
+    OG_ASSERT(og::data::load_scenario_title("scen9414") == "Coverage R12");
 
     unsigned char dummy = 0;
     MemoryOgFile mem(&dummy, 0);
-    LevelData data(1, true);
-    OG_ASSERT(load_scenario_version(mem, nullptr, 6) == 0);
-    OG_ASSERT(load_scenario_version(mem, &data, 42) == 0);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    og::data::LevelFileMetadata data_meta;
+    OG_ASSERT(load_scenario_version(mem, nullptr, nullptr, 6) == 0);
+    OG_ASSERT(load_scenario_version(mem, &data, &data_meta, 42) == 0);
 
     PixieData pix(1, 1, 1, new unsigned char[1]{7});
     OG_ASSERT(save_grid_file("coverage_r12_ok", pix));
@@ -460,20 +485,25 @@ OG_UNIT_TEST(test_level_data_r12_save_null_entries_and_query_passable_branches)
     std::filesystem::create_directories("temp/pix");
 
     fx.level.id = 9450;
-    fx.level.grid_file = "grid";
     fx.level.title = "r12";
 
-    fx.level.game_world().fxlist.push_back(std::unique_ptr<walker>{});
-    OG_ASSERT(!fx.level.save());
+    // Direct save via og::data::save_level.
+    og::data::LevelFileMetadata save_meta;
+    save_meta.grid_file = "grid";
+    LevelVisuals save_vis;
+    const std::string save_path = std::format("temp/scen/scen{}.fss", fx.level.id);
+
+    fx.level.fxlist.push_back(std::unique_ptr<walker>{});
+    OG_ASSERT(!og::data::save_level(fx.level, save_vis, save_path, save_meta));
     fx.level.delete_objects();
 
-    fx.level.game_world().weaplist.push_back(std::unique_ptr<walker>{});
-    OG_ASSERT(!fx.level.save());
+    fx.level.weaplist.push_back(std::unique_ptr<walker>{});
+    OG_ASSERT(!og::data::save_level(fx.level, save_vis, save_path, save_meta));
     fx.level.delete_objects();
 
-    walker* living = add_to(fx, fx.level.game_world().oblist, Order::Living, FAMILY_SOLDIER, 0, 0, 0);
-    walker* owner = add_to(fx, fx.level.game_world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    walker* weapon = add_to(fx, fx.level.game_world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 0, 0);
+    walker* living = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 0, 0);
+    walker* owner = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* weapon = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 0, 0, 0);
     OG_ASSERT(living && owner && weapon);
     living->sizex = 1;
     living->sizey = 1;
@@ -505,7 +535,7 @@ OG_UNIT_TEST(test_level_data_r12_save_null_entries_and_query_passable_branches)
     OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
     weapon->setxy(200, 0);
     owner->setxy(0, 0);
-    fx.level.game_world().rng_.state_ = 1;
+    fx.level.rng_.state_ = 1;
     OG_ASSERT(!fx.level.query_grid_passable(0, 0, weapon));
 
     fx.level.grid.data[0] = PIX_WATER1;
@@ -526,20 +556,20 @@ OG_UNIT_TEST(test_level_data_r12_find_helpers_null_and_ranges)
 {
     LevelR12Fixture fx;
 
-    walker* self = add_to(fx, fx.level.game_world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    walker* foe = add_to(fx, fx.level.game_world().oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
-    walker* ally = add_to(fx, fx.level.game_world().oblist, Order::Living, FAMILY_ARCHER, 0, 96, 64);
-    walker* enemy_weapon = add_to(fx, fx.level.game_world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 70, 64);
-    walker* blood = add_to(fx, fx.level.game_world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
+    walker* self = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* foe = add_to(fx, fx.level.oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
+    walker* ally = add_to(fx, fx.level.oblist, Order::Living, FAMILY_ARCHER, 0, 96, 64);
+    walker* enemy_weapon = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 0, 70, 64);
+    walker* blood = add_to(fx, fx.level.fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
     OG_ASSERT(self && foe && ally && enemy_weapon && blood);
 
     ally->user = 0;
 
     std::int32_t howmany = 0;
-    OG_ASSERT(fx.level.find_in_range(fx.level.game_world().oblist, 50, &howmany, nullptr).empty());
-    OG_ASSERT(fx.level.find_foes_in_range(fx.level.game_world().oblist, 50, &howmany, nullptr).empty());
-    OG_ASSERT(fx.level.find_foe_weapons_in_range(fx.level.game_world().weaplist, 50, &howmany, nullptr).empty());
-    OG_ASSERT(fx.level.find_friends_in_range(fx.level.game_world().oblist, 50, &howmany, nullptr).empty());
+    OG_ASSERT(fx.level.find_in_range(fx.level.oblist, 50, &howmany, nullptr).empty());
+    OG_ASSERT(fx.level.find_foes_in_range(fx.level.oblist, 50, &howmany, nullptr).empty());
+    OG_ASSERT(fx.level.find_foe_weapons_in_range(fx.level.weaplist, 50, &howmany, nullptr).empty());
+    OG_ASSERT(fx.level.find_friends_in_range(fx.level.oblist, 50, &howmany, nullptr).empty());
 
     OG_ASSERT(fx.level.find_nearest_blood(nullptr) == nullptr);
     OG_ASSERT(fx.level.find_nearest_player(nullptr) == nullptr);
@@ -549,29 +579,29 @@ OG_UNIT_TEST(test_level_data_r12_find_helpers_null_and_ranges)
     OG_ASSERT(fx.level.find_nearest_blood(self) == blood);
     OG_ASSERT(fx.level.find_nearest_player(self) == ally);
 
-    auto inr = fx.level.find_in_range(fx.level.game_world().oblist, 200, &howmany, self);
+    auto inr = fx.level.find_in_range(fx.level.oblist, 200, &howmany, self);
     OG_ASSERT(!inr.empty() && howmany >= 1);
-    auto foes = fx.level.find_foes_in_range(fx.level.game_world().oblist, 200, &howmany, self);
+    auto foes = fx.level.find_foes_in_range(fx.level.oblist, 200, &howmany, self);
     OG_ASSERT(!foes.empty());
-    auto foe_weapons = fx.level.find_foe_weapons_in_range(fx.level.game_world().weaplist, 200, &howmany, self);
+    auto foe_weapons = fx.level.find_foe_weapons_in_range(fx.level.weaplist, 200, &howmany, self);
     OG_ASSERT(!foe_weapons.empty());
-    auto friends = fx.level.find_friends_in_range(fx.level.game_world().oblist, 200, &howmany, self);
+    auto friends = fx.level.find_friends_in_range(fx.level.oblist, 200, &howmany, self);
     OG_ASSERT(!friends.empty());
 }
 
 OG_UNIT_TEST(test_level_data_r12_remove_ob_paths_and_zip_api_paths)
 {
     LevelR12Fixture fx;
-    walker* living = add_to(fx, fx.level.game_world().oblist, Order::Living, FAMILY_SOLDIER, 0, 40, 40);
-    walker* weap = add_to(fx, fx.level.game_world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 44, 40);
-    walker* fxob = add_to(fx, fx.level.game_world().fxlist, Order::FX, FAMILY_EXPLOSION, 0, 48, 40);
+    walker* living = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 40, 40);
+    walker* weap = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 0, 44, 40);
+    walker* fxob = add_to(fx, fx.level.fxlist, Order::FX, FAMILY_EXPLOSION, 0, 48, 40);
     OG_ASSERT(living && weap && fxob);
 
-    const std::int32_t before = fx.level.numobs;
+    const std::int32_t before = fx.level.living_count;
     OG_ASSERT(fx.level.remove_ob(weap) == 1);
     OG_ASSERT(fx.level.remove_ob(fxob) == 1);
     OG_ASSERT(fx.level.remove_ob(living) == 1);
-    OG_ASSERT(fx.level.numobs == before - 1);
+    OG_ASSERT(fx.level.living_count == before - 1);
     OG_ASSERT(fx.level.remove_ob(nullptr) == 0);
 
     OG_ASSERT(og::io::unzip_into_with_error("temp/r12_zip/not_there.zip", "temp/r12_zip/out2") == ArchiveIoError::OpenArchiveFailed);
@@ -712,27 +742,36 @@ OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_s
     {
         std::vector<unsigned char> bytes = make_payload_v2("grid");
         MemoryOgFile mem(bytes);
-        LevelData data(1, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 2) == 1);
-        OG_ASSERT(data.grid_file == "grid");
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+        og::data::LevelFileMetadata data_meta;
+        OG_ASSERT(load_scenario_version(mem, &data, &data_meta, 2) == 1);
+        OG_ASSERT(data_meta.grid_file == "grid");
     }
 
     // v3, grid with .pix extension path + long line width skip/discard path.
     {
         std::vector<unsigned char> bytes = make_payload_v3("ab.pix", 95);
         MemoryOgFile mem(bytes);
-        LevelData data(2, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 3) == 1);
-        OG_ASSERT(data.grid_file == "ab.pix");
-        OG_ASSERT(!data.description.empty());
+        og::gameplay::GameWorld data;
+        data.id = 2;
+        data.myobmap = std::make_unique<obmap>();
+        og::data::LevelFileMetadata data_meta;
+        OG_ASSERT(load_scenario_version(mem, &data, &data_meta, 3) == 1);
+        OG_ASSERT(data_meta.grid_file == "ab.pix");
+        OG_ASSERT(!data_meta.description.empty());
     }
 
     // v5 scenario type path.
     {
         std::vector<unsigned char> bytes = make_payload_v5("gr5", static_cast<char>(7));
         MemoryOgFile mem(bytes);
-        LevelData data(3, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 5) == 1);
+        og::gameplay::GameWorld data;
+        data.id = 3;
+        data.myobmap = std::make_unique<obmap>();
+        og::data::LevelFileMetadata data_meta;
+        OG_ASSERT(load_scenario_version(mem, &data, &data_meta, 5) == 1);
         OG_ASSERT(data.type == 7);
     }
 
@@ -742,8 +781,11 @@ OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_s
                                                            static_cast<short>(77), static_cast<short>(1234),
                                                            110);
         MemoryOgFile mem(bytes);
-        LevelData data(4, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 9) == 1);
+        og::gameplay::GameWorld data;
+        data.id = 4;
+        data.myobmap = std::make_unique<obmap>();
+        og::data::LevelFileMetadata data_meta;
+        OG_ASSERT(load_scenario_version(mem, &data, &data_meta, 9) == 1);
         OG_ASSERT(data.title == "R14 Title");
         OG_ASSERT(data.par_value == 77);
         OG_ASSERT(data.time_bonus_limit == 1234);
@@ -758,8 +800,11 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         std::vector<unsigned char> bytes;
         append_fixed_string(bytes, "grid", 8);
         MemoryOgFile mem(bytes);
-        LevelData data(11, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 2) == 0);
+        og::gameplay::GameWorld data;
+        data.id = 11;
+        data.myobmap = std::make_unique<obmap>();
+        og::data::LevelFileMetadata data_meta;
+        OG_ASSERT(load_scenario_version(mem, &data, &data_meta, 2) == 0);
     }
 
     // Invalid object count v2.
@@ -769,8 +814,11 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         short bad_listsize = static_cast<short>(-1);
         append_pod(bytes, bad_listsize);
         MemoryOgFile mem(bytes);
-        LevelData data(12, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 2) == 0);
+        og::gameplay::GameWorld data;
+        data.id = 12;
+        data.myobmap = std::make_unique<obmap>();
+        og::data::LevelFileMetadata data_meta;
+        OG_ASSERT(load_scenario_version(mem, &data, &data_meta, 2) == 0);
     }
 
     // Truncated v3 while reading text lines.
@@ -785,8 +833,11 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         append_pod(bytes, width);
         bytes.push_back('x');
         MemoryOgFile mem(bytes);
-        LevelData data(13, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 3) == 0);
+        og::gameplay::GameWorld data;
+        data.id = 13;
+        data.myobmap = std::make_unique<obmap>();
+        og::data::LevelFileMetadata data_meta;
+        OG_ASSERT(load_scenario_version(mem, &data, &data_meta, 3) == 0);
     }
 
     // Truncated v5 before scenario type read.
@@ -794,8 +845,11 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         std::vector<unsigned char> bytes;
         append_fixed_string(bytes, "grid", 8);
         MemoryOgFile mem(bytes);
-        LevelData data(14, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 5) == 0);
+        og::gameplay::GameWorld data;
+        data.id = 14;
+        data.myobmap = std::make_unique<obmap>();
+        og::data::LevelFileMetadata data_meta;
+        OG_ASSERT(load_scenario_version(mem, &data, &data_meta, 5) == 0);
     }
 
     // Invalid object count v8.
@@ -810,8 +864,11 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         short bad_listsize = 5000;
         append_pod(bytes, bad_listsize);
         MemoryOgFile mem(bytes);
-        LevelData data(15, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 8) == 0);
+        og::gameplay::GameWorld data;
+        data.id = 15;
+        data.myobmap = std::make_unique<obmap>();
+        og::data::LevelFileMetadata data_meta;
+        OG_ASSERT(load_scenario_version(mem, &data, &data_meta, 8) == 0);
     }
 }
 
@@ -830,23 +887,6 @@ OG_UNIT_TEST(test_level_data_r14_lines_95_99_353_371_378_campaign_description_ac
 
 // --- From test_level_data_r15.cpp ---
 namespace detail_level_data_r15 {
-namespace {
-
-int g_wire_calls = 0;
-int g_render_calls = 0;
-
-void wire_count(walker*)
-{
-    g_wire_calls++;
-}
-
-std::unique_ptr<LevelRender> make_render(PixieData[])
-{
-    g_render_calls++;
-    return std::make_unique<LevelRender>();
-}
-
-} // namespace
 
 OG_UNIT_TEST(test_level_data_r15_campaign_wrappers_and_description_iteration)
 {
@@ -868,47 +908,32 @@ OG_UNIT_TEST(test_level_data_r15_campaign_wrappers_and_description_iteration)
 
 OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
 {
-    g_wire_calls = 0;
-    g_render_calls = 0;
-
-    LevelDataHooks hooks;
-    hooks.wire_entity_from_screen = wire_count;
-    hooks.create_level_render = make_render;
-
-    LevelData level_non_headless(9415, &hooks);
-    LevelData level_headless(9416, true, &hooks);
-    OG_ASSERT(g_render_calls == 0);
+    og::gameplay::GameWorld level;
+    level.myobmap = std::make_unique<obmap>();
+    level.id = 9415;
+    level.create_new_grid();
 
     SaveData save;
     std::int32_t freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
-    level_non_headless.set_sim_context(&save, &freeze, &events, &rng, &cfg);
+    level.set_sim_context(&save, &freeze, &events, &rng, &cfg);
 
-    walker* living = level_non_headless.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* fxob = level_non_headless.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
-    walker* weap = level_non_headless.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* living = level.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* fxob = level.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    walker* weap = level.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     OG_ASSERT(living && fxob && weap);
-    OG_ASSERT(g_wire_calls == 0);
-    OG_ASSERT(level_non_headless.numobs >= 1);
+    OG_ASSERT(level.living_count >= 1);
 
-    level_non_headless.title = "Mutated";
-    level_non_headless.type = 7;
-    level_non_headless.par_value = 9;
-    level_non_headless.time_bonus_limit = 123;
-    level_non_headless.clear();
+    level.title = "Mutated";
+    level.type = 7;
+    level.par_value = 9;
+    level.time_bonus_limit = 123;
+    level.clear();
 
-    OG_ASSERT(level_non_headless.title == "New Level");
-    OG_ASSERT(level_non_headless.type == 0);
-    OG_ASSERT(level_non_headless.par_value == 1);
-    OG_ASSERT(level_non_headless.time_bonus_limit == 4000);
-
-    // Exercise delegating constructor overloads.
-    LevelData plain_ctor(9417);
-    LevelData hooks_ctor(9418, &hooks);
-    OG_ASSERT(plain_ctor.id == 9417);
-    OG_ASSERT(hooks_ctor.id == 9418);
-
-    (void)level_headless;
+    OG_ASSERT(level.title == "New Level");
+    OG_ASSERT(level.type == 0);
+    OG_ASSERT(level.par_value == 1);
+    OG_ASSERT(level.time_bonus_limit == 4000);
 }
 } // namespace detail_level_data_r15

@@ -25,7 +25,7 @@
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/irandom.h>
@@ -37,9 +37,6 @@
 #include <format>
 
 // namespace removed: rng/config wrappers replaced with SimEntity fields
-
-// from level_data.cpp (LevelData overload for sim/render split)
-short remaining_foes(LevelData& level, walker* myguy);
 
 namespace {
 class WorldRandomAdapter final : public IRandom {

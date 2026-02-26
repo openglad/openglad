@@ -1,5 +1,4 @@
 #include <openglad/data/gparser.h>
-#include <openglad/data/level_data.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/entities/walker.h>
 #include <openglad/input/input.h>

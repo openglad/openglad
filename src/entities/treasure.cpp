@@ -21,7 +21,7 @@
 #include <cmath>
 #include <string>
 #include <openglad/entities/obmap.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/family_registries.h>

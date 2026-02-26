@@ -26,7 +26,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 // find_follow_leader is defined in the SDL build (screen.cpp) and stubbed
 // by the text client. Returns a walker to follow, or nullptr if none.

@@ -7,7 +7,7 @@
  */
 #pragma once
 
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <cstdint>
 

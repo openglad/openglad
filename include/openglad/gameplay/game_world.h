@@ -58,14 +58,10 @@ extern std::int32_t g_test_level_tick_limit_override;
 
 namespace og::gameplay {
 
-// GameWorld: owns entity lists and living_count.
+// GameWorld: owns entity lists, spatial data, level metadata, and game logic.
 //
-// Phase 1a of the component architecture migration. Entity lists and
-// living_count are moved here from LevelData. LevelData retains
-// forwarding reference members so existing callers work unchanged.
-//
-// In later phases, spatial data, tick logic, RNG, and game state flags
-// will also move here, eventually replacing both LevelData and GameWorld.
+// Central game state container for a single level. Owns entity storage,
+// collision grid, tick logic, and entity factory callbacks.
 class GameWorld {
 public:
     static const char TYPE_CAN_EXIT_WHENEVER = 0x1;  // Can exit without defeating all enemies
@@ -137,9 +133,8 @@ public:
                          og::sim::SimEventLog* events, IRandom* rng,
                          cfg_store* config);
 
-    // Clear all entity lists and reset living_count.
-    // Note: this clears only entity storage. Hooks (e.g. stale view control
-    // cleanup) and obmap cleanup remain on LevelData::delete_objects().
+    // Clear all entity lists, reset living_count, invoke on_pre_delete_objects
+    // hook, and clean up obmap.
     void delete_objects();
 
     // Count living foes not friendly to the given walker.

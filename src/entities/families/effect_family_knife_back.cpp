@@ -9,7 +9,7 @@
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 
 static bool knife_back_on_act(effect* self)
 {

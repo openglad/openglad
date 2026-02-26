@@ -18,7 +18,7 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/level_editor_state.h>
 #include <openglad/runtime/game_session.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/entities/walker.h>
 
 static inline LevelEditorState& eds() { return *og::runtime::current_session->editor_; }
@@ -54,12 +54,6 @@ bool are_objects_outside_area(const og::gameplay::GameWorld& world, int x, int y
     return false;
 }
 
-bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
-{
-    if(level == nullptr)
-        return false;
-    return are_objects_outside_area(level->game_world(), x, y, w, h);
-}
 
 void set_screen_pos(screen *screenp, Sint32 x, Sint32 y)
 {

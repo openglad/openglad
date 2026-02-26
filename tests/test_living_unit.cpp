@@ -1,12 +1,14 @@
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/irandom.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
+#include <openglad/legacy/pixdefs.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
@@ -22,7 +24,7 @@ namespace detail_living_r11 {
 namespace {
 
 struct LivingFixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -30,6 +32,8 @@ struct LivingFixture {
 
     LivingFixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -40,7 +44,7 @@ living* add_living(LivingFixture& fx, char family, unsigned char team)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(96, 96);
     w->sizex = 16;
     w->sizey = 16;
@@ -50,7 +54,7 @@ living* add_living(LivingFixture& fx, char family, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -169,7 +173,7 @@ namespace detail_living_r14 {
 namespace {
 
 struct LivingR14Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -178,6 +182,8 @@ struct LivingR14Fixture {
 
     LivingR14Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
@@ -194,7 +200,7 @@ living* add_living(LivingR14Fixture& fx, char family, unsigned char team, short 
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -205,7 +211,7 @@ living* add_living(LivingR14Fixture& fx, char family, unsigned char team, short 
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 

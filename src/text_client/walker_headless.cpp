@@ -15,7 +15,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 
 // ---------------------------------------------------------------------------
 // WalkerRender stubs for headless mode.

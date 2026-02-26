@@ -16,7 +16,7 @@
 #include <openglad/render/view.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/data/gparser.h>
 #include <openglad/data/smooth.h>
 #include <span>

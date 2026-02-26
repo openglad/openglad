@@ -4,7 +4,8 @@
 #include <openglad/core/constants.h>
 #include "unit/unit.h"
 #include <openglad/entities/guy.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_event_log.h>
@@ -79,7 +80,7 @@ namespace detail_family_cleric_r11 {
 namespace {
 
 struct ClericFixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -89,9 +90,11 @@ struct ClericFixture {
 
     ClericFixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         prev_gameplay_ctx = og::gameplay::current_game;
         og::gameplay::current_game = &gameplay_ctx;
-        gameplay_ctx.world = &level.game_world();
+        gameplay_ctx.world = &level;
         gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         save.allied_mode = 0;
@@ -108,7 +111,7 @@ living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_C
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -117,7 +120,7 @@ living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_C
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -279,7 +282,7 @@ namespace detail_family_cleric_r12 {
 namespace {
 
 struct ClericR12Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -289,9 +292,11 @@ struct ClericR12Fixture {
 
     ClericR12Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         prev_gameplay_ctx = og::gameplay::current_game;
         og::gameplay::current_game = &gameplay_ctx;
-        gameplay_ctx.world = &level.game_world();
+        gameplay_ctx.world = &level;
         gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -307,7 +312,7 @@ living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMIL
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -316,7 +321,7 @@ living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMIL
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -437,14 +442,13 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
 
     auto s = std::make_unique<living>();
     s->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(s.get());
     s->setxy(60, 60);
     s->team_num = 0;
     s->stats()->level = 6;
     s->lastx = 1.0f;
     s->lasty = 0.0f;
     living* self = s.get();
-    fx.level.game_world().oblist.push_back(std::move(s));
+    fx.level.oblist.push_back(std::move(s));
 
     walker* enemy = add_living(fx, 1, FAMILY_ORC);
     enemy->setxy(80, 60);
@@ -480,8 +484,6 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
 
     auto t1 = std::make_unique<treasure>();
     auto t2 = std::make_unique<treasure>();
-    fx.level.wire_entity(t1.get());
-    fx.level.wire_entity(t2.get());
     t1->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     t2->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     t1->stats()->level = 3;
@@ -489,8 +491,8 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
     t2->dead = 0;
     treasure* t1_raw = t1.get();
     treasure* t2_raw = t2.get();
-    fx.level.game_world().fxlist.push_back(std::move(t1));
-    fx.level.game_world().fxlist.push_back(std::move(t2));
+    fx.level.fxlist.push_back(std::move(t1));
+    fx.level.fxlist.push_back(std::move(t2));
     OG_ASSERT(t1_raw->find_teleport_target() == t2_raw);
 }
 
@@ -554,7 +556,7 @@ namespace detail_family_cleric_r14 {
 namespace {
 
 struct ClericR14Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -565,9 +567,11 @@ struct ClericR14Fixture {
 
     ClericR14Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         prev_gameplay_ctx = og::gameplay::current_game;
         og::gameplay::current_game = &gameplay_ctx;
-        gameplay_ctx.world = &level.game_world();
+        gameplay_ctx.world = &level;
         gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -587,7 +591,7 @@ living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMIL
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -596,7 +600,7 @@ living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMIL
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -707,7 +711,7 @@ namespace detail_family_cleric_r15 {
 namespace {
 
 struct ClericR15Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -718,9 +722,11 @@ struct ClericR15Fixture {
 
     ClericR15Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         prev_gameplay_ctx = og::gameplay::current_game;
         og::gameplay::current_game = &gameplay_ctx;
-        gameplay_ctx.world = &level.game_world();
+        gameplay_ctx.world = &level;
         gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -740,7 +746,7 @@ living* add_living(ClericR15Fixture& fx, unsigned char team, char family, short 
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -749,7 +755,7 @@ living* add_living(ClericR15Fixture& fx, unsigned char team, char family, short 
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 

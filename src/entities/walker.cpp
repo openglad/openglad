@@ -32,7 +32,7 @@
 #include <openglad/entities/walker.h>
 #include <openglad/gameplay/render_component_base.h>
 #include <openglad/entities/obmap.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
@@ -1279,7 +1279,7 @@ bool walker::death()
 
 	// Ensure we are removed from collision bookkeeping as soon as we "die".
 	// This prevents stale pointers in the obmap when callers manage walker
-	// lifetimes outside LevelData's owning lists (common in tests).
+	// lifetimes outside GameWorld's owning lists (common in tests).
 	obmap* active = (og::gameplay::current_game && og::gameplay::current_game->world)
 		? og::gameplay::current_game->world->myobmap.get()
 		: nullptr;

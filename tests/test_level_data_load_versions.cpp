@@ -1,6 +1,12 @@
 #include "SDL.h"
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/data/level_file_io.h>
+#include <openglad/entities/effect.h>
+#include <openglad/entities/living.h>
+#include <openglad/entities/obmap.h>
+#include <openglad/entities/treasure.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/weap.h>
 #include <openglad/io/og_file.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
@@ -12,13 +18,13 @@
 #include <filesystem>
 #include <vector>
 
-// Forward declarations from src/runtime/level_data.cpp (now using OgFile&)
-short load_version_2(og::io::OgFile& infile, LevelData* data);
-short load_version_3(og::io::OgFile& infile, LevelData* data);
-short load_version_4(og::io::OgFile& infile, LevelData* data);
-short load_version_5(og::io::OgFile& infile, LevelData* data);
-short load_version_6(og::io::OgFile& infile, LevelData* data, short version);
-short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
+// Forward declarations from src/data/level_file_io.cpp (now using GameWorld* + LevelFileMetadata*)
+short load_version_2(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata);
+short load_version_3(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata);
+short load_version_4(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata);
+short load_version_5(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata);
+short load_version_6(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata, short version);
+short load_scenario_version(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata, short version);
 
 // Memory-backed OgFile for testing (replaces SDL_RWFromConstMem)
 class MemoryOgFile final : public og::io::OgFile {
@@ -58,6 +64,25 @@ private:
     std::size_t pos_;
 };
 
+// Minimal entity factory for standalone GameWorld tests (no loader/graphics needed).
+static void wire_test_entity_factory(og::gameplay::GameWorld& w)
+{
+    w.entity_factory = [](Order order, int family) -> std::unique_ptr<walker> {
+        std::unique_ptr<walker> ob;
+        switch (order) {
+            case Order::Living:  ob = std::make_unique<living>(); break;
+            case Order::Weapon:  ob = std::make_unique<weap>(); break;
+            case Order::Treasure: ob = std::make_unique<treasure>(); break;
+            case Order::FX:      ob = std::make_unique<effect>(); break;
+            default:             ob = std::make_unique<walker>(); break;
+        }
+        ob->set_order_family(order, static_cast<char>(family));
+        PixieData stub(8, 1, 1, nullptr); // 8 frames so set_frame() works
+        ob->set_data(stub);
+        return ob;
+    };
+}
+
 namespace
 {
 static void append_bytes(std::vector<uint8_t>& out, const void* data, size_t n)
@@ -89,7 +114,11 @@ static void append_fixed8(std::vector<uint8_t>& out, const char* s)
 
 void test_level_data_load_version2_minimal_success()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");     // newgrid (8 bytes)
     append_i16(bytes, 1);             // listsize
@@ -104,14 +133,18 @@ void test_level_data_load_version2_minimal_success()
         append_u8(bytes, 0);          // reserved
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_2(rw, &data);
+    short ok = load_version_2(rw, &data, &data_meta);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_2 should succeed on minimal buffer");
 }
 REGISTER_TEST(test_level_data_load_version2_minimal_success);
 
 void test_level_data_load_version2_treasure_routes_to_fxlist()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");     // newgrid (8 bytes)
     append_i16(bytes, 1);             // listsize
@@ -126,7 +159,7 @@ void test_level_data_load_version2_treasure_routes_to_fxlist()
         append_u8(bytes, 0);          // reserved
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_2(rw, &data);
+    short ok = load_version_2(rw, &data, &data_meta);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_2 should succeed with a treasure object");
     TEST_ASSERT(!data.fxlist.empty(), "treasure should route via add_fx_ob into fxlist for v2");
 }
@@ -134,21 +167,29 @@ REGISTER_TEST(test_level_data_load_version2_treasure_routes_to_fxlist);
 
 void test_level_data_load_version2_truncated_object_payload_fails()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid"); // newgrid
     append_i16(bytes, 1);         // listsize
     // Omit object bytes to force rw_read_exact_or_log failure.
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_2(rw, &data);
+    short ok = load_version_2(rw, &data, &data_meta);
     TEST_ASSERT_EQ(0, (int)ok, "load_version_2 should fail on truncated object payload");
 }
 REGISTER_TEST(test_level_data_load_version2_truncated_object_payload_fails);
 
 void test_level_data_load_version2_invalid_family_fails_object_creation()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");     // newgrid (8 bytes)
     append_i16(bytes, 1);             // listsize
@@ -163,7 +204,7 @@ void test_level_data_load_version2_invalid_family_fails_object_creation()
         append_u8(bytes, 0);          // reserved
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_2(rw, &data);
+    short ok = load_version_2(rw, &data, &data_meta);
     // Some loaders tolerate unknown family values by clamping/defaulting, so
     // this isn't guaranteed to fail. We mainly want to ensure it doesn't crash.
     TEST_ASSERT_EQ(1, (int)ok, "load_version_2 should not crash on unknown family values");
@@ -172,31 +213,43 @@ REGISTER_TEST(test_level_data_load_version2_invalid_family_fails_object_creation
 
 void test_level_data_load_version2_rejects_invalid_object_count()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 5000); // > MAX_SCENARIO_OBJECTS
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_2(rw, &data);
+    short ok = load_version_2(rw, &data, &data_meta);
     TEST_ASSERT_EQ(0, (int)ok, "load_version_2 should reject invalid list size");
 }
 REGISTER_TEST(test_level_data_load_version2_rejects_invalid_object_count);
 
 void test_level_data_load_version3_rejects_invalid_object_count()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 5000); // > MAX_SCENARIO_OBJECTS
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_3(rw, &data);
+    short ok = load_version_3(rw, &data, &data_meta);
     TEST_ASSERT_EQ(0, (int)ok, "load_version_3 should reject invalid list size");
 }
 REGISTER_TEST(test_level_data_load_version3_rejects_invalid_object_count);
 
 void test_level_data_load_version3_treasure_adds_at_start_success()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 1); // listsize
@@ -213,7 +266,7 @@ void test_level_data_load_version3_treasure_adds_at_start_success()
     append_u8(bytes, 0);     // numlines
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_3(rw, &data);
+    short ok = load_version_3(rw, &data, &data_meta);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_3 should succeed with treasure object");
     TEST_ASSERT(!data.oblist.empty(), "v3 treasure path should still create an object");
 }
@@ -221,7 +274,11 @@ REGISTER_TEST(test_level_data_load_version3_treasure_adds_at_start_success);
 
 void test_level_data_load_version3_truncated_object_payload_fails()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 1); // listsize
@@ -229,14 +286,18 @@ void test_level_data_load_version3_truncated_object_payload_fails()
     // Truncate the rest of the object fields to force a read failure.
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_3(rw, &data);
+    short ok = load_version_3(rw, &data, &data_meta);
     TEST_ASSERT_EQ(0, (int)ok, "load_version_3 should fail on truncated object payload");
 }
 REGISTER_TEST(test_level_data_load_version3_truncated_object_payload_fails);
 
 void test_level_data_load_version3_zero_lines_minimal_success()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 1); // listsize
@@ -253,14 +314,18 @@ void test_level_data_load_version3_zero_lines_minimal_success()
     append_u8(bytes, 0);     // numlines
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_3(rw, &data);
+    short ok = load_version_3(rw, &data, &data_meta);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_3 should succeed with zero description lines");
 }
 REGISTER_TEST(test_level_data_load_version3_zero_lines_minimal_success);
 
 void test_level_data_load_version3_truncates_long_description_line_and_discards_remaining_bytes()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 0); // listsize
@@ -270,15 +335,19 @@ void test_level_data_load_version3_truncates_long_description_line_and_discards_
         append_u8(bytes, 'x');
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_3(rw, &data);
+    short ok = load_version_3(rw, &data, &data_meta);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_3 should succeed with truncated description line");
-    TEST_ASSERT(!data.description.empty(), "description should contain at least one line");
+    TEST_ASSERT(!data_meta.description.empty(), "description should contain at least one line");
 }
 REGISTER_TEST(test_level_data_load_version3_truncates_long_description_line_and_discards_remaining_bytes);
 
 void test_level_data_load_version4_truncates_long_description_line()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 0); // listsize
@@ -288,28 +357,36 @@ void test_level_data_load_version4_truncates_long_description_line()
         append_u8(bytes, 'x');
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_4(rw, &data);
+    short ok = load_version_4(rw, &data, &data_meta);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_4 should succeed with truncated description line");
-    TEST_ASSERT(!data.description.empty(), "description should contain at least one line");
+    TEST_ASSERT(!data_meta.description.empty(), "description should contain at least one line");
 }
 REGISTER_TEST(test_level_data_load_version4_truncates_long_description_line);
 
 void test_level_data_load_version5_rejects_invalid_object_count()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_u8(bytes, 2);     // scenario type
     append_i16(bytes, 5000); // > MAX_SCENARIO_OBJECTS
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_5(rw, &data);
+    short ok = load_version_5(rw, &data, &data_meta);
     TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should reject invalid list size");
 }
 REGISTER_TEST(test_level_data_load_version5_rejects_invalid_object_count);
 
 void test_level_data_load_version5_success_with_treasure_weapon_and_truncated_text()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_u8(bytes, 3); // scenario type
@@ -355,30 +432,38 @@ void test_level_data_load_version5_success_with_treasure_weapon_and_truncated_te
         append_u8(bytes, 'q');
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_5(rw, &data);
+    short ok = load_version_5(rw, &data, &data_meta);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_5 should succeed on valid buffer");
     TEST_ASSERT_EQ(3, (int)data.type, "load_version_5 should set scenario type");
     TEST_ASSERT(!data.fxlist.empty(), "treasure object should populate fxlist");
     TEST_ASSERT(!data.weaplist.empty(), "weapon object should populate weaplist");
-    TEST_ASSERT(!data.description.empty(), "description line should be read");
+    TEST_ASSERT(!data_meta.description.empty(), "description line should be read");
 }
 REGISTER_TEST(test_level_data_load_version5_success_with_treasure_weapon_and_truncated_text);
 
 void test_level_data_load_version5_truncated_scenario_type_fails()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     // Truncate before scenario type byte.
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_5(rw, &data);
+    short ok = load_version_5(rw, &data, &data_meta);
     TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail when scenario type byte is missing");
 }
 REGISTER_TEST(test_level_data_load_version5_truncated_scenario_type_fails);
 
 void test_level_data_load_version5_truncated_object_payload_fails()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_u8(bytes, 1);  // scenario type
@@ -387,28 +472,36 @@ void test_level_data_load_version5_truncated_object_payload_fails()
     append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
     // Truncated before full object payload is available.
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_5(rw, &data);
+    short ok = load_version_5(rw, &data, &data_meta);
     TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail on truncated object payload");
 }
 REGISTER_TEST(test_level_data_load_version5_truncated_object_payload_fails);
 
 void test_level_data_load_version5_missing_numlines_fails()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_u8(bytes, 1);  // scenario type
     append_i16(bytes, 0); // listsize
     // Truncate before numlines byte.
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_5(rw, &data);
+    short ok = load_version_5(rw, &data, &data_meta);
     TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail when numlines byte is missing");
 }
 REGISTER_TEST(test_level_data_load_version5_missing_numlines_fails);
 
 void test_level_data_load_version5_truncated_discard_tail_fails()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_u8(bytes, 1);  // scenario type
@@ -419,7 +512,7 @@ void test_level_data_load_version5_truncated_discard_tail_fails()
         append_u8(bytes, 'z'); // fewer bytes than required after truncation
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_5(rw, &data);
+    short ok = load_version_5(rw, &data, &data_meta);
     TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail when long-line discard bytes are truncated");
 }
 REGISTER_TEST(test_level_data_load_version5_truncated_discard_tail_fails);
@@ -427,50 +520,78 @@ REGISTER_TEST(test_level_data_load_version5_truncated_discard_tail_fails);
 void test_level_data_load_versions_2_3_4_missing_grid_or_count_fail()
 {
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes; // missing grid bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_2(rw, &data), "v2 should fail when grid field is missing");
+        TEST_ASSERT_EQ(0, (int)load_version_2(rw, &data, &data_meta), "v2 should fail when grid field is missing");
     }
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid"); // missing listsize bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_2(rw, &data), "v2 should fail when object count field is missing");
+        TEST_ASSERT_EQ(0, (int)load_version_2(rw, &data, &data_meta), "v2 should fail when object count field is missing");
     }
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes; // missing grid bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_3(rw, &data), "v3 should fail when grid field is missing");
+        TEST_ASSERT_EQ(0, (int)load_version_3(rw, &data, &data_meta), "v3 should fail when grid field is missing");
     }
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid"); // missing listsize bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_3(rw, &data), "v3 should fail when object count field is missing");
+        TEST_ASSERT_EQ(0, (int)load_version_3(rw, &data, &data_meta), "v3 should fail when object count field is missing");
     }
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes; // missing grid bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when grid field is missing");
+        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data, &data_meta), "v4 should fail when grid field is missing");
     }
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid"); // missing listsize bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when object count field is missing");
+        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data, &data_meta), "v4 should fail when object count field is missing");
     }
 }
 REGISTER_TEST(test_level_data_load_versions_2_3_4_missing_grid_or_count_fail);
 
 void test_level_data_load_version4_truncated_discard_tail_fails()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 0); // listsize
@@ -480,14 +601,18 @@ void test_level_data_load_version4_truncated_discard_tail_fails()
         append_u8(bytes, 'w'); // intentionally short payload for discard loop
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    short ok = load_version_4(rw, &data);
+    short ok = load_version_4(rw, &data, &data_meta);
     TEST_ASSERT_EQ(0, (int)ok, "load_version_4 should fail when long-line discard bytes are truncated");
 }
 REGISTER_TEST(test_level_data_load_version4_truncated_discard_tail_fails);
 
 void test_level_data_load_version4_truncated_numlines_or_width_fails()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
 
     // Missing numlines byte after one object should fail at numlines read.
     {
@@ -508,7 +633,7 @@ void test_level_data_load_version4_truncated_numlines_or_width_fails()
             append_u8(bytes, 0);
 
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when numlines byte is missing");
+        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data, &data_meta), "v4 should fail when numlines byte is missing");
     }
 
     // numlines present but first line width byte missing should fail in line loop.
@@ -532,7 +657,7 @@ void test_level_data_load_version4_truncated_numlines_or_width_fails()
         // width byte intentionally omitted
 
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when description width byte is missing");
+        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data, &data_meta), "v4 should fail when description width byte is missing");
     }
 }
 REGISTER_TEST(test_level_data_load_version4_truncated_numlines_or_width_fails);
@@ -540,7 +665,11 @@ REGISTER_TEST(test_level_data_load_version4_truncated_numlines_or_width_fails);
 void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
 {
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_i16(bytes, 1);
@@ -554,12 +683,16 @@ void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
         for (int i = 0; i < 11; i++)
             append_u8(bytes, 0);
         MemoryOgFile rw(bytes.data(), bytes.size());
-        const short ok = load_version_2(rw, &data);
+        const short ok = load_version_2(rw, &data, &data_meta);
         // Legacy v2 behavior can differ based on loader state; ensure stability/no crash.
         TEST_ASSERT(ok == 0 || ok == 1, "v2 unknown-order input should not crash loader");
     }
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_i16(bytes, 1);
@@ -575,11 +708,15 @@ void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
             append_u8(bytes, 0);
         append_u8(bytes, 0); // numlines
         MemoryOgFile rw(bytes.data(), bytes.size());
-        const short ok = load_version_3(rw, &data);
+        const short ok = load_version_3(rw, &data, &data_meta);
         TEST_ASSERT(ok == 0 || ok == 1, "v3 unknown-order input should not crash loader");
     }
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_i16(bytes, 1);
@@ -597,11 +734,15 @@ void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
             append_u8(bytes, 0); // reserved
         append_u8(bytes, 0); // numlines
         MemoryOgFile rw(bytes.data(), bytes.size());
-        const short ok = load_version_4(rw, &data);
+        const short ok = load_version_4(rw, &data, &data_meta);
         TEST_ASSERT(ok == 0 || ok == 1, "v4 unknown-order input should not crash loader");
     }
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_u8(bytes, 1); // scenario type
@@ -620,7 +761,7 @@ void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
             append_u8(bytes, 0); // reserved
         append_u8(bytes, 0); // numlines
         MemoryOgFile rw(bytes.data(), bytes.size());
-        const short ok = load_version_5(rw, &data);
+        const short ok = load_version_5(rw, &data, &data_meta);
         TEST_ASSERT(ok == 0 || ok == 1, "v5 unknown-order input should not crash loader");
     }
 }
@@ -630,12 +771,16 @@ void test_level_data_load_scenario_version_dispatcher_guards()
 {
     std::vector<uint8_t> bytes;
     MemoryOgFile rw(bytes.data(), bytes.size());
-    const short null_result = load_scenario_version(rw, nullptr, 2);
+    const short null_result = load_scenario_version(rw, nullptr, nullptr, 2);
     TEST_ASSERT_EQ(0, (int)null_result, "dispatcher should reject null data pointer");
 
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     MemoryOgFile rw2(bytes.data(), bytes.size());
-    const short old_version_result = load_scenario_version(rw2, &data, 1);
+    const short old_version_result = load_scenario_version(rw2, &data, &data_meta, 1);
     TEST_ASSERT_EQ(0, (int)old_version_result, "dispatcher should reject unsupported old version");
 }
 REGISTER_TEST(test_level_data_load_scenario_version_dispatcher_guards);
@@ -663,7 +808,11 @@ static void append_v6_object_record(std::vector<uint8_t>& out, uint8_t order, ui
 void test_level_data_load_version6plus_invalid_counts_and_object_fail_paths()
 {
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_bytes(bytes, "title", 5);
@@ -674,11 +823,15 @@ void test_level_data_load_version6plus_invalid_counts_and_object_fail_paths()
         append_i16(bytes, 100); // time limit (v9+ path)
         append_i16(bytes, 5000); // invalid list size
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_6(rw, &data, 9), "v9 loader should reject invalid object count");
+        TEST_ASSERT_EQ(0, (int)load_version_6(rw, &data, &data_meta, 9), "v9 loader should reject invalid object count");
     }
 
     {
-        LevelData data(1);
+        og::gameplay::GameWorld data;
+        data.id = 1;
+        data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+        og::data::LevelFileMetadata data_meta;
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_bytes(bytes, "title", 5);
@@ -691,7 +844,7 @@ void test_level_data_load_version6plus_invalid_counts_and_object_fail_paths()
         append_v6_object_record(bytes, 255, static_cast<uint8_t>(FAMILY_SOLDIER), 64, 64, 0, 0, 0, 3, "BadOrder");
         append_u8(bytes, 0); // num lines
         MemoryOgFile rw(bytes.data(), bytes.size());
-        const short ok = load_version_6(rw, &data, 9);
+        const short ok = load_version_6(rw, &data, &data_meta, 9);
         TEST_ASSERT(ok == 0 || ok == 1, "v9 loader unknown order should not crash");
     }
 }
@@ -699,7 +852,11 @@ REGISTER_TEST(test_level_data_load_version6plus_invalid_counts_and_object_fail_p
 
 void test_level_data_load_version6plus_truncated_description_discard_path()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_bytes(bytes, "title", 5);
@@ -715,7 +872,7 @@ void test_level_data_load_version6plus_truncated_description_discard_path()
         append_u8(bytes, 'q'); // intentionally short to force discard read failure
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    const short loaded = load_version_6(rw, &data, 9);
+    const short loaded = load_version_6(rw, &data, &data_meta, 9);
     TEST_ASSERT_EQ(0, (int)loaded,
                    "v9 loader should fail when long description discard tail is truncated");
 }
@@ -735,15 +892,19 @@ void test_level_data_load_version6plus_named_objects_treasure_route_and_door_fix
         if (!f)
             return;
         const unsigned char header[] = {1, 4, 4}; // frames,w,h
-        unsigned char data[16];
-        for (unsigned char& b : data) b = PIX_GRASS1;
-        data[2 + 4 * 1] = PIX_H_WALL1;
+        unsigned char pixdata[16];
+        for (unsigned char& b : pixdata) b = PIX_GRASS1;
+        pixdata[2 + 4 * 1] = PIX_H_WALL1;
         std::fwrite(header, 1, sizeof(header), f);
-        std::fwrite(data, 1, sizeof(data), f);
+        std::fwrite(pixdata, 1, sizeof(pixdata), f);
         std::fclose(f);
     }
 
-    LevelData data(7777);
+    og::gameplay::GameWorld data;
+    data.id = 7777;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid"); // -> grid.pix
     {
@@ -771,7 +932,7 @@ void test_level_data_load_version6plus_named_objects_treasure_route_and_door_fix
         append_u8(bytes, 'n');
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    TEST_ASSERT_EQ(1, (int)load_version_6(rw, &data, 9),
+    TEST_ASSERT_EQ(1, (int)load_version_6(rw, &data, &data_meta, 9),
                    "v9 loader should parse treasure/door objects and long description");
     TEST_ASSERT(!data.fxlist.empty(), "treasure object should be routed into fxlist");
     TEST_ASSERT(!data.weaplist.empty(), "door object should be routed into weaplist");
@@ -798,12 +959,16 @@ REGISTER_TEST(test_level_data_load_version6plus_named_objects_treasure_route_and
 void test_level_data_load_scenario_dispatch_case2_path()
 {
     // Minimal v2 payload through dispatcher (case 2 branch).
-    LevelData data(8888);
+    og::gameplay::GameWorld data;
+    data.id = 8888;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 0); // listsize
     MemoryOgFile rw(bytes.data(), bytes.size());
-    const short result = load_scenario_version(rw, &data, 2);
+    const short result = load_scenario_version(rw, &data, &data_meta, 2);
     TEST_ASSERT(result == 0 || result == 1, "dispatch case 2 should execute without crashing");
 }
 REGISTER_TEST(test_level_data_load_scenario_dispatch_case2_path);

@@ -1,6 +1,14 @@
-#include <openglad/data/level_data.h>
-#include <openglad/data/level_data_hooks.h>
+#include <openglad/data/campaign_data.h>
+#include <openglad/data/level_file_io.h>
+#include <openglad/data/level_render.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/interface/level_visuals.h>
+#include <openglad/entities/effect.h>
+#include <openglad/entities/living.h>
+#include <openglad/entities/obmap.h>
+#include <openglad/entities/treasure.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/weap.h>
 #include <openglad/core/stats.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/sim/sim_event_log.h>
@@ -17,8 +25,27 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
-short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
+short load_scenario_version(og::io::OgFile& infile, og::gameplay::GameWorld* world, og::data::LevelFileMetadata* metadata, short version);
 bool save_grid_file(const char* gridname, const PixieData& grid);
+
+// Minimal entity factory for standalone GameWorld tests (no loader/graphics needed).
+static void wire_test_entity_factory(og::gameplay::GameWorld& w)
+{
+    w.entity_factory = [](Order order, int family) -> std::unique_ptr<walker> {
+        std::unique_ptr<walker> ob;
+        switch (order) {
+            case Order::Living:  ob = std::make_unique<living>(); break;
+            case Order::Weapon:  ob = std::make_unique<weap>(); break;
+            case Order::Treasure: ob = std::make_unique<treasure>(); break;
+            case Order::FX:      ob = std::make_unique<effect>(); break;
+            default:             ob = std::make_unique<walker>(); break;
+        }
+        ob->set_order_family(order, static_cast<char>(family));
+        PixieData stub(8, 1, 1, nullptr); // 8 frames so set_frame() works
+        ob->set_data(stub);
+        return ob;
+    };
+}
 
 namespace {
 
@@ -167,19 +194,31 @@ void test_level_data_load_error_codes_and_scenario_title_paths()
     titled.insert(titled.end(), title, title + 30);
     TEST_ASSERT(write_bytes(fs::path("scen") / std::format("scen{}.fss", id_title), titled), "write title scenario");
 
-    LevelData parse_fail(id_parse);
-    TEST_ASSERT_EQ((int)LevelData::IoError::ParseFailed, (int)parse_fail.load_with_error(), "truncated file should parse-fail");
+    {
+        og::gameplay::GameWorld w; w.id = id_parse; w.myobmap = std::make_unique<obmap>();
+        LevelVisuals vis; og::data::LevelFileMetadata m; og::data::LevelFileIoError err;
+        og::data::load_level(std::format("scen{}.fss", id_parse), w, vis, m, &err);
+        TEST_ASSERT_EQ((int)og::data::LevelFileIoError::ParseFailed, (int)err, "truncated file should parse-fail");
+    }
 
-    LevelData bad_header(id_bad);
-    TEST_ASSERT_EQ((int)LevelData::IoError::InvalidHeader, (int)bad_header.load_with_error(), "bad header should fail");
+    {
+        og::gameplay::GameWorld w; w.id = id_bad; w.myobmap = std::make_unique<obmap>();
+        LevelVisuals vis; og::data::LevelFileMetadata m; og::data::LevelFileIoError err;
+        og::data::load_level(std::format("scen{}.fss", id_bad), w, vis, m, &err);
+        TEST_ASSERT_EQ((int)og::data::LevelFileIoError::InvalidHeader, (int)err, "bad header should fail");
+    }
 
-    LevelData unsupported(id_ver);
-    TEST_ASSERT_EQ((int)LevelData::IoError::UnsupportedVersion, (int)unsupported.load_with_error(), "unsupported version should fail");
+    {
+        og::gameplay::GameWorld w; w.id = id_ver; w.myobmap = std::make_unique<obmap>();
+        LevelVisuals vis; og::data::LevelFileMetadata m; og::data::LevelFileIoError err;
+        og::data::load_level(std::format("scen{}.fss", id_ver), w, vis, m, &err);
+        TEST_ASSERT_EQ((int)og::data::LevelFileIoError::UnsupportedVersion, (int)err, "unsupported version should fail");
+    }
 
-    TEST_ASSERT(get_scenario_title(nullptr) == "none", "null scenario title request should return none");
-    TEST_ASSERT(get_scenario_title("does_not_exist") == "none", "missing scenario title should return none");
-    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_bad).c_str()) == "none", "invalid header title should return none");
-    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_title).c_str()) == "Coverage Title", "version 6 title should be readable");
+    TEST_ASSERT(og::data::load_scenario_title(nullptr) == "none", "null scenario title request should return none");
+    TEST_ASSERT(og::data::load_scenario_title("does_not_exist") == "none", "missing scenario title should return none");
+    TEST_ASSERT(og::data::load_scenario_title(std::format("scen{}", id_bad).c_str()) == "none", "invalid header title should return none");
+    TEST_ASSERT(og::data::load_scenario_title(std::format("scen{}", id_title).c_str()) == "Coverage Title", "version 6 title should be readable");
 }
 REGISTER_TEST(test_level_data_load_error_codes_and_scenario_title_paths);
 
@@ -187,10 +226,13 @@ void test_level_data_load_version_dispatch_and_grid_save_paths()
 {
     unsigned char dummy = 0;
     MemoryOgFile mem(&dummy, 0);
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    og::data::LevelFileMetadata data_meta;
 
-    TEST_ASSERT_EQ(0, (int)load_scenario_version(mem, nullptr, 6), "null level pointer should fail");
-    TEST_ASSERT_EQ(0, (int)load_scenario_version(mem, &data, 42), "unsupported loader version should fail");
+    TEST_ASSERT_EQ(0, (int)load_scenario_version(mem, nullptr, nullptr, 6), "null level pointer should fail");
+    TEST_ASSERT_EQ(0, (int)load_scenario_version(mem, &data, &data_meta, 42), "unsupported loader version should fail");
 
     std::filesystem::create_directories("temp/pix");
     PixieData pix(1, 1, 1, new unsigned char[1]{7});
@@ -229,8 +271,12 @@ void test_level_data_load_clamps_invalid_team_ids_to_score_range()
         bytes.push_back(0);
 
     MemoryOgFile mem(bytes.data(), bytes.size());
-    LevelData data(9991);
-    TEST_ASSERT_EQ(1, (int)load_scenario_version(mem, &data, 2), "version 2 loader should succeed");
+    og::gameplay::GameWorld data;
+    data.id = 9991;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
+    TEST_ASSERT_EQ(1, (int)load_scenario_version(mem, &data, &data_meta, 2), "version 2 loader should succeed");
     TEST_ASSERT(!data.oblist.empty(), "loader should create one object");
     walker* loaded = data.oblist.empty() ? nullptr : data.oblist.front().get();
     TEST_ASSERT(loaded != nullptr, "loaded walker should exist");
@@ -297,7 +343,9 @@ void test_level_data_set_sim_context_wires_pointers()
     FixedRandom rng(1);
     cfg_store cfg_local;
 
-    LevelData d(42);
+    og::gameplay::GameWorld d;
+    d.myobmap = std::make_unique<obmap>();
+    d.id = 42;
     d.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg_local);
     TEST_ASSERT(true, "set_sim_context should accept valid pointer set");
 }
@@ -310,19 +358,16 @@ void test_level_data_round8_ctor_hook_wiring_and_remove_paths()
     wired_count = 0;
     render_count = 0;
 
-    LevelDataHooks hooks;
-    hooks.wire_entity_from_screen = [](walker*) { wired_count++; };
-    hooks.create_level_render = [](PixieData[]) -> std::unique_ptr<LevelRender> {
-        render_count++;
-        return nullptr;
-    };
-
+    // Test add_ob/add_fx_ob/add_weap_ob/remove_ob on standalone GameWorld.
     {
-        LevelData d(17001, false, &hooks);
+        og::gameplay::GameWorld d;
+        d.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(d);
+        d.id = 17001;
         walker* living = d.add_ob(Order::Living, FAMILY_SOLDIER);
         walker* fx = d.add_fx_ob(Order::FX, FAMILY_FLASH);
         walker* weapon = d.add_weap_ob(Order::Weapon, FAMILY_ARROW);
-        TEST_ASSERT(living && fx && weapon, "hooked level should create walkers");
+        TEST_ASSERT(living && fx && weapon, "standalone GameWorld should create walkers");
         if (!(living && fx && weapon))
             return;
 
@@ -331,24 +376,28 @@ void test_level_data_round8_ctor_hook_wiring_and_remove_paths()
         TEST_ASSERT_EQ(1, (int)d.remove_ob(living), "remove_ob should erase from oblist");
     }
 
-    // Delegating constructor path LevelData(int, const LevelDataHooks*).
+    // Second GameWorld construction path.
     {
-        LevelData d(17002, &hooks);
+        og::gameplay::GameWorld d;
+        d.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(d);
+        d.id = 17002;
         walker* living = d.add_ob(Order::Living, FAMILY_ARCHER);
-        TEST_ASSERT(living != nullptr, "delegating hooks ctor should create living walkers");
+        TEST_ASSERT(living != nullptr, "second GameWorld should create living walkers");
     }
 
-    // Headless constructor should not invoke create_level_render.
-    const int render_before_headless = render_count;
+    // Third GameWorld construction path.
     {
-        LevelData d(17003, true, &hooks);
+        og::gameplay::GameWorld d;
+        d.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(d);
+        d.id = 17003;
         walker* living = d.add_ob(Order::Living, FAMILY_SOLDIER);
-        TEST_ASSERT(living != nullptr, "headless hooks ctor should still create walkers");
+        TEST_ASSERT(living != nullptr, "third GameWorld should still create walkers");
     }
 
-    TEST_ASSERT_EQ(0, render_count, "LevelData no longer owns render creation");
-    TEST_ASSERT_EQ(render_before_headless, render_count, "headless ctor should skip create_level_render hook");
-    TEST_ASSERT_EQ(0, wired_count, "wire_entity_from_screen should not run in phase-04");
+    TEST_ASSERT_EQ(0, render_count, "GameWorld does not own render creation");
+    TEST_ASSERT_EQ(0, wired_count, "wire_entity_from_screen should not run on standalone GameWorld");
 }
 REGISTER_TEST(test_level_data_round8_ctor_hook_wiring_and_remove_paths);
 
@@ -706,11 +755,13 @@ REGISTER_TEST(test_level_data_round5_find_helpers_contiguous_block_paths);
 
 void test_level_data_round7a_constructor_overloads_and_remove_paths()
 {
-    LevelData a(11);
-    LevelData b(12, static_cast<const LevelDataHooks*>(nullptr));
-    LevelData c(13, true);
-    LevelData d(14, true, static_cast<const LevelDataHooks*>(nullptr));
-    TEST_ASSERT(true, "constructor overloads executed");
+    {
+        og::gameplay::GameWorld a; a.myobmap = std::make_unique<obmap>(); a.id = 11;
+        og::gameplay::GameWorld b; b.myobmap = std::make_unique<obmap>(); b.id = 12;
+        og::gameplay::GameWorld c; c.myobmap = std::make_unique<obmap>(); c.id = 13;
+        og::gameplay::GameWorld d; d.myobmap = std::make_unique<obmap>(); d.id = 14;
+        TEST_ASSERT(true, "GameWorld constructions executed");
+    }
 
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -740,14 +791,14 @@ void test_level_data_round7a_title_reader_and_error_wrappers()
     const int id_short = 9401;
     TEST_ASSERT(write_bytes(fs::path("scen") / std::format("scen{}.fss", id_short), {'F', 'S', 'S', 6}),
                 "write short title file");
-    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_short).c_str()) == "none",
+    TEST_ASSERT(og::data::load_scenario_title(std::format("scen{}", id_short).c_str()) == "none",
                 "title reader should fail on short grid/title payload");
 
     // Header ok but version too old.
     const int id_old = 9402;
     TEST_ASSERT(write_bytes(fs::path("scen") / std::format("scen{}.fss", id_old), {'F', 'S', 'S', 5}),
                 "write old-version title file");
-    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_old).c_str()) == "none",
+    TEST_ASSERT(og::data::load_scenario_title(std::format("scen{}", id_old).c_str()) == "none",
                 "title reader should reject versions < 6");
 
     // save_with_error wrapper.
@@ -779,13 +830,17 @@ private:
 
 void test_level_data_round6_version6plus_and_title_read_paths()
 {
-    LevelData data(1);
+    og::gameplay::GameWorld data;
+    data.id = 1;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
 
     // v9: truncate before time-limit field to hit version>=9 READ_OR_RETURN failure.
     {
         std::vector<unsigned char> bytes(8 + 30 + 1 + 2, 0);
         MemoryOgFile f(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, 9), "v9 should fail when time-limit field is missing");
+        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, &data_meta, 9), "v9 should fail when time-limit field is missing");
     }
 
     // v6: invalid object count (> MAX_SCENARIO_OBJECTS).
@@ -794,7 +849,7 @@ void test_level_data_round6_version6plus_and_title_read_paths()
         short bad_count = 5000;
         std::memcpy(bytes.data() + 8 + 30 + 1, &bad_count, sizeof(bad_count));
         MemoryOgFile f(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, 6), "v6 should reject invalid object count");
+        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, &data_meta, 6), "v6 should reject invalid object count");
     }
 
     // v8: long description line exercises discard loop in load_version_6.
@@ -804,7 +859,7 @@ void test_level_data_round6_version6plus_and_title_read_paths()
         bytes.back() = 120;
         bytes.insert(bytes.end(), 120, 'x');
         MemoryOgFile f(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, 8), "v8 should accept long description line with discard");
+        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, &data_meta, 8), "v8 should accept long description line with discard");
     }
 
     namespace fs = std::filesystem;
@@ -823,11 +878,11 @@ void test_level_data_round6_version6plus_and_title_read_paths()
     with_grid.insert(with_grid.end(), grid8, grid8 + 8);
     TEST_ASSERT(write_bytes(p3, with_grid), "write title-read-fail title file");
 
-    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_ver_read_fail).c_str()) == "none",
+    TEST_ASSERT(og::data::load_scenario_title(std::format("scen{}", id_ver_read_fail).c_str()) == "none",
                 "title read should return none when version byte read fails");
-    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_grid_read_fail).c_str()) == "none",
+    TEST_ASSERT(og::data::load_scenario_title(std::format("scen{}", id_grid_read_fail).c_str()) == "none",
                 "title read should return none when grid bytes are missing");
-    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_title_read_fail).c_str()) == "none",
+    TEST_ASSERT(og::data::load_scenario_title(std::format("scen{}", id_title_read_fail).c_str()) == "none",
                 "title read should return none when title bytes are missing");
 }
 REGISTER_TEST(test_level_data_round6_version6plus_and_title_read_paths);
@@ -921,11 +976,13 @@ REGISTER_TEST(test_level_data_round6_passable_wall4_and_water_weapon_paths);
 
 void test_level_data_round6_wrapper_and_passability_edges()
 {
-    // load_with_error wrapper should surface open-read failure.
+    // load_level should surface open-read failure.
     {
-        LevelData missing(9898);
-        TEST_ASSERT_EQ((int)LevelData::IoError::OpenReadFailed, (int)missing.load_with_error(),
-                       "load_with_error should report open-read failure for missing scenario");
+        og::gameplay::GameWorld w; w.id = 9898; w.myobmap = std::make_unique<obmap>();
+        LevelVisuals vis; og::data::LevelFileMetadata m; og::data::LevelFileIoError err;
+        og::data::load_level("scen9898.fss", w, vis, m, &err);
+        TEST_ASSERT_EQ((int)og::data::LevelFileIoError::OpenReadFailed, (int)err,
+                       "load_level should report open-read failure for missing scenario");
     }
 
     og::runtime::current_session->myscreen_->world().create_new_grid();
@@ -1011,7 +1068,11 @@ void test_level_data_round6_load_version3_4_5_minimal_and_treasure_paths()
         bytes.insert(bytes.end(), 10, 0);                // reserved
     };
 
-    LevelData data(5501);
+    og::gameplay::GameWorld data;
+    data.id = 5501;
+    data.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(data);
+    og::data::LevelFileMetadata data_meta;
 
     // Version 3: minimal valid payload + treasure object branch + width==0 branch.
     {
@@ -1021,7 +1082,7 @@ void test_level_data_round6_load_version3_4_5_minimal_and_treasure_paths()
         bytes.push_back(1);                              // numlines
         bytes.push_back(0);                              // width -> oneline[0] branch
         MemoryOgFile f(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, 3), "version 3 should load treasure+zero-width path");
+        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, &data_meta, 3), "version 3 should load treasure+zero-width path");
     }
 
     // Version 4: minimal valid payload + treasure object branch + width==0 branch.
@@ -1032,7 +1093,7 @@ void test_level_data_round6_load_version3_4_5_minimal_and_treasure_paths()
         bytes.push_back(1);                              // numlines
         bytes.push_back(0);                              // width
         MemoryOgFile f(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, 4), "version 4 should load treasure+zero-width path");
+        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, &data_meta, 4), "version 4 should load treasure+zero-width path");
     }
 
     // Version 5: includes scenario type byte.
@@ -1044,24 +1105,24 @@ void test_level_data_round6_load_version3_4_5_minimal_and_treasure_paths()
         bytes.push_back(1);                              // numlines
         bytes.push_back(0);                              // width
         MemoryOgFile f(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, 5), "version 5 should load treasure+zero-width path");
+        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, &data_meta, 5), "version 5 should load treasure+zero-width path");
     }
 
     // Truncated payloads should fail early read guards in each version parser.
     {
         unsigned char one = 0;
         MemoryOgFile f(&one, 1);
-        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, 3), "version 3 should fail on truncated grid read");
+        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, &data_meta, 3), "version 3 should fail on truncated grid read");
     }
     {
         unsigned char one = 0;
         MemoryOgFile f(&one, 1);
-        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, 4), "version 4 should fail on truncated grid read");
+        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, &data_meta, 4), "version 4 should fail on truncated grid read");
     }
     {
         unsigned char one = 0;
         MemoryOgFile f(&one, 1);
-        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, 5), "version 5 should fail on truncated grid read");
+        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, &data_meta, 5), "version 5 should fail on truncated grid read");
     }
 }
 REGISTER_TEST(test_level_data_round6_load_version3_4_5_minimal_and_treasure_paths);
@@ -1164,10 +1225,13 @@ void test_level_data_round11_wrappers_draw_and_query_grid_entry_paths()
     const auto save_err = og::runtime::current_session->myscreen_->last_level_io_error_;
     TEST_ASSERT((int)save_err >= (int)og::data::LevelFileIoError::None, "save_level wrapper should execute");
 
-    LevelData missing(9876);
-    const auto load_err = missing.load_with_error();
-    TEST_ASSERT_EQ((int)LevelData::IoError::OpenReadFailed, (int)load_err,
-                   "load_with_error should report open-read failure for missing scenario");
+    {
+        og::gameplay::GameWorld w; w.id = 9876; w.myobmap = std::make_unique<obmap>();
+        LevelVisuals vis; og::data::LevelFileMetadata m; og::data::LevelFileIoError load_err;
+        og::data::load_level("scen9876.fss", w, vis, m, &load_err);
+        TEST_ASSERT_EQ((int)og::data::LevelFileIoError::OpenReadFailed, (int)load_err,
+                       "load_level should report open-read failure for missing scenario");
+    }
 
     // draw_level_data(nullptr) should hit early-return guard safely.
     og::runtime::current_session->myscreen_->draw_level_data(nullptr);
@@ -1543,18 +1607,28 @@ void test_level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hoo
                 og::runtime::current_session->myscreen_->world().grid.data[tail_idx] <= PIX_GRASS4,
                 "resize should seed newly grown cells with grass variants");
 
-    // delete_objects hook + stale-obmap clearing.
-    LevelDataHooks hooks;
-    hooks.clear_stale_view_controls = clear_stale_hook;
+    // delete_objects hook + stale-obmap clearing via GameWorld::on_pre_delete_objects.
     g_clear_stale_called = false;
-    LevelData hooked_level(9917, true, &hooks);
+    og::gameplay::GameWorld hooked_level;
+    hooked_level.myobmap = std::make_unique<obmap>();
+    wire_test_entity_factory(hooked_level);
+    hooked_level.id = 9917;
+    hooked_level.on_pre_delete_objects = clear_stale_hook;
     hooked_level.create_new_grid();
+
+    SaveData hooked_save;
+    std::int32_t hooked_freeze = 0;
+    og::sim::SimEventLog hooked_events;
+    FixedRandom hooked_rng{0};
+    cfg_store hooked_cfg;
+    hooked_level.set_sim_context(&hooked_save, &hooked_freeze, &hooked_events, &hooked_rng, &hooked_cfg);
+
     walker* hw = hooked_level.add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(hw != nullptr, "hooked level fixture created");
     if (hw)
         hooked_level.myobmap->walker_to_pos[hw] = {};
     hooked_level.delete_objects();
-    TEST_ASSERT(g_clear_stale_called, "delete_objects should invoke clear_stale_view_controls hook");
+    TEST_ASSERT(g_clear_stale_called, "delete_objects should invoke on_pre_delete_objects callback");
     TEST_ASSERT(hooked_level.myobmap->walker_to_pos.empty(), "delete_objects should clear stale obmap indices");
 }
 REGISTER_TEST(test_level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hooks);

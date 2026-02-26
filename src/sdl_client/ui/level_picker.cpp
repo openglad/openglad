@@ -16,8 +16,12 @@
  */
 
 #include <openglad/ui/level_picker.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/data/level_data_hooks.h>
+#include <openglad/data/level_file_io.h>
+#include <openglad/data/gloader.h>
+#include <openglad/interface/level_visuals.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/render/radar.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
@@ -57,7 +61,7 @@ void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
 
 
-void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, std::list<int>& exits)
+void getLevelStats(og::gameplay::GameWorld& level_data, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, std::list<int>& exits)
 {
     int num = 0;
     int level_sum = 0;
@@ -69,7 +73,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
     exits.clear();
     
     // Go through objects
-		for(auto& uptr : level_data.game_world().oblist)
+		for(auto& uptr : level_data.oblist)
 		{
 		    walker* ob = uptr.get();
 	        switch(ob->query_order())
@@ -94,7 +98,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
 		}
 	
 	// Go through effects
-		for(auto& uptr : level_data.game_world().fxlist)
+		for(auto& uptr : level_data.fxlist)
 		{
 		    walker* ob = uptr.get();
 	        switch(ob->query_order())
@@ -179,8 +183,10 @@ bool sort_scen(const std::string& first, const std::string& second)
 class BrowserEntry
 {
     public:
-    
-    LevelData level_data;
+
+    og::gameplay::GameWorld world;
+    loader ldr;
+    og::data::LevelFileMetadata metadata;
     SDL_Rect mapAreas;
     radar myradar;
     std::string level_name;
@@ -191,47 +197,56 @@ class BrowserEntry
     std::list<int> exits;
     std::string scentext[80];                       // Array to hold scenario information
     char scentextlines;                    // How many lines of text in scenario info
-    
+
     BrowserEntry(screen* screenp, int index, int scen_num);
     ~BrowserEntry();
-    
+
     void updateIndex(int index);
     void draw(screen* screenp);
 };
 
 BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
-	    : level_data(scen_num, false, &sdl_level_data_hooks()), myradar(nullptr, og::runtime::current_session->myscreen_, 0)
+	    : myradar(nullptr, og::runtime::current_session->myscreen_, 0)
 {
 	(void)screenp;
-	    level_data.load();
-    
-    myradar.start(&level_data.game_world());
-    
+	    world.myobmap = std::make_unique<obmap>();
+	    world.id = scen_num;
+	    wire_loader_to_world(world, ldr, false);
+	    const LevelDataHooks& hooks = sdl_level_data_hooks();
+	    if (hooks.clear_stale_view_controls)
+	        world.on_pre_delete_objects = [&hooks](og::gameplay::GameWorld* w) { hooks.clear_stale_view_controls(w); };
+
+	    LevelVisuals dummy_visuals;
+	    std::string thefile = std::format("scen{}.fss", scen_num);
+	    og::data::load_level(thefile, world, dummy_visuals, metadata);
+
+    myradar.start(&world);
+
 
 	    const int w = myradar.xview;
 	    const int h = myradar.yview;
-    
+
     mapAreas.w = w;
     mapAreas.h = h;
     mapAreas.x = 10;
     mapAreas.y = 5 + (53 + 12)*index;
-    
+
 	    myradar.xloc = static_cast<short>(mapAreas.x + mapAreas.w/2 - w/2);
 	    myradar.yloc = static_cast<short>(mapAreas.y + 10);
-    
-    
-    getLevelStats(level_data, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty, exits);
-    
+
+
+    getLevelStats(world, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty, exits);
+
     // Store this level's info
-    level_name = level_data.title;
+    level_name = world.title;
     if(level_name.size() > 20)
     {
         level_name = level_name.substr(0, 20) + "...";
     }
-    
-	    scentextlines = static_cast<char>(std::min<size_t>(level_data.description.size(), 80u));
+
+	    scentextlines = static_cast<char>(std::min<size_t>(metadata.description.size(), 80u));
     int i = 0;
-    for(auto& line : level_data.description)
+    for(auto& line : metadata.description)
     {
         scentext[i] = line;
         i++;
@@ -262,12 +277,12 @@ void BrowserEntry::draw(screen* screenp)
     int h = myradar.yview;
     og::runtime::current_session->myscreen_->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw radar
-    myradar.draw(&level_data.game_world());
-    
+    myradar.draw(&world);
+
     text& loadtext = og::runtime::current_session->myscreen_->text_normal;
     loadtext.write_xy(mapAreas.x, mapAreas.y, level_name.c_str(), DARK_BLUE, 1);
-    
-    std::string buf = std::format("ID: {}", level_data.id);
+
+    std::string buf = std::format("ID: {}", world.id);
     loadtext.write_xy(x + w + 5, y, buf.c_str(), WHITE, 1);
     buf = std::format("Enemies: {}", num_enemies);
     loadtext.write_xy(x + w + 5, y + 8, buf.c_str(), WHITE, 1);

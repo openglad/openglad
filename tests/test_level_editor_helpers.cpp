@@ -1,6 +1,5 @@
 #include <openglad/data/gloader.h>
-#include <openglad/data/level_data.h>
-#include <openglad/data/level_data_hooks.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/entities/walker.h>
 #include <openglad/platform/io.h>
 #include <openglad/legacy/pixdefs.h>
@@ -20,10 +19,10 @@ void set_screen_pos(screen* scr, Sint32 x, Sint32 y);
 char get_random_matching_tile(Sint32 whatback);
 Sint32 check_collide(Sint32 x, Sint32 y, Sint32 xsize, Sint32 ysize,
                      Sint32 x2, Sint32 y2, Sint32 xsize2, Sint32 ysize2);
-walker* some_hit(Sint32 x, Sint32 y, walker* ob, LevelData* data);
+walker* some_hit(Sint32 x, Sint32 y, walker* ob, og::gameplay::GameWorld& world);
 bool create_new_campaign(const std::string& campaign_id);
 bool does_campaign_exist(const std::string& campaign_id);
-bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
+bool are_objects_outside_area(const og::gameplay::GameWorld& world, int x, int y, int w, int h);
 void get_connected_level_exits(int current_level, const std::list<int>& levels, std::set<int>& connected, std::list<std::string>& problems);
 std::string get_editor_family_label(Order order, Sint32 family, char livings[][20], const char* treasures[], const char* weapons[]);
 std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
@@ -142,8 +141,7 @@ static std::unique_ptr<walker> make_living(unsigned char family)
 void test_level_editor_some_hit_checks_all_lists()
 {
     ListsSwap swap;
-    LevelData level_adapter(1, false, static_cast<const LevelDataHooks*>(nullptr),
-                            &og::runtime::current_session->myscreen_->world());
+    og::gameplay::GameWorld& world = og::runtime::current_session->myscreen_->world();
 
     auto probe = make_living(FAMILY_SOLDIER);
     TEST_ASSERT(probe != nullptr, "probe should be created");
@@ -157,7 +155,7 @@ void test_level_editor_some_hit_checks_all_lists()
     target1p->setxy(10, 10);
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(target1));
 
-    walker* hit = some_hit(10, 10, probep, &level_adapter);
+    walker* hit = some_hit(10, 10, probep, world);
     TEST_ASSERT(hit == target1p, "some_hit should find hit in oblist");
     TEST_ASSERT(probep->collide_ob == target1p, "collide_ob should be set");
 
@@ -168,7 +166,7 @@ void test_level_editor_some_hit_checks_all_lists()
     walker* target2p = target2.get();
     target2p->setxy(10, 10);
     og::runtime::current_session->myscreen_->world().fxlist.push_back(std::move(target2));
-    hit = some_hit(10, 10, probep, &level_adapter);
+    hit = some_hit(10, 10, probep, world);
     TEST_ASSERT(hit == target2p, "some_hit should find hit in fxlist");
 
     og::runtime::current_session->myscreen_->world().fxlist.clear();
@@ -178,13 +176,13 @@ void test_level_editor_some_hit_checks_all_lists()
     walker* target3p = target3.get();
     target3p->setxy(10, 10);
     og::runtime::current_session->myscreen_->world().weaplist.push_back(std::move(target3));
-    hit = some_hit(10, 10, probep, &level_adapter);
+    hit = some_hit(10, 10, probep, world);
     TEST_ASSERT(hit == target3p, "some_hit should find hit in weaplist");
 
     og::runtime::current_session->myscreen_->world().weaplist.clear();
 
     // no hit
-    hit = some_hit(1000, 1000, probep, &level_adapter);
+    hit = some_hit(1000, 1000, probep, world);
     TEST_ASSERT(hit == nullptr, "some_hit should return null when no overlap");
     TEST_ASSERT(probep->collide_ob == nullptr, "collide_ob should be cleared on miss");
 }
@@ -214,8 +212,6 @@ void test_level_editor_create_new_campaign_and_detect_exists()
     TEST_ASSERT(!missing_problems.empty(), "missing level should report at least one problem");
 
     // Area bounds checks for inside/outside object detection.
-    LevelData level_adapter(1, false, static_cast<const LevelDataHooks*>(nullptr),
-                            &og::runtime::current_session->myscreen_->world());
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* inside = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     walker* outside = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
@@ -223,10 +219,10 @@ void test_level_editor_create_new_campaign_and_detect_exists()
     if (inside && outside) {
         inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
         outside->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
-        TEST_ASSERT(are_objects_outside_area(&level_adapter, 0, 0, 10, 10),
+        TEST_ASSERT(are_objects_outside_area(og::runtime::current_session->myscreen_->world(), 0, 0, 10, 10),
                     "outside object should be detected");
         outside->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
-        TEST_ASSERT(!are_objects_outside_area(&level_adapter, 0, 0, 10, 10),
+        TEST_ASSERT(!are_objects_outside_area(og::runtime::current_session->myscreen_->world(), 0, 0, 10, 10),
                     "all objects inside area should report false");
 
         loader* l = og::runtime::current_session->myscreen_->myloader.get();
@@ -240,10 +236,10 @@ void test_level_editor_create_new_campaign_and_detect_exists()
             og::runtime::current_session->myscreen_->world().fxlist.push_back(std::move(fx_outside));
             fx_inside_p->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
             fx_outside_p->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
-            TEST_ASSERT(are_objects_outside_area(&level_adapter, 0, 0, 10, 10),
+            TEST_ASSERT(are_objects_outside_area(og::runtime::current_session->myscreen_->world(), 0, 0, 10, 10),
                         "outside fx object should be detected");
             fx_outside_p->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
-            TEST_ASSERT(!are_objects_outside_area(&level_adapter, 0, 0, 10, 10),
+            TEST_ASSERT(!are_objects_outside_area(og::runtime::current_session->myscreen_->world(), 0, 0, 10, 10),
                         "inside fx objects should report false");
         }
 
@@ -257,10 +253,10 @@ void test_level_editor_create_new_campaign_and_detect_exists()
             og::runtime::current_session->myscreen_->world().weaplist.push_back(std::move(weap_outside));
             weap_inside_p->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
             weap_outside_p->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
-            TEST_ASSERT(are_objects_outside_area(&level_adapter, 0, 0, 10, 10),
+            TEST_ASSERT(are_objects_outside_area(og::runtime::current_session->myscreen_->world(), 0, 0, 10, 10),
                         "outside weapon object should be detected");
             weap_outside_p->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
-            TEST_ASSERT(!are_objects_outside_area(&level_adapter, 0, 0, 10, 10),
+            TEST_ASSERT(!are_objects_outside_area(og::runtime::current_session->myscreen_->world(), 0, 0, 10, 10),
                         "inside weapon objects should report false");
         }
     }

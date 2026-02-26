@@ -5,12 +5,12 @@
 #include <openglad/sim/irandom.h>
 #include <openglad/core/constants.h>
 #include "unit/unit.h"
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/gameplay/game_world.h>
 #include <openglad/legacy/base.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
@@ -101,7 +101,7 @@ namespace detail_family_thief_r12 {
 namespace {
 
 struct ThiefR12Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -109,6 +109,8 @@ struct ThiefR12Fixture {
 
     ThiefR12Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
@@ -118,7 +120,7 @@ living* add_living(ThiefR12Fixture& fx, unsigned char team, char family = FAMILY
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -127,7 +129,7 @@ living* add_living(ThiefR12Fixture& fx, unsigned char team, char family = FAMILY
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 

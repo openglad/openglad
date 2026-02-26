@@ -1,4 +1,5 @@
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
@@ -20,7 +21,7 @@ namespace detail_walker_coverage_push {
 namespace {
 
 struct WalkerFixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -28,6 +29,8 @@ struct WalkerFixture {
 
     WalkerFixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -38,7 +41,7 @@ walker* add_living(WalkerFixture& fx, char family, unsigned char team)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -48,7 +51,7 @@ walker* add_living(WalkerFixture& fx, char family, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.game_world().oblist.push_back(std::move(w));
+    fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -100,11 +103,11 @@ OG_UNIT_TEST(test_walker_friendliness_and_distance_paths)
     OG_ASSERT(a->is_friendly_to_team(0));
 
     og::gameplay::GameplayContext ctx;
-    ctx.world = &fx.level.game_world();
+    ctx.world = &fx.level;
     ctx.sim_events = &fx.events;
     og::gameplay::GameplayContext* prev = og::gameplay::current_game;
     og::gameplay::current_game = &ctx;
-    fx.level.game_world().allied_mode = 1;
+    fx.level.allied_mode = 1;
     OG_ASSERT(a->is_friendly(b));
     og::gameplay::current_game = prev;
 }
@@ -137,7 +140,7 @@ namespace detail_walker_r11 {
 namespace {
 
 struct WalkerR11Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -145,6 +148,8 @@ struct WalkerR11Fixture {
 
     WalkerR11Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -155,7 +160,7 @@ walker* add_ob(WalkerR11Fixture& fx, Order o, char family, unsigned char team, s
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    fx.level.wire_entity(w.get());
+
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -166,9 +171,9 @@ walker* add_ob(WalkerR11Fixture& fx, Order o, char family, unsigned char team, s
     w->dead = 0;
     walker* out = w.get();
     if (o == Order::Weapon)
-        fx.level.game_world().weaplist.push_back(std::move(w));
+        fx.level.weaplist.push_back(std::move(w));
     else
-        fx.level.game_world().oblist.push_back(std::move(w));
+        fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -488,7 +493,7 @@ namespace detail_walker_r14 {
 namespace {
 
 struct WalkerR14Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -496,6 +501,8 @@ struct WalkerR14Fixture {
 
     WalkerR14Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
@@ -505,7 +512,7 @@ walker* add_ob(WalkerR14Fixture& fx, Order o, char family, unsigned char team, s
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    fx.level.wire_entity(w.get());
+
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -516,9 +523,9 @@ walker* add_ob(WalkerR14Fixture& fx, Order o, char family, unsigned char team, s
     w->dead = 0;
     walker* out = w.get();
     if (o == Order::Weapon)
-        fx.level.game_world().weaplist.push_back(std::move(w));
+        fx.level.weaplist.push_back(std::move(w));
     else
-        fx.level.game_world().oblist.push_back(std::move(w));
+        fx.level.oblist.push_back(std::move(w));
     return out;
 }
 
@@ -607,7 +614,7 @@ public:
 };
 
 struct WalkerR15Fixture {
-    LevelData level{1, true};
+    og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -615,6 +622,8 @@ struct WalkerR15Fixture {
 
     WalkerR15Fixture()
     {
+        level.myobmap = std::make_unique<obmap>();
+        level.id = 1;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }

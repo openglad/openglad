@@ -26,7 +26,7 @@
 #include <openglad/input/input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/io/og_file.h>
-#include <openglad/data/level_data.h>
+#include <openglad/data/campaign_data.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 #ifdef __EMSCRIPTEN__
