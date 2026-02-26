@@ -65,6 +65,9 @@ void walker::set_direct_frame(short whichframe)
 
 walker::~walker()
 {
+	if (og::gameplay::current_game && og::gameplay::current_game->world)
+		og::gameplay::current_game->world->clear_backlinks_to(this);
+
 	foe = nullptr;
 	leader = nullptr;
 	owner = nullptr;
