@@ -174,11 +174,14 @@ void update_overscan_setting()
 }
 
 #define JOY_DEAD_ZONE 8000
-#define MAX_NUM_JOYSTICKS 10  // Just in case there are joysticks attached that are not useable (e.g. accelerometer)
-SDL_Joystick* joysticks[MAX_NUM_JOYSTICKS];
 
 namespace
 {
+auto& joysticks()
+{
+    return hw().joysticks;
+}
+
 constexpr int kModeFourIndex = 0;
 constexpr int kModeEightIndex = 1;
 constexpr int kNumControlModeKeymaps = 2;
@@ -441,22 +444,19 @@ void init_input()
     reset_default_player_controls();
     og::runtime::current_session->keystates_ = SDL_GetKeyboardState(nullptr);
 
-    // Set up joysticks
-    for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
-    {
-        joysticks[i] = nullptr;
-    }
+    hw().close_joysticks();
 
     int numjoy;
 
-    numjoy = SDL_NumJoysticks();
+    numjoy = std::min(SDL_NumJoysticks(), static_cast<int>(InputHardwareState::kMaxNumJoysticks));
 
     for(int i = 0; i < numjoy; i++)
     {
-        joysticks[i] = SDL_JoystickOpen(i);
-        if(joysticks[i] == nullptr)
+        joysticks()[i] = SDL_JoystickOpen(i);
+        if(joysticks()[i] == nullptr)
             continue;
-        player_joy[i] = JoyData(i);
+        if (i < 4)
+            player_joy[i] = JoyData(i);
     }
 
     SDL_JoystickEventState(SDL_ENABLE);
@@ -974,7 +974,10 @@ JoyData::JoyData()
 JoyData::JoyData(int joy_index)
     : index(-1), numAxes(0), numButtons(0), numHats(0)
 {
-    SDL_Joystick *js = joysticks[joy_index];
+    if (joy_index < 0 || joy_index >= static_cast<int>(InputHardwareState::kMaxNumJoysticks))
+        return;
+
+    SDL_Joystick *js = joysticks()[joy_index];
     if(js == nullptr)
         return;
 
@@ -1125,24 +1128,29 @@ void JoyData::setKeyFromEvent(int key_enum, const SDL_Event& event)
 
 bool JoyData::getState(int key_enum) const
 {
-    if(index < 0)
+    if(index < 0 || index >= static_cast<int>(InputHardwareState::kMaxNumJoysticks))
         return false;
+
+    SDL_Joystick* const js = joysticks()[index];
+    if (!js)
+        return false;
+
     switch(key_type[key_enum])
     {
     case POS_AXIS:
-        return SDL_JoystickGetAxis(joysticks[index], key_index[key_enum]) > JOY_DEAD_ZONE;
+        return SDL_JoystickGetAxis(js, key_index[key_enum]) > JOY_DEAD_ZONE;
     case NEG_AXIS:
-        return SDL_JoystickGetAxis(joysticks[index], key_index[key_enum]) < -JOY_DEAD_ZONE;
+        return SDL_JoystickGetAxis(js, key_index[key_enum]) < -JOY_DEAD_ZONE;
     case BUTTON:
-        return SDL_JoystickGetButton(joysticks[index], key_index[key_enum]);
+        return SDL_JoystickGetButton(js, key_index[key_enum]);
     case HAT_UP:
-        return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_UP);
+        return (SDL_JoystickGetHat(js, key_index[key_enum]) & SDL_HAT_UP);
     case HAT_RIGHT:
-        return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_RIGHT);
+        return (SDL_JoystickGetHat(js, key_index[key_enum]) & SDL_HAT_RIGHT);
     case HAT_DOWN:
-        return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_DOWN);
+        return (SDL_JoystickGetHat(js, key_index[key_enum]) & SDL_HAT_DOWN);
     case HAT_LEFT:
-        return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_LEFT);
+        return (SDL_JoystickGetHat(js, key_index[key_enum]) & SDL_HAT_LEFT);
         // Diagonals are ignored because they are combinations of the cardinals
     case HAT_UP_RIGHT:
     case HAT_DOWN_RIGHT:
@@ -1248,21 +1256,17 @@ bool JoyData::hasButtonSet(int key_enum) const
 
 void resetJoystick(int player_num)
 {
+    hw().close_joysticks();
+
     // FIXME: SDL2 supports hotplugging, so I don't need to restart the joystick subsystem
     // Reset joystick subsystem
     reinit_joystick_subsystem();
 
-    // Set up joysticks
-    for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
-    {
-        joysticks[i] = nullptr;
-    }
-
-    int numjoy = SDL_NumJoysticks();
+    int numjoy = std::min(SDL_NumJoysticks(), static_cast<int>(InputHardwareState::kMaxNumJoysticks));
     for(int i = 0; i < numjoy; i++)
     {
-        joysticks[i] = SDL_JoystickOpen(i);
-        if(joysticks[i] == nullptr)
+        joysticks()[i] = SDL_JoystickOpen(i);
+        if(joysticks()[i] == nullptr)
             continue;
         // The joystick indices might change here.
         // FIXME: There's a chance that players will not have the joysticks they expect and

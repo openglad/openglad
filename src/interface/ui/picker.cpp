@@ -94,15 +94,14 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-// Flag to signal that game should start (for state machine)
-bool g_start_game_requested = false;
 #endif
 
 
 #ifdef TESTING
-// Test infrastructure for picker_mainmenu_loop
+// Kept as globals for legacy tests that link against these symbols.
 int g_picker_mainmenu_calls = 0;
 int g_picker_max_mainmenu_calls = 0;  // 0 = unlimited
+
 // Set true while glad_main is running inside go_menu, so tests can
 // wait for the game to finish before clicking menu buttons.
 std::atomic<bool> g_test_in_game{false};
@@ -114,7 +113,7 @@ std::atomic<int> g_test_game_epoch{0};
 #ifdef __EMSCRIPTEN__
 void picker_request_start_game()
 {
-    g_start_game_requested = true;
+    pks().start_game_requested = true;
 }
 #endif
 
@@ -353,7 +352,7 @@ public:
     og::ui::PickerScreen screen_after_game() const override
     {
 #ifdef __EMSCRIPTEN__
-        if (g_start_game_requested)
+        if (pks().start_game_requested)
             return og::ui::PickerScreen::Quit;
 #endif
         return og::ui::PickerScreen::TeamBuild;
@@ -380,6 +379,10 @@ void picker_main(Sint32 argc, char  **argv)
 // Tests and PickerSession use this instead of duplicating cleanup logic.
 void picker_cleanup_resources()
 {
+    pks().old_guy = nullptr;
+    pks().hire_session = nullptr;
+    pks().train_session = nullptr;
+
 	for (auto& backdrop : pks().backdrops)
     {
         backdrop.reset();
@@ -1559,8 +1562,8 @@ static void run_picker_state_machine_until_game_requested()
 // Check if game start was requested (called from main after picker_init)
 bool picker_check_start_requested()
 {
-    Log("picker_check_start_requested: g_start_game_requested={}\n", g_start_game_requested);
-    return g_start_game_requested;
+    Log("picker_check_start_requested: start_game_requested={}\n", pks().start_game_requested);
+    return pks().start_game_requested;
 }
 
 // Initialize the picker (called once at startup from main)
@@ -1572,18 +1575,18 @@ void picker_init()
     // Load the current saved game, if it exists
     picker_load_default_save_if_present();
 
-    g_start_game_requested = false;
+    pks().start_game_requested = false;
     run_picker_state_machine_until_game_requested();
-    Log("picker_init: picker returned, g_start_game_requested={}\n", g_start_game_requested);
+    Log("picker_init: picker returned, start_game_requested={}\n", pks().start_game_requested);
 }
 
 // Run one frame of the picker - returns true when game should start
 bool picker_frame()
 {
     // Check if game start was requested
-    if (g_start_game_requested) {
+    if (pks().start_game_requested) {
         Log("picker_frame: Game start requested\n");
-        g_start_game_requested = false;
+        pks().start_game_requested = false;
         return true;  // Signal to transition to PLAYING state
     }
 
@@ -1614,9 +1617,9 @@ void picker_reinit_after_game()
     // Reload save data
     picker_load_default_save_if_present();
 
-    g_start_game_requested = false;
+    pks().start_game_requested = false;
 
     run_picker_state_machine_until_game_requested();
-    Log("picker_reinit_after_game: picker returned, g_start_game_requested={}\n", g_start_game_requested);
+    Log("picker_reinit_after_game: picker returned, start_game_requested={}\n", pks().start_game_requested);
 }
 #endif

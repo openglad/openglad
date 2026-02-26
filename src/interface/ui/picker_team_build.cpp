@@ -66,6 +66,7 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 // Sync current_guy from the active session's state.
 static void sync_current_guy_from_hire()
 {
+    pks().old_guy = nullptr;
     if (pks().hire_session && pks().hire_session->current_recruit())
         og::runtime::current_session->current_guy_ = std::make_unique<guy>(*pks().hire_session->current_recruit());
 }
@@ -786,7 +787,7 @@ Sint32 create_train_menu(Sint32 arg1)
 	if (og::runtime::current_session->myscreen_->save_data.team_size < 1)
 	{
 		popup_dialog("NEED A TEAM!", "You need to\nhire a team\nto train");
-		
+		pks().old_guy = nullptr;
 		return MENU_OK;
 	}
 
@@ -1001,6 +1002,7 @@ Sint32 create_train_menu(Sint32 arg1)
         SDL_Delay(10);
 	}
 	pks().train_session = nullptr;
+    pks().old_guy = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();
 	//myscreen->clearscreen();
 	return MENU_REDRAW;
