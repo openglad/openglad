@@ -9,7 +9,7 @@
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/sim/sim_emit.h>
 #include <format>
@@ -44,7 +44,7 @@ static bool exit_on_eat(treasure* self, walker* eater)
     // Exit path: all enemies dead, or scenario allows free exit.
     // Check this BEFORE the withdraw path so that CAN_EXIT_WHENEVER levels
     // show the normal "Exit to X?" dialog instead of "Withdraw to X?".
-    if (!guys_here || (og::gameplay::current_game->world->type & LevelData::TYPE_CAN_EXIT_WHENEVER))
+    if (!guys_here || (og::gameplay::current_game->world->type & og::gameplay::GameWorld::TYPE_CAN_EXIT_WHENEVER))
     {
         if (og::gameplay::current_game->sim_events)
         {

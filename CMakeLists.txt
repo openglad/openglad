@@ -229,6 +229,7 @@ set(OG_SIM_SOURCES
 )
 
 set(OG_DATA_SOURCES
+    ${SRC_DIR}/data/campaign_data.cpp
     ${SRC_DIR}/data/gparser.cpp
     ${SRC_DIR}/data/level_file_io.cpp
     ${SRC_DIR}/data/pixie_data.cpp

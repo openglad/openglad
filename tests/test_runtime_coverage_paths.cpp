@@ -971,7 +971,7 @@ void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
 
     // Setup: CAN_EXIT_WHENEVER flag, enemies still present, dest level completed,
     // current scenario NOT completed → both Withdraw AND Exit conditions met.
-    og::runtime::current_session->myscreen_->world().type = LevelData::TYPE_CAN_EXIT_WHENEVER;
+    og::runtime::current_session->myscreen_->world().type = og::gameplay::GameWorld::TYPE_CAN_EXIT_WHENEVER;
     og::runtime::current_session->myscreen_->world().level_done = 0; // enemies still present
 
     og::runtime::current_session->myscreen_->save_data.reset();
@@ -1027,7 +1027,7 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
     og::runtime::current_session->myscreen_->world().set_sim_context(
         &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world_.enemy_freeze, &sim_events, &rng, &cfg);
 
-    og::runtime::current_session->myscreen_->world().type = LevelData::TYPE_CAN_EXIT_WHENEVER;
+    og::runtime::current_session->myscreen_->world().type = og::gameplay::GameWorld::TYPE_CAN_EXIT_WHENEVER;
     og::runtime::current_session->myscreen_->world().level_done = 0; // enemies still present
 
     og::runtime::current_session->myscreen_->save_data.reset();

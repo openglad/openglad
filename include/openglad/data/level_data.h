@@ -44,53 +44,7 @@ namespace og::gameplay { class GameWorld; }
 #include <openglad/entities/obmap.h>
 #include <openglad/legacy/pixdefs.h>
 
-class CampaignData
-{
-public:
-    enum class IoError
-    {
-        None = 0,
-        PackageMountFailed,
-        OpenReadFailed,
-        OpenWriteFailed,
-        PackageUnpackFailed,
-        PackageRepackFailed,
-        ParseFailed
-    };
-
-    std::string id;
-    std::string title;
-    float rating;
-    std::string version;
-    std::string authors;
-    std::string contributors;
-    std::list<std::string> description;
-    int suggested_power;
-    int first_level;
-
-    int num_levels;
-
-    PixieData icondata;
-
-    CampaignData(const std::string& campaign_id);
-    ~CampaignData();
-
-    bool load();
-    bool save();
-    bool save_as(const std::string& new_id);
-    [[nodiscard]] IoError load_with_error();
-    [[nodiscard]] IoError save_with_error();
-    [[nodiscard]] IoError save_as_with_error(const std::string& new_id);
-    [[nodiscard]] IoError last_io_error() const { return last_io_error_; }
-
-    std::string get_description_line(int i);
-    std::string getDescriptionLine(int i);
-
-private:
-    IoError last_io_error_ = IoError::None;
-};
-
-
+#include <openglad/data/campaign_data.h>
 
 class LevelData
 {
@@ -115,9 +69,6 @@ public:
     int& id;
     std::string& title;
 
-    static const char TYPE_CAN_EXIT_WHENEVER = 0x1;  // Can exit without defeating all enemies
-    static const char TYPE_MUST_DESTROY_GENERATORS = 0x2;  // Must destroy generators to exit
-    static const char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;  // Must protect named NPCs or else you lose
     char& type;
 
     std::string grid_file;

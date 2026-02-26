@@ -31,6 +31,7 @@
 #include <openglad/render/text.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/data/level_data_hooks.h>
 #include <openglad/ui/level_picker.h>
 #include <span>
@@ -859,13 +860,13 @@ bool LevelEditorData::mouse_on_menus(int mx, int my)
 void LevelEditorData::update_menu_buttons()
 {
     levelGoalsEnemiesButton.label = "Defeat enemies: ";
-    levelGoalsEnemiesButton.label += (level->type & LevelData::TYPE_CAN_EXIT_WHENEVER? "Off" : "On");
+    levelGoalsEnemiesButton.label += (level->type & og::gameplay::GameWorld::TYPE_CAN_EXIT_WHENEVER? "Off" : "On");
     
     levelGoalsGeneratorsButton.label = "Beat generators: ";
-    levelGoalsGeneratorsButton.label += (level->type & LevelData::TYPE_MUST_DESTROY_GENERATORS? "On" : "Off");
+    levelGoalsGeneratorsButton.label += (level->type & og::gameplay::GameWorld::TYPE_MUST_DESTROY_GENERATORS? "On" : "Off");
     
     levelGoalsNPCsButton.label = "Protect NPCs: ";
-    levelGoalsNPCsButton.label += (level->type & LevelData::TYPE_MUST_PROTECT_NAMED_NPCS? "On" : "Off");
+    levelGoalsNPCsButton.label += (level->type & og::gameplay::GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS? "On" : "Off");
 }
 
 void LevelEditorData::reset_mode_buttons()
@@ -2429,17 +2430,17 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsEnemiesButton))
         {
-            level->type ^= LevelData::TYPE_CAN_EXIT_WHENEVER;
+            level->type ^= og::gameplay::GameWorld::TYPE_CAN_EXIT_WHENEVER;
             update_menu_buttons();
         }
         else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsGeneratorsButton))
         {
-            level->type ^= LevelData::TYPE_MUST_DESTROY_GENERATORS;
+            level->type ^= og::gameplay::GameWorld::TYPE_MUST_DESTROY_GENERATORS;
             update_menu_buttons();
         }
         else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsNPCsButton))
         {
-            level->type ^= LevelData::TYPE_MUST_PROTECT_NAMED_NPCS;
+            level->type ^= og::gameplay::GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS;
             update_menu_buttons();
         }
         else if(activate_menu_choice(mx, my, *this, levelDetailsParValueButton))
