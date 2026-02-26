@@ -166,7 +166,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/render/pixien.cpp
     ${SRC_DIR}/interface/render/radar.cpp
     ${SRC_DIR}/interface/screen.cpp
-    ${SRC_DIR}/interface/render/smooth.cpp
+    ${SRC_DIR}/gameplay/smooth.cpp
     ${SRC_DIR}/platform/sdl/sound.cpp
     ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/interface/render/text.cpp
@@ -195,7 +195,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/resources/campaign_data.cpp
     ${SRC_DIR}/resources/level_io.cpp
     ${SRC_DIR}/resources/scenario_title_bridge.cpp
-    ${SRC_DIR}/resources/pixie_data.cpp
+    ${SRC_DIR}/gameplay/pixie_data.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
 
@@ -233,7 +233,7 @@ set(OG_SIM_SOURCES
 )
 
 set(OG_DATA_SOURCES
-    ${SRC_DIR}/resources/pixie_data.cpp
+    ${SRC_DIR}/gameplay/pixie_data.cpp
 )
 
 set(OG_RESOURCES_SOURCES
@@ -305,7 +305,7 @@ set(OG_RUNTIME_INTERFACE_SOURCES
     ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/runtime/sim_input_handler.cpp
-    ${SRC_DIR}/interface/render/smooth.cpp
+    ${SRC_DIR}/gameplay/smooth.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
 )
@@ -874,7 +874,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/game_world.cpp
         ${SRC_DIR}/gameplay/gameplay_context.cpp
 
-        ${SRC_DIR}/interface/render/smooth.cpp
+        ${SRC_DIR}/gameplay/smooth.cpp
         ${SRC_DIR}/gameplay/stats.cpp
     )
 
@@ -1448,7 +1448,7 @@ if(ENABLE_FUZZING)
 
     # fuzz_pixie: exercises .pix sprite data parsing (header + payload)
     add_fuzz_target(fuzz_pixie ${SRC_DIR}/fuzz/fuzz_pixie.cpp)
-    target_sources(fuzz_pixie PRIVATE ${SRC_DIR}/resources/pixie_data.cpp)
+    target_sources(fuzz_pixie PRIVATE ${SRC_DIR}/gameplay/pixie_data.cpp)
     target_link_libraries(fuzz_pixie PRIVATE ${SDL2_LIBRARIES})
 
     # fuzz_scenario: exercises .fss scenario binary parsing

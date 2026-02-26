@@ -28,6 +28,8 @@
 #include <openglad/platform/game_session.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/interface/screen.h>
+// Transitional dependency: video.h currently provides the VideoBase base class
+// used by screen. This should be replaced by a platform-agnostic abstraction.
 #include <openglad/platform/sdl/video.h>
 #include <openglad/platform/soundob_sdl.h>
 #include <openglad/core/stats.h>
