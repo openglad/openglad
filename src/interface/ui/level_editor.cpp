@@ -15,7 +15,9 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "SDL.h"
+#include "SDL_events.h"
+#include "SDL_mouse.h"
+#include "SDL_timer.h"
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/pixien.h>

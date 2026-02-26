@@ -30,6 +30,8 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/input/button.h>
 #include <openglad/platform/io.h>
+#include "SDL_rect.h"
+#include "SDL_timer.h"
 #include <algorithm>
 #include <array>
 #include <cctype>

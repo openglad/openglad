@@ -21,7 +21,13 @@
 //
 
 #include <openglad/interface/input/input.h>
-#include "SDL.h"
+#include "SDL_events.h"
+#include "SDL_joystick.h"
+#include "SDL_keyboard.h"
+#include "SDL_keycode.h"
+#include "SDL_mouse.h"
+#include "SDL_scancode.h"
+#include "SDL_timer.h"
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/input_hardware_state.h>
 #include <openglad/core/util.h>
@@ -1244,9 +1250,7 @@ void resetJoystick(int player_num)
 {
     // FIXME: SDL2 supports hotplugging, so I don't need to restart the joystick subsystem
     // Reset joystick subsystem
-    if(SDL_WasInit(SDL_INIT_JOYSTICK) & SDL_INIT_JOYSTICK)
-        SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
-    SDL_InitSubSystem(SDL_INIT_JOYSTICK);
+    reinit_joystick_subsystem();
 
     // Set up joysticks
     for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)

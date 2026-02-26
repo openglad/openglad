@@ -25,6 +25,9 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input/button.h>
 #include <openglad/core/util.h>
+#include "SDL_rect.h"
+#include "SDL_rwops.h"
+#include "SDL_timer.h"
 #include <format>
 #include <memory>
 #include <vector>

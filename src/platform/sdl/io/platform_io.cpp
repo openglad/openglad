@@ -48,6 +48,12 @@ SDL_RWops* physfsrw_open_read(const char* path) { return PHYSFSRWOPS_openRead(pa
 SDL_RWops* physfsrw_open_write(const char* path) { return PHYSFSRWOPS_openWrite(path); }
 } // namespace og::io
 
+void close_rwops(SDL_RWops* rwops)
+{
+    if (rwops != nullptr)
+        SDL_RWclose(rwops);
+}
+
 // remove_file_or_log, explode, list_files, campaign mount/unmount/list,
 // archive helpers, delete_level/campaign, restore_default_campaigns/settings,
 // create_dir, and other SDL-free I/O helpers are now in

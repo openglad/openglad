@@ -34,8 +34,8 @@
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/picker_ui_state.h>
-
-#include "SDL.h"
+#include "SDL_keyboard.h"
+#include "SDL_timer.h"
 #include <openglad/resources/gparser.h>
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>

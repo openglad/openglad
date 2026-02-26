@@ -24,6 +24,13 @@ static inline cfg_store* active_config()
     return &cfg;
 }
 
+void reinit_joystick_subsystem()
+{
+    if (SDL_WasInit(SDL_INIT_JOYSTICK) & SDL_INIT_JOYSTICK)
+        SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
+    SDL_InitSubSystem(SDL_INIT_JOYSTICK);
+}
+
 void handle_window_event(const SDL_Event& event)
 {
     switch(event.window.event)

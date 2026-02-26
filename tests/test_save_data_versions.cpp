@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "SDL_rwops.h"
 
 #include <openglad/legacy/base.h> // Order + family constants used for test data
 #include <openglad/platform/io.h>

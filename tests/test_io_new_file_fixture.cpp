@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <string>
+#include "SDL_rwops.h"
 
 #include <unistd.h>
 
