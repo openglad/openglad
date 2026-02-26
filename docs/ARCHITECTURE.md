@@ -302,18 +302,22 @@ CI enforces this through `scripts/check_vendor_leaks.sh`:
 
 Accepted process globals:
 
-- Renderer/hardware globals: `E_Screen`, `joysticks`, `letters1`, `letters_big`, `text_buffer`, SAI2x masks/buffers, `pal`, `mypalette`
-- Process config global: `cfg`
-- Immutable registries: family/effect/treasure/generator/weapon init-once registries
-- Rendering scratch exception: `grass_rng` thread-local in SDL rendering
-- Lightweight-client context override: `set_global_context()` thread-local override for text/headless clients that do not construct a `GameSession` (must be set/cleared by the client session boundary)
-- Resources-layer fallback mount cache: `s_mounted_campaign` in `src/resources/platform_io.cpp` for campaign mount operations that run before any runtime session exists
-- Test-only globals under `#ifdef TESTING` and Emscripten-only globals under `#ifdef __EMSCRIPTEN__`
+- Session globals: `current_session` (`thread_local`) and `primary_session` (`std::atomic<GameSession*>`) in `src/platform/sdl/runtime/game_session.cpp` (declared in `include/openglad/platform/game_session.h`) to bridge legacy global access onto explicit `GameSession` ownership.
+- Gameplay context global: `current_game` (`thread_local GameplayContext*`) in `src/gameplay/gameplay_context.cpp` for transitional gameplay-call compatibility while gameplay APIs are migrated to explicit context passing.
+- Runtime platform bridge: `g_platform_bridge` in `src/runtime/platform_bridge.cpp` as the single process-wide integration hook that installs platform service callbacks.
+- Renderer/hardware globals: `E_Screen` in `src/platform/sdl/video.cpp`, `joysticks` in `src/interface/input/input.cpp`, plus `letters1`, `letters_big`, `text_buffer`, SAI2x masks/buffers, `pal`, and `mypalette` for SDL-era rendering/input device state that is still process-owned.
+- Process config global: `cfg` from config parsing (`gparser`) used as shared runtime configuration.
+- Immutable registries: family/effect/treasure/generator/weapon init-once registries.
+- Rendering scratch exception: `grass_rng` (`thread_local`) in `src/platform/sdl/io/platform_io.cpp` to keep decorative grass variation deterministic per thread without cross-thread contention.
+- Lightweight-client context override: `set_global_context()` thread-local override in `src/runtime/game_context.cpp` for text/headless clients that do not construct a `GameSession` (must be set/cleared by the client session boundary).
+- Resources-layer fallback mount cache: `s_mounted_campaign` in `src/resources/platform_io.cpp` for campaign mount operations that run before any runtime session exists.
+- Test-only globals under `#ifdef TESTING` and Emscripten-only globals under `#ifdef __EMSCRIPTEN__`.
 
 Final thread-local audit state:
 
 - Gameplay game-state thread-local: `current_game`
 - Platform game-state thread-local: `current_session`
+- Runtime fallback thread-local: `s_test_context_override` (set by `set_global_context()`)
 
 ## Dependency Direction Rules
 

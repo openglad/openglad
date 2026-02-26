@@ -142,5 +142,5 @@ class viewscreen
 		unsigned char  *bmp,  *oldbmp;
 };
 
-// Access session prefs via og::runtime::current_session->theprefs_ directly.
-#include <openglad/platform/game_session.h>
+// Session globals are consumed in view.cpp to keep this interface header
+// decoupled from platform headers.

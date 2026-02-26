@@ -25,6 +25,7 @@
 
 #include <openglad/interface/input/input.h>
 #include <openglad/platform/cheat_handler.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/core/version.h>
