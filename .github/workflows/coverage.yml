@@ -62,6 +62,8 @@ jobs:
             --filter src/ \
             --exclude 'src/fuzz/' \
             --exclude 'src/sdl_client/' \
+            --exclude 'src/interface/' \
+            --exclude 'src/platform/sdl/' \
             --exclude 'src/ui/' \
             --exclude 'src/test_trace.cpp' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
@@ -81,6 +83,8 @@ jobs:
             --filter src/ \
             --exclude 'src/fuzz/' \
             --exclude 'src/sdl_client/' \
+            --exclude 'src/interface/' \
+            --exclude 'src/platform/sdl/' \
             --exclude 'src/ui/' \
             --exclude 'src/test_trace.cpp' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
