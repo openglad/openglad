@@ -4,22 +4,26 @@
 namespace og::interface {
 
 namespace {
-PlatformBridge g_platform_bridge{};
+PlatformBridge& platform_bridge_instance()
+{
+    static PlatformBridge bridge{};
+    return bridge;
+}
 }
 
 void install_platform_bridge(PlatformBridge bridge)
 {
-    g_platform_bridge = std::move(bridge);
+    platform_bridge_instance() = std::move(bridge);
 }
 
 PlatformBridge& platform_bridge()
 {
-    return g_platform_bridge;
+    return platform_bridge_instance();
 }
 
 const PlatformBridge& platform_bridge_const()
 {
-    return g_platform_bridge;
+    return platform_bridge_instance();
 }
 
 } // namespace og::interface

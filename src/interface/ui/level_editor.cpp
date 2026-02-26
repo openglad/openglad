@@ -824,7 +824,8 @@ bool LevelEditorData::saveLevelAs(int id)
     level_meta.grid_file = std::format("scen{}", id);
 
     std::string old_campaign = get_mounted_campaign();
-    unpack_campaign(old_campaign);
+    if(!unpack_campaign(old_campaign))
+        return false;
 
     LevelVisuals dummy_visuals;
     std::string thefile = std::format("scen{}.fss", id);
@@ -1296,7 +1297,8 @@ bool LevelEditorData::saveLevel()
     level_meta.grid_file = std::format("scen{}", level->id);
 
     std::string old_campaign = get_mounted_campaign();
-    unpack_campaign(old_campaign);
+    if(!unpack_campaign(old_campaign))
+        return false;
     LevelVisuals dummy_visuals;
     std::string thefile = std::format("scen{}.fss", level->id);
     bool result = og::data::save_level(*level, dummy_visuals, thefile, level_meta);

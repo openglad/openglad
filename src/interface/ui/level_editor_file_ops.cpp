@@ -38,6 +38,10 @@ bool does_campaign_exist(const std::string& campaign_id)
 
 bool create_new_campaign(const std::string& campaign_id)
 {
+    struct CleanupUnpackedCampaignGuard {
+        ~CleanupUnpackedCampaignGuard() { cleanup_unpacked_campaign(); }
+    } cleanup_guard;
+
     // Delete the temp directory
     cleanup_unpacked_campaign();
 
@@ -55,8 +59,6 @@ bool create_new_campaign(const std::string& campaign_id)
     bool result = repack_campaign(campaign_id);
     if(!result)
         return result;
-
-    cleanup_unpacked_campaign();
     return true;
 }
 
