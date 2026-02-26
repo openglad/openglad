@@ -45,6 +45,9 @@ public:
     {
         if (!file_ || size == 0 || count == 0)
             return 0;
+        constexpr PHYSFS_sint64 kPhysfsSint64Max = std::numeric_limits<PHYSFS_sint64>::max();
+        if (count != 0 && size > static_cast<std::size_t>(kPhysfsSint64Max) / count)
+            return static_cast<std::size_t>(-1);
         const PHYSFS_sint64 total = static_cast<PHYSFS_sint64>(size * count);
         const PHYSFS_sint64 got = PHYSFS_readBytes(file_, buf, total);
         if (got < 0)
@@ -56,6 +59,9 @@ public:
     {
         if (!file_ || size == 0 || count == 0)
             return 0;
+        constexpr PHYSFS_sint64 kPhysfsSint64Max = std::numeric_limits<PHYSFS_sint64>::max();
+        if (count != 0 && size > static_cast<std::size_t>(kPhysfsSint64Max) / count)
+            return static_cast<std::size_t>(-1);
         const PHYSFS_sint64 total = static_cast<PHYSFS_sint64>(size * count);
         const PHYSFS_sint64 wrote = PHYSFS_writeBytes(file_, buf, total);
         if (wrote < 0)
@@ -296,6 +302,33 @@ PixieData read_pixie_file(const char* filename)
         LogError("Pixie payload too large: pix/{} (pixels={}, max={})\n",
             filename, size, kMaxPixiePixels);
         return result;
+    }
+
+    // Allocation is hard-capped by kMaxPixiePixels above; if the backend supports seek/tell,
+    // verify that enough bytes remain before allocating and reading.
+    const std::int64_t payload_start = infile->tell();
+    if (payload_start >= 0)
+    {
+        const std::int64_t payload_end = infile->seek(0, SEEK_END);
+        if (payload_end >= 0)
+        {
+            if (payload_end < payload_start ||
+                static_cast<std::uint64_t>(payload_end - payload_start) < size)
+            {
+                LogError("Pixie payload truncated: pix/{} (need={}, remaining={})\n",
+                    filename,
+                    size,
+                    payload_end < payload_start
+                        ? 0
+                        : static_cast<std::uint64_t>(payload_end - payload_start));
+                return result;
+            }
+            if (infile->seek(payload_start, SEEK_SET) < 0)
+            {
+                LogError("Failed to restore pixie stream position: pix/{}\n", filename);
+                return result;
+            }
+        }
     }
 
     result.data = std::make_unique<unsigned char[]>(size);

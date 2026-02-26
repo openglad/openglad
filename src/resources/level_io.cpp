@@ -355,10 +355,14 @@ bool save_grid_file_internal(const char* gridname, const PixieData& grid)
         return false;
     }
 
-    outfile->write(&numframes, 1, 1);
-    outfile->write(&x, 1, 1);
-    outfile->write(&y, 1, 1);
-    outfile->write(grid.data.get(), 1, tile_count);
+    if (outfile->write(&numframes, 1, 1) != 1)
+        return false;
+    if (outfile->write(&x, 1, 1) != 1)
+        return false;
+    if (outfile->write(&y, 1, 1) != 1)
+        return false;
+    if (outfile->write(grid.data.get(), 1, tile_count) != tile_count)
+        return false;
     return true;
 }
 
@@ -598,7 +602,8 @@ bool save_level(og::gameplay::GameWorld& world,
         return false;
     }
 
-    const std::uint8_t numlines = static_cast<std::uint8_t>(metadata.description.size());
+    const std::uint8_t numlines =
+        static_cast<std::uint8_t>(std::min<std::size_t>(metadata.description.size(), 255));
     WRITE_FIELD(&numlines, 1, 1);
     for (const auto& line : metadata.description)
     {
