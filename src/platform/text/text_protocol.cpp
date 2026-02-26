@@ -28,6 +28,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <openglad/resources/gparser.h> // cfg_store, ::cfg
 
@@ -67,13 +68,19 @@ static void json_event(std::ostream& os, const og::sim::Event& ev)
 }
 
 static void cmd_tick(og::gameplay::GameWorld& world, SaveData& save,
-                     og::sim::SimEventLog& events, int count)
+                     og::sim::SimEventLog& events,
+                     std::vector<og::sim::Event>& pending_events, int count)
 {
     std::cout << "{\"cmd\":\"tick\",\"count\":" << count << ",\"results\":[";
     for (int i = 0; i < count; i++) {
         if (i > 0) std::cout << ",";
         world.my_team = save.my_team;
         world.tick();
+        // Mirror SDL/runtime behavior: SimEventLog must be drained each tick.
+        auto drained_events = events.drain();
+        pending_events.insert(pending_events.end(),
+                              drained_events.begin(),
+                              drained_events.end());
         std::cout << "{\"tick\":" << world.tick_count_
                   << ",\"level_done\":" << world.level_done
                   << ",\"game_ended\":" << (world.game_ended ? "true" : "false")
@@ -115,18 +122,18 @@ static void cmd_state(const og::gameplay::GameWorld& world)
     std::cout.flush();
 }
 
-static void cmd_events(og::sim::SimEventLog& events)
+static void cmd_events(std::vector<og::sim::Event>& pending_events)
 {
-    auto drained = events.drain();
     std::ostringstream os;
     os << "{\"cmd\":\"events\",\"events\":[";
-    for (size_t i = 0; i < drained.size(); i++) {
+    for (size_t i = 0; i < pending_events.size(); i++) {
         if (i > 0) os << ",";
-        json_event(os, drained[i]);
+        json_event(os, pending_events[i]);
     }
     os << "]}";
     std::cout << os.str() << "\n";
     std::cout.flush();
+    pending_events.clear();
 }
 
 } // namespace
@@ -215,6 +222,8 @@ int run_text_protocol_session(const TextProtocolArgs& args)
               << "}\n";
     std::cout.flush();
 
+    std::vector<og::sim::Event> pending_events;
+
     // Command loop
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -230,11 +239,11 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             int count = 1;
             iss >> count;
             if (count < 1) count = 1;
-            cmd_tick(world, save, events, count);
+            cmd_tick(world, save, events, pending_events, count);
         } else if (cmd == "state") {
             cmd_state(world);
         } else if (cmd == "events") {
-            cmd_events(events);
+            cmd_events(pending_events);
         } else if (cmd == "quit") {
             std::cout << "{\"cmd\":\"quit\",\"status\":\"ok\"}\n";
             std::cout.flush();

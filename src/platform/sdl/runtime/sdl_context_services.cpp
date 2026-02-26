@@ -12,12 +12,15 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/soundob_sdl.h>
+#include <openglad/platform/sdl/video.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/interface/input/input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/platform/io.h>
+#include "SDL_mixer.h"
 
 // myscreen and theprefs are now macros defined in base.h / view.h
 
@@ -92,12 +95,49 @@ void sdl_play_sound(int sound_id)
     }
 }
 
+Mix_Music* g_bridge_music = nullptr;
+
+void sdl_stop_music()
+{
+    Mix_HaltMusic();
+    if (g_bridge_music) {
+        Mix_FreeMusic(g_bridge_music);
+        g_bridge_music = nullptr;
+    }
+}
+
+void sdl_play_music(const char* music_file)
+{
+    sdl_stop_music();
+    if (music_file == nullptr || music_file[0] == '\0')
+        return;
+
+    SDL_RWops* rw = open_read_file(music_file);
+    if (!rw)
+        rw = open_read_file("sound/", music_file);
+    if (!rw)
+        return;
+
+    g_bridge_music = Mix_LoadMUS_RW(rw, 1);
+    if (!g_bridge_music)
+        return;
+
+    Mix_PlayMusic(g_bridge_music, -1);
+}
+
+og::render::VideoBase* sdl_create_surface(int w, int h)
+{
+    (void)w;
+    (void)h;
+    return new video(false);
+}
+
 const og::interface::PlatformBridge kSdlPlatformBridge{
     .present_frame = sdl_present_frame,
     .play_sound = sdl_play_sound,
-    .play_music = [](const char*) {},
-    .stop_music = []() {},
-    .create_surface = [](int, int) -> og::render::VideoBase* { return nullptr; },
+    .play_music = sdl_play_music,
+    .stop_music = sdl_stop_music,
+    .create_surface = sdl_create_surface,
     .clear_stale_view_controls = sdl_clear_stale_view_controls,
 };
 } // namespace
