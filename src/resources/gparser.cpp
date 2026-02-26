@@ -37,6 +37,11 @@
 int toInt(const std::string& s);
 
 
+// Global runtime configuration storage.
+//
+// Threading contract:
+// - Access is single-threaded (main runtime thread) during startup/options flow.
+// - This object is not synchronized; do not mutate/read it concurrently.
 cfg_store cfg;
 
 void cfg_store::apply_setting(const std::string& category, const std::string& setting, const std::string& value)

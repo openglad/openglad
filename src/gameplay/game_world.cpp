@@ -17,6 +17,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <cassert>
 #include <algorithm>
 #include <cstdlib>
 #include <format>
@@ -69,6 +70,9 @@ namespace og::gameplay {
 GameWorld::GameWorld()
     : myobmap(std::make_unique<obmap>())
 {
+#ifndef NDEBUG
+    entity_thread_owner_ = std::this_thread::get_id();
+#endif
 }
 
 GameWorld::~GameWorld()
@@ -111,6 +115,14 @@ void GameWorld::clear_backlinks_to(walker* victim)
         clear_single_backlink(uptr.get(), victim);
 }
 
+#ifndef NDEBUG
+void GameWorld::assert_entity_thread_() const
+{
+    assert(entity_thread_owner_ == std::this_thread::get_id() &&
+           "GameWorld entity lists accessed from non-owner thread");
+}
+#endif
+
 void GameWorld::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                                 og::sim::SimEventLog* events, IRandom* rng,
                                 cfg_store* config)
@@ -131,6 +143,9 @@ void GameWorld::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
 
 void GameWorld::delete_objects()
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     // Let the platform layer clear stale pointers (e.g. viewscreen controls)
     // before entity lists are destroyed.
     if (on_pre_delete_objects)
@@ -159,6 +174,9 @@ void GameWorld::delete_objects()
 
 short GameWorld::remaining_foes(walker* myguy) const
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     short myfoes = 0;
     for (const auto& uptr : oblist)
     {
@@ -173,6 +191,9 @@ short GameWorld::remaining_foes(walker* myguy) const
 
 void GameWorld::tick()
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     if (!og::gameplay::current_game || og::gameplay::current_game->sim_events == nullptr)
         return;
     og::sim::SimEventLog& events = *og::gameplay::current_game->sim_events;
@@ -400,6 +421,9 @@ void GameWorld::tick()
 
 walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     (void)atstart;
     if (order == Order::Weapon)
         return add_weap_ob(order, family);
@@ -420,6 +444,9 @@ walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart)
 
 walker* GameWorld::add_fx_ob(Order order, std::int32_t family)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     std::unique_ptr<walker> w;
     if (entity_factory)
     {
@@ -448,6 +475,9 @@ walker* GameWorld::add_fx_ob(Order order, std::int32_t family)
 
 walker* GameWorld::add_weap_ob(Order order, std::int32_t family)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     std::unique_ptr<walker> w;
     if (entity_factory)
     {
@@ -473,7 +503,9 @@ walker* GameWorld::add_weap_ob(Order order, std::int32_t family)
 short GameWorld::remove_ob(walker* ob)
 {
     clear_backlinks_to(ob);
-
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     if (ob && ob->query_order() == Order::Living)
         living_count--;
 
@@ -731,6 +763,9 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
 
 bool GameWorld::query_object_passable(float x, float y, walker* ob)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     if (ob->dead)
         return 1;
     return myobmap->query_list(ob, static_cast<short>(x), static_cast<short>(y));
@@ -743,6 +778,9 @@ bool GameWorld::query_passable(float x, float y, walker* ob)
 
 walker* GameWorld::find_near_foe(walker* ob)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     short targx;
     short targy;
     short spread = 1;
@@ -803,6 +841,9 @@ walker* GameWorld::find_near_foe(walker* ob)
 
 walker* GameWorld::find_far_foe(walker* ob)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     std::int32_t distance;
     std::int32_t tempdistance;
     walker* endfoe;
@@ -843,6 +884,9 @@ walker* GameWorld::find_far_foe(walker* ob)
 
 walker* GameWorld::find_nearest_blood(walker* who)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     std::int32_t distance;
     std::int32_t newdistance;
     walker* returnob = nullptr;
@@ -871,6 +915,9 @@ walker* GameWorld::find_nearest_blood(walker* who)
 
 walker* GameWorld::find_nearest_player(walker* ob)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     walker* returnob = nullptr;
     std::uint32_t distance = 32000;
     std::uint32_t tempdistance;
@@ -898,6 +945,9 @@ walker* GameWorld::find_nearest_player(walker* ob)
 std::list<walker*> GameWorld::find_in_range(std::list<std::unique_ptr<walker>>& somelist,
                                             std::int32_t range, std::int32_t* howmany, walker* ob)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     std::list<walker*> result;
 
     *howmany = 0;
@@ -924,6 +974,9 @@ std::list<walker*> GameWorld::find_in_range(std::list<std::unique_ptr<walker>>& 
 std::list<walker*> GameWorld::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist,
                                                  std::int32_t range, std::int32_t* howmany, walker* ob)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     std::list<walker*> result;
     *howmany = 0;
 
@@ -952,6 +1005,9 @@ std::list<walker*> GameWorld::find_foes_in_range(std::list<std::unique_ptr<walke
 std::list<walker*> GameWorld::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist,
                                                         std::int32_t range, std::int32_t* howmany, walker* ob)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     std::list<walker*> result;
     *howmany = 0;
 
@@ -979,6 +1035,9 @@ std::list<walker*> GameWorld::find_foe_weapons_in_range(std::list<std::unique_pt
 std::list<walker*> GameWorld::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist,
                                                     std::int32_t range, std::int32_t* howmany, walker* ob)
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     std::list<walker*> result;
     *howmany = 0;
 
@@ -1124,6 +1183,9 @@ void GameWorld::resize_grid(int width, int height)
 
 void GameWorld::clear()
 {
+#ifndef NDEBUG
+    assert_entity_thread_();
+#endif
     delete_objects();
     delete_grid();
     myobmap = std::make_unique<obmap>();

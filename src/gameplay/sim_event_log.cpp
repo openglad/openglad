@@ -15,16 +15,24 @@ namespace og::sim {
 void SimEventLog::debug_assert_single_thread() const
 {
 #ifndef NDEBUG
-    const std::thread::id current_thread = std::this_thread::get_id();
-    if (!owner_thread_initialized_)
-    {
-        owner_thread_id_ = current_thread;
-        owner_thread_initialized_ = true;
-    }
-    assert(owner_thread_id_ == current_thread &&
-           "SimEventLog is single-threaded: access from multiple threads is not supported");
+    assert_thread_ownership_();
 #endif
 }
+
+#ifndef NDEBUG
+void SimEventLog::assert_thread_ownership_() const
+{
+    const std::thread::id current = std::this_thread::get_id();
+    if (!owner_thread_initialized_)
+    {
+        owner_thread_ = current;
+        owner_thread_initialized_ = true;
+        return;
+    }
+    assert(owner_thread_ == current &&
+           "SimEventLog is single-threaded: access from multiple threads is not supported");
+}
+#endif
 
 void SimEventLog::push(EventKind kind, std::uint32_t a, std::uint32_t b, const std::string& text)
 {

@@ -22,6 +22,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 
 // Forward declarations
 enum class Order : unsigned char;
@@ -77,7 +78,9 @@ public:
     GameWorld(GameWorld&&) = delete;
     GameWorld& operator=(GameWorld&&) = delete;
 
-    // Entity storage (moved from LevelData)
+    // Entity storage (moved from LevelData).
+    // Threading contract: entity lists are main-thread-owned. Simulation tick
+    // and rendering are phase-separated on that thread; no concurrent access.
     std::list<std::unique_ptr<walker>> oblist;
     std::list<std::unique_ptr<walker>> weaplist;
     std::list<std::unique_ptr<walker>> fxlist;
@@ -192,7 +195,10 @@ public:
 private:
     void clear_single_backlink(walker* source, walker* victim);
     void clear_backlinks_to(walker* victim);
-
+#ifndef NDEBUG
+    void assert_entity_thread_() const;
+    std::thread::id entity_thread_owner_{};
+#endif
     std::uint32_t level_tick_count_ = 0;
     int last_level_id_ = -1;
 };

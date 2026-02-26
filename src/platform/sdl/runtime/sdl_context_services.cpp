@@ -21,6 +21,7 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/platform/io.h>
 #include "SDL_mixer.h"
+#include <mutex>
 
 // myscreen and theprefs are now macros defined in base.h / view.h
 
@@ -95,9 +96,10 @@ void sdl_play_sound(int sound_id)
     }
 }
 
+std::mutex g_bridge_music_mutex;
 Mix_Music* g_bridge_music = nullptr;
 
-void sdl_stop_music()
+void sdl_stop_music_locked()
 {
     Mix_HaltMusic();
     if (g_bridge_music) {
@@ -106,9 +108,16 @@ void sdl_stop_music()
     }
 }
 
+void sdl_stop_music()
+{
+    std::lock_guard<std::mutex> lock(g_bridge_music_mutex);
+    sdl_stop_music_locked();
+}
+
 void sdl_play_music(const char* music_file)
 {
-    sdl_stop_music();
+    std::lock_guard<std::mutex> lock(g_bridge_music_mutex);
+    sdl_stop_music_locked();
     if (music_file == nullptr || music_file[0] == '\0')
         return;
 

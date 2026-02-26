@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <mutex>
@@ -168,6 +169,7 @@ private:
     GameSession* prev_session_ = nullptr;
     GameSession* prev_primary_session_ = nullptr;
     std::uint64_t generation_ = 0;
+    std::uint64_t installed_primary_generation_ = 0;
 
     // Owned runtime state.
     std::unique_ptr<options> prefs_owner_;
@@ -187,20 +189,30 @@ extern thread_local GameSession* current_session;
 // Used by child threads (e.g. test injector threads) to inherit the session
 // when their thread_local current_session is still nullptr.
 extern std::atomic<GameSession*> primary_session;
+extern std::atomic<std::uint64_t> primary_session_generation;
+
+// Install per-thread legacy pointers together to avoid TLS divergence.
+void install_thread_session(GameSession* session);
 
 // If current_session is nullptr on this thread, inherit from primary_session.
 // Call at the start of any child thread that needs session access.
 inline void ensure_thread_session() {
     if (!current_session) {
-        current_session = primary_session.load(std::memory_order_acquire);
+        install_thread_session(primary_session.load(std::memory_order_acquire));
     }
+#ifndef NDEBUG
+    if (current_session) {
+        assert(og::gameplay::current_game == &current_session->gameplay_ &&
+               "current_session/current_game TLS mismatch");
+    } else {
+        assert(og::gameplay::current_game == nullptr &&
+               "current_game set while current_session is nullptr");
+    }
+#endif
 }
 
 inline void ensure_thread_game() {
     ensure_thread_session();
-    if (current_session) {
-        og::gameplay::current_game = &current_session->gameplay_;
-    }
 }
 
 // RAII guard: while alive, the associated session's globals are installed.
@@ -222,6 +234,7 @@ private:
     GameSession* saved_primary_session_ = nullptr;
     std::uint64_t saved_session_generation_ = 0;
     std::uint64_t saved_primary_session_generation_ = 0;
+    std::uint64_t installed_primary_generation_ = 0;
     SDL_Surface* saved_render_surface_ = nullptr;
     bool did_swap_render_ = false;
 };

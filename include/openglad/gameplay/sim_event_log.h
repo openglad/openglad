@@ -53,12 +53,12 @@ public:
 
 private:
     void debug_assert_single_thread() const;
-
-    std::vector<Event> events_;
 #ifndef NDEBUG
-    mutable std::thread::id owner_thread_id_;
+    void assert_thread_ownership_() const;
+    mutable std::thread::id owner_thread_{};
     mutable bool owner_thread_initialized_ = false;
 #endif
+    std::vector<Event> events_;
 };
 
 } // namespace og::sim

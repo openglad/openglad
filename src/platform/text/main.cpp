@@ -59,8 +59,23 @@ namespace og::runtime {
     // Zero-initialized storage that satisfies the symbol.  text_picker sets
     // current_difficulty_ before simulation runs.
     alignas(GameSession) static char headless_session_buf[sizeof(GameSession)]{};
-    thread_local GameSession* current_session = reinterpret_cast<GameSession*>(headless_session_buf);
+    thread_local GameSession* current_session = nullptr;
     std::atomic<GameSession*> primary_session{reinterpret_cast<GameSession*>(headless_session_buf)};
+    std::atomic<std::uint64_t> primary_session_generation{0};
+
+    void install_thread_session(GameSession* session)
+    {
+        current_session = session;
+        og::gameplay::current_game = session ? &session->gameplay_ : nullptr;
+    }
+
+    struct HeadlessThreadSessionInit {
+        HeadlessThreadSessionInit()
+        {
+            install_thread_session(reinterpret_cast<GameSession*>(headless_session_buf));
+        }
+    };
+    static HeadlessThreadSessionInit g_headless_thread_session_init;
 }
 
 // cfg is declared in <openglad/resources/gparser.h> (already included above).
