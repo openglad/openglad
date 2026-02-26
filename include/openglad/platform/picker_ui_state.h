@@ -27,6 +27,18 @@ struct PickerState {
 
     // Team build state
     guy* old_guy = nullptr;
+    Sint32 rowsdown = 0;
+    Sint32 maxrows = 0;
+    Sint32 campaignchanged = 0;
+    Sint32 levelchanged = 0;
+    Sint32 cyclemode = 1;
+
+    // Emscripten picker state machine flag
+    bool start_game_requested = false;
+
+    // Test infrastructure for picker_mainmenu_loop
+    int picker_mainmenu_calls = 0;
+    int picker_max_mainmenu_calls = 0;  // 0 = unlimited
 
     // Menu navigation
     bool menu_nav_enabled = false;

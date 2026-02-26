@@ -430,6 +430,7 @@ void clear_allbuttons()
         owned_buttons()[i].reset();
         og::runtime::current_session->allbuttons_[i] = nullptr;
     }
+    og::runtime::current_session->localbuttons_ = nullptr;
 }
 
 void draw_backdrop()
