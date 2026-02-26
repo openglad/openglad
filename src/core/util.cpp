@@ -22,7 +22,6 @@
 #include <openglad/core/util.h>
 
 #include <openglad/core/version.h>
-#include <openglad/platform/game_session.h>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
@@ -45,9 +44,6 @@ namespace {
 std::chrono::steady_clock::time_point& timer_reset_anchor()
 {
     static thread_local auto s_fallback_reset_time = std::chrono::steady_clock::now();
-    og::runtime::ensure_thread_session();
-    if (og::runtime::current_session)
-        return og::runtime::current_session->reset_time_;
     return s_fallback_reset_time;
 }
 } // namespace
