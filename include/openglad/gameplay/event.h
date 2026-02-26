@@ -18,6 +18,7 @@ enum class EventKind : std::uint32_t {
     SetEnd = 15,       // Signal level end: screen sets end=1
     RequestExitConfirmation = 16, // Prompt request: a=dest_level, b=0 exit / 1 withdraw, text=prompt
     WithdrawToLevel = 17, // Withdrawal requested: a=dest_level
+    ScoreChange = 18, // Score delta: a=team, b=points
 };
 
 // Simulation event record, pushed into SimEventLog during a tick.

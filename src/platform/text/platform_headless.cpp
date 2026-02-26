@@ -15,6 +15,8 @@
 #include <openglad/core/util.h>
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/interface/platform_bridge.h>
+#include <openglad/resources/level_render.h>
 
 #include <algorithm>
 #include <memory>
@@ -23,6 +25,8 @@
 #include <cstdlib>
 #include <string>
 #include <unistd.h>
+
+class screen;
 
 // current_difficulty lives in GameSession — the text client's headless_session_buf
 // in main.cpp provides zero-initialized storage. text_picker sets it at runtime.
@@ -105,8 +109,6 @@ std::string get_asset_path()
 // Category C: Safe no-ops (documented)
 // ---------------------------------------------------------------------------
 
-#include <openglad/resources/level_data_hooks.h>
-
 // Safe no-op: view controls are an SDL render concern; headless has no views.
 void headless_clear_stale_view_controls(og::gameplay::GameWorld*) {}
 
@@ -119,6 +121,7 @@ void clear_keyboard() {}
 
 namespace {
 std::once_flag warn_draw_impl;
+std::once_flag warn_create_level_render;
 std::once_flag warn_yes_or_no;
 std::once_flag warn_input_events;
 std::once_flag warn_input_state;
@@ -143,17 +146,11 @@ void LevelRender::draw_tile(int, int, int, viewscreen*) {}
 
 std::unique_ptr<LevelRender> headless_create_level_render(PixieData[])
 {
-    static std::once_flag warn_flag;
-    std::call_once(warn_flag, []() { Log("Warning: create_level_render not supported in headless mode\n"); });
+    std::call_once(warn_create_level_render, [] {
+        LogWarn("create_level_render not supported in headless mode\n");
+    });
     return nullptr;
 }
-
-const LevelDataHooks kHeadlessLevelDataHooks{
-    .clear_stale_view_controls = headless_clear_stale_view_controls,
-    .wire_entity_from_screen = nullptr,
-    .draw = headless_level_data_draw,
-    .create_level_render = headless_create_level_render,
-};
 
 bool yes_or_no_prompt(const char* /*title*/, const char* /*message*/, bool default_value)
 {
@@ -276,7 +273,7 @@ void load_map_data(PixieData*)
 // ---------------------------------------------------------------------------
 // Headless lifecycle (mirrors SDL io_init/io_exit/sync_filesystem)
 // ---------------------------------------------------------------------------
-#include <openglad/resources/physfs_api.h>
+#include <openglad/resources/filesystem.h>
 
 void io_init(int argc, char* argv[])
 {
@@ -290,16 +287,16 @@ void io_init(int argc, char* argv[])
     create_dir(user_path + "cfg/");
 
     // Initialize PhysFS
-    if (!og::io::physfs_init(argv[0])) {
+    if (!og::resources::init(argv[0])) {
         LogError("io_init(headless): physfs_init failed\n");
         return;
     }
-    if (!og::io::physfs_set_write_dir(user_path)) {
+    if (!og::resources::set_write_dir(user_path)) {
         LogError("io_init(headless): Failed to set write dir: {}\n", user_path);
         return;
     }
 
-    if (!og::io::physfs_mount(user_path, nullptr, 1)) {
+    if (!og::resources::mount(user_path, nullptr, 1)) {
         LogError("io_init(headless): Failed to mount user path: {}\n", user_path);
     }
 
@@ -313,16 +310,16 @@ void io_init(int argc, char* argv[])
 
     // Mount asset directories
     std::string asset_path = get_asset_path();
-    og::io::physfs_mount(asset_path + "pix/", "pix/", 1);
-    og::io::physfs_mount(asset_path + "sound/", "sound/", 1);
-    og::io::physfs_mount(asset_path + "cfg/", "cfg/", 1);
+    og::resources::mount(asset_path + "pix/", "pix/", 1);
+    og::resources::mount(asset_path + "sound/", "sound/", 1);
+    og::resources::mount(asset_path + "cfg/", "cfg/", 1);
 
     Log("io_init(headless): done\n");
 }
 
 void io_exit()
 {
-    og::io::physfs_deinit();
+    og::resources::deinit();
 }
 
 // No-op on non-web platforms (they use real filesystem)
@@ -344,14 +341,15 @@ void input_state_from_sdl(InputState&)
 
 void emit_headless_unsupported_warnings_probe()
 {
-    const LevelDataHooks& hooks = headless_level_data_hooks();
-    // Intentionally call each unsupported API twice; std::call_once-backed warnings
-    // must still emit only once per process.
-    hooks.draw(nullptr, nullptr);
-    hooks.draw(nullptr, nullptr);
-
-    (void)hooks.create_level_render(nullptr);
-    (void)hooks.create_level_render(nullptr);
+    const auto& bridge = og::interface::platform_bridge_const();
+    headless_level_data_draw(nullptr, nullptr);
+    headless_level_data_draw(nullptr, nullptr);
+    (void)headless_create_level_render(nullptr);
+    (void)headless_create_level_render(nullptr);
+    if (bridge.clear_stale_view_controls) {
+        bridge.clear_stale_view_controls(nullptr);
+        bridge.clear_stale_view_controls(nullptr);
+    }
 
     (void)yes_or_no_prompt("probe", "probe", true);
     (void)yes_or_no_prompt("probe", "probe", true);
@@ -370,10 +368,25 @@ void emit_headless_unsupported_warnings_probe()
     input_state_from_sdl(input);
 }
 
-const LevelDataHooks& headless_level_data_hooks()
-{
-    return kHeadlessLevelDataHooks;
+namespace {
+const og::interface::PlatformBridge kHeadlessPlatformBridge{
+    .present_frame = []() {},
+    .play_sound = [](int) {},
+    .play_music = [](const char*) {},
+    .stop_music = []() {},
+    .create_surface = [](int, int) -> og::render::VideoBase* { return nullptr; },
+    .clear_stale_view_controls = headless_clear_stale_view_controls,
+};
 }
+
+struct HeadlessPlatformBridgeInstaller {
+    HeadlessPlatformBridgeInstaller()
+    {
+        og::interface::install_platform_bridge(kHeadlessPlatformBridge);
+    }
+};
+
+static HeadlessPlatformBridgeInstaller g_headless_platform_bridge_installer;
 
 // SaveData is now provided by the real src/data/save_data.cpp
 // (linked into openglad_text via HEADLESS_SOURCES).

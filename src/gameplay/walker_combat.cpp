@@ -286,8 +286,13 @@ bool walker::attack(walker  *target)
             headguy->myguy->exp += attack_exp;
         if (getscore && is_valid_score_team(team_num))
         {
-            og::gameplay::current_game->world->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i)
+            const std::uint32_t points = static_cast<std::uint32_t>(tempdamage_i)
                 + static_cast<std::uint32_t>(target->stats()->level);
+            og::gameplay::current_game->world->m_score[team_num] += points;
+            og::sim::emit_event(og::gameplay::current_game->sim_events,
+                                og::sim::EventKind::ScoreChange,
+                                static_cast<std::uint32_t>(team_num),
+                                points);
         }
     }
 
@@ -314,8 +319,13 @@ bool walker::attack(walker  *target)
                     //}
                     if (getscore && is_valid_score_team(team_num))
                     {
-                        og::gameplay::current_game->world->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i)
+                        const std::uint32_t points = static_cast<std::uint32_t>(tempdamage_i)
                             + static_cast<std::uint32_t>(10 * target->stats()->level);
+                        og::gameplay::current_game->world->m_score[team_num] += points;
+                        og::sim::emit_event(og::gameplay::current_game->sim_events,
+                                            og::sim::EventKind::ScoreChange,
+                                            static_cast<std::uint32_t>(team_num),
+                                            points);
                     }
                     // If named, alert us of the enemy's death
                     if (target->stats()->name.size() && !(target->lifetime)

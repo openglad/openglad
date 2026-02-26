@@ -12,7 +12,7 @@
 #include <openglad/gameplay/irandom.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/level_io.h>
-#include <openglad/resources/level_data_hooks.h>
+#include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/level_visuals.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/resources/save_io.h>
@@ -161,9 +161,9 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     loader ldr;
     wire_loader_to_world(world, ldr, true);
     // Wire pre-delete hook for headless (no view controls to clear)
-    const LevelDataHooks& hooks = headless_level_data_hooks();
-    if (hooks.clear_stale_view_controls)
-        world.on_pre_delete_objects = [&hooks](og::gameplay::GameWorld* w) { hooks.clear_stale_view_controls(w); };
+    auto& bridge = og::interface::platform_bridge();
+    if (bridge.clear_stale_view_controls)
+        world.on_pre_delete_objects = [&bridge](og::gameplay::GameWorld* w) { bridge.clear_stale_view_controls(w); };
 
     SaveData save;
     save.current_campaign = args.campaign;

@@ -174,6 +174,11 @@ OG_UNIT_TEST(test_event_kind_set_end_value)
     OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::SetEnd) == 15);
 }
 
+OG_UNIT_TEST(test_event_kind_score_change_value)
+{
+    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::ScoreChange) == 18);
+}
+
 OG_UNIT_TEST(test_emit_endgame_event)
 {
     og::sim::SimEventLog log;

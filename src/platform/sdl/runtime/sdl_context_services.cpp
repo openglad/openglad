@@ -11,13 +11,13 @@
 
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/screen.h>
+#include <openglad/platform/soundob_sdl.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/interface/input/input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/walker.h>
-#include <openglad/resources/level_render.h>
-#include <openglad/resources/level_data_hooks.h>
+#include <openglad/interface/platform_bridge.h>
 
 // myscreen and theprefs are now macros defined in base.h / view.h
 
@@ -76,26 +76,37 @@ void sdl_clear_stale_view_controls(og::gameplay::GameWorld* world)
     }
 }
 
-void sdl_level_data_draw(og::gameplay::GameWorld* world, screen* screenp)
+void sdl_present_frame()
 {
-    for (short i = 0; i < screenp->numviews; i++)
-        screenp->viewob[i]->redraw(world, false);
+    if (og::runtime::current_session && og::runtime::current_session->myscreen_)
+        og::runtime::current_session->myscreen_->swap();
 }
 
-std::unique_ptr<LevelRender> sdl_create_level_render(PixieData pixdata[])
+void sdl_play_sound(int sound_id)
 {
-    return create_sdl_level_render(pixdata);
+    if (og::runtime::current_session &&
+        og::runtime::current_session->myscreen_ &&
+        og::runtime::current_session->myscreen_->soundp)
+    {
+        og::runtime::current_session->myscreen_->soundp->play_sound(static_cast<short>(sound_id));
+    }
 }
 
-const LevelDataHooks kSdlLevelDataHooks{
+const og::interface::PlatformBridge kSdlPlatformBridge{
+    .present_frame = sdl_present_frame,
+    .play_sound = sdl_play_sound,
+    .play_music = [](const char*) {},
+    .stop_music = []() {},
+    .create_surface = [](int, int) -> og::render::VideoBase* { return nullptr; },
     .clear_stale_view_controls = sdl_clear_stale_view_controls,
-    .wire_entity_from_screen = nullptr,
-    .draw = sdl_level_data_draw,
-    .create_level_render = sdl_create_level_render,
 };
 } // namespace
 
-const LevelDataHooks& sdl_level_data_hooks()
-{
-    return kSdlLevelDataHooks;
-}
+struct SdlPlatformBridgeInstaller {
+    SdlPlatformBridgeInstaller()
+    {
+        og::interface::install_platform_bridge(kSdlPlatformBridge);
+    }
+};
+
+static SdlPlatformBridgeInstaller g_sdl_platform_bridge_installer;

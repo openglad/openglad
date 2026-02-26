@@ -48,6 +48,7 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/resources/level_render.h>
+#include <openglad/interface/platform_bridge.h>
 #include <algorithm>
 #include <cassert>
 #include <string>
@@ -505,6 +506,7 @@ bool screen::act()
 {
 	// Delegate simulation tick to GameWorld.
 	og::sim::SimEventLog& events = *og::gameplay::current_game->sim_events;
+	auto& bridge = og::interface::platform_bridge();
 	world().my_team = save_data.my_team;
 	world().create_hit_effects = active_config().is_on("effects", "hit_anim");
 	world().tick();
@@ -530,12 +532,15 @@ bool screen::act()
 	// Process simulation events: dispatch sounds, notifications, etc.
 	// This is the key sim/render boundary — simulation emits events,
 	// the runtime layer dispatches them to platform subsystems.
-	for (const auto& ev : events.events())
+	const std::vector<og::sim::Event> drained_events = events.drain();
+	for (const auto& ev : drained_events)
 	{
 		switch (ev.kind)
 		{
 			case og::sim::EventKind::PlaySound:
-				if (soundp)
+				if (bridge.play_sound)
+					bridge.play_sound(static_cast<int>(ev.a));
+				else if (soundp)
 					soundp->play_sound(static_cast<short>(ev.a));
 				break;
 			case og::sim::EventKind::Notification:
@@ -557,7 +562,6 @@ bool screen::act()
 				redrawme = 1;
 				break;
 			case og::sim::EventKind::EndGame:
-				events.clear();
 				return endgame(static_cast<short>(ev.a),
 				               static_cast<short>(static_cast<std::int32_t>(ev.b)));
 			case og::sim::EventKind::DamageTile:
@@ -590,6 +594,9 @@ bool screen::act()
 				if (!pending_withdraw_level.has_value())
 					pending_withdraw_level = static_cast<short>(static_cast<std::int32_t>(ev.a));
 				break;
+			case og::sim::EventKind::ScoreChange:
+				// SaveData score sync happens once per tick via sync_save_from_world().
+				break;
 			default:
 				break;
 		}
@@ -612,19 +619,15 @@ bool screen::act()
 				save_data.scen_num = dest_level;
 				save_data.save("save0");
 				sync_world_from_save();
-				events.clear();
 				return endgame(1, dest_level);
 			}
 
-			events.clear();
 			return endgame(0, req.dest_level);
 		}
 
 		// User declined the prompt; clear any pending withdrawal state.
 		world().withdraw_requested = false;
 	}
-
-	events.clear();
 
 	// Handle level completion / game ending
 	if (world().game_ended && !world().end)

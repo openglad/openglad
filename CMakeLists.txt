@@ -93,6 +93,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/glad.cpp
     ${SRC_DIR}/platform/sdl/runtime/game_loop.cpp
     ${SRC_DIR}/runtime/game_context.cpp
+    ${SRC_DIR}/runtime/platform_bridge.cpp
     ${SRC_DIR}/platform/sdl/runtime/game_session.cpp
     ${SRC_DIR}/platform/sdl/runtime/glad_gameplay.cpp
     ${SRC_DIR}/platform/sdl/runtime/legacy_globals.cpp
@@ -185,6 +186,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/platform/sdl/io/platform_io.cpp
 		    ${SRC_DIR}/resources/platform_io.cpp
 		    ${SRC_DIR}/resources/io/physfs_api.cpp
+		    ${SRC_DIR}/resources/io/filesystem.cpp
 		    ${SRC_DIR}/resources/io/zip_api.cpp
 		    ${SRC_DIR}/resources/io/yaml_stream.cpp
 		    ${SRC_DIR}/resources/io/og_file.cpp
@@ -297,6 +299,7 @@ set(OG_ENTITIES_SOURCES
 
 set(OG_RUNTIME_INTERFACE_SOURCES
     ${SRC_DIR}/runtime/game_context.cpp
+    ${SRC_DIR}/runtime/platform_bridge.cpp
     ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/runtime/sim_input_handler.cpp
@@ -371,6 +374,7 @@ set(OG_IO_SOURCES
     ${SRC_DIR}/platform/sdl/io/platform_io.cpp
     ${SRC_DIR}/resources/platform_io.cpp
     ${SRC_DIR}/resources/io/physfs_api.cpp
+    ${SRC_DIR}/resources/io/filesystem.cpp
     ${SRC_DIR}/resources/io/zip_api.cpp
     ${SRC_DIR}/resources/io/yaml_stream.cpp
     ${SRC_DIR}/resources/io/og_file.cpp
@@ -854,11 +858,13 @@ if(NOT EMSCRIPTEN)
         # io (shared SDL-free helpers + PhysFS/zip/yaml)
         ${SRC_DIR}/resources/platform_io.cpp
         ${SRC_DIR}/resources/io/physfs_api.cpp
+        ${SRC_DIR}/resources/io/filesystem.cpp
         ${SRC_DIR}/resources/io/zip_api.cpp
         ${SRC_DIR}/resources/io/yaml_stream.cpp
         ${SRC_DIR}/resources/io/og_file.cpp
         # runtime (SDL-free subset)
         ${SRC_DIR}/runtime/game_context.cpp
+        ${SRC_DIR}/runtime/platform_bridge.cpp
         ${SRC_DIR}/runtime/sim_input_handler.cpp
         ${SRC_DIR}/gameplay/game_world.cpp
         ${SRC_DIR}/gameplay/gameplay_context.cpp

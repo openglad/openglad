@@ -37,7 +37,7 @@
 #include <openglad/interface/level_visuals.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/resources/level_data_hooks.h>
+#include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/level_picker.h>
 #include <span>
 #include <openglad/interface/ui/campaign_picker.h>
@@ -740,9 +740,9 @@ LevelEditorData::LevelEditorData()
     level->id = 1;
     level->myobmap = std::make_unique<obmap>();
     wire_loader_to_world(*level, *level_loader, false);
-    const LevelDataHooks& hooks = sdl_level_data_hooks();
-    if (hooks.clear_stale_view_controls)
-        level->on_pre_delete_objects = [&hooks](og::gameplay::GameWorld* w) { hooks.clear_stale_view_controls(w); };
+    auto& bridge = og::interface::platform_bridge();
+    if (bridge.clear_stale_view_controls)
+        level->on_pre_delete_objects = [&bridge](og::gameplay::GameWorld* w) { bridge.clear_stale_view_controls(w); };
 }
 
 LevelEditorData::~LevelEditorData()

@@ -29,7 +29,14 @@ static bool gold_bar_on_eat(treasure* self, walker* eater)
     if (eater->team_num == 0 || eater->myguy)
     {
         if (is_valid_score_team(eater->team_num))
-            og::gameplay::current_game->world->m_score[eater->team_num] += (200 * self->stats()->level);
+        {
+            const std::uint32_t points = static_cast<std::uint32_t>(200 * self->stats()->level);
+            og::gameplay::current_game->world->m_score[eater->team_num] += points;
+            og::sim::emit_event(og::gameplay::current_game->sim_events,
+                                og::sim::EventKind::ScoreChange,
+                                static_cast<std::uint32_t>(eater->team_num),
+                                points);
+        }
         self->dead = 1;
         og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_MONEY);
     }
@@ -41,7 +48,14 @@ static bool silver_bar_on_eat(treasure* self, walker* eater)
     if (eater->team_num == 0 || eater->myguy)
     {
         if (is_valid_score_team(eater->team_num))
-            og::gameplay::current_game->world->m_score[eater->team_num] += (50 * self->stats()->level);
+        {
+            const std::uint32_t points = static_cast<std::uint32_t>(50 * self->stats()->level);
+            og::gameplay::current_game->world->m_score[eater->team_num] += points;
+            og::sim::emit_event(og::gameplay::current_game->sim_events,
+                                og::sim::EventKind::ScoreChange,
+                                static_cast<std::uint32_t>(eater->team_num),
+                                points);
+        }
         self->dead = 1;
         og::sim::emit_sound(og::gameplay::current_game->sim_events, SOUND_MONEY);
     }
@@ -53,7 +67,14 @@ static bool life_gem_on_eat(treasure* self, walker* eater)
     if (eater->team_num != self->team_num) // only our team can get these
         return true;
     if (is_valid_score_team(eater->team_num))
-        og::gameplay::current_game->world->m_score[eater->team_num] += static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints));
+    {
+        const std::uint32_t points = static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints));
+        og::gameplay::current_game->world->m_score[eater->team_num] += points;
+        og::sim::emit_event(og::gameplay::current_game->sim_events,
+                            og::sim::EventKind::ScoreChange,
+                            static_cast<std::uint32_t>(eater->team_num),
+                            points);
+    }
     walker* flash = og::gameplay::current_game->world->add_ob(Order::FX, FAMILY_FLASH);
     flash->ani_type = ANI_EXPAND_8;
     flash->center_on(self);

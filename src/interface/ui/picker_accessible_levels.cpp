@@ -19,7 +19,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/resources/level_io.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/level_data_hooks.h>
+#include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/level_visuals.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/legacy/base.h>
@@ -70,9 +70,9 @@ std::vector<int> get_accessible_levels()
             world.myobmap = std::make_unique<obmap>();
             loader ldr;
             wire_loader_to_world(world, ldr, false);
-            const LevelDataHooks& hooks = sdl_level_data_hooks();
-            if (hooks.clear_stale_view_controls)
-                world.on_pre_delete_objects = [&hooks](og::gameplay::GameWorld* w) { hooks.clear_stale_view_controls(w); };
+            auto& bridge = og::interface::platform_bridge();
+            if (bridge.clear_stale_view_controls)
+                world.on_pre_delete_objects = [&bridge](og::gameplay::GameWorld* w) { bridge.clear_stale_view_controls(w); };
             LevelVisuals dummy_visuals;
             og::data::LevelFileMetadata meta;
             std::string thefile = std::format("scen{}.fss", level_id);

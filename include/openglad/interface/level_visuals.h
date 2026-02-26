@@ -5,8 +5,7 @@
 
 #include <openglad/legacy/pixdefs.h>
 #include <openglad/resources/pixie_data.h>
-
-class LevelRender;
+#include <openglad/resources/level_render.h>
 
 struct LevelVisuals {
     PixieData pixdata[PIX_MAX];

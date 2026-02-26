@@ -8,63 +8,43 @@
 // PhysFS wrapper implementation.
 
 #include <openglad/resources/physfs_api.h>
-
-#include "physfs.h"
-
-#include <memory>
+#include <openglad/resources/filesystem.h>
 
 namespace og::io {
 
-namespace {
-struct PhysfsFileListDeleter {
-    void operator()(char** list) const
-    {
-        if (list)
-            PHYSFS_freeList(list);
-    }
-};
-} // namespace
-
 std::string physfs_last_error()
 {
-    const PHYSFS_ErrorCode code = PHYSFS_getLastErrorCode();
-    const char* msg = PHYSFS_getErrorByCode(code);
-    return msg ? std::string(msg) : std::string();
+    return og::resources::last_error();
 }
 
 bool physfs_init(const char* argv0)
 {
-    return PHYSFS_init(argv0) != 0;
+    return og::resources::init(argv0);
 }
 
 bool physfs_deinit()
 {
-    return PHYSFS_deinit() != 0;
+    return og::resources::deinit();
 }
 
 bool physfs_set_write_dir(const std::string& path)
 {
-    return PHYSFS_setWriteDir(path.c_str()) != 0;
+    return og::resources::set_write_dir(path);
 }
 
 bool physfs_mount(const std::string& path, const char* mount_point, int append_to_path)
 {
-    return PHYSFS_mount(path.c_str(), mount_point, append_to_path) != 0;
+    return og::resources::mount(path, mount_point, append_to_path);
 }
 
 bool physfs_unmount(const std::string& path)
 {
-    return PHYSFS_unmount(path.c_str()) != 0;
+    return og::resources::unmount(path);
 }
 
 std::list<std::string> physfs_enumerate_files_sorted(const std::string& dirname)
 {
-    std::list<std::string> out;
-    std::unique_ptr<char*, PhysfsFileListDeleter> files(PHYSFS_enumerateFiles(dirname.c_str()));
-    for (char** p = files.get(); p != nullptr && *p != nullptr; ++p)
-        out.push_back(*p);
-    out.sort();
-    return out;
+    return og::resources::enumerate_files_sorted(dirname);
 }
 
 } // namespace og::io
