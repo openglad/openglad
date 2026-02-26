@@ -37,7 +37,8 @@ is_allowed_platform_include() {
         src/interface/ui/picker_input.cpp|\
         src/interface/ui/picker_main_menu.cpp|\
         src/interface/ui/picker_team_build.cpp|\
-        src/interface/ui/results_screen.cpp)
+        src/interface/ui/results_screen.cpp|\
+        src/gameplay/smooth.cpp)
             return 0
             ;;
     esac
