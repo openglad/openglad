@@ -15,13 +15,13 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <openglad/data/save_data.h>
+#include <openglad/resources/save_data.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/test_trace.h>
 #include <format>
 
-#include <openglad/entities/guy.h>
-#include <openglad/io/og_file.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/platform/io_common.h>
 #include <openglad/legacy/base.h>
 #include <algorithm>

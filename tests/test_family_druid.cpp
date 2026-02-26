@@ -1,6 +1,6 @@
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/living.h>
-#include <openglad/entities/guy.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
 #include "unit/unit.h"

@@ -1,6 +1,6 @@
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/data/smooth.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/interface/screen.h>
+#include <openglad/resources/smooth.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 

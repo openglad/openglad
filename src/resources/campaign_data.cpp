@@ -15,11 +15,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <openglad/data/campaign_data.h>
+#include <openglad/resources/campaign_data.h>
 #include <openglad/platform/io_common.h>
-#include <openglad/io/og_file.h>
-#include <openglad/io/yaml_stream.h>
-#include <openglad/io/ogfile_yaml.h>
+#include <openglad/resources/og_file.h>
+#include <openglad/resources/yaml_stream.h>
+#include <openglad/resources/ogfile_yaml.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/util.h>
 

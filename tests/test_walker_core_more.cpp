@@ -1,15 +1,15 @@
 #include <openglad/core/stats.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
-#include <openglad/data/gloader.h>
-#include <openglad/data/save_data.h>
-#include <openglad/entities/living.h>
-#include <openglad/entities/walker.h>
-#include <openglad/entities/obmap.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/platform/guy_create.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/legacy/base.h>
-#include <openglad/render/view.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <memory>
@@ -254,7 +254,7 @@ void test_walker_act_generate_zero_vector_and_hp_cap_paths()
     gen->stats()->hitpoints = 10;
     gen->default_weapon = FAMILY_ELF;
     gen->current_weapon = gen->default_weapon;
-    og::runtime::current_session->myscreen_->world_.rng_.state_ = 1;
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 1;
 
     gen->set_act_type(ACT_GENERATE);
     (void)gen->act();

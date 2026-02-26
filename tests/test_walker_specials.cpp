@@ -1,10 +1,10 @@
-#include <openglad/runtime/game_context.h>
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/platform/guy_create.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 #include <vector>

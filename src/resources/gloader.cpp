@@ -14,23 +14,23 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-#include <openglad/data/gloader.h>
-#include <openglad/data/gparser.h>
-#include <openglad/io/og_file.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/core/util.h>
 #include <openglad/core/stats.h>
-#include <openglad/entities/walker.h>
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
-#include <openglad/entities/weapon_family_descriptor.h>
-#include <openglad/entities/family_registries.h>
-#include <openglad/entities/effect_family_descriptor.h>
-#include <openglad/entities/treasure_family_descriptor.h>
-#include <openglad/entities/generator_family_descriptor.h>
-#include <openglad/entities/living.h>
-#include <openglad/entities/treasure.h>
-#include <openglad/entities/weap.h>
-#include <openglad/entities/effect.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/weapon_family_descriptor.h>
+#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/effect_family_descriptor.h>
+#include <openglad/gameplay/treasure_family_descriptor.h>
+#include <openglad/gameplay/generator_family_descriptor.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/treasure.h>
+#include <openglad/gameplay/weap.h>
+#include <openglad/gameplay/effect.h>
 #include <algorithm>
 #include <cstring>
 

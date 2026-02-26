@@ -5,9 +5,9 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/game_session.h>
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/platform/game_session.h>
+#include <openglad/gameplay/sim_event_log.h>
 
 // The existing global random() function (defined in screen.cpp or text_client main)
 std::uint32_t random(std::uint32_t x);

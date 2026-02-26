@@ -6,18 +6,18 @@
  * They must pass both BEFORE and AFTER behavioral extraction into
  * FamilyDescriptor callbacks.
  */
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
-#include <openglad/entities/living.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/platform/guy_create.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/gloader.h>
-#include <openglad/data/gparser.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/interface/screen.h>
+#include <openglad/gameplay/irandom.h>
 #include "test_framework.h"
 #include <cmath>
 #include <algorithm>
@@ -1202,7 +1202,7 @@ void test_archmage_hit_response_threshold_and_retarget_branches()
         return;
 
     // Archmage hit_response now uses world RNG; force a deterministic non-zero rng_.next(3).
-    og::runtime::current_session->myscreen_->world_.rng_.state_ = 1;
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 1;
     arch->stats()->special_cost[1] = 0;
     arch->stats()->magicpoints = 500;
     arch->stats()->level = 9;

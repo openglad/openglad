@@ -1,9 +1,9 @@
-#include <openglad/runtime/game_context.h>
-#include <openglad/entities/walker.h>
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/platform/guy_create.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <unordered_set>

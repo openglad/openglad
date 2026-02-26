@@ -1,19 +1,19 @@
 #include <openglad/gameplay/game_world.h>
-#include <openglad/entities/obmap.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/core/stats.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
 #include <memory>
 #include "unit/unit.h"
-#include <openglad/runtime/game_context.h>
+#include <openglad/platform/game_context.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
-#include <openglad/entities/guy.h>
+#include <openglad/gameplay/guy.h>
 
 // --- From test_stats_coverage_push.cpp ---
 namespace detail_stats_coverage_push {

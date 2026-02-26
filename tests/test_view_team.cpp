@@ -1,15 +1,15 @@
 #include <memory>
 #include <array>
-#include <openglad/data/pixie_data.h>
-#include <openglad/input/button.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/interface/input/button.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/render/pixien.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/render/pixien.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include <openglad/data/save_data.h>
-#include <openglad/entities/guy.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/core/util.h>
 #include <atomic>
 #include <cstdint>
@@ -30,7 +30,7 @@ extern std::atomic<int> g_test_game_epoch;
 namespace og::sim { extern std::int32_t g_test_level_tick_limit_override; }
 #endif
 
-#include <openglad/runtime/picker_ui_state.h>
+#include <openglad/platform/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 

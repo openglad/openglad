@@ -28,11 +28,11 @@
 #include <cstdio>
 #include <cstring>
 #include <format>
-#include <openglad/data/gparser.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/core/util.h>
-#include <openglad/io/og_file.h>
-#include <openglad/io/ogfile_yaml.h>
-#include <openglad/io/yaml_stream.h>
+#include <openglad/resources/og_file.h>
+#include <openglad/resources/ogfile_yaml.h>
+#include <openglad/resources/yaml_stream.h>
 
 int toInt(const std::string& s);
 

@@ -1,7 +1,7 @@
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
-#include <openglad/data/save_data.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/interface/screen.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 void test_save_load_roundtrip() {

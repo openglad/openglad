@@ -10,13 +10,13 @@
 // lives in the sim layer, not the render layer.
 
 #include <openglad/sim/sim_input_handler.h>
-#include <openglad/sim/sim_emit.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/sim_emit.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/input/input_state.h>
+#include <openglad/interface/input/input_state.h>
 #include <algorithm>
 
 walker* sim_find_next_control(og::gameplay::GameWorld& level, short my_team)

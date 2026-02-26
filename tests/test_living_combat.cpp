@@ -1,13 +1,13 @@
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
-#include <openglad/entities/living.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/platform/guy_create.h>
+#include <openglad/gameplay/living.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/gloader.h>
-#include <openglad/data/gparser.h>
-#include <openglad/entities/walker.h>
-#include <openglad/entities/obmap.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include <memory>
 
@@ -900,7 +900,7 @@ void test_obmap_round11_stale_query_and_helper_accessors_paths()
     {
         obmap weapon_map;
         TEST_ASSERT_EQ(1, (int)weapon_map.add(w2, w2->xpos, w2->ypos), "track second weapon in loop map");
-        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        og::runtime::current_session->myscreen_->world().rng_.state_ = seed;
         saw_weapon_pass = (weapon_map.query_list(w1, w1->xpos, w1->ypos) == 1);
     }
     TEST_ASSERT(saw_weapon_pass, "weapon should pass when colliding weapon-miss branch executes");

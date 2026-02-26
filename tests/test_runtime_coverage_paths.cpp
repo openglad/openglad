@@ -1,16 +1,16 @@
-#include <openglad/data/gparser.h>
-#include <openglad/entities/treasure.h>
-#include <openglad/entities/walker.h>
-#include <openglad/input/input.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/treasure.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/input/input.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/screen_lifecycle.h>
-#include <openglad/render/view.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/interface/screen.h>
+#include <openglad/platform/screen_lifecycle.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/terrain_types.h>
-#include <openglad/sim/event.h>
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/gameplay/event.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 
@@ -194,7 +194,7 @@ void test_treasure_exit_and_teleporter_navigation_paths()
     static ProductionRandom rng;
     sim_events.clear();
     og::runtime::current_session->myscreen_->world().set_sim_context(
-        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world_.enemy_freeze, &sim_events, &rng, &cfg);
+        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world().enemy_freeze, &sim_events, &rng, &cfg);
 
     // Exit flow: no enemies left + prompt accepted should emit EndGame.
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
@@ -243,7 +243,7 @@ void test_treasure_navigation_early_returns_and_withdraw_decline()
     static ProductionRandom rng;
     sim_events.clear();
     og::runtime::current_session->myscreen_->world().set_sim_context(
-        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world_.enemy_freeze, &sim_events, &rng, &cfg);
+        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world().enemy_freeze, &sim_events, &rng, &cfg);
 
     // Exit early return: eater currently in act.
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 3);
@@ -366,7 +366,7 @@ void test_treasure_batch3_exit_withdraw_accept_path()
     static ProductionRandom rng;
     sim_events.clear();
     og::runtime::current_session->myscreen_->world().set_sim_context(
-        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world_.enemy_freeze, &sim_events, &rng, &cfg);
+        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world().enemy_freeze, &sim_events, &rng, &cfg);
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
@@ -966,7 +966,7 @@ void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
     static ProductionRandom rng;
     sim_events.clear();
     og::runtime::current_session->myscreen_->world().set_sim_context(
-        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world_.enemy_freeze, &sim_events, &rng, &cfg);
+        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world().enemy_freeze, &sim_events, &rng, &cfg);
 
     // Setup: CAN_EXIT_WHENEVER flag, enemies still present, dest level completed,
     // current scenario NOT completed → both Withdraw AND Exit conditions met.
@@ -1024,7 +1024,7 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
     static ProductionRandom rng;
     sim_events.clear();
     og::runtime::current_session->myscreen_->world().set_sim_context(
-        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world_.enemy_freeze, &sim_events, &rng, &cfg);
+        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world().enemy_freeze, &sim_events, &rng, &cfg);
 
     og::runtime::current_session->myscreen_->world().type = og::gameplay::GameWorld::TYPE_CAN_EXIT_WHENEVER;
     og::runtime::current_session->myscreen_->world().level_done = 0; // enemies still present

@@ -1,4 +1,4 @@
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/gameplay/sim_event_log.h>
 
 #include "unit.h"
 

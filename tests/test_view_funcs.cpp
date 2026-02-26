@@ -1,5 +1,5 @@
-#include <openglad/render/view.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/screen.h>
 #include <openglad/legacy/colors.h>
 #include "test_framework.h"
 

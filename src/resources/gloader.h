@@ -1,4 +1,4 @@
 #pragma once
 
-// Transitional shim: prefer including <openglad/data/gloader.h>.
-#include <openglad/data/gloader.h>
+// Transitional shim: prefer including <openglad/resources/gloader.h>.
+#include <openglad/resources/gloader.h>

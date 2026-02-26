@@ -1,5 +1,5 @@
 #include "SDL.h"
-#include <openglad/render/sai2x.h>
+#include <openglad/interface/render/sai2x.h>
 #include "test_framework.h"
 
 #include <cstdio>

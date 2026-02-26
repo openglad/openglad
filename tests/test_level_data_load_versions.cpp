@@ -1,13 +1,13 @@
 #include "SDL.h"
 #include <openglad/gameplay/game_world.h>
-#include <openglad/data/level_file_io.h>
-#include <openglad/entities/effect.h>
-#include <openglad/entities/living.h>
-#include <openglad/entities/obmap.h>
-#include <openglad/entities/treasure.h>
-#include <openglad/entities/walker.h>
-#include <openglad/entities/weap.h>
-#include <openglad/io/og_file.h>
+#include <openglad/resources/level_file_io.h>
+#include <openglad/gameplay/effect.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/treasure.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/weap.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 

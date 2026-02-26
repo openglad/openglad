@@ -33,7 +33,7 @@
 #include <cctype>
 #include <openglad/legacy/soundob.h> // sound constants (always needed)
 #include <openglad/core/util.h>
-#include <openglad/data/gparser.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/legacy/pixdefs.h>
 
 // Standard integer type aliases (previously from SDL_stdinc.h)
@@ -87,7 +87,7 @@ struct meminfo
 };
 
 // Access session state via og::runtime::current_session->member_ directly.
-#include <openglad/runtime/game_session.h>
+#include <openglad/platform/game_session.h>
 
 void set_game_speed(float factor);
 
@@ -189,7 +189,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scr)
 
 #define OUTLINE_INVISIBLE query_team_color() //
 
-#include <openglad/data/pixie_data.h>
+#include <openglad/resources/pixie_data.h>
 PixieData read_pixie_file(const char  * filename);
 
 // Some stuff for palette

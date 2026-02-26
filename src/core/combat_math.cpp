@@ -6,7 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/core/combat_math.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/gameplay/game_world.h>
 #include <cmath>
 

@@ -1,13 +1,13 @@
-#include <openglad/data/level_file_io.h>
+#include <openglad/resources/level_file_io.h>
 
 #include <openglad/core/constants.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/util.h>
-#include <openglad/data/pixie_data.h>
-#include <openglad/entities/walker.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/interface/level_visuals.h>
-#include <openglad/io/og_file.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/gameplay/game_world.h>

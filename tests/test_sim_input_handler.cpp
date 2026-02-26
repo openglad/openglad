@@ -2,13 +2,13 @@
  * These are integration tests (require SDL for walker creation).
  */
 #include <openglad/sim/sim_input_handler.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/input/input_action.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/interface/input/input_action.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/interface/screen.h>
+#include <openglad/platform/game_context.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 #include <memory>

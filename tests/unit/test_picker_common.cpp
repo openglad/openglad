@@ -1,9 +1,9 @@
 #include "unit.h"
-#include <openglad/ui/picker_common.h>
-#include <openglad/data/save_data.h>
-#include <openglad/entities/guy.h>
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
 #include <cstdlib>
 #include <cstring>
 #include <vector>

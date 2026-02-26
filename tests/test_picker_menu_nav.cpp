@@ -1,5 +1,5 @@
-#include <openglad/input/button.h>
-#include <openglad/input/input.h>
+#include <openglad/interface/input/button.h>
+#include <openglad/interface/input/input.h>
 #include "test_framework.h"
 
 #include <chrono>
@@ -7,7 +7,7 @@
 
 
 // From picker.cpp
-#include <openglad/runtime/picker_ui_state.h>
+#include <openglad/platform/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons);
 void draw_highlight_interior(const button& b);

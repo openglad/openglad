@@ -1,4 +1,4 @@
-#include <openglad/input/input.h>
+#include <openglad/interface/input/input.h>
 #include "test_framework.h"
 
 // input.cpp internal entry point (declared in input.h too).

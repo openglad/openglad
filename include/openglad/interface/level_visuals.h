@@ -4,7 +4,7 @@
 #include <memory>
 
 #include <openglad/legacy/pixdefs.h>
-#include <openglad/data/pixie_data.h>
+#include <openglad/resources/pixie_data.h>
 
 class LevelRender;
 

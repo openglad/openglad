@@ -1,10 +1,10 @@
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
-#include <openglad/entities/guy.h>
-#include <openglad/input/button.h>
-#include <openglad/data/save_data.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/input/button.h>
+#include <openglad/resources/save_data.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include <memory>
 
 // myscreen is now a macro defined in base.h (via game_session.h)

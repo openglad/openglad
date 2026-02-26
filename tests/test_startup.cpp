@@ -1,5 +1,5 @@
 #include "SDL.h"
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)

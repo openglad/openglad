@@ -1,11 +1,11 @@
 #include <openglad/core/stats.h>
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
-#include <openglad/entities/walker.h>
-#include <openglad/entities/treasure.h>
-#include <openglad/data/gloader.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/platform/guy_create.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/treasure.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include <memory>
 
@@ -33,8 +33,8 @@ static walker* make_treasure(char family, short level = 1)
 
 static Uint32 total_team_score()
 {
-    return og::runtime::current_session->myscreen_->world_.m_score[0] + og::runtime::current_session->myscreen_->world_.m_score[1] +
-           og::runtime::current_session->myscreen_->world_.m_score[2] + og::runtime::current_session->myscreen_->world_.m_score[3];
+    return og::runtime::current_session->myscreen_->world().m_score[0] + og::runtime::current_session->myscreen_->world().m_score[1] +
+           og::runtime::current_session->myscreen_->world().m_score[2] + og::runtime::current_session->myscreen_->world().m_score[3];
 }
 
 
@@ -89,12 +89,12 @@ void test_treasure_eat_gold_bar()
     walker* gold = make_treasure(FAMILY_GOLD_BAR, 2);
     if (!gold) { delete eater; return; }
 
-    Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[0];
+    Uint32 score_before = og::runtime::current_session->myscreen_->world().m_score[0];
     gold->eat_me(eater);
-    TEST_ASSERT(og::runtime::current_session->myscreen_->world_.m_score[0] > score_before, "gold bar adds score");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().m_score[0] > score_before, "gold bar adds score");
     TEST_ASSERT(gold->dead == 1, "gold bar consumed");
 
-    og::runtime::current_session->myscreen_->world_.m_score[0] = score_before;
+    og::runtime::current_session->myscreen_->world().m_score[0] = score_before;
     og::runtime::current_session->myscreen_->world().remove_ob(gold);
     delete eater;
 }
@@ -109,10 +109,10 @@ void test_treasure_eat_gold_bar_invalid_team_does_not_index_score_array()
     walker* gold = make_treasure(FAMILY_GOLD_BAR, 2);
     if (!gold) { delete eater; return; }
 
-    og::runtime::current_session->myscreen_->world_.m_score[0] = 10;
-    og::runtime::current_session->myscreen_->world_.m_score[1] = 20;
-    og::runtime::current_session->myscreen_->world_.m_score[2] = 30;
-    og::runtime::current_session->myscreen_->world_.m_score[3] = 40;
+    og::runtime::current_session->myscreen_->world().m_score[0] = 10;
+    og::runtime::current_session->myscreen_->world().m_score[1] = 20;
+    og::runtime::current_session->myscreen_->world().m_score[2] = 30;
+    og::runtime::current_session->myscreen_->world().m_score[3] = 40;
     const Uint32 score_before = total_team_score();
 
     gold->eat_me(eater);
@@ -134,12 +134,12 @@ void test_treasure_eat_silver_bar()
     walker* silver = make_treasure(FAMILY_SILVER_BAR, 3);
     if (!silver) { delete eater; return; }
 
-    Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[0];
+    Uint32 score_before = og::runtime::current_session->myscreen_->world().m_score[0];
     silver->eat_me(eater);
-    TEST_ASSERT(og::runtime::current_session->myscreen_->world_.m_score[0] > score_before, "silver bar adds score");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().m_score[0] > score_before, "silver bar adds score");
     TEST_ASSERT(silver->dead == 1, "silver bar consumed");
 
-    og::runtime::current_session->myscreen_->world_.m_score[0] = score_before;
+    og::runtime::current_session->myscreen_->world().m_score[0] = score_before;
     og::runtime::current_session->myscreen_->world().remove_ob(silver);
     delete eater;
 }
@@ -270,12 +270,12 @@ void test_treasure_eat_life_gem()
     gem->team_num = 0;
     gem->stats()->hitpoints = 500;
 
-    Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[0];
+    Uint32 score_before = og::runtime::current_session->myscreen_->world().m_score[0];
     gem->eat_me(eater);
-    TEST_ASSERT(og::runtime::current_session->myscreen_->world_.m_score[0] > score_before, "life gem adds score");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().m_score[0] > score_before, "life gem adds score");
     TEST_ASSERT(gem->dead == 1, "gem consumed");
 
-    og::runtime::current_session->myscreen_->world_.m_score[0] = score_before;
+    og::runtime::current_session->myscreen_->world().m_score[0] = score_before;
     delete eater;
 }
 REGISTER_TEST(test_treasure_eat_life_gem);

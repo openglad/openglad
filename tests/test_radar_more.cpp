@@ -1,9 +1,9 @@
-#include <openglad/render/radar.h>
-#include <openglad/data/gloader.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
-#include <openglad/entities/walker.h>
+#include <openglad/interface/render/radar.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/legacy/base.h>

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <openglad/gameplay/game_world.h>
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/gameplay/sim_event_log.h>
 
 // RAII helper for unit tests that need a minimal GameWorld + SimEventLog.
 // No thread-local installation needed at this stage (Phase 1a).

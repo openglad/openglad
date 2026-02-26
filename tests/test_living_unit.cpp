@@ -1,15 +1,15 @@
-#include <openglad/entities/living.h>
-#include <openglad/entities/guy.h>
-#include <openglad/entities/weap.h>
-#include <openglad/entities/treasure.h>
-#include <openglad/entities/effect.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/weap.h>
+#include <openglad/gameplay/treasure.h>
+#include <openglad/gameplay/effect.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/entities/obmap.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
 #include <openglad/legacy/pixdefs.h>
@@ -18,9 +18,9 @@
 #endif
 #include <memory>
 #include "unit/unit.h"
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
+#include <openglad/platform/game_context.h>
 #include <array>
 
 // --- From test_living_r11.cpp ---

@@ -1,4 +1,4 @@
-#include <openglad/ui/menu_model.h>
+#include <openglad/interface/ui/menu_model.h>
 #include "test_framework.h"
 
 void test_menu_model_main_definition_and_lookup()

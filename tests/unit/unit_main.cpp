@@ -1,8 +1,8 @@
 #include "unit.h"
-#include <openglad/entities/family_registries.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/gameplay/family_registries.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/gameplay/sim_event_log.h>
 
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);

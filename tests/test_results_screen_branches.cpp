@@ -1,5 +1,5 @@
-#include <openglad/ui/results_screen.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/ui/results_screen.h>
+#include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 

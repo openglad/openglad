@@ -11,7 +11,7 @@
 #include <functional>
 #include <list>
 #include <memory>
-#include <openglad/input/input_action.h>
+#include <openglad/interface/input/input_action.h>
 
 class walker;
 struct PlayerInput;

@@ -21,18 +21,18 @@
 #include <openglad/core/stats.h>      // for bit flags, etc.
 #include <openglad/core/util.h>
 #include <openglad/legacy/base.h>     // COMMAND_*, FACE_*, FAMILY_*, ACT_*, myscreen, etc.
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
-#include <openglad/entities/guy.h>
-#include <openglad/entities/obmap.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 // find_follow_leader is defined in the SDL build (screen.cpp) and stubbed
 // by the text client. Returns a walker to follow, or nullptr if none.
 walker* find_follow_leader();
 #include <cmath>
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <format>
 
 static inline Uint32 rng(Uint32 max_exclusive) {

@@ -1,10 +1,10 @@
 #include <openglad/core/stats.h>
-#include <openglad/entities/living.h>
-#include <openglad/entities/walker.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/guy.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include <memory>
 

@@ -90,132 +90,132 @@ set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
 
 # Main game C++ sources
 set(GAME_SOURCES
-    ${SRC_DIR}/sdl_client/glad.cpp
-    ${SRC_DIR}/sdl_client/runtime/game_loop.cpp
+    ${SRC_DIR}/platform/sdl/glad.cpp
+    ${SRC_DIR}/platform/sdl/runtime/game_loop.cpp
     ${SRC_DIR}/runtime/game_context.cpp
-    ${SRC_DIR}/sdl_client/runtime/game_session.cpp
-    ${SRC_DIR}/sdl_client/runtime/glad_gameplay.cpp
-    ${SRC_DIR}/sdl_client/runtime/legacy_globals.cpp
-    ${SRC_DIR}/sdl_client/runtime/score_panel.cpp
-    ${SRC_DIR}/sdl_client/runtime/screen_lifecycle.cpp
+    ${SRC_DIR}/platform/sdl/runtime/game_session.cpp
+    ${SRC_DIR}/platform/sdl/runtime/glad_gameplay.cpp
+    ${SRC_DIR}/platform/sdl/runtime/legacy_globals.cpp
+    ${SRC_DIR}/platform/sdl/runtime/score_panel.cpp
+    ${SRC_DIR}/platform/sdl/runtime/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
-    ${SRC_DIR}/sdl_client/ui/button.cpp
-    ${SRC_DIR}/entities/effect.cpp
-    ${SRC_DIR}/entities/family_registry.cpp
-    ${SRC_DIR}/entities/families/family_archer.cpp
-    ${SRC_DIR}/entities/families/family_archmage.cpp
-    ${SRC_DIR}/entities/families/family_barbarian.cpp
-    ${SRC_DIR}/entities/families/family_big_orc.cpp
-    ${SRC_DIR}/entities/families/family_cleric.cpp
-    ${SRC_DIR}/entities/families/family_druid.cpp
-    ${SRC_DIR}/entities/families/family_elf.cpp
-    ${SRC_DIR}/entities/families/family_faerie.cpp
-    ${SRC_DIR}/entities/families/family_fire_elemental.cpp
-    ${SRC_DIR}/entities/families/family_ghost.cpp
-    ${SRC_DIR}/entities/families/family_giant_skeleton.cpp
-    ${SRC_DIR}/entities/families/family_golem.cpp
-    ${SRC_DIR}/entities/families/family_mage.cpp
-    ${SRC_DIR}/entities/families/family_orc.cpp
-    ${SRC_DIR}/entities/families/family_skeleton.cpp
-    ${SRC_DIR}/entities/families/family_slime.cpp
-    ${SRC_DIR}/entities/families/family_soldier.cpp
-    ${SRC_DIR}/entities/families/family_thief.cpp
-    ${SRC_DIR}/entities/families/family_tower1.cpp
-    ${SRC_DIR}/entities/weapon_family_registry.cpp
-    ${SRC_DIR}/entities/families/weapon_family_knife.cpp
-    ${SRC_DIR}/entities/families/weapon_family_rock.cpp
-    ${SRC_DIR}/entities/families/weapon_family_projectiles.cpp
-    ${SRC_DIR}/entities/families/weapon_family_wave.cpp
-    ${SRC_DIR}/entities/families/weapon_family_door.cpp
-    ${SRC_DIR}/entities/families/weapon_family_animate.cpp
-    ${SRC_DIR}/entities/effect_family_registry.cpp
-    ${SRC_DIR}/entities/families/effect_family_ghost_scare.cpp
-    ${SRC_DIR}/entities/families/effect_family_shield.cpp
-    ${SRC_DIR}/entities/families/effect_family_knife_back.cpp
-    ${SRC_DIR}/entities/families/effect_family_cloud.cpp
-    ${SRC_DIR}/entities/families/effect_family_chain.cpp
-    ${SRC_DIR}/entities/families/effect_family_door_open.cpp
-    ${SRC_DIR}/entities/families/effect_family_bomb.cpp
-    ${SRC_DIR}/entities/treasure_family_registry.cpp
-    ${SRC_DIR}/entities/families/treasure_family_consumables.cpp
-    ${SRC_DIR}/entities/families/treasure_family_valuables.cpp
-    ${SRC_DIR}/entities/families/treasure_family_navigation.cpp
-    ${SRC_DIR}/entities/generator_family_registry.cpp
-    ${SRC_DIR}/sdl_client/runtime/game.cpp
-    ${SRC_DIR}/sdl_client/runtime/guy_create.cpp
-    ${SRC_DIR}/sdl_client/render/graphlib.cpp
-    ${SRC_DIR}/entities/guy.cpp
-    ${SRC_DIR}/sdl_client/ui/help.cpp
-    ${SRC_DIR}/sdl_client/input/input.cpp
-    ${SRC_DIR}/input/input_state.cpp
-    ${SRC_DIR}/sdl_client/ui/intro.cpp
-    ${SRC_DIR}/entities/living.cpp
-    ${SRC_DIR}/entities/obmap.cpp
-    ${SRC_DIR}/sdl_client/render/pal32.cpp
-    ${SRC_DIR}/sdl_client/ui/picker.cpp
-    ${SRC_DIR}/sdl_client/ui/picker_dialogs.cpp
-    ${SRC_DIR}/sdl_client/ui/picker_input.cpp
-    ${SRC_DIR}/sdl_client/ui/picker_main_menu.cpp
-    ${SRC_DIR}/sdl_client/ui/picker_accessible_levels.cpp
-    ${SRC_DIR}/sdl_client/ui/picker_team_build.cpp
-    ${SRC_DIR}/ui/menu_model.cpp
-    ${SRC_DIR}/ui/picker_common.cpp
-    ${SRC_DIR}/ui/picker_state.cpp
-    ${SRC_DIR}/sdl_client/render/pixie.cpp
-    ${SRC_DIR}/sdl_client/render/pixien.cpp
-    ${SRC_DIR}/sdl_client/render/radar.cpp
-    ${SRC_DIR}/sdl_client/runtime/screen.cpp
-    ${SRC_DIR}/runtime/smooth.cpp
-    ${SRC_DIR}/sdl_client/platform/sound.cpp
+    ${SRC_DIR}/interface/ui/button.cpp
+    ${SRC_DIR}/gameplay/effect.cpp
+    ${SRC_DIR}/gameplay/family_registry.cpp
+    ${SRC_DIR}/gameplay/families/family_archer.cpp
+    ${SRC_DIR}/gameplay/families/family_archmage.cpp
+    ${SRC_DIR}/gameplay/families/family_barbarian.cpp
+    ${SRC_DIR}/gameplay/families/family_big_orc.cpp
+    ${SRC_DIR}/gameplay/families/family_cleric.cpp
+    ${SRC_DIR}/gameplay/families/family_druid.cpp
+    ${SRC_DIR}/gameplay/families/family_elf.cpp
+    ${SRC_DIR}/gameplay/families/family_faerie.cpp
+    ${SRC_DIR}/gameplay/families/family_fire_elemental.cpp
+    ${SRC_DIR}/gameplay/families/family_ghost.cpp
+    ${SRC_DIR}/gameplay/families/family_giant_skeleton.cpp
+    ${SRC_DIR}/gameplay/families/family_golem.cpp
+    ${SRC_DIR}/gameplay/families/family_mage.cpp
+    ${SRC_DIR}/gameplay/families/family_orc.cpp
+    ${SRC_DIR}/gameplay/families/family_skeleton.cpp
+    ${SRC_DIR}/gameplay/families/family_slime.cpp
+    ${SRC_DIR}/gameplay/families/family_soldier.cpp
+    ${SRC_DIR}/gameplay/families/family_thief.cpp
+    ${SRC_DIR}/gameplay/families/family_tower1.cpp
+    ${SRC_DIR}/gameplay/weapon_family_registry.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_knife.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_rock.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_projectiles.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_wave.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_door.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_animate.cpp
+    ${SRC_DIR}/gameplay/effect_family_registry.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_ghost_scare.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_shield.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_knife_back.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_cloud.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_chain.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_door_open.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_bomb.cpp
+    ${SRC_DIR}/gameplay/treasure_family_registry.cpp
+    ${SRC_DIR}/gameplay/families/treasure_family_consumables.cpp
+    ${SRC_DIR}/gameplay/families/treasure_family_valuables.cpp
+    ${SRC_DIR}/gameplay/families/treasure_family_navigation.cpp
+    ${SRC_DIR}/gameplay/generator_family_registry.cpp
+    ${SRC_DIR}/platform/sdl/runtime/game.cpp
+    ${SRC_DIR}/platform/sdl/runtime/guy_create.cpp
+    ${SRC_DIR}/interface/render/graphlib.cpp
+    ${SRC_DIR}/gameplay/guy.cpp
+    ${SRC_DIR}/interface/ui/help.cpp
+    ${SRC_DIR}/interface/input/input.cpp
+    ${SRC_DIR}/interface/input/input_state.cpp
+    ${SRC_DIR}/interface/ui/intro.cpp
+    ${SRC_DIR}/gameplay/living.cpp
+    ${SRC_DIR}/gameplay/obmap.cpp
+    ${SRC_DIR}/interface/render/pal32.cpp
+    ${SRC_DIR}/interface/ui/picker.cpp
+    ${SRC_DIR}/interface/ui/picker_dialogs.cpp
+    ${SRC_DIR}/interface/ui/picker_input.cpp
+    ${SRC_DIR}/interface/ui/picker_main_menu.cpp
+    ${SRC_DIR}/interface/ui/picker_accessible_levels.cpp
+    ${SRC_DIR}/interface/ui/picker_team_build.cpp
+    ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/picker_common.cpp
+    ${SRC_DIR}/interface/ui/picker_state.cpp
+    ${SRC_DIR}/interface/render/pixie.cpp
+    ${SRC_DIR}/interface/render/pixien.cpp
+    ${SRC_DIR}/interface/render/radar.cpp
+    ${SRC_DIR}/interface/screen.cpp
+    ${SRC_DIR}/interface/render/smooth.cpp
+    ${SRC_DIR}/platform/sdl/sound.cpp
     ${SRC_DIR}/runtime/stats.cpp
-    ${SRC_DIR}/sdl_client/render/text.cpp
-    ${SRC_DIR}/entities/treasure.cpp
-    ${SRC_DIR}/sdl_client/render/video.cpp
-    ${SRC_DIR}/sdl_client/render/view.cpp
-    ${SRC_DIR}/sdl_client/render/walker_draw.cpp
-    ${SRC_DIR}/sdl_client/render/obmap_debug_draw.cpp
-    ${SRC_DIR}/entities/walker.cpp
-    ${SRC_DIR}/entities/walker_combat.cpp
-    ${SRC_DIR}/entities/walker_movement.cpp
-    ${SRC_DIR}/entities/walker_pathing.cpp
-    ${SRC_DIR}/entities/walker_specials.cpp
-	    ${SRC_DIR}/entities/weap.cpp
-	    ${SRC_DIR}/sdl_client/render/sai2x.cpp
+    ${SRC_DIR}/interface/render/text.cpp
+    ${SRC_DIR}/gameplay/treasure.cpp
+    ${SRC_DIR}/platform/sdl/video.cpp
+    ${SRC_DIR}/interface/render/view.cpp
+    ${SRC_DIR}/interface/render/walker_draw.cpp
+    ${SRC_DIR}/interface/render/obmap_debug_draw.cpp
+    ${SRC_DIR}/gameplay/walker.cpp
+    ${SRC_DIR}/gameplay/walker_combat.cpp
+    ${SRC_DIR}/gameplay/walker_movement.cpp
+    ${SRC_DIR}/gameplay/walker_pathing.cpp
+    ${SRC_DIR}/gameplay/walker_specials.cpp
+	    ${SRC_DIR}/gameplay/weap.cpp
+	    ${SRC_DIR}/interface/render/sai2x.cpp
 		    ${SRC_DIR}/core/util.cpp
-		    ${SRC_DIR}/sdl_client/io/platform_io.cpp
-		    ${SRC_DIR}/io/platform_io_common.cpp
-		    ${SRC_DIR}/io/physfs_api.cpp
-		    ${SRC_DIR}/io/zip_api.cpp
-		    ${SRC_DIR}/io/yaml_stream.cpp
-		    ${SRC_DIR}/io/og_file.cpp
+		    ${SRC_DIR}/platform/sdl/io/platform_io.cpp
+		    ${SRC_DIR}/resources/platform_io.cpp
+		    ${SRC_DIR}/resources/io/physfs_api.cpp
+		    ${SRC_DIR}/resources/io/zip_api.cpp
+		    ${SRC_DIR}/resources/io/yaml_stream.cpp
+		    ${SRC_DIR}/resources/io/og_file.cpp
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/campaign_data.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
-    ${SRC_DIR}/data/pixie_data.cpp
+    ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
 
-    ${SRC_DIR}/sdl_client/ui/level_picker.cpp
-    ${SRC_DIR}/sdl_client/ui/level_editor.cpp
-    ${SRC_DIR}/sdl_client/ui/level_editor_ui.cpp
-    ${SRC_DIR}/sdl_client/ui/level_editor_tools.cpp
-    ${SRC_DIR}/sdl_client/ui/level_editor_file_ops.cpp
-    ${SRC_DIR}/sdl_client/ui/campaign_picker.cpp
-    ${SRC_DIR}/sdl_client/ui/results_screen.cpp
+    ${SRC_DIR}/interface/ui/level_picker.cpp
+    ${SRC_DIR}/interface/ui/level_editor.cpp
+    ${SRC_DIR}/interface/ui/level_editor_ui.cpp
+    ${SRC_DIR}/interface/ui/level_editor_tools.cpp
+    ${SRC_DIR}/interface/ui/level_editor_file_ops.cpp
+    ${SRC_DIR}/interface/ui/campaign_picker.cpp
+    ${SRC_DIR}/interface/ui/results_screen.cpp
     ${SRC_DIR}/resources/save_data.cpp
-    ${SRC_DIR}/sim/sim_entity.cpp
-    ${SRC_DIR}/sim/sim_event_log.cpp
+    ${SRC_DIR}/gameplay/sim_entity.cpp
+    ${SRC_DIR}/gameplay/sim_event_log.cpp
     ${SRC_DIR}/runtime/sim_input_handler.cpp
-    ${SRC_DIR}/sdl_client/runtime/input_event_bridge.cpp
-    ${SRC_DIR}/sdl_client/runtime/walker_render_bridge.cpp
-    ${SRC_DIR}/sdl_client/runtime/sdl_context_services.cpp
-    ${SRC_DIR}/sdl_client/runtime/cheat_handler.cpp
-    ${SRC_DIR}/sdl_client/render/sdl_level_render.cpp
+    ${SRC_DIR}/platform/sdl/runtime/input_event_bridge.cpp
+    ${SRC_DIR}/platform/sdl/runtime/walker_render_bridge.cpp
+    ${SRC_DIR}/platform/sdl/runtime/sdl_context_services.cpp
+    ${SRC_DIR}/platform/sdl/runtime/cheat_handler.cpp
+    ${SRC_DIR}/interface/render/sdl_level_render.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
-list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/sdl_client/glad.cpp)
+list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/platform/sdl/glad.cpp)
 
 # Internal module decomposition (Phase 1 architecture foundations).
 # Keep these lists in sync with GAME_SOURCES_NO_MAIN so targets remain behaviorally equivalent.
@@ -225,12 +225,12 @@ set(OG_CORE_SOURCES
 )
 
 set(OG_SIM_SOURCES
-    ${SRC_DIR}/sim/sim_entity.cpp
-    ${SRC_DIR}/sim/sim_event_log.cpp
+    ${SRC_DIR}/gameplay/sim_entity.cpp
+    ${SRC_DIR}/gameplay/sim_event_log.cpp
 )
 
 set(OG_DATA_SOURCES
-    ${SRC_DIR}/data/pixie_data.cpp
+    ${SRC_DIR}/resources/pixie_data.cpp
 )
 
 set(OG_RESOURCES_SOURCES
@@ -242,135 +242,135 @@ set(OG_RESOURCES_SOURCES
 )
 
 set(OG_ENTITIES_SOURCES
-    ${SRC_DIR}/entities/effect.cpp
-    ${SRC_DIR}/entities/family_registry.cpp
-    ${SRC_DIR}/entities/families/family_archer.cpp
-    ${SRC_DIR}/entities/families/family_archmage.cpp
-    ${SRC_DIR}/entities/families/family_barbarian.cpp
-    ${SRC_DIR}/entities/families/family_big_orc.cpp
-    ${SRC_DIR}/entities/families/family_cleric.cpp
-    ${SRC_DIR}/entities/families/family_druid.cpp
-    ${SRC_DIR}/entities/families/family_elf.cpp
-    ${SRC_DIR}/entities/families/family_faerie.cpp
-    ${SRC_DIR}/entities/families/family_fire_elemental.cpp
-    ${SRC_DIR}/entities/families/family_ghost.cpp
-    ${SRC_DIR}/entities/families/family_giant_skeleton.cpp
-    ${SRC_DIR}/entities/families/family_golem.cpp
-    ${SRC_DIR}/entities/families/family_mage.cpp
-    ${SRC_DIR}/entities/families/family_orc.cpp
-    ${SRC_DIR}/entities/families/family_skeleton.cpp
-    ${SRC_DIR}/entities/families/family_slime.cpp
-    ${SRC_DIR}/entities/families/family_soldier.cpp
-    ${SRC_DIR}/entities/families/family_thief.cpp
-    ${SRC_DIR}/entities/families/family_tower1.cpp
-    ${SRC_DIR}/entities/weapon_family_registry.cpp
-    ${SRC_DIR}/entities/families/weapon_family_knife.cpp
-    ${SRC_DIR}/entities/families/weapon_family_rock.cpp
-    ${SRC_DIR}/entities/families/weapon_family_projectiles.cpp
-    ${SRC_DIR}/entities/families/weapon_family_wave.cpp
-    ${SRC_DIR}/entities/families/weapon_family_door.cpp
-    ${SRC_DIR}/entities/families/weapon_family_animate.cpp
-    ${SRC_DIR}/entities/effect_family_registry.cpp
-    ${SRC_DIR}/entities/families/effect_family_ghost_scare.cpp
-    ${SRC_DIR}/entities/families/effect_family_shield.cpp
-    ${SRC_DIR}/entities/families/effect_family_knife_back.cpp
-    ${SRC_DIR}/entities/families/effect_family_cloud.cpp
-    ${SRC_DIR}/entities/families/effect_family_chain.cpp
-    ${SRC_DIR}/entities/families/effect_family_door_open.cpp
-    ${SRC_DIR}/entities/families/effect_family_bomb.cpp
-    ${SRC_DIR}/entities/treasure_family_registry.cpp
-    ${SRC_DIR}/entities/families/treasure_family_consumables.cpp
-    ${SRC_DIR}/entities/families/treasure_family_valuables.cpp
-    ${SRC_DIR}/entities/families/treasure_family_navigation.cpp
-    ${SRC_DIR}/entities/generator_family_registry.cpp
-    ${SRC_DIR}/entities/guy.cpp
-    ${SRC_DIR}/entities/living.cpp
-    ${SRC_DIR}/entities/obmap.cpp
-    ${SRC_DIR}/entities/treasure.cpp
-    ${SRC_DIR}/entities/walker.cpp
-    ${SRC_DIR}/entities/walker_combat.cpp
-    ${SRC_DIR}/entities/walker_movement.cpp
-    ${SRC_DIR}/entities/walker_pathing.cpp
-    ${SRC_DIR}/entities/walker_specials.cpp
-    ${SRC_DIR}/entities/weap.cpp
+    ${SRC_DIR}/gameplay/effect.cpp
+    ${SRC_DIR}/gameplay/family_registry.cpp
+    ${SRC_DIR}/gameplay/families/family_archer.cpp
+    ${SRC_DIR}/gameplay/families/family_archmage.cpp
+    ${SRC_DIR}/gameplay/families/family_barbarian.cpp
+    ${SRC_DIR}/gameplay/families/family_big_orc.cpp
+    ${SRC_DIR}/gameplay/families/family_cleric.cpp
+    ${SRC_DIR}/gameplay/families/family_druid.cpp
+    ${SRC_DIR}/gameplay/families/family_elf.cpp
+    ${SRC_DIR}/gameplay/families/family_faerie.cpp
+    ${SRC_DIR}/gameplay/families/family_fire_elemental.cpp
+    ${SRC_DIR}/gameplay/families/family_ghost.cpp
+    ${SRC_DIR}/gameplay/families/family_giant_skeleton.cpp
+    ${SRC_DIR}/gameplay/families/family_golem.cpp
+    ${SRC_DIR}/gameplay/families/family_mage.cpp
+    ${SRC_DIR}/gameplay/families/family_orc.cpp
+    ${SRC_DIR}/gameplay/families/family_skeleton.cpp
+    ${SRC_DIR}/gameplay/families/family_slime.cpp
+    ${SRC_DIR}/gameplay/families/family_soldier.cpp
+    ${SRC_DIR}/gameplay/families/family_thief.cpp
+    ${SRC_DIR}/gameplay/families/family_tower1.cpp
+    ${SRC_DIR}/gameplay/weapon_family_registry.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_knife.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_rock.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_projectiles.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_wave.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_door.cpp
+    ${SRC_DIR}/gameplay/families/weapon_family_animate.cpp
+    ${SRC_DIR}/gameplay/effect_family_registry.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_ghost_scare.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_shield.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_knife_back.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_cloud.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_chain.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_door_open.cpp
+    ${SRC_DIR}/gameplay/families/effect_family_bomb.cpp
+    ${SRC_DIR}/gameplay/treasure_family_registry.cpp
+    ${SRC_DIR}/gameplay/families/treasure_family_consumables.cpp
+    ${SRC_DIR}/gameplay/families/treasure_family_valuables.cpp
+    ${SRC_DIR}/gameplay/families/treasure_family_navigation.cpp
+    ${SRC_DIR}/gameplay/generator_family_registry.cpp
+    ${SRC_DIR}/gameplay/guy.cpp
+    ${SRC_DIR}/gameplay/living.cpp
+    ${SRC_DIR}/gameplay/obmap.cpp
+    ${SRC_DIR}/gameplay/treasure.cpp
+    ${SRC_DIR}/gameplay/walker.cpp
+    ${SRC_DIR}/gameplay/walker_combat.cpp
+    ${SRC_DIR}/gameplay/walker_movement.cpp
+    ${SRC_DIR}/gameplay/walker_pathing.cpp
+    ${SRC_DIR}/gameplay/walker_specials.cpp
+    ${SRC_DIR}/gameplay/weap.cpp
 )
 
 set(OG_RUNTIME_SOURCES
-    ${SRC_DIR}/sdl_client/runtime/game.cpp
+    ${SRC_DIR}/platform/sdl/runtime/game.cpp
     ${SRC_DIR}/runtime/game_context.cpp
-    ${SRC_DIR}/sdl_client/runtime/game_loop.cpp
-    ${SRC_DIR}/sdl_client/runtime/game_session.cpp
-    ${SRC_DIR}/sdl_client/runtime/glad_gameplay.cpp
-    ${SRC_DIR}/sdl_client/runtime/legacy_globals.cpp
-    ${SRC_DIR}/sdl_client/runtime/score_panel.cpp
-    ${SRC_DIR}/sdl_client/runtime/screen_lifecycle.cpp
-    ${SRC_DIR}/sdl_client/runtime/screen.cpp
-    ${SRC_DIR}/sdl_client/runtime/guy_create.cpp
+    ${SRC_DIR}/platform/sdl/runtime/game_loop.cpp
+    ${SRC_DIR}/platform/sdl/runtime/game_session.cpp
+    ${SRC_DIR}/platform/sdl/runtime/glad_gameplay.cpp
+    ${SRC_DIR}/platform/sdl/runtime/legacy_globals.cpp
+    ${SRC_DIR}/platform/sdl/runtime/score_panel.cpp
+    ${SRC_DIR}/platform/sdl/runtime/screen_lifecycle.cpp
+    ${SRC_DIR}/interface/screen.cpp
+    ${SRC_DIR}/platform/sdl/runtime/guy_create.cpp
     ${SRC_DIR}/runtime/stats.cpp
     ${SRC_DIR}/runtime/sim_input_handler.cpp
-    ${SRC_DIR}/sdl_client/runtime/input_event_bridge.cpp
-    ${SRC_DIR}/runtime/smooth.cpp
+    ${SRC_DIR}/platform/sdl/runtime/input_event_bridge.cpp
+    ${SRC_DIR}/interface/render/smooth.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
 
-    ${SRC_DIR}/sdl_client/runtime/walker_render_bridge.cpp
-    ${SRC_DIR}/sdl_client/runtime/sdl_context_services.cpp
-    ${SRC_DIR}/sdl_client/runtime/cheat_handler.cpp
+    ${SRC_DIR}/platform/sdl/runtime/walker_render_bridge.cpp
+    ${SRC_DIR}/platform/sdl/runtime/sdl_context_services.cpp
+    ${SRC_DIR}/platform/sdl/runtime/cheat_handler.cpp
 )
 
 set(OG_RENDER_SOURCES
-    ${SRC_DIR}/sdl_client/render/graphlib.cpp
-    ${SRC_DIR}/sdl_client/render/pal32.cpp
-    ${SRC_DIR}/sdl_client/render/pixie.cpp
-    ${SRC_DIR}/sdl_client/render/pixien.cpp
-    ${SRC_DIR}/sdl_client/render/radar.cpp
-    ${SRC_DIR}/sdl_client/render/sai2x.cpp
-    ${SRC_DIR}/sdl_client/render/text.cpp
-    ${SRC_DIR}/sdl_client/render/video.cpp
-    ${SRC_DIR}/sdl_client/render/view.cpp
-    ${SRC_DIR}/sdl_client/render/walker_draw.cpp
-    ${SRC_DIR}/sdl_client/render/obmap_debug_draw.cpp
-    ${SRC_DIR}/sdl_client/render/sdl_level_render.cpp
+    ${SRC_DIR}/interface/render/graphlib.cpp
+    ${SRC_DIR}/interface/render/pal32.cpp
+    ${SRC_DIR}/interface/render/pixie.cpp
+    ${SRC_DIR}/interface/render/pixien.cpp
+    ${SRC_DIR}/interface/render/radar.cpp
+    ${SRC_DIR}/interface/render/sai2x.cpp
+    ${SRC_DIR}/interface/render/text.cpp
+    ${SRC_DIR}/platform/sdl/video.cpp
+    ${SRC_DIR}/interface/render/view.cpp
+    ${SRC_DIR}/interface/render/walker_draw.cpp
+    ${SRC_DIR}/interface/render/obmap_debug_draw.cpp
+    ${SRC_DIR}/interface/render/sdl_level_render.cpp
 )
 
 set(OG_INPUT_SOURCES
-    ${SRC_DIR}/sdl_client/input/input.cpp
-    ${SRC_DIR}/input/input_state.cpp
+    ${SRC_DIR}/interface/input/input.cpp
+    ${SRC_DIR}/interface/input/input_state.cpp
 )
 
 set(OG_UI_SOURCES
-    ${SRC_DIR}/sdl_client/ui/button.cpp
-    ${SRC_DIR}/sdl_client/ui/campaign_picker.cpp
-    ${SRC_DIR}/sdl_client/ui/help.cpp
-    ${SRC_DIR}/sdl_client/ui/intro.cpp
-    ${SRC_DIR}/sdl_client/ui/level_editor.cpp
-    ${SRC_DIR}/sdl_client/ui/level_editor_file_ops.cpp
-    ${SRC_DIR}/sdl_client/ui/level_editor_tools.cpp
-    ${SRC_DIR}/sdl_client/ui/level_editor_ui.cpp
-    ${SRC_DIR}/sdl_client/ui/level_picker.cpp
-    ${SRC_DIR}/sdl_client/ui/picker.cpp
-    ${SRC_DIR}/sdl_client/ui/picker_accessible_levels.cpp
-    ${SRC_DIR}/sdl_client/ui/picker_dialogs.cpp
-    ${SRC_DIR}/sdl_client/ui/picker_input.cpp
-    ${SRC_DIR}/sdl_client/ui/picker_main_menu.cpp
-    ${SRC_DIR}/sdl_client/ui/picker_team_build.cpp
-    ${SRC_DIR}/ui/menu_model.cpp
-    ${SRC_DIR}/ui/picker_common.cpp
-    ${SRC_DIR}/ui/picker_state.cpp
-    ${SRC_DIR}/sdl_client/ui/results_screen.cpp
+    ${SRC_DIR}/interface/ui/button.cpp
+    ${SRC_DIR}/interface/ui/campaign_picker.cpp
+    ${SRC_DIR}/interface/ui/help.cpp
+    ${SRC_DIR}/interface/ui/intro.cpp
+    ${SRC_DIR}/interface/ui/level_editor.cpp
+    ${SRC_DIR}/interface/ui/level_editor_file_ops.cpp
+    ${SRC_DIR}/interface/ui/level_editor_tools.cpp
+    ${SRC_DIR}/interface/ui/level_editor_ui.cpp
+    ${SRC_DIR}/interface/ui/level_picker.cpp
+    ${SRC_DIR}/interface/ui/picker.cpp
+    ${SRC_DIR}/interface/ui/picker_accessible_levels.cpp
+    ${SRC_DIR}/interface/ui/picker_dialogs.cpp
+    ${SRC_DIR}/interface/ui/picker_input.cpp
+    ${SRC_DIR}/interface/ui/picker_main_menu.cpp
+    ${SRC_DIR}/interface/ui/picker_team_build.cpp
+    ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/picker_common.cpp
+    ${SRC_DIR}/interface/ui/picker_state.cpp
+    ${SRC_DIR}/interface/ui/results_screen.cpp
 )
 
 set(OG_IO_SOURCES
-    ${SRC_DIR}/sdl_client/io/platform_io.cpp
-    ${SRC_DIR}/io/platform_io_common.cpp
-    ${SRC_DIR}/io/physfs_api.cpp
-    ${SRC_DIR}/io/zip_api.cpp
-    ${SRC_DIR}/io/yaml_stream.cpp
-    ${SRC_DIR}/io/og_file.cpp
+    ${SRC_DIR}/platform/sdl/io/platform_io.cpp
+    ${SRC_DIR}/resources/platform_io.cpp
+    ${SRC_DIR}/resources/io/physfs_api.cpp
+    ${SRC_DIR}/resources/io/zip_api.cpp
+    ${SRC_DIR}/resources/io/yaml_stream.cpp
+    ${SRC_DIR}/resources/io/og_file.cpp
 )
 
 set(OG_PLATFORM_SOURCES
-    ${SRC_DIR}/sdl_client/platform/sound.cpp
+    ${SRC_DIR}/platform/sdl/sound.cpp
 )
 
 # External C++ sources
@@ -794,7 +794,7 @@ if(NOT EMSCRIPTEN)
     )
 
     # --- openglad (main game) ---
-    add_executable(openglad ${SRC_DIR}/sdl_client/glad.cpp)
+    add_executable(openglad ${SRC_DIR}/platform/sdl/glad.cpp)
     configure_openglad_library(openglad)
     target_link_libraries(openglad PRIVATE og_game)
     configure_openglad_runtime_target(openglad)
@@ -802,7 +802,7 @@ if(NOT EMSCRIPTEN)
 
     # --- openscen (level editor) ---
     if(BUILD_EDITOR)
-        add_executable(openscen ${SRC_DIR}/sdl_client/glad.cpp)
+        add_executable(openscen ${SRC_DIR}/platform/sdl/glad.cpp)
         configure_openglad_library(openscen)
         target_link_libraries(openscen PRIVATE og_game)
         configure_openglad_runtime_target(openscen)
@@ -813,7 +813,7 @@ if(NOT EMSCRIPTEN)
     # --- openglad_demo (multi-session demo) ---
     # Runs 12 concurrent AI-controlled game sessions in a 4x3 grid,
     # demonstrating the de-singletonized engine.
-    add_executable(openglad_demo ${SRC_DIR}/sdl_client/demo.cpp)
+    add_executable(openglad_demo ${SRC_DIR}/platform/sdl/demo.cpp)
     configure_openglad_library(openglad_demo)
     target_link_libraries(openglad_demo PRIVATE og_game)
     configure_openglad_runtime_target(openglad_demo)
@@ -824,14 +824,14 @@ if(NOT EMSCRIPTEN)
     # (stubs in platform_headless.cpp) instead of preprocessor guards.
     set(HEADLESS_SOURCES
         # text client
-        ${SRC_DIR}/text_client/main.cpp
-        ${SRC_DIR}/text_client/platform_headless.cpp
-        ${SRC_DIR}/text_client/walker_headless.cpp
-        ${SRC_DIR}/text_client/text_picker.cpp
-        ${SRC_DIR}/text_client/text_protocol.cpp
-        ${SRC_DIR}/ui/menu_model.cpp
-        ${SRC_DIR}/ui/picker_common.cpp
-        ${SRC_DIR}/ui/picker_state.cpp
+        ${SRC_DIR}/platform/text/main.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/platform/text/text_picker.cpp
+        ${SRC_DIR}/platform/text/text_protocol.cpp
+        ${SRC_DIR}/interface/ui/menu_model.cpp
+        ${SRC_DIR}/interface/ui/picker_common.cpp
+        ${SRC_DIR}/interface/ui/picker_state.cpp
         # core
         ${OG_CORE_SOURCES}
         # sim
@@ -843,20 +843,20 @@ if(NOT EMSCRIPTEN)
         # entities
         ${OG_ENTITIES_SOURCES}
         # input (SDL-free data structs only)
-        ${SRC_DIR}/input/input_state.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
         # io (shared SDL-free helpers + PhysFS/zip/yaml)
-        ${SRC_DIR}/io/platform_io_common.cpp
-        ${SRC_DIR}/io/physfs_api.cpp
-        ${SRC_DIR}/io/zip_api.cpp
-        ${SRC_DIR}/io/yaml_stream.cpp
-        ${SRC_DIR}/io/og_file.cpp
+        ${SRC_DIR}/resources/platform_io.cpp
+        ${SRC_DIR}/resources/io/physfs_api.cpp
+        ${SRC_DIR}/resources/io/zip_api.cpp
+        ${SRC_DIR}/resources/io/yaml_stream.cpp
+        ${SRC_DIR}/resources/io/og_file.cpp
         # runtime (SDL-free subset)
         ${SRC_DIR}/runtime/game_context.cpp
         ${SRC_DIR}/runtime/sim_input_handler.cpp
         ${SRC_DIR}/gameplay/game_world.cpp
         ${SRC_DIR}/gameplay/gameplay_context.cpp
 
-        ${SRC_DIR}/runtime/smooth.cpp
+        ${SRC_DIR}/interface/render/smooth.cpp
         ${SRC_DIR}/runtime/stats.cpp
     )
 
@@ -1275,7 +1275,7 @@ if(NOT EMSCRIPTEN)
         add_dependencies(og_game_test check_vendor_leaks)
 
         add_executable(openglad_test
-            ${SRC_DIR}/sdl_client/glad.cpp
+            ${SRC_DIR}/platform/sdl/glad.cpp
             ${TEST_SOURCES}
         )
         configure_openglad_library(openglad_test)
@@ -1288,7 +1288,7 @@ if(NOT EMSCRIPTEN)
         add_runtime_assets_dependency(openglad_test)
 
         add_executable(og_data_tests
-            ${SRC_DIR}/sdl_client/glad.cpp
+            ${SRC_DIR}/platform/sdl/glad.cpp
             ${DATA_TEST_SOURCES}
         )
         configure_openglad_library(og_data_tests)
@@ -1300,7 +1300,7 @@ if(NOT EMSCRIPTEN)
         add_runtime_assets_dependency(og_data_tests)
 
         add_executable(og_runtime_tests
-            ${SRC_DIR}/sdl_client/glad.cpp
+            ${SRC_DIR}/platform/sdl/glad.cpp
             ${RUNTIME_TEST_SOURCES}
         )
         configure_openglad_library(og_runtime_tests)
@@ -1430,7 +1430,7 @@ if(ENABLE_FUZZING)
 
     # fuzz_pixie: exercises .pix sprite data parsing (header + payload)
     add_fuzz_target(fuzz_pixie ${SRC_DIR}/fuzz/fuzz_pixie.cpp)
-    target_sources(fuzz_pixie PRIVATE ${SRC_DIR}/data/pixie_data.cpp)
+    target_sources(fuzz_pixie PRIVATE ${SRC_DIR}/resources/pixie_data.cpp)
     target_link_libraries(fuzz_pixie PRIVATE ${SDL2_LIBRARIES})
 
     # fuzz_scenario: exercises .fss scenario binary parsing
@@ -1458,7 +1458,7 @@ endif()
 	    # Binaryen transform, but does not define the preprocessor macro.
 	    target_compile_definitions(og_game_web PRIVATE __ASYNCIFY__)
 
-    add_executable(play ${SRC_DIR}/sdl_client/glad.cpp)
+    add_executable(play ${SRC_DIR}/platform/sdl/glad.cpp)
     configure_openglad_library(play)
     target_link_libraries(play PRIVATE og_game_web)
     configure_openglad_runtime_target(play)

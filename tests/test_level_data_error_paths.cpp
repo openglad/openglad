@@ -1,7 +1,7 @@
-#include <openglad/data/campaign_data.h>
-#include <openglad/entities/walker.h>
+#include <openglad/resources/campaign_data.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/platform/io.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <cerrno>

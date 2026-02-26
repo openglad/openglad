@@ -1,12 +1,12 @@
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
-#include <openglad/render/obmap_debug_draw.h>
-#include <openglad/entities/obmap.h>
-#include <openglad/entities/walker.h>
-#include <openglad/input/button.h>
-#include <openglad/io/yaml_stream.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/render/obmap_debug_draw.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/input/button.h>
+#include <openglad/resources/yaml_stream.h>
 #include <openglad/legacy/colors.h>
-#include <openglad/data/gparser.h>
+#include <openglad/resources/gparser.h>
 
 #include "test_framework.h"
 
@@ -184,17 +184,17 @@ MASS_TEST(test_mass_screen_redraw, { (void)og::runtime::current_session->myscree
 MASS_TEST(test_mass_screen_refresh, { og::runtime::current_session->myscreen_->refresh(); });
 
 MASS_TEST(test_mass_screen_endgame_one_arg, {
-    const char saved_end = og::runtime::current_session->myscreen_->world_.end;
-    og::runtime::current_session->myscreen_->world_.end = 1;
+    const char saved_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 1;
     (void)og::runtime::current_session->myscreen_->endgame(0);
-    og::runtime::current_session->myscreen_->world_.end = saved_end;
+    og::runtime::current_session->myscreen_->world().end = saved_end;
 });
 
 MASS_TEST(test_mass_screen_endgame_two_args, {
-    const char saved_end = og::runtime::current_session->myscreen_->world_.end;
-    og::runtime::current_session->myscreen_->world_.end = 1;
+    const char saved_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 1;
     (void)og::runtime::current_session->myscreen_->endgame(0, -1);
-    og::runtime::current_session->myscreen_->world_.end = saved_end;
+    og::runtime::current_session->myscreen_->world().end = saved_end;
 });
 
 MASS_TEST(test_mass_screen_find_near_foe, {

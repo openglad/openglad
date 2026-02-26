@@ -1,11 +1,11 @@
-#include <openglad/data/gparser.h>
-#include <openglad/data/pixie_data.h>
-#include <openglad/entities/walker.h>
-#include <openglad/input/input.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/input/input.h>
 #include <openglad/legacy/base.h>
-#include <openglad/render/view.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/screen.h>
+#include <openglad/platform/game_context.h>
 #include "test_framework.h"
 
 #include <array>

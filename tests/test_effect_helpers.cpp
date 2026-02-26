@@ -1,5 +1,5 @@
-#include <openglad/entities/effect.h>
-#include <openglad/render/view.h>
+#include <openglad/gameplay/effect.h>
+#include <openglad/interface/render/view.h>
 #include "test_framework.h"
 
 // ---------------------------------------------------------------------------

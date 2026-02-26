@@ -1,4 +1,4 @@
-#include <openglad/data/gparser.h>
+#include <openglad/resources/gparser.h>
 #include "test_framework.h"
 
 #include <cstring>

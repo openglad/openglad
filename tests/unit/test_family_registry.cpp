@@ -1,6 +1,6 @@
 #include "unit.h"
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 #include <cstring>

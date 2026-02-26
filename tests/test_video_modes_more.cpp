@@ -1,6 +1,6 @@
 #include "test_framework.h"
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/interface/screen.h>
 #include <array>
 #include <filesystem>
 #include <memory>

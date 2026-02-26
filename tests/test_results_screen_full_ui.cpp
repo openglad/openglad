@@ -1,9 +1,9 @@
 #include <openglad/core/stats.h>
-#include <openglad/entities/guy.h>
-#include <openglad/entities/walker.h>
-#include <openglad/input/button.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/ui/results_screen.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/input/button.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/ui/results_screen.h>
 
 #include "test_framework.h"
 #include "test_input_helpers.h"
@@ -47,7 +47,7 @@ static int results_ui_injector(void* data)
 
     // Failsafe in case click misses.
     SDL_Delay(500);
-    og::runtime::current_session->myscreen_->world_.end = 1;
+    og::runtime::current_session->myscreen_->world().end = 1;
 
     st->finished = true;
     return 0;
@@ -56,8 +56,8 @@ static int results_ui_injector(void* data)
 
 void test_results_screen_full_ui_overview_and_troops_paths()
 {
-    const char saved_end = og::runtime::current_session->myscreen_->world_.end;
-    og::runtime::current_session->myscreen_->world_.end = 0;
+    const char saved_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 0;
 
     // Ensure deterministic campaign/level context used by results_screen internals.
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
@@ -140,7 +140,7 @@ void test_results_screen_full_ui_overview_and_troops_paths()
     SDL_WaitThread(thread, &rc);
 
     results_screen_testing_set_force_full(false);
-    og::runtime::current_session->myscreen_->world_.end = saved_end;
+    og::runtime::current_session->myscreen_->world().end = saved_end;
 
     TEST_ASSERT(st.started && st.finished, "results UI injector should run");
     TEST_ASSERT(!retry, "OK path should not request retry");

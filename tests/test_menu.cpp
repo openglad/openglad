@@ -1,11 +1,11 @@
 #include "SDL.h"
-#include <openglad/data/gparser.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
-#include <openglad/input/button.h>
+#include <openglad/interface/input/button.h>
 #include "test_interact.h"
-#include <openglad/input/input.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/input/input.h>
+#include <openglad/interface/screen.h>
 Sint32 yes_or_no(Sint32 arg);
 void toggle_rendering_engine();
 void toggle_effect(const std::string& category, const std::string& setting);

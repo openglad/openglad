@@ -1,4 +1,4 @@
 #pragma once
 
-// Transitional shim: prefer including <openglad/render/radar.h>.
-#include <openglad/render/radar.h>
+// Transitional shim: prefer including <openglad/interface/render/radar.h>.
+#include <openglad/interface/render/radar.h>

@@ -1,5 +1,5 @@
 #include <openglad/legacy/base.h>
-#include <openglad/io/og_file.h>
+#include <openglad/resources/og_file.h>
 #include "test_framework.h"
 
 #include <cstring>

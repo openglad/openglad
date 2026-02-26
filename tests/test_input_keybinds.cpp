@@ -1,7 +1,7 @@
-#include <openglad/input/input.h>
-#include <openglad/input/button.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/data/gparser.h>
+#include <openglad/interface/input/input.h>
+#include <openglad/interface/input/button.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/resources/gparser.h>
 #include "test_framework.h"
 
 extern cfg_store cfg;

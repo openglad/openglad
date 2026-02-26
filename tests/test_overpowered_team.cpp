@@ -1,14 +1,14 @@
 #include <memory>
 #include <array>
-#include <openglad/input/button.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/pixien.h>
-#include <openglad/entities/guy.h>
+#include <openglad/interface/input/button.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/render/pixien.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include <openglad/data/save_data.h>
+#include <openglad/resources/save_data.h>
 #include <openglad/core/util.h>
 
 #include <atomic>
@@ -20,7 +20,7 @@ void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
-#include <openglad/runtime/picker_ui_state.h>
+#include <openglad/platform/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 

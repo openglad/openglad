@@ -1,8 +1,8 @@
-#include <openglad/input/button.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/input/button.h>
+#include <openglad/interface/screen.h>
 #include <openglad/core/constants.h>
-#include <openglad/entities/guy.h>
-#include <openglad/ui/picker_common.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/ui/picker_common.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 
@@ -10,7 +10,7 @@
 #include <memory>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
-#include <openglad/runtime/picker_ui_state.h>
+#include <openglad/platform/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 
@@ -36,7 +36,7 @@ struct PickerStateGuard
         saved_current = std::move(og::runtime::current_session->current_guy_);
         saved_old = pks().old_guy;
         saved_editguy = og::runtime::current_session->editguy_;
-        saved_end = og::runtime::current_session->myscreen_->world_.end;
+        saved_end = og::runtime::current_session->myscreen_->world().end;
         saved_team_size = og::runtime::current_session->myscreen_->save_data.team_size;
         saved_scen_num = og::runtime::current_session->myscreen_->save_data.scen_num;
     }
@@ -46,7 +46,7 @@ struct PickerStateGuard
         og::runtime::current_session->current_guy_ = std::move(saved_current);
         pks().old_guy = saved_old;
         og::runtime::current_session->editguy_ = saved_editguy;
-        og::runtime::current_session->myscreen_->world_.end = saved_end;
+        og::runtime::current_session->myscreen_->world().end = saved_end;
         og::runtime::current_session->myscreen_->save_data.team_size = saved_team_size;
         og::runtime::current_session->myscreen_->save_data.scen_num = saved_scen_num;
     }
@@ -160,7 +160,7 @@ void test_picker_campaign_and_level_wrappers_cancel_fast()
 {
     PickerStateGuard guard;
 
-    og::runtime::current_session->myscreen_->world_.end = 1;
+    og::runtime::current_session->myscreen_->world().end = 1;
     int scen_before = og::runtime::current_session->myscreen_->save_data.scen_num;
 
     TEST_ASSERT_EQ(2, (int)do_pick_campaign(0), "do_pick_campaign should return REDRAW");

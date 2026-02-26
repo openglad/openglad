@@ -1,7 +1,7 @@
-#include <openglad/entities/guy.h>
-#include <openglad/input/button.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/input/button.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <array>
@@ -10,7 +10,7 @@
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // picker.cpp globals
-#include <openglad/runtime/picker_ui_state.h>
+#include <openglad/platform/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 

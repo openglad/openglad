@@ -1,20 +1,20 @@
-#include <openglad/data/campaign_data.h>
-#include <openglad/data/level_file_io.h>
-#include <openglad/data/level_render.h>
+#include <openglad/resources/campaign_data.h>
+#include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_render.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/interface/level_visuals.h>
-#include <openglad/entities/effect.h>
-#include <openglad/entities/living.h>
-#include <openglad/entities/obmap.h>
-#include <openglad/entities/treasure.h>
-#include <openglad/entities/walker.h>
-#include <openglad/entities/weap.h>
+#include <openglad/gameplay/effect.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/treasure.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/weap.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/io/og_file.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/platform/io.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <cstdint>
@@ -456,7 +456,7 @@ void test_level_data_wall4_projectile_passability_distance_and_rng_paths()
     bool saw_block = false;
     for (std::uint32_t seed = 0; seed < 512 && (!saw_pass || !saw_block); ++seed)
     {
-        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        og::runtime::current_session->myscreen_->world().rng_.state_ = seed;
         const bool pass = og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, projectile);
         saw_pass |= pass;
         saw_block |= !pass;
@@ -514,7 +514,7 @@ void test_level_data_round8_query_grid_treeb1_and_arrow_slit_variants()
     bool saw_arrow_block = false;
     for (std::uint32_t seed = 0; seed < 512 && (!saw_arrow_pass || !saw_arrow_block); ++seed)
     {
-        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        og::runtime::current_session->myscreen_->world().rng_.state_ = seed;
         const bool pass = og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon);
         saw_arrow_pass |= pass;
         saw_arrow_block |= !pass;
@@ -952,7 +952,7 @@ void test_level_data_round6_passable_wall4_and_water_weapon_paths()
     bool saw_wall4_pass = false;
     for (std::uint32_t seed = 0; seed < 512 && (!saw_wall4_block || !saw_wall4_pass); ++seed)
     {
-        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        og::runtime::current_session->myscreen_->world().rng_.state_ = seed;
         const bool pass = og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon);
         saw_wall4_block |= !pass;
         saw_wall4_pass |= pass;
@@ -1021,7 +1021,7 @@ void test_level_data_round6_wrapper_and_passability_edges()
     bool saw_y_branch_block = false;
     for (std::uint32_t seed = 0; seed < 512 && !saw_y_branch_block; ++seed)
     {
-        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        og::runtime::current_session->myscreen_->world().rng_.state_ = seed;
         saw_y_branch_block = !og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon);
     }
     TEST_ASSERT(saw_y_branch_block, "wall4 projectile should have an RNG path that blocks in y-distance branch");
@@ -1192,7 +1192,7 @@ void test_level_data_round7_wall_arrow_distance_axis_and_rng_paths()
     bool saw_wall_arrow_pass = false;
     for (std::uint32_t seed = 0; seed < 512 && !saw_wall_arrow_pass; ++seed)
     {
-        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        og::runtime::current_session->myscreen_->world().rng_.state_ = seed;
         saw_wall_arrow_pass = og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon);
     }
     TEST_ASSERT(saw_wall_arrow_pass, "wall-arrow projectile should have an RNG path that passes");
@@ -1203,7 +1203,7 @@ void test_level_data_round7_wall_arrow_distance_axis_and_rng_paths()
     bool saw_wall_arrow_block = false;
     for (std::uint32_t seed = 0; seed < 512 && !saw_wall_arrow_block; ++seed)
     {
-        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        og::runtime::current_session->myscreen_->world().rng_.state_ = seed;
         saw_wall_arrow_block = !og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon);
     }
     TEST_ASSERT(saw_wall_arrow_block, "wall-arrow projectile should have an RNG path that blocks");
@@ -1322,7 +1322,7 @@ void test_level_data_round13_grid_passability_tree_wall_water_and_object_guards(
     bool saw_wall4_rng_block = false;
     for (std::uint32_t seed = 0; seed < 512 && (!saw_wall4_rng_pass || !saw_wall4_rng_block); ++seed)
     {
-        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        og::runtime::current_session->myscreen_->world().rng_.state_ = seed;
         const bool pass = og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon);
         saw_wall4_rng_pass |= pass;
         saw_wall4_rng_block |= !pass;
@@ -1460,7 +1460,7 @@ void test_level_data_round14_find_helper_exclusion_branches()
     bool hidden_blocked = false;
     for (std::uint32_t seed = 0; seed < 512 && !hidden_blocked; ++seed)
     {
-        og::runtime::current_session->myscreen_->world_.rng_.state_ = seed;
+        og::runtime::current_session->myscreen_->world().rng_.state_ = seed;
         hidden_blocked = (og::runtime::current_session->myscreen_->world().find_far_foe(actor) == nullptr);
     }
     TEST_ASSERT(hidden_blocked, "find_far_foe should have an RNG path that blocks hidden foes");
