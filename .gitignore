@@ -36,3 +36,6 @@ io_tmp_*.txt
 /core
 core.*
 /temp/
+
+# Generated planning/automation logs
+/docs/plans/logs/
