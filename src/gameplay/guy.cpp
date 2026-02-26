@@ -125,7 +125,7 @@ guy::guy(const guy& copy)
     , scen_min_hp(copy.scen_min_hp)
     , scen_shots(copy.scen_shots)
     , scen_hits(copy.scen_hits)
-    , id(copy.id)
+    , id(og::gameplay::allocate_guy_id())
     , level(copy.level)
 {
     name = copy.name;

@@ -381,6 +381,7 @@ void GameWorld::tick()
         walker* ob = e->get();
         if (ob && ob->dead && ob->myguy == nullptr)
         {
+            clear_backlinks_to(ob);
             dead_list.push_back(std::move(*e));
 
             if (ob->query_order() == Order::Living)
@@ -1167,6 +1168,22 @@ void GameWorld::resize_grid(int width, int height)
         walker* ob = uptr.get();
         return ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h);
     };
+
+    for (const auto& uptr : oblist)
+    {
+        if (off_map(uptr))
+            clear_backlinks_to(uptr.get());
+    }
+    for (const auto& uptr : fxlist)
+    {
+        if (off_map(uptr))
+            clear_backlinks_to(uptr.get());
+    }
+    for (const auto& uptr : weaplist)
+    {
+        if (off_map(uptr))
+            clear_backlinks_to(uptr.get());
+    }
 
     std::erase_if(oblist, off_map);
     std::erase_if(fxlist, off_map);
