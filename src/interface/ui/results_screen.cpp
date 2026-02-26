@@ -1,3 +1,4 @@
+#include <openglad/platform/soundob_sdl.h>
 /* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
  * This program is free software; you can redistribute it and/or modify
@@ -13,7 +14,7 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_io.h>
 #include <openglad/interface/level_visuals.h>
 #include <openglad/resources/level_render.h>
 #include <openglad/gameplay/obmap.h>

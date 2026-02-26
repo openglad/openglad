@@ -6,7 +6,7 @@
 #pragma once
 
 #include <openglad/core/constants.h>
-#include <openglad/resources/save_data.h>
+#include <openglad/resources/save_io.h>
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -235,7 +235,7 @@ private:
 
 // --- Template implementations ---
 
-// Requires full SaveData definition (include <openglad/resources/save_data.h>)
+// Requires full SaveData definition (include <openglad/resources/save_io.h>)
 // at the point of instantiation.
 template<typename Fn>
 void for_each_team_member(const SaveData& save, Fn&& fn)

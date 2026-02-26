@@ -1,3 +1,4 @@
+#include "SDL.h"
 #include <openglad/gameplay/guy.h>
 #include <openglad/platform/guy_create.h>
 #include <openglad/resources/gloader.h>

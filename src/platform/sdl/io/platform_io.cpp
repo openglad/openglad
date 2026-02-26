@@ -22,7 +22,7 @@
 #include "physfsrwops.h"  // PhysFS SDL_RWops bridge
 #include <openglad/resources/zip_api.h>
 #include <openglad/resources/yaml_stream.h>
-#include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_io.h>
 #include <openglad/legacy/pixdefs.h>
 #include <format>
 #include <filesystem>

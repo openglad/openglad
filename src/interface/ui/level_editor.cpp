@@ -30,7 +30,7 @@
 #include <openglad/platform/io.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/core/stats.h>
-#include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_io.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/campaign_data.h>
 #include <openglad/interface/level_visuals.h>

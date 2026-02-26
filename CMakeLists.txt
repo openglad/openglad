@@ -98,7 +98,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/runtime/legacy_globals.cpp
     ${SRC_DIR}/platform/sdl/runtime/score_panel.cpp
     ${SRC_DIR}/platform/sdl/runtime/screen_lifecycle.cpp
-    ${SRC_DIR}/core/combat_math.cpp
+    ${SRC_DIR}/gameplay/combat_math.cpp
     ${SRC_DIR}/interface/ui/button.cpp
     ${SRC_DIR}/gameplay/effect.cpp
     ${SRC_DIR}/gameplay/family_registry.cpp
@@ -167,7 +167,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/interface/render/smooth.cpp
     ${SRC_DIR}/platform/sdl/sound.cpp
-    ${SRC_DIR}/runtime/stats.cpp
+    ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/interface/render/text.cpp
     ${SRC_DIR}/gameplay/treasure.cpp
     ${SRC_DIR}/platform/sdl/video.cpp
@@ -191,7 +191,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/campaign_data.cpp
-    ${SRC_DIR}/resources/level_file_io.cpp
+    ${SRC_DIR}/resources/level_io.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
@@ -203,7 +203,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/level_editor_file_ops.cpp
     ${SRC_DIR}/interface/ui/campaign_picker.cpp
     ${SRC_DIR}/interface/ui/results_screen.cpp
-    ${SRC_DIR}/resources/save_data.cpp
+    ${SRC_DIR}/resources/save_io.cpp
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
     ${SRC_DIR}/runtime/sim_input_handler.cpp
@@ -220,7 +220,7 @@ list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/platform/sdl/glad.cpp)
 # Internal module decomposition (Phase 1 architecture foundations).
 # Keep these lists in sync with GAME_SOURCES_NO_MAIN so targets remain behaviorally equivalent.
 set(OG_CORE_SOURCES
-    ${SRC_DIR}/core/combat_math.cpp
+    ${SRC_DIR}/gameplay/combat_math.cpp
     ${SRC_DIR}/core/util.cpp
 )
 
@@ -237,8 +237,8 @@ set(OG_RESOURCES_SOURCES
     ${SRC_DIR}/resources/campaign_data.cpp
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
-    ${SRC_DIR}/resources/level_file_io.cpp
-    ${SRC_DIR}/resources/save_data.cpp
+    ${SRC_DIR}/resources/level_io.cpp
+    ${SRC_DIR}/resources/save_io.cpp
 )
 
 set(OG_ENTITIES_SOURCES
@@ -295,27 +295,34 @@ set(OG_ENTITIES_SOURCES
     ${SRC_DIR}/gameplay/weap.cpp
 )
 
-set(OG_RUNTIME_SOURCES
-    ${SRC_DIR}/platform/sdl/runtime/game.cpp
+set(OG_RUNTIME_INTERFACE_SOURCES
     ${SRC_DIR}/runtime/game_context.cpp
+    ${SRC_DIR}/interface/screen.cpp
+    ${SRC_DIR}/gameplay/stats.cpp
+    ${SRC_DIR}/runtime/sim_input_handler.cpp
+    ${SRC_DIR}/interface/render/smooth.cpp
+    ${SRC_DIR}/gameplay/game_world.cpp
+    ${SRC_DIR}/gameplay/gameplay_context.cpp
+)
+
+set(OG_RUNTIME_PLATFORM_SOURCES
+    ${SRC_DIR}/platform/sdl/runtime/game.cpp
     ${SRC_DIR}/platform/sdl/runtime/game_loop.cpp
     ${SRC_DIR}/platform/sdl/runtime/game_session.cpp
     ${SRC_DIR}/platform/sdl/runtime/glad_gameplay.cpp
     ${SRC_DIR}/platform/sdl/runtime/legacy_globals.cpp
     ${SRC_DIR}/platform/sdl/runtime/score_panel.cpp
     ${SRC_DIR}/platform/sdl/runtime/screen_lifecycle.cpp
-    ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/platform/sdl/runtime/guy_create.cpp
-    ${SRC_DIR}/runtime/stats.cpp
-    ${SRC_DIR}/runtime/sim_input_handler.cpp
     ${SRC_DIR}/platform/sdl/runtime/input_event_bridge.cpp
-    ${SRC_DIR}/interface/render/smooth.cpp
-    ${SRC_DIR}/gameplay/game_world.cpp
-    ${SRC_DIR}/gameplay/gameplay_context.cpp
-
     ${SRC_DIR}/platform/sdl/runtime/walker_render_bridge.cpp
     ${SRC_DIR}/platform/sdl/runtime/sdl_context_services.cpp
     ${SRC_DIR}/platform/sdl/runtime/cheat_handler.cpp
+)
+
+set(OG_RUNTIME_SOURCES
+    ${OG_RUNTIME_INTERFACE_SOURCES}
+    ${OG_RUNTIME_PLATFORM_SOURCES}
 )
 
 set(OG_RENDER_SOURCES
@@ -857,7 +864,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/gameplay_context.cpp
 
         ${SRC_DIR}/interface/render/smooth.cpp
-        ${SRC_DIR}/runtime/stats.cpp
+        ${SRC_DIR}/gameplay/stats.cpp
     )
 
     add_executable(openglad_text ${HEADLESS_SOURCES})

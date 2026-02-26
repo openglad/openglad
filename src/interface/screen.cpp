@@ -27,6 +27,8 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/interface/screen.h>
+#include <openglad/platform/sdl/video.h>
+#include <openglad/platform/soundob_sdl.h>
 #include <openglad/core/stats.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/gparser.h>
@@ -35,6 +37,7 @@
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/smooth.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
@@ -89,10 +92,6 @@ const char* scenario_title_error_string(screen::ScenarioTitleError err)
     return "unknown";
 }
 
-bool rw_read_exact(SDL_RWops* infile, void* dst, size_t size, size_t count)
-{
-    return infile != nullptr && SDL_RWread(infile, dst, size, count) == count;
-}
 } // namespace
 
 static inline cfg_store& active_config()
@@ -240,7 +239,20 @@ void screen::init_common(short howmany, bool has_display)
 }
 
 screen::screen(short howmany, og::gameplay::GameWorld* world, bool create_display)
-    : video(create_display)
+    : video_(std::make_unique<video>(create_display))
+    , ourpalette(video_->ourpalette)
+    , redpalette(video_->redpalette)
+    , bluepalette(video_->bluepalette)
+    , dospalette(video_->dospalette)
+    , videobuffer(video_->videobuffer)
+    , cyclemode(video_->cyclemode)
+    , fadeDuration(video_->fadeDuration)
+    , screen_width(video_->screen_width)
+    , screen_height(video_->screen_height)
+    , fullscreen(video_->fullscreen)
+    , pdouble(video_->pdouble)
+    , text_normal(video_->text_normal)
+    , text_big(video_->text_big)
     , world_(world)
 {
 	assert(world_ != nullptr);
@@ -759,61 +771,45 @@ screen::ScenarioTitleError screen::get_scen_title_with_error(const char *filenam
     if(filename == nullptr || filename[0] == '\0')
         return ScenarioTitleError::OpenReadFailed;
 
-    SDL_RWops  *infile = nullptr;
+    std::string tempfile = std::string(filename) + ".fss";
+    auto infile = og::io::og_open_read("scen/", tempfile.c_str());
+    if(!infile)
+        return ScenarioTitleError::OpenReadFailed;
+
     char temptext[4] = {};
     char versionnumber = 0;
     char gridname[8] = {};
     char buffer[31] = {};
 
-    std::string tempfile = std::string(filename) + ".fss";
-
-    // Zardus: first get the file from scen/
-    infile = open_read_file("scen/", tempfile.c_str());
-    if(infile == nullptr)
-        return ScenarioTitleError::OpenReadFailed;
-
     ScenarioTitleError err = ScenarioTitleError::None;
-    if(!rw_read_exact(infile, temptext, 1, 3))
+    if(!og::io::og_read_exact(*infile, temptext, 1, 3))
     {
         err = ScenarioTitleError::ReadFailed;
-        goto close_and_return;
     }
-    if (std::string(temptext, 3) != "FSS")
+    else if (std::string(temptext, 3) != "FSS")
     {
         err = ScenarioTitleError::InvalidHeader;
-        goto close_and_return;
     }
-
-    if(!rw_read_exact(infile, &versionnumber, 1, 1))
+    else if(!og::io::og_read_exact(*infile, &versionnumber, 1, 1))
     {
         err = ScenarioTitleError::ReadFailed;
-        goto close_and_return;
     }
-    if (versionnumber < 6)
+    else if (versionnumber < 6)
     {
         err = ScenarioTitleError::UnsupportedVersion;
-        goto close_and_return;
     }
-
-    // Discard the grid name ...
-    if(!rw_read_exact(infile, gridname, 1, 8))
+    else if(!og::io::og_read_exact(*infile, gridname, 1, 8))
     {
         err = ScenarioTitleError::ReadFailed;
-        goto close_and_return;
     }
-
-    // Return the title, 30 bytes
-    if(!rw_read_exact(infile, buffer, 1, 30))
+    else if(!og::io::og_read_exact(*infile, buffer, 1, 30))
     {
         err = ScenarioTitleError::ReadFailed;
-        goto close_and_return;
     }
-
-    out_title = std::string(buffer);
-
-close_and_return:
-    if(infile != nullptr)
-        SDL_RWclose(infile);
+    else
+    {
+        out_title = std::string(buffer);
+    }
 
     if(err != ScenarioTitleError::None)
     {
@@ -1082,3 +1078,59 @@ std::string screen::get_description_line(int i) const
     }
     return *it;
 }
+
+void screen::set_fullscreen(bool fullscreen_enabled) { video_->set_fullscreen(fullscreen_enabled); }
+void screen::clearbuffer() { video_->clearbuffer(); }
+void screen::clearbuffer(int x, int y, int w, int h) { video_->clearbuffer(x, y, w, h); }
+void screen::clear_window() { video_->clear_window(); }
+std::span<unsigned char> screen::getbuffer() { return video_->getbuffer(); }
+void screen::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize) { video_->putblack(startx, starty, xsize, ysize); }
+void screen::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color) { video_->fastbox(startx, starty, xsize, ysize, color); }
+void screen::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char flag) { video_->fastbox(startx, starty, xsize, ysize, color, flag); }
+void screen::fastbox_outline(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color) { video_->fastbox_outline(startx, starty, xsize, ysize, color); }
+void screen::point(Sint32 x, Sint32 y, unsigned char color) { video_->point(x, y, color); }
+void screen::pointb(Sint32 x, Sint32 y, unsigned char color) { video_->pointb(x, y, color); }
+void screen::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha) { video_->pointb(x, y, color, alpha); }
+void screen::pointb(int offset, unsigned char color) { video_->pointb(offset, color); }
+void screen::pointb(Sint32 x, Sint32 y, int r, int g, int b) { video_->pointb(x, y, r, g, b); }
+void screen::hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color) { video_->hor_line(x, y, length, color); }
+void screen::ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color) { video_->ver_line(x, y, length, color); }
+void screen::hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer) { video_->hor_line(x, y, length, color, tobuffer); }
+void screen::hor_line_alpha(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Uint8 alpha) { video_->hor_line_alpha(x, y, length, color, alpha); }
+void screen::ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer) { video_->ver_line(x, y, length, color, tobuffer); }
+void screen::draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color) { video_->draw_line(x1, y1, x2, y2, color); }
+void screen::do_cycle(Sint32 curmode, Sint32 maxmode) { video_->do_cycle(curmode, maxmode); }
+void screen::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata) { video_->putdata(startx, starty, xsize, ysize, sourcedata); }
+void screen::putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char alpha) { video_->putdata_alpha(startx, starty, xsize, ysize, sourcedata, alpha); }
+void screen::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata) { video_->putdatatext(startx, starty, xsize, ysize, sourcedata); }
+void screen::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char color) { video_->putdata(startx, starty, xsize, ysize, sourcedata, color); }
+void screen::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char color) { video_->putdatatext(startx, starty, xsize, ysize, sourcedata, color); }
+void screen::putbuffer(Sint32 tilestartx, Sint32 tilestarty, Sint32 tilewidth, Sint32 tileheight, Sint32 portstartx, Sint32 portstarty, Sint32 portendx, Sint32 portendy, std::span<const unsigned char> sourceptr) { video_->putbuffer(tilestartx, tilestarty, tilewidth, tileheight, portstartx, portstarty, portendx, portendy, sourceptr); }
+void screen::putbuffer_alpha(Sint32 tilestartx, Sint32 tilestarty, Sint32 tilewidth, Sint32 tileheight, Sint32 portstartx, Sint32 portstarty, Sint32 portendx, Sint32 portendy, std::span<const unsigned char> sourceptr, unsigned char alpha) { video_->putbuffer_alpha(tilestartx, tilestarty, tilewidth, tileheight, portstartx, portstarty, portendx, portendy, sourceptr, alpha); }
+void screen::putbuffer(Sint32 tilestartx, Sint32 tilestarty, Sint32 tilewidth, Sint32 tileheight, Sint32 portstartx, Sint32 portstarty, Sint32 portendx, Sint32 portendy, SDL_Surface *sourceptr) { video_->putbuffer(tilestartx, tilestarty, tilewidth, tileheight, portstartx, portstarty, portendx, portendy, sourceptr); }
+void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty, Sint32 walkerwidth, Sint32 walkerheight, Sint32 portstartx, Sint32 portstarty, Sint32 portendx, Sint32 portendy, std::span<const unsigned char> sourceptr, unsigned char teamcolor) { video_->walkputbuffer(walkerstartx, walkerstarty, walkerwidth, walkerheight, portstartx, portstarty, portendx, portendy, sourceptr, teamcolor); }
+void screen::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty, Sint32 walkerwidth, Sint32 walkerheight, Sint32 portstartx, Sint32 portstarty, Sint32 portendx, Sint32 portendy, std::span<const unsigned char> sourceptr, unsigned char teamcolor) { video_->walkputbuffer_flash(walkerstartx, walkerstarty, walkerwidth, walkerheight, portstartx, portstarty, portendx, portendy, sourceptr, teamcolor); }
+void screen::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty, Sint32 walkerwidth, Sint32 walkerheight, Sint32 portstartx, Sint32 portstarty, Sint32 portendx, Sint32 portendy, std::span<const unsigned char> sourceptr, unsigned char teamcolor) { video_->walkputbuffertext(walkerstartx, walkerstarty, walkerwidth, walkerheight, portstartx, portstarty, portendx, portendy, sourceptr, teamcolor); }
+void screen::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty, Sint32 walkerwidth, Sint32 walkerheight, Sint32 portstartx, Sint32 portstarty, Sint32 portendx, Sint32 portendy, std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha) { video_->walkputbuffertext_alpha(walkerstartx, walkerstarty, walkerwidth, walkerheight, portstartx, portstarty, portendx, portendy, sourceptr, teamcolor, alpha); }
+void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty, Sint32 walkerwidth, Sint32 walkerheight, Sint32 portstartx, Sint32 portstarty, Sint32 portendx, Sint32 portendy, std::span<const unsigned char> sourceptr, unsigned char teamcolor, unsigned char mode, Sint32 invisibility, unsigned char outline, unsigned char shifttype) { video_->walkputbuffer(walkerstartx, walkerstarty, walkerwidth, walkerheight, portstartx, portstarty, portendx, portendy, sourceptr, teamcolor, mode, invisibility, outline, shifttype); }
+void screen::buffer_to_screen(Sint32 viewstartx, Sint32 viewstarty, Sint32 viewwidth, Sint32 viewheight) { video_->buffer_to_screen(viewstartx, viewstarty, viewwidth, viewheight); }
+void screen::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled) { video_->draw_box(x1, y1, x2, y2, color, filled); }
+void screen::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled, Sint32 tobuffer) { video_->draw_box(x1, y1, x2, y2, color, filled, tobuffer); }
+void screen::draw_rect_filled(Sint32 x, Sint32 y, Uint32 w, Uint32 h, unsigned char color, Uint8 alpha) { video_->draw_rect_filled(x, y, w, h, color, alpha); }
+void screen::draw_button(const SDL_Rect& rect, Sint32 border) { video_->draw_button(rect, border); }
+void screen::draw_button_inverted(const SDL_Rect& rect) { video_->draw_button_inverted(rect); }
+void screen::draw_button_inverted(Sint32 x, Sint32 y, Uint32 w, Uint32 h) { video_->draw_button_inverted(x, y, w, h); }
+void screen::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border) { video_->draw_button(x1, y1, x2, y2, border); }
+void screen::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border, Sint32 tobuffer) { video_->draw_button(x1, y1, x2, y2, border, tobuffer); }
+void screen::draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, bool use_border, int base_color, int high_color, int shadow_color) { video_->draw_button_colored(x1, y1, x2, y2, use_border, base_color, high_color, shadow_color); }
+Sint32 screen::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, const char *header) { return video_->draw_dialog(x1, y1, x2, y2, header); }
+void screen::draw_text_bar(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2) { video_->draw_text_bar(x1, y1, x2, y2); }
+void screen::darken_screen() { video_->darken_screen(); }
+void screen::swap() { video_->swap(); }
+void screen::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b) { video_->get_pixel(x, y, r, g, b); }
+int screen::get_pixel(int x, int y, int *index) { return video_->get_pixel(x, y, index); }
+int screen::get_pixel(int offset) { return video_->get_pixel(offset); }
+bool screen::save_screenshot() { return video_->save_screenshot(); }
+void screen::FadeBetween24(SDL_Surface *a, const Uint8 *b, const Uint8 *c, const int d) { video_->FadeBetween24(a, b, c, d); }
+int screen::FadeBetween(SDL_Surface *a, SDL_Surface *b, SDL_Surface *c) { return video_->FadeBetween(a, b, c); }
+int screen::fadeblack(bool fade_in) { return video_->fadeblack(fade_in); }

@@ -220,7 +220,7 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& inf
 // ---------------------------------------------------------------------------
 
 #include <openglad/platform/io_common.h>
-#include <openglad/resources/save_data.h>
+#include <openglad/resources/save_io.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/pixie_data.h>

@@ -8,7 +8,7 @@
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include <openglad/resources/save_data.h>
+#include <openglad/resources/save_io.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/core/util.h>
 #include <atomic>

@@ -3,7 +3,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/gameplay/walker.h>
 #include "test_framework.h"
-#include <openglad/resources/save_data.h>
+#include <openglad/resources/save_io.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_saved_game(const char *filename, screen *scr);

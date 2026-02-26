@@ -12,7 +12,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/sim_emit.h>
-#include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_io.h>
 #include <format>
 #include <string>
 

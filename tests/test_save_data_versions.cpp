@@ -8,7 +8,7 @@
 
 #include <openglad/legacy/base.h> // Order + family constants used for test data
 #include <openglad/platform/io.h>
-#include <openglad/resources/save_data.h>
+#include <openglad/resources/save_io.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include "test_framework.h"

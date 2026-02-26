@@ -11,7 +11,7 @@
 #include <openglad/platform/game_loop_state.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/resources/save_data.h>
+#include <openglad/resources/save_io.h>
 
 struct SDL_Surface;
 struct InputHardwareState;

@@ -20,7 +20,7 @@ extern "C" void __gcov_dump();
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/screen_lifecycle.h>
 #include <openglad/interface/screen.h>
-#include <openglad/resources/save_data.h>
+#include <openglad/resources/save_io.h>
 #include <openglad/gameplay/sim_event_log.h>
 
 static void handle_test_signal(int sig)

@@ -11,11 +11,11 @@
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/irandom.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_io.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_visuals.h>
 #include <openglad/gameplay/obmap.h>
-#include <openglad/resources/save_data.h>
+#include <openglad/resources/save_io.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>

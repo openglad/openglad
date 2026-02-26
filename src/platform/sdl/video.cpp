@@ -16,7 +16,7 @@
  */
 // Video object code
 
-#include <openglad/interface/render/video.h>
+#include <openglad/platform/sdl/video.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/sai2x.h>
 #include <openglad/resources/gparser.h>

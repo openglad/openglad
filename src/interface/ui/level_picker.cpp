@@ -18,7 +18,7 @@
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/resources/level_data_hooks.h>
-#include <openglad/resources/level_file_io.h>
+#include <openglad/resources/level_io.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/interface/level_visuals.h>
 #include <openglad/gameplay/obmap.h>
@@ -44,8 +44,8 @@
 
 
 
-// MAX_TEAM_SIZE is defined in <openglad/resources/save_data.h>
-#include <openglad/resources/save_data.h>
+// MAX_TEAM_SIZE is defined in <openglad/resources/save_io.h>
+#include <openglad/resources/save_io.h>
 
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
