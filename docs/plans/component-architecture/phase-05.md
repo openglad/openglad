@@ -122,6 +122,14 @@ blocks and preempts any subsequent exit interactions.
 Medium-High — the exit treasure redesign requires careful thought.
 Score/allied_mode migration is trivial. `sim_config` removal is mechanical.
 
+## Accepted Deviation: hit_anim
+
+`hit_anim` uses `GameWorld::create_hit_effects` (bool) instead of unconditional
+entity creation. Unlike the other 5 display-only effects, hit_anim spawns actual
+`Order::FX` entities with memory/CPU cost. The flag is set by the runtime layer
+(`screen.cpp`), not by entity code — no sim_config coupling exists in entity code.
+This is accepted as a pragmatic adaptation.
+
 ## Testing
 
 Full ctest. Add specific tests for exit and withdrawal behavior.

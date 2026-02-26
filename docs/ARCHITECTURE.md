@@ -39,7 +39,8 @@ openglad/
 │
 ├── src/                    Private implementation
 │   ├── core/               combat_math.cpp, stats.cpp, util.cpp
-│   ├── sim/                game_world, sim_event_log
+│   ├── sim/                sim_event_log
+│   ├── gameplay/           game_world, gameplay_context
 │   ├── data/               gloader, gparser, level_data, pixie_data, save_data
 │   ├── entities/           walker, living, weap, treasure, effect, guy, obmap
 │   ├── io/                 physfs_api, platform_io, yaml_stream, zip_api
@@ -105,7 +106,7 @@ Entity code emits events via `sim_emit.h` helpers (`emit_sound()`, `emit_notific
 
 | File | Purpose |
 |------|---------|
-| `sim/game_world.cpp` | `GameWorld::tick()` — live game simulation tick (extracted from `screen::act()`) |
+| `gameplay/game_world.cpp` | `GameWorld::tick()` — live game simulation tick (extracted from `screen::act()`) |
 | `sim/sim_event_log.cpp` | `SimEventLog` — accumulates events during a tick for deferred dispatch |
 | `sim/sim_emit.h` | Convenience helpers: `emit_sound()`, `emit_notification()`, `emit_event()` |
 | `sim/event.h` | `EventKind` enum: PlaySound, Notification, SetPalette, RequestRedraw |
@@ -712,7 +713,7 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `src/data/level_data.cpp` | Level file loading and saving |
 | `src/data/save_data.cpp` | Save game serialization |
 | `src/input/input.cpp` | Keyboard/controller event handling |
-| `src/sim/game_world.cpp` | Live game simulation tick (extracted from `screen::act()`) |
+| `src/gameplay/game_world.cpp` | Live game simulation tick (extracted from `screen::act()`) |
 | `src/sim/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
 | `src/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
 | `CMakeLists.txt` | Build system — module targets, test binaries, install rules |

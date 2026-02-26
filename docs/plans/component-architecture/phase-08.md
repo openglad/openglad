@@ -32,6 +32,14 @@ This phase modifies `walker.h` in its current location
 Phase 10. This phase runs after Phases 4–5 because all three modify
 `walker.h` / `SimEntity` — sequencing avoids merge conflicts.
 
+## Decision: ILevelVisuals Not Needed
+
+LevelVisuals is owned by screen (runtime layer), not by any gameplay type.
+Gameplay code never references LevelVisuals. The ILevelVisuals interface
+was designed for the case where gameplay needs to hold a type-erased
+rendering reference, but this case does not arise for level visuals
+(only for per-entity render components via IRenderComponent).
+
 ## Risk
 
 Low — small, mechanical change. The hard part is making sure all
