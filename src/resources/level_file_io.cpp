@@ -518,6 +518,58 @@ bool save_level(og::gameplay::GameWorld& world,
     return true;
 }
 
+bool create_new_scenario(const std::string& scenfile,
+                         const std::string& gridname,
+                         LevelFileIoError* out_error)
+{
+    set_error(out_error, LevelFileIoError::None);
+
+    auto outfile = og::io::og_open_write(scenfile.c_str());
+    if (!outfile)
+    {
+        set_error(out_error, LevelFileIoError::OpenWriteFailed);
+        return false;
+    }
+
+#define WRITE_OR_FAIL(src, size, count)                                    \
+    do {                                                                    \
+        if (!og::io::og_write_exact(*outfile, (src), (size), (count))) {   \
+            set_error(out_error, LevelFileIoError::SerializeFailed);        \
+            return false;                                                   \
+        }                                                                   \
+    } while (0)
+
+    const char header[3] = {'F', 'S', 'S'};
+    char version = kScenarioVersion;
+    char grid_field[8] = {};
+    char title_field[30] = {};
+    char scen_type = 1;
+    short par_value = 1;
+    short time_limit = 0;
+    short num_objects = 0;
+    std::uint8_t num_lines = 1;
+    const char* desc = "A new scenario.";
+    std::uint8_t desc_len = static_cast<std::uint8_t>(std::strlen(desc));
+
+    fill_fixed_field(grid_field, 8, gridname, "grid_file");
+    fill_fixed_field(title_field, 30, "New Level", "title");
+
+    WRITE_OR_FAIL(header, 3, 1);
+    WRITE_OR_FAIL(&version, 1, 1);
+    WRITE_OR_FAIL(grid_field, 8, 1);
+    WRITE_OR_FAIL(title_field, 30, 1);
+    WRITE_OR_FAIL(&scen_type, 1, 1);
+    WRITE_OR_FAIL(&par_value, 2, 1);
+    WRITE_OR_FAIL(&time_limit, 2, 1);
+    WRITE_OR_FAIL(&num_objects, 2, 1);
+    WRITE_OR_FAIL(&num_lines, 1, 1);
+    WRITE_OR_FAIL(&desc_len, 1, 1);
+    WRITE_OR_FAIL(desc, desc_len, 1);
+
+#undef WRITE_OR_FAIL
+    return true;
+}
+
 std::string load_scenario_title(const char* filename)
 {
     if (filename == nullptr || filename[0] == '\0')

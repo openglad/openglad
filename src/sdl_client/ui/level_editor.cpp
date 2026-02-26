@@ -1375,7 +1375,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	std::string message;
 	Sint32 i, j; // for loops
 	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
-	Sint32 numobs = s->world().living_count;
+	Sint32 numobs = level->living_count;
 	Sint32 lm = 245;
 	Sint32 curline = 0;
 	Sint32 whichback;
@@ -1483,7 +1483,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         if(!message.empty())
             scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
 
-        numobs = s->world().living_count;
+        numobs = level->living_count;
         //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
         message = std::format("OB: {}", numobs);
         scentext.write_xy(lm,L_D(curline++),message.c_str(), DARK_BLUE, 1);
@@ -1649,7 +1649,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
 
 void LevelEditorData::clear_terrain()
 {
-    auto& world = og::runtime::current_session->myscreen_->world();
+    auto& world = *level;
     int w = world.grid.w;
     int h = world.grid.h;
 
@@ -1659,7 +1659,7 @@ void LevelEditorData::clear_terrain()
 
 void LevelEditorData::resmooth_terrain()
 {
-    og::runtime::current_session->myscreen_->world().mysmoother.smooth();
+    level->mysmoother.smooth();
     myradar.update(level.get());
 }
 
@@ -2330,8 +2330,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             std::string buf = std::format("{}\nID number: {}\nTitle: {}\nSize: {}x{}",
                      (eds().levelchanged ? "(unsaved)" : ""), level->id, level->title,
-                     og::runtime::current_session->myscreen_->world().grid.w,
-                     og::runtime::current_session->myscreen_->world().grid.h);
+                     level->grid.w,
+                     level->grid.h);
             popup_dialog("Level Info", buf.c_str());
         }
         // Profile >
@@ -2374,8 +2374,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             // Using two prompts sequentially
             
-            std::string width = std::format("{}", og::runtime::current_session->myscreen_->world().grid.w);
-            std::string height = std::format("{}", og::runtime::current_session->myscreen_->world().grid.h);
+            std::string width = std::format("{}", level->grid.w);
+            std::string height = std::format("{}", level->grid.h);
             
             if(prompt_for_string("Map Width", width))
             {
@@ -2408,13 +2408,13 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     }
                     else
                     {
-                        if((w >= og::runtime::current_session->myscreen_->world().grid.w
-                                && h >= og::runtime::current_session->myscreen_->world().grid.h)
-                            || !are_objects_outside_area(og::runtime::current_session->myscreen_->world(), 0, 0, w, h)
+                        if((w >= level->grid.w
+                                && h >= level->grid.h)
+                            || !are_objects_outside_area(*level, 0, 0, w, h)
                             || yes_or_no_prompt("Resize Map", "Delete objects outside of map?", false))
                         {
                             // Now change it
-                            og::runtime::current_session->myscreen_->world().resize_grid(w, h);
+                            level->resize_grid(w, h);
                             
                             // Reset the minimap
                             myradar.start(level.get());
@@ -2423,8 +2423,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             og::runtime::current_session->myscreen_->refresh();
                             
                             std::string resize_msg = std::format("Resized map to {}x{}",
-                                                                 og::runtime::current_session->myscreen_->world().grid.w,
-                                                                 og::runtime::current_session->myscreen_->world().grid.h);
+                                                                 level->grid.w,
+                                                                 level->grid.h);
                             timed_dialog(resize_msg.c_str());
                             eds().redraw = 1;
                             eds().levelchanged = 1;
@@ -2608,14 +2608,14 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     // Select guys in the rectangle
                     if(!og::runtime::current_session->keystates_[KEYSTATE_LCTRL] && !og::runtime::current_session->keystates_[KEYSTATE_RCTRL])
                         selection.clear();
-                    add_contained_objects_to_selection(og::runtime::current_session->myscreen_->world(), selection_rect, selection);
+                    add_contained_objects_to_selection(*level, selection_rect, selection);
                     reset_mode_buttons();
                 }
                 else if (og::runtime::current_session->keystates_[KEYSTATE_r]) // (re)name the current object
                 {
                     newob = level->add_ob(Order::Living, FAMILY_ELF);
                     newob->setxy(windowx, windowy);
-                    if (some_hit(windowx, windowy, newob, og::runtime::current_session->myscreen_->world()))
+                    if (some_hit(windowx, windowy, newob, *level))
                     {
                         std::string name = newob->collide_ob->stats()->name;
                         if(prompt_for_string("Rename", name))
@@ -2633,7 +2633,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     {
                         newob = level->add_ob(Order::Living, FAMILY_ELF);
                         newob->setxy(windowx, windowy);
-                        if (some_hit(windowx, windowy, newob, og::runtime::current_session->myscreen_->world()))
+                        if (some_hit(windowx, windowy, newob, *level))
                         {
                             // Clicked on a guy
                             walker* w = newob->collide_ob;
@@ -2700,7 +2700,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         newob->collide_ob = nullptr;
                         // Is there already something there?
                         if (object_brush.snap_to_grid
-                            && some_hit(windowx, windowy, newob, og::runtime::current_session->myscreen_->world()))
+                            && some_hit(windowx, windowy, newob, *level))
                         {
                             if (newob)
                             {
@@ -2829,7 +2829,7 @@ walker* LevelEditorData::get_object(int x, int y)
     walker* result = nullptr;
     walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
     newob->setxy(x, y);
-    if (some_hit(x, y, newob, og::runtime::current_session->myscreen_->world()))
+    if (some_hit(x, y, newob, *level))
     {
         result = newob->collide_ob;
     }
@@ -2875,9 +2875,8 @@ int level_editor_test_exercise_internal_helpers()
         data.level->create_new_grid();
         // Avoid smoother/radar update paths in this helper; those are exercised elsewhere
         // and have global UI dependencies that make this test nondeterministic.
-        std::fill_n(og::runtime::current_session->myscreen_->world().grid.data.get(),
-                    og::runtime::current_session->myscreen_->world().grid.w
-                        * og::runtime::current_session->myscreen_->world().grid.h,
+        std::fill_n(data.level->grid.data.get(),
+                    data.level->grid.w * data.level->grid.h,
                     static_cast<unsigned char>(1));
         data.set_terrain(0, 0, PIX_GRASS2);
         if (data.get_terrain(0, 0) == PIX_GRASS2)
@@ -2897,7 +2896,7 @@ int level_editor_test_exercise_internal_helpers()
                        static_cast<float>(inside->ypos - 2),
                        static_cast<float>(inside->sizex + 4),
                        static_cast<float>(inside->sizey + 4));
-            add_contained_objects_to_selection(og::runtime::current_session->myscreen_->world(), area, selection);
+            add_contained_objects_to_selection(*data.level, area, selection);
             if (is_in_selection(inside, selection))
                 score++;
             if (data.get_object(inside->xpos, inside->ypos) == inside)
@@ -3061,11 +3060,6 @@ EventType handle_basic_editor_event(const SDL_Event& event)
     }
 }
 
-#define PAN_LIMIT_UP -60
-#define PAN_LIMIT_DOWN (GRID_SIZE * og::runtime::current_session->myscreen_->world().grid.h - 200 + 80)
-#define PAN_LIMIT_LEFT -60
-#define PAN_LIMIT_RIGHT (GRID_SIZE * og::runtime::current_session->myscreen_->world().grid.w - 320 + 80)
-
 // eds().pan_left/right/up/down moved into LevelEditorState (per-session via eds())
 
 Sint32 level_editor()
@@ -3165,6 +3159,11 @@ Sint32 level_editor()
 	SDL_Event event;
 	while(!done)
 	{
+        const int pan_limit_up = -60;
+        const int pan_limit_down = (GRID_SIZE * data.level->grid.h - 200 + 80);
+        const int pan_limit_left = -60;
+        const int pan_limit_right = (GRID_SIZE * data.level->grid.w - 320 + 80);
+
 		// Reset the timer count to zero ...
 		reset_timer();
 
@@ -3408,22 +3407,22 @@ Sint32 level_editor()
 		eds().pan_up = (og::runtime::current_session->keystates_[KEYSTATE_KP_8] || og::runtime::current_session->keystates_[KEYSTATE_KP_7] || og::runtime::current_session->keystates_[KEYSTATE_KP_9] || og::runtime::current_session->keystates_[KEYSTATE_w]);
 		eds().pan_down = (og::runtime::current_session->keystates_[KEYSTATE_KP_2] || og::runtime::current_session->keystates_[KEYSTATE_KP_1] || og::runtime::current_session->keystates_[KEYSTATE_KP_3] || og::runtime::current_session->keystates_[KEYSTATE_s]);
 		#endif
-		if (eds().pan_up && og::runtime::current_session->myscreen_->level_visuals_.topy >= PAN_LIMIT_UP) // top of the screen
+		if (eds().pan_up && og::runtime::current_session->myscreen_->level_visuals_.topy >= pan_limit_up) // top of the screen
         {
             eds().redraw = 1;
 			og::runtime::current_session->myscreen_->add_draw_pos(0, -SCROLLSIZE);
         }
-		if (eds().pan_down && og::runtime::current_session->myscreen_->level_visuals_.topy <= PAN_LIMIT_DOWN) // scroll down
+		if (eds().pan_down && og::runtime::current_session->myscreen_->level_visuals_.topy <= pan_limit_down) // scroll down
         {
             eds().redraw = 1;
 			og::runtime::current_session->myscreen_->add_draw_pos(0, SCROLLSIZE);
         }
-		if (eds().pan_left && og::runtime::current_session->myscreen_->level_visuals_.topx >= PAN_LIMIT_LEFT) // scroll left
+		if (eds().pan_left && og::runtime::current_session->myscreen_->level_visuals_.topx >= pan_limit_left) // scroll left
         {
             eds().redraw = 1;
 			og::runtime::current_session->myscreen_->add_draw_pos(-SCROLLSIZE, 0);
         }
-		if (eds().pan_right && og::runtime::current_session->myscreen_->level_visuals_.topx <= PAN_LIMIT_RIGHT) // scroll right
+		if (eds().pan_right && og::runtime::current_session->myscreen_->level_visuals_.topx <= pan_limit_right) // scroll right
         {
             eds().redraw = 1;
 			og::runtime::current_session->myscreen_->add_draw_pos(SCROLLSIZE, 0);
@@ -3448,7 +3447,7 @@ Sint32 level_editor()
             if(on_menu)
             {
                 // Panning with mouse (touch)
-                if(data.panUpButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topy >= PAN_LIMIT_UP) // top of the screen
+                if(data.panUpButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topy >= pan_limit_up) // top of the screen
                 {
                     eds().redraw = 1;
                     og::runtime::current_session->myscreen_->add_draw_pos(0, -SCROLLSIZE);
@@ -3456,20 +3455,20 @@ Sint32 level_editor()
                 else if(data.panUpRightButton.contains(mx, my))
                 {
                     eds().redraw = 1;
-                    if(og::runtime::current_session->myscreen_->level_visuals_.topy >= PAN_LIMIT_UP)
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topy >= pan_limit_up)
                         og::runtime::current_session->myscreen_->add_draw_pos(0, -SCROLLSIZE);
-                    if(og::runtime::current_session->myscreen_->level_visuals_.topx <= PAN_LIMIT_RIGHT)
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topx <= pan_limit_right)
                         og::runtime::current_session->myscreen_->add_draw_pos(SCROLLSIZE, 0);
                 }
                 else if(data.panUpLeftButton.contains(mx, my))
                 {
                     eds().redraw = 1;
-                    if(og::runtime::current_session->myscreen_->level_visuals_.topy >= PAN_LIMIT_UP)
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topy >= pan_limit_up)
                         og::runtime::current_session->myscreen_->add_draw_pos(0, -SCROLLSIZE);
-                    if(og::runtime::current_session->myscreen_->level_visuals_.topx >= PAN_LIMIT_LEFT)
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topx >= pan_limit_left)
                         og::runtime::current_session->myscreen_->add_draw_pos(-SCROLLSIZE, 0);
                 }
-                else if(data.panDownButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topy <= PAN_LIMIT_DOWN) // scroll down
+                else if(data.panDownButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topy <= pan_limit_down) // scroll down
                 {
                     eds().redraw = 1;
                     og::runtime::current_session->myscreen_->add_draw_pos(0, SCROLLSIZE);
@@ -3477,25 +3476,25 @@ Sint32 level_editor()
                 else if(data.panDownRightButton.contains(mx, my))
                 {
                     eds().redraw = 1;
-                    if(og::runtime::current_session->myscreen_->level_visuals_.topy <= PAN_LIMIT_DOWN)
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topy <= pan_limit_down)
                         og::runtime::current_session->myscreen_->add_draw_pos(0, SCROLLSIZE);
-                    if(og::runtime::current_session->myscreen_->level_visuals_.topx <= PAN_LIMIT_RIGHT)
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topx <= pan_limit_right)
                         og::runtime::current_session->myscreen_->add_draw_pos(SCROLLSIZE, 0);
                 }
                 else if(data.panDownLeftButton.contains(mx, my))
                 {
                     eds().redraw = 1;
-                    if(og::runtime::current_session->myscreen_->level_visuals_.topy <= PAN_LIMIT_DOWN)
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topy <= pan_limit_down)
                         og::runtime::current_session->myscreen_->add_draw_pos(0, SCROLLSIZE);
-                    if(og::runtime::current_session->myscreen_->level_visuals_.topx >= PAN_LIMIT_LEFT)
+                    if(og::runtime::current_session->myscreen_->level_visuals_.topx >= pan_limit_left)
                         og::runtime::current_session->myscreen_->add_draw_pos(-SCROLLSIZE, 0);
                 }
-                else if(data.panLeftButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topx >= PAN_LIMIT_LEFT) // scroll left
+                else if(data.panLeftButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topx >= pan_limit_left) // scroll left
                 {
                     eds().redraw = 1;
                     og::runtime::current_session->myscreen_->add_draw_pos(-SCROLLSIZE, 0);
                 }
-                else if(data.panRightButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topx <= PAN_LIMIT_RIGHT) // scroll right
+                else if(data.panRightButton.contains(mx, my) && og::runtime::current_session->myscreen_->level_visuals_.topx <= pan_limit_right) // scroll right
                 {
                     eds().redraw = 1;
                     og::runtime::current_session->myscreen_->add_draw_pos(SCROLLSIZE, 0);
@@ -3543,9 +3542,9 @@ Sint32 level_editor()
                                 {
                                     for (i=windowx-1; i <= windowx+1; i++)
                                         for (j=windowy-1; j <=windowy+1; j++)
-                                            if (i >= 0 && i < og::runtime::current_session->myscreen_->world().grid.w &&
-                                                    j >= 0 && j < og::runtime::current_session->myscreen_->world().grid.h)
-                                                og::runtime::current_session->myscreen_->world().mysmoother.smooth(i, j);
+                                            if (i >= 0 && i < data.level->grid.w &&
+                                                    j >= 0 && j < data.level->grid.h)
+                                                data.level->mysmoother.smooth(i, j);
                                 }
                                 
                                 myradar.update(data.level.get());
@@ -3825,4 +3824,3 @@ walker * some_hit(Sint32 x, Sint32 y, walker* ob, og::gameplay::GameWorld& world
 	ob->collide_ob = nullptr;
 	return nullptr;
 }
-

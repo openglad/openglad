@@ -47,6 +47,10 @@ bool save_level(og::gameplay::GameWorld& world,
                 const LevelFileMetadata& metadata,
                 LevelFileIoError* out_error = nullptr);
 
+bool create_new_scenario(const std::string& scenfile,
+                         const std::string& gridname,
+                         LevelFileIoError* out_error = nullptr);
+
 // Read a scenario title from a .fss file. Returns "none" on failure.
 std::string load_scenario_title(const char* filename);
 
