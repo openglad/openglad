@@ -284,6 +284,7 @@ void screen::ready_for_battle(short howmany)
 	cleanup(howmany);
     
     initialize_views();
+	sim_world_.reset_level_progress();
 
 	end = 0;
 	

@@ -108,6 +108,8 @@ std::atomic<bool> g_test_in_game{false};
 // Monotonic counter incremented each time go_menu starts glad_main, so
 // injector threads can't miss a fast start+finish transition.
 std::atomic<int> g_test_game_epoch{0};
+// Number of game frames executed during the current go_menu run.
+std::atomic<int> g_test_game_frame_ticks{0};
 #endif
 
 #ifdef __EMSCRIPTEN__
@@ -121,7 +123,13 @@ void picker_request_start_game()
 void picker_testing_mark_game_start()
 {
     g_test_game_epoch.fetch_add(1, std::memory_order_release);
+    g_test_game_frame_ticks.store(0, std::memory_order_release);
     g_test_in_game.store(true, std::memory_order_release);
+}
+
+void picker_testing_mark_frame_advance()
+{
+    g_test_game_frame_ticks.fetch_add(1, std::memory_order_release);
 }
 
 void picker_testing_mark_game_end()

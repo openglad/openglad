@@ -16,6 +16,9 @@
 #include <openglad/render/obmap_debug_draw.h>
 #include <openglad/core/util.h>
 
+#ifdef TESTING
+void picker_testing_mark_frame_advance();
+#endif
 
 // Declared elsewhere (glad.cpp).
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
@@ -63,6 +66,9 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
 
     s.act();
     s.framecount++;
+#ifdef TESTING
+    picker_testing_mark_frame_advance();
+#endif
 
     if (s.end)
     {

@@ -69,6 +69,10 @@ class SimWorld final {
 public:
     explicit SimWorld(std::uint32_t seed = 0) : rng_(seed) {}
 
+    // Reset per-level run counters when starting a fresh mission attempt.
+    // Without this, same-level retries can inherit timeout progress.
+    void reset_level_progress();
+
     // Run one simulation tick.
     //
     // This executes all entity act() calls, handles dead entity cleanup,

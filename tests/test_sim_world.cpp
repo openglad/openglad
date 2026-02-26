@@ -13,6 +13,12 @@
 #include "test_game_world_fixture.h"
 #include "unit/unit.h"
 
+#ifdef TESTING
+namespace og::sim {
+extern std::int32_t g_test_level_tick_limit_override;
+}
+#endif
+
 namespace {
 
 struct TickWalker : walker {
@@ -176,4 +182,39 @@ OG_UNIT_TEST(test_sim_world_r15_end_flag_and_auto_advance_paths)
     OG_ASSERT(auto_advance.game_ended);
     OG_ASSERT(auto_advance.level_done == 2);
     OG_ASSERT(auto_advance.next_level == static_cast<short>(empty_fx.level.id + 1));
+}
+
+OG_UNIT_TEST(test_sim_world_r15_reset_level_progress_clears_timeout_for_same_level)
+{
+#ifdef TESTING
+    SimWorldR15Fixture fx;
+    og::sim::SimWorld world(17);
+    fx.save.my_team = 0;
+
+    TickWalker* enemy = add_ob(fx, Order::Living, FAMILY_ORC, 1, 80, 64);
+    OG_ASSERT(enemy != nullptr);
+
+    struct TickLimitGuard {
+        std::int32_t saved = 0;
+        TickLimitGuard()
+            : saved(og::sim::g_test_level_tick_limit_override)
+        {
+            og::sim::g_test_level_tick_limit_override = 1;
+        }
+        ~TickLimitGuard()
+        {
+            og::sim::g_test_level_tick_limit_override = saved;
+        }
+    } guard;
+
+    const og::sim::TickResult first = world.tick(fx.level, fx.save, fx.enemy_freeze, 0, fx.events);
+    OG_ASSERT(!first.game_ended);
+
+    const og::sim::TickResult second = world.tick(fx.level, fx.save, fx.enemy_freeze, 0, fx.events);
+    OG_ASSERT(second.game_ended);
+
+    world.reset_level_progress();
+    const og::sim::TickResult restarted = world.tick(fx.level, fx.save, fx.enemy_freeze, 0, fx.events);
+    OG_ASSERT(!restarted.game_ended);
+#endif
 }

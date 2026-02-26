@@ -58,6 +58,12 @@ static walker* find_far_foe(LevelData& level, walker* ob, SimRandom& rng)
     return endfoe;
 }
 
+void SimWorld::reset_level_progress()
+{
+    level_tick_count_ = 0;
+    last_level_id_ = -1;
+}
+
 TickResult SimWorld::tick(LevelData& level, SaveData& save,
                           std::int32_t& enemy_freeze, char end,
                           SimEventLog& events)

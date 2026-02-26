@@ -27,6 +27,7 @@ Sint32 create_team_menu(Sint32 arg1);
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
+extern std::atomic<int> g_test_game_frame_ticks;
 namespace og::sim { extern std::int32_t g_test_level_tick_limit_override; }
 #endif
 
@@ -446,16 +447,14 @@ static int view_team_go_level17_injector(void* data)
     state->game_started = g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
 
     int stable_polls = 0;
-    int last_framecount = og::runtime::current_session->myscreen_->framecount;
     waited_ms = 0;
     while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 90000) {
         SDL_Delay(100);
         waited_ms += 100;
-        const int cur = og::runtime::current_session->myscreen_->framecount;
-        if (cur != last_framecount) {
+        const int frames_seen = g_test_game_frame_ticks.load(std::memory_order_acquire);
+        if (frames_seen > 0) {
             state->frame_progressed = true;
             stable_polls = 0;
-            last_framecount = cur;
         } else {
             stable_polls++;
             if (stable_polls >= 100) {
@@ -464,6 +463,8 @@ static int view_team_go_level17_injector(void* data)
             }
         }
     }
+    if (g_test_game_frame_ticks.load(std::memory_order_acquire) > 0)
+        state->frame_progressed = true;
     state->game_finished = !g_test_in_game.load(std::memory_order_acquire);
 
     set_game_speed(state->original_speed);
