@@ -77,9 +77,12 @@ std::string get_mounted_campaign()
     return s_mounted_campaign;
 }
 
-void set_mounted_campaign(const std::string& id)
+bool set_mounted_campaign(const std::string& id)
 {
+    if (!is_safe_campaign_id(id))
+        return false;
     s_mounted_campaign = id;
+    return true;
 }
 
 void clear_mounted_campaign()
@@ -151,7 +154,12 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
         og::resources::clear_mounted_campaign();
         return CampaignPackageIoError::MountFailed;
     }
-    og::resources::set_mounted_campaign(id);
+    if (!og::resources::set_mounted_campaign(id))
+    {
+        LogError("campaign_mount_failed id={} code={} reason=invalid_campaign_id_after_mount\n",
+            id, campaign_io_error_string(CampaignPackageIoError::MountFailed));
+        return CampaignPackageIoError::MountFailed;
+    }
     return CampaignPackageIoError::None;
 }
 
@@ -203,6 +211,12 @@ CampaignPackageIoError remount_campaign_package_with_error()
     std::string id = get_mounted_campaign();
     if (id.empty())
         return CampaignPackageIoError::EmptyId;
+    if (!og::resources::is_safe_campaign_id(id))
+    {
+        LogError("campaign_remount_failed id={} code={} reason=invalid_campaign_id\n",
+            id, campaign_io_error_string(CampaignPackageIoError::MountFailed));
+        return CampaignPackageIoError::MountFailed;
+    }
 
     const std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!og::resources::unmount(filename))
@@ -383,9 +397,13 @@ bool repack_campaign(const std::string& campaign_id)
     if (zip_contents_with_error(get_user_path() + "temp/", tmp_outfile) != ArchiveIoError::None)
         return false;
 
-    std::filesystem::copy_file(tmp_outfile, outfile,
-        std::filesystem::copy_options::overwrite_existing, ec);
-    return !ec;
+    std::filesystem::rename(tmp_outfile, outfile, ec);
+    if (ec)
+    {
+        LogError("campaign_repack_failed id={} reason=rename_failed message={}\n", campaign_id, ec.message());
+        return false;
+    }
+    return true;
 }
 
 void cleanup_unpacked_campaign()
@@ -414,9 +432,16 @@ void delete_level(int id)
     // Delete terrain file
     path = std::format("{}temp/pix/scen{:04d}.pix", get_user_path(), id);
     std::filesystem::remove(path, ec);
-    repack_campaign(campaign);
+    if (!repack_campaign(campaign))
+    {
+        LogWarn("delete_level_failed level={} campaign={} reason=repack_failed\n", id, campaign);
+        return;
+    }
 
-    (void)remount_campaign_package_with_error();
+    const CampaignPackageIoError remount_error = remount_campaign_package_with_error();
+    if (remount_error != CampaignPackageIoError::None)
+        LogWarn("delete_level_failed level={} campaign={} reason=remount_failed code={}\n",
+            id, campaign, campaign_io_error_string(remount_error));
 }
 
 void delete_campaign(const std::string& id)
@@ -426,6 +451,17 @@ void delete_campaign(const std::string& id)
         LogError("campaign_delete_failed id={} reason=invalid_campaign_id\n", id);
         return;
     }
+    if (get_mounted_campaign() == id)
+    {
+        const CampaignPackageIoError unmount_error = unmount_campaign_package_with_error(id);
+        if (unmount_error != CampaignPackageIoError::None)
+        {
+            LogError("campaign_delete_failed id={} reason=unmount_failed code={}\n",
+                id, campaign_io_error_string(unmount_error));
+            return;
+        }
+    }
+
     std::string path = std::format("{}campaigns/{}.glad", get_user_path(), id);
     std::error_code ec;
     std::filesystem::remove(path, ec);
