@@ -177,6 +177,22 @@ Wraps PhysFS, libzip, and libyaml behind narrow interfaces. Only this module (an
 | `io/yaml_stream.cpp` | YAML configuration parsing via libyaml |
 | `io/zip_api.cpp` | ZIP archive creation and extraction |
 
+### Resources Filesystem and Campaign I/O API
+
+`include/openglad/resources/filesystem.h` exposes the SDL-free `og::resources` filesystem API used by both SDL and headless clients:
+
+- `mount(archive, mountpoint, append_to_path)` / `unmount(archive)` for PhysFS mount stack management
+- `read_file(path)` / `write_file(path, data, len)` for binary file I/O
+- `exists(path)` for path existence checks
+- `enumerate_files_sorted(dirname)` for deterministic directory listings
+- `last_error()` for backend error detail propagation
+
+`include/openglad/platform/io_common.h` adds shared campaign/archive helpers used by both `src/platform/sdl` and `src/platform/text`:
+
+- Campaign package lifecycle: `mount_campaign_package_with_error`, `unmount_campaign_package_with_error`, `remount_campaign_package_with_error`, `load_campaign_with_error`
+- Campaign/level discovery: `list_campaigns`, `list_levels`, `list_levels_v`
+- Archive packing/unpacking: `zip_contents_with_error`, `unzip_into_with_error`, `repack_campaign`, `unpack_campaign`
+
 ### og_runtime — Game Session Orchestration
 
 Owns the game session lifecycle, wires services together, manages the game loop and screen state machine.
@@ -426,6 +442,26 @@ GameSession
 └── legacy shims   — installs myscreen, theprefs globals
 ```
 
+`GameSession` owns `GameWorld` directly as member `world_` (`include/openglad/platform/game_session.h`). `screen` receives and stores a non-owning `GameWorld*` (`include/openglad/interface/screen.h`). This replaced the older ownership model where `screen` owned the world.
+
+### PlatformBridge Callback Pattern
+
+`include/openglad/interface/platform_bridge.h` defines `og::interface::PlatformBridge`, an SDL-free callback table used by interface/runtime code:
+
+- `present_frame`
+- `play_sound`
+- `play_music`
+- `stop_music`
+- `create_surface`
+- `clear_stale_view_controls`
+
+Platform-specific code installs one implementation at startup:
+
+- SDL build: `src/platform/sdl/runtime/sdl_context_services.cpp`
+- Headless build: `src/platform/text/platform_headless.cpp`
+
+This keeps interface-layer headers and call sites free of SDL types while still allowing platform-specific rendering/audio behavior.
+
 ### Simulation Events and Event Log
 
 The `og::sim` module defines typed events for decoupling game logic from rendering/audio. Entity code emits events during simulation ticks via `SimEventLog`; the runtime layer drains and dispatches them after each tick.
@@ -608,6 +644,8 @@ ctest --preset ci-test         # Run tests
 
 **Aggregate target:**
 `og_game` — INTERFACE library linking all modules with `--start-group`/`--end-group` for cyclic resolution.
+
+Include-boundary note: `configure_openglad_library()` currently exposes the shared public include root to module targets. Component include boundaries are enforced in CI by `scripts/check_vendor_leaks.sh` (component include dependency checks and vendor leak checks), rather than by separate per-target public include roots in CMake.
 
 **Executables:**
 - `openglad` — The game

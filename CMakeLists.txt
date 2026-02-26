@@ -600,6 +600,9 @@ set(COMMON_DEFINITIONS
 # --------------------------------------------------------------------------
 
 function(configure_openglad_library target)
+    # Component include boundaries are enforced by CI (scripts/check_vendor_leaks.sh)
+    # rather than by per-target public include roots here. We keep one shared
+    # public include root for now to support legacy header layout during migration.
     target_include_directories(${target} PUBLIC
         $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:include>
