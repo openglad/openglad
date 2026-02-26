@@ -775,6 +775,8 @@ if(NOT EMSCRIPTEN)
     if((CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang") AND NOT APPLE)
         # Static libs have cyclic references today; group-rescan avoids link-order
         # dependence while we untangle module direction rules.
+        # TODO: Remove linker group flags after breaking module-level circular
+        # symbol dependencies at the source/dependency-graph level.
         # Apple ld64 does not support --start-group/--end-group (and rescans by default).
         target_link_libraries(og_game INTERFACE "-Wl,--start-group")
     endif()

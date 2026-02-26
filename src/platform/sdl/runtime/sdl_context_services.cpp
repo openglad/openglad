@@ -22,6 +22,7 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/platform/io.h>
 #include "SDL_mixer.h"
+#include <memory>
 #include <mutex>
 
 // myscreen and theprefs are now macros defined in base.h / view.h
@@ -137,11 +138,11 @@ void sdl_play_music(const char* music_file)
     Mix_PlayMusic(g_bridge_music, -1);
 }
 
-og::render::VideoBase* sdl_create_surface(int w, int h)
+std::unique_ptr<og::render::VideoBase> sdl_create_surface(int w, int h)
 {
     (void)w;
     (void)h;
-    return new video(false);
+    return std::make_unique<video>(false);
 }
 
 const og::interface::PlatformBridge kSdlPlatformBridge{
@@ -157,6 +158,9 @@ const og::interface::PlatformBridge kSdlPlatformBridge{
 struct SdlPlatformBridgeInstaller {
     SdlPlatformBridgeInstaller()
     {
+        // Static initialization installs the SDL bridge once for the process.
+        // install_platform_bridge() is call_once-guarded, but callers still must not
+        // touch bridge callbacks during static init or before main() runtime setup.
         og::interface::install_platform_bridge(kSdlPlatformBridge);
     }
 };

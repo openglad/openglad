@@ -36,7 +36,9 @@ struct PickerState {
     // Emscripten picker state machine flag
     bool start_game_requested = false;
 
-    // Test infrastructure for picker_mainmenu_loop
+    // Test infrastructure for picker_mainmenu_loop.
+    // These per-session fields are currently unused by most tests while older
+    // global counters are still being migrated.
     int picker_mainmenu_calls = 0;
     int picker_max_mainmenu_calls = 0;  // 0 = unlimited
 
