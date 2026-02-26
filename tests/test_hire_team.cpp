@@ -1,3 +1,4 @@
+#include "SDL.h"
 #include <memory>
 #include <array>
 #include <openglad/resources/pixie_data.h>

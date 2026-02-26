@@ -1,3 +1,4 @@
+#include "SDL.h"
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/obmap_debug_draw.h>

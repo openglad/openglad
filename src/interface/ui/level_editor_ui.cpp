@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include "SDL.h"
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input/input.h>
 #include <cstring>
@@ -420,5 +421,4 @@ std::vector<std::string>& level_editor_testing_prompt_queue_ref()
     return s_prompt_queue;
 }
 #endif
-
 

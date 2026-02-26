@@ -1,4 +1,5 @@
 #include <openglad/interface/render/text.h>
+#include "SDL.h"
 /* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
  * This program is free software; you can redistribute it and/or modify

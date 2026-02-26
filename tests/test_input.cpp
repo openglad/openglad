@@ -1,5 +1,6 @@
 #include <cstring>
 
+#include "SDL.h"
 #include <openglad/interface/input/input.h>
 #include "test_framework.h"
 

@@ -4,6 +4,7 @@
 // These functions are declared in input.h but implemented here (in the
 // runtime module) to keep the input module free of runtime/render deps.
 
+#include "SDL.h"
 #include <openglad/interface/input/input.h>
 #include <openglad/platform/input_hardware_state.h>
 #include <openglad/core/util.h>

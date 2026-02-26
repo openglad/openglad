@@ -1,3 +1,4 @@
+#include "SDL.h"
 #ifndef _TEST_INTERACT_H__
 #define _TEST_INTERACT_H__
 

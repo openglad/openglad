@@ -18,10 +18,11 @@
 
 // Definition of PIXIE class
 
-#include "SDL.h"
+#include <openglad/legacy/base.h>
 #include <openglad/resources/pixie_data.h>
 
 class viewscreen;
+struct SDL_Surface;
 
 class pixie
 {

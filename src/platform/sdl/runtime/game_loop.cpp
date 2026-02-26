@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include "SDL.h"
 #include <openglad/platform/game_loop.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/platform/game_context.h>

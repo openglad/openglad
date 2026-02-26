@@ -1,3 +1,4 @@
+#include "SDL.h"
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/input/button.h>
 #include <openglad/legacy/base.h>

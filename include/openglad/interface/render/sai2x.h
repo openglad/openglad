@@ -1,7 +1,11 @@
 #pragma once
 
-#include "SDL.h"
 #include <memory>
+
+struct SDL_Window;
+struct SDL_Renderer;
+struct SDL_Surface;
+struct SDL_Texture;
 
 enum class RenderEngine
 {

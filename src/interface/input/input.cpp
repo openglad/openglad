@@ -21,6 +21,7 @@
 //
 
 #include <openglad/interface/input/input.h>
+#include "SDL.h"
 #include <openglad/platform/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
@@ -53,6 +54,32 @@ void quit(Sint32 arg1);
 // Access via hw() helper for fields without macros; mouse_state and player_joy
 // are already macros defined in input.h.
 static inline auto& hw() { return *og::runtime::current_session->input_hw_; }
+
+bool MouseState::in(const SDL_Rect& r) const
+{
+    const float rx = static_cast<float>(r.x);
+    const float ry = static_cast<float>(r.y);
+    const float rw = static_cast<float>(r.w);
+    const float rh = static_cast<float>(r.h);
+    return (rx <= x && x < rx + rw && ry <= y && y < ry + rh);
+}
+
+bool query_key_event(int key, const SDL_Event& event)
+{
+    if (event.type == SDL_KEYDOWN)
+        return (event.key.keysym.sym == key);
+    return false;
+}
+
+bool isKeyboardEvent(const SDL_Event& event)
+{
+    return (event.type == SDL_KEYDOWN);
+}
+
+bool isJoystickEvent(const SDL_Event& event)
+{
+    return (event.type == SDL_JOYAXISMOTION || event.type == SDL_JOYHATMOTION || event.type == SDL_JOYBUTTONDOWN);
+}
 
 void update_overscan_setting()
 {

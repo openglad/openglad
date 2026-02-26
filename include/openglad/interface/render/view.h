@@ -18,7 +18,7 @@
 
 // Definition of VIEWSCREEN class
 
-#include "SDL.h"
+#include <openglad/legacy/base.h>
 #include <openglad/gameplay/game_world.h>
 #include <memory>
 #include <string>
@@ -62,6 +62,7 @@ struct InputState;
 class viewscreen;
 class walker;
 class radar;
+union SDL_Event;
 
 // Pure helper functions for HP/MP color thresholds
 unsigned char compute_hp_color(float hp, float maxhp);

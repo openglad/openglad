@@ -9,6 +9,7 @@
 // Cheat/debug key handlers extracted from render/view.cpp so that the render
 // layer does not directly mutate sim/entity state.
 
+#include "SDL.h"
 #include <openglad/platform/cheat_handler.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_session.h>

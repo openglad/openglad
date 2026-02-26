@@ -1,3 +1,4 @@
+#include "SDL.h"
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/ui/results_screen.h>

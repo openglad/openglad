@@ -1,3 +1,4 @@
+#include "SDL.h"
 #include <openglad/interface/input/input.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/gameplay/walker.h>
@@ -35,7 +36,7 @@ struct KeyStateGuard
     {
         og::runtime::current_session->keystates_ = saved;
     }
-    void pulse(SDL_Scancode sc, int down_ms = 30)
+    void pulse(int sc, int down_ms = 30)
     {
         fake[sc] = 1;
         SDL_Delay(down_ms);

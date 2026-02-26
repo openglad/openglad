@@ -1,3 +1,4 @@
+#include "SDL.h"
 #include <openglad/interface/screen.h>
 #include <openglad/platform/level_editor_state.h>
 #include <openglad/platform/game_session.h>

@@ -16,12 +16,12 @@
  */
 #pragma once
 
-#include <SDL_stdinc.h>
 #include <array>
 #include <cmath>
 #include <functional>
 #include <memory>
 #include <string>
+#include <openglad/legacy/base.h>
 #include <openglad/interface/input/input.h>
 
 class pixieN;
@@ -46,8 +46,6 @@ inline constexpr char BUTTON_LEFT   = 14; //13
 inline constexpr char BUTTON_RIGHT  = 12; //11
 
 // myscreen is now a macro defined in base.h (via game_session.h).
-// button.h includes input.h but not base.h, so pull it in here.
-#include <openglad/legacy/base.h>
 
 // Holds array indices for navigating menu buttons.
 // Use C++20 designated initializers: MenuNav{.up=5, .down=3}
@@ -238,4 +236,3 @@ inline constexpr Sint32 button_action_id(ButtonAction action)
 {
     return static_cast<Sint32>(action);
 }
-

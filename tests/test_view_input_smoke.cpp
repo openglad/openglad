@@ -1,3 +1,4 @@
+#include "SDL.h"
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/util.h>
