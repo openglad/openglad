@@ -36,6 +36,44 @@
 namespace og::ui {
 namespace {
 
+constexpr std::size_t kMaxProtocolLineBytes = 64 * 1024;
+
+enum class ReadLineStatus {
+    Ok,
+    Eof,
+    TooLong,
+};
+
+ReadLineStatus read_line_capped(std::istream& in, std::string& out, std::size_t max_bytes)
+{
+    out.clear();
+    bool overflow = false;
+    for (;;) {
+        int next = in.get();
+        if (next == EOF) {
+            if (in.bad())
+                return ReadLineStatus::Eof;
+            return (out.empty() && !overflow) ? ReadLineStatus::Eof : ReadLineStatus::Ok;
+        }
+
+        char ch = static_cast<char>(next);
+        if (ch == '\n')
+            break;
+        if (ch == '\r')
+            continue;
+
+        if (!overflow) {
+            if (out.size() >= max_bytes) {
+                overflow = true;
+            } else {
+                out.push_back(ch);
+            }
+        }
+    }
+
+    return overflow ? ReadLineStatus::TooLong : ReadLineStatus::Ok;
+}
+
 std::string json_escape_string(std::string_view input)
 {
     std::string out;
@@ -53,7 +91,7 @@ std::string json_escape_string(std::string_view input)
             case '\r': out += "\\r"; break;
             case '\t': out += "\\t"; break;
             default:
-                if (c < 0x20)
+                if (c < 0x20 || c == 0x7f)
                 {
                     out += "\\u00";
                     out += hex[(c >> 4) & 0x0f];
@@ -262,9 +300,15 @@ int run_text_protocol_session(const TextProtocolArgs& args)
 
     // Command loop
     std::string line;
-    while (std::getline(std::cin, line)) {
-        while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
-            line.pop_back();
+    for (;;) {
+        const ReadLineStatus line_status = read_line_capped(std::cin, line, kMaxProtocolLineBytes);
+        if (line_status == ReadLineStatus::Eof)
+            break;
+        if (line_status == ReadLineStatus::TooLong) {
+            std::cout << "{\"cmd\":\"error\",\"message\":\"input line too long (max 65536 bytes)\"}\n";
+            std::cout.flush();
+            continue;
+        }
         if (line.empty()) continue;
 
         std::istringstream iss(line);
