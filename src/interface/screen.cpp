@@ -574,6 +574,9 @@ bool screen::act()
 	};
 	std::optional<ExitRequest> pending_exit_request;
 	std::optional<short> pending_withdraw_level;
+	bool pending_endgame = false;
+	short pending_ending = 0;
+	short pending_next_level = -1;
 
 	// Post-tick: clean up viewscreen control pointers for dead player entities.
 	// This is a rendering concern that doesn't belong in the simulation layer.
@@ -616,8 +619,11 @@ bool screen::act()
 				redrawme = 1;
 				break;
 			case og::sim::EventKind::EndGame:
-				return endgame(static_cast<short>(ev.a),
-				               static_cast<short>(static_cast<std::int32_t>(ev.b)));
+				// Preserve event-drain semantics: handle endgame after the loop.
+				pending_endgame = true;
+				pending_ending = static_cast<short>(ev.a);
+				pending_next_level = static_cast<short>(static_cast<std::int32_t>(ev.b));
+				break;
 			case og::sim::EventKind::DamageTile:
 				damage_tile(static_cast<short>(ev.a), static_cast<short>(ev.b));
 				break;
@@ -651,7 +657,7 @@ bool screen::act()
 			case og::sim::EventKind::ScoreChange:
 				// SaveData score sync happens once per tick via sync_save_from_world().
 				break;
-			default:
+			case og::sim::EventKind::None:
 				break;
 		}
 	}
@@ -684,6 +690,9 @@ bool screen::act()
 	}
 
 	// Handle level completion / game ending
+	if (pending_endgame)
+		return endgame(pending_ending, pending_next_level);
+
 	if (world().game_ended && !world().end)
 	{
 		return endgame(world().ending, world().next_level);
