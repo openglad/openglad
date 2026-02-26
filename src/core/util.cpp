@@ -22,6 +22,7 @@
 #include <openglad/core/util.h>
 
 #include <openglad/core/version.h>
+#include <openglad/platform/game_session.h>
 #include <charconv>
 #include <chrono>
 #include <cstdio>
@@ -37,9 +38,19 @@
 #include <thread>
 #endif
 
+// Intentionally process-global: this is app uptime, not per-session runtime.
 static auto g_app_start = std::chrono::steady_clock::now();
 
-static thread_local auto s_reset_time = std::chrono::steady_clock::now();
+namespace {
+std::chrono::steady_clock::time_point& timer_reset_anchor()
+{
+    static thread_local auto s_fallback_reset_time = std::chrono::steady_clock::now();
+    og::runtime::ensure_thread_session();
+    if (og::runtime::current_session)
+        return og::runtime::current_session->reset_time_;
+    return s_fallback_reset_time;
+}
+} // namespace
 
 static std::uint32_t get_ticks_ms()
 {
@@ -98,7 +109,7 @@ void release_timer()
 
 void reset_timer()
 {
-    s_reset_time = std::chrono::steady_clock::now();
+    timer_reset_anchor() = std::chrono::steady_clock::now();
 }
 
 std::int32_t query_timer()
@@ -107,7 +118,7 @@ std::int32_t query_timer()
     // that would return ticks / second. Gladiator used to use a frequency of 65536/4 ticks per hour,
     // or 1193180/16383 = 72.3 ticks per second. This translates into 13.6 milliseconds / tick
     auto elapsed_ms = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - s_reset_time).count());
+        std::chrono::steady_clock::now() - timer_reset_anchor()).count());
     return static_cast<std::int32_t>(elapsed_ms / 13.6);
 }
 

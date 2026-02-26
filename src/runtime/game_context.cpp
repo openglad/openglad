@@ -112,7 +112,7 @@ int allocate_guy_id()
 {
     og::runtime::ensure_thread_session();
     if (og::runtime::current_session)
-        return og::runtime::current_session->guy_id_counter_++;
+        return og::runtime::current_session->guy_id_counter_.fetch_add(1, std::memory_order_relaxed);
 
     static thread_local int s_fallback_guy_id = 0;
     return s_fallback_guy_id++;

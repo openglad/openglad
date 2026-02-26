@@ -107,8 +107,8 @@ static inline PickerState& pks()
 
 #ifdef TESTING
 // Kept as globals for legacy tests that link against these symbols.
-int g_picker_mainmenu_calls = 0;
-int g_picker_max_mainmenu_calls = 0;  // 0 = unlimited
+std::atomic<int> g_picker_mainmenu_calls{0};
+std::atomic<int> g_picker_max_mainmenu_calls{0};  // 0 = unlimited
 
 // Set true while glad_main is running inside go_menu, so tests can
 // wait for the game to finish before clicking menu buttons.
@@ -171,8 +171,9 @@ void picker_mainmenu_loop()
         TRACE("picker", "mainmenu_loop_iteration");
         mainmenu(1);
 #ifdef TESTING
-        g_picker_mainmenu_calls++;
-        if (g_picker_max_mainmenu_calls > 0 && g_picker_mainmenu_calls >= g_picker_max_mainmenu_calls)
+        const int calls = g_picker_mainmenu_calls.fetch_add(1, std::memory_order_relaxed) + 1;
+        const int max_calls = g_picker_max_mainmenu_calls.load(std::memory_order_relaxed);
+        if (max_calls > 0 && calls >= max_calls)
             return;
 #endif
     }
@@ -274,9 +275,11 @@ public:
     const og::ui::PickerMenuItem* present_menu(og::ui::PickerMenuId menu_id) override
     {
 #ifdef TESTING
+        const int max_calls = g_picker_max_mainmenu_calls.load(std::memory_order_relaxed);
+        const int calls = g_picker_mainmenu_calls.load(std::memory_order_relaxed);
         if (menu_id == og::ui::PickerMenuId::Main
-            && g_picker_max_mainmenu_calls > 0
-            && g_picker_mainmenu_calls >= g_picker_max_mainmenu_calls) {
+            && max_calls > 0
+            && calls >= max_calls) {
             return og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Quit);
         }
@@ -287,7 +290,7 @@ public:
             mainmenu(1);
             set_intercept_scope(PickerInterceptScope::None);
 #ifdef TESTING
-            g_picker_mainmenu_calls++;
+            g_picker_mainmenu_calls.fetch_add(1, std::memory_order_relaxed);
 #endif
             if (pks().selected_menu_item)
                 return pks().selected_menu_item;

@@ -30,6 +30,7 @@ const WeaponFamilyDescriptor& describe_weapon_animate_circle_protection();
 const WeaponFamilyDescriptor& describe_weapon_animate_glow();
 const WeaponFamilyDescriptor& describe_weapon_animate_sprinkle();
 
+// Process-global registry by design: populated once at startup, then read-only.
 static FamilyRegistryBase<WeaponFamilyDescriptor, NUM_WEAPON_FAMILIES> s_registry;
 
 static void apply_defaults(WeaponFamilyDescriptor& d)

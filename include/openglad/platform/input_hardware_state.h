@@ -6,6 +6,7 @@
 // Requires: MouseState, JoyData (from input.h), and integer aliases from base.h.
 
 #include <openglad/legacy/base.h>
+#include <openglad/interface/input/input_state.h>
 #include "SDL.h"
 #include <array>
 
@@ -13,9 +14,9 @@ struct InputHardwareState {
     static constexpr int kMaxNumJoysticks = 10;  // includes possible non-gamepad SDL joystick devices
 
     MouseState mouse{};
-    JoyData player_joy_state[4]{};
-    int player_control_modes[4]{};
-    int player_mode_keys[4][2][16]{};  // [player][mode][key]
+    JoyData player_joy_state[MAX_PLAYERS]{};
+    int player_control_modes[MAX_PLAYERS]{};
+    int player_mode_keys[MAX_PLAYERS][2][NUM_INPUT_KEYS]{};  // [player][mode][key]
     Sint32 mouse_buttons{0};
     std::array<SDL_Joystick*, kMaxNumJoysticks> joysticks{};
 
@@ -45,6 +46,6 @@ struct InputHardwareState {
     std::int64_t movingTouch{0};
     bool firing{false};
     std::int64_t firingTouch{0};
-    bool touch_keystate[4][16]{};
+    bool touch_keystate[MAX_PLAYERS][NUM_INPUT_KEYS]{};
 #endif
 };

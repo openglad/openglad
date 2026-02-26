@@ -1,4 +1,5 @@
 #include "SDL.h"
+#include <atomic>
 #include <openglad/platform/game_session.h>
 #include <memory>
 #include <array>
@@ -17,8 +18,8 @@
 
 // Forward declarations from picker.cpp
 void picker_main(Sint32 argc, char **argv);
-extern int g_picker_mainmenu_calls;
-extern int g_picker_max_mainmenu_calls;
+extern std::atomic<int> g_picker_mainmenu_calls;
+extern std::atomic<int> g_picker_max_mainmenu_calls;
 
 #include <openglad/platform/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }

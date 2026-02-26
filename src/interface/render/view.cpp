@@ -457,8 +457,13 @@ short viewscreen::continuous_input()
 
 void viewscreen::process_input(const InputState& input_state)
 {
-	// Per-player debounce state (persists across frames)
-	static SimInputDebounce debounce[6] = {};
+	og::runtime::ensure_thread_session();
+	SimInputDebounce* debounce = og::runtime::current_session
+		? og::runtime::current_session->input_debounce_
+		: nullptr;
+	static thread_local SimInputDebounce fallback_debounce[6] = {};
+	if (!debounce)
+		debounce = fallback_debounce;
 
 	const PlayerInput& pi = input_state.players[mynum];
 

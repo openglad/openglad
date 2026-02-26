@@ -14,6 +14,7 @@
 
 static constexpr int NUM_GENERATOR_FAMILIES = 4;
 
+// Process-global registry by design: populated once at startup, then read-only.
 static FamilyRegistryBase<GeneratorFamilyDescriptor, NUM_GENERATOR_FAMILIES> s_registry;
 
 static void populate(GeneratorFamilyDescriptor* e)
