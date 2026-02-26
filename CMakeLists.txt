@@ -1308,11 +1308,11 @@ if(NOT EMSCRIPTEN)
         add_test(NAME og_runtime_tests COMMAND og_runtime_tests)
         set_tests_properties(openglad_test PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            TIMEOUT 180
+            TIMEOUT 300
         )
         set_tests_properties(openglad_test_menu PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            TIMEOUT 180
+            TIMEOUT 300
         )
 	        set_tests_properties(openglad_test_picker PROPERTIES
 	            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

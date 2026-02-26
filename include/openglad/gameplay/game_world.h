@@ -44,7 +44,7 @@ public:
 private:
     walker* add_to_list(Order order, std::int32_t family,
                         std::list<std::unique_ptr<walker>>& target_list,
-                        bool count_living);
+                        bool count_living, bool atstart);
 
     LevelData* level_data_ = nullptr;
 };

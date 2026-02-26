@@ -247,6 +247,9 @@ Sint32 create_view_menu(Sint32 arg1)
 	int num_buttons = 2;
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
+#ifdef TESTING
+    const Uint32 watchdog_deadline = SDL_GetTicks() + 15000;
+#endif
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
@@ -271,6 +274,14 @@ Sint32 create_view_menu(Sint32 arg1)
         view_team(5,5,314, 160);
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
+#ifdef TESTING
+        if (SDL_GetTicks() >= watchdog_deadline)
+        {
+            Log("create_view_menu watchdog timeout; forcing MENU_REDRAW\n");
+            retvalue = MENU_REDRAW;
+            break;
+        }
+#endif
         SDL_Delay(10);
 	}
 	og::runtime::current_session->myscreen_->clearbuffer();

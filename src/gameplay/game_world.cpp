@@ -21,7 +21,7 @@ void GameWorld::set_level_data(LevelData* level_data)
 
 walker* GameWorld::add_to_list(Order order, std::int32_t family,
                                std::list<std::unique_ptr<walker>>& target_list,
-                               bool count_living)
+                               bool count_living, bool atstart)
 {
     if (!level_data_ || !level_data_->myloader)
         return nullptr;
@@ -35,34 +35,33 @@ walker* GameWorld::add_to_list(Order order, std::int32_t family,
         living_count++;
 
     walker* raw = w.get();
-    target_list.push_back(std::move(w));
+    if (atstart)
+        target_list.push_front(std::move(w));
+    else
+        target_list.push_back(std::move(w));
     return raw;
 }
 
 walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart)
 {
-    (void)atstart;
     if (order == Order::Weapon)
-        return add_weap_ob(order, family);
+        return add_to_list(order, family, weaplist, false, atstart);
 
-    return add_to_list(order, family, oblist, order == Order::Living);
+    return add_to_list(order, family, oblist, order == Order::Living, atstart);
 }
 
 walker* GameWorld::add_fx_ob(Order order, std::int32_t family)
 {
-    return add_to_list(order, family, fxlist, false);
+    return add_to_list(order, family, fxlist, false, false);
 }
 
 walker* GameWorld::add_weap_ob(Order order, std::int32_t family)
 {
-    return add_to_list(order, family, weaplist, false);
+    return add_to_list(order, family, weaplist, false, false);
 }
 
 short GameWorld::remove_ob(walker* ob)
 {
-    if (ob && ob->query_order() == Order::Living)
-        living_count--;
-
     auto pred = [ob](const std::unique_ptr<walker>& p) { return p.get() == ob; };
 
     auto e = std::find_if(weaplist.begin(), weaplist.end(), pred);
@@ -82,6 +81,8 @@ short GameWorld::remove_ob(walker* ob)
     auto g = std::find_if(oblist.begin(), oblist.end(), pred);
     if (g != oblist.end())
     {
+        if (ob && ob->query_order() == Order::Living && living_count > 0)
+            living_count--;
         oblist.erase(g);
         return 1;
     }

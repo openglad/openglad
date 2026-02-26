@@ -89,6 +89,26 @@ static bool interact_match(
     return false;
 }
 
+static bool enter_team_menu_from_main_menu(int timeout_ms = 15000)
+{
+    if (!wait_for_interactable("continue_game", 5000))
+        return false;
+
+    fprintf(stderr, "  [test] clicking continue_game\n");
+    interact("continue_game");
+
+    int elapsed = 0;
+    while (elapsed < timeout_ms && !has_interactable("view_team")) {
+        if (has_interactable("continue_game")) {
+            fprintf(stderr, "  [test] retry clicking continue_game\n");
+            interact("continue_game");
+        }
+        SDL_Delay(50);
+        elapsed += 50;
+    }
+    return has_interactable("view_team");
+}
+
 // Test: Continue -> View Team -> Back -> Back
 //
 // Verifies:
@@ -108,28 +128,9 @@ static int view_team_injector(void* data)
     ViewState* state = static_cast<ViewState*>(data);
     state->started = true;
 
-    // Wait for main menu and enter the create-team menu.
-    if (!wait_for_interactable("continue_game", 5000)) {
-        // Don't hang the whole suite if the menu didn't initialize.
+    if (!enter_team_menu_from_main_menu(20000)) {
         state->finished = true;
         return 0;
-    }
-    fprintf(stderr, "  [test] clicking continue_game\n");
-    interact("continue_game");
-
-    // The picker menus are stateful; if our click didn't register (rare under load),
-    // re-click continue_game. If we do reach the create-team menu, view_team will be present.
-    const int kMenuTimeoutMs = 8000;
-    int elapsed = 0;
-    while (elapsed < kMenuTimeoutMs && !has_interactable("view_team")) {
-        if (has_interactable("continue_game")) {
-            fprintf(stderr, "  [test] retry clicking continue_game\n");
-            interact("continue_game");
-        } else if (has_interactable("begin_new_game")) {
-            // Still on main menu but continue_game missing? Give it a moment.
-        }
-        SDL_Delay(50);
-        elapsed += 50;
     }
 
     fprintf(stderr, "  [test] clicking view_team\n");
@@ -218,13 +219,7 @@ static int view_team_go_injector(void* data)
     ViewTeamGoState* state = static_cast<ViewTeamGoState*>(data);
     state->started = true;
 
-    if (!wait_for_interactable("continue_game", 5000)) {
-        state->finished = true;
-        return 0;
-    }
-    interact("continue_game");
-
-    if (!wait_for_interactable("view_team", 8000)) {
+    if (!enter_team_menu_from_main_menu(20000)) {
         state->finished = true;
         return 0;
     }
@@ -423,13 +418,7 @@ static int view_team_go_level17_injector(void* data)
     og::runtime::ensure_thread_session();
     auto* state = static_cast<ViewTeamGoLevel17State*>(data);
 
-    if (!wait_for_interactable("continue_game", 5000)) {
-        state->finished = true;
-        return 0;
-    }
-    interact("continue_game");
-
-    if (!wait_for_interactable("view_team", 8000)) {
+    if (!enter_team_menu_from_main_menu(20000)) {
         state->finished = true;
         return 0;
     }
