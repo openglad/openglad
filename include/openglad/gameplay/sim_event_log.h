@@ -21,6 +21,8 @@ namespace og::sim {
 // about EventKind values, not SDL, sound objects, or viewscreens.
 class SimEventLog final {
 public:
+    static constexpr std::size_t kMaxEventsPerDrain = 4096;
+
     SimEventLog() = default;
 
     // Push a structured event.
@@ -52,6 +54,7 @@ public:
     std::uint32_t current_tick_ = 0;
 
 private:
+    void emit(Event&& ev);
     void debug_assert_single_thread() const;
 #ifndef NDEBUG
     void assert_thread_ownership_() const;
