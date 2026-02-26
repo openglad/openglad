@@ -247,10 +247,10 @@ void vbutton::vdisplay(Sint32 status)
 
 Sint32 vbutton::leftclick(button* buttons)
 {
-    Sint32 whichone=0;
+    const Sint32 count = static_cast<Sint32>(og::runtime::current_session->active_button_count_);
     Sint32 retvalue=0;
     // First check hotkeys ...
-    while (og::runtime::current_session->allbuttons_[whichone])
+    for (Sint32 whichone = 0; whichone < count; ++whichone)
     {
         if(buttons == nullptr || !buttons[whichone].hidden)
         {
@@ -258,11 +258,9 @@ Sint32 vbutton::leftclick(button* buttons)
             if (retvalue != -1)
                 return retvalue;
         }
-        whichone++;
     }
     // Now normal click ..
-    whichone = 0;
-    while (og::runtime::current_session->allbuttons_[whichone])
+    for (Sint32 whichone = 0; whichone < count; ++whichone)
     {
         if(buttons == nullptr || !buttons[whichone].hidden)
         {
@@ -270,16 +268,15 @@ Sint32 vbutton::leftclick(button* buttons)
             if (retvalue != -1)
                 return retvalue;
         }
-        whichone++;
     }
     return 0; // none worked
 }
 
 Sint32 vbutton::rightclick(button* buttons)
 {
-    Sint32 whichone=0;
+    const Sint32 count = static_cast<Sint32>(og::runtime::current_session->active_button_count_);
     Sint32 retvalue=0;
-    while (og::runtime::current_session->allbuttons_[whichone])
+    for (Sint32 whichone = 0; whichone < count; ++whichone)
     {
         if(buttons == nullptr || !buttons[whichone].hidden)
         {
@@ -287,7 +284,6 @@ Sint32 vbutton::rightclick(button* buttons)
             if (retvalue != -1)
                 return retvalue;
         }
-        whichone++;
     }
     return 0; // none worked
 }
@@ -407,6 +403,15 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
 
     clear_allbuttons();
 
+    if (numbuttons >= MAX_BUTTONS)
+    {
+        assert(false && "too many buttons");
+        numbuttons = MAX_BUTTONS - 1;
+    }
+    if (numbuttons < 0)
+        numbuttons = 0;
+    og::runtime::current_session->active_button_count_ = static_cast<int>(numbuttons);
+
     for (Sint32 i = 0; i < numbuttons; i++)
     {
         auto owned_button = std::make_unique<vbutton>(buttons[i].x,buttons[i].y,
@@ -430,6 +435,7 @@ void clear_allbuttons()
         owned_buttons()[i].reset();
         og::runtime::current_session->allbuttons_[i] = nullptr;
     }
+    og::runtime::current_session->active_button_count_ = 0;
     og::runtime::current_session->localbuttons_ = nullptr;
 }
 

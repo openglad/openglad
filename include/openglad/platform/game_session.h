@@ -101,6 +101,7 @@ public:
     // UI button state (Batch 5) — moved from button.cpp global.
     static constexpr int kMaxButtons = 50;  // == MAX_BUTTONS from button.h
     std::array<::vbutton*, kMaxButtons> allbuttons_ = {};
+    int active_button_count_ = 0;
 
     // Button ownership (Phase 7d) — moved from button.cpp anonymous namespace.
     std::array<std::unique_ptr<::vbutton>, kMaxButtons> owned_buttons_{};

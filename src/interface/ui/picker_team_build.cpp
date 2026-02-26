@@ -586,7 +586,8 @@ Sint32 create_hire_menu(Sint32 arg1)
     SDL_Rect name_box = {description_box.x + description_box.w/2 - (126-34)/2, description_box.y - 71 + 8, 126 - 34, 24 - 8};
     SDL_Rect name_box_inner = {name_box.x + 2, name_box.y + 2, name_box.w - 4, name_box.h - 4};
     
-    button* buttons = get_hiremenu_buttons();
+    std::vector<button> buttons_storage(get_hiremenu_buttons(), get_hiremenu_buttons() + 5);
+    button* buttons = buttons_storage.data();
     buttons[0].x = description_box.x + description_box.w/2 - buttons[0].sizex - 4 - 30;
     buttons[0].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buttons[0].sizey/2;
     
@@ -603,7 +604,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 	buttons[2].hidden = true;
 	#endif
 
-	int num_buttons = 5;
+	int num_buttons = static_cast<int>(buttons_storage.size());
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
@@ -795,15 +796,13 @@ Sint32 create_train_menu(Sint32 arg1)
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 	
+    std::vector<button> buttons_storage(get_trainmenu_buttons(), get_trainmenu_buttons() + 20);
+    button* buttons = buttons_storage.data();
+
 	#ifdef DISABLE_MULTIPLAYER
-    button* buttons = get_trainmenu_buttons();
 	buttons[18].hidden = true;
 	#endif
-
-    #if !defined(DISABLE_MULTIPLAYER)
-	button* buttons = get_trainmenu_buttons();
-    #endif
-	int num_buttons = 20;
+	int num_buttons = static_cast<int>(buttons_storage.size());
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 	

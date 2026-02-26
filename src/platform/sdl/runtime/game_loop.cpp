@@ -94,9 +94,9 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
             handle_event(event);
             if (event.type == SDL_KEYDOWN)
             {
-                if (event.key.keysym.sym == SDLK_F11)
+                if (event.key.repeat == 0 && event.key.keysym.sym == SDLK_F11)
                     og::runtime::current_session->debug_draw_paths_ = !og::runtime::current_session->debug_draw_paths_;
-                else if (event.key.keysym.sym == SDLK_F12)
+                else if (event.key.repeat == 0 && event.key.keysym.sym == SDLK_F12)
                     og::runtime::current_session->debug_draw_obmap_ = !og::runtime::current_session->debug_draw_obmap_;
                 else if (event.key.keysym.sym == SDLK_ESCAPE)
                 {
@@ -117,7 +117,12 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                 }
             }
 
+            if (s.world().end || st.done)
+                break;
+
             s.input(event);
+            if (s.world().end || st.done)
+                break;
         }
     }
 
