@@ -1227,6 +1227,9 @@ void GameWorld::clear()
     control_hp = 0;
     withdraw_requested = false;
     create_hit_effects = true;
+    tick_count_ = 0;
+    level_tick_count_ = 0;
+    last_level_id_ = -1;
 }
 
 } // namespace og::gameplay

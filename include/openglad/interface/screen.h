@@ -56,6 +56,7 @@ class screen : public og::render::VideoBase
 			ReadFailed
 		};
 
+		// `world` may be null; access via world() remains fail-fast until attached.
 		screen(short howmany, og::gameplay::GameWorld* world, bool create_display = true);
 
 		void reset(short howmany);

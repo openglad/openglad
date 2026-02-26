@@ -276,6 +276,10 @@ GameSession::~GameSession()
         }
     }
 
+    if (screen_owner_) {
+        screen_owner_->detach_world();
+    }
+    myscreen_ = nullptr;
     screen_owner_.reset();
     prefs_owner_.reset();
     if (ctx_.rng == seeded_rng_.get()) {
