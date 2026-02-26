@@ -81,6 +81,7 @@ const char* campaign_io_error_string(CampaignPackageIoError err)
     switch (err) {
         case CampaignPackageIoError::None: return "none";
         case CampaignPackageIoError::EmptyId: return "empty_id";
+        case CampaignPackageIoError::Busy: return "busy";
         case CampaignPackageIoError::MountFailed: return "mount_failed";
         case CampaignPackageIoError::UnmountFailed: return "unmount_failed";
     }
@@ -96,6 +97,14 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
     const std::string prev = get_mounted_campaign();
     if (!prev.empty() && prev == id)
         return CampaignPackageIoError::None;
+
+    const std::string filename = get_user_path() + "campaigns/" + id + ".glad";
+    if (!std::filesystem::exists(filename))
+    {
+        LogError("campaign_mount_failed id={} path={} code={} reason=archive_missing\n",
+            id, filename, campaign_io_error_string(CampaignPackageIoError::MountFailed));
+        return CampaignPackageIoError::MountFailed;
+    }
     if (!prev.empty() && prev != id)
     {
         CampaignPackageIoError unmount_error = unmount_campaign_package_with_error(prev);
@@ -104,8 +113,6 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
     }
 
     Log("Mounting campaign package: {}", id);
-
-    std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!og::resources::mount(filename, nullptr, 0))
     {
         LogError("campaign_mount_failed id={} path={} code={} physfs={}\n",
@@ -120,16 +127,31 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
 CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id)
 {
     if(id.size() == 0)
+    {
+        og::resources::clear_mounted_campaign();
+        return CampaignPackageIoError::None;
+    }
+
+    const std::string mounted = get_mounted_campaign();
+    if (!mounted.empty() && mounted != id)
         return CampaignPackageIoError::None;
 
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!og::resources::unmount(filename))
     {
+        if (og::resources::last_error_is_not_mounted())
+        {
+            if (mounted == id)
+                og::resources::clear_mounted_campaign();
+            return CampaignPackageIoError::None;
+        }
+
         LogError("campaign_unmount_failed id={} path={} code={} physfs={}\n",
             id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), og::resources::last_error());
         return CampaignPackageIoError::UnmountFailed;
     }
-    og::resources::clear_mounted_campaign();
+    if (mounted == id)
+        og::resources::clear_mounted_campaign();
     return CampaignPackageIoError::None;
 }
 
@@ -142,12 +164,9 @@ CampaignPackageIoError remount_campaign_package_with_error()
     const std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!og::resources::unmount(filename))
     {
+        if (og::resources::last_error_is_files_still_open())
+            return CampaignPackageIoError::Busy;
         const std::string physfs_error = og::resources::last_error();
-        // In long-running flows (notably editor/test paths), remount can be
-        // requested while transient campaign files are still open. Keep the
-        // current mount instead of forcing repeated unmount failures.
-        if (physfs_error.find("files still open") != std::string::npos)
-            return CampaignPackageIoError::None;
         LogError("campaign_unmount_failed id={} path={} code={} physfs={}\n",
             id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), physfs_error);
         return CampaignPackageIoError::UnmountFailed;
@@ -396,14 +415,14 @@ CampaignLoadResult load_campaign_with_error(const std::string& campaign,
     std::string old_campaign = get_mounted_campaign();
     if(old_campaign != campaign)
     {
-        if(unmount_campaign_package_with_error(old_campaign) != CampaignPackageIoError::None)
+        const CampaignPackageIoError mount_err = mount_campaign_package_with_error(campaign);
+        if (mount_err == CampaignPackageIoError::UnmountFailed)
         {
             LogError("campaign_load_failed reason=unmount_failed old={} requested={}\n", old_campaign, campaign);
             result.error = CampaignLoadError::UnmountFailed;
             return result;
         }
-
-        if(mount_campaign_package_with_error(campaign) != CampaignPackageIoError::None)
+        if (mount_err != CampaignPackageIoError::None)
         {
             result.error = CampaignLoadError::MountFailed;
             return result;

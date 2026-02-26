@@ -51,6 +51,7 @@
 #include <openglad/interface/platform_bridge.h>
 #include <algorithm>
 #include <cassert>
+#include <stdexcept>
 #include <string>
 #include <cstdio>
 #include <cstring>
@@ -260,6 +261,11 @@ screen::screen(short howmany, og::gameplay::GameWorld* world, bool create_displa
     , world_(world)
 {
 	assert(world_ != nullptr);
+    if (world_ == nullptr)
+    {
+        LogError("screen_ctor_failed: world pointer is null\n");
+        throw std::invalid_argument("screen world must not be null");
+    }
 	init_common(howmany, create_display);
 }
 

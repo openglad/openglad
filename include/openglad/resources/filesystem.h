@@ -9,6 +9,9 @@
 namespace og::resources {
 
 std::string last_error();
+int last_error_code();
+bool last_error_is_files_still_open();
+bool last_error_is_not_mounted();
 bool init(const char* argv0);
 bool deinit();
 bool set_write_dir(const std::string& path);

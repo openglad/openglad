@@ -36,6 +36,39 @@
 namespace og::ui {
 namespace {
 
+std::string json_escape_string(std::string_view input)
+{
+    std::string out;
+    out.reserve(input.size() + 8);
+    static constexpr char hex[] = "0123456789abcdef";
+    for (unsigned char c : input)
+    {
+        switch (c)
+        {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20)
+                {
+                    out += "\\u00";
+                    out += hex[(c >> 4) & 0x0f];
+                    out += hex[c & 0x0f];
+                }
+                else
+                {
+                    out.push_back(static_cast<char>(c));
+                }
+                break;
+        }
+    }
+    return out;
+}
+
 static void json_entity(std::ostream& os, const walker* w, int index)
 {
     os << "{\"id\":" << index
@@ -57,13 +90,7 @@ static void json_event(std::ostream& os, const og::sim::Event& ev)
        << ",\"a\":" << ev.a
        << ",\"b\":" << ev.b;
     if (!ev.text.empty()) {
-        os << ",\"text\":\"";
-        for (char c : ev.text) {
-            if (c == '"') os << "\\\"";
-            else if (c == '\\') os << "\\\\";
-            else os << c;
-        }
-        os << "\"";
+        os << ",\"text\":\"" << json_escape_string(ev.text) << "\"";
     }
     os << "}";
 }
@@ -225,7 +252,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     // Output ready message
     std::cout << "{\"status\":\"ready\""
               << ",\"level\":" << args.level
-              << ",\"title\":\"" << world.title << "\""
+              << ",\"title\":\"" << json_escape_string(world.title) << "\""
               << ",\"num_entities\":" << world.oblist.size()
               << ",\"seed\":" << args.seed
               << "}\n";
@@ -248,6 +275,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             int count = 1;
             iss >> count;
             if (count < 1) count = 1;
+            if (count > 10000) count = 10000;
             cmd_tick(world, save, events, pending_events, count);
         } else if (cmd == "state") {
             cmd_state(world);
@@ -258,7 +286,8 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             std::cout.flush();
             break;
         } else {
-            std::cout << "{\"cmd\":\"error\",\"message\":\"unknown command: " << cmd << "\"}\n";
+            std::cout << "{\"cmd\":\"error\",\"message\":\"unknown command: "
+                      << json_escape_string(cmd) << "\"}\n";
             std::cout.flush();
         }
 
