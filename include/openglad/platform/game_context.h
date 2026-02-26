@@ -58,6 +58,17 @@ struct GameContext {
 // ---------------------------------------------------------------------------
 
 GameContext& ctx();
-// Test-only override for ctx(). Caller owns `context` and must keep it alive
-// until set_global_context(nullptr) clears the override on the same thread.
+// Test-only raw override for ctx(). `context` must be non-null and outlive
+// the override; prefer ScopedTestContext for automatic clear-on-destruction.
 void set_global_context(GameContext* context);
+
+class ScopedTestContext {
+public:
+    explicit ScopedTestContext(GameContext& context);
+    ~ScopedTestContext();
+    ScopedTestContext(const ScopedTestContext&) = delete;
+    ScopedTestContext& operator=(const ScopedTestContext&) = delete;
+
+private:
+    GameContext* context_ = nullptr;
+};

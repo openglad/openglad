@@ -39,14 +39,11 @@ namespace og::runtime {
 
 thread_local GameSession* current_session = nullptr;
 std::atomic<GameSession*> primary_session{nullptr};
-std::atomic<std::uint64_t> GameSession::s_next_generation_{1};
-std::mutex GameSession::s_live_sessions_mutex_;
-std::unordered_map<const GameSession*, std::uint64_t> GameSession::s_live_sessions_;
 std::atomic<std::uint64_t> primary_session_generation{0};
 
 namespace {
 std::mutex g_primary_session_mutex;
-std::mutex g_render_surface_mutex;
+std::recursive_mutex g_render_surface_mutex;
 
 std::uint64_t install_primary_session(GameSession* session)
 {
@@ -78,6 +75,7 @@ bool restore_primary_session_if_unchanged(GameSession* expected_session,
 void install_thread_session(GameSession* session)
 {
     current_session = session;
+    current_session_live_generation = GameSession::session_live_generation(session);
     og::gameplay::current_game = session ? &session->gameplay_ : nullptr;
 #ifndef NDEBUG
     if (session) {
@@ -95,7 +93,8 @@ GameSession::GameSession(const Config& session_cfg)
 
     prev_session_ = current_session;
     prev_primary_session_ = primary_session.load(std::memory_order_acquire);
-    prev_session_generation_ = prev_session_ ? prev_session_->generation_ : 0;
+    prev_session_generation_ = session_live_generation(prev_session_);
+    prev_primary_session_generation_ = session_live_generation(prev_primary_session_);
 
     // Allocate input hardware state.
     input_hw_ = std::make_unique<InputHardwareState>();
@@ -135,57 +134,74 @@ GameSession::GameSession(const Config& session_cfg)
     // to SDL's internal array — it's the same for all sessions.
     keystates_ = SDL_GetKeyboardState(nullptr);
 
-    // Install current_session so nested constructors resolve this session's
-    // preferences during screen boot.
-    auto rollback_legacy_globals = [this]() noexcept {
-        if (!cfg_.install_legacy_globals) {
-            return;
-        }
-        restore_primary_session_if_unchanged(
-            this, installed_primary_generation_, prev_primary_session_);
-        if (current_session == this)
-        {
-            install_thread_session(prev_session_);
-        }
-    };
-    if (cfg_.install_legacy_globals) {
-        install_thread_session(this);
-        installed_primary_generation_ = install_primary_session(this);
-    }
-
-    if (cfg_.allocate_screen) {
-        try {
-            auto screen_ptr = std::make_unique<::screen>(cfg_.numviews, &world_, cfg_.create_display);
-            myscreen_ = screen_ptr.get();
-            gameplay_.sim_events = ctx_.sim_events.get();
-            gameplay_.pathfinding = world_.pathfinding.get();
-
-            // Ensure this session's curpal_ matches the screen's palette.
-            // video_init_palettes() populates video::ourpalette per-instance,
-            // but set_palette() writes to current_session->curpal_ — which is
-            // a different session when install_legacy_globals is false (e.g.
-            // demo sub-sessions).  Copy the authoritative palette here so that
-            // rendering with this session active uses correct colors.
-            std::copy(screen_ptr->ourpalette.begin(),
-                      screen_ptr->ourpalette.end(), curpal_);
-            screen_owner_ = std::move(screen_ptr);
-        } catch (...) {
-            rollback_legacy_globals();
-            throw;
-        }
-    }
-
-    // Create per-session render surface for sub-sessions sharing a display.
-    if (cfg_.allocate_screen && !cfg_.create_display) {
-        session_surface_ = SDL_CreateRGBSurface(
-            SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
-        if (!session_surface_) {
-            LogError("GameSession: SDL_CreateRGBSurface failed: {}\n",
-                     SDL_GetError());
-        }
-    }
-
     mark_session_live(this, generation_);
+    try {
+        // Install current_session so nested constructors resolve this session's
+        // preferences during screen boot.
+        auto rollback_legacy_globals = [this]() {
+            if (!cfg_.install_legacy_globals) {
+                return;
+            }
+
+            GameSession* restore_primary = prev_primary_session_;
+            if (!is_session_live(restore_primary, prev_primary_session_generation_)) {
+                restore_primary = nullptr;
+            }
+            restore_primary_session_if_unchanged(
+                this, installed_primary_generation_, restore_primary);
+
+            if (current_session == this)
+            {
+                GameSession* restore_session = prev_session_;
+                if (!is_session_live(restore_session, prev_session_generation_)) {
+                    restore_session = nullptr;
+                }
+                install_thread_session(restore_session);
+            }
+        };
+        if (cfg_.install_legacy_globals) {
+            install_thread_session(this);
+            installed_primary_generation_ = install_primary_session(this);
+        }
+
+        if (cfg_.allocate_screen) {
+            try {
+                auto screen_ptr = std::make_unique<::screen>(cfg_.numviews, &world_, cfg_.create_display);
+                myscreen_ = screen_ptr.get();
+                gameplay_.sim_events = ctx_.sim_events.get();
+                gameplay_.pathfinding = world_.pathfinding.get();
+
+                // Ensure this session's curpal_ matches the screen's palette.
+                // video_init_palettes() populates video::ourpalette per-instance,
+                // but set_palette() writes to current_session->curpal_ — which is
+                // a different session when install_legacy_globals is false (e.g.
+                // demo sub-sessions).  Copy the authoritative palette here so that
+                // rendering with this session active uses correct colors.
+                std::copy(screen_ptr->ourpalette.begin(),
+                          screen_ptr->ourpalette.end(), curpal_);
+                screen_owner_ = std::move(screen_ptr);
+            } catch (...) {
+                rollback_legacy_globals();
+                throw;
+            }
+        }
+
+        // Create per-session render surface for sub-sessions sharing a display.
+        if (cfg_.allocate_screen && !cfg_.create_display) {
+            session_surface_ = SDL_CreateRGBSurface(
+                SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
+            if (!session_surface_) {
+                LogError("GameSession: SDL_CreateRGBSurface failed: {}\n",
+                         SDL_GetError());
+            }
+        }
+    } catch (...) {
+        try {
+            mark_session_dead(this);
+        } catch (...) {
+        }
+        throw;
+    }
 }
 
 void GameSession::sync_world_from_save(const SaveData& save_data, bool create_hit_effects)
@@ -258,8 +274,12 @@ GameSession::~GameSession()
 
     if (cfg_.install_legacy_globals) {
         try {
+            GameSession* restore_primary = prev_primary_session_;
+            if (!is_session_live(restore_primary, prev_primary_session_generation_)) {
+                restore_primary = nullptr;
+            }
             restore_primary_session_if_unchanged(
-                this, installed_primary_generation_, prev_primary_session_);
+                this, installed_primary_generation_, restore_primary);
         } catch (...) {
         }
     }
@@ -309,20 +329,24 @@ GameSession::SessionScope::SessionScope(GameSession& session)
 {
     // Save current session
     saved_session_ = current_session;
-    saved_session_generation_ = saved_session_ ? saved_session_->generation_ : 0;
+    saved_session_generation_ = session_live_generation(saved_session_);
     saved_primary_session_ = primary_session.load(std::memory_order_acquire);
-    saved_primary_session_generation_ = saved_primary_session_ ? saved_primary_session_->generation_ : 0;
+    saved_primary_session_generation_ = session_live_generation(saved_primary_session_);
 
     // Install this session as current; legacy accessors follow current_session,
     // so this pointer swap is sufficient.
     // ctx() also reads from current_session->ctx_, so no separate context
     // installation is needed.
     install_thread_session(session_);
-    installed_primary_generation_ = install_primary_session(session_);
+    if (session_ == primary_session.load(std::memory_order_acquire)) {
+        installed_primary_generation_ = install_primary_session(session_);
+        updated_primary_session_ = true;
+    }
 
     // Swap render surface if this session has its own.
     if (session_->session_surface_ && E_Screen) {
-        render_swap_lock_ = std::unique_lock<std::mutex>(g_render_surface_mutex);
+        render_swap_lock_ = std::unique_lock<std::recursive_mutex>(g_render_surface_mutex);
+        saved_render_screen_ = static_cast<void*>(E_Screen.get());
         saved_render_surface_ = E_Screen->render;
         did_swap_render_ = true;
         E_Screen->render = session_->session_surface_;
@@ -334,17 +358,19 @@ GameSession::SessionScope::~SessionScope()
     if (!session_) return; // moved-from
 
     // Restore render surface — mirror the activation condition.
-    if (did_swap_render_ && E_Screen) {
+    if (did_swap_render_ && E_Screen && saved_render_screen_ == static_cast<void*>(E_Screen.get())) {
         E_Screen->render = saved_render_surface_;
     }
 
     // Restore previous session.  ctx() follows current_session automatically.
-    GameSession* restore_primary = saved_primary_session_;
-    if (!GameSession::is_session_live(restore_primary, saved_primary_session_generation_))
-        restore_primary = nullptr;
+    if (updated_primary_session_) {
+        GameSession* restore_primary = saved_primary_session_;
+        if (!GameSession::is_session_live(restore_primary, saved_primary_session_generation_))
+            restore_primary = nullptr;
 
-    restore_primary_session_if_unchanged(
-        session_, installed_primary_generation_, restore_primary);
+        restore_primary_session_if_unchanged(
+            session_, installed_primary_generation_, restore_primary);
+    }
 
     GameSession* restore_session = saved_session_;
     if (!GameSession::is_session_live(restore_session, saved_session_generation_))
@@ -360,19 +386,12 @@ GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
     , saved_primary_session_generation_(other.saved_primary_session_generation_)
     , installed_primary_generation_(other.installed_primary_generation_)
     , saved_render_surface_(other.saved_render_surface_)
+    , saved_render_screen_(other.saved_render_screen_)
     , did_swap_render_(other.did_swap_render_)
+    , updated_primary_session_(other.updated_primary_session_)
     , render_swap_lock_(std::move(other.render_swap_lock_))
 {
     other.session_ = nullptr;
-}
-
-bool GameSession::is_session_live(const GameSession* session, std::uint64_t generation)
-{
-    if (!session)
-        return true;
-    std::lock_guard<std::mutex> lock(s_live_sessions_mutex_);
-    const auto it = s_live_sessions_.find(session);
-    return it != s_live_sessions_.end() && it->second == generation;
 }
 
 void GameSession::mark_session_live(const GameSession* session, std::uint64_t generation)

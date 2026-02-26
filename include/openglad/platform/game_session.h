@@ -73,6 +73,8 @@ public:
     // Returns an RAII guard that restores the previous session on destruction.
     class SessionScope;
     [[nodiscard]] SessionScope activate();
+    static bool is_session_live(const GameSession* session, std::uint64_t generation);
+    static std::uint64_t session_live_generation(const GameSession* session);
 
     // Per-session state — accessed directly via current_session->member_.
     ::screen* myscreen_ = nullptr;
@@ -153,7 +155,6 @@ public:
     SDL_Surface* session_surface_ = nullptr;
 
 private:
-    static bool is_session_live(const GameSession* session, std::uint64_t generation);
     static void mark_session_live(const GameSession* session, std::uint64_t generation);
     static void mark_session_dead(const GameSession* session);
 
@@ -169,6 +170,7 @@ private:
     GameSession* prev_session_ = nullptr;
     GameSession* prev_primary_session_ = nullptr;
     std::uint64_t prev_session_generation_ = 0;
+    std::uint64_t prev_primary_session_generation_ = 0;
     std::uint64_t generation_ = 0;
     std::uint64_t installed_primary_generation_ = 0;
 
@@ -176,9 +178,9 @@ private:
     std::unique_ptr<options> prefs_owner_;
     std::unique_ptr<::screen> screen_owner_;
 
-    static std::atomic<std::uint64_t> s_next_generation_;
-    static std::mutex s_live_sessions_mutex_;
-    static std::unordered_map<const GameSession*, std::uint64_t> s_live_sessions_;
+    inline static std::atomic<std::uint64_t> s_next_generation_{1};
+    inline static std::mutex s_live_sessions_mutex_;
+    inline static std::unordered_map<const GameSession*, std::uint64_t> s_live_sessions_;
 };
 
 // The currently-active session.  Code accesses members directly, e.g.
@@ -191,6 +193,25 @@ extern thread_local GameSession* current_session;
 // when their thread_local current_session is still nullptr.
 extern std::atomic<GameSession*> primary_session;
 extern std::atomic<std::uint64_t> primary_session_generation;
+inline thread_local std::uint64_t current_session_live_generation = 0;
+
+inline bool GameSession::is_session_live(const GameSession* session, std::uint64_t generation)
+{
+    if (!session)
+        return true;
+    std::lock_guard<std::mutex> lock(s_live_sessions_mutex_);
+    const auto it = s_live_sessions_.find(session);
+    return it != s_live_sessions_.end() && it->second == generation;
+}
+
+inline std::uint64_t GameSession::session_live_generation(const GameSession* session)
+{
+    if (!session)
+        return 0;
+    std::lock_guard<std::mutex> lock(s_live_sessions_mutex_);
+    const auto it = s_live_sessions_.find(session);
+    return (it != s_live_sessions_.end()) ? it->second : 0;
+}
 
 // Install per-thread legacy pointers together to avoid TLS divergence.
 void install_thread_session(GameSession* session);
@@ -198,8 +219,25 @@ void install_thread_session(GameSession* session);
 // If current_session is nullptr on this thread, inherit from primary_session.
 // Call at the start of any child thread that needs session access.
 inline void ensure_thread_session() {
+    if (current_session && current_session_live_generation != 0 &&
+        !GameSession::is_session_live(current_session, current_session_live_generation)) {
+        install_thread_session(nullptr);
+    }
+
+    if (current_session && og::gameplay::current_game != &current_session->gameplay_) {
+        install_thread_session(current_session);
+    }
+
     if (!current_session) {
-        install_thread_session(primary_session.load(std::memory_order_acquire));
+        GameSession* inherited_session = primary_session.load(std::memory_order_acquire);
+        const std::uint64_t inherited_generation = GameSession::session_live_generation(inherited_session);
+        const std::uint64_t primary_epoch = primary_session_generation.load(std::memory_order_acquire);
+        if ((inherited_generation != 0 &&
+             !GameSession::is_session_live(inherited_session, inherited_generation)) ||
+            (inherited_generation == 0 && inherited_session != nullptr && primary_epoch != 0)) {
+            inherited_session = nullptr;
+        }
+        install_thread_session(inherited_session);
     }
 #ifndef NDEBUG
     if (current_session) {
@@ -237,8 +275,10 @@ private:
     std::uint64_t saved_primary_session_generation_ = 0;
     std::uint64_t installed_primary_generation_ = 0;
     SDL_Surface* saved_render_surface_ = nullptr;
+    void* saved_render_screen_ = nullptr;
     bool did_swap_render_ = false;
-    std::unique_lock<std::mutex> render_swap_lock_;
+    bool updated_primary_session_ = false;
+    std::unique_lock<std::recursive_mutex> render_swap_lock_;
 };
 
 } // namespace og::runtime

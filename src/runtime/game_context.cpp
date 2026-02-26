@@ -65,19 +65,45 @@ GameContext& ctx()
     og::runtime::ensure_thread_session();
     if (og::runtime::current_session)
         return og::runtime::current_session->ctx_;
-    LogWarn("ctx(): no thread session installed; using fallback GameContext\n");
-#ifndef NDEBUG
-    assert(false && "ctx() fell back to thread-local fallback_context()");
-#endif
+
+    static thread_local bool warned_missing_thread_session = false;
+    if (!warned_missing_thread_session) {
+        LogWarn("ctx(): no thread session installed; using fallback GameContext\n");
+        warned_missing_thread_session = true;
+    }
     return fallback_context();
 }
 
 void set_global_context(GameContext* context)
 {
+    if (!context) {
+        s_test_context_override = nullptr;
+#ifndef NDEBUG
+        s_test_context_override_live = nullptr;
+#endif
+        return;
+    }
+#ifndef NDEBUG
+    assert(context != nullptr &&
+           "set_global_context() requires a non-null pointer whose lifetime is guaranteed by the caller");
+#endif
     s_test_context_override = context;
 #ifndef NDEBUG
     s_test_context_override_live = context;
 #endif
+}
+
+ScopedTestContext::ScopedTestContext(GameContext& context)
+    : context_(&context)
+{
+    set_global_context(context_);
+}
+
+ScopedTestContext::~ScopedTestContext()
+{
+    if (s_test_context_override == context_) {
+        set_global_context(nullptr);
+    }
 }
 
 namespace og::gameplay {
