@@ -94,9 +94,9 @@ Pure math, logging, time helpers, and compile-time constants. No SDL, no filesys
 
 | File | Purpose |
 |------|---------|
-| `core/combat_math.cpp` | Damage calculation, hit/miss formulas |
-| `core/stats.cpp` | Entity statistics, command queue management |
-| `core/util.cpp` | Logging (`Log`/`LogWarn`/`LogError` via `std::format`), timer functions, safe int parsing |
+| `src/gameplay/combat_math.cpp` | Damage calculation, hit/miss formulas |
+| `src/gameplay/stats.cpp` | Entity statistics, command queue management |
+| `src/core/util.cpp` | Logging (`Log`/`LogWarn`/`LogError` via `std::format`), timer functions, safe int parsing |
 
 ### og_sim — Deterministic Simulation
 
@@ -104,14 +104,14 @@ Headless, SDL-free simulation layer. Given a seed + input sequence, produces ide
 
 `screen::act()` delegates to `GameWorld::tick()`, which executes all entity logic, handles dead entity cleanup, checks level completion, and emits events into a `SimEventLog`. The runtime layer then drains events and dispatches them to sound, HUD, and visual effects.
 
-Entity code emits events via `sim_emit.h` helpers (`emit_sound()`, `emit_notification()`, `emit_event()`) instead of making direct rendering/audio calls, completing the decoupling of simulation from presentation.
+Entity code emits events via `include/openglad/gameplay/sim_emit.h` helpers (`emit_sound()`, `emit_notification()`, `emit_event()`) instead of making direct rendering/audio calls, completing the decoupling of simulation from presentation.
 
 | File | Purpose |
 |------|---------|
-| `gameplay/game_world.cpp` | `GameWorld::tick()` — live game simulation tick (extracted from `screen::act()`) |
-| `sim/sim_event_log.cpp` | `SimEventLog` — accumulates events during a tick for deferred dispatch |
-| `sim/sim_emit.h` | Convenience helpers: `emit_sound()`, `emit_notification()`, `emit_event()` |
-| `sim/event.h` | `EventKind` enum: PlaySound, Notification, SetPalette, RequestRedraw |
+| `src/gameplay/game_world.cpp` | `GameWorld::tick()` — live game simulation tick (extracted from `screen::act()`) |
+| `src/gameplay/sim_event_log.cpp` | `SimEventLog` — accumulates events during a tick for deferred dispatch |
+| `include/openglad/gameplay/sim_emit.h` | Convenience helpers: `emit_sound()`, `emit_notification()`, `emit_event()` |
+| `include/openglad/gameplay/event.h` | `EventKind` enum: PlaySound, Notification, SetPalette, RequestRedraw |
 
 ### og_data — Data Types
 
@@ -119,7 +119,7 @@ Gameplay data structure definitions (structs, types) that don't do file I/O. Pub
 
 | File | Purpose |
 |------|---------|
-| `data/pixie_data.cpp` | Sprite/animation metadata (`PixieData` struct) |
+| `src/resources/pixie_data.cpp` | Sprite/animation metadata (`PixieData` struct) |
 
 ### og_resources — File I/O and Serialization
 
@@ -127,29 +127,29 @@ All file format parsing and serialization: campaigns, levels, saves, configurati
 
 | File | Purpose |
 |------|---------|
-| `resources/gloader.cpp` | Loads game content from packages (sprites, AI definitions) |
-| `resources/gparser.cpp` | Configuration and metadata parsing (`cfg_store`) |
-| `resources/level_file_io.cpp` | Level file load/save free functions (`load_level()`, `save_level()`) |
-| `resources/save_data.cpp` | Save game serialization with versioning (`SaveDataIoError` enum) |
-| `resources/campaign_data.cpp` | Campaign metadata and progression tracking |
+| `src/resources/gloader.cpp` | Loads game content from packages (sprites, AI definitions) |
+| `src/resources/gparser.cpp` | Configuration and metadata parsing (`cfg_store`) |
+| `src/resources/level_file_io.cpp` | Level file load/save free functions (`load_level()`, `save_level()`) |
+| `src/resources/save_io.cpp` | Save game serialization with versioning (`SaveDataIoError` enum) |
+| `src/resources/campaign_data.cpp` | Campaign metadata and progression tracking |
 
 ### og_entities — Game Object Hierarchy
 
-All game objects (players, enemies, projectiles, items, effects) derive from `walker`. This module contains entity behavior, AI, combat, movement, and pathfinding. Drawing methods have been extracted to the render layer (`render/walker_draw.cpp`) to enforce the sim/rendering split — entity code no longer depends on viewscreen or video types.
+All game objects (players, enemies, projectiles, items, effects) derive from `walker`. This module contains entity behavior, AI, combat, movement, and pathfinding. Drawing methods have been extracted to the render layer (`src/interface/render/walker_draw.cpp`) to enforce the sim/rendering split — entity code no longer depends on viewscreen or video types.
 
 | File | Purpose |
 |------|---------|
-| `entities/walker.cpp` | Base entity: position, animation, stats, lifecycle |
-| `entities/walker_combat.cpp` | Combat: `attack()`, `fire_check()`, damage dealing |
-| `entities/walker_movement.cpp` | Movement: `walk()`, `walkstep()`, `setworldxy()` |
-| `entities/walker_pathing.cpp` | A* pathfinding via MicroPather integration |
-| `entities/walker_specials.cpp` | Special abilities: teleport, summon, turn undead |
-| `entities/living.cpp` | AI-controlled entities (enemies, NPCs) extending `walker` |
-| `entities/weap.cpp` | Projectiles and weapons extending `walker` |
-| `entities/treasure.cpp` | Collectible items (gold, potions, food) |
-| `entities/effect.cpp` | Visual effects (explosions, spells, blood) |
-| `entities/guy.cpp` | Persistent player character data (stats, XP, name) |
-| `entities/obmap.cpp` | Spatial hash grid for O(1) collision detection |
+| `src/gameplay/walker.cpp` | Base entity: position, animation, stats, lifecycle |
+| `src/gameplay/walker_combat.cpp` | Combat: `attack()`, `fire_check()`, damage dealing |
+| `src/gameplay/walker_movement.cpp` | Movement: `walk()`, `walkstep()`, `setworldxy()` |
+| `src/gameplay/walker_pathing.cpp` | A* pathfinding via MicroPather integration |
+| `src/gameplay/walker_specials.cpp` | Special abilities: teleport, summon, turn undead |
+| `src/gameplay/living.cpp` | AI-controlled entities (enemies, NPCs) extending `walker` |
+| `src/gameplay/weap.cpp` | Projectiles and weapons extending `walker` |
+| `src/gameplay/treasure.cpp` | Collectible items (gold, potions, food) |
+| `src/gameplay/effect.cpp` | Visual effects (explosions, spells, blood) |
+| `src/gameplay/guy.cpp` | Persistent player character data (stats, XP, name) |
+| `src/gameplay/obmap.cpp` | Spatial hash grid for O(1) collision detection |
 
 **Class hierarchy:**
 ```
@@ -172,10 +172,10 @@ Wraps PhysFS, libzip, and libyaml behind narrow interfaces. Only this module (an
 
 | File | Purpose |
 |------|---------|
-| `io/physfs_api.cpp` | PhysFS virtual filesystem mounting and file I/O |
-| `io/platform_io.cpp` | Platform-specific I/O operations |
-| `io/yaml_stream.cpp` | YAML configuration parsing via libyaml |
-| `io/zip_api.cpp` | ZIP archive creation and extraction |
+| `src/resources/io/physfs_api.cpp` | PhysFS virtual filesystem mounting and file I/O |
+| `src/resources/platform_io.cpp` | Platform-specific I/O operations |
+| `src/resources/io/yaml_stream.cpp` | YAML configuration parsing via libyaml |
+| `src/resources/io/zip_api.cpp` | ZIP archive creation and extraction |
 
 ### Resources Filesystem and Campaign I/O API
 
@@ -199,15 +199,15 @@ Owns the game session lifecycle, wires services together, manages the game loop 
 
 | File | Purpose |
 |------|---------|
-| `runtime/screen.cpp` | Game world: delegates to `GameWorld::tick()` for logic, owns redraw/event dispatch |
-| `runtime/game_loop.cpp` | Per-frame loop: `game_frame()` → input → act → render |
-| `runtime/game_session.cpp` | `GameSession` — RAII root owning screen, prefs, RNG |
-| `runtime/game_context.cpp` | `GameContext` — dependency injection container (`ctx()`) |
-| `runtime/game.cpp` | Game logic integration point |
-| `runtime/glad_gameplay.cpp` | Gameplay initialization and level transitions |
-| `runtime/score_panel.cpp` | HUD: HP/MP bars, score, team/foe counts, radar |
-| `runtime/screen_lifecycle.cpp` | Screen creation, reset, cleanup |
-| `runtime/legacy_globals.cpp` | Transitional global variable shims |
+| `src/interface/screen.cpp` | Game world: delegates to `GameWorld::tick()` for logic, owns redraw/event dispatch |
+| `src/platform/sdl/runtime/game_loop.cpp` | Per-frame loop: `game_frame()` → input → act → render |
+| `src/platform/sdl/runtime/game_session.cpp` | `GameSession` — RAII root owning screen, prefs, RNG |
+| `src/runtime/game_context.cpp` | `GameContext` — dependency injection container (`ctx()`) |
+| `src/platform/sdl/runtime/game.cpp` | Game logic integration point |
+| `src/platform/sdl/runtime/glad_gameplay.cpp` | Gameplay initialization and level transitions |
+| `src/platform/sdl/runtime/score_panel.cpp` | HUD: HP/MP bars, score, team/foe counts, radar |
+| `src/platform/sdl/runtime/screen_lifecycle.cpp` | Screen creation, reset, cleanup |
+| `src/platform/sdl/runtime/legacy_globals.cpp` | Transitional global variable shims |
 
 **Key types:**
 
@@ -221,17 +221,17 @@ SDL2 rendering: pixel buffers, viewports, sprites, text, radar, palette manageme
 
 | File | Purpose |
 |------|---------|
-| `render/video.cpp` | SDL2 graphics abstraction: pixel buffer, drawing primitives |
-| `render/view.cpp` | Viewport/camera system (1–4 split-screen views), HUD overlay |
-| `render/pixie.cpp` | Base sprite/image class |
-| `render/pixien.cpp` | Animated sprite with frame management |
-| `render/text.cpp` | Bitmap font rendering system |
-| `render/radar.cpp` | Minimap display |
-| `render/pal32.cpp` | 8-bit to 32-bit palette conversion |
-| `render/smooth.cpp` | Tile edge smoothing algorithm |
-| `render/sai2x.cpp` | SAI2x pixel-art upscaling |
-| `render/walker_draw.cpp` | Entity rendering: `draw_walker()`, `draw_walker_tile()`, `draw_walker_path()`, health bars |
-| `render/graphlib.cpp` | Graphics utility functions |
+| `src/platform/sdl/video.cpp` | SDL2 graphics abstraction: pixel buffer, drawing primitives |
+| `src/interface/render/view.cpp` | Viewport/camera system (1–4 split-screen views), HUD overlay |
+| `src/interface/render/pixie.cpp` | Base sprite/image class |
+| `src/interface/render/pixien.cpp` | Animated sprite with frame management |
+| `src/interface/render/text.cpp` | Bitmap font rendering system |
+| `src/interface/render/radar.cpp` | Minimap display |
+| `src/interface/render/pal32.cpp` | 8-bit to 32-bit palette conversion |
+| `src/interface/render/smooth.cpp` | Tile edge smoothing algorithm |
+| `src/interface/render/sai2x.cpp` | SAI2x pixel-art upscaling |
+| `src/interface/render/walker_draw.cpp` | Entity rendering: `draw_walker()`, `draw_walker_tile()`, `draw_walker_path()`, health bars |
+| `src/interface/render/graphlib.cpp` | Graphics utility functions |
 
 **Rendering pipeline:**
 ```
@@ -251,8 +251,8 @@ Translates SDL keyboard, mouse, and joystick events into game actions. Manages p
 
 | File | Purpose |
 |------|---------|
-| `input/input.cpp` | Event polling, key mapping, per-player input state |
-| `input/button.cpp` | UI button widgets (`vbutton`), `allbuttons[]` global array |
+| `src/interface/input/input.cpp` | Event polling, key mapping, per-player input state |
+| `src/interface/ui/button.cpp` | UI button widgets (`vbutton`), `allbuttons[]` global array |
 
 ### og_ui — User Interface
 
@@ -260,21 +260,21 @@ Menu controllers, the team picker, level editor, intro screen, help, and results
 
 | File | Purpose |
 |------|---------|
-| `ui/picker.cpp` | Main team selection and hiring UI |
-| `ui/picker_main_menu.cpp` | Main menu state machine flow |
-| `ui/picker_team_build.cpp` | Character stat editing and purchasing |
-| `ui/picker_input.cpp` | Menu input event handling |
-| `ui/picker_dialogs.cpp` | Dialog boxes and confirmations |
-| `ui/picker_accessible_levels.cpp` | Level accessibility and gating logic |
-| `ui/campaign_picker.cpp` | Campaign selection UI |
-| `ui/level_picker.cpp` | Level selection UI |
-| `ui/level_editor.cpp` | Scenario editor (openscen) |
-| `ui/level_editor_file_ops.cpp` | Editor file I/O |
-| `ui/level_editor_tools.cpp` | Editor placement/deletion tools |
-| `ui/level_editor_ui.cpp` | Editor UI rendering |
-| `ui/intro.cpp` | Splash/intro screen |
-| `ui/help.cpp` | In-game help display |
-| `ui/results_screen.cpp` | Post-battle results and level completion |
+| `src/interface/ui/picker.cpp` | Main team selection and hiring UI |
+| `src/interface/ui/picker_main_menu.cpp` | Main menu state machine flow |
+| `src/interface/ui/picker_team_build.cpp` | Character stat editing and purchasing |
+| `src/interface/ui/picker_input.cpp` | Menu input event handling |
+| `src/interface/ui/picker_dialogs.cpp` | Dialog boxes and confirmations |
+| `src/interface/ui/picker_accessible_levels.cpp` | Level accessibility and gating logic |
+| `src/interface/ui/campaign_picker.cpp` | Campaign selection UI |
+| `src/interface/ui/level_picker.cpp` | Level selection UI |
+| `src/interface/ui/level_editor.cpp` | Scenario editor (openscen) |
+| `src/interface/ui/level_editor_file_ops.cpp` | Editor file I/O |
+| `src/interface/ui/level_editor_tools.cpp` | Editor placement/deletion tools |
+| `src/interface/ui/level_editor_ui.cpp` | Editor UI rendering |
+| `src/interface/ui/intro.cpp` | Splash/intro screen |
+| `src/interface/ui/help.cpp` | In-game help display |
+| `src/interface/ui/results_screen.cpp` | Post-battle results and level completion |
 
 ### og_platform — Platform Services
 
@@ -282,7 +282,7 @@ SDL initialization, audio device management, and platform-specific hooks (Emscri
 
 | File | Purpose |
 |------|---------|
-| `platform/sound.cpp` | SDL_mixer audio: sound effects and music playback |
+| `src/platform/sdl/sound.cpp` | SDL_mixer audio: sound effects and music playback |
 
 ---
 
@@ -380,7 +380,7 @@ Dependencies flow **inward toward purity**. Outer layers depend on inner layers;
 
 A build-time check enforces these boundaries:
 
-1. **`check_vendor_leaks.sh`** — Vendor headers (physfs, libzip, libyaml, zipint.h) may only appear in `src/resources/io/` (and SDL-specific I/O shims under `src/platform/sdl/io/`). Public headers under `include/openglad/` must never include vendor headers.
+1. **`scripts/check_vendor_leaks.sh`** — Vendor headers (physfs, libzip, libyaml, zipint.h) may only appear in `src/resources/io/` (and SDL-specific I/O shims under `src/platform/sdl/io/`). Public headers under `include/openglad/` must never include vendor headers.
 
 This check runs as a custom CMake target (`check_vendor_leaks`) that executes before the `og_game` aggregate target.
 
@@ -672,7 +672,7 @@ The project builds two executables from shared source with platform-specific imp
 - **`openglad`** (SDL client) — Full graphical game with rendering, audio, and input via SDL2. Platform-specific code lives in `src/platform/sdl/`.
 - **`openglad_text`** (headless client) — SDL-free text-mode client for simulation, testing, and scripting. Platform-specific code lives in `src/platform/text/`.
 
-Both targets link the same core modules (`og_core`, `og_sim`, `og_data`, `og_entities`, `og_io`). The boundary is enforced via link-time dispatch: shared code depends on SDL-free bridge declarations (notably `PlatformBridge` and `LevelRender` interfaces), which are wired by platform-specific implementations in `sdl_context_services.cpp` (SDL) and `platform_headless.cpp` (headless).
+Both targets link the same core modules (`og_core`, `og_sim`, `og_data`, `og_entities`, `og_io`). The boundary is enforced via link-time dispatch: shared code depends on SDL-free bridge declarations (notably `PlatformBridge` and `LevelRender` interfaces), which are wired by platform-specific implementations in `src/platform/sdl/runtime/sdl_context_services.cpp` (SDL) and `src/platform/text/platform_headless.cpp` (headless).
 
 **Key boundary files:**
 
@@ -692,11 +692,11 @@ Shell scripts in `scripts/` provide convenience wrappers:
 
 | Script | Purpose |
 |--------|---------|
-| `build_native.sh` | Quick native build via CMake dev-release preset |
-| `build_test.sh` | Build test binary via CMake |
-| `build_web.sh` | Emscripten/WASM build to `dist/` |
-| `build_coverage.sh` | Coverage instrumentation with lcov report |
-| `collect_baseline_metrics.sh` | Performance/size tracking for CI |
+| `scripts/build_native.sh` | Quick native build via CMake dev-release preset |
+| `scripts/build_test.sh` | Build test binary via CMake |
+| `scripts/build_web.sh` | Emscripten/WASM build to `dist/` |
+| `scripts/build_coverage.sh` | Coverage instrumentation with lcov report |
+| `scripts/collect_baseline_metrics.sh` | Performance/size tracking for CI |
 
 ### Web Build
 
@@ -798,7 +798,7 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `src/interface/input/input.cpp` | Keyboard/controller event handling |
 | `src/gameplay/game_world.cpp` | Live game simulation tick (extracted from `screen::act()`) |
 | `src/gameplay/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
-| `src/interface/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
+| `src/interface/render/walker_draw.cpp` | Entity draw methods (extracted from `src/gameplay/walker.cpp`) |
 | `CMakeLists.txt` | Build system — module targets, test binaries, install rules |
 | `CMakePresets.json` | Build presets for dev, CI, and web |
 | `scripts/check_vendor_leaks.sh` | Enforced module include/vendor boundary rules |
