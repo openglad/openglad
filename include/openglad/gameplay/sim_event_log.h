@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace og::sim {
@@ -51,6 +52,11 @@ public:
     std::uint32_t current_tick_ = 0;
 
 private:
+#ifndef NDEBUG
+    void assert_thread_ownership_() const;
+    mutable std::thread::id owner_thread_{};
+    mutable bool owner_thread_initialized_ = false;
+#endif
     std::vector<Event> events_;
 };
 

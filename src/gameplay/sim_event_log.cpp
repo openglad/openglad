@@ -7,12 +7,30 @@
  */
 #include <openglad/gameplay/sim_event_log.h>
 
+#include <cassert>
 #include <utility>
 
 namespace og::sim {
 
+#ifndef NDEBUG
+void SimEventLog::assert_thread_ownership_() const
+{
+    const std::thread::id current = std::this_thread::get_id();
+    if (!owner_thread_initialized_)
+    {
+        owner_thread_ = current;
+        owner_thread_initialized_ = true;
+        return;
+    }
+    assert(owner_thread_ == current && "SimEventLog used from multiple threads");
+}
+#endif
+
 void SimEventLog::push(EventKind kind, std::uint32_t a, std::uint32_t b, const std::string& text)
 {
+#ifndef NDEBUG
+    assert_thread_ownership_();
+#endif
     Event ev;
     ev.tick = current_tick_;
     ev.kind = kind;
@@ -24,6 +42,9 @@ void SimEventLog::push(EventKind kind, std::uint32_t a, std::uint32_t b, const s
 
 void SimEventLog::push_notification(const std::string& message, std::uint32_t duration)
 {
+#ifndef NDEBUG
+    assert_thread_ownership_();
+#endif
     Event ev;
     ev.tick = current_tick_;
     ev.kind = EventKind::Notification;
@@ -39,6 +60,9 @@ void SimEventLog::push_sound(std::uint32_t sound_id)
 
 std::vector<Event> SimEventLog::drain()
 {
+#ifndef NDEBUG
+    assert_thread_ownership_();
+#endif
     std::vector<Event> result;
     result.swap(events_);
     return result;

@@ -24,6 +24,8 @@
 #include <openglad/platform/input_hardware_state.h>
 #include <openglad/platform/io_common.h>
 #include "SDL.h"
+#include <cassert>
+#include <mutex>
 
 // Defined in view.cpp — loads allkeys from defaults + keyprefs.dat.
 void init_allkeys(int allkeys[][16]);
@@ -37,6 +39,50 @@ namespace og::runtime {
 
 thread_local GameSession* current_session = nullptr;
 std::atomic<GameSession*> primary_session{nullptr};
+std::atomic<std::uint64_t> primary_session_generation{0};
+
+namespace {
+std::mutex g_primary_session_mutex;
+
+std::uint64_t install_primary_session(GameSession* session)
+{
+    std::lock_guard<std::mutex> lock(g_primary_session_mutex);
+    primary_session.store(session, std::memory_order_release);
+    const std::uint64_t next_generation =
+        primary_session_generation.load(std::memory_order_relaxed) + 1;
+    primary_session_generation.store(next_generation, std::memory_order_release);
+    return next_generation;
+}
+
+bool restore_primary_session_if_unchanged(GameSession* expected_session,
+                                          std::uint64_t expected_generation,
+                                          GameSession* restore_session)
+{
+    std::lock_guard<std::mutex> lock(g_primary_session_mutex);
+    if (primary_session.load(std::memory_order_acquire) != expected_session)
+        return false;
+    if (primary_session_generation.load(std::memory_order_acquire) != expected_generation)
+    {
+        return false;
+    }
+    primary_session.store(restore_session, std::memory_order_release);
+    primary_session_generation.store(expected_generation + 1, std::memory_order_release);
+    return true;
+}
+} // namespace
+
+void install_thread_session(GameSession* session)
+{
+    current_session = session;
+    og::gameplay::current_game = session ? &session->gameplay_ : nullptr;
+#ifndef NDEBUG
+    if (session) {
+        assert(og::gameplay::current_game == &session->gameplay_);
+    } else {
+        assert(og::gameplay::current_game == nullptr);
+    }
+#endif
+}
 
 GameSession::GameSession(const Config& session_cfg)
     : cfg_(session_cfg)
@@ -87,19 +133,16 @@ GameSession::GameSession(const Config& session_cfg)
         if (!cfg_.install_legacy_globals) {
             return;
         }
-        GameSession* expected = this;
-        primary_session.compare_exchange_strong(
-            expected, prev_primary_session_, std::memory_order_acq_rel,
-            std::memory_order_acquire);
-        if (current_session == this) {
-            current_session = prev_session_;
-            og::gameplay::current_game = prev_session_ ? &prev_session_->gameplay_ : nullptr;
+        restore_primary_session_if_unchanged(
+            this, installed_primary_generation_, prev_primary_session_);
+        if (current_session == this)
+        {
+            install_thread_session(prev_session_);
         }
     };
     if (cfg_.install_legacy_globals) {
-        current_session = this;
-        primary_session.store(this, std::memory_order_release);
-        og::gameplay::current_game = &gameplay_;
+        install_thread_session(this);
+        installed_primary_generation_ = install_primary_session(this);
     }
 
     if (cfg_.allocate_screen) {
@@ -192,16 +235,13 @@ const cfg_store& GameSession::config() const { return ::cfg; }
 GameSession::~GameSession()
 {
     if (cfg_.install_legacy_globals) {
-        GameSession* expected = this;
-        primary_session.compare_exchange_strong(
-            expected, prev_primary_session_, std::memory_order_acq_rel,
-            std::memory_order_acquire);
+        restore_primary_session_if_unchanged(
+            this, installed_primary_generation_, prev_primary_session_);
     }
 
     if (cfg_.install_legacy_globals) {
         if (current_session == this) {
-            current_session = prev_session_;
-            og::gameplay::current_game = prev_session_ ? &prev_session_->gameplay_ : nullptr;
+            install_thread_session(prev_session_);
         }
     }
 
@@ -235,9 +275,8 @@ GameSession::SessionScope::SessionScope(GameSession& session)
     // so this pointer swap is sufficient.
     // ctx() also reads from current_session->ctx_, so no separate context
     // installation is needed.
-    current_session = session_;
-    primary_session.store(session_, std::memory_order_release);
-    og::gameplay::current_game = &session_->gameplay_;
+    install_thread_session(session_);
+    installed_primary_generation_ = install_primary_session(session_);
 
     // Swap render surface if this session has its own.
     if (session_->session_surface_ && E_Screen) {
@@ -257,18 +296,16 @@ GameSession::SessionScope::~SessionScope()
     }
 
     // Restore previous session.  ctx() follows current_session automatically.
-    GameSession* expected = session_;
-    primary_session.compare_exchange_strong(
-        expected, saved_primary_session_, std::memory_order_acq_rel,
-        std::memory_order_acquire);
-    current_session = saved_session_;
-    og::gameplay::current_game = saved_session_ ? &saved_session_->gameplay_ : nullptr;
+    restore_primary_session_if_unchanged(
+        session_, installed_primary_generation_, saved_primary_session_);
+    install_thread_session(saved_session_);
 }
 
 GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
     : session_(other.session_)
     , saved_session_(other.saved_session_)
     , saved_primary_session_(other.saved_primary_session_)
+    , installed_primary_generation_(other.installed_primary_generation_)
     , saved_render_surface_(other.saved_render_surface_)
     , did_swap_render_(other.did_swap_render_)
 {
