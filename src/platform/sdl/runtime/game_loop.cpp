@@ -17,6 +17,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/obmap_debug_draw.h>
 #include <openglad/core/util.h>
+#include <cassert>
 
 
 // Declared elsewhere (glad.cpp).
@@ -37,6 +38,10 @@ static void default_handle(const SDL_Event& e)
 
 GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
 {
+    assert(og::runtime::current_session);
+    if (!og::runtime::current_session)
+        return GameFrameResult::Done;
+
     const std::function<int(SDL_Event*)> poll_event =
         deps.poll_event ? deps.poll_event : std::function<int(SDL_Event*)>(default_poll);
     const std::function<void(const SDL_Event&)> handle_event =

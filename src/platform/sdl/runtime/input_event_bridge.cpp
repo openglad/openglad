@@ -16,6 +16,8 @@
 
 static inline screen* active_screen()
 {
+    if (!og::runtime::current_session)
+        return nullptr;
     return og::runtime::current_session->myscreen_;
 }
 
@@ -33,6 +35,9 @@ void reinit_joystick_subsystem()
 
 void handle_window_event(const SDL_Event& event)
 {
+    if (!og::runtime::current_session)
+        return;
+
     switch(event.window.event)
     {
         case SDL_WINDOWEVENT_MINIMIZED:
@@ -62,6 +67,9 @@ void handle_window_event(const SDL_Event& event)
 
 void handle_key_event(const SDL_Event& event)
 {
+    if (!og::runtime::current_session)
+        return;
+
     switch (event.type)
     {
     case SDL_KEYDOWN:
@@ -114,6 +122,9 @@ void handle_key_event(const SDL_Event& event)
 
 void draw_touch_controls(screen* vob)
 {
+    if (!og::runtime::current_session || !og::runtime::current_session->input_hw_ || !vob || !vob->viewob[0])
+        return;
+
     walker* control = vob->viewob[0]->control;
     if(control == nullptr || control->dead)
         return;

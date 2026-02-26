@@ -311,6 +311,16 @@ private:
 
     std::string menu_item_label(const PickerMenuItem& item) const
     {
+        if (!og::runtime::current_session) {
+            if (item.command == PickerMenuCommand::SetLevel)
+                return std::format("{} ({})", item.label, config_.level);
+            if (item.command == PickerMenuCommand::SetCampaign)
+                return std::format("{} ({})", item.label, config_.campaign);
+            if (item.command == PickerMenuCommand::ToggleAlliedMode)
+                return format_allied_mode_label(save_data_);
+            return std::string(item.label);
+        }
+
         if (item.command == PickerMenuCommand::SetDifficulty)
             return format_difficulty_label(og::runtime::current_session->current_difficulty_);
         if (item.command == PickerMenuCommand::SetLevel)
@@ -324,6 +334,11 @@ private:
 
     void handle_main_menu_item(const PickerMenuItem& item)
     {
+        if (!og::runtime::current_session && item.command == PickerMenuCommand::SetDifficulty) {
+            std::printf("Difficulty is unavailable: no active session.\n");
+            return;
+        }
+
         switch (item.command) {
         case PickerMenuCommand::SetDifficulty:
             og::runtime::current_session->current_difficulty_ = cycle_difficulty(og::runtime::current_session->current_difficulty_);

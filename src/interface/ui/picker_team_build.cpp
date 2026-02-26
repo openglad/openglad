@@ -46,8 +46,10 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <format>
 #include <memory>
 #include <optional>
@@ -61,7 +63,13 @@
 #define VIEW_DOWN(x) (10 + static_cast<Sint32>((x) * 20))
 
 
-static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+static inline PickerState& pks()
+{
+    assert(og::runtime::current_session && og::runtime::current_session->picker_);
+    if (!og::runtime::current_session || !og::runtime::current_session->picker_)
+        std::abort();
+    return *og::runtime::current_session->picker_;
+}
 
 // Sync current_guy from the active session's state.
 static void sync_current_guy_from_hire()
@@ -194,6 +202,9 @@ Sint32 create_team_menu(Sint32 arg1)
 	
 	while ( !(retvalue & MENU_EXIT) )
 	{
+        if (!og::runtime::current_session->localbuttons_)
+            continue;
+
 	    // Input
 		if(leftmouse(buttons))
 			retvalue = og::runtime::current_session->localbuttons_->leftclick();
