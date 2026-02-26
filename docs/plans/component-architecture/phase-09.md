@@ -56,6 +56,23 @@ must read from both. Consider a `LevelFileData` bag struct that holds
 `GameWorld&` + `LevelVisuals&` + `LevelFileMetadata` (grid_file, description)
 as the serialization interface.
 
+## Accepted Decision: SaveData Keeps team_list (R7)
+
+Investigation confirmed that `SaveData::team_list` is accessed **only at
+save/load boundaries**, never during active gameplay ticks:
+
+- **Level load** (`game.cpp`): `team_list` → `guy_create_and_add_walker()` → `GameWorld::oblist`
+- **Level completion** (`screen.cpp`): `GameWorld` walkers → `update_guys()` → `team_list`
+- **UI menus** (`picker*.cpp`, `level_picker.cpp`): Team display/editing in menu loops
+
+Entity code (`src/entities/`, `src/entities/families/`) has **zero references**
+to `save_data`, `team_list`, or `update_guys`. Active gameplay operates
+exclusively on GameWorld-owned walker instances.
+
+SaveData correctly owns `team_list` as serialization/persistence storage.
+The `guy` struct remains defined in gameplay (`include/openglad/entities/guy.h`).
+No code changes needed — this is the intended architecture.
+
 ## Risk
 
 Low-Medium — straightforward moves. Smaller than originally planned

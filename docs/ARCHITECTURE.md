@@ -41,7 +41,8 @@ openglad/
 │   ├── core/               combat_math.cpp, stats.cpp, util.cpp
 │   ├── sim/                sim_event_log
 │   ├── gameplay/           game_world, gameplay_context
-│   ├── data/               gloader, gparser, level_data, pixie_data, save_data
+│   ├── data/               pixie_data
+│   ├── resources/          gloader, gparser, level_file_io, save_data, campaign_data
 │   ├── entities/           walker, living, weap, treasure, effect, guy, obmap
 │   ├── io/                 physfs_api, platform_io, yaml_stream, zip_api
 │   ├── runtime/            screen, game_loop, game_session, game_context, ...
@@ -84,7 +85,7 @@ openglad/
 
 ## Module Structure
 
-The codebase is organized into 10 internal modules, each built as a separate static library with restricted include paths. Public headers live under `include/openglad/<module>/`; private implementation lives under `src/<module>/`.
+The codebase is organized into 11 internal modules, each built as a separate static library with restricted include paths. Public headers live under `include/openglad/<module>/`; private implementation lives under `src/<module>/`.
 
 ### og_core — Pure Utilities
 
@@ -111,17 +112,25 @@ Entity code emits events via `sim_emit.h` helpers (`emit_sound()`, `emit_notific
 | `sim/sim_emit.h` | Convenience helpers: `emit_sound()`, `emit_notification()`, `emit_event()` |
 | `sim/event.h` | `EventKind` enum: PlaySound, Notification, SetPalette, RequestRedraw |
 
-### og_data — Serialization and Persistence
+### og_data — Data Types
 
-File format parsing for campaigns, levels, saves, and configuration. Knows file formats but not SDL or UI.
+Gameplay data structure definitions (structs, types) that don't do file I/O. Public headers in `include/openglad/data/` define types used across modules.
 
 | File | Purpose |
 |------|---------|
-| `data/gloader.cpp` | Loads game content from packages (sprites, AI definitions) |
-| `data/gparser.cpp` | Configuration and metadata parsing (`cfg_store`) |
-| `data/level_data.cpp` | Level layout: tiles, object placement, spatial indexing |
 | `data/pixie_data.cpp` | Sprite/animation metadata (`PixieData` struct) |
-| `data/save_data.cpp` | Save game serialization with versioning (`SaveDataIoError` enum) |
+
+### og_resources — File I/O and Serialization
+
+All file format parsing and serialization: campaigns, levels, saves, configuration, and content loading. Knows file formats but not SDL or UI.
+
+| File | Purpose |
+|------|---------|
+| `resources/gloader.cpp` | Loads game content from packages (sprites, AI definitions) |
+| `resources/gparser.cpp` | Configuration and metadata parsing (`cfg_store`) |
+| `resources/level_file_io.cpp` | Level file load/save free functions (`load_level()`, `save_level()`) |
+| `resources/save_data.cpp` | Save game serialization with versioning (`SaveDataIoError` enum) |
+| `resources/campaign_data.cpp` | Campaign metadata and progression tracking |
 
 ### og_entities — Game Object Hierarchy
 
@@ -277,13 +286,17 @@ Dependencies flow **inward toward purity**. Outer layers depend on inner layers;
                        ▼             ▼
                   ┌────┴─────────────┴───┐
                   │      og_runtime      │
-                  └───┬──────────┬───────┘
-                      │          │
-               ┌──────▼──┐  ┌───▼─────┐
-               │ og_sim   │  │ og_data │
-               └────┬─────┘  └───┬─────┘
-                    │             │
-                    ▼             ▼
+                  └──┬──────┬────────┬───┘
+                     │      │        │
+              ┌──────▼──┐ ┌─▼──────┐ │
+              │ og_sim  │ │og_data │ │
+              └────┬────┘ └───┬────┘ │
+                   │          │      │
+                   │   ┌──────▼──────▼──┐
+                   │   │ og_resources   │
+                   │   └──────┬─────────┘
+                   │          │
+                   ▼          ▼
                   ┌───────────────────┐
                   │     og_core       │
                   └───────────────────┘
@@ -300,12 +313,13 @@ Dependencies flow **inward toward purity**. Outer layers depend on inner layers;
 | `og_core` | Standard library only |
 | `og_sim` | `og_core` |
 | `og_data` | `og_core` |
+| `og_resources` | `og_core`, `og_data`, `og_io`, `og_entities`, micropather |
 | `og_io` | `og_core`, vendored I/O libs (physfs, libzip, libyaml) |
 | `og_entities` | `og_core`, `og_sim` (event emission), `og_render` (for pixieN base), micropather |
-| `og_runtime` | `og_core`, `og_sim`, `og_data`, `og_entities`, `og_io`, `og_render`, `og_input` |
+| `og_runtime` | `og_core`, `og_sim`, `og_data`, `og_resources`, `og_entities`, `og_io`, `og_render`, `og_input` |
 | `og_render` | `og_core`, SDL2 |
 | `og_input` | `og_core`, SDL2 |
-| `og_ui` | `og_runtime`, `og_render`, `og_input`, `og_data` |
+| `og_ui` | `og_runtime`, `og_render`, `og_input`, `og_data`, `og_resources` |
 | `og_platform` | `og_io`, SDL2 |
 
 ### Forbidden Dependencies
@@ -557,7 +571,7 @@ ctest --preset ci-test         # Run tests
 ### CMake Targets
 
 **Module libraries** (native builds):
-`og_core`, `og_sim`, `og_data`, `og_entities`, `og_io`, `og_runtime`, `og_render`, `og_input`, `og_ui`, `og_platform`
+`og_core`, `og_sim`, `og_data`, `og_resources`, `og_entities`, `og_io`, `og_runtime`, `og_render`, `og_input`, `og_ui`, `og_platform`
 
 **External libraries:**
 `og_ext_micropather`, `og_ext_yam`, `og_ext_yaml`, `og_ext_zlib`, `og_ext_libzip`, `og_ext_physfs`
@@ -710,8 +724,9 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `src/ui/level_editor.cpp` | Scenario editor (openscen binary) |
 | `src/render/video.cpp` | SDL2 graphics layer — pixel buffer management |
 | `src/render/view.cpp` | Viewport/camera system, split-screen rendering |
-| `src/data/level_data.cpp` | Level file loading and saving |
-| `src/data/save_data.cpp` | Save game serialization |
+| `src/resources/level_file_io.cpp` | Level file loading and saving |
+| `src/resources/save_data.cpp` | Save game serialization |
+| `src/resources/gloader.cpp` | Game content loading from packages |
 | `src/input/input.cpp` | Keyboard/controller event handling |
 | `src/gameplay/game_world.cpp` | Live game simulation tick (extracted from `screen::act()`) |
 | `src/sim/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |

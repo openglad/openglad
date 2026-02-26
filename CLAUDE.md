@@ -56,7 +56,7 @@ cd dist && python3 -m http.server 8080
 
 ## Module Structure
 
-The codebase is organized into 10 modules, each a separate CMake static library with enforced dependency rules.
+The codebase is organized into 11 modules, each a separate CMake static library with enforced dependency rules.
 
 ```
 include/openglad/<module>/   — public headers (stable API)
@@ -70,7 +70,8 @@ third_party/<lib>/           — vendored external libraries
 |--------|-------------|---------|
 | `core` | `og_core` | Pure utilities, math, logging, constants |
 | `sim` | `og_sim` | Deterministic headless simulation |
-| `data` | `og_data` | Serialization: levels, saves, config |
+| `data` | `og_data` | Data type definitions (PixieData, etc.) |
+| `resources` | `og_resources` | File I/O serialization: levels, saves, config, content loading |
 | `entities` | `og_entities` | Game objects: walker, living, weap, treasure, effect |
 | `io` | `og_io` | Filesystem abstraction (PhysFS, libzip, libyaml) |
 | `runtime` | `og_runtime` | Game session, context, loop, screen |
