@@ -377,6 +377,17 @@ bool write_bytes(const std::filesystem::path& p, const std::vector<unsigned char
     return n == bytes.size();
 }
 
+struct ScopedFileRemover {
+    std::vector<std::filesystem::path> files;
+
+    ~ScopedFileRemover()
+    {
+        std::error_code ec;
+        for (const auto& file : files)
+            std::filesystem::remove(file, ec);
+    }
+};
+
 struct LevelR12Fixture {
     LevelData level{1, true};
     SaveData save;
@@ -423,16 +434,23 @@ OG_UNIT_TEST(test_level_data_r12_load_title_dispatch_and_save_grid_paths)
     const int id_ver = 9413;
     const int id_title = 9414;
 
-    OG_ASSERT(write_bytes(std::filesystem::path("scen") / "scen9411.fss", {'F', 'S', 'S'}));
-    OG_ASSERT(write_bytes(std::filesystem::path("scen") / "scen9412.fss", {'B', 'A', 'D', 6}));
-    OG_ASSERT(write_bytes(std::filesystem::path("scen") / "scen9413.fss", {'F', 'S', 'S', 1}));
+    const auto parse_path = std::filesystem::path("scen") / ("scen" + std::to_string(id_parse) + ".fss");
+    const auto bad_path = std::filesystem::path("scen") / ("scen" + std::to_string(id_bad) + ".fss");
+    const auto version_path = std::filesystem::path("scen") / ("scen" + std::to_string(id_ver) + ".fss");
+    const auto title_path = std::filesystem::path("scen") / ("scen" + std::to_string(id_title) + ".fss");
+    ScopedFileRemover cleanup;
+    cleanup.files = {parse_path, bad_path, version_path, title_path};
+
+    OG_ASSERT(write_bytes(parse_path, {'F', 'S', 'S'}));
+    OG_ASSERT(write_bytes(bad_path, {'B', 'A', 'D', 6}));
+    OG_ASSERT(write_bytes(version_path, {'F', 'S', 'S', 1}));
 
     std::vector<unsigned char> titled = {'F', 'S', 'S', 6};
     const char grid[8] = {'g','r','i','d',0,0,0,0};
     titled.insert(titled.end(), grid, grid + 8);
     const char title[30] = "Coverage R12";
     titled.insert(titled.end(), title, title + 30);
-    OG_ASSERT(write_bytes(std::filesystem::path("scen") / "scen9414.fss", titled));
+    OG_ASSERT(write_bytes(title_path, titled));
 
     LevelData parse_fail(id_parse, true);
     OG_ASSERT(parse_fail.load_with_error() == LevelData::IoError::ParseFailed);
@@ -919,4 +937,3 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     (void)level_headless;
 }
 } // namespace detail_level_data_r15
-
