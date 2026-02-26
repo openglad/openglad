@@ -16,7 +16,7 @@
  */
 // Map smoother, for use in the scenario editor ..
 
-#include <openglad/resources/smooth.h>
+#include <openglad/gameplay/smooth.h>
 #include <openglad/legacy/base.h>
 #include <openglad/platform/game_context.h>
 #include <array>
