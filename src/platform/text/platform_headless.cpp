@@ -183,7 +183,7 @@ walker* find_follow_leader()
 #include <openglad/resources/og_file.h>
 #include <openglad/legacy/base.h>
 
-short end_of_file = 0;
+thread_local short end_of_file = 0;
 
 std::string read_one_line(og::io::OgFile& infile, short length)
 {

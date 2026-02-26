@@ -346,6 +346,7 @@ static const char* controls_help_lines[] = {
 static const int NUM_CONTROLS_LINES = sizeof(controls_help_lines) / sizeof(controls_help_lines[0]);
 
 // Dynamic help content loaded from files
+// Process-global by design: initialized once, then read-only for all sessions.
 static std::vector<std::string> classes_help_lines;
 static std::vector<std::string> editor_help_lines;
 static bool help_files_loaded = false;

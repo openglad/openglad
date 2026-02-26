@@ -26,6 +26,7 @@ const EffectFamilyDescriptor& describe_effect_door_open();
 const EffectFamilyDescriptor& describe_effect_bomb();
 const EffectFamilyDescriptor& describe_effect_explosion();
 
+// Process-global registry by design: populated once at startup, then read-only.
 static FamilyRegistryBase<EffectFamilyDescriptor, NUM_EFFECT_FAMILIES> s_registry;
 
 static void apply_defaults(EffectFamilyDescriptor& d)

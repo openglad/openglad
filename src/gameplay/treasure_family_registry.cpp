@@ -28,6 +28,7 @@ const TreasureFamilyDescriptor& describe_treasure_teleporter();
 const TreasureFamilyDescriptor& describe_treasure_life_gem();
 const TreasureFamilyDescriptor& describe_treasure_key();
 
+// Process-global registry by design: populated once at startup, then read-only.
 static FamilyRegistryBase<TreasureFamilyDescriptor, NUM_TREASURE_FAMILIES> s_registry;
 
 static void apply_defaults(TreasureFamilyDescriptor& d)

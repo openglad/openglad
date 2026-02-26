@@ -44,6 +44,7 @@ const FamilyDescriptor& describe_family_orc();
 const FamilyDescriptor& describe_family_barbarian();
 const FamilyDescriptor& describe_family_archmage();
 
+// Process-global registry by design: populated once at startup, then read-only.
 static FamilyRegistryBase<FamilyDescriptor, NUM_FAMILIES> s_registry;
 
 static void apply_defaults(FamilyDescriptor& d)

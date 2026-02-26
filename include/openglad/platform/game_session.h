@@ -15,6 +15,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/resources/save_io.h>
+#include <openglad/sim/sim_input_handler.h>
 
 struct SDL_Surface;
 struct InputHardwareState;
@@ -116,7 +117,7 @@ public:
     bool debug_draw_obmap_ = false;
 
     // Entity-layer state (Phase 4) — moved from guy.cpp and cheat_handler.cpp.
-    int guy_id_counter_ = 0;
+    std::atomic<int> guy_id_counter_{0};
     short changedteam_[6] = {};
 
     // Keybinding storage (Phase 5) — moved from view.cpp allkeys global.
@@ -124,6 +125,9 @@ public:
 
     // Timer anchor (Phase 6) — moved from util.cpp thread_local g_reset_time.
     std::chrono::steady_clock::time_point reset_time_ = std::chrono::steady_clock::now();
+
+    // Per-player input debounce state (M29) — session-owned, not process-global.
+    SimInputDebounce input_debounce_[6] = {};
 
     // Picker UI state (Phase 7a) — moved from picker*.cpp globals.
     std::unique_ptr<PickerState> picker_;

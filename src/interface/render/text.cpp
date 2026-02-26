@@ -26,6 +26,7 @@
 #include <string>
 #include <string_view>
 
+// Process-global shared render assets: loaded once, reused across sessions.
 static PixieData letters1;
 static PixieData letters_big;
 
@@ -114,6 +115,7 @@ Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char
 	return 1;
 }
 
+// Shared format scratch buffer for legacy text APIs; callers are single-threaded in render paths.
 static char text_buffer[255];
 
 Sint32 text::write_formatted(Sint32 x, Sint32 y, const char* str,
