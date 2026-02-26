@@ -243,6 +243,7 @@ class screen : public og::render::VideoBase
 		LevelVisuals level_visuals_;
 
 		// Save data
+		// TODO: Move SaveData ownership to GameSession; screen should not own persistence state.
 		SaveData save_data;
 
 		std::string special_name[NUM_FAMILIES][NUM_SPECIALS];

@@ -1231,6 +1231,7 @@ void GameWorld::clear()
     delete_grid();
     myobmap = std::make_unique<obmap>();
     title = "New Level";
+    id = 0;
     type = 0;
     par_value = 1;
     time_bonus_limit = 4000;
@@ -1252,6 +1253,14 @@ void GameWorld::clear()
     withdraw_requested = false;
     create_hit_effects = true;
     tick_count_ = 0;
+    rng_ = og::sim::SimRandom{};
+    entity_factory = nullptr;
+    entity_configure = nullptr;
+    entity_derived_stats = nullptr;
+    entity_graphics = nullptr;
+    on_pre_delete_objects = nullptr;
+    if (pathfinding)
+        pathfinding->reset();
     level_tick_count_ = 0;
     last_level_id_ = -1;
 }

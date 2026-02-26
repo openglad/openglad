@@ -316,6 +316,7 @@ const og::gameplay::GameWorld& screen::world() const
 
 screen::~screen()
 {
+	detach_world();
 	release_timer();
 	soundp.reset();
 	cleanup(1); //make sure we've cleaned up
@@ -558,12 +559,15 @@ void screen::process_input(const InputState& input_state)
 
 bool screen::act()
 {
+	if (!world_)
+		return false;
+
 	// Delegate simulation tick to GameWorld.
 	og::sim::SimEventLog& events = *og::gameplay::current_game->sim_events;
 	auto& bridge = og::interface::platform_bridge();
-	world().my_team = save_data.my_team;
-	world().create_hit_effects = active_config().is_on("effects", "hit_anim");
-	world().tick();
+	world_->my_team = save_data.my_team;
+	world_->create_hit_effects = active_config().is_on("effects", "hit_anim");
+	world_->tick();
 	sync_save_from_world();
 
 	struct ExitRequest
@@ -622,7 +626,7 @@ bool screen::act()
 				damage_tile(static_cast<short>(ev.a), static_cast<short>(ev.b));
 				break;
 			case og::sim::EventKind::SetEnd:
-				world().end = 1;
+				world_->end = 1;
 				break;
 			case og::sim::EventKind::RequestExitConfirmation:
 				// First request wins; duplicates in this tick are ignored.
@@ -644,7 +648,7 @@ bool screen::act()
 				}
 				break;
 			case og::sim::EventKind::WithdrawToLevel:
-				world().withdraw_requested = true;
+				world_->withdraw_requested = true;
 				if (!pending_withdraw_level.has_value())
 					pending_withdraw_level = static_cast<short>(static_cast<std::int32_t>(ev.a));
 				break;
@@ -665,7 +669,7 @@ bool screen::act()
 		{
 			if (req.withdraw)
 			{
-				world().withdraw_requested = true;
+				world_->withdraw_requested = true;
 				const short dest_level = pending_withdraw_level.has_value()
 					? *pending_withdraw_level : req.dest_level;
 				save_data.load("save0");
@@ -680,16 +684,16 @@ bool screen::act()
 		}
 
 		// User declined the prompt; clear any pending withdrawal state.
-		world().withdraw_requested = false;
+		world_->withdraw_requested = false;
 	}
 
 	// Handle level completion / game ending
-	if (world().game_ended && !world().end)
+	if (world_->game_ended && !world_->end)
 	{
-		return endgame(world().ending, world().next_level);
+		return endgame(world_->ending, world_->next_level);
 	}
 
-	if (world().end)
+	if (world_->end)
 		return 1;
 
 	return 1;
