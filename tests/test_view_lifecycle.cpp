@@ -105,7 +105,8 @@ void test_viewscreen_find_next_control_priorities()
     walker* found3 = v.find_next_control();
     TEST_ASSERT(found3 == player_other_teamp, "should fall back to any living player character");
 
-    // Cleanup - remove just our inserted walkers.
-    og::runtime::current_session->myscreen_->world().oblist.clear();
+    // Cleanup - remove just our inserted walkers.  Use move-then-clear
+    // because walker destructors iterate entity lists via clear_backlinks_to.
+    { auto tmp = std::move(og::runtime::current_session->myscreen_->world().oblist); }
 }
 REGISTER_TEST(test_viewscreen_find_next_control_priorities);

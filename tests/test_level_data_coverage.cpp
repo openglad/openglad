@@ -654,12 +654,14 @@ void test_level_data_round5_query_grid_passable_contiguous_block_paths()
     TEST_ASSERT(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living),
                 "wall4 should block living immediately");
 
-    FixedRandom rng_block(1);
+    // Seed the world RNG so query_grid_passable's rng_.next() returns non-zero.
+    og::runtime::current_session->myscreen_->world().rng_ = og::sim::SimRandom(1);
     TEST_ASSERT(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should block when rng returns non-zero");
 
     owner->setxy(8, 0); // triggers dist < GRID_SIZE adjustment branch
-    FixedRandom rng_pass(0);
+    // Seed=0 makes the first rng_.next() return 0 (LCG: 12345>>16 = 0).
+    og::runtime::current_session->myscreen_->world().rng_ = og::sim::SimRandom(0);
     TEST_ASSERT(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon),
                 "wall4 projectile should pass and fall through with rng zero");
 

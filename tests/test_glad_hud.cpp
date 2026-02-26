@@ -109,7 +109,7 @@ void test_glad_remaining_counts()
 
     foe2p->dead = 1;
     TEST_ASSERT_EQ(1, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp), "dead foes should not be counted");
-    og::runtime::current_session->myscreen_->world().oblist.clear();
+    { auto tmp = std::move(og::runtime::current_session->myscreen_->world().oblist); }
 }
 REGISTER_TEST(test_glad_remaining_counts);
 

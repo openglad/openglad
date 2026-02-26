@@ -1,5 +1,6 @@
 #include <openglad/core/stats.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/platform/guy_create.h>
 #include <openglad/gameplay/walker.h>
@@ -315,34 +316,45 @@ void test_stats_walk_to_foe_short_circuit_and_path_branches()
     if (!(actor && foe))
         return;
 
-    actor->team_num = 0;
-    foe->team_num = 1;
-    actor->setxy(GRID_SIZE * 8, GRID_SIZE * 8);
-    foe->setxy(static_cast<std::int32_t>(actor->xpos + 16), static_cast<std::int32_t>(actor->ypos));
-    actor->foe = foe.get();
-    actor->path_check_counter = 0;
-    actor->stats()->clear_command();
+    // Walkers must be in the world's oblist for find_foes_in_range() to find them.
+    walker* actor_ptr = actor.get();
+    walker* foe_ptr = foe.get();
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(actor));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(foe));
+
+    actor_ptr->team_num = 0;
+    foe_ptr->team_num = 1;
+    // Ensure enemy mode (allied_mode=0) so different teams are hostile.
+    og::runtime::current_session->myscreen_->world().allied_mode = 0;
+    actor_ptr->setxy(GRID_SIZE * 8, GRID_SIZE * 8);
+    foe_ptr->setxy(static_cast<std::int32_t>(actor_ptr->xpos + 16), static_cast<std::int32_t>(actor_ptr->ypos));
+    actor_ptr->foe = foe_ptr;
+    actor_ptr->path_check_counter = 0;
+    actor_ptr->stats()->clear_command();
 
     FixedRandom rng_nonzero(1); // avoid rng(300)==0 early-return branch
     IRandom* prev_rng = ctx().rng;
     ctx().rng = &rng_nonzero;
+    // walk_to_foe uses world->rng_ (SimRandom), not ctx().rng. Seed it so
+    // rng_.next(300) returns non-zero to avoid the early-return branch.
+    og::runtime::current_session->myscreen_->world().rng_ = og::sim::SimRandom(1);
 
     // Nearby foe path: should short-circuit into attack command logic.
-    bool ok = actor->stats()->walk_to_foe();
+    bool ok = actor_ptr->stats()->walk_to_foe();
     TEST_ASSERT(ok, "walk_to_foe should succeed for nearby foe");
 
     // Nearby but dead foe: find_foes_in_range should fail and zero command count branch should run.
-    actor->stats()->force_command(COMMAND_WALK, 5, 1, 0);
-    foe->dead = 1;
-    actor->path_check_counter = 0;
-    ok = actor->stats()->walk_to_foe();
+    actor_ptr->stats()->force_command(COMMAND_WALK, 5, 1, 0);
+    foe_ptr->dead = 1;
+    actor_ptr->path_check_counter = 0;
+    ok = actor_ptr->stats()->walk_to_foe();
     TEST_ASSERT(ok, "walk_to_foe should still run with dead remembered foe");
 
     // Distant foe path: executes find_path_to_foe() branch.
-    foe->dead = 0;
-    foe->setxy(static_cast<std::int32_t>(actor->xpos + 600), static_cast<std::int32_t>(actor->ypos));
-    actor->path_check_counter = 0;
-    ok = actor->stats()->walk_to_foe();
+    foe_ptr->dead = 0;
+    foe_ptr->setxy(static_cast<std::int32_t>(actor_ptr->xpos + 600), static_cast<std::int32_t>(actor_ptr->ypos));
+    actor_ptr->path_check_counter = 0;
+    ok = actor_ptr->stats()->walk_to_foe();
     TEST_ASSERT(ok, "walk_to_foe should run distant-path branch");
 
     ctx().rng = prev_rng;

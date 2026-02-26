@@ -136,6 +136,18 @@ void run_all_tests() {
         fprintf(stderr, "\n=== Running %d tests ===\n\n", g_test_registry_count);
     }
 
+    // Pre-initialize current_game so the very first test has a valid gameplay
+    // context (the post-test cleanup block below only runs *after* each test).
+    if (og::runtime::current_session->myscreen_ != nullptr)
+    {
+        screen* s = og::runtime::current_session->myscreen_;
+        static og::sim::SimEventLog test_events;
+        static og::gameplay::GameplayContext stable_game_ctx;
+        stable_game_ctx.world = &s->world();
+        stable_game_ctx.sim_events = &test_events;
+        og::gameplay::current_game = &stable_game_ctx;
+    }
+
     int run_idx = 0;
     for (int i = 0; i < g_test_registry_count; i++) {
         if (!test_is_selected(g_test_registry[i].name))

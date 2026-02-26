@@ -73,6 +73,8 @@ void treasure::set_direct_frame(short whatframe)
 // Finds the next connected teleporter in the fxlist for you to warp to.
 walker  * treasure::find_teleport_target()
 {
+	if (!og::gameplay::current_game || !og::gameplay::current_game->world)
+		return nullptr;
 	auto& ls = og::gameplay::current_game->world->fxlist;
 	//Log("Teleporting from #%d ..", number);
 

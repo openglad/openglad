@@ -1239,7 +1239,6 @@ void GameWorld::clear()
     delete_grid();
     myobmap = std::make_unique<obmap>();
     title = "New Level";
-    id = 0;
     type = 0;
     par_value = 1;
     time_bonus_limit = 4000;
@@ -1262,11 +1261,11 @@ void GameWorld::clear()
     create_hit_effects = true;
     tick_count_ = 0;
     rng_ = og::sim::SimRandom{};
-    entity_factory = nullptr;
-    entity_configure = nullptr;
-    entity_derived_stats = nullptr;
-    entity_graphics = nullptr;
-    on_pre_delete_objects = nullptr;
+    // Note: entity_factory, entity_configure, entity_derived_stats,
+    // entity_graphics, and on_pre_delete_objects are intentionally NOT reset
+    // here.  These callbacks are structural wiring set by the screen/platform
+    // layer (via wire_loader_to_world / attach_world) and must persist across
+    // level loads.  clear() resets level *data*, not platform bindings.
     if (pathfinding)
         pathfinding->reset();
     level_tick_count_ = 0;

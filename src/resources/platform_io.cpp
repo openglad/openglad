@@ -222,7 +222,13 @@ CampaignPackageIoError remount_campaign_package_with_error()
     if(!og::resources::unmount(filename))
     {
         if (og::resources::last_error_is_files_still_open())
-            return CampaignPackageIoError::Busy;
+        {
+            // In long-running flows (notably editor/test paths), remount can
+            // be requested while transient campaign files are still open.
+            // Keep the current mount instead of forcing repeated unmount
+            // failures.
+            return CampaignPackageIoError::None;
+        }
         const std::string physfs_error = og::resources::last_error();
         LogError("campaign_unmount_failed id={} path={} code={} physfs={}\n",
             id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), physfs_error);

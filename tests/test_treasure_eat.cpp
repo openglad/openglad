@@ -342,7 +342,6 @@ void test_treasure_batch7_explicit_fxlist_teleporter_branches()
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
     auto& fx = og::runtime::current_session->myscreen_->world().fxlist;
-    fx.clear();
 
     auto before = std::make_unique<treasure>();
     before->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
@@ -380,7 +379,7 @@ void test_treasure_batch7_explicit_fxlist_teleporter_branches()
     unknown_family.set_order_family(Order::Treasure, static_cast<char>(-1));
     TEST_ASSERT(unknown_family.eat_me(nullptr), "unknown treasure family should use default eat_me return path");
 
-    fx.clear();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_treasure_batch7_explicit_fxlist_teleporter_branches);
 
@@ -397,7 +396,6 @@ void test_treasure_find_teleport_target_filters_invalid_candidates_and_wraps()
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
     auto& fx = og::runtime::current_session->myscreen_->world().fxlist;
-    fx.clear();
 
     auto before = std::make_unique<treasure>();
     before->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
@@ -442,7 +440,7 @@ void test_treasure_find_teleport_target_filters_invalid_candidates_and_wraps()
     found = static_cast<treasure*>(self_ptr)->find_teleport_target();
     TEST_ASSERT(found == before_ptr, "when forward candidates are invalid, search should wrap to earlier match");
 
-    fx.clear();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_treasure_find_teleport_target_filters_invalid_candidates_and_wraps);
 
@@ -450,7 +448,6 @@ void test_treasure_round10_find_teleport_target_forward_wrap_and_empty_paths()
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
     auto& fx = og::runtime::current_session->myscreen_->world().fxlist;
-    fx.clear();
 
     auto self = std::make_unique<treasure>();
     self->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
@@ -473,6 +470,6 @@ void test_treasure_round10_find_teleport_target_forward_wrap_and_empty_paths()
     TEST_ASSERT(static_cast<treasure*>(self_ptr)->find_teleport_target() == nullptr,
                 "find_teleport_target should return nullptr when no live same-level teleporter exists");
 
-    fx.clear();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_treasure_round10_find_teleport_target_forward_wrap_and_empty_paths);

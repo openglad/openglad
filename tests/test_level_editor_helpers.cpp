@@ -160,7 +160,9 @@ void test_level_editor_some_hit_checks_all_lists()
     TEST_ASSERT(hit == target1p, "some_hit should find hit in oblist");
     TEST_ASSERT(probep->collide_ob == target1p, "collide_ob should be set");
 
-    og::runtime::current_session->myscreen_->world().oblist.clear();
+    // Move-then-clear: walker destructors call clear_backlinks_to() which
+    // iterates entity lists; clearing in-place would be UB.
+    { auto tmp = std::move(og::runtime::current_session->myscreen_->world().oblist); }
 
     // fxlist hit
     auto target2 = make_living(FAMILY_ORC);
@@ -170,7 +172,7 @@ void test_level_editor_some_hit_checks_all_lists()
     hit = some_hit(10, 10, probep, world);
     TEST_ASSERT(hit == target2p, "some_hit should find hit in fxlist");
 
-    og::runtime::current_session->myscreen_->world().fxlist.clear();
+    { auto tmp = std::move(og::runtime::current_session->myscreen_->world().fxlist); }
 
     // weaplist hit
     auto target3 = make_living(FAMILY_ORC);
@@ -180,7 +182,7 @@ void test_level_editor_some_hit_checks_all_lists()
     hit = some_hit(10, 10, probep, world);
     TEST_ASSERT(hit == target3p, "some_hit should find hit in weaplist");
 
-    og::runtime::current_session->myscreen_->world().weaplist.clear();
+    { auto tmp = std::move(og::runtime::current_session->myscreen_->world().weaplist); }
 
     // no hit
     hit = some_hit(1000, 1000, probep, world);

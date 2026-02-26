@@ -11,6 +11,7 @@
 #include <openglad/platform/guy_create.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/stats.h>
@@ -1501,7 +1502,9 @@ void test_cleric_turn_undead_success_with_undead_targets()
     cleric->busy = 0;
     cleric->team_num = 1;
     cleric->stats()->level = 6;
-    ConstRandomFamily deterministic_rng(39);
+    // Seed the world RNG so turn_undead's comparison succeeds deterministically.
+    // turn_undead uses world->rng_.next(range*40) > world->rng_.next(target_level*10).
+    og::runtime::current_session->myscreen_->world().rng_ = og::sim::SimRandom(42);
 
     bool ok = fd->do_special(cleric);
     TEST_ASSERT(ok, "turn undead branch should execute when an undead foe is nearby");

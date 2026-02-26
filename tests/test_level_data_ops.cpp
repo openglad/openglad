@@ -566,6 +566,9 @@ void test_level_data_save_description_serialization_bounds()
     og::runtime::current_session->myscreen_->world().par_value = 2;
     og::runtime::current_session->myscreen_->world().time_bonus_limit = 3000;
     og::runtime::current_session->myscreen_->world().delete_objects();
+    // Ensure a valid grid exists so the save doesn't fail grid validation.
+    if (og::runtime::current_session->myscreen_->world().grid.w == 0)
+        og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->level_file_metadata_.description.clear();
     og::runtime::current_session->myscreen_->level_file_metadata_.description.push_back(empty_line);
     og::runtime::current_session->myscreen_->level_file_metadata_.description.push_back(boundary_line);
