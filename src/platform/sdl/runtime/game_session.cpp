@@ -46,6 +46,7 @@ std::atomic<std::uint64_t> primary_session_generation{0};
 
 namespace {
 std::mutex g_primary_session_mutex;
+std::mutex g_render_surface_mutex;
 
 std::uint64_t install_primary_session(GameSession* session)
 {
@@ -94,6 +95,7 @@ GameSession::GameSession(const Config& session_cfg)
 
     prev_session_ = current_session;
     prev_primary_session_ = primary_session.load(std::memory_order_acquire);
+    prev_session_generation_ = prev_session_ ? prev_session_->generation_ : 0;
 
     // Allocate input hardware state.
     input_hw_ = std::make_unique<InputHardwareState>();
@@ -247,21 +249,38 @@ const cfg_store& GameSession::config() const { return ::cfg; }
 
 GameSession::~GameSession()
 {
-    mark_session_dead(this);
+    try {
+        mark_session_dead(this);
+    } catch (...) {
+    }
 
     if (cfg_.install_legacy_globals) {
-        restore_primary_session_if_unchanged(
-            this, installed_primary_generation_, prev_primary_session_);
+        try {
+            restore_primary_session_if_unchanged(
+                this, installed_primary_generation_, prev_primary_session_);
+        } catch (...) {
+        }
     }
 
     if (cfg_.install_legacy_globals) {
         if (current_session == this) {
-            install_thread_session(prev_session_);
+            GameSession* restore_session = prev_session_;
+            try {
+                if (!is_session_live(restore_session, prev_session_generation_)) {
+                    restore_session = nullptr;
+                }
+            } catch (...) {
+                restore_session = nullptr;
+            }
+            install_thread_session(restore_session);
         }
     }
 
     screen_owner_.reset();
     prefs_owner_.reset();
+    if (ctx_.rng == seeded_rng_.get()) {
+        ctx_.rng = nullptr;
+    }
     seeded_rng_.reset();
 
     if (session_surface_) {
@@ -297,6 +316,7 @@ GameSession::SessionScope::SessionScope(GameSession& session)
 
     // Swap render surface if this session has its own.
     if (session_->session_surface_ && E_Screen) {
+        render_swap_lock_ = std::unique_lock<std::mutex>(g_render_surface_mutex);
         saved_render_surface_ = E_Screen->render;
         did_swap_render_ = true;
         E_Screen->render = session_->session_surface_;
@@ -335,6 +355,7 @@ GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
     , installed_primary_generation_(other.installed_primary_generation_)
     , saved_render_surface_(other.saved_render_surface_)
     , did_swap_render_(other.did_swap_render_)
+    , render_swap_lock_(std::move(other.render_swap_lock_))
 {
     other.session_ = nullptr;
 }

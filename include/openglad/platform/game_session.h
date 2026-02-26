@@ -168,6 +168,7 @@ private:
     // Saved previous session pointer for constructor/destructor restore.
     GameSession* prev_session_ = nullptr;
     GameSession* prev_primary_session_ = nullptr;
+    std::uint64_t prev_session_generation_ = 0;
     std::uint64_t generation_ = 0;
     std::uint64_t installed_primary_generation_ = 0;
 
@@ -237,6 +238,7 @@ private:
     std::uint64_t installed_primary_generation_ = 0;
     SDL_Surface* saved_render_surface_ = nullptr;
     bool did_swap_render_ = false;
+    std::unique_lock<std::mutex> render_swap_lock_;
 };
 
 } // namespace og::runtime
