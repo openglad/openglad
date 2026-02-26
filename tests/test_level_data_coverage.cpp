@@ -1,4 +1,5 @@
 #include <openglad/resources/campaign_data.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/resources/level_io.h>
 #include <openglad/resources/level_render.h>
 #include <openglad/gameplay/game_world.h>

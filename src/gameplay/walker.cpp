@@ -38,7 +38,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
-#include <openglad/platform/game_session.h> // current_difficulty macro
+#include <openglad/gameplay/session_access.h>
 // pixieN include not needed here; render bridge is in walker_render_bridge.cpp
 #include <format>
 #include <span>
@@ -1429,7 +1429,7 @@ void walker::set_difficulty(std::uint32_t whatlevel)
 {
 	std::uint32_t temp, dif1;
 
-	dif1 = difficulty_level[og::runtime::current_session->current_difficulty_];
+	dif1 = difficulty_level[og::gameplay::current_difficulty_index()];
 
 	switch (order)
 	{

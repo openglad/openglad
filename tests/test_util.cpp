@@ -1,4 +1,5 @@
 #include <cstring>
+#include <openglad/platform/game_session.h>
 #include <string>
 
 #include "test_framework.h"

@@ -1,4 +1,5 @@
 #include "SDL.h"
+#include <openglad/platform/game_session.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/gameplay/walker.h>

@@ -1,4 +1,5 @@
 #include <memory>
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/input/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>

@@ -26,6 +26,7 @@
 #include <openglad/interface/screen.h>
 #include <span>
 #include <openglad/platform/game_context.h>
+#include <openglad/platform/game_session.h>
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }

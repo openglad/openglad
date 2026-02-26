@@ -1,4 +1,5 @@
 #include <openglad/core/stats.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/platform/guy_create.h>
 #include <openglad/resources/gloader.h>

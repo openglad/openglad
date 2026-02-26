@@ -25,6 +25,7 @@
 */
 
 #include <openglad/platform/game_context.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/sdl/video.h>

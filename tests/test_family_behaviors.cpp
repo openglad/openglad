@@ -7,6 +7,7 @@
  * FamilyDescriptor callbacks.
  */
 #include <openglad/gameplay/guy.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/platform/guy_create.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>

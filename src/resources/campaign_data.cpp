@@ -16,7 +16,7 @@
  */
 
 #include <openglad/resources/campaign_data.h>
-#include <openglad/platform/io_common.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/yaml_stream.h>
 #include <openglad/resources/ogfile_yaml.h>

@@ -1,4 +1,5 @@
 #include "SDL.h"
+#include <openglad/platform/game_session.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"

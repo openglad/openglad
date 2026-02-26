@@ -1,6 +1,7 @@
 #include "test_framework.h"
 #include "SDL.h"
 #include <openglad/interface/screen.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>

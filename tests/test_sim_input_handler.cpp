@@ -2,6 +2,7 @@
  * These are integration tests (require SDL for walker creation).
  */
 #include <openglad/sim/sim_input_handler.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/interface/input/input_action.h>
 #include <openglad/resources/gloader.h>

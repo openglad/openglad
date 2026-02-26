@@ -7,6 +7,7 @@
  */
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/gameplay/session_access.h>
 #include <openglad/gameplay/sim_event_log.h>
 
 // The existing global random() function (defined in screen.cpp or text_client main)
@@ -46,3 +47,25 @@ void set_global_context(GameContext* context)
 {
     s_test_context_override = context;
 }
+
+namespace og::gameplay {
+
+int allocate_guy_id()
+{
+    og::runtime::ensure_thread_session();
+    if (og::runtime::current_session)
+        return og::runtime::current_session->guy_id_counter_++;
+
+    static thread_local int s_fallback_guy_id = 0;
+    return s_fallback_guy_id++;
+}
+
+std::int32_t current_difficulty_index()
+{
+    og::runtime::ensure_thread_session();
+    if (og::runtime::current_session)
+        return og::runtime::current_session->current_difficulty_;
+    return 1;
+}
+
+} // namespace og::gameplay

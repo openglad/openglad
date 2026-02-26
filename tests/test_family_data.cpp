@@ -1,4 +1,5 @@
 #include <openglad/legacy/test_trace.h>
+#include <openglad/platform/game_session.h>
 #include "test_framework.h"
 #include <openglad/gameplay/guy.h>
 #include <openglad/platform/guy_create.h>

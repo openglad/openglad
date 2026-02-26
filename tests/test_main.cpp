@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <openglad/platform/game_session.h>
 #include <signal.h>
 #include <cstdlib>
 #ifdef __linux__

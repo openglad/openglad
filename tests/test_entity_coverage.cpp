@@ -1,4 +1,5 @@
 #include <openglad/sim/sim_input_handler.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/input/input_action.h>
 #include <openglad/interface/input/input_state.h>
 #include <openglad/resources/gloader.h>

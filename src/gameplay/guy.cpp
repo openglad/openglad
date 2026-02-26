@@ -24,7 +24,7 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
-#include <openglad/platform/game_session.h>
+#include <openglad/gameplay/session_access.h>
 #include <cmath>
 #include <cstring>
 #define RAISE 1.85  // please also change in picker.cpp
@@ -64,7 +64,7 @@ guy::guy()
     scen_shots = 0;
     scen_hits = 0;
 	
-	id = og::runtime::current_session->guy_id_counter_++;
+	id = og::gameplay::allocate_guy_id();
 }
 
 // Set defaults for various types
@@ -108,7 +108,7 @@ guy::guy(int whatfamily)
         name = "BEAST";
     }
 	
-	id = og::runtime::current_session->guy_id_counter_++;
+	id = og::gameplay::allocate_guy_id();
 }
 
 

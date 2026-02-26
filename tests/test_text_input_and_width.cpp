@@ -1,4 +1,5 @@
 #include <openglad/legacy/base.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/render/text.h>
 #include "test_framework.h"
 

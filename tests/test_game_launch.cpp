@@ -1,4 +1,5 @@
 #include <openglad/legacy/test_trace.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/gameplay/walker.h>

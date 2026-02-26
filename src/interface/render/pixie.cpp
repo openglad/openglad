@@ -23,6 +23,7 @@
 		*changed the SDL surfaces to 24bit
 */
 #include "SDL.h"
+#include <openglad/platform/game_session.h>
 #include <openglad/interface/render/pixie.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/view.h>

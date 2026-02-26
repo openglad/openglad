@@ -1,4 +1,5 @@
 #include <array>
+#include <openglad/platform/game_session.h>
 #include <thread>
 #include <vector>
 

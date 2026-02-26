@@ -24,6 +24,7 @@
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/pixie.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input/input.h>
 #include <array>

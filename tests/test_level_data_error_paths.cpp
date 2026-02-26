@@ -1,4 +1,5 @@
 #include <openglad/resources/campaign_data.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/platform/io.h>
 #include <openglad/interface/screen.h>
