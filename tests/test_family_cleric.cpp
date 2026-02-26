@@ -19,6 +19,7 @@
 #include <openglad/gameplay/weap.h>
 #include <openglad/legacy/base.h>
 #include <openglad/platform/game_context.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/gameplay_context.h>
 
 // --- From test_family_cleric_coverage_push.cpp ---
@@ -109,18 +110,21 @@ struct ClericFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
-    og::gameplay::GameplayContext gameplay_ctx;
-    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
+    og::gameplay::GameWorld* saved_world_ = nullptr;
+    og::sim::SimEventLog* saved_sim_events_ = nullptr;
 
     ClericFixture()
     {
         level.myobmap = std::make_unique<obmap>();
         wire_test_entity_factory(level);
         level.id = 1;
-        prev_gameplay_ctx = og::gameplay::current_game;
-        og::gameplay::current_game = &gameplay_ctx;
-        gameplay_ctx.world = &level;
-        gameplay_ctx.sim_events = &events;
+        // Sync with session system so ensure_thread_session() won't clobber
+        // our gameplay context when guy() calls allocate_guy_id().
+        og::runtime::ensure_thread_session();
+        saved_world_ = og::gameplay::current_game->world;
+        saved_sim_events_ = og::gameplay::current_game->sim_events;
+        og::gameplay::current_game->world = &level;
+        og::gameplay::current_game->sim_events = &events;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -128,7 +132,10 @@ struct ClericFixture {
 
     ~ClericFixture()
     {
-        og::gameplay::current_game = prev_gameplay_ctx;
+        if (og::gameplay::current_game) {
+            og::gameplay::current_game->world = saved_world_;
+            og::gameplay::current_game->sim_events = saved_sim_events_;
+        }
     }
 };
 
@@ -312,25 +319,29 @@ struct ClericR12Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
-    og::gameplay::GameplayContext gameplay_ctx;
-    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
+    og::gameplay::GameWorld* saved_world_ = nullptr;
+    og::sim::SimEventLog* saved_sim_events_ = nullptr;
 
     ClericR12Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
         wire_test_entity_factory(level);
         level.id = 1;
-        prev_gameplay_ctx = og::gameplay::current_game;
-        og::gameplay::current_game = &gameplay_ctx;
-        gameplay_ctx.world = &level;
-        gameplay_ctx.sim_events = &events;
+        og::runtime::ensure_thread_session();
+        saved_world_ = og::gameplay::current_game->world;
+        saved_sim_events_ = og::gameplay::current_game->sim_events;
+        og::gameplay::current_game->world = &level;
+        og::gameplay::current_game->sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 
     ~ClericR12Fixture()
     {
-        og::gameplay::current_game = prev_gameplay_ctx;
+        if (og::gameplay::current_game) {
+            og::gameplay::current_game->world = saved_world_;
+            og::gameplay::current_game->sim_events = saved_sim_events_;
+        }
     }
 };
 
@@ -588,18 +599,19 @@ struct ClericR14Fixture {
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     GameContext gc;
-    og::gameplay::GameplayContext gameplay_ctx;
-    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
+    og::gameplay::GameWorld* saved_world_ = nullptr;
+    og::sim::SimEventLog* saved_sim_events_ = nullptr;
 
     ClericR14Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
         wire_test_entity_factory(level);
         level.id = 1;
-        prev_gameplay_ctx = og::gameplay::current_game;
-        og::gameplay::current_game = &gameplay_ctx;
-        gameplay_ctx.world = &level;
-        gameplay_ctx.sim_events = &events;
+        og::runtime::ensure_thread_session();
+        saved_world_ = og::gameplay::current_game->world;
+        saved_sim_events_ = og::gameplay::current_game->sim_events;
+        og::gameplay::current_game->world = &level;
+        og::gameplay::current_game->sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
@@ -610,7 +622,10 @@ struct ClericR14Fixture {
     ~ClericR14Fixture()
     {
         set_global_context(nullptr);
-        og::gameplay::current_game = prev_gameplay_ctx;
+        if (og::gameplay::current_game) {
+            og::gameplay::current_game->world = saved_world_;
+            og::gameplay::current_game->sim_events = saved_sim_events_;
+        }
     }
 };
 
@@ -744,18 +759,19 @@ struct ClericR15Fixture {
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     GameContext gc;
-    og::gameplay::GameplayContext gameplay_ctx;
-    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
+    og::gameplay::GameWorld* saved_world_ = nullptr;
+    og::sim::SimEventLog* saved_sim_events_ = nullptr;
 
     ClericR15Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
         wire_test_entity_factory(level);
         level.id = 1;
-        prev_gameplay_ctx = og::gameplay::current_game;
-        og::gameplay::current_game = &gameplay_ctx;
-        gameplay_ctx.world = &level;
-        gameplay_ctx.sim_events = &events;
+        og::runtime::ensure_thread_session();
+        saved_world_ = og::gameplay::current_game->world;
+        saved_sim_events_ = og::gameplay::current_game->sim_events;
+        og::gameplay::current_game->world = &level;
+        og::gameplay::current_game->sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
@@ -766,7 +782,10 @@ struct ClericR15Fixture {
     ~ClericR15Fixture()
     {
         set_global_context(nullptr);
-        og::gameplay::current_game = prev_gameplay_ctx;
+        if (og::gameplay::current_game) {
+            og::gameplay::current_game->world = saved_world_;
+            og::gameplay::current_game->sim_events = saved_sim_events_;
+        }
     }
 };
 

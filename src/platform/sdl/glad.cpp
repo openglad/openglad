@@ -40,6 +40,7 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/platform/game_context.h>
+#include <SDL.h>  // Required for SDL_main redefinition on Windows
 // theprefs is now a macro defined in view.h (via game_session.h)
 
 namespace
