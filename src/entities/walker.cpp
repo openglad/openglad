@@ -42,7 +42,9 @@
 #include <openglad/legacy/soundob.h>
 #include <openglad/runtime/game_session.h> // current_difficulty macro
 // pixieN include not needed here; render bridge is in walker_render_bridge.cpp
+#include <algorithm>
 #include <format>
+#include <limits>
 #include <span>
 
 // ************************************************************
@@ -61,6 +63,21 @@ extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
 // current_difficulty lives in GameSession — access via current_session->current_difficulty_.
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
+
+namespace
+{
+std::int32_t scale_los_circular(std::int32_t value)
+{
+    constexpr std::int64_t kNumerator = 309;
+    constexpr std::int64_t kDenominator = 256;
+    const std::int64_t scaled =
+        (static_cast<std::int64_t>(value) * kNumerator) / kDenominator;
+    return static_cast<std::int32_t>(std::clamp(
+        scaled,
+        static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
+        static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())));
+}
+} // namespace
 
 // Common initialization shared by both constructors
 void walker_init_common(walker* w)
@@ -883,19 +900,18 @@ walker  *walker::create_weapon()
 		weapon->damage *= static_cast<float>(stats_->level);
 	}
 	weapon->lineofsight += (stats_->level / 3);
-	switch ( facing(lastx, lasty) ) // make 'circular' ranges
-	{
-		case FACE_UP:
-		case FACE_RIGHT:
-		case FACE_DOWN:
-		case FACE_LEFT:
-			// this will multiply by 1.207 ..
-			weapon->lineofsight *= 309;
-			weapon->lineofsight /= 256; // = 1.207 for circular range
-			// this will multiply by 1.414
-			weapon->stepsize *= 362;
-			weapon->stepsize /= 256;
-			break;
+		switch ( facing(lastx, lasty) ) // make 'circular' ranges
+		{
+			case FACE_UP:
+			case FACE_RIGHT:
+			case FACE_DOWN:
+			case FACE_LEFT:
+				// this will multiply by 1.207 ..
+				weapon->lineofsight = scale_los_circular(weapon->lineofsight);
+				// this will multiply by 1.414
+				weapon->stepsize *= 362;
+				weapon->stepsize /= 256;
+				break;
 		default :
 			break;
 	}
