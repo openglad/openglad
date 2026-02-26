@@ -12,8 +12,8 @@
 #include <memory>
 #include <string>
 
-#include <openglad/data/pixie_data.h>
-#include <openglad/data/smooth.h>
+#include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/smooth.h>
 
 // Forward-declare Order enum class (defined in base.h)
 enum class Order : unsigned char;

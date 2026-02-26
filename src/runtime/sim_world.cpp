@@ -22,42 +22,6 @@ namespace og::sim {
 std::int32_t g_test_level_tick_limit_override = 0;
 #endif
 
-// File-local helper: find the nearest hostile entity for AI targeting.
-// Mirrors screen::find_far_foe() but operates on LevelData directly.
-// Uses the sim-layer's own deterministic RNG for invisibility checks.
-static walker* find_far_foe(LevelData& level, walker* ob, SimRandom& rng)
-{
-    if (!ob)
-        return nullptr;
-
-    walker* endfoe = nullptr;
-    std::int32_t distance = 10000;
-    ob->stats()->last_distance = 10000;
-
-    for (auto& uptr : level.world().oblist)
-    {
-        walker* foe = uptr.get();
-        if (foe == nullptr || foe->dead)
-            continue;
-
-        if (ob->is_friendly(foe) == 0)
-        {
-            if ((foe->query_order() == Order::Living ||
-                 foe->query_order() == Order::Generator) &&
-                (!(rng.next(foe->invisibility_left / 20))))
-            {
-                std::int32_t tempdistance = ob->distance_to_ob(foe);
-                if (tempdistance < distance)
-                {
-                    distance = tempdistance;
-                    endfoe = foe;
-                }
-            }
-        }
-    }
-    return endfoe;
-}
-
 void SimWorld::reset_level_progress()
 {
     level_tick_count_ = 0;
@@ -118,7 +82,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
                         ob->query_order() == Order::Living)
                         result.level_done = 0;
                     if (ob->foe == nullptr && ob->leader == nullptr)
-                        ob->foe = find_far_foe(level, ob, rng_);
+                        ob->foe = level.world().find_far_foe(ob);
                 }
             }
         }

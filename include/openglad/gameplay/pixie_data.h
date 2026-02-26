@@ -14,9 +14,31 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-//
-// Smooth.h
-//
+
 #pragma once
 
-#include <openglad/gameplay/smooth.h>
+#include <memory>
+
+class PixieData
+{
+    public:
+
+    unsigned char frames;
+    unsigned char w, h;
+    std::unique_ptr<unsigned char[]> data;
+
+    PixieData();
+    PixieData(unsigned char frames, unsigned char w, unsigned char h, unsigned char* data);
+
+    // Rule of Five: move-only type
+    PixieData(PixieData&& other) noexcept;
+    PixieData& operator=(PixieData&& other) noexcept;
+    PixieData(const PixieData&) = delete;
+    PixieData& operator=(const PixieData&) = delete;
+
+    ~PixieData() = default;
+
+    bool valid() const;
+
+    void free();
+};

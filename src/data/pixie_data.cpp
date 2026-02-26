@@ -15,7 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <openglad/data/pixie_data.h>
+#include <openglad/gameplay/pixie_data.h>
 
 PixieData::PixieData()
     : frames(0), w(0), h(0), data(nullptr)
