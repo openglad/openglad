@@ -380,7 +380,7 @@ Dependencies flow **inward toward purity**. Outer layers depend on inner layers;
 
 A build-time check enforces these boundaries:
 
-1. **`check_vendor_leaks.sh`** — Vendor headers (physfs, libzip, libyaml, zipint.h) may only appear in `src/io/`; micropather.h only in `src/entities/`. Public headers under `include/openglad/` must never include vendor headers.
+1. **`check_vendor_leaks.sh`** — Vendor headers (physfs, libzip, libyaml, zipint.h) may only appear in `src/resources/io/` (and SDL-specific I/O shims under `src/platform/sdl/io/`). Public headers under `include/openglad/` must never include vendor headers.
 
 This check runs as a custom CMake target (`check_vendor_leaks`) that executes before the `og_game` aggregate target.
 
@@ -669,20 +669,20 @@ Include-boundary note: `configure_openglad_library()` currently exposes the shar
 
 The project builds two executables from shared source with platform-specific implementations:
 
-- **`openglad`** (SDL client) — Full graphical game with rendering, audio, and input via SDL2. Platform-specific code lives in `src/sdl_client/`.
-- **`openglad_text`** (headless client) — SDL-free text-mode client for simulation, testing, and scripting. Platform-specific code lives in `src/text_client/`.
+- **`openglad`** (SDL client) — Full graphical game with rendering, audio, and input via SDL2. Platform-specific code lives in `src/platform/sdl/`.
+- **`openglad_text`** (headless client) — SDL-free text-mode client for simulation, testing, and scripting. Platform-specific code lives in `src/platform/text/`.
 
-Both targets link the same core modules (`og_core`, `og_sim`, `og_data`, `og_entities`, `og_io`). The boundary is enforced via link-time dispatch: shared code calls functions declared in `level_data_hooks.h` (e.g., `create_level_render`, `level_data_wire_entity_from_screen`), which have separate implementations in `sdl_context_services.cpp` (SDL) and `platform_headless.cpp` (headless).
+Both targets link the same core modules (`og_core`, `og_sim`, `og_data`, `og_entities`, `og_io`). The boundary is enforced via link-time dispatch: shared code depends on SDL-free bridge declarations (notably `PlatformBridge` and `LevelRender` interfaces), which are wired by platform-specific implementations in `sdl_context_services.cpp` (SDL) and `platform_headless.cpp` (headless).
 
 **Key boundary files:**
 
 | File | Purpose |
 |------|---------|
-| `src/sdl_client/runtime/sdl_context_services.cpp` | SDL implementations: view control wiring, entity rendering hooks, level draw |
-| `src/sdl_client/runtime/walker_render_bridge.cpp` | SDL `walker` member functions: render component, destructor, frame management |
-| `src/text_client/platform_headless.cpp` | Headless stubs: filesystem init, no-op/warning render functions |
-| `src/text_client/walker_headless.cpp` | Headless `walker` member functions: no render component, sim-only frame tracking |
-| `include/openglad/data/level_data_hooks.h` | Shared declarations enforcing signature parity between SDL and headless |
+| `src/platform/sdl/runtime/sdl_context_services.cpp` | SDL implementations: bridge wiring, audio callbacks, frame presentation |
+| `src/platform/sdl/runtime/walker_render_bridge.cpp` | SDL `walker` member functions: render component lifecycle and frame wiring |
+| `src/platform/text/platform_headless.cpp` | Headless stubs: filesystem init, bridge no-ops/warnings, `LevelRender` stubs |
+| `src/platform/text/walker_headless.cpp` | Headless `walker` member functions: no render component, sim-only frame tracking |
+| `include/openglad/interface/platform_bridge.h` | Shared SDL-free callback bridge used by both SDL and headless builds |
 
 **Render component pattern:** `walker` holds an optional `std::unique_ptr<WalkerRender> render_`. SDL builds create the component in `attach_render()`; headless builds leave it null. Entity code checks `if (render_)` before delegating to the render component. `LevelData` follows the same pattern with `std::unique_ptr<LevelRender> renderer_`.
 
@@ -781,26 +781,26 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 
 | File | Purpose |
 |------|---------|
-| `src/glad.cpp` | **Entry point.** `main()`, Emscripten frame wrapper, game state machine |
-| `src/runtime/screen.cpp` | Game world: `act()` delegates to `GameWorld::tick()`, `redraw()` renders + dispatches events |
-| `src/runtime/game_loop.cpp` | Per-frame loop: `game_frame()` and `game_frame_with_result()` |
-| `src/runtime/game_session.cpp` | RAII root: creates screen, prefs, installs legacy globals |
+| `src/platform/sdl/glad.cpp` | **Entry point.** `main()`, Emscripten frame wrapper, game state machine |
+| `src/interface/screen.cpp` | Game world: `act()` delegates to `GameWorld::tick()`, `redraw()` renders + dispatches events |
+| `src/platform/sdl/runtime/game_loop.cpp` | Per-frame loop: `game_frame()` and `game_frame_with_result()` |
+| `src/platform/sdl/runtime/game_session.cpp` | RAII root: creates screen, prefs, installs legacy globals |
 | `src/runtime/game_context.cpp` | `GameContext` and `ctx()` global accessor |
-| `src/entities/walker.cpp` | Base entity class — all game objects inherit from this |
-| `src/entities/living.cpp` | AI behavior for enemies and NPCs |
-| `src/ui/picker.cpp` | Team selection UI — main menu loop |
-| `src/ui/level_editor.cpp` | Scenario editor (openscen binary) |
-| `src/render/video.cpp` | SDL2 graphics layer — pixel buffer management |
-| `src/render/view.cpp` | Viewport/camera system, split-screen rendering |
+| `src/gameplay/walker.cpp` | Base entity class — all game objects inherit from this |
+| `src/gameplay/living.cpp` | AI behavior for enemies and NPCs |
+| `src/interface/ui/picker.cpp` | Team selection UI — main menu loop |
+| `src/interface/ui/level_editor.cpp` | Scenario editor (openscen binary) |
+| `src/platform/sdl/video.cpp` | SDL2 graphics layer — pixel buffer management |
+| `src/interface/render/view.cpp` | Viewport/camera system, split-screen rendering |
 | `src/resources/level_file_io.cpp` | Level file loading and saving |
-| `src/resources/save_data.cpp` | Save game serialization |
+| `src/resources/save_io.cpp` | Save game serialization |
 | `src/resources/gloader.cpp` | Game content loading from packages |
-| `src/input/input.cpp` | Keyboard/controller event handling |
+| `src/interface/input/input.cpp` | Keyboard/controller event handling |
 | `src/gameplay/game_world.cpp` | Live game simulation tick (extracted from `screen::act()`) |
-| `src/sim/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
-| `src/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
+| `src/gameplay/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
+| `src/interface/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
 | `CMakeLists.txt` | Build system — module targets, test binaries, install rules |
 | `CMakePresets.json` | Build presets for dev, CI, and web |
-| `docs/architecture-rules.md` | Enforced module dependency rules |
+| `scripts/check_vendor_leaks.sh` | Enforced module include/vendor boundary rules |
 | `tests/test_main.cpp` | Integration test runner entry point |
 | `tests/unit/unit_main.cpp` | Unit test runner entry point |
