@@ -31,12 +31,41 @@
 namespace og::ui {
 namespace {
 
+constexpr std::size_t kMaxPickerLineBytes = 64 * 1024;
+
 bool read_line(std::string& out)
 {
-    if (!std::getline(std::cin, out))
-        return false;
-    while (!out.empty() && (out.back() == '\r' || out.back() == '\n'))
-        out.pop_back();
+    out.clear();
+    bool overflow = false;
+    for (;;) {
+        int next = std::cin.get();
+        if (next == EOF) {
+            if (std::cin.bad())
+                return false;
+            if (out.empty() && !overflow)
+                return false;
+            break;
+        }
+
+        char ch = static_cast<char>(next);
+        if (ch == '\n')
+            break;
+        if (ch == '\r')
+            continue;
+
+        if (!overflow) {
+            if (out.size() >= kMaxPickerLineBytes) {
+                overflow = true;
+            } else {
+                out.push_back(ch);
+            }
+        }
+    }
+
+    if (overflow) {
+        std::printf("Input too long (max %zu bytes).\n", kMaxPickerLineBytes);
+        out.clear();
+    }
     return true;
 }
 
