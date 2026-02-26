@@ -209,6 +209,11 @@ void screen::init_common(short howmany, bool has_display)
 	myloader = std::make_unique<loader>();
 	wire_entity_factory_callbacks();
 
+	world_.on_pre_delete_objects = [this](og::gameplay::GameWorld* w) {
+		if (w == &world_)
+			clear_stale_view_controls();
+	};
+
 	numviews = howmany;
     for (auto& view : viewob)
         view.reset();
@@ -1036,37 +1041,7 @@ void screen::wire_entity_factory_callbacks()
         return;
     }
 
-    EntityFactory factory;
-    factory.attach_render = [](walker& w, const PixieData& data) { w.attach_render(data); };
-    myloader->set_entity_factory(std::move(factory));
-
-    world_.entity_factory = [this](Order order, int family) -> std::unique_ptr<walker> {
-        if (!myloader)
-            return nullptr;
-        return myloader->create_walker_owned(order, family);
-    };
-    world_.entity_configure = [this](walker* w, Order order, int family) -> walker* {
-        if (!myloader || !w)
-            return nullptr;
-        return myloader->set_walker(w, order, family);
-    };
-    world_.entity_derived_stats = [this](walker* w, Order order, int family) {
-        if (!myloader || !w)
-            return;
-        myloader->set_derived_stats(w, order, family);
-    };
-    world_.entity_graphics = [this](Order order, int family) -> const PixieData* {
-        if (!myloader)
-            return nullptr;
-        if (family < 0 || family >= NUM_FAMILIES)
-            return nullptr;
-        const int order_i = static_cast<int>(order);
-        constexpr int kOrderCount = static_cast<int>(Order::Button1) + 1;
-        if (order_i < 0 || order_i >= kOrderCount)
-            return nullptr;
-        const PixieData& data = myloader->graphics[PIX(order, family)];
-        return data.valid() ? &data : nullptr;
-    };
+    wire_loader_to_world(world_, *myloader, false);
 }
 
 void screen::clear_stale_view_controls()

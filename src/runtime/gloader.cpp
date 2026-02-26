@@ -704,3 +704,43 @@ walker  *loader::set_walker(walker *ob,
 
 	return ob;
 }
+
+// --- Free function: wire a loader's entity factory callbacks onto a GameWorld ---
+
+#include <openglad/gameplay/game_world.h>
+
+void wire_loader_to_world(og::gameplay::GameWorld& world, loader& ldr, bool headless)
+{
+    EntityFactory factory;
+    if (!headless)
+    {
+        factory.attach_render = [](walker& w, const PixieData& data) {
+            w.attach_render(data);
+        };
+    }
+    ldr.set_entity_factory(std::move(factory));
+
+    world.entity_factory = [&ldr](Order order, int family) -> std::unique_ptr<walker> {
+        return ldr.create_walker_owned(order, family);
+    };
+    world.entity_configure = [&ldr](walker* w, Order order, int family) -> walker* {
+        if (!w)
+            return nullptr;
+        return ldr.set_walker(w, order, family);
+    };
+    world.entity_derived_stats = [&ldr](walker* w, Order order, int family) {
+        if (!w)
+            return;
+        ldr.set_derived_stats(w, order, family);
+    };
+    world.entity_graphics = [&ldr](Order order, int family) -> const PixieData* {
+        if (family < 0 || family >= NUM_FAMILIES)
+            return nullptr;
+        const int order_i = static_cast<int>(order);
+        constexpr int kOrderCount = static_cast<int>(Order::Button1) + 1;
+        if (order_i < 0 || order_i >= kOrderCount)
+            return nullptr;
+        const PixieData& data = ldr.graphics[PIX(order, family)];
+        return data.valid() ? &data : nullptr;
+    };
+}

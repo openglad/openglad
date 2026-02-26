@@ -90,6 +90,11 @@ void GameWorld::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
 
 void GameWorld::delete_objects()
 {
+    // Let the platform layer clear stale pointers (e.g. viewscreen controls)
+    // before entity lists are destroyed.
+    if (on_pre_delete_objects)
+        on_pre_delete_objects(this);
+
     oblist.clear();
     fxlist.clear();
     weaplist.clear();
@@ -97,6 +102,18 @@ void GameWorld::delete_objects()
     living_count = 0;
     // Withdrawal is a per-level transient signal and must not survive object resets.
     withdraw_requested = false;
+
+    // Defensive obmap cleanup — walker destructors should have removed themselves,
+    // but clear any stale entries left behind.
+    if (myobmap)
+    {
+        if (!myobmap->walker_to_pos.empty())
+        {
+            Log("obmap::walker_to_pos has {} elements left.\n", myobmap->walker_to_pos.size());
+        }
+        myobmap->pos_to_walker.clear();
+        myobmap->walker_to_pos.clear();
+    }
 }
 
 short GameWorld::remaining_foes(walker* myguy) const

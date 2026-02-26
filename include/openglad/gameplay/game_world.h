@@ -128,6 +128,10 @@ public:
     std::function<void(walker*, Order, int)> entity_derived_stats;
     std::function<const PixieData*(Order, int)> entity_graphics;
 
+    // Hook called by delete_objects() before entity lists are cleared.
+    // Used by the platform layer (screen) to clear stale view control pointers.
+    std::function<void(GameWorld*)> on_pre_delete_objects;
+
     // Transitional sim-context bridge used by legacy callers/tests.
     void set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                          og::sim::SimEventLog* events, IRandom* rng,

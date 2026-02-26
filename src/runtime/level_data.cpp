@@ -123,6 +123,14 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks,
         wire_entity_factory_callbacks();
     }
 
+    // Wire the pre-delete hook so GameWorld::delete_objects() can clear stale
+    // view controls via the platform hooks table.
+    if (hooks_ && hooks_->clear_stale_view_controls && owned_world_)
+    {
+        world_ref_.on_pre_delete_objects = [hooks](og::gameplay::GameWorld* w) {
+            hooks->clear_stale_view_controls(w);
+        };
+    }
 }
 
 LevelData::~LevelData()
@@ -196,46 +204,7 @@ void LevelData::wire_entity_factory_callbacks()
         return;
     }
 
-    EntityFactory factory;
-    if (!headless_)
-    {
-        factory.attach_render = [](walker& w, const PixieData& data) {
-            w.attach_render(data);
-        };
-    }
-    myloader->set_entity_factory(std::move(factory));
-
-    world_ref_.entity_factory = [this](Order order, int family) -> std::unique_ptr<walker> {
-        if (!myloader)
-            return nullptr;
-        auto w = myloader->create_walker_owned(order, family);
-        if (!w)
-            return nullptr;
-        wire_entity(w.get());
-        return w;
-    };
-    world_ref_.entity_configure = [this](walker* w, Order order, int family) -> walker* {
-        if (!myloader || !w)
-            return nullptr;
-        return myloader->set_walker(w, order, family);
-    };
-    world_ref_.entity_derived_stats = [this](walker* w, Order order, int family) {
-        if (!myloader || !w)
-            return;
-        myloader->set_derived_stats(w, order, family);
-    };
-    world_ref_.entity_graphics = [this](Order order, int family) -> const PixieData* {
-        if (!myloader)
-            return nullptr;
-        if (family < 0 || family >= NUM_FAMILIES)
-            return nullptr;
-        const int order_i = static_cast<int>(order);
-        constexpr int kOrderCount = static_cast<int>(Order::Button1) + 1;
-        if (order_i < 0 || order_i >= kOrderCount)
-            return nullptr;
-        const PixieData& data = myloader->graphics[PIX(order, family)];
-        return data.valid() ? &data : nullptr;
-    };
+    wire_loader_to_world(world_ref_, *myloader, headless_);
 }
 
 short LevelData::remove_ob(walker  *ob)
@@ -278,27 +247,6 @@ void LevelData::resize_grid(int width, int height) { world_ref_.resize_grid(widt
 void LevelData::delete_objects()
 {
 	world_ref_.delete_objects();
-
-    // If this is the active screen level, clear any stale control pointers
-    // that may reference walkers just deleted above.
-    if (hooks_ && hooks_->clear_stale_view_controls)
-        hooks_->clear_stale_view_controls(&world_ref_);
-
-	    // Clear the obmap references
-	    // Since the walker destructor removes itself from the obmap, this should be empty already.
-	    if(myobmap->walker_to_pos.size() > 0)
-	    {
-	        Log("obmap::walker_to_pos has {} elements left.\n", myobmap->walker_to_pos.size());
-
-	        // FIXME: Freeing them here does naughty things!
-	        // obmap only indexes walkers; it doesn't own them. If we see leftovers here it usually
-	        // means something mutated the obmap out-of-order, or walkers are being kept alive
-	        // outside LevelData's owning lists. We clear the index defensively below; do not
-	        // attempt to delete walkers from the obmap to "fix" this (double-frees / UAF risk).
-	    }
-    // pos_to_walker will have a bunch of 0-size lists in it
-	myobmap->pos_to_walker.clear();
-	myobmap->walker_to_pos.clear();
 }
 
 void LevelData::prepare_for_load()

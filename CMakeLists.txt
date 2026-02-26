@@ -190,6 +190,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/io/og_file.cpp
 		    ${SRC_DIR}/data/gparser.cpp
 		    ${SRC_DIR}/runtime/gloader.cpp
+    ${SRC_DIR}/data/campaign_data.cpp
     ${SRC_DIR}/data/level_file_io.cpp
     ${SRC_DIR}/data/pixie_data.cpp
     ${SRC_DIR}/gameplay/game_world.cpp

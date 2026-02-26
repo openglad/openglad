@@ -28,6 +28,7 @@
 
 class walker;
 class pixieN;
+namespace og::gameplay { class GameWorld; }
 
 struct EntityFactory
 {
@@ -60,3 +61,7 @@ class loader
 	private:
 		EntityFactory entity_factory_;
 };
+
+// Wire a loader's entity factory callbacks onto a GameWorld.
+// When headless is true, entities are created without render components.
+void wire_loader_to_world(og::gameplay::GameWorld& world, loader& ldr, bool headless);
