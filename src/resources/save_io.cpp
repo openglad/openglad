@@ -42,6 +42,8 @@ namespace
 constexpr unsigned char kMaxPlayers = 4;
 constexpr std::uint8_t kMinSaveVersion = 2;
 constexpr std::uint8_t kMaxSaveVersion = 9;
+constexpr std::int16_t kMaxCampaignsInSave = 1000;
+constexpr std::int16_t kMaxLevelsPerCampaignInSave = 1000;
 
 std::int16_t clamp_to_int16_or_warn(std::int64_t value, const char* field_name, const std::string& context)
 {
@@ -431,7 +433,8 @@ bool SaveData::load(const std::string& filename)
     if(temp_version < 8)
     {
         char levelstatus[MAX_LEVELS];
-        std::fill_n(levelstatus, 500, '\0');
+        std::fill_n(levelstatus, MAX_LEVELS, '\0');
+        const int level_count = (temp_version >= 5) ? 500 : 200;
 
         if (temp_version >= 5)
             READ_OR_FAIL(levelstatus, 500, 1);
@@ -439,7 +442,7 @@ bool SaveData::load(const std::string& filename)
             READ_OR_FAIL(levelstatus, 200, 1);
 
         // Guaranteed to be the default campaign if version < 8
-        for(int i = 0; i < 500; i++)
+        for(int i = 0; i < level_count; i++)
         {
             if(levelstatus[i])
                 add_level_completed(current_campaign, i);
@@ -452,6 +455,13 @@ bool SaveData::load(const std::string& filename)
         short num_levels = 0;
         // How many campaigns are stored?
         READ_OR_FAIL(&num_campaigns, 2, 1);
+        if (num_campaigns < 0 || num_campaigns > kMaxCampaignsInSave)
+        {
+            LogError("save_invalid_campaign_count file={} count={} max={}\n",
+                filename, num_campaigns, kMaxCampaignsInSave);
+            last_io_error_ = SaveDataIoError::ReadFailed;
+            return 0;
+        }
         for(int i = 0; i < num_campaigns; i++)
         {
             // Get the campaign ID (40 chars)
@@ -465,6 +475,13 @@ bool SaveData::load(const std::string& filename)
 
             // Get the number of cleared levels
             READ_OR_FAIL(&num_levels, 2, 1);
+            if (num_levels < 0 || num_levels > kMaxLevelsPerCampaignInSave)
+            {
+                LogError("save_invalid_level_count file={} campaign={} count={} max={}\n",
+                    filename, campaign, num_levels, kMaxLevelsPerCampaignInSave);
+                last_io_error_ = SaveDataIoError::ReadFailed;
+                return 0;
+            }
             for(int j = 0; j < num_levels; j++)
             {
                 // Get the level index
@@ -699,6 +716,11 @@ bool SaveData::save(const std::string& filename)
 	for(int team_idx = 0; team_idx < team_size; team_idx++)
 	{
 	    guy* temp_guy = team_list[team_idx].get();
+        if (!temp_guy)
+        {
+            last_io_error_ = SaveDataIoError::WriteFailed;
+            return 0;
+        }
 
         // Get temp values to be saved
         temp_order = static_cast<unsigned char>(Order::Living);
@@ -830,7 +852,8 @@ bool SaveData::save(const std::string& filename)
 
     // unique_ptr auto-closes outfile
 
-    // Sync to persistent storage (IDBFS on web)
+    // Sync to persistent storage (IDBFS on web). On Emscripten this is asynchronous
+    // and effectively fire-and-forget from this call site; failures are not surfaced here.
     sync_filesystem();
 
 	TRACE("save", "SaveData::save complete");
