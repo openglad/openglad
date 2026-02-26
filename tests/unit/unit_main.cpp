@@ -1,6 +1,8 @@
 #include "unit.h"
 #include <openglad/entities/family_registries.h>
 #include <openglad/runtime/game_session.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/sim/sim_event_log.h>
 
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);
@@ -31,6 +33,14 @@ int main()
             ++failed;
             std::fprintf(stderr, "[  FAILED  ] %s (threw)\n", tc.name);
         }
+
+        // Keep tests isolated: some tests swap current_game and do not restore it.
+        // Rebind to a stable world/context after each test.
+        static og::sim::SimEventLog stable_events;
+        static og::gameplay::GameplayContext stable_game_ctx;
+        stable_game_ctx.world = nullptr;
+        stable_game_ctx.sim_events = &stable_events;
+        og::gameplay::current_game = &stable_game_ctx;
     }
 
     std::fprintf(stderr, "\n=== Unit Results: %d passed, %d failed, %d total ===\n\n",

@@ -1360,7 +1360,12 @@ void walker::generate_bloodspot()
 
 	dead = 1; // just in case ..
 
+	if (!og::gameplay::current_game || !og::gameplay::current_game->world)
+		return;
+
 	bloodstain = og::gameplay::current_game->world->add_fx_ob(Order::Treasure, FAMILY_STAIN);
+	if (!bloodstain)
+		return;
 	bloodstain->ignore = 1;
 	transfer_stats(bloodstain);
 

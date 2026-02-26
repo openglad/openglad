@@ -3,8 +3,13 @@
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/living.h>
+#include <openglad/entities/weap.h>
+#include <openglad/entities/treasure.h>
+#include <openglad/entities/effect.h>
 #include <openglad/entities/guy.h>
 #include <openglad/core/stats.h>
 #include <openglad/sim/sim_event_log.h>
@@ -909,6 +914,21 @@ OG_UNIT_TEST(test_level_data_r15_campaign_wrappers_and_description_iteration)
 OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
 {
     og::gameplay::GameWorld level;
+    level.entity_factory = [](Order order, int family) -> std::unique_ptr<walker> {
+        std::unique_ptr<walker> ob;
+        switch (order)
+        {
+            case Order::Living: ob = std::make_unique<living>(); break;
+            case Order::Weapon: ob = std::make_unique<weap>(); break;
+            case Order::Treasure: ob = std::make_unique<treasure>(); break;
+            case Order::FX: ob = std::make_unique<effect>(); break;
+            default: ob = std::make_unique<walker>(); break;
+        }
+        ob->set_order_family(order, static_cast<char>(family));
+        PixieData stub(8, 1, 1, nullptr);
+        ob->set_data(stub);
+        return ob;
+    };
     level.myobmap = std::make_unique<obmap>();
     level.id = 9415;
     level.create_new_grid();
@@ -917,6 +937,11 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     std::int32_t freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = og::gameplay::current_game;
+    og::gameplay::current_game = &gameplay_ctx;
+    gameplay_ctx.world = &level;
+    gameplay_ctx.sim_events = &events;
     level.set_sim_context(&save, &freeze, &events, &rng, &cfg);
 
     walker* living = level.add_ob(Order::Living, FAMILY_SOLDIER);
@@ -935,5 +960,7 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     OG_ASSERT(level.type == 0);
     OG_ASSERT(level.par_value == 1);
     OG_ASSERT(level.time_bonus_limit == 4000);
+
+    og::gameplay::current_game = prev_gameplay_ctx;
 }
 } // namespace detail_level_data_r15

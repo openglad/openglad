@@ -15,12 +15,36 @@
 #endif
 #include <memory>
 #include <openglad/entities/treasure.h>
+#include <openglad/entities/effect.h>
+#include <openglad/entities/weap.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/gameplay/gameplay_context.h>
 
 // --- From test_family_cleric_coverage_push.cpp ---
 const FamilyDescriptor& describe_family_cleric();
+
+namespace {
+// Standalone GameWorld fixtures need an entity factory for add_ob/summons.
+void wire_test_entity_factory(og::gameplay::GameWorld& w)
+{
+    w.entity_factory = [](Order order, int family) -> std::unique_ptr<walker> {
+        std::unique_ptr<walker> ob;
+        switch (order)
+        {
+            case Order::Living: ob = std::make_unique<living>(); break;
+            case Order::Weapon: ob = std::make_unique<weap>(); break;
+            case Order::Treasure: ob = std::make_unique<treasure>(); break;
+            case Order::FX: ob = std::make_unique<effect>(); break;
+            default: ob = std::make_unique<walker>(); break;
+        }
+        ob->set_order_family(order, static_cast<char>(family));
+        PixieData stub(8, 1, 1, nullptr); // enough frames for set_frame usage.
+        ob->set_data(stub);
+        return ob;
+    };
+}
+} // namespace
 
 namespace detail_family_cleric_coverage_push {
 
@@ -91,6 +115,7 @@ struct ClericFixture {
     ClericFixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
         prev_gameplay_ctx = og::gameplay::current_game;
         og::gameplay::current_game = &gameplay_ctx;
@@ -293,6 +318,7 @@ struct ClericR12Fixture {
     ClericR12Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
         prev_gameplay_ctx = og::gameplay::current_game;
         og::gameplay::current_game = &gameplay_ctx;
@@ -568,6 +594,7 @@ struct ClericR14Fixture {
     ClericR14Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
         prev_gameplay_ctx = og::gameplay::current_game;
         og::gameplay::current_game = &gameplay_ctx;
@@ -723,6 +750,7 @@ struct ClericR15Fixture {
     ClericR15Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
         prev_gameplay_ctx = og::gameplay::current_game;
         og::gameplay::current_game = &gameplay_ctx;

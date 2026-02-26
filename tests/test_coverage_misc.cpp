@@ -11,7 +11,11 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/weap.h>
+#include <openglad/entities/treasure.h>
+#include <openglad/entities/effect.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/sim/irandom.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/legacy/base.h>
@@ -30,6 +34,27 @@
 #include <openglad/input/input_action.h>
 #include <openglad/input/input_state.h>
 #include <openglad/sim/sim_input_handler.h>
+
+namespace {
+void wire_test_entity_factory(og::gameplay::GameWorld& w)
+{
+    w.entity_factory = [](Order order, int family) -> std::unique_ptr<walker> {
+        std::unique_ptr<walker> ob;
+        switch (order)
+        {
+            case Order::Living: ob = std::make_unique<living>(); break;
+            case Order::Weapon: ob = std::make_unique<weap>(); break;
+            case Order::Treasure: ob = std::make_unique<treasure>(); break;
+            case Order::FX: ob = std::make_unique<effect>(); break;
+            default: ob = std::make_unique<walker>(); break;
+        }
+        ob->set_order_family(order, static_cast<char>(family));
+        PixieData stub(8, 1, 1, nullptr);
+        ob->set_data(stub);
+        return ob;
+    };
+}
+} // namespace
 
 // --- From test_coverage_r17.cpp ---
 namespace detail_coverage_r17 {
@@ -62,11 +87,18 @@ struct R17Fixture {
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     GameContext gc;
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     R17Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level;
+        gameplay_ctx.sim_events = &events;
         init_family_registry();
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -78,6 +110,7 @@ struct R17Fixture {
     ~R17Fixture()
     {
         set_global_context(nullptr);
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -483,13 +516,25 @@ struct MovementFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     MovementFixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level;
+        gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+
+    ~MovementFixture()
+    {
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -975,11 +1020,18 @@ struct R19Fixture {
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     GameContext gc;
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     R19Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level;
+        gameplay_ctx.sim_events = &events;
         init_family_registry();
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -991,6 +1043,7 @@ struct R19Fixture {
     ~R19Fixture()
     {
         set_global_context(nullptr);
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -1161,11 +1214,18 @@ struct R20Fixture {
     og::sim::SimEventLog events;
     ConstantRandom rng{1};
     GameContext gc;
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     R20Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level;
+        gameplay_ctx.sim_events = &events;
         init_family_registry();
         level.create_new_grid();
         save.allied_mode = 0;
@@ -1179,6 +1239,7 @@ struct R20Fixture {
     ~R20Fixture()
     {
         set_global_context(nullptr);
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -1509,11 +1570,18 @@ struct FinalR16Fixture {
     og::sim::SimEventLog events;
     FixedRandom rng{1};
     GameContext gc;
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     FinalR16Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level;
+        gameplay_ctx.sim_events = &events;
         init_family_registry();
         level.create_new_grid();
         save.allied_mode = 0;
@@ -1526,6 +1594,7 @@ struct FinalR16Fixture {
     ~FinalR16Fixture()
     {
         set_global_context(nullptr);
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 

@@ -11,6 +11,9 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/weap.h>
+#include <openglad/entities/treasure.h>
+#include <openglad/entities/effect.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/sim/sim_event_log.h>
@@ -68,7 +71,15 @@ GameWorld::GameWorld()
 {
 }
 
-GameWorld::~GameWorld() = default;
+GameWorld::~GameWorld()
+{
+    // Prevent dangling global world pointers when stack/local test worlds die.
+    if (og::gameplay::current_game && og::gameplay::current_game->world == this)
+    {
+        og::gameplay::current_game->world = nullptr;
+        og::gameplay::current_game->sim_events = nullptr;
+    }
+}
 
 void GameWorld::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                                 og::sim::SimEventLog* events, IRandom* rng,
@@ -365,10 +376,24 @@ walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart)
 
 walker* GameWorld::add_fx_ob(Order order, std::int32_t family)
 {
-    if (!entity_factory)
-        return nullptr;
-
-    auto w = entity_factory(order, family);
+    std::unique_ptr<walker> w;
+    if (entity_factory)
+    {
+        w = entity_factory(order, family);
+    }
+    else
+    {
+        // Minimal fallback for blood/effect creation in headless contexts.
+        switch (order)
+        {
+            case Order::Treasure: w = std::make_unique<treasure>(); break;
+            case Order::FX: w = std::make_unique<effect>(); break;
+            default: return nullptr;
+        }
+        w->set_order_family(order, static_cast<char>(family));
+        PixieData stub(8, 1, 1, nullptr);
+        w->set_data(stub);
+    }
     if (!w)
         return nullptr;
 
@@ -379,10 +404,20 @@ walker* GameWorld::add_fx_ob(Order order, std::int32_t family)
 
 walker* GameWorld::add_weap_ob(Order order, std::int32_t family)
 {
-    if (!entity_factory)
-        return nullptr;
-
-    auto w = entity_factory(order, family);
+    std::unique_ptr<walker> w;
+    if (entity_factory)
+    {
+        w = entity_factory(order, family);
+    }
+    else
+    {
+        if (order != Order::Weapon)
+            return nullptr;
+        w = std::make_unique<weap>();
+        w->set_order_family(order, static_cast<char>(family));
+        PixieData stub(8, 1, 1, nullptr);
+        w->set_data(stub);
+    }
     if (!w)
         return nullptr;
 

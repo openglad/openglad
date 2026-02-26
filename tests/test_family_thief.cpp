@@ -1,6 +1,9 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
+#include <openglad/entities/effect.h>
+#include <openglad/entities/weap.h>
+#include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
 #include <openglad/sim/irandom.h>
 #include <openglad/core/constants.h>
@@ -100,19 +103,50 @@ OG_UNIT_TEST(test_family_thief_do_special_busy_and_cloak_paths)
 namespace detail_family_thief_r12 {
 namespace {
 
+void wire_test_entity_factory(og::gameplay::GameWorld& w)
+{
+    w.entity_factory = [](Order order, int family) -> std::unique_ptr<walker> {
+        std::unique_ptr<walker> ob;
+        switch (order)
+        {
+            case Order::Living: ob = std::make_unique<living>(); break;
+            case Order::Weapon: ob = std::make_unique<weap>(); break;
+            case Order::Treasure: ob = std::make_unique<treasure>(); break;
+            case Order::FX: ob = std::make_unique<effect>(); break;
+            default: ob = std::make_unique<walker>(); break;
+        }
+        ob->set_order_family(order, static_cast<char>(family));
+        PixieData stub(8, 1, 1, nullptr);
+        ob->set_data(stub);
+        return ob;
+    };
+}
+
 struct ThiefR12Fixture {
     og::gameplay::GameWorld level;
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     ThiefR12Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level;
+        gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+
+    ~ThiefR12Fixture()
+    {
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 

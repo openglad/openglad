@@ -1,11 +1,15 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
+#include <openglad/entities/effect.h>
+#include <openglad/entities/weap.h>
+#include <openglad/entities/treasure.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/irandom.h>
 #include <openglad/core/constants.h>
@@ -21,6 +25,25 @@ const FamilyDescriptor& describe_family_big_orc();
 
 namespace {
 
+void wire_test_entity_factory(og::gameplay::GameWorld& w)
+{
+    w.entity_factory = [](Order order, int family) -> std::unique_ptr<walker> {
+        std::unique_ptr<walker> ob;
+        switch (order)
+        {
+            case Order::Living: ob = std::make_unique<living>(); break;
+            case Order::Weapon: ob = std::make_unique<weap>(); break;
+            case Order::Treasure: ob = std::make_unique<treasure>(); break;
+            case Order::FX: ob = std::make_unique<effect>(); break;
+            default: ob = std::make_unique<walker>(); break;
+        }
+        ob->set_order_family(order, static_cast<char>(family));
+        PixieData stub(8, 1, 1, nullptr);
+        ob->set_data(stub);
+        return ob;
+    };
+}
+
 struct OrcR15Fixture {
     og::gameplay::GameWorld level;
     SaveData save;
@@ -28,11 +51,18 @@ struct OrcR15Fixture {
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     GameContext gc;
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     OrcR15Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level;
+        gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
@@ -42,6 +72,7 @@ struct OrcR15Fixture {
     ~OrcR15Fixture()
     {
         set_global_context(nullptr);
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -65,8 +96,11 @@ living* add_living(OrcR15Fixture& fx, unsigned char team, char family, short x, 
 walker* add_stain(OrcR15Fixture& fx, short x, short y, unsigned char team, char old_family, std::int32_t level)
 {
     walker* stain = fx.level.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    stain->set_order_family(Order::Treasure, FAMILY_STAIN);
     stain->team_num = team;
     stain->setxy(x, y);
+    stain->sizex = 16;
+    stain->sizey = 16;
     stain->dead = 0;
     stain->stats()->old_family = old_family;
     stain->stats()->level = level;
@@ -155,6 +189,11 @@ OG_UNIT_TEST(test_family_orc_r15_special_howl_and_eat_paths)
 
         walker* stain = add_stain(fx, 96, 96, 0, FAMILY_SOLDIER, 4);
         OG_ASSERT(stain != nullptr);
+        OG_ASSERT(og::gameplay::current_game != nullptr);
+        OG_ASSERT(og::gameplay::current_game->world == &fx.level);
+        OG_ASSERT(fx.level.find_nearest_blood(self) == stain);
+        OG_ASSERT(self->distance_to_ob_center(stain) <= 24);
+        OG_ASSERT(self->stats()->hitpoints < self->stats()->max_hitpoints);
         OG_ASSERT(orc.do_special(self));
         OG_ASSERT(stain->dead == 1);
         OG_ASSERT(self->stats()->hitpoints <= self->stats()->max_hitpoints);

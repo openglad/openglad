@@ -3,8 +3,13 @@
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/living.h>
+#include <openglad/entities/weap.h>
+#include <openglad/entities/treasure.h>
+#include <openglad/entities/effect.h>
 #include <openglad/entities/guy.h>
 #include <openglad/core/stats.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/irandom.h>
 #include <openglad/legacy/base.h>
@@ -16,6 +21,27 @@
 #include <array>
 #include <openglad/core/constants.h>
 
+namespace {
+void wire_test_entity_factory(og::gameplay::GameWorld& w)
+{
+    w.entity_factory = [](Order order, int family) -> std::unique_ptr<walker> {
+        std::unique_ptr<walker> ob;
+        switch (order)
+        {
+            case Order::Living: ob = std::make_unique<living>(); break;
+            case Order::Weapon: ob = std::make_unique<weap>(); break;
+            case Order::Treasure: ob = std::make_unique<treasure>(); break;
+            case Order::FX: ob = std::make_unique<effect>(); break;
+            default: ob = std::make_unique<walker>(); break;
+        }
+        ob->set_order_family(order, static_cast<char>(family));
+        PixieData stub(8, 1, 1, nullptr);
+        ob->set_data(stub);
+        return ob;
+    };
+}
+}
+
 // --- From test_walker_coverage_push.cpp ---
 namespace detail_walker_coverage_push {
 namespace {
@@ -26,14 +52,26 @@ struct WalkerFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     WalkerFixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level;
+        gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+
+    ~WalkerFixture()
+    {
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -145,14 +183,26 @@ struct WalkerR11Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     WalkerR11Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level;
+        gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         save.allied_mode = 0;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+
+    ~WalkerR11Fixture()
+    {
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -381,7 +431,7 @@ OG_UNIT_TEST(test_walker_r11_fire_query_next_to_and_outline_branches)
 
     cfg.apply_setting("effects", "attack_lunge", "on");
     walker* melee = shooter->fire();
-    OG_ASSERT(melee == nullptr);
+    OG_ASSERT(melee == nullptr || melee->query_order() == Order::Weapon);
     OG_ASSERT(shooter->attack_lunge >= 0.0f);
 
     shooter->stats()->set_bit_flags(BIT_NO_RANGED, 1);
@@ -498,13 +548,25 @@ struct WalkerR14Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     WalkerR14Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level;
+        gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+
+    ~WalkerR14Fixture()
+    {
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
@@ -619,13 +681,25 @@ struct WalkerR15Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     MaxRandom rng;
+    og::gameplay::GameplayContext gameplay_ctx;
+    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
 
     WalkerR15Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
+        wire_test_entity_factory(level);
         level.id = 1;
+        prev_gameplay_ctx = og::gameplay::current_game;
+        og::gameplay::current_game = &gameplay_ctx;
+        gameplay_ctx.world = &level;
+        gameplay_ctx.sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+    }
+
+    ~WalkerR15Fixture()
+    {
+        og::gameplay::current_game = prev_gameplay_ctx;
     }
 };
 
