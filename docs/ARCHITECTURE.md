@@ -10,6 +10,7 @@ The codebase has been through an aggressive modernization (branch `cpp-moderniza
 
 - [Repository Layout](#repository-layout)
 - [Module Structure](#module-structure)
+- [Component Boundaries (Phase 12)](#component-boundaries-phase-12)
 - [Dependency Direction Rules](#dependency-direction-rules)
 - [Key Data Structures](#key-data-structures)
 - [Game Loop](#game-loop)
@@ -268,6 +269,33 @@ SDL initialization, audio device management, and platform-specific hooks (Emscri
 | `platform/sound.cpp` | SDL_mixer audio: sound effects and music playback |
 
 ---
+
+## Component Boundaries (Phase 12)
+
+Phase 12 finalizes dependency enforcement with component-level rules:
+
+- `gameplay` component may include only `core/` and `gameplay/` headers
+- `resources` component may include only `core/`, `gameplay/`, and `resources/` headers
+- `interface` component may include only `core/`, `gameplay/`, `resources/`, and `interface/` headers
+- `platform/sdl` is the top integration layer and may include all component headers
+
+CI enforces this through `scripts/check_vendor_leaks.sh`:
+
+- vendor header leak checks
+- component include dependency checks
+
+Accepted process globals:
+
+- Renderer/hardware globals: `E_Screen`, `joysticks`, `letters1`, `letters_big`, `text_buffer`, SAI2x masks/buffers, `pal`, `mypalette`
+- Process config global: `cfg`
+- Immutable registries: family/effect/treasure/generator/weapon init-once registries
+- Rendering scratch exception: `grass_rng` thread-local in SDL rendering
+- Test-only globals under `#ifdef TESTING` and Emscripten-only globals under `#ifdef __EMSCRIPTEN__`
+
+Final thread-local audit state:
+
+- Gameplay game-state thread-local: `current_game`
+- Platform game-state thread-local: `current_session`
 
 ## Dependency Direction Rules
 

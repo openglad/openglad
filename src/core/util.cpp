@@ -20,6 +20,7 @@
 // random helper functions
 //
 #include <openglad/core/util.h>
+#include <openglad/platform/game_session.h>
 
 #include <openglad/core/version.h>
 #include <charconv>
@@ -39,16 +40,13 @@
 
 static auto g_app_start = std::chrono::steady_clock::now();
 
-// g_reset_time moved to GameSession::reset_time_ (Phase 6).
-// The runtime layer sets g_reset_time_ptr to &session->reset_time_ on session
-// creation, avoiding a circular core→runtime dependency in this file.
 static auto s_fallback_reset_time = std::chrono::steady_clock::now();
-thread_local std::chrono::steady_clock::time_point* g_reset_time_ptr = nullptr;
 
 static inline auto& reset_time_ref()
 {
-    if (g_reset_time_ptr)
-        return *g_reset_time_ptr;
+    og::runtime::ensure_thread_session();
+    if (og::runtime::current_session)
+        return og::runtime::current_session->reset_time_;
     return s_fallback_reset_time;
 }
 

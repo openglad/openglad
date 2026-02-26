@@ -32,22 +32,14 @@ void GameContext::poll_input()
 // Global context accessor
 // ---------------------------------------------------------------------------
 
-// Test-only override: when non-null, ctx() returns this instead of
-// the session context.  Production code never sets this; only tests
-// call set_global_context() to inject mock RNGs.
 static thread_local GameContext* s_test_context_override = nullptr;
 
 GameContext& ctx()
 {
     if (s_test_context_override)
         return *s_test_context_override;
-
-    if (og::runtime::current_session)
-        return og::runtime::current_session->ctx_;
-
-    // Pre-session fallback (e.g. during io_init before any GameSession exists).
-    static GameContext s_fallback;
-    return s_fallback;
+    og::runtime::ensure_thread_session();
+    return og::runtime::current_session->ctx_;
 }
 
 void set_global_context(GameContext* context)

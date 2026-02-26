@@ -14,7 +14,7 @@
  */
 
 #include <openglad/platform/io_common.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/zip_api.h>
@@ -28,6 +28,33 @@
 // Path helpers (defined per-platform in platform_io.cpp or platform_headless.cpp)
 std::string get_user_path();
 std::string get_asset_path();
+
+namespace og::resources {
+namespace {
+std::string s_mounted_campaign;
+} // namespace
+
+std::string get_mounted_campaign()
+{
+    if (og::runtime::current_session)
+        return og::runtime::current_session->ctx_.mounted_campaign;
+    return s_mounted_campaign;
+}
+
+void set_mounted_campaign(const std::string& id)
+{
+    if (og::runtime::current_session)
+        og::runtime::current_session->ctx_.mounted_campaign = id;
+    s_mounted_campaign = id;
+}
+
+void clear_mounted_campaign()
+{
+    if (og::runtime::current_session)
+        og::runtime::current_session->ctx_.mounted_campaign.clear();
+    s_mounted_campaign.clear();
+}
+} // namespace og::resources
 
 // ---------------------------------------------------------------------------
 // File listing
@@ -44,7 +71,7 @@ std::list<std::string> list_files(const std::string& dirname)
 
 std::string get_mounted_campaign()
 {
-    return ctx().mounted_campaign;
+    return og::resources::get_mounted_campaign();
 }
 
 namespace {
@@ -82,10 +109,10 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
     {
         LogError("campaign_mount_failed id={} path={} code={} physfs={}\n",
             id, filename, campaign_io_error_string(CampaignPackageIoError::MountFailed), og::resources::last_error());
-        ctx().mounted_campaign.clear();
+        og::resources::clear_mounted_campaign();
         return CampaignPackageIoError::MountFailed;
     }
-    ctx().mounted_campaign = id;
+    og::resources::set_mounted_campaign(id);
     return CampaignPackageIoError::None;
 }
 
@@ -101,7 +128,7 @@ CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id
             id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), og::resources::last_error());
         return CampaignPackageIoError::UnmountFailed;
     }
-    ctx().mounted_campaign.clear();
+    og::resources::clear_mounted_campaign();
     return CampaignPackageIoError::None;
 }
 
@@ -124,7 +151,7 @@ CampaignPackageIoError remount_campaign_package_with_error()
             id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), physfs_error);
         return CampaignPackageIoError::UnmountFailed;
     }
-    ctx().mounted_campaign.clear();
+    og::resources::clear_mounted_campaign();
     return mount_campaign_package_with_error(id);
 }
 

@@ -17,6 +17,12 @@
 
 class PixieData;
 
+namespace og::resources {
+std::string get_mounted_campaign();
+void set_mounted_campaign(const std::string& id);
+void clear_mounted_campaign();
+} // namespace og::resources
+
 void io_init(int argc, char* argv[]);
 void io_exit();
 void sync_filesystem();

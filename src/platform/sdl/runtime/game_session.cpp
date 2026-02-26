@@ -22,6 +22,7 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/interface/input/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
+#include <openglad/platform/io_common.h>
 #include "SDL.h"
 
 // Defined in view.cpp — loads allkeys from defaults + keyprefs.dat.
@@ -41,11 +42,6 @@ std::atomic<GameSession*> primary_session{nullptr};
 GameSession::GameSession(const Config& session_cfg)
     : cfg_(session_cfg)
 {
-    // Preserve mounted-campaign state that lives on the context.  This is
-    // populated before sessions are created (io_init) and must not be lost
-    // when we install a session-specific context.
-    GameContext& prev_ctx = ::ctx();
-
     prev_session_ = current_session;
 
     // Allocate input hardware state.
@@ -55,14 +51,11 @@ GameSession::GameSession(const Config& session_cfg)
     picker_ = std::make_unique<PickerState>();
     editor_ = std::make_unique<LevelEditorState>();
 
-    // Wire up the timer anchor so reset_timer()/query_timer() use this session's time.
-    g_reset_time_ptr = &reset_time_;
-
     if (cfg_.allocate_prefs) {
         prefs_owner_ = std::make_unique<options>();
         init_allkeys(allkeys_);
     }
-    ctx_.mounted_campaign = prev_ctx.mounted_campaign;
+    ctx_.mounted_campaign = og::resources::get_mounted_campaign();
 
     if (cfg_.allocate_seeded_rng) {
         seeded_rng_ = std::make_unique<SeededRandom>(cfg_.rng_seed);

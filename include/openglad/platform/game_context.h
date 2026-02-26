@@ -6,9 +6,7 @@
  * For screen, prefs, and config, use the globals directly (og::runtime::current_session->myscreen_,
  * og::runtime::current_session->theprefs_, cfg).
  *
- * ctx() returns current_session->ctx_ in normal operation.
- * Tests can call set_global_context() to temporarily override with a
- * mock RNG or custom sim-event log.
+ * ctx() returns current_session->ctx_.
  */
 #pragma once
 
