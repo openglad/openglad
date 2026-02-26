@@ -24,9 +24,29 @@
 #include <openglad/core/util.h>
 
 #include <format>
+#include <functional>
 #include <string>
 
 int toInt(const std::string& s);
+
+namespace {
+class ScopeGuard
+{
+public:
+    explicit ScopeGuard(std::function<void()> fn) : fn_(std::move(fn)) {}
+    ~ScopeGuard()
+    {
+        if (active_)
+            fn_();
+    }
+
+    void dismiss() { active_ = false; }
+
+private:
+    std::function<void()> fn_;
+    bool active_ = true;
+};
+} // namespace
 
 CampaignData::CampaignData(const std::string& campaign_id)
     : id(campaign_id), title("New Campaign"), rating(0.0f), version("1.0"), suggested_power(0), first_level(1), num_levels(0)
@@ -120,6 +140,7 @@ bool CampaignData::save()
 {
     last_io_error_ = IoError::None;
     cleanup_unpacked_campaign();
+    ScopeGuard cleanup_guard([]() { cleanup_unpacked_campaign(); });
 
     bool result = true;
     if(unpack_campaign(id))
@@ -135,7 +156,6 @@ bool CampaignData::save()
             {
                 LogError("Couldn't initialize YAML emitter for temp/campaign.yaml.\n");
                 last_io_error_ = IoError::OpenWriteFailed;
-                cleanup_unpacked_campaign();
                 return false;
             }
 
@@ -198,7 +218,6 @@ bool CampaignData::save()
         result = false;
         last_io_error_ = IoError::PackageUnpackFailed;
     }
-    cleanup_unpacked_campaign();
 
     if(result)
         last_io_error_ = IoError::None;
@@ -209,6 +228,7 @@ bool CampaignData::save_as(const std::string& new_id)
 {
     last_io_error_ = IoError::None;
     cleanup_unpacked_campaign();
+    ScopeGuard cleanup_guard([]() { cleanup_unpacked_campaign(); });
 
     bool result = true;
     // Unpack the campaign
@@ -291,7 +311,6 @@ bool CampaignData::save_as(const std::string& new_id)
         result = false;
         last_io_error_ = IoError::PackageUnpackFailed;
     }
-    cleanup_unpacked_campaign();
 
     if(result)
         last_io_error_ = IoError::None;
