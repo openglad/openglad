@@ -216,6 +216,7 @@ inline bool playerHasJoystick(int player_num) { return (player_joy[player_num].i
 inline void disablePlayerJoystick(int player_num) { player_joy[player_num].index = -1; }
 
 void resetJoystick(int player_num);
+void reinit_joystick_subsystem();
 bool isPlayerHoldingKey(int player_index, int key_enum);
 bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event);
 bool didPlayerReleaseKey(int player_index, int key_enum, const SDL_Event& event);

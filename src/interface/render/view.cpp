@@ -1,6 +1,8 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/platform/soundob_sdl.h>
-#include "SDL.h"
+#include "SDL_keyboard.h"
+#include "SDL_keycode.h"
+#include "SDL_rwops.h"
 /* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
  * This program is free software; you can redistribute it and/or modify

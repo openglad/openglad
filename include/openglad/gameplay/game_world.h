@@ -32,8 +32,8 @@ struct SaveData;
 class IRandom;
 class cfg_store;
 
-#include <openglad/resources/pixie_data.h>
-#include <openglad/resources/smooth.h>
+#include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/smooth.h>
 
 namespace og::sim {
 class SimEventLog;

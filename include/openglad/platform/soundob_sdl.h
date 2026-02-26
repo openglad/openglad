@@ -8,9 +8,11 @@
 // SDL_mixer-backed sound playback. Only included by SDL builds.
 #pragma once
 
-#include "SDL_mixer.h"
 #include <openglad/legacy/soundob.h>  // SOUND_* constants, NUMSOUNDS
 #include <string>
+
+struct Mix_Chunk;
+struct SDL_AudioSpec;
 
 class soundob
 {

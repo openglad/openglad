@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "SDL_rwops.h"
 
 #include <unistd.h>
 #include <physfs.h>

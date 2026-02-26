@@ -3,13 +3,25 @@
 # Only src/resources/io/ and src/platform/sdl/io/ may include filesystem/archive vendor headers.
 set -euo pipefail
 
-VENDOR_PATTERNS='(physfs\.h|physfsrwops\.h|physfs_internal\.h|zip\.h|zipint\.h|zipconf\.h|yaml\.h|yam\.h|zlib\.h|zconf\.h)'
+VENDOR_PATTERNS='(physfs\.h|physfsrwops\.h|physfs_internal\.h|zip\.h|zipint\.h|zipconf\.h|yaml\.h|yam\.h|zlib\.h|zconf\.h|SDL(_[A-Za-z0-9]+)?\.h)'
 
 status=0
 
 # 1. Public headers must never include vendor headers
-if grep -rn --include='*.h' -E "#include.*${VENDOR_PATTERNS}" include/openglad/ 2>/dev/null; then
-    echo "ERROR: vendor headers found in include/openglad/ (public headers)" >&2
+if grep -rn --include='*.h' -E "#include.*${VENDOR_PATTERNS}" \
+    include/openglad/core include/openglad/gameplay include/openglad/resources include/openglad/interface include/openglad/legacy \
+    2>/dev/null; then
+    echo "ERROR: vendor headers found in non-platform public headers" >&2
+    status=1
+fi
+
+# 1b. Non-platform headers must not include SDL implementation headers.
+SDL_VENDOR='(SDL(_[A-Za-z0-9]+)?\.h)'
+if grep -rn --include='*.h' -E "#include.*${SDL_VENDOR}" \
+    src/core src/gameplay src/resources src/interface \
+    include/openglad/core include/openglad/gameplay include/openglad/resources include/openglad/interface include/openglad/legacy \
+    2>/dev/null; then
+    echo "ERROR: SDL headers found in non-platform headers" >&2
     status=1
 fi
 

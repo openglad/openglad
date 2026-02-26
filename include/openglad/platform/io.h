@@ -21,14 +21,15 @@
 // Includes SDL-free declarations plus SDL_RWops helpers.
 
 #include <openglad/platform/io_common.h>
-#include "SDL.h"
 #include <memory>
+
+struct SDL_RWops;
+void close_rwops(SDL_RWops* rwops);
 
 struct SDLRWopsCloser {
     void operator()(SDL_RWops* rwops) const
     {
-        if (rwops != nullptr)
-            SDL_RWclose(rwops);
+        close_rwops(rwops);
     }
 };
 using RwopsPtr = std::unique_ptr<SDL_RWops, SDLRWopsCloser>;

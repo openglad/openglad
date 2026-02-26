@@ -12,12 +12,12 @@
 
 #pragma once
 
-#include "SDL.h"
 #include <functional>
 
 #include <openglad/platform/game_loop_state.h>
 
 class screen;
+union SDL_Event;
 
 struct GameLoopDeps {
     // If null, defaults will be used (SDL_PollEvent, handle_events).
