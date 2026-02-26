@@ -204,12 +204,7 @@ void screen::init_common(short howmany, bool has_display)
 	load_map_data(level_visuals_.pixdata);
 	level_visuals_.renderer_ = create_sdl_level_render(level_visuals_.pixdata);
 	myloader = std::make_unique<loader>();
-	wire_entity_factory_callbacks();
-
-	world().on_pre_delete_objects = [this](og::gameplay::GameWorld* w) {
-		if (w == world_)
-			clear_stale_view_controls();
-	};
+	attach_world(world_);
 
 	numviews = howmany;
     for (auto& view : viewob)
@@ -261,22 +256,41 @@ screen::screen(short howmany, og::gameplay::GameWorld* world, bool create_displa
     , text_big(video_->text_big)
     , world_(world)
 {
-	assert(world_ != nullptr);
-    if (world_ == nullptr)
-    {
-        LogError("screen_ctor_failed: world pointer is null\n");
-        throw std::invalid_argument("screen world must not be null");
-    }
 	init_common(howmany, create_display);
 }
 
 void screen::attach_world(og::gameplay::GameWorld* world)
 {
+	if (world_ && world_ != world)
+	{
+		world_->on_pre_delete_objects = nullptr;
+		world_->entity_factory = nullptr;
+		world_->entity_configure = nullptr;
+		world_->entity_derived_stats = nullptr;
+		world_->entity_graphics = nullptr;
+	}
+
 	world_ = world;
+	if (!world_)
+		return;
+
+	wire_entity_factory_callbacks();
+	world_->on_pre_delete_objects = [this](og::gameplay::GameWorld* w) {
+		if (w == world_)
+			clear_stale_view_controls();
+	};
 }
 
 void screen::detach_world()
 {
+	if (world_)
+	{
+		world_->on_pre_delete_objects = nullptr;
+		world_->entity_factory = nullptr;
+		world_->entity_configure = nullptr;
+		world_->entity_derived_stats = nullptr;
+		world_->entity_graphics = nullptr;
+	}
 	world_ = nullptr;
 }
 
@@ -1052,16 +1066,19 @@ void screen::report_mem()
 
 void screen::wire_entity_factory_callbacks()
 {
+	if (!world_)
+		return;
+
     if (!myloader)
     {
-        world().entity_factory = nullptr;
-        world().entity_configure = nullptr;
-        world().entity_derived_stats = nullptr;
-        world().entity_graphics = nullptr;
+        world_->entity_factory = nullptr;
+        world_->entity_configure = nullptr;
+        world_->entity_derived_stats = nullptr;
+        world_->entity_graphics = nullptr;
         return;
     }
 
-    wire_loader_to_world(world(), *myloader, false);
+    wire_loader_to_world(*world_, *myloader, false);
 }
 
 void screen::clear_stale_view_controls()

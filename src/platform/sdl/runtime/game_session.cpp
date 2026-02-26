@@ -260,6 +260,10 @@ GameSession::~GameSession()
         }
     }
 
+    if (screen_owner_) {
+        screen_owner_->detach_world();
+    }
+    myscreen_ = nullptr;
     screen_owner_.reset();
     prefs_owner_.reset();
     seeded_rng_.reset();
