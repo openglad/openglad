@@ -854,6 +854,8 @@ walker  *walker::create_weapon()
 	if (query_order() == Order::Generator)
 	{
 		weapon = og::gameplay::current_game->world->add_ob(Order::Living, static_cast<char>(default_weapon));
+		if (!weapon)
+			return nullptr;
 		weapon->team_num = team_num;
 		weapon->owner = this;
 		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
@@ -863,6 +865,8 @@ walker  *walker::create_weapon()
 	weapon_type = current_weapon;
 
 	weapon = og::gameplay::current_game->world->add_ob(Order::Weapon, static_cast<char>(weapon_type));
+	if (!weapon)
+		return nullptr;
 	weapon->team_num = team_num;
 	weapon->owner = this;
 	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
@@ -1288,10 +1292,13 @@ bool walker::death()
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
 			newob = og::gameplay::current_game->world->add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
-			newob->stats()->hitpoints = static_cast<float>(myguy->query_heart_value());
-			newob->stats()->hitpoints *= 0.75f / 2.0f;  // 75%, divided by 2, since score is doubled at end of level
-			newob->team_num = team_num;
-			newob->center_on(this);
+			if (newob) // failsafe
+			{
+				newob->stats()->hitpoints = static_cast<float>(myguy->query_heart_value());
+				newob->stats()->hitpoints *= 0.75f / 2.0f;  // 75%, divided by 2, since score is doubled at end of level
+				newob->team_num = team_num;
+				newob->center_on(this);
+			}
 		}
 
 	switch (order)

@@ -4,6 +4,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/living.h>
@@ -937,11 +938,11 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     std::int32_t freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
-    og::gameplay::GameplayContext gameplay_ctx;
-    og::gameplay::GameplayContext* prev_gameplay_ctx = og::gameplay::current_game;
-    og::gameplay::current_game = &gameplay_ctx;
-    gameplay_ctx.world = &level;
-    gameplay_ctx.sim_events = &events;
+    og::runtime::ensure_thread_session();
+    og::gameplay::GameWorld* saved_world = og::gameplay::current_game->world;
+    og::sim::SimEventLog* saved_sim_events = og::gameplay::current_game->sim_events;
+    og::gameplay::current_game->world = &level;
+    og::gameplay::current_game->sim_events = &events;
     level.set_sim_context(&save, &freeze, &events, &rng, &cfg);
 
     walker* living = level.add_ob(Order::Living, FAMILY_SOLDIER);
@@ -961,6 +962,9 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     OG_ASSERT(level.par_value == 1);
     OG_ASSERT(level.time_bonus_limit == 4000);
 
-    og::gameplay::current_game = prev_gameplay_ctx;
+    if (og::gameplay::current_game) {
+        og::gameplay::current_game->world = saved_world;
+        og::gameplay::current_game->sim_events = saved_sim_events;
+    }
 }
 } // namespace detail_level_data_r15

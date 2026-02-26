@@ -14,6 +14,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/legacy/base.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
@@ -128,25 +129,29 @@ struct ThiefR12Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
-    og::gameplay::GameplayContext gameplay_ctx;
-    og::gameplay::GameplayContext* prev_gameplay_ctx = nullptr;
+    og::gameplay::GameWorld* saved_world_ = nullptr;
+    og::sim::SimEventLog* saved_sim_events_ = nullptr;
 
     ThiefR12Fixture()
     {
         level.myobmap = std::make_unique<obmap>();
         wire_test_entity_factory(level);
         level.id = 1;
-        prev_gameplay_ctx = og::gameplay::current_game;
-        og::gameplay::current_game = &gameplay_ctx;
-        gameplay_ctx.world = &level;
-        gameplay_ctx.sim_events = &events;
+        og::runtime::ensure_thread_session();
+        saved_world_ = og::gameplay::current_game->world;
+        saved_sim_events_ = og::gameplay::current_game->sim_events;
+        og::gameplay::current_game->world = &level;
+        og::gameplay::current_game->sim_events = &events;
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 
     ~ThiefR12Fixture()
     {
-        og::gameplay::current_game = prev_gameplay_ctx;
+        if (og::gameplay::current_game) {
+            og::gameplay::current_game->world = saved_world_;
+            og::gameplay::current_game->sim_events = saved_sim_events_;
+        }
     }
 };
 

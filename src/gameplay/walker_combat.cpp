@@ -361,10 +361,13 @@ bool walker::attack(walker  *target)
             /* Blood splats at death */
             // Make temporary stain:
             blood = og::gameplay::current_game->world->add_ob(Order::Weapon, FAMILY_BLOOD);
-            blood->team_num = target->team_num;
-            blood->ani_type = ANI_GROW;
-            blood->ignore = 1; // so that we can be walked over .. ?
-            blood->setxy(target->xpos,target->ypos);
+            if (blood)
+            {
+                blood->team_num = target->team_num;
+                blood->ani_type = ANI_GROW;
+                blood->ignore = 1; // so that we can be walked over .. ?
+                blood->setxy(target->xpos,target->ypos);
+            }
         }
         if (targetorder == Order::Living)
         {

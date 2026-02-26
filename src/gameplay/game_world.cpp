@@ -165,10 +165,18 @@ void GameWorld::delete_objects()
     if (on_pre_delete_objects)
         on_pre_delete_objects(this);
 
-    oblist.clear();
-    fxlist.clear();
-    weaplist.clear();
-    dead_list.clear();
+    // Move lists to temporaries before destroying.  Walker destructors call
+    // clear_backlinks_to() which iterates these lists; clearing in-place would
+    // iterate a list that is mid-destruction (undefined behaviour).  With the
+    // members empty, the destructor iterations are safe no-ops.
+    auto ob_tmp   = std::move(oblist);
+    auto fx_tmp   = std::move(fxlist);
+    auto weap_tmp = std::move(weaplist);
+    auto dead_tmp = std::move(dead_list);
+    ob_tmp.clear();
+    fx_tmp.clear();
+    weap_tmp.clear();
+    dead_tmp.clear();
     living_count = 0;
     // Withdrawal is a per-level transient signal and must not survive object resets.
     withdraw_requested = false;

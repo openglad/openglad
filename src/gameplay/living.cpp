@@ -496,6 +496,8 @@ walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 	walker  *newob;
 
 	newob = og::gameplay::current_game->world->add_ob(Order::Living, whatfamily);
+	if (!newob)
+		return nullptr;
 	newob->owner = this;
 		newob->lifetime = summon_lifetime;
 	//  Log("\n\nSummoned %d, life %d\n", whatfamily, lifetime);
