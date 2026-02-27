@@ -361,9 +361,10 @@ static int direct_menu_click_injector(void* data)
     int elapsed = 0;
     const int poll_interval = 50;
     int esc_cooldown_ms = 0;
+    int click_cooldown_ms = 0;
 
     while (!state->menu_done->load(std::memory_order_acquire)) {
-        if (!state->clicked_target) {
+        if (click_cooldown_ms <= 0) {
             auto interactables = get_interactables();
             for (const auto& item : interactables) {
                 if (item.id == state->target_id && !item.hidden && item.y >= state->min_y) {
@@ -377,6 +378,7 @@ static int direct_menu_click_injector(void* data)
                         + og::runtime::current_session->viewport_offset_y_);
                     inject_click(win_x, win_y);
                     state->clicked_target = true;
+                    click_cooldown_ms = 200;
                     break;
                 }
             }
@@ -384,13 +386,15 @@ static int direct_menu_click_injector(void* data)
 
         // Safety valve: if we still haven't found the target button after a few
         // seconds, keep nudging ESC until the menu loop unwinds.
-        if (!state->clicked_target && elapsed >= 5000 && esc_cooldown_ms <= 0) {
+        if (elapsed >= 5000 && esc_cooldown_ms <= 0) {
             inject_key_press(SDLK_ESCAPE, 10);
             esc_cooldown_ms = 200;
         }
 
         SDL_Delay(poll_interval);
         elapsed += poll_interval;
+        if (click_cooldown_ms > 0)
+            click_cooldown_ms -= poll_interval;
         if (esc_cooldown_ms > 0)
             esc_cooldown_ms -= poll_interval;
     }
