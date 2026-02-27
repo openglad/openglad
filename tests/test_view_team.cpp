@@ -49,26 +49,6 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
-static bool wait_for_interactable_match(
-    const std::string& id,
-    const std::function<bool(const Interactable&)>& predicate,
-    int timeout_ms = 5000)
-{
-    int elapsed = 0;
-    const int poll_interval = 50;
-    while (elapsed < timeout_ms) {
-        const auto interactables = get_interactables();
-        for (const auto& item : interactables) {
-            if (item.id == id && !item.hidden && predicate(item))
-                return true;
-        }
-        SDL_Delay(poll_interval);
-        elapsed += poll_interval;
-    }
-    fprintf(stderr, "  [interact] TIMEOUT waiting for matched '%s' (%d ms)\n", id.c_str(), timeout_ms);
-    return false;
-}
-
 static bool interact_match(
     const std::string& id,
     const std::function<bool(const Interactable&)>& predicate)
@@ -87,6 +67,79 @@ static bool interact_match(
         }
     }
     fprintf(stderr, "  [interact] WARNING: matched '%s' not found\n", id.c_str());
+    return false;
+}
+
+static bool interact_silent(const std::string& id)
+{
+    const auto interactables = get_interactables();
+    for (const auto& item : interactables) {
+        if (item.id == id && !item.hidden) {
+            const int game_x = item.x + item.width / 2;
+            const int game_y = item.y + item.height / 2;
+            const int win_x = static_cast<int>(static_cast<float>(game_x)
+                * (og::runtime::current_session->viewport_w_ / 320.0f)
+                + og::runtime::current_session->viewport_offset_x_);
+            const int win_y = static_cast<int>(static_cast<float>(game_y)
+                * (og::runtime::current_session->viewport_h_ / 200.0f)
+                + og::runtime::current_session->viewport_offset_y_);
+            inject_click(win_x, win_y);
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool has_interactable_match(
+    const std::string& id,
+    const std::function<bool(const Interactable&)>& predicate)
+{
+    const auto interactables = get_interactables();
+    for (const auto& item : interactables) {
+        if (item.id == id && !item.hidden && predicate(item))
+            return true;
+    }
+    return false;
+}
+
+static bool unwind_to_main_menu(int timeout_ms = 7000)
+{
+    int elapsed = 0;
+    const int poll_interval = 100;
+    while (elapsed < timeout_ms) {
+        if (has_interactable("continue_game"))
+            return true;
+        if (!interact_silent("back"))
+            inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+    }
+    return has_interactable("continue_game");
+}
+
+static bool wait_for_view_menu_buttons(int timeout_ms = 6000)
+{
+    const auto is_view_menu_button = [](const Interactable& item) { return item.y >= 160; };
+    int elapsed = 0;
+    int since_last_retry = 250;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (has_interactable_match("go", is_view_menu_button)
+            && has_interactable_match("back", is_view_menu_button))
+            return true;
+
+        if (since_last_retry >= 250 && has_interactable("view_team")) {
+            fprintf(stderr, "  [test] retry clicking view_team\n");
+            interact("view_team");
+            since_last_retry = 0;
+        }
+
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+        since_last_retry += poll_interval;
+    }
+
+    fprintf(stderr, "  [interact] TIMEOUT entering view_team menu (%d ms)\n", timeout_ms);
     return false;
 }
 
@@ -130,6 +183,7 @@ static int view_team_injector(void* data)
     state->started = true;
 
     if (!enter_team_menu_from_main_menu(20000)) {
+        unwind_to_main_menu();
         state->finished = true;
         return 0;
     }
@@ -137,30 +191,15 @@ static int view_team_injector(void* data)
     fprintf(stderr, "  [test] clicking view_team\n");
     interact("view_team");
 
-    // View team menu has "go" and "back" buttons.
-    const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
     const auto is_view_menu_back = [](const Interactable& item) { return item.y >= 160; };
-    if (wait_for_interactable_match("go", is_view_menu_go, 5000)
-        && wait_for_interactable_match("back", is_view_menu_back, 5000)) {
+    if (wait_for_view_menu_buttons(7000)) {
         state->saw_view_menu = true;
         fprintf(stderr, "  [test] clicking back from view menu\n");
         interact_match("back", is_view_menu_back);
     }
 
-    // BACK from view menu returns to team menu (REDRAW), not main menu.
-    // Wait for the team menu to redraw, then click its back button.
-    SDL_Delay(500);
-    for (int i = 0; i < 8; i++) {
-        if (has_interactable("continue_game"))
-            break; // main menu
-        if (has_interactable("back")) {
-            fprintf(stderr, "  [test] clicking back\n");
-            interact("back");
-        } else {
-            inject_key_press(SDLK_ESCAPE, 10);
-        }
-        SDL_Delay(300);
-    }
+    // Always try to unwind so picker_main cannot deadlock on failed interactions.
+    unwind_to_main_menu();
 
     state->finished = true;
     return 0;
@@ -221,13 +260,15 @@ static int view_team_go_injector(void* data)
     state->started = true;
 
     if (!enter_team_menu_from_main_menu(20000)) {
+        unwind_to_main_menu();
         state->finished = true;
         return 0;
     }
     interact("view_team");
 
     const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_interactable_match("go", is_view_menu_go, 5000)) {
+    if (!wait_for_view_menu_buttons(7000)) {
+        unwind_to_main_menu();
         state->finished = true;
         return 0;
     }
@@ -259,15 +300,7 @@ static int view_team_go_injector(void* data)
     g_test_remove_exits = false;
     og::sim::g_test_level_tick_limit_override = 0;
 
-    for (int i = 0; i < 20; ++i) {
-        if (has_interactable("continue_game"))
-            break;
-        if (has_interactable("back"))
-            interact("back");
-        else
-            inject_key_press(SDLK_ESCAPE, 10);
-        SDL_Delay(200);
-    }
+    unwind_to_main_menu(9000);
 
     state->finished = true;
     return 0;
@@ -317,6 +350,7 @@ struct DirectMenuClickState {
     bool clicked_target;
     const char* target_id;
     int min_y;
+    std::atomic<bool>* menu_done;
 };
 
 static int direct_menu_click_injector(void* data)
@@ -325,26 +359,42 @@ static int direct_menu_click_injector(void* data)
     auto* state = static_cast<DirectMenuClickState*>(data);
 
     int elapsed = 0;
-    while (elapsed < 5000) {
-        auto interactables = get_interactables();
-        for (const auto& item : interactables) {
-            if (item.id == state->target_id && !item.hidden && item.y >= state->min_y) {
-                const int game_x = item.x + item.width / 2;
-                const int game_y = item.y + item.height / 2;
-                const int win_x = static_cast<int>(static_cast<float>(game_x) * (og::runtime::current_session->viewport_w_ / 320.0f) + og::runtime::current_session->viewport_offset_x_);
-                const int win_y = static_cast<int>(static_cast<float>(game_y) * (og::runtime::current_session->viewport_h_ / 200.0f) + og::runtime::current_session->viewport_offset_y_);
-                inject_click(win_x, win_y);
-                state->clicked_target = true;
-                state->finished = true;
-                return 0;
+    const int poll_interval = 50;
+    int esc_cooldown_ms = 0;
+
+    while (!state->menu_done->load(std::memory_order_acquire)) {
+        if (!state->clicked_target) {
+            auto interactables = get_interactables();
+            for (const auto& item : interactables) {
+                if (item.id == state->target_id && !item.hidden && item.y >= state->min_y) {
+                    const int game_x = item.x + item.width / 2;
+                    const int game_y = item.y + item.height / 2;
+                    const int win_x = static_cast<int>(static_cast<float>(game_x)
+                        * (og::runtime::current_session->viewport_w_ / 320.0f)
+                        + og::runtime::current_session->viewport_offset_x_);
+                    const int win_y = static_cast<int>(static_cast<float>(game_y)
+                        * (og::runtime::current_session->viewport_h_ / 200.0f)
+                        + og::runtime::current_session->viewport_offset_y_);
+                    inject_click(win_x, win_y);
+                    state->clicked_target = true;
+                    break;
+                }
             }
         }
-        SDL_Delay(50);
-        elapsed += 50;
+
+        // Safety valve: if we still haven't found the target button after a few
+        // seconds, keep nudging ESC until the menu loop unwinds.
+        if (!state->clicked_target && elapsed >= 5000 && esc_cooldown_ms <= 0) {
+            inject_key_press(SDLK_ESCAPE, 10);
+            esc_cooldown_ms = 200;
+        }
+
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+        if (esc_cooldown_ms > 0)
+            esc_cooldown_ms -= poll_interval;
     }
 
-    // Safety valve so menu loops don't hang forever in a failed interaction.
-    inject_key_press(SDLK_ESCAPE, 10);
     state->finished = true;
     return 0;
 }
@@ -361,11 +411,13 @@ void test_create_view_menu_direct_back()
     og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
     og::runtime::current_session->myscreen_->save_data.team_size = 1;
 
-    DirectMenuClickState state = { false, false, "back", 160 };
+    std::atomic<bool> menu_done{false};
+    DirectMenuClickState state = { false, false, "back", 160, &menu_done };
     SDL_Thread* thread = SDL_CreateThread(direct_menu_click_injector, "direct_view_back", &state);
     TEST_ASSERT(thread != nullptr, "failed to create direct view-menu injector thread");
 
     const Sint32 ret = create_view_menu(0);
+    menu_done.store(true, std::memory_order_release);
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
@@ -389,11 +441,13 @@ void test_create_team_menu_direct_back()
     og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
     og::runtime::current_session->myscreen_->save_data.team_size = 1;
 
-    DirectMenuClickState state = { false, false, "back", 100 };
+    std::atomic<bool> menu_done{false};
+    DirectMenuClickState state = { false, false, "back", 100, &menu_done };
     SDL_Thread* thread = SDL_CreateThread(direct_menu_click_injector, "direct_team_back", &state);
     TEST_ASSERT(thread != nullptr, "failed to create direct team-menu injector thread");
 
     const Sint32 ret = create_team_menu(0);
+    menu_done.store(true, std::memory_order_release);
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
@@ -420,13 +474,15 @@ static int view_team_go_level17_injector(void* data)
     auto* state = static_cast<ViewTeamGoLevel17State*>(data);
 
     if (!enter_team_menu_from_main_menu(20000)) {
+        unwind_to_main_menu();
         state->finished = true;
         return 0;
     }
     interact("view_team");
 
     const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_interactable_match("go", is_view_menu_go, 5000)) {
+    if (!wait_for_view_menu_buttons(7000)) {
+        unwind_to_main_menu();
         state->finished = true;
         return 0;
     }
@@ -471,15 +527,7 @@ static int view_team_go_level17_injector(void* data)
     g_test_remove_exits = false;
     og::sim::g_test_level_tick_limit_override = 0;
 
-    for (int i = 0; i < 20; ++i) {
-        if (has_interactable("continue_game"))
-            break;
-        if (has_interactable("back"))
-            interact("back");
-        else
-            inject_key_press(SDLK_ESCAPE, 10);
-        SDL_Delay(200);
-    }
+    unwind_to_main_menu(9000);
 
     state->finished = true;
     return 0;
