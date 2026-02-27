@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <set>
 #include <string>
 
 #include <openglad/gameplay/pixie_data.h>
@@ -40,24 +41,6 @@ public:
     }
 
     std::uint32_t state_;
-};
-
-// Result of a single simulation tick.
-struct TickResult {
-    // Level completion status after this tick:
-    //   0 = foes remain
-    //   1 = no foes, but exits exist
-    //   2 = no foes and no exits (auto-advance)
-    short level_done = 0;
-
-    // True if the game ended during this tick (victory, defeat, or abort).
-    bool game_ended = false;
-
-    // Next level index if the game ended with a level transition.
-    short next_level = -1;
-
-    // Ending type (0=win, 1=loss, SCEN_TYPE_SAVE_ALL=save-all failure)
-    short ending = 0;
 };
 
 #ifdef TESTING
@@ -134,11 +117,28 @@ public:
     void reset_level_progress();
 
     // Run one simulation tick.
-    og::sim::TickResult tick(SaveData& save, std::int32_t& enemy_freeze,
-                             char end, og::sim::SimEventLog& events);
+    void tick(SaveData& save, og::sim::SimEventLog& events);
 
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;
+
+    // Game state flags written in-place by tick().
+    short level_done = 0;
+    bool game_ended = false;
+    short next_level = -1;
+    short ending = 0;
+    std::int32_t enemy_freeze = 0;
+    signed char timer_wait = 6;
+    char end = 0;
+    bool retry = false;
+    float control_hp = 0.0f;
+
+    // Gameplay-relevant values that will migrate off SaveData/session.
+    std::uint32_t m_score[4] = {};
+    short my_team = 0;
+    short allied_mode = 0;
+    short current_scenario = 0;
+    std::set<int> completed_levels;
 
 private:
     walker* add_to_list(Order order, std::int32_t family,

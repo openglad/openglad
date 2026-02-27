@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <cstring>
 #include <format>
+#include <iterator>
 #include <string>
 #include <string_view>
 
@@ -417,7 +418,8 @@ LevelData::LevelData(int level_id, bool headless)
 }
 
 LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks)
-    : myloader(nullptr)
+    : level_done(this)
+    , myloader(nullptr)
     , numobs(this)
     , oblist(this, WalkerListForwarder::Kind::Objects)
     , fxlist(this, WalkerListForwarder::Kind::Effects)
@@ -486,6 +488,21 @@ void LevelData::attach_world(GameWorld* world)
         next_world->par_value = old_world->par_value;
         next_world->time_bonus_limit = old_world->time_bonus_limit;
         next_world->difficulty = old_world->difficulty;
+        next_world->level_done = old_world->level_done;
+        next_world->game_ended = old_world->game_ended;
+        next_world->next_level = old_world->next_level;
+        next_world->ending = old_world->ending;
+        next_world->enemy_freeze = old_world->enemy_freeze;
+        next_world->timer_wait = old_world->timer_wait;
+        next_world->end = old_world->end;
+        next_world->retry = old_world->retry;
+        next_world->control_hp = old_world->control_hp;
+        std::copy(std::begin(old_world->m_score), std::end(old_world->m_score),
+                  std::begin(next_world->m_score));
+        next_world->my_team = old_world->my_team;
+        next_world->allied_mode = old_world->allied_mode;
+        next_world->current_scenario = old_world->current_scenario;
+        next_world->completed_levels = old_world->completed_levels;
         next_world->oblist.splice(next_world->oblist.end(), old_world->oblist);
         next_world->fxlist.splice(next_world->fxlist.end(), old_world->fxlist);
         next_world->weaplist.splice(next_world->weaplist.end(), old_world->weaplist);

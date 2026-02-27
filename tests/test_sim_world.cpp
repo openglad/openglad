@@ -103,9 +103,9 @@ OG_UNIT_TEST(test_sim_world_r15_normal_tick_cleanup_and_dead_entity_removal)
 
     fx.level.numobs = 3;
 
-    const og::sim::TickResult result = world.tick(fx.save, fx.enemy_freeze, 0, fx.events);
-    OG_ASSERT(result.level_done == 0);
-    OG_ASSERT(!result.game_ended);
+    world.tick(fx.save, fx.events);
+    OG_ASSERT(world.level_done == 0);
+    OG_ASSERT(!world.game_ended);
     OG_ASSERT(ally->acts > 0);
     OG_ASSERT(enemy->acts > 0);
     OG_ASSERT(live_weap->acts > 0);
@@ -134,16 +134,16 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_tick_and_level_done_paths)
     TickWalker* exit_fx = add_fx(fx, Order::Treasure, FAMILY_EXIT, 0, false);
     OG_ASSERT(ally && enemy && exit_fx);
 
-    fx.enemy_freeze = 11;
-    og::sim::TickResult frozen = world.tick(fx.save, fx.enemy_freeze, 0, fx.events);
-    OG_ASSERT(frozen.level_done == 1);
-    OG_ASSERT(!frozen.game_ended);
+    world.enemy_freeze = 11;
+    world.tick(fx.save, fx.events);
+    OG_ASSERT(world.level_done == 1);
+    OG_ASSERT(!world.game_ended);
     OG_ASSERT(ally->acts > 0);
     OG_ASSERT(enemy->acts == 0);
 
-    fx.enemy_freeze = 2;
+    world.enemy_freeze = 2;
     const std::size_t before_events = fx.events.size();
-    (void)world.tick(fx.save, fx.enemy_freeze, 0, fx.events);
+    world.tick(fx.save, fx.events);
     OG_ASSERT(fx.events.size() > before_events);
 }
 
@@ -158,11 +158,11 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_uses_friendliness_not_team_zero)
     TickWalker* hostile = add_ob(fx, Order::Living, FAMILY_ORC, 0, 80, 64);
     OG_ASSERT(friendly && hostile);
 
-    fx.enemy_freeze = 11;
-    const og::sim::TickResult frozen = world.tick(fx.save, fx.enemy_freeze, 0, fx.events);
+    world.enemy_freeze = 11;
+    world.tick(fx.save, fx.events);
 
-    OG_ASSERT(frozen.level_done == 2);
-    OG_ASSERT(frozen.game_ended);
+    OG_ASSERT(world.level_done == 2);
+    OG_ASSERT(world.game_ended);
     OG_ASSERT(friendly->acts > 0);
     OG_ASSERT(hostile->acts == 0);
 }
@@ -177,16 +177,17 @@ OG_UNIT_TEST(test_sim_world_r15_end_flag_and_auto_advance_paths)
     TickWalker* enemy = add_ob(fx, Order::Living, FAMILY_ORC, 1, 80, 80);
     OG_ASSERT(enemy != nullptr);
 
-    og::sim::TickResult ended = world.tick(fx.save, fx.enemy_freeze, 1, fx.events);
-    OG_ASSERT(ended.game_ended);
+    world.end = 1;
+    world.tick(fx.save, fx.events);
+    OG_ASSERT(world.game_ended);
 
     SimWorldR15Fixture empty_fx;
     GameWorld& world2 = empty_fx.world();
     world2.rng_.state_ = 9;
-    og::sim::TickResult auto_advance = world2.tick(empty_fx.save, empty_fx.enemy_freeze, 0, empty_fx.events);
-    OG_ASSERT(auto_advance.game_ended);
-    OG_ASSERT(auto_advance.level_done == 2);
-    OG_ASSERT(auto_advance.next_level == static_cast<short>(empty_fx.level.world().id + 1));
+    world2.tick(empty_fx.save, empty_fx.events);
+    OG_ASSERT(world2.game_ended);
+    OG_ASSERT(world2.level_done == 2);
+    OG_ASSERT(world2.next_level == static_cast<short>(empty_fx.level.world().id + 1));
 }
 
 OG_UNIT_TEST(test_sim_world_r15_reset_level_progress_clears_timeout_for_same_level)
@@ -213,14 +214,14 @@ OG_UNIT_TEST(test_sim_world_r15_reset_level_progress_clears_timeout_for_same_lev
         }
     } guard;
 
-    const og::sim::TickResult first = world.tick(fx.save, fx.enemy_freeze, 0, fx.events);
-    OG_ASSERT(!first.game_ended);
+    world.tick(fx.save, fx.events);
+    OG_ASSERT(!world.game_ended);
 
-    const og::sim::TickResult second = world.tick(fx.save, fx.enemy_freeze, 0, fx.events);
-    OG_ASSERT(second.game_ended);
+    world.tick(fx.save, fx.events);
+    OG_ASSERT(world.game_ended);
 
     world.reset_level_progress();
-    const og::sim::TickResult restarted = world.tick(fx.save, fx.enemy_freeze, 0, fx.events);
-    OG_ASSERT(!restarted.game_ended);
+    world.tick(fx.save, fx.events);
+    OG_ASSERT(!world.game_ended);
 #endif
 }

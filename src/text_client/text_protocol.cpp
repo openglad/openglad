@@ -69,23 +69,21 @@ static void wire_all_entities(LevelData& level)
     for (auto& uptr : level.weaplist) level.wire_entity(uptr.get());
 }
 
-static void cmd_tick(GameWorld& world, LevelData& level, SaveData& save,
-                     std::int32_t& enemy_freeze, char& end,
+static void cmd_tick(GameWorld& world, SaveData& save,
                      og::sim::SimEventLog& events, int count)
 {
     std::cout << "{\"cmd\":\"tick\",\"count\":" << count << ",\"results\":[";
     for (int i = 0; i < count; i++) {
         if (i > 0) std::cout << ",";
-        auto result = world.tick(save, enemy_freeze, end, events);
-        level.level_done = result.level_done;
+        world.tick(save, events);
         std::cout << "{\"tick\":" << world.tick_count_
-                  << ",\"level_done\":" << result.level_done
-                  << ",\"game_ended\":" << (result.game_ended ? "true" : "false")
-                  << ",\"next_level\":" << result.next_level
-                  << ",\"ending\":" << result.ending
+                  << ",\"level_done\":" << world.level_done
+                  << ",\"game_ended\":" << (world.game_ended ? "true" : "false")
+                  << ",\"next_level\":" << world.next_level
+                  << ",\"ending\":" << world.ending
                   << "}";
-        if (result.game_ended) {
-            end = 1;
+        if (world.game_ended) {
+            world.end = 1;
             break;
         }
     }
@@ -191,10 +189,10 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     }
 
     // Wire up sim pointers on all entities
-    std::int32_t enemy_freeze = 0;
-    char end = 0;
+    world.enemy_freeze = 0;
+    world.end = 0;
 
-    level.set_sim_context(&save, &enemy_freeze, &events, &entity_rng, &cfg);
+    level.set_sim_context(&save, &world.enemy_freeze, &events, &entity_rng, &cfg);
     wire_all_entities(level);
 
     // Output ready message
@@ -221,7 +219,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             int count = 1;
             iss >> count;
             if (count < 1) count = 1;
-            cmd_tick(world, level, save, enemy_freeze, end, events, count);
+            cmd_tick(world, save, events, count);
             wire_all_entities(level);
         } else if (cmd == "state") {
             cmd_state(level);
@@ -236,7 +234,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             std::cout.flush();
         }
 
-        if (end) {
+        if (world.end) {
             std::cout << "{\"status\":\"game_over\"}\n";
             std::cout.flush();
         }

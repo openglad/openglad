@@ -38,6 +38,15 @@ GameWorld& setup_tick_world(std::uint32_t seed)
     world.tick_count_ = 0;
     world.rng_.state_ = seed;
     world.reset_level_progress();
+    world.level_done = 0;
+    world.game_ended = false;
+    world.next_level = -1;
+    world.ending = 0;
+    world.enemy_freeze = 0;
+    world.end = 0;
+    world.retry = false;
+    world.control_hp = 0.0f;
+    world.timer_wait = 6;
     return world;
 }
 
@@ -406,16 +415,16 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     SaveData save;
     save.my_team = 0;
 
-    std::int32_t enemy_freeze = 2;
-    char end = 0;
+    world.enemy_freeze = 2;
+    world.end = 0;
 
     walker* ally = add_living(0);
     (void)ally;
     walker* foe = add_living(1);
     foe->team_num = 1;
 
-    og::sim::TickResult r = world.tick(save, enemy_freeze, end, events);
-    TEST_ASSERT_EQ(1, static_cast<int>(enemy_freeze), "enemy_freeze should decrement");
+    world.tick(save, events);
+    TEST_ASSERT_EQ(1, static_cast<int>(world.enemy_freeze), "enemy_freeze should decrement");
     TEST_ASSERT_EQ(1, static_cast<int>(world.tick_count_), "first tick should increment tick_count");
 
     bool saw_set_palette = false;
@@ -427,20 +436,20 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     TEST_ASSERT(saw_set_palette, "enemy_freeze transition to 1 should emit SetPalette");
 
     // end flag branch (when level_done is not 2).
-    end = 1;
+    world.end = 1;
     events.clear();
-    r = world.tick(save, enemy_freeze, end, events);
-    TEST_ASSERT(r.game_ended, "end flag should terminate tick when battle not auto-finished");
+    world.tick(save, events);
+    TEST_ASSERT(world.game_ended, "end flag should terminate tick when battle not auto-finished");
 
     // Level_done==1 path via exit treasure and no enemies.
     clear_level_lists();
     add_treasure(FAMILY_EXIT, 2);
-    enemy_freeze = 0;
-    end = 0;
+    world.enemy_freeze = 0;
+    world.end = 0;
     events.clear();
-    r = world.tick(save, enemy_freeze, end, events);
-    TEST_ASSERT(r.level_done == 1, "exit with no foes should set level_done=1");
-    TEST_ASSERT(!r.game_ended, "level_done=1 should not auto-end game");
+    world.tick(save, events);
+    TEST_ASSERT(world.level_done == 1, "exit with no foes should set level_done=1");
+    TEST_ASSERT(!world.game_ended, "level_done=1 should not auto-end game");
 
     // Cleanup path: dead refs are nulled and dead entities removed.
     clear_level_lists();
@@ -459,10 +468,10 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     dead_fx->dead = 1;
     dead_weap->dead = 1;
 
-    enemy_freeze = 0;
-    end = 0;
+    world.enemy_freeze = 0;
+    world.end = 0;
     events.clear();
-    r = world.tick(save, enemy_freeze, end, events);
+    world.tick(save, events);
     TEST_ASSERT(owner->foe == nullptr, "dead foe pointer should be cleared");
     TEST_ASSERT(owner->leader == nullptr, "dead leader pointer should be cleared");
     clear_level_lists();
@@ -512,12 +521,12 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
     walker* frozen_enemy = add_living(2);
     TEST_ASSERT(frozen_enemy != nullptr, "frozen enemy created");
 
-    std::int32_t enemy_freeze = 11;
-    char end = 0;
-    og::sim::TickResult r = world.tick(save, enemy_freeze, end, events);
-    TEST_ASSERT_EQ(10, (int)enemy_freeze, "enemy_freeze should decrement from 11 to 10");
-    TEST_ASSERT_EQ(2, (int)r.level_done, "hostile living during freeze should stay frozen and not keep level active");
-    TEST_ASSERT(r.game_ended, "when only frozen hostiles remain, tick should report level completion");
+    world.enemy_freeze = 11;
+    world.end = 0;
+    world.tick(save, events);
+    TEST_ASSERT_EQ(10, (int)world.enemy_freeze, "enemy_freeze should decrement from 11 to 10");
+    TEST_ASSERT_EQ(2, (int)world.level_done, "hostile living during freeze should stay frozen and not keep level active");
+    TEST_ASSERT(world.game_ended, "when only frozen hostiles remain, tick should report level completion");
 
     int time_left_messages = 0;
     for (const auto& ev : events.events())
@@ -555,10 +564,10 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
     if (dead_weap)
         dead_weap->dead = 1;
 
-    enemy_freeze = 0;
-    end = 0;
+    world.enemy_freeze = 0;
+    world.end = 0;
     events.clear();
-    r = world.tick(save, enemy_freeze, end, events);
+    world.tick(save, events);
     TEST_ASSERT(owner->foe == nullptr, "oblist dead foe pointer should be cleared");
     TEST_ASSERT(owner->leader == nullptr, "oblist dead leader pointer should be cleared");
     TEST_ASSERT(weap_owner == nullptr || weap_owner->foe == nullptr, "weaplist dead foe pointer should be cleared");
@@ -609,11 +618,11 @@ void test_sim_world_batch5_game_end_paths()
     save.my_team = 0;
 
     // No foes and no exits => level_done stays 2 and game ends.
-    std::int32_t enemy_freeze = 0;
-    char end = 0;
-    og::sim::TickResult r = world.tick(save, enemy_freeze, end, events);
-    TEST_ASSERT(r.game_ended, "empty level should trigger game_ended path");
-    TEST_ASSERT_EQ(0, (int)r.ending, "empty level ending should be 0");
+    world.enemy_freeze = 0;
+    world.end = 0;
+    world.tick(save, events);
+    TEST_ASSERT(world.game_ended, "empty level should trigger game_ended path");
+    TEST_ASSERT_EQ(0, (int)world.ending, "empty level ending should be 0");
 
     // end flag path when level is not fully done.
     clear_level_lists();
@@ -622,10 +631,10 @@ void test_sim_world_batch5_game_end_paths()
     if (!foe)
         return;
     foe->set_act_type(ACT_CONTROL);
-    end = 1;
-    r = world.tick(save, enemy_freeze, end, events);
-    TEST_ASSERT(r.game_ended, "end flag should force game end");
-    TEST_ASSERT_EQ(0, (int)r.level_done, "hostile living should keep level_done at 0 before end flag handling");
+    world.end = 1;
+    world.tick(save, events);
+    TEST_ASSERT(world.game_ended, "end flag should force game end");
+    TEST_ASSERT_EQ(0, (int)world.level_done, "hostile living should keep level_done at 0 before end flag handling");
 }
 REGISTER_TEST(test_sim_world_batch5_game_end_paths);
 
@@ -734,10 +743,9 @@ void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
     dead_living->myguy = nullptr;
     dead_living->dead = 1;
 
-    std::int32_t enemy_freeze = 0;
-    char end = 0;
-    og::sim::TickResult r = world.tick(save, enemy_freeze, end, events);
-    (void)r;
+    world.enemy_freeze = 0;
+    world.end = 0;
+    world.tick(save, events);
     TEST_ASSERT(ally->owner == nullptr && ally->collide_ob == nullptr, "dead links should be cleared on oblist entities");
     TEST_ASSERT(hostile->foe == nullptr && hostile->leader == nullptr, "all dead references should be cleared");
     (void)weap_owner;
@@ -763,11 +771,11 @@ void test_sim_world_freeze_branch_allows_non_living_actions()
     gen->team_num = 2;
     gen->set_act_type(ACT_CONTROL); // deterministic no-op-ish act path
 
-    std::int32_t enemy_freeze = 11;
-    char end = 0;
-    const og::sim::TickResult r = world.tick(save, enemy_freeze, end, events);
-    TEST_ASSERT_EQ(10, (int)enemy_freeze, "freeze counter should decrement");
-    TEST_ASSERT(r.game_ended, "no hostile living and no exits should auto-end level");
+    world.enemy_freeze = 11;
+    world.end = 0;
+    world.tick(save, events);
+    TEST_ASSERT_EQ(10, (int)world.enemy_freeze, "freeze counter should decrement");
+    TEST_ASSERT(world.game_ended, "no hostile living and no exits should auto-end level");
 
     bool saw_time_left = false;
     for (const auto& ev : events.events())
@@ -801,10 +809,10 @@ void test_sim_world_assigns_far_foe_when_no_target_and_hostiles_present()
     foe_near->setxy(140, 100);
     foe_far->setxy(300, 100);
 
-    std::int32_t enemy_freeze = 0;
-    char end = 0;
-    const og::sim::TickResult r = world.tick(save, enemy_freeze, end, events);
-    TEST_ASSERT_EQ(0, (int)r.level_done, "hostile living should keep level unfinished");
+    world.enemy_freeze = 0;
+    world.end = 0;
+    world.tick(save, events);
+    TEST_ASSERT_EQ(0, (int)world.level_done, "hostile living should keep level unfinished");
     TEST_ASSERT(ally->foe != nullptr, "sim world should assign a far foe when none is set");
     TEST_ASSERT(ally->foe == foe_near, "nearest hostile should be selected as far foe");
 }
@@ -827,11 +835,11 @@ void test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event()
     ally->set_act_type(ACT_CONTROL);
     hostile->set_act_type(ACT_CONTROL);
 
-    std::int32_t enemy_freeze = 2; // decrements to 1 -> SetPalette(0) branch
-    char end = 1;                  // explicit end short-circuit branch
-    const og::sim::TickResult r = world.tick(save, enemy_freeze, end, events);
-    TEST_ASSERT(r.game_ended, "end flag should force game_ended");
-    TEST_ASSERT_EQ(1, (int)enemy_freeze, "freeze should decrement before end short-circuit");
+    world.enemy_freeze = 2; // decrements to 1 -> SetPalette(0) branch
+    world.end = 1;          // explicit end short-circuit branch
+    world.tick(save, events);
+    TEST_ASSERT(world.game_ended, "end flag should force game_ended");
+    TEST_ASSERT_EQ(1, (int)world.enemy_freeze, "freeze should decrement before end short-circuit");
 
     bool saw_palette_reset = false;
     for (const auto& ev : events.events())
@@ -862,13 +870,13 @@ void test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero()
     ally->set_act_type(ACT_CONTROL);
 
     og::runtime::current_session->myscreen_->level_data.world().id = 41;
-    std::int32_t enemy_freeze = 0;
-    char end = 0;
-    const og::sim::TickResult r = world.tick(save, enemy_freeze, end, events);
+    world.enemy_freeze = 0;
+    world.end = 0;
+    world.tick(save, events);
 
-    TEST_ASSERT(r.game_ended, "no hostiles and no exits should end level");
-    TEST_ASSERT_EQ(0, (int)r.ending, "auto-end path should set ending to zero");
-    TEST_ASSERT_EQ(42, (int)r.next_level, "auto-end path should advance to next level id");
+    TEST_ASSERT(world.game_ended, "no hostiles and no exits should end level");
+    TEST_ASSERT_EQ(0, (int)world.ending, "auto-end path should set ending to zero");
+    TEST_ASSERT_EQ(42, (int)world.next_level, "auto-end path should advance to next level id");
 
     clear_level_lists();
 }

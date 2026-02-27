@@ -114,26 +114,23 @@ class screen : public video
 		std::array<unsigned char, 768> newpalette{};
 		short palmode;
 		
-		// Level data
-		GameWorld world_;
-		LevelData level_data;
-		
-		// Save data
-		SaveData save_data;
-		
-		
-		// Game state
-		float control_hp; // last turn's hitpoints
-		char end;
-		signed char timer_wait;
-		short level_done; // set true when all our foes are dead
-		bool retry;  // we should reset the level and go again
-		
-
-		std::string special_name[NUM_FAMILIES][NUM_SPECIALS];
-		std::string alternate_name[NUM_FAMILIES][NUM_SPECIALS];
-		Sint32 enemy_freeze; // stops enemies from acting
-		std::unique_ptr<soundob> soundp;
+			// Level data
+			GameWorld world_;
+			// Forwarders to gameplay-owned game state.
+			float& control_hp;
+			char& end;
+			signed char& timer_wait;
+			short& level_done;
+			bool& retry;
+			Sint32& enemy_freeze;
+			LevelData level_data;
+			
+			// Save data
+			SaveData save_data;
+			
+			std::string special_name[NUM_FAMILIES][NUM_SPECIALS];
+			std::string alternate_name[NUM_FAMILIES][NUM_SPECIALS];
+			std::unique_ptr<soundob> soundp;
 		short redrawme;
 		std::unique_ptr<viewscreen> viewob[5];
 		short numviews;

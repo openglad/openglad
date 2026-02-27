@@ -212,14 +212,28 @@ void screen::init_common(short howmany, bool has_display)
 }
 
 screen::screen(short howmany)
-    : video(), level_data(1, false, &sdl_level_data_hooks())
+    : video()
+    , control_hp(world_.control_hp)
+    , end(world_.end)
+    , timer_wait(world_.timer_wait)
+    , level_done(world_.level_done)
+    , retry(world_.retry)
+    , enemy_freeze(world_.enemy_freeze)
+    , level_data(1, false, &sdl_level_data_hooks())
 {
 	level_data.attach_world(&world_);
 	init_common(howmany, true);
 }
 
 screen::screen(short howmany, bool create_display)
-    : video(create_display), level_data(1, false, &sdl_level_data_hooks())
+    : video(create_display)
+    , control_hp(world_.control_hp)
+    , end(world_.end)
+    , timer_wait(world_.timer_wait)
+    , level_done(world_.level_done)
+    , retry(world_.retry)
+    , enemy_freeze(world_.enemy_freeze)
+    , level_data(1, false, &sdl_level_data_hooks())
 {
 	level_data.attach_world(&world_);
 	init_common(howmany, create_display);
@@ -448,8 +462,7 @@ bool screen::act()
 	// GameWorld encapsulates the deterministic entity update logic that
 	// was previously embedded directly in this method.
 	og::sim::SimEventLog& events = *ctx().sim_events;
-	og::sim::TickResult result = world_.tick(save_data, enemy_freeze,
-	                                         end, events);
+	world_.tick(save_data, events);
 
 	// Post-tick: clean up viewscreen control pointers for dead player entities.
 	// This is a rendering concern that doesn't belong in the simulation layer.
@@ -504,13 +517,10 @@ bool screen::act()
 	}
 	events.clear();
 
-	// Handle level completion / game ending
-	level_done = result.level_done;
-	level_data.level_done = result.level_done;
-
-	if (result.game_ended && !end)
+	// Handle level completion / game ending.
+	if (world_.game_ended && !end)
 	{
-		return endgame(result.ending, result.next_level);
+		return endgame(world_.ending, world_.next_level);
 	}
 
 	if (end)

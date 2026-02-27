@@ -14,7 +14,6 @@ struct TestGameWorld
 {
     LevelData level;
     SaveData save;
-    std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     GameContext gc;
@@ -23,7 +22,7 @@ struct TestGameWorld
         : level(level_id, true)
     {
         level.create_new_grid();
-        level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
+        level.set_sim_context(&save, &level.world().enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
         set_global_context(&gc);
     }

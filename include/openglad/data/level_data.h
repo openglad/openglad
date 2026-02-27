@@ -255,6 +255,32 @@ public:
         LevelData* owner_ = nullptr;
     };
 
+    class LevelDoneForwarder
+    {
+    public:
+        explicit LevelDoneForwarder(LevelData* owner)
+            : owner_(owner)
+        {
+        }
+
+        LevelDoneForwarder(const LevelDoneForwarder&) = delete;
+        LevelDoneForwarder& operator=(const LevelDoneForwarder&) = delete;
+        LevelDoneForwarder(LevelDoneForwarder&&) = delete;
+        LevelDoneForwarder& operator=(LevelDoneForwarder&&) = delete;
+
+        operator short&() { return owner_->world().level_done; }
+        operator const short&() const { return owner_->world().level_done; }
+
+        LevelDoneForwarder& operator=(short value)
+        {
+            owner_->world().level_done = value;
+            return *this;
+        }
+
+    private:
+        LevelData* owner_ = nullptr;
+    };
+
     enum class IoError
     {
         None = 0,
@@ -271,7 +297,7 @@ public:
     static const char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;  // Must protect named NPCs or else you lose
 
     std::string grid_file;
-    short level_done = 0;  // Set by sim tick: 0=foes remain, 1=all foes dead+exit, 2=no foes
+    LevelDoneForwarder level_done;
 
     std::unique_ptr<loader> myloader;
     LivingCountForwarder numobs;
