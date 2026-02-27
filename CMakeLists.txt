@@ -1394,13 +1394,12 @@ if(NOT EMSCRIPTEN)
 
         if(ENABLE_COVERAGE)
             if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-                # Coverage builds can be extremely slow at -O0; -O1 is usually
-                # a good compromise while still producing accurate line coverage.
-                target_compile_options(og_game_test PRIVATE -O1 -g --coverage)
-                target_compile_options(og_unit_tests PRIVATE -O1 -g --coverage)
-                target_compile_options(openglad_test PRIVATE -O1 -g --coverage)
-                target_compile_options(og_data_tests PRIVATE -O1 -g --coverage)
-                target_compile_options(og_runtime_tests PRIVATE -O1 -g --coverage)
+                # Use -O0 for more faithful line accounting in gcovr.
+                target_compile_options(og_game_test PRIVATE -O0 -g --coverage)
+                target_compile_options(og_unit_tests PRIVATE -O0 -g --coverage)
+                target_compile_options(openglad_test PRIVATE -O0 -g --coverage)
+                target_compile_options(og_data_tests PRIVATE -O0 -g --coverage)
+                target_compile_options(og_runtime_tests PRIVATE -O0 -g --coverage)
                 target_link_options(og_unit_tests PRIVATE --coverage)
                 target_link_options(openglad_test PRIVATE --coverage)
                 target_link_options(og_data_tests PRIVATE --coverage)

@@ -1,5 +1,6 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/core/combat_math.h>
+#include <openglad/gameplay/session_access.h>
 #include <openglad/interface/screen.h>
 #include "test_framework.h"
 
@@ -30,6 +31,51 @@ void test_set_global_context_overrides()
     TEST_ASSERT(ctx().rng != &fixed, "restoring nullptr should return to default context");
 }
 REGISTER_TEST(test_set_global_context_overrides);
+
+void test_scoped_test_context_restores_previous_context()
+{
+    FixedRandom base_rng(11);
+    FixedRandom scoped_rng(29);
+
+    GameContext base_ctx;
+    base_ctx.rng = &base_rng;
+    set_global_context(&base_ctx);
+
+    {
+        GameContext scoped_ctx;
+        scoped_ctx.rng = &scoped_rng;
+        ScopedTestContext scoped(scoped_ctx);
+        TEST_ASSERT(ctx().rng == &scoped_rng,
+                    "ScopedTestContext should install the scoped context");
+    }
+
+    TEST_ASSERT(ctx().rng != &scoped_rng,
+                "ScopedTestContext dtor should clear the scoped override");
+    set_global_context(nullptr);
+}
+REGISTER_TEST(test_scoped_test_context_restores_previous_context);
+
+void test_ctx_fallback_context_has_rng_and_sim_events()
+{
+    set_global_context(nullptr);
+    GameContext& c = ctx();
+    TEST_ASSERT(c.rng != nullptr, "fallback ctx() should initialize rng");
+    TEST_ASSERT(c.sim_events != nullptr, "fallback ctx() should initialize sim event log");
+}
+REGISTER_TEST(test_ctx_fallback_context_has_rng_and_sim_events);
+
+void test_gameplay_session_access_fallback_paths()
+{
+    // No thread session installed in this test process: exercise fallback counters/indices.
+    const int id0 = og::gameplay::allocate_guy_id();
+    const int id1 = og::gameplay::allocate_guy_id();
+    TEST_ASSERT(id1 == id0 + 1,
+                "allocate_guy_id fallback path should increment monotonically");
+
+    TEST_ASSERT_EQ(1, static_cast<int>(og::gameplay::current_difficulty_index()),
+                   "current_difficulty_index fallback path should return default difficulty 1");
+}
+REGISTER_TEST(test_gameplay_session_access_fallback_paths);
 
 // ---------------------------------------------------------------------------
 // IRandom implementations
