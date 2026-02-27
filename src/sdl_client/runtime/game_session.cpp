@@ -102,6 +102,12 @@ GameSession::GameSession(const Config& session_cfg)
         myscreen_ = screen_owner_.get();
         game_.world = &myscreen_->world_;
         game_.save = &myscreen_->save_data;
+        myscreen_->level_data.set_sim_context(
+            &myscreen_->save_data,
+            &myscreen_->enemy_freeze,
+            ctx_.sim_events.get(),
+            ctx_.rng,
+            &cfg);
 
         // Ensure this session's curpal_ matches the screen's palette.
         // video_init_palettes() populates video::ourpalette per-instance,

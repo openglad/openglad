@@ -5,6 +5,7 @@
 #include <openglad/input/input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/game_session.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/screen_lifecycle.h>
 #include <openglad/render/view.h>
@@ -169,6 +170,32 @@ void test_screen_lifecycle_session_owner_paths()
     TEST_ASSERT(create_global_screen(1) != nullptr, "recreate global screen for remaining tests");
 }
 REGISTER_TEST(test_screen_lifecycle_session_owner_paths);
+
+void test_game_session_auto_wires_level_data_sim_context()
+{
+    screen* baseline_screen = og::runtime::current_session->myscreen_;
+
+    {
+        og::runtime::GameSession::Config session_cfg;
+        session_cfg.create_display = false;
+
+        og::runtime::GameSession session(session_cfg);
+        screen* session_screen = session.screen_ptr();
+        TEST_ASSERT(session_screen != nullptr, "session should allocate a screen");
+        TEST_ASSERT(current_game == &session.game_, "session should install current_game");
+        TEST_ASSERT(session.game_.world == &session_screen->world_, "session gameplay world should match screen world");
+        TEST_ASSERT(session.game_.save == &session_screen->save_data, "session gameplay save should match screen save");
+        TEST_ASSERT(session.game_.sim_events == session.ctx_.sim_events.get(), "session gameplay events should match session context");
+
+        walker* spawned = session_screen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        TEST_ASSERT(spawned != nullptr, "spawned entity should exist");
+        TEST_ASSERT(spawned->sim_save == &session_screen->save_data, "spawned entity should receive sim_save from session screen");
+        TEST_ASSERT(spawned->sim_config == &cfg, "spawned entity should receive sim_config from global cfg");
+    }
+
+    TEST_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen, "session teardown should restore previous screen");
+}
+REGISTER_TEST(test_game_session_auto_wires_level_data_sim_context);
 
 void test_treasure_core_methods_and_teleport_target_search()
 {
