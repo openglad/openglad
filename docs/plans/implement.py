@@ -287,6 +287,8 @@ IMPLEMENT_PROMPT = textwrap.dedent("""\
     - Follow existing patterns and conventions in the codebase
     - All tests must pass:
         cmake --preset ci-test && cmake --build -j 6 --preset ci-test && ctest --preset ci-test
+    - No test in this suite should run longer than 5 minutes.
+    - A 10-minute timeout is more than adequate; any timeout is an active failure.
     - ALL TESTS MUST PASS! THERE IS NO SUCH THING AS PRE-EXISTING FAILURES, FLAKY TESTS, ETC
     - IF TESTS DON'T PASS, FIX THEM
     - ALL TESTS MUST PASS
@@ -308,6 +310,8 @@ CHECKER_INSTRUCTIONS = {
         - ANY test failure is a real regression caused by the implementation.
         - ANY build error is a real problem.
         - ANY timeout is a real problem (tests that hang = FAIL).
+        - No test in this suite runs longer than 5 minutes.
+        - A 10-minute timeout is more than adequate; timeout means active failure.
         - There are NO flaky tests. There are NO known issues. There are NO acceptable failures.
         - Do NOT rationalize, excuse, or explain away failures. A failure is a failure.
 
@@ -315,6 +319,7 @@ CHECKER_INSTRUCTIONS = {
         1. Run the full test suite locally:
              cmake --preset ci-test && cmake --build --preset ci-test && ctest --preset ci-test
            YOU MUST RUN THIS COMMAND AND WAIT FOR IT TO COMPLETE.
+           No test should take longer than 5 minutes; a 10-minute timeout is generous.
            If any test fails, times out, or the build fails: report FAIL immediately.
         2. Check CI status on GitHub using `gh`:
              gh run list --limit 5
@@ -336,6 +341,7 @@ CHECKER_INSTRUCTIONS = {
         Steps:
         1. Run the full test suite yourself:
              cmake --preset ci-test && cmake --build --preset ci-test && ctest --preset ci-test
+           No test should take longer than 5 minutes; a 10-minute timeout is generous.
            YOU MUST ACTUALLY RUN THIS. Do not skip it. Any failure, timeout, or hang = FAIL.
         2. Check CI status with `gh` (it works, it's authenticated):
              gh run list --limit 5 && gh run view
@@ -390,6 +396,8 @@ CHECKER_INSTRUCTIONS = {
         2. Verify ALL deliverables listed in the plan are complete.
         3. Check that forwarding accessors were added/removed as specified.
         4. Verify code compiles and all tests pass.
+           If you run tests, no test should exceed 5 minutes; a 10-minute timeout is
+           more than adequate, and any timeout is an active failure.
         5. Check git history is clean (proper commits, no WIP, no merge conflicts).
         6. If the next phase exists, check there are no blockers for starting it.
         7. If anything is incomplete, report FAIL.
