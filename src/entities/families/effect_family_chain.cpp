@@ -29,7 +29,7 @@ static bool chain_on_act(effect* self)
     if (hits(self->xpos, self->ypos, self->sizex, self->sizey,
              self->leader->xpos, self->leader->ypos, self->leader->sizex, self->leader->sizey))
     {
-        walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION);
+        walker* newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION);
         if (!newob)
         {
             self->dead = 1;
@@ -43,26 +43,26 @@ static bool chain_on_act(effect* self)
         newob->ani_type = ANI_EXPLODE;
         newob->center_on(self);
         self->leader->skip_exit = self->leader->skip_exit + 3;
-        og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);
+        og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
         // Now make new objects to seek out foes ..
         float generic = self->damage * 0.5f;
         std::int32_t temp = 0;
         std::list<walker*> foelist;
         if (self->owner->myguy)
-            foelist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
+            foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
                 240+(self->owner->myguy->intelligence/2), &temp, self);
         else
-            foelist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
+            foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
                 240+self->stats()->level*5, &temp, self);
         if (temp && generic>20)
         {
-            std::int32_t numfoes = static_cast<std::int32_t>(self->sim_rng->next(static_cast<std::uint32_t>(self->owner->stats()->level))) + 1;
+            std::int32_t numfoes = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(self->owner->stats()->level))) + 1;
             for(auto* w : foelist)
             {
                 if (numfoes <= 0) break;
                 if (w != self->leader && w->skip_exit<1)
                 {
-                    newob = self->sim_level->add_ob(Order::FX, FAMILY_CHAIN);
+                    newob = current_game->world->add_ob(Order::FX, FAMILY_CHAIN);
                     if (!newob)
                         return true;
                     newob->owner = self->owner;

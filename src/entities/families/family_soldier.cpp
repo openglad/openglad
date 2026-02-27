@@ -22,7 +22,7 @@
 
 #define BASE_GUY_HP 30
 
-// rng wrapper removed: use SimEntity field sim_rng directly
+// RNG now comes from current_game->world->rng_.
 
 static bool soldier_do_special(walker* self)
 {
@@ -38,7 +38,7 @@ static bool soldier_do_special(walker* self)
                 self->stats()->add_command(COMMAND_RUSH, 3,
                     static_cast<std::int32_t>(self->lastx / self->stepsize),
                     static_cast<std::int32_t>(self->lasty / self->stepsize));
-                og::sim::emit_sound(self->sim_events, SOUND_CHARGE);
+                og::sim::emit_sound(current_game->sim_events, SOUND_CHARGE);
             }
             else
                 return false;
@@ -89,16 +89,16 @@ static bool soldier_do_special(walker* self)
             {
                 generic = 0;
                 for_each_foe_in_range(self, 28, [&](walker* w) {
-                    if (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(w->stats()->level))
+                    if (current_game->world->rng_.next(self->stats()->level) >= current_game->world->rng_.next(w->stats()->level))
                         w->busy += 6.0f * static_cast<float>(self->stats()->level - w->stats()->level + 1);
                     generic = 1;
                 });
 
                 if (generic)
                 {
-                    og::sim::emit_sound(self->sim_events, SOUND_CHARGE);
+                    og::sim::emit_sound(current_game->sim_events, SOUND_CHARGE);
                     if (self->team_num == 0 || self->myguy)
-                        og::sim::emit_notification(self->sim_events, "Fighter Disarmed Enemy!");
+                        og::sim::emit_notification(current_game->sim_events, "Fighter Disarmed Enemy!");
                     self->busy += 5;
                 }
                 else
@@ -120,7 +120,7 @@ static bool soldier_check_special_ai(living* self)
             return true;
         return false;
     }
-    self->foe = self->sim_level->find_near_foe(self);
+    self->foe = current_game->world->find_near_foe(self);
     if (!self->foe)
         return false;
     std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));

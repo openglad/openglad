@@ -31,8 +31,8 @@ static bool cloud_on_act(effect* self)
     if (self->invisibility_left > 0)
         self->invisibility_left--;
     // Hit any nearby foes (not friends, for now)
-    auto foelist = self->sim_level->find_foes_in_range(
-        self->sim_level->oblist, self->sizex, &temp, self);
+    auto foelist = current_game->world->find_foes_in_range(
+        current_game->world->oblist, self->sizex, &temp, self);
 
     for(auto* w : foelist)
     {
@@ -51,10 +51,10 @@ static bool cloud_on_act(effect* self)
         float xd = 0, yd = 0;
         while (xd == 0 && yd == 0)
         {
-            xd = static_cast<float>(static_cast<std::int32_t>(self->sim_rng->next(3)) - 1);
-            yd = static_cast<float>(static_cast<std::int32_t>(self->sim_rng->next(3)) - 1);
+            xd = static_cast<float>(static_cast<std::int32_t>(current_game->world->rng_.next(3)) - 1);
+            yd = static_cast<float>(static_cast<std::int32_t>(current_game->world->rng_.next(3)) - 1);
         }
-        self->stats()->add_command(COMMAND_WALK, static_cast<short>(self->sim_rng->next(20)),
+        self->stats()->add_command(COMMAND_WALK, static_cast<short>(current_game->world->rng_.next(20)),
             static_cast<short>(xd), static_cast<short>(yd));
     }
     return true;

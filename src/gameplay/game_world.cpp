@@ -10,6 +10,7 @@
 #include <openglad/data/gloader.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
@@ -275,7 +276,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                         dist -= (GRID_SIZE / 2);
                         if (dist < GRID_SIZE)
                             dist += GRID_SIZE;
-                        if (ob->sim_rng->next(dist / GRID_SIZE))
+                        if (rng_.next(dist / GRID_SIZE))
                             return false;
                     }
                     else
@@ -284,7 +285,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                         dist -= (GRID_SIZE / 2);
                         if (dist < GRID_SIZE)
                             dist += GRID_SIZE;
-                        if (ob->sim_rng->next(dist / GRID_SIZE))
+                        if (rng_.next(dist / GRID_SIZE))
                             return false;
                     }
                     [[fallthrough]];
@@ -385,7 +386,7 @@ walker* GameWorld::find_near_foe(walker* ob)
             for (auto* w : ls)
             {
                 if (!w->dead && ob->is_friendly(w) == 0 &&
-                    ob->sim_rng->next(w->invisibility_left / 20) == 0)
+                    rng_.next(w->invisibility_left / 20) == 0)
                 {
                     if (w->query_order() == Order::Living ||
                         w->query_order() == Order::Generator)
@@ -428,7 +429,7 @@ walker* GameWorld::find_far_foe(walker* ob)
         if (ob->is_friendly(foe) == 0 &&
             (foe->query_order() == Order::Living ||
              foe->query_order() == Order::Generator) &&
-            (ob->sim_rng->next(foe->invisibility_left / 20) == 0))
+            (rng_.next(foe->invisibility_left / 20) == 0))
         {
             const std::int32_t tempdistance = ob->distance_to_ob(foe);
             if (tempdistance < distance)
@@ -756,13 +757,22 @@ void GameWorld::reset_level_progress()
     last_level_id_ = -1;
 }
 
-void GameWorld::tick(SaveData& save, og::sim::SimEventLog& events)
+void GameWorld::tick()
 {
-    my_team = save.my_team;
-    allied_mode = save.allied_mode;
-    current_scenario = save.scen_num;
-    for (int i = 0; i < 4; ++i)
-        m_score[i] = save.m_score[i];
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+
+    SaveData* save = current_game->save;
+    og::sim::SimEventLog& events = *current_game->sim_events;
+
+    if (save != nullptr)
+    {
+        my_team = save->my_team;
+        allied_mode = save->allied_mode;
+        current_scenario = save->scen_num;
+        for (int i = 0; i < 4; ++i)
+            m_score[i] = save->m_score[i];
+    }
 
     game_ended = false;
     next_level = -1;

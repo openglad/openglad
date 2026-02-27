@@ -28,7 +28,7 @@
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
-// rng/config wrappers removed: use SimEntity fields sim_rng/sim_config directly
+// RNG now comes from current_game->world->rng_; config remains on SimEntity.
 
 static void cleric_customize_weapon(walker* self, walker* weapon)
 {
@@ -49,7 +49,7 @@ static bool cleric_check_special_ai(living* self)
     if (self->current_special == 1) // healing
     {
         std::int32_t howmany = 0;
-        self->sim_level->find_friends_in_range(self->sim_level->oblist,
+        current_game->world->find_friends_in_range(current_game->world->oblist,
                                         60, &howmany, self);
         if (howmany > 1)
         {
@@ -87,7 +87,7 @@ static bool cleric_do_special(walker* self)
             if (!self->shifter_down) // normal heal
             {
                 std::int32_t howmany;
-                std::list<walker*> newlist = self->sim_level->find_friends_in_range(self->sim_level->oblist,
+                std::list<walker*> newlist = current_game->world->find_friends_in_range(current_game->world->oblist,
                           60, &howmany, self);
                 didheal = 0;
                 if (howmany > 1)
@@ -98,7 +98,7 @@ static bool cleric_do_special(walker* self)
                         if (newob->stats()->hitpoints < newob->stats()->max_hitpoints &&
                                 newob != self)
                         {
-                            HealResult heal = compute_heal_amount(static_cast<std::int32_t>(self->stats()->magicpoints), self->stats()->level, *self->sim_rng);
+                            HealResult heal = compute_heal_amount(static_cast<std::int32_t>(self->stats()->magicpoints), self->stats()->level, current_game->world->rng_);
                             generic = heal.amount;
                             std::int32_t cost = heal.cost;
                             if (self->stats()->magicpoints < static_cast<float>(cost))
@@ -127,9 +127,9 @@ static bool cleric_do_special(walker* self)
                             else
                                 message = std::format("Cleric healed {} men!", didheal);
                             if (self->team_num == 0 || self->myguy)
-                                og::sim::emit_notification(self->sim_events, message);
+                                og::sim::emit_notification(current_game->sim_events, message);
                         }
-                        og::sim::emit_sound(self->sim_events, SOUND_HEAL);
+                        og::sim::emit_sound(current_game->sim_events, SOUND_HEAL);
                     }
                 }
                 else
@@ -143,7 +143,7 @@ static bool cleric_do_special(walker* self)
                 if (self->myguy && self->myguy->intelligence < 50)
                 {
                     if (self->user != -1)
-                        og::sim::emit_notification(self->sim_events, "50 Int required for Mystic Mace!");
+                        og::sim::emit_notification(current_game->sim_events, "50 Int required for Mystic Mace!");
                     return false;
                 }
                 if (self->myguy)
@@ -172,7 +172,7 @@ static bool cleric_do_special(walker* self)
                 if (self->myguy && self->myguy->intelligence < 60)
                 {
                     if (self->team_num == 0 || self->myguy)
-                        og::sim::emit_notification(self->sim_events, "You need 60 Int to Turn Undead");
+                        og::sim::emit_notification(current_game->sim_events, "You need 60 Int to Turn Undead");
                     self->busy += 5;
                     return false;
                 }
@@ -184,26 +184,26 @@ static bool cleric_do_special(walker* self)
                     if (self->team_num == 0 || self->myguy)
                     {
                         message = std::format("{} turned {} undead.", self->myguy->name, generic);
-                        og::sim::emit_notification(self->sim_events, message);
+                        og::sim::emit_notification(current_game->sim_events, message);
                     }
                 }
-                og::sim::emit_sound(self->sim_events, SOUND_HEAL);
+                og::sim::emit_sound(current_game->sim_events, SOUND_HEAL);
             }
             else
             {
-                newob = self->sim_level->find_nearest_blood(self);
+                newob = current_game->world->find_nearest_blood(self);
                 if (newob)
                 {
                     targetx = newob->xpos;
                     targety = newob->ypos;
                     distance = static_cast<std::uint32_t>(self->distance_to_ob(newob));
-                    if (self->sim_level->query_passable(targetx, targety, newob) && distance < 60)
+                    if (current_game->world->query_passable(targetx, targety, newob) && distance < 60)
                     {
                         alive = self->do_summon(FAMILY_SKELETON, 125 + (self->stats()->level * 40));
                         if (!alive)
                             return false;
                         alive->team_num = self->team_num;
-                        alive->stats()->level = self->sim_rng->next(self->stats()->level) + 1;
+                        alive->stats()->level = current_game->world->rng_.next(self->stats()->level) + 1;
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level));
                         alive->setxy(newob->xpos, newob->ypos);
                         alive->owner = self;
@@ -226,7 +226,7 @@ static bool cleric_do_special(walker* self)
                 if (self->myguy && self->myguy->intelligence < 60)
                 {
                     if (self->team_num == 0 || self->myguy)
-                        og::sim::emit_notification(self->sim_events, "You need 60 Int to Turn Undead");
+                        og::sim::emit_notification(current_game->sim_events, "You need 60 Int to Turn Undead");
                     self->busy += 5;
                     return false;
                 }
@@ -238,25 +238,25 @@ static bool cleric_do_special(walker* self)
                     if (self->team_num == 0 || self->myguy)
                     {
                         message = std::format("{} turned {} undead.", self->myguy->name, generic);
-                        og::sim::emit_notification(self->sim_events, message);
+                        og::sim::emit_notification(current_game->sim_events, message);
                     }
                 }
-                og::sim::emit_sound(self->sim_events, SOUND_HEAL);
+                og::sim::emit_sound(current_game->sim_events, SOUND_HEAL);
             }
             else
             {
-                newob = self->sim_level->find_nearest_blood(self);
+                newob = current_game->world->find_nearest_blood(self);
                 if (newob)
                 {
                     targetx = newob->xpos;
                     targety = newob->ypos;
                     distance = static_cast<std::uint32_t>(self->distance_to_ob(newob));
-                    if (self->sim_level->query_passable(targetx, targety, newob) && distance < 30)
+                    if (current_game->world->query_passable(targetx, targety, newob) && distance < 30)
                     {
                         alive = self->do_summon(FAMILY_GHOST, 150 + (self->stats()->level * 40));
                         if (!alive)
                             return false;
-                        alive->stats()->level = self->sim_rng->next(self->stats()->level) + 1;
+                        alive->stats()->level = current_game->world->rng_.next(self->stats()->level) + 1;
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level));
                         alive->team_num = self->team_num;
                         alive->setxy(newob->xpos, newob->ypos);
@@ -274,17 +274,17 @@ static bool cleric_do_special(walker* self)
             break;
         case 4: // resurrect
         default:
-            newob = self->sim_level->find_nearest_blood(self);
+            newob = current_game->world->find_nearest_blood(self);
             if (newob)
             {
                 targetx = newob->xpos;
                 targety = newob->ypos;
                 distance = self->distance_to_ob(newob);
-                if (self->sim_level->query_passable(targetx, targety, newob) && distance < 30)
+                if (current_game->world->query_passable(targetx, targety, newob) && distance < 30)
                 {
                     if (self->is_friendly(newob))
                     {
-                        alive = self->sim_level->add_ob(Order::Living, newob->stats()->old_family);
+                        alive = current_game->world->add_ob(Order::Living, newob->stats()->old_family);
                         if (!alive)
                             return false;
                         newob->transfer_stats(alive);
@@ -306,7 +306,7 @@ static bool cleric_do_special(walker* self)
                         if (!alive)
                             return false;
                         alive->team_num = self->team_num;
-                        alive->stats()->level = self->sim_rng->next(self->stats()->level) + 1;
+                        alive->stats()->level = current_game->world->rng_.next(self->stats()->level) + 1;
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level));
                         alive->owner = self;
                     }

@@ -19,8 +19,8 @@ static bool bomb_on_death(effect* self)
 {
     if (!self->owner || self->owner->dead)
         self->owner = self;
-    og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);
-    walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+    og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
+    walker* newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
     newob->owner = self->owner;
     newob->stats()->hitpoints = 0;
     newob->stats()->level = self->owner->stats()->level;
@@ -36,11 +36,11 @@ static bool explosion_on_death(effect* self)
         self->owner = self;
     std::int32_t generic = compute_explosion_range(self->owner->stats()->level, self->skip_exit);
     std::int32_t howmany = 0;
-    auto foelist = self->sim_level->find_in_range(self->sim_level->oblist, 15+generic,
+    auto foelist = current_game->world->find_in_range(current_game->world->oblist, 15+generic,
         &howmany, self);
 
     // Emit DamageTile event instead of calling screen directly
-    og::sim::emit_event(self->sim_events, og::sim::EventKind::DamageTile,
+    og::sim::emit_event(current_game->sim_events, og::sim::EventKind::DamageTile,
         static_cast<std::uint32_t>(self->xpos+(self->sizex/2)),
         static_cast<std::uint32_t>(self->ypos+(self->sizey/2)));
     if (howmany < 1)

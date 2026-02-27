@@ -85,7 +85,6 @@ void test_effect_magic_shield_hits_weapon_and_enemy_paths()
     auto weapon = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     if (weapon) {
-        weapon->myobmap = og::runtime::current_session->myscreen_->level_data.world().myobmap.get();
         weapon->team_num = 2; // opposing team
         weapon->damage = 7.0f;
         weapon->setxy(102, 100);
@@ -136,7 +135,6 @@ void test_effect_boomerang_hits_weapon_and_enemy_paths()
     auto weapon = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     if (weapon) {
-        weapon->myobmap = og::runtime::current_session->myscreen_->level_data.world().myobmap.get();
         weapon->team_num = 2;
         weapon->damage = 3.0f;
         weapon->setxy(102, 100);
@@ -344,7 +342,6 @@ void test_effect_batch3_shield_and_boomerang_collision_loops()
     auto incoming = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(incoming != nullptr, "incoming weapon created");
     if (incoming) {
-        incoming->myobmap = og::runtime::current_session->myscreen_->level_data.world().myobmap.get();
         incoming->team_num = 2;
         incoming->damage = 2.0f;
         incoming->setxy(100, 100);
@@ -464,8 +461,6 @@ void test_effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan()
     chain->setxy(120, 120); // overlap leader -> explosion/branch fanout path
 
     SequenceRandom seq_rng({0});
-    chain->sim_rng = &seq_rng;
-    owner->sim_rng = &seq_rng;
     (void)chain->act();
 
     og::runtime::current_session->myscreen_->level_data.delete_objects();

@@ -6,6 +6,7 @@
 #include <openglad/ui/text_protocol.h>
 
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/irandom.h>
@@ -62,20 +63,12 @@ static void json_event(std::ostream& os, const og::sim::Event& ev)
     os << "}";
 }
 
-static void wire_all_entities(LevelData& level)
-{
-    for (auto& uptr : level.oblist) level.wire_entity(uptr.get());
-    for (auto& uptr : level.fxlist) level.wire_entity(uptr.get());
-    for (auto& uptr : level.weaplist) level.wire_entity(uptr.get());
-}
-
-static void cmd_tick(GameWorld& world, SaveData& save,
-                     og::sim::SimEventLog& events, int count)
+static void cmd_tick(GameWorld& world, int count)
 {
     std::cout << "{\"cmd\":\"tick\",\"count\":" << count << ",\"results\":[";
     for (int i = 0; i < count; i++) {
         if (i > 0) std::cout << ",";
-        world.tick(save, events);
+        world.tick();
         std::cout << "{\"tick\":" << world.tick_count_
                   << ",\"level_done\":" << world.level_done
                   << ",\"game_ended\":" << (world.game_ended ? "true" : "false")
@@ -166,6 +159,8 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     save.scen_num = static_cast<short>(args.level);
     save.numplayers = 1;
 
+    level.set_sim_context(&save, &world.enemy_freeze, &events, &entity_rng, &cfg);
+
     if (!level.load()) {
         std::fprintf(stderr, "Failed to load level %d\n", args.level);
         set_global_context(nullptr);
@@ -192,8 +187,13 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     world.enemy_freeze = 0;
     world.end = 0;
 
-    level.set_sim_context(&save, &world.enemy_freeze, &events, &entity_rng, &cfg);
-    wire_all_entities(level);
+    GameplayContext text_game_ctx;
+    text_game_ctx.world = &world;
+    text_game_ctx.save = &save;
+    text_game_ctx.sim_events = &events;
+    text_game_ctx.config = &cfg;
+    GameplayContext* prev_game = current_game;
+    current_game = &text_game_ctx;
 
     // Output ready message
     std::cout << "{\"status\":\"ready\""
@@ -219,8 +219,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             int count = 1;
             iss >> count;
             if (count < 1) count = 1;
-            cmd_tick(world, save, events, count);
-            wire_all_entities(level);
+            cmd_tick(world, count);
         } else if (cmd == "state") {
             cmd_state(level);
         } else if (cmd == "events") {
@@ -240,6 +239,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
         }
     }
 
+    current_game = prev_game;
     set_global_context(nullptr);
     return 0;
 }

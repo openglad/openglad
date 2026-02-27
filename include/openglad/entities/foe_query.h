@@ -1,9 +1,4 @@
-/* Convenience helpers for the find-foes-in-range-and-iterate pattern.
- *
- * Every call site was previously spelling out:
- *   self->sim_level->find_foes_in_range(self->sim_level->oblist, range, &howmany, self);
- * These thin wrappers eliminate that boilerplate.
- */
+/* Convenience helpers for the find-foes-in-range-and-iterate pattern. */
 #pragma once
 
 #include <openglad/data/level_data.h>
@@ -13,7 +8,7 @@
 inline std::int32_t count_foes_in_range(walker* self, std::int32_t range)
 {
     std::int32_t count = 0;
-    self->sim_level->find_foes_in_range(self->sim_level->oblist, range, &count, self);
+    current_game->world->find_foes_in_range(current_game->world->oblist, range, &count, self);
     return count;
 }
 
@@ -22,7 +17,7 @@ template<typename Fn>
 std::int32_t for_each_foe_in_range(walker* self, std::int32_t range, Fn&& fn)
 {
     std::int32_t count = 0;
-    auto foes = self->sim_level->find_foes_in_range(self->sim_level->oblist, range, &count, self);
+    auto foes = current_game->world->find_foes_in_range(current_game->world->oblist, range, &count, self);
     for (auto* w : foes)
         if (w) fn(w);
     return count;

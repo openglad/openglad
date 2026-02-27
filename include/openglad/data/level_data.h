@@ -38,6 +38,7 @@ namespace og::sim { class SimEventLog; }
 
 #include <openglad/data/pixie_data.h>
 #include <openglad/entities/walker.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/legacy/pixdefs.h>
 
@@ -364,8 +365,8 @@ public:
     GameWorld& world() { return *world_; }
     const GameWorld& world() const { return *world_; }
     void attach_world(GameWorld* world);
-    void wire_entity(walker* w);  // Wire all stored sim context onto an entity.
-    void wire_spawned_entity(walker* w); // Wire base context + transitional screen hooks.
+    void wire_entity(walker* w);  // Wire remaining per-entity context onto an entity.
+    void wire_spawned_entity(walker* w);
 
     // Set sim context that will be auto-wired onto newly created entities.
     void set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
@@ -379,12 +380,10 @@ private:
     GameWorld owned_world_;
     GameWorld* world_ = nullptr;
 
-    // Sim context pointers for wiring newly created entities.
-    SaveData*              sim_ctx_save_ = nullptr;
-    std::int32_t*          sim_ctx_enemy_freeze_ = nullptr;
-    og::sim::SimEventLog*  sim_ctx_events_ = nullptr;
-    IRandom*               sim_ctx_rng_ = nullptr;
-    cfg_store*             sim_ctx_config_ = nullptr;
+    // Remaining sim context pointers for wiring newly created entities.
+    SaveData*   sim_ctx_save_ = nullptr;
+    cfg_store*  sim_ctx_config_ = nullptr;
+    GameplayContext sim_ctx_gameplay_;
 };
 
 // Read a scenario title from a .fss file. Returns "none" on failure.

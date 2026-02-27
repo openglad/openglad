@@ -20,7 +20,7 @@ static bool knife_on_death(weap* self)
     if (!owner_fd || !owner_fd->has_returning_weapon)
         return false; // no special handling
 
-    walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_KNIFE_BACK);
+    walker* newob = current_game->world->add_ob(Order::FX, FAMILY_KNIFE_BACK);
     newob->owner = self->owner;
     newob->center_on(self);
     newob->lastx = self->lastx;

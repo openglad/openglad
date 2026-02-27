@@ -411,8 +411,12 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     clear_level_lists();
 
     GameWorld& world = setup_tick_world(1337);
-    og::sim::SimEventLog events;
-    SaveData save;
+    TEST_ASSERT(current_game != nullptr && current_game->sim_events != nullptr, "current_game sim_events should be wired");
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& events = *current_game->sim_events;
+    events.clear();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.my_team = 0;
 
     world.enemy_freeze = 2;
@@ -423,7 +427,7 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     walker* foe = add_living(1);
     foe->team_num = 1;
 
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT_EQ(1, static_cast<int>(world.enemy_freeze), "enemy_freeze should decrement");
     TEST_ASSERT_EQ(1, static_cast<int>(world.tick_count_), "first tick should increment tick_count");
 
@@ -438,7 +442,7 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     // end flag branch (when level_done is not 2).
     world.end = 1;
     events.clear();
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT(world.game_ended, "end flag should terminate tick when battle not auto-finished");
 
     // Level_done==1 path via exit treasure and no enemies.
@@ -447,7 +451,7 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     world.enemy_freeze = 0;
     world.end = 0;
     events.clear();
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT(world.level_done == 1, "exit with no foes should set level_done=1");
     TEST_ASSERT(!world.game_ended, "level_done=1 should not auto-end game");
 
@@ -471,7 +475,7 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     world.enemy_freeze = 0;
     world.end = 0;
     events.clear();
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT(owner->foe == nullptr, "dead foe pointer should be cleared");
     TEST_ASSERT(owner->leader == nullptr, "dead leader pointer should be cleared");
     clear_level_lists();
@@ -506,8 +510,12 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
     clear_level_lists();
 
     GameWorld& world = setup_tick_world(2026);
-    og::sim::SimEventLog events;
-    SaveData save;
+    TEST_ASSERT(current_game != nullptr && current_game->sim_events != nullptr, "current_game sim_events should be wired");
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& events = *current_game->sim_events;
+    events.clear();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.my_team = 1; // team 0 is hostile from this perspective
 
     // Non-friendly living should be frozen while freeze is active.
@@ -523,7 +531,7 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
 
     world.enemy_freeze = 11;
     world.end = 0;
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT_EQ(10, (int)world.enemy_freeze, "enemy_freeze should decrement from 11 to 10");
     TEST_ASSERT_EQ(2, (int)world.level_done, "hostile living during freeze should stay frozen and not keep level active");
     TEST_ASSERT(world.game_ended, "when only frozen hostiles remain, tick should report level completion");
@@ -567,7 +575,7 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
     world.enemy_freeze = 0;
     world.end = 0;
     events.clear();
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT(owner->foe == nullptr, "oblist dead foe pointer should be cleared");
     TEST_ASSERT(owner->leader == nullptr, "oblist dead leader pointer should be cleared");
     TEST_ASSERT(weap_owner == nullptr || weap_owner->foe == nullptr, "weaplist dead foe pointer should be cleared");
@@ -613,14 +621,18 @@ void test_sim_world_batch5_game_end_paths()
     clear_level_lists();
 
     GameWorld& world = setup_tick_world(99);
-    og::sim::SimEventLog events;
-    SaveData save;
+    TEST_ASSERT(current_game != nullptr && current_game->sim_events != nullptr, "current_game sim_events should be wired");
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& events = *current_game->sim_events;
+    events.clear();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.my_team = 0;
 
     // No foes and no exits => level_done stays 2 and game ends.
     world.enemy_freeze = 0;
     world.end = 0;
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT(world.game_ended, "empty level should trigger game_ended path");
     TEST_ASSERT_EQ(0, (int)world.ending, "empty level ending should be 0");
 
@@ -632,7 +644,7 @@ void test_sim_world_batch5_game_end_paths()
         return;
     foe->set_act_type(ACT_CONTROL);
     world.end = 1;
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT(world.game_ended, "end flag should force game end");
     TEST_ASSERT_EQ(0, (int)world.level_done, "hostile living should keep level_done at 0 before end flag handling");
 }
@@ -651,7 +663,6 @@ void test_treasure_batch5_default_eat_and_missing_self_target_lookup()
     // find_teleport_target should return nullptr when object is not in fxlist.
     standalone.set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     standalone.stats()->level = 4;
-    standalone.sim_level = &og::runtime::current_session->myscreen_->level_data;
     TEST_ASSERT(standalone.find_teleport_target() == nullptr,
                 "teleport target lookup should fail when teleporter is not present in fxlist");
 }
@@ -745,7 +756,7 @@ void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
 
     world.enemy_freeze = 0;
     world.end = 0;
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT(ally->owner == nullptr && ally->collide_ob == nullptr, "dead links should be cleared on oblist entities");
     TEST_ASSERT(hostile->foe == nullptr && hostile->leader == nullptr, "all dead references should be cleared");
     (void)weap_owner;
@@ -760,8 +771,12 @@ void test_sim_world_freeze_branch_allows_non_living_actions()
     clear_level_lists();
 
     GameWorld& world = setup_tick_world(777);
-    og::sim::SimEventLog events;
-    SaveData save;
+    TEST_ASSERT(current_game != nullptr && current_game->sim_events != nullptr, "current_game sim_events should be wired");
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& events = *current_game->sim_events;
+    events.clear();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.my_team = 0;
 
     walker* gen = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Generator, FAMILY_TENT);
@@ -773,7 +788,7 @@ void test_sim_world_freeze_branch_allows_non_living_actions()
 
     world.enemy_freeze = 11;
     world.end = 0;
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT_EQ(10, (int)world.enemy_freeze, "freeze counter should decrement");
     TEST_ASSERT(world.game_ended, "no hostile living and no exits should auto-end level");
 
@@ -811,7 +826,7 @@ void test_sim_world_assigns_far_foe_when_no_target_and_hostiles_present()
 
     world.enemy_freeze = 0;
     world.end = 0;
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT_EQ(0, (int)world.level_done, "hostile living should keep level unfinished");
     TEST_ASSERT(ally->foe != nullptr, "sim world should assign a far foe when none is set");
     TEST_ASSERT(ally->foe == foe_near, "nearest hostile should be selected as far foe");
@@ -823,8 +838,12 @@ void test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event()
     clear_level_lists();
 
     GameWorld& world = setup_tick_world(1234);
-    og::sim::SimEventLog events;
-    SaveData save;
+    TEST_ASSERT(current_game != nullptr && current_game->sim_events != nullptr, "current_game sim_events should be wired");
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& events = *current_game->sim_events;
+    events.clear();
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
     save.my_team = 0;
 
     walker* ally = add_living(0);
@@ -837,7 +856,7 @@ void test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event()
 
     world.enemy_freeze = 2; // decrements to 1 -> SetPalette(0) branch
     world.end = 1;          // explicit end short-circuit branch
-    world.tick(save, events);
+    world.tick();
     TEST_ASSERT(world.game_ended, "end flag should force game_ended");
     TEST_ASSERT_EQ(1, (int)world.enemy_freeze, "freeze should decrement before end short-circuit");
 
@@ -872,7 +891,7 @@ void test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero()
     og::runtime::current_session->myscreen_->level_data.world().id = 41;
     world.enemy_freeze = 0;
     world.end = 0;
-    world.tick(save, events);
+    world.tick();
 
     TEST_ASSERT(world.game_ended, "no hostiles and no exits should end level");
     TEST_ASSERT_EQ(0, (int)world.ending, "auto-end path should set ending to zero");

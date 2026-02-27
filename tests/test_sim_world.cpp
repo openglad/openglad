@@ -103,7 +103,7 @@ OG_UNIT_TEST(test_sim_world_r15_normal_tick_cleanup_and_dead_entity_removal)
 
     fx.level.numobs = 3;
 
-    world.tick(fx.save, fx.events);
+    world.tick();
     OG_ASSERT(world.level_done == 0);
     OG_ASSERT(!world.game_ended);
     OG_ASSERT(ally->acts > 0);
@@ -135,7 +135,7 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_tick_and_level_done_paths)
     OG_ASSERT(ally && enemy && exit_fx);
 
     world.enemy_freeze = 11;
-    world.tick(fx.save, fx.events);
+    world.tick();
     OG_ASSERT(world.level_done == 1);
     OG_ASSERT(!world.game_ended);
     OG_ASSERT(ally->acts > 0);
@@ -143,7 +143,7 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_tick_and_level_done_paths)
 
     world.enemy_freeze = 2;
     const std::size_t before_events = fx.events.size();
-    world.tick(fx.save, fx.events);
+    world.tick();
     OG_ASSERT(fx.events.size() > before_events);
 }
 
@@ -159,7 +159,7 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_uses_friendliness_not_team_zero)
     OG_ASSERT(friendly && hostile);
 
     world.enemy_freeze = 11;
-    world.tick(fx.save, fx.events);
+    world.tick();
 
     OG_ASSERT(world.level_done == 2);
     OG_ASSERT(world.game_ended);
@@ -178,13 +178,13 @@ OG_UNIT_TEST(test_sim_world_r15_end_flag_and_auto_advance_paths)
     OG_ASSERT(enemy != nullptr);
 
     world.end = 1;
-    world.tick(fx.save, fx.events);
+    world.tick();
     OG_ASSERT(world.game_ended);
 
     SimWorldR15Fixture empty_fx;
     GameWorld& world2 = empty_fx.world();
     world2.rng_.state_ = 9;
-    world2.tick(empty_fx.save, empty_fx.events);
+    world2.tick();
     OG_ASSERT(world2.game_ended);
     OG_ASSERT(world2.level_done == 2);
     OG_ASSERT(world2.next_level == static_cast<short>(empty_fx.level.world().id + 1));
@@ -214,14 +214,14 @@ OG_UNIT_TEST(test_sim_world_r15_reset_level_progress_clears_timeout_for_same_lev
         }
     } guard;
 
-    world.tick(fx.save, fx.events);
+    world.tick();
     OG_ASSERT(!world.game_ended);
 
-    world.tick(fx.save, fx.events);
+    world.tick();
     OG_ASSERT(world.game_ended);
 
     world.reset_level_progress();
-    world.tick(fx.save, fx.events);
+    world.tick();
     OG_ASSERT(!world.game_ended);
 #endif
 }

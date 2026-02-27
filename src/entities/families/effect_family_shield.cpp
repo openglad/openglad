@@ -28,8 +28,8 @@ static bool magic_shield_on_act(effect* self)
     self->center_on(self->owner);
     self->setworldxy(self->worldx()+xd, self->worldy()+yd);
 
-    auto foelist = self->sim_level->find_foe_weapons_in_range(
-        self->sim_level->oblist, self->sizex, &temp, self);
+    auto foelist = current_game->world->find_foe_weapons_in_range(
+        current_game->world->oblist, self->sizex, &temp, self);
     for(auto* w : foelist)
     {
         self->stats()->hitpoints -= w->damage;
@@ -37,8 +37,8 @@ static bool magic_shield_on_act(effect* self)
         w->death();
     }
 
-    foelist = self->sim_level->find_foes_in_range(
-        self->sim_level->oblist, self->sizex, &temp, self);
+    foelist = current_game->world->find_foes_in_range(
+        current_game->world->oblist, self->sizex, &temp, self);
     for(auto* w : foelist)
     {
         self->stats()->hitpoints -= w->damage;
@@ -73,8 +73,8 @@ static bool boomerang_on_act(effect* self)
     self->center_on(self->owner);
     self->setworldxy(self->worldx()+xd, self->worldy()+yd);
 
-    auto foelist = self->sim_level->find_foe_weapons_in_range(
-        self->sim_level->oblist, self->sizex*2, &temp, self);
+    auto foelist = current_game->world->find_foe_weapons_in_range(
+        current_game->world->oblist, self->sizex*2, &temp, self);
     for(auto* w : foelist)
     {
         self->stats()->hitpoints -= w->damage;
@@ -82,8 +82,8 @@ static bool boomerang_on_act(effect* self)
         w->death();
     }
 
-    foelist = self->sim_level->find_foes_in_range(
-        self->sim_level->oblist, self->sizex, &temp, self);
+    foelist = current_game->world->find_foes_in_range(
+        current_game->world->oblist, self->sizex, &temp, self);
     for(auto* w : foelist)
     {
         self->stats()->hitpoints -= w->damage;

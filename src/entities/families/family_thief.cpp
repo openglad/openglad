@@ -67,7 +67,7 @@ static bool thief_do_special(walker* self)
     switch (self->current_special)
     {
         case 1: // drop bomb
-            newob = self->sim_level->add_ob(Order::FX, FAMILY_BOMB, 1);
+            newob = current_game->world->add_ob(Order::FX, FAMILY_BOMB, 1);
             newob->ani_type = ANI_BOMB;
             if (self->myguy)
             {
@@ -82,8 +82,8 @@ static bool thief_do_special(walker* self)
             {
                 if (self->user == -1)
                 {
-                    std::int32_t tempx = static_cast<std::int32_t>(self->sim_rng->next(3)) - 1;
-                    std::int32_t tempy = static_cast<std::int32_t>(self->sim_rng->next(3)) - 1;
+                    std::int32_t tempx = static_cast<std::int32_t>(current_game->world->rng_.next(3)) - 1;
+                    std::int32_t tempy = static_cast<std::int32_t>(current_game->world->rng_.next(3)) - 1;
                     if ((tempx == 0) && (tempy == 0))
                         tempx = 1;
                     self->stats()->force_command(COMMAND_WALK, 20, tempx, tempy);
@@ -91,7 +91,7 @@ static bool thief_do_special(walker* self)
             }
             break;
         case 2: // cloak
-            self->invisibility_left = static_cast<short>(self->invisibility_left + 20 + static_cast<std::int32_t>(self->sim_rng->next(20)) * self->stats()->level);
+            self->invisibility_left = static_cast<short>(self->invisibility_left + 20 + static_cast<std::int32_t>(current_game->world->rng_.next(20)) * self->stats()->level);
             break;
         case 3: // taunt / charm
             if (!self->shifter_down) // normal taunt
@@ -99,16 +99,16 @@ static bool thief_do_special(walker* self)
                 if (self->busy > 0)
                     return false;
                 for_each_foe_in_range(self, 80 + 4 * self->stats()->level, [self](walker* ob) {
-                    if (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(ob->stats()->level))
+                    if (current_game->world->rng_.next(self->stats()->level) >= current_game->world->rng_.next(ob->stats()->level))
                     {
                         ob->foe = self;
                         ob->leader = self;
                         if (ob->act_type != ACT_CONTROL)
-                            ob->stats()->force_command(COMMAND_FOLLOW, 10 + self->sim_rng->next(self->stats()->level), 0, 0);
+                            ob->stats()->force_command(COMMAND_FOLLOW, 10 + current_game->world->rng_.next(self->stats()->level), 0, 0);
                     }
                 });
                 message = std::format("{}: 'Nyah Nyah!'", entity_display_name(self, "THIEF"));
-                og::sim::emit_notification(self->sim_events, message);
+                og::sim::emit_notification(current_game->sim_events, message);
                 self->busy += 2;
                 break;
             }
@@ -120,7 +120,7 @@ static bool thief_do_special(walker* self)
                     std::int32_t howmany;
                     std::int32_t didheal = 0;
                     std::int32_t generic2 = 0;
-                    std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
+                    std::list<walker*> newlist = current_game->world->find_foes_in_range(current_game->world->oblist,
                                                           16 + 4 * self->stats()->level, &howmany, self);
                     if (howmany < 1)
                         return false;
@@ -132,7 +132,7 @@ static bool thief_do_special(walker* self)
                             1)
                         {
                             std::int32_t generic = self->stats()->level - ob->stats()->level;
-                            if (generic < 0 || (!self->sim_rng->next(20)))
+                            if (generic < 0 || (!current_game->world->rng_.next(20)))
                             {
                                 ob->foe = self;
                                 ob->attack(self);
@@ -158,7 +158,7 @@ static bool thief_do_special(walker* self)
                         tempstr = std::format("{} failed to charm!", entity_display_name(self, "Thief"));
                     else
                         tempstr = std::format("{} charmed an opponent!", entity_display_name(self, "Thief"));
-                    og::sim::emit_notification(self->sim_events, tempstr);
+                    og::sim::emit_notification(current_game->sim_events, tempstr);
                     self->busy += 10;
                 }
                 break;

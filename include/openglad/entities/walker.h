@@ -23,7 +23,7 @@
 // pixieN component (render_) created when graphics are available.
 
 #include <openglad/sim/sim_entity.h>
-#include <openglad/entities/obmap.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -193,7 +193,6 @@ class walker : public og::sim::SimEntity
 		short shifter_down;            // is our shifter/alternate key pressed?
 		short yo_delay;
 		bool in_act;                   // set while in an action
-		obmap* myobmap;
 		int path_check_counter;
 		std::vector<MicroPatherState> path_to_foe;  // Result from pathfinding
 		bool hurt_flash;

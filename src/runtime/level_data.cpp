@@ -31,6 +31,7 @@
 #include <openglad/io/yaml_stream.h>
 #include <openglad/io/ogfile_yaml.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/game_session.h>
 #include <openglad/data/level_render.h>
 #include <openglad/data/level_data_hooks.h>
 #include <algorithm>
@@ -48,10 +49,52 @@ void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                                 cfg_store* config)
 {
     sim_ctx_save_ = save;
-    sim_ctx_enemy_freeze_ = enemy_freeze;
-    sim_ctx_events_ = events;
-    sim_ctx_rng_ = rng;
     sim_ctx_config_ = config;
+
+    sim_ctx_gameplay_.world = &world();
+    sim_ctx_gameplay_.save = save;
+    sim_ctx_gameplay_.sim_events = events;
+    sim_ctx_gameplay_.config = config;
+
+    (void)enemy_freeze;
+    (void)rng;
+
+    // Re-wire already-loaded entities so callers can set context either
+    // before or after loading a scenario.
+    for (auto& uptr : world().oblist)
+        wire_entity(uptr.get());
+    for (auto& uptr : world().fxlist)
+        wire_entity(uptr.get());
+    for (auto& uptr : world().weaplist)
+        wire_entity(uptr.get());
+    for (auto& uptr : world().dead_list)
+        wire_entity(uptr.get());
+
+    // Keep the active gameplay context synchronized when this LevelData is
+    // already active on the current thread. In headless/no-screen contexts
+    // (unit tests, text client), allow this LevelData to install its own
+    // context as the active gameplay context.
+    const bool has_active_screen_session =
+        (og::runtime::current_session != nullptr &&
+         og::runtime::current_session->myscreen_ != nullptr);
+
+    if (!has_active_screen_session &&
+        (current_game == nullptr || current_game != &sim_ctx_gameplay_))
+    {
+        current_game = &sim_ctx_gameplay_;
+    }
+
+    if (current_game == &sim_ctx_gameplay_ ||
+        current_game == nullptr ||
+        current_game->world == &world())
+    {
+        if (current_game == nullptr)
+            current_game = &sim_ctx_gameplay_;
+        current_game->world = &world();
+        current_game->save = save;
+        current_game->sim_events = events;
+        current_game->config = config;
+    }
 }
 
 static constexpr char VERSION_NUM = 9; // save scenario type info
@@ -449,6 +492,21 @@ LevelData::~LevelData()
     delete_objects();
     delete_grid();
 
+    // Avoid dangling gameplay-context pointers when this LevelData/world is
+    // torn down in tests or temporary editor flows.
+    if (current_game != nullptr)
+    {
+        if (current_game == &sim_ctx_gameplay_ || current_game->world == world_)
+        {
+            current_game->world = nullptr;
+            current_game->save = nullptr;
+            current_game->sim_events = nullptr;
+            current_game->config = nullptr;
+            if (current_game == &sim_ctx_gameplay_)
+                current_game = nullptr;
+        }
+    }
+
     if (world_ != nullptr)
     {
         world_->set_level_data(nullptr);
@@ -547,20 +605,13 @@ walker* LevelData::add_weap_ob(Order order, std::int32_t family)
 
 void LevelData::wire_entity(walker* w)
 {
-    w->myobmap = world().myobmap.get();
-    w->sim_level = this;
     w->sim_save = sim_ctx_save_;
-    w->sim_enemy_freeze = sim_ctx_enemy_freeze_;
-    w->sim_events = sim_ctx_events_;
-    w->sim_rng = sim_ctx_rng_;
     w->sim_config = sim_ctx_config_;
 }
 
 void LevelData::wire_spawned_entity(walker* w)
 {
     wire_entity(w);
-    if (hooks_ && hooks_->wire_entity_from_screen)
-        hooks_->wire_entity_from_screen(w);
 }
 
 short LevelData::remove_ob(walker  *ob)

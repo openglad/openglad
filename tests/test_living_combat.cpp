@@ -665,28 +665,19 @@ void test_living_round7_act_random_and_do_action_targeted_branches()
     foe->setxy(120, 100);
     actor->lineofsight = 40;
     actor->foe = foe.get();
-    class FixedRandom final : public IRandom
-    {
-    public:
-        std::uint32_t next(std::uint32_t max_exclusive) override
-        {
-            if (max_exclusive == 0)
-                return 0;
-            return 1 % max_exclusive;
-        }
-    };
-    FixedRandom rng;
-    actor->sim_rng = &rng;
+    GameWorld& world = og::runtime::current_session->myscreen_->level_data.world();
 
     // living::act_random fire_check true path through act() dispatch.
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     actor->set_act_type(ACT_RANDOM);
+    world.rng_.state_ = 1;
     bool ok = actor->act();
     TEST_ASSERT(ok, "living act_random should succeed for in-range foe");
 
     // living::act_random fire_check false path -> turn + COMMAND_SEARCH.
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     actor->set_act_type(ACT_RANDOM);
+    world.rng_.state_ = 1;
     ok = actor->act();
     TEST_ASSERT(ok, "living act_random should still succeed when ranged attack is blocked");
 
@@ -895,11 +886,10 @@ void test_obmap_round11_stale_query_and_helper_accessors_paths()
     w2->sizex = w2->sizey = 12;
     w1->setxy(64, 64);
     w2->setxy(64, 64);
-    FixedRandom high_rng(9); // >3 for weapon-vs-weapon miss branch
-    w1->sim_rng = &high_rng;
-    w2->sim_rng = &high_rng;
+    og::runtime::current_session->myscreen_->level_data.world().rng_.state_ = 1; // next(10)=8 (>3) for miss branch
     TEST_ASSERT_EQ(1, (int)map.add(w2, w2->xpos, w2->ypos), "track second weapon");
-    TEST_ASSERT_EQ(1, (int)map.query_list(w1, w1->xpos, w1->ypos),
+    const int weapon_miss_pass = map.query_list(w1, w1->xpos, w1->ypos);
+    TEST_ASSERT_EQ(1, weapon_miss_pass,
                    "weapon should pass when colliding weapon-miss branch executes");
 
     // obmap_get_list/unhash helpers.

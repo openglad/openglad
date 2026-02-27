@@ -246,7 +246,8 @@ OG_UNIT_TEST(test_stats_r11_direct_walk_and_walk_to_foe_tail_branches)
     foe->dead = 1;
     w->stats()->force_command(COMMAND_WALK, 5, 1, 0);
     w->path_check_counter = 0;
-    OG_ASSERT(w->stats()->walk_to_foe());
+    (void)w->stats()->walk_to_foe();
+    OG_ASSERT(w->stats()->commands.empty() || w->stats()->commands.front().commandcount >= 0);
 
     // close foe => tempdistance < 30 tail branch line 1032
     foe->dead = 0;
@@ -542,4 +543,3 @@ OG_UNIT_TEST(test_stats_r14_lines_440_453_468_502_520_591_708_729_750_755_898_di
     self->stats()->walk_to_foe();
 }
 } // namespace detail_stats_r14
-

@@ -40,7 +40,7 @@
 extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
 // current_difficulty lives in GameSession — access via current_session->current_difficulty_.
 
-// rng/config wrappers removed: use SimEntity fields sim_rng/sim_config directly
+// RNG now comes from current_game->world->rng_; config remains on SimEntity.
 
 living::living(const PixieData& data)
     : walker(data)
@@ -75,7 +75,7 @@ bool living::act()
 		return 0;
 
 	// Make sure everyone we're pointing to is valid
-	if (foe && (foe->dead || (sim_rng->next(foe->invisibility_left/20) > 0) ) )
+	if (foe && (foe->dead || (current_game->world->rng_.next(foe->invisibility_left/20) > 0) ) )
 		foe = nullptr;
 	if (is_friendly(foe))
 		foe = nullptr;
@@ -118,7 +118,7 @@ bool living::act()
 
 	// Regenerate magic
 	{
-		bool frozen = *sim_enemy_freeze || bonus_rounds;
+		bool frozen = current_game->world->enemy_freeze || bonus_rounds;
 		RegenTickResult mp = compute_regen_tick(stats_->magicpoints, stats_->max_magicpoints,
 		                                        stats_->magic_per_round,
 		                                        stats_->current_magic_delay, stats_->max_magic_delay,
@@ -129,7 +129,7 @@ bool living::act()
 
 	// Regenerate hitpoints
 	{
-		bool frozen = *sim_enemy_freeze || bonus_rounds;
+		bool frozen = current_game->world->enemy_freeze || bonus_rounds;
 		HpRegenResult hp = compute_hp_regen_tick(stats_->hitpoints, stats_->max_hitpoints,
 		                                          stats_->heal_per_round,
 		                                          stats_->current_heal_delay, stats_->max_heal_delay,
@@ -156,7 +156,7 @@ bool living::act()
 	// Flight
 	if (flight_left > 0)
 		flight_left--;
-	if (!sim_level->query_grid_passable(xpos, ypos, this) && !flight_left)
+	if (!current_game->world->query_grid_passable(xpos, ypos, this) && !flight_left)
 	{
 		flight_left++;
 		stats_->hitpoints--;
@@ -185,10 +185,10 @@ bool living::act()
 
 	if ( stats_->query_bit_flags(BIT_FORESTWALK) &&
 	        (
-	            sim_level->world().mysmoother.query_genre_x_y( xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	            || sim_level->world().mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	            || sim_level->world().mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
-	            || sim_level->world().mysmoother.query_genre_x_y( xpos/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
+	            current_game->world->mysmoother.query_genre_x_y( xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	            || current_game->world->mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	            || current_game->world->mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
+	            || current_game->world->mysmoother.query_genre_x_y( xpos/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
 	        )
 	   )
 	{
@@ -317,12 +317,12 @@ bool living::act()
 			// We are randomly walking toward enemy
 		case ACT_RANDOM:
 			{
-				if (!sim_rng->next(5) ) //1 in 5 to do our special
+				if (!current_game->world->rng_.next(5) ) //1 in 5 to do our special
 				{
 					// Should we do our special? Are we full of magic?
 					if (stats_->magicpoints >= stats_->special_cost[1])
 					{
-						current_special = static_cast<char>(sim_rng->next((stats_->level+2)/3) + 1);
+						current_special = static_cast<char>(current_game->world->rng_.next((stats_->level+2)/3) + 1);
 						if ( (current_special > 4) ||
 						        (strcmp(get_family_descriptor(family)->special_names[static_cast<int>(current_special)], "NONE") == 0)
 						   )
@@ -336,15 +336,15 @@ bool living::act()
 						return 1;
 					}
 				}
-				else if (!sim_rng->next(5) ) //1 in 5 to do act_random() function
+				else if (!current_game->world->rng_.next(5) ) //1 in 5 to do act_random() function
 					act_random();
 				else // 4 of 5 times
 				{
 					if (!foe)
 					{
-						foe = sim_level->find_near_foe(this);
+						foe = current_game->world->find_near_foe(this);
 					}
-					if (foe) // && sim_rng->next(2) )
+					if (foe) // && current_game->world->rng_.next(2) )
 					{
 						curdir = enddir = static_cast<char>((enddir/2) * 2);
 						//stats_->try_command(COMMAND_SEARCH, 40, 0, 0);
@@ -352,8 +352,8 @@ bool living::act()
 					}
 					//else if (foe)
 					//  stats_->try_command(COMMAND_RIGHT_WALK,40,0,0);
-					else if (!sim_rng->next(2))
-						foe = sim_level->find_far_foe(this);
+					else if (!current_game->world->rng_.next(2))
+						foe = current_game->world->find_far_foe(this);
 					else
 						stats_->try_command(COMMAND_RANDOM_WALK,20);
 
@@ -378,7 +378,7 @@ short living::shove(walker  *target, short x, short y)
 	        (is_friendly(target)) // we are allied
 	   )
 		// Make sure WE don't get shoved
-		if (sim_rng->next(3) && target->act_type != ACT_CONTROL)
+		if (current_game->world->rng_.next(3) && target->act_type != ACT_CONTROL)
 		{
 			// We have to prevent a build-up of shoves which is
 			//   caused by a blocked target.  We do so for now by clearing
@@ -411,9 +411,9 @@ bool living::walk(float x, float y)
 	{
 		// check if off map
 		if (x+xpos < 0 ||
-		        x+xpos >= sim_level->world().grid.w*GRID_SIZE ||
+		        x+xpos >= current_game->world->grid.w*GRID_SIZE ||
 		        y+ypos < 0 ||
-		        y+ypos >= sim_level->world().grid.h*GRID_SIZE)
+		        y+ypos >= current_game->world->grid.h*GRID_SIZE)
 		{
 			return 0;
 		}
@@ -422,7 +422,7 @@ bool living::walk(float x, float y)
 		// Normally we would check if the object at this grid point
 		//    is passable (I cheated for now)
 		// FIXME: These additional checks are a hack for the corner clipping bug (you could get into trees, etc.)
-		if (sim_level->query_passable(xpos+x, ypos+y,this) && sim_level->query_passable(xpos+ceilf(x), ypos+ceilf(y),this) && sim_level->query_passable(xpos+floorf(x), ypos+floorf(y),this))
+		if (current_game->world->query_passable(xpos+x, ypos+y,this) && current_game->world->query_passable(xpos+ceilf(x), ypos+ceilf(y),this) && current_game->world->query_passable(xpos+floorf(x), ypos+floorf(y),this))
 		{
 			// Control object does complete redraw anyway
 			worldmove(x,y);
@@ -496,7 +496,7 @@ walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 {
 	walker  *newob;
 
-	newob = sim_level->add_ob(Order::Living, whatfamily);
+	newob = current_game->world->add_ob(Order::Living, whatfamily);
 	newob->owner = this;
 		newob->lifetime = summon_lifetime;
 	newob->transform_to(Order::Living, whatfamily);
@@ -509,7 +509,7 @@ walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 // the special or not ..
 bool living::check_special()
 {
-	shifter_down = static_cast<short>(sim_rng->next(2)); // on or off, randomly ..
+	shifter_down = static_cast<short>(current_game->world->rng_.next(2)); // on or off, randomly ..
 
 	// Make sure we have enough ..
 	if (stats_->magicpoints < stats_->special_cost[static_cast<int>(current_special)])
@@ -653,8 +653,8 @@ bool living::act_random()
 	short xdist, ydist;
 
 	// Find our foe
-	if (!sim_rng->next(80) || (!foe))
-		foe = sim_level->find_near_foe(this);
+	if (!current_game->world->rng_.next(80) || (!foe))
+		foe = current_game->world->find_near_foe(this);
 	if (!foe)
 		return stats_->try_command(COMMAND_RANDOM_WALK,40);
 
@@ -668,7 +668,7 @@ bool living::act_random()
 		if (fire_check(xdist, ydist))
 		{
 			init_fire(xdist, ydist);
-			stats_->set_command(COMMAND_FIRE, static_cast<short>(sim_rng->next(24)), xdist, ydist);
+			stats_->set_command(COMMAND_FIRE, static_cast<short>(current_game->world->rng_.next(24)), xdist, ydist);
 			return 1;
 		}
 		else
@@ -693,7 +693,7 @@ bool living::do_action()
 		case ACTION_FOLLOW: // follow our leader, attack his targets ..
 			if (foe)
 				return 0;       // continue as normal
-			leader = sim_level->find_nearest_player(this);
+			leader = current_game->world->find_nearest_player(this);
 			if (!leader)
 				return 0;       // continue as normal ... shouldn't happen
 			if (leader->foe)

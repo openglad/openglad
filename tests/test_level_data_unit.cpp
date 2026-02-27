@@ -527,6 +527,7 @@ OG_UNIT_TEST(test_level_data_r12_save_null_entries_and_query_passable_branches)
     OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
     weapon->setxy(200, 0);
     owner->setxy(0, 0);
+    fx.level.world().rng_.state_ = 1;
     OG_ASSERT(!fx.level.query_grid_passable(0, 0, weapon));
 
     fx.level.world().grid.data[0] = PIX_WATER1;
@@ -910,7 +911,7 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     walker* fxob = level_non_headless.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     walker* weap = level_non_headless.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     OG_ASSERT(living && fxob && weap);
-    OG_ASSERT(g_wire_calls >= 3);
+    OG_ASSERT(g_wire_calls == 0);
     OG_ASSERT(level_non_headless.numobs >= 1);
 
     level_non_headless.world().title = "Mutated";

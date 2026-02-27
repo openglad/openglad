@@ -450,7 +450,6 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
 
     // treasure.cpp paths
     treasure lonely;
-    lonely.sim_level = &fx.level;
     lonely.stats()->level = 2;
     OG_ASSERT(lonely.find_teleport_target() == nullptr);
     OG_ASSERT(lonely.act());

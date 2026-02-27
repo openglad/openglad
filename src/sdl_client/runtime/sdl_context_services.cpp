@@ -11,11 +11,9 @@
 
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
-#include <openglad/data/gparser.h>
 #include <openglad/input/input.h>
 #include <openglad/render/view.h>
 #include <openglad/data/level_data.h>
-#include <openglad/entities/walker.h>
 #include <openglad/data/level_render.h>
 #include <openglad/data/level_data_hooks.h>
 
@@ -76,18 +74,6 @@ void sdl_clear_stale_view_controls(LevelData* level)
     }
 }
 
-void sdl_level_data_wire_entity_from_screen(walker* w)
-{
-    if (og::runtime::current_session && og::runtime::current_session->myscreen_) {
-        w->sim_save = &og::runtime::current_session->myscreen_->save_data;
-        w->sim_enemy_freeze = &og::runtime::current_session->myscreen_->enemy_freeze;
-    }
-    if (ctx().sim_events)
-        w->sim_events = ctx().sim_events.get();
-    w->sim_rng = ctx().rng;
-    w->sim_config = &cfg;
-}
-
 void sdl_level_data_draw(LevelData* level, screen* screenp)
 {
     for (short i = 0; i < screenp->numviews; i++)
@@ -101,7 +87,7 @@ std::unique_ptr<LevelRender> sdl_create_level_render(PixieData pixdata[])
 
 const LevelDataHooks kSdlLevelDataHooks{
     .clear_stale_view_controls = sdl_clear_stale_view_controls,
-    .wire_entity_from_screen = sdl_level_data_wire_entity_from_screen,
+    .wire_entity_from_screen = nullptr,
     .draw = sdl_level_data_draw,
     .create_level_render = sdl_create_level_render,
 };

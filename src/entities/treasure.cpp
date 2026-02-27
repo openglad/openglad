@@ -80,7 +80,7 @@ void treasure::set_direct_frame(short whatframe)
 // Finds the next connected teleporter in the fxlist for you to warp to.
 walker  * treasure::find_teleport_target()
 {
-	auto& ls = sim_level->fxlist;
+	auto& ls = current_game->world->fxlist;
 	//Log("Teleporting from #%d ..", number);
 
 	// First find where we are in the list ...

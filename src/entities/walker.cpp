@@ -35,6 +35,7 @@
 #include <openglad/data/save_data.h>
 #include <openglad/data/gloader.h>
 #include <openglad/data/gparser.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/core/constants.h>
@@ -108,7 +109,6 @@ void walker_init_common(walker* w)
 	w->drawcycle = 0;
 	w->skip_exit = 0;
 	w->weapons_left = 1;
-	w->myobmap = nullptr;
 	w->current_special = 0;
 	w->path_check_counter = 5 + rand()%10;
 	w->hurt_flash = false;
@@ -328,7 +328,7 @@ walker  * walker::fire()
 
 	// Determine how much the thrown weapon can 'waver'
 	waver = static_cast<signed char>((weapon->stepsize)/2); // Absolute amount ..
-	waver = static_cast<signed char>(sim_rng->next(waver+1) - waver/2);
+	waver = static_cast<signed char>(current_game->world->rng_.next(waver+1) - waver/2);
 
 	switch(facing(lastx, lasty))
 	{
@@ -383,14 +383,14 @@ walker  * walker::fire()
 	//yp = weapon->ypos;
 
 	// Actual combat
-	if (!sim_level->query_passable(weapon->xpos, weapon->ypos, weapon))
+	if (!current_game->world->query_passable(weapon->xpos, weapon->ypos, weapon))
 	{
 		// *** Melee combat ***
 		if (weapon->collide_ob && !weapon->collide_ob->dead)
 		{
 			if (attack(weapon->collide_ob))
 			{
-				og::sim::emit_sound(sim_events, SOUND_CLANG);
+				og::sim::emit_sound(current_game->sim_events, SOUND_CLANG);
 
                 if(sim_config && sim_config->is_on("effects", "attack_lunge"))
                 {
@@ -445,7 +445,7 @@ walker  * walker::fire()
 		// *** Ranged combat ***
 		{
 			const auto* wfd = get_weapon_family_descriptor(weapon->family);
-			og::sim::emit_sound(sim_events, static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
+			og::sim::emit_sound(current_game->sim_events, static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
 		}
 		if (order == Order::Generator)
 		{
@@ -456,7 +456,7 @@ walker  * walker::fire()
 					weapon->ani_type = gfd->spawn_ani_type;
 				if (gfd->has_lifetime)
 					weapon->lifetime = 800 + stats_->level*11;
-				weapon->stats()->level = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(stats_->level))) + 1;
+				weapon->stats()->level = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level))) + 1;
 				weapon->set_difficulty(static_cast<std::uint32_t>(weapon->stats()->level));
 				if (gfd->clear_owner)
 					weapon->owner = nullptr;
@@ -474,7 +474,7 @@ void walker::set_weapon_heading(walker *weapon)
 
 	// Determine how much the thrown weapon can 'waver'
 	waver = static_cast<signed char>((weapon->stepsize)/2); // Absolute amount ..
-	waver = static_cast<signed char>(sim_rng->next(waver+1) - waver/2);
+	waver = static_cast<signed char>(current_game->world->rng_.next(waver+1) - waver/2);
 
 	switch(facing(lastx, lasty))  // these are from the 'owner'
 	{
@@ -699,13 +699,13 @@ bool walker::act()
 			// We are randomly walking toward enemy
 		case ACT_RANDOM:
 			{
-				if (!sim_rng->next(4) )
+				if (!current_game->world->rng_.next(4) )
 				{
-					if (!sim_rng->next(20))   // a 1 in 4 then 1 in 20 chance of rand walk
+					if (!current_game->world->rng_.next(20))   // a 1 in 4 then 1 in 20 chance of rand walk
 					{
 						if (!special())
-							stats_->try_command(COMMAND_WALK, sim_rng->next(30),
-							                   sim_rng->next(3)-1, sim_rng->next(3)-1);
+							stats_->try_command(COMMAND_WALK, current_game->world->rng_.next(30),
+							                   current_game->world->rng_.next(3)-1, current_game->world->rng_.next(3)-1);
 						return 1;
 					}
 					act_random(); //1 in 4 followed by 19 in 20 of doing this
@@ -714,7 +714,7 @@ bool walker::act()
 				{
 					if (!foe)
 					{
-						foe = sim_level->find_far_foe(this);
+						foe = current_game->world->find_far_foe(this);
 					}
 					if (foe)
 						//stats_->try_command(COMMAND_SEARCH, 60, 0, 0);
@@ -876,7 +876,7 @@ walker  *walker::create_weapon()
 	// Special case for generators
 	if (query_order() == Order::Generator)
 	{
-		weapon = sim_level->add_ob(Order::Living, static_cast<char>(default_weapon));
+		weapon = current_game->world->add_ob(Order::Living, static_cast<char>(default_weapon));
 		weapon->team_num = team_num;
 		weapon->owner = this;
 		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
@@ -885,7 +885,7 @@ walker  *walker::create_weapon()
 	// Normally, only livings fire
 	weapon_type = current_weapon;
 
-	weapon = sim_level->add_ob(Order::Weapon, static_cast<char>(weapon_type));
+	weapon = current_game->world->add_ob(Order::Weapon, static_cast<char>(weapon_type));
 	weapon->team_num = team_num;
 	weapon->owner = this;
 	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
@@ -941,7 +941,7 @@ bool walker::query_next_to()
 	else //if (lasty < 0)
 		newy += -sizey;
 
-	if (!sim_level->query_object_passable(newx, newy, this))
+	if (!current_game->world->query_object_passable(newx, newy, this))
 	{
 		return 1;
 	}
@@ -1019,13 +1019,13 @@ bool walker::fire_check(short xdelta, short ydelta)
 	{
 		weapon->setxy(weapon->xpos + weapon->lastx,
 		              weapon->ypos + weapon->lasty);
-		if ( !sim_level->query_grid_passable(weapon->xpos, weapon->ypos, weapon) )
+		if ( !current_game->world->query_grid_passable(weapon->xpos, weapon->ypos, weapon) )
 		{
 			// we hit a wall, so fail
 			weapon->dead = 1;
 			return 0;
 		}
-		if ( !sim_level->query_object_passable(weapon->xpos, weapon->ypos, weapon) )
+		if ( !current_game->world->query_object_passable(weapon->xpos, weapon->ypos, weapon) )
 		{
 			// we hit an enemy, so good!
 			weapon->dead = 1;
@@ -1047,12 +1047,12 @@ bool walker::fire_check(short xdelta, short ydelta)
 bool
 walker::act_generate()
 {
-	if ( sim_level->numobs < MAXOBS &&
-	        (sim_rng->next(static_cast<std::uint32_t>(stats_->level * 3)) > sim_rng->next(static_cast<std::uint32_t>(300 + (sim_level->numobs * 8))) )
+	if ( current_game->world->living_count < MAXOBS &&
+	        (current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level * 3)) > current_game->world->rng_.next(static_cast<std::uint32_t>(300 + (current_game->world->living_count * 8))) )
 	   )
 	{
-		lastx = static_cast<float>(1 - static_cast<std::int32_t>(sim_rng->next(3)));
-		lasty = static_cast<float>(1 - static_cast<std::int32_t>(sim_rng->next(3)));
+		lastx = static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));
+		lasty = static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));
 		if (!lastx && !lasty)
 			lastx = 1;
 		init_fire(static_cast<short>(lastx), static_cast<short>(lasty));
@@ -1099,11 +1099,11 @@ walker::act_guard()
 	//                       fire_check(lasty, lastx) ||
 	//                       fire_check(-lasty, -lastx) ||
 	//                       fire_check(-lastx, -lasty))
-	foe = sim_level->find_near_foe(this);
+	foe = current_game->world->find_near_foe(this);
 	if (foe)
 	{
 		curdir = static_cast<char>(facing(foe->xpos - xpos, foe->ypos-ypos));
-		stats_->try_command(COMMAND_FIRE,sim_rng->next(30));
+		stats_->try_command(COMMAND_FIRE,current_game->world->rng_.next(30));
 		return 1;
 	}
 	else
@@ -1117,11 +1117,11 @@ walker::act_random()
 	short xdist, ydist;
 
 	// Specially put in to attempt to make enemy harder
-	//if (sim_rng->next(sizex/GRID_SIZE)) return 0;
+	//if (current_game->world->rng_.next(sizex/GRID_SIZE)) return 0;
 
 	// Find our foe
-	if (!sim_rng->next(70) || (!foe))
-		foe = sim_level->find_far_foe(this);
+	if (!current_game->world->rng_.next(70) || (!foe))
+		foe = current_game->world->find_far_foe(this);
 	if (!foe)
 		return stats_->try_command(COMMAND_RANDOM_WALK,20);
 
@@ -1135,7 +1135,7 @@ walker::act_random()
 		if (fire_check(xdist, ydist))
 		{
 			init_fire(xdist, ydist);
-			stats_->set_command(COMMAND_FIRE, sim_rng->next(24), xdist, ydist);
+			stats_->set_command(COMMAND_FIRE, current_game->world->rng_.next(24), xdist, ydist);
 			return 1;
 		}
 		else
@@ -1162,8 +1162,8 @@ walker::act_random()
 		{
 			while ( !newx && !newy)
 			{
-				newx = static_cast<short>(1 - static_cast<std::int32_t>(sim_rng->next(3)));   // Walk in some random direction
-				newy = static_cast<short>(1 - static_cast<std::int32_t>(sim_rng->next(3)));   // other than 0,0 :)
+				newx = static_cast<short>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));   // Walk in some random direction
+				newy = static_cast<short>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));   // other than 0,0 :)
 			}
 		}
 
@@ -1186,7 +1186,7 @@ short walker::spaces_clear()
 	for (i=-1; i < 2; i++)
 		for (j=-1; j < 2; j++)
 			if (i || j) // don't check our own location
-				if (sim_level->query_passable(xpos+(i*sizex), ypos+(j*sizey), this) )
+				if (current_game->world->query_passable(xpos+(i*sizex), ypos+(j*sizey), this) )
 					count++;
 
 	return count;
@@ -1234,8 +1234,8 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	short tempact = act_type;;
 
 	// First remove us from the collision table..
-	if (myobmap != nullptr)
-		myobmap->remove(this);
+	if (current_game && current_game->world && current_game->world->myobmap)
+		current_game->world->myobmap->remove(this);
 
 	if (order == whatorder) // same object type
 	{
@@ -1246,13 +1246,22 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	// Reset bit flags
 	stats_->clear_bit_flags();
 
+	LevelData* level = (current_game && current_game->world)
+	    ? current_game->world->level_data()
+	    : nullptr;
+	loader* game_loader = (level && level->myloader)
+	    ? level->myloader.get()
+	    : nullptr;
+	if (game_loader == nullptr)
+		return;
+
 	// Do this before resetting graphic so illegal
 	//  family values don't try to set graphics.
 	//  order and family are only set if legal
-	sim_level->myloader->set_walker(this, whatorder, whatfamily);
+	game_loader->set_walker(this, whatorder, whatfamily);
 
 	// Reset the graphics
-	const PixieData& data = sim_level->myloader->graphics[PIX(order, family)];
+	const PixieData& data = game_loader->graphics[PIX(order, family)];
 
 	// Save center before resize (uses old sizex/sizey)
 	xcenter = xpos + sizex/2;
@@ -1297,15 +1306,15 @@ bool walker::death()
 	// Ensure we are removed from collision bookkeeping as soon as we "die".
 	// This prevents stale pointers in the obmap when callers manage walker
 	// lifetimes outside LevelData's owning lists (common in tests).
-	obmap* active = (sim_level != nullptr) ? sim_level->world().myobmap.get() : nullptr;
+	obmap* active = (current_game != nullptr && current_game->world != nullptr)
+	    ? current_game->world->myobmap.get()
+	    : nullptr;
 	if (active != nullptr)
 		active->remove(this);
-	if (myobmap != nullptr && myobmap != active)
-		myobmap->remove(this);
 
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
-			newob = sim_level->add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
+			newob = current_game->world->add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
 			newob->stats()->hitpoints = static_cast<float>(myguy->query_heart_value());
 			newob->stats()->hitpoints *= 0.75f / 2.0f;  // 75%, divided by 2, since score is doubled at end of level
 			newob->team_num = team_num;
@@ -1316,13 +1325,13 @@ bool walker::death()
 	{
 		case Order::Living:
 			if (   (team_num == 0 || myguy) // our team
-			        && (sim_level->world().type & SCEN_TYPE_SAVE_ALL)
+			        && (current_game->world->type & SCEN_TYPE_SAVE_ALL)
 			        && (stats_->name.size()) // we were named
 			   )
 			{
 				// Emit EndGame event instead of calling screen directly.
 				// The runtime layer handles this after the sim tick.
-				og::sim::emit_event(sim_events, og::sim::EventKind::EndGame,
+				og::sim::emit_event(current_game->sim_events, og::sim::EventKind::EndGame,
 				                    SCEN_TYPE_SAVE_ALL, static_cast<std::uint32_t>(-1));
 				return true;
 			}
@@ -1345,16 +1354,16 @@ bool walker::death()
 		case Order::Generator:  // go up in flames :>
 			for (i=0; i < 4; i++)
 			{
-				newob = sim_level->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+				newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 				if (!newob) // failsafe
 					break;
 				newob->team_num = team_num;
 				newob->stats()->level = stats_->level;
 				newob->ani_type = ANI_EXPLODE;
-				newob->setxy(xpos+sim_rng->next(sizex-8)+4, ypos+4+sim_rng->next(sizey-8) );
+				newob->setxy(xpos+current_game->world->rng_.next(sizex-8)+4, ypos+4+current_game->world->rng_.next(sizey-8) );
 					newob->damage = static_cast<float>(stats_->level) * 2.0f;
-					newob->set_frame(static_cast<short>(sim_rng->next(3)));
-				og::sim::emit_sound(sim_events, SOUND_EXPLODE);
+					newob->set_frame(static_cast<short>(current_game->world->rng_.next(3)));
+				og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
 			}
 			break;
 		case Order::FX:
@@ -1377,7 +1386,7 @@ void walker::generate_bloodspot()
 
 	dead = 1; // just in case ..
 
-	bloodstain = sim_level->add_fx_ob(Order::Treasure, FAMILY_STAIN);
+	bloodstain = current_game->world->add_fx_ob(Order::Treasure, FAMILY_STAIN);
 	bloodstain->ignore = 1;
 	transfer_stats(bloodstain);
 
@@ -1393,7 +1402,7 @@ void walker::generate_bloodspot()
 	// We can't select other 'bloodspot' frames, because set_frame
 	// appears to check the order and family and reset our picture
 	// to a living guy .. we need to find a way around this ..
-	bloodstain->set_frame(static_cast<short>(sim_rng->next(4)));  // has no effect yet ..
+	bloodstain->set_frame(static_cast<short>(current_game->world->rng_.next(4)));  // has no effect yet ..
 	bloodstain->ani_type = ANI_WALK;
 	//bloodstain->bmp = (char *) (data+3); // our image
 

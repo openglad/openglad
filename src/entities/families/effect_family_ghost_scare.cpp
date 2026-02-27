@@ -24,7 +24,7 @@ static bool ghost_scare_on_death(effect* self)
     if (!self->owner || self->owner->dead)
         return false;
     std::int32_t howmany = 0;
-    auto foelist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
+    auto foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
         50+(10*self->owner->stats()->level), &howmany, self->owner);
     if (howmany < 1)
         return false;
@@ -41,7 +41,7 @@ static bool ghost_scare_on_death(effect* self)
                 tempy = tempy / (abs(tempy));
             std::int32_t generic = (self->owner->stats()->level*25);
             if (w->myguy)
-                generic -= self->sim_rng->next(w->myguy->constitution);
+                generic -= current_game->world->rng_.next(w->myguy->constitution);
             if (generic > 0)
                 w->stats()->force_command(COMMAND_WALK,
                     static_cast<short>(generic), static_cast<short>(tempx), static_cast<short>(tempy));

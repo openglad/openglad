@@ -27,7 +27,7 @@
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
-// rng/config wrappers removed: use SimEntity fields sim_rng/sim_config directly
+// RNG now comes from current_game->world->rng_; config remains on SimEntity.
 
 static bool orc_do_special(walker* self)
 {
@@ -45,8 +45,8 @@ static bool orc_do_special(walker* self)
             self->busy += 2;
 
             {
-                std::list<walker*> newlist = self->sim_level->find_foes_in_range(
-                    self->sim_level->oblist,
+                std::list<walker*> newlist = current_game->world->find_foes_in_range(
+                    current_game->world->oblist,
                     160 + (20 * self->stats()->level), &howmany, self);
 
                 for (auto* ob : newlist)
@@ -59,15 +59,15 @@ static bool orc_do_special(walker* self)
                             tempx = static_cast<std::int32_t>(ob->stats()->hitpoints / 30.0f);
                         std::int32_t tempx_clamped = (tempx > 0) ? tempx : 0;
                         tempy = 10
-                            + static_cast<std::int32_t>(self->sim_rng->next(static_cast<std::uint32_t>(self->stats()->level * 10)))
-                            - static_cast<std::int32_t>(self->sim_rng->next(static_cast<std::uint32_t>(tempx_clamped * 10)));
+                            + static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(self->stats()->level * 10)))
+                            - static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(tempx_clamped * 10)));
                         if (tempy < 0)
                             tempy = 0;
                         ob->stats()->frozen_delay = static_cast<short>(ob->stats()->frozen_delay + tempy);
                     }
                 }
 
-                og::sim::emit_sound(self->sim_events, SOUND_ROAR);
+                og::sim::emit_sound(current_game->sim_events, SOUND_ROAR);
             }
             break;
         case 2: // eat corpse for health
@@ -76,7 +76,7 @@ static bool orc_do_special(walker* self)
         default:
             if (self->stats()->hitpoints >= self->stats()->max_hitpoints)
                 return false;
-            newob = self->sim_level->find_nearest_blood(self);
+            newob = current_game->world->find_nearest_blood(self);
             if (!newob)
                 return false;
             distance = static_cast<std::uint32_t>(self->distance_to_ob_center(newob));
@@ -92,7 +92,7 @@ static bool orc_do_special(walker* self)
             message = std::format("{} ate a corpse.", entity_display_name(self, "Orc"));
 
             if (self->sim_config && self->sim_config->is_on("effects", "heal_numbers"))
-                og::sim::emit_notification(self->sim_events, message);
+                og::sim::emit_notification(current_game->sim_events, message);
             if (self->stats()->hitpoints > self->stats()->max_hitpoints)
                 self->stats()->hitpoints = self->stats()->max_hitpoints;
             newob->dead = 1;

@@ -1,6 +1,9 @@
 #include "unit.h"
+#include <openglad/data/save_data.h>
 #include <openglad/entities/family_registries.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/runtime/game_session.h>
+#include <openglad/sim/sim_event_log.h>
 
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);
@@ -15,6 +18,9 @@ int main()
     cfg.allocate_prefs = false;
     cfg.install_legacy_globals = true;
     og::runtime::GameSession session(cfg);
+    GameWorld fallback_world(0);
+    SaveData fallback_save;
+    og::sim::SimEventLog fallback_events;
 
     init_all_registries();
 
@@ -22,6 +28,14 @@ int main()
     int failed = 0;
     for (const auto& tc : og::unit::registry())
     {
+        if (current_game == nullptr || current_game->world == nullptr)
+        {
+            session.game_.world = &fallback_world;
+            session.game_.save = &fallback_save;
+            session.game_.sim_events = &fallback_events;
+            current_game = &session.game_;
+        }
+
         std::fprintf(stderr, "[ RUN      ] %s\n", tc.name);
         try {
             tc.fn();

@@ -273,7 +273,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
             if((targetorder == Order::Weapon || myorder == Order::Weapon) && ob->is_friendly(w))
                 continue;
             // Allow weapons to sometimes 'miss' opposing team's weapons
-            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (ob->sim_rng->next(10) > 3))
+            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (current_game->world->rng_.next(10) > 3))
                 continue;
             // Weapons never hit treasure
             else if(targetorder == Order::Treasure && myorder == Order::Weapon)
@@ -311,7 +311,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                             {
                                 std::string message = std::format("Key {} needed!",
                                         w->stats()->level);
-                                og::sim::emit_notification(ob->sim_events, message);
+                                og::sim::emit_notification(current_game->sim_events, message);
                                 ob->skip_exit = 10;
                             } // end of failed open door notification
                             ob->collide(w);

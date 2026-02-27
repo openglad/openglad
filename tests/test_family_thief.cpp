@@ -67,7 +67,6 @@ OG_UNIT_TEST(test_family_thief_do_special_busy_and_cloak_paths)
     const FamilyDescriptor& desc = describe_family_thief();
     living self;
     FixedRandom rng(7);
-    self.sim_rng = &rng;
     self.stats()->level = 3;
 
     self.current_special = 2; // cloak

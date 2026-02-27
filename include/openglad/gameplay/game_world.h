@@ -15,6 +15,7 @@
 
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/smooth.h>
+#include <openglad/sim/irandom.h>
 
 // Forward-declare Order enum class (defined in base.h)
 enum class Order : unsigned char;
@@ -29,11 +30,11 @@ namespace og::sim {
 
 // Simple LCG random number generator.
 // Given the same seed, produces the same deterministic sequence.
-class SimRandom final {
+class SimRandom final : public IRandom {
 public:
     explicit SimRandom(std::uint32_t seed = 0) : state_(seed) {}
 
-    std::uint32_t next(std::uint32_t max_exclusive) {
+    std::uint32_t next(std::uint32_t max_exclusive) override {
         if (max_exclusive == 0) return 0;
         // LCG: same constants as glibc.
         state_ = state_ * 1103515245u + 12345u;
@@ -117,7 +118,7 @@ public:
     void reset_level_progress();
 
     // Run one simulation tick.
-    void tick(SaveData& save, og::sim::SimEventLog& events);
+    void tick();
 
     std::uint32_t tick_count_ = 0;
     og::sim::SimRandom rng_;

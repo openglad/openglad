@@ -1,5 +1,6 @@
 #include "SDL.h"
 #include <openglad/entities/guy.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
@@ -364,7 +365,6 @@ void test_level_data_delete_objects()
 
     auto dead = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Living, FAMILY_ORC);
     TEST_ASSERT(dead != nullptr, "dead_list walker created");
-    dead->myobmap = og::runtime::current_session->myscreen_->level_data.world().myobmap.get();
     dead->setxy(90, 90);
     og::runtime::current_session->myscreen_->level_data.dead_list.push_back(std::move(dead));
 

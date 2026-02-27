@@ -16,117 +16,37 @@
  */
 
 #include <cstdint>
-#include <openglad/core/util.h>
-#include <openglad/entities/walker.h>
+#include <cstdlib>
+
 #include <openglad/entities/pathfinding_grid.h>
-#include <openglad/data/level_data.h>
-#include "micropather.h"
-#include <cmath>
+#include <openglad/entities/walker.h>
+#include <openglad/gameplay/gameplay_context.h>
 
-#define MAKE_STATE(x, y) reinterpret_cast<MicroPatherState>(static_cast<intptr_t>(((y)/GRID_SIZE)*MAP_WIDTH + ((x)/GRID_SIZE)))
-#define ALIGN_TO_GRID(x) ((x)/GRID_SIZE * GRID_SIZE)
-
-namespace {
-
-thread_local walker* path_walker = nullptr;
-
-class Map : public micropather::Graph
-{
-public:
-    float LeastCostEstimate(void* stateStart, void* stateEnd) override;
-    void AdjacentCost(void* state, std::vector<micropather::StateCost>* adjacent) override;
-    void PrintStateInfo(void* state) override;
-};
-
-float Map::LeastCostEstimate(void* stateStart, void* stateEnd)
-{
-	int x1 = GET_STATE_X(stateStart);
-	int y1 = GET_STATE_Y(stateStart);
-	int x2 = GET_STATE_X(stateEnd);
-	int y2 = GET_STATE_Y(stateEnd);
-
-	const float dx = static_cast<float>(x2 - x1);
-	const float dy = static_cast<float>(y2 - y1);
-	return sqrtf(dx * dx + dy * dy);
-}
-
-void Map::AdjacentCost(void* state, std::vector<micropather::StateCost>* adjacent)
-{
-    int x1 = GET_STATE_X(state);
-    int y1 = GET_STATE_Y(state);
-
-    for (int i = -1; i <= 1; i++)
-    {
-        for (int j = -1; j <= 1; j++)
-        {
-            if (i == 0 && j == 0)
-                continue;
-
-            int adj_x = x1 + i * GRID_SIZE;
-            int adj_y = y1 + j * GRID_SIZE;
-
-            micropather::StateCost cost;
-            cost.state = MAKE_STATE(adj_x, adj_y);
-            cost.cost = 0;
-
-            // TODO: Make doors impassable without a key.
-            // TODO: Make teleporters add another adjacent space on the other side of the teleporter.
-
-			// Any terrain in the way?  This checks boundaries too.
-			if (!path_walker->sim_level->query_grid_passable(adj_x, adj_y, path_walker))
-				continue;
-			// Any moving objects in the way?
-			else if (path_walker->sim_level->world().myobmap->obmap_get_list(static_cast<short>(adj_x), static_cast<short>(adj_y)).size() > 0)
-				cost.cost = 10;
-			else
-				// Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal
-				cost.cost = sqrtf(static_cast<float>(i * i + j * j));
-
-            // Smoothing heuristic using cross-product.  This penalizes going away from a straight line to the goal.
-			int dx1 = adj_x - ALIGN_TO_GRID(path_walker->foe->xpos);
-			int dy1 = adj_y - ALIGN_TO_GRID(path_walker->foe->ypos);
-			int dx2 = path_walker->xpos - ALIGN_TO_GRID(path_walker->foe->xpos);
-			int dy2 = path_walker->ypos - ALIGN_TO_GRID(path_walker->foe->ypos);
-			const float cross = static_cast<float>(dx1 * dy2 - dx2 * dy1);
-			cost.cost += fabsf(cross) * 0.01f;
-
-            adjacent->push_back(cost);
-        }
-    }
-}
-
-void Map::PrintStateInfo(void* state)
-{
-    int x1 = GET_STATE_X(state);
-    int y1 = GET_STATE_Y(state);
-
-    Log("({},{})", x1, y1);
-}
-
-thread_local Map path_map;
-thread_local micropather::MicroPather pather(&path_map);
-
-} // namespace
+#define MAKE_STATE(x, y) reinterpret_cast<MicroPatherState>(static_cast<intptr_t>(((y) / GRID_SIZE) * MAP_WIDTH + ((x) / GRID_SIZE)))
+#define ALIGN_TO_GRID(x) ((x) / GRID_SIZE * GRID_SIZE)
 
 void walker::find_path_to_foe()
 {
-    float totalCost = 0.0f;
+    if (foe == nullptr || current_game == nullptr)
+        return;
 
-    MicroPatherState startState = MAKE_STATE(xpos, ypos);
-    MicroPatherState endState = MAKE_STATE(foe->xpos, foe->ypos);
+    GameplayPathfindingState* pathing = ensure_pathfinding_state(*current_game);
+    if (pathing == nullptr)
+        return;
 
-    path_to_foe.clear();
-    pather.Reset();  // Assume that the old paths are invalid
-    path_walker = this;  // Set the walker that the path is being generated for
-    pather.Solve(startState, endState, &path_to_foe, &totalCost);  // There's a result returned from this, but we don't need it.
+    float total_cost = 0.0f;
+    const MicroPatherState start_state = MAKE_STATE(xpos, ypos);
+    const MicroPatherState end_state = MAKE_STATE(foe->xpos, foe->ypos);
+
+    pathing->solve_for(this, start_state, end_state, path_to_foe, total_cost);
 }
 
 void walker::follow_path_to_foe()
 {
-    while (path_to_foe.size() > 0)
+    while (!path_to_foe.empty())
     {
-        std::vector<MicroPatherState>::iterator node = path_to_foe.begin();
-        MicroPatherState state = *node;
+        auto node = path_to_foe.begin();
+        const MicroPatherState state = *node;
         int dx = GET_STATE_X(state) - ALIGN_TO_GRID(xpos);
         int dy = GET_STATE_Y(state) - ALIGN_TO_GRID(ypos);
 
@@ -138,12 +58,12 @@ void walker::follow_path_to_foe()
             if (dy != 0)
                 dy /= abs(dy);
 
-            // Move toward there and we're done.
+            // Move toward this node and stop.
             walkstep(dx, dy);
             break;
         }
 
-        // We already made it to this node, so remove it
+        // We already made it to this node, so remove it.
         path_to_foe.erase(node);
     }
 }

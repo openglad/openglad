@@ -35,6 +35,7 @@ namespace og::runtime {
 
 thread_local GameSession* current_session = nullptr;
 std::atomic<GameSession*> primary_session{nullptr};
+std::atomic<GameplayContext*> primary_game{nullptr};
 
 GameSession::GameSession(const Config& session_cfg)
     : cfg_(session_cfg)
@@ -45,6 +46,7 @@ GameSession::GameSession(const Config& session_cfg)
     GameContext& prev_ctx = ::ctx();
 
     prev_session_ = current_session;
+    prev_game_ = current_game;
 
     // Allocate input hardware state.
     input_hw_ = std::make_unique<InputHardwareState>();
@@ -72,6 +74,8 @@ GameSession::GameSession(const Config& session_cfg)
 
     // ctx() now reads from current_session->ctx_ directly; no need to
     // call set_global_context.
+    game_.sim_events = ctx_.sim_events.get();
+    game_.config = &cfg;
 
     // Set session members before creating the screen, because the screen
     // constructor creates viewscreens whose constructors read theprefs (macro).
@@ -89,11 +93,15 @@ GameSession::GameSession(const Config& session_cfg)
     if (cfg_.install_legacy_globals) {
         current_session = this;
         primary_session.store(this, std::memory_order_release);
+        current_game = &game_;
+        primary_game.store(&game_, std::memory_order_release);
     }
 
     if (cfg_.allocate_screen) {
         screen_owner_ = std::make_unique<::screen>(cfg_.numviews, cfg_.create_display);
         myscreen_ = screen_owner_.get();
+        game_.world = &myscreen_->world_;
+        game_.save = &myscreen_->save_data;
 
         // Ensure this session's curpal_ matches the screen's palette.
         // video_init_palettes() populates video::ourpalette per-instance,
@@ -125,6 +133,8 @@ GameSession::~GameSession()
     if (cfg_.install_legacy_globals) {
         if (current_session == this)
             current_session = prev_session_;
+        if (current_game == &game_)
+            current_game = prev_game_;
     }
 
     screen_owner_.reset();
@@ -151,12 +161,14 @@ GameSession::SessionScope::SessionScope(GameSession& session)
 {
     // Save current session
     saved_session_ = current_session;
+    saved_game_ = current_game;
 
     // Install this session as current.  The legacy macros (myscreen, theprefs)
     // dereference current_session, so this single pointer swap is sufficient.
     // ctx() also reads from current_session->ctx_, so no separate context
     // installation is needed.
     current_session = session_;
+    current_game = &session_->game_;
 
     // Swap render surface if this session has its own.
     if (session_->session_surface_ && E_Screen) {
@@ -177,11 +189,13 @@ GameSession::SessionScope::~SessionScope()
 
     // Restore previous session.  ctx() follows current_session automatically.
     current_session = saved_session_;
+    current_game = saved_game_;
 }
 
 GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
     : session_(other.session_)
     , saved_session_(other.saved_session_)
+    , saved_game_(other.saved_game_)
     , saved_render_surface_(other.saved_render_surface_)
     , did_swap_render_(other.did_swap_render_)
 {

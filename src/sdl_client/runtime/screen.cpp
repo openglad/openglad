@@ -25,6 +25,7 @@
 */
 
 #include <openglad/runtime/game_context.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/gparser.h>
@@ -461,8 +462,10 @@ bool screen::act()
 	// Delegate simulation tick to GameWorld.
 	// GameWorld encapsulates the deterministic entity update logic that
 	// was previously embedded directly in this method.
-	og::sim::SimEventLog& events = *ctx().sim_events;
-	world_.tick(save_data, events);
+	if (current_game == nullptr || current_game->sim_events == nullptr)
+		return 1;
+	og::sim::SimEventLog& events = *current_game->sim_events;
+	world_.tick();
 
 	// Post-tick: clean up viewscreen control pointers for dead player entities.
 	// This is a rendering concern that doesn't belong in the simulation layer.

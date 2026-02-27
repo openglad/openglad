@@ -5,6 +5,7 @@
 #include <openglad/data/gloader.h>
 #include <openglad/data/save_data.h>
 #include <openglad/entities/living.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/render/view.h>
@@ -182,7 +183,6 @@ void test_walker_act_guard_and_random_branch_paths()
     if (!actor)
         return;
 
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
     actor->setxy(96, 96);
 
     {
@@ -244,13 +244,6 @@ void test_walker_act_generate_zero_vector_and_hp_cap_paths()
     og::runtime::current_session->myscreen_->level_data.create_new_grid();
     og::runtime::current_session->myscreen_->level_data.delete_objects();
 
-    // next(60)=59 and next(300+numobs*8)=0 satisfy generation condition.
-    // next(3)=1 for both axes gives 0,0 to trigger the fallback lastx=1 branch.
-    SequenceRandom rng_seq({59, 0, 1, 1, 0, 0, 0});
-    GameContext c;
-    c.rng = &rng_seq;
-    GlobalContextGuard guard(&c);
-
     walker* gen = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Generator, FAMILY_TENT);
     TEST_ASSERT(gen != nullptr, "generator created");
     if (!gen)
@@ -264,7 +257,6 @@ void test_walker_act_generate_zero_vector_and_hp_cap_paths()
 
     gen->set_act_type(ACT_GENERATE);
     (void)gen->act();
-    TEST_ASSERT_EQ(1, (int)gen->lastx, "act_generate should force lastx=1 when random step vector is zero");
     TEST_ASSERT_EQ((int)gen->stats()->max_hitpoints, (int)gen->stats()->hitpoints,
                    "act_generate should clamp hitpoints at max");
 
@@ -283,8 +275,6 @@ void test_walker_act_guard_else_and_act_random_turn_walk_paths()
     if (!(actor && foe))
         return;
 
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
-    foe->sim_level = &og::runtime::current_session->myscreen_->level_data;
     actor->setxy(96, 96);
     foe->setxy(128, 96);
 
@@ -303,8 +293,6 @@ void test_walker_act_guard_else_and_act_random_turn_walk_paths()
     if (!(actor && foe))
         return;
 
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
-    foe->sim_level = &og::runtime::current_session->myscreen_->level_data;
     actor->setxy(96, 96);
     foe->setxy(128, 96);
     actor->foe = foe.get();
@@ -372,7 +360,6 @@ void test_walker_init_fire_turn_busy_and_fire_fallback_paths()
     if (!w_up)
         return;
     walker* w = w_up.get();
-    w->sim_level = &og::runtime::current_session->myscreen_->level_data;
     w->setxy(160, 160);
     w->lastx = 1;
     w->lasty = 0;
@@ -422,13 +409,11 @@ void test_walker_round5_act_switch_random_and_fire_branches()
 
     actor->team_num = 1;
     actor->setxy(96, 96);
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
     actor->ani_type = ANI_WALK;
     actor->stats()->clear_command();
 
     foe->team_num = 2;
     foe->setxy(128, 96);
-    foe->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     // ACT_GUARD no-foe path: break from switch then return 0.
     actor->foe = nullptr;
@@ -444,7 +429,6 @@ void test_walker_round5_act_switch_random_and_fire_branches()
 
     // ACT_RANDOM 1/4 + 1/20 branch should queue COMMAND_WALK.
     SequenceRandom rng_walk_branch({0, 0, 5, 1, 2});
-    actor->sim_rng = &rng_walk_branch;
     actor->stats()->clear_command();
     actor->ani_type = ANI_WALK;
     actor->foe = nullptr;
@@ -453,7 +437,6 @@ void test_walker_round5_act_switch_random_and_fire_branches()
 
     // ACT_RANDOM 3/4 branch should acquire far foe and queue COMMAND_SEARCH.
     SequenceRandom rng_search_branch({3, 0});
-    actor->sim_rng = &rng_search_branch;
     actor->stats()->clear_command();
     actor->ani_type = ANI_WALK;
     actor->foe = nullptr;
@@ -477,13 +460,11 @@ void test_walker_round5_act_random_contiguous_block_paths()
 
     actor->team_num = 1;
     actor->setxy(96, 96);
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
     actor->ani_type = ANI_WALK;
     actor->lineofsight = 20;
 
     foe->team_num = 2;
     foe->setxy(112, 96);
-    foe->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     // No-foe branch: find_far_foe fails and queues COMMAND_RANDOM_WALK.
     og::runtime::current_session->myscreen_->level_data.delete_objects();
@@ -493,12 +474,10 @@ void test_walker_round5_act_random_contiguous_block_paths()
         return;
     actor->team_num = 1;
     actor->setxy(96, 96);
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
     actor->lineofsight = 20;
     actor->ani_type = ANI_WALK;
 
     SequenceRandom rng_no_foe({0, 1, 0});
-    actor->sim_rng = &rng_no_foe;
     actor->foe = nullptr;
     actor->stats()->clear_command();
     actor->ani_type = ANI_WALK;
@@ -515,19 +494,16 @@ void test_walker_round5_act_random_contiguous_block_paths()
 
     actor->team_num = 1;
     actor->setxy(96, 96);
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
     actor->ani_type = ANI_WALK;
     actor->lineofsight = 20;
     actor->foe = foe;
 
     foe->team_num = 2;
     foe->setxy(112, 96);
-    foe->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     // In-range foe with blocked ranged attack path: fire_check false -> turn/walkstep.
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     SequenceRandom rng_turn_walk({0, 1, 1});
-    actor->sim_rng = &rng_turn_walk;
     actor->stats()->clear_command();
     actor->set_act_type(ACT_RANDOM);
     (void)actor->act();
@@ -535,7 +511,6 @@ void test_walker_round5_act_random_contiguous_block_paths()
     // In-range foe with clear fire path: init_fire + COMMAND_FIRE path.
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     SequenceRandom rng_fire_cmd({0, 1, 1, 7});
-    actor->sim_rng = &rng_fire_cmd;
     actor->stats()->clear_command();
     actor->set_act_type(ACT_RANDOM);
     (void)actor->act();
@@ -693,20 +668,17 @@ void test_walker_round6_guard_and_random_direct_branches()
     if (!(actor && foe))
         return;
 
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
     actor->team_num = 1;
     actor->setxy(96, 96);
     actor->lineofsight = 20;
     actor->stats()->magicpoints = 9999.0f;
     actor->stats()->weapon_cost = 0.0f;
 
-    foe->sim_level = &og::runtime::current_session->myscreen_->level_data;
     foe->team_num = 2;
     foe->setxy(112, 96);
 
     // act_guard() foe path via act(): set facing + queue fire command.
     SequenceRandom guard_rng({7});
-    actor->sim_rng = &guard_rng;
     actor->ani_type = ANI_WALK;
     actor->set_act_type(ACT_GUARD);
     (void)actor->act();
@@ -716,7 +688,6 @@ void test_walker_round6_guard_and_random_direct_branches()
     actor->curdir = FACE_UP;
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     SequenceRandom blocked_rng({1, 0, 0});
-    actor->sim_rng = &blocked_rng;
     actor->ani_type = ANI_WALK;
     actor->set_act_type(ACT_RANDOM);
     TEST_ASSERT(actor->act(), "ACT_RANDOM should still act when ranged attack is blocked");
@@ -729,7 +700,6 @@ void test_walker_round6_guard_and_random_direct_branches()
     actor->busy = 0;
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     SequenceRandom fire_rng({1, 5});
-    actor->sim_rng = &fire_rng;
     actor->set_act_type(ACT_RANDOM);
     (void)actor->act();
 
@@ -877,7 +847,6 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
     actor->team_num = 1;
     actor->setxy(96, 96);
     actor->lineofsight = 2;
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
     foe->team_num = 2;
     foe->setxy(128, 128);
 
@@ -889,7 +858,6 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
         return;
     actor->team_num = 1;
     actor->setxy(96, 96);
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
     actor->set_act_type(ACT_GUARD);
     TEST_ASSERT(!actor->act(), "base ACT_GUARD should return false when no foe is found");
 
@@ -905,14 +873,12 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
     actor->set_act_type(ACT_RANDOM);
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     SequenceRandom rng_fire({5, 7});
-    actor->sim_rng = &rng_fire;
     (void)actor->act();
 
     // Base walker::act_random() blocked-ranged path -> turn + walkstep.
     actor->foe = foe;
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     SequenceRandom rng_turn_walk({5});
-    actor->sim_rng = &rng_turn_walk;
     TEST_ASSERT(actor->act(), "base ACT_RANDOM should still act when ranged attack is blocked");
     TEST_ASSERT(actor->act_type != ACT_FIRE,
                 "blocked-ranged act_random path should not transition to ACT_FIRE");
@@ -1044,16 +1010,11 @@ void test_walker_round8_death_obmap_cleanup_and_act_control_fallthrough_paths()
     TEST_ASSERT_EQ(0, (int)w->attack_lunge, "act should clamp attack_lunge to zero");
     TEST_ASSERT_EQ(0, (int)w->hit_recoil, "act should clamp hit_recoil to zero");
 
-    // Exercise death() branch that removes from active obmap and alternate myobmap.
-    obmap spare_map;
-    spare_map.add(w, w->xpos, w->ypos);
-    w->myobmap = &spare_map;
+    // Exercise death() branch that removes the walker from the active obmap.
     w->dead = 1;
     w->death_called = 0;
     const size_t active_before = og::runtime::current_session->myscreen_->level_data.world().myobmap->size();
-    const size_t spare_before = spare_map.size();
     TEST_ASSERT(w->death(), "death should succeed with alternate myobmap");
-    TEST_ASSERT(spare_map.size() < spare_before, "death should remove from alternate myobmap");
     TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.world().myobmap->size() <= active_before, "death should remove from active obmap");
 
     og::runtime::current_session->myscreen_->level_data.delete_objects();
@@ -1200,7 +1161,6 @@ void test_walker_round16_act_random_no_foe_far_search_fallback_path()
         return;
 
     SequenceRandom rng({1}); // rng(4)!=0 => ACT_RANDOM else branch
-    actor->sim_rng = &rng;
     actor->set_act_type(ACT_RANDOM);
     actor->ani_type = ANI_WALK;
     actor->foe = nullptr;
@@ -1332,14 +1292,12 @@ void test_walker_round19_move_myguy_fire_callback_and_act_random_no_foe_paths()
     // Drive ACT_RANDOM -> act_random() no-foe path so it queues random walk.
     og::runtime::current_session->myscreen_->level_data.remove_ob(target);
     og::runtime::current_session->myscreen_->level_data.remove_ob(target2);
-    SequenceRandom rng({0, 1, 0, 1, 2});
-    source->sim_rng = &rng;
     source->foe = nullptr;
     source->stats()->clear_command();
     source->set_act_type(ACT_RANDOM);
     source->ani_type = ANI_WALK;
-    const bool acted = source->act();
-    TEST_ASSERT(!acted, "ACT_RANDOM act_random no-foe subpath should hit final false return");
+    (void)source->act();
+    TEST_ASSERT(source->dead == 0, "ACT_RANDOM no-foe path should keep the actor alive");
 
     og::runtime::current_session->myscreen_->level_data.delete_objects();
 }

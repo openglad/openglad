@@ -7,7 +7,7 @@
 // through the SimEventLog.
 //
 // Each helper takes a SimEventLog* as its first argument. Entity code
-// accesses the log via walker::sim_events. If the pointer is null
+// accesses the log via current_game->sim_events. If the pointer is null
 // (e.g., entity created outside of a game session), the call is a no-op.
 
 #include <openglad/sim/sim_event_log.h>

@@ -18,10 +18,10 @@ static bool projectile_explode_on_death(weap* self)
         return false;  // skip_exit means we're supposed to explode :)
     if (!self->owner || self->owner->dead)
         self->owner = self;
-    walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+    walker* newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
     if (!newob)
         return false; // failsafe
-    og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);
+    og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
     newob->owner = self->owner;
     newob->stats()->hitpoints = 0;
     newob->stats()->level = self->owner->stats()->level;

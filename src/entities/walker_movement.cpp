@@ -20,6 +20,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
@@ -39,13 +40,16 @@ bool walker::setxy(short x, short y)
 {
     worldx_ = x;
     worldy_ = y;
-    
-    if (myobmap != nullptr)
+
+    obmap* map = (current_game && current_game->world)
+        ? current_game->world->myobmap.get()
+        : nullptr;
+    if (map != nullptr)
     {
         if (!ignore)
-            myobmap->move(this, x, y);
+            map->move(this, x, y);
         else // just remove us, in case :)
-            myobmap->remove(this);
+            map->remove(this);
     }
 
     xpos = x;
@@ -58,12 +62,15 @@ void walker::setworldxy(float x, float y)
     worldx_ = x;
     worldy_ = y;
 
-    if (myobmap != nullptr)
+    obmap* map = (current_game && current_game->world)
+        ? current_game->world->myobmap.get()
+        : nullptr;
+    if (map != nullptr)
     {
         if (!ignore)
-            myobmap->move(this, static_cast<short>(x), static_cast<short>(y));
+            map->move(this, static_cast<short>(x), static_cast<short>(y));
         else // just remove us, in case :)
-            myobmap->remove(this);
+            map->remove(this);
     }
 
     xpos = static_cast<short>(x);
@@ -263,12 +270,12 @@ bool walker::walkstep(float x, float y)
                     const std::int32_t step_i = static_cast<std::int32_t>(step);
                     for (i = 0; i < step_i; i++)
                     {
-                        if (sim_level->query_passable(xpos, ypos + dy, this))
+                        if (current_game->world->query_passable(xpos, ypos + dy, this))
                         {
                             worldmove(0, dy);  // walk without turning ..
                             gotup = true;
                         }
-                        if (sim_level->query_passable(xpos + dx, ypos, this))
+                        if (current_game->world->query_passable(xpos + dx, ypos, this))
                         {
                             worldmove(dx, 0);
                             gotover = true;
@@ -334,15 +341,15 @@ bool walker::walk(float x, float y)
     {
         // check if off map
         if (x+xpos < 0 ||
-                x+xpos >= sim_level->world().grid.w*GRID_SIZE ||
+                x+xpos >= current_game->world->grid.w*GRID_SIZE ||
                 y+ypos < 0 ||
-                y+ypos >= sim_level->world().grid.h*GRID_SIZE)
+                y+ypos >= current_game->world->grid.h*GRID_SIZE)
         {
             return 0;
         }
 
         // Here we check if the move is valid
-        if (sim_level->query_passable(xpos+x, ypos+y, this))
+        if (current_game->world->query_passable(xpos+x, ypos+y, this))
         {
             // Control object does complete redraw anyway
             worldmove(x,y);

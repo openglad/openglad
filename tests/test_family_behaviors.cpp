@@ -1201,8 +1201,6 @@ void test_archmage_hit_response_threshold_and_retarget_branches()
     if (!(arch && foe && fd && fd->hit_response))
         return;
 
-    FixedRandom rng1(1); // non-zero rng(3) to trigger the low-HP special branch
-    arch->sim_rng = &rng1;
     arch->stats()->special_cost[1] = 0;
     arch->stats()->magicpoints = 500;
     arch->stats()->level = 9;
@@ -1211,6 +1209,7 @@ void test_archmage_hit_response_threshold_and_retarget_branches()
     arch->foe = nullptr;
     arch->busy = 10;
     arch->shifter_down = 1;
+    og::runtime::current_session->myscreen_->level_data.world().rng_.state_ = 1;
 
     fd->hit_response(arch->stats(), foe);
     TEST_ASSERT_EQ(1, (int)arch->current_special, "low HP archmage should choose special 1");
@@ -1501,8 +1500,6 @@ void test_cleric_turn_undead_success_with_undead_targets()
     cleric->team_num = 1;
     cleric->stats()->level = 6;
     ConstRandomFamily deterministic_rng(39);
-    cleric->sim_rng = &deterministic_rng;
-    skeleton->sim_rng = &deterministic_rng;
 
     bool ok = fd->do_special(cleric);
     TEST_ASSERT(ok, "turn undead branch should execute when an undead foe is nearby");
@@ -1536,8 +1533,6 @@ void test_cleric_turn_undead_special2_and_3_shifter_notification_paths()
     cleric->busy = 0;
     cleric->stats()->level = 6;
     ConstRandomFamily rng2(0);
-    cleric->sim_rng = &rng2;
-    skeleton->sim_rng = &rng2;
     const int exp_before_2 = cleric->myguy ? cleric->myguy->exp : 0;
     bool ok = fd->do_special(cleric);
     TEST_ASSERT(ok, "turn undead special2 shifter path should succeed");
@@ -1563,8 +1558,6 @@ void test_cleric_turn_undead_special2_and_3_shifter_notification_paths()
     cleric->busy = 0;
     cleric->stats()->level = 6;
     ConstRandomFamily rng3(0);
-    cleric->sim_rng = &rng3;
-    skeleton2->sim_rng = &rng3;
     const int exp_before_3 = cleric->myguy ? cleric->myguy->exp : 0;
     ok = fd->do_special(cleric);
     TEST_ASSERT(ok, "turn undead special3 shifter path should succeed");
@@ -2142,7 +2135,6 @@ void test_family_batch4_soldier_orc_thief_edge_callbacks()
     TEST_ASSERT(thief && foe, "thief and foe created");
     if (thief && foe) {
         ConstRandomFamily rng_nonzero(1);
-        thief->sim_rng = &rng_nonzero;
         thief->stats()->magicpoints = 1000;
 
         thief->current_special = 1;

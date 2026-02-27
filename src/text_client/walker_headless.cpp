@@ -71,11 +71,11 @@ walker::~walker()
 	collide_ob = nullptr;
 	dead = 1;
 
-	obmap* active = (sim_level != nullptr) ? sim_level->world().myobmap.get() : nullptr;
+	obmap* active = (current_game != nullptr && current_game->world != nullptr)
+	    ? current_game->world->myobmap.get()
+	    : nullptr;
 	if (active != nullptr)
 		active->remove(this);
-	if (myobmap != nullptr && myobmap != active)
-		myobmap->remove(this);
 
 	stats_.reset();
 	render_.reset();

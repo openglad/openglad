@@ -88,14 +88,14 @@ walker::~walker()
 	collide_ob = nullptr;
 	dead = 1;
 
-	// Walkers can outlive a particular LevelData::myobmap instance in tests
+	// Walkers can outlive a particular GameWorld::myobmap instance in tests
 	// (screen cleanup replaces the obmap). Ensure we remove from the current
-	// active obmap as well as the one we were last bound to.
-	obmap* active = (sim_level != nullptr) ? sim_level->world().myobmap.get() : nullptr;
+	// active obmap if present.
+	obmap* active = (current_game != nullptr && current_game->world != nullptr)
+	    ? current_game->world->myobmap.get()
+	    : nullptr;
 	if (active != nullptr)
 		active->remove(this);
-	if (myobmap != nullptr && myobmap != active)
-		myobmap->remove(this); // remove ourselves from obmap lists
 
 	stats_.reset();
 	render_.reset();

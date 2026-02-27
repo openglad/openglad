@@ -108,8 +108,6 @@ void test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns()
     // Create a control walker not present in level_data.oblist.
     PixieData px(1, 1, 1, new unsigned char[1]{0});
     walker orphan(px);
-    orphan.sim_level = &og::runtime::current_session->myscreen_->level_data;
-    orphan.sim_rng = ctx().rng;
     orphan.sim_config = &cfg;
     orphan.team_num = 0;
     orphan.real_team_num = 255;

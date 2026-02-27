@@ -96,7 +96,6 @@ void test_stats_round6_block_query_switches_all_directions()
         return;
 
     w->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
-    w->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     for (int dir = 0; dir < 8; dir++)
     {
@@ -152,7 +151,6 @@ void test_stats_round7a_command_clamps_and_direction_switches()
         return;
 
     w->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
-    w->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     // Explicitly hit both +/- clamp sides in add/force command.
     w->stats()->add_command(COMMAND_WALK, 1, -9, 9);
@@ -203,7 +201,6 @@ void test_stats_round7a_follow_and_die_do_command_paths()
         return;
 
     actor->setxy(64, 64);
-    actor->sim_level = &og::runtime::current_session->myscreen_->level_data;
 
     // Follow with no eligible leader: find_follow_leader() null -> command count zero path.
     actor->stats()->clear_command();

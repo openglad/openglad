@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/game_loop_state.h>
 
@@ -130,6 +131,7 @@ public:
     std::string message_;
 
     GameContext ctx_;
+    GameplayContext game_;
     GameLoopFrameState frame_state_;
     std::unique_ptr<InputHardwareState> input_hw_;
 
@@ -148,6 +150,7 @@ private:
 
     // Saved previous session pointer for constructor/destructor restore.
     GameSession* prev_session_ = nullptr;
+    GameplayContext* prev_game_ = nullptr;
 
     // Owned runtime state.
     std::unique_ptr<options> prefs_owner_;
@@ -163,12 +166,21 @@ extern thread_local GameSession* current_session;
 // Used by child threads (e.g. test injector threads) to inherit the session
 // when their thread_local current_session is still nullptr.
 extern std::atomic<GameSession*> primary_session;
+extern std::atomic<GameplayContext*> primary_game;
 
 // If current_session is nullptr on this thread, inherit from primary_session.
 // Call at the start of any child thread that needs session access.
 inline void ensure_thread_session() {
     if (!current_session) {
         current_session = primary_session.load(std::memory_order_acquire);
+    }
+}
+
+// If current_game is nullptr on this thread, inherit from primary_game.
+// Call at the start of any child thread that needs gameplay access.
+inline void ensure_thread_game() {
+    if (!current_game) {
+        current_game = primary_game.load(std::memory_order_acquire);
     }
 }
 
@@ -188,6 +200,7 @@ private:
 
     GameSession* session_ = nullptr;
     GameSession* saved_session_ = nullptr;
+    GameplayContext* saved_game_ = nullptr;
     SDL_Surface* saved_render_surface_ = nullptr;
     bool did_swap_render_ = false;
 };

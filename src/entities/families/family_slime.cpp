@@ -23,7 +23,7 @@ std::int32_t calculate_level(std::uint32_t temp_exp);
 static bool slime_check_special_ai(living* self)
 {
     (void)self;
-    if (self->sim_level->numobs < MAXOBS)
+    if (current_game->world->living_count < MAXOBS)
         return true;
     return false;
 }
@@ -31,7 +31,7 @@ static bool slime_check_special_ai(living* self)
 static bool slime_on_death(walker* self)
 {
     self->dead = 1;
-    walker* newob = self->sim_level->add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
+    walker* newob = current_game->world->add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
     newob->team_num = self->team_num;
     newob->stats()->level = self->stats()->level;
     newob->set_difficulty(self->stats()->level);
@@ -51,7 +51,7 @@ static bool slime_on_death(walker* self)
 static bool medium_slime_on_death(walker* self)
 {
     self->dead = 1;
-    walker* newob = self->sim_level->add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    walker* newob = current_game->world->add_ob(Order::Living, FAMILY_SMALL_SLIME);
     newob->team_num = self->team_num;
     newob->stats()->level = self->stats()->level;
     newob->set_difficulty(self->stats()->level);
@@ -80,7 +80,7 @@ static bool slime_on_ani_complete(walker* self)
     self->setxy(self->xpos-10, self->ypos+10);
 
     // Create a new small slime
-    walker* newob = self->sim_level->add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    walker* newob = current_game->world->add_ob(Order::Living, FAMILY_SMALL_SLIME);
     newob->setxy(self->xpos+12, self->ypos-12);
     // Transfer stats/etc. across to new guy
     self->transfer_stats(newob);
@@ -123,7 +123,7 @@ static bool small_slime_do_special(walker* self)
     }
     else
     {
-        self->stats()->set_command(COMMAND_WALK, 10, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1);
+        self->stats()->set_command(COMMAND_WALK, 10, static_cast<std::int32_t>(current_game->world->rng_.next(3)) - 1, static_cast<std::int32_t>(current_game->world->rng_.next(3)) - 1);
         return false;
     }
     return true;
@@ -137,7 +137,7 @@ static bool medium_slime_do_special(walker* self)
     }
     else
     {
-        self->stats()->set_command(COMMAND_WALK, 10, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1);
+        self->stats()->set_command(COMMAND_WALK, 10, static_cast<std::int32_t>(current_game->world->rng_.next(3)) - 1, static_cast<std::int32_t>(current_game->world->rng_.next(3)) - 1);
         return false;
     }
     return true;

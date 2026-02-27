@@ -202,6 +202,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/runtime/save_data.cpp
     ${SRC_DIR}/sim/sim_entity.cpp
     ${SRC_DIR}/sim/sim_event_log.cpp
+    ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/runtime/sim_input_handler.cpp
     ${SRC_DIR}/sdl_client/runtime/input_event_bridge.cpp
@@ -297,6 +298,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/sdl_client/runtime/screen.cpp
     ${SRC_DIR}/sdl_client/runtime/guy_create.cpp
     ${SRC_DIR}/runtime/stats.cpp
+    ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/runtime/sim_input_handler.cpp
     ${SRC_DIR}/sdl_client/runtime/input_event_bridge.cpp
@@ -712,7 +714,6 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_entities STATIC ${OG_ENTITIES_SOURCES})
     configure_openglad_library(og_entities)
-    target_include_directories(og_entities PRIVATE ${THIRD_PARTY_DIR}/micropather)
 
     add_library(og_io STATIC ${OG_IO_SOURCES})
     configure_openglad_library(og_io)
@@ -728,6 +729,7 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_runtime STATIC ${OG_RUNTIME_SOURCES})
     configure_openglad_library(og_runtime)
+    target_include_directories(og_runtime PRIVATE ${THIRD_PARTY_DIR}/micropather)
 
     add_library(og_render STATIC ${OG_RENDER_SOURCES})
     configure_openglad_library(og_render)
@@ -836,6 +838,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/io/og_file.cpp
         # runtime (SDL-free subset)
         ${SRC_DIR}/runtime/game_context.cpp
+        ${SRC_DIR}/gameplay/gameplay_context.cpp
         ${SRC_DIR}/gameplay/game_world.cpp
         ${SRC_DIR}/runtime/sim_input_handler.cpp
         ${SRC_DIR}/runtime/gloader.cpp
