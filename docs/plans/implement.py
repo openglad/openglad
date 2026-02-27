@@ -19,14 +19,30 @@ Usage:
 
 import subprocess
 import sys
-import os
+import json
 import re
-import tempfile
 import argparse
 import textwrap
 import time
+from collections import deque
+from contextlib import nullcontext
 from datetime import datetime, timedelta
 from pathlib import Path
+
+try:
+    from rich.console import Console
+    from rich.layout import Layout
+    from rich.live import Live
+    from rich.panel import Panel
+    from rich.text import Text
+    RICH_AVAILABLE = True
+except ImportError:
+    Console = None
+    Layout = None
+    Live = None
+    Panel = None
+    Text = None
+    RICH_AVAILABLE = False
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PLAN_DIR = REPO_ROOT / "docs" / "plans" / "component-architecture"
@@ -44,6 +60,8 @@ CHECKER_ROLES = [
     "project manager",
 ]
 
+LOG_HISTORY = deque(maxlen=2000)
+
 
 def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -56,7 +74,9 @@ def elapsed(start: float) -> str:
 
 def log(msg: str, *, indent: int = 0):
     prefix = "  " * indent
-    print(f"[{now()}] {prefix}{msg}", flush=True)
+    line = f"[{now()}] {prefix}{msg}"
+    LOG_HISTORY.append(line)
+    print(line, flush=True)
 
 
 def write_log_file(phase_id: str, attempt: int, step: str, output: str):
@@ -78,37 +98,174 @@ def phase_file(phase_id: str) -> Path:
     return PLAN_DIR / f"phase-{int(phase_id):02d}.md"
 
 
-def run_codex(prompt: str) -> tuple[int, str, str]:
-    """
-    Run a Codex agent with the given prompt. Returns (exit_code, output, duration).
-    """
-    fd, output_file = tempfile.mkstemp(suffix=".txt", prefix="codex_output_")
-    os.close(fd)
+def _parse_json_event(line: str) -> dict | None:
+    line = line.strip()
+    if not line.startswith("{"):
+        return None
+    try:
+        data = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
 
-    cmd = list(CODEX) + ["exec", "--dangerously-bypass-approvals-and-sandbox"]
+
+def _format_usage(usage: dict) -> str:
+    parts = []
+    for key in ("input_tokens", "cached_input_tokens", "output_tokens"):
+        if key in usage:
+            parts.append(f"{key}={usage[key]}")
+    return f"[usage] {' '.join(parts)}".strip()
+
+
+def _dejsonify_event(event: dict) -> tuple[list[str], list[str], str | None]:
+    transcript_lines = []
+    live_lines = []
+    final_message = None
+
+    event_type = event.get("type")
+    if event_type == "item.completed":
+        item = event.get("item", {})
+        item_type = item.get("type")
+        text = item.get("text", "")
+
+        if item_type == "reasoning" and isinstance(text, str) and text.strip():
+            for line in text.splitlines():
+                cleaned = line.strip()
+                if not cleaned:
+                    continue
+                transcript_lines.append(f"[thinking] {cleaned}")
+                live_lines.append(f"thinking: {cleaned}")
+
+        elif item_type == "agent_message" and isinstance(text, str):
+            final_message = text
+            for line in text.splitlines():
+                transcript_lines.append(line)
+                live_lines.append(f"assistant: {line}")
+
+        elif item_type == "tool_call":
+            name = item.get("name") or item.get("tool_name") or "tool"
+            msg = f"[tool] {name}"
+            transcript_lines.append(msg)
+            live_lines.append(msg)
+
+    elif event_type == "turn.completed":
+        usage = event.get("usage")
+        if isinstance(usage, dict):
+            usage_line = _format_usage(usage)
+            if usage_line:
+                transcript_lines.append(usage_line)
+                live_lines.append(usage_line)
+
+    return transcript_lines, live_lines, final_message
+
+
+def _build_live_layout(worker_name: str, live_lines: deque[str], console: Console) -> Layout:
+    layout = Layout()
+    layout.split_column(
+        Layout(name="top", minimum_size=5),
+        Layout(name="bottom", size=15),
+    )
+
+    top_height = max(1, console.size.height - 17)
+    top_lines = list(LOG_HISTORY)[-top_height:]
+    if top_lines:
+        header = f"[{now()}] Running {worker_name}"
+        top_body = "\n".join(top_lines + [header])
+    else:
+        top_body = f"[{now()}] Running {worker_name}"
+    layout["top"].update(Text(top_body))
+
+    body = "\n".join(live_lines) if live_lines else "(waiting for codex events...)"
+    layout["bottom"].update(
+        Panel(
+            Text(body),
+            title="Codex Live",
+            subtitle="bottom 15 lines",
+        )
+    )
+    return layout
+
+
+def run_codex(prompt: str, worker_name: str) -> tuple[int, str, str, str]:
+    """
+    Run a Codex agent with the given prompt.
+    Returns (exit_code, final_message, duration, transcript).
+    """
+    cmd = list(CODEX) + [
+        "exec",
+        "--json",
+        "--dangerously-bypass-approvals-and-sandbox",
+    ]
     cmd.extend(["-C", str(REPO_ROOT)])
-    cmd.extend(["-o", output_file])
     cmd.append(prompt)
 
     start = time.time()
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    returncode = result.returncode
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    transcript_lines = []
+    assistant_messages = []
+    live_lines = deque(maxlen=15)
+    show_live = RICH_AVAILABLE and sys.stdout.isatty()
+
+    live_ctx = nullcontext()
+    live = None
+    console = Console() if show_live else None
+    if show_live:
+        live_ctx = Live(
+            _build_live_layout(worker_name, live_lines, console),
+            console=console,
+            refresh_per_second=8,
+            transient=True,
+            screen=True,
+        )
+
+    with live_ctx as live:
+        stream = proc.stdout
+        if stream is not None:
+            for raw in stream:
+                line = raw.rstrip("\n")
+                if not line:
+                    continue
+
+                event = _parse_json_event(line)
+                if event is None:
+                    parsed_lines = [f"[codex] {line}"]
+                    parsed_live_lines = [line]
+                    last_message = None
+                else:
+                    parsed_lines, parsed_live_lines, last_message = _dejsonify_event(event)
+
+                if last_message:
+                    assistant_messages.append(last_message)
+
+                transcript_lines.extend(parsed_lines)
+                for out_line in parsed_live_lines:
+                    for live_line in out_line.splitlines():
+                        live_lines.append(live_line)
+
+                if show_live and live is not None:
+                    live.update(_build_live_layout(worker_name, live_lines, console))
+
+    returncode = proc.wait()
     duration = elapsed(start)
 
-    # Read the agent's last message from the output file
-    output = ""
-    try:
-        with open(output_file) as f:
-            output = f.read()
-    except FileNotFoundError:
-        output = "(no output captured)"
-    finally:
-        try:
-            os.unlink(output_file)
-        except FileNotFoundError:
-            pass
+    transcript = "\n".join(transcript_lines).strip()
+    output = "\n\n".join(msg.strip() for msg in assistant_messages if msg.strip()).strip()
 
-    return returncode, output, duration
+    if not output:
+        output = transcript
+    if not output:
+        output = "(no output captured)"
+    if not transcript:
+        transcript = output
+
+    return returncode, output, duration, transcript
 
 
 # ---------------------------------------------------------------------------
@@ -811,19 +968,22 @@ def main():
                 if args.dry_run:
                     log(f"[DRY RUN] prompt ({len(prompt)} chars): {prompt[:300]}...", indent=1)
                 else:
-                    rc, output, duration = run_codex(prompt)
+                    rc, output, duration, transcript = run_codex(
+                        prompt,
+                        worker_name=f"phase {phase} implementer",
+                    )
                     log(f"Implementer finished: exit={rc}, duration={duration}, "
                         f"output={len(output)} chars", indent=1)
-                    write_log_file(phase, attempt, "implement", output)
+                    write_log_file(phase, attempt, "implement", transcript)
                     if rc != 0:
                         log(f"Implementer FAILED (exit {rc}), will retry", indent=1)
                         # Show last few lines of output for quick debugging
-                        tail = output.strip().splitlines()[-5:]
+                        tail = transcript.strip().splitlines()[-5:]
                         for line in tail:
                             log(f"  | {line}", indent=1)
                         previous_failure = (
                             f"Implementation agent exited with code {rc}.\n"
-                            f"Output (last 3000 chars):\n{output[-3000:]}"
+                            f"Output (last 3000 chars):\n{transcript[-3000:]}"
                         )
                         continue
                     log("Implementer succeeded", indent=1)
@@ -843,20 +1003,23 @@ def main():
                     log(f"[DRY RUN] prompt ({len(prompt)} chars)", indent=2)
                     continue
 
-                rc, output, duration = run_codex(prompt)
+                rc, output, duration, transcript = run_codex(
+                    prompt,
+                    worker_name=f"phase {phase} checker ({checker})",
+                )
                 log(f"Finished: exit={rc}, duration={duration}, "
                     f"output={len(output)} chars", indent=2)
-                write_log_file(phase, attempt, checker, output)
+                write_log_file(phase, attempt, checker, transcript)
 
                 if rc != 0:
                     reason = f"checker process exited with code {rc}"
                     log(f"FAIL: {reason}", indent=2)
-                    tail = output.strip().splitlines()[-5:]
+                    tail = transcript.strip().splitlines()[-5:]
                     for line in tail:
                         log(f"  | {line}", indent=2)
                     previous_failure = (
                         f"{checker}: {reason}\n"
-                        f"Output (last 3000 chars):\n{output[-3000:]}"
+                        f"Output (last 3000 chars):\n{transcript[-3000:]}"
                     )
                     all_passed = False
                     break
