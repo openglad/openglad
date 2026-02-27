@@ -1292,12 +1292,14 @@ void test_walker_round19_move_myguy_fire_callback_and_act_random_no_foe_paths()
     // Drive ACT_RANDOM -> act_random() no-foe path so it queues random walk.
     og::runtime::current_session->myscreen_->level_data.remove_ob(target);
     og::runtime::current_session->myscreen_->level_data.remove_ob(target2);
+    TEST_ASSERT(current_game != nullptr && current_game->world != nullptr, "current_game world context must be active");
+    current_game->world->rng_.state_ = 0;
     source->foe = nullptr;
     source->stats()->clear_command();
     source->set_act_type(ACT_RANDOM);
     source->ani_type = ANI_WALK;
-    (void)source->act();
-    TEST_ASSERT(source->dead == 0, "ACT_RANDOM no-foe path should keep the actor alive");
+    const bool acted = source->act();
+    TEST_ASSERT(!acted, "ACT_RANDOM act_random no-foe subpath should hit final false return");
 
     og::runtime::current_session->myscreen_->level_data.delete_objects();
 }

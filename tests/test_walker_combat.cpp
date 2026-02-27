@@ -1147,6 +1147,7 @@ void test_walker_combat_attack_rewards_single_credit_melee_kill()
     target->stats()->hitpoints = 14;
     target->stats()->max_hitpoints = 14;
     target->setxy(attacker->xpos + 10, attacker->ypos + 4);
+    og::runtime::current_session->myscreen_->level_data.world().rng_.state_ = 0;
 
     const int exp_before = attacker->myguy ? attacker->myguy->exp : 0;
     const int kills_before = attacker->myguy ? attacker->myguy->kills : 0;
@@ -1158,7 +1159,7 @@ void test_walker_combat_attack_rewards_single_credit_melee_kill()
     TEST_ASSERT(attacker->attack(target), "melee attack should succeed");
 
     const short dealt = static_cast<short>(hp_before - target->stats()->hitpoints);
-    TEST_ASSERT(dealt > 0, "melee kill should apply positive damage");
+    TEST_ASSERT_EQ(14, (int)dealt, "configured melee kill should deal deterministic damage");
     TEST_ASSERT(target->dead == 1, "target should die in kill-reward regression");
 
     const std::int32_t level_diff = attacker->stats()->level - target->stats()->level;

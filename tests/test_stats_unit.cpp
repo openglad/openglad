@@ -246,7 +246,8 @@ OG_UNIT_TEST(test_stats_r11_direct_walk_and_walk_to_foe_tail_branches)
     foe->dead = 1;
     w->stats()->force_command(COMMAND_WALK, 5, 1, 0);
     w->path_check_counter = 0;
-    (void)w->stats()->walk_to_foe();
+    fx.level.world().rng_.state_ = 1;
+    OG_ASSERT(w->stats()->walk_to_foe());
     OG_ASSERT(w->stats()->commands.empty() || w->stats()->commands.front().commandcount >= 0);
 
     // close foe => tempdistance < 30 tail branch line 1032
@@ -254,6 +255,7 @@ OG_UNIT_TEST(test_stats_r11_direct_walk_and_walk_to_foe_tail_branches)
     foe->setxy(100, 96);
     w->stats()->force_command(COMMAND_SEARCH, 5, 0, 0);
     w->path_check_counter = 1;
+    fx.level.world().rng_.state_ = 1;
     OG_ASSERT(w->stats()->walk_to_foe());
     OG_ASSERT(w->stats()->commands.empty() || w->stats()->commands.front().commandcount >= 0);
 }
