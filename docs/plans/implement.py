@@ -30,17 +30,16 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 try:
-    from rich.console import Console
-    from rich.layout import Layout
+    from rich.console import Console, Group
     from rich.live import Live
-    from rich.panel import Panel
+    from rich.rule import Rule
     from rich.text import Text
     RICH_AVAILABLE = True
 except ImportError:
     Console = None
-    Layout = None
+    Group = None
     Live = None
-    Panel = None
+    Rule = None
     Text = None
     RICH_AVAILABLE = False
 
@@ -60,8 +59,6 @@ CHECKER_ROLES = [
     "project manager",
 ]
 
-LOG_HISTORY = deque(maxlen=2000)
-
 
 def now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -74,9 +71,7 @@ def elapsed(start: float) -> str:
 
 def log(msg: str, *, indent: int = 0):
     prefix = "  " * indent
-    line = f"[{now()}] {prefix}{msg}"
-    LOG_HISTORY.append(line)
-    print(line, flush=True)
+    print(f"[{now()}] {prefix}{msg}", flush=True)
 
 
 def write_log_file(phase_id: str, attempt: int, step: str, output: str):
@@ -159,31 +154,21 @@ def _dejsonify_event(event: dict) -> tuple[list[str], list[str], str | None]:
     return transcript_lines, live_lines, final_message
 
 
-def _build_live_layout(worker_name: str, live_lines: deque[str], console: Console) -> Layout:
-    layout = Layout()
-    layout.split_column(
-        Layout(name="top", minimum_size=5),
-        Layout(name="bottom", size=15),
+def _build_live_renderable(
+    worker_name: str,
+    live_lines: deque[str],
+    worker_start: float,
+):
+    title = f"{worker_name} | elapsed {elapsed(worker_start)} | latest 15 lines"
+    lines = list(live_lines)[-15:]
+    if not lines:
+        lines = ["(waiting for codex events...)"]
+    if len(lines) < 15:
+        lines = lines + ([""] * (15 - len(lines)))
+    return Group(
+        Rule(title=title, style="dim"),
+        Text("\n".join(lines)),
     )
-
-    top_height = max(1, console.size.height - 17)
-    top_lines = list(LOG_HISTORY)[-top_height:]
-    if top_lines:
-        header = f"[{now()}] Running {worker_name}"
-        top_body = "\n".join(top_lines + [header])
-    else:
-        top_body = f"[{now()}] Running {worker_name}"
-    layout["top"].update(Text(top_body))
-
-    body = "\n".join(live_lines) if live_lines else "(waiting for codex events...)"
-    layout["bottom"].update(
-        Panel(
-            Text(body),
-            title="Codex Live",
-            subtitle="bottom 15 lines",
-        )
-    )
-    return layout
 
 
 def run_codex(prompt: str, worker_name: str) -> tuple[int, str, str, str]:
@@ -218,11 +203,10 @@ def run_codex(prompt: str, worker_name: str) -> tuple[int, str, str, str]:
     console = Console() if show_live else None
     if show_live:
         live_ctx = Live(
-            _build_live_layout(worker_name, live_lines, console),
+            _build_live_renderable(worker_name, live_lines, start),
             console=console,
             refresh_per_second=8,
             transient=True,
-            screen=True,
         )
 
     with live_ctx as live:
@@ -250,7 +234,7 @@ def run_codex(prompt: str, worker_name: str) -> tuple[int, str, str, str]:
                         live_lines.append(live_line)
 
                 if show_live and live is not None:
-                    live.update(_build_live_layout(worker_name, live_lines, console))
+                    live.update(_build_live_renderable(worker_name, live_lines, start))
 
     returncode = proc.wait()
     duration = elapsed(start)
