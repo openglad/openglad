@@ -105,6 +105,7 @@ std::string get_asset_path()
 // ---------------------------------------------------------------------------
 
 #include <openglad/data/level_data_hooks.h>
+#include <openglad/data/gloader.h>
 
 // Safe no-op: view controls are an SDL render concern; headless has no views.
 void headless_clear_stale_view_controls(LevelData*) {}
@@ -147,10 +148,21 @@ std::unique_ptr<LevelRender> headless_create_level_render(PixieData[])
     return nullptr;
 }
 
+EntityFactory headless_create_entity_factory()
+{
+    EntityFactory factory;
+    // Headless mode intentionally leaves attach_render empty.
+    factory.report_error = [](const std::string& message) {
+        LogError("{}\n", message);
+    };
+    return factory;
+}
+
 const LevelDataHooks kHeadlessLevelDataHooks{
     .clear_stale_view_controls = headless_clear_stale_view_controls,
     .draw = headless_level_data_draw,
     .create_level_render = headless_create_level_render,
+    .create_entity_factory = headless_create_entity_factory,
 };
 
 bool yes_or_no_prompt(const char* /*title*/, const char* /*message*/, bool default_value)

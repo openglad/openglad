@@ -15,16 +15,19 @@ class LevelData;
 class walker;
 class screen;
 class PixieData;
+struct EntityFactory;
 
 struct LevelDataHooks
 {
     using ClearStaleViewControlsFn = void (*)(LevelData* level);
     using DrawFn = void (*)(LevelData* level, screen* screenp);
     using CreateLevelRenderFn = std::unique_ptr<LevelRender> (*)(PixieData pixdata[]);
+    using CreateEntityFactoryFn = EntityFactory (*)();
 
     ClearStaleViewControlsFn clear_stale_view_controls = nullptr;
     DrawFn draw = nullptr;
     CreateLevelRenderFn create_level_render = nullptr;
+    CreateEntityFactoryFn create_entity_factory = nullptr;
 };
 
 // Runtime providers expose pre-wired capability tables.

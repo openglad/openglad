@@ -18,22 +18,31 @@
 
 // Definition of LOADER class
 
-#include <openglad/data/level_data.h> // Order forward-decl
 #include <openglad/data/pixie_data.h>
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <string>
 #include <vector>
+
+// Forward-declare Order enum class (defined in base.h)
+enum class Order : unsigned char;
 
 class walker;
 class pixieN;
 class screen;
 
+struct EntityFactory
+{
+    std::function<void(walker&, const PixieData&)> attach_render;
+    std::function<void(const std::string&)> report_error;
+};
+
 class loader
 {
 	public:
-		loader();
-		explicit loader(LevelData* owner);
+		explicit loader(EntityFactory entity_factory = {});
 		virtual ~loader(void);
 		loader(const loader&) = delete;
 		loader& operator=(const loader&) = delete;
@@ -52,5 +61,7 @@ class loader
 		std::vector<char> act_types;
 		std::vector<float> damage;
 		std::vector<float> fire_frequency;
-		LevelData* owner_level = nullptr;
+
+	private:
+		EntityFactory entity_factory_;
 };

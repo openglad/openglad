@@ -40,8 +40,6 @@ static inline cfg_store& active_config()
     return cfg;
 }
 
-void popup_dialog(const char* title, const char* message);
-
 #define SIZE_ORDERS 7 // see constants.h
 #define SIZE_FAMILIES 21  // see also NUM_FAMILIES in constants.h
 
@@ -369,15 +367,30 @@ PixieData data_copy(const PixieData& d)
 }
 
 
-loader::loader()
+loader::loader(EntityFactory entity_factory)
     : graphics(SIZE_ORDERS*SIZE_FAMILIES),
       animations(SIZE_ORDERS*SIZE_FAMILIES, nullptr),
       stepsizes(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
       lineofsight(SIZE_ORDERS*SIZE_FAMILIES, 0),
       act_types(SIZE_ORDERS*SIZE_FAMILIES, static_cast<char>(ACT_RANDOM)),
       damage(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
-      fire_frequency(SIZE_ORDERS*SIZE_FAMILIES, 0.0f)
+      fire_frequency(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
+      entity_factory_(std::move(entity_factory))
 {
+	if (!entity_factory_.attach_render)
+	{
+		entity_factory_.attach_render = [](walker& w, const PixieData& data) {
+			w.attach_render(data);
+		};
+	}
+
+	if (!entity_factory_.report_error)
+	{
+		entity_factory_.report_error = [](const std::string& message) {
+			LogError("{}\n", message);
+		};
+	}
+
 	std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f);
 
 	// Livings — all data driven from family descriptors
@@ -505,13 +518,6 @@ loader::loader()
 	graphics[PIX(Order::Treasure, FAMILY_FLIGHT_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 	graphics[PIX(Order::Treasure, FAMILY_SPEED_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 
-
-}
-
-loader::loader(LevelData* owner)
-    : loader()
-{
-    owner_level = owner;
 }
 
 loader::~loader(void)
@@ -550,31 +556,31 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	if (!graphics[PIX(order, family)].valid())
 	{
 	    std::string buf = std::format("No valid graphics for walker!\nOrder: {}, Family {}\nPlease report this to the developer!", static_cast<int>(order), static_cast<int>(family));
-		popup_dialog("ERROR", buf.c_str());
+		entity_factory_.report_error(buf);
 		return nullptr;
 	}
 
-	// Pass PixieData to constructors. In SDL builds, the constructor calls
-	// attach_render() which creates a PixieNWalkerRender. In headless builds,
-	// attach_render() is a no-op so no render component is created.
+	// Render component wiring is callback-driven by the platform layer.
 	const auto& pix = graphics[PIX(order, family)];
 
 	if (order == Order::Living)
-		ob = std::make_unique<living>(pix);
+		ob = std::make_unique<living>();
 	else if (order == Order::Weapon)
-	    ob = std::make_unique<weap>(pix);
+	    ob = std::make_unique<weap>();
 	else if (order == Order::Treasure)
-		ob = std::make_unique<treasure>(pix);
+		ob = std::make_unique<treasure>();
 	else if (order == Order::FX)
-		ob = std::make_unique<effect>(pix);
+		ob = std::make_unique<effect>();
 	else
-		ob = std::make_unique<walker>(pix);
+		ob = std::make_unique<walker>();
 	if (!ob)
 		return nullptr;
 
-	// Always set size from PixieData (needed for collision in both render and headless)
-	ob->sizex = pix.w;
-	ob->sizey = pix.h;
+	entity_factory_.attach_render(*ob, pix);
+
+	// Keep sim size/frame metadata in sync even if render attachment is disabled.
+	ob->set_data(pix);
+	ob->frame = 0;
 
 	ob->stats()->hitpoints = hitpoints[PIX(order, family)];
 	ob->stats()->max_hitpoints = hitpoints[PIX(order, family)];

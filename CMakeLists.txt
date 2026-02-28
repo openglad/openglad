@@ -189,7 +189,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/io/yaml_stream.cpp
 		    ${SRC_DIR}/io/og_file.cpp
 		    ${SRC_DIR}/data/gparser.cpp
-		    ${SRC_DIR}/runtime/gloader.cpp
+		    ${SRC_DIR}/data/gloader.cpp
     ${SRC_DIR}/data/pixie_data.cpp
     ${SRC_DIR}/runtime/level_data.cpp
     ${SRC_DIR}/sdl_client/ui/level_picker.cpp
@@ -229,6 +229,7 @@ set(OG_SIM_SOURCES
 
 set(OG_DATA_SOURCES
     ${SRC_DIR}/data/gparser.cpp
+    ${SRC_DIR}/data/gloader.cpp
     ${SRC_DIR}/data/pixie_data.cpp
 )
 
@@ -303,7 +304,6 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/runtime/sim_input_handler.cpp
     ${SRC_DIR}/sdl_client/runtime/input_event_bridge.cpp
     ${SRC_DIR}/runtime/smooth.cpp
-    ${SRC_DIR}/runtime/gloader.cpp
     ${SRC_DIR}/runtime/level_data.cpp
     ${SRC_DIR}/sdl_client/runtime/walker_render_bridge.cpp
     ${SRC_DIR}/sdl_client/runtime/sdl_context_services.cpp
@@ -841,7 +841,6 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/gameplay_context.cpp
         ${SRC_DIR}/gameplay/game_world.cpp
         ${SRC_DIR}/runtime/sim_input_handler.cpp
-        ${SRC_DIR}/runtime/gloader.cpp
         ${SRC_DIR}/runtime/level_data.cpp
         ${SRC_DIR}/runtime/smooth.cpp
         ${SRC_DIR}/runtime/stats.cpp

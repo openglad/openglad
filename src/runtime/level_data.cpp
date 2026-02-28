@@ -98,6 +98,34 @@ static std::string ensure_pix_extension(std::string_view name)
     return s + ".pix";
 }
 
+static EntityFactory make_default_entity_factory()
+{
+    EntityFactory factory;
+    factory.attach_render = [](walker& w, const PixieData& data) {
+        w.attach_render(data);
+    };
+    factory.report_error = [](const std::string& message) {
+        LogError("{}\n", message);
+    };
+    return factory;
+}
+
+static EntityFactory resolve_entity_factory(const LevelDataHooks* hooks)
+{
+    if (hooks != nullptr && hooks->create_entity_factory != nullptr)
+        return hooks->create_entity_factory();
+    return make_default_entity_factory();
+}
+
+static void wire_world_entity_factory(GameWorld& world, LevelData* level)
+{
+    world.entity_factory = [level](Order order, std::int32_t family) -> std::unique_ptr<walker> {
+        if (level == nullptr || !level->myloader)
+            return nullptr;
+        return level->myloader->create_walker_owned(order, family);
+    };
+}
+
 
 
 
@@ -433,7 +461,8 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks)
     world_->set_level_data(this);
 
 	world_->myobmap = std::make_unique<obmap>();
-    myloader = std::make_unique<loader>(this);
+    myloader = std::make_unique<loader>(resolve_entity_factory(hooks_));
+    wire_world_entity_factory(*world_, this);
 
     if (!headless)
     {
@@ -450,6 +479,7 @@ LevelData::~LevelData()
 
     if (world_ != nullptr)
     {
+        world_->entity_factory = {};
         world_->set_level_data(nullptr);
         world_ = nullptr;
     }
@@ -475,7 +505,10 @@ void LevelData::attach_world(GameWorld* world)
     if (next_world == old_world)
     {
         if (old_world != nullptr)
+        {
             old_world->set_level_data(this);
+            wire_world_entity_factory(*old_world, this);
+        }
         return;
     }
 
@@ -526,11 +559,13 @@ void LevelData::attach_world(GameWorld* world)
         old_world->mysmoother.reset();
         if (!old_world->myobmap)
             old_world->myobmap = std::make_unique<obmap>();
+        old_world->entity_factory = {};
         old_world->set_level_data(nullptr);
     }
 
     world_ = next_world;
     world_->set_level_data(this);
+    wire_world_entity_factory(*world_, this);
 }
 
 walker* LevelData::add_ob(Order order, std::int32_t family, bool atstart)
@@ -1405,7 +1440,7 @@ bool LevelData::load()
     }
     Log("Loading version {} scenario", static_cast<int>(versionnumber));
 
-    myloader = std::make_unique<loader>(this);
+    myloader = std::make_unique<loader>(resolve_entity_factory(hooks_));
     clear();
     world().par_value = static_cast<short>(world().id);
 

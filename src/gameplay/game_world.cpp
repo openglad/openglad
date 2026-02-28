@@ -7,7 +7,6 @@
  */
 #include <openglad/gameplay/game_world.h>
 
-#include <openglad/data/gloader.h>
 #include <openglad/data/level_data.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/sim/sim_event_log.h>
@@ -53,10 +52,10 @@ walker* GameWorld::add_to_list(Order order, std::int32_t family,
                                std::list<std::unique_ptr<walker>>& target_list,
                                bool count_living, bool atstart)
 {
-    if (!level_data_ || !level_data_->myloader)
+    if (!entity_factory)
         return nullptr;
 
-    auto w = level_data_->myloader->create_walker_owned(order, family);
+    auto w = entity_factory(order, family);
     if (!w)
         return nullptr;
 

@@ -16,6 +16,7 @@
 #include <openglad/data/level_data.h>
 #include <openglad/data/level_render.h>
 #include <openglad/data/level_data_hooks.h>
+#include <openglad/data/gloader.h>
 
 // myscreen and theprefs are now macros defined in base.h / view.h
 
@@ -58,6 +59,8 @@ void install_sdl_context_services()
 }
 } // namespace og::runtime
 
+void popup_dialog(const char* title, const char* message);
+
 namespace
 {
 void sdl_clear_stale_view_controls(LevelData* level)
@@ -85,10 +88,23 @@ std::unique_ptr<LevelRender> sdl_create_level_render(PixieData pixdata[])
     return create_sdl_level_render(pixdata);
 }
 
+EntityFactory sdl_create_entity_factory()
+{
+    EntityFactory factory;
+    factory.attach_render = [](walker& w, const PixieData& data) {
+        w.attach_render(data);
+    };
+    factory.report_error = [](const std::string& message) {
+        popup_dialog("ERROR", message.c_str());
+    };
+    return factory;
+}
+
 const LevelDataHooks kSdlLevelDataHooks{
     .clear_stale_view_controls = sdl_clear_stale_view_controls,
     .draw = sdl_level_data_draw,
     .create_level_render = sdl_create_level_render,
+    .create_entity_factory = sdl_create_entity_factory,
 };
 } // namespace
 

@@ -8,6 +8,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <memory>
 #include <set>
@@ -141,6 +142,7 @@ public:
     short allied_mode = 0;
     short current_scenario = 0;
     std::set<int> completed_levels;
+    std::function<std::unique_ptr<walker>(Order, std::int32_t)> entity_factory;
 
 private:
     walker* add_to_list(Order order, std::int32_t family,
