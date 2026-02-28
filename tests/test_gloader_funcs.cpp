@@ -296,6 +296,18 @@ void test_gloader_set_walker_descriptor_flag_and_default_paths()
 }
 REGISTER_TEST(test_gloader_set_walker_descriptor_flag_and_default_paths);
 
+void test_gloader_respects_optional_attach_render_callback()
+{
+    EntityFactory factory;
+    factory.report_error = [](const std::string&) {};
+
+    loader custom_loader(factory);
+    auto w = custom_loader.create_walker_owned(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker should still be created when attach_render callback is empty");
+    TEST_ASSERT(!w->has_render(), "empty attach_render callback must not attach render components");
+}
+REGISTER_TEST(test_gloader_respects_optional_attach_render_callback);
+
 void test_gloader_active_config_branch_with_ctx_and_global_cfg()
 {
     const std::string prev_global_gore = cfg.get_setting("effects", "gore");

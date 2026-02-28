@@ -377,13 +377,6 @@ loader::loader(EntityFactory entity_factory)
       fire_frequency(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
       entity_factory_(std::move(entity_factory))
 {
-	if (!entity_factory_.attach_render)
-	{
-		entity_factory_.attach_render = [](walker& w, const PixieData& data) {
-			w.attach_render(data);
-		};
-	}
-
 	if (!entity_factory_.report_error)
 	{
 		entity_factory_.report_error = [](const std::string& message) {
@@ -588,7 +581,8 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	if (!ob)
 		return nullptr;
 
-	entity_factory_.attach_render(*ob, pix);
+	if (entity_factory_.attach_render)
+		entity_factory_.attach_render(*ob, pix);
 
 	// Keep sim size/frame metadata in sync even if render attachment is disabled.
 	ob->set_data(pix);
