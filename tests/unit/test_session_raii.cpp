@@ -35,6 +35,54 @@ OG_UNIT_TEST(test_game_session_headless_restores_legacy_globals)
     OG_ASSERT(og::runtime::current_session->theprefs_ == prev_prefs);
 }
 
+OG_UNIT_TEST(test_game_session_teardown_restores_thread_inheritance_context)
+{
+    og::runtime::GameSession* baseline_session = og::runtime::current_session;
+    GameplayContext* baseline_game = current_game;
+    og::runtime::GameSession* baseline_primary_session =
+        og::runtime::primary_session.load(std::memory_order_acquire);
+    GameplayContext* baseline_primary_game =
+        og::runtime::primary_game.load(std::memory_order_acquire);
+
+    {
+        og::runtime::GameSession::Config session_cfg;
+        session_cfg.allocate_screen = false;
+        session_cfg.allocate_prefs = false;
+        session_cfg.install_legacy_globals = true;
+
+        og::runtime::GameSession session(session_cfg);
+
+        OG_ASSERT(og::runtime::current_session == &session);
+        OG_ASSERT(current_game == &session.game_);
+        OG_ASSERT(og::runtime::primary_session.load(std::memory_order_acquire) == &session);
+        OG_ASSERT(og::runtime::primary_game.load(std::memory_order_acquire) == &session.game_);
+
+        og::runtime::current_session = nullptr;
+        current_game = nullptr;
+        og::runtime::ensure_thread_session();
+        og::runtime::ensure_thread_game();
+        OG_ASSERT(og::runtime::current_session == &session);
+        OG_ASSERT(current_game == &session.game_);
+    }
+
+    OG_ASSERT(og::runtime::current_session == baseline_session);
+    OG_ASSERT(current_game == baseline_game);
+    OG_ASSERT(og::runtime::primary_session.load(std::memory_order_acquire) ==
+              baseline_primary_session);
+    OG_ASSERT(og::runtime::primary_game.load(std::memory_order_acquire) ==
+              baseline_primary_game);
+
+    og::runtime::current_session = nullptr;
+    current_game = nullptr;
+    og::runtime::ensure_thread_session();
+    og::runtime::ensure_thread_game();
+    OG_ASSERT(og::runtime::current_session == baseline_primary_session);
+    OG_ASSERT(current_game == baseline_primary_game);
+
+    og::runtime::current_session = baseline_session;
+    current_game = baseline_game;
+}
+
 OG_UNIT_TEST(test_game_session_seeded_rng_is_deterministic)
 {
     og::runtime::GameSession::Config session_cfg;

@@ -141,6 +141,19 @@ GameSession::~GameSession()
             current_session = prev_session_;
         if (current_game == &game_)
             current_game = prev_game_;
+
+        // Child threads inherit session/game via these atomics when their
+        // thread_local pointers are null. Clear or restore them on teardown
+        // so ensure_thread_session()/ensure_thread_game() never pick a dead
+        // session context.
+        GameSession* expected_session = this;
+        (void)primary_session.compare_exchange_strong(
+            expected_session, prev_session_, std::memory_order_acq_rel,
+            std::memory_order_acquire);
+        GameplayContext* expected_game = &game_;
+        (void)primary_game.compare_exchange_strong(
+            expected_game, prev_game_, std::memory_order_acq_rel,
+            std::memory_order_acquire);
     }
 
     screen_owner_.reset();
