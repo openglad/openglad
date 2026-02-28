@@ -172,6 +172,16 @@ OG_UNIT_TEST(test_event_kind_set_end_value)
     OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::SetEnd) == 15);
 }
 
+OG_UNIT_TEST(test_event_kind_request_exit_confirmation_value)
+{
+    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::RequestExitConfirmation) == 16);
+}
+
+OG_UNIT_TEST(test_event_kind_withdraw_to_level_value)
+{
+    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::WithdrawToLevel) == 17);
+}
+
 OG_UNIT_TEST(test_emit_endgame_event)
 {
     og::sim::SimEventLog log;
@@ -224,6 +234,34 @@ OG_UNIT_TEST(test_emit_set_end_event)
     const auto& ev = log.events()[0];
     OG_ASSERT(ev.kind == og::sim::EventKind::SetEnd);
     OG_ASSERT(ev.a == 0);
+    OG_ASSERT(ev.b == 0);
+}
+
+OG_UNIT_TEST(test_emit_request_exit_confirmation_with_text)
+{
+    og::sim::SimEventLog log;
+    log.current_tick_ = 27;
+    og::sim::emit_event_text(&log, og::sim::EventKind::RequestExitConfirmation,
+                             "Exit to Level 3?", 3, 0);
+
+    OG_ASSERT(log.size() == 1);
+    const auto& ev = log.events()[0];
+    OG_ASSERT(ev.kind == og::sim::EventKind::RequestExitConfirmation);
+    OG_ASSERT(ev.a == 3);
+    OG_ASSERT(ev.b == 0);
+    OG_ASSERT(ev.text == "Exit to Level 3?");
+}
+
+OG_UNIT_TEST(test_emit_withdraw_to_level_event)
+{
+    og::sim::SimEventLog log;
+    log.current_tick_ = 28;
+    og::sim::emit_event(&log, og::sim::EventKind::WithdrawToLevel, 5, 0);
+
+    OG_ASSERT(log.size() == 1);
+    const auto& ev = log.events()[0];
+    OG_ASSERT(ev.kind == og::sim::EventKind::WithdrawToLevel);
+    OG_ASSERT(ev.a == 5);
     OG_ASSERT(ev.b == 0);
 }
 

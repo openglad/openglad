@@ -20,17 +20,14 @@
 // myscreen is now a macro defined in base.h (via game_session.h)
 short new_score_panel(screen* s, short do_it);
 
-// TESTING-only helpers from picker_dialogs.cpp.
-void picker_testing_yes_or_no_queue_clear();
-void picker_testing_yes_or_no_queue_push(bool value);
-int picker_testing_yes_or_no_queue_remaining();
-
 namespace {
 
 void clear_level_lists()
 {
     og::runtime::current_session->myscreen_->level_data.delete_objects();
     og::runtime::current_session->myscreen_->level_data.level_done = 0;
+    og::runtime::current_session->myscreen_->world_.withdraw_requested = false;
+    og::runtime::current_session->myscreen_->world_.withdraw_level = -1;
 }
 
 GameWorld& setup_tick_world(std::uint32_t seed)
@@ -48,6 +45,8 @@ GameWorld& setup_tick_world(std::uint32_t seed)
     world.retry = false;
     world.control_hp = 0.0f;
     world.timer_wait = 6;
+    world.withdraw_requested = false;
+    world.withdraw_level = -1;
     return world;
 }
 
@@ -189,8 +188,6 @@ void test_game_session_auto_wires_level_data_sim_context()
 
         walker* spawned = session_screen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(spawned != nullptr, "spawned entity should exist");
-        TEST_ASSERT(spawned->sim_save == &session_screen->save_data, "spawned entity should receive sim_save from session screen");
-        TEST_ASSERT(spawned->sim_config == &cfg, "spawned entity should receive sim_config from global cfg");
     }
 
     TEST_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen, "session teardown should restore previous screen");
@@ -224,15 +221,15 @@ void test_treasure_exit_and_teleporter_navigation_paths()
 {
     clear_level_lists();
 
-    static og::sim::SimEventLog sim_events;
-    static ProductionRandom rng;
+    TEST_ASSERT(current_game != nullptr && current_game->sim_events != nullptr, "sim events should be available");
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& sim_events = *current_game->sim_events;
     sim_events.clear();
-    og::runtime::current_session->myscreen_->level_data.set_sim_context(
-        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze, &sim_events, &rng, &cfg);
 
-    // Exit flow: no enemies left + prompt accepted should emit EndGame.
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->sync_world_from_save_data();
     og::runtime::current_session->myscreen_->level_data.level_done = 1;
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 2);
     walker* controller = add_living(0);
@@ -240,10 +237,22 @@ void test_treasure_exit_and_teleporter_navigation_paths()
     controller->skip_exit = 0;
     controller->in_act = false;
 
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(true);
     TEST_ASSERT(exit_fx->eat_me(controller), "exit eater path should return true");
     TEST_ASSERT_EQ(10, static_cast<int>(controller->skip_exit), "exit path should set skip_exit debounce");
+    bool saw_request_confirmation = false;
+    bool saw_withdraw_request = false;
+    for (const auto& ev : sim_events.events())
+    {
+        if (ev.kind == og::sim::EventKind::RequestExitConfirmation &&
+            static_cast<short>(ev.a) == 2 && ev.b == 0)
+        {
+            saw_request_confirmation = true;
+        }
+        if (ev.kind == og::sim::EventKind::WithdrawToLevel)
+            saw_withdraw_request = true;
+    }
+    TEST_ASSERT(saw_request_confirmation, "exit should emit RequestExitConfirmation event");
+    TEST_ASSERT(!saw_withdraw_request, "normal exit should not emit WithdrawToLevel");
 
     // Teleporter: near target path sets skip_exit and centers on destination.
     clear_level_lists();
@@ -273,11 +282,11 @@ void test_treasure_navigation_early_returns_and_withdraw_decline()
 {
     clear_level_lists();
 
-    static og::sim::SimEventLog sim_events;
-    static ProductionRandom rng;
+    TEST_ASSERT(current_game != nullptr && current_game->sim_events != nullptr, "sim events should be available");
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& sim_events = *current_game->sim_events;
     sim_events.clear();
-    og::runtime::current_session->myscreen_->level_data.set_sim_context(
-        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze, &sim_events, &rng, &cfg);
 
     // Exit early return: eater currently in act.
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 3);
@@ -302,14 +311,28 @@ void test_treasure_navigation_early_returns_and_withdraw_decline()
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 5;
     og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 3);
+    og::runtime::current_session->myscreen_->sync_world_from_save_data();
     og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present
     eater->set_act_type(ACT_CONTROL);
     eater->skip_exit = 0;
     exit_fx->stats()->level = 3;
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(false);
+    sim_events.clear();
     TEST_ASSERT(exit_fx->eat_me(eater), "withdraw decline path should return true");
     TEST_ASSERT_EQ(10, static_cast<int>(eater->skip_exit), "withdraw prompt path should set skip_exit debounce");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world_.withdraw_requested,
+                "withdraw branch should set world.withdraw_requested");
+    bool saw_withdraw_prompt = false;
+    bool saw_withdraw_event = false;
+    for (const auto& ev : sim_events.events())
+    {
+        if (ev.kind == og::sim::EventKind::RequestExitConfirmation && ev.b == 1)
+            saw_withdraw_prompt = true;
+        if (ev.kind == og::sim::EventKind::WithdrawToLevel &&
+            static_cast<short>(ev.a) == 3)
+            saw_withdraw_event = true;
+    }
+    TEST_ASSERT(saw_withdraw_prompt, "withdraw branch should emit withdraw confirmation request");
+    TEST_ASSERT(saw_withdraw_event, "withdraw branch should emit WithdrawToLevel event");
 
     // Teleporter early returns: skip_exit > 1 and distance too far.
     clear_level_lists();
@@ -396,17 +419,18 @@ void test_treasure_batch3_exit_withdraw_accept_path()
 {
     clear_level_lists();
 
-    static og::sim::SimEventLog sim_events;
-    static ProductionRandom rng;
+    TEST_ASSERT(current_game != nullptr && current_game->sim_events != nullptr, "sim events should be available");
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& sim_events = *current_game->sim_events;
     sim_events.clear();
-    og::runtime::current_session->myscreen_->level_data.set_sim_context(
-        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze, &sim_events, &rng, &cfg);
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 8; // Current level is not marked complete.
     og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 5);
     (void)og::runtime::current_session->myscreen_->save_data.save("save0");
+    og::runtime::current_session->myscreen_->sync_world_from_save_data();
 
     og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present -> guys_here != 0
 
@@ -421,13 +445,29 @@ void test_treasure_batch3_exit_withdraw_accept_path()
     eater->in_act = false;
     eater->skip_exit = 0;
 
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(true);
-
     TEST_ASSERT(exit_fx->eat_me(eater), "withdraw accept path should return true");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world_.withdraw_requested,
+                "withdraw path should mark withdraw_requested for tick short-circuit");
+    bool saw_withdraw_event = false;
+    bool saw_prompt_event = false;
+    for (const auto& ev : sim_events.events())
+    {
+        if (ev.kind == og::sim::EventKind::WithdrawToLevel &&
+            static_cast<short>(ev.a) == 5)
+        {
+            saw_withdraw_event = true;
+        }
+        if (ev.kind == og::sim::EventKind::RequestExitConfirmation &&
+            static_cast<short>(ev.a) == 5 && ev.b == 1)
+        {
+            saw_prompt_event = true;
+        }
+    }
+    TEST_ASSERT(saw_withdraw_event, "withdraw accept path should emit WithdrawToLevel");
+    TEST_ASSERT(saw_prompt_event, "withdraw accept path should emit withdraw prompt request");
 
-    TEST_ASSERT_EQ((int)exit_fx->stats()->level, (int)og::runtime::current_session->myscreen_->save_data.scen_num,
-                   "withdraw accept should switch scen_num to exit level");
+    TEST_ASSERT_EQ(8, (int)og::runtime::current_session->myscreen_->save_data.scen_num,
+                   "withdraw transition should be deferred to runtime prompt handling");
 
     clear_level_lists();
 }
@@ -443,8 +483,7 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
         return;
     og::sim::SimEventLog& events = *current_game->sim_events;
     events.clear();
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    save.my_team = 0;
+    world.my_team = 0;
 
     world.enemy_freeze = 2;
     world.end = 0;
@@ -542,8 +581,7 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
         return;
     og::sim::SimEventLog& events = *current_game->sim_events;
     events.clear();
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    save.my_team = 1; // team 0 is hostile from this perspective
+    world.my_team = 1; // team 0 is hostile from this perspective
 
     // Non-friendly living should be frozen while freeze is active.
     walker* hostile_team0 = add_living(0);
@@ -653,8 +691,7 @@ void test_sim_world_batch5_game_end_paths()
         return;
     og::sim::SimEventLog& events = *current_game->sim_events;
     events.clear();
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    save.my_team = 0;
+    world.my_team = 0;
 
     // No foes and no exits => level_done stays 2 and game ends.
     world.enemy_freeze = 0;
@@ -728,11 +765,9 @@ void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
     clear_level_lists();
 
     GameWorld& world = setup_tick_world(6060);
-    og::sim::SimEventLog events;
-    SaveData save;
-    save.my_team = 0;
-    const short saved_allied_mode = og::runtime::current_session->myscreen_->save_data.allied_mode;
-    og::runtime::current_session->myscreen_->save_data.allied_mode = 0;
+    world.my_team = 0;
+    const short saved_allied_mode = world.allied_mode;
+    world.allied_mode = 0;
 
     walker* ally = add_living(0);
     walker* hostile = add_living(1);
@@ -789,7 +824,7 @@ void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
     (void)weap_owner;
 
     clear_level_lists();
-    og::runtime::current_session->myscreen_->save_data.allied_mode = saved_allied_mode;
+    world.allied_mode = saved_allied_mode;
 }
 REGISTER_TEST(test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present);
 
@@ -803,8 +838,7 @@ void test_sim_world_freeze_branch_allows_non_living_actions()
         return;
     og::sim::SimEventLog& events = *current_game->sim_events;
     events.clear();
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    save.my_team = 0;
+    world.my_team = 0;
 
     walker* gen = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Generator, FAMILY_TENT);
     TEST_ASSERT(gen != nullptr, "generator created");
@@ -834,9 +868,7 @@ void test_sim_world_assigns_far_foe_when_no_target_and_hostiles_present()
     clear_level_lists();
 
     GameWorld& world = setup_tick_world(9090);
-    og::sim::SimEventLog events;
-    SaveData save;
-    save.my_team = 0;
+    world.my_team = 0;
 
     walker* ally = add_living(0);
     walker* foe_near = add_living(1);
@@ -870,8 +902,7 @@ void test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event()
         return;
     og::sim::SimEventLog& events = *current_game->sim_events;
     events.clear();
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    save.my_team = 0;
+    world.my_team = 0;
 
     walker* ally = add_living(0);
     walker* hostile = add_living(1);
@@ -904,9 +935,7 @@ void test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero()
     clear_level_lists();
 
     GameWorld& world = setup_tick_world(31337);
-    og::sim::SimEventLog events;
-    SaveData save;
-    save.my_team = 0;
+    world.my_team = 0;
 
     // Only friendly living => level_done remains 2 and should trigger game end path.
     walker* ally = add_living(0);
@@ -940,11 +969,11 @@ void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
     // (normal level completion path).
     clear_level_lists();
 
-    static og::sim::SimEventLog sim_events;
-    static ProductionRandom rng;
+    TEST_ASSERT(current_game != nullptr && current_game->sim_events != nullptr, "sim events should be available");
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& sim_events = *current_game->sim_events;
     sim_events.clear();
-    og::runtime::current_session->myscreen_->level_data.set_sim_context(
-        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze, &sim_events, &rng, &cfg);
 
     // Setup: CAN_EXIT_WHENEVER flag, enemies still present, dest level completed,
     // current scenario NOT completed → both Withdraw AND Exit conditions met.
@@ -956,6 +985,7 @@ void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
     og::runtime::current_session->myscreen_->save_data.scen_num = 5; // current level (not completed)
     og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 3);
     (void)og::runtime::current_session->myscreen_->save_data.save("save0");
+    og::runtime::current_session->myscreen_->sync_world_from_save_data();
 
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 3); // exit points to level 3
     walker* eater = add_living(0);
@@ -967,17 +997,23 @@ void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
     eater->in_act = false;
     eater->skip_exit = 0;
 
-    // Push one "accept" answer. With the fix, the Exit dialog fires and
-    // consumes this. Before the fix, the Withdraw dialog consumed it instead.
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(true);
-
     exit_fx->eat_me(eater);
+    bool saw_exit_prompt = false;
+    bool saw_withdraw_event = false;
+    for (const auto& ev : sim_events.events())
+    {
+        if (ev.kind == og::sim::EventKind::RequestExitConfirmation &&
+            static_cast<short>(ev.a) == 3 && ev.b == 0)
+        {
+            saw_exit_prompt = true;
+        }
+        if (ev.kind == og::sim::EventKind::WithdrawToLevel)
+            saw_withdraw_event = true;
+    }
+    TEST_ASSERT(saw_exit_prompt, "CAN_EXIT_WHENEVER path should emit normal exit prompt");
+    TEST_ASSERT(!saw_withdraw_event, "CAN_EXIT_WHENEVER path should not emit withdraw event");
 
-    // The Withdraw-accept path changes scen_num to the exit level (3) via
-    // load("save0") + scen_num = exit_level + save("save0").
-    // The Exit-accept path does NOT change scen_num.
-    // With the fix (Exit fires, not Withdraw), scen_num should stay at 5.
+    // Exit trigger should not mutate save immediately; transition is deferred.
     TEST_ASSERT_EQ(5, static_cast<int>(og::runtime::current_session->myscreen_->save_data.scen_num),
                    "CAN_EXIT_WHENEVER should show Exit (scen_num unchanged), not Withdraw");
 
@@ -998,11 +1034,11 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
     // - Fixed code: 1 dialog fires → 1 answer consumed → 1 remaining
     clear_level_lists();
 
-    static og::sim::SimEventLog sim_events;
-    static ProductionRandom rng;
+    TEST_ASSERT(current_game != nullptr && current_game->sim_events != nullptr, "sim events should be available");
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& sim_events = *current_game->sim_events;
     sim_events.clear();
-    og::runtime::current_session->myscreen_->level_data.set_sim_context(
-        &og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze, &sim_events, &rng, &cfg);
 
     og::runtime::current_session->myscreen_->level_data.world().type = LevelData::TYPE_CAN_EXIT_WHENEVER;
     og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present
@@ -1012,6 +1048,7 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
     og::runtime::current_session->myscreen_->save_data.scen_num = 5;
     og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 3);
     (void)og::runtime::current_session->myscreen_->save_data.save("save0");
+    og::runtime::current_session->myscreen_->sync_world_from_save_data();
 
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 3);
     walker* eater = add_living(0);
@@ -1023,18 +1060,15 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
     eater->in_act = false;
     eater->skip_exit = 0;
 
-    // Push two "decline" answers into the queue.
-    picker_testing_yes_or_no_queue_clear();
-    picker_testing_yes_or_no_queue_push(false);
-    picker_testing_yes_or_no_queue_push(false);
-
     exit_fx->eat_me(eater);
-
-    // With the bug, both Withdraw and Exit dialogs fire (2 consumed, 0 remaining).
-    // With the fix, only one dialog fires (1 consumed, 1 remaining).
-    int remaining = picker_testing_yes_or_no_queue_remaining();
-    TEST_ASSERT_EQ(1, remaining,
-                   "Only one dialog should fire, not both Withdraw and Exit");
+    int confirmation_events = 0;
+    for (const auto& ev : sim_events.events())
+    {
+        if (ev.kind == og::sim::EventKind::RequestExitConfirmation)
+            confirmation_events++;
+    }
+    TEST_ASSERT_EQ(1, confirmation_events,
+                   "Only one confirmation event should be emitted");
 
     og::runtime::current_session->myscreen_->level_data.world().type = 0;
     clear_level_lists();

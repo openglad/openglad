@@ -25,6 +25,10 @@ public:
     // Push a structured event.
     void push(EventKind kind, std::uint32_t a = 0, std::uint32_t b = 0);
 
+    // Push an event with a text payload.
+    void push_with_text(EventKind kind, const std::string& text,
+                        std::uint32_t a = 0, std::uint32_t b = 0);
+
     // Push a notification event with a text message.
     // If duration is non-zero, it overrides the default display time.
     void push_notification(const std::string& message, std::uint32_t duration = 0);

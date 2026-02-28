@@ -36,6 +36,7 @@ struct SimInputFixture {
     {
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 };
@@ -170,6 +171,7 @@ struct SimInputFixture {
     {
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 };

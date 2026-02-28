@@ -80,7 +80,7 @@ OG_UNIT_TEST(test_sim_world_r15_normal_tick_cleanup_and_dead_entity_removal)
     SimWorldR15Fixture fx;
     GameWorld& world = fx.world();
     world.rng_.state_ = 42;
-    fx.save.my_team = 0;
+    world.my_team = 0;
 
     TickWalker* ally = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     TickWalker* enemy = add_ob(fx, Order::Living, FAMILY_ORC, 1, 76, 64);
@@ -128,7 +128,7 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_tick_and_level_done_paths)
     SimWorldR15Fixture fx;
     GameWorld& world = fx.world();
     world.rng_.state_ = 7;
-    fx.save.my_team = 0;
+    world.my_team = 0;
 
     TickWalker* ally = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     TickWalker* enemy = add_ob(fx, Order::Living, FAMILY_ORC, 1, 80, 64);
@@ -153,7 +153,7 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_uses_friendliness_not_team_zero)
     SimWorldR15Fixture fx;
     GameWorld& world = fx.world();
     world.rng_.state_ = 11;
-    fx.save.my_team = 1;
+    world.my_team = 1;
 
     TickWalker* friendly = add_ob(fx, Order::Living, FAMILY_SOLDIER, 1, 64, 64);
     TickWalker* hostile = add_ob(fx, Order::Living, FAMILY_ORC, 0, 80, 64);
@@ -173,7 +173,7 @@ OG_UNIT_TEST(test_sim_world_r15_end_flag_and_auto_advance_paths)
     SimWorldR15Fixture fx;
     GameWorld& world = fx.world();
     world.rng_.state_ = 9;
-    fx.save.my_team = 0;
+    world.my_team = 0;
 
     TickWalker* enemy = add_ob(fx, Order::Living, FAMILY_ORC, 1, 80, 80);
     OG_ASSERT(enemy != nullptr);
@@ -197,7 +197,7 @@ OG_UNIT_TEST(test_sim_world_r15_reset_level_progress_clears_timeout_for_same_lev
     SimWorldR15Fixture fx;
     GameWorld& world = fx.world();
     world.rng_.state_ = 17;
-    fx.save.my_team = 0;
+    world.my_team = 0;
 
     TickWalker* enemy = add_ob(fx, Order::Living, FAMILY_ORC, 1, 80, 64);
     OG_ASSERT(enemy != nullptr);

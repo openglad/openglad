@@ -19,9 +19,6 @@
 #include <openglad/core/order.h>
 #include <cstdint>
 
-struct SaveData;
-class cfg_store;
-
 namespace og::sim {
 class SimEntity
 {
@@ -52,10 +49,6 @@ public:
     short invisibility_left = 0;
     short flight_left = 0;
     short bonus_rounds = 0;
-
-    // Sim context (non-owning pointers set by the runtime layer)
-    SaveData*     sim_save = nullptr;
-    cfg_store*    sim_config = nullptr;
 
     // Identity
     Order order = Order::Living;

@@ -1163,6 +1163,7 @@ void test_walker_special_cleric_resurrect_friendly_and_enemy_stains()
     cleric->stats()->special_cost[4] = 0;
     cleric->stats()->magicpoints = 2000;
     og::runtime::current_session->myscreen_->save_data.allied_mode = 0;
+    og::runtime::current_session->myscreen_->world_.allied_mode = 0;
     ally->setxy(110, 100);
     ally->team_num = 1;
     ally->generate_bloodspot();

@@ -30,7 +30,6 @@
 #include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-#include <openglad/data/gparser.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/runtime/game_session.h> // current_difficulty macro
@@ -40,7 +39,7 @@
 extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
 // current_difficulty lives in GameSession — access via current_session->current_difficulty_.
 
-// RNG now comes from current_game->world->rng_; config remains on SimEntity.
+// RNG now comes from current_game->world->rng_.
 
 living::living(const PixieData& data)
     : walker(data)
@@ -160,8 +159,7 @@ bool living::act()
 	{
 		flight_left++;
 		stats_->hitpoints--;
-		if(sim_config && sim_config->is_on("effects", "damage_numbers"))
-            damage_numbers.push_back(DamageNumber(xpos + sizex/2, ypos, 1, RED));
+		damage_numbers.push_back(DamageNumber(xpos + sizex/2, ypos, 1, RED));
 		
 		if (stats_->hitpoints <= 0)
 		{

@@ -16,7 +16,6 @@
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/gparser.h>
 #include <openglad/sim/sim_emit.h>
 
 #include <format>
@@ -26,8 +25,6 @@
 #define BASE_GUY_HP 30
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
-
-// RNG now comes from current_game->world->rng_; config remains on SimEntity.
 
 static bool orc_do_special(walker* self)
 {
@@ -91,8 +88,7 @@ static bool orc_do_special(walker* self)
             }
             message = std::format("{} ate a corpse.", entity_display_name(self, "Orc"));
 
-            if (self->sim_config && self->sim_config->is_on("effects", "heal_numbers"))
-                og::sim::emit_notification(current_game->sim_events, message);
+            og::sim::emit_notification(current_game->sim_events, message);
             if (self->stats()->hitpoints > self->stats()->max_hitpoints)
                 self->stats()->hitpoints = self->stats()->max_hitpoints;
             newob->dead = 1;

@@ -99,6 +99,7 @@ static inline cfg_store& active_config()
 
 // From picker.cpp
 extern Sint32 calculate_level(Uint32 temp_exp);
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
 // Screen window boundries
 inline constexpr int MAX_VIEWS = 5;
@@ -210,6 +211,8 @@ void screen::init_common(short howmany, bool has_display)
 			alternate_name[i][j] = fd ? fd->alternate_names[j] : "NONE";
 		}
 	}
+
+	sync_world_from_save_data();
 }
 
 screen::screen(short howmany)
@@ -355,6 +358,7 @@ void screen::reset(short howmany)
 	
 	save_data.reset();
 	level_data.clear();
+	sync_world_from_save_data();
 
 	timerstart = query_timer_control();
 	framecount = 0;
@@ -368,6 +372,35 @@ void screen::reset(short howmany)
 
 	redrawme = 1;
 
+}
+
+void screen::sync_world_from_save_data()
+{
+    world_.my_team = save_data.my_team;
+    world_.allied_mode = save_data.allied_mode;
+    world_.current_scenario = save_data.scen_num;
+    for (int i = 0; i < 4; ++i)
+        world_.m_score[i] = save_data.m_score[i];
+
+    auto e = save_data.completed_levels.find(save_data.current_campaign);
+    if (e != save_data.completed_levels.end())
+        world_.completed_levels = e->second;
+    else
+        world_.completed_levels.clear();
+
+    world_.withdraw_requested = false;
+    world_.withdraw_level = -1;
+}
+
+void screen::sync_save_data_from_world()
+{
+    save_data.my_team = world_.my_team;
+    save_data.allied_mode = world_.allied_mode;
+    save_data.scen_num = world_.current_scenario;
+    for (int i = 0; i < 4; ++i)
+        save_data.m_score[i] = world_.m_score[i];
+
+    save_data.completed_levels[save_data.current_campaign] = world_.completed_levels;
 }
 
 bool screen::query_grid_passable(float x, float y, walker  *ob)
@@ -478,6 +511,8 @@ bool screen::act()
 	// Process simulation events: dispatch sounds, notifications, etc.
 	// This is the key sim/render boundary — simulation emits events,
 	// the runtime layer dispatches them to platform subsystems.
+	const og::sim::Event* first_exit_request = nullptr;
+	const og::sim::Event* first_withdraw_request = nullptr;
 	for (const auto& ev : events.events())
 	{
 		switch (ev.kind)
@@ -505,6 +540,7 @@ bool screen::act()
 				redrawme = 1;
 				break;
 			case og::sim::EventKind::EndGame:
+				sync_save_data_from_world();
 				events.clear();
 				return endgame(static_cast<short>(ev.a),
 				               static_cast<short>(static_cast<std::int32_t>(ev.b)));
@@ -514,15 +550,78 @@ bool screen::act()
 			case og::sim::EventKind::SetEnd:
 				end = 1;
 				break;
+			case og::sim::EventKind::RequestExitConfirmation:
+				if (first_exit_request == nullptr)
+					first_exit_request = &ev;
+				break;
+			case og::sim::EventKind::WithdrawToLevel:
+				if (first_withdraw_request == nullptr)
+					first_withdraw_request = &ev;
+				break;
 			default:
 				break;
 		}
 	}
+
+	if (first_exit_request != nullptr)
+	{
+		const short destination_level =
+			static_cast<short>(static_cast<std::int32_t>(first_exit_request->a));
+		const bool is_withdraw_prompt = first_exit_request->b != 0;
+		std::string prompt_text = first_exit_request->text;
+		if (prompt_text.empty())
+		{
+			if (is_withdraw_prompt)
+				prompt_text = std::format("Withdraw to Level {}?", destination_level);
+			else
+				prompt_text = std::format("Exit to Level {}?", destination_level);
+		}
+
+		const bool accepted = yes_or_no_prompt("Exit Field", prompt_text.c_str(), false);
+		redrawme = 1;
+		if (accepted)
+		{
+			if (is_withdraw_prompt)
+			{
+				short withdraw_level = destination_level;
+				if (first_withdraw_request != nullptr)
+				{
+					withdraw_level = static_cast<short>(
+						static_cast<std::int32_t>(first_withdraw_request->a));
+				}
+
+				(void)save_data.load("save0");
+				save_data.scen_num = withdraw_level;
+				(void)save_data.save("save0");
+				sync_world_from_save_data();
+
+				events.clear();
+				return endgame(1, withdraw_level);
+			}
+
+			sync_save_data_from_world();
+			world_.withdraw_requested = false;
+			world_.withdraw_level = -1;
+			events.clear();
+			return endgame(0, destination_level);
+		}
+
+		world_.withdraw_requested = false;
+		world_.withdraw_level = -1;
+	}
+	else if (first_withdraw_request != nullptr)
+	{
+		// Defensive clear for dropped duplicate withdraw events in the same tick.
+		world_.withdraw_requested = false;
+		world_.withdraw_level = -1;
+	}
+
 	events.clear();
 
 	// Handle level completion / game ending.
 	if (world_.game_ended && !end)
 	{
+		sync_save_data_from_world();
 		return endgame(world_.ending, world_.next_level);
 	}
 
@@ -545,6 +644,8 @@ short screen::endgame(short ending, short nextlevel)
 	    {
 	        return 1;
 	    }
+
+	sync_save_data_from_world();
 	
 	
 	std::map<int, guy*> before;
@@ -572,6 +673,7 @@ short screen::endgame(short ending, short nextlevel)
     {
         // Retry without updating the roster and saving the game
         end = 1;
+        sync_world_from_save_data();
         return 1;
     }
     
@@ -629,7 +731,7 @@ short screen::endgame(short ending, short nextlevel)
 		end = 1;
 	}
 
-    
+	sync_world_from_save_data();
 	return 1;
 }
 

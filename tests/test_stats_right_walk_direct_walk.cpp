@@ -56,7 +56,6 @@ void test_stats_right_walk_turn_right_adds_walk_command_all_enddirs()
 
     PixieData px = one_px();
     walker w(px);
-    w.sim_config = &cfg;
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
     w.curdir = FACE_UP;
@@ -111,12 +110,6 @@ void test_stats_direct_walk_grid_passability_branches()
     walker w(px);
     walker foe(px);
 
-    // The branch refactored walker methods to use the per-instance sim_level
-    // pointer instead of the global myscreen->level_data.  Wire it up so
-    // fire_check -> create_weapon -> sim_level->add_ob() doesn't segfault.
-    w.sim_config = &cfg;
-    foe.sim_config = &cfg;
-
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
     w.foe = &foe;
@@ -159,7 +152,6 @@ void test_stats_right_walk_forward_normalization_and_forward_blocked_turn_branch
 
     PixieData px = one_px();
     walker w(px);
-    w.sim_config = &cfg;
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
     w.curdir = FACE_UP;
@@ -197,7 +189,6 @@ void test_stats_blocked_direction_switch_tables_all_cases_round6()
 
     PixieData px = one_px();
     walker w(px);
-    w.sim_config = &cfg;
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE * 4, GRID_SIZE * 4);
 

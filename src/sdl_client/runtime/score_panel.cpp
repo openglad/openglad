@@ -134,10 +134,10 @@ short new_score_panel(screen* s, short /*do_it*/)
 
     Uint32 myscore;
     static Uint32 scorecountup[SCORE_TEAM_COUNT] = {
-        s->save_data.m_score[0],
-        s->save_data.m_score[1],
-        s->save_data.m_score[2],
-        s->save_data.m_score[3],
+        s->world_.m_score[0],
+        s->world_.m_score[1],
+        s->world_.m_score[2],
+        s->world_.m_score[3],
     };
 
     for (players = 0; players < s->numviews; players++)
@@ -220,7 +220,7 @@ short new_score_panel(screen* s, short /*do_it*/)
                 }
 
                 const unsigned char team_num = control->team_num;
-                myscore = s->save_data.m_score[team_num];
+                myscore = s->world_.m_score[team_num];
                 if (scorecountup[team_num] > myscore)
                     scorecountup[team_num] = myscore;
                 if (scorecountup[team_num] < myscore)
@@ -230,7 +230,6 @@ short new_score_panel(screen* s, short /*do_it*/)
                 }
                 if (scorecountup[team_num] > myscore)
                     scorecountup[team_num] = myscore;
-                s->save_data.m_score[team_num] = myscore;
 
                 int special_y = bm + special_offset;
                 if (s->numviews > 2 && !(s->numviews == 3 && players == 0))

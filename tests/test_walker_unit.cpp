@@ -33,6 +33,7 @@ struct WalkerFixture {
     {
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 };
@@ -102,7 +103,7 @@ OG_UNIT_TEST(test_walker_friendliness_and_distance_paths)
     OG_ASSERT(!a->is_friendly(b));
     OG_ASSERT(a->is_friendly_to_team(0));
 
-    fx.save.allied_mode = 1;
+    fx.level.world().allied_mode = 1;
     OG_ASSERT(a->is_friendly(b));
 }
 
@@ -146,6 +147,7 @@ struct WalkerR11Fixture {
     {
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 };
@@ -348,7 +350,7 @@ OG_UNIT_TEST(test_walker_r11_act_animate_and_misc_paths)
     w->dead = 0;
     w->owner = nullptr;
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
-    fx.save.allied_mode = 1;
+    fx.level.world().allied_mode = 1;
     (void)w->is_friendly_to_team(0);
 
     // do_summon/check_special fallback and eat_me logging path

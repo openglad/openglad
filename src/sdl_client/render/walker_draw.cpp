@@ -127,6 +127,13 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
 
 bool draw_walker(walker& w, viewscreen* view_buf)
 {
+    const bool show_attack_lunge = active_config().is_on("effects", "attack_lunge");
+    const bool show_hit_recoil = active_config().is_on("effects", "hit_recoil");
+    const bool show_hit_flash = active_config().is_on("effects", "hit_flash");
+    const bool show_hit_anim = active_config().is_on("effects", "hit_anim");
+    const bool show_damage_numbers = active_config().is_on("effects", "damage_numbers");
+    const bool show_heal_numbers = active_config().is_on("effects", "heal_numbers");
+
     // Update the drawing coords from the real position
     w.xpos = static_cast<short>(w.worldx());
     w.ypos = static_cast<short>(w.worldy());
@@ -140,10 +147,13 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	}
 	w.drawcycle++;
 
+    if (!show_hit_anim && w.query_order() == Order::FX && w.family == FAMILY_HIT)
+        return true;
+
 	xscreen = static_cast<Sint32>(w.xpos - view_buf->topx + view_buf->xloc);
 	yscreen = static_cast<Sint32>(w.ypos - view_buf->topy + view_buf->yloc);
 
-	if(w.attack_lunge > 0.0f)
+	if(show_attack_lunge && w.attack_lunge > 0.0f)
 	    {
 	        const float dx = w.attack_lunge * ATTACK_LUNGE_SIZE * cosf(w.attack_lunge_angle);
 	        const float dy = w.attack_lunge * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle);
@@ -151,7 +161,7 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	        yscreen += static_cast<Sint32>(dy);
 	    }
 
-	if(w.hit_recoil > 0.0f)
+	if(show_hit_recoil && w.hit_recoil > 0.0f)
 	    {
 	        const float dx = w.hit_recoil * HIT_RECOIL_SIZE * cosf(w.hit_recoil_angle);
 	        const float dy = w.hit_recoil * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle);
@@ -200,7 +210,7 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	}
 
 	// Draw me
-	if(w.hurt_flash)
+	if(show_hit_flash && w.hurt_flash)
     {
         w.hurt_flash = false;
 
@@ -236,19 +246,30 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	if(should_draw_hp)
         draw_small_health_bar(&w, view_buf);
 
-	for(auto e = w.damage_numbers.begin(); e != w.damage_numbers.end();)
+    if (show_damage_numbers || show_heal_numbers)
     {
-        e->t -= 0.05f;
-        if(e->t < 0)
+	    for(auto e = w.damage_numbers.begin(); e != w.damage_numbers.end();)
         {
-            e = w.damage_numbers.erase(e);
-            continue;
-        }
+            const bool is_heal = (e->color == 56);
+            const bool should_render = is_heal ? show_heal_numbers : show_damage_numbers;
+            if (!should_render)
+            {
+                ++e;
+                continue;
+            }
 
-        e->y -= 1.5f;
-        if(view_buf->control == &w)
-            draw_damage_number(*e, view_buf);
-        e++;
+            e->t -= 0.05f;
+            if(e->t < 0)
+            {
+                e = w.damage_numbers.erase(e);
+                continue;
+            }
+
+            e->y -= 1.5f;
+            if(view_buf->control == &w)
+                draw_damage_number(*e, view_buf);
+            e++;
+        }
     }
 
 	if(og::runtime::current_session->debug_draw_paths_)
@@ -258,6 +279,12 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 
 bool draw_walker_tile(walker& w, viewscreen* view_buf)
 {
+    if (!active_config().is_on("effects", "hit_anim") &&
+        w.query_order() == Order::FX && w.family == FAMILY_HIT)
+    {
+        return true;
+    }
+
 	Sint32 xscreen, yscreen;
 
 	if (w.dead)

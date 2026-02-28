@@ -21,7 +21,6 @@
 enum class Order : unsigned char;
 
 class LevelData;
-class SaveData;
 class obmap;
 class walker;
 namespace og::sim { class SimEventLog; }
@@ -133,6 +132,8 @@ public:
     char end = 0;
     bool retry = false;
     float control_hp = 0.0f;
+    bool withdraw_requested = false;
+    short withdraw_level = -1;
 
     // Gameplay-relevant values that will migrate off SaveData/session.
     std::uint32_t m_score[4] = {};

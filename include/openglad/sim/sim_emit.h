@@ -41,4 +41,13 @@ inline void emit_event(SimEventLog* log, EventKind kind, std::uint32_t a = 0, st
         log->push(kind, a, b);
 }
 
+// Emit a generic simulation event with a text payload.
+inline void emit_event_text(SimEventLog* log, EventKind kind,
+                            const std::string& text,
+                            std::uint32_t a = 0, std::uint32_t b = 0)
+{
+    if (log)
+        log->push_with_text(kind, text, a, b);
+}
+
 } // namespace og::sim

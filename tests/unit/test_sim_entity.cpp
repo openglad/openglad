@@ -19,8 +19,6 @@ OG_UNIT_TEST(test_sim_entity_default_construction)
     OG_ASSERT(e.user == -1);
     OG_ASSERT(e.team_num == 0);
     OG_ASSERT(e.real_team_num == 255);
-    OG_ASSERT(e.sim_save == nullptr);
-    OG_ASSERT(e.sim_config == nullptr);
 }
 
 OG_UNIT_TEST(test_sim_entity_set_position)

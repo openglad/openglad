@@ -365,14 +365,11 @@ public:
     const GameWorld& world() const { return *world_; }
     void attach_world(GameWorld* world);
 
-    // Set remaining sim context pointers used by entities until Phase 5.
-    // Existing entities are rebound immediately; newly created entities read
-    // from these stored pointers during construction.
+    // Legacy transitional hook kept for call-site compatibility. Entity-side
+    // SaveData/config pointers were removed in Phase 5, so this is now a no-op.
     void set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                          og::sim::SimEventLog* events, IRandom* rng,
                          cfg_store* config);
-    SaveData* sim_context_save() const { return sim_ctx_save_; }
-    cfg_store* sim_context_config() const { return sim_ctx_config_; }
 
 private:
     IoError last_io_error_ = IoError::None;
@@ -381,9 +378,6 @@ private:
     GameWorld owned_world_;
     GameWorld* world_ = nullptr;
 
-    // Remaining sim context pointers for entity constructors.
-    SaveData*   sim_ctx_save_ = nullptr;
-    cfg_store*  sim_ctx_config_ = nullptr;
 };
 
 // Read a scenario title from a .fss file. Returns "none" on failure.

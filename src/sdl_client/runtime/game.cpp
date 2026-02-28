@@ -54,6 +54,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 
 	screenp->cleanup(screenp->numviews);
 	screenp->initialize_views();
+	screenp->sync_world_from_save_data();
 
 	// And load the scenario ..
 	screenp->level_data.world().id = screenp->save_data.scen_num;
@@ -64,6 +65,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	        filename ? filename : "(null)", old_scen);
 	    // Failed?  Try level 1.
 		screenp->save_data.scen_num = 1;
+		screenp->sync_world_from_save_data();
         screenp->level_data.world().id = 1;
         used_fallback_level = true;
         if(!screenp->level_data.load())
@@ -73,6 +75,10 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 				return LoadSavedGameError::FallbackLevelLoadFailed;
         }
 	}
+
+	// LevelData::load() clears GameWorld transient/persistent gameplay fields.
+	// Reapply SaveData-owned state before simulation begins.
+	screenp->sync_world_from_save_data();
 
 	TRACE("game", "level loaded: scen%d", screenp->level_data.world().id);
 	for(auto& uptr : screenp->level_data.oblist)

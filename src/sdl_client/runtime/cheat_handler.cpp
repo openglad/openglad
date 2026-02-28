@@ -60,6 +60,8 @@ void handle_cheat_keys(walker*& control, short mynum,
 		}
 		while (result == nullptr && game_screen->save_data.my_team != oldteam);
 
+		game_screen->world_.my_team = game_screen->save_data.my_team;
+
 		if (result != nullptr)
 			control = result;
 

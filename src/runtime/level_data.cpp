@@ -46,30 +46,11 @@ void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                                 og::sim::SimEventLog* events, IRandom* rng,
                                 cfg_store* config)
 {
-    sim_ctx_save_ = save;
-    sim_ctx_config_ = config;
-
+    (void)save;
+    (void)config;
     (void)enemy_freeze;
     (void)rng;
     (void)events;
-
-    auto rebind_entity_context = [this](walker* w) {
-        if (w == nullptr)
-            return;
-        w->sim_save = sim_ctx_save_;
-        w->sim_config = sim_ctx_config_;
-    };
-
-    // Rebind already-loaded entities so callers can set context either
-    // before or after loading a scenario.
-    for (auto& uptr : world().oblist)
-        rebind_entity_context(uptr.get());
-    for (auto& uptr : world().fxlist)
-        rebind_entity_context(uptr.get());
-    for (auto& uptr : world().weaplist)
-        rebind_entity_context(uptr.get());
-    for (auto& uptr : world().dead_list)
-        rebind_entity_context(uptr.get());
 }
 
 static constexpr char VERSION_NUM = 9; // save scenario type info
@@ -515,6 +496,8 @@ void LevelData::attach_world(GameWorld* world)
         next_world->end = old_world->end;
         next_world->retry = old_world->retry;
         next_world->control_hp = old_world->control_hp;
+        next_world->withdraw_requested = old_world->withdraw_requested;
+        next_world->withdraw_level = old_world->withdraw_level;
         std::copy(std::begin(old_world->m_score), std::end(old_world->m_score),
                   std::begin(next_world->m_score));
         next_world->my_team = old_world->my_team;
@@ -538,6 +521,8 @@ void LevelData::attach_world(GameWorld* world)
         old_world->living_count = 0;
         old_world->pixmaxx = 0;
         old_world->pixmaxy = 0;
+        old_world->withdraw_requested = false;
+        old_world->withdraw_level = -1;
         old_world->mysmoother.reset();
         if (!old_world->myobmap)
             old_world->myobmap = std::make_unique<obmap>();

@@ -3,7 +3,6 @@
 #include <openglad/entities/guy.h>
 #include <openglad/runtime/guy_create.h>
 #include <openglad/data/gloader.h>
-#include <openglad/data/save_data.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
@@ -647,10 +646,8 @@ void test_walker_round6_fire_and_friendliness_paths()
     TEST_ASSERT(diagonal_weapon != nullptr, "create_weapon should succeed for living actor");
 
     // is_friendly / is_friendly_to_team paths with allied mode and myguy combinations.
-    SaveData save;
-    save.allied_mode = 1;
-    actor->sim_save = &save;
-    target->sim_save = &save;
+    GameWorld& world = og::runtime::current_session->myscreen_->world_;
+    world.allied_mode = 1;
     actor->team_num = 0;
     target->team_num = 2;
     actor->clear_myguy();
@@ -763,10 +760,8 @@ void test_walker_round7a_compute_outline_and_friendliness_edge_paths()
                 "compute_outline should settle into neutral or team outline");
 
     // is_friendly null/dead guards and owner-chain branches.
-    SaveData save;
-    save.allied_mode = 1;
-    subject->sim_save = &save;
-    viewer->sim_save = &save;
+    GameWorld& world = og::runtime::current_session->myscreen_->world_;
+    world.allied_mode = 1;
 
     TEST_ASSERT_EQ(0, (int)subject->is_friendly(nullptr), "is_friendly should reject null");
 
@@ -811,17 +806,16 @@ void test_walker_round7a_death_guard_and_friendliness_team_paths()
     TEST_ASSERT_EQ(0, (int)w->death(), "second death call should hit death_called guard");
 
     // is_friendly_to_team paths for no myguy and hired allied modes.
-    SaveData save;
-    w->sim_save = &save;
+    GameWorld& world = og::runtime::current_session->myscreen_->world_;
     w->dead = 0;
     w->team_num = 2;
     w->clear_myguy();
 
-    save.allied_mode = 0;
+    world.allied_mode = 0;
     TEST_ASSERT_EQ(1, (int)w->is_friendly_to_team(2), "enemy mode should only match own team");
     TEST_ASSERT_EQ(0, (int)w->is_friendly_to_team(0), "enemy mode should reject other teams");
 
-    save.allied_mode = 1;
+    world.allied_mode = 1;
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     TEST_ASSERT_EQ(1, (int)w->is_friendly_to_team(0), "hired unit in allied mode should be friendly to team 0");
     TEST_ASSERT_EQ(0, (int)w->is_friendly_to_team(3), "hired unit in allied mode should reject non-zero teams");
@@ -831,11 +825,10 @@ void test_walker_round7a_death_guard_and_friendliness_team_paths()
     TEST_ASSERT(other != nullptr, "other created");
     if (other)
     {
-        other->sim_save = &save;
         other->team_num = 2;
         other->clear_myguy();
         w->clear_myguy();
-        save.allied_mode = 1;
+        world.allied_mode = 1;
         TEST_ASSERT_EQ(1, (int)w->is_friendly(other), "both without myguy should compare teams only");
         other->team_num = 1;
         TEST_ASSERT_EQ(0, (int)w->is_friendly(other), "both without myguy different teams should be unfriendly");
@@ -950,10 +943,8 @@ void test_walker_round11_friendliness_owner_chain_and_difficulty_paths_1480_1615
     if (!(actor && target && actor_owner && actor_root && target_owner))
         return;
 
-    SaveData save;
-    save.allied_mode = 1;
-    actor->sim_save = &save;
-    target->sim_save = &save;
+    GameWorld& world = og::runtime::current_session->myscreen_->world_;
+    world.allied_mode = 1;
 
     // Owner-chain traversal: actor -> actor_owner -> actor_root -> self.
     actor_owner->owner = actor_root;
@@ -1100,14 +1091,12 @@ void test_walker_round14_distance_color_and_friendliness_modes_1480_1615()
     a->team_num = 3;
     TEST_ASSERT_EQ(88, (int)a->query_team_color(), "team color should map to team*16+40");
 
-    SaveData save;
-    a->sim_save = &save;
-    b->sim_save = &save;
+    GameWorld& world = og::runtime::current_session->myscreen_->world_;
     a->dead = 0;
     b->dead = 0;
 
     // Enemy mode (allied_mode == 0) compares team numbers.
-    save.allied_mode = 0;
+    world.allied_mode = 0;
     a->team_num = 1;
     b->team_num = 1;
     a->clear_myguy();
@@ -1119,7 +1108,7 @@ void test_walker_round14_distance_color_and_friendliness_modes_1480_1615()
     TEST_ASSERT_EQ(0, (int)a->is_friendly_to_team(0), "enemy mode should reject other teams");
 
     // Allied mode with both myguy pointers should return friendly.
-    save.allied_mode = 1;
+    world.allied_mode = 1;
     a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     b->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
     TEST_ASSERT_EQ(1, (int)a->is_friendly(b), "allied mode with both myguy pointers should be friendly");

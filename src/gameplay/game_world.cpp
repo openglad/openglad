@@ -9,7 +9,6 @@
 
 #include <openglad/data/gloader.h>
 #include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/entities/obmap.h>
@@ -723,6 +722,8 @@ void GameWorld::clear()
     end = 0;
     retry = false;
     control_hp = 0.0f;
+    withdraw_requested = false;
+    withdraw_level = -1;
     for (int i = 0; i < 4; ++i)
         m_score[i] = 0;
     my_team = 0;
@@ -761,17 +762,7 @@ void GameWorld::tick()
     if (current_game == nullptr || current_game->sim_events == nullptr)
         return;
 
-    SaveData* save = current_game->save;
     og::sim::SimEventLog& events = *current_game->sim_events;
-
-    if (save != nullptr)
-    {
-        my_team = save->my_team;
-        allied_mode = save->allied_mode;
-        current_scenario = save->scen_num;
-        for (int i = 0; i < 4; ++i)
-            m_score[i] = save->m_score[i];
-    }
 
     game_ended = false;
     next_level = -1;
@@ -811,6 +802,9 @@ void GameWorld::tick()
     bool printed_time = false;
     for (auto& uptr : oblist)
     {
+        if (withdraw_requested)
+            break;
+
         walker* ob = uptr.get();
         if (!enemy_freeze) // normal functionality
         {
@@ -853,9 +847,15 @@ void GameWorld::tick()
         }
     }
 
+    if (withdraw_requested)
+        return;
+
     // --- Weapon act phase ---
     for (auto& uptr : weaplist)
     {
+        if (withdraw_requested)
+            break;
+
         walker* ob = uptr.get();
         if (ob && !ob->dead)
         {
@@ -869,9 +869,15 @@ void GameWorld::tick()
         }
     }
 
+    if (withdraw_requested)
+        return;
+
     // --- Check background for exits ---
     for (auto& uptr : fxlist)
     {
+        if (withdraw_requested)
+            break;
+
         walker* ob = uptr.get();
         if (ob && !ob->dead)
         {
@@ -882,6 +888,9 @@ void GameWorld::tick()
             }
         }
     }
+
+    if (withdraw_requested)
+        return;
 
     // --- Level completion check ---
     if (level_done == 2)

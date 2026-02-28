@@ -94,6 +94,8 @@ class screen : public video
 		walker *set_walker(walker *ob, Order order, Sint32 family);
 		ScenarioTitleError get_scen_title_with_error(const char *filename, std::string& out_title);
 		const char* get_scen_title(const char *filename, screen *master);
+		void sync_world_from_save_data();
+		void sync_save_data_from_world();
 		bool is_level_completed(int level_index) const;
 		int get_num_levels_completed(const std::string& campaign) const;
 		void add_level_completed(const std::string& campaign, int level_index);

@@ -32,9 +32,7 @@
 #include <openglad/entities/walker.h>
 #include <openglad/entities/walker_render.h>
 #include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
 #include <openglad/data/gloader.h>
-#include <openglad/data/gparser.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
@@ -77,6 +75,13 @@ std::int32_t scale_los_circular(std::int32_t value)
         scaled,
         static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
         static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max())));
+}
+
+short query_allied_mode()
+{
+    if (current_game == nullptr || current_game->world == nullptr)
+        return 0;
+    return current_game->world->allied_mode;
 }
 } // namespace
 
@@ -392,13 +397,10 @@ walker  * walker::fire()
 			{
 				og::sim::emit_sound(current_game->sim_events, SOUND_CLANG);
 
-                if(sim_config && sim_config->is_on("effects", "attack_lunge"))
+                if(query_order() == Order::Living)
                 {
-                    if(query_order() == Order::Living)
-                    {
-                        attack_lunge = 1.0f;
-                        attack_lunge_angle = get_current_angle();
-                    }
+                    attack_lunge = 1.0f;
+                    attack_lunge_angle = get_current_angle();
                 }
 
 				// Family-specific melee hit callback
@@ -1553,7 +1555,7 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// Is allied mode set to zero (enemy)?
 	// If so, then if our team numbers don't match,
 	// we are not friendly
-	if (sim_save->allied_mode == 0 || has_myguy == 0)
+	if (query_allied_mode() == 0 || has_myguy == 0)
 	{
 		return (headus->team_num == headtarget->team_num);
 	}
@@ -1609,7 +1611,7 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 
 	// Is allied mode set to zero (enemy) or were we not hired (!myguy)?
 	// If so, then our team number must match.
-	if (sim_save->allied_mode == 0 || has_myguy == 0)
+	if (query_allied_mode() == 0 || has_myguy == 0)
 	{
 		return (headus->team_num == team);
 	}
