@@ -104,6 +104,7 @@ std::string get_asset_path()
 // Category C: Safe no-ops (documented)
 // ---------------------------------------------------------------------------
 
+#include <openglad/data/level_data.h>
 #include <openglad/data/level_data_hooks.h>
 #include <openglad/data/gloader.h>
 
@@ -158,11 +159,41 @@ EntityFactory headless_create_entity_factory()
     return factory;
 }
 
+void headless_wire_world_entity_services(GameWorld* world, LevelData* level)
+{
+    if (world == nullptr || level == nullptr)
+        return;
+
+    if (!level->myloader)
+        level->myloader = std::make_unique<loader>(headless_create_entity_factory());
+
+    world->entity_factory = [level](Order order, std::int32_t family) -> std::unique_ptr<walker> {
+        if (level->myloader == nullptr)
+            return nullptr;
+        return level->myloader->create_walker_owned(order, family);
+    };
+
+    world->entity_configurator = [level](walker& entity, Order order, std::int32_t family) -> const PixieData* {
+        if (level->myloader == nullptr)
+            return nullptr;
+        loader* game_loader = level->myloader.get();
+        game_loader->set_walker(&entity, order, family);
+        return game_loader->graphics_for(entity.query_order(), entity.family);
+    };
+
+    world->entity_derived_stats = [level](walker* entity, Order order, std::int32_t family) {
+        if (entity == nullptr || level->myloader == nullptr)
+            return;
+        level->myloader->set_derived_stats(entity, order, family);
+    };
+}
+
 const LevelDataHooks kHeadlessLevelDataHooks{
     .clear_stale_view_controls = headless_clear_stale_view_controls,
     .draw = headless_level_data_draw,
     .create_level_render = headless_create_level_render,
     .create_entity_factory = headless_create_entity_factory,
+    .wire_world_entity_services = headless_wire_world_entity_services,
 };
 
 bool yes_or_no_prompt(const char* /*title*/, const char* /*message*/, bool default_value)

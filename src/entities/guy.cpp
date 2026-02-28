@@ -19,8 +19,6 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
-#include <openglad/data/level_data.h>
-#include <openglad/data/gloader.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/entities/family_descriptor.h>
@@ -315,11 +313,7 @@ void guy::update_derived_stats(walker* w)
 {
     guy* temp_guy = w->myguy;
     if (current_game && current_game->world)
-    {
-        LevelData* level = current_game->world->level_data();
-        if (level && level->myloader)
-            level->myloader->set_derived_stats(w, Order::Living, temp_guy->family);
-    }
+        current_game->world->set_entity_derived_stats(w, Order::Living, temp_guy->family);
     
     
     w->stats()->max_hitpoints += temp_guy->get_hp_bonus();

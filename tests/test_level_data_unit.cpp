@@ -955,7 +955,7 @@ OG_UNIT_TEST(test_level_data_r16_external_world_teardown_detaches_level)
         GameWorld external_world;
         level.attach_world(&external_world);
         OG_ASSERT(&level.world() == &external_world);
-        OG_ASSERT(external_world.level_data() == &level);
+        OG_ASSERT(static_cast<bool>(external_world.entity_factory));
 
         walker* spawned = level.add_ob(Order::Living, FAMILY_SOLDIER);
         OG_ASSERT(spawned != nullptr);
@@ -963,7 +963,7 @@ OG_UNIT_TEST(test_level_data_r16_external_world_teardown_detaches_level)
         OG_ASSERT(level.oblist.size() == 1);
     }
 
-    OG_ASSERT(level.world().level_data() == &level);
+    OG_ASSERT(static_cast<bool>(level.world().entity_factory));
     OG_ASSERT(level.numobs == 1);
     OG_ASSERT(level.oblist.size() == 1);
 

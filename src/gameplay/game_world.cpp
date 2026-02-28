@@ -7,7 +7,6 @@
  */
 #include <openglad/gameplay/game_world.h>
 
-#include <openglad/data/level_data.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/entities/obmap.h>
@@ -19,6 +18,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <format>
+#include <utility>
 
 namespace
 {
@@ -39,13 +39,27 @@ GameWorld::GameWorld(std::uint32_t seed)
 
 GameWorld::~GameWorld()
 {
-    if (level_data_ != nullptr)
-        level_data_->attach_world(nullptr);
+    if (detach_callback_)
+        detach_callback_();
 }
 
-void GameWorld::set_level_data(LevelData* level_data)
+const PixieData* GameWorld::configure_existing_entity(walker& entity, Order order, std::int32_t family)
 {
-    level_data_ = level_data;
+    if (!entity_configurator)
+        return nullptr;
+    return entity_configurator(entity, order, family);
+}
+
+void GameWorld::set_entity_derived_stats(walker* entity, Order order, std::int32_t family)
+{
+    if (!entity_derived_stats || entity == nullptr)
+        return;
+    entity_derived_stats(entity, order, family);
+}
+
+void GameWorld::set_detach_callback(std::function<void()> callback)
+{
+    detach_callback_ = std::move(callback);
 }
 
 walker* GameWorld::add_to_list(Order order, std::int32_t family,

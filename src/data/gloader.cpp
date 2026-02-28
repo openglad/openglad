@@ -528,6 +528,18 @@ loader::~loader(void)
 	// vectors clean up automatically
 }
 
+const PixieData* loader::graphics_for(Order order, std::int32_t family) const
+{
+    order = sanitize_order(order);
+    if (family < 0 || family >= NUM_FAMILIES)
+        family = 0;
+
+    const PixieData& pix = graphics[PIX(order, family)];
+    if (!pix.valid())
+        return nullptr;
+    return &pix;
+}
+
 void loader::set_derived_stats(walker* w, Order order, std::int32_t family)
 {
     order = sanitize_order(order);

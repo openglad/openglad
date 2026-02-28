@@ -12,6 +12,7 @@
 #include <memory>
 
 class LevelData;
+class GameWorld;
 class walker;
 class screen;
 class PixieData;
@@ -23,11 +24,13 @@ struct LevelDataHooks
     using DrawFn = void (*)(LevelData* level, screen* screenp);
     using CreateLevelRenderFn = std::unique_ptr<LevelRender> (*)(PixieData pixdata[]);
     using CreateEntityFactoryFn = EntityFactory (*)();
+    using WireWorldEntityServicesFn = void (*)(GameWorld* world, LevelData* level);
 
     ClearStaleViewControlsFn clear_stale_view_controls = nullptr;
     DrawFn draw = nullptr;
     CreateLevelRenderFn create_level_render = nullptr;
     CreateEntityFactoryFn create_entity_factory = nullptr;
+    WireWorldEntityServicesFn wire_world_entity_services = nullptr;
 };
 
 // Runtime providers expose pre-wired capability tables.

@@ -110,23 +110,76 @@ static EntityFactory make_default_entity_factory()
     return factory;
 }
 
-static EntityFactory resolve_entity_factory(const LevelDataHooks* hooks)
-{
-    if (hooks != nullptr && hooks->create_entity_factory != nullptr)
-        return hooks->create_entity_factory();
-    return make_default_entity_factory();
-}
-
-static void wire_world_entity_factory(GameWorld& world, LevelData* level)
+static void wire_world_loader_fallback(GameWorld& world, LevelData* level)
 {
     world.entity_factory = [level](Order order, std::int32_t family) -> std::unique_ptr<walker> {
         if (level == nullptr || !level->myloader)
             return nullptr;
         return level->myloader->create_walker_owned(order, family);
     };
+
+    world.entity_configurator = [level](walker& entity, Order order, std::int32_t family) -> const PixieData* {
+        if (level == nullptr || !level->myloader)
+            return nullptr;
+        loader* game_loader = level->myloader.get();
+        game_loader->set_walker(&entity, order, family);
+        return game_loader->graphics_for(entity.query_order(), entity.family);
+    };
+
+    world.entity_derived_stats = [level](walker* entity, Order order, std::int32_t family) {
+        if (level == nullptr || !level->myloader || entity == nullptr)
+            return;
+        level->myloader->set_derived_stats(entity, order, family);
+    };
 }
 
+static void wire_world_entity_services(GameWorld* world,
+                                       LevelData* level,
+                                       const LevelDataHooks* hooks)
+{
+    if (world == nullptr || level == nullptr)
+        return;
 
+    if (hooks != nullptr && hooks->wire_world_entity_services != nullptr)
+    {
+        hooks->wire_world_entity_services(world, level);
+        return;
+    }
+
+    if (!level->myloader)
+    {
+        if (hooks != nullptr && hooks->create_entity_factory != nullptr)
+            level->myloader = std::make_unique<loader>(hooks->create_entity_factory());
+        else
+            level->myloader = std::make_unique<loader>(make_default_entity_factory());
+    }
+    wire_world_loader_fallback(*world, level);
+}
+
+static void clear_world_entity_services(GameWorld* world)
+{
+    if (world == nullptr)
+        return;
+    world->entity_factory = {};
+    world->entity_configurator = {};
+    world->entity_derived_stats = {};
+}
+
+static void install_world_detach_callback(GameWorld* world, LevelData* level)
+{
+    if (world == nullptr)
+        return;
+    if (level == nullptr)
+    {
+        world->set_detach_callback({});
+        return;
+    }
+
+    world->set_detach_callback([level, world] {
+        if (&level->world() == world)
+            level->attach_world(nullptr);
+    });
+}
 
 
 CampaignData::CampaignData(const std::string& campaign_id)
@@ -458,11 +511,9 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks)
     hooks_ = hooks;
     headless_ = headless;
     world_->id = level_id;
-    world_->set_level_data(this);
 
 	world_->myobmap = std::make_unique<obmap>();
-    myloader = std::make_unique<loader>(resolve_entity_factory(hooks_));
-    wire_world_entity_factory(*world_, this);
+    wire_world_entity_services(world_, this, hooks_);
 
     if (!headless)
     {
@@ -479,8 +530,8 @@ LevelData::~LevelData()
 
     if (world_ != nullptr)
     {
-        world_->entity_factory = {};
-        world_->set_level_data(nullptr);
+        world_->set_detach_callback({});
+        clear_world_entity_services(world_);
         world_ = nullptr;
     }
 
@@ -506,8 +557,10 @@ void LevelData::attach_world(GameWorld* world)
     {
         if (old_world != nullptr)
         {
-            old_world->set_level_data(this);
-            wire_world_entity_factory(*old_world, this);
+            old_world->set_detach_callback({});
+            wire_world_entity_services(old_world, this, hooks_);
+            if (old_world != &owned_world_)
+                install_world_detach_callback(old_world, this);
         }
         return;
     }
@@ -559,13 +612,16 @@ void LevelData::attach_world(GameWorld* world)
         old_world->mysmoother.reset();
         if (!old_world->myobmap)
             old_world->myobmap = std::make_unique<obmap>();
-        old_world->entity_factory = {};
-        old_world->set_level_data(nullptr);
+        old_world->set_detach_callback({});
+        clear_world_entity_services(old_world);
     }
 
     world_ = next_world;
-    world_->set_level_data(this);
-    wire_world_entity_factory(*world_, this);
+    wire_world_entity_services(world_, this, hooks_);
+    if (world_ != &owned_world_)
+        install_world_detach_callback(world_, this);
+    else
+        world_->set_detach_callback({});
 }
 
 walker* LevelData::add_ob(Order order, std::int32_t family, bool atstart)
@@ -1440,7 +1496,8 @@ bool LevelData::load()
     }
     Log("Loading version {} scenario", static_cast<int>(versionnumber));
 
-    myloader = std::make_unique<loader>(resolve_entity_factory(hooks_));
+    myloader.reset();
+    wire_world_entity_services(world_, this, hooks_);
     clear();
     world().par_value = static_cast<short>(world().id);
 

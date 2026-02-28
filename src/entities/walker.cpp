@@ -31,8 +31,6 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/walker_render.h>
-#include <openglad/data/level_data.h>
-#include <openglad/data/gloader.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
@@ -1248,29 +1246,25 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	// Reset bit flags
 	stats_->clear_bit_flags();
 
-	LevelData* level = (current_game && current_game->world)
-	    ? current_game->world->level_data()
-	    : nullptr;
-	loader* game_loader = (level && level->myloader)
-	    ? level->myloader.get()
-	    : nullptr;
-	if (game_loader == nullptr)
+	if (current_game == nullptr || current_game->world == nullptr)
 		return;
 
 	// Do this before resetting graphic so illegal
 	//  family values don't try to set graphics.
 	//  order and family are only set if legal
-	game_loader->set_walker(this, whatorder, whatfamily);
+	const PixieData* data = current_game->world->configure_existing_entity(*this, whatorder, whatfamily);
+	if (data == nullptr)
+		return;
 
 	// Reset the graphics
-	const PixieData& data = game_loader->graphics[PIX(order, family)];
+	const PixieData& new_data = *data;
 
 	// Save center before resize (uses old sizex/sizey)
 	xcenter = xpos + sizex/2;
 	ycenter = ypos + sizey/2;
 
 	// Update sim fields + sync render component
-	set_data(data);
+	set_data(new_data);
 	frame = 0;
 	cycle = 0;
 

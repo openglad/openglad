@@ -50,6 +50,7 @@ class loader
 		loader& operator=(loader&&) = delete;
 		[[nodiscard]] std::unique_ptr<walker> create_walker_owned(Order order, std::int32_t family);
 		[[nodiscard]] std::unique_ptr<pixieN> create_pixieN_owned(Order order, std::int32_t family);
+		[[nodiscard]] const PixieData* graphics_for(Order order, std::int32_t family) const;
 		void set_derived_stats(walker* w, Order order, std::int32_t family);
 		walker *set_walker(walker *ob, Order order, std::int32_t family);
 		std::vector<PixieData> graphics;

@@ -21,7 +21,6 @@
 // Forward-declare Order enum class (defined in base.h)
 enum class Order : unsigned char;
 
-class LevelData;
 class obmap;
 class walker;
 namespace og::sim { class SimEventLog; }
@@ -80,14 +79,13 @@ public:
     std::int32_t pixmaxx = 0;
     std::int32_t pixmaxy = 0;
 
-    void set_level_data(LevelData* level_data);
-    LevelData* level_data() { return level_data_; }
-    const LevelData* level_data() const { return level_data_; }
-
     walker* add_ob(Order order, std::int32_t family, bool atstart = false);
     walker* add_fx_ob(Order order, std::int32_t family);
     walker* add_weap_ob(Order order, std::int32_t family);
     short remove_ob(walker* ob);
+    const PixieData* configure_existing_entity(walker& entity, Order order, std::int32_t family);
+    void set_entity_derived_stats(walker* entity, Order order, std::int32_t family);
+    void set_detach_callback(std::function<void()> callback);
 
     bool query_passable(float x, float y, walker* ob);
     bool query_object_passable(float x, float y, walker* ob);
@@ -143,6 +141,8 @@ public:
     short current_scenario = 0;
     std::set<int> completed_levels;
     std::function<std::unique_ptr<walker>(Order, std::int32_t)> entity_factory;
+    std::function<const PixieData*(walker&, Order, std::int32_t)> entity_configurator;
+    std::function<void(walker*, Order, std::int32_t)> entity_derived_stats;
 
 private:
     walker* add_to_list(Order order, std::int32_t family,
@@ -151,5 +151,5 @@ private:
 
     std::uint32_t level_tick_count_ = 0;
     int last_level_id_ = -1;
-    LevelData* level_data_ = nullptr;
+    std::function<void()> detach_callback_;
 };

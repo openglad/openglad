@@ -100,11 +100,41 @@ EntityFactory sdl_create_entity_factory()
     return factory;
 }
 
+void sdl_wire_world_entity_services(GameWorld* world, LevelData* level)
+{
+    if (world == nullptr || level == nullptr)
+        return;
+
+    if (!level->myloader)
+        level->myloader = std::make_unique<loader>(sdl_create_entity_factory());
+
+    world->entity_factory = [level](Order order, std::int32_t family) -> std::unique_ptr<walker> {
+        if (level->myloader == nullptr)
+            return nullptr;
+        return level->myloader->create_walker_owned(order, family);
+    };
+
+    world->entity_configurator = [level](walker& entity, Order order, std::int32_t family) -> const PixieData* {
+        if (level->myloader == nullptr)
+            return nullptr;
+        loader* game_loader = level->myloader.get();
+        game_loader->set_walker(&entity, order, family);
+        return game_loader->graphics_for(entity.query_order(), entity.family);
+    };
+
+    world->entity_derived_stats = [level](walker* entity, Order order, std::int32_t family) {
+        if (entity == nullptr || level->myloader == nullptr)
+            return;
+        level->myloader->set_derived_stats(entity, order, family);
+    };
+}
+
 const LevelDataHooks kSdlLevelDataHooks{
     .clear_stale_view_controls = sdl_clear_stale_view_controls,
     .draw = sdl_level_data_draw,
     .create_level_render = sdl_create_level_render,
     .create_entity_factory = sdl_create_entity_factory,
+    .wire_world_entity_services = sdl_wire_world_entity_services,
 };
 } // namespace
 
