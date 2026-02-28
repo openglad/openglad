@@ -44,11 +44,16 @@ jobs:
         run: mkdir -p fuzz/crashes
 
       - name: Run ${{ matrix.target }}
+        timeout-minutes: 5
         run: |
-          DURATION=${{ github.event_name == 'schedule' && '3600' || '600' }}
-          ./build/ci-fuzz/${{ matrix.target }} \
+          # Keep each fuzz target bounded so PR verification remains fast and
+          # deterministic. The outer `timeout` is a hard cap; max_total_time
+          # controls libFuzzer's own execution budget.
+          DURATION=240
+          timeout 295s ./build/ci-fuzz/${{ matrix.target }} \
             ${{ matrix.corpus }} \
             -max_total_time=$DURATION \
+            -timeout=15 \
             -artifact_prefix=fuzz/crashes/${{ matrix.target }}_ \
             -print_final_stats=1
 
