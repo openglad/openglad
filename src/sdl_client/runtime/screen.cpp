@@ -89,6 +89,30 @@ bool rw_read_exact(SDL_RWops* infile, void* dst, size_t size, size_t count)
 {
     return infile != nullptr && SDL_RWread(infile, dst, size, count) == count;
 }
+
+const char* save_data_io_error_string(SaveDataIoError err)
+{
+    switch (err)
+    {
+        case SaveDataIoError::None:
+            return "none";
+        case SaveDataIoError::OpenReadFailed:
+            return "open_read_failed";
+        case SaveDataIoError::OpenWriteFailed:
+            return "open_write_failed";
+        case SaveDataIoError::ReadFailed:
+            return "read_failed";
+        case SaveDataIoError::WriteFailed:
+            return "write_failed";
+        case SaveDataIoError::InvalidHeader:
+            return "invalid_header";
+        case SaveDataIoError::UnsupportedVersion:
+            return "unsupported_version";
+        case SaveDataIoError::CampaignLoadFailed:
+            return "campaign_load_failed";
+    }
+    return "unknown";
+}
 } // namespace
 
 static inline cfg_store& active_config()
@@ -590,9 +614,32 @@ bool screen::act()
 						static_cast<std::int32_t>(first_withdraw_request->a));
 				}
 
-				(void)save_data.load("save0");
+				const SaveDataIoError load_error = save_data.load_with_error("save0");
+				if (load_error != SaveDataIoError::None)
+				{
+					LogError("withdraw_load_failed target_level={} error={}\n",
+					         withdraw_level,
+					         save_data_io_error_string(load_error));
+					sync_save_data_from_world();
+					world_.withdraw_requested = false;
+					world_.withdraw_level = -1;
+					events.clear();
+					return 1;
+				}
+
 				save_data.scen_num = withdraw_level;
-				(void)save_data.save("save0");
+				const SaveDataIoError save_error = save_data.save_with_error("save0");
+				if (save_error != SaveDataIoError::None)
+				{
+					LogError("withdraw_save_failed target_level={} error={}\n",
+					         withdraw_level,
+					         save_data_io_error_string(save_error));
+					sync_save_data_from_world();
+					world_.withdraw_requested = false;
+					world_.withdraw_level = -1;
+					events.clear();
+					return 1;
+				}
 				sync_world_from_save_data();
 
 				events.clear();

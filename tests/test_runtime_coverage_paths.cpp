@@ -19,6 +19,8 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 short new_score_panel(screen* s, short do_it);
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
 
 namespace {
 
@@ -94,13 +96,55 @@ void test_input_bridge_window_and_key_paths()
     const short saved_key_press_event = og::runtime::current_session->key_press_event_;
     const int saved_raw_key = og::runtime::current_session->raw_key_;
 
+    screen* s = og::runtime::current_session->myscreen_;
+    TEST_ASSERT(s != nullptr, "active screen should be available");
+    if (!s)
+        return;
+
+    const short saved_scen_num = s->save_data.scen_num;
+    const short saved_allied_mode = s->save_data.allied_mode;
+    const std::uint32_t saved_score0 = s->save_data.m_score[0];
+    const std::string saved_campaign = s->save_data.current_campaign;
+    const auto saved_completed_levels = s->save_data.completed_levels;
+
     SDL_Event e{};
     e.type = SDL_WINDOWEVENT;
+
+    s->save_data.current_campaign = "org.openglad.gladiator";
+    s->save_data.completed_levels[s->save_data.current_campaign].clear();
+    s->save_data.scen_num = 2;
+    s->save_data.allied_mode = 0;
+    s->save_data.m_score[0] = 11;
+    s->world_.current_scenario = 9;
+    s->world_.allied_mode = 3;
+    s->world_.m_score[0] = 42;
+    s->world_.completed_levels = {3, 5};
+
     e.window.event = SDL_WINDOWEVENT_MINIMIZED;
     handle_window_event(e);
+    TEST_ASSERT_EQ(9, static_cast<int>(s->save_data.scen_num),
+                   "minimize autosave should sync scen_num from world");
+    TEST_ASSERT_EQ(3, static_cast<int>(s->save_data.allied_mode),
+                   "minimize autosave should sync allied_mode from world");
+    TEST_ASSERT_EQ(42, static_cast<int>(s->save_data.m_score[0]),
+                   "minimize autosave should sync score from world");
+    TEST_ASSERT(s->save_data.completed_levels[s->save_data.current_campaign] == s->world_.completed_levels,
+                "minimize autosave should sync completed levels from world");
 
+    s->world_.current_scenario = 12;
+    s->world_.allied_mode = 1;
+    s->world_.m_score[0] = 77;
+    s->world_.completed_levels = {1, 2, 4};
     e.window.event = SDL_WINDOWEVENT_CLOSE;
     handle_window_event(e);
+    TEST_ASSERT_EQ(12, static_cast<int>(s->save_data.scen_num),
+                   "close autosave should sync scen_num from world");
+    TEST_ASSERT_EQ(1, static_cast<int>(s->save_data.allied_mode),
+                   "close autosave should sync allied_mode from world");
+    TEST_ASSERT_EQ(77, static_cast<int>(s->save_data.m_score[0]),
+                   "close autosave should sync score from world");
+    TEST_ASSERT(s->save_data.completed_levels[s->save_data.current_campaign] == s->world_.completed_levels,
+                "close autosave should sync completed levels from world");
 
     e.window.event = SDL_WINDOWEVENT_RESTORED;
     handle_window_event(e);
@@ -149,6 +193,12 @@ void test_input_bridge_window_and_key_paths()
     og::runtime::current_session->input_continue_ = saved_continue;
     og::runtime::current_session->key_press_event_ = saved_key_press_event;
     og::runtime::current_session->raw_key_ = saved_raw_key;
+    s->save_data.scen_num = saved_scen_num;
+    s->save_data.allied_mode = saved_allied_mode;
+    s->save_data.m_score[0] = saved_score0;
+    s->save_data.current_campaign = saved_campaign;
+    s->save_data.completed_levels = saved_completed_levels;
+    s->sync_world_from_save_data();
     update_overscan_setting();
 }
 REGISTER_TEST(test_input_bridge_window_and_key_paths);
@@ -472,6 +522,63 @@ void test_treasure_batch3_exit_withdraw_accept_path()
     clear_level_lists();
 }
 REGISTER_TEST(test_treasure_batch3_exit_withdraw_accept_path);
+
+void test_screen_withdraw_aborts_when_autosave_load_fails()
+{
+    clear_level_lists();
+
+    TEST_ASSERT(current_game != nullptr && current_game->sim_events != nullptr, "sim events should be available");
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& sim_events = *current_game->sim_events;
+    sim_events.clear();
+
+    screen* s = og::runtime::current_session->myscreen_;
+    TEST_ASSERT(s != nullptr, "active screen should be available");
+    if (!s)
+        return;
+
+    s->save_data.reset();
+    s->save_data.current_campaign = "org.openglad.missing-campaign";
+    s->save_data.scen_num = 7;
+    TEST_ASSERT(s->save_data.save("save0"), "fixture save with missing campaign should write");
+    s->sync_world_from_save_data();
+
+    walker* ally = add_living(0);
+    walker* foe = add_living(1);
+    TEST_ASSERT(ally && foe, "ally/foe should exist so the level does not auto-end");
+    if (!(ally && foe))
+        return;
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+
+    sim_events.push_with_text(og::sim::EventKind::RequestExitConfirmation,
+                              "Withdraw to Level 4?", 4, 1);
+    sim_events.push(og::sim::EventKind::WithdrawToLevel, 4, 0);
+
+    TEST_ASSERT(s->act(), "act should continue after failed withdraw load");
+    TEST_ASSERT_EQ(7, static_cast<int>(s->save_data.scen_num),
+                   "failed withdraw load should not change scen_num");
+    TEST_ASSERT_EQ(7, static_cast<int>(s->world_.current_scenario),
+                   "failed withdraw load should keep world scenario unchanged");
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::CampaignLoadFailed),
+                   static_cast<int>(s->save_data.last_io_error()),
+                   "withdraw load failure should be surfaced as campaign load failure");
+    TEST_ASSERT(!s->world_.withdraw_requested,
+                "failed withdraw load should clear world.withdraw_requested");
+    TEST_ASSERT_EQ(-1, static_cast<int>(s->world_.withdraw_level),
+                   "failed withdraw load should clear world.withdraw_level");
+
+    picker_testing_yes_or_no_queue_clear();
+    clear_level_lists();
+
+    // Restore a valid baseline save for subsequent tests.
+    s->save_data.reset();
+    s->sync_world_from_save_data();
+    TEST_ASSERT(s->save_data.save("save0"), "cleanup save0 should succeed");
+}
+REGISTER_TEST(test_screen_withdraw_aborts_when_autosave_load_fails);
 
 void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
 {

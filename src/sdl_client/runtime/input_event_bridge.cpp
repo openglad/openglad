@@ -22,6 +22,20 @@ static inline cfg_store* active_config()
     return &cfg;
 }
 
+namespace
+{
+void autosave_active_screen(screen& s, const char* event_name)
+{
+    s.sync_save_data_from_world();
+    const SaveDataIoError err = s.save_data.save_with_error("save0");
+    if (err != SaveDataIoError::None)
+    {
+        LogError("window_autosave_failed event={} error={}\n",
+                 event_name, static_cast<int>(err));
+    }
+}
+} // namespace
+
 void handle_window_event(const SDL_Event& event)
 {
     switch(event.window.event)
@@ -29,12 +43,12 @@ void handle_window_event(const SDL_Event& event)
         case SDL_WINDOWEVENT_MINIMIZED:
             // Save state here on Android
             if(screen* s = active_screen())
-                s->save_data.save("save0");
+                autosave_active_screen(*s, "minimized");
             break;
         case SDL_WINDOWEVENT_CLOSE:
             // Save state here on Android
             if(screen* s = active_screen())
-                s->save_data.save("save0");
+                autosave_active_screen(*s, "close");
             break;
         case SDL_WINDOWEVENT_RESTORED:
             // Restore state here on Android.
