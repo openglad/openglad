@@ -22,18 +22,29 @@ int main()
     SaveData fallback_save;
     og::sim::SimEventLog fallback_events;
 
+    session.game_.world = &fallback_world;
+    session.game_.save = &fallback_save;
+    session.game_.sim_events = &fallback_events;
+    current_game = &session.game_;
+
+    auto gameplay_context_intact = [&]() {
+        return current_game == &session.game_ &&
+               session.game_.world == &fallback_world &&
+               session.game_.save == &fallback_save &&
+               session.game_.sim_events == &fallback_events;
+    };
+
     init_all_registries();
 
     int passed = 0;
     int failed = 0;
     for (const auto& tc : og::unit::registry())
     {
-        if (current_game == nullptr || current_game->world == nullptr)
+        if (!gameplay_context_intact())
         {
-            session.game_.world = &fallback_world;
-            session.game_.save = &fallback_save;
-            session.game_.sim_events = &fallback_events;
-            current_game = &session.game_;
+            ++failed;
+            std::fprintf(stderr, "[  FAILED  ] %s (gameplay context corrupted before test)\n", tc.name);
+            break;
         }
 
         std::fprintf(stderr, "[ RUN      ] %s\n", tc.name);
@@ -44,6 +55,13 @@ int main()
         } catch (...) {
             ++failed;
             std::fprintf(stderr, "[  FAILED  ] %s (threw)\n", tc.name);
+        }
+
+        if (!gameplay_context_intact())
+        {
+            ++failed;
+            std::fprintf(stderr, "[  FAILED  ] %s (corrupted gameplay context)\n", tc.name);
+            break;
         }
     }
 

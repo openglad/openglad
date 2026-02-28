@@ -81,6 +81,7 @@ void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
     if (!has_active_screen_session &&
         (current_game == nullptr || current_game != &sim_ctx_gameplay_))
     {
+        sim_ctx_prev_game_ = current_game;
         current_game = &sim_ctx_gameplay_;
     }
 
@@ -496,14 +497,16 @@ LevelData::~LevelData()
     // torn down in tests or temporary editor flows.
     if (current_game != nullptr)
     {
-        if (current_game == &sim_ctx_gameplay_ || current_game->world == world_)
+        if (current_game == &sim_ctx_gameplay_)
+        {
+            current_game = sim_ctx_prev_game_;
+        }
+        else if (current_game->world == world_)
         {
             current_game->world = nullptr;
             current_game->save = nullptr;
             current_game->sim_events = nullptr;
             current_game->config = nullptr;
-            if (current_game == &sim_ctx_gameplay_)
-                current_game = nullptr;
         }
     }
 

@@ -255,8 +255,18 @@ void test_walker_act_generate_zero_vector_and_hp_cap_paths()
     gen->default_weapon = FAMILY_ELF;
     gen->current_weapon = gen->default_weapon;
 
+    TEST_ASSERT(current_game != nullptr && current_game->world != nullptr,
+                "current_game world context must be active");
+    if (!(current_game && current_game->world))
+        return;
+    // Seed chosen so act_generate() deterministic SimRandom hits:
+    // next(60) > next(300), then next(3)==1 and next(3)==1 (zero vector fallback).
+    current_game->world->rng_.state_ = 18;
+
     gen->set_act_type(ACT_GENERATE);
     (void)gen->act();
+    TEST_ASSERT_EQ(1, static_cast<int>(gen->lastx),
+                   "act_generate should force lastx=1 when random step vector is zero");
     TEST_ASSERT_EQ((int)gen->stats()->max_hitpoints, (int)gen->stats()->hitpoints,
                    "act_generate should clamp hitpoints at max");
 

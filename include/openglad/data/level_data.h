@@ -384,6 +384,7 @@ private:
     SaveData*   sim_ctx_save_ = nullptr;
     cfg_store*  sim_ctx_config_ = nullptr;
     GameplayContext sim_ctx_gameplay_;
+    GameplayContext* sim_ctx_prev_game_ = nullptr;
 };
 
 // Read a scenario title from a .fss file. Returns "none" on failure.
