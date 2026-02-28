@@ -23,6 +23,7 @@
 #include <openglad/data/level_data_hooks.h>
 #include <openglad/data/level_render.h>
 #include <openglad/core/constants.h>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_level_data_coverage_push.cpp ---
 namespace detail_level_data_coverage_push {
@@ -34,8 +35,10 @@ struct LevelFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{1};
+    ScopedGameplayContext gameplay;
 
     LevelFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -158,8 +161,10 @@ struct LevelR11Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{1};
+    ScopedGameplayContext gameplay;
 
     LevelR11Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -394,8 +399,10 @@ struct LevelR12Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     MaxRandom rng;
+    ScopedGameplayContext gameplay;
 
     LevelR12Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);

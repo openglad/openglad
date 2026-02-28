@@ -38,7 +38,6 @@ namespace og::sim { class SimEventLog; }
 
 #include <openglad/data/pixie_data.h>
 #include <openglad/entities/walker.h>
-#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/legacy/pixdefs.h>
 
@@ -383,8 +382,6 @@ private:
     // Remaining sim context pointers for wiring newly created entities.
     SaveData*   sim_ctx_save_ = nullptr;
     cfg_store*  sim_ctx_config_ = nullptr;
-    GameplayContext sim_ctx_gameplay_;
-    GameplayContext* sim_ctx_prev_game_ = nullptr;
 };
 
 // Read a scenario title from a .fss file. Returns "none" on failure.

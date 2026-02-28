@@ -8,6 +8,7 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/sim/irandom.h>
 #include <openglad/sim/sim_event_log.h>
+#include "test_gameplay_context_scope.h"
 
 // Phase 1a helper: minimal gameplay world + event log fixture.
 struct TestGameWorld
@@ -17,9 +18,11 @@ struct TestGameWorld
     og::sim::SimEventLog events;
     FixedRandom rng{0};
     GameContext gc;
+    ScopedGameplayContext gameplay;
 
     explicit TestGameWorld(int level_id = 1)
         : level(level_id, true)
+        , gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &level.world().enemy_freeze, &events, &rng, &cfg);

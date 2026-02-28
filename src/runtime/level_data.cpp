@@ -30,8 +30,6 @@
 
 #include <openglad/io/yaml_stream.h>
 #include <openglad/io/ogfile_yaml.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/game_session.h>
 #include <openglad/data/level_render.h>
 #include <openglad/data/level_data_hooks.h>
 #include <algorithm>
@@ -51,13 +49,9 @@ void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
     sim_ctx_save_ = save;
     sim_ctx_config_ = config;
 
-    sim_ctx_gameplay_.world = &world();
-    sim_ctx_gameplay_.save = save;
-    sim_ctx_gameplay_.sim_events = events;
-    sim_ctx_gameplay_.config = config;
-
     (void)enemy_freeze;
     (void)rng;
+    (void)events;
 
     // Re-wire already-loaded entities so callers can set context either
     // before or after loading a scenario.
@@ -69,33 +63,6 @@ void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
         wire_entity(uptr.get());
     for (auto& uptr : world().dead_list)
         wire_entity(uptr.get());
-
-    // Keep the active gameplay context synchronized when this LevelData is
-    // already active on the current thread. In headless/no-screen contexts
-    // (unit tests, text client), allow this LevelData to install its own
-    // context as the active gameplay context.
-    const bool has_active_screen_session =
-        (og::runtime::current_session != nullptr &&
-         og::runtime::current_session->myscreen_ != nullptr);
-
-    if (!has_active_screen_session &&
-        (current_game == nullptr || current_game != &sim_ctx_gameplay_))
-    {
-        sim_ctx_prev_game_ = current_game;
-        current_game = &sim_ctx_gameplay_;
-    }
-
-    if (current_game == &sim_ctx_gameplay_ ||
-        current_game == nullptr ||
-        current_game->world == &world())
-    {
-        if (current_game == nullptr)
-            current_game = &sim_ctx_gameplay_;
-        current_game->world = &world();
-        current_game->save = save;
-        current_game->sim_events = events;
-        current_game->config = config;
-    }
 }
 
 static constexpr char VERSION_NUM = 9; // save scenario type info
@@ -492,23 +459,6 @@ LevelData::~LevelData()
 {
     delete_objects();
     delete_grid();
-
-    // Avoid dangling gameplay-context pointers when this LevelData/world is
-    // torn down in tests or temporary editor flows.
-    if (current_game != nullptr)
-    {
-        if (current_game == &sim_ctx_gameplay_)
-        {
-            current_game = sim_ctx_prev_game_;
-        }
-        else if (current_game->world == world_)
-        {
-            current_game->world = nullptr;
-            current_game->save = nullptr;
-            current_game->sim_events = nullptr;
-            current_game->config = nullptr;
-        }
-    }
 
     if (world_ != nullptr)
     {

@@ -14,6 +14,7 @@
 #endif
 #include <memory>
 #include "unit/unit.h"
+#include "test_gameplay_context_scope.h"
 
 const FamilyDescriptor& describe_family_orc();
 const FamilyDescriptor& describe_family_big_orc();
@@ -26,9 +27,11 @@ struct OrcR15Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     OrcR15Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);

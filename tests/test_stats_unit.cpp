@@ -13,6 +13,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <openglad/entities/guy.h>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_stats_coverage_push.cpp ---
 namespace detail_stats_coverage_push {
@@ -24,8 +25,10 @@ struct StatsFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     StatsFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -128,8 +131,10 @@ struct StatsFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{1};
+    ScopedGameplayContext gameplay;
 
     StatsFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -271,8 +276,10 @@ struct StatsR12Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     StatsR12Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -395,9 +402,11 @@ struct StatsR14Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     StatsR14Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);

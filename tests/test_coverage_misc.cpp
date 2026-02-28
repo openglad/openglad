@@ -31,6 +31,7 @@
 #include <openglad/input/input_action.h>
 #include <openglad/input/input_state.h>
 #include <openglad/sim/sim_input_handler.h>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_coverage_r17.cpp ---
 namespace detail_coverage_r17 {
@@ -62,9 +63,11 @@ struct R17Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     R17Fixture()
+        : gameplay(level, save, events, cfg)
     {
         init_family_registry();
         level.create_new_grid();
@@ -482,8 +485,10 @@ struct MovementFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     MovementFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -971,9 +976,11 @@ struct R19Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     R19Fixture()
+        : gameplay(level, save, events, cfg)
     {
         init_family_registry();
         level.create_new_grid();
@@ -1155,9 +1162,11 @@ struct R20Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     ConstantRandom rng{1};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     R20Fixture()
+        : gameplay(level, save, events, cfg)
     {
         init_family_registry();
         level.create_new_grid();
@@ -1506,9 +1515,11 @@ struct FinalR16Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{1};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     FinalR16Fixture()
+        : gameplay(level, save, events, cfg)
     {
         init_family_registry();
         level.create_new_grid();

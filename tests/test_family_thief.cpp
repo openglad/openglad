@@ -14,6 +14,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_family_thief_coverage_push.cpp ---
 const FamilyDescriptor& describe_family_thief();
@@ -94,8 +95,10 @@ struct ThiefR12Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     ThiefR12Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -173,4 +176,3 @@ OG_UNIT_TEST(test_family_thief_r12_check_ai_and_special_paths)
     OG_ASSERT(desc.do_special(thief));
 }
 } // namespace detail_family_thief_r12
-

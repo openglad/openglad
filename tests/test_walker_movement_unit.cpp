@@ -12,6 +12,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <array>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_walker_movement_push.cpp ---
 namespace detail_walker_movement_push {
@@ -23,8 +24,10 @@ struct MovementFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     MovementFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -122,8 +125,10 @@ struct WalkerMovementR11Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     WalkerMovementR11Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -248,8 +253,10 @@ struct MovementR12Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     MovementR12Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -375,8 +382,10 @@ struct MovementR14Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     MovementR14Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -465,4 +474,3 @@ OG_UNIT_TEST(test_walker_movement_r14_lines_234_255_268_273_278_285_292_user_sli
     (void)user->turn(FACE_RIGHT);
 }
 } // namespace detail_walker_movement_r14
-

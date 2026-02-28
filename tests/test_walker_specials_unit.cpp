@@ -12,6 +12,7 @@
 #endif
 #include <memory>
 #include "unit/unit.h"
+#include "test_gameplay_context_scope.h"
 
 namespace {
 
@@ -21,8 +22,10 @@ struct SpecialsFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     SpecialsFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;

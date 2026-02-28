@@ -14,6 +14,7 @@
 #endif
 #include <array>
 #include <openglad/core/constants.h>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_walker_coverage_push.cpp ---
 namespace detail_walker_coverage_push {
@@ -25,8 +26,10 @@ struct WalkerFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     WalkerFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -136,8 +139,10 @@ struct WalkerR11Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     WalkerR11Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -487,8 +492,10 @@ struct WalkerR14Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     WalkerR14Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -605,8 +612,10 @@ struct WalkerR15Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     MaxRandom rng;
+    ScopedGameplayContext gameplay;
 
     WalkerR15Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);

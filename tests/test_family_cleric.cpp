@@ -16,6 +16,7 @@
 #include <openglad/entities/treasure.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/game_context.h>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_family_cleric_coverage_push.cpp ---
 const FamilyDescriptor& describe_family_cleric();
@@ -83,8 +84,10 @@ struct ClericFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     ClericFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -272,8 +275,10 @@ struct ClericR12Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     ClericR12Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -536,9 +541,11 @@ struct ClericR14Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     ClericR14Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -682,9 +689,11 @@ struct ClericR15Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     ClericR15Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -792,4 +801,3 @@ OG_UNIT_TEST(test_family_cleric_r15_turn_undead_raise_and_resurrect_branches)
     (void)desc.do_special(cleric);
 }
 } // namespace detail_family_cleric_r15
-

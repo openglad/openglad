@@ -16,6 +16,7 @@
 #include <openglad/entities/family_registry.h>
 #include <openglad/runtime/game_context.h>
 #include <array>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_living_r11.cpp ---
 namespace detail_living_r11 {
@@ -27,8 +28,10 @@ struct LivingFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     LivingFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -174,9 +177,11 @@ struct LivingR14Fixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     LivingR14Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -349,4 +354,3 @@ OG_UNIT_TEST(test_living_r14_lines_371_375_380_419_433_440_shove_walk_and_animat
     (void)self->walk(1.0f, 0.0f);
 }
 } // namespace detail_living_r14
-

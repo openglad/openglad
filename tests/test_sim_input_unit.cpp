@@ -17,6 +17,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <array>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_sim_input_coverage_push.cpp ---
 namespace detail_sim_input_coverage_push {
@@ -28,8 +29,10 @@ struct SimInputFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     SimInputFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -160,8 +163,10 @@ struct SimInputFixture {
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     SimInputFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
@@ -344,4 +349,3 @@ OG_UNIT_TEST(test_sim_input_r11_animate_movement_and_bit_animate_paths)
         input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
 }
 } // namespace detail_sim_input_r11
-
