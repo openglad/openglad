@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <format>
 #include <list>
 #include <memory>
@@ -55,6 +56,44 @@ void popup_dialog(const char* title, const char* message);
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
+
+namespace
+{
+constexpr std::int32_t kReleaseWaitPollLimit = 5000;
+
+void wait_for_mouse_release()
+{
+    MouseState& mymouse = query_mouse();
+    std::int32_t poll_count = 0;
+    while (mymouse.left)
+    {
+        get_input_events(POLL);
+        SDL_Delay(1);
+        poll_count++;
+        if (poll_count >= kReleaseWaitPollLimit)
+        {
+            LogWarn("level_picker: mouse release wait timed out\n");
+            break;
+        }
+    }
+}
+
+void wait_for_key_release(int key, const char* context)
+{
+    std::int32_t poll_count = 0;
+    while (og::runtime::current_session->keystates_[key])
+    {
+        SDL_Delay(1);
+        get_input_events(POLL);
+        poll_count++;
+        if (poll_count >= kReleaseWaitPollLimit)
+        {
+            LogWarn("level_picker: key release wait timed out in {}\n", context ? context : "(unknown)");
+            break;
+        }
+    }
+}
+} // namespace
 
 
 void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, std::list<int>& exits)
@@ -422,10 +461,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         
 			if (mymouse.left)
 			{
-			    while(mymouse.left)
-			    {
-	                get_input_events(WAIT);
-	            }
+			    wait_for_mouse_release();
 			}
         
         // Prev
@@ -487,11 +523,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         // Cancel
         else if(do_cancel)
            {
-                while(og::runtime::current_session->keystates_[buttons[cancel_index].hotkey])
-                {
-                    SDL_Delay(1);
-                    get_input_events(POLL);
-                }
+                wait_for_key_release(buttons[cancel_index].hotkey, "cancel");
                done = true;
                break;
            }
@@ -646,11 +678,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 		SDL_Delay(10);
 	}
 	
-    while (og::runtime::current_session->keystates_[KEYSTATE_q])
-    {
-        SDL_Delay(1);
-        get_input_events(POLL);
-    }
+    wait_for_key_release(KEYSTATE_q, "quit");
 	
 		return result;
 	}

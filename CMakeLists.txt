@@ -1320,9 +1320,11 @@ if(NOT EMSCRIPTEN)
 	        )
         set_tests_properties(og_data_tests PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 300
         )
         set_tests_properties(og_runtime_tests PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 300
         )
 
         add_test(NAME openglad_text_sim

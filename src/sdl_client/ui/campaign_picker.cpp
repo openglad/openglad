@@ -25,6 +25,7 @@
 #include <openglad/input/button.h>
 #include <openglad/core/util.h>
 #include <format>
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include <string>
@@ -39,6 +40,44 @@ bool prompt_for_string(const std::string& message, std::string& result);
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
+
+namespace
+{
+constexpr std::int32_t kReleaseWaitPollLimit = 5000;
+
+void wait_for_mouse_release()
+{
+    MouseState& mymouse = query_mouse();
+    std::int32_t poll_count = 0;
+    while (mymouse.left)
+    {
+        get_input_events(POLL);
+        SDL_Delay(1);
+        poll_count++;
+        if (poll_count >= kReleaseWaitPollLimit)
+        {
+            LogWarn("campaign_picker: mouse release wait timed out\n");
+            break;
+        }
+    }
+}
+
+void wait_for_key_release(int key, const char* context)
+{
+    std::int32_t poll_count = 0;
+    while (og::runtime::current_session->keystates_[key])
+    {
+        SDL_Delay(1);
+        get_input_events(POLL);
+        poll_count++;
+        if (poll_count >= kReleaseWaitPollLimit)
+        {
+            LogWarn("campaign_picker: key release wait timed out in {}\n", context ? context : "(unknown)");
+            break;
+        }
+    }
+}
+} // namespace
 
 int toInt(const std::string& s)
 {
@@ -406,10 +445,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         
 			if (mymouse.left)
 			{
-			    while(mymouse.left)
-			    {
-	                get_input_events(WAIT);
-	            }
+			    wait_for_mouse_release();
 			}
 
         // Prev
@@ -441,11 +477,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         // Cancel
         else if(do_cancel)
         {
-            while(og::runtime::current_session->keystates_[buttons[cancel_index].hotkey])
-            {
-                SDL_Delay(1);
-                get_input_events(POLL);
-            }
+            wait_for_key_release(buttons[cancel_index].hotkey, "cancel");
             done = true;
             break;
         }
@@ -570,11 +602,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         SDL_Delay(10);
     }
 
-    while (og::runtime::current_session->keystates_[KEYSTATE_q])
-    {
-        SDL_Delay(1);
-        get_input_events(POLL);
-    }
+    wait_for_key_release(KEYSTATE_q, "quit");
     
     // Restore old campaign
     (void)mount_campaign_package_with_error(old_campaign_id);
