@@ -40,7 +40,7 @@ walker* add_living(StatsFixture& fx, unsigned char team)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -146,7 +146,7 @@ walker* add_living(StatsFixture& fx, unsigned char team)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -290,7 +290,7 @@ walker* add_living(StatsR12Fixture& fx, unsigned char team)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -424,7 +424,7 @@ walker* add_living(StatsR14Fixture& fx, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -441,7 +441,7 @@ walker* add_weapon(StatsR14Fixture& fx, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Weapon, FAMILY_ARROW);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 8;
     w->sizey = 8;
     w->stepsize = 1.0f;

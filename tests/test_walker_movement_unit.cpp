@@ -39,7 +39,7 @@ walker* add_living(MovementFixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -140,7 +140,7 @@ walker* add_living(WalkerMovementR11Fixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -267,7 +267,7 @@ walker* add_living(MovementR12Fixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -396,7 +396,7 @@ walker* add_living(MovementR14Fixture& fx, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;

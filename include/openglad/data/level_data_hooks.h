@@ -19,12 +19,10 @@ class PixieData;
 struct LevelDataHooks
 {
     using ClearStaleViewControlsFn = void (*)(LevelData* level);
-    using WireEntityFromScreenFn = void (*)(walker* w);
     using DrawFn = void (*)(LevelData* level, screen* screenp);
     using CreateLevelRenderFn = std::unique_ptr<LevelRender> (*)(PixieData pixdata[]);
 
     ClearStaleViewControlsFn clear_stale_view_controls = nullptr;
-    WireEntityFromScreenFn wire_entity_from_screen = nullptr;
     DrawFn draw = nullptr;
     CreateLevelRenderFn create_level_render = nullptr;
 };

@@ -99,7 +99,7 @@ living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_C
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -289,7 +289,7 @@ living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMIL
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -419,7 +419,7 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
 
     auto s = std::make_unique<living>();
     s->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(s.get());
+    bind_test_entity_sim_context(fx.level, s.get());
     s->setxy(60, 60);
     s->team_num = 0;
     s->stats()->level = 6;
@@ -462,8 +462,8 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
 
     auto t1 = std::make_unique<treasure>();
     auto t2 = std::make_unique<treasure>();
-    fx.level.wire_entity(t1.get());
-    fx.level.wire_entity(t2.get());
+    bind_test_entity_sim_context(fx.level, t1.get());
+    bind_test_entity_sim_context(fx.level, t2.get());
     t1->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     t2->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     t1->stats()->level = 3;
@@ -564,7 +564,7 @@ living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMIL
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -712,7 +712,7 @@ living* add_living(ClericR15Fixture& fx, unsigned char team, char family, short 
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;

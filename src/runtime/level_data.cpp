@@ -53,16 +53,23 @@ void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
     (void)rng;
     (void)events;
 
-    // Re-wire already-loaded entities so callers can set context either
+    auto rebind_entity_context = [this](walker* w) {
+        if (w == nullptr)
+            return;
+        w->sim_save = sim_ctx_save_;
+        w->sim_config = sim_ctx_config_;
+    };
+
+    // Rebind already-loaded entities so callers can set context either
     // before or after loading a scenario.
     for (auto& uptr : world().oblist)
-        wire_entity(uptr.get());
+        rebind_entity_context(uptr.get());
     for (auto& uptr : world().fxlist)
-        wire_entity(uptr.get());
+        rebind_entity_context(uptr.get());
     for (auto& uptr : world().weaplist)
-        wire_entity(uptr.get());
+        rebind_entity_context(uptr.get());
     for (auto& uptr : world().dead_list)
-        wire_entity(uptr.get());
+        rebind_entity_context(uptr.get());
 }
 
 static constexpr char VERSION_NUM = 9; // save scenario type info
@@ -554,17 +561,6 @@ walker* LevelData::add_fx_ob(Order order, std::int32_t family)
 walker* LevelData::add_weap_ob(Order order, std::int32_t family)
 {
     return world().add_weap_ob(order, family);
-}
-
-void LevelData::wire_entity(walker* w)
-{
-    w->sim_save = sim_ctx_save_;
-    w->sim_config = sim_ctx_config_;
-}
-
-void LevelData::wire_spawned_entity(walker* w)
-{
-    wire_entity(w);
 }
 
 short LevelData::remove_ob(walker  *ob)

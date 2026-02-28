@@ -41,7 +41,7 @@ walker* add_living(WalkerFixture& fx, char family, unsigned char team)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -154,7 +154,7 @@ walker* add_ob(WalkerR11Fixture& fx, Order o, char family, unsigned char team, s
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -506,7 +506,7 @@ walker* add_ob(WalkerR14Fixture& fx, Order o, char family, unsigned char team, s
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;

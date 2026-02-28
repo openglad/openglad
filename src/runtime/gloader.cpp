@@ -581,9 +581,12 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	ob->stats()->special_cost[0] = 0; // shouldn't be used
 	ob->stats()->weapon_cost = 1; // default value
 
-	// Wire sim context from owning LevelData if available.
+	// Remaining sim pointers (save/config) stay on entities until Phase 5.
 	if (owner_level)
-		owner_level->wire_entity(ob.get());
+	{
+		ob->sim_save = owner_level->sim_context_save();
+		ob->sim_config = owner_level->sim_context_config();
+	}
 
 	set_walker(ob.get(), order, family);
 

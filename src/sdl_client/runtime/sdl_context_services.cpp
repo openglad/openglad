@@ -87,7 +87,6 @@ std::unique_ptr<LevelRender> sdl_create_level_render(PixieData pixdata[])
 
 const LevelDataHooks kSdlLevelDataHooks{
     .clear_stale_view_controls = sdl_clear_stale_view_controls,
-    .wire_entity_from_screen = nullptr,
     .draw = sdl_level_data_draw,
     .create_level_render = sdl_create_level_render,
 };

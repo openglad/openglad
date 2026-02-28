@@ -311,7 +311,6 @@ void test_level_data_round8_ctor_hook_wiring_and_remove_paths()
     render_count = 0;
 
     LevelDataHooks hooks;
-    hooks.wire_entity_from_screen = [](walker*) {};
     hooks.create_level_render = [](PixieData[]) -> std::unique_ptr<LevelRender> {
         render_count++;
         return nullptr;

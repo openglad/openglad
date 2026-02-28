@@ -109,7 +109,7 @@ living* add_living(ThiefR12Fixture& fx, unsigned char team, char family = FAMILY
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;

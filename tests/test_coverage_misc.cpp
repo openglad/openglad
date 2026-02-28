@@ -87,7 +87,7 @@ living* add_living(R17Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -106,7 +106,7 @@ walker* add_fx(R17Fixture& fx, char family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -511,7 +511,7 @@ walker* add_living(MovementFixture& fx, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -726,7 +726,7 @@ OG_UNIT_TEST(test_coverage_r18_family_cleric_check_special_default_false)
     MovementFixture fx;
     living self;
     self.set_order_family(Order::Living, FAMILY_CLERIC);
-    fx.level.wire_entity(&self);
+    bind_test_entity_sim_context(fx.level, &self);
     self.current_special = 1;
     self.stats()->max_magicpoints = 100.0f;
     self.stats()->magicpoints = 1.0f;
@@ -1000,7 +1000,7 @@ living* add_living(R19Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -1188,7 +1188,7 @@ walker* add_walker(R20Fixture& fx, Order order, char family, unsigned char team,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(order, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -1210,7 +1210,7 @@ living* add_living(R20Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -1540,7 +1540,7 @@ living* add_living(FinalR16Fixture& fx, char family, unsigned char team, short x
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -1559,7 +1559,7 @@ walker* add_fx(FinalR16Fixture& fx, char family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;

@@ -44,7 +44,7 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -178,7 +178,7 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;

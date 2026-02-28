@@ -51,7 +51,7 @@ walker* add_to_list(LevelFixture& fx, std::list<std::unique_ptr<walker>>& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->setxy(x, y);
@@ -177,7 +177,7 @@ walker* add_to(LevelR11Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -414,7 +414,7 @@ walker* add_to(LevelR12Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -861,13 +861,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_95_99_353_371_378_campaign_description_ac
 namespace detail_level_data_r15 {
 namespace {
 
-int g_wire_calls = 0;
 int g_render_calls = 0;
-
-void wire_count(walker*)
-{
-    g_wire_calls++;
-}
 
 std::unique_ptr<LevelRender> make_render(PixieData[])
 {
@@ -897,11 +891,9 @@ OG_UNIT_TEST(test_level_data_r15_campaign_wrappers_and_description_iteration)
 
 OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
 {
-    g_wire_calls = 0;
     g_render_calls = 0;
 
     LevelDataHooks hooks;
-    hooks.wire_entity_from_screen = wire_count;
     hooks.create_level_render = make_render;
 
     LevelData level_non_headless(9415, &hooks);
@@ -918,7 +910,6 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     walker* fxob = level_non_headless.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     walker* weap = level_non_headless.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     OG_ASSERT(living && fxob && weap);
-    OG_ASSERT(g_wire_calls == 0);
     OG_ASSERT(level_non_headless.numobs >= 1);
 
     level_non_headless.world().title = "Mutated";

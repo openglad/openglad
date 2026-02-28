@@ -11,6 +11,7 @@
 #endif
 #include <memory>
 #include "test_game_world_fixture.h"
+#include "test_gameplay_context_scope.h"
 #include "unit/unit.h"
 
 #ifdef TESTING
@@ -36,7 +37,7 @@ TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -52,7 +53,7 @@ TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, char family, unsigned 
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->team_num = team;
     w->dead = dead ? 1 : 0;
     TickWalker* out = w.get();
@@ -64,7 +65,7 @@ TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
 {
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->team_num = team;
     w->dead = dead ? 1 : 0;
     TickWalker* out = w.get();

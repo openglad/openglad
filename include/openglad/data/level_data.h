@@ -364,13 +364,15 @@ public:
     GameWorld& world() { return *world_; }
     const GameWorld& world() const { return *world_; }
     void attach_world(GameWorld* world);
-    void wire_entity(walker* w);  // Wire remaining per-entity context onto an entity.
-    void wire_spawned_entity(walker* w);
 
-    // Set sim context that will be auto-wired onto newly created entities.
+    // Set remaining sim context pointers used by entities until Phase 5.
+    // Existing entities are rebound immediately; newly created entities read
+    // from these stored pointers during construction.
     void set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                          og::sim::SimEventLog* events, IRandom* rng,
                          cfg_store* config);
+    SaveData* sim_context_save() const { return sim_ctx_save_; }
+    cfg_store* sim_context_config() const { return sim_ctx_config_; }
 
 private:
     IoError last_io_error_ = IoError::None;
@@ -379,7 +381,7 @@ private:
     GameWorld owned_world_;
     GameWorld* world_ = nullptr;
 
-    // Remaining sim context pointers for wiring newly created entities.
+    // Remaining sim context pointers for entity constructors.
     SaveData*   sim_ctx_save_ = nullptr;
     cfg_store*  sim_ctx_config_ = nullptr;
 };

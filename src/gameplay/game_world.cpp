@@ -61,7 +61,6 @@ walker* GameWorld::add_to_list(Order order, std::int32_t family,
     if (!w)
         return nullptr;
 
-    level_data_->wire_spawned_entity(w.get());
     if (count_living)
         living_count++;
 

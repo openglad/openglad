@@ -37,3 +37,11 @@ private:
     GameplayContext context_;
     GameplayContext* previous_ = nullptr;
 };
+
+inline void bind_test_entity_sim_context(LevelData& level, walker* entity)
+{
+    if (entity == nullptr)
+        return;
+    entity->sim_save = level.sim_context_save();
+    entity->sim_config = level.sim_context_config();
+}

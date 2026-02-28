@@ -37,7 +37,7 @@ living* add_living(SpecialsFixture& fx, char family, unsigned char team)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(96, 96);
     w->sizex = 16;
     w->sizey = 16;
