@@ -95,6 +95,7 @@ void test_input_bridge_window_and_key_paths()
     const bool saved_continue = og::runtime::current_session->input_continue_;
     const short saved_key_press_event = og::runtime::current_session->key_press_event_;
     const int saved_raw_key = og::runtime::current_session->raw_key_;
+    const bool saved_gameplay_active = og::runtime::current_session->gameplay_active_;
 
     screen* s = og::runtime::current_session->myscreen_;
     TEST_ASSERT(s != nullptr, "active screen should be available");
@@ -115,36 +116,71 @@ void test_input_bridge_window_and_key_paths()
     s->save_data.scen_num = 2;
     s->save_data.allied_mode = 0;
     s->save_data.m_score[0] = 11;
+
     s->world_.current_scenario = 9;
     s->world_.allied_mode = 3;
     s->world_.m_score[0] = 42;
     s->world_.completed_levels = {3, 5};
 
+    // In picker/menu flows, SaveData is authoritative: window autosave must
+    // persist SaveData directly and not overwrite it from stale GameWorld.
+    og::runtime::current_session->gameplay_active_ = false;
+
     e.window.event = SDL_WINDOWEVENT_MINIMIZED;
     handle_window_event(e);
-    TEST_ASSERT_EQ(9, static_cast<int>(s->save_data.scen_num),
-                   "minimize autosave should sync scen_num from world");
-    TEST_ASSERT_EQ(3, static_cast<int>(s->save_data.allied_mode),
-                   "minimize autosave should sync allied_mode from world");
-    TEST_ASSERT_EQ(42, static_cast<int>(s->save_data.m_score[0]),
-                   "minimize autosave should sync score from world");
-    TEST_ASSERT(s->save_data.completed_levels[s->save_data.current_campaign] == s->world_.completed_levels,
-                "minimize autosave should sync completed levels from world");
+    TEST_ASSERT_EQ(2, static_cast<int>(s->save_data.scen_num),
+                   "minimize autosave should preserve menu scen_num when gameplay is inactive");
+    TEST_ASSERT_EQ(0, static_cast<int>(s->save_data.allied_mode),
+                   "minimize autosave should preserve menu allied_mode when gameplay is inactive");
+    TEST_ASSERT_EQ(11, static_cast<int>(s->save_data.m_score[0]),
+                   "minimize autosave should preserve menu score when gameplay is inactive");
+    TEST_ASSERT(s->save_data.completed_levels[s->save_data.current_campaign].empty(),
+                "minimize autosave should preserve menu completed levels when gameplay is inactive");
 
+    e.window.event = SDL_WINDOWEVENT_CLOSE;
+    handle_window_event(e);
+    TEST_ASSERT_EQ(2, static_cast<int>(s->save_data.scen_num),
+                   "close autosave should preserve menu scen_num when gameplay is inactive");
+    TEST_ASSERT_EQ(0, static_cast<int>(s->save_data.allied_mode),
+                   "close autosave should preserve menu allied_mode when gameplay is inactive");
+    TEST_ASSERT_EQ(11, static_cast<int>(s->save_data.m_score[0]),
+                   "close autosave should preserve menu score when gameplay is inactive");
+    TEST_ASSERT(s->save_data.completed_levels[s->save_data.current_campaign].empty(),
+                "close autosave should preserve menu completed levels when gameplay is inactive");
+
+    // During active gameplay, GameWorld is authoritative and autosave must sync
+    // world-backed progress into SaveData before writing.
+    og::runtime::current_session->gameplay_active_ = true;
     s->world_.current_scenario = 12;
     s->world_.allied_mode = 1;
     s->world_.m_score[0] = 77;
     s->world_.completed_levels = {1, 2, 4};
-    e.window.event = SDL_WINDOWEVENT_CLOSE;
+
+    e.window.event = SDL_WINDOWEVENT_MINIMIZED;
     handle_window_event(e);
     TEST_ASSERT_EQ(12, static_cast<int>(s->save_data.scen_num),
-                   "close autosave should sync scen_num from world");
+                   "minimize autosave should sync scen_num from world during gameplay");
     TEST_ASSERT_EQ(1, static_cast<int>(s->save_data.allied_mode),
-                   "close autosave should sync allied_mode from world");
+                   "minimize autosave should sync allied_mode from world during gameplay");
     TEST_ASSERT_EQ(77, static_cast<int>(s->save_data.m_score[0]),
-                   "close autosave should sync score from world");
+                   "minimize autosave should sync score from world during gameplay");
     TEST_ASSERT(s->save_data.completed_levels[s->save_data.current_campaign] == s->world_.completed_levels,
-                "close autosave should sync completed levels from world");
+                "minimize autosave should sync completed levels from world during gameplay");
+
+    s->world_.current_scenario = 14;
+    s->world_.allied_mode = 2;
+    s->world_.m_score[0] = 99;
+    s->world_.completed_levels = {2, 6};
+    e.window.event = SDL_WINDOWEVENT_CLOSE;
+    handle_window_event(e);
+    TEST_ASSERT_EQ(14, static_cast<int>(s->save_data.scen_num),
+                   "close autosave should sync scen_num from world during gameplay");
+    TEST_ASSERT_EQ(2, static_cast<int>(s->save_data.allied_mode),
+                   "close autosave should sync allied_mode from world during gameplay");
+    TEST_ASSERT_EQ(99, static_cast<int>(s->save_data.m_score[0]),
+                   "close autosave should sync score from world during gameplay");
+    TEST_ASSERT(s->save_data.completed_levels[s->save_data.current_campaign] == s->world_.completed_levels,
+                "close autosave should sync completed levels from world during gameplay");
 
     e.window.event = SDL_WINDOWEVENT_RESTORED;
     handle_window_event(e);
@@ -193,6 +229,7 @@ void test_input_bridge_window_and_key_paths()
     og::runtime::current_session->input_continue_ = saved_continue;
     og::runtime::current_session->key_press_event_ = saved_key_press_event;
     og::runtime::current_session->raw_key_ = saved_raw_key;
+    og::runtime::current_session->gameplay_active_ = saved_gameplay_active;
     s->save_data.scen_num = saved_scen_num;
     s->save_data.allied_mode = saved_allied_mode;
     s->save_data.m_score[0] = saved_score0;

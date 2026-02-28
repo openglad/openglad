@@ -158,6 +158,7 @@ static void emscripten_frame_wrapper() {
 	if (g_frame_state().accumulated_time >= target_frame_time) {
 		switch (g_game_state) {
 			case GameState::Picker:
+				og::runtime::current_session->gameplay_active_ = false;
 				if (!g_state_initialized) {
 					picker_reinit_after_game();
 					g_state_initialized = true;
@@ -179,6 +180,7 @@ static void emscripten_frame_wrapper() {
 					if(current_screen == nullptr)
 					{
 						LogError("game_state_init_failed state=playing reason=missing_screen\n");
+						og::runtime::current_session->gameplay_active_ = false;
 						g_game_state = GameState::Quit;
 						break;
 					}
@@ -186,6 +188,7 @@ static void emscripten_frame_wrapper() {
 					short numviews = (current_screen->save_data.numplayers == 0) ? 1 : current_screen->save_data.numplayers;
 					current_screen->ready_for_battle(numviews);
 				}
+					og::runtime::current_session->gameplay_active_ = true;
 					glad_init();
 					g_frame_state().done = false;
 					g_frame_state().currentcycle = 0;
@@ -195,6 +198,7 @@ static void emscripten_frame_wrapper() {
 				game_frame(*current_screen, g_frame_state());
 				if (g_frame_state().done) {
 					Log("Game done, transitioning back to PICKER\n");
+					og::runtime::current_session->gameplay_active_ = false;
 					clear_keyboard();
 					current_screen->level_data.delete_objects();
 					g_game_state = GameState::Picker;
@@ -203,6 +207,7 @@ static void emscripten_frame_wrapper() {
 				break;
 
 			case GameState::Quit:
+				og::runtime::current_session->gameplay_active_ = false;
 				emscripten_cancel_main_loop();
 				break;
 

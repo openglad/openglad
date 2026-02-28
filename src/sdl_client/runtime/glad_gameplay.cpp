@@ -84,6 +84,19 @@ void glad_main(Sint32 playermode)
         return;
     }
 
+    struct GameplayActiveScope final {
+        GameplayActiveScope()
+        {
+            if (og::runtime::current_session)
+                og::runtime::current_session->gameplay_active_ = true;
+        }
+        ~GameplayActiveScope()
+        {
+            if (og::runtime::current_session)
+                og::runtime::current_session->gameplay_active_ = false;
+        }
+    } gameplay_scope;
+
     glad_init();
 
 #ifdef __EMSCRIPTEN__

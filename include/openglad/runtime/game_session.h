@@ -133,6 +133,9 @@ public:
     GameContext ctx_;
     GameplayContext game_;
     GameLoopFrameState frame_state_;
+    // True only while mission gameplay is actively running.
+    // Window autosave uses this to choose the authoritative state source.
+    bool gameplay_active_ = false;
     std::unique_ptr<InputHardwareState> input_hw_;
 
     // Per-session render surface (320x200 32-bit).

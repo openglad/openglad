@@ -5,6 +5,7 @@
 // runtime module) to keep the input module free of runtime/render deps.
 
 #include <openglad/input/input.h>
+#include <openglad/runtime/game_session.h>
 #include <openglad/runtime/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/runtime/screen.h>
@@ -26,7 +27,11 @@ namespace
 {
 void autosave_active_screen(screen& s, const char* event_name)
 {
-    s.sync_save_data_from_world();
+    if (og::runtime::current_session != nullptr &&
+        og::runtime::current_session->gameplay_active_)
+    {
+        s.sync_save_data_from_world();
+    }
     const SaveDataIoError err = s.save_data.save_with_error("save0");
     if (err != SaveDataIoError::None)
     {
