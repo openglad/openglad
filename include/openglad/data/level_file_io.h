@@ -71,6 +71,10 @@ short load_scenario_version(og::io::OgFile& infile, GameWorld* world,
 
 bool save_grid_file(const char* gridname, const PixieData& grid);
 
+// Read a scenario title from a .fss file with typed error reporting.
+LevelFileIoError load_scenario_title_with_error(const char* filename,
+                                                std::string& out_title);
+
 // Read a scenario title from a .fss file. Returns "none" on failure.
 std::string load_scenario_title(const char* filename);
 

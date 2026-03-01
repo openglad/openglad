@@ -22,8 +22,9 @@
 
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
+#include <openglad/io/campaign_io.h>
+#include <openglad/io/filesystem_sync.h>
 #include <openglad/io/og_file.h>
-#include <openglad/platform/io_common.h>
 #include <openglad/legacy/base.h>
 #include <algorithm>
 #include <cstdint>

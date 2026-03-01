@@ -28,6 +28,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
+#include <openglad/data/level_file_io.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registries.h>
@@ -36,7 +37,6 @@
 #include <openglad/data/smooth.h>
 #include <openglad/render/view.h>
 #include <openglad/core/util.h>
-#include <openglad/platform/io.h>
 #include <openglad/input/input.h>
 #include <openglad/legacy/view_sizes.h>
 #include <openglad/legacy/test_trace.h>
@@ -85,9 +85,24 @@ const char* scenario_title_error_string(screen::ScenarioTitleError err)
     return "unknown";
 }
 
-bool rw_read_exact(SDL_RWops* infile, void* dst, size_t size, size_t count)
+screen::ScenarioTitleError map_level_file_error(og::data::LevelFileIoError err)
 {
-    return infile != nullptr && SDL_RWread(infile, dst, size, count) == count;
+    switch (err)
+    {
+        case og::data::LevelFileIoError::None:
+            return screen::ScenarioTitleError::None;
+        case og::data::LevelFileIoError::OpenReadFailed:
+            return screen::ScenarioTitleError::OpenReadFailed;
+        case og::data::LevelFileIoError::InvalidHeader:
+            return screen::ScenarioTitleError::InvalidHeader;
+        case og::data::LevelFileIoError::UnsupportedVersion:
+            return screen::ScenarioTitleError::UnsupportedVersion;
+        case og::data::LevelFileIoError::ParseFailed:
+        case og::data::LevelFileIoError::OpenWriteFailed:
+        case og::data::LevelFileIoError::SerializeFailed:
+            return screen::ScenarioTitleError::ReadFailed;
+    }
+    return screen::ScenarioTitleError::ReadFailed;
 }
 
 const char* save_data_io_error_string(SaveDataIoError err)
@@ -826,64 +841,9 @@ walker* screen::set_walker(walker *ob, Order order, Sint32 family)
 screen::ScenarioTitleError screen::get_scen_title_with_error(const char *filename, std::string& out_title)
 {
     out_title = "none";
-    if(filename == nullptr || filename[0] == '\0')
-        return ScenarioTitleError::OpenReadFailed;
-
-    SDL_RWops  *infile = nullptr;
-    char temptext[4] = {};
-    char versionnumber = 0;
-    char gridname[8] = {};
-    char buffer[31] = {};
-
-    std::string tempfile = std::string(filename) + ".fss";
-
-    // Zardus: first get the file from scen/
-    infile = open_read_file("scen/", tempfile.c_str());
-    if(infile == nullptr)
-        return ScenarioTitleError::OpenReadFailed;
-
-    ScenarioTitleError err = ScenarioTitleError::None;
-    if(!rw_read_exact(infile, temptext, 1, 3))
-    {
-        err = ScenarioTitleError::ReadFailed;
-        goto close_and_return;
-    }
-    if (std::string(temptext, 3) != "FSS")
-    {
-        err = ScenarioTitleError::InvalidHeader;
-        goto close_and_return;
-    }
-
-    if(!rw_read_exact(infile, &versionnumber, 1, 1))
-    {
-        err = ScenarioTitleError::ReadFailed;
-        goto close_and_return;
-    }
-    if (versionnumber < 6)
-    {
-        err = ScenarioTitleError::UnsupportedVersion;
-        goto close_and_return;
-    }
-
-    // Discard the grid name ...
-    if(!rw_read_exact(infile, gridname, 1, 8))
-    {
-        err = ScenarioTitleError::ReadFailed;
-        goto close_and_return;
-    }
-
-    // Return the title, 30 bytes
-    if(!rw_read_exact(infile, buffer, 1, 30))
-    {
-        err = ScenarioTitleError::ReadFailed;
-        goto close_and_return;
-    }
-
-    out_title = std::string(buffer);
-
-close_and_return:
-    if(infile != nullptr)
-        SDL_RWclose(infile);
+    const og::data::LevelFileIoError io_err =
+        og::data::load_scenario_title_with_error(filename, out_title);
+    const ScenarioTitleError err = map_level_file_error(io_err);
 
     if(err != ScenarioTitleError::None)
     {

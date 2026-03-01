@@ -691,32 +691,46 @@ short load_scenario_version(og::io::OgFile& infile, GameWorld* world,
     }
 }
 
-std::string load_scenario_title(const char* filename)
+LevelFileIoError load_scenario_title_with_error(const char* filename,
+                                                std::string& out_title)
 {
+    out_title = "none";
     if (filename == nullptr || filename[0] == '\0')
-        return "none";
+        return LevelFileIoError::OpenReadFailed;
 
     std::string tempfile = std::string(filename) + ".fss";
     auto infile = og::io::og_open_read("scen/", tempfile.c_str());
     if (!infile)
-        return "none";
+        return LevelFileIoError::OpenReadFailed;
 
     char header[4] = {};
     char versionnumber = 0;
     char gridname[8] = {};
     char buffer[31] = {};
 
-    if (!rw_read_exact_or_log(*infile, header, 1, 3) ||
-        std::string(header, 3) != "FSS")
-        return "none";
-    if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1) ||
-        versionnumber < 6)
-        return "none";
+    if (!rw_read_exact_or_log(*infile, header, 1, 3))
+        return LevelFileIoError::ParseFailed;
+    if (std::string(header, 3) != "FSS")
+        return LevelFileIoError::InvalidHeader;
+    if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1))
+        return LevelFileIoError::ParseFailed;
+    if (versionnumber < 6)
+        return LevelFileIoError::UnsupportedVersion;
     if (!rw_read_exact_or_log(*infile, gridname, 1, 8))
-        return "none";
+        return LevelFileIoError::ParseFailed;
     if (!rw_read_exact_or_log(*infile, buffer, 1, 30))
+        return LevelFileIoError::ParseFailed;
+    out_title = std::string(buffer);
+    return LevelFileIoError::None;
+}
+
+std::string load_scenario_title(const char* filename)
+{
+    std::string out_title;
+    if (load_scenario_title_with_error(filename, out_title) !=
+        LevelFileIoError::None)
         return "none";
-    return std::string(buffer);
+    return out_title;
 }
 
 } // namespace og::data
