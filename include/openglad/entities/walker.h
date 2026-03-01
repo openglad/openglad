@@ -24,7 +24,6 @@
 
 #include <openglad/sim/sim_entity.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/gameplay/render_component_base.h>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -35,6 +34,9 @@
 class PixieData;
 class guy;
 class statistics;
+namespace og::gameplay {
+class IRenderComponent;
+}
 
 // Opaque state type used by MicroPather for pathfinding nodes.
 // States are encoded grid coordinates (not real pointers), but the

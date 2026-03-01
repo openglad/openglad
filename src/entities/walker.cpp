@@ -31,6 +31,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/obmap.h>
+#include <openglad/gameplay/render_component_base.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/core/constants.h>
