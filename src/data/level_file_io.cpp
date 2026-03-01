@@ -87,7 +87,8 @@ void set_error(LevelFileIoError* out_error, LevelFileIoError err)
 }
 
 bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
-                     LevelFileMetadata& metadata, LevelFileIoError& err)
+                     LevelFileMetadata& metadata, LevelFileIoError& err,
+                     bool require_valid_grid)
 {
     short currentx = 0;
     short currenty = 0;
@@ -268,6 +269,19 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
 
     const std::string gridpix = ensure_pix_extension(newgrid);
     world.grid = read_pixie_file(gridpix.c_str());
+    if (!world.grid.valid())
+    {
+        LogError("Failed to load scenario grid file: {}\n", gridpix);
+        if (require_valid_grid)
+        {
+            err = LevelFileIoError::ParseFailed;
+            return false;
+        }
+        world.pixmaxx = 0;
+        world.pixmaxy = 0;
+        return true;
+    }
+
     world.pixmaxx = world.grid.w * GRID_SIZE;
     world.pixmaxy = world.grid.h * GRID_SIZE;
 
@@ -304,7 +318,7 @@ short load_version_bridge(og::io::OgFile& infile, GameWorld* world,
     world->delete_grid();
 
     LevelFileIoError err = LevelFileIoError::None;
-    if (!read_level_body(infile, version, *world, *metadata, err))
+    if (!read_level_body(infile, version, *world, *metadata, err, false))
         return 0;
 
     return 1;
@@ -362,7 +376,7 @@ bool load_level(const std::string& path,
     metadata.description.clear();
 
     LevelFileIoError io_err = LevelFileIoError::None;
-    if (!read_level_body(*infile, versionnumber, world, metadata, io_err))
+    if (!read_level_body(*infile, versionnumber, world, metadata, io_err, true))
     {
         set_error(out_error, io_err);
         return false;
@@ -393,6 +407,145 @@ bool load_level(const std::string& path,
     description = std::move(metadata.description);
     return true;
 }
+
+namespace {
+
+bool write_scenario_payload(og::io::OgFile& outfile,
+                            std::string_view path_for_log,
+                            GameWorld& world,
+                            const LevelFileMetadata& metadata,
+                            LevelFileIoError* out_error)
+{
+    auto write_field = [&](const void* src, std::size_t size,
+                           std::size_t count) -> bool {
+        if (outfile.write(src, size, count) != count)
+        {
+            Log("Failed to write scenario file: {}\n", path_for_log);
+            set_error(out_error, LevelFileIoError::SerializeFailed);
+            return false;
+        }
+        return true;
+    };
+
+    const char header[3] = {'F', 'S', 'S'};
+    char temp_version = kScenarioVersion;
+    char temp_grid[20] = {};
+    char scentitle[30] = {};
+    char filler[20] = "MSTRMSTRMSTRMSTR";
+
+    if (!write_field(header, 3, 1) || !write_field(&temp_version, 1, 1))
+        return false;
+
+    fill_fixed_field(temp_grid, 8, metadata.grid_file, "grid_file");
+    if (!write_field(temp_grid, 8, 1))
+        return false;
+
+    fill_fixed_field(scentitle, 30, world.title, "title");
+    if (!write_field(scentitle, 30, 1))
+        return false;
+
+    char temp_scen_type = world.type;
+    if (!write_field(&temp_scen_type, 1, 1))
+        return false;
+
+    short temp_par = world.par_value;
+    if (!write_field(&temp_par, 2, 1))
+        return false;
+
+    short temp_time_limit = world.time_bonus_limit;
+    if (!write_field(&temp_time_limit, 2, 1))
+        return false;
+
+    const size_t total_objects =
+        world.oblist.size() + world.fxlist.size() + world.weaplist.size();
+    const size_t serialized_objects =
+        std::min(total_objects, static_cast<size_t>(kMaxScenarioObjects));
+    if (serialized_objects != total_objects)
+    {
+        Log("Scenario object count {} exceeds {}, truncating on save.\n",
+            total_objects, kMaxScenarioObjects);
+    }
+
+    short listsize = static_cast<short>(serialized_objects);
+    if (!write_field(&listsize, 2, 1))
+        return false;
+
+    size_t remaining_objects = serialized_objects;
+    auto write_object_list = [&](std::list<std::unique_ptr<walker>>& list,
+                                 const char* null_label) -> bool {
+        for (auto& uptr : list)
+        {
+            if (remaining_objects == 0)
+                break;
+
+            walker* ob = uptr.get();
+            if (ob == nullptr)
+            {
+                Log("Unexpected nullptr {} object.\n", null_label);
+                set_error(out_error, LevelFileIoError::SerializeFailed);
+                return false;
+            }
+
+            unsigned char temporder =
+                static_cast<unsigned char>(ob->query_order());
+            char tempfamily = ob->family;
+            std::int32_t currentx = ob->xpos;
+            std::int32_t currenty = ob->ypos;
+            char tempteam = static_cast<char>(ob->team_num);
+            char tempfacing = ob->curdir;
+            char tempcommand = static_cast<char>(ob->act_type);
+            short shortlevel = static_cast<short>(ob->stats()->level);
+            char tempname[12] = {};
+            snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
+
+            if (!write_field(&temporder, 1, 1) ||
+                !write_field(&tempfamily, 1, 1) ||
+                !write_field(&currentx, 2, 1) ||
+                !write_field(&currenty, 2, 1) ||
+                !write_field(&tempteam, 1, 1) ||
+                !write_field(&tempfacing, 1, 1) ||
+                !write_field(&tempcommand, 1, 1) ||
+                !write_field(&shortlevel, 2, 1) ||
+                !write_field(tempname, 12, 1) ||
+                !write_field(filler, 10, 1))
+            {
+                return false;
+            }
+
+            --remaining_objects;
+        }
+        return true;
+    };
+
+    if (!write_object_list(world.oblist, "regular") ||
+        !write_object_list(world.fxlist, "fx") ||
+        !write_object_list(world.weaplist, "weap"))
+    {
+        return false;
+    }
+
+    const std::uint8_t numlines =
+        static_cast<std::uint8_t>(metadata.description.size());
+    if (!write_field(&numlines, 1, 1))
+        return false;
+    for (const auto& line : metadata.description)
+    {
+        const size_t serialized_width = std::min<size_t>(line.size(), 0xffu);
+        const std::uint8_t tempwidth =
+            static_cast<std::uint8_t>(serialized_width);
+        if (!write_field(&tempwidth, 1, 1))
+            return false;
+        if (serialized_width > 0 &&
+            !write_field(line.data(), serialized_width, 1))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+} // namespace
 
 bool save_grid_file(const char* gridname, const PixieData& grid)
 {
@@ -436,6 +589,28 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
     return true;
 }
 
+bool save_level_scenario_file(GameWorld& world,
+                              const std::string& path,
+                              const LevelFileMetadata& metadata,
+                              LevelFileIoError* out_error)
+{
+    set_error(out_error, LevelFileIoError::None);
+
+    auto outfile = og::io::og_open_write(path.c_str());
+    if (!outfile)
+    {
+        Log("Could not open file for writing: {}\n", path);
+        set_error(out_error, LevelFileIoError::OpenWriteFailed);
+        return false;
+    }
+
+    if (!write_scenario_payload(*outfile, path, world, metadata, out_error))
+        return false;
+
+    set_error(out_error, LevelFileIoError::None);
+    return true;
+}
+
 bool save_level(GameWorld& world,
                 const std::string& path,
                 const LevelFileMetadata& metadata,
@@ -443,125 +618,9 @@ bool save_level(GameWorld& world,
 {
     set_error(out_error, LevelFileIoError::None);
 
-    auto outfile = og::io::og_open_write("temp/scen/", path.c_str());
-    if (!outfile)
-    {
-        Log("Could not open file for writing: temp/scen/{}\n", path);
-        set_error(out_error, LevelFileIoError::OpenWriteFailed);
+    const std::string scenario_path = std::string("temp/scen/") + path;
+    if (!save_level_scenario_file(world, scenario_path, metadata, out_error))
         return false;
-    }
-
-#define WRITE_FIELD(src, size, count)                                          \
-    do                                                                          \
-    {                                                                           \
-        if (outfile->write((src), (size), (count)) !=                          \
-            static_cast<std::size_t>(count))                                   \
-        {                                                                       \
-            Log("Failed to write scenario file: temp/scen/{}\n", path);      \
-            set_error(out_error, LevelFileIoError::SerializeFailed);           \
-            return false;                                                       \
-        }                                                                       \
-    } while (0)
-
-    const char header[3] = {'F', 'S', 'S'};
-    char temp_version = kScenarioVersion;
-    char temp_grid[20] = {};
-    char scentitle[30] = {};
-    char filler[20] = "MSTRMSTRMSTRMSTR";
-
-    WRITE_FIELD(header, 3, 1);
-    WRITE_FIELD(&temp_version, 1, 1);
-
-    fill_fixed_field(temp_grid, 8, metadata.grid_file, "grid_file");
-    WRITE_FIELD(temp_grid, 8, 1);
-
-    fill_fixed_field(scentitle, 30, world.title, "title");
-    WRITE_FIELD(scentitle, 30, 1);
-
-    char temp_scen_type = world.type;
-    WRITE_FIELD(&temp_scen_type, 1, 1);
-
-    short temp_par = world.par_value;
-    WRITE_FIELD(&temp_par, 2, 1);
-
-    short temp_time_limit = world.time_bonus_limit;
-    WRITE_FIELD(&temp_time_limit, 2, 1);
-
-    const size_t total_objects =
-        world.oblist.size() + world.fxlist.size() + world.weaplist.size();
-    const size_t serialized_objects =
-        std::min(total_objects, static_cast<size_t>(kMaxScenarioObjects));
-    if (serialized_objects != total_objects)
-    {
-        Log("Scenario object count {} exceeds {}, truncating on save.\n",
-            total_objects, kMaxScenarioObjects);
-    }
-
-    short listsize = static_cast<short>(serialized_objects);
-    WRITE_FIELD(&listsize, 2, 1);
-
-    size_t remaining_objects = serialized_objects;
-    auto write_object_list = [&](std::list<std::unique_ptr<walker>>& list,
-                                 const char* null_label) -> bool {
-        for (auto& uptr : list)
-        {
-            if (remaining_objects == 0)
-                break;
-
-            walker* ob = uptr.get();
-            if (ob == nullptr)
-            {
-                Log("Unexpected nullptr {} object.\n", null_label);
-                set_error(out_error, LevelFileIoError::SerializeFailed);
-                return false;
-            }
-
-            unsigned char temporder =
-                static_cast<unsigned char>(ob->query_order());
-            char tempfamily = ob->family;
-            std::int32_t currentx = ob->xpos;
-            std::int32_t currenty = ob->ypos;
-            char tempteam = static_cast<char>(ob->team_num);
-            char tempfacing = ob->curdir;
-            char tempcommand = static_cast<char>(ob->act_type);
-            short shortlevel = static_cast<short>(ob->stats()->level);
-            char tempname[12] = {};
-            snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
-
-            WRITE_FIELD(&temporder, 1, 1);
-            WRITE_FIELD(&tempfamily, 1, 1);
-            WRITE_FIELD(&currentx, 2, 1);
-            WRITE_FIELD(&currenty, 2, 1);
-            WRITE_FIELD(&tempteam, 1, 1);
-            WRITE_FIELD(&tempfacing, 1, 1);
-            WRITE_FIELD(&tempcommand, 1, 1);
-            WRITE_FIELD(&shortlevel, 2, 1);
-            WRITE_FIELD(tempname, 12, 1);
-            WRITE_FIELD(filler, 10, 1);
-            --remaining_objects;
-        }
-        return true;
-    };
-
-    if (!write_object_list(world.oblist, "regular") ||
-        !write_object_list(world.fxlist, "fx") ||
-        !write_object_list(world.weaplist, "weap"))
-    {
-        return false;
-    }
-
-    const std::uint8_t numlines =
-        static_cast<std::uint8_t>(metadata.description.size());
-    WRITE_FIELD(&numlines, 1, 1);
-    for (const auto& line : metadata.description)
-    {
-        const size_t serialized_width = std::min<size_t>(line.size(), 0xffu);
-        const std::uint8_t tempwidth =
-            static_cast<std::uint8_t>(serialized_width);
-        WRITE_FIELD(&tempwidth, 1, 1);
-        if (serialized_width > 0)
-            WRITE_FIELD(line.data(), serialized_width, 1);
-    }
 
     if (!save_grid_file(metadata.grid_file.c_str(), world.grid))
     {
@@ -570,8 +629,6 @@ bool save_level(GameWorld& world,
     }
 
     Log("Scenario saved.\n");
-
-#undef WRITE_FIELD
     set_error(out_error, LevelFileIoError::None);
     return true;
 }

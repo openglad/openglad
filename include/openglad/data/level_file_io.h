@@ -53,6 +53,12 @@ bool save_level(GameWorld& world,
                 const LevelFileMetadata& metadata,
                 LevelFileIoError* out_error = nullptr);
 
+// Serialize only the scenario (.fss) payload. Does not write the grid .pix file.
+bool save_level_scenario_file(GameWorld& world,
+                              const std::string& path,
+                              const LevelFileMetadata& metadata,
+                              LevelFileIoError* out_error = nullptr);
+
 // Helpers kept for compatibility tests and legacy wrappers.
 short load_version_2(og::io::OgFile& infile, GameWorld* world, LevelFileMetadata* metadata);
 short load_version_3(og::io::OgFile& infile, GameWorld* world, LevelFileMetadata* metadata);

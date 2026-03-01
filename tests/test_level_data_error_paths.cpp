@@ -4,7 +4,9 @@
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
+#include <array>
 #include <cerrno>
+#include <cstring>
 #include <filesystem>
 #include <cstdio>
 #include <cstdint>
@@ -28,6 +30,11 @@ static bool write_file_bytes(const fs::path& p, const std::string& contents)
     size_t n = fwrite(contents.data(), 1, contents.size(), f);
     fclose(f);
     return n == contents.size();
+}
+
+static void append_i16_native(std::string& out, std::int16_t value)
+{
+    out.append(reinterpret_cast<const char*>(&value), sizeof(value));
 }
 
 static bool read_scenario_object_count(const fs::path& p, short* out_count)
@@ -388,6 +395,60 @@ void test_level_data_load_failure_preserves_existing_world_state()
     og::runtime::current_session->myscreen_->level_description() = old_description;
 }
 REGISTER_TEST(test_level_data_load_failure_preserves_existing_world_state);
+
+void test_level_data_load_reports_parse_failed_when_grid_pix_missing()
+{
+    constexpr int kMissingGridScenarioId = 19992;
+    constexpr std::array<char, 8> kMissingGridName = {'n', 'o', 'g', 'r', 'i', 'd', '9', 'x'};
+
+    const int old_id = og::runtime::current_session->myscreen_->world().id;
+    const std::string old_grid_file = og::runtime::current_session->myscreen_->level_grid_file();
+    const std::string old_title = og::runtime::current_session->myscreen_->world().title;
+    const std::list<std::string> old_description = og::runtime::current_session->myscreen_->level_description();
+
+    std::string scenario_bytes;
+    scenario_bytes.append("FSS", 3);
+    scenario_bytes.push_back(static_cast<char>(9));
+    scenario_bytes.append(kMissingGridName.data(), kMissingGridName.size());
+    std::array<char, 30> title{};
+    std::memcpy(title.data(), "Missing Grid", std::strlen("Missing Grid"));
+    scenario_bytes.append(title.data(), title.size());
+    scenario_bytes.push_back(1); // scenario type
+    append_i16_native(scenario_bytes, 1);    // par value
+    append_i16_native(scenario_bytes, 4000); // time bonus limit
+    append_i16_native(scenario_bytes, 0);    // object count
+    scenario_bytes.push_back(0);             // description line count
+
+    const fs::path scen_path = fs::path("scen") / "scen19992.fss";
+    TEST_ASSERT(write_file_bytes(scen_path, scenario_bytes),
+                "missing-grid scenario fixture should be written");
+
+    std::error_code ec;
+    fs::remove(fs::path("pix") / "nogrid9x.pix", ec);
+    fs::remove("nogrid9x.pix", ec);
+
+    og::runtime::current_session->myscreen_->world().id = kMissingGridScenarioId;
+    og::runtime::current_session->myscreen_->world().title = "before missing grid load";
+    og::runtime::current_session->myscreen_->level_grid_file() = "preserve_grid";
+    og::runtime::current_session->myscreen_->level_description().clear();
+    og::runtime::current_session->myscreen_->level_description().push_back("preserve-line");
+
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->load_level(),
+                "load should fail when referenced grid pix is missing");
+    TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::ParseFailed,
+                   (int)og::runtime::current_session->myscreen_->level_io_error(),
+                   "missing grid pix should map to ParseFailed");
+    TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::ParseFailed,
+                   (int)og::runtime::current_session->myscreen_->load_level_with_error(),
+                   "load_with_error should report ParseFailed for missing grid pix");
+
+    fs::remove(scen_path, ec);
+    og::runtime::current_session->myscreen_->world().id = old_id;
+    og::runtime::current_session->myscreen_->level_grid_file() = old_grid_file;
+    og::runtime::current_session->myscreen_->world().title = old_title;
+    og::runtime::current_session->myscreen_->level_description() = old_description;
+}
+REGISTER_TEST(test_level_data_load_reports_parse_failed_when_grid_pix_missing);
 
 void test_campaign_data_load_reports_open_read_failed_when_campaign_yaml_missing()
 {

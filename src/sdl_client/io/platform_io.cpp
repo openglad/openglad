@@ -18,6 +18,8 @@
 #include <openglad/platform/io.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/core/util.h>
+#include <openglad/data/level_file_io.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/io/physfs_api.h>
 #include "physfsrwops.h"  // PhysFS SDL_RWops bridge
 #include <openglad/io/zip_api.h>
@@ -539,79 +541,22 @@ NewFileIoError create_new_campaign_descriptor_with_error(const std::string& file
 
 NewFileIoError create_new_scen_file_with_error(const std::string& scenfile, const std::string& gridname)
 {
-    // TODO: It would be nice to store all the level data in a class, then have saving code all in one place.
-    
-	// Format of a scenario object list file is: (ver. 8)
-	// 3-byte header: 'FSS'
-	// 1-byte version number
-	// 8-byte grid file name
-	// 30-byte scenario title
-	// 1-byte scenario_type
-	// 2-bytes par-value for level
-	// 2-bytes (Sint32) = total objects to follow
-	// List of n objects, each of 20-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte Sint32 xpos
-	// 2-byte Sint32 ypos
-	// 1-byte TEAM
-	// 1-byte current facing
-	// 1-byte current command
-	// 1-byte level // this is 2 bytes in version 7+
-	// 12-bytes name
-	// 10 bytes RESERVED
-	// ---
-	// 1-byte # of lines of text to load
-	// List of n lines of text, each of form:
-	// 1-byte character width of line
-	// m bytes == characters on this line
-	
-	const char* header = "FSS";
-	unsigned char version = 8;
-	
-	char grid_file_name[8];
-	snprintf(grid_file_name, sizeof(grid_file_name), "%s", gridname.c_str());
-	
-	char scenario_title[30];
-	snprintf(scenario_title, sizeof(scenario_title), "New Level");
-	
-	unsigned char scenario_type = 1;//SCEN_TYPE_CAN_EXIT;
-	
-	short par_value = 1;
-	
-	short num_objects = 0;
-	
-	//char reserved[20] = "MSTRMSTRMSTRMSTR";
-	
-	unsigned char num_lines = 1;
-	char line_text[50] = "A new scenario.";
-	unsigned char line_length = static_cast<unsigned char>(strlen(line_text));
-	
-	SDL_RWops* outfile;
-	if((outfile = open_write_file(scenfile.c_str())) == nullptr)
-	{
-		LogError("Could not open file for writing: {}\n", scenfile);
-		return NewFileIoError::OpenWriteFailed;
-	}
-	
-	// Write it out
-    if(!write_rwops_exact(outfile, header, 1, 3)
-       || !write_rwops_exact(outfile, &version, 1, 1)
-       || !write_rwops_exact(outfile, grid_file_name, 1, 8)
-       || !write_rwops_exact(outfile, scenario_title, 1, 30)
-       || !write_rwops_exact(outfile, &scenario_type, 1, 1)
-       || !write_rwops_exact(outfile, &par_value, 2, 1)
-       || !write_rwops_exact(outfile, &num_objects, 2, 1)
-       || !write_rwops_exact(outfile, &num_lines, 1, 1)
-       || !write_rwops_exact(outfile, &line_length, 1, 1)
-       || !write_rwops_exact(outfile, line_text, line_length, 1))
+    GameWorld world;
+    world.type = GameWorld::TYPE_CAN_EXIT_WHENEVER;
+    world.par_value = 1;
+    world.time_bonus_limit = 4000;
+
+    og::data::LevelFileMetadata metadata;
+    metadata.grid_file = gridname;
+    metadata.description.emplace_back("A new scenario.");
+
+    og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
+    if (!og::data::save_level_scenario_file(world, scenfile, metadata, &io_error))
     {
-        SDL_RWclose(outfile);
+        if (io_error == og::data::LevelFileIoError::OpenWriteFailed)
+            return NewFileIoError::OpenWriteFailed;
         return NewFileIoError::WriteFailed;
     }
-    // No objects to write
 
-	SDL_RWclose(outfile);
-	
     return NewFileIoError::None;
 }

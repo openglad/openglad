@@ -40,6 +40,27 @@ bool read_header(const std::filesystem::path& file, std::string* out)
         *out = std::string(buf, 3);
     return true;
 }
+
+bool read_version(const std::filesystem::path& file, unsigned char* out)
+{
+    if (out == nullptr)
+        return false;
+    SDL_RWops* rw = SDL_RWFromFile(file.string().c_str(), "rb");
+    if (!rw)
+        return false;
+    if (SDL_RWseek(rw, 3, RW_SEEK_SET) < 0)
+    {
+        SDL_RWclose(rw);
+        return false;
+    }
+    unsigned char version = 0;
+    const size_t got = SDL_RWread(rw, &version, 1, 1);
+    SDL_RWclose(rw);
+    if (got != 1)
+        return false;
+    *out = version;
+    return true;
+}
 } // namespace
 
 void test_io_new_file_helpers_typed_success_paths()
@@ -70,6 +91,10 @@ void test_io_new_file_helpers_typed_success_paths()
     std::string header;
     TEST_ASSERT(read_header(scen_file, &header), "scen file header should be readable");
     TEST_ASSERT(header == "FSS", "scenario header should be FSS");
+
+    unsigned char version = 0;
+    TEST_ASSERT(read_version(scen_file, &version), "scen file version should be readable");
+    TEST_ASSERT_EQ(9, (int)version, "new scenario file should use centralized v9 serializer");
 }
 REGISTER_TEST_WITH_FIXTURE(test_io_new_file_helpers_typed_success_paths,
     setup_new_file_fixture, teardown_new_file_fixture);
