@@ -26,6 +26,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/data/smooth.h>
 #include <openglad/entities/obmap.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 
@@ -132,6 +133,89 @@ static void install_world_detach_callback(GameWorld* world, LevelRuntimeData* le
         if (&level->world() == world)
             level->attach_world(nullptr);
     });
+}
+
+class ScopedCurrentGameWorldBinding
+{
+public:
+    ScopedCurrentGameWorldBinding()
+        : context_(current_game)
+        , original_world_(context_ ? context_->world : nullptr)
+    {
+    }
+
+    void bind(GameWorld* world)
+    {
+        if (context_ != nullptr)
+            context_->world = world;
+    }
+
+    void restore()
+    {
+        if (restored_ || context_ == nullptr)
+            return;
+        context_->world = original_world_;
+        restored_ = true;
+    }
+
+    ~ScopedCurrentGameWorldBinding()
+    {
+        restore();
+    }
+
+private:
+    GameplayContext* context_ = nullptr;
+    GameWorld* original_world_ = nullptr;
+    bool restored_ = false;
+};
+
+void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world)
+{
+    if (level == nullptr)
+        return;
+
+    GameWorld& dst = level->world();
+
+    level->delete_objects();
+    dst.delete_grid();
+
+    dst.title = std::move(loaded_world.title);
+    dst.type = loaded_world.type;
+    dst.par_value = loaded_world.par_value;
+    dst.time_bonus_limit = loaded_world.time_bonus_limit;
+    dst.difficulty = loaded_world.difficulty;
+    dst.level_done = loaded_world.level_done;
+    dst.game_ended = loaded_world.game_ended;
+    dst.next_level = loaded_world.next_level;
+    dst.ending = loaded_world.ending;
+    dst.enemy_freeze = loaded_world.enemy_freeze;
+    dst.timer_wait = loaded_world.timer_wait;
+    dst.end = loaded_world.end;
+    dst.retry = loaded_world.retry;
+    dst.control_hp = loaded_world.control_hp;
+    dst.withdraw_requested = loaded_world.withdraw_requested;
+    dst.withdraw_level = loaded_world.withdraw_level;
+    std::copy(std::begin(loaded_world.m_score), std::end(loaded_world.m_score),
+              std::begin(dst.m_score));
+    dst.my_team = loaded_world.my_team;
+    dst.allied_mode = loaded_world.allied_mode;
+    dst.current_scenario = loaded_world.current_scenario;
+    dst.completed_levels = std::move(loaded_world.completed_levels);
+    dst.oblist.splice(dst.oblist.end(), loaded_world.oblist);
+    dst.fxlist.splice(dst.fxlist.end(), loaded_world.fxlist);
+    dst.weaplist.splice(dst.weaplist.end(), loaded_world.weaplist);
+    dst.dead_list.splice(dst.dead_list.end(), loaded_world.dead_list);
+    dst.living_count = loaded_world.living_count;
+    dst.grid = std::move(loaded_world.grid);
+    dst.pixmaxx = loaded_world.pixmaxx;
+    dst.pixmaxy = loaded_world.pixmaxy;
+    dst.myobmap = std::move(loaded_world.myobmap);
+    if (!dst.myobmap)
+        dst.myobmap = std::make_unique<obmap>();
+    if (dst.grid.valid())
+        dst.mysmoother.set_target(dst.grid);
+    else
+        dst.mysmoother.reset();
 }
 
 
@@ -727,24 +811,32 @@ bool LevelRuntimeData::load()
 
     wire_world_entity_services(world_, this, hooks_);
 
-    // Clear stale view pointers before world state is replaced.
-    delete_objects();
-
     std::string thefile = std::format("scen{}.fss", world().id);
 
-    og::data::LevelFileMetadata metadata;
-    metadata.grid_file = grid_file;
-    metadata.description = description;
+    og::data::LevelFileMetadata loaded_metadata;
+    loaded_metadata.grid_file = grid_file;
+    loaded_metadata.description = description;
+
+    ScopedCurrentGameWorldBinding world_binding;
+    GameWorld loaded_world(world().rng_.state_);
+    loaded_world.id = world().id;
+    wire_world_entity_services(&loaded_world, this, hooks_);
+    world_binding.bind(&loaded_world);
 
     og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
-    if (!og::data::load_level(thefile, world(), metadata, &io_error))
+    if (!og::data::load_level(thefile, loaded_world, loaded_metadata, &io_error))
     {
         last_io_error_ = map_level_file_error(io_error);
         return false;
     }
 
-    grid_file = std::move(metadata.grid_file);
-    description = std::move(metadata.description);
+    // Restore active gameplay context before replacing world-owned state.
+    world_binding.restore();
+
+    replace_loaded_world_state(this, loaded_world);
+
+    grid_file = std::move(loaded_metadata.grid_file);
+    description = std::move(loaded_metadata.description);
     level_visuals().topx = 0;
     level_visuals().topy = 0;
 

@@ -410,10 +410,29 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
         return false;
     }
 
-    outfile->write(&numframes, 1, 1);
-    outfile->write(&x, 1, 1);
-    outfile->write(&y, 1, 1);
-    outfile->write(grid.data.get(), 1, static_cast<size_t>(x * y));
+    auto write_exact = [&](const void* src, std::size_t size,
+                           std::size_t count) -> bool {
+        if (outfile->write(src, size, count) != count)
+        {
+            Log("Failed to save map file: temp/pix/{}\n", fullpath);
+            return false;
+        }
+        return true;
+    };
+
+    const std::size_t payload_size =
+        static_cast<std::size_t>(grid.w) * static_cast<std::size_t>(grid.h);
+
+    if (!write_exact(&numframes, 1, 1) || !write_exact(&x, 1, 1) ||
+        !write_exact(&y, 1, 1))
+    {
+        return false;
+    }
+    if (payload_size > 0 &&
+        (grid.data == nullptr || !write_exact(grid.data.get(), 1, payload_size)))
+    {
+        return false;
+    }
     return true;
 }
 
