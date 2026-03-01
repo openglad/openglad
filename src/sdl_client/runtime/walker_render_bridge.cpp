@@ -21,6 +21,19 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 
+namespace
+{
+WalkerRender* as_walker_render(walker* w)
+{
+	return static_cast<WalkerRender*>(w ? w->render_component() : nullptr);
+}
+
+const WalkerRender* as_walker_render(const walker* w)
+{
+	return static_cast<const WalkerRender*>(w ? w->render_component() : nullptr);
+}
+}
+
 // WalkerRender PIMPL implementation (backed by pixieN sprite)
 struct WalkerRender::Impl {
 	std::unique_ptr<pixieN> pix;
@@ -52,13 +65,14 @@ void walker::set_data(const PixieData& data)
 	sizex = data.w;
 	sizey = data.h;
 	frames = data.frames;
-	if (render_)
-		render_->set_data(data);
+	if (WalkerRender* render = as_walker_render(this))
+		render->set_data(data);
 }
 
 const unsigned char* walker::bmp_data() const
 {
-	return render_ ? render_->bmp_data() : nullptr;
+	const WalkerRender* render = as_walker_render(this);
+	return render ? render->bmp_data() : nullptr;
 }
 
 short walker::set_frame(short framenum)
@@ -66,8 +80,8 @@ short walker::set_frame(short framenum)
 	if (framenum < 0 || framenum >= frames)
 		return 0;
 	frame = framenum;
-	if (render_)
-		render_->set_frame(framenum);
+	if (WalkerRender* render = as_walker_render(this))
+		render->set_frame(framenum);
 	return 1;
 }
 
@@ -76,8 +90,8 @@ void walker::set_direct_frame(short whichframe)
 	frame = whichframe;
 
 	// Update render component's bmp pointer if available
-	if (render_)
-		render_->set_frame(whichframe);
+	if (WalkerRender* render = as_walker_render(this))
+		render->set_frame(whichframe);
 }
 
 walker::~walker()

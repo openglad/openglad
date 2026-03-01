@@ -7,6 +7,8 @@
  */
 #pragma once
 
+#include <openglad/gameplay/render_component_base.h>
+
 #include <memory>
 
 class PixieData;
@@ -14,7 +16,7 @@ class PixieData;
 // Concrete render component for walker entities.
 // SDL builds create a WalkerRender (wrapping pixieN);
 // headless builds leave render_ as nullptr.
-class WalkerRender {
+class WalkerRender : public og::gameplay::IRenderComponent {
 public:
     explicit WalkerRender(const PixieData& data);
     ~WalkerRender();
@@ -30,4 +32,3 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
-

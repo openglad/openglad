@@ -498,7 +498,9 @@ LevelRuntimeData::LevelRuntimeData(int level_id, bool headless, const LevelDataH
 {
 }
 
-LevelRuntimeData::LevelRuntimeData(int level_id, bool headless, const LevelDataHooks* hooks, LevelVisuals* visuals)
+LevelRuntimeData::LevelRuntimeData(int level_id, bool headless,
+                                   const LevelDataHooks* hooks,
+                                   og::gameplay::ILevelVisuals* visuals)
     : level_done(this)
     , numobs(this)
     , world_(&owned_world_)

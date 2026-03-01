@@ -24,6 +24,7 @@
 
 #include <openglad/sim/sim_entity.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/render_component_base.h>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -32,7 +33,6 @@
 
 // Forward declarations
 class PixieData;
-class WalkerRender;
 class guy;
 class statistics;
 
@@ -57,8 +57,8 @@ class walker : public og::sim::SimEntity
 		void set_data(const PixieData& data);  // Update render graphics (for editor)
 		bool has_render() const { return render_ != nullptr; }
 		const unsigned char* bmp_data() const;
-		WalkerRender* render_component() { return render_.get(); }
-		const WalkerRender* render_component() const { return render_.get(); }
+		og::gameplay::IRenderComponent* render_component() { return render_.get(); }
+		const og::gameplay::IRenderComponent* render_component() const { return render_.get(); }
 
 		// Animation frame management (sim state in SimEntity::frame/frames;
 		// render bmp pointer updated via render component)
@@ -212,11 +212,11 @@ class walker : public og::sim::SimEntity
 		bool act_fire();
 		bool act_guard();
 		virtual bool act_random();
-			std::int32_t regen_delay_;           // Delay after being hit
+		std::int32_t regen_delay_;           // Delay after being hit
 		walker * myself_;
 		std::unique_ptr<statistics> stats_;
 		std::unique_ptr<guy> owned_myguy_;
-		std::unique_ptr<WalkerRender> render_;  // Optional render component (null for headless)
+		std::unique_ptr<og::gameplay::IRenderComponent> render_;  // Optional render component (null for headless)
 };
 
 // Returns the best display name for an entity: myguy name if available,

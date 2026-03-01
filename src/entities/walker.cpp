@@ -30,7 +30,6 @@
 #include <openglad/entities/generator_family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
-#include <openglad/entities/walker_render.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>

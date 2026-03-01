@@ -11,10 +11,11 @@
 #include <memory>
 
 #include <openglad/data/level_render.h>
+#include <openglad/gameplay/level_visuals_base.h>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/legacy/pixdefs.h>
 
-struct LevelVisuals
+struct LevelVisuals : public og::gameplay::ILevelVisuals
 {
     PixieData pixdata[PIX_MAX];
     std::unique_ptr<LevelRender> renderer_;

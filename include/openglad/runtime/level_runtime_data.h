@@ -209,7 +209,8 @@ public:
     LevelRuntimeData(int level_id, const LevelDataHooks* hooks);
     LevelRuntimeData(int level_id, bool headless);  // Headless constructor (no tile graphics)
     LevelRuntimeData(int level_id, bool headless, const LevelDataHooks* hooks);
-    LevelRuntimeData(int level_id, bool headless, const LevelDataHooks* hooks, LevelVisuals* visuals);
+    LevelRuntimeData(int level_id, bool headless, const LevelDataHooks* hooks,
+                     og::gameplay::ILevelVisuals* visuals);
     ~LevelRuntimeData();
 
     bool load();
@@ -255,8 +256,8 @@ public:
     bool is_headless() const { return headless_; }
     GameWorld& world() { return *world_; }
     const GameWorld& world() const { return *world_; }
-    LevelVisuals& level_visuals() { return *level_visuals_; }
-    const LevelVisuals& level_visuals() const { return *level_visuals_; }
+    LevelVisuals& level_visuals() { return *static_cast<LevelVisuals*>(level_visuals_); }
+    const LevelVisuals& level_visuals() const { return *static_cast<const LevelVisuals*>(level_visuals_); }
     void attach_world(GameWorld* world);
 
     // Legacy transitional hook kept for call-site compatibility. Entity-side
@@ -272,7 +273,7 @@ private:
     GameWorld owned_world_;
     GameWorld* world_ = nullptr;
     LevelVisuals owned_level_visuals_;
-    LevelVisuals* level_visuals_ = nullptr;
+    og::gameplay::ILevelVisuals* level_visuals_ = nullptr;
 };
 
 // Read a scenario title from a .fss file. Returns "none" on failure.
