@@ -82,7 +82,7 @@ void test_effect_magic_shield_hits_weapon_and_enemy_paths()
     shield->setxy(100, 100);
 
     // Inject a weapon into oblist (effect::act queries level_data.oblist for weapons).
-    auto weapon = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
+    auto weapon = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     if (weapon) {
         weapon->team_num = 2; // opposing team
@@ -132,7 +132,7 @@ void test_effect_boomerang_hits_weapon_and_enemy_paths()
     fx->drawcycle = 12;
     fx->setxy(100, 100);
 
-    auto weapon = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
+    auto weapon = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     if (weapon) {
         weapon->team_num = 2;
@@ -339,7 +339,7 @@ void test_effect_batch3_shield_and_boomerang_collision_loops()
     shield->stats()->hitpoints = 1.0f;
     shield->lifetime = 0;
 
-    auto incoming = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
+    auto incoming = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(incoming != nullptr, "incoming weapon created");
     if (incoming) {
         incoming->team_num = 2;
@@ -550,7 +550,7 @@ void test_effect_round8_orbit_offset_and_default_act_death_paths()
     TEST_ASSERT_EQ(-22, (int)y1, "orbit offset wrap y should match lookup table");
 
     // Default effect::act path with ANI_WALK should force dead + death.
-    auto eff = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::FX, FAMILY_FLASH);
+    auto eff = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::FX, FAMILY_FLASH);
     TEST_ASSERT(eff != nullptr, "effect walker created");
     if (!eff)
         return;
@@ -565,7 +565,7 @@ REGISTER_TEST(test_effect_round8_orbit_offset_and_default_act_death_paths);
 
 void test_effect_round9_death_called_guard_returns_false_on_second_call()
 {
-    auto eff = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::FX, FAMILY_FLASH);
+    auto eff = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::FX, FAMILY_FLASH);
     TEST_ASSERT(eff != nullptr, "effect created for death guard");
     if (!eff)
         return;

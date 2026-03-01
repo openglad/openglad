@@ -38,7 +38,7 @@ void test_living_set_difficulty_levels()
 
     for (int i = 0; i < 14; i++) {
         for (int level = 1; level <= 5; level++) {
-            loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+            loader* l = og::runtime::current_session->myscreen_->myloader;
             if (!l) continue;
             auto w = l->create_walker_owned(Order::Living, families[i]);
             if (w) {

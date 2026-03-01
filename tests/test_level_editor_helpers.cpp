@@ -126,7 +126,7 @@ struct ListsSwap {
 
 static std::unique_ptr<walker> make_living(unsigned char family)
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -223,7 +223,7 @@ void test_level_editor_create_new_campaign_and_detect_exists()
         TEST_ASSERT(!are_objects_outside_area(&og::runtime::current_session->myscreen_->level_data, 0, 0, 10, 10),
                     "all objects inside area should report false");
 
-        loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+        loader* l = og::runtime::current_session->myscreen_->myloader;
         auto fx_inside = l ? l->create_walker_owned(Order::FX, FAMILY_FLASH) : nullptr;
         auto fx_outside = l ? l->create_walker_owned(Order::FX, FAMILY_FLASH) : nullptr;
         TEST_ASSERT(fx_inside != nullptr && fx_outside != nullptr, "fx objects should be created");

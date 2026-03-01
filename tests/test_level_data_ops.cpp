@@ -331,7 +331,7 @@ void test_level_data_remove_ob_from_each_list()
     short r3 = og::runtime::current_session->myscreen_->level_data.remove_ob(living);
     TEST_ASSERT_EQ(1, (int)r3, "removed from oblist");
 
-    auto non_member = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Living, FAMILY_SOLDIER);
+    auto non_member = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(non_member != nullptr, "non-member walker created");
     short r4 = og::runtime::current_session->myscreen_->level_data.remove_ob(non_member.get());
     TEST_ASSERT_EQ(0, (int)r4, "removing non-member object should fail");
@@ -363,7 +363,7 @@ void test_level_data_delete_objects()
     fx->setxy(50, 50);
     weap->setxy(70, 70);
 
-    auto dead = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Living, FAMILY_ORC);
+    auto dead = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Living, FAMILY_ORC);
     TEST_ASSERT(dead != nullptr, "dead_list walker created");
     dead->setxy(90, 90);
     og::runtime::current_session->myscreen_->level_data.dead_list.push_back(std::move(dead));

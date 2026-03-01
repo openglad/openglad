@@ -75,7 +75,7 @@ REGISTER_TEST(test_screen_add_ob_effect);
 
 void test_screen_query_grid_passable_walking()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l) return;
     auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     if (!w) return;
@@ -96,7 +96,7 @@ REGISTER_TEST(test_screen_query_grid_passable_walking);
 
 void test_screen_query_grid_passable_weapon()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l) return;
     auto w = l->create_walker_owned(Order::Weapon, FAMILY_KNIFE);
     if (!w) return;

@@ -159,33 +159,37 @@ EntityFactory headless_create_entity_factory()
     return factory;
 }
 
-void headless_wire_world_entity_services(GameWorld* world, LevelData* level)
+loader* headless_entity_loader()
 {
-    if (world == nullptr || level == nullptr)
+    static auto game_loader = std::make_unique<loader>(headless_create_entity_factory());
+    return game_loader.get();
+}
+
+void wire_world_with_loader(GameWorld* world, loader* game_loader)
+{
+    if (world == nullptr || game_loader == nullptr)
         return;
 
-    if (!level->myloader)
-        level->myloader = std::make_unique<loader>(headless_create_entity_factory());
-
-    world->entity_factory = [level](Order order, std::int32_t family) -> std::unique_ptr<walker> {
-        if (level->myloader == nullptr)
-            return nullptr;
-        return level->myloader->create_walker_owned(order, family);
+    world->entity_factory = [game_loader](Order order, std::int32_t family) -> std::unique_ptr<walker> {
+        return game_loader->create_walker_owned(order, family);
     };
 
-    world->entity_configurator = [level](walker& entity, Order order, std::int32_t family) -> const PixieData* {
-        if (level->myloader == nullptr)
-            return nullptr;
-        loader* game_loader = level->myloader.get();
+    world->entity_configurator = [game_loader](walker& entity, Order order, std::int32_t family) -> const PixieData* {
         game_loader->set_walker(&entity, order, family);
         return game_loader->graphics_for(entity.query_order(), entity.family);
     };
 
-    world->entity_derived_stats = [level](walker* entity, Order order, std::int32_t family) {
-        if (entity == nullptr || level->myloader == nullptr)
+    world->entity_derived_stats = [game_loader](walker* entity, Order order, std::int32_t family) {
+        if (entity == nullptr)
             return;
-        level->myloader->set_derived_stats(entity, order, family);
+        game_loader->set_derived_stats(entity, order, family);
     };
+}
+
+void headless_wire_world_entity_services(GameWorld* world, LevelData* level)
+{
+    (void)level;
+    wire_world_with_loader(world, headless_entity_loader());
 }
 
 const LevelDataHooks kHeadlessLevelDataHooks{

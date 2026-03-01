@@ -26,7 +26,7 @@
 
 static std::unique_ptr<walker> make_living(char family)
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l) return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
     if (!w) return nullptr;
@@ -346,7 +346,7 @@ REGISTER_TEST(test_on_death_fire_elemental_explodes);
 // Slime death: should shrink to medium slime
 void test_on_death_slime_shrinks()
 {
-    auto w = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(
+    auto w = og::runtime::current_session->myscreen_->myloader->create_walker_owned(
         Order::Living, FAMILY_SLIME);
     TEST_ASSERT(w != nullptr, "should create slime");
     w->setxy(100, 100);
@@ -359,7 +359,7 @@ REGISTER_TEST(test_on_death_slime_shrinks);
 // Medium slime death: should shrink to small slime
 void test_on_death_medium_slime_shrinks()
 {
-    auto w = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(
+    auto w = og::runtime::current_session->myscreen_->myloader->create_walker_owned(
         Order::Living, FAMILY_MEDIUM_SLIME);
     TEST_ASSERT(w != nullptr, "should create medium slime");
     w->setxy(100, 100);

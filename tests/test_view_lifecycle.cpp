@@ -26,7 +26,7 @@ static std::unique_ptr<walker> make_player_walker(char family, unsigned char tea
 
 static std::unique_ptr<walker> make_npc_walker(char family, unsigned char team)
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);

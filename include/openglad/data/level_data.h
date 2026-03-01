@@ -28,7 +28,6 @@ enum class Order : unsigned char;
 
 class screen;
 class LevelRender;
-class loader;
 class statistics;
 class SaveData;
 class IRandom;
@@ -299,7 +298,6 @@ public:
     std::string grid_file;
     LevelDoneForwarder level_done;
 
-    std::unique_ptr<loader> myloader;
     LivingCountForwarder numobs;
     WalkerListForwarder oblist;
     WalkerListForwarder fxlist;  // fx--explosions, etc.

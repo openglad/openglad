@@ -301,7 +301,7 @@ void test_walker_act_with_commands()
         (void)w->act();
     }
 
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
     if (l) {
         auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);
@@ -672,7 +672,7 @@ REGISTER_TEST(test_walker_is_friendly_different_teams);
 
 void test_walker_set_difficulty_all_families()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l) return;
 
     short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
@@ -763,7 +763,7 @@ REGISTER_TEST(test_walker_animate_smoke);
 
 void test_walker_act_random_generator_paths()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);

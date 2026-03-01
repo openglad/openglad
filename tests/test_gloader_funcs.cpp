@@ -18,7 +18,7 @@
 
 void test_gloader_create_living_all()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
@@ -37,7 +37,7 @@ REGISTER_TEST(test_gloader_create_living_all);
 
 void test_gloader_create_weapon_families()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     short weap_families[] = { FAMILY_KNIFE, FAMILY_ROCK, FAMILY_ARROW,
@@ -63,7 +63,7 @@ REGISTER_TEST(test_gloader_create_weapon_families);
 
 void test_gloader_create_treasure()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     auto w = l->create_walker_owned(Order::Treasure, FAMILY_STAIN);
@@ -85,7 +85,7 @@ REGISTER_TEST(test_gloader_create_treasure);
 
 void test_gloader_create_effect()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     auto w = l->create_walker_owned(Order::FX, FAMILY_EXPLOSION);
@@ -107,7 +107,7 @@ REGISTER_TEST(test_gloader_create_effect);
 
 void test_gloader_create_generator()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     auto w = l->create_walker_owned(Order::Generator, FAMILY_TENT);
@@ -133,7 +133,7 @@ REGISTER_TEST(test_gloader_create_generator);
 
 void test_gloader_set_derived_stats_all()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
@@ -156,7 +156,7 @@ REGISTER_TEST(test_gloader_set_derived_stats_all);
 
 void test_gloader_set_walker()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
@@ -193,7 +193,7 @@ REGISTER_TEST(test_gloader_set_walker);
 
 void test_gloader_invalid_family_clamp_paths()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
     if (!l)
         return;
@@ -222,7 +222,7 @@ REGISTER_TEST(test_gloader_invalid_family_clamp_paths);
 
 void test_gloader_order_special_and_invalid_graphics_paths()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
     if (!l)
         return;
@@ -250,7 +250,7 @@ REGISTER_TEST(test_gloader_order_special_and_invalid_graphics_paths);
 
 void test_gloader_set_walker_descriptor_flag_and_default_paths()
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
     if (!l)
         return;

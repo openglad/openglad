@@ -17,7 +17,7 @@
 
 static std::unique_ptr<walker> make_living(unsigned char team, signed char user = -1)
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l) return nullptr;
     auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     if (!w) return nullptr;
@@ -977,7 +977,7 @@ void test_sim_input_switch_char_skips_ineligible_candidates_then_selects_valid()
     if (!(control_up && enemy_up && charmed_up && taken_up && good_up))
         return;
 
-    auto nonliving = og::runtime::current_session->myscreen_->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
+    auto nonliving = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(nonliving != nullptr, "nonliving candidate should be created");
     if (!nonliving)
         return;

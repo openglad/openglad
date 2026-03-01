@@ -56,7 +56,7 @@ struct KeyStateGuard
 
 static std::unique_ptr<walker> make_living(unsigned char family, unsigned char team, int x, int y)
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);

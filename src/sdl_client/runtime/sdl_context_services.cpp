@@ -61,6 +61,21 @@ void install_sdl_context_services()
 
 void popup_dialog(const char* title, const char* message);
 
+loader* sdl_entity_loader()
+{
+    static auto game_loader = std::make_unique<loader>([] {
+        EntityFactory factory;
+        factory.attach_render = [](walker& w, const PixieData& data) {
+            w.attach_render(data);
+        };
+        factory.report_error = [](const std::string& message) {
+            popup_dialog("ERROR", message.c_str());
+        };
+        return factory;
+    }());
+    return game_loader.get();
+}
+
 namespace
 {
 void sdl_clear_stale_view_controls(LevelData* level)
@@ -100,33 +115,31 @@ EntityFactory sdl_create_entity_factory()
     return factory;
 }
 
-void sdl_wire_world_entity_services(GameWorld* world, LevelData* level)
+void wire_world_with_loader(GameWorld* world, loader* game_loader)
 {
-    if (world == nullptr || level == nullptr)
+    if (world == nullptr || game_loader == nullptr)
         return;
 
-    if (!level->myloader)
-        level->myloader = std::make_unique<loader>(sdl_create_entity_factory());
-
-    world->entity_factory = [level](Order order, std::int32_t family) -> std::unique_ptr<walker> {
-        if (level->myloader == nullptr)
-            return nullptr;
-        return level->myloader->create_walker_owned(order, family);
+    world->entity_factory = [game_loader](Order order, std::int32_t family) -> std::unique_ptr<walker> {
+        return game_loader->create_walker_owned(order, family);
     };
 
-    world->entity_configurator = [level](walker& entity, Order order, std::int32_t family) -> const PixieData* {
-        if (level->myloader == nullptr)
-            return nullptr;
-        loader* game_loader = level->myloader.get();
+    world->entity_configurator = [game_loader](walker& entity, Order order, std::int32_t family) -> const PixieData* {
         game_loader->set_walker(&entity, order, family);
         return game_loader->graphics_for(entity.query_order(), entity.family);
     };
 
-    world->entity_derived_stats = [level](walker* entity, Order order, std::int32_t family) {
-        if (entity == nullptr || level->myloader == nullptr)
+    world->entity_derived_stats = [game_loader](walker* entity, Order order, std::int32_t family) {
+        if (entity == nullptr)
             return;
-        level->myloader->set_derived_stats(entity, order, family);
+        game_loader->set_derived_stats(entity, order, family);
     };
+}
+
+void sdl_wire_world_entity_services(GameWorld* world, LevelData* level)
+{
+    (void)level;
+    wire_world_with_loader(world, sdl_entity_loader());
 }
 
 const LevelDataHooks kSdlLevelDataHooks{

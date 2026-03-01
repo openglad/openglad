@@ -13,7 +13,7 @@
 
 static std::unique_ptr<walker> create_living(char family)
 {
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -174,7 +174,7 @@ void test_walker_myguy_move_and_weapon_heading_and_outline_named()
     // -----------------------------------------------------------------------
     // set_weapon_heading: deterministic switch coverage (no waver)
     // -----------------------------------------------------------------------
-    loader* l = og::runtime::current_session->myscreen_->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
     if (!l)
         return;

@@ -124,6 +124,7 @@ static inline cfg_store& active_config()
 // From picker.cpp
 extern Sint32 calculate_level(Uint32 temp_exp);
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+loader* sdl_entity_loader();
 
 // Screen window boundries
 inline constexpr int MAX_VIEWS = 5;
@@ -162,6 +163,8 @@ void screen::init_common(short howmany, bool has_display)
     // macro resolves during the rest of construction (text rendering, etc.).
     if (og::runtime::current_session)
         og::runtime::current_session->myscreen_ = this;
+    myloader = sdl_entity_loader();
+    level_data.attach_world(&world_);
 
     TRACE("init", "screen constructor: numviews=%d display=%d", howmany, has_display);
 
@@ -247,9 +250,9 @@ screen::screen(short howmany)
     , level_done(world_.level_done)
     , retry(world_.retry)
     , enemy_freeze(world_.enemy_freeze)
+    , myloader(nullptr)
     , level_data(1, false, &sdl_level_data_hooks())
 {
-	level_data.attach_world(&world_);
 	init_common(howmany, true);
 }
 
@@ -261,9 +264,9 @@ screen::screen(short howmany, bool create_display)
     , level_done(world_.level_done)
     , retry(world_.retry)
     , enemy_freeze(world_.enemy_freeze)
+    , myloader(nullptr)
     , level_data(1, false, &sdl_level_data_hooks())
 {
-	level_data.attach_world(&world_);
 	init_common(howmany, create_display);
 }
 
@@ -794,7 +797,9 @@ walker  *screen::find_far_foe(walker  *ob)
 
 walker* screen::set_walker(walker *ob, Order order, Sint32 family)
 {
-    return level_data.myloader->set_walker(ob, order, family);
+    if (myloader == nullptr)
+        return nullptr;
+    return myloader->set_walker(ob, order, family);
 }
 
 screen::ScenarioTitleError screen::get_scen_title_with_error(const char *filename, std::string& out_title)

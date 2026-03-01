@@ -114,7 +114,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     do_outline = 0;
     depressed = 0;
 
-    mypixie = og::runtime::current_session->myscreen_->level_data.myloader->create_pixieN_owned(Order::Button1, family);
+    mypixie = og::runtime::current_session->myscreen_->myloader->create_pixieN_owned(Order::Button1, family);
 
     hotkey = hot;
 
@@ -141,7 +141,7 @@ vbutton::~vbutton()
 
 void vbutton::set_graphic(char family)
 {
-    mypixie = og::runtime::current_session->myscreen_->level_data.myloader->create_pixieN_owned(Order::Button1, family);
+    mypixie = og::runtime::current_session->myscreen_->myloader->create_pixieN_owned(Order::Button1, family);
     width = mypixie->sizex;
     height= mypixie->sizey;
     xend = xloc + width;

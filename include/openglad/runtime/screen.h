@@ -112,7 +112,7 @@ class screen : public video
 		int& living_count() { return world_.living_count; }
 		const int& living_count() const { return world_.living_count; }
 
-        // General drawing data
+		// General drawing data
 		std::array<unsigned char, 768> newpalette{};
 		short palmode;
 		
@@ -125,6 +125,8 @@ class screen : public video
 			short& level_done;
 			bool& retry;
 			Sint32& enemy_freeze;
+			// Platform-owned entity loader (wired at setup time).
+			loader* myloader;
 			LevelData level_data;
 			
 			// Save data

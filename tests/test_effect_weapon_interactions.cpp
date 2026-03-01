@@ -74,7 +74,7 @@ void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enem
     level.oblist.push_back(std::move(owner));
 
     // A friendly weapon placed in oblist (screen::find_foe_weapons_in_range iterates oblist).
-    auto weap = level.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
+    auto weap = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weap != nullptr, "weapon created");
     if (!weap) {
         remove_new_objects(level, ob_before, fx_before, weap_before);

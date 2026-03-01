@@ -1024,7 +1024,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                     sel.family--;
                 else
                     sel.family = NUM_FAMILIES-1;
-                level->myloader->set_walker(obj, sel.order, sel.family);
+                og::runtime::current_session->myscreen_->myloader->set_walker(obj, sel.order, sel.family);
                 obj->ani_type = ANI_WALK;
                 obj->transform_to(sel.order, sel.family);
                 obj->set_frame(obj->ani[obj->curdir][0]);
@@ -1046,7 +1046,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                     sel.family++;
                 else
                     sel.family = 0;
-                level->myloader->set_walker(obj, sel.order, sel.family);
+                og::runtime::current_session->myscreen_->myloader->set_walker(obj, sel.order, sel.family);
                 obj->ani_type = ANI_WALK;
                 obj->transform_to(sel.order, sel.family);
                 obj->set_frame(obj->ani[obj->curdir][0]);
@@ -1487,8 +1487,8 @@ Sint32 LevelEditorData::display_panel(screen* s)
         // Guy
         walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
         newob->setxy(lm+25 + level->topx, PIX_TOP-16-1 + level->topy);
-        newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
-        level->myloader->set_walker(newob, object_brush.order, object_brush.family);
+        newob->set_data(s->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
+        s->myloader->set_walker(newob, object_brush.order, object_brush.family);
         newob->team_num = static_cast<unsigned char>(object_brush.team);
         draw_walker_tile(*newob, s->viewob[0].get());
         // Border
@@ -1509,8 +1509,8 @@ Sint32 LevelEditorData::display_panel(screen* s)
                 {
                     index = (i + ((j+eds().rowsdown) * PIX_OVER)) % pane_size;
                     newob->setxy(S_RIGHT+i*GRID_SIZE + level->topx, PIX_TOP+j*GRID_SIZE + level->topy);
-                    newob->set_data(level->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
-                    level->myloader->set_walker(newob, object_pane[index].order, object_pane[index].family);
+                    newob->set_data(s->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
+                    s->myloader->set_walker(newob, object_pane[index].order, object_pane[index].family);
                     newob->team_num = static_cast<unsigned char>(object_brush.team);
                     draw_walker_tile(*newob, s->viewob[0].get());
                 }
@@ -1532,8 +1532,8 @@ Sint32 LevelEditorData::display_panel(screen* s)
         {
             // Prepare object sprite
             newob->setxy(mx + level->topx, my + level->topy);
-            newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
-            level->myloader->set_walker(newob, object_brush.order, object_brush.family);
+            newob->set_data(s->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
+            s->myloader->set_walker(newob, object_brush.order, object_brush.family);
             newob->team_num = static_cast<unsigned char>(object_brush.team);
             
             // Get size rounded up to nearest GRID_SIZE

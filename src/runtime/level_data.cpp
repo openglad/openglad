@@ -110,26 +110,26 @@ static EntityFactory make_default_entity_factory()
     return factory;
 }
 
-static void wire_world_loader_fallback(GameWorld& world, LevelData* level)
+static void wire_world_loader(GameWorld& world,
+                              const std::shared_ptr<loader>& game_loader)
 {
-    world.entity_factory = [level](Order order, std::int32_t family) -> std::unique_ptr<walker> {
-        if (level == nullptr || !level->myloader)
+    world.entity_factory = [game_loader](Order order, std::int32_t family) -> std::unique_ptr<walker> {
+        if (!game_loader)
             return nullptr;
-        return level->myloader->create_walker_owned(order, family);
+        return game_loader->create_walker_owned(order, family);
     };
 
-    world.entity_configurator = [level](walker& entity, Order order, std::int32_t family) -> const PixieData* {
-        if (level == nullptr || !level->myloader)
+    world.entity_configurator = [game_loader](walker& entity, Order order, std::int32_t family) -> const PixieData* {
+        if (!game_loader)
             return nullptr;
-        loader* game_loader = level->myloader.get();
         game_loader->set_walker(&entity, order, family);
         return game_loader->graphics_for(entity.query_order(), entity.family);
     };
 
-    world.entity_derived_stats = [level](walker* entity, Order order, std::int32_t family) {
-        if (level == nullptr || !level->myloader || entity == nullptr)
+    world.entity_derived_stats = [game_loader](walker* entity, Order order, std::int32_t family) {
+        if (entity == nullptr || !game_loader)
             return;
-        level->myloader->set_derived_stats(entity, order, family);
+        game_loader->set_derived_stats(entity, order, family);
     };
 }
 
@@ -146,14 +146,10 @@ static void wire_world_entity_services(GameWorld* world,
         return;
     }
 
-    if (!level->myloader)
-    {
-        if (hooks != nullptr && hooks->create_entity_factory != nullptr)
-            level->myloader = std::make_unique<loader>(hooks->create_entity_factory());
-        else
-            level->myloader = std::make_unique<loader>(make_default_entity_factory());
-    }
-    wire_world_loader_fallback(*world, level);
+    EntityFactory entity_factory = (hooks != nullptr && hooks->create_entity_factory != nullptr)
+        ? hooks->create_entity_factory()
+        : make_default_entity_factory();
+    wire_world_loader(*world, std::make_shared<loader>(std::move(entity_factory)));
 }
 
 static void clear_world_entity_services(GameWorld* world)
@@ -499,7 +495,6 @@ LevelData::LevelData(int level_id, bool headless)
 
 LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks)
     : level_done(this)
-    , myloader(nullptr)
     , numobs(this)
     , oblist(this, WalkerListForwarder::Kind::Objects)
     , fxlist(this, WalkerListForwarder::Kind::Effects)
@@ -534,8 +529,6 @@ LevelData::~LevelData()
         clear_world_entity_services(world_);
         world_ = nullptr;
     }
-
-    myloader.reset();
 
     renderer_.reset();
     for (int i = 0; i < PIX_MAX; i++)
@@ -1496,7 +1489,6 @@ bool LevelData::load()
     }
     Log("Loading version {} scenario", static_cast<int>(versionnumber));
 
-    myloader.reset();
     wire_world_entity_services(world_, this, hooks_);
     clear();
     world().par_value = static_cast<short>(world().id);
