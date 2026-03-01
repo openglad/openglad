@@ -23,6 +23,50 @@
 namespace
 {
 constexpr short MAX_SPREAD = 10;
+
+template <typename WalkerList>
+bool contains_walker_ptr(const WalkerList& list, const walker* candidate)
+{
+    return std::any_of(list.begin(), list.end(),
+                       [candidate](const auto& entry) {
+                           return entry.get() == candidate;
+                       });
+}
+
+bool is_tracked_entity(const GameWorld& world, const walker* candidate)
+{
+    if (candidate == nullptr)
+        return false;
+
+    return contains_walker_ptr(world.oblist, candidate)
+        || contains_walker_ptr(world.fxlist, candidate)
+        || contains_walker_ptr(world.weaplist, candidate)
+        || contains_walker_ptr(world.dead_list, candidate);
+}
+
+void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
+{
+    if (entity == nullptr)
+        return;
+
+    constexpr int kMaxOwnerDepth = 16;
+    walker* current = entity;
+    for (int depth = 0; depth < kMaxOwnerDepth; ++depth)
+    {
+        walker* owner = current->owner;
+        if (owner == nullptr || owner == current)
+            return;
+        if (!is_tracked_entity(world, owner))
+        {
+            current->owner = nullptr;
+            return;
+        }
+        current = owner;
+    }
+
+    // Defensive cycle/depth break. Any deeper chain is suspicious in practice.
+    current->owner = nullptr;
+}
 }
 
 #ifdef TESTING
@@ -394,8 +438,16 @@ walker* GameWorld::find_near_foe(walker* ob)
             }
 
             std::list<walker*>& ls = myobmap->obmap_get_list(targx, targy);
-            for (auto* w : ls)
+	            for (auto it = ls.begin(); it != ls.end(); )
             {
+                walker* w = *it;
+                if (!is_tracked_entity(*this, w))
+                {
+                    it = ls.erase(it);
+                    continue;
+                }
+                sanitize_owner_chain_link(*this, ob);
+                sanitize_owner_chain_link(*this, w);
                 if (!w->dead && ob->is_friendly(w) == 0 &&
                     rng_.next(w->invisibility_left / 20) == 0)
                 {
@@ -405,6 +457,7 @@ walker* GameWorld::find_near_foe(walker* ob)
                         return w;
                     }
                 }
+                ++it;
             }
         }
 
@@ -430,12 +483,15 @@ walker* GameWorld::find_far_foe(walker* ob)
     walker* endfoe = nullptr;
     std::int32_t distance = 10000;
     ob->stats()->last_distance = 10000;
+    sanitize_owner_chain_link(*this, ob);
 
     for (auto& uptr : oblist)
     {
         walker* foe = uptr.get();
         if (foe == nullptr || foe->dead)
             continue;
+
+        sanitize_owner_chain_link(*this, foe);
 
         if (ob->is_friendly(foe) == 0 &&
             (foe->query_order() == Order::Living ||

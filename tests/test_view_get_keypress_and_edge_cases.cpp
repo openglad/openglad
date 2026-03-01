@@ -114,6 +114,7 @@ void test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns()
     orphan.user = 0;
     orphan.set_act_type(ACT_CONTROL);
 
+    walker* saved_control = v->control;
     v->mynum = 0;
     v->my_team = 0;
     v->control = &orphan;
@@ -126,6 +127,8 @@ void test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns()
     ks.fake[SDL_SCANCODE_LSHIFT] = 1;
     (void)v->input(keydown(SDLK_TAB));
     ks.fake[SDL_SCANCODE_LSHIFT] = 0;
+
+    v->control = saved_control;
 }
 REGISTER_TEST(test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns);
 

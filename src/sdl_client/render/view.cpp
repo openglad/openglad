@@ -157,6 +157,34 @@ inline options* active_prefs()
 {
     return og::runtime::current_session->theprefs_;
 }
+
+template <typename WalkerList>
+bool contains_walker_ptr(const WalkerList& list, const walker* candidate)
+{
+    return std::any_of(list.begin(), list.end(),
+                       [candidate](const auto& entry) {
+                           return entry.get() == candidate;
+                       });
+}
+
+bool control_pointer_is_live(LevelRuntimeData& level, const walker* candidate)
+{
+    if (candidate == nullptr)
+        return false;
+
+    return contains_walker_ptr(level.oblist, candidate)
+        || contains_walker_ptr(level.fxlist, candidate)
+        || contains_walker_ptr(level.weaplist, candidate)
+        || contains_walker_ptr(level.dead_list, candidate);
+}
+
+walker* sanitize_control_pointer(viewscreen& view, LevelRuntimeData& level)
+{
+    walker* candidate = view.control;
+    if (candidate != nullptr && !control_pointer_is_live(level, candidate))
+        view.control = nullptr;
+    return view.control;
+}
 } // namespace
 
 // ************************************************************
@@ -235,7 +263,8 @@ bool viewscreen::redraw()
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
-	walker  *controlob = control;
+    LevelRuntimeData& level = active_screen()->level_runtime_data();
+	walker  *controlob = sanitize_control_pointer(*this, level);
 	auto* renderer = active_screen()->level_visuals_.renderer_.get();
 	if (!renderer) return false;
 	PixieData& gridp = active_screen()->world().grid;
@@ -280,10 +309,10 @@ bool viewscreen::redraw()
 			}
 			else if(gridp.valid())
 				renderer->draw_tile(static_cast<int>(gridp.data[i + maxx * j]), i*GRID_SIZE, j*GRID_SIZE, this);
-		}
+	}
 
 	draw_obs(); //moved here to put the radar on top of obs
-	if (control && !control->dead && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (controlob && !controlob->dead && controlob->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
 	display_text();
 	return 1;
@@ -292,10 +321,11 @@ bool viewscreen::redraw()
 
 bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 {
+    if (!data) return false;
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
-	walker  *controlob = control;
+	walker  *controlob = sanitize_control_pointer(*this, *data);
 	auto* renderer = data->renderer_.get();
 	if (!renderer) return false;
 	PixieData& gridp = data->world().grid;
@@ -340,10 +370,10 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			}
 			else if(gridp.valid())
 				renderer->draw_tile(static_cast<int>(gridp.data[i + maxx * j]), i*GRID_SIZE, j*GRID_SIZE, this);
-		}
+	}
 
 	draw_obs(data); //moved here to put the radar on top of obs
-	if (draw_radar && control && !control->dead && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (draw_radar && controlob && !controlob->dead && controlob->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();
 	return 1;
@@ -403,8 +433,10 @@ short viewscreen::input(const SDL_Event& event)
 	// debug/cheat keys that use specific SDL keycodes (F-keys, letter keys, etc.).
 
 	Uint32 totaltime, totalframes, framespersec;
+    LevelRuntimeData& level = active_screen()->level_runtime_data();
+    walker* controlob = sanitize_control_pointer(*this, level);
 
-	if (!control || control->dead)
+	if (!controlob || controlob->dead)
 		return 1;
 
 	const PlayerInput& pi = ctx().input.players[mynum];
@@ -434,7 +466,7 @@ short viewscreen::input(const SDL_Event& event)
 	}
 
 	// --- Cheat keys (sim mutations handled in runtime layer) ---
-	handle_cheat_keys(control, mynum, event, pi, active_screen());
+	handle_cheat_keys(controlob, mynum, event, pi, active_screen());
 
 	return 1;
 }

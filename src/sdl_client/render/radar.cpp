@@ -25,10 +25,45 @@
 #include <openglad/render/view.h>
 #include <openglad/runtime/screen.h>
 #include <span>
+#include <algorithm>
 #include <openglad/runtime/game_context.h>
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
+
+namespace
+{
+template <typename WalkerList>
+bool contains_walker_ptr(const WalkerList& list, const walker* candidate)
+{
+    return std::any_of(list.begin(), list.end(),
+                       [candidate](const auto& entry) {
+                           return entry.get() == candidate;
+                       });
+}
+
+bool control_pointer_is_live(LevelRuntimeData& level, const walker* candidate)
+{
+    if (candidate == nullptr)
+        return false;
+
+    return contains_walker_ptr(level.oblist, candidate)
+        || contains_walker_ptr(level.fxlist, candidate)
+        || contains_walker_ptr(level.weaplist, candidate)
+        || contains_walker_ptr(level.dead_list, candidate);
+}
+
+walker* sanitize_radar_control(viewscreen* view, LevelRuntimeData& level)
+{
+    if (view == nullptr)
+        return nullptr;
+
+    walker* candidate = view->control;
+    if (candidate != nullptr && !control_pointer_is_live(level, candidate))
+        view->control = nullptr;
+    return view->control;
+}
+} // namespace
 
 #define RADAR_X 60  // These are the dimensions of the radar
 #define RADAR_Y 44  // viewport
@@ -144,13 +179,14 @@ short radar::draw(LevelRuntimeData* data)
 		viewscreenp->radarstart = 1;
 	}
 
-	if (viewscreenp && viewscreenp->control)
+    walker* control = sanitize_radar_control(viewscreenp, *data);
+	if (control)
 	{
-		radarx = static_cast<short>(viewscreenp->control->xpos/GRID_SIZE - xview/2);
-		radary = static_cast<short>(viewscreenp->control->ypos/GRID_SIZE - yview/2);
-		if (viewscreenp->control->view_all > 0)
+		radarx = static_cast<short>(control->xpos/GRID_SIZE - xview/2);
+		radary = static_cast<short>(control->ypos/GRID_SIZE - yview/2);
+		if (control->view_all > 0)
 			can_see = 1;
-		obteam = viewscreenp->control->team_num;
+		obteam = control->team_num;
 	}
 	else
 	{

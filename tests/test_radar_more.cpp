@@ -108,6 +108,8 @@ void test_radar_update_and_draw_covers_key_paths()
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
     vs->control = control;
     vs->radarstart = 0; // force radar::start path on first draw
 
@@ -115,6 +117,9 @@ void test_radar_update_and_draw_covers_key_paths()
     r.force_lower_position = true;
     r.start(&d);
     TEST_ASSERT(r.draw(&d) == 1, "radar draw should succeed");
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
 }
 REGISTER_TEST(test_radar_update_and_draw_covers_key_paths);
 
