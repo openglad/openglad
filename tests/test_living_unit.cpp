@@ -1,6 +1,6 @@
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_event_log.h>
@@ -23,7 +23,7 @@ namespace detail_living_r11 {
 namespace {
 
 struct LivingFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -173,7 +173,7 @@ namespace detail_living_r14 {
 namespace {
 
 struct LivingR14Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;

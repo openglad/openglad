@@ -1,4 +1,4 @@
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
@@ -19,7 +19,7 @@ namespace detail_walker_movement_push {
 namespace {
 
 struct MovementFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -121,7 +121,7 @@ namespace detail_walker_movement_r11 {
 namespace {
 
 struct WalkerMovementR11Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -250,7 +250,7 @@ namespace detail_walker_movement_r12 {
 namespace {
 
 struct MovementR12Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -379,7 +379,7 @@ namespace detail_walker_movement_r14 {
 namespace {
 
 struct MovementR14Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;

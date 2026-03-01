@@ -136,7 +136,8 @@ inline constexpr int S_WIDTH = (S_RIGHT - S_LEFT);
 inline constexpr int S_HEIGHT = (S_DOWN - S_UP);
 inline constexpr int MAX_SPREAD = 10; // this controls find_near_foe
 
-// load_version_* functions now live in level_data.cpp and take OgFile& + LevelData*
+// load_version_* functions now live in level_runtime_data.cpp and take
+// OgFile& + LevelRuntimeData*
 
 
 
@@ -164,7 +165,7 @@ void screen::init_common(short howmany, bool has_display)
     if (og::runtime::current_session)
         og::runtime::current_session->myscreen_ = this;
     myloader = sdl_entity_loader();
-    level_data.attach_world(&world_);
+    level_runtime_data_.attach_world(&world_);
 
     TRACE("init", "screen constructor: numviews=%d display=%d", howmany, has_display);
 
@@ -251,7 +252,7 @@ screen::screen(short howmany)
     , retry(world_.retry)
     , enemy_freeze(world_.enemy_freeze)
     , myloader(nullptr)
-    , level_data(1, false, &sdl_level_data_hooks())
+    , level_runtime_data_(1, false, &sdl_level_data_hooks(), &level_visuals_)
 {
 	init_common(howmany, true);
 }
@@ -265,7 +266,7 @@ screen::screen(short howmany, bool create_display)
     , retry(world_.retry)
     , enemy_freeze(world_.enemy_freeze)
     , myloader(nullptr)
-    , level_data(1, false, &sdl_level_data_hooks())
+    , level_runtime_data_(1, false, &sdl_level_data_hooks(), &level_visuals_)
 {
 	init_common(howmany, create_display);
 }
@@ -384,7 +385,7 @@ void screen::reset(short howmany)
 	redrawme = 1;
 	
 	save_data.reset();
-	level_data.clear();
+	level_runtime_data_.clear();
 	sync_world_from_save_data();
 
 	timerstart = query_timer_control();
@@ -430,19 +431,39 @@ void screen::sync_save_data_from_world()
     save_data.completed_levels[save_data.current_campaign] = world_.completed_levels;
 }
 
+bool screen::load_level()
+{
+    return level_runtime_data_.load();
+}
+
+bool screen::save_level()
+{
+    return level_runtime_data_.save();
+}
+
+LevelRuntimeData::IoError screen::load_level_with_error()
+{
+    return level_runtime_data_.load_with_error();
+}
+
+LevelRuntimeData::IoError screen::save_level_with_error()
+{
+    return level_runtime_data_.save_with_error();
+}
+
 bool screen::query_grid_passable(float x, float y, walker  *ob)
 {
-	return level_data.query_grid_passable(x, y, ob);
+	return world_.query_grid_passable(x, y, ob);
 }
 
 bool screen::query_object_passable(float x, float y, walker  *ob)
 {
-	return level_data.query_object_passable(x, y, ob);
+	return world_.query_object_passable(x, y, ob);
 }
 
 bool screen::query_passable(float x, float y, walker  *ob)
 {
-	return level_data.query_passable(x, y, ob);
+	return world_.query_passable(x, y, ob);
 }
 
 void screen::clear()
@@ -709,7 +730,7 @@ short screen::endgame(short ending, short nextlevel)
     }
 	
     // Get guys from the battle
-    for(auto& uptr : level_data.oblist)
+    for(auto& uptr : world_.oblist)
 	{
 	    walker* ob = uptr.get();
 		if (ob && ob->myguy)
@@ -773,7 +794,7 @@ short screen::endgame(short ending, short nextlevel)
 			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
         
         // Grab our team out of the level
-        save_data.update_guys(level_data.oblist);
+        save_data.update_guys(world_.oblist);
         
         // Autosave because we won
 		save_data.save("save0");
@@ -787,12 +808,12 @@ short screen::endgame(short ending, short nextlevel)
 
 walker *screen::find_near_foe(walker  *ob)
 {
-	return level_data.find_near_foe(ob);
+	return world_.find_near_foe(ob);
 }
 
 walker  *screen::find_far_foe(walker  *ob)
 {
-	return level_data.find_far_foe(ob);
+	return world_.find_far_foe(ob);
 }
 
 walker* screen::set_walker(walker *ob, Order order, Sint32 family)
@@ -890,7 +911,7 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 walker  * screen::first_of(Order whatorder, unsigned char whatfamily,
                            int team_num)
 {
-	for(auto& uptr : level_data.oblist)
+	for(auto& uptr : world_.oblist)
 	{
 	    walker* ob = uptr.get();
 		if (ob && !ob->dead)
@@ -934,33 +955,33 @@ void screen::draw_panels(short howmany)
 
 walker  * screen::find_nearest_blood(walker  *who)
 {
-	return level_data.find_nearest_blood(who);
+	return world_.find_nearest_blood(who);
 }
 
 std::list<walker*> screen::find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
-	return level_data.find_in_range(somelist, range, howmany, ob);
+	return world_.find_in_range(somelist, range, howmany, ob);
 }
 
 walker* screen::find_nearest_player(walker *ob)
 {
-	return level_data.find_nearest_player(ob);
+	return world_.find_nearest_player(ob);
 }
 
 std::list<walker*> screen::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
-	return level_data.find_foes_in_range(somelist, range, howmany, ob);
+	return world_.find_foes_in_range(somelist, range, howmany, ob);
 }
 
 std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range,
                                       Sint32* howmany, walker* ob)
 {
-	return level_data.find_friends_in_range(somelist, range, howmany, ob);
+	return world_.find_friends_in_range(somelist, range, howmany, ob);
 }
 
 std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
-    return level_data.find_foe_weapons_in_range(somelist, range, howmany, ob);
+    return world_.find_foe_weapons_in_range(somelist, range, howmany, ob);
 }
 
 
@@ -975,24 +996,24 @@ char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 
 	if (xover < 0 || yover < 0)
 		return 0;
-	if (xover >= level_data.world().grid.w || yover >= level_data.world().grid.h)
+	if (xover >= world_.grid.w || yover >= world_.grid.h)
 		return 0;
 
-	gridloc = static_cast<short>(yover*level_data.world().grid.w+xover);
+	gridloc = static_cast<short>(yover*world_.grid.w+xover);
 
-	switch (static_cast<unsigned char>(level_data.world().grid.data[gridloc]))
+	switch (static_cast<unsigned char>(world_.grid.data[gridloc]))
 	{
 		case PIX_GRASS1: // grass
 		case PIX_GRASS2:
 		case PIX_GRASS3:
 		case PIX_GRASS4:
-			level_data.world().grid.data[gridloc] = PIX_GRASS1_DAMAGED;
+			world_.grid.data[gridloc] = PIX_GRASS1_DAMAGED;
 			break;
 		default:
 			break;
 	}
 
-	return level_data.world().grid.data[gridloc];
+	return world_.grid.data[gridloc];
 }
 
 void screen::do_notify(std::string_view message, walker  *who)

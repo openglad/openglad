@@ -11,7 +11,7 @@
 #include <functional>
 #include <memory>
 
-class LevelData;
+class LevelRuntimeData;
 class GameWorld;
 class walker;
 class screen;
@@ -20,11 +20,11 @@ struct EntityFactory;
 
 struct LevelDataHooks
 {
-    using ClearStaleViewControlsFn = void (*)(LevelData* level);
-    using DrawFn = void (*)(LevelData* level, screen* screenp);
+    using ClearStaleViewControlsFn = void (*)(LevelRuntimeData* level);
+    using DrawFn = void (*)(LevelRuntimeData* level, screen* screenp);
     using CreateLevelRenderFn = std::unique_ptr<LevelRender> (*)(PixieData pixdata[]);
     using CreateEntityFactoryFn = EntityFactory (*)();
-    using WireWorldEntityServicesFn = void (*)(GameWorld* world, LevelData* level);
+    using WireWorldEntityServicesFn = void (*)(GameWorld* world, LevelRuntimeData* level);
 
     ClearStaleViewControlsFn clear_stale_view_controls = nullptr;
     DrawFn draw = nullptr;

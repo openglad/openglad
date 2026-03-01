@@ -38,7 +38,7 @@ REGISTER_TEST(test_screen_act_empty);
 
 void test_screen_add_ob_living()
 {
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "add_ob should succeed");
     w->setxy(50, 50);
     w->dead = 1; // mark for cleanup
@@ -47,7 +47,7 @@ REGISTER_TEST(test_screen_add_ob_living);
 
 void test_screen_add_ob_weapon()
 {
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(w != nullptr, "add_ob weapon should succeed");
     w->dead = 1;
 }
@@ -55,7 +55,7 @@ REGISTER_TEST(test_screen_add_ob_weapon);
 
 void test_screen_add_ob_treasure()
 {
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Treasure, FAMILY_STAIN, 1);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Treasure, FAMILY_STAIN, 1);
     TEST_ASSERT(w != nullptr, "add_ob treasure should succeed");
     w->dead = 1;
 }
@@ -63,7 +63,7 @@ REGISTER_TEST(test_screen_add_ob_treasure);
 
 void test_screen_add_ob_effect()
 {
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_EXPLOSION);
     TEST_ASSERT(w != nullptr, "add_ob effect should succeed");
     w->dead = 1;
 }
@@ -210,12 +210,12 @@ void test_screen_find_near_foe_with_enemies()
         return;
     }
 
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(enemy));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(enemy));
 
     walker* found = og::runtime::current_session->myscreen_->find_near_foe(seeker.get());
     (void)found;
 
-    og::runtime::current_session->myscreen_->level_data.oblist.pop_back();
+    og::runtime::current_session->myscreen_->oblist().pop_back();
 }
 REGISTER_TEST(test_screen_find_near_foe_with_enemies);
 
@@ -227,12 +227,12 @@ void test_screen_find_far_foe_with_enemies()
         return;
     }
 
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(enemy));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(enemy));
 
     walker* found = og::runtime::current_session->myscreen_->find_far_foe(seeker.get());
     (void)found;
 
-    og::runtime::current_session->myscreen_->level_data.oblist.pop_back();
+    og::runtime::current_session->myscreen_->oblist().pop_back();
 }
 REGISTER_TEST(test_screen_find_far_foe_with_enemies);
 
@@ -284,16 +284,16 @@ void test_screen_find_nearest_player_and_draw_panels()
 
     p1p->user = 0;
     p2->user = 1;
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(p1));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(p2));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(p1));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(p2));
 
     walker* nearest = og::runtime::current_session->myscreen_->find_nearest_player(seeker.get());
     TEST_ASSERT(nearest == p1p, "nearest player should be the closest user-controlled walker");
 
     og::runtime::current_session->myscreen_->draw_panels(1);
 
-    og::runtime::current_session->myscreen_->level_data.oblist.pop_back();
-    og::runtime::current_session->myscreen_->level_data.oblist.pop_back();
+    og::runtime::current_session->myscreen_->oblist().pop_back();
+    og::runtime::current_session->myscreen_->oblist().pop_back();
 }
 REGISTER_TEST(test_screen_find_nearest_player_and_draw_panels);
 

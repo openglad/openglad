@@ -23,7 +23,8 @@
 #include <openglad/render/video.h>
 #include <openglad/data/gloader.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_visuals.h>
 #include <openglad/data/save_data.h>
 #include <array>
 #include <list>
@@ -99,8 +100,25 @@ class screen : public video
 		bool is_level_completed(int level_index) const;
 		int get_num_levels_completed(const std::string& campaign) const;
 		void add_level_completed(const std::string& campaign, int level_index);
+		bool load_level();
+		bool save_level();
+		LevelRuntimeData::IoError load_level_with_error();
+		LevelRuntimeData::IoError save_level_with_error();
+		LevelRuntimeData::IoError level_io_error() const { return level_runtime_data_.last_io_error(); }
+		std::string& level_grid_file() { return level_runtime_data_.grid_file; }
+		const std::string& level_grid_file() const { return level_runtime_data_.grid_file; }
+		std::list<std::string>& level_description() { return level_runtime_data_.description; }
+		const std::list<std::string>& level_description() const { return level_runtime_data_.description; }
+		std::string get_level_description_line(int i) const { return level_runtime_data_.get_description_line(i); }
+		void set_level_draw_pos(std::int32_t new_topx, std::int32_t new_topy) { level_runtime_data_.set_draw_pos(new_topx, new_topy); }
+		void add_level_draw_pos(std::int32_t dx, std::int32_t dy) { level_runtime_data_.add_draw_pos(dx, dy); }
+		void draw_level(screen* scr = nullptr) { level_runtime_data_.draw(scr ? scr : this); }
+		LevelRuntimeData& level_runtime_data() { return level_runtime_data_; }
+		const LevelRuntimeData& level_runtime_data() const { return level_runtime_data_; }
 		GameWorld& world() { return world_; }
 		const GameWorld& world() const { return world_; }
+		LevelVisuals& level_visuals() { return level_visuals_; }
+		const LevelVisuals& level_visuals() const { return level_visuals_; }
 		auto& oblist() { return world_.oblist; }
 		const auto& oblist() const { return world_.oblist; }
 		auto& fxlist() { return world_.fxlist; }
@@ -127,7 +145,8 @@ class screen : public video
 			Sint32& enemy_freeze;
 			// Platform-owned entity loader (wired at setup time).
 			loader* myloader;
-			LevelData level_data;
+			LevelVisuals level_visuals_;
+			LevelRuntimeData level_runtime_data_;
 			
 			// Save data
 			SaveData save_data;

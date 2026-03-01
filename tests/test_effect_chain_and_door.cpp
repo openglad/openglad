@@ -20,7 +20,7 @@ static std::unordered_set<walker*> snapshot_ptrs(const std::list<std::unique_ptr
     return out;
 }
 
-static void remove_new_leveldata_objects(LevelData& level,
+static void remove_new_leveldata_objects(LevelRuntimeData& level,
                                         const std::unordered_set<walker*>& ob_before,
                                         const std::unordered_set<walker*>& fx_before,
                                         const std::unordered_set<walker*>& weap_before)
@@ -56,7 +56,7 @@ void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_doo
     if (!og::runtime::current_session->myscreen_)
         return;
 
-    LevelData& level = og::runtime::current_session->myscreen_->level_data;
+    LevelRuntimeData& level = og::runtime::current_session->myscreen_->level_runtime_data();
 
     const auto ob_before = snapshot_ptrs(level.oblist);
     const auto fx_before = snapshot_ptrs(level.fxlist);
@@ -131,7 +131,7 @@ void test_effect_chain_early_exit_and_movement_branches()
     if (!og::runtime::current_session->myscreen_)
         return;
 
-    LevelData& level = og::runtime::current_session->myscreen_->level_data;
+    LevelRuntimeData& level = og::runtime::current_session->myscreen_->level_runtime_data();
 
     // Missing leader should kill the chain immediately.
     walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
@@ -181,7 +181,7 @@ void test_effect_chain_movement_axis_delta_branches()
     if (!og::runtime::current_session->myscreen_)
         return;
 
-    LevelData& level = og::runtime::current_session->myscreen_->level_data;
+    LevelRuntimeData& level = og::runtime::current_session->myscreen_->level_runtime_data();
     level.delete_objects();
 
     walker* owner = level.add_ob(Order::Living, FAMILY_SOLDIER);

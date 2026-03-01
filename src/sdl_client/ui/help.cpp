@@ -199,9 +199,9 @@ short read_scenario(screen *s)
 	return 1;
 #endif
 	return scroll_text_view(s,
-		static_cast<int>(s->level_data.description.size()), 200,
+		static_cast<int>(s->level_description().size()), 200,
 		"SCENARIO INFORMATION", 0, 0, 320, 200,
-		[&](int idx) { return s->level_data.get_description_line(idx); });
+		[&](int idx) { return s->get_level_description_line(idx); });
 }
 
 short read_campaign_intro(screen *s)

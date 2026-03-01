@@ -1,5 +1,5 @@
 #include <openglad/sim/sim_input_handler.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
@@ -24,7 +24,7 @@ namespace detail_sim_input_coverage_push {
 namespace {
 
 struct SimInputFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -70,11 +70,11 @@ OG_UNIT_TEST(test_sim_input_find_next_control_priorities)
     OG_ASSERT(team_npc != nullptr);
     OG_ASSERT(player_like != nullptr);
 
-    walker* found = sim_find_next_control(fx.level, 0);
+    walker* found = sim_find_next_control(fx.level.world(), 0);
     OG_ASSERT(found == team_npc);
 
     team_npc->user = 0;
-    found = sim_find_next_control(fx.level, 0);
+    found = sim_find_next_control(fx.level.world(), 0);
     OG_ASSERT(found == player_like);
 }
 
@@ -88,14 +88,14 @@ OG_UNIT_TEST(test_sim_input_endgame_and_control_assignment_paths)
     std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(result.endgame_requested);
     OG_ASSERT(result.endgame_type == 1);
 
     walker* w = add_living(fx, 0, -1);
     w->stats()->hitpoints = 37.0f;
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(!result.endgame_requested);
     OG_ASSERT(control == w);
     OG_ASSERT(result.control_hp_changed);
@@ -120,7 +120,7 @@ OG_UNIT_TEST(test_sim_input_switch_special_yell_and_mismatch_paths)
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(debounce.changedspec == 1);
     OG_ASSERT(control->current_special == 1);
     OG_ASSERT(result.new_control == control);
@@ -130,26 +130,26 @@ OG_UNIT_TEST(test_sim_input_switch_special_yell_and_mismatch_paths)
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     control->action = 0;
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(result.notify_text == "SUMMONING DEFENSE!");
     OG_ASSERT(ally->action == ACTION_FOLLOW);
 
     control->action = ACTION_FOLLOW;
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(result.notify_text == "RELEASING MEN!");
     OG_ASSERT(ally->action == 0);
 
     control->user = 1;
     input.clear();
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(result.new_control == control);
 
     control->user = 0;
     control->stats()->frozen_delay = 1;
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(control->stats()->frozen_delay == 0);
 }
 } // namespace detail_sim_input_coverage_push
@@ -159,7 +159,7 @@ namespace detail_sim_input_r11 {
 namespace {
 
 struct SimInputFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -227,7 +227,7 @@ OG_UNIT_TEST(test_sim_input_r11_switch_char_error_and_wrap_paths)
 
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(result.control_hp_changed);
     OG_ASSERT(control == &orphan);
 
@@ -236,7 +236,7 @@ OG_UNIT_TEST(test_sim_input_r11_switch_char_error_and_wrap_paths)
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     debounce.changedchar = 0;
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(result.control_hp_changed);
     OG_ASSERT(control == &orphan);
 
@@ -251,7 +251,7 @@ OG_UNIT_TEST(test_sim_input_r11_switch_char_error_and_wrap_paths)
     debounce.changedchar = 0;
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(control == b || control == c);
 
     input.clear();
@@ -263,7 +263,7 @@ OG_UNIT_TEST(test_sim_input_r11_switch_char_error_and_wrap_paths)
     b->user = -1;
     c->user = -1;
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(control == c || control == b);
 }
 
@@ -285,14 +285,14 @@ OG_UNIT_TEST(test_sim_input_r11_switch_special_yell_and_action_default)
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(control->current_special == 1); // wrap due to NONE
 
     input.clear();
     debounce.changedspec = 0;
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(result.play_sound == SOUND_YO);
     OG_ASSERT(control->yo_delay == 30);
     OG_ASSERT(ally->leader == control);
@@ -303,7 +303,7 @@ OG_UNIT_TEST(test_sim_input_r11_switch_special_yell_and_action_default)
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(control->action == 0);
 }
 
@@ -324,7 +324,7 @@ OG_UNIT_TEST(test_sim_input_r11_animate_movement_and_bit_animate_paths)
     control->cycle = 0;
     input.clear();
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(result.new_control == control);
 
     // movement branch (walkstep)
@@ -333,7 +333,7 @@ OG_UNIT_TEST(test_sim_input_r11_animate_movement_and_bit_animate_paths)
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     const float x_before = control->xpos;
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(control->xpos >= x_before);
 
     // BIT_ANIMATE idle animation branch + frame reset path
@@ -341,13 +341,13 @@ OG_UNIT_TEST(test_sim_input_r11_animate_movement_and_bit_animate_paths)
     control->cycle = 0;
     input.clear();
     result = sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(control->cycle == 0);
 
     // held fire path
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Fire)] = true;
     (void)sim_process_player_input(
-        input.players[0], control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
 }
 } // namespace detail_sim_input_r11

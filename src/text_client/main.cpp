@@ -22,7 +22,7 @@
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/irandom.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/level_data_hooks.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gloader.h>

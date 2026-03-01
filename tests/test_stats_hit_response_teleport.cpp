@@ -20,7 +20,7 @@ static std::unordered_set<walker*> snapshot_ptrs(const std::list<std::unique_ptr
     return out;
 }
 
-static void remove_new_leveldata_objects(LevelData& level,
+static void remove_new_leveldata_objects(LevelRuntimeData& level,
                                         const std::unordered_set<walker*>& ob_before,
                                         const std::unordered_set<walker*>& fx_before,
                                         const std::unordered_set<walker*>& weap_before)
@@ -61,7 +61,7 @@ void test_stats_hit_response_mage_and_archmage_teleport_branches()
     if (!og::runtime::current_session->myscreen_)
         return;
 
-    LevelData& level = og::runtime::current_session->myscreen_->level_data;
+    LevelRuntimeData& level = og::runtime::current_session->myscreen_->level_runtime_data();
     const auto ob_before = snapshot_ptrs(level.oblist);
     const auto fx_before = snapshot_ptrs(level.fxlist);
     const auto weap_before = snapshot_ptrs(level.weaplist);

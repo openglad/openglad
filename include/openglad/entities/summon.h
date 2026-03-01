@@ -8,7 +8,7 @@
 #pragma once
 
 #include <openglad/entities/walker.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/core/stats.h>
 #include <cstdint>
 

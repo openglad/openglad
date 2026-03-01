@@ -19,8 +19,8 @@ namespace
 struct TeamListSwap
 {
     std::list<std::unique_ptr<walker>> saved_ob;
-    TeamListSwap() { saved_ob.splice(saved_ob.end(), og::runtime::current_session->myscreen_->level_data.oblist); }
-    ~TeamListSwap() { og::runtime::current_session->myscreen_->level_data.oblist.splice(og::runtime::current_session->myscreen_->level_data.oblist.end(), saved_ob); }
+    TeamListSwap() { saved_ob.splice(saved_ob.end(), og::runtime::current_session->myscreen_->oblist()); }
+    ~TeamListSwap() { og::runtime::current_session->myscreen_->oblist().splice(og::runtime::current_session->myscreen_->oblist().end(), saved_ob); }
 };
 
 struct KeyBindingGuard
@@ -96,9 +96,9 @@ void test_view_input_switch_control_forward_and_reverse()
     walker* w2p = w2.get();
     walker* w3p = w3.get();
 
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(w1));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(w2));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(w3));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w1));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w2));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w3));
     v->control = w1p;
 
     // Use process_input() with InputState for switch control.
@@ -147,8 +147,8 @@ void test_view_input_yell_and_shift_yell_team_actions()
     controlp->user = 0;
     allyp->leader = nullptr;
 
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(control));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(ally));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(ally));
     v->control = controlp;
 
     // Plain YELL via process_input: followers get leader+follow, yo_delay set.
@@ -201,9 +201,9 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     controlp->set_act_type(ACT_CONTROL);
     controlp->stats()->level = 5;
 
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(control));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(teammate));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(enemy));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(teammate));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(enemy));
     v->control = controlp;
 
     // Hold cheat key so cheat branch executes.
@@ -246,10 +246,10 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     v->input(e);
     TEST_ASSERT(og::runtime::current_session->myscreen_->enemy_freeze >= freeze_before + 50, "F1 should increase enemy freeze time");
 
-    const size_t ob_count_before = og::runtime::current_session->myscreen_->level_data.oblist.size();
+    const size_t ob_count_before = og::runtime::current_session->myscreen_->oblist().size();
     e.key.keysym.sym = SDLK_F2;
     v->input(e);
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_data.oblist.size() >= ob_count_before, "F2 should keep oblist valid");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->oblist().size() >= ob_count_before, "F2 should keep oblist valid");
 
     const bool flying_before = v->control->stats()->query_bit_flags(BIT_FLYING) != 0;
     e.key.keysym.sym = SDLK_f;

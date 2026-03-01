@@ -149,7 +149,7 @@ void run_all_tests() {
         // Clear spawned objects and spatial index after each test so no test can
         // leak walkers into later tests (ASan/UAF + order-dependent failures).
         if (og::runtime::current_session->myscreen_ != nullptr)
-            og::runtime::current_session->myscreen_->level_data.delete_objects();
+            og::runtime::current_session->myscreen_->world().delete_objects();
 
         if (g_tests_failed == failed_before) {
             g_tests_passed++;

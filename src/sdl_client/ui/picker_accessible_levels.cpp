@@ -58,7 +58,7 @@ std::vector<int> get_accessible_levels()
         to_process.erase(to_process.begin());
 
         if (game->save_data.is_level_completed(level_id)) {
-            LevelData ld(level_id);
+            LevelRuntimeData ld(level_id);
             if (ld.load()) {
                 std::list<int> exits;
                 getLevelStats(ld, nullptr, nullptr, nullptr, nullptr, exits);

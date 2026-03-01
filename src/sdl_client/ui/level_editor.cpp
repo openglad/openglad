@@ -30,7 +30,7 @@
 #include <openglad/platform/io.h>
 #include <openglad/render/text.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/level_data_hooks.h>
 #include <openglad/ui/level_picker.h>
 #include <span>
@@ -100,7 +100,7 @@ void timed_dialog(const char* message, float delay_seconds = 3.0f);
 enum class Mode { Terrain, Object, Select };
 
 void set_screen_pos(screen *scr, Sint32 x, Sint32 y);
-walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data);
+walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data);
 Sint32 get_random_matching_tile(Sint32 whatback);
 
 class EditorTerrainBrush;
@@ -455,7 +455,7 @@ public:
         }
     }
     
-    walker* get_object(LevelData* /*level_data*/)
+    walker* get_object(LevelRuntimeData* /*level_data*/)
     {
         if(!valid)
             return nullptr;
@@ -471,7 +471,7 @@ class LevelEditorData
 {
 public:
     std::unique_ptr<CampaignData> campaign;
-    std::unique_ptr<LevelData> level;
+    std::unique_ptr<LevelRuntimeData> level;
     
 	Mode mode;
     EditorTerrainBrush terrain_brush;
@@ -580,7 +580,7 @@ public:
     walker* get_object(int x, int y);
 };
 
-bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
+bool are_objects_outside_area(LevelRuntimeData* level, int x, int y, int w, int h);
 enum class EventType;
 EventType handle_basic_editor_event(const SDL_Event& event);
 
@@ -593,7 +593,7 @@ EventType handle_basic_editor_event(const SDL_Event& event);
 #endif
 
 LevelEditorData::LevelEditorData()
-    : campaign(std::make_unique<CampaignData>("org.openglad.gladiator")), level(std::make_unique<LevelData>(1, false, &sdl_level_data_hooks())), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(og::runtime::current_session->myscreen_->viewob[0].get(), og::runtime::current_session->myscreen_, 0)
+    : campaign(std::make_unique<CampaignData>("org.openglad.gladiator")), level(std::make_unique<LevelRuntimeData>(1, false, &sdl_level_data_hooks())), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(og::runtime::current_session->myscreen_->viewob[0].get(), og::runtime::current_session->myscreen_, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)
@@ -827,13 +827,13 @@ bool LevelEditorData::mouse_on_menus(int mx, int my)
 void LevelEditorData::update_menu_buttons()
 {
     levelGoalsEnemiesButton.label = "Defeat enemies: ";
-    levelGoalsEnemiesButton.label += (level->world().type & LevelData::TYPE_CAN_EXIT_WHENEVER? "Off" : "On");
+    levelGoalsEnemiesButton.label += (level->world().type & GameWorld::TYPE_CAN_EXIT_WHENEVER? "Off" : "On");
     
     levelGoalsGeneratorsButton.label = "Beat generators: ";
-    levelGoalsGeneratorsButton.label += (level->world().type & LevelData::TYPE_MUST_DESTROY_GENERATORS? "On" : "Off");
+    levelGoalsGeneratorsButton.label += (level->world().type & GameWorld::TYPE_MUST_DESTROY_GENERATORS? "On" : "Off");
     
     levelGoalsNPCsButton.label = "Protect NPCs: ";
-    levelGoalsNPCsButton.label += (level->world().type & LevelData::TYPE_MUST_PROTECT_NAMED_NPCS? "On" : "Off");
+    levelGoalsNPCsButton.label += (level->world().type & GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS? "On" : "Off");
 }
 
 void LevelEditorData::reset_mode_buttons()
@@ -1174,7 +1174,7 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
     connected.insert(current_level);
     
     // Load level
-    LevelData d(current_level);
+    LevelRuntimeData d(current_level);
     if(!d.load())
     {
         problems.push_back(std::format("Level {} failed to load.", current_level));
@@ -1313,7 +1313,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	std::string message;
 	Sint32 i, j; // for loops
 	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
-	Sint32 numobs = s->level_data.numobs;
+	Sint32 numobs = s->living_count();
 	Sint32 lm = 245;
 	Sint32 curline = 0;
 	Sint32 whichback;
@@ -1421,7 +1421,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         if(!message.empty())
             scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
 
-        numobs = s->level_data.numobs;
+        numobs = s->living_count();
         //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
         message = std::format("OB: {}", numobs);
         scentext.write_xy(lm,L_D(curline++),message.c_str(), DARK_BLUE, 1);
@@ -1431,7 +1431,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
     {
         // Show the current brush
         {
-            auto& pix = s->level_data.pixdata[terrain_brush.terrain];
+            auto& pix = s->level_visuals_.pixdata[terrain_brush.terrain];
             s->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
                                 0, 0, 320, 200, {pix.data.get(), static_cast<size_t>(pix.w * pix.h * pix.frames)});
         }
@@ -1445,7 +1445,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
             {
                 whichback = (i+(j+eds().rowsdown)*4) % (sizeof(backgrounds)/4);
                 {
-                    auto& pix = s->level_data.pixdata[ backgrounds[whichback] ];
+                    auto& pix = s->level_visuals_.pixdata[ backgrounds[whichback] ];
                     s->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
                                         GRID_SIZE, GRID_SIZE,
                                         0, 0, 320, 200,
@@ -1687,7 +1687,7 @@ bool is_in_selection(walker* w, const std::vector<SelectionInfo>& selection)
 }
 
 // Make sure to use reset_mode_buttons() after this
-void add_contained_objects_to_selection(LevelData* level, const Rectf& area, std::vector<SelectionInfo>& selection)
+void add_contained_objects_to_selection(LevelRuntimeData* level, const Rectf& area, std::vector<SelectionInfo>& selection)
 {
     for(auto& uptr : level->oblist)
 	{
@@ -2388,17 +2388,17 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsEnemiesButton))
         {
-            level->world().type ^= LevelData::TYPE_CAN_EXIT_WHENEVER;
+            level->world().type ^= GameWorld::TYPE_CAN_EXIT_WHENEVER;
             update_menu_buttons();
         }
         else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsGeneratorsButton))
         {
-            level->world().type ^= LevelData::TYPE_MUST_DESTROY_GENERATORS;
+            level->world().type ^= GameWorld::TYPE_MUST_DESTROY_GENERATORS;
             update_menu_buttons();
         }
         else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsNPCsButton))
         {
-            level->world().type ^= LevelData::TYPE_MUST_PROTECT_NAMED_NPCS;
+            level->world().type ^= GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS;
             update_menu_buttons();
         }
         else if(activate_menu_choice(mx, my, *this, levelDetailsParValueButton))
@@ -3702,7 +3702,7 @@ Sint32 check_collide(Sint32 x,  Sint32 y,  Sint32 xsize,  Sint32 ysize,
 }
 
 // The old-fashioned hit check ..
-walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
+walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
 {
     for(auto& uptr : data->oblist)
 	{

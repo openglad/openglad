@@ -22,7 +22,7 @@
 #include <string>
 #include <openglad/entities/obmap.h>
 #include <openglad/data/gloader.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/entities/walker_render.h>
 #include <openglad/entities/treasure_family_descriptor.h>

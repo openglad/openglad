@@ -104,12 +104,12 @@ std::string get_asset_path()
 // Category C: Safe no-ops (documented)
 // ---------------------------------------------------------------------------
 
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/level_data_hooks.h>
 #include <openglad/data/gloader.h>
 
 // Safe no-op: view controls are an SDL render concern; headless has no views.
-void headless_clear_stale_view_controls(LevelData*) {}
+void headless_clear_stale_view_controls(LevelRuntimeData*) {}
 
 // Safe no-op: keyboard buffer is an SDL input concern.
 void clear_keyboard() {}
@@ -126,7 +126,7 @@ std::once_flag warn_input_state;
 std::once_flag warn_find_follow;
 } // namespace
 
-void headless_level_data_draw(LevelData*, screen*)
+void headless_level_data_draw(LevelRuntimeData*, screen*)
 {
     std::call_once(warn_draw_impl, [] {
         LogWarn("level_data_draw_impl: not supported in headless mode\n");
@@ -186,7 +186,7 @@ void wire_world_with_loader(GameWorld* world, loader* game_loader)
     };
 }
 
-void headless_wire_world_entity_services(GameWorld* world, LevelData* level)
+void headless_wire_world_entity_services(GameWorld* world, LevelRuntimeData* level)
 {
     (void)level;
     wire_world_with_loader(world, headless_entity_loader());

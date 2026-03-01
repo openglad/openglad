@@ -3,7 +3,7 @@
 #include <cstdint>
 
 #include <openglad/data/gparser.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/sim/irandom.h>
@@ -13,7 +13,7 @@
 // Phase 1a helper: minimal gameplay world + event log fixture.
 struct TestGameWorld
 {
-    LevelData level;
+    LevelRuntimeData level;
     SaveData save;
     og::sim::SimEventLog events;
     FixedRandom rng{0};

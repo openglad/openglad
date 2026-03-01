@@ -386,7 +386,7 @@ void test_living_facing_threshold_edges_and_summon_and_autoattackable()
     TEST_ASSERT(summoned->owner == w.get(), "summoned owner should be summoner");
     TEST_ASSERT_EQ(123, (int)summoned->lifetime, "summoned lifetime should match input");
 
-    walker* fx = og::runtime::current_session->myscreen_->level_data.add_ob(Order::FX, FAMILY_BLOOD);
+    walker* fx = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_BLOOD);
     TEST_ASSERT(fx != nullptr, "fx object created");
     bool aa = walkerIsAutoAttackable(fx);
     TEST_ASSERT(!aa, "FX should not be auto-attackable");
@@ -419,7 +419,7 @@ void test_living_do_action_follow_leader_null_and_command_paths()
     bool r = lv->do_action();
     TEST_ASSERT(!r, "ACTION_FOLLOW without leader should return false");
 
-    walker* leader = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* leader = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT(leader != nullptr, "leader created");
     if (!leader)
         return;
@@ -471,7 +471,7 @@ void test_obmap_guard_and_hash_and_move_branches()
     orphan.setxy(-1, -1);
     TEST_ASSERT_EQ(0, (int)map.remove(&orphan), "remove unknown negative-position walker should fail");
 
-    walker* live = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* live = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(live != nullptr, "live walker created");
     if (!live)
         return;
@@ -529,7 +529,7 @@ void test_obmap_query_list_door_unlock_and_lock_branches()
 {
     obmap map;
 
-    walker* actor = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr, "actor created");
     if (!actor)
         return;
@@ -541,7 +541,7 @@ void test_obmap_query_list_door_unlock_and_lock_branches()
     actor->team_num = 1;
 
     // Locked door branch: missing key should block and set skip_exit.
-    walker* locked_door = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_DOOR);
+    walker* locked_door = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_DOOR);
     TEST_ASSERT(locked_door != nullptr, "locked door created");
     if (!locked_door)
         return;
@@ -559,7 +559,7 @@ void test_obmap_query_list_door_unlock_and_lock_branches()
     (void)map.remove(locked_door);
 
     // Unlocked door path with normal collision: should return blocked for this round.
-    walker* unlocked_door = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_DOOR);
+    walker* unlocked_door = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_DOOR);
     TEST_ASSERT(unlocked_door != nullptr, "unlocked door created");
     if (!unlocked_door)
         return;
@@ -578,7 +578,7 @@ void test_obmap_query_list_door_unlock_and_lock_branches()
     (void)map.remove(unlocked_door);
 
     // Unlocked door + BIT_NO_COLLIDE path should return pass-through.
-    walker* nocollide_door = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_DOOR);
+    walker* nocollide_door = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_DOOR);
     TEST_ASSERT(nocollide_door != nullptr, "nocollide door created");
     if (!nocollide_door)
         return;
@@ -637,8 +637,8 @@ void test_living_act_command_execution_and_autoattackable_edges()
     bool r = lv->act();
     TEST_ASSERT(r, "act should return true when command execution returns non-zero");
 
-    walker* non_auto_weap = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
-    walker* non_attackable = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Treasure, FAMILY_GOLD_BAR);
+    walker* non_auto_weap = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* non_attackable = og::runtime::current_session->myscreen_->world().add_ob(Order::Treasure, FAMILY_GOLD_BAR);
     TEST_ASSERT(non_auto_weap != nullptr && non_attackable != nullptr, "walkers created");
     if (non_auto_weap)
         (void)walkerIsAutoAttackable(non_auto_weap);
@@ -650,8 +650,8 @@ REGISTER_TEST(test_living_act_command_execution_and_autoattackable_edges);
 
 void test_living_round7_act_random_and_do_action_targeted_branches()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto actor = make_living(FAMILY_SOLDIER);
     auto foe = make_living(FAMILY_ORC);
@@ -665,7 +665,7 @@ void test_living_round7_act_random_and_do_action_targeted_branches()
     foe->setxy(120, 100);
     actor->lineofsight = 40;
     actor->foe = foe.get();
-    GameWorld& world = og::runtime::current_session->myscreen_->level_data.world();
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
 
     // living::act_random fire_check true path through act() dispatch.
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
@@ -715,8 +715,8 @@ void test_living_round8_dead_outline_forestwalk_and_offmap_walk_paths()
     w->stats()->set_bit_flags(BIT_FORESTWALK, 1);
     if (w->myguy)
         w->myguy->dexterity = 120;
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.world().grid.data[(w->ypos / GRID_SIZE) * og::runtime::current_session->myscreen_->level_data.world().grid.w + (w->xpos / GRID_SIZE)] = PIX_TREE_B1;
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().grid.data[(w->ypos / GRID_SIZE) * og::runtime::current_session->myscreen_->world().grid.w + (w->xpos / GRID_SIZE)] = PIX_TREE_B1;
     const float normal = lv->normal_stepsize;
     (void)w->act();
     TEST_ASSERT(lv->stepsize >= 1.0f, "forestwalk path should keep stepsize >= 1");
@@ -737,8 +737,8 @@ REGISTER_TEST(test_obmap_round8_hash_negative_and_large_clamp_paths);
 
 void test_living_round10_facing_and_action_follow_branch_matrix()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
 
     auto actor = make_living(FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr, "actor created");
@@ -769,8 +769,8 @@ void test_living_round10_facing_and_action_follow_branch_matrix()
     }
 
     // do_action ACTION_FOLLOW with no leader in level should return false.
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     actor = make_living(FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr, "actor recreated");
     if (!actor)
@@ -782,8 +782,8 @@ void test_living_round10_facing_and_action_follow_branch_matrix()
     TEST_ASSERT(!lv->do_action(), "ACTION_FOLLOW should return false when no nearest player is found");
 
     // do_action ACTION_FOLLOW with leader->foe copies foe and returns false.
-    walker* leader = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* leader_foe = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* leader = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* leader_foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(leader && leader_foe, "leader and leader foe created");
     if (leader && leader_foe)
     {
@@ -848,12 +848,12 @@ REGISTER_TEST(test_obmap_round10_add_remove_move_and_fallback_paths);
 
 void test_obmap_round11_stale_query_and_helper_accessors_paths()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     obmap map;
 
-    walker* actor = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr, "actor created");
     if (!actor)
         return;
@@ -875,8 +875,8 @@ void test_obmap_round11_stale_query_and_helper_accessors_paths()
                    "query_list should skip stale pile entries safely");
 
     // weapon-vs-weapon "miss" branch in ob_pass_check.
-    walker* w1 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
-    walker* w2 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* w1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* w2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(w1 != nullptr && w2 != nullptr, "weapon fixtures created");
     if (!(w1 && w2))
         return;
@@ -886,7 +886,7 @@ void test_obmap_round11_stale_query_and_helper_accessors_paths()
     w2->sizex = w2->sizey = 12;
     w1->setxy(64, 64);
     w2->setxy(64, 64);
-    og::runtime::current_session->myscreen_->level_data.world().rng_.state_ = 1; // next(10)=8 (>3) for miss branch
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 1; // next(10)=8 (>3) for miss branch
     TEST_ASSERT_EQ(1, (int)map.add(w2, w2->xpos, w2->ypos), "track second weapon");
     const int weapon_miss_pass = map.query_list(w1, w1->xpos, w1->ypos);
     TEST_ASSERT_EQ(1, weapon_miss_pass,
@@ -897,7 +897,7 @@ void test_obmap_round11_stale_query_and_helper_accessors_paths()
     TEST_ASSERT(!pile.empty(), "obmap_get_list should expose hashed pile");
     TEST_ASSERT_EQ(64, (int)obmap::unhash(obmap::hash(64)), "unhash(hash(x)) should map to cell origin");
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_obmap_round11_stale_query_and_helper_accessors_paths);
 
@@ -910,11 +910,11 @@ REGISTER_TEST(test_obmap_round11_stale_query_and_helper_accessors_paths);
 // The fix snapshots the pile before passing it to ob_pass_check.
 void test_obmap_query_list_no_hang_when_pile_erased_during_collision()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     // Actor: a soldier with the key to open a door (key bit 2 = level 1).
-    walker* actor = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr, "actor created");
     if (!actor) return;
     actor->sizex = 12;
@@ -926,7 +926,7 @@ void test_obmap_query_list_no_hang_when_pile_erased_during_collision()
 
     // Door: a FAMILY_DOOR weapon whose death() calls obmap::remove(this),
     // which may erase the pos_to_walker pile that query_list is iterating.
-    walker* door = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_DOOR);
+    walker* door = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_DOOR);
     TEST_ASSERT(door != nullptr, "door created");
     if (!door) return;
     door->stats()->level = 1;
@@ -937,7 +937,7 @@ void test_obmap_query_list_no_hang_when_pile_erased_during_collision()
 
     // Use the level's own obmap so that death() → remove() hits the same
     // map that query_list is iterating.
-    obmap* map = og::runtime::current_session->myscreen_->level_data.world().myobmap.get();
+    obmap* map = og::runtime::current_session->myscreen_->world().myobmap.get();
     map->add(actor, actor->xpos, actor->ypos);
     map->add(door, door->xpos, door->ypos);
 
@@ -949,6 +949,6 @@ void test_obmap_query_list_no_hang_when_pile_erased_during_collision()
     TEST_ASSERT_EQ(0, (int)result, "door collision should block without hanging");
     TEST_ASSERT(door->dead == 1, "door should be dead after unlock collision");
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_obmap_query_list_no_hang_when_pile_erased_during_collision);

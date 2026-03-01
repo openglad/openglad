@@ -10,7 +10,7 @@
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
 

@@ -27,7 +27,6 @@
 enum class Order : unsigned char;
 
 class screen;
-class LevelRender;
 class statistics;
 class SaveData;
 class IRandom;
@@ -38,6 +37,7 @@ namespace og::sim { class SimEventLog; }
 #include <openglad/data/pixie_data.h>
 #include <openglad/entities/walker.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/interface/level_visuals.h>
 #include <openglad/legacy/pixdefs.h>
 
 class CampaignData
@@ -88,7 +88,7 @@ private:
 
 
 
-class LevelData
+class LevelRuntimeData
 {
 public:
     using WalkerList = std::list<std::unique_ptr<walker>>;
@@ -104,7 +104,7 @@ public:
             Dead
         };
 
-        WalkerListForwarder(LevelData* owner, Kind kind)
+        WalkerListForwarder(LevelRuntimeData* owner, Kind kind)
             : owner_(owner), kind_(kind)
         {
         }
@@ -186,14 +186,14 @@ public:
         }
 
     private:
-        LevelData* owner_ = nullptr;
+        LevelRuntimeData* owner_ = nullptr;
         Kind kind_ = Kind::Objects;
     };
 
     class LivingCountForwarder
     {
     public:
-        explicit LivingCountForwarder(LevelData* owner)
+        explicit LivingCountForwarder(LevelRuntimeData* owner)
             : owner_(owner)
         {
         }
@@ -251,13 +251,13 @@ public:
         }
 
     private:
-        LevelData* owner_ = nullptr;
+        LevelRuntimeData* owner_ = nullptr;
     };
 
     class LevelDoneForwarder
     {
     public:
-        explicit LevelDoneForwarder(LevelData* owner)
+        explicit LevelDoneForwarder(LevelRuntimeData* owner)
             : owner_(owner)
         {
         }
@@ -277,7 +277,7 @@ public:
         }
 
     private:
-        LevelData* owner_ = nullptr;
+        LevelRuntimeData* owner_ = nullptr;
     };
 
     enum class IoError
@@ -307,16 +307,12 @@ public:
 
     std::list<std::string> description;
 
-    // Drawing details
-    PixieData pixdata[PIX_MAX];
-    std::unique_ptr<LevelRender> renderer_;  // Tile rendering (null for headless)
-    std::int32_t topx, topy;
-
-    LevelData(int level_id);
-    LevelData(int level_id, const LevelDataHooks* hooks);
-    LevelData(int level_id, bool headless);  // Headless constructor (no tile graphics)
-    LevelData(int level_id, bool headless, const LevelDataHooks* hooks);
-    ~LevelData();
+    LevelRuntimeData(int level_id);
+    LevelRuntimeData(int level_id, const LevelDataHooks* hooks);
+    LevelRuntimeData(int level_id, bool headless);  // Headless constructor (no tile graphics)
+    LevelRuntimeData(int level_id, bool headless, const LevelDataHooks* hooks);
+    LevelRuntimeData(int level_id, bool headless, const LevelDataHooks* hooks, LevelVisuals* visuals);
+    ~LevelRuntimeData();
 
     bool load();
     bool save();
@@ -357,10 +353,12 @@ public:
     void add_draw_pos(std::int32_t dx, std::int32_t dy);
     void draw(screen* scr);
 
-    std::string get_description_line(int i);
+    std::string get_description_line(int i) const;
     bool is_headless() const { return headless_; }
     GameWorld& world() { return *world_; }
     const GameWorld& world() const { return *world_; }
+    LevelVisuals& level_visuals() { return *level_visuals_; }
+    const LevelVisuals& level_visuals() const { return *level_visuals_; }
     void attach_world(GameWorld* world);
 
     // Legacy transitional hook kept for call-site compatibility. Entity-side
@@ -375,6 +373,16 @@ private:
     const LevelDataHooks* hooks_ = nullptr;
     GameWorld owned_world_;
     GameWorld* world_ = nullptr;
+    LevelVisuals owned_level_visuals_;
+    LevelVisuals* level_visuals_ = nullptr;
+
+public:
+    // Transitional forwards so existing call sites can keep member-style access
+    // while storage lives on LevelVisuals.
+    PixieData (&pixdata)[PIX_MAX];
+    std::unique_ptr<LevelRender>& renderer_;
+    std::int32_t& topx;
+    std::int32_t& topy;
 
 };
 
@@ -382,4 +390,4 @@ private:
 std::string get_scenario_title(const char* filename);
 
 // Count living foes not friendly to the given walker.
-short remaining_foes(LevelData& level, walker* myguy);
+short remaining_foes(LevelRuntimeData& level, walker* myguy);

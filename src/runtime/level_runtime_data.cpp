@@ -15,7 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/platform/io_common.h>
@@ -42,7 +42,7 @@
 
 int toInt(const std::string& s);
 
-void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
+void LevelRuntimeData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                                 og::sim::SimEventLog* events, IRandom* rng,
                                 cfg_store* config)
 {
@@ -134,7 +134,7 @@ static void wire_world_loader(GameWorld& world,
 }
 
 static void wire_world_entity_services(GameWorld* world,
-                                       LevelData* level,
+                                       LevelRuntimeData* level,
                                        const LevelDataHooks* hooks)
 {
     if (world == nullptr || level == nullptr)
@@ -161,7 +161,7 @@ static void clear_world_entity_services(GameWorld* world)
     world->entity_derived_stats = {};
 }
 
-static void install_world_detach_callback(GameWorld* world, LevelData* level)
+static void install_world_detach_callback(GameWorld* world, LevelRuntimeData* level)
 {
     if (world == nullptr)
         return;
@@ -478,30 +478,39 @@ std::string CampaignData::get_description_line(int i)
 
 
 
-LevelData::LevelData(int level_id)
-    : LevelData(level_id, false, nullptr)
+LevelRuntimeData::LevelRuntimeData(int level_id)
+    : LevelRuntimeData(level_id, false, nullptr, nullptr)
 {
 }
 
-LevelData::LevelData(int level_id, const LevelDataHooks* hooks)
-    : LevelData(level_id, false, hooks)
+LevelRuntimeData::LevelRuntimeData(int level_id, const LevelDataHooks* hooks)
+    : LevelRuntimeData(level_id, false, hooks, nullptr)
 {
 }
 
-LevelData::LevelData(int level_id, bool headless)
-    : LevelData(level_id, headless, nullptr)
+LevelRuntimeData::LevelRuntimeData(int level_id, bool headless)
+    : LevelRuntimeData(level_id, headless, nullptr, nullptr)
 {
 }
 
-LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks)
+LevelRuntimeData::LevelRuntimeData(int level_id, bool headless, const LevelDataHooks* hooks)
+    : LevelRuntimeData(level_id, headless, hooks, nullptr)
+{
+}
+
+LevelRuntimeData::LevelRuntimeData(int level_id, bool headless, const LevelDataHooks* hooks, LevelVisuals* visuals)
     : level_done(this)
     , numobs(this)
     , oblist(this, WalkerListForwarder::Kind::Objects)
     , fxlist(this, WalkerListForwarder::Kind::Effects)
     , weaplist(this, WalkerListForwarder::Kind::Weapons)
     , dead_list(this, WalkerListForwarder::Kind::Dead)
-    , topx(0), topy(0)
     , world_(&owned_world_)
+    , level_visuals_(visuals ? visuals : &owned_level_visuals_)
+    , pixdata(level_visuals_->pixdata)
+    , renderer_(level_visuals_->renderer_)
+    , topx(level_visuals_->topx)
+    , topy(level_visuals_->topy)
 {
     hooks_ = hooks;
     headless_ = headless;
@@ -512,13 +521,13 @@ LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks)
 
     if (!headless)
     {
-        load_map_data(pixdata);
+        load_map_data(level_visuals().pixdata);
         if (hooks_ && hooks_->create_level_render)
-            renderer_ = hooks_->create_level_render(pixdata);
+            level_visuals().renderer_ = hooks_->create_level_render(level_visuals().pixdata);
     }
 }
 
-LevelData::~LevelData()
+LevelRuntimeData::~LevelRuntimeData()
 {
     delete_objects();
     delete_grid();
@@ -530,19 +539,19 @@ LevelData::~LevelData()
         world_ = nullptr;
     }
 
-    renderer_.reset();
+    level_visuals().renderer_.reset();
     for (int i = 0; i < PIX_MAX; i++)
-        pixdata[i].free();
+        level_visuals().pixdata[i].free();
 }
 
-void LevelData::clear()
+void LevelRuntimeData::clear()
 {
     world().clear();
-    topx = 0;
-    topy = 0;
+    level_visuals().topx = 0;
+    level_visuals().topy = 0;
 }
 
-void LevelData::attach_world(GameWorld* world)
+void LevelRuntimeData::attach_world(GameWorld* world)
 {
     GameWorld* old_world = world_;
     GameWorld* next_world = world ? world : &owned_world_;
@@ -617,42 +626,42 @@ void LevelData::attach_world(GameWorld* world)
         world_->set_detach_callback({});
 }
 
-walker* LevelData::add_ob(Order order, std::int32_t family, bool atstart)
+walker* LevelRuntimeData::add_ob(Order order, std::int32_t family, bool atstart)
 {
     return world().add_ob(order, family, atstart);
 }
 
-walker* LevelData::add_fx_ob(Order order, std::int32_t family)
+walker* LevelRuntimeData::add_fx_ob(Order order, std::int32_t family)
 {
     return world().add_fx_ob(order, family);
 }
 
-walker* LevelData::add_weap_ob(Order order, std::int32_t family)
+walker* LevelRuntimeData::add_weap_ob(Order order, std::int32_t family)
 {
     return world().add_weap_ob(order, family);
 }
 
-short LevelData::remove_ob(walker  *ob)
+short LevelRuntimeData::remove_ob(walker  *ob)
 {
     return world().remove_ob(ob);
 }
 
-void LevelData::delete_grid()
+void LevelRuntimeData::delete_grid()
 {
     world().delete_grid();
 }
 
-void LevelData::create_new_grid()
+void LevelRuntimeData::create_new_grid()
 {
     world().create_new_grid();
 }
 
-void LevelData::resize_grid(int width, int height)
+void LevelRuntimeData::resize_grid(int width, int height)
 {
     world().resize_grid(width, height);
 }
 
-void LevelData::delete_objects()
+void LevelRuntimeData::delete_objects()
 {
     world().delete_objects();
 
@@ -670,7 +679,7 @@ void LevelData::delete_objects()
 	        // FIXME: Freeing them here does naughty things!
 	        // obmap only indexes walkers; it doesn't own them. If we see leftovers here it usually
 	        // means something mutated the obmap out-of-order, or walkers are being kept alive
-	        // outside LevelData's owning lists. We clear the index defensively below; do not
+	        // outside LevelRuntimeData's owning lists. We clear the index defensively below; do not
 	        // attempt to delete walkers from the obmap to "fix" this (double-frees / UAF risk).
 	    }
     // pos_to_walker will have a bunch of 0-size lists in it
@@ -678,7 +687,7 @@ void LevelData::delete_objects()
 	world().myobmap->walker_to_pos.clear();
 }
 
-short load_version_2(og::io::OgFile& infile, LevelData* data)
+short load_version_2(og::io::OgFile& infile, LevelRuntimeData* data)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -769,7 +778,7 @@ short load_version_2(og::io::OgFile& infile, LevelData* data)
 // # of lines,
 //  1-byte character width
 //  n bytes specified from above
-short load_version_3(og::io::OgFile& infile, LevelData* data)
+short load_version_3(og::io::OgFile& infile, LevelRuntimeData* data)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -907,7 +916,7 @@ short load_version_3(og::io::OgFile& infile, LevelData* data)
 }
 
 // Version 4 scenarios include a 12-byte name for EVERY walker..
-short load_version_4(og::io::OgFile& infile, LevelData* data)
+short load_version_4(og::io::OgFile& infile, LevelRuntimeData* data)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -1053,7 +1062,7 @@ short load_version_4(og::io::OgFile& infile, LevelData* data)
 
 // Version 5 scenarios include a 1-byte 'scenario-type' specifier after
 // the grid name.
-short load_version_5(og::io::OgFile& infile, LevelData* data)
+short load_version_5(og::io::OgFile& infile, LevelRuntimeData* data)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -1226,7 +1235,7 @@ do{ \
 
 // Version 6 includes a 30-byte scenario title after the grid name.
 // Also load version 7 and 8 here, since it's a simple change ..
-short load_version_6(og::io::OgFile& infile, LevelData* data, short version)
+short load_version_6(og::io::OgFile& infile, LevelRuntimeData* data, short version)
 {
     short currentx, currenty;
     unsigned char temporder, tempfamily;
@@ -1411,7 +1420,7 @@ short load_version_6(og::io::OgFile& infile, LevelData* data, short version)
     return 1;
 } // end load_version_6
 
-short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version)
+short load_scenario_version(og::io::OgFile& infile, LevelRuntimeData* data, short version)
 {
     if(data == nullptr)
         return 0;
@@ -1446,9 +1455,9 @@ short load_scenario_version(og::io::OgFile& infile, LevelData* data, short versi
 	return result;
 }
 
-bool LevelData::load()
+bool LevelRuntimeData::load()
 {
-	TRACE("game", "LevelData::load id=%d headless=%d", world().id, headless_ ? 1 : 0);
+	TRACE("game", "LevelRuntimeData::load id=%d headless=%d", world().id, headless_ ? 1 : 0);
     last_io_error_ = IoError::None;
 	char temptext[10] = {};
 	char versionnumber = 0;
@@ -1504,16 +1513,16 @@ bool LevelData::load()
     // Reload background tiles (only when rendering)
     if (!headless_)
     {
-        renderer_.reset();
+        level_visuals().renderer_.reset();
         for (int i = 0; i < PIX_MAX; i++)
-            pixdata[i].free();
+            level_visuals().pixdata[i].free();
 
-        load_map_data(pixdata);
+        load_map_data(level_visuals().pixdata);
         if (hooks_ && hooks_->create_level_render)
-            renderer_ = hooks_->create_level_render(pixdata);
+            level_visuals().renderer_ = hooks_->create_level_render(level_visuals().pixdata);
     }
 
-	TRACE("game", "LevelData::load complete");
+	TRACE("game", "LevelRuntimeData::load complete");
     last_io_error_ = IoError::None;
 	return true;
 }
@@ -1553,7 +1562,7 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
 	return true;
 }
 
-bool LevelData::save()
+bool LevelRuntimeData::save()
 {
     last_io_error_ = IoError::None;
 	std::int32_t currentx, currenty;
@@ -1731,43 +1740,43 @@ bool LevelData::save()
 	return true;
 }
 
-LevelData::IoError LevelData::load_with_error()
+LevelRuntimeData::IoError LevelRuntimeData::load_with_error()
 {
     load();
     return last_io_error_;
 }
 
-LevelData::IoError LevelData::save_with_error()
+LevelRuntimeData::IoError LevelRuntimeData::save_with_error()
 {
     save();
     return last_io_error_;
 }
 
-void LevelData::set_draw_pos(std::int32_t new_topx, std::int32_t new_topy)
+void LevelRuntimeData::set_draw_pos(std::int32_t new_topx, std::int32_t new_topy)
 {
-    this->topx = new_topx;
-    this->topy = new_topy;
+    level_visuals().topx = new_topx;
+    level_visuals().topy = new_topy;
 }
 
-void LevelData::add_draw_pos(std::int32_t dx, std::int32_t dy)
+void LevelRuntimeData::add_draw_pos(std::int32_t dx, std::int32_t dy)
 {
-    this->topx += dx;
-    this->topy += dy;
+    level_visuals().topx += dx;
+    level_visuals().topy += dy;
 }
 
-void LevelData::draw(screen* screenp)
+void LevelRuntimeData::draw(screen* screenp)
 {
     if (!screenp) return;
     if (hooks_ && hooks_->draw)
         hooks_->draw(this, screenp);
 }
 
-std::string LevelData::get_description_line(int i)
+std::string LevelRuntimeData::get_description_line(int i) const
 {
     if(i >= int(description.size()))
         return "";
 
-    std::list<std::string>::iterator e = description.begin();
+    std::list<std::string>::const_iterator e = description.begin();
     while(i > 0 && e != description.end())
     {
         i--;
@@ -1809,67 +1818,67 @@ std::string get_scenario_title(const char* filename)
 
 // ---- remaining_foes (moved from glad_gameplay for sim/render split) ----
 
-short remaining_foes(LevelData& level, walker* myguy)
+short remaining_foes(LevelRuntimeData& level, walker* myguy)
 {
     return level.world().remaining_foes(myguy);
 }
 
 // ---- Collision / passability queries ----
 
-bool LevelData::query_grid_passable(float x, float y, walker  *ob)
+bool LevelRuntimeData::query_grid_passable(float x, float y, walker  *ob)
 {
     return world().query_grid_passable(x, y, ob);
 }
 
-bool LevelData::query_object_passable(float x, float y, walker  *ob)
+bool LevelRuntimeData::query_object_passable(float x, float y, walker  *ob)
 {
     return world().query_object_passable(x, y, ob);
 }
 
-bool LevelData::query_passable(float x, float y, walker  *ob)
+bool LevelRuntimeData::query_passable(float x, float y, walker  *ob)
 {
     return world().query_passable(x, y, ob);
 }
 
 // ---- Entity search ----
 
-walker *LevelData::find_near_foe(walker  *ob)
+walker *LevelRuntimeData::find_near_foe(walker  *ob)
 {
     return world().find_near_foe(ob);
 }
 
-walker  *LevelData::find_far_foe(walker  *ob)
+walker  *LevelRuntimeData::find_far_foe(walker  *ob)
 {
     return world().find_far_foe(ob);
 }
 
-walker  * LevelData::find_nearest_blood(walker  *who)
+walker  * LevelRuntimeData::find_nearest_blood(walker  *who)
 {
     return world().find_nearest_blood(who);
 }
 
-walker* LevelData::find_nearest_player(walker *ob)
+walker* LevelRuntimeData::find_nearest_player(walker *ob)
 {
     return world().find_nearest_player(ob);
 }
 
-std::list<walker*> LevelData::find_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
+std::list<walker*> LevelRuntimeData::find_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
 {
     return world().find_in_range(somelist, range, howmany, ob);
 }
 
-std::list<walker*> LevelData::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
+std::list<walker*> LevelRuntimeData::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
 {
     return world().find_foes_in_range(somelist, range, howmany, ob);
 }
 
-std::list<walker*> LevelData::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
+std::list<walker*> LevelRuntimeData::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
                                       std::int32_t* howmany, walker* ob)
 {
     return world().find_foe_weapons_in_range(somelist, range, howmany, ob);
 }
 
-std::list<walker*> LevelData::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
+std::list<walker*> LevelRuntimeData::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
                                       std::int32_t* howmany, walker* ob)
 {
     return world().find_friends_in_range(somelist, range, howmany, ob);

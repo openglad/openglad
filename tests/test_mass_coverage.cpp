@@ -28,13 +28,13 @@ namespace {
 
 void reset_level_state()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
-    og::runtime::current_session->myscreen_->level_data.level_done = 0;
+    og::runtime::current_session->myscreen_->world().delete_objects();
+    og::runtime::current_session->myscreen_->level_runtime_data().level_done = 0;
 }
 
 walker* add_living(unsigned char team = 0, unsigned char family = FAMILY_SOLDIER)
 {
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, family);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, family);
     if (!w)
         return nullptr;
     w->team_num = team;
@@ -46,7 +46,7 @@ walker* add_living(unsigned char team = 0, unsigned char family = FAMILY_SOLDIER
 
 walker* add_weapon(unsigned char family = FAMILY_KNIFE, unsigned char team = 1)
 {
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, family);
+    walker* w = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, family);
     if (!w)
         return nullptr;
     w->team_num = team;
@@ -234,7 +234,7 @@ MASS_TEST(test_mass_screen_find_in_range, {
     reset_level_state();
     Sint32 n = 0;
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->find_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 32, &n, w);
+    (void)og::runtime::current_session->myscreen_->find_in_range(og::runtime::current_session->myscreen_->oblist(), 32, &n, w);
     reset_level_state();
 });
 
@@ -250,7 +250,7 @@ MASS_TEST(test_mass_screen_find_foes_in_range, {
     Sint32 n = 0;
     walker* w = add_living(0);
     (void)add_living(1);
-    (void)og::runtime::current_session->myscreen_->find_foes_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 64, &n, w);
+    (void)og::runtime::current_session->myscreen_->find_foes_in_range(og::runtime::current_session->myscreen_->oblist(), 64, &n, w);
     reset_level_state();
 });
 
@@ -259,7 +259,7 @@ MASS_TEST(test_mass_screen_find_friends_in_range, {
     Sint32 n = 0;
     walker* w = add_living(0);
     (void)add_living(0);
-    (void)og::runtime::current_session->myscreen_->find_friends_in_range(og::runtime::current_session->myscreen_->level_data.oblist, 64, &n, w);
+    (void)og::runtime::current_session->myscreen_->find_friends_in_range(og::runtime::current_session->myscreen_->oblist(), 64, &n, w);
     reset_level_state();
 });
 
@@ -268,7 +268,7 @@ MASS_TEST(test_mass_screen_find_foe_weapons_in_range, {
     Sint32 n = 0;
     walker* w = add_living(0);
     (void)add_weapon(FAMILY_KNIFE, 1);
-    (void)og::runtime::current_session->myscreen_->find_foe_weapons_in_range(og::runtime::current_session->myscreen_->level_data.weaplist, 64, &n, w);
+    (void)og::runtime::current_session->myscreen_->find_foe_weapons_in_range(og::runtime::current_session->myscreen_->weaplist(), 64, &n, w);
     reset_level_state();
 });
 

@@ -21,7 +21,7 @@ struct GlobalContextGuard
     GlobalContextGuard& operator=(const GlobalContextGuard&) = delete;
 };
 
-static void set_tile(LevelData& d, int x, int y, unsigned char t)
+static void set_tile(LevelRuntimeData& d, int x, int y, unsigned char t)
 {
     if (x < 0 || y < 0 || x >= d.world().grid.w || y >= d.world().grid.h)
         return;
@@ -36,7 +36,7 @@ void test_radar_update_and_draw_covers_key_paths()
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
-    LevelData d(1);
+    LevelRuntimeData d(1);
     d.create_new_grid();
 
     // Place representative tiles to cover many radar::update() switch cases.
@@ -126,7 +126,7 @@ void test_radar_start_default_uses_myscreen_level_data()
         return;
 
     radar r(vs, og::runtime::current_session->myscreen_, 0);
-    r.start(); // wrapper path start(&myscreen->level_data)
-    (void)r.draw(&og::runtime::current_session->myscreen_->level_data);
+    r.start(); // wrapper path start(&myscreen->level_runtime_data())
+    (void)r.draw(&og::runtime::current_session->myscreen_->level_runtime_data());
 }
 REGISTER_TEST(test_radar_start_default_uses_myscreen_level_data);

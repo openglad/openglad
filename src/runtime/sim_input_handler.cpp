@@ -12,14 +12,14 @@
 #include <openglad/sim/sim_input_handler.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/entities/walker.h>
-#include <openglad/data/level_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/input/input_state.h>
 #include <algorithm>
 
-walker* sim_find_next_control(LevelData& level, short my_team)
+walker* sim_find_next_control(GameWorld& level, short my_team)
 {
     TRACE("sim_input", "find_next_control for team %d", my_team);
 
@@ -121,7 +121,7 @@ walker* sim_cycle_next_character(
 SimInputResult sim_process_player_input(
     const PlayerInput& pi,
     walker*& control,
-    LevelData& level,
+    GameWorld& level,
     short player_num,
     short my_team,
     SimInputDebounce& debounce,

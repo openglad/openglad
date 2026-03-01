@@ -1,4 +1,4 @@
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
@@ -30,7 +30,7 @@ namespace detail_level_data_coverage_push {
 namespace {
 
 struct LevelFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -157,7 +157,7 @@ namespace detail_level_data_r11 {
 namespace {
 
 struct LevelR11Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -311,7 +311,7 @@ OG_UNIT_TEST(test_level_data_r11_object_passability_and_search_sets)
 } // namespace detail_level_data_r11
 
 // --- From test_level_data_r12.cpp ---
-short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
+short load_scenario_version(og::io::OgFile& infile, LevelRuntimeData* data, short version);
 bool save_grid_file(const char* gridname, const PixieData& grid);
 
 namespace detail_level_data_r12 {
@@ -396,7 +396,7 @@ struct ScopedFileRemover {
 };
 
 struct LevelR12Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -461,12 +461,12 @@ OG_UNIT_TEST(test_level_data_r12_load_title_dispatch_and_save_grid_paths)
     titled.insert(titled.end(), title, title + 30);
     OG_ASSERT(write_bytes(title_path, titled));
 
-    LevelData parse_fail(id_parse, true);
-    OG_ASSERT(parse_fail.load_with_error() == LevelData::IoError::ParseFailed);
-    LevelData bad_header(id_bad, true);
-    OG_ASSERT(bad_header.load_with_error() == LevelData::IoError::InvalidHeader);
-    LevelData unsupported(id_ver, true);
-    OG_ASSERT(unsupported.load_with_error() == LevelData::IoError::UnsupportedVersion);
+    LevelRuntimeData parse_fail(id_parse, true);
+    OG_ASSERT(parse_fail.load_with_error() == LevelRuntimeData::IoError::ParseFailed);
+    LevelRuntimeData bad_header(id_bad, true);
+    OG_ASSERT(bad_header.load_with_error() == LevelRuntimeData::IoError::InvalidHeader);
+    LevelRuntimeData unsupported(id_ver, true);
+    OG_ASSERT(unsupported.load_with_error() == LevelRuntimeData::IoError::UnsupportedVersion);
 
     OG_ASSERT(get_scenario_title(nullptr) == "none");
     OG_ASSERT(get_scenario_title("does_not_exist") == "none");
@@ -475,7 +475,7 @@ OG_UNIT_TEST(test_level_data_r12_load_title_dispatch_and_save_grid_paths)
 
     unsigned char dummy = 0;
     MemoryOgFile mem(&dummy, 0);
-    LevelData data(1, true);
+    LevelRuntimeData data(1, true);
     OG_ASSERT(load_scenario_version(mem, nullptr, 6) == 0);
     OG_ASSERT(load_scenario_version(mem, &data, 42) == 0);
 
@@ -743,7 +743,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_s
     {
         std::vector<unsigned char> bytes = make_payload_v2("grid");
         MemoryOgFile mem(bytes);
-        LevelData data(1, true);
+        LevelRuntimeData data(1, true);
         OG_ASSERT(load_scenario_version(mem, &data, 2) == 1);
         OG_ASSERT(data.grid_file == "grid");
     }
@@ -752,7 +752,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_s
     {
         std::vector<unsigned char> bytes = make_payload_v3("ab.pix", 95);
         MemoryOgFile mem(bytes);
-        LevelData data(2, true);
+        LevelRuntimeData data(2, true);
         OG_ASSERT(load_scenario_version(mem, &data, 3) == 1);
         OG_ASSERT(data.grid_file == "ab.pix");
         OG_ASSERT(!data.description.empty());
@@ -762,7 +762,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_s
     {
         std::vector<unsigned char> bytes = make_payload_v5("gr5", static_cast<char>(7));
         MemoryOgFile mem(bytes);
-        LevelData data(3, true);
+        LevelRuntimeData data(3, true);
         OG_ASSERT(load_scenario_version(mem, &data, 5) == 1);
         OG_ASSERT(data.world().type == 7);
     }
@@ -773,7 +773,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_s
                                                            static_cast<short>(77), static_cast<short>(1234),
                                                            110);
         MemoryOgFile mem(bytes);
-        LevelData data(4, true);
+        LevelRuntimeData data(4, true);
         OG_ASSERT(load_scenario_version(mem, &data, 9) == 1);
         OG_ASSERT(data.world().title == "R14 Title");
         OG_ASSERT(data.world().par_value == 77);
@@ -789,7 +789,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         std::vector<unsigned char> bytes;
         append_fixed_string(bytes, "grid", 8);
         MemoryOgFile mem(bytes);
-        LevelData data(11, true);
+        LevelRuntimeData data(11, true);
         OG_ASSERT(load_scenario_version(mem, &data, 2) == 0);
     }
 
@@ -800,7 +800,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         short bad_listsize = static_cast<short>(-1);
         append_pod(bytes, bad_listsize);
         MemoryOgFile mem(bytes);
-        LevelData data(12, true);
+        LevelRuntimeData data(12, true);
         OG_ASSERT(load_scenario_version(mem, &data, 2) == 0);
     }
 
@@ -816,7 +816,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         append_pod(bytes, width);
         bytes.push_back('x');
         MemoryOgFile mem(bytes);
-        LevelData data(13, true);
+        LevelRuntimeData data(13, true);
         OG_ASSERT(load_scenario_version(mem, &data, 3) == 0);
     }
 
@@ -825,7 +825,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         std::vector<unsigned char> bytes;
         append_fixed_string(bytes, "grid", 8);
         MemoryOgFile mem(bytes);
-        LevelData data(14, true);
+        LevelRuntimeData data(14, true);
         OG_ASSERT(load_scenario_version(mem, &data, 5) == 0);
     }
 
@@ -841,7 +841,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         short bad_listsize = 5000;
         append_pod(bytes, bad_listsize);
         MemoryOgFile mem(bytes);
-        LevelData data(15, true);
+        LevelRuntimeData data(15, true);
         OG_ASSERT(load_scenario_version(mem, &data, 8) == 0);
     }
 }
@@ -898,8 +898,8 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     LevelDataHooks hooks;
     hooks.create_level_render = make_render;
 
-    LevelData level_non_headless(9415, &hooks);
-    LevelData level_headless(9416, true, &hooks);
+    LevelRuntimeData level_non_headless(9415, &hooks);
+    LevelRuntimeData level_headless(9416, true, &hooks);
     OG_ASSERT(g_render_calls >= 1);
 
     SaveData save;
@@ -930,8 +930,8 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     OG_ASSERT(level_non_headless.topy == 0);
 
     // Exercise delegating constructor overloads.
-    LevelData plain_ctor(9417);
-    LevelData hooks_ctor(9418, &hooks);
+    LevelRuntimeData plain_ctor(9417);
+    LevelRuntimeData hooks_ctor(9418, &hooks);
     OG_ASSERT(plain_ctor.world().id == 9417);
     OG_ASSERT(hooks_ctor.world().id == 9418);
 
@@ -943,7 +943,7 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
 namespace detail_level_data_r16 {
 OG_UNIT_TEST(test_level_data_r16_external_world_teardown_detaches_level)
 {
-    LevelData level(9510, true);
+    LevelRuntimeData level(9510, true);
     SaveData save;
     std::int32_t freeze = 0;
     og::sim::SimEventLog events;

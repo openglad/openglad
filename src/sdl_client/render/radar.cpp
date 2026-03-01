@@ -56,10 +56,10 @@ radar::radar(viewscreen * myview, screen * screen_ctx, short whatnum)
 
 void radar::start()
 {
-    start(&og::runtime::current_session->myscreen_->level_data);
+    start(&og::runtime::current_session->myscreen_->level_runtime_data());
 }
 
-void radar::start(LevelData* data)
+void radar::start(LevelRuntimeData* data)
 {
 	sizex = static_cast<unsigned short>(data->world().grid.w);
 	sizey = static_cast<unsigned short>(data->world().grid.h);
@@ -123,10 +123,10 @@ radar::~radar()
 
 short radar::draw()
 {
-    return draw(&og::runtime::current_session->myscreen_->level_data);
+    return draw(&og::runtime::current_session->myscreen_->level_runtime_data());
 }
 
-short radar::draw(LevelData* data)
+short radar::draw(LevelRuntimeData* data)
 {
 	Sint32 tempx, tempy, tempz;
 	unsigned char tempcolor;
@@ -372,12 +372,12 @@ short radar::on_screen(short whatx, short whaty,
 // call it often, as it is very slow ..
 void radar::update()
 {
-    update(&og::runtime::current_session->myscreen_->level_data);
+    update(&og::runtime::current_session->myscreen_->level_runtime_data());
 }
 
 // This function re-initializes the radar map data.  Do not
 // call it often, as it is very slow ..
-void radar::update(LevelData* data)
+void radar::update(LevelRuntimeData* data)
 {
 	short temp, i, j;
 

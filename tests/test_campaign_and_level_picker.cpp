@@ -310,7 +310,7 @@ REGISTER_TEST(test_load_campaign_with_error_typed_result_paths);
 
 void test_level_picker_cancel_esc_returns_default()
 {
-    LevelData ld(1);
+    LevelRuntimeData ld(1);
     ld.create_new_grid();
     walker* e1 = ld.add_ob(Order::Living, FAMILY_ORC);
     walker* e2 = ld.add_ob(Order::Living, FAMILY_BIG_ORC);

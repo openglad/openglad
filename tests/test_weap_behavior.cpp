@@ -17,7 +17,7 @@
 
 static walker* make_weapon(char family)
 {
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, family);
+    walker* w = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, family);
     if (w) {
         w->setxy(100, 100);
         w->owner = w;
@@ -48,7 +48,7 @@ void test_weap_act_fire()
     w->lastx = 1;
     w->lasty = 0;
     w->act();
-    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_weap_act_fire);
 
@@ -59,7 +59,7 @@ void test_weap_act_sit_tree()
     w->set_act_type(ACT_SIT);
     bool result = w->act();
     TEST_ASSERT(result, "tree sit returns 1");
-    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_weap_act_sit_tree);
 
@@ -70,7 +70,7 @@ void test_weap_act_sit_blood()
     w->set_act_type(ACT_SIT);
     bool result = w->act();
     TEST_ASSERT(result, "blood sit returns 1");
-    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_weap_act_sit_blood);
 
@@ -81,7 +81,7 @@ void test_weap_act_sit_door()
     w->set_act_type(ACT_SIT);
     bool result = w->act();
     TEST_ASSERT(result, "door sit returns 1");
-    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_weap_act_sit_door);
 
@@ -92,7 +92,7 @@ void test_weap_act_die()
     w->set_act_type(ACT_DIE);
     w->act();
     TEST_ASSERT(w->dead == 1, "weap act die sets dead");
-    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_weap_act_die);
 
@@ -102,7 +102,7 @@ void test_weap_act_random()
     if (!w) return;
     w->set_act_type(ACT_RANDOM);
     w->act();
-    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_weap_act_random);
 
@@ -122,7 +122,7 @@ void test_weap_death_knife_soldier_owner()
     knife->death();
     // Should create a KNIFE_BACK effect
 
-    og::runtime::current_session->myscreen_->level_data.remove_ob(knife);
+    og::runtime::current_session->myscreen_->world().remove_ob(knife);
 }
 REGISTER_TEST(test_weap_death_knife_soldier_owner);
 
@@ -138,7 +138,7 @@ void test_weap_death_knife_non_soldier()
     knife->death();
     // Should NOT create a KNIFE_BACK since owner is not soldier
 
-    og::runtime::current_session->myscreen_->level_data.remove_ob(knife);
+    og::runtime::current_session->myscreen_->world().remove_ob(knife);
 }
 REGISTER_TEST(test_weap_death_knife_non_soldier);
 
@@ -154,7 +154,7 @@ void test_weap_death_fire_arrow_exploding()
 	    arrow->dead = 1;
 	    arrow->death();
 
-    og::runtime::current_session->myscreen_->level_data.remove_ob(arrow);
+    og::runtime::current_session->myscreen_->world().remove_ob(arrow);
 }
 REGISTER_TEST(test_weap_death_fire_arrow_exploding);
 
@@ -165,7 +165,7 @@ void test_weap_death_fire_arrow_no_explode()
     arrow->skip_exit = 0; // not supposed to explode
     arrow->dead = 1;
     arrow->death();
-    og::runtime::current_session->myscreen_->level_data.remove_ob(arrow);
+    og::runtime::current_session->myscreen_->world().remove_ob(arrow);
 }
 REGISTER_TEST(test_weap_death_fire_arrow_no_explode);
 
@@ -177,7 +177,7 @@ void test_weap_death_wave_transforms()
     wave->death();
     // Should transform to WAVE2 and un-dead
     TEST_ASSERT(wave->dead == 0, "wave should un-dead on transform");
-    og::runtime::current_session->myscreen_->level_data.remove_ob(wave);
+    og::runtime::current_session->myscreen_->world().remove_ob(wave);
 }
 REGISTER_TEST(test_weap_death_wave_transforms);
 
@@ -188,7 +188,7 @@ void test_weap_death_wave2_transforms()
     wave->dead = 1;
     wave->death();
     TEST_ASSERT(wave->dead == 0, "wave2 should un-dead on transform");
-    og::runtime::current_session->myscreen_->level_data.remove_ob(wave);
+    og::runtime::current_session->myscreen_->world().remove_ob(wave);
 }
 REGISTER_TEST(test_weap_death_wave2_transforms);
 
@@ -198,7 +198,7 @@ void test_weap_death_door()
     if (!door) return;
     door->dead = 1;
     door->death();
-    og::runtime::current_session->myscreen_->level_data.remove_ob(door);
+    og::runtime::current_session->myscreen_->world().remove_ob(door);
 }
 REGISTER_TEST(test_weap_death_door);
 
@@ -210,7 +210,7 @@ void test_weap_death_rock_no_bounce()
     // Just test death with default state
     rock->dead = 1;
     rock->death();
-    og::runtime::current_session->myscreen_->level_data.remove_ob(rock);
+    og::runtime::current_session->myscreen_->world().remove_ob(rock);
 }
 REGISTER_TEST(test_weap_death_rock_no_bounce);
 
@@ -221,7 +221,7 @@ void test_weap_death_boulder_exploding()
     boulder->skip_exit = 1;
     boulder->dead = 1;
     boulder->death();
-    og::runtime::current_session->myscreen_->level_data.remove_ob(boulder);
+    og::runtime::current_session->myscreen_->world().remove_ob(boulder);
 }
 REGISTER_TEST(test_weap_death_boulder_exploding);
 
@@ -235,7 +235,7 @@ void test_weap_animate_knife()
     if (!w) return;
     w->ani_type = ANI_ATTACK;
     w->animate();
-    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_weap_animate_knife);
 
@@ -245,13 +245,13 @@ void test_weap_animate_arrow()
     if (!w) return;
     w->ani_type = ANI_ATTACK;
     w->animate();
-    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_weap_animate_arrow);
 
 void test_weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_weapon(FAMILY_KNIFE);
     auto dead_living = make_living(FAMILY_SOLDIER, 1);
     TEST_ASSERT(w && dead_living, "weapon and dead living created");
@@ -264,7 +264,7 @@ void test_weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight()
     w->owner = dead_living.get();
     w->setxy(0, 0);
     w->lineofsight = 5;
-    og::runtime::current_session->myscreen_->level_data.world().grid.data[0] = PIX_TREE_M1;
+    og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_TREE_M1;
     w->set_act_type(ACT_RANDOM);
 
     (void)w->act();
@@ -272,7 +272,7 @@ void test_weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight()
     TEST_ASSERT(w->owner == w, "dead owner should be cleared then default to self");
     TEST_ASSERT_EQ(4, (int)w->lineofsight, "trees tile should decrement lineofsight");
 
-    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight);
 
@@ -298,10 +298,10 @@ void test_weap_act_control_generate_guard_and_default_paths()
     unknown->set_act_type(123);
     TEST_ASSERT(!unknown->act(), "unknown act should return false");
 
-    og::runtime::current_session->myscreen_->level_data.remove_ob(control);
-    og::runtime::current_session->myscreen_->level_data.remove_ob(gen);
-    og::runtime::current_session->myscreen_->level_data.remove_ob(guard);
-    og::runtime::current_session->myscreen_->level_data.remove_ob(unknown);
+    og::runtime::current_session->myscreen_->world().remove_ob(control);
+    og::runtime::current_session->myscreen_->world().remove_ob(gen);
+    og::runtime::current_session->myscreen_->world().remove_ob(guard);
+    og::runtime::current_session->myscreen_->world().remove_ob(unknown);
 }
 REGISTER_TEST(test_weap_act_control_generate_guard_and_default_paths);
 
@@ -314,7 +314,7 @@ void test_weap_death_is_idempotent()
     w->dead = 1;
     TEST_ASSERT(w->death(), "first death() call should succeed");
     TEST_ASSERT(!w->death(), "second death() call should short-circuit");
-    og::runtime::current_session->myscreen_->level_data.remove_ob(w);
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_weap_death_is_idempotent);
 
@@ -332,7 +332,7 @@ REGISTER_TEST(test_weap_headless_default_ctor_and_setxy_path);
 
 static void set_world_tile(short world_x, short world_y, unsigned char tile)
 {
-    auto& level = og::runtime::current_session->myscreen_->level_data;
+    auto& level = og::runtime::current_session->myscreen_->level_runtime_data();
     const int gx = world_x / GRID_SIZE;
     const int gy = world_y / GRID_SIZE;
     if (gx < 0 || gy < 0 || gx >= level.world().grid.w || gy >= level.world().grid.h)
@@ -342,7 +342,7 @@ static void set_world_tile(short world_x, short world_y, unsigned char tile)
 
 void test_weapon_family_rock_death_bounce_matrix()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* rock_w = make_weapon(FAMILY_ROCK);
     TEST_ASSERT(rock_w != nullptr, "rock weapon created");
     if (!rock_w)
@@ -353,7 +353,7 @@ void test_weapon_family_rock_death_bounce_matrix()
     TEST_ASSERT(rock_desc != nullptr && rock_desc->on_death != nullptr, "rock descriptor callback exists");
     if (!(rock_desc && rock_desc->on_death))
     {
-        og::runtime::current_session->myscreen_->level_data.remove_ob(rock_w);
+        og::runtime::current_session->myscreen_->world().remove_ob(rock_w);
         return;
     }
 
@@ -423,13 +423,13 @@ void test_weapon_family_rock_death_bounce_matrix()
     TEST_ASSERT(!rock_desc->on_death(rock), "rock on_death should fail when all bounce probes are blocked");
     TEST_ASSERT_EQ(1, (int)rock->dead, "all-blocked path should leave rock dead");
 
-    og::runtime::current_session->myscreen_->level_data.remove_ob(rock_w);
+    og::runtime::current_session->myscreen_->world().remove_ob(rock_w);
 }
 REGISTER_TEST(test_weapon_family_rock_death_bounce_matrix);
 
 void test_weapon_family_animate_callbacks_and_sprinkle_hit_paths()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
 
     walker* tree_w = make_weapon(FAMILY_TREE);
     walker* glow_w = make_weapon(FAMILY_GLOW);
@@ -496,8 +496,8 @@ void test_weapon_family_animate_callbacks_and_sprinkle_hit_paths()
     const WeaponFamilyDescriptor* sprinkle_desc = get_weapon_family_descriptor(FAMILY_SPRINKLE);
     TEST_ASSERT(sprinkle_desc != nullptr && sprinkle_desc->on_hit_target != nullptr,
                 "sprinkle descriptor callback exists");
-    walker* non_living_target = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Treasure, FAMILY_STAIN);
-    walker* living_target = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SLIME);
+    walker* non_living_target = og::runtime::current_session->myscreen_->world().add_ob(Order::Treasure, FAMILY_STAIN);
+    walker* living_target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SLIME);
     TEST_ASSERT(non_living_target != nullptr && living_target != nullptr, "sprinkle targets created");
     if (sprinkle_desc && sprinkle_desc->on_hit_target && non_living_target && living_target)
     {
@@ -516,11 +516,11 @@ void test_weapon_family_animate_callbacks_and_sprinkle_hit_paths()
                     "sprinkle should set a deterministic frozen_delay for living targets");
     }
 
-    og::runtime::current_session->myscreen_->level_data.remove_ob(non_living_target);
-    og::runtime::current_session->myscreen_->level_data.remove_ob(living_target);
-    og::runtime::current_session->myscreen_->level_data.remove_ob(tree_w);
-    og::runtime::current_session->myscreen_->level_data.remove_ob(glow_w);
-    og::runtime::current_session->myscreen_->level_data.remove_ob(circle_w);
+    og::runtime::current_session->myscreen_->world().remove_ob(non_living_target);
+    og::runtime::current_session->myscreen_->world().remove_ob(living_target);
+    og::runtime::current_session->myscreen_->world().remove_ob(tree_w);
+    og::runtime::current_session->myscreen_->world().remove_ob(glow_w);
+    og::runtime::current_session->myscreen_->world().remove_ob(circle_w);
 }
 REGISTER_TEST(test_weapon_family_animate_callbacks_and_sprinkle_hit_paths);
 
@@ -541,7 +541,7 @@ void test_weap_act_sit_with_non_skipping_family_and_act_animate_shortcut()
     anim_weapon->curdir = 0;
     TEST_ASSERT(anim_weapon->act(), "non-walk ani_type should route through animate() and return true");
 
-    og::runtime::current_session->myscreen_->level_data.remove_ob(sit_weapon);
-    og::runtime::current_session->myscreen_->level_data.remove_ob(anim_weapon);
+    og::runtime::current_session->myscreen_->world().remove_ob(sit_weapon);
+    og::runtime::current_session->myscreen_->world().remove_ob(anim_weapon);
 }
 REGISTER_TEST(test_weap_act_sit_with_non_skipping_family_and_act_animate_shortcut);

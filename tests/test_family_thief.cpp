@@ -5,7 +5,7 @@
 #include <openglad/sim/irandom.h>
 #include <openglad/core/constants.h>
 #include "unit/unit.h"
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_event_log.h>
@@ -90,7 +90,7 @@ namespace detail_family_thief_r12 {
 namespace {
 
 struct ThiefR12Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;

@@ -1,7 +1,7 @@
 /* Convenience helpers for the find-foes-in-range-and-iterate pattern. */
 #pragma once
 
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <cstdint>
 
 // Count foes within range of the given entity.

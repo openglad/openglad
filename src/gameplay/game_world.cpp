@@ -712,6 +712,19 @@ void GameWorld::delete_objects()
     weaplist.clear();
     dead_list.clear();
     living_count = 0;
+
+    if (!myobmap)
+    {
+        myobmap = std::make_unique<obmap>();
+        return;
+    }
+
+    // Walkers can outlive a world-bound obmap during tests and editor flows.
+    // After list teardown, clear any stale spatial index entries defensively.
+    if (!myobmap->walker_to_pos.empty())
+        Log("obmap::walker_to_pos has {} elements left.\n", myobmap->walker_to_pos.size());
+    myobmap->pos_to_walker.clear();
+    myobmap->walker_to_pos.clear();
 }
 
 void GameWorld::clear()

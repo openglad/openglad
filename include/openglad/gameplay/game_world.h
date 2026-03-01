@@ -50,11 +50,15 @@ extern std::int32_t g_test_level_tick_limit_override;
 } // namespace og::sim
 
 // Phase 1a shell for gameplay-owned entity lists.
-// LevelData temporarily forwards to this object while loader/render data
-// remains on LevelData.
+// LevelRuntimeData temporarily forwards to this object while loader/render data
+// remains on LevelRuntimeData.
 class GameWorld
 {
 public:
+    static constexpr char TYPE_CAN_EXIT_WHENEVER = 0x1;
+    static constexpr char TYPE_MUST_DESTROY_GENERATORS = 0x2;
+    static constexpr char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;
+
     explicit GameWorld(std::uint32_t seed = 0);
     ~GameWorld();
 

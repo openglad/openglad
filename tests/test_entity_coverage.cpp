@@ -30,7 +30,7 @@ static std::unique_ptr<walker> make_living(unsigned char team, signed char user 
 
 static void clear_level()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
 } // namespace
@@ -54,7 +54,7 @@ void test_sim_input_reverse_switch_missing_old_control_keeps_old()
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->level_data,
+        input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
     TEST_ASSERT(control == orphan_up.get(), "missing reverse entry should keep old control");
@@ -75,8 +75,8 @@ void test_sim_input_shift_yell_default_action_branch()
     control->set_act_type(ACT_CONTROL);
     control->action = 99;
 
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(control_up));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(ally_up));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(ally_up));
 
     InputState input;
     input.clear();
@@ -88,7 +88,7 @@ void test_sim_input_shift_yell_default_action_branch()
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->level_data,
+        input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
     TEST_ASSERT_EQ(0, control->action, "default shift+yell branch should reset action to 0");
@@ -112,8 +112,8 @@ void test_sim_input_switch_char_wraps_to_prior_candidate()
     candidate->stats()->hitpoints = 77.0f;
 
     // candidate is before control; forward scan should use wrap-around loop.
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(candidate_up));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(candidate_up));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
 
     InputState input;
     input.clear();
@@ -124,7 +124,7 @@ void test_sim_input_switch_char_wraps_to_prior_candidate()
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->level_data,
+        input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
     TEST_ASSERT(control == candidate, "switch should wrap to prior candidate");
@@ -154,7 +154,7 @@ void test_sim_input_idle_animation_cycle_wraps()
                                                    test_seq, test_seq, test_seq, test_seq};
     control->ani = test_ani_rows;
 
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
 
     InputState input;
     input.clear();
@@ -164,7 +164,7 @@ void test_sim_input_idle_animation_cycle_wraps()
     og::sim::SimEventLog log;
 
     SimInputResult result = sim_process_player_input(
-        input.players[0], control, og::runtime::current_session->myscreen_->level_data,
+        input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
     TEST_ASSERT_EQ(0, (int)control->cycle, "idle animation should wrap cycle at -1 sentinel");

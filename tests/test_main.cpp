@@ -117,7 +117,7 @@ int main(int argc, char* argv[]) {
     // Initialize sim context so walkers created for testing have a valid RNG etc.
     static og::sim::SimEventLog test_events;
     static ProductionRandom test_rng;
-    og::runtime::current_session->myscreen_->level_data.set_sim_context(&og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze,
+    og::runtime::current_session->myscreen_->level_runtime_data().set_sim_context(&og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->enemy_freeze,
                                          &test_events, &test_rng, &cfg);
 
     run_all_tests();

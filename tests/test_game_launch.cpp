@@ -21,10 +21,10 @@ void test_level_loading() {
     (void)result;
     // Check the traces were fired regardless of full success
     TEST_ASSERT(trace_contains("game", "load_saved_game"), "load_saved_game trace should be logged");
-    TEST_ASSERT(trace_contains("game", "LevelData::load"), "LevelData::load trace should be logged");
+    TEST_ASSERT(trace_contains("game", "LevelRuntimeData::load"), "LevelRuntimeData::load trace should be logged");
 
     // Clean up loaded objects
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_level_loading);
 
@@ -54,6 +54,6 @@ void test_level_load_initial_view_centers_on_player_control()
     TEST_ASSERT_EQ(expected_topx, vs->topx, "initial redraw should center viewport x on control");
     TEST_ASSERT_EQ(expected_topy, vs->topy, "initial redraw should center viewport y on control");
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_level_load_initial_view_centers_on_player_control);

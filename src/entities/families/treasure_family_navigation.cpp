@@ -9,7 +9,7 @@
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/sim/sim_emit.h>
 #include <format>
@@ -60,7 +60,7 @@ static bool exit_on_eat(treasure* self, walker* eater)
 
     GameWorld& world = *current_game->world;
     const short destination_level = static_cast<short>(self->stats()->level);
-    const bool can_exit_now = (!guys_here || (world.type & LevelData::TYPE_CAN_EXIT_WHENEVER));
+    const bool can_exit_now = (!guys_here || (world.type & GameWorld::TYPE_CAN_EXIT_WHENEVER));
     const bool can_withdraw = is_level_completed(world, destination_level) &&
                               !is_level_completed(world, world.current_scenario);
 

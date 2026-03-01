@@ -236,9 +236,9 @@ bool viewscreen::redraw()
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
 	walker  *controlob = control;
-	auto* renderer = active_screen()->level_data.renderer_.get();
+	auto* renderer = active_screen()->level_visuals_.renderer_.get();
 	if (!renderer) return false;
-	PixieData& gridp = active_screen()->level_data.world().grid;
+	PixieData& gridp = active_screen()->world().grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
 
@@ -251,8 +251,8 @@ bool viewscreen::redraw()
 	}
 	else // no control object now ..
 	{
-		topx = active_screen()->level_data.topx;
-		topy = active_screen()->level_data.topy;
+		topx = active_screen()->level_visuals_.topx;
+		topy = active_screen()->level_visuals_.topy;
 	}
 
 
@@ -290,7 +290,7 @@ bool viewscreen::redraw()
 
 }
 
-bool viewscreen::redraw(LevelData* data, bool draw_radar)
+bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 {
 	Sint32 i,j;
 	Sint32 xneg = 0;
@@ -392,7 +392,7 @@ bool viewscreen::refresh()
 
 walker* viewscreen::find_next_control()
 {
-    return sim_find_next_control(active_screen()->level_data, my_team);
+    return sim_find_next_control(active_screen()->world(), my_team);
 }
 
 short viewscreen::input(const SDL_Event& event)
@@ -479,7 +479,7 @@ void viewscreen::process_input(const InputState& input_state)
 				       && w->team_num == team;
 			};
 			walker* found = sim_cycle_next_character(
-				active_screen()->level_data.oblist, oldcontrol, reverse, filter);
+				active_screen()->oblist(), oldcontrol, reverse, filter);
 			if (found)
 				control = found;
 			if (control && control->dead)
@@ -503,7 +503,7 @@ void viewscreen::process_input(const InputState& input_state)
 
 	// Delegate all entity-driving logic to the sim layer
 	SimInputResult result = sim_process_player_input(
-		pi, control, active_screen()->level_data,
+		pi, control, active_screen()->world(),
 		mynum, my_team, debounce[mynum],
 		active_screen()->special_name,
 		ctx().sim_events.get());
@@ -557,10 +557,10 @@ void viewscreen::clear_text()
 
 bool viewscreen::draw_obs()
 {
-    return draw_obs(&active_screen()->level_data);
+    return draw_obs(&active_screen()->level_runtime_data());
 }
 
-bool viewscreen::draw_obs(LevelData* data)
+bool viewscreen::draw_obs(LevelRuntimeData* data)
 {
 	// First draw the special effects
 	for(auto& uptr : data->fxlist)
@@ -826,7 +826,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
     
     // Build the list of characters
     std::list<walker*> ls;
-	for(auto& uptr : active_screen()->level_data.oblist)
+	for(auto& uptr : active_screen()->oblist())
 	{
 	    walker* w = uptr.get();
 		if (w && !w->dead

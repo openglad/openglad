@@ -1301,7 +1301,7 @@ bool walker::death()
 
 	// Ensure we are removed from collision bookkeeping as soon as we "die".
 	// This prevents stale pointers in the obmap when callers manage walker
-	// lifetimes outside LevelData's owning lists (common in tests).
+	// lifetimes outside LevelRuntimeData's owning lists (common in tests).
 	obmap* active = (current_game != nullptr && current_game->world != nullptr)
 	    ? current_game->world->myobmap.get()
 	    : nullptr;

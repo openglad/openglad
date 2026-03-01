@@ -23,7 +23,7 @@ static PixieData one_px()
 
 static void set_all_tiles(unsigned char tile)
 {
-    auto& lvl = og::runtime::current_session->myscreen_->level_data;
+    auto& lvl = og::runtime::current_session->myscreen_->level_runtime_data();
     if (!lvl.world().grid.valid())
         lvl.create_new_grid();
     const int size = static_cast<int>(lvl.world().grid.w) * static_cast<int>(lvl.world().grid.h);
@@ -33,7 +33,7 @@ static void set_all_tiles(unsigned char tile)
 
 static void set_tile(int tx, int ty, unsigned char tile)
 {
-    auto& lvl = og::runtime::current_session->myscreen_->level_data;
+    auto& lvl = og::runtime::current_session->myscreen_->level_runtime_data();
     if (!lvl.world().grid.valid())
         lvl.create_new_grid();
     if (tx < 0 || ty < 0 || tx >= lvl.world().grid.w || ty >= lvl.world().grid.h)

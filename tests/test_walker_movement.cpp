@@ -165,7 +165,7 @@ REGISTER_TEST(test_walker_walkstep_zero);
 
 void test_walker_walkstep_user_slide_cardinal_break_path_round5()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
@@ -183,7 +183,7 @@ REGISTER_TEST(test_walker_walkstep_user_slide_cardinal_break_path_round5);
 
 void test_walker_walkstep_user_slide_diagonal_switch_cases_round6()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
@@ -335,7 +335,7 @@ REGISTER_TEST(test_walker_movement_stationary_family_walk_and_turn_branches);
 
 void test_walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
@@ -397,7 +397,7 @@ REGISTER_TEST(test_walker_animate_all_families);
 
 void test_walker_movement_round9_user_cardinal_slide_break_and_offmap_guards()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
@@ -422,7 +422,7 @@ REGISTER_TEST(test_walker_movement_round9_user_cardinal_slide_break_and_offmap_g
 
 void test_walker_movement_round9_blocked_animate_angle_and_turn_default_paths()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
@@ -433,7 +433,7 @@ void test_walker_movement_round9_blocked_animate_angle_and_turn_default_paths()
     w->setxy(GRID_SIZE, GRID_SIZE);
     w->curdir = FACE_RIGHT;
     // Moving from (1,1) one tile right targets tile (2,1).
-    og::runtime::current_session->myscreen_->level_data.world().grid.data[1 * og::runtime::current_session->myscreen_->level_data.world().grid.w + 2] = PIX_TREE_M1;
+    og::runtime::current_session->myscreen_->world().grid.data[1 * og::runtime::current_session->myscreen_->world().grid.w + 2] = PIX_TREE_M1;
     TEST_ASSERT(!w->walk(1, 0), "blocked movement should fail while still executing animate-on-block path");
 
     // get_current_angle switch branches.
@@ -466,7 +466,7 @@ void test_walker_create_weapon_soldier()
 
     walker* weap = w->fire();
     if (weap) {
-        og::runtime::current_session->myscreen_->level_data.remove_ob(weap);
+        og::runtime::current_session->myscreen_->world().remove_ob(weap);
     }
 
 }
@@ -482,7 +482,7 @@ void test_walker_create_weapon_archer()
 
     walker* weap = w->fire();
     if (weap) {
-        og::runtime::current_session->myscreen_->level_data.remove_ob(weap);
+        og::runtime::current_session->myscreen_->world().remove_ob(weap);
     }
 
 }
@@ -498,7 +498,7 @@ void test_walker_create_weapon_mage()
 
     walker* weap = w->fire();
     if (weap) {
-        og::runtime::current_session->myscreen_->level_data.remove_ob(weap);
+        og::runtime::current_session->myscreen_->world().remove_ob(weap);
     }
 
 }
@@ -506,14 +506,14 @@ REGISTER_TEST(test_walker_create_weapon_mage);
 
 void test_walker_movement_round6_blocked_animate_and_default_angle_turn()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
         return;
 
     // Blocked walk + BIT_ANIMATE branch.
-    og::runtime::current_session->myscreen_->level_data.world().grid.data[1] = PIX_TREE_M1;
+    og::runtime::current_session->myscreen_->world().grid.data[1] = PIX_TREE_M1;
 
     w->setxy(0, 0);
     w->sizex = 1;
@@ -574,9 +574,9 @@ void test_walker_draw_tile_phantom_and_forestwalk_paths()
         // FORESTWALK draw_tile branch.
         int tx = w->xpos / GRID_SIZE;
         int ty = w->ypos / GRID_SIZE;
-        if (tx >= 0 && ty >= 0 && tx < og::runtime::current_session->myscreen_->level_data.world().grid.w && ty < og::runtime::current_session->myscreen_->level_data.world().grid.h) {
-            og::runtime::current_session->myscreen_->level_data.world().grid.data[ty * og::runtime::current_session->myscreen_->level_data.world().grid.w + tx] = PIX_TREE_T1;
-            og::runtime::current_session->myscreen_->level_data.world().mysmoother.set_target(og::runtime::current_session->myscreen_->level_data.world().grid);
+        if (tx >= 0 && ty >= 0 && tx < og::runtime::current_session->myscreen_->world().grid.w && ty < og::runtime::current_session->myscreen_->world().grid.h) {
+            og::runtime::current_session->myscreen_->world().grid.data[ty * og::runtime::current_session->myscreen_->world().grid.w + tx] = PIX_TREE_T1;
+            og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
         }
         w->flight_left = 0;
         w->stats()->set_bit_flags(BIT_FLYING, 0);
@@ -591,7 +591,7 @@ REGISTER_TEST(test_walker_draw_tile_phantom_and_forestwalk_paths);
 
 void test_walker_movement_deep_branch_coverage_smoke()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     TEST_ASSERT(w != nullptr, "walker should be created");
     if (!w)
@@ -629,8 +629,8 @@ void test_walker_movement_deep_branch_coverage_smoke()
     (void)w->walkstep(1, -1);   // FACE_UP_RIGHT
 
     // Force bottom/right edge for remaining blocked cardinal/diagonal attempts.
-    const short max_x = static_cast<short>(og::runtime::current_session->myscreen_->level_data.world().grid.w * GRID_SIZE - 1);
-    const short max_y = static_cast<short>(og::runtime::current_session->myscreen_->level_data.world().grid.h * GRID_SIZE - 1);
+    const short max_x = static_cast<short>(og::runtime::current_session->myscreen_->world().grid.w * GRID_SIZE - 1);
+    const short max_y = static_cast<short>(og::runtime::current_session->myscreen_->world().grid.h * GRID_SIZE - 1);
     w->setxy(max_x, max_y);
     (void)w->walkstep(1, 0);    // FACE_RIGHT
     (void)w->walkstep(0, 1);    // FACE_DOWN
@@ -665,7 +665,7 @@ REGISTER_TEST(test_walker_movement_deep_branch_coverage_smoke);
 
 void test_walker_movement_round6_npc_blocked_switch_and_user_slide_subpaths()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     TEST_ASSERT(w != nullptr, "walker should be created");
     if (!w)
@@ -682,8 +682,8 @@ void test_walker_movement_round6_npc_blocked_switch_and_user_slide_subpaths()
     w->setxy(GRID_SIZE * 6, 0);
     (void)w->walkstep(0, -1);  // FACE_UP -> FACE_LEFT fallback
 
-    const short max_x = static_cast<short>(og::runtime::current_session->myscreen_->level_data.world().grid.w * GRID_SIZE - 1);
-    const short max_y = static_cast<short>(og::runtime::current_session->myscreen_->level_data.world().grid.h * GRID_SIZE - 1);
+    const short max_x = static_cast<short>(og::runtime::current_session->myscreen_->world().grid.w * GRID_SIZE - 1);
+    const short max_y = static_cast<short>(og::runtime::current_session->myscreen_->world().grid.h * GRID_SIZE - 1);
     w->setxy(max_x, static_cast<short>(GRID_SIZE * 6));
     (void)w->walkstep(1, 0);   // FACE_RIGHT -> FACE_UP fallback
 

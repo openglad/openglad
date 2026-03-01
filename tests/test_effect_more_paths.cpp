@@ -57,7 +57,7 @@ private:
 
 void test_effect_magic_shield_hits_weapon_and_enemy_paths()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     // Deterministic RNG for weapon targeting/miss chances, if any.
     FixedRandom fixed_rng(1);
@@ -70,7 +70,7 @@ void test_effect_magic_shield_hits_weapon_and_enemy_paths()
     if (!owner)
         return;
 
-    walker* shield = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+    walker* shield = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     TEST_ASSERT(shield != nullptr, "shield created");
     if (!shield)
         return;
@@ -88,11 +88,11 @@ void test_effect_magic_shield_hits_weapon_and_enemy_paths()
         weapon->team_num = 2; // opposing team
         weapon->damage = 7.0f;
         weapon->setxy(102, 100);
-        og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(weapon));
+        og::runtime::current_session->myscreen_->oblist().push_back(std::move(weapon));
     }
 
     // Also add a nearby foe living.
-    walker* foe = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(foe != nullptr, "foe created");
     if (foe) {
         foe->team_num = 2;
@@ -102,13 +102,13 @@ void test_effect_magic_shield_hits_weapon_and_enemy_paths()
 
     (void)shield->act();
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_magic_shield_hits_weapon_and_enemy_paths);
 
 void test_effect_boomerang_hits_weapon_and_enemy_paths()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     SeededRandom seeded(123u);
     GameContext c;
@@ -120,7 +120,7 @@ void test_effect_boomerang_hits_weapon_and_enemy_paths()
     if (!owner)
         return;
 
-    walker* fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
+    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_BOOMERANG);
     TEST_ASSERT(fx != nullptr, "boomerang created");
     if (!fx)
         return;
@@ -138,10 +138,10 @@ void test_effect_boomerang_hits_weapon_and_enemy_paths()
         weapon->team_num = 2;
         weapon->damage = 3.0f;
         weapon->setxy(102, 100);
-        og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(weapon));
+        og::runtime::current_session->myscreen_->oblist().push_back(std::move(weapon));
     }
 
-    walker* foe = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     if (foe) {
         foe->team_num = 2;
         foe->damage = 4.0f;
@@ -149,13 +149,13 @@ void test_effect_boomerang_hits_weapon_and_enemy_paths()
     }
 
     (void)fx->act();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_boomerang_hits_weapon_and_enemy_paths);
 
 void test_effect_cloud_hits_collision_branch_and_walk_command_path()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     // effect.cpp cloud path has a loop that requires xd/yd != 0; use a sequence
     // that produces (-1, +1) on the first draw.
@@ -169,7 +169,7 @@ void test_effect_cloud_hits_collision_branch_and_walk_command_path()
     if (!owner)
         return;
 
-    walker* cloud = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_CLOUD);
+    walker* cloud = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CLOUD);
     TEST_ASSERT(cloud != nullptr, "cloud created");
     if (!cloud)
         return;
@@ -182,13 +182,13 @@ void test_effect_cloud_hits_collision_branch_and_walk_command_path()
     // First act() should enqueue a walk command, second should execute it.
     (void)cloud->act();
     (void)cloud->act();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_cloud_hits_collision_branch_and_walk_command_path);
 
 void test_effect_chain_lightning_hits_leader_and_spawns_explosion()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -200,7 +200,7 @@ void test_effect_chain_lightning_hits_leader_and_spawns_explosion()
     if (!caster)
         return;
 
-    walker* leader = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* leader = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(leader != nullptr, "leader created");
     if (!leader)
         return;
@@ -208,7 +208,7 @@ void test_effect_chain_lightning_hits_leader_and_spawns_explosion()
     leader->team_num = 2;
     leader->setxy(100, 100);
 
-    walker* chain = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    walker* chain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CHAIN);
     TEST_ASSERT(chain != nullptr, "chain created");
     if (!chain)
         return;
@@ -221,13 +221,13 @@ void test_effect_chain_lightning_hits_leader_and_spawns_explosion()
     chain->setxy(100, 100); // overlap -> hit leader immediately
 
     (void)chain->act();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_chain_lightning_hits_leader_and_spawns_explosion);
 
 void test_effect_death_explosion_shoves_nearby_targets()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -239,7 +239,7 @@ void test_effect_death_explosion_shoves_nearby_targets()
     if (!owner)
         return;
 
-    walker* explosion = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    walker* explosion = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     TEST_ASSERT(explosion != nullptr, "explosion created");
     if (!explosion)
         return;
@@ -249,7 +249,7 @@ void test_effect_death_explosion_shoves_nearby_targets()
     explosion->setxy(100, 100);
     explosion->damage = 40.0f;
 
-    walker* target = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(target != nullptr, "target created");
     if (target) {
         target->team_num = 2;
@@ -268,15 +268,15 @@ void test_effect_death_explosion_shoves_nearby_targets()
     if (target) {
         TEST_ASSERT(target->stats()->has_commands(), "explosion should shove targets via COMMAND_WALK");
     }
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_death_explosion_shoves_nearby_targets);
 
 void test_effect_batch3_explosion_owner_fallback_and_empty_target_list()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* explosion = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    walker* explosion = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     TEST_ASSERT(explosion != nullptr, "explosion created");
     if (!explosion)
         return;
@@ -286,21 +286,21 @@ void test_effect_batch3_explosion_owner_fallback_and_empty_target_list()
     explosion->dead = 1;
     (void)explosion->death();   // no targets nearby: howmany<1 branch
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_batch3_explosion_owner_fallback_and_empty_target_list);
 
 void test_effect_batch3_bomb_owner_dead_fallback_path()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* dead_owner = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_THIEF);
+    walker* dead_owner = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_THIEF);
     TEST_ASSERT(dead_owner != nullptr, "owner created");
     if (!dead_owner)
         return;
     dead_owner->dead = 1;
 
-    walker* bomb = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_BOMB);
+    walker* bomb = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_BOMB);
     TEST_ASSERT(bomb != nullptr, "bomb created");
     if (!bomb)
         return;
@@ -310,13 +310,13 @@ void test_effect_batch3_bomb_owner_dead_fallback_path()
     bomb->dead = 1;
     (void)bomb->death();
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_batch3_bomb_owner_dead_fallback_path);
 
 void test_effect_batch3_shield_and_boomerang_collision_loops()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -329,7 +329,7 @@ void test_effect_batch3_shield_and_boomerang_collision_loops()
         return;
 
     // Magic shield: hit incoming weapon and nearby foe, then die from hp/lifetime check.
-    walker* shield = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+    walker* shield = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     TEST_ASSERT(shield != nullptr, "shield created");
     if (!shield)
         return;
@@ -345,10 +345,10 @@ void test_effect_batch3_shield_and_boomerang_collision_loops()
         incoming->team_num = 2;
         incoming->damage = 2.0f;
         incoming->setxy(100, 100);
-        og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(incoming));
+        og::runtime::current_session->myscreen_->oblist().push_back(std::move(incoming));
     }
 
-    walker* foe = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(foe != nullptr, "foe created");
     if (foe) {
         foe->team_num = 2;
@@ -359,7 +359,7 @@ void test_effect_batch3_shield_and_boomerang_collision_loops()
     (void)shield->act();
 
     // Boomerang: foe loop path in boomerang_on_act().
-    walker* boomerang = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
+    walker* boomerang = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_BOOMERANG);
     TEST_ASSERT(boomerang != nullptr, "boomerang created");
     if (boomerang) {
         boomerang->owner = owner.get();
@@ -371,23 +371,23 @@ void test_effect_batch3_shield_and_boomerang_collision_loops()
         (void)boomerang->act();
     }
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_batch3_shield_and_boomerang_collision_loops);
 
 void test_effect_batch3_chain_snap_to_leader_and_effect_death_guard()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto owner = make_living(FAMILY_MAGE, 1, 5);
-    walker* leader = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* leader = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(owner != nullptr && leader != nullptr, "owner+leader created");
     if (!(owner && leader))
         return;
     leader->team_num = 2;
 
     // Place close enough that chain takes the center_on(leader) branch.
-    walker* chain = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    walker* chain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CHAIN);
     TEST_ASSERT(chain != nullptr, "chain created");
     if (!chain)
         return;
@@ -402,7 +402,7 @@ void test_effect_batch3_chain_snap_to_leader_and_effect_death_guard()
     TEST_ASSERT(after_dist <= before_dist, "close chain path should not move chain farther from leader");
 
     // effect::death() second-call guard on a fresh effect object.
-    walker* death_fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    walker* death_fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     TEST_ASSERT(death_fx != nullptr, "death guard fx created");
     if (!death_fx)
         return;
@@ -412,17 +412,17 @@ void test_effect_batch3_chain_snap_to_leader_and_effect_death_guard()
     TEST_ASSERT(first, "first death call should succeed");
     TEST_ASSERT(!second, "second death call should be guarded");
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_batch3_chain_snap_to_leader_and_effect_death_guard);
 
 void test_effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     // Early guard branch: missing owner must kill chain immediately.
-    walker* orphan_chain = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_CHAIN);
-    walker* any_leader = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* orphan_chain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CHAIN);
+    walker* any_leader = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(orphan_chain != nullptr && any_leader != nullptr, "orphan chain/leader created");
     if (orphan_chain && any_leader)
     {
@@ -434,13 +434,13 @@ void test_effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan()
         TEST_ASSERT(orphan_chain->dead == 1, "ownerless chain should die in guard path");
     }
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     // Hit-leader path with owner->myguy == nullptr should take non-myguy foe scan branch.
-    walker* owner = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_MAGE);
-    walker* leader = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_CLERIC);
-    walker* foe = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* chain = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    walker* owner = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
+    walker* leader = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_CLERIC);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* chain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CHAIN);
     TEST_ASSERT(owner != nullptr && leader != nullptr && foe != nullptr && chain != nullptr,
                 "owner/leader/foe/chain created");
     if (!(owner && leader && foe && chain))
@@ -463,17 +463,17 @@ void test_effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan()
     SequenceRandom seq_rng({0});
     (void)chain->act();
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan);
 
 void test_effect_batch4_chain_movement_negative_delta_branch()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* owner = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_MAGE);
-    walker* leader = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* chain = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    walker* owner = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
+    walker* leader = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* chain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CHAIN);
     TEST_ASSERT(owner != nullptr && leader != nullptr && chain != nullptr, "movement chain objects created");
     if (!(owner && leader && chain))
         return;
@@ -494,17 +494,17 @@ void test_effect_batch4_chain_movement_negative_delta_branch()
     TEST_ASSERT(chain->xpos <= before_x && chain->ypos <= before_y,
                 "chain movement should step toward upper-left leader when deltas are negative");
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_batch4_chain_movement_negative_delta_branch);
 
 void test_effect_batch6_chain_small_delta_else_branches()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* owner = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_MAGE);
-    walker* leader = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* chain = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    walker* owner = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
+    walker* leader = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* chain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CHAIN);
     TEST_ASSERT(owner != nullptr && leader != nullptr && chain != nullptr, "owner/leader/chain created");
     if (!(owner && leader && chain))
         return;
@@ -527,7 +527,7 @@ void test_effect_batch6_chain_small_delta_else_branches()
     TEST_ASSERT(chain->xpos > before_x, "small positive x delta should move right");
     TEST_ASSERT(chain->ypos > before_y, "large positive y delta should move down toward leader");
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_effect_batch6_chain_small_delta_else_branches);
 

@@ -89,8 +89,8 @@ REGISTER_TEST(test_stats_batch2_command_edge_paths_smoke);
 
 void test_stats_round6_block_query_switches_all_directions()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
         return;
@@ -144,8 +144,8 @@ REGISTER_TEST(test_stats_round6_walk_clamp_extremes_and_empty_queue_paths);
 
 void test_stats_round7a_command_clamps_and_direction_switches()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
         return;
@@ -192,10 +192,10 @@ REGISTER_TEST(test_stats_round7a_command_clamps_and_direction_switches);
 
 void test_stats_round7a_follow_and_die_do_command_paths()
 {
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr, "actor created");
     if (!actor)
         return;
@@ -208,7 +208,7 @@ void test_stats_round7a_follow_and_die_do_command_paths()
     (void)actor->stats()->do_command();
 
     // Follow with foe set: immediate early stop path in COMMAND_FOLLOW.
-    walker* foe = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(foe != nullptr, "foe created");
     if (foe)
     {

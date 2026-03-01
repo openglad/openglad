@@ -78,7 +78,7 @@ void test_game_frame_toggles_debug_hotkeys()
     // Cleanup.
     g_script = nullptr;
     set_game_speed(old_speed);
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_game_frame_toggles_debug_hotkeys);
 
@@ -155,7 +155,7 @@ void test_game_frame_options_menu_via_key_prefs_completes()
     walker* saved_control = vs->control;
     if (!vs->control)
     {
-        walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(w != nullptr, "control walker created");
         if (!w)
             return;
@@ -210,6 +210,6 @@ void test_game_frame_options_menu_via_key_prefs_completes()
     set_game_speed(old_speed);
     og::runtime::current_session->keystates_ = saved_keystates;
     vs->control = saved_control;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_game_frame_options_menu_via_key_prefs_completes);

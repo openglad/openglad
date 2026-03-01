@@ -37,7 +37,7 @@ std::unique_ptr<walker> guy_create_walker_owned(guy& g, screen* screen_)
 walker* guy_create_and_add_walker(guy& g, screen* screen_)
 {
     auto temp_guy = std::make_unique<guy>(g);
-    walker* temp_walker = screen_->level_data.add_ob(Order::Living, temp_guy->family);
+    walker* temp_walker = screen_->world().add_ob(Order::Living, temp_guy->family);
     temp_walker->set_owned_myguy(std::move(temp_guy));
     temp_walker->stats()->level = temp_walker->myguy->level;
 

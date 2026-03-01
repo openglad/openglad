@@ -54,7 +54,7 @@ void test_picker_get_accessible_levels_handles_missing_leveldata()
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
 
-    // Add a bogus "completed" level id to force LevelData::load() failure path.
+    // Add a bogus "completed" level id to force LevelRuntimeData::load() failure path.
     og::runtime::current_session->myscreen_->save_data.completed_levels[og::runtime::current_session->myscreen_->save_data.current_campaign].insert(9999);
 
     std::vector<int> levels = get_accessible_levels();

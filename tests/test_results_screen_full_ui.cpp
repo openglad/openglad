@@ -70,9 +70,9 @@ void test_results_screen_full_ui_overview_and_troops_paths()
     std::map<int, guy*> before;
     std::map<int, walker*> after;
 
-    auto* w1 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    auto* w2 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_MAGE);
-    auto* w3 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    auto* w1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    auto* w2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
+    auto* w3 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT(w1 != nullptr && w2 != nullptr && w3 != nullptr, "expected walkers for results test");
     w1->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     w2->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));

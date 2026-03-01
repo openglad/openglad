@@ -89,7 +89,7 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
     // Ensure we have a controlled living so options_menu doesn't early-return.
     if (!vs->control)
     {
-        walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(w != nullptr, "control walker created");
         if (w)
         {

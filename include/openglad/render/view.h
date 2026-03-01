@@ -19,7 +19,7 @@
 // Definition of VIEWSCREEN class
 
 #include "SDL.h"
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -91,7 +91,7 @@ class viewscreen
 		void clear();
 		bool draw ();
 		bool redraw();
-		bool redraw(LevelData* data, bool draw_radar = true);
+		bool redraw(LevelRuntimeData* data, bool draw_radar = true);
 		bool refresh();
 		short input(const SDL_Event& event);
 		short continuous_input();
@@ -101,7 +101,7 @@ class viewscreen
 		void shift_text(Sint32 row); // cycle text upward
 		void clear_text(void); // clear all text in buffer
 		bool draw_obs(); //moved here to fix radar
-		bool draw_obs(LevelData* data);
+		bool draw_obs(LevelRuntimeData* data);
 		void resize(short x, short y, short length, short height);
 		void resize(char whatmode); // set according to preferences ..
 		void view_team();

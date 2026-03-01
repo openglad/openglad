@@ -16,7 +16,7 @@
  */
 
 #include <openglad/ui/level_picker.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/level_data_hooks.h>
 #include <openglad/render/radar.h>
 #include <openglad/entities/walker.h>
@@ -96,7 +96,7 @@ void wait_for_key_release(int key, const char* context)
 } // namespace
 
 
-void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, std::list<int>& exits)
+void getLevelStats(LevelRuntimeData& level_data, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, std::list<int>& exits)
 {
     int num = 0;
     int level_sum = 0;
@@ -219,7 +219,7 @@ class BrowserEntry
 {
     public:
     
-    LevelData level_data;
+    LevelRuntimeData level_data;
     SDL_Rect mapAreas;
     radar myradar;
     std::string level_name;

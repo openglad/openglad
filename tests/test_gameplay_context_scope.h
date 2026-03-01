@@ -1,6 +1,6 @@
 #pragma once
 
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/sim/sim_event_log.h>
@@ -12,7 +12,7 @@ class cfg_store;
 class ScopedGameplayContext
 {
 public:
-    ScopedGameplayContext(LevelData& level, SaveData& save,
+    ScopedGameplayContext(LevelRuntimeData& level, SaveData& save,
                           og::sim::SimEventLog& events, cfg_store& config)
         : previous_(current_game)
     {
@@ -38,7 +38,7 @@ private:
     GameplayContext* previous_ = nullptr;
 };
 
-inline void bind_test_entity_sim_context(LevelData& level, walker* entity)
+inline void bind_test_entity_sim_context(LevelRuntimeData& level, walker* entity)
 {
     (void)level;
     (void)entity;

@@ -13,7 +13,7 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/input/input.h>
 #include <openglad/render/view.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/level_render.h>
 #include <openglad/data/level_data_hooks.h>
 #include <openglad/data/gloader.h>
@@ -78,11 +78,11 @@ loader* sdl_entity_loader()
 
 namespace
 {
-void sdl_clear_stale_view_controls(LevelData* level)
+void sdl_clear_stale_view_controls(LevelRuntimeData* level)
 {
     if (og::runtime::current_session &&
         og::runtime::current_session->myscreen_ != nullptr &&
-        &og::runtime::current_session->myscreen_->level_data == level)
+        &og::runtime::current_session->myscreen_->level_runtime_data() == level)
     {
         for (auto& view : og::runtime::current_session->myscreen_->viewob)
         {
@@ -92,7 +92,7 @@ void sdl_clear_stale_view_controls(LevelData* level)
     }
 }
 
-void sdl_level_data_draw(LevelData* level, screen* screenp)
+void sdl_level_data_draw(LevelRuntimeData* level, screen* screenp)
 {
     for (short i = 0; i < screenp->numviews; i++)
         screenp->viewob[i]->redraw(level, false);
@@ -136,7 +136,7 @@ void wire_world_with_loader(GameWorld* world, loader* game_loader)
     };
 }
 
-void sdl_wire_world_entity_services(GameWorld* world, LevelData* level)
+void sdl_wire_world_entity_services(GameWorld* world, LevelRuntimeData* level)
 {
     (void)level;
     wire_world_with_loader(world, sdl_entity_loader());

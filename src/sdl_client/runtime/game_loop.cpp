@@ -81,7 +81,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         s.redraw();
 
         if (og::runtime::current_session->debug_draw_obmap_)
-            obmap_debug_draw(*s.level_data.world().myobmap, &s);  // debug drawing for object collision map
+            obmap_debug_draw(*s.world().myobmap, &s);  // debug drawing for object collision map
 
 #ifdef USE_TOUCH_INPUT
         draw_touch_controls(&s);

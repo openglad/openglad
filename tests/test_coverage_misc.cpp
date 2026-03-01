@@ -1,7 +1,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/gparser.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/pixie_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/smooth.h>
@@ -58,7 +58,7 @@ struct SeqRandom final : IRandom {
 };
 
 struct R17Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -480,7 +480,7 @@ public:
 };
 
 struct MovementFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -593,7 +593,7 @@ void set_neighbors_mask(PixieData& pd, int cx, int cy, unsigned char center,
 
 int g_clear_stale_view_controls_calls = 0;
 
-void test_clear_stale_view_controls(LevelData*)
+void test_clear_stale_view_controls(LevelRuntimeData*)
 {
     ++g_clear_stale_view_controls_calls;
 }
@@ -854,7 +854,7 @@ OG_UNIT_TEST(test_coverage_r18_level_data_resize_and_delete_cleanup_branches)
     LevelDataHooks hooks{};
     hooks.clear_stale_view_controls = test_clear_stale_view_controls;
     g_clear_stale_view_controls_calls = 0;
-    LevelData with_hooks(1, true, &hooks);
+    LevelRuntimeData with_hooks(1, true, &hooks);
     with_hooks.create_new_grid();
     with_hooks.world().myobmap->walker_to_pos[reinterpret_cast<walker*>(0x1)] = {};
     with_hooks.delete_objects();
@@ -971,7 +971,7 @@ struct SeqRandom final : IRandom {
 };
 
 struct R19Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -1157,7 +1157,7 @@ struct SequenceRandom final : IRandom {
 };
 
 struct R20Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -1511,7 +1511,7 @@ struct SeqRandom final : IRandom {
 };
 
 struct FinalR16Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -1776,14 +1776,14 @@ OG_UNIT_TEST(test_final_r16_sim_input_switch_special_and_yell)
     control_living->current_special = 4;
     pi.pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     const SimInputResult s0 = sim_process_player_input(
-        pi, control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        pi, control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(!s0.endgame_requested);
     OG_ASSERT(control_living->current_special == 1);
 
     pi = {};
     pi.pressed[static_cast<int>(InputAction::Yell)] = true;
     const SimInputResult s1 = sim_process_player_input(
-        pi, control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        pi, control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(s1.play_sound == SOUND_YO);
     OG_ASSERT(s1.notify_text == "Yo!");
     OG_ASSERT(control_living->yo_delay == 30);

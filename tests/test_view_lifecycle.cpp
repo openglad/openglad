@@ -65,11 +65,11 @@ void test_viewscreen_find_next_control_priorities()
         std::list<std::unique_ptr<walker>> saved;
         ObListSwap()
         {
-            saved.splice(saved.end(), og::runtime::current_session->myscreen_->level_data.oblist);
+            saved.splice(saved.end(), og::runtime::current_session->myscreen_->oblist());
         }
         ~ObListSwap()
         {
-            og::runtime::current_session->myscreen_->level_data.oblist.splice(og::runtime::current_session->myscreen_->level_data.oblist.end(), saved);
+            og::runtime::current_session->myscreen_->oblist().splice(og::runtime::current_session->myscreen_->oblist().end(), saved);
         }
     } swap;
 
@@ -86,9 +86,9 @@ void test_viewscreen_find_next_control_priorities()
 
     // Insert in an order that would pick the player walker only if the priority
     // logic is working (player character loop runs first).
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(npc_same_team));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(player_same_team));
-    og::runtime::current_session->myscreen_->level_data.oblist.push_back(std::move(player_other_team));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(npc_same_team));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(player_same_team));
+    og::runtime::current_session->myscreen_->oblist().push_back(std::move(player_other_team));
 
     walker* found1 = v.find_next_control();
     TEST_ASSERT(found1 == player_same_teamp, "should prefer un-controlled player character on team");
@@ -105,6 +105,6 @@ void test_viewscreen_find_next_control_priorities()
     TEST_ASSERT(found3 == player_other_teamp, "should fall back to any living player character");
 
     // Cleanup - remove just our inserted walkers.
-    og::runtime::current_session->myscreen_->level_data.oblist.clear();
+    og::runtime::current_session->myscreen_->oblist().clear();
 }
 REGISTER_TEST(test_viewscreen_find_next_control_priorities);

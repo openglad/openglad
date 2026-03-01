@@ -10,7 +10,7 @@
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/irandom.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/level_data_hooks.h>
 #include <openglad/data/save_data.h>
 #include <openglad/entities/walker.h>
@@ -84,7 +84,7 @@ static void cmd_tick(GameWorld& world, int count)
     std::cout.flush();
 }
 
-static void cmd_state(const LevelData& level)
+static void cmd_state(const LevelRuntimeData& level)
 {
     std::ostringstream os;
     os << "{\"cmd\":\"state\",\"entities\":[";
@@ -149,7 +149,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     set_global_context(&text_ctx);
 
     // Create level data and load (headless — no tile graphics)
-    LevelData level(args.level, true, &headless_level_data_hooks());
+    LevelRuntimeData level(args.level, true, &headless_level_data_hooks());
     GameWorld& world = level.world();
     world.rng_.state_ = args.seed;
     world.tick_count_ = 0;

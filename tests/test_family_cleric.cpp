@@ -4,7 +4,7 @@
 #include <openglad/core/constants.h>
 #include "unit/unit.h"
 #include <openglad/entities/guy.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_event_log.h>
@@ -79,7 +79,7 @@ namespace detail_family_cleric_r11 {
 namespace {
 
 struct ClericFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -271,7 +271,7 @@ namespace detail_family_cleric_r12 {
 namespace {
 
 struct ClericR12Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -537,7 +537,7 @@ namespace detail_family_cleric_r14 {
 namespace {
 
 struct ClericR14Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
@@ -685,7 +685,7 @@ namespace detail_family_cleric_r15 {
 namespace {
 
 struct ClericR15Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;

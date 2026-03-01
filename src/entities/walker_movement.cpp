@@ -22,7 +22,7 @@
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 

@@ -322,7 +322,7 @@ if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h) {
 #define END_IF_IN_SCROLL_AREA \
 }
 
-int get_num_foes(LevelData& level)
+int get_num_foes(LevelRuntimeData& level)
 {
     int result = 0;
     
@@ -344,12 +344,12 @@ Uint32 get_time_bonus(int playernum)
     if(playernum > 0)
         return 0;
     Uint32 frames = og::runtime::current_session->myscreen_->framecount;
-    Uint32 time_limit = (og::runtime::current_session->myscreen_->level_data.world().time_bonus_limit > 0? og::runtime::current_session->myscreen_->level_data.world().time_bonus_limit : 0);
+    Uint32 time_limit = (og::runtime::current_session->myscreen_->world().time_bonus_limit > 0? og::runtime::current_session->myscreen_->world().time_bonus_limit : 0);
     Log("Frames used: {}\n", frames);
     if(frames >= time_limit)
         return 0;
     
-    short par_value = og::runtime::current_session->myscreen_->level_data.world().par_value;
+    short par_value = og::runtime::current_session->myscreen_->world().par_value;
     Uint32 score = og::runtime::current_session->myscreen_->save_data.m_score[playernum];
     float multiplier = (1.0f + static_cast<float>(par_value)/10.0f) * (static_cast<float>(time_limit - frames) / static_cast<float>(time_limit));
     Log("Time bonus: {:.0f}\n", static_cast<float>(score) * multiplier);
@@ -376,13 +376,13 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     SDL_Delay(50);  // Small delay to let browser events settle
     get_input_events(POLL);  // Drain event queue
 
-    LevelData& level_data = og::runtime::current_session->myscreen_->level_data;
+    LevelRuntimeData& level_data = og::runtime::current_session->myscreen_->level_runtime_data();
     SaveData& save_data = og::runtime::current_session->myscreen_->save_data;
     
     int num_foes_left = get_num_foes(level_data);
     int num_foes_total = 0;
     {
-        LevelData original_level(level_data.world().id);
+        LevelRuntimeData original_level(level_data.world().id);
         original_level.load();
         num_foes_total = get_num_foes(original_level);
 }

@@ -15,17 +15,17 @@ static void ensure_level_loaded()
 {
     if (og::runtime::current_session->myscreen_ == nullptr)
         return;
-    if (og::runtime::current_session->myscreen_->level_data.world().grid.valid() && og::runtime::current_session->myscreen_->level_data.world().pixmaxx > 0 && og::runtime::current_session->myscreen_->level_data.world().pixmaxy > 0)
+    if (og::runtime::current_session->myscreen_->world().grid.valid() && og::runtime::current_session->myscreen_->world().pixmaxx > 0 && og::runtime::current_session->myscreen_->world().pixmaxy > 0)
         return;
 
-    og::runtime::current_session->myscreen_->level_data.world().id = 1;
-    (void)og::runtime::current_session->myscreen_->level_data.load();
+    og::runtime::current_session->myscreen_->world().id = 1;
+    (void)og::runtime::current_session->myscreen_->load_level();
 }
 
 static void teardown_walker_special_test()
 {
     if (og::runtime::current_session->myscreen_ != nullptr) {
-        og::runtime::current_session->myscreen_->level_data.delete_objects();
+        og::runtime::current_session->myscreen_->world().delete_objects();
     }
 }
 
@@ -53,7 +53,7 @@ static walker* make_special_guy(char family, unsigned char team = 0, short level
 static int count_family_in_oblist(char family)
 {
     int count = 0;
-    for (auto& uptr : og::runtime::current_session->myscreen_->level_data.oblist) {
+    for (auto& uptr : og::runtime::current_session->myscreen_->oblist()) {
         walker* w = uptr.get();
         if (w && w->family == family)
             count++;
@@ -64,7 +64,7 @@ static int count_family_in_oblist(char family)
 static int count_family_in_fxlist(char family)
 {
     int count = 0;
-    for (auto& uptr : og::runtime::current_session->myscreen_->level_data.fxlist) {
+    for (auto& uptr : og::runtime::current_session->myscreen_->fxlist()) {
         walker* w = uptr.get();
         if (w && w->family == family)
             count++;
@@ -79,7 +79,7 @@ static int count_family_all_lists(char family)
 
 static walker* find_first_alive_ob_by_family(char family)
 {
-    for (auto& uptr : og::runtime::current_session->myscreen_->level_data.oblist) {
+    for (auto& uptr : og::runtime::current_session->myscreen_->oblist()) {
         walker* w = uptr.get();
         if (w && w->family == family && !w->dead)
             return w;
@@ -198,7 +198,7 @@ void test_walker_special_mage_teleport()
     w->special();
 
     // Direct teleport marker path (marker consumed at lifetime 1).
-    walker* marker = og::runtime::current_session->myscreen_->level_data.add_ob(Order::FX, FAMILY_MARKER);
+    walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
     TEST_ASSERT(marker != nullptr, "teleport marker created");
     if (marker) {
         marker->owner = w;
@@ -206,14 +206,14 @@ void test_walker_special_mage_teleport()
         marker->lifetime = 1;
         // Place marker somewhere passable and sufficiently far away; do not
         // assume (x+96,y+96) is in-bounds or passable for every level.
-        Sint32 mx = std::min<Sint32>(w->xpos + 96, og::runtime::current_session->myscreen_->level_data.world().pixmaxx - w->sizex - 2);
-        Sint32 my = std::min<Sint32>(w->ypos + 96, og::runtime::current_session->myscreen_->level_data.world().pixmaxy - w->sizey - 2);
+        Sint32 mx = std::min<Sint32>(w->xpos + 96, og::runtime::current_session->myscreen_->world().pixmaxx - w->sizex - 2);
+        Sint32 my = std::min<Sint32>(w->ypos + 96, og::runtime::current_session->myscreen_->world().pixmaxy - w->sizey - 2);
         if (!og::runtime::current_session->myscreen_->query_passable(static_cast<float>(mx), static_cast<float>(my), w))
         {
             bool found = false;
-            for (Sint32 x = 0; x < og::runtime::current_session->myscreen_->level_data.world().pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
+            for (Sint32 x = 0; x < og::runtime::current_session->myscreen_->world().pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
             {
-                for (Sint32 y = 0; y < og::runtime::current_session->myscreen_->level_data.world().pixmaxy - w->sizey - 2; y += GRID_SIZE)
+                for (Sint32 y = 0; y < og::runtime::current_session->myscreen_->world().pixmaxy - w->sizey - 2; y += GRID_SIZE)
                 {
                     const Sint32 dx = x - w->xpos;
                     const Sint32 dy = y - w->ypos;
@@ -234,7 +234,7 @@ void test_walker_special_mage_teleport()
     }
 
     // Marker-present but too-close path should go through fallback logic.
-    marker = og::runtime::current_session->myscreen_->level_data.add_ob(Order::FX, FAMILY_MARKER);
+    marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
     TEST_ASSERT(marker != nullptr, "near marker created");
     if (marker) {
         marker->owner = w;
@@ -246,7 +246,7 @@ void test_walker_special_mage_teleport()
     }
 
     (void)w->teleport_ranged(24);
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_mage_teleport);
 
@@ -277,7 +277,7 @@ void test_walker_special_mage_energy_wave()
 
     // Exercise archmage heavy branches: marker teleport, chain lightning,
     // summon variants, and mind-control.
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
     walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
     TEST_ASSERT(arch != nullptr, "archmage created");
     arch->setxy(120, 120);
@@ -337,12 +337,12 @@ void test_walker_special_mage_energy_wave()
 
     // special 3, no shifter: illusion summon variant.
     arch->stats()->magicpoints = 1500;
-    int total_before = static_cast<int>(og::runtime::current_session->myscreen_->level_data.oblist.size());
+    int total_before = static_cast<int>(og::runtime::current_session->myscreen_->oblist().size());
     arch->current_special = 3;
     arch->shifter_down = 0;
     arch->busy = 0;
     (void)arch->special();
-    int total_after = static_cast<int>(og::runtime::current_session->myscreen_->level_data.oblist.size());
+    int total_after = static_cast<int>(og::runtime::current_session->myscreen_->oblist().size());
     TEST_ASSERT(total_after >= total_before, "illusion summon path should not remove objects");
 
     // special 4: mind-control should retarget a nearby foe to archmage team.
@@ -359,7 +359,7 @@ void test_walker_special_mage_energy_wave()
     TEST_ASSERT(control_target->team_num >= 0, "mind-control path should leave target in a valid team");
 
     set_global_context(nullptr);
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     // Drive act() into ACT_RANDOM branches (including act_random()).
     walker* actor = make_special_guy(FAMILY_ORC, 1, 4);
@@ -404,12 +404,12 @@ void test_walker_special_mage_energy_wave()
         FAMILY_BIG_ORC, FAMILY_GOLEM, FAMILY_GIANT_SKELETON, FAMILY_TOWER1
     };
     for (char fam : sweep_families) {
-        og::runtime::current_session->myscreen_->level_data.delete_objects();
+        og::runtime::current_session->myscreen_->world().delete_objects();
 
-        walker* a = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, fam);
-        walker* ally = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-        walker* foe2 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
-        walker* blood = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+        walker* a = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, fam);
+        walker* ally = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* foe2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+        walker* blood = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
         TEST_ASSERT(a != nullptr && ally != nullptr && foe2 != nullptr && blood != nullptr,
                     "special sweep objects should be created");
         if (!(a && ally && foe2 && blood)) {
@@ -449,7 +449,7 @@ void test_walker_special_mage_energy_wave()
 	    }
 
     // Target uncovered archmage illusion case tables (rng(3/5/7/9) branches).
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
     walker* arch2 = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
     TEST_ASSERT(arch2 != nullptr, "archmage branch sweeper created");
     if (arch2) {
@@ -475,7 +475,7 @@ void test_walker_special_mage_energy_wave()
 	        }
     }
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
 }
 REGISTER_SPECIAL_TEST(test_walker_special_mage_energy_wave);
@@ -672,7 +672,7 @@ void test_walker_special_dead()
     w->current_special = 3;
     w->stats()->magicpoints = w->stats()->special_cost[3];
 
-    walker* weapon = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* weapon = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     if (weapon) {
         weapon->current_special = 1;
@@ -729,20 +729,20 @@ void test_walker_death_with_myguy()
     w->death();
 
     // Also exercise generator-death explosion fan-out path.
-    walker* generator = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    walker* generator = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
     TEST_ASSERT(generator != nullptr, "generator created");
     int fx_before = count_family_all_lists(FAMILY_EXPLOSION);
     generator->dead = 1;
     generator->death();
     int fx_after = count_family_all_lists(FAMILY_EXPLOSION);
     TEST_ASSERT(fx_after >= fx_before + 1, "generator death should spawn explosion FX");
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_death_with_myguy);
 
 void test_walker_special_archmage_illusion_rng_tables()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
     TEST_ASSERT(arch != nullptr, "archmage created");
@@ -765,24 +765,24 @@ void test_walker_special_archmage_illusion_rng_tables()
             SequenceRandom rng({pick});
             ctx.rng = &rng;
             set_global_context(&ctx);
-            int before = static_cast<int>(og::runtime::current_session->myscreen_->level_data.oblist.size());
+            int before = static_cast<int>(og::runtime::current_session->myscreen_->oblist().size());
             arch->stats()->magicpoints = static_cast<float>(mp_tiers[t]);
             arch->busy = 0;
             (void)arch->special();
-            int after = static_cast<int>(og::runtime::current_session->myscreen_->level_data.oblist.size());
+            int after = static_cast<int>(og::runtime::current_session->myscreen_->oblist().size());
             TEST_ASSERT(after >= before, "illusion summon case should not reduce object count");
             set_global_context(nullptr);
         }
     }
 
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
     delete arch;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_archmage_illusion_rng_tables);
 
 void test_walker_special_mage_marker_remove_and_freeze_enemy_branch()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* mage = make_special_guy(FAMILY_MAGE, 2, 6);
     TEST_ASSERT(mage != nullptr, "mage created");
@@ -799,7 +799,7 @@ void test_walker_special_mage_marker_remove_and_freeze_enemy_branch()
         mage->myguy->intelligence = 120;
     }
 
-    walker* marker = og::runtime::current_session->myscreen_->level_data.add_ob(Order::FX, FAMILY_MARKER);
+    walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
     TEST_ASSERT(marker != nullptr, "marker created");
     if (marker) {
         marker->owner = mage;
@@ -825,13 +825,13 @@ void test_walker_special_mage_marker_remove_and_freeze_enemy_branch()
 
     delete ally;
     delete mage;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_mage_marker_remove_and_freeze_enemy_branch);
 
 void test_walker_special_mage_wave_and_burst_with_targets()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* mage = make_special_guy(FAMILY_MAGE, 1, 7);
     walker* foe1 = make_special_guy(FAMILY_ORC, 2, 3);
@@ -860,13 +860,13 @@ void test_walker_special_mage_wave_and_burst_with_targets()
     delete foe1;
     delete foe2;
     delete mage;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_mage_wave_and_burst_with_targets);
 
 void test_walker_special_archmage_low_int_marker_chain_and_summon_true()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
     walker* foe = make_special_guy(FAMILY_ORC, 2, 2);
@@ -896,7 +896,7 @@ void test_walker_special_archmage_low_int_marker_chain_and_summon_true()
     if (arch->myguy) {
         arch->myguy->intelligence = 220;
     }
-    walker* marker = og::runtime::current_session->myscreen_->level_data.add_ob(Order::FX, FAMILY_MARKER);
+    walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
     TEST_ASSERT(marker != nullptr, "arch marker created");
     if (marker) {
         marker->owner = arch;
@@ -922,23 +922,23 @@ void test_walker_special_archmage_low_int_marker_chain_and_summon_true()
 
     delete foe;
     delete arch;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_archmage_low_int_marker_chain_and_summon_true);
 
 void test_walker_special_archmage_mind_control_stats_name_path()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* arch = make_special_guy(FAMILY_ARCHMAGE, 4, 7);
-    walker* foe = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* foe2 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* foe3 = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* foe2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* foe3 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(arch != nullptr && foe != nullptr && foe2 != nullptr && foe3 != nullptr,
                 "arch and mind-control targets created");
     if (!(arch && foe && foe2 && foe3)) {
         delete arch;
-        og::runtime::current_session->myscreen_->level_data.delete_objects();
+        og::runtime::current_session->myscreen_->world().delete_objects();
         return;
     }
 
@@ -980,13 +980,13 @@ void test_walker_special_archmage_mind_control_stats_name_path()
                 "mind-control should spend MP for controlled targets");
 
     delete arch;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_archmage_mind_control_stats_name_path);
 
 void test_walker_special_druid_circle_existing_protection_branch()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* druid = make_special_guy(FAMILY_DRUID, 1, 6);
     walker* ally = make_special_guy(FAMILY_SOLDIER, 1, 5);
@@ -1000,7 +1000,7 @@ void test_walker_special_druid_circle_existing_protection_branch()
     druid->busy = 0;
     druid->current_special = 4;
 
-    walker* existing = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    walker* existing = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
     TEST_ASSERT(existing != nullptr, "existing protection created");
     if (existing) {
         existing->owner = ally;
@@ -1012,13 +1012,13 @@ void test_walker_special_druid_circle_existing_protection_branch()
 
     delete ally;
     delete druid;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_druid_circle_existing_protection_branch);
 
 void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* orc = make_special_guy(FAMILY_ORC, 2, 4);
     TEST_ASSERT(orc != nullptr, "orc created");
@@ -1034,7 +1034,7 @@ void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
     orc->current_special = 2;
     orc->busy = 0;
 
-    walker* blood = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* blood = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
     TEST_ASSERT(blood != nullptr, "blood created");
     if (blood) {
         blood->team_num = 3;
@@ -1059,13 +1059,13 @@ void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
 
     delete barb;
     delete orc;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc);
 
 void test_walker_special_cleric_raise_skeleton_and_ghost_from_stain()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 6);
     TEST_ASSERT(cleric != nullptr, "cleric created");
@@ -1073,7 +1073,7 @@ void test_walker_special_cleric_raise_skeleton_and_ghost_from_stain()
         return;
 
     // Place a blood stain close by but not colliding with other objects.
-    walker* stain = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* stain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
     TEST_ASSERT(stain != nullptr, "stain created");
     if (!stain) {
         delete cleric;
@@ -1102,13 +1102,13 @@ void test_walker_special_cleric_raise_skeleton_and_ghost_from_stain()
     (void)cleric->special();
 
     delete cleric;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_cleric_raise_skeleton_and_ghost_from_stain);
 
 void test_walker_special_cleric_mystic_mace_low_int_and_success_paths()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 8);
     TEST_ASSERT(cleric != nullptr, "cleric created");
@@ -1144,13 +1144,13 @@ void test_walker_special_cleric_mystic_mace_low_int_and_success_paths()
                 "valid mystic mace should spend magicpoints");
 
     delete cleric;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_cleric_mystic_mace_low_int_and_success_paths);
 
 void test_walker_special_cleric_resurrect_friendly_and_enemy_stains()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 8);
     walker* ally = make_special_guy(FAMILY_SOLDIER, 1, 5);
@@ -1176,7 +1176,7 @@ void test_walker_special_cleric_resurrect_friendly_and_enemy_stains()
 
     delete ally;
     delete cleric;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     // Enemy-stain branch depends on map passability and alliance mode interactions;
     // keep this test deterministic by validating the friendly resurrection path only.
@@ -1185,7 +1185,7 @@ REGISTER_SPECIAL_TEST(test_walker_special_cleric_resurrect_friendly_and_enemy_st
 
 void test_walker_special_elf_rock_barrage_level4_smoke()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     // Deterministic rand()-based perturbation inside elf special.
     srand(123);
@@ -1206,13 +1206,13 @@ void test_walker_special_elf_rock_barrage_level4_smoke()
     (void)elf->special();
 
     delete elf;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_elf_rock_barrage_level4_smoke);
 
 void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 7);
     walker* skel = make_special_guy(FAMILY_SKELETON, 2, 1);
@@ -1268,7 +1268,7 @@ void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
     delete ghost;
     delete skel;
     delete cleric;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges);
 
@@ -1304,7 +1304,7 @@ void test_walker_special_guard_paths_and_teleport_failures()
     TEST_ASSERT_EQ(-1, (int)w->turn_undead(10, 1), "turn_undead should return -1 with no foes in range");
 
     delete w;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_guard_paths_and_teleport_failures);
 
@@ -1335,7 +1335,7 @@ void test_walker_special_unknown_family_and_teleport_ranged_fail_loop()
     TEST_ASSERT(!w->teleport_ranged(1), "teleport_ranged should fail after retries on invalid area");
 
     delete w;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_unknown_family_and_teleport_ranged_fail_loop);
 
@@ -1351,11 +1351,11 @@ void test_walker_special_success_returns_true_and_spends_mp()
     w->stats()->special_cost[1] = 7;
     w->stats()->magicpoints = 50;
 
-    walker* marker = og::runtime::current_session->myscreen_->level_data.add_ob(Order::FX, FAMILY_MARKER);
+    walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
     TEST_ASSERT(marker != nullptr, "teleport marker created");
     if (!marker) {
         delete w;
-        og::runtime::current_session->myscreen_->level_data.delete_objects();
+        og::runtime::current_session->myscreen_->world().delete_objects();
         return;
     }
 
@@ -1363,14 +1363,14 @@ void test_walker_special_success_returns_true_and_spends_mp()
     marker->dead = 0;
     marker->lifetime = 1;
 
-    Sint32 mx = std::min<Sint32>(w->xpos + 96, og::runtime::current_session->myscreen_->level_data.world().pixmaxx - w->sizex - 2);
-    Sint32 my = std::min<Sint32>(w->ypos + 96, og::runtime::current_session->myscreen_->level_data.world().pixmaxy - w->sizey - 2);
+    Sint32 mx = std::min<Sint32>(w->xpos + 96, og::runtime::current_session->myscreen_->world().pixmaxx - w->sizex - 2);
+    Sint32 my = std::min<Sint32>(w->ypos + 96, og::runtime::current_session->myscreen_->world().pixmaxy - w->sizey - 2);
     if (!og::runtime::current_session->myscreen_->query_passable(static_cast<float>(mx), static_cast<float>(my), w))
     {
         bool found = false;
-        for (Sint32 x = 0; x < og::runtime::current_session->myscreen_->level_data.world().pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
+        for (Sint32 x = 0; x < og::runtime::current_session->myscreen_->world().pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
         {
-            for (Sint32 y = 0; y < og::runtime::current_session->myscreen_->level_data.world().pixmaxy - w->sizey - 2; y += GRID_SIZE)
+            for (Sint32 y = 0; y < og::runtime::current_session->myscreen_->world().pixmaxy - w->sizey - 2; y += GRID_SIZE)
             {
                 const Sint32 dx = x - w->xpos;
                 const Sint32 dy = y - w->ypos;
@@ -1394,6 +1394,6 @@ void test_walker_special_success_returns_true_and_spends_mp()
                 "successful special should spend configured MP cost");
 
     delete w;
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_special_success_returns_true_and_spends_mp);

@@ -1,5 +1,5 @@
 #include <openglad/data/gparser.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/entities/walker.h>
 #include <openglad/input/input.h>
@@ -26,8 +26,8 @@ namespace {
 
 void clear_level_lists()
 {
-    og::runtime::current_session->myscreen_->level_data.delete_objects();
-    og::runtime::current_session->myscreen_->level_data.level_done = 0;
+    og::runtime::current_session->myscreen_->world().delete_objects();
+    og::runtime::current_session->myscreen_->level_runtime_data().level_done = 0;
     og::runtime::current_session->myscreen_->world_.withdraw_requested = false;
     og::runtime::current_session->myscreen_->world_.withdraw_level = -1;
 }
@@ -54,7 +54,7 @@ GameWorld& setup_tick_world(std::uint32_t seed)
 
 walker* add_living(unsigned char team)
 {
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     if (!w)
         return nullptr;
     w->team_num = team;
@@ -67,7 +67,7 @@ walker* add_living(unsigned char team)
 
 treasure* add_treasure(char family, short level)
 {
-    walker* w = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::Treasure, family);
+    walker* w = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, family);
     if (!w)
         return nullptr;
     w->stats()->level = level;
@@ -77,7 +77,7 @@ treasure* add_treasure(char family, short level)
 
 void set_world_tile(short world_x, short world_y, unsigned char tile)
 {
-    auto& level = og::runtime::current_session->myscreen_->level_data;
+    auto& level = og::runtime::current_session->myscreen_->level_runtime_data();
     const int gx = world_x / GRID_SIZE;
     const int gy = world_y / GRID_SIZE;
     if (gx < 0 || gy < 0 || gx >= level.world().grid.w || gy >= level.world().grid.h)
@@ -273,7 +273,7 @@ void test_game_session_auto_wires_level_data_sim_context()
         TEST_ASSERT(session.game_.save == &session_screen->save_data, "session gameplay save should match screen save");
         TEST_ASSERT(session.game_.sim_events == session.ctx_.sim_events.get(), "session gameplay events should match session context");
 
-        walker* spawned = session_screen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* spawned = session_screen->world().add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(spawned != nullptr, "spawned entity should exist");
     }
 
@@ -317,7 +317,7 @@ void test_treasure_exit_and_teleporter_navigation_paths()
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
     og::runtime::current_session->myscreen_->sync_world_from_save_data();
-    og::runtime::current_session->myscreen_->level_data.level_done = 1;
+    og::runtime::current_session->myscreen_->level_runtime_data().level_done = 1;
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 2);
     walker* controller = add_living(0);
     controller->set_act_type(ACT_CONTROL);
@@ -399,7 +399,7 @@ void test_treasure_navigation_early_returns_and_withdraw_decline()
     og::runtime::current_session->myscreen_->save_data.scen_num = 5;
     og::runtime::current_session->myscreen_->save_data.add_level_completed(og::runtime::current_session->myscreen_->save_data.current_campaign, 3);
     og::runtime::current_session->myscreen_->sync_world_from_save_data();
-    og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present
+    og::runtime::current_session->myscreen_->level_runtime_data().level_done = 0; // enemies still present
     eater->set_act_type(ACT_CONTROL);
     eater->skip_exit = 0;
     exit_fx->stats()->level = 3;
@@ -475,7 +475,7 @@ REGISTER_TEST(test_treasure_batch3_find_target_wraparound_and_no_match);
 void test_treasure_batch3_teleporter_leader_and_blocked_destination()
 {
     clear_level_lists();
-    og::runtime::current_session->myscreen_->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
 
     treasure* tele_src = add_treasure(FAMILY_TELEPORTER, 4);
     treasure* tele_dst = add_treasure(FAMILY_TELEPORTER, 4);
@@ -519,7 +519,7 @@ void test_treasure_batch3_exit_withdraw_accept_path()
     (void)og::runtime::current_session->myscreen_->save_data.save("save0");
     og::runtime::current_session->myscreen_->sync_world_from_save_data();
 
-    og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present -> guys_here != 0
+    og::runtime::current_session->myscreen_->level_runtime_data().level_done = 0; // enemies still present -> guys_here != 0
 
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 5);
     walker* eater = add_living(0);
@@ -675,8 +675,8 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     owner->collide_ob = dead_foe;
     dead_foe->dead = 1;
     dead_foe->myguy = nullptr;
-    walker* dead_fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
-    walker* dead_weap = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* dead_fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* dead_weap = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(dead_fx != nullptr, "expected fx walker");
     TEST_ASSERT(dead_weap != nullptr, "expected weapon walker");
     dead_fx->dead = 1;
@@ -766,9 +766,9 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
     owner->owner = dead_ref;
     owner->collide_ob = dead_ref;
 
-    walker* weap_owner = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
-    walker* dead_fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
-    walker* dead_weap = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* weap_owner = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* dead_fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* dead_weap = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(weap_owner && dead_fx && dead_weap, "weapon/fx walkers created");
     if (weap_owner) {
         weap_owner->foe = dead_ref;
@@ -939,9 +939,9 @@ void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
     hostile->owner = dead_link;
     hostile->collide_ob = dead_link;
 
-    walker* weap_owner = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
-    walker* dead_fx = og::runtime::current_session->myscreen_->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
-    walker* dead_weap = og::runtime::current_session->myscreen_->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* weap_owner = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* dead_fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* dead_weap = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(weap_owner && dead_fx && dead_weap, "weapon/fx created");
     if (!(weap_owner && dead_fx && dead_weap))
         return;
@@ -984,7 +984,7 @@ void test_sim_world_freeze_branch_allows_non_living_actions()
     events.clear();
     world.my_team = 0;
 
-    walker* gen = og::runtime::current_session->myscreen_->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TENT);
     TEST_ASSERT(gen != nullptr, "generator created");
     if (!gen)
         return;
@@ -1088,7 +1088,7 @@ void test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero()
         return;
     ally->set_act_type(ACT_CONTROL);
 
-    og::runtime::current_session->myscreen_->level_data.world().id = 41;
+    og::runtime::current_session->myscreen_->world().id = 41;
     world.enemy_freeze = 0;
     world.end = 0;
     world.tick();
@@ -1121,8 +1121,8 @@ void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
 
     // Setup: CAN_EXIT_WHENEVER flag, enemies still present, dest level completed,
     // current scenario NOT completed → both Withdraw AND Exit conditions met.
-    og::runtime::current_session->myscreen_->level_data.world().type = LevelData::TYPE_CAN_EXIT_WHENEVER;
-    og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present
+    og::runtime::current_session->myscreen_->world().type = GameWorld::TYPE_CAN_EXIT_WHENEVER;
+    og::runtime::current_session->myscreen_->level_runtime_data().level_done = 0; // enemies still present
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
@@ -1161,7 +1161,7 @@ void test_issue98_can_exit_flag_should_show_exit_not_withdraw()
     TEST_ASSERT_EQ(5, static_cast<int>(og::runtime::current_session->myscreen_->save_data.scen_num),
                    "CAN_EXIT_WHENEVER should show Exit (scen_num unchanged), not Withdraw");
 
-    og::runtime::current_session->myscreen_->level_data.world().type = 0;
+    og::runtime::current_session->myscreen_->world().type = 0;
     clear_level_lists();
 }
 REGISTER_TEST(test_issue98_can_exit_flag_should_show_exit_not_withdraw);
@@ -1184,8 +1184,8 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
     og::sim::SimEventLog& sim_events = *current_game->sim_events;
     sim_events.clear();
 
-    og::runtime::current_session->myscreen_->level_data.world().type = LevelData::TYPE_CAN_EXIT_WHENEVER;
-    og::runtime::current_session->myscreen_->level_data.level_done = 0; // enemies still present
+    og::runtime::current_session->myscreen_->world().type = GameWorld::TYPE_CAN_EXIT_WHENEVER;
+    og::runtime::current_session->myscreen_->level_runtime_data().level_done = 0; // enemies still present
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
@@ -1214,7 +1214,7 @@ void test_issue98_no_double_dialog_on_withdraw_exit()
     TEST_ASSERT_EQ(1, confirmation_events,
                    "Only one confirmation event should be emitted");
 
-    og::runtime::current_session->myscreen_->level_data.world().type = 0;
+    og::runtime::current_session->myscreen_->world().type = 0;
     clear_level_lists();
 }
 REGISTER_TEST(test_issue98_no_double_dialog_on_withdraw_exit);

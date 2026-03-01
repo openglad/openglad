@@ -27,7 +27,7 @@
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/entities/family_registries.h>
 #include <openglad/entities/living.h>
-#include <openglad/data/level_data.h>
+#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 #include <openglad/core/constants.h>

@@ -200,7 +200,7 @@ static void emscripten_frame_wrapper() {
 					Log("Game done, transitioning back to PICKER\n");
 					og::runtime::current_session->gameplay_active_ = false;
 					clear_keyboard();
-					current_screen->level_data.delete_objects();
+					current_screen->world().delete_objects();
 					g_game_state = GameState::Picker;
 					g_state_initialized = false;
 				}
