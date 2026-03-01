@@ -190,7 +190,9 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/io/og_file.cpp
 		    ${SRC_DIR}/data/gparser.cpp
 		    ${SRC_DIR}/data/gloader.cpp
+    ${SRC_DIR}/data/level_file_io.cpp
     ${SRC_DIR}/data/pixie_data.cpp
+    ${SRC_DIR}/data/save_data.cpp
     ${SRC_DIR}/runtime/level_runtime_data.cpp
     ${SRC_DIR}/sdl_client/ui/level_picker.cpp
     ${SRC_DIR}/sdl_client/ui/level_editor.cpp
@@ -199,7 +201,6 @@ set(GAME_SOURCES
     ${SRC_DIR}/sdl_client/ui/level_editor_file_ops.cpp
     ${SRC_DIR}/sdl_client/ui/campaign_picker.cpp
     ${SRC_DIR}/sdl_client/ui/results_screen.cpp
-    ${SRC_DIR}/runtime/save_data.cpp
     ${SRC_DIR}/sim/sim_entity.cpp
     ${SRC_DIR}/sim/sim_event_log.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
@@ -230,7 +231,9 @@ set(OG_SIM_SOURCES
 set(OG_DATA_SOURCES
     ${SRC_DIR}/data/gparser.cpp
     ${SRC_DIR}/data/gloader.cpp
+    ${SRC_DIR}/data/level_file_io.cpp
     ${SRC_DIR}/data/pixie_data.cpp
+    ${SRC_DIR}/data/save_data.cpp
 )
 
 set(OG_ENTITIES_SOURCES
@@ -308,7 +311,6 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/sdl_client/runtime/walker_render_bridge.cpp
     ${SRC_DIR}/sdl_client/runtime/sdl_context_services.cpp
     ${SRC_DIR}/sdl_client/runtime/cheat_handler.cpp
-    ${SRC_DIR}/runtime/save_data.cpp
 )
 
 set(OG_RENDER_SOURCES
@@ -844,7 +846,6 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/runtime/level_runtime_data.cpp
         ${SRC_DIR}/runtime/smooth.cpp
         ${SRC_DIR}/runtime/stats.cpp
-        ${SRC_DIR}/runtime/save_data.cpp
     )
 
     add_executable(openglad_text ${HEADLESS_SOURCES})
