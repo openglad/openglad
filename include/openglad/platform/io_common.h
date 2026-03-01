@@ -29,6 +29,9 @@ std::list<std::string> list_files(const std::string& dirname);
 std::list<std::string> explode(const std::string& str, char delimiter = '\n');
 
 std::string get_mounted_campaign();
+#ifdef TESTING
+void set_mounted_campaign_for_testing(const std::string& id);
+#endif
 
 enum class CampaignPackageIoError {
     None = 0,

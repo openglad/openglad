@@ -737,8 +737,7 @@ bool LevelRuntimeData::load()
     metadata.description = description;
 
     og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
-    if (!og::data::load_level(thefile, world(), level_visuals(), metadata,
-                              &io_error))
+    if (!og::data::load_level(thefile, world(), metadata, &io_error))
     {
         last_io_error_ = map_level_file_error(io_error);
         return false;
@@ -746,6 +745,8 @@ bool LevelRuntimeData::load()
 
     grid_file = std::move(metadata.grid_file);
     description = std::move(metadata.description);
+    level_visuals().topx = 0;
+    level_visuals().topy = 0;
 
     // Reload background tiles (only when rendering)
     if (!headless_)
@@ -775,8 +776,7 @@ bool LevelRuntimeData::save()
     metadata.description = description;
 
     og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
-    if (!og::data::save_level(world(), level_visuals(), temp_filename, metadata,
-                              &io_error))
+    if (!og::data::save_level(world(), temp_filename, metadata, &io_error))
     {
         last_io_error_ = map_level_file_error(io_error);
         return false;

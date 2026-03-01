@@ -5,7 +5,6 @@
 #include <openglad/io/yaml_stream.h>
 #include <openglad/io/zip_api.h>
 #include <openglad/platform/io_common.h>
-#include <openglad/runtime/game_context.h>
 
 #include "test_framework.h"
 
@@ -303,8 +302,8 @@ REGISTER_TEST(test_zip_api_roundtrip_and_error_paths);
 
 void test_platform_io_campaign_error_codes()
 {
-    const std::string prev = ctx().mounted_campaign;
-    ctx().mounted_campaign.clear();
+    const std::string prev = get_mounted_campaign();
+    set_mounted_campaign_for_testing("");
 
     TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::EmptyId),
                    static_cast<int>(mount_campaign_package_with_error("")),
@@ -322,14 +321,14 @@ void test_platform_io_campaign_error_codes()
     TEST_ASSERT_EQ(-2, load_campaign("definitely_missing_campaign", current_levels, 7),
                    "load_campaign should map mount failure to -2");
 
-    ctx().mounted_campaign = prev;
+    set_mounted_campaign_for_testing(prev);
 }
 REGISTER_TEST(test_platform_io_campaign_error_codes);
 
 void test_platform_io_batch3_mount_switch_and_listing_filters()
 {
     namespace fs = std::filesystem;
-    const std::string prev = ctx().mounted_campaign;
+    const std::string prev = get_mounted_campaign();
     const std::string user = get_user_path();
     const fs::path campaigns_dir = fs::path(user) / "campaigns";
     const fs::path scen_dir = fs::path(user) / "scen";
@@ -338,11 +337,11 @@ void test_platform_io_batch3_mount_switch_and_listing_filters()
     fs::create_directories(scen_dir, ec);
 
     // Hit prev==id short-circuit and prev!=id unmount-failure branch.
-    ctx().mounted_campaign = "same.id";
+    set_mounted_campaign_for_testing("same.id");
     TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
                    static_cast<int>(mount_campaign_package_with_error("same.id")),
                    "mount should short-circuit when requested id is already mounted");
-    ctx().mounted_campaign = "definitely.not.a.campaign";
+    set_mounted_campaign_for_testing("definitely.not.a.campaign");
     TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::UnmountFailed),
                    static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator")),
                    "mount should report unmount failure when previous mounted id is invalid");
@@ -395,7 +394,7 @@ void test_platform_io_batch3_mount_switch_and_listing_filters()
                 "list_levels_v should include strict positive scen id");
 
     // delete_level early return path when no mounted campaign.
-    ctx().mounted_campaign.clear();
+    set_mounted_campaign_for_testing("");
     delete_level(987);
 
     std::remove((campaigns_dir / "batch3_filter_marker.glad").string().c_str());
@@ -404,13 +403,13 @@ void test_platform_io_batch3_mount_switch_and_listing_filters()
     std::remove((scen_dir / "foo.fss").string().c_str());
     std::remove((scen_dir / "scen0.fss").string().c_str());
     std::remove((scen_dir / "scen987.fss").string().c_str());
-    ctx().mounted_campaign = prev;
+    set_mounted_campaign_for_testing(prev);
 }
 REGISTER_TEST(test_platform_io_batch3_mount_switch_and_listing_filters);
 
 void test_platform_io_remount_allows_files_still_open_path()
 {
-    const std::string prev = ctx().mounted_campaign;
+    const std::string prev = get_mounted_campaign();
 
     TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
                    static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator")),
@@ -426,7 +425,7 @@ void test_platform_io_remount_allows_files_still_open_path()
         PHYSFS_close(held);
     }
 
-    ctx().mounted_campaign = prev;
+    set_mounted_campaign_for_testing(prev);
 }
 REGISTER_TEST(test_platform_io_remount_allows_files_still_open_path);
 
@@ -559,10 +558,10 @@ void test_platform_io_delete_level_nonempty_campaign_path()
                    static_cast<int>(og::io::zip_contents_with_error(temp_root.string(), archive.string())),
                    "seed campaign archive should be created");
 
-    const std::string prev = ctx().mounted_campaign;
-    ctx().mounted_campaign = id;
+    const std::string prev = get_mounted_campaign();
+    set_mounted_campaign_for_testing(id);
     delete_level(321);
-    ctx().mounted_campaign = prev;
+    set_mounted_campaign_for_testing(prev);
 
     cleanup_unpacked_campaign();
     fs::remove(archive, ec);
@@ -792,12 +791,12 @@ void test_platform_io_restore_defaults_and_load_campaign_unmount_error_path()
     restore_default_campaigns();
     restore_default_settings();
 
-    const std::string prev = ctx().mounted_campaign;
-    ctx().mounted_campaign = "definitely.not.a.campaign";
+    const std::string prev = get_mounted_campaign();
+    set_mounted_campaign_for_testing("definitely.not.a.campaign");
     std::map<std::string, int> current_levels;
     TEST_ASSERT_EQ(-3, load_campaign("org.openglad.gladiator", current_levels, 9),
                    "load_campaign should map unmount failure to -3");
-    ctx().mounted_campaign = prev;
+    set_mounted_campaign_for_testing(prev);
 }
 REGISTER_TEST(test_platform_io_restore_defaults_and_load_campaign_unmount_error_path);
 
@@ -828,11 +827,11 @@ REGISTER_TEST(test_read_pixie_file_truncated_header_path);
 void test_platform_io_bool_wrappers_and_small_helpers()
 {
     namespace fs = std::filesystem;
-    const std::string prev = ctx().mounted_campaign;
+    const std::string prev = get_mounted_campaign();
 
     TEST_ASSERT(mount_campaign_package_with_error("") != CampaignPackageIoError::None, "mount_campaign_package should fail for empty id");
     TEST_ASSERT(unmount_campaign_package_with_error("") == CampaignPackageIoError::None, "unmount_campaign_package should succeed for empty id");
-    ctx().mounted_campaign.clear();
+    set_mounted_campaign_for_testing("");
     TEST_ASSERT(remount_campaign_package_with_error() != CampaignPackageIoError::None, "remount_campaign_package should fail when nothing is mounted");
 
     const std::list<std::string> exploded = explode("a,b,", ',');
@@ -846,7 +845,7 @@ void test_platform_io_bool_wrappers_and_small_helpers()
                 "unzip_into should return error for missing archive");
     (void)zip_contents_with_error((nested / "missing_input").string(), (nested / "out.zip").string());
 
-    ctx().mounted_campaign = prev;
+    set_mounted_campaign_for_testing(prev);
 }
 REGISTER_TEST(test_platform_io_bool_wrappers_and_small_helpers);
 
@@ -953,11 +952,11 @@ void test_zip_platform_round8_open_archive_and_mount_error_paths()
     TEST_ASSERT_EQ((int)ArchiveIoError::OpenArchiveFailed, (int)unzip_err,
                    "unzip_into_with_error should report OpenArchiveFailed for missing archive");
 
-    const std::string prev = ctx().mounted_campaign;
-    ctx().mounted_campaign.clear();
+    const std::string prev = get_mounted_campaign();
+    set_mounted_campaign_for_testing("");
     std::map<std::string, int> current_levels;
     TEST_ASSERT_EQ(-2, load_campaign("definitely.not.a.campaign", current_levels, 5),
                    "load_campaign should map mount failure to -2");
-    ctx().mounted_campaign = prev;
+    set_mounted_campaign_for_testing(prev);
 }
 REGISTER_TEST(test_zip_platform_round8_open_archive_and_mount_error_paths);

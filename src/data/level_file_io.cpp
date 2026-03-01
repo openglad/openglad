@@ -14,7 +14,6 @@
 #include <openglad/data/pixie_data.h>
 #include <openglad/entities/walker.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/interface/level_visuals.h>
 #include <openglad/io/og_file.h>
 #include <openglad/legacy/base.h>
 
@@ -317,7 +316,6 @@ namespace og::data {
 
 bool load_level(const std::string& path,
                 GameWorld& world,
-                LevelVisuals& visuals,
                 LevelFileMetadata& metadata,
                 LevelFileIoError* out_error)
 {
@@ -370,16 +368,12 @@ bool load_level(const std::string& path,
         return false;
     }
 
-    visuals.topx = 0;
-    visuals.topy = 0;
-
     set_error(out_error, LevelFileIoError::None);
     return true;
 }
 
 bool load_level(const std::string& path,
                 GameWorld& world,
-                LevelVisuals& visuals,
                 std::string& grid_file,
                 std::list<std::string>& description,
                 const std::function<void()>& prepare_for_load,
@@ -392,7 +386,7 @@ bool load_level(const std::string& path,
     if (prepare_for_load)
         prepare_for_load();
 
-    if (!load_level(path, world, visuals, metadata, out_error))
+    if (!load_level(path, world, metadata, out_error))
         return false;
 
     grid_file = std::move(metadata.grid_file);
@@ -424,12 +418,10 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
 }
 
 bool save_level(GameWorld& world,
-                LevelVisuals& visuals,
                 const std::string& path,
                 const LevelFileMetadata& metadata,
                 LevelFileIoError* out_error)
 {
-    (void)visuals;
     set_error(out_error, LevelFileIoError::None);
 
     auto outfile = og::io::og_open_write("temp/scen/", path.c_str());

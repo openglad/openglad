@@ -14,7 +14,6 @@
 
 class GameWorld;
 class PixieData;
-struct LevelVisuals;
 
 namespace og::io {
 class OgFile;
@@ -39,20 +38,17 @@ enum class LevelFileIoError {
 
 bool load_level(const std::string& path,
                 GameWorld& world,
-                LevelVisuals& visuals,
                 LevelFileMetadata& metadata,
                 LevelFileIoError* out_error = nullptr);
 
 bool load_level(const std::string& path,
                 GameWorld& world,
-                LevelVisuals& visuals,
                 std::string& grid_file,
                 std::list<std::string>& description,
                 const std::function<void()>& prepare_for_load,
                 LevelFileIoError* out_error = nullptr);
 
 bool save_level(GameWorld& world,
-                LevelVisuals& visuals,
                 const std::string& path,
                 const LevelFileMetadata& metadata,
                 LevelFileIoError* out_error = nullptr);
