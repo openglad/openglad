@@ -8,7 +8,6 @@
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/level_runtime_data.h>
 
 static bool door_open_on_act(effect* self)
 {

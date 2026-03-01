@@ -25,7 +25,6 @@
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
-#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/core/constants.h>
@@ -35,9 +34,6 @@
 #include <format>
 
 // namespace removed: RNG wrappers replaced with current_game->world->rng_.
-
-// from level_data.cpp (LevelRuntimeData overload for sim/render split)
-short remaining_foes(LevelRuntimeData& level, walker* myguy);
 
 // Thin adapter: delegates to combat_math pure functions
 short exp_from_action(ExpAction action, walker* w, walker* target, short value)

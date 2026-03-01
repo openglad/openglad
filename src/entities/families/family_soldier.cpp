@@ -10,7 +10,6 @@
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/summon.h>
-#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>

@@ -9,7 +9,6 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/core/stats.h>

@@ -11,7 +11,6 @@
 #include <openglad/entities/walker.h>
 #include <openglad/entities/summon.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>

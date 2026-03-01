@@ -9,7 +9,6 @@
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/level_runtime_data.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/sim/sim_emit.h>
 #include <format>
