@@ -15,7 +15,6 @@
 #include <openglad/entities/walker.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/io/og_file.h>
-#include <openglad/legacy/base.h>
 
 #include <algorithm>
 #include <array>

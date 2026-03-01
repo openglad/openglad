@@ -25,7 +25,6 @@
 #include <openglad/io/campaign_io.h>
 #include <openglad/io/filesystem_sync.h>
 #include <openglad/io/og_file.h>
-#include <openglad/legacy/base.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -40,6 +39,7 @@
 namespace
 {
 constexpr unsigned char kMaxPlayers = 4;
+constexpr int kMaxLegacyLevels = 500;
 }
 
 
@@ -406,18 +406,17 @@ bool SaveData::load(const std::string& filename)
 
     if(temp_version < 8)
     {
-        char levelstatus[MAX_LEVELS];
-        std::fill_n(levelstatus, 500, '\0');
+        std::array<char, kMaxLegacyLevels> levelstatus{};
 
         if (temp_version >= 5)
-            READ_OR_FAIL(levelstatus, 500, 1);
+            READ_OR_FAIL(levelstatus.data(), kMaxLegacyLevels, 1);
         else
-            READ_OR_FAIL(levelstatus, 200, 1);
+            READ_OR_FAIL(levelstatus.data(), 200, 1);
 
         // Guaranteed to be the default campaign if version < 8
-        for(int i = 0; i < 500; i++)
+        for(int i = 0; i < kMaxLegacyLevels; i++)
         {
-            if(levelstatus[i])
+            if(levelstatus[static_cast<size_t>(i)])
                 add_level_completed(current_campaign, i);
         }
     }
