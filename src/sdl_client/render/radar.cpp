@@ -47,10 +47,10 @@ bool control_pointer_is_live(LevelRuntimeData& level, const walker* candidate)
     if (candidate == nullptr)
         return false;
 
-    return contains_walker_ptr(level.oblist, candidate)
-        || contains_walker_ptr(level.fxlist, candidate)
-        || contains_walker_ptr(level.weaplist, candidate)
-        || contains_walker_ptr(level.dead_list, candidate);
+    return contains_walker_ptr(level.world().oblist, candidate)
+        || contains_walker_ptr(level.world().fxlist, candidate)
+        || contains_walker_ptr(level.world().weaplist, candidate)
+        || contains_walker_ptr(level.world().dead_list, candidate);
 }
 
 walker* sanitize_radar_control(viewscreen* view, LevelRuntimeData& level)
@@ -190,8 +190,8 @@ short radar::draw(LevelRuntimeData* data)
 	}
 	else
 	{
-		radarx = static_cast<short>(data->topx/GRID_SIZE - xview/2);
-		radary = static_cast<short>(data->topy/GRID_SIZE - yview/2);
+		radarx = static_cast<short>(data->level_visuals().topx / GRID_SIZE - xview / 2);
+		radary = static_cast<short>(data->level_visuals().topy / GRID_SIZE - yview / 2);
 		obteam = 0;
 	}
 	if (radarx > (sizex - xview))
@@ -313,7 +313,7 @@ short radar::draw(LevelRuntimeData* data)
 		}
 	} // go back to new screen lists (weapons, etc.)
 
-    for(auto& uptr : data->fxlist)
+    for (auto& uptr : data->world().fxlist)
 	{
 	    walker* ob = uptr.get();
 		if (ob && !ob->dead)

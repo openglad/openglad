@@ -172,10 +172,10 @@ bool control_pointer_is_live(LevelRuntimeData& level, const walker* candidate)
     if (candidate == nullptr)
         return false;
 
-    return contains_walker_ptr(level.oblist, candidate)
-        || contains_walker_ptr(level.fxlist, candidate)
-        || contains_walker_ptr(level.weaplist, candidate)
-        || contains_walker_ptr(level.dead_list, candidate);
+    return contains_walker_ptr(level.world().oblist, candidate)
+        || contains_walker_ptr(level.world().fxlist, candidate)
+        || contains_walker_ptr(level.world().weaplist, candidate)
+        || contains_walker_ptr(level.world().dead_list, candidate);
 }
 
 walker* sanitize_control_pointer(viewscreen& view, LevelRuntimeData& level)
@@ -326,7 +326,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
 	walker  *controlob = sanitize_control_pointer(*this, *data);
-	auto* renderer = data->renderer_.get();
+	auto* renderer = data->level_visuals().renderer_.get();
 	if (!renderer) return false;
 	PixieData& gridp = data->world().grid;
 	unsigned short maxx = gridp.w;
@@ -341,8 +341,8 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	}
 	else // no control object now ..
 	{
-		topx = data->topx;
-		topy = data->topy;
+		topx = data->level_visuals().topx;
+		topy = data->level_visuals().topy;
 	}
 
 
@@ -595,7 +595,7 @@ bool viewscreen::draw_obs()
 bool viewscreen::draw_obs(LevelRuntimeData* data)
 {
 	// First draw the special effects
-	for(auto& uptr : data->fxlist)
+	for (auto& uptr : data->world().fxlist)
 	{
 	    walker* w = uptr.get();
 		if(w && !w->dead)
@@ -603,7 +603,7 @@ bool viewscreen::draw_obs(LevelRuntimeData* data)
 	}
 
 	// Now do real objects
-	for(auto& uptr : data->oblist)
+	for (auto& uptr : data->world().oblist)
 	{
 	    walker* w = uptr.get();
 		if(w && !w->dead)
@@ -611,7 +611,7 @@ bool viewscreen::draw_obs(LevelRuntimeData* data)
 	}
 
 	// Finally draw the weapons
-	for(auto& uptr : data->weaplist)
+	for (auto& uptr : data->world().weaplist)
 	{
 	    walker* w = uptr.get();
 		if(w && !w->dead)

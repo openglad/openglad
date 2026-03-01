@@ -501,16 +501,8 @@ LevelRuntimeData::LevelRuntimeData(int level_id, bool headless, const LevelDataH
 LevelRuntimeData::LevelRuntimeData(int level_id, bool headless, const LevelDataHooks* hooks, LevelVisuals* visuals)
     : level_done(this)
     , numobs(this)
-    , oblist(this, WalkerListForwarder::Kind::Objects)
-    , fxlist(this, WalkerListForwarder::Kind::Effects)
-    , weaplist(this, WalkerListForwarder::Kind::Weapons)
-    , dead_list(this, WalkerListForwarder::Kind::Dead)
     , world_(&owned_world_)
     , level_visuals_(visuals ? visuals : &owned_level_visuals_)
-    , pixdata(level_visuals_->pixdata)
-    , renderer_(level_visuals_->renderer_)
-    , topx(level_visuals_->topx)
-    , topy(level_visuals_->topy)
 {
     hooks_ = hooks;
     headless_ = headless;
@@ -1211,7 +1203,7 @@ short load_version_5(og::io::OgFile& infile, LevelRuntimeData* data)
 	data->world().mysmoother.set_target(data->world().grid);
 
 	// Fix up doors, etc.
-	for(auto& uptr : data->weaplist)
+    for (auto& uptr : data->world().weaplist)
 	{
 	    walker* w = uptr.get();
 		if (w && w->family==FAMILY_DOOR)
@@ -1404,7 +1396,7 @@ short load_version_6(og::io::OgFile& infile, LevelRuntimeData* data, short versi
     data->world().mysmoother.set_target(data->world().grid);
 
     // Fix up doors, etc.
-	for(auto& uptr : data->weaplist)
+	for (auto& uptr : data->world().weaplist)
 	{
 	    walker* w = uptr.get();
         if (w && w->family==FAMILY_DOOR)
@@ -1658,7 +1650,7 @@ bool LevelRuntimeData::save()
 	WRITE_FIELD(&temp_time_limit, 2, 1);
 
 	// Determine size of object list and clamp to loader's accepted range.
-	const size_t total_objects = oblist.size() + fxlist.size() + weaplist.size();
+	const size_t total_objects = world().oblist.size() + world().fxlist.size() + world().weaplist.size();
 	const size_t serialized_objects = std::min(total_objects, static_cast<size_t>(MAX_SCENARIO_OBJECTS));
 	if (serialized_objects != total_objects)
 		Log("Scenario object count {} exceeds {}, truncating on save.\n", total_objects, MAX_SCENARIO_OBJECTS);
@@ -1705,9 +1697,9 @@ bool LevelRuntimeData::save()
 	};
 
 	// Okay, we've written header .. now dump the data ..
-	if (!write_object_list(oblist, "regular") ||
-	    !write_object_list(fxlist, "fx") ||
-	    !write_object_list(weaplist, "weap"))
+	if (!write_object_list(world().oblist, "regular") ||
+	    !write_object_list(world().fxlist, "fx") ||
+	    !write_object_list(world().weaplist, "weap"))
 	{
 		return false;
 	}

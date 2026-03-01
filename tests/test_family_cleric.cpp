@@ -109,7 +109,7 @@ living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_C
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -299,7 +299,7 @@ living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMIL
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -427,7 +427,7 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
     s->lastx = 1.0f;
     s->lasty = 0.0f;
     living* self = s.get();
-    fx.level.oblist.push_back(std::move(s));
+    fx.level.world().oblist.push_back(std::move(s));
 
     walker* enemy = add_living(fx, 1, FAMILY_ORC);
     enemy->setxy(80, 60);
@@ -472,8 +472,8 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
     t2->dead = 0;
     treasure* t1_raw = t1.get();
     treasure* t2_raw = t2.get();
-    fx.level.fxlist.push_back(std::move(t1));
-    fx.level.fxlist.push_back(std::move(t2));
+    fx.level.world().fxlist.push_back(std::move(t1));
+    fx.level.world().fxlist.push_back(std::move(t2));
     OG_ASSERT(t1_raw->find_teleport_target() == t2_raw);
 }
 
@@ -574,7 +574,7 @@ living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMIL
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -722,7 +722,7 @@ living* add_living(ClericR15Fixture& fx, unsigned char team, char family, short 
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 

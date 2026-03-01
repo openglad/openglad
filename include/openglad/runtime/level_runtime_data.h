@@ -93,103 +93,6 @@ class LevelRuntimeData
 public:
     using WalkerList = std::list<std::unique_ptr<walker>>;
 
-    class WalkerListForwarder
-    {
-    public:
-        enum class Kind
-        {
-            Objects,
-            Effects,
-            Weapons,
-            Dead
-        };
-
-        WalkerListForwarder(LevelRuntimeData* owner, Kind kind)
-            : owner_(owner), kind_(kind)
-        {
-        }
-
-        WalkerListForwarder(const WalkerListForwarder&) = delete;
-        WalkerListForwarder& operator=(const WalkerListForwarder&) = delete;
-        WalkerListForwarder(WalkerListForwarder&&) = delete;
-        WalkerListForwarder& operator=(WalkerListForwarder&&) = delete;
-
-        operator WalkerList&() { return list(); }
-        operator const WalkerList&() const { return list(); }
-
-        WalkerList& list()
-        {
-            switch (kind_)
-            {
-                case Kind::Objects: return owner_->world().oblist;
-                case Kind::Effects: return owner_->world().fxlist;
-                case Kind::Weapons: return owner_->world().weaplist;
-                case Kind::Dead: return owner_->world().dead_list;
-            }
-            return owner_->world().oblist;
-        }
-
-        const WalkerList& list() const
-        {
-            switch (kind_)
-            {
-                case Kind::Objects: return owner_->world().oblist;
-                case Kind::Effects: return owner_->world().fxlist;
-                case Kind::Weapons: return owner_->world().weaplist;
-                case Kind::Dead: return owner_->world().dead_list;
-            }
-            return owner_->world().oblist;
-        }
-
-        auto begin() { return list().begin(); }
-        auto begin() const { return list().begin(); }
-        auto end() { return list().end(); }
-        auto end() const { return list().end(); }
-        auto rbegin() { return list().rbegin(); }
-        auto rbegin() const { return list().rbegin(); }
-        auto rend() { return list().rend(); }
-        auto rend() const { return list().rend(); }
-
-        bool empty() const { return list().empty(); }
-        std::size_t size() const { return list().size(); }
-        void clear() { list().clear(); }
-
-        auto front() -> WalkerList::reference { return list().front(); }
-        auto front() const -> WalkerList::const_reference { return list().front(); }
-        auto back() -> WalkerList::reference { return list().back(); }
-        auto back() const -> WalkerList::const_reference { return list().back(); }
-
-        template <typename T>
-        void push_back(T&& value)
-        {
-            list().push_back(std::forward<T>(value));
-        }
-
-        template <typename... Args>
-        auto emplace_back(Args&&... args)
-        {
-            return list().emplace_back(std::forward<Args>(args)...);
-        }
-
-        void pop_back() { list().pop_back(); }
-
-        template <typename... Args>
-        auto erase(Args&&... args)
-        {
-            return list().erase(std::forward<Args>(args)...);
-        }
-
-        template <typename... Args>
-        void splice(Args&&... args)
-        {
-            list().splice(std::forward<Args>(args)...);
-        }
-
-    private:
-        LevelRuntimeData* owner_ = nullptr;
-        Kind kind_ = Kind::Objects;
-    };
-
     class LivingCountForwarder
     {
     public:
@@ -299,11 +202,6 @@ public:
     LevelDoneForwarder level_done;
 
     LivingCountForwarder numobs;
-    WalkerListForwarder oblist;
-    WalkerListForwarder fxlist;  // fx--explosions, etc.
-    WalkerListForwarder weaplist;  // weapons
-    // Keep a list of dead guys so weapons can still have valid owners
-    WalkerListForwarder dead_list;
 
     std::list<std::string> description;
 
@@ -375,15 +273,6 @@ private:
     GameWorld* world_ = nullptr;
     LevelVisuals owned_level_visuals_;
     LevelVisuals* level_visuals_ = nullptr;
-
-public:
-    // Transitional forwards so existing call sites can keep member-style access
-    // while storage lives on LevelVisuals.
-    PixieData (&pixdata)[PIX_MAX];
-    std::unique_ptr<LevelRender>& renderer_;
-    std::int32_t& topx;
-    std::int32_t& topy;
-
 };
 
 // Read a scenario title from a .fss file. Returns "none" on failure.

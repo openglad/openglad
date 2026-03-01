@@ -26,15 +26,15 @@ static void remove_new_leveldata_objects(LevelRuntimeData& level,
                                         const std::unordered_set<walker*>& weap_before)
 {
     std::vector<walker*> to_remove;
-    to_remove.reserve((level.oblist.size() + level.fxlist.size() + level.weaplist.size()));
+    to_remove.reserve((level.world().oblist.size() + level.world().fxlist.size() + level.world().weaplist.size()));
 
-    for (auto& up : level.oblist)
+    for (auto& up : level.world().oblist)
         if (up && !ob_before.contains(up.get()))
             to_remove.push_back(up.get());
-    for (auto& up : level.fxlist)
+    for (auto& up : level.world().fxlist)
         if (up && !fx_before.contains(up.get()))
             to_remove.push_back(up.get());
-    for (auto& up : level.weaplist)
+    for (auto& up : level.world().weaplist)
         if (up && !weap_before.contains(up.get()))
             to_remove.push_back(up.get());
 
@@ -58,9 +58,9 @@ void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_doo
 
     LevelRuntimeData& level = og::runtime::current_session->myscreen_->level_runtime_data();
 
-    const auto ob_before = snapshot_ptrs(level.oblist);
-    const auto fx_before = snapshot_ptrs(level.fxlist);
-    const auto weap_before = snapshot_ptrs(level.weaplist);
+    const auto ob_before = snapshot_ptrs(level.world().oblist);
+    const auto fx_before = snapshot_ptrs(level.world().fxlist);
+    const auto weap_before = snapshot_ptrs(level.world().weaplist);
 
     // Use deterministic RNG without swapping the active global context.
     FixedRandom fixed_rng(0);
@@ -90,10 +90,10 @@ void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_doo
     walker* leader = leader_up.get();
 
     // Put the living walkers into the level so find_foes_in_range can discover them.
-    level.oblist.push_back(std::move(owner_up));
-    level.oblist.push_back(std::move(leader_up));
-    level.oblist.push_back(std::move(foe2_up));
-    level.oblist.push_back(std::move(foe3_up));
+    level.world().oblist.push_back(std::move(owner_up));
+    level.world().oblist.push_back(std::move(leader_up));
+    level.world().oblist.push_back(std::move(foe2_up));
+    level.world().oblist.push_back(std::move(foe3_up));
 
     walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
     TEST_ASSERT(chain != nullptr, "chain created");

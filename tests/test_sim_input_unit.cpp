@@ -56,7 +56,7 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
     w->user = user;
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -191,7 +191,7 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
     w->user = user;
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 

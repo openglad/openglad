@@ -26,15 +26,15 @@ static void remove_new_leveldata_objects(LevelRuntimeData& level,
                                         const std::unordered_set<walker*>& weap_before)
 {
     std::vector<walker*> to_remove;
-    to_remove.reserve(level.oblist.size() + level.fxlist.size() + level.weaplist.size());
+    to_remove.reserve(level.world().oblist.size() + level.world().fxlist.size() + level.world().weaplist.size());
 
-    for (auto& up : level.oblist)
+    for (auto& up : level.world().oblist)
         if (up && !ob_before.contains(up.get()))
             to_remove.push_back(up.get());
-    for (auto& up : level.fxlist)
+    for (auto& up : level.world().fxlist)
         if (up && !fx_before.contains(up.get()))
             to_remove.push_back(up.get());
-    for (auto& up : level.weaplist)
+    for (auto& up : level.world().weaplist)
         if (up && !weap_before.contains(up.get()))
             to_remove.push_back(up.get());
 
@@ -62,9 +62,9 @@ void test_stats_hit_response_mage_and_archmage_teleport_branches()
         return;
 
     LevelRuntimeData& level = og::runtime::current_session->myscreen_->level_runtime_data();
-    const auto ob_before = snapshot_ptrs(level.oblist);
-    const auto fx_before = snapshot_ptrs(level.fxlist);
-    const auto weap_before = snapshot_ptrs(level.weaplist);
+    const auto ob_before = snapshot_ptrs(level.world().oblist);
+    const auto fx_before = snapshot_ptrs(level.world().fxlist);
+    const auto weap_before = snapshot_ptrs(level.world().weaplist);
 
     FixedRandom fixed_rng(1); // rng(3) => 1 (true)
     RngGuard rng_guard(&fixed_rng);

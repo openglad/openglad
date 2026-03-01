@@ -89,19 +89,19 @@ static void cmd_state(const LevelRuntimeData& level)
     std::ostringstream os;
     os << "{\"cmd\":\"state\",\"entities\":[";
     int idx = 0;
-    for (auto& uptr : level.oblist) {
+    for (auto& uptr : level.world().oblist) {
         if (idx > 0) os << ",";
         json_entity(os, uptr.get(), idx++);
     }
     os << "],\"weapons\":[";
     idx = 0;
-    for (auto& uptr : level.weaplist) {
+    for (auto& uptr : level.world().weaplist) {
         if (idx > 0) os << ",";
         json_entity(os, uptr.get(), idx++);
     }
     os << "],\"fx\":[";
     idx = 0;
-    for (auto& uptr : level.fxlist) {
+    for (auto& uptr : level.world().fxlist) {
         if (idx > 0) os << ",";
         json_entity(os, uptr.get(), idx++);
     }
@@ -199,7 +199,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     std::cout << "{\"status\":\"ready\""
               << ",\"level\":" << args.level
               << ",\"title\":\"" << level.world().title << "\""
-              << ",\"num_entities\":" << level.oblist.size()
+              << ",\"num_entities\":" << level.world().oblist.size()
               << ",\"seed\":" << args.seed
               << "}\n";
     std::cout.flush();

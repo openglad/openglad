@@ -108,7 +108,7 @@ void getLevelStats(LevelRuntimeData& level_data, int* max_enemy_level, float* av
     exits.clear();
     
     // Go through objects
-		for(auto& uptr : level_data.oblist)
+		for (auto& uptr : level_data.world().oblist)
 		{
 		    walker* ob = uptr.get();
 	        switch(ob->query_order())
@@ -133,7 +133,7 @@ void getLevelStats(LevelRuntimeData& level_data, int* max_enemy_level, float* av
 		}
 	
 	// Go through effects
-		for(auto& uptr : level_data.fxlist)
+		for (auto& uptr : level_data.world().fxlist)
 		{
 		    walker* ob = uptr.get();
 	        switch(ob->query_order())

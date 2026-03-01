@@ -128,7 +128,7 @@ void test_level_data_load_version2_treasure_routes_to_fxlist()
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_2(rw, &data);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_2 should succeed with a treasure object");
-    TEST_ASSERT(!data.fxlist.empty(), "treasure should route via add_fx_ob into fxlist for v2");
+    TEST_ASSERT(!data.world().fxlist.empty(), "treasure should route via add_fx_ob into fxlist for v2");
 }
 REGISTER_TEST(test_level_data_load_version2_treasure_routes_to_fxlist);
 
@@ -215,7 +215,7 @@ void test_level_data_load_version3_treasure_adds_at_start_success()
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_3(rw, &data);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_3 should succeed with treasure object");
-    TEST_ASSERT(!data.oblist.empty(), "v3 treasure path should still create an object");
+    TEST_ASSERT(!data.world().oblist.empty(), "v3 treasure path should still create an object");
 }
 REGISTER_TEST(test_level_data_load_version3_treasure_adds_at_start_success);
 
@@ -358,8 +358,8 @@ void test_level_data_load_version5_success_with_treasure_weapon_and_truncated_te
     short ok = load_version_5(rw, &data);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_5 should succeed on valid buffer");
     TEST_ASSERT_EQ(3, (int)data.world().type, "load_version_5 should set scenario type");
-    TEST_ASSERT(!data.fxlist.empty(), "treasure object should populate fxlist");
-    TEST_ASSERT(!data.weaplist.empty(), "weapon object should populate weaplist");
+    TEST_ASSERT(!data.world().fxlist.empty(), "treasure object should populate fxlist");
+    TEST_ASSERT(!data.world().weaplist.empty(), "weapon object should populate weaplist");
     TEST_ASSERT(!data.description.empty(), "description line should be read");
 }
 REGISTER_TEST(test_level_data_load_version5_success_with_treasure_weapon_and_truncated_text);
@@ -773,14 +773,14 @@ void test_level_data_load_version6plus_named_objects_treasure_route_and_door_fix
     MemoryOgFile rw(bytes.data(), bytes.size());
     TEST_ASSERT_EQ(1, (int)load_version_6(rw, &data, 9),
                    "v9 loader should parse treasure/door objects and long description");
-    TEST_ASSERT(!data.fxlist.empty(), "treasure object should be routed into fxlist");
-    TEST_ASSERT(!data.weaplist.empty(), "door object should be routed into weaplist");
-    if (!data.fxlist.empty())
-        TEST_ASSERT(data.fxlist.front()->stats()->query_bit_flags(BIT_NAMED) != 0,
+    TEST_ASSERT(!data.world().fxlist.empty(), "treasure object should be routed into fxlist");
+    TEST_ASSERT(!data.world().weaplist.empty(), "door object should be routed into weaplist");
+    if (!data.world().fxlist.empty())
+        TEST_ASSERT(data.world().fxlist.front()->stats()->query_bit_flags(BIT_NAMED) != 0,
                     "name length > 1 should set BIT_NAMED");
 
     bool saw_door = false;
-    for (auto& uptr : data.weaplist)
+    for (auto& uptr : data.world().weaplist)
     {
         walker* w = uptr.get();
         if (w && w->family == FAMILY_DOOR)

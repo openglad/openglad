@@ -233,8 +233,8 @@ void test_level_data_load_clamps_invalid_team_ids_to_score_range()
     MemoryOgFile mem(bytes.data(), bytes.size());
     LevelRuntimeData data(9991);
     TEST_ASSERT_EQ(1, (int)load_scenario_version(mem, &data, 2), "version 2 loader should succeed");
-    TEST_ASSERT(!data.oblist.empty(), "loader should create one object");
-    walker* loaded = data.oblist.empty() ? nullptr : data.oblist.front().get();
+    TEST_ASSERT(!data.world().oblist.empty(), "loader should create one object");
+    walker* loaded = data.world().oblist.empty() ? nullptr : data.world().oblist.front().get();
     TEST_ASSERT(loaded != nullptr, "loaded walker should exist");
     if (loaded)
         TEST_ASSERT_EQ(0, (int)loaded->team_num, "invalid team id should clamp to 0");

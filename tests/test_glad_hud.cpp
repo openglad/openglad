@@ -37,9 +37,9 @@ static bool control_pointer_is_live(LevelRuntimeData& level_data, const walker* 
         return false;
     };
 
-    return in_list(level_data.oblist)
-        || in_list(level_data.fxlist)
-        || in_list(level_data.weaplist);
+    return in_list(level_data.world().oblist)
+        || in_list(level_data.world().fxlist)
+        || in_list(level_data.world().weaplist);
 }
 
 static std::unique_ptr<walker> make_player(unsigned char team)

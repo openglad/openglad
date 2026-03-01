@@ -86,18 +86,18 @@ OG_UNIT_TEST(test_level_data_grid_and_description_paths)
 
     fx.level.set_draw_pos(3, 4);
     fx.level.add_draw_pos(2, -1);
-    OG_ASSERT(fx.level.topx == 5);
-    OG_ASSERT(fx.level.topy == 3);
+    OG_ASSERT(fx.level.level_visuals().topx == 5);
+    OG_ASSERT(fx.level.level_visuals().topy == 3);
 }
 
 OG_UNIT_TEST(test_level_data_passable_and_range_queries)
 {
     LevelFixture fx;
-    walker* self = add_to_list(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    walker* foe = add_to_list(fx, fx.level.oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
-    walker* player = add_to_list(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 96, 64);
-    walker* weapon = add_to_list(fx, fx.level.weaplist, Order::Weapon, FAMILY_KNIFE, 1, 72, 64);
-    walker* stain = add_to_list(fx, fx.level.fxlist, Order::Treasure, FAMILY_STAIN, 0, 70, 64);
+    walker* self = add_to_list(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* foe = add_to_list(fx, fx.level.world().oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
+    walker* player = add_to_list(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 96, 64);
+    walker* weapon = add_to_list(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_KNIFE, 1, 72, 64);
+    walker* stain = add_to_list(fx, fx.level.world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 70, 64);
     OG_ASSERT(self && foe && player && weapon && stain);
 
     player->user = 0;
@@ -122,19 +122,19 @@ OG_UNIT_TEST(test_level_data_passable_and_range_queries)
     OG_ASSERT(fx.level.find_nearest_player(self) == player);
 
     std::int32_t count = 0;
-    (void)fx.level.find_in_range(fx.level.oblist, 200, &count, self);
+    (void)fx.level.find_in_range(fx.level.world().oblist, 200, &count, self);
     OG_ASSERT(count >= 2);
-    (void)fx.level.find_foes_in_range(fx.level.oblist, 200, &count, self);
+    (void)fx.level.find_foes_in_range(fx.level.world().oblist, 200, &count, self);
     OG_ASSERT(count >= 1);
-    (void)fx.level.find_foe_weapons_in_range(fx.level.weaplist, 200, &count, self);
-    (void)fx.level.find_friends_in_range(fx.level.oblist, 200, &count, self);
+    (void)fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &count, self);
+    (void)fx.level.find_friends_in_range(fx.level.world().oblist, 200, &count, self);
 }
 
 OG_UNIT_TEST(test_level_data_remove_and_remaining_foes_paths)
 {
     LevelFixture fx;
-    walker* self = add_to_list(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    walker* foe = add_to_list(fx, fx.level.oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
+    walker* self = add_to_list(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* foe = add_to_list(fx, fx.level.world().oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
     OG_ASSERT(self && foe);
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
 
@@ -146,9 +146,9 @@ OG_UNIT_TEST(test_level_data_remove_and_remaining_foes_paths)
     OG_ASSERT(foes_after <= foes_before);
 
     fx.level.delete_objects();
-    OG_ASSERT(fx.level.oblist.empty());
-    OG_ASSERT(fx.level.fxlist.empty());
-    OG_ASSERT(fx.level.weaplist.empty());
+    OG_ASSERT(fx.level.world().oblist.empty());
+    OG_ASSERT(fx.level.world().fxlist.empty());
+    OG_ASSERT(fx.level.world().weaplist.empty());
 }
 } // namespace detail_level_data_coverage_push
 
@@ -212,10 +212,10 @@ OG_UNIT_TEST(test_level_data_r11_basic_construction_remove_and_helpers)
 
     // null guards for searches
     std::int32_t hm = 0;
-    auto none1 = fx.level.find_in_range(fx.level.oblist, 10, &hm, nullptr);
-    auto none2 = fx.level.find_foes_in_range(fx.level.oblist, 10, &hm, nullptr);
-    auto none3 = fx.level.find_foe_weapons_in_range(fx.level.weaplist, 10, &hm, nullptr);
-    auto none4 = fx.level.find_friends_in_range(fx.level.oblist, 10, &hm, nullptr);
+    auto none1 = fx.level.find_in_range(fx.level.world().oblist, 10, &hm, nullptr);
+    auto none2 = fx.level.find_foes_in_range(fx.level.world().oblist, 10, &hm, nullptr);
+    auto none3 = fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 10, &hm, nullptr);
+    auto none4 = fx.level.find_friends_in_range(fx.level.world().oblist, 10, &hm, nullptr);
     OG_ASSERT(none1.empty() && none2.empty() && none3.empty() && none4.empty());
 
     OG_ASSERT(fx.level.find_near_foe(nullptr) == nullptr);
@@ -227,7 +227,7 @@ OG_UNIT_TEST(test_level_data_r11_basic_construction_remove_and_helpers)
 OG_UNIT_TEST(test_level_data_r11_query_grid_passable_terrain_branches)
 {
     LevelR11Fixture fx;
-    walker* ob = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* ob = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     OG_ASSERT(ob != nullptr);
 
     // grid invalid branch
@@ -255,7 +255,7 @@ OG_UNIT_TEST(test_level_data_r11_query_grid_passable_terrain_branches)
     ob->stats()->set_bit_flags(BIT_FORESTWALK, 0);
 
     // tree_b branch with weapon
-    walker* weap = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 1, ob->xpos, ob->ypos);
+    walker* weap = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 1, ob->xpos, ob->ypos);
     fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_TREE_B1;
     OG_ASSERT(fx.level.query_grid_passable(weap->xpos, weap->ypos, weap));
 
@@ -272,11 +272,11 @@ OG_UNIT_TEST(test_level_data_r11_query_grid_passable_terrain_branches)
 OG_UNIT_TEST(test_level_data_r11_object_passability_and_search_sets)
 {
     LevelR11Fixture fx;
-    walker* self = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    walker* foe = add_to(fx, fx.level.oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
-    walker* ally = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 96, 64);
-    walker* weapon = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 1, 70, 64);
-    walker* stain = add_to(fx, fx.level.fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
+    walker* self = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* foe = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
+    walker* ally = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 96, 64);
+    walker* weapon = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 1, 70, 64);
+    walker* stain = add_to(fx, fx.level.world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
     OG_ASSERT(self && foe && ally && weapon && stain);
 
     ally->user = 0;
@@ -296,12 +296,12 @@ OG_UNIT_TEST(test_level_data_r11_object_passability_and_search_sets)
     OG_ASSERT(fx.level.find_nearest_player(self) == ally);
 
     std::int32_t c = 0;
-    auto inr = fx.level.find_in_range(fx.level.oblist, 200, &c, self);
+    auto inr = fx.level.find_in_range(fx.level.world().oblist, 200, &c, self);
     OG_ASSERT(c >= 1 && !inr.empty());
-    auto foes = fx.level.find_foes_in_range(fx.level.oblist, 200, &c, self);
+    auto foes = fx.level.find_foes_in_range(fx.level.world().oblist, 200, &c, self);
     OG_ASSERT(c >= 1 && !foes.empty());
-    (void)fx.level.find_foe_weapons_in_range(fx.level.weaplist, 200, &c, self);
-    auto friends = fx.level.find_friends_in_range(fx.level.oblist, 200, &c, self);
+    (void)fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &c, self);
+    auto friends = fx.level.find_friends_in_range(fx.level.world().oblist, 200, &c, self);
     OG_ASSERT(!friends.empty());
 
     // helper functions
@@ -494,17 +494,17 @@ OG_UNIT_TEST(test_level_data_r12_save_null_entries_and_query_passable_branches)
     fx.level.grid_file = "grid";
     fx.level.world().title = "r12";
 
-    fx.level.fxlist.push_back(std::unique_ptr<walker>{});
+    fx.level.world().fxlist.push_back(std::unique_ptr<walker>{});
     OG_ASSERT(!fx.level.save());
     fx.level.delete_objects();
 
-    fx.level.weaplist.push_back(std::unique_ptr<walker>{});
+    fx.level.world().weaplist.push_back(std::unique_ptr<walker>{});
     OG_ASSERT(!fx.level.save());
     fx.level.delete_objects();
 
-    walker* living = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 0, 0);
-    walker* owner = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    walker* weapon = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 0, 0, 0);
+    walker* living = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 0, 0);
+    walker* owner = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* weapon = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 0, 0);
     OG_ASSERT(living && owner && weapon);
     living->sizex = 1;
     living->sizey = 1;
@@ -557,20 +557,20 @@ OG_UNIT_TEST(test_level_data_r12_find_helpers_null_and_ranges)
 {
     LevelR12Fixture fx;
 
-    walker* self = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    walker* foe = add_to(fx, fx.level.oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
-    walker* ally = add_to(fx, fx.level.oblist, Order::Living, FAMILY_ARCHER, 0, 96, 64);
-    walker* enemy_weapon = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 0, 70, 64);
-    walker* blood = add_to(fx, fx.level.fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
+    walker* self = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
+    walker* foe = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
+    walker* ally = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_ARCHER, 0, 96, 64);
+    walker* enemy_weapon = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 70, 64);
+    walker* blood = add_to(fx, fx.level.world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
     OG_ASSERT(self && foe && ally && enemy_weapon && blood);
 
     ally->user = 0;
 
     std::int32_t howmany = 0;
-    OG_ASSERT(fx.level.find_in_range(fx.level.oblist, 50, &howmany, nullptr).empty());
-    OG_ASSERT(fx.level.find_foes_in_range(fx.level.oblist, 50, &howmany, nullptr).empty());
-    OG_ASSERT(fx.level.find_foe_weapons_in_range(fx.level.weaplist, 50, &howmany, nullptr).empty());
-    OG_ASSERT(fx.level.find_friends_in_range(fx.level.oblist, 50, &howmany, nullptr).empty());
+    OG_ASSERT(fx.level.find_in_range(fx.level.world().oblist, 50, &howmany, nullptr).empty());
+    OG_ASSERT(fx.level.find_foes_in_range(fx.level.world().oblist, 50, &howmany, nullptr).empty());
+    OG_ASSERT(fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 50, &howmany, nullptr).empty());
+    OG_ASSERT(fx.level.find_friends_in_range(fx.level.world().oblist, 50, &howmany, nullptr).empty());
 
     OG_ASSERT(fx.level.find_nearest_blood(nullptr) == nullptr);
     OG_ASSERT(fx.level.find_nearest_player(nullptr) == nullptr);
@@ -580,22 +580,22 @@ OG_UNIT_TEST(test_level_data_r12_find_helpers_null_and_ranges)
     OG_ASSERT(fx.level.find_nearest_blood(self) == blood);
     OG_ASSERT(fx.level.find_nearest_player(self) == ally);
 
-    auto inr = fx.level.find_in_range(fx.level.oblist, 200, &howmany, self);
+    auto inr = fx.level.find_in_range(fx.level.world().oblist, 200, &howmany, self);
     OG_ASSERT(!inr.empty() && howmany >= 1);
-    auto foes = fx.level.find_foes_in_range(fx.level.oblist, 200, &howmany, self);
+    auto foes = fx.level.find_foes_in_range(fx.level.world().oblist, 200, &howmany, self);
     OG_ASSERT(!foes.empty());
-    auto foe_weapons = fx.level.find_foe_weapons_in_range(fx.level.weaplist, 200, &howmany, self);
+    auto foe_weapons = fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &howmany, self);
     OG_ASSERT(!foe_weapons.empty());
-    auto friends = fx.level.find_friends_in_range(fx.level.oblist, 200, &howmany, self);
+    auto friends = fx.level.find_friends_in_range(fx.level.world().oblist, 200, &howmany, self);
     OG_ASSERT(!friends.empty());
 }
 
 OG_UNIT_TEST(test_level_data_r12_remove_ob_paths_and_zip_api_paths)
 {
     LevelR12Fixture fx;
-    walker* living = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 40, 40);
-    walker* weap = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 0, 44, 40);
-    walker* fxob = add_to(fx, fx.level.fxlist, Order::FX, FAMILY_EXPLOSION, 0, 48, 40);
+    walker* living = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 40, 40);
+    walker* weap = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 44, 40);
+    walker* fxob = add_to(fx, fx.level.world().fxlist, Order::FX, FAMILY_EXPLOSION, 0, 48, 40);
     OG_ASSERT(living && weap && fxob);
 
     const std::int32_t before = fx.level.numobs;
@@ -918,16 +918,16 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     level_non_headless.world().type = 7;
     level_non_headless.world().par_value = 9;
     level_non_headless.world().time_bonus_limit = 123;
-    level_non_headless.topx = 44;
-    level_non_headless.topy = 55;
+    level_non_headless.level_visuals().topx = 44;
+    level_non_headless.level_visuals().topy = 55;
     level_non_headless.clear();
 
     OG_ASSERT(level_non_headless.world().title == "New Level");
     OG_ASSERT(level_non_headless.world().type == 0);
     OG_ASSERT(level_non_headless.world().par_value == 1);
     OG_ASSERT(level_non_headless.world().time_bonus_limit == 4000);
-    OG_ASSERT(level_non_headless.topx == 0);
-    OG_ASSERT(level_non_headless.topy == 0);
+    OG_ASSERT(level_non_headless.level_visuals().topx == 0);
+    OG_ASSERT(level_non_headless.level_visuals().topy == 0);
 
     // Exercise delegating constructor overloads.
     LevelRuntimeData plain_ctor(9417);
@@ -960,16 +960,16 @@ OG_UNIT_TEST(test_level_data_r16_external_world_teardown_detaches_level)
         walker* spawned = level.add_ob(Order::Living, FAMILY_SOLDIER);
         OG_ASSERT(spawned != nullptr);
         OG_ASSERT(level.numobs == 1);
-        OG_ASSERT(level.oblist.size() == 1);
+        OG_ASSERT(level.world().oblist.size() == 1);
     }
 
     OG_ASSERT(static_cast<bool>(level.world().entity_factory));
     OG_ASSERT(level.numobs == 1);
-    OG_ASSERT(level.oblist.size() == 1);
+    OG_ASSERT(level.world().oblist.size() == 1);
 
     walker* spawned2 = level.add_ob(Order::Living, FAMILY_ARCHER);
     OG_ASSERT(spawned2 != nullptr);
     OG_ASSERT(level.numobs == 2);
-    OG_ASSERT(level.oblist.size() == 2);
+    OG_ASSERT(level.world().oblist.size() == 2);
 }
 } // namespace detail_level_data_r16

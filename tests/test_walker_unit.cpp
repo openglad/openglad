@@ -52,7 +52,7 @@ walker* add_living(WalkerFixture& fx, char family, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -167,9 +167,9 @@ walker* add_ob(WalkerR11Fixture& fx, Order o, char family, unsigned char team, s
     w->dead = 0;
     walker* out = w.get();
     if (o == Order::Weapon)
-        fx.level.weaplist.push_back(std::move(w));
+        fx.level.world().weaplist.push_back(std::move(w));
     else
-        fx.level.oblist.push_back(std::move(w));
+        fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -519,9 +519,9 @@ walker* add_ob(WalkerR14Fixture& fx, Order o, char family, unsigned char team, s
     w->dead = 0;
     walker* out = w.get();
     if (o == Order::Weapon)
-        fx.level.weaplist.push_back(std::move(w));
+        fx.level.world().weaplist.push_back(std::move(w));
     else
-        fx.level.oblist.push_back(std::move(w));
+        fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 

@@ -326,7 +326,7 @@ int get_num_foes(LevelRuntimeData& level)
 {
     int result = 0;
     
-	for(auto& uptr : level.oblist)
+	for(auto& uptr : level.world().oblist)
 	{
 	    walker* ob = uptr.get();
 	    // Not dead, not hired, not on red team
