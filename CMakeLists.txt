@@ -170,7 +170,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/interface/render/text.cpp
     ${SRC_DIR}/gameplay/treasure.cpp
-    ${SRC_DIR}/interface/render/video.cpp
+    ${SRC_DIR}/platform/sdl/video_sdl.cpp
     ${SRC_DIR}/interface/render/view.cpp
     ${SRC_DIR}/interface/render/walker_draw.cpp
     ${SRC_DIR}/interface/render/obmap_debug_draw.cpp
@@ -321,7 +321,6 @@ set(OG_RENDER_SOURCES
     ${SRC_DIR}/interface/render/radar.cpp
     ${SRC_DIR}/interface/render/sai2x.cpp
     ${SRC_DIR}/interface/render/text.cpp
-    ${SRC_DIR}/interface/render/video.cpp
     ${SRC_DIR}/interface/render/view.cpp
     ${SRC_DIR}/interface/render/walker_draw.cpp
     ${SRC_DIR}/interface/render/obmap_debug_draw.cpp
@@ -366,6 +365,7 @@ set(OG_IO_SOURCES
 
 set(OG_PLATFORM_SOURCES
     ${SRC_DIR}/platform/sdl/sound.cpp
+    ${SRC_DIR}/platform/sdl/video_sdl.cpp
 )
 
 # External C++ sources

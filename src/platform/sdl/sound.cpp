@@ -36,7 +36,7 @@
 char * get_file_path(const char * file);
 
 
-soundob::soundob()
+sdl_soundob::sdl_soundob()
 {
 	// Do stuff
 	silence = 0;        // default is sound ON
@@ -48,7 +48,7 @@ soundob::soundob()
 // This version of the constructor will set "silence" to
 // the value of toggle before init-ing, so that if we
 // don't want sound, we won't load them into memory.
-soundob::soundob(bool silent)
+sdl_soundob::sdl_soundob(bool silent)
 {
 	silence = silent;
 	for (int i=0; i < NUMSOUNDS; i++)
@@ -56,12 +56,12 @@ soundob::soundob(bool silent)
 	init();             // init will do nothing if silent is set
 }
 
-soundob::~soundob()
+sdl_soundob::~sdl_soundob()
 {
 	shutdown();
 }
 
-int soundob::init()
+int sdl_soundob::init()
 {
 	int i;
 
@@ -127,7 +127,7 @@ int soundob::init()
 	return 1;
 }
 
-void soundob::load_sound(Mix_Chunk **audio, const char * file)
+void sdl_soundob::load_sound(Mix_Chunk **audio, const char * file)
 {
     SDL_RWops* rw = open_read_file("sound/", file);
 	
@@ -142,13 +142,13 @@ void soundob::load_sound(Mix_Chunk **audio, const char * file)
 	Mix_VolumeChunk(*audio,MIX_MAX_VOLUME/2);
 }
 
-void soundob::free_sound(Mix_Chunk **soundp)
+void sdl_soundob::free_sound(Mix_Chunk **soundp)
 {
 	Mix_FreeChunk(*soundp);
 }
 
 
-void soundob::shutdown()
+void sdl_soundob::shutdown()
 {
 	int i;
 
@@ -162,7 +162,7 @@ void soundob::shutdown()
 	Mix_CloseAudio();
 }
 
-void soundob::play_sound(short whichnum)
+void sdl_soundob::play_sound(short whichnum)
 {
 	if (silence)         // If silent mode set, do nothing here
 		return;
@@ -171,7 +171,7 @@ void soundob::play_sound(short whichnum)
 }
 
 // Used to turn sound on or off
-unsigned char soundob::set_sound(bool silent)
+unsigned char sdl_soundob::set_sound(bool silent)
 {
 	if (silence == silent)      // Are we already set this way?
 		return silence;
@@ -180,4 +180,9 @@ unsigned char soundob::set_sound(bool silent)
 	init();
 
 	return silence;
+}
+
+std::unique_ptr<soundob> create_soundob(bool silent)
+{
+    return std::make_unique<sdl_soundob>(silent);
 }

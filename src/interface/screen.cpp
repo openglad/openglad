@@ -25,6 +25,7 @@
 */
 
 #include <openglad/platform/game_context.h>
+#include <openglad/platform/video_sdl.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/statistics.h>
@@ -128,6 +129,11 @@ const char* save_data_io_error_string(SaveDataIoError err)
     }
     return "unknown";
 }
+
+std::unique_ptr<video> make_default_video(bool create_display)
+{
+    return std::make_unique<sdl_video>(create_display);
+}
 } // namespace
 
 static inline cfg_store& active_config()
@@ -161,6 +167,383 @@ Uint32 random(Uint32 x)
 	if (x < 1)
 		return 0;
 	return static_cast<Uint32>( (static_cast<Uint32>(rand())) % x);
+}
+
+void screen::set_fullscreen(bool fullscreen)
+{
+    video_impl_->set_fullscreen(fullscreen);
+}
+
+void screen::clearbuffer()
+{
+    video_impl_->clearbuffer();
+}
+
+void screen::clearbuffer(int x, int y, int w, int h)
+{
+    video_impl_->clearbuffer(x, y, w, h);
+}
+
+void screen::clear_window()
+{
+    video_impl_->clear_window();
+}
+
+std::span<unsigned char> screen::getbuffer()
+{
+    return video_impl_->getbuffer();
+}
+
+void screen::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize)
+{
+    video_impl_->putblack(startx, starty, xsize, ysize);
+}
+
+void screen::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
+                     unsigned char color)
+{
+    video_impl_->fastbox(startx, starty, xsize, ysize, color);
+}
+
+void screen::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
+                     unsigned char color, unsigned char flag)
+{
+    video_impl_->fastbox(startx, starty, xsize, ysize, color, flag);
+}
+
+void screen::fastbox_outline(Sint32 startx, Sint32 starty, Sint32 xsize,
+                             Sint32 ysize, unsigned char color)
+{
+    video_impl_->fastbox_outline(startx, starty, xsize, ysize, color);
+}
+
+void screen::point(Sint32 x, Sint32 y, unsigned char color)
+{
+    video_impl_->point(x, y, color);
+}
+
+void screen::pointb(Sint32 x, Sint32 y, unsigned char color)
+{
+    video_impl_->pointb(x, y, color);
+}
+
+void screen::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha)
+{
+    video_impl_->pointb(x, y, color, alpha);
+}
+
+void screen::pointb(int offset, unsigned char color)
+{
+    video_impl_->pointb(offset, color);
+}
+
+void screen::pointb(Sint32 x, Sint32 y, int r, int g, int b)
+{
+    video_impl_->pointb(x, y, r, g, b);
+}
+
+void screen::hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color)
+{
+    video_impl_->hor_line(x, y, length, color);
+}
+
+void screen::ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color)
+{
+    video_impl_->ver_line(x, y, length, color);
+}
+
+void screen::hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color,
+                      Sint32 tobuffer)
+{
+    video_impl_->hor_line(x, y, length, color, tobuffer);
+}
+
+void screen::hor_line_alpha(Sint32 x, Sint32 y, Sint32 length, unsigned char color,
+                            Uint8 alpha)
+{
+    video_impl_->hor_line_alpha(x, y, length, color, alpha);
+}
+
+void screen::ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color,
+                      Sint32 tobuffer)
+{
+    video_impl_->ver_line(x, y, length, color, tobuffer);
+}
+
+void screen::draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
+                       unsigned char color)
+{
+    video_impl_->draw_line(x1, y1, x2, y2, color);
+}
+
+void screen::do_cycle(Sint32 curmode, Sint32 maxmode)
+{
+    video_impl_->do_cycle(curmode, maxmode);
+}
+
+void screen::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
+                     std::span<const unsigned char> sourcedata)
+{
+    video_impl_->putdata(startx, starty, xsize, ysize, sourcedata);
+}
+
+void screen::putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize,
+                           Sint32 ysize,
+                           std::span<const unsigned char> sourcedata,
+                           unsigned char alpha)
+{
+    video_impl_->putdata_alpha(startx, starty, xsize, ysize, sourcedata, alpha);
+}
+
+void screen::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
+                         std::span<const unsigned char> sourcedata)
+{
+    video_impl_->putdatatext(startx, starty, xsize, ysize, sourcedata);
+}
+
+void screen::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
+                     std::span<const unsigned char> sourcedata,
+                     unsigned char color)
+{
+    video_impl_->putdata(startx, starty, xsize, ysize, sourcedata, color);
+}
+
+void screen::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
+                         std::span<const unsigned char> sourcedata,
+                         unsigned char color)
+{
+    video_impl_->putdatatext(startx, starty, xsize, ysize, sourcedata, color);
+}
+
+void screen::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
+                       Sint32 tilewidth, Sint32 tileheight, Sint32 portstartx,
+                       Sint32 portstarty, Sint32 portendx, Sint32 portendy,
+                       std::span<const unsigned char> sourceptr)
+{
+    video_impl_->putbuffer(tilestartx, tilestarty, tilewidth, tileheight,
+                           portstartx, portstarty, portendx, portendy, sourceptr);
+}
+
+void screen::putbuffer_alpha(Sint32 tilestartx, Sint32 tilestarty,
+                             Sint32 tilewidth, Sint32 tileheight,
+                             Sint32 portstartx, Sint32 portstarty,
+                             Sint32 portendx, Sint32 portendy,
+                             std::span<const unsigned char> sourceptr,
+                             unsigned char alpha)
+{
+    video_impl_->putbuffer_alpha(tilestartx, tilestarty, tilewidth, tileheight,
+                                 portstartx, portstarty, portendx, portendy,
+                                 sourceptr, alpha);
+}
+
+void screen::putbuffer_surface(Sint32 tilestartx, Sint32 tilestarty,
+                               Sint32 tilewidth, Sint32 tileheight,
+                               Sint32 portstartx, Sint32 portstarty,
+                               Sint32 portendx, Sint32 portendy,
+                               void* sourceptr)
+{
+    video_impl_->putbuffer_surface(tilestartx, tilestarty, tilewidth, tileheight,
+                                   portstartx, portstarty, portendx, portendy,
+                                   sourceptr);
+}
+
+void screen::putbuffer(Sint32 tilestartx, Sint32 tilestarty, Sint32 tilewidth,
+                       Sint32 tileheight, Sint32 portstartx, Sint32 portstarty,
+                       Sint32 portendx, Sint32 portendy, SDL_Surface* sourceptr)
+{
+    putbuffer_surface(tilestartx, tilestarty, tilewidth, tileheight, portstartx,
+                      portstarty, portendx, portendy, sourceptr);
+}
+
+void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
+                           Sint32 walkerwidth, Sint32 walkerheight,
+                           Sint32 portstartx, Sint32 portstarty,
+                           Sint32 portendx, Sint32 portendy,
+                           std::span<const unsigned char> sourceptr,
+                           unsigned char teamcolor)
+{
+    video_impl_->walkputbuffer(walkerstartx, walkerstarty, walkerwidth,
+                               walkerheight, portstartx, portstarty, portendx,
+                               portendy, sourceptr, teamcolor);
+}
+
+void screen::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
+                                 Sint32 walkerwidth, Sint32 walkerheight,
+                                 Sint32 portstartx, Sint32 portstarty,
+                                 Sint32 portendx, Sint32 portendy,
+                                 std::span<const unsigned char> sourceptr,
+                                 unsigned char teamcolor)
+{
+    video_impl_->walkputbuffer_flash(walkerstartx, walkerstarty, walkerwidth,
+                                     walkerheight, portstartx, portstarty,
+                                     portendx, portendy, sourceptr, teamcolor);
+}
+
+void screen::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
+                               Sint32 walkerwidth, Sint32 walkerheight,
+                               Sint32 portstartx, Sint32 portstarty,
+                               Sint32 portendx, Sint32 portendy,
+                               std::span<const unsigned char> sourceptr,
+                               unsigned char teamcolor)
+{
+    video_impl_->walkputbuffertext(walkerstartx, walkerstarty, walkerwidth,
+                                   walkerheight, portstartx, portstarty,
+                                   portendx, portendy, sourceptr, teamcolor);
+}
+
+void screen::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
+                                     Sint32 walkerwidth, Sint32 walkerheight,
+                                     Sint32 portstartx, Sint32 portstarty,
+                                     Sint32 portendx, Sint32 portendy,
+                                     std::span<const unsigned char> sourceptr,
+                                     unsigned char teamcolor, Uint8 alpha)
+{
+    video_impl_->walkputbuffertext_alpha(walkerstartx, walkerstarty, walkerwidth,
+                                         walkerheight, portstartx, portstarty,
+                                         portendx, portendy, sourceptr,
+                                         teamcolor, alpha);
+}
+
+void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
+                           Sint32 walkerwidth, Sint32 walkerheight,
+                           Sint32 portstartx, Sint32 portstarty,
+                           Sint32 portendx, Sint32 portendy,
+                           std::span<const unsigned char> sourceptr,
+                           unsigned char teamcolor, unsigned char mode,
+                           Sint32 invisibility, unsigned char outline,
+                           unsigned char shifttype)
+{
+    video_impl_->walkputbuffer(walkerstartx, walkerstarty, walkerwidth,
+                               walkerheight, portstartx, portstarty, portendx,
+                               portendy, sourceptr, teamcolor, mode,
+                               invisibility, outline, shifttype);
+}
+
+void screen::buffer_to_screen(Sint32 viewstartx, Sint32 viewstarty,
+                              Sint32 viewwidth, Sint32 viewheight)
+{
+    video_impl_->buffer_to_screen(viewstartx, viewstarty, viewwidth, viewheight);
+}
+
+void screen::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
+                      unsigned char color, Sint32 filled)
+{
+    video_impl_->draw_box(x1, y1, x2, y2, color, filled);
+}
+
+void screen::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
+                      unsigned char color, Sint32 filled, Sint32 tobuffer)
+{
+    video_impl_->draw_box(x1, y1, x2, y2, color, filled, tobuffer);
+}
+
+void screen::draw_rect_filled(Sint32 x, Sint32 y, Uint32 w, Uint32 h,
+                              unsigned char color, Uint8 alpha)
+{
+    video_impl_->draw_rect_filled(x, y, w, h, color, alpha);
+}
+
+void screen::draw_button(const SDL_Rect& rect, Sint32 border)
+{
+    draw_button(rect.x, rect.y, rect.x + rect.w - 1, rect.y + rect.h - 1, border);
+}
+
+void screen::draw_button_inverted(const SDL_Rect& rect)
+{
+    draw_button_inverted(rect.x, rect.y, rect.w, rect.h);
+}
+
+void screen::draw_button_inverted(Sint32 x, Sint32 y, Uint32 w, Uint32 h)
+{
+    video_impl_->draw_button_inverted(x, y, w, h);
+}
+
+void screen::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border)
+{
+    video_impl_->draw_button(x1, y1, x2, y2, border);
+}
+
+void screen::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
+                         Sint32 border, Sint32 tobuffer)
+{
+    video_impl_->draw_button(x1, y1, x2, y2, border, tobuffer);
+}
+
+void screen::draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
+                                 bool use_border, int base_color, int high_color,
+                                 int shadow_color)
+{
+    video_impl_->draw_button_colored(x1, y1, x2, y2, use_border, base_color,
+                                     high_color, shadow_color);
+}
+
+Sint32 screen::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
+                           const char* header)
+{
+    return video_impl_->draw_dialog(x1, y1, x2, y2, header);
+}
+
+void screen::draw_text_bar(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2)
+{
+    video_impl_->draw_text_bar(x1, y1, x2, y2);
+}
+
+void screen::darken_screen()
+{
+    video_impl_->darken_screen();
+}
+
+void screen::swap()
+{
+    video_impl_->swap();
+}
+
+void screen::get_pixel(int x, int y, Uint8* r, Uint8* g, Uint8* b)
+{
+    video_impl_->get_pixel(x, y, r, g, b);
+}
+
+int screen::get_pixel(int x, int y, int* index)
+{
+    return video_impl_->get_pixel(x, y, index);
+}
+
+int screen::get_pixel(int offset)
+{
+    return video_impl_->get_pixel(offset);
+}
+
+bool screen::save_screenshot()
+{
+    return video_impl_->save_screenshot();
+}
+
+void screen::FadeBetween24(SDL_Surface* surface, const Uint8* from,
+                           const Uint8* to, int amount)
+{
+    fade_between24(surface, from, to, amount);
+}
+
+int screen::FadeBetween(SDL_Surface* old_surface, SDL_Surface* new_surface,
+                        SDL_Surface* dest_surface)
+{
+    return fade_between(old_surface, new_surface, dest_surface);
+}
+
+void screen::fade_between24(void* surface, const Uint8* from, const Uint8* to,
+                            int amount)
+{
+    video_impl_->fade_between24(surface, from, to, amount);
+}
+
+int screen::fade_between(void* old_surface, void* new_surface, void* dest_surface)
+{
+    return video_impl_->fade_between(old_surface, new_surface, dest_surface);
+}
+
+int screen::fadeblack(bool fade_in)
+{
+    return video_impl_->fadeblack(fade_in);
 }
 
 // ************************************************************
@@ -235,9 +618,10 @@ void screen::init_common(short howmany, bool has_display)
 		buffer_to_screen(0, 0, 320, 200);
 	}
 
-    soundp = std::make_unique<soundob>();
-    if(!active_config().is_on("sound", "sound"))
+    soundp = create_soundob(false);
+    if (!active_config().is_on("sound", "sound")) {
         soundp->set_sound(1);
+    }
 
 	if (has_display) {
 		load_text.write_xy(load_left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
@@ -258,8 +642,18 @@ void screen::init_common(short howmany, bool has_display)
 	sync_world_from_save_data();
 }
 
-screen::screen(GameWorld& world, short howmany)
+screen::screen(GameWorld& world, std::unique_ptr<video> video_impl, short howmany,
+               bool has_display)
     : video()
+    , video_impl_(std::move(video_impl))
+    , ourpalette(video_impl_->ourpalette_ref())
+    , redpalette(video_impl_->redpalette_ref())
+    , bluepalette(video_impl_->bluepalette_ref())
+    , dospalette(video_impl_->dospalette_ref())
+    , videobuffer(video_impl_->videobuffer_ref())
+    , cyclemode(video_impl_->cyclemode_ref())
+    , text_normal(video_impl_->text_normal_ref())
+    , text_big(video_impl_->text_big_ref())
     , world_(world)
     , control_hp(world_.control_hp)
     , end(world_.end)
@@ -270,22 +664,17 @@ screen::screen(GameWorld& world, short howmany)
     , myloader(nullptr)
     , level_runtime_data_(1, false, &sdl_level_data_hooks(), &level_visuals_)
 {
-	init_common(howmany, true);
+    init_common(howmany, has_display);
+}
+
+screen::screen(GameWorld& world, short howmany)
+    : screen(world, make_default_video(true), howmany, true)
+{
 }
 
 screen::screen(GameWorld& world, short howmany, bool create_display)
-    : video(create_display)
-    , world_(world)
-    , control_hp(world_.control_hp)
-    , end(world_.end)
-    , timer_wait(world_.timer_wait)
-    , level_done(world_.level_done)
-    , retry(world_.retry)
-    , enemy_freeze(world_.enemy_freeze)
-    , myloader(nullptr)
-    , level_runtime_data_(1, false, &sdl_level_data_hooks(), &level_visuals_)
+    : screen(world, make_default_video(create_display), howmany, create_display)
 {
-	init_common(howmany, create_display);
 }
 
 screen::~screen()

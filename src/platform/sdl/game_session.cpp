@@ -16,6 +16,7 @@
 #include <openglad/runtime/level_editor_state.h>
 #include <openglad/interface/render/pixien.h>  // complete type for PickerState's unique_ptr<pixieN>
 #include <openglad/interface/screen.h> // screen class (pulls in base.h → myscreen macro)
+#include <openglad/platform/video_sdl.h>
 #include <openglad/interface/render/view.h>    // options class (defines theprefs macro)
 #include <openglad/interface/render/sai2x.h>   // E_Screen
 #include <openglad/platform/game_context.h>
@@ -99,7 +100,11 @@ GameSession::GameSession(const Config& session_cfg)
     }
 
     if (cfg_.allocate_screen) {
-        screen_owner_ = std::make_unique<::screen>(world_owner_, cfg_.numviews, cfg_.create_display);
+        screen_owner_ = std::make_unique<::screen>(
+            world_owner_,
+            std::make_unique<sdl_video>(cfg_.create_display),
+            cfg_.numviews,
+            cfg_.create_display);
         myscreen_ = screen_owner_.get();
         game_.save = &myscreen_->save_data;
         myscreen_->level_runtime_data().set_sim_context(

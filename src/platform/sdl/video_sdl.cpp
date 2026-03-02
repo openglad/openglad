@@ -16,7 +16,7 @@
  */
 // Video object code
 
-#include <openglad/interface/render/video.h>
+#include <openglad/platform/video_sdl.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/sai2x.h>
 #include <openglad/resources/gparser.h>
@@ -52,7 +52,7 @@ static cfg_store& active_config()
 
 std::unique_ptr<Screen> E_Screen;
 
-static void video_init_palettes(video& v)
+static void video_init_palettes(sdl_video& v)
 {
 	load_and_set_palette("our.pal", v.ourpalette);
 	load_palette("our.pal", v.redpalette);
@@ -104,7 +104,7 @@ static void video_create_display()
 	TRACE("init", "video initialized: %dx%d", w, h);
 }
 
-video::video()
+sdl_video::sdl_video()
     : text_normal(TEXT_1), text_big(TEXT_BIG)
 {
 	fullscreen = 0;
@@ -115,7 +115,7 @@ video::video()
 	video_create_display();
 }
 
-video::video(bool create_display)
+sdl_video::sdl_video(bool create_display)
     : text_normal(TEXT_1), text_big(TEXT_BIG)
 {
 	fullscreen = 0;
@@ -128,7 +128,7 @@ video::video(bool create_display)
 	}
 }
 
-video::~video()
+sdl_video::~sdl_video()
 {
 	// Only the display-owning video instance tears down SDL.
 	// IMPORTANT: All non-owning video instances (sub-sessions with
@@ -141,7 +141,7 @@ video::~video()
 	}
 }
 
-void video::set_fullscreen(bool enable_fullscreen)
+void sdl_video::set_fullscreen(bool enable_fullscreen)
 {
     (void)enable_fullscreen;
     // FIXME: A bug in my copy of SDL is making FULLSCREEN -> WINDOWED -> FULLSCREEN take up a partial portion of the screen and ruin the game.
@@ -162,27 +162,27 @@ void video::set_fullscreen(bool enable_fullscreen)
     update_overscan_setting();*/
 }
 
-std::span<unsigned char> video::getbuffer()
+std::span<unsigned char> sdl_video::getbuffer()
 {
 	return videobuffer;
 }
 
-void video::clearbuffer()
+void sdl_video::clearbuffer()
 {
     E_Screen->clear();
 }
 
-void video::clearbuffer(int x, int y, int w, int h)
+void sdl_video::clearbuffer(int x, int y, int w, int h)
 {
     E_Screen->clear(x, y, w, h);
 }
 
-void video::clear_window()
+void sdl_video::clear_window()
 {
     E_Screen->clear_window();
 }
 
-void video::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled)
+void sdl_video::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled)
 {
 	Sint32 xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
 	Sint32 ylength = y2 - y1 + 1;
@@ -202,7 +202,7 @@ void video::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char c
 	}
 }
 
-void video::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled, Sint32 tobuffer)
+void sdl_video::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled, Sint32 tobuffer)
 {
 	Sint32 xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
 	Sint32 ylength = y2 - y1 + 1;
@@ -222,30 +222,30 @@ void video::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char c
 	}
 }
 
-void video::draw_rect_filled(Sint32 x, Sint32 y, Uint32 w, Uint32 h, unsigned char color, Uint8 alpha)
+void sdl_video::draw_rect_filled(Sint32 x, Sint32 y, Uint32 w, Uint32 h, unsigned char color, Uint8 alpha)
 {
     for (Uint32 i = 0; i < h; i++)
         hor_line_alpha(x, y+i, w, color, alpha);
 }
 
 
-void video::draw_button(const SDL_Rect& rect, Sint32 border)
+void sdl_video::draw_button(const SDL_Rect& rect, Sint32 border)
 {
     draw_button(rect.x, rect.y, rect.x + rect.w - 1, rect.y + rect.h - 1, border);
 }
 
-void video::draw_button_inverted(const SDL_Rect& rect)
+void sdl_video::draw_button_inverted(const SDL_Rect& rect)
 {
     draw_text_bar(rect.x, rect.y, rect.x + rect.w - 1, rect.y + rect.h - 1);
 }
 
-void video::draw_button_inverted(Sint32 x, Sint32 y, Uint32 w, Uint32 h)
+void sdl_video::draw_button_inverted(Sint32 x, Sint32 y, Uint32 w, Uint32 h)
 {
     draw_text_bar(x, y, x + w - 1, y + h - 1);
 }
 
 
-void video::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border)
+void sdl_video::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border)
 {
 	Sint32 xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
 	Sint32 ylength = y2 - y1 + 1;
@@ -266,7 +266,7 @@ void video::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 borde
 	}
 }
 
-void video::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border, Sint32 tobuffer)
+void sdl_video::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border, Sint32 tobuffer)
 {
 	Sint32 xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
 	Sint32 ylength = y2 - y1 + 1;
@@ -287,7 +287,7 @@ void video::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 borde
 	}
 }
 
-void video::draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, bool use_border, int base_color, int high_color, int shadow_color)
+void sdl_video::draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, bool use_border, int base_color, int high_color, int shadow_color)
 {
 	Sint32 xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
 	Sint32 ylength = y2 - y1 + 1;
@@ -319,7 +319,7 @@ void video::draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, bool
 
 // Draws an empty but headed dialog box, returns the edge at
 // which to draw text ... does NOT display to screen.
-Sint32 video::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
+Sint32 sdl_video::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
                         const char *header)
 {
 	text& dialogtext = text_big; // large text
@@ -340,7 +340,7 @@ Sint32 video::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
 
 }
 
-void video::draw_text_bar(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2)
+void sdl_video::draw_text_bar(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2)
 {
 	Sint32 xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
 	Sint32 ylength = y2 - y1 + 1;
@@ -356,7 +356,7 @@ void video::draw_text_bar(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2)
 
 }
 
-void video::darken_screen()
+void sdl_video::darken_screen()
 {
     for(int i = 0; i < 320; i++)
     {
@@ -369,7 +369,7 @@ void video::darken_screen()
 
 
 
-void video::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize)
+void sdl_video::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize)
 {
 	Sint32 curx, cury;
 	Sint32 curpoint;
@@ -389,7 +389,7 @@ void video::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize)
 // The following version, with an extra parameter, writes to
 // the buffer instead.  Note that it does NOT update (to screen)
 // the area which it changes..
-void video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color)
+void sdl_video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color)
 {
 	//buffers: we should always draw into the back buffer
 	fastbox(startx,starty,xsize,ysize,color,1);
@@ -407,7 +407,7 @@ Uint32 get_Uint32_color(unsigned char color)
 }
 
 // This is the version which writes to the buffer..
-void video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char flag)
+void sdl_video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char flag)
 {
 	SDL_Rect rect;
 	int r,g,b;
@@ -435,14 +435,14 @@ void video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, un
 	                                                 static_cast<Uint8>(b * 4)));
 }
 
-void video::fastbox_outline(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color)
+void sdl_video::fastbox_outline(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color)
 {
     draw_box(startx, starty, startx + xsize, starty + ysize, color, 0);
 }
 
 // Place a point on the screen
 //buffers: PORT: this point func is equivalent to drawing directly to screen
-void video::point(Sint32 x, Sint32 y, unsigned char color)
+void sdl_video::point(Sint32 x, Sint32 y, unsigned char color)
 {
 	pointb(x,y,color);
 	//buffers: PORT: SDL_UpdateRect(screen,x,y,1,1);
@@ -486,7 +486,7 @@ void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
 
 //buffers: PORT: this draws a point in the offscreen buffer
 //buffers: PORT: used for all the funcs that draw stuff in the offscreen buf
-void video::pointb(Sint32 x, Sint32 y, unsigned char color)
+void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color)
 {
 	int r,g,b;
 	int c;
@@ -608,7 +608,7 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
     }
 }
 
-void video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha)
+void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha)
 {
 	int r,g,b;
 	int c;
@@ -628,7 +628,7 @@ void video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha)
 }
 
 //buffers: this sets the color using raw RGB values. no *4...
-void video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
+void sdl_video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
 {
 	SDL_Rect  rect;
 	int c;
@@ -645,7 +645,7 @@ void video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
 }
 
 //buffers: draw color using an offset
-void video::pointb(int offset, unsigned char color)
+void sdl_video::pointb(int offset, unsigned char color)
 {
 	int x, y;
 
@@ -657,12 +657,12 @@ void video::pointb(int offset, unsigned char color)
 
 // Place a horizontal line on the screen.
 //buffers: this func originally drew directly to the screen
-void video::hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color)
+void sdl_video::hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color)
 {
 	hor_line(x,y,length,color,1);
 }
 
-void video::hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer)
+void sdl_video::hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer)
 {
 	Sint32 i;
 
@@ -676,7 +676,7 @@ void video::hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sin
 		pointb(x+i,y,color);
 }
 
-void video::hor_line_alpha(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Uint8 alpha)
+void sdl_video::hor_line_alpha(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Uint8 alpha)
 {
 	Sint32 i;
 
@@ -687,13 +687,13 @@ void video::hor_line_alpha(Sint32 x, Sint32 y, Sint32 length, unsigned char colo
 
 // Place a vertical line on the screen.
 // buffers: this func originally drew directly to the screen
-void video::ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color)
+void sdl_video::ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color)
 {
 	//buffers: we always want to draw to the back buffer now
 	ver_line(x,y,length,color,1);
 }
 
-void video::ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer)
+void sdl_video::ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer)
 {
 	Sint32 i;
 
@@ -708,7 +708,7 @@ void video::ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sin
 }
 
 // From SPriG
-void video::draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color)
+void sdl_video::draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color)
 {
     SDL_Surface* Surface = E_Screen->render;
     if(Surface == nullptr)
@@ -770,11 +770,11 @@ void video::draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char 
 }
 
 //
-//video::do_cycle
+//sdl_video::do_cycle
 //cycle the palette for flame and water motion
 // query and set functions are located in pal32.cpp
 //buffers: PORT: added & to the last 3 args of the query_palette_reg funcs
-void video::do_cycle(Sint32 curmode, Sint32 maxmode)
+void sdl_video::do_cycle(Sint32 curmode, Sint32 maxmode)
 {
 	Sint32 i;
 	//buffers: PORT: changed these two arrays to ints
@@ -809,10 +809,10 @@ void video::do_cycle(Sint32 curmode, Sint32 maxmode)
 	}
 }
 
-//video::putdata
+//sdl_video::putdata
 //draws objects to screen, respecting transparency
 //used by text
-void video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata)
+void sdl_video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata)
 {
 	Sint32 curx, cury;
 	unsigned char curcolor;
@@ -832,7 +832,7 @@ void video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, st
 }
 
 // putdata with alpha blending
-void video::putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char alpha)
+void sdl_video::putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char alpha)
 {
 	Sint32 curx, cury;
 	unsigned char curcolor;
@@ -850,7 +850,7 @@ void video::putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysi
 }
 
 
-void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata)
+void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata)
 {
         Sint32 curx, cury;
         unsigned char curcolor;
@@ -882,10 +882,10 @@ void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
     	}
 }
 
-//video::putdata
+//sdl_video::putdata
 //draws objects to screen, respecting transparency
 //used by text
-void video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char color)
+void sdl_video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char color)
 {
 	Sint32 curx, cury;
 	unsigned char curcolor;
@@ -907,7 +907,7 @@ void video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, st
 		}
 }
 
-void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char color)
+void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char color)
 {
         Sint32 curx, cury;
         unsigned char curcolor;
@@ -940,7 +940,7 @@ void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 		}
 }
 
-// video::putbuffer
+// sdl_video::putbuffer
 // used to put tiles into the buffer as we compose the screen
 // tilestartx,tilestarty are the ul corner of the tiles position on
 //    screen, which may be negative since we have tiles offscreen
@@ -949,7 +949,7 @@ void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 // portstartx portstarty portendx porthendy allow us to clip to
 //    a rectangular window on screen, ie a viewscreen
 // sourceptr is a pointer to the video data to be copied into the buffer
-void video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
+void sdl_video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
                       Sint32 tilewidth, Sint32 tileheight,
                       Sint32 portstartx, Sint32 portstarty,
                       Sint32 portendx, Sint32 portendy,
@@ -1005,7 +1005,7 @@ void video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
 	}
 }
 
-void video::putbuffer_alpha(Sint32 tilestartx, Sint32 tilestarty,
+void sdl_video::putbuffer_alpha(Sint32 tilestartx, Sint32 tilestarty,
                       Sint32 tilewidth, Sint32 tileheight,
                       Sint32 portstartx, Sint32 portstarty,
                       Sint32 portendx, Sint32 portendy,
@@ -1062,7 +1062,7 @@ void video::putbuffer_alpha(Sint32 tilestartx, Sint32 tilestarty,
 }
 
 //buffers: this is the SDL_Surface accelerated version of putbuffer
-void video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
+void sdl_video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
                       Sint32 tilewidth, Sint32 tileheight,
                       Sint32 portstartx, Sint32 portstarty,
                       Sint32 portendx, Sint32 portendy,
@@ -1113,6 +1113,17 @@ void video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
 	SDL_BlitSurface(sourceptr,&temp,E_Screen->render,&rect);
 }
 
+void sdl_video::putbuffer_surface(Sint32 tilestartx, Sint32 tilestarty,
+                                  Sint32 tilewidth, Sint32 tileheight,
+                                  Sint32 portstartx, Sint32 portstarty,
+                                  Sint32 portendx, Sint32 portendy,
+                                  void* sourceptr)
+{
+    putbuffer(tilestartx, tilestarty, tilewidth, tileheight, portstartx,
+              portstarty, portendx, portendy,
+              static_cast<SDL_Surface*>(sourceptr));
+}
+
 
 // walkputbuffer draws active guys to the screen (basically all non-tiles
 // c-only since it isn't used that often (despite what you might think)
@@ -1121,7 +1132,7 @@ void video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
 // portstartx,portstarty,portendx,portendy define a clipping rectangle
 // sourceptr holds the walker data
 // teamcolor is used for recoloring the guys to the appropriate team
-void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
+void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
                           Sint32 portendx, Sint32 portendy,
@@ -1189,7 +1200,7 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 	}
 }
 
-void video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
+void sdl_video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
                           Sint32 portendx, Sint32 portendy,
@@ -1281,7 +1292,7 @@ void video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
 	}
 }
 
-void video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
+void sdl_video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
                           Sint32 portendx, Sint32 portendy,
@@ -1360,7 +1371,7 @@ void video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
         }
 }
 
-void video::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
+void sdl_video::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
                           Sint32 portendx, Sint32 portendy,
@@ -1427,7 +1438,7 @@ void video::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
 }
 
 
-void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
+void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
                           Sint32 portendx, Sint32 portendy,
@@ -1752,7 +1763,7 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 	} //end switch of mode
 }
 
-// video::buffer_to_screen
+// sdl_video::buffer_to_screen
 // copies all or a portion of the video buffer to the screen
 // viewstartx,viewstarty,viewwidth,viewheight define a rectangle which
 //     can be used to draw only a portion of the buffer to screen,
@@ -1761,20 +1772,20 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 // a multiple of four WIDE, or it will NOT draw correctly
 // This is designed this way with the assumption that screen draws are
 // the slowest thing we can possible do.
-void video::buffer_to_screen(Sint32 viewstartx,Sint32 viewstarty,
+void sdl_video::buffer_to_screen(Sint32 viewstartx,Sint32 viewstarty,
                              Sint32 viewwidth, Sint32 viewheight)
 {
 	E_Screen->swap(viewstartx,viewstarty,viewwidth,viewheight);
 }
 
 //buffers: like buffer_to_screen but automaticaly swaps the entire screen
-void video::swap(void)
+void sdl_video::swap(void)
 {
 	buffer_to_screen(0,0,320,200);
 }
 
 //buffers: get pixel's RGB values if you have XY
-void video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
+void sdl_video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
 {
 	Uint32 col = 0;
 	Uint8 q=0,w=0,e=0;
@@ -1792,7 +1803,7 @@ void video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
 }
 
 //buffers: get pixel index if you have XY.
-int video::get_pixel(int x, int y, int *index)
+int sdl_video::get_pixel(int x, int y, int *index)
 {
 	Uint8 r,g,b;
 	int tr,tg,tb;
@@ -1818,7 +1829,7 @@ int video::get_pixel(int x, int y, int *index)
 }
 
 //buffers: get pixel index if you have an buffer offset
-int video::get_pixel(int offset)
+int sdl_video::get_pixel(int offset)
 {
 	int x,y,t;
 
@@ -1832,7 +1843,7 @@ int video::get_pixel(int offset)
 #include "../util/savepng.h"
 #endif
 
-bool video::save_screenshot()
+bool sdl_video::save_screenshot()
 {
     SDL_Surface* surf;
     
@@ -1883,7 +1894,7 @@ bool video::save_screenshot()
 // ***************************************************************************
 // Fading routines! Thanks, Erik!
 // ****************************************************************************
-void video::FadeBetween24(
+void sdl_video::FadeBetween24(
 //Show transition between two screens at 'amount' between them.
 //
 //'pSurface' is the surface you want to apply the fade to,
@@ -1919,7 +1930,7 @@ void video::FadeBetween24(
 }
 
 //*****************************************************************************
-int video::FadeBetween(
+int sdl_video::FadeBetween(
 //Fade between two screens.
 //Time effect to be independent of machine speed.
 	SDL_Surface* pOldSurface,	//(in)	Surface that contains starting image.
@@ -2058,7 +2069,21 @@ int video::FadeBetween(
 	return i;
 }
 
-int video::fadeblack(bool fade_in)
+void sdl_video::fade_between24(void* surface, const Uint8* from, const Uint8* to,
+                               int amount)
+{
+    FadeBetween24(static_cast<SDL_Surface*>(surface), from, to, amount);
+}
+
+int sdl_video::fade_between(void* old_surface, void* new_surface,
+                            void* dest_surface)
+{
+    return FadeBetween(static_cast<SDL_Surface*>(old_surface),
+                       static_cast<SDL_Surface*>(new_surface),
+                       static_cast<SDL_Surface*>(dest_surface));
+}
+
+int sdl_video::fadeblack(bool fade_in)
 {
 	SDL_Surface* black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
     if (!black)
