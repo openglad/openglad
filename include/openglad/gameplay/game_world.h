@@ -143,6 +143,7 @@ public:
     short my_team = 0;
     short allied_mode = 0;
     short current_scenario = 0;
+    int guy_id_counter = 0;
     std::set<int> completed_levels;
     std::function<std::unique_ptr<walker>(Order, std::int32_t)> entity_factory;
     std::function<const PixieData*(walker&, Order, std::int32_t)> entity_configurator;

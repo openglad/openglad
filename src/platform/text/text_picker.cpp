@@ -298,6 +298,10 @@ private:
         switch (item.command) {
         case PickerMenuCommand::SetDifficulty:
             og::runtime::current_session->current_difficulty_ = cycle_difficulty(og::runtime::current_session->current_difficulty_);
+            if (og::runtime::current_session->game_.world != nullptr) {
+                og::runtime::current_session->game_.world->difficulty =
+                    static_cast<short>(difficulty_percent(og::runtime::current_session->current_difficulty_));
+            }
             std::printf("Difficulty set to %s.\n",
                 kDifficultyNames[og::runtime::current_session->current_difficulty_]);
             break;

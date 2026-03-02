@@ -19,7 +19,7 @@
 // Definition of SCREEN class
 
 #include <openglad/legacy/base.h> // NUM_FAMILIES/NUM_SPECIALS + legacy globals (transitional)
-#include <openglad/platform/sound.h>
+#include <openglad/runtime/sound.h>
 #include <openglad/interface/render/video.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/resources/gloader.h>

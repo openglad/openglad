@@ -108,6 +108,7 @@ DerivedStats compute_derived_stats(const guy& g,
 
 // Cycle to the next difficulty setting. Returns (current + 1) % DIFFICULTY_SETTINGS.
 int cycle_difficulty(int current);
+int difficulty_percent(int difficulty);
 
 // --- Allied mode ---
 

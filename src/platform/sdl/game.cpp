@@ -79,6 +79,8 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	// LevelRuntimeData::load() clears GameWorld transient/persistent gameplay fields.
 	// Reapply SaveData-owned state before simulation begins.
 	screenp->sync_world_from_save_data();
+    screenp->world().difficulty =
+        static_cast<short>(og::ui::difficulty_percent(og::runtime::current_session->current_difficulty_));
 
 	TRACE("game", "level loaded: scen%d", screenp->world().id);
 	for(auto& uptr : screenp->oblist())

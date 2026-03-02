@@ -31,14 +31,19 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include <openglad/platform/game_session.h> // current_difficulty macro
 #include <cstring>
 
-// From picker
-extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
-// current_difficulty lives in GameSession — access via current_session->current_difficulty_.
-
 // RNG now comes from current_game->world->rng_.
+namespace
+{
+std::uint32_t query_difficulty_percent()
+{
+    if (current_game == nullptr || current_game->world == nullptr)
+        return 100u;
+    const int difficulty = current_game->world->difficulty;
+    return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
+}
+} // namespace
 
 living::living(const PixieData& data)
     : walker(data)
@@ -523,7 +528,7 @@ bool living::check_special()
 void living::set_difficulty(std::uint32_t whatlevel)
 {
 	//  std::int32_t calcdelay,calcrate;  // apparently not used anymore
-	std::uint32_t dif1 = difficulty_level[og::runtime::current_session->current_difficulty_];
+	std::uint32_t dif1 = query_difficulty_percent();
 	const float levmult = static_cast<float>(whatlevel) * static_cast<float>(whatlevel);
 	const float level_f = static_cast<float>(whatlevel);
 

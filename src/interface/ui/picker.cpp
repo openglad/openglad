@@ -31,7 +31,7 @@
 #include <openglad/core/util.h>
 #include <openglad/resources/io.h>
 #include <openglad/interface/screen.h>
-#include <openglad/platform/game_session.h>
+#include <openglad/runtime/game_session.h>
 #include <openglad/runtime/picker_ui_state.h>
 
 #include "SDL.h"
@@ -41,7 +41,7 @@
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_state.h>
-#include <openglad/platform/screen_lifecycle.h>
+#include <openglad/runtime/screen_lifecycle.h>
 #include <array>
 #include <cstddef>
 #include <cstring>
@@ -139,10 +139,6 @@ void picker_testing_mark_game_end()
 #endif
 
 // allowable_guys moved to og::ui::kAllowableGuys in picker_common.h
-
-// difficulty_level[] now shared via picker_common.cpp
-// difficulty_level[] now defined in picker_common.cpp (shared between SDL and headless)
-extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
 
 enum class PickerInterceptScope
 {
@@ -1425,6 +1421,12 @@ int matherr(struct exception *problem)
 Sint32 set_difficulty()
 {
    og::runtime::current_session->current_difficulty_ = og::ui::cycle_difficulty(og::runtime::current_session->current_difficulty_);
+   const auto percent =
+       static_cast<short>(og::ui::difficulty_percent(og::runtime::current_session->current_difficulty_));
+   if (og::runtime::current_session->game_.world != nullptr)
+       og::runtime::current_session->game_.world->difficulty = percent;
+   if (og::runtime::current_session->myscreen_ != nullptr)
+       og::runtime::current_session->myscreen_->world().difficulty = percent;
    std::string msg = og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_);
    #ifndef DISABLE_MULTIPLAYER
    og::runtime::current_session->allbuttons_[6]->label = msg;

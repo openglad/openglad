@@ -1,3 +1,4 @@
 #pragma once
 
-#include <openglad/gameplay/statistics.h>
+// Deprecated compatibility header.
+// Statistics moved to <openglad/gameplay/statistics.h>.

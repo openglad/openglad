@@ -11,11 +11,10 @@
 #include <functional>
 #include <list>
 #include <memory>
-#include <openglad/interface/input_action.h>
+#include <openglad/gameplay/input_state.h>
 
 class walker;
 class GameWorld;
-struct PlayerInput;
 
 namespace og::sim {
 class SimEventLog;

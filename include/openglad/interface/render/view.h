@@ -139,6 +139,3 @@ class viewscreen
 		short size;
 		unsigned char  *bmp,  *oldbmp;
 };
-
-// Access session prefs via og::runtime::current_session->theprefs_ directly.
-#include <openglad/platform/game_session.h>

@@ -15,8 +15,8 @@
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <openglad/interface/input_state.h>
-#include <openglad/gameplay/irandom.h>
+#include <openglad/gameplay/input_state.h>
+#include <openglad/core/irandom.h>
 
 namespace og::sim { class SimEventLog; }
 

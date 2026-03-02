@@ -37,7 +37,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/render/walker_draw.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/runtime/game_context.h>
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include <string>

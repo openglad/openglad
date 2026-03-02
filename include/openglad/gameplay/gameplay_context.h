@@ -1,5 +1,6 @@
 #pragma once
 
+#include <openglad/core/irandom.h>
 #include <openglad/gameplay/game_world.h>
 
 #include <memory>
@@ -47,3 +48,8 @@ struct GameplayContext
 extern thread_local GameplayContext* current_game;
 
 GameplayPathfindingState* ensure_pathfinding_state(GameplayContext& context);
+
+// Transitional hook for gameplay code that still needs RNG access outside an
+// installed GameplayContext (primarily legacy/test paths).
+IRandom* gameplay_rng_override();
+void set_gameplay_rng_override(IRandom** rng_ref);

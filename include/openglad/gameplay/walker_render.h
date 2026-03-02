@@ -1,3 +1,3 @@
 #pragma once
 
-#include <openglad/interface/walker_render.h>
+#include <openglad/runtime/walker_render.h>

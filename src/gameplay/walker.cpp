@@ -37,7 +37,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
-#include <openglad/platform/game_session.h> // current_difficulty macro
 // pixieN include not needed here; render bridge is in walker_render_bridge.cpp
 #include <algorithm>
 #include <format>
@@ -56,8 +55,6 @@
 
 // From picker.cpp
 extern std::int32_t calculate_level(std::uint32_t temp_exp);
-extern const std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
-// current_difficulty lives in GameSession — access via current_session->current_difficulty_.
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
@@ -80,6 +77,14 @@ short query_allied_mode()
     if (current_game == nullptr || current_game->world == nullptr)
         return 0;
     return current_game->world->allied_mode;
+}
+
+std::uint32_t query_difficulty_percent()
+{
+    if (current_game == nullptr || current_game->world == nullptr)
+        return 100u;
+    const int difficulty = current_game->world->difficulty;
+    return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
 }
 } // namespace
 
@@ -1447,7 +1452,7 @@ void walker::set_difficulty(std::uint32_t whatlevel)
 {
 	std::uint32_t temp, dif1;
 
-	dif1 = difficulty_level[og::runtime::current_session->current_difficulty_];
+	dif1 = query_difficulty_percent();
 
 	switch (order)
 	{

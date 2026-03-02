@@ -27,7 +27,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
-#include <openglad/platform/game_context.h>
+#include <openglad/runtime/game_context.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #define YIELD_SLEEP(ms) emscripten_sleep(ms)

@@ -17,12 +17,19 @@
 // Map smoother, for use in the scenario editor ..
 
 #include <openglad/gameplay/smooth.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/legacy/base.h>
-#include <openglad/platform/game_context.h>
 #include <array>
+#include <cstdlib>
 
 static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
+    if (max_exclusive == 0)
+        return 0;
+    if (IRandom* override_rng = gameplay_rng_override())
+        return override_rng->next(max_exclusive);
+    if (current_game != nullptr && current_game->world != nullptr)
+        return current_game->world->rng_.next(max_exclusive);
+    return static_cast<Uint32>(std::rand()) % max_exclusive;
 }
 
 // Lookup table: PIX_* value → terrain genre TYPE_*

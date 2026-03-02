@@ -16,7 +16,6 @@
  */
 
 #include <openglad/resources/io.h>
-#include <openglad/platform/game_context.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/gameplay/game_world.h>

@@ -21,7 +21,6 @@
 #include <cmath>
 #include <string>
 #include <openglad/gameplay/obmap.h>
-#include <openglad/resources/gloader.h>
 #include <openglad/gameplay/treasure.h>
 #include <openglad/gameplay/treasure_family_descriptor.h>
 #include <openglad/gameplay/family_registries.h>

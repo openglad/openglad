@@ -396,6 +396,13 @@ int cycle_difficulty(int current)
     return (current + 1) % DIFFICULTY_SETTINGS;
 }
 
+int difficulty_percent(int difficulty)
+{
+    const int normalized =
+        ((difficulty % DIFFICULTY_SETTINGS) + DIFFICULTY_SETTINGS) % DIFFICULTY_SETTINGS;
+    return static_cast<int>(difficulty_level[normalized]);
+}
+
 // --- Allied mode ---
 
 void toggle_allied_mode(SaveData& save)

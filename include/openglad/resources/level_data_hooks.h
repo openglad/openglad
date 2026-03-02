@@ -7,7 +7,6 @@
  */
 #pragma once
 
-#include <openglad/interface/level_render.h>
 #include <functional>
 #include <memory>
 
@@ -16,6 +15,7 @@ class GameWorld;
 class walker;
 class screen;
 class PixieData;
+class LevelRender;
 struct EntityFactory;
 
 struct LevelDataHooks

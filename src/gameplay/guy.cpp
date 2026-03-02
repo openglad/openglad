@@ -19,11 +19,11 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
-#include <openglad/platform/game_session.h>
 #include <cmath>
 #include <cstring>
 #define RAISE 1.85  // please also change in picker.cpp
@@ -32,6 +32,18 @@
 
 
 const char* get_family_string(std::int32_t family);
+
+namespace
+{
+int next_guy_id()
+{
+    if (current_game != nullptr && current_game->world != nullptr)
+        return current_game->world->guy_id_counter++;
+
+    static int fallback_id_counter = 0;
+    return fallback_id_counter++;
+}
+} // namespace
 
 int MAX(int a,int b)
 {
@@ -63,7 +75,7 @@ guy::guy()
     scen_shots = 0;
     scen_hits = 0;
 	
-	id = og::runtime::current_session->guy_id_counter_++;
+	id = next_guy_id();
 }
 
 // Set defaults for various types
@@ -107,7 +119,7 @@ guy::guy(int whatfamily)
         name = "BEAST";
     }
 	
-	id = og::runtime::current_session->guy_id_counter_++;
+	id = next_guy_id();
 }
 
 

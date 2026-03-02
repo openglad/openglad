@@ -7,6 +7,7 @@
  */
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>
 
 // The existing global random() function (defined in screen.cpp or text_client main)
@@ -53,4 +54,5 @@ GameContext& ctx()
 void set_global_context(GameContext* context)
 {
     s_test_context_override = context;
+    set_gameplay_rng_override(context ? &context->rng : nullptr);
 }

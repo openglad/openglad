@@ -745,32 +745,16 @@ if(NOT EMSCRIPTEN)
     add_library(og_platform STATIC ${OG_PLATFORM_SOURCES})
     configure_openglad_library(og_platform)
 
+    # Monolithic aggregate used by runtime executables without linker groups.
+    add_library(og_game_full STATIC ${GAME_SOURCES_NO_MAIN})
+    configure_openglad_library(og_game_full)
+    target_include_directories(og_game_full PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
+    target_link_libraries(og_game_full PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
+    add_dependencies(og_game_full check_vendor_leaks)
+
     # --- aggregate target (non-main code) ---
     add_library(og_game INTERFACE)
-    if((CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang") AND NOT APPLE)
-        # Static libs have cyclic references today; group-rescan avoids link-order
-        # dependence while we untangle module direction rules.
-        # Apple ld64 does not support --start-group/--end-group (and rescans by default).
-        target_link_libraries(og_game INTERFACE "-Wl,--start-group")
-    endif()
-    target_link_libraries(og_game INTERFACE
-        og_core
-        og_sim
-        og_data
-        og_entities
-        og_io
-        og_runtime
-        og_render
-        og_input
-        og_ui
-        og_platform
-        ${OG_EXTERNAL_LIBS}
-    )
-    if((CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang") AND NOT APPLE)
-        target_link_libraries(og_game INTERFACE "-Wl,--end-group")
-    endif()
-    target_link_libraries(og_game INTERFACE og_runtime_deps)
-    add_dependencies(og_game check_vendor_leaks)
+    target_link_libraries(og_game INTERFACE og_game_full)
 
     # Stage runtime assets into the build tree so tests and local runs do not
     # depend on pre-existing user data.
