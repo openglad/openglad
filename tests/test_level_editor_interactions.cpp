@@ -1,6 +1,6 @@
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include <openglad/runtime/level_editor_state.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/platform/game_session.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 

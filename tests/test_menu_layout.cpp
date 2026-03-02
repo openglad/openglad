@@ -1,4 +1,4 @@
-#include <openglad/input/button.h>
+#include <openglad/interface/button.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 

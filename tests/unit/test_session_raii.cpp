@@ -1,8 +1,8 @@
-#include <openglad/runtime/game_session.h>
+#include <openglad/platform/game_session.h>
 
-#include <openglad/data/gparser.h> // cfg
+#include <openglad/resources/gparser.h> // cfg
 #include <openglad/legacy/base.h> // myscreen
-#include <openglad/render/view.h> // theprefs
+#include <openglad/interface/render/view.h> // theprefs
 
 #include <algorithm>
 #include <array>

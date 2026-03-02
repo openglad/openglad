@@ -1,21 +1,21 @@
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/living.h>
-#include <openglad/core/stats.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/core/constants.h>
 #include "unit/unit.h"
-#include <openglad/entities/guy.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/runtime/level_runtime_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
-#include <openglad/entities/treasure.h>
+#include <openglad/gameplay/treasure.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/platform/game_context.h>
 #include "test_gameplay_context_scope.h"
 
 // --- From test_family_cleric_coverage_push.cpp ---

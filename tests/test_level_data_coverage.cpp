@@ -1,13 +1,13 @@
 #include <openglad/runtime/level_runtime_data.h>
-#include <openglad/data/level_data_hooks.h>
-#include <openglad/entities/obmap.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/io/og_file.h>
-#include <openglad/platform/io.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/resources/og_file.h>
+#include <openglad/resources/io.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <cstdint>

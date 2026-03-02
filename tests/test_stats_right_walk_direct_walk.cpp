@@ -1,11 +1,11 @@
-#include <openglad/core/stats.h>
-#include <openglad/data/gparser.h>
-#include <openglad/data/pixie_data.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/pixdefs.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <array>

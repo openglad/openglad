@@ -1,11 +1,11 @@
 #include <openglad/runtime/level_runtime_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
-#include <openglad/entities/walker.h>
-#include <openglad/entities/guy.h>
-#include <openglad/core/stats.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
 #include <memory>
 #include <string>
@@ -13,15 +13,15 @@
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
-#include <openglad/io/og_file.h>
-#include <openglad/io/zip_api.h>
-#include <openglad/platform/io_common.h>
+#include <openglad/resources/og_file.h>
+#include <openglad/resources/zip_api.h>
+#include <openglad/resources/io_common.h>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <vector>
-#include <openglad/data/level_data_hooks.h>
-#include <openglad/data/level_render.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/interface/level_render.h>
 #include <openglad/core/constants.h>
 #include "test_gameplay_context_scope.h"
 

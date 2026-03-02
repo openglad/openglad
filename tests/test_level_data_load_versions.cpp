@@ -1,7 +1,7 @@
 #include "SDL.h"
 #include <openglad/runtime/level_runtime_data.h>
-#include <openglad/entities/walker.h>
-#include <openglad/io/og_file.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 

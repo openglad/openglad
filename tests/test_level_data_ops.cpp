@@ -1,15 +1,15 @@
 #include "SDL.h"
-#include <openglad/entities/guy.h>
-#include <openglad/entities/obmap.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
-#include <openglad/platform/io.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/resources/io.h>
+#include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
-#include <openglad/io/og_file.h>
+#include <openglad/resources/og_file.h>
 
 #include <cstdint>
 #include <cstring>

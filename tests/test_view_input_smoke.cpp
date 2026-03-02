@@ -1,9 +1,9 @@
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/core/util.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/render/view.h>
+#include <openglad/interface/screen.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/interface/render/view.h>
 #include "test_framework.h"
 #include <cstring>
 #include <memory>

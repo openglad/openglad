@@ -1,11 +1,11 @@
-#include <openglad/sim/sim_input_handler.h>
-#include <openglad/input/input_action.h>
-#include <openglad/input/input_state.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/gameplay/sim_input_handler.h>
+#include <openglad/interface/input_action.h>
+#include <openglad/interface/input_state.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/interface/screen.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include "test_framework.h"
 
 #include <memory>

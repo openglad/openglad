@@ -1,9 +1,9 @@
-#include <openglad/render/radar.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
+#include <openglad/interface/render/radar.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 

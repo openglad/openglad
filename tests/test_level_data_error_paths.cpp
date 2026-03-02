@@ -1,7 +1,7 @@
 #include <openglad/runtime/level_runtime_data.h>
-#include <openglad/entities/walker.h>
-#include <openglad/platform/io.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/resources/io.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <array>

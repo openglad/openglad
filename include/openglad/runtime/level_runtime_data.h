@@ -34,8 +34,8 @@ class cfg_store;
 struct LevelDataHooks;
 namespace og::sim { class SimEventLog; }
 
-#include <openglad/data/pixie_data.h>
-#include <openglad/entities/walker.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/interface/level_visuals.h>
 #include <openglad/legacy/pixdefs.h>

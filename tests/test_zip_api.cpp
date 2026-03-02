@@ -1,5 +1,5 @@
-#include <openglad/io/zip_api.h>
-#include <openglad/platform/io.h>
+#include <openglad/resources/zip_api.h>
+#include <openglad/resources/io.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif

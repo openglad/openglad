@@ -8,9 +8,9 @@
 
 #include <openglad/gameplay/gameplay_context.h>
 
-#include <openglad/entities/obmap.h>
-#include <openglad/entities/pathfinding_grid.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/pathfinding_grid.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
 
 #include "micropather.h"

@@ -1,13 +1,13 @@
 // Headless tests for SimEntity and walker (G4).
 // These verify that SimEntity/walker can be created and manipulated without SDL.
 
-#include <openglad/sim/sim_entity.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/sim_entity.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/core/stats.h>
+#include <openglad/gameplay/statistics.h>
 #include "unit.h"
 
 OG_UNIT_TEST(test_sim_entity_default_construction)

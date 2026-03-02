@@ -1,15 +1,15 @@
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
-#include <openglad/core/stats.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/guy_create.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
 int MAX(int a, int b);
 
 // ---------------------------------------------------------------------------

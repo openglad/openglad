@@ -1,4 +1,4 @@
 #pragma once
 
-// Transitional shim: prefer including <openglad/input/input.h>.
-#include <openglad/input/input.h>
+// Transitional shim: prefer including <openglad/interface/input.h>.
+#include <openglad/interface/input.h>

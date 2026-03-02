@@ -1,12 +1,12 @@
-#include <openglad/input/input.h>
-#include <openglad/input/input_action.h>
-#include <openglad/core/stats.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/input_action.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
-#include <openglad/render/view.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/screen.h>
+#include <openglad/platform/game_context.h>
 #include "test_framework.h"
 
 #include <list>

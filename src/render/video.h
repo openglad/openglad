@@ -1,4 +1,4 @@
 #pragma once
 
-// Transitional shim: prefer including <openglad/render/video.h>.
-#include <openglad/render/video.h>
+// Transitional shim: prefer including <openglad/interface/render/video.h>.
+#include <openglad/interface/render/video.h>

@@ -1,4 +1,4 @@
 #pragma once
 
-// Transitional shim: prefer including <openglad/render/sai2x.h>.
-#include <openglad/render/sai2x.h>
+// Transitional shim: prefer including <openglad/interface/render/sai2x.h>.
+#include <openglad/interface/render/sai2x.h>

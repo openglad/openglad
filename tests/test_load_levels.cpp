@@ -1,12 +1,12 @@
 #include <memory>
-#include <openglad/input/button.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
+#include <openglad/interface/button.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
-#include <openglad/data/save_data.h>
+#include <openglad/resources/save_data.h>
 #include <openglad/runtime/level_runtime_data.h>
-#include <openglad/entities/guy.h>
+#include <openglad/gameplay/guy.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_saved_game(const char *filename, screen *scr);

@@ -1,8 +1,8 @@
-#include <openglad/entities/guy.h>
-#include <openglad/input/button.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/button.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/ui/picker_common.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_common.h>
 #include "test_framework.h"
 #include <cstdlib>
 #include <cstring>
@@ -32,8 +32,8 @@ Sint32 edit_guy(Sint32 arg1);
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
 
 // Button stat constants from picker.cpp
 #define BUT_STR 0

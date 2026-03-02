@@ -1,7 +1,7 @@
-#include <openglad/data/pixie_data.h>
-#include <openglad/data/smooth.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/gameplay/smooth.h>
 #include <openglad/legacy/pixdefs.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/platform/game_context.h>
 
 #include "test_framework.h"
 

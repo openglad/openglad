@@ -1,7 +1,7 @@
-#include <openglad/data/gloader.h>
-#include <openglad/entities/guy.h>
-#include <openglad/entities/walker.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include <memory>
 

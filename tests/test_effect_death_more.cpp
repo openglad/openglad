@@ -1,6 +1,6 @@
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 

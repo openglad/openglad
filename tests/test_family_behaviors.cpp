@@ -6,18 +6,18 @@
  * They must pass both BEFORE and AFTER behavioral extraction into
  * FamilyDescriptor callbacks.
  */
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
-#include <openglad/entities/living.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
-#include <openglad/data/gloader.h>
-#include <openglad/data/gparser.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/guy_create.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/interface/screen.h>
+#include <openglad/gameplay/irandom.h>
 #include "test_framework.h"
 #include <cmath>
 #include <algorithm>

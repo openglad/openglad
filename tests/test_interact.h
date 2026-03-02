@@ -1,9 +1,9 @@
 #ifndef _TEST_INTERACT_H__
 #define _TEST_INTERACT_H__
 
-#include <openglad/input/button.h>
-#include <openglad/input/input.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/interface/button.h>
+#include <openglad/interface/input.h>
+#include <openglad/platform/game_session.h>
 #include "test_input_helpers.h"
 #include <string>
 #include <vector>

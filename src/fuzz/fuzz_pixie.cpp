@@ -15,7 +15,7 @@
 #include <cstdint>
 #include <memory>
 
-#include <openglad/data/pixie_data.h>
+#include <openglad/resources/pixie_data.h>
 
 static PixieData parse_pixie_from_buffer(const uint8_t *data, size_t size)
 {

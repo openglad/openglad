@@ -16,7 +16,7 @@
 
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/smooth.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/gameplay/irandom.h>
 
 // Forward-declare Order enum class (defined in base.h)
 enum class Order : unsigned char;

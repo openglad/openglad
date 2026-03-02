@@ -1,4 +1,4 @@
 #pragma once
 
-// Transitional shim: prefer including <openglad/render/pal32.h>.
-#include <openglad/render/pal32.h>
+// Transitional shim: prefer including <openglad/interface/render/pal32.h>.
+#include <openglad/interface/render/pal32.h>

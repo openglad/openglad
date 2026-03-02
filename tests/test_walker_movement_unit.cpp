@@ -1,10 +1,10 @@
 #include <openglad/runtime/level_runtime_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
 #include <memory>
 #include "unit/unit.h"

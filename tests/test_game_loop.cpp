@@ -2,12 +2,12 @@
 #include <thread>
 #include <vector>
 
-#include <openglad/runtime/game_loop.h>
-#include <openglad/data/save_data.h>
-#include <openglad/input/input.h>
-#include <openglad/entities/walker.h>
-#include <openglad/render/view.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/platform/game_loop.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/interface/input.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/screen.h>
 #include "SDL.h"
 #include "test_framework.h"
 #include <openglad/core/util.h>

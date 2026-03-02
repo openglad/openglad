@@ -6,10 +6,10 @@
 #include <string>
 
 #include <openglad/legacy/base.h> // Order + family constants used for test data
-#include <openglad/platform/io.h>
-#include <openglad/data/save_data.h>
-#include <openglad/entities/walker.h>
-#include <openglad/entities/guy.h>
+#include <openglad/resources/io.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/guy.h>
 #include "test_framework.h"
 
 static void rw_write(SDL_RWops* out, const void* data, size_t len)

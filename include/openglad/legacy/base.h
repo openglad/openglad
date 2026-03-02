@@ -33,7 +33,7 @@
 #include <cctype>
 #include <openglad/legacy/soundob.h> // sound constants (always needed)
 #include <openglad/core/util.h>
-#include <openglad/data/gparser.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/legacy/pixdefs.h>
 
 // Standard integer type aliases (previously from SDL_stdinc.h)
@@ -87,7 +87,7 @@ struct meminfo
 };
 
 // Access session state via og::runtime::current_session->member_ directly.
-#include <openglad/runtime/game_session.h>
+#include <openglad/platform/game_session.h>
 
 void set_game_speed(float factor);
 
@@ -155,7 +155,7 @@ inline constexpr unsigned char MAX_MP_COLOR = 64; // When mp's are over max :)
 
 // Game constants (families, facings, commands, etc.) now live in core/constants.h
 #include <openglad/core/constants.h>
-#include <openglad/core/stats.h>
+#include <openglad/gameplay/statistics.h>
 
 inline constexpr int STANDARD_TEXT_TIME = 75;   // how many cycles to display text?
 inline constexpr const char* TEXT_1 = "text.pix";       // standard text pixie
@@ -189,7 +189,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scr)
 
 #define OUTLINE_INVISIBLE query_team_color() //
 
-#include <openglad/data/pixie_data.h>
+#include <openglad/resources/pixie_data.h>
 PixieData read_pixie_file(const char  * filename);
 
 // Some stuff for palette

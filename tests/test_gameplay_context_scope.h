@@ -1,9 +1,9 @@
 #pragma once
 
 #include <openglad/runtime/level_runtime_data.h>
-#include <openglad/data/save_data.h>
+#include <openglad/resources/save_data.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/gameplay/sim_event_log.h>
 
 class cfg_store;
 

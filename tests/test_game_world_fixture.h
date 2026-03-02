@@ -2,12 +2,12 @@
 
 #include <cstdint>
 
-#include <openglad/data/gparser.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/runtime/level_runtime_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/sim/irandom.h>
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/irandom.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include "test_gameplay_context_scope.h"
 
 // Phase 1a helper: minimal gameplay world + event log fixture.

@@ -1,4 +1,4 @@
-#include <openglad/input/input.h>
+#include <openglad/interface/input.h>
 #include "test_framework.h"
 
 extern bool isKeyboardEvent(const SDL_Event& event);

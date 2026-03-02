@@ -1,5 +1,5 @@
 #include <openglad/core/combat_math.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/platform/game_context.h>
 #include "test_framework.h"
 #include <cstdint>
 

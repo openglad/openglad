@@ -1,6 +1,6 @@
-#include <openglad/sim/event.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/sim_emit.h>
+#include <openglad/gameplay/event.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/game_world.h>
 
 #include "unit.h"

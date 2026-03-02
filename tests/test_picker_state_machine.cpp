@@ -1,4 +1,4 @@
-#include <openglad/ui/picker_state.h>
+#include <openglad/interface/ui/picker_state.h>
 #include "test_framework.h"
 
 #include <string>

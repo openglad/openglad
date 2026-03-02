@@ -1,12 +1,12 @@
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
-#include <openglad/render/obmap_debug_draw.h>
-#include <openglad/entities/obmap.h>
-#include <openglad/entities/walker.h>
-#include <openglad/input/button.h>
-#include <openglad/io/yaml_stream.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/render/obmap_debug_draw.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/button.h>
+#include <openglad/resources/yaml_stream.h>
 #include <openglad/legacy/colors.h>
-#include <openglad/data/gparser.h>
+#include <openglad/resources/gparser.h>
 
 #include "test_framework.h"
 

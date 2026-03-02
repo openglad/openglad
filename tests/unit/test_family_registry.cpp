@@ -1,8 +1,8 @@
 #include "unit.h"
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
 #include <openglad/legacy/base.h>
-#include <openglad/core/stats.h>
+#include <openglad/gameplay/statistics.h>
 #include <cstring>
 
 OG_UNIT_TEST(test_registry_returns_non_null_for_valid_ids)

@@ -1,7 +1,7 @@
-#include <openglad/entities/guy.h>
-#include <openglad/input/button.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/button.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <array>

@@ -1,4 +1,4 @@
 #pragma once
 
-// Transitional shim: prefer including <openglad/ui/results_screen.h>.
-#include <openglad/ui/results_screen.h>
+// Transitional shim: prefer including <openglad/interface/ui/results_screen.h>.
+#include <openglad/interface/ui/results_screen.h>

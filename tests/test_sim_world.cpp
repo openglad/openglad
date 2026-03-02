@@ -1,10 +1,10 @@
 #include <openglad/runtime/level_runtime_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/entities/walker.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/core/constants.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>

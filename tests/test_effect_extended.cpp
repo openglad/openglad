@@ -1,8 +1,8 @@
 #include <cstdint>
-#include <openglad/entities/effect.h>
-#include <openglad/data/gloader.h>
+#include <openglad/gameplay/effect.h>
+#include <openglad/resources/gloader.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)

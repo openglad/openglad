@@ -1,8 +1,8 @@
-#include <openglad/input/button.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/button.h>
+#include <openglad/interface/screen.h>
 #include <openglad/core/constants.h>
-#include <openglad/entities/guy.h>
-#include <openglad/ui/picker_common.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/ui/picker_common.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 

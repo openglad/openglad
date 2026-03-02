@@ -1,10 +1,10 @@
-#include <openglad/data/pixie_data.h>
-#include <openglad/io/og_file.h>
-#include <openglad/io/ogfile_yaml.h>
-#include <openglad/io/physfs_api.h>
-#include <openglad/io/yaml_stream.h>
-#include <openglad/io/zip_api.h>
-#include <openglad/platform/io_common.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/resources/og_file.h>
+#include <openglad/resources/ogfile_yaml.h>
+#include <openglad/resources/physfs_api.h>
+#include <openglad/resources/yaml_stream.h>
+#include <openglad/resources/zip_api.h>
+#include <openglad/resources/io_common.h>
 
 #include "test_framework.h"
 

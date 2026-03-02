@@ -1,6 +1,6 @@
 #include "test_framework.h"
 
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 
 #include <array>
 #include <memory>

@@ -1,12 +1,12 @@
-#include <openglad/ui/campaign_picker.h>
-#include <openglad/ui/level_picker.h>
-#include <openglad/ui/results_screen.h>
-#include <openglad/core/stats.h>
-#include <openglad/entities/walker.h>
-#include <openglad/input/input.h>
+#include <openglad/interface/ui/campaign_picker.h>
+#include <openglad/interface/ui/level_picker.h>
+#include <openglad/interface/ui/results_screen.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/input.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/platform/io.h>
+#include <openglad/interface/screen.h>
+#include <openglad/resources/io.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 

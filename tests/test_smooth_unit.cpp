@@ -1,7 +1,7 @@
-#include <openglad/data/smooth.h>
-#include <openglad/data/pixie_data.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/gameplay/smooth.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
 #include "unit/unit.h"
 #if __has_include(<catch2/catch_test_macros.hpp>)

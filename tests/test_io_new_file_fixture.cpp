@@ -1,4 +1,4 @@
-#include <openglad/platform/io.h>
+#include <openglad/resources/io.h>
 #include "test_framework.h"
 
 #include <filesystem>

@@ -1,14 +1,14 @@
 #include <memory>
 #include <array>
-#include <openglad/data/pixie_data.h>
-#include <openglad/input/button.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/interface/button.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/render/pixien.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/render/pixien.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include <openglad/data/save_data.h>
+#include <openglad/resources/save_data.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp

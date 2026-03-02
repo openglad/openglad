@@ -6,7 +6,7 @@
 #include <array>
 #include <memory>
 #include "SDL.h"
-#include <openglad/data/pixie_data.h>
+#include <openglad/resources/pixie_data.h>
 
 class pixieN;
 class guy;

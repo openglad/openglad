@@ -1,7 +1,7 @@
 #include "unit.h"
 
-#include <openglad/io/physfs_api.h>
-#include <openglad/io/og_file.h>
+#include <openglad/resources/physfs_api.h>
+#include <openglad/resources/og_file.h>
 
 #include <filesystem>
 

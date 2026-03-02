@@ -1,7 +1,7 @@
-#include <openglad/entities/guy.h>
-#include <openglad/data/save_data.h>
-#include <openglad/ui/picker_common.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include <memory>
 

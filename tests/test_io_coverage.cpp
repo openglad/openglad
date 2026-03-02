@@ -1,6 +1,6 @@
-#include <openglad/io/yaml_stream.h>
-#include <openglad/platform/io_common.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/resources/yaml_stream.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/platform/game_context.h>
 #include "test_framework.h"
 
 #include <algorithm>

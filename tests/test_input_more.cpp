@@ -1,4 +1,4 @@
-#include <openglad/input/input.h>
+#include <openglad/interface/input.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 
