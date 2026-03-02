@@ -18,9 +18,13 @@
 
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/legacy/base.h>
+#include <openglad/legacy/pixdefs.h>
 #include <array>
+#include <cstdint>
 #include <cstdlib>
+
+using Uint32 = std::uint32_t;
+using Sint32 = std::int32_t;
 
 static inline Uint32 rng(Uint32 max_exclusive) {
     if (max_exclusive == 0)

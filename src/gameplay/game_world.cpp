@@ -7,12 +7,13 @@
  */
 #include <openglad/gameplay/game_world.h>
 
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/obmap.h>
-#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/legacy/base.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/legacy/pixdefs.h>
 
 #include <algorithm>

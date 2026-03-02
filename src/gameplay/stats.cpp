@@ -20,7 +20,7 @@
 
 #include <openglad/gameplay/statistics.h>      // for bit flags, etc.
 #include <openglad/core/util.h>
-#include <openglad/legacy/base.h>     // COMMAND_*, FACE_*, FAMILY_*, ACT_*, myscreen, etc.
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/guy.h>
@@ -30,8 +30,12 @@
 // by the text client. Returns a walker to follow, or nullptr if none.
 walker* find_follow_leader();
 #include <cmath>
-#include <openglad/gameplay/sim_event_log.h>
+#include <cstdint>
 #include <format>
+#include <openglad/gameplay/sim_event_log.h>
+
+using Uint32 = std::uint32_t;
+using Sint32 = std::int32_t;
 
 static inline Uint32 rng(Uint32 max_exclusive) {
     return current_game->world->rng_.next(max_exclusive);
