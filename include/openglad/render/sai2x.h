@@ -1,3 +1,3 @@
 #pragma once
 
-#include <openglad/interface/render/sai2x.h>
+#include <openglad/platform/sai2x.h>

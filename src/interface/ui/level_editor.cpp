@@ -36,9 +36,9 @@
 #include <span>
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/resources/gparser.h>
-#include <openglad/interface/render/sai2x.h>
 #include <openglad/runtime/level_editor_state.h>
 #include <openglad/interface/session_state.h>
+#include "SDL.h"
 #include <algorithm>
 #include <cstring>
 #include <format>

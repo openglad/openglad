@@ -1,9 +1,6 @@
 #include <openglad/interface/input.h>
 #include "test_framework.h"
 
-// input.cpp internal entry point (declared in input.h too).
-void handle_events(const SDL_Event& event);
-
 void test_input_handle_events_dispatches_various_event_types()
 {
     SDL_Event e{};

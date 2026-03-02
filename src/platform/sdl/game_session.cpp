@@ -18,7 +18,7 @@
 #include <openglad/interface/screen.h> // screen class (pulls in base.h → myscreen macro)
 #include <openglad/platform/video_sdl.h>
 #include <openglad/interface/render/view.h>    // options class (defines theprefs macro)
-#include <openglad/interface/render/sai2x.h>   // E_Screen
+#include <openglad/platform/sai2x.h>   // E_Screen
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
 #include "SDL.h"

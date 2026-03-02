@@ -19,6 +19,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/input.h>
 #include <openglad/legacy/base.h>
+#include "SDL.h"
 #include <cstring>
 #include <span>
 #include <string>

@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include "SDL.h"
 
 extern int g_tests_run;
 extern int g_tests_passed;

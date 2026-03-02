@@ -34,7 +34,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/resources/io.h>
-#include <openglad/interface/render/sai2x.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/game_loop.h>

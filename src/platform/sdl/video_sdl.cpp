@@ -18,7 +18,7 @@
 
 #include <openglad/platform/video_sdl.h>
 #include <openglad/interface/render/pal32.h>
-#include <openglad/interface/render/sai2x.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>

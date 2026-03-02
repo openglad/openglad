@@ -12,6 +12,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
 #include <openglad/legacy/base.h>
+#include "SDL.h"
 
 static inline screen* active_screen()
 {
@@ -25,6 +26,11 @@ static inline cfg_store* active_config()
 
 namespace
 {
+const SDL_Event& as_sdl_event(const void* native_event)
+{
+    return *static_cast<const SDL_Event*>(native_event);
+}
+
 void autosave_active_screen(screen& s, const char* event_name)
 {
     if (og::runtime::current_session != nullptr &&
@@ -41,8 +47,12 @@ void autosave_active_screen(screen& s, const char* event_name)
 }
 } // namespace
 
-void handle_window_event(const SDL_Event& event)
+void handle_window_event(const void* native_event)
 {
+    if (!native_event)
+        return;
+    const SDL_Event& event = as_sdl_event(native_event);
+
     switch(event.window.event)
     {
         case SDL_WINDOWEVENT_MINIMIZED:
@@ -70,8 +80,12 @@ void handle_window_event(const SDL_Event& event)
     }
 }
 
-void handle_key_event(const SDL_Event& event)
+void handle_key_event(const void* native_event)
 {
+    if (!native_event)
+        return;
+    const SDL_Event& event = as_sdl_event(native_event);
+
     switch (event.type)
     {
     case SDL_KEYDOWN:

@@ -27,6 +27,7 @@
 #include <openglad/resources/io.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/legacy/test_trace.h>
+#include "SDL.h"
 #include <cstdio>
 #include <ctime>
 #include <cstring> //buffers: for strlen
@@ -114,6 +115,11 @@ SDL_Joystick* joysticks[MAX_NUM_JOYSTICKS];
 
 namespace
 {
+const SDL_Event& as_sdl_event(const void* native_event)
+{
+    return *static_cast<const SDL_Event*>(native_event);
+}
+
 constexpr int kModeFourIndex = 0;
 constexpr int kModeEightIndex = 1;
 constexpr int kNumControlModeKeymaps = 2;
@@ -444,14 +450,20 @@ void sendFakeKeyUpEvent(int keycode)
 // handle_window_event and handle_key_event are implemented in
 // runtime/input_event_bridge.cpp to avoid runtime/render deps in input module.
 
-void handle_text_event(const SDL_Event& event)
+void handle_text_event(const void* native_event)
 {
+    if (!native_event)
+        return;
+    const SDL_Event& event = as_sdl_event(native_event);
     og::runtime::current_session->raw_text_input_ = event.text.text;
     og::runtime::current_session->text_input_event_ = 1;
 }
 
-void handle_mouse_event(const SDL_Event& event)
+void handle_mouse_event(const void* native_event)
 {
+    if (!native_event)
+        return;
+    const SDL_Event& event = as_sdl_event(native_event);
     switch(event.type)
     {
     case SDL_MOUSEWHEEL:
@@ -682,8 +694,11 @@ void handle_mouse_event(const SDL_Event& event)
     }
 }
 
-void handle_joy_event(const SDL_Event& event)
+void handle_joy_event(const void* native_event)
 {
+    if (!native_event)
+        return;
+    const SDL_Event& event = as_sdl_event(native_event);
     Log("Joystick event!\n");
     switch(event.type)
     {
@@ -719,8 +734,11 @@ void handle_joy_event(const SDL_Event& event)
     }
 }
 
-void handle_events(const SDL_Event& event)
+void handle_events(const void* native_event)
 {
+    if (!native_event)
+        return;
+    const SDL_Event& event = as_sdl_event(native_event);
     switch (event.type)
     {
     case SDL_WINDOWEVENT:   
@@ -801,9 +819,35 @@ void handle_events(const SDL_Event& event)
 //Keyboard routines
 //
 
-SDL_Event wait_for_key_event()
+bool query_key_event(int key, const void* native_event)
 {
-    SDL_Event event;
+    if (!native_event)
+        return false;
+    const SDL_Event& event = as_sdl_event(native_event);
+    return (event.type == SDL_KEYDOWN && event.key.keysym.sym == key);
+}
+
+bool isKeyboardEvent(const void* native_event)
+{
+    if (!native_event)
+        return false;
+    const SDL_Event& event = as_sdl_event(native_event);
+    return (event.type == SDL_KEYDOWN);
+}
+
+bool isJoystickEvent(const void* native_event)
+{
+    if (!native_event)
+        return false;
+    const SDL_Event& event = as_sdl_event(native_event);
+    return (event.type == SDL_JOYAXISMOTION
+            || event.type == SDL_JOYHATMOTION
+            || event.type == SDL_JOYBUTTONDOWN);
+}
+
+const void* wait_for_key_event()
+{
+    static SDL_Event event;
     memset(&event, 0, sizeof(event));
 #ifdef TESTING
     // In test mode, return immediately with a fake ESC keypress
@@ -811,7 +855,7 @@ SDL_Event wait_for_key_event()
     event.key.keysym.sym = SDLK_ESCAPE;
     event.key.keysym.scancode = SDL_SCANCODE_ESCAPE;
     TRACE("input", "wait_for_key_event: returning fake ESC (test mode)");
-    return event;
+    return &event;
 #else
     while(1)
     {
@@ -823,16 +867,19 @@ SDL_Event wait_for_key_event()
                     || event.type == SDL_JOYBUTTONDOWN
                     || event.type == SDL_JOYHATMOTION
               )
-                return event;
+                return &event;
         }
         YIELD_SLEEP(10);
     }
-    return event;
+    return &event;
 #endif
 }
 
-void quit_if_quit_event(const SDL_Event& event)
+void quit_if_quit_event(const void* native_event)
 {
+    if (!native_event)
+        return;
+    const SDL_Event& event = as_sdl_event(native_event);
     if(event.type == SDL_QUIT)
         quit(0);
 }
@@ -845,9 +892,7 @@ void clear_events()
 
 void assignKeyFromWaitEvent(int player_num, int key_enum)
 {
-    SDL_Event event;
-
-    event = wait_for_key_event();
+    const SDL_Event& event = as_sdl_event(wait_for_key_event());
     quit_if_quit_event(event);
     if(isKeyboardEvent(event))
     {
@@ -986,8 +1031,12 @@ JoyData::JoyData(int joy_index)
 }
 
 
-void JoyData::setKeyFromEvent(int key_enum, const SDL_Event& event)
+void JoyData::setKeyFromEvent(int key_enum, const void* native_event)
 {
+    if (!native_event)
+        return;
+    const SDL_Event& event = as_sdl_event(native_event);
+
     // Diagonals are ignored because they are combinations of the cardinals
     // Things get really messy when diagonals are assigned
     if(key_enum == KEY_UP_RIGHT || key_enum == KEY_UP_LEFT || key_enum == KEY_DOWN_RIGHT || key_enum == KEY_DOWN_LEFT)
@@ -1088,10 +1137,13 @@ bool JoyData::getState(int key_enum) const
     }
 }
 
-bool JoyData::getPress(int key_enum, const SDL_Event& event) const
+bool JoyData::getPress(int key_enum, const void* native_event) const
 {
     if(index < 0)
         return false;
+    if (!native_event)
+        return false;
+    const SDL_Event& event = as_sdl_event(native_event);
 
     switch(key_type[key_enum])
     {
@@ -1132,10 +1184,13 @@ bool JoyData::getPress(int key_enum, const SDL_Event& event) const
     }
 }
 
-bool JoyData::getRelease(int key_enum, const SDL_Event& event) const
+bool JoyData::getRelease(int key_enum, const void* native_event) const
 {
     if(index < 0)
         return false;
+    if (!native_event)
+        return false;
+    const SDL_Event& event = as_sdl_event(native_event);
 
     switch(key_type[key_enum])
     {
@@ -1301,8 +1356,12 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     #endif
 }
 
-bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
+bool didPlayerPressKey(int player_index, int key_enum, const void* native_event)
 {
+    if (!native_event)
+        return false;
+    const SDL_Event& event = as_sdl_event(native_event);
+
     #ifdef OUYA
     const OuyaController& c = OuyaControllerManager::getController(player_index);
     if(event.user.code != player_index)
@@ -1370,8 +1429,12 @@ bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
     }
 }
 
-bool didPlayerReleaseKey(int player_index, int key_enum, const SDL_Event& event)
+bool didPlayerReleaseKey(int player_index, int key_enum, const void* native_event)
 {
+    if (!native_event)
+        return false;
+    const SDL_Event& event = as_sdl_event(native_event);
+
     #ifdef OUYA
     const OuyaController& c = OuyaControllerManager::getController(player_index);
     if(event.type != OuyaControllerManager::BUTTON_UP_EVENT)

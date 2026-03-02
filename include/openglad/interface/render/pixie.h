@@ -18,7 +18,7 @@
 
 // Definition of PIXIE class
 
-#include "SDL.h"
+#include <openglad/legacy/base.h>
 #include <openglad/resources/pixie_data.h>
 
 class viewscreen;
@@ -57,7 +57,7 @@ class pixie
 		void set_data(const PixieData& data);
 		short sizex, sizey;
 		short xpos, ypos;
-		//buffers: is SDL_Surface acceleration on/off, 1/0
+		//buffers: accelerated-surface path on/off, 1/0
 		int accel;
 		short on_screen();                                                                // on ANY viewscreen?
 		short on_screen(viewscreen  *viewp);  // on a specific viewscreen?
@@ -66,6 +66,6 @@ class pixie
 	protected:
 		unsigned short size;
 		unsigned char  *bmp,  *oldbmp;
-		//buffers: same data as bmp but in a convient SDL_Surface
-		SDL_Surface *bmp_surface;
+		// SDL-owned accelerated surface handle (platform type-erased at interface boundary).
+		void* bmp_surface;
 };

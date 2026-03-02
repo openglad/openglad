@@ -209,7 +209,7 @@ REGISTER_TEST(test_input_key_binding_helpers_isAnyPlayerKey_and_isPlayerKey);
 
 void test_input_wait_for_key_event_returns_fake_escape_in_test_mode()
 {
-    SDL_Event e = wait_for_key_event();
+    const SDL_Event& e = *static_cast<const SDL_Event*>(wait_for_key_event());
     TEST_ASSERT_EQ((int)SDL_KEYDOWN, (int)e.type, "wait_for_key_event should return keydown in test mode");
     TEST_ASSERT_EQ((int)SDLK_ESCAPE, (int)e.key.keysym.sym, "wait_for_key_event should return escape in test mode");
 }

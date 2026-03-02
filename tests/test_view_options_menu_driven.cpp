@@ -35,11 +35,11 @@ struct KeyStateGuard
     {
         og::runtime::current_session->keystates_ = saved;
     }
-    void pulse(SDL_Scancode sc, int down_ms = 30)
+    void pulse(int scancode, int down_ms = 30)
     {
-        fake[sc] = 1;
+        fake[static_cast<std::size_t>(scancode)] = 1;
         SDL_Delay(down_ms);
-        fake[sc] = 0;
+        fake[static_cast<std::size_t>(scancode)] = 0;
         SDL_Delay(5);
     }
 };

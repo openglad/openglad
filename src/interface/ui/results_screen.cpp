@@ -17,6 +17,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
+#include "SDL.h"
 #include <algorithm>
 #include <cstring>
 #include <format>

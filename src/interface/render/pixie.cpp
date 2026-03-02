@@ -26,6 +26,7 @@
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include "SDL.h"
 // ************************************************************
 //  Pixie -- Base graphic object. It holds pixel by pixel data
 //  of what should appear on screen. When told to, it handles
@@ -68,7 +69,7 @@ pixie::pixie(const PixieData& data, int doaccel)
 pixie::~pixie()
 {
 	if(accel)
-		SDL_FreeSurface(bmp_surface);
+		SDL_FreeSurface(static_cast<SDL_Surface*>(bmp_surface));
 	//  delete oldbmp;
 }
 
@@ -204,9 +205,10 @@ void pixie::init_sdl_surface(void)
 	int r,g,b,c,i,j,num;
 	SDL_Rect rect;
 
-	bmp_surface = SDL_CreateRGBSurface(SDL_SWSURFACE,sizex,sizey,32,
-	                                   0,0,0,0);
-	if(!bmp_surface)
+	SDL_Surface* surface = SDL_CreateRGBSurface(SDL_SWSURFACE,sizex,sizey,32,
+	                                            0,0,0,0);
+	bmp_surface = surface;
+	if(!surface)
 	{
 		LogError("pixie::init_sdl_surface(): could not create bmp_surface\n");
 	}
@@ -216,14 +218,14 @@ void pixie::init_sdl_surface(void)
 		for(j=0;j<sizex;j++)
 			{
 				query_palette_reg(bmp[num],&r,&g,&b);
-				c = SDL_MapRGB(bmp_surface->format,
+				c = SDL_MapRGB(surface->format,
 				               static_cast<Uint8>(r * 4),
 				               static_cast<Uint8>(g * 4),
 				               static_cast<Uint8>(b * 4));
 				rect.x = j;
 				rect.y = i;
 				rect.w = rect.h = 1;
-			SDL_FillRect(bmp_surface,&rect,c);
+			SDL_FillRect(surface,&rect,c);
 			num++;
 		}
 
@@ -241,7 +243,7 @@ void pixie::set_accel(int a)
 	{
 		if(accel)
 		{
-			SDL_FreeSurface(bmp_surface);
+			SDL_FreeSurface(static_cast<SDL_Surface*>(bmp_surface));
 			accel = 0;
 		}
 	}

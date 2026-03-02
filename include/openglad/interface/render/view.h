@@ -18,7 +18,7 @@
 
 // Definition of VIEWSCREEN class
 
-#include "SDL.h"
+#include <openglad/legacy/base.h>
 #include <openglad/runtime/level_runtime_data.h>
 #include <memory>
 #include <string>
@@ -93,7 +93,12 @@ class viewscreen
 		bool redraw();
 		bool redraw(LevelRuntimeData* data, bool draw_radar = true);
 		bool refresh();
-		short input(const SDL_Event& event);
+		short input(const void* native_event);
+		template <typename EventT>
+		short input(const EventT& event)
+		{
+			return input(static_cast<const void*>(&event));
+		}
 		short continuous_input();
 		void process_input(const InputState& input_state);
 		void set_display_text(std::string_view newtext, short numcycles);

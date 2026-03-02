@@ -19,6 +19,7 @@
 #include <openglad/runtime/level_runtime_data.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/smooth.h>
+#include "SDL.h"
 #include <span>
 #include <cmath>
 

@@ -19,11 +19,16 @@
 #include <openglad/runtime/level_runtime_data.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/legacy/base.h>
+#include "SDL.h"
 
 void handle_cheat_keys(walker*& control, short mynum,
-                       const SDL_Event& event, const PlayerInput& pi,
+                       const void* native_event, const PlayerInput& pi,
                        screen* game_screen)
 {
+	if (native_event == nullptr)
+		return;
+	const SDL_Event& event = *static_cast<const SDL_Event*>(native_event);
+
 	if (!pi.is_held(InputAction::Cheat) || !CHEAT_MODE)
 		return;
 

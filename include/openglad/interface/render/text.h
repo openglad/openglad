@@ -18,7 +18,7 @@
 
 // Definition of TEXT class
 
-#include "SDL.h"
+#include <openglad/legacy/base.h>
 #include <openglad/resources/pixie_data.h>
 #include <optional>
 #include <string>

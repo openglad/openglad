@@ -6,7 +6,7 @@
  * (at your option) any later version.
  */
 #include "SDL.h"
-#include <openglad/interface/render/sai2x.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/session_state.h>

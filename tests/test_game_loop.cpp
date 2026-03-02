@@ -1,3 +1,4 @@
+#include "SDL.h"
 #include <array>
 #include <thread>
 #include <vector>
@@ -8,7 +9,6 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
-#include "SDL.h"
 #include "test_framework.h"
 #include <openglad/core/util.h>
 

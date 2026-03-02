@@ -11,7 +11,6 @@
 #include <openglad/interface/game_context.h>
 #include <openglad/runtime/game_loop_state.h>
 
-struct SDL_Surface;
 struct InputHardwareState;
 struct PickerState;
 struct LevelEditorState;

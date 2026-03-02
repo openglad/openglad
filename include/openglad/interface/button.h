@@ -16,7 +16,6 @@
  */
 #pragma once
 
-#include <SDL_stdinc.h>
 #include <array>
 #include <cmath>
 #include <functional>
@@ -238,4 +237,3 @@ inline constexpr Sint32 button_action_id(ButtonAction action)
 {
     return static_cast<Sint32>(action);
 }
-

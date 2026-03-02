@@ -25,6 +25,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
 #include <openglad/runtime/picker_ui_state.h>
+#include "SDL.h"
 #include <array>
 #include <utility>
 

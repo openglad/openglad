@@ -22,86 +22,92 @@
 
 #pragma once
 
-#include "SDL.h"
+#include <openglad/legacy/base.h>
 #include <cctype>
 #include <string>
 
 
-#define SDLKey SDL_Keycode
+// SDL2 scancode values copied into interface constants so this header stays
+// platform-agnostic. Values are stable in SDL2.
+inline constexpr int KEYSTATE_UNKNOWN = 0;
+inline constexpr int KEYSTATE_a = 4;
+inline constexpr int KEYSTATE_b = 5;
+inline constexpr int KEYSTATE_c = 6;
+inline constexpr int KEYSTATE_d = 7;
+inline constexpr int KEYSTATE_e = 8;
+inline constexpr int KEYSTATE_f = 9;
+inline constexpr int KEYSTATE_g = 10;
+inline constexpr int KEYSTATE_h = 11;
+inline constexpr int KEYSTATE_i = 12;
+inline constexpr int KEYSTATE_j = 13;
+inline constexpr int KEYSTATE_k = 14;
+inline constexpr int KEYSTATE_l = 15;
+inline constexpr int KEYSTATE_m = 16;
+inline constexpr int KEYSTATE_n = 17;
+inline constexpr int KEYSTATE_o = 18;
+inline constexpr int KEYSTATE_p = 19;
+inline constexpr int KEYSTATE_q = 20;
+inline constexpr int KEYSTATE_r = 21;
+inline constexpr int KEYSTATE_s = 22;
+inline constexpr int KEYSTATE_t = 23;
+inline constexpr int KEYSTATE_u = 24;
+inline constexpr int KEYSTATE_v = 25;
+inline constexpr int KEYSTATE_w = 26;
+inline constexpr int KEYSTATE_x = 27;
+inline constexpr int KEYSTATE_y = 28;
+inline constexpr int KEYSTATE_z = 29;
+inline constexpr int KEYSTATE_1 = 30;
+inline constexpr int KEYSTATE_2 = 31;
+inline constexpr int KEYSTATE_3 = 32;
+inline constexpr int KEYSTATE_4 = 33;
+inline constexpr int KEYSTATE_5 = 34;
+inline constexpr int KEYSTATE_6 = 35;
+inline constexpr int KEYSTATE_7 = 36;
+inline constexpr int KEYSTATE_8 = 37;
+inline constexpr int KEYSTATE_9 = 38;
+inline constexpr int KEYSTATE_0 = 39;
+inline constexpr int KEYSTATE_RETURN = 40;
+inline constexpr int KEYSTATE_ESCAPE = 41;
+inline constexpr int KEYSTATE_SPACE = 44;
+inline constexpr int KEYSTATE_LEFTBRACKET = 47;
+inline constexpr int KEYSTATE_RIGHTBRACKET = 48;
+inline constexpr int KEYSTATE_COMMA = 54;
+inline constexpr int KEYSTATE_PERIOD = 55;
+inline constexpr int KEYSTATE_SLASH = 56;
+inline constexpr int KEYSTATE_F1 = 58;
+inline constexpr int KEYSTATE_F5 = 62;
+inline constexpr int KEYSTATE_F9 = 66;
+inline constexpr int KEYSTATE_F10 = 67;
+inline constexpr int KEYSTATE_PAGEUP = 75;
+inline constexpr int KEYSTATE_DELETE = 76;
+inline constexpr int KEYSTATE_PAGEDOWN = 78;
+inline constexpr int KEYSTATE_RIGHT = 79;
+inline constexpr int KEYSTATE_LEFT = 80;
+inline constexpr int KEYSTATE_DOWN = 81;
+inline constexpr int KEYSTATE_UP = 82;
+inline constexpr int KEYSTATE_KP_MULTIPLY = 85;
+inline constexpr int KEYSTATE_KP_MINUS = 86;
+inline constexpr int KEYSTATE_KP_PLUS = 87;
+inline constexpr int KEYSTATE_KP_1 = 89;
+inline constexpr int KEYSTATE_KP_2 = 90;
+inline constexpr int KEYSTATE_KP_3 = 91;
+inline constexpr int KEYSTATE_KP_4 = 92;
+inline constexpr int KEYSTATE_KP_5 = 93;
+inline constexpr int KEYSTATE_KP_6 = 94;
+inline constexpr int KEYSTATE_KP_7 = 95;
+inline constexpr int KEYSTATE_KP_8 = 96;
+inline constexpr int KEYSTATE_KP_9 = 97;
+inline constexpr int KEYSTATE_KP_0 = 98;
+inline constexpr int KEYSTATE_LCTRL = 224;
+inline constexpr int KEYSTATE_LSHIFT = 225;
+inline constexpr int KEYSTATE_RCTRL = 228;
+inline constexpr int KEYSTATE_RSHIFT = 229;
 
-#define KEYSTATE_UNKNOWN SDL_SCANCODE_UNKNOWN
-#define KEYSTATE_a SDL_SCANCODE_A
-#define KEYSTATE_b SDL_SCANCODE_B
-#define KEYSTATE_c SDL_SCANCODE_C
-#define KEYSTATE_d SDL_SCANCODE_D
-#define KEYSTATE_e SDL_SCANCODE_E
-#define KEYSTATE_f SDL_SCANCODE_F
-#define KEYSTATE_g SDL_SCANCODE_G
-#define KEYSTATE_h SDL_SCANCODE_H
-#define KEYSTATE_i SDL_SCANCODE_I
-#define KEYSTATE_j SDL_SCANCODE_J
-#define KEYSTATE_k SDL_SCANCODE_K
-#define KEYSTATE_l SDL_SCANCODE_L
-#define KEYSTATE_m SDL_SCANCODE_M
-#define KEYSTATE_n SDL_SCANCODE_N
-#define KEYSTATE_o SDL_SCANCODE_O
-#define KEYSTATE_p SDL_SCANCODE_P
-#define KEYSTATE_q SDL_SCANCODE_Q
-#define KEYSTATE_r SDL_SCANCODE_R
-#define KEYSTATE_s SDL_SCANCODE_S
-#define KEYSTATE_t SDL_SCANCODE_T
-#define KEYSTATE_u SDL_SCANCODE_U
-#define KEYSTATE_v SDL_SCANCODE_V
-#define KEYSTATE_w SDL_SCANCODE_W
-#define KEYSTATE_x SDL_SCANCODE_X
-#define KEYSTATE_y SDL_SCANCODE_Y
-#define KEYSTATE_z SDL_SCANCODE_Z
-#define KEYSTATE_0 SDL_SCANCODE_0
-#define KEYSTATE_1 SDL_SCANCODE_1
-#define KEYSTATE_2 SDL_SCANCODE_2
-#define KEYSTATE_3 SDL_SCANCODE_3
-#define KEYSTATE_4 SDL_SCANCODE_4
-#define KEYSTATE_5 SDL_SCANCODE_5
-#define KEYSTATE_6 SDL_SCANCODE_6
-#define KEYSTATE_7 SDL_SCANCODE_7
-#define KEYSTATE_8 SDL_SCANCODE_8
-#define KEYSTATE_9 SDL_SCANCODE_9
-#define KEYSTATE_COMMA SDL_SCANCODE_COMMA
-#define KEYSTATE_PERIOD SDL_SCANCODE_PERIOD
-#define KEYSTATE_DELETE SDL_SCANCODE_DELETE
-#define KEYSTATE_UP SDL_SCANCODE_UP
-#define KEYSTATE_DOWN SDL_SCANCODE_DOWN
-#define KEYSTATE_LEFT SDL_SCANCODE_LEFT
-#define KEYSTATE_RIGHT SDL_SCANCODE_RIGHT
-#define KEYSTATE_PAGEDOWN SDL_SCANCODE_PAGEDOWN
-#define KEYSTATE_PAGEUP SDL_SCANCODE_PAGEUP
-#define KEYSTATE_RETURN SDL_SCANCODE_RETURN
-#define KEYSTATE_ESCAPE SDL_SCANCODE_ESCAPE
-#define KEYSTATE_SPACE SDL_SCANCODE_SPACE
-#define KEYSTATE_SLASH SDL_SCANCODE_SLASH
-#define KEYSTATE_LCTRL SDL_SCANCODE_LCTRL
-#define KEYSTATE_RCTRL SDL_SCANCODE_RCTRL
-#define KEYSTATE_LSHIFT SDL_SCANCODE_LSHIFT
-#define KEYSTATE_RSHIFT SDL_SCANCODE_RSHIFT
-#define KEYSTATE_RIGHTBRACKET SDL_SCANCODE_RIGHTBRACKET
-#define KEYSTATE_LEFTBRACKET SDL_SCANCODE_LEFTBRACKET
-#define KEYSTATE_KP_PLUS SDL_SCANCODE_KP_PLUS
-#define KEYSTATE_KP_MINUS SDL_SCANCODE_KP_MINUS
-#define KEYSTATE_KP_MULTIPLY SDL_SCANCODE_KP_MULTIPLY
-#define KEYSTATE_KP_0 SDL_SCANCODE_KP_0
-#define KEYSTATE_KP_1 SDL_SCANCODE_KP_1
-#define KEYSTATE_KP_2 SDL_SCANCODE_KP_2
-#define KEYSTATE_KP_3 SDL_SCANCODE_KP_3
-#define KEYSTATE_KP_4 SDL_SCANCODE_KP_4
-#define KEYSTATE_KP_5 SDL_SCANCODE_KP_5
-#define KEYSTATE_KP_6 SDL_SCANCODE_KP_6
-#define KEYSTATE_KP_7 SDL_SCANCODE_KP_7
-#define KEYSTATE_KP_8 SDL_SCANCODE_KP_8
-#define KEYSTATE_KP_9 SDL_SCANCODE_KP_9
-#define KEYSTATE_F1 SDL_SCANCODE_F1
-#define KEYSTATE_F5 SDL_SCANCODE_F5
-#define KEYSTATE_F9 SDL_SCANCODE_F9
-#define KEYSTATE_F10 SDL_SCANCODE_F10
+template <typename EventT>
+inline const void* to_native_event_ptr(const EventT& event)
+{
+    return static_cast<const void*>(&event);
+}
 
 
 // Event getting method
@@ -184,11 +190,26 @@ class JoyData
     JoyData();
     JoyData(int index);
     
-    void setKeyFromEvent(int key_enum, const SDL_Event& event);
+    void setKeyFromEvent(int key_enum, const void* native_event);
+    template <typename EventT>
+    void setKeyFromEvent(int key_enum, const EventT& event)
+    {
+        setKeyFromEvent(key_enum, to_native_event_ptr(event));
+    }
     
     bool getState(int key_enum) const;
-    bool getPress(int key_enum, const SDL_Event& event) const;
-    bool getRelease(int key_enum, const SDL_Event& event) const;
+    bool getPress(int key_enum, const void* native_event) const;
+    template <typename EventT>
+    bool getPress(int key_enum, const EventT& event) const
+    {
+        return getPress(key_enum, to_native_event_ptr(event));
+    }
+    bool getRelease(int key_enum, const void* native_event) const;
+    template <typename EventT>
+    bool getRelease(int key_enum, const EventT& event) const
+    {
+        return getRelease(key_enum, to_native_event_ptr(event));
+    }
     bool hasButtonSet(int key_enum) const;
 };
 
@@ -198,13 +219,18 @@ struct MouseState
     bool left;
     bool right;
 
-    bool in(const SDL_Rect& r) const
+    bool in_rect(float rx, float ry, float rw, float rh) const
     {
-        const float rx = static_cast<float>(r.x);
-        const float ry = static_cast<float>(r.y);
-        const float rw = static_cast<float>(r.w);
-        const float rh = static_cast<float>(r.h);
         return (rx <= x && x < rx + rw && ry <= y && y < ry + rh);
+    }
+
+    template <typename RectT>
+    bool in(const RectT& r) const
+    {
+        return in_rect(static_cast<float>(r.x),
+                       static_cast<float>(r.y),
+                       static_cast<float>(r.w),
+                       static_cast<float>(r.h));
     }
 };
 
@@ -229,21 +255,61 @@ inline void disablePlayerJoystick(int player_num) { player_joy[player_num].index
 
 void resetJoystick(int player_num);
 bool isPlayerHoldingKey(int player_index, int key_enum);
-bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event);
-bool didPlayerReleaseKey(int player_index, int key_enum, const SDL_Event& event);
+bool didPlayerPressKey(int player_index, int key_enum, const void* native_event);
+template <typename EventT>
+inline bool didPlayerPressKey(int player_index, int key_enum, const EventT& event)
+{
+    return didPlayerPressKey(player_index, key_enum, to_native_event_ptr(event));
+}
+bool didPlayerReleaseKey(int player_index, int key_enum, const void* native_event);
+template <typename EventT>
+inline bool didPlayerReleaseKey(int player_index, int key_enum, const EventT& event)
+{
+    return didPlayerReleaseKey(player_index, key_enum, to_native_event_ptr(event));
+}
 
 //buffers: added prototype
 void get_input_events(bool type);
-void handle_events(const SDL_Event& event);
+void handle_events(const void* native_event);
+template <typename EventT>
+inline void handle_events(const EventT& event)
+{
+    handle_events(to_native_event_ptr(event));
+}
 
 // Specific event handling
-void handle_window_event(const SDL_Event& event);
-void handle_key_event(const SDL_Event& event);
-void handle_text_event(const SDL_Event& event);
-void handle_mouse_event(const SDL_Event& event);
-void handle_joy_event(const SDL_Event& event);
+void handle_window_event(const void* native_event);
+template <typename EventT>
+inline void handle_window_event(const EventT& event)
+{
+    handle_window_event(to_native_event_ptr(event));
+}
+void handle_key_event(const void* native_event);
+template <typename EventT>
+inline void handle_key_event(const EventT& event)
+{
+    handle_key_event(to_native_event_ptr(event));
+}
+void handle_text_event(const void* native_event);
+template <typename EventT>
+inline void handle_text_event(const EventT& event)
+{
+    handle_text_event(to_native_event_ptr(event));
+}
+void handle_mouse_event(const void* native_event);
+template <typename EventT>
+inline void handle_mouse_event(const EventT& event)
+{
+    handle_mouse_event(to_native_event_ptr(event));
+}
+void handle_joy_event(const void* native_event);
+template <typename EventT>
+inline void handle_joy_event(const EventT& event)
+{
+    handle_joy_event(to_native_event_ptr(event));
+}
 
-// Takes SDLK (SDL_Keycode) values
+// Takes platform keycode values.
 void sendFakeKeyDownEvent(int keycode);
 void sendFakeKeyUpEvent(int keycode);
 
@@ -290,13 +356,14 @@ bool input_touch_has_alternate();
 #endif
 #endif
 
-inline bool query_key_event(int key, const SDL_Event& event) {
-    if (event.type == SDL_KEYDOWN)
-        return (event.key.keysym.sym == key);
-    return false;
+bool query_key_event(int key, const void* native_event);
+template <typename EventT>
+inline bool query_key_event(int key, const EventT& event)
+{
+    return query_key_event(key, to_native_event_ptr(event));
 }
 
-inline bool isAnyPlayerKey(SDLKey key) {
+inline bool isAnyPlayerKey(int key) {
     for (int player_num = 0; player_num < 4; player_num++)
         for (int i = 0; i < NUM_KEYS; i++)
             if (input_player_keys()[player_num][i] == key)
@@ -304,19 +371,32 @@ inline bool isAnyPlayerKey(SDLKey key) {
     return false;
 }
 
-inline bool isPlayerKey(int player_num, SDLKey key) {
+inline bool isPlayerKey(int player_num, int key) {
     for (int i = 0; i < NUM_KEYS; i++)
         if (input_player_keys()[player_num][i] == key)
             return true;
     return false;
 }
 
-SDL_Event wait_for_key_event();
-void quit_if_quit_event(const SDL_Event& event);
+const void* wait_for_key_event();
+void quit_if_quit_event(const void* native_event);
+template <typename EventT>
+inline void quit_if_quit_event(const EventT& event)
+{
+    quit_if_quit_event(to_native_event_ptr(event));
+}
 
-inline bool isKeyboardEvent(const SDL_Event& event) { return (event.type == SDL_KEYDOWN); }
-inline bool isJoystickEvent(const SDL_Event& event) {
-    return (event.type == SDL_JOYAXISMOTION || event.type == SDL_JOYHATMOTION || event.type == SDL_JOYBUTTONDOWN);
+bool isKeyboardEvent(const void* native_event);
+template <typename EventT>
+inline bool isKeyboardEvent(const EventT& event)
+{
+    return isKeyboardEvent(to_native_event_ptr(event));
+}
+bool isJoystickEvent(const void* native_event);
+template <typename EventT>
+inline bool isJoystickEvent(const EventT& event)
+{
+    return isJoystickEvent(to_native_event_ptr(event));
 }
 
 void clear_events();

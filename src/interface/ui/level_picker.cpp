@@ -25,6 +25,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/resources/io.h>
+#include "SDL.h"
 #include <algorithm>
 #include <array>
 #include <cctype>

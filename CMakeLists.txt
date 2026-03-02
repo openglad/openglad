@@ -180,7 +180,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/walker_pathing.cpp
     ${SRC_DIR}/gameplay/walker_specials.cpp
 	    ${SRC_DIR}/gameplay/weap.cpp
-	    ${SRC_DIR}/interface/render/sai2x.cpp
+	    ${SRC_DIR}/platform/sdl/sai2x.cpp
 		    ${SRC_DIR}/core/util.cpp
 		    ${SRC_DIR}/resources/platform_io.cpp
 		    ${SRC_DIR}/resources/io/platform_io_common.cpp
@@ -319,7 +319,7 @@ set(OG_RENDER_SOURCES
     ${SRC_DIR}/interface/render/pixie.cpp
     ${SRC_DIR}/interface/render/pixien.cpp
     ${SRC_DIR}/interface/render/radar.cpp
-    ${SRC_DIR}/interface/render/sai2x.cpp
+    ${SRC_DIR}/platform/sdl/sai2x.cpp
     ${SRC_DIR}/interface/render/text.cpp
     ${SRC_DIR}/interface/render/view.cpp
     ${SRC_DIR}/interface/render/walker_draw.cpp

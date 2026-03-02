@@ -45,6 +45,7 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/resources/level_data_hooks.h>
+#include "SDL.h"
 #include <algorithm>
 #include <string>
 #include <cstring>

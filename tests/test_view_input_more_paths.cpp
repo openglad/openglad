@@ -1,3 +1,4 @@
+#include "SDL.h"
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/input.h>
 #include <openglad/legacy/base.h>
@@ -7,7 +8,6 @@
 
 #include <array>
 
-#include "SDL.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 

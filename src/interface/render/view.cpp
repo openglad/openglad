@@ -41,6 +41,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/gameplay/sim_input_handler.h>
+#include "SDL.h"
 #include <string>
 #include <format>
 #include <openglad/legacy/view_sizes.h>
@@ -426,8 +427,12 @@ walker* viewscreen::find_next_control()
     return sim_find_next_control(active_screen()->world(), my_team);
 }
 
-short viewscreen::input(const SDL_Event& event)
+short viewscreen::input(const void* native_event)
 {
+	if (native_event == nullptr)
+		return 1;
+	const SDL_Event& event = *static_cast<const SDL_Event*>(native_event);
+
 	// Gameplay input (movement, fire, special, switch, yell, etc.) is now
 	// handled by process_input() via the SDL-independent InputState snapshot.
 	// This method only handles raw SDL events that cannot go through InputState:

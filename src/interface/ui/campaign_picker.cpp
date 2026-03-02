@@ -24,6 +24,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/button.h>
 #include <openglad/core/util.h>
+#include "SDL.h"
 #include <format>
 #include <cstdint>
 #include <memory>
