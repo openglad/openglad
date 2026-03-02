@@ -1,3 +1,3 @@
 #pragma once
 
-#include <openglad/platform/screen_lifecycle.h>
+#include <openglad/interface/screen_lifecycle.h>

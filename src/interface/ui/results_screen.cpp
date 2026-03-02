@@ -10,7 +10,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
-#include <openglad/platform/sound.h>
+#include <openglad/interface/sound.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>

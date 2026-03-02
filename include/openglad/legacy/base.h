@@ -87,7 +87,7 @@ struct meminfo
 };
 
 // Access session state via og::runtime::current_session->member_ directly.
-#include <openglad/platform/game_session.h>
+#include <openglad/interface/session_state.h>
 
 void set_game_speed(float factor);
 

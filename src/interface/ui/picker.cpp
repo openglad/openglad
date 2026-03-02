@@ -31,8 +31,8 @@
 #include <openglad/core/util.h>
 #include <openglad/resources/io.h>
 #include <openglad/interface/screen.h>
-#include <openglad/platform/sound.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/interface/sound.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/runtime/picker_ui_state.h>
 
 #include "SDL.h"
@@ -42,7 +42,7 @@
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_state.h>
-#include <openglad/runtime/screen_lifecycle.h>
+#include <openglad/interface/screen_lifecycle.h>
 #include <array>
 #include <cstddef>
 #include <cstring>

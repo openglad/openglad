@@ -21,7 +21,7 @@
 //
 
 #include <openglad/interface/input.h>
-#include <openglad/platform/game_session.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/runtime/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/io.h>

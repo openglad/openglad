@@ -20,7 +20,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
 
-#include <openglad/runtime/game_context.h>
+#include <openglad/interface/game_context.h>
 
 #include <cmath>
 #include <format>

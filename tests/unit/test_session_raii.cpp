@@ -37,9 +37,9 @@ OG_UNIT_TEST(test_game_session_headless_restores_legacy_globals)
 
 OG_UNIT_TEST(test_game_session_teardown_restores_thread_inheritance_context)
 {
-    og::runtime::GameSession* baseline_session = og::runtime::current_session;
+    og::runtime::SessionState* baseline_session = og::runtime::current_session;
     GameplayContext* baseline_game = current_game;
-    og::runtime::GameSession* baseline_primary_session =
+    og::runtime::SessionState* baseline_primary_session =
         og::runtime::primary_session.load(std::memory_order_acquire);
     GameplayContext* baseline_primary_game =
         og::runtime::primary_game.load(std::memory_order_acquire);

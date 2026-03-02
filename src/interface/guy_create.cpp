@@ -10,7 +10,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/resources/gloader.h>
 
 std::unique_ptr<walker> guy_create_walker_owned(guy& g, screen* screen_)

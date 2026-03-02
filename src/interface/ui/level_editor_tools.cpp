@@ -17,7 +17,7 @@
 
 #include <openglad/interface/screen.h>
 #include <openglad/runtime/level_editor_state.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/runtime/level_runtime_data.h>
 #include <openglad/gameplay/walker.h>
 

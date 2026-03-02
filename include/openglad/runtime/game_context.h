@@ -1,3 +1,3 @@
 #pragma once
 
-#include <openglad/platform/game_context.h>
+#include <openglad/interface/game_context.h>

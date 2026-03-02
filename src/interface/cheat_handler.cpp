@@ -11,7 +11,7 @@
 
 #include <openglad/interface/cheat_handler.h>
 #include <openglad/interface/screen.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/input_state.h>
 #include <openglad/gameplay/walker.h>

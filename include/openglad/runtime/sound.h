@@ -1,3 +1,3 @@
 #pragma once
 
-#include <openglad/platform/sound.h>
+#include <openglad/interface/sound.h>

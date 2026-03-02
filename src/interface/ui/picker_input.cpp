@@ -24,8 +24,8 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
-#include <openglad/platform/sound.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/interface/sound.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/runtime/picker_ui_state.h>
 #include "SDL.h"
 

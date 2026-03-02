@@ -21,7 +21,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/runtime/picker_ui_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include "SDL.h"

@@ -24,10 +24,10 @@
 			   scen/ in case lowercase check fails
 */
 
-#include <openglad/runtime/game_context.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/interface/screen.h>
-#include <openglad/platform/sound.h>
+#include <openglad/interface/sound.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/gparser.h>

@@ -34,8 +34,8 @@ void init_allkeys(int allkeys[][16]);
 
 namespace og::runtime {
 
-thread_local GameSession* current_session = nullptr;
-std::atomic<GameSession*> primary_session{nullptr};
+thread_local SessionState* current_session = nullptr;
+std::atomic<SessionState*> primary_session{nullptr};
 std::atomic<GameplayContext*> primary_game{nullptr};
 
 GameSession::GameSession(const Config& session_cfg)
@@ -151,7 +151,7 @@ GameSession::~GameSession()
         // thread_local pointers are null. Clear or restore them on teardown
         // so ensure_thread_session()/ensure_thread_game() never pick a dead
         // session context.
-        GameSession* expected_session = this;
+        SessionState* expected_session = this;
         (void)primary_session.compare_exchange_strong(
             expected_session, prev_session_, std::memory_order_acq_rel,
             std::memory_order_acquire);

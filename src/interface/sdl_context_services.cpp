@@ -9,7 +9,7 @@
 // SDL-specific GameContext wiring and link-time dispatch implementations.
 // This file is compiled only in the SDL build (not in openglad_text).
 
-#include <openglad/runtime/game_context.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/view.h>

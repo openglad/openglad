@@ -38,7 +38,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/interface/render/sai2x.h>
 #include <openglad/runtime/level_editor_state.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/interface/session_state.h>
 #include <algorithm>
 #include <cstring>
 #include <format>

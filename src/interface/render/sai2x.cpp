@@ -9,7 +9,7 @@
 #include <openglad/interface/render/sai2x.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/interface/session_state.h>
 #include <array>
 #include <stdexcept>
 #include <string>

@@ -25,7 +25,7 @@
 */
 
 #include <openglad/interface/render/pal32.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/interface/session_state.h>
 #include <cstddef>
 #include <cstdio>
 #include <span>
