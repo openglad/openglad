@@ -11,7 +11,7 @@
 // component creation while still maintaining sim-level state fields.
 
 #include <openglad/gameplay/walker.h>
-#include <openglad/gameplay/walker_render.h>
+#include <openglad/interface/walker_render.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>

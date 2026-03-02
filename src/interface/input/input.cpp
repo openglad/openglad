@@ -21,6 +21,7 @@
 //
 
 #include <openglad/interface/input.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/runtime/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/io.h>
@@ -49,10 +50,50 @@ void quit(Sint32 arg1);
 // Input scalar globals (raw_key, player_keys, keystates, viewport_*, etc.)
 // are now members of GameSession, accessed via macros defined in input.h.
 
+InputHardwareState& input_hardware_state()
+{
+    return *og::runtime::current_session->input_hw_;
+}
+
+int (&input_player_keys())[4][NUM_KEYS]
+{
+    return og::runtime::current_session->player_keys_;
+}
+
+int& input_raw_key_ref()
+{
+    return og::runtime::current_session->raw_key_;
+}
+
+std::string& input_raw_text_input_ref()
+{
+    return og::runtime::current_session->raw_text_input_;
+}
+
+bool& input_continue_ref()
+{
+    return og::runtime::current_session->input_continue_;
+}
+
+short& input_scroll_amount_ref()
+{
+    return og::runtime::current_session->scroll_amount_;
+}
+
+short& input_key_press_event_ref()
+{
+    return og::runtime::current_session->key_press_event_;
+}
+
+short& input_text_input_event_ref()
+{
+    return og::runtime::current_session->text_input_event_;
+}
+
 // Input hardware state now lives in GameSession::input_hw_ (InputHardwareState).
 // Access via hw() helper for fields without macros; mouse_state and player_joy
 // are already macros defined in input.h.
-static inline auto& hw() { return *og::runtime::current_session->input_hw_; }
+static inline auto& hw() { return input_hardware_state(); }
 
 void update_overscan_setting()
 {

@@ -11,7 +11,7 @@
 // does not depend on the render module (pixien.h).
 
 #include <openglad/gameplay/walker.h>
-#include <openglad/gameplay/walker_render.h>
+#include <openglad/interface/walker_render.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/gameplay/obmap.h>

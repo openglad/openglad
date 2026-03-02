@@ -19,7 +19,6 @@
 // Definition of SCREEN class
 
 #include <openglad/legacy/base.h> // NUM_FAMILIES/NUM_SPECIALS + legacy globals (transitional)
-#include <openglad/runtime/sound.h>
 #include <openglad/interface/render/video.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/resources/gloader.h>
@@ -37,6 +36,7 @@
 #include <string_view>
 
 struct InputState;
+class soundob;
 
 class screen : public video
 {

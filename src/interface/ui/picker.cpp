@@ -31,6 +31,7 @@
 #include <openglad/core/util.h>
 #include <openglad/resources/io.h>
 #include <openglad/interface/screen.h>
+#include <openglad/platform/sound.h>
 #include <openglad/runtime/game_session.h>
 #include <openglad/runtime/picker_ui_state.h>
 

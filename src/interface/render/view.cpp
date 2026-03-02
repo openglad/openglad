@@ -39,6 +39,7 @@
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/interface/screen.h>
+#include <openglad/platform/sound.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include <string>
 #include <format>
