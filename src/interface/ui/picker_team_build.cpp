@@ -632,8 +632,12 @@ Sint32 create_hire_menu(Sint32 arg1)
             sync_current_guy_from_hire();
         
         // Name box
-        og::runtime::current_session->myscreen_->draw_button(name_box, 1);
-        og::runtime::current_session->myscreen_->draw_button_inverted(name_box_inner);
+        og::runtime::current_session->myscreen_->draw_button(
+            name_box.x, name_box.y, name_box.x + name_box.w - 1,
+            name_box.y + name_box.h - 1, 1);
+        og::runtime::current_session->myscreen_->draw_button_inverted(
+            name_box_inner.x, name_box_inner.y, name_box_inner.w,
+            name_box_inner.h);
         
         text& mytext = og::runtime::current_session->myscreen_->text_normal;
         mytext.write_xy(name_box.x + name_box.w/2 - 3*static_cast<Sint32>(strlen(family_name)), name_box.y + 6, family_name, static_cast<unsigned char>(DARK_BLUE), 1);
@@ -643,8 +647,13 @@ Sint32 create_hire_menu(Sint32 arg1)
         
         
         // Description box
-        og::runtime::current_session->myscreen_->draw_button(description_box, 1);
-        og::runtime::current_session->myscreen_->draw_button_inverted(description_box_inner);
+        og::runtime::current_session->myscreen_->draw_button(
+            description_box.x, description_box.y,
+            description_box.x + description_box.w - 1,
+            description_box.y + description_box.h - 1, 1);
+        og::runtime::current_session->myscreen_->draw_button_inverted(
+            description_box_inner.x, description_box_inner.y,
+            description_box_inner.w, description_box_inner.h);
         
         if(og::runtime::current_session->current_guy_->family != last_family)
         {
@@ -664,8 +673,12 @@ Sint32 create_hire_menu(Sint32 arg1)
         }
         
         // Cost box
-        og::runtime::current_session->myscreen_->draw_button(cost_box, 1);
-        og::runtime::current_session->myscreen_->draw_button_inverted(cost_box_inner);
+        og::runtime::current_session->myscreen_->draw_button(
+            cost_box.x, cost_box.y, cost_box.x + cost_box.w - 1,
+            cost_box.y + cost_box.h - 1, 1);
+        og::runtime::current_session->myscreen_->draw_button_inverted(
+            cost_box_inner.x, cost_box_inner.y, cost_box_inner.w,
+            cost_box_inner.h);
         
         og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_team_num_]);
         mytext.write_xy(cost_box_content.x, cost_box_content.y, og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
@@ -678,9 +691,13 @@ Sint32 create_hire_menu(Sint32 arg1)
             mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
 
         // Stat box
-        og::runtime::current_session->myscreen_->draw_button(stat_box, 1);
+        og::runtime::current_session->myscreen_->draw_button(
+            stat_box.x, stat_box.y, stat_box.x + stat_box.w - 1,
+            stat_box.y + stat_box.h - 1, 1);
         mytext.write_xy(stat_box.x + 65, stat_box.y + 2, DARK_BLUE, "Train");
-        og::runtime::current_session->myscreen_->draw_button_inverted(stat_box_inner);
+        og::runtime::current_session->myscreen_->draw_button_inverted(
+            stat_box_inner.x, stat_box_inner.y, stat_box_inner.w,
+            stat_box_inner.h);
 
         // Stat box content
         linesdown = 0;
@@ -710,7 +727,8 @@ Sint32 create_hire_menu(Sint32 arg1)
 		
 		// Separator bar
 		SDL_Rect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*line_height - 2, stat_box_content.w - 20, 2};
-		og::runtime::current_session->myscreen_->draw_button_inverted(r);
+		og::runtime::current_session->myscreen_->draw_button_inverted(
+			r.x, r.y, r.w, r.h);
 		
 		int derived_offset = 3*STAT_NUM_OFFSET/4;
 		auto ds = compute_guy_derived_stats(*og::runtime::current_session->current_guy_);
@@ -937,7 +955,8 @@ Sint32 create_train_menu(Sint32 arg1)
         linesdown++;
 		// Separator bar
 			SDL_Rect r = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
-			og::runtime::current_session->myscreen_->draw_button_inverted(r);
+			og::runtime::current_session->myscreen_->draw_button_inverted(
+				r.x, r.y, r.w, r.h);
         
         linesdown += 0.4f;
 
@@ -954,7 +973,8 @@ Sint32 create_train_menu(Sint32 arg1)
         linesdown++;
 		// Separator bar
 			SDL_Rect r2 = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
-			og::runtime::current_session->myscreen_->draw_button_inverted(r2);
+			og::runtime::current_session->myscreen_->draw_button_inverted(
+				r2.x, r2.y, r2.w, r2.h);
         
         linesdown += 0.4f;
         og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_guy_->teamnum]);

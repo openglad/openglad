@@ -55,16 +55,16 @@ void test_video_putbuffer_surface_clipping_and_blit()
     SDL_FillRect(surf.get(), nullptr, SDL_MapRGB(surf->format, 10, 20, 30));
 
     // Early-out: tile outside clipping region.
-    og::runtime::current_session->myscreen_->putbuffer(500, 500, 16, 16, 0, 0, 319, 199, surf.get());
+    og::runtime::current_session->myscreen_->putbuffer_surface(500, 500, 16, 16, 0, 0, 319, 199, surf.get());
 
     // Clip left/top.
-    og::runtime::current_session->myscreen_->putbuffer(-5, -5, 16, 16, 0, 0, 319, 199, surf.get());
+    og::runtime::current_session->myscreen_->putbuffer_surface(-5, -5, 16, 16, 0, 0, 319, 199, surf.get());
 
     // Clip right/bottom.
-    og::runtime::current_session->myscreen_->putbuffer(310, 190, 32, 32, 0, 0, 319, 199, surf.get());
+    og::runtime::current_session->myscreen_->putbuffer_surface(310, 190, 32, 32, 0, 0, 319, 199, surf.get());
 
     // No clipping.
-    og::runtime::current_session->myscreen_->putbuffer(10, 10, 16, 16, 0, 0, 319, 199, surf.get());
+    og::runtime::current_session->myscreen_->putbuffer_surface(10, 10, 16, 16, 0, 0, 319, 199, surf.get());
 }
 REGISTER_TEST(test_video_putbuffer_surface_clipping_and_blit);
 

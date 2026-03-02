@@ -36,10 +36,6 @@
 #include <string>
 #include <string_view>
 
-union SDL_Event;
-struct SDL_Rect;
-struct SDL_Surface;
-
 struct InputState;
 
 class screen : public video
@@ -58,8 +54,6 @@ public:
     };
 
     screen(GameWorld& world, std::unique_ptr<video> video_impl, short howmany, bool has_display);
-    explicit screen(GameWorld& world, short howmany = 1);
-    screen(GameWorld& world, short howmany, bool create_display);
 
     void reset(short howmany);
     void ready_for_battle(short howmany);
@@ -117,11 +111,6 @@ public:
                            Sint32 portstartx, Sint32 portstarty,
                            Sint32 portendx, Sint32 portendy,
                            void* sourceptr) override;
-    void putbuffer(Sint32 tilestartx, Sint32 tilestarty,
-                   Sint32 tilewidth, Sint32 tileheight,
-                   Sint32 portstartx, Sint32 portstarty,
-                   Sint32 portendx, Sint32 portendy,
-                   SDL_Surface* sourceptr);
     void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                        Sint32 walkerwidth, Sint32 walkerheight,
                        Sint32 portstartx, Sint32 portstarty,
@@ -156,8 +145,6 @@ public:
     void draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled) override;
     void draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled, Sint32 tobuffer) override;
     void draw_rect_filled(Sint32 x, Sint32 y, Uint32 w, Uint32 h, unsigned char color, Uint8 alpha) override;
-    void draw_button(const SDL_Rect& rect, Sint32 border);
-    void draw_button_inverted(const SDL_Rect& rect);
     void draw_button_inverted(Sint32 x, Sint32 y, Uint32 w, Uint32 h) override;
     void draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border) override;
     void draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border, Sint32 tobuffer) override;
@@ -176,8 +163,6 @@ public:
 
     bool save_screenshot() override;
 
-    void FadeBetween24(SDL_Surface* surface, const Uint8* from, const Uint8* to, int amount);
-    int FadeBetween(SDL_Surface* old_surface, SDL_Surface* new_surface, SDL_Surface* dest_surface);
     void fade_between24(void* surface, const Uint8* from, const Uint8* to, int amount) override;
     int fade_between(void* old_surface, void* new_surface, void* dest_surface) override;
     int fadeblack(bool fade_in) override;
@@ -203,7 +188,7 @@ public:
     bool redraw();
     void refresh();
     walker* first_of(Order whatorder, unsigned char whatfamily, int team_num = -1);
-    short input(const SDL_Event& event);
+    short input(const void* native_event);
     short continuous_input();
     void process_input(const InputState& input_state);
     bool act();

@@ -121,7 +121,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                 }
             }
 
-            s.input(event);
+            s.input(&event);
         }
     }
 

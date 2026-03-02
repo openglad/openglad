@@ -288,8 +288,8 @@ MASS_TEST(test_mass_video_getbuffer, { (void)og::runtime::current_session->myscr
 MASS_TEST(test_mass_video_clearbuffer_rect, { og::runtime::current_session->myscreen_->clearbuffer(1, 1, 20, 20); });
 MASS_TEST(test_mass_video_clear_window, { og::runtime::current_session->myscreen_->clear_window(); });
 MASS_TEST(test_mass_video_draw_rect_filled, { og::runtime::current_session->myscreen_->draw_rect_filled(10, 10, 20, 10, WHITE, 120); });
-MASS_TEST(test_mass_video_draw_button_rect, { SDL_Rect r{20, 20, 40, 20}; og::runtime::current_session->myscreen_->draw_button(r, 1); });
-MASS_TEST(test_mass_video_draw_button_inverted_rect, { SDL_Rect r{20, 50, 40, 20}; og::runtime::current_session->myscreen_->draw_button_inverted(r); });
+MASS_TEST(test_mass_video_draw_button_rect, { SDL_Rect r{20, 20, 40, 20}; og::runtime::current_session->myscreen_->draw_button(r.x, r.y, r.x + r.w - 1, r.y + r.h - 1, 1); });
+MASS_TEST(test_mass_video_draw_button_inverted_rect, { SDL_Rect r{20, 50, 40, 20}; og::runtime::current_session->myscreen_->draw_button_inverted(r.x, r.y, r.w, r.h); });
 MASS_TEST(test_mass_video_putblack, { og::runtime::current_session->myscreen_->putblack(0, 0, 0, 0); });
 MASS_TEST(test_mass_video_fastbox_outline, { og::runtime::current_session->myscreen_->fastbox_outline(2, 2, 8, 8, DARK_GREEN); });
 MASS_TEST(test_mass_video_point, { og::runtime::current_session->myscreen_->point(5, 5, RED); });
@@ -337,7 +337,7 @@ MASS_TEST(test_mass_video_putbuffer_alpha, {
 MASS_TEST(test_mass_video_putbuffer_surface, {
     SDL_Surface* surf = SDL_CreateRGBSurface(SDL_SWSURFACE, 8, 8, 32, 0, 0, 0, 0);
     TEST_ASSERT(surf != nullptr, "surface alloc");
-    og::runtime::current_session->myscreen_->putbuffer(5, 5, 8, 8, 0, 0, 320, 200, surf);
+    og::runtime::current_session->myscreen_->putbuffer_surface(5, 5, 8, 8, 0, 0, 320, 200, surf);
     SDL_FreeSurface(surf);
 });
 
@@ -386,7 +386,7 @@ MASS_TEST(test_mass_video_fade_between24, {
     TEST_ASSERT(s != nullptr, "surface alloc");
     std::array<Uint8, 4 * 4 * 4> from{};
     std::array<Uint8, 4 * 4 * 4> to{};
-    og::runtime::current_session->myscreen_->FadeBetween24(s, from.data(), to.data(), 10);
+    og::runtime::current_session->myscreen_->fade_between24(s, from.data(), to.data(), 10);
     SDL_FreeSurface(s);
 });
 
@@ -395,7 +395,7 @@ MASS_TEST(test_mass_video_fade_between, {
     SDL_Surface* b = SDL_CreateRGBSurface(SDL_SWSURFACE, 4, 4, 32, 0, 0, 0, 0);
     SDL_Surface* d = SDL_CreateRGBSurface(SDL_SWSURFACE, 4, 4, 32, 0, 0, 0, 0);
     TEST_ASSERT(a && b && d, "surfaces alloc");
-    (void)og::runtime::current_session->myscreen_->FadeBetween(a, b, d);
+    (void)og::runtime::current_session->myscreen_->fade_between(a, b, d);
     SDL_FreeSurface(a);
     SDL_FreeSurface(b);
     SDL_FreeSurface(d);

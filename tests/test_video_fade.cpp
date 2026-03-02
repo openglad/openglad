@@ -43,7 +43,7 @@ void test_video_fadebetween_precondition_failures_are_handled()
         return;
 
     // Width mismatch should fail gracefully (return 0).
-    int r = og::runtime::current_session->myscreen_->FadeBetween(old_ok.get(), new_bad_w.get(), dest.get());
+    int r = og::runtime::current_session->myscreen_->fade_between(old_ok.get(), new_bad_w.get(), dest.get());
     TEST_ASSERT_EQ(0, r, "FadeBetween should fail on width mismatch");
 }
 REGISTER_TEST(test_video_fadebetween_precondition_failures_are_handled);
@@ -60,7 +60,7 @@ void test_video_fadebetween_success_path_smoke()
     SDL_FillRect(old_ok.get(), nullptr, SDL_MapRGB(old_ok->format, 10, 20, 30));
     SDL_FillRect(new_ok.get(), nullptr, SDL_MapRGB(new_ok->format, 200, 180, 160));
 
-    int r = og::runtime::current_session->myscreen_->FadeBetween(old_ok.get(), new_ok.get(), dest.get());
+    int r = og::runtime::current_session->myscreen_->fade_between(old_ok.get(), new_ok.get(), dest.get());
     TEST_ASSERT(r != 0, "FadeBetween should succeed for matching 32bpp surfaces");
 }
 REGISTER_TEST(test_video_fadebetween_success_path_smoke);
@@ -76,6 +76,6 @@ void test_video_fadebetween24_smoke()
     std::vector<Uint8> from(size, 0);
     std::vector<Uint8> to(size, 255);
 
-    og::runtime::current_session->myscreen_->FadeBetween24(s.get(), from.data(), to.data(), 1);
+    og::runtime::current_session->myscreen_->fade_between24(s.get(), from.data(), to.data(), 1);
 }
 REGISTER_TEST(test_video_fadebetween24_smoke);

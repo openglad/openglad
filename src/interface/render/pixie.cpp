@@ -115,7 +115,8 @@ short pixie::draw(viewscreen * view_buf)
 
 	if(accel)
 	{
-		og::runtime::current_session->myscreen_->putbuffer(xscreen, yscreen, sizex, sizey,
+		og::runtime::current_session->myscreen_->putbuffer_surface(
+		                             xscreen, yscreen, sizex, sizey,
 		                             view_buf->xloc, view_buf->yloc,
 		                             view_buf->endx, view_buf->endy,
 		                             bmp_surface);

@@ -25,7 +25,6 @@
 */
 
 #include <openglad/platform/game_context.h>
-#include <openglad/platform/video_sdl.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/statistics.h>
@@ -130,10 +129,6 @@ const char* save_data_io_error_string(SaveDataIoError err)
     return "unknown";
 }
 
-std::unique_ptr<video> make_default_video(bool create_display)
-{
-    return std::make_unique<sdl_video>(create_display);
-}
 } // namespace
 
 static inline cfg_store& active_config()
@@ -347,14 +342,6 @@ void screen::putbuffer_surface(Sint32 tilestartx, Sint32 tilestarty,
                                    sourceptr);
 }
 
-void screen::putbuffer(Sint32 tilestartx, Sint32 tilestarty, Sint32 tilewidth,
-                       Sint32 tileheight, Sint32 portstartx, Sint32 portstarty,
-                       Sint32 portendx, Sint32 portendy, SDL_Surface* sourceptr)
-{
-    putbuffer_surface(tilestartx, tilestarty, tilewidth, tileheight, portstartx,
-                      portstarty, portendx, portendy, sourceptr);
-}
-
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                            Sint32 walkerwidth, Sint32 walkerheight,
                            Sint32 portstartx, Sint32 portstarty,
@@ -443,16 +430,6 @@ void screen::draw_rect_filled(Sint32 x, Sint32 y, Uint32 w, Uint32 h,
     video_impl_->draw_rect_filled(x, y, w, h, color, alpha);
 }
 
-void screen::draw_button(const SDL_Rect& rect, Sint32 border)
-{
-    draw_button(rect.x, rect.y, rect.x + rect.w - 1, rect.y + rect.h - 1, border);
-}
-
-void screen::draw_button_inverted(const SDL_Rect& rect)
-{
-    draw_button_inverted(rect.x, rect.y, rect.w, rect.h);
-}
-
 void screen::draw_button_inverted(Sint32 x, Sint32 y, Uint32 w, Uint32 h)
 {
     video_impl_->draw_button_inverted(x, y, w, h);
@@ -516,18 +493,6 @@ int screen::get_pixel(int offset)
 bool screen::save_screenshot()
 {
     return video_impl_->save_screenshot();
-}
-
-void screen::FadeBetween24(SDL_Surface* surface, const Uint8* from,
-                           const Uint8* to, int amount)
-{
-    fade_between24(surface, from, to, amount);
-}
-
-int screen::FadeBetween(SDL_Surface* old_surface, SDL_Surface* new_surface,
-                        SDL_Surface* dest_surface)
-{
-    return fade_between(old_surface, new_surface, dest_surface);
 }
 
 void screen::fade_between24(void* surface, const Uint8* from, const Uint8* to,
@@ -665,16 +630,6 @@ screen::screen(GameWorld& world, std::unique_ptr<video> video_impl, short howman
     , level_runtime_data_(1, false, &sdl_level_data_hooks(), &level_visuals_)
 {
     init_common(howmany, has_display);
-}
-
-screen::screen(GameWorld& world, short howmany)
-    : screen(world, make_default_video(true), howmany, true)
-{
-}
-
-screen::screen(GameWorld& world, short howmany, bool create_display)
-    : screen(world, make_default_video(create_display), howmany, create_display)
-{
 }
 
 screen::~screen()
@@ -916,10 +871,13 @@ void screen::refresh()
 // Useful stuff again
 // **************************
 
-short screen::input(const SDL_Event& event)
+short screen::input(const void* native_event)
 {
 	// static text mytext;
 	short i;
+    if (native_event == nullptr)
+        return 1;
+    const SDL_Event& event = *static_cast<const SDL_Event*>(native_event);
 
 	for (i=0; i < numviews; i++)
 		viewob[i]->input(event);
