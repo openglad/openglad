@@ -10,20 +10,24 @@
 # Exit codes:
 #   0 = build succeeded
 #   1 = build failed
-#   77 = skipped (emsdk not available)
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-if ! command -v emcc >/dev/null 2>&1; then
-    echo "SKIP: emcc not found in PATH. Source emsdk_env.sh to enable this test."
-    exit 77
+EMCC_BIN="${EMCC:-}"
+if [[ -z "$EMCC_BIN" ]]; then
+    EMCC_BIN="$(command -v emcc || true)"
+fi
+
+if [[ -z "$EMCC_BIN" ]]; then
+    echo "ERROR: emcc not found. Source emsdk_env.sh or set EMCC."
+    exit 1
 fi
 
 echo "=== Emscripten build verification ==="
-echo "emcc version: $(emcc --version | head -1)"
+echo "emcc version: $("$EMCC_BIN" --version | head -1)"
 
 cd "$PROJECT_ROOT"
 cmake --preset web-emscripten 2>&1

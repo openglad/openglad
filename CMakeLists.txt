@@ -1335,15 +1335,20 @@ if(NOT EMSCRIPTEN)
             TIMEOUT 60
         )
 
-        add_test(NAME emscripten_build_test
-            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_emscripten_build.sh
-        )
-        set_tests_properties(emscripten_build_test PROPERTIES
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            LABELS "emscripten;build"
-            TIMEOUT 300
-            SKIP_RETURN_CODE 77
-        )
+        find_program(EMCC_EXECUTABLE emcc)
+        if(EMCC_EXECUTABLE)
+            add_test(NAME emscripten_build_test
+                COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_emscripten_build.sh
+            )
+            set_tests_properties(emscripten_build_test PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                LABELS "emscripten;build"
+                TIMEOUT 300
+                ENVIRONMENT "EMCC=${EMCC_EXECUTABLE}"
+            )
+        else()
+            message(STATUS "Skipping emscripten_build_test registration: emcc not found")
+        endif()
 
         if(ENABLE_COVERAGE)
             if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
