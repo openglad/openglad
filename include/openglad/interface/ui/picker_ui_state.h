@@ -45,6 +45,7 @@ struct PickerState {
     // Mutable menu descriptor arrays (Phase 12).
     std::vector<button> main_options_buttons;
     std::vector<button> control_options_buttons;
+    std::vector<button> details_buttons;
     std::vector<button> trainmenu_buttons;
     std::vector<button> hiremenu_buttons;
 };

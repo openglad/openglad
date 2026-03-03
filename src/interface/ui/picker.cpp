@@ -394,10 +394,11 @@ void picker_cleanup_resources()
 
 	pks().main_columns_pix.reset();
 	pks().main_columns_data.free();
-	pks().main_title_logo_pix.reset();
-	pks().main_title_logo_data.free();
+    pks().main_title_logo_pix.reset();
+    pks().main_title_logo_data.free();
     pks().main_options_buttons.clear();
     pks().control_options_buttons.clear();
+    pks().details_buttons.clear();
     pks().trainmenu_buttons.clear();
     pks().hiremenu_buttons.clear();
 }
@@ -571,7 +572,7 @@ button viewteam_buttons[] =
 
     };
 
-button details_buttons[] =
+static const button k_details_buttons[] =
     {
         button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=1, .right=1}),
         button("promote", 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav{.down=0, .left=0}, false, true) // PROMOTE
@@ -674,6 +675,17 @@ button* picker_control_options_buttons()
 int picker_control_options_button_count()
 {
     return static_cast<int>(pks().control_options_buttons.size());
+}
+
+button* picker_details_buttons()
+{
+    reset_mutable_button_layout(pks().details_buttons, k_details_buttons);
+    return pks().details_buttons.data();
+}
+
+int picker_details_button_count()
+{
+    return static_cast<int>(pks().details_buttons.size());
 }
 
 button* picker_trainmenu_buttons()
@@ -1320,8 +1332,8 @@ Sint32 create_detail_menu(guy *arg1)
 
 	   // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
-	button* buttons = details_buttons;
-	int num_buttons = 2;
+	button* buttons = picker_details_buttons();
+	int num_buttons = picker_details_button_count();
 	int highlighted_button = 0;
 	
 	{

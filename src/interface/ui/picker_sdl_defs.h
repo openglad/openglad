@@ -15,7 +15,6 @@ struct button;
 extern button mainmenu_buttons[];
 extern button createmenu_buttons[];
 extern button viewteam_buttons[];
-extern button details_buttons[];
 extern button saveteam_buttons[];
 extern button loadteam_buttons[];
 
