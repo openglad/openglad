@@ -55,47 +55,69 @@ bool decode_event(const void* native_event, EventData& out)
     out.type = map_event_type(e.type);
     out.raw_type = static_cast<int>(e.type);
 
-    out.key_sym = e.key.keysym.sym;
-    out.key_scancode = e.key.keysym.scancode;
-    out.key_mod = e.key.keysym.mod;
-    out.key_repeat = e.key.repeat != 0;
-
-    std::memcpy(out.text, e.text.text, sizeof(out.text));
-
-    out.wheel_y = e.wheel.y;
-
-    out.motion_x = e.motion.x;
-    out.motion_y = e.motion.y;
-    out.motion_dx = e.motion.xrel;
-    out.motion_dy = e.motion.yrel;
-
-    out.button = e.button.button;
-    out.button_x = e.button.x;
-    out.button_y = e.button.y;
-
-    out.finger_x = e.tfinger.x;
-    out.finger_y = e.tfinger.y;
-    out.finger_dx = e.tfinger.dx;
-    out.finger_dy = e.tfinger.dy;
-    out.finger_id = static_cast<std::int64_t>(e.tfinger.fingerId);
-
-    out.joy_axis_which = e.jaxis.which;
-    out.joy_axis_axis = e.jaxis.axis;
-    out.joy_axis_value = e.jaxis.value;
-
-    out.joy_button_which = e.jbutton.which;
-    out.joy_button_button = e.jbutton.button;
-
-    out.joy_hat_which = e.jhat.which;
-    out.joy_hat_hat = e.jhat.hat;
-    out.joy_hat_value = e.jhat.value;
-
-    out.window_event = map_window_event(e.window.event);
-    out.window_data1 = e.window.data1;
-    out.window_data2 = e.window.data2;
-
-    out.user_code = e.user.code;
-    out.user_data1 = reinterpret_cast<std::intptr_t>(e.user.data1);
+    switch (e.type)
+    {
+    case SDL_KEYDOWN:
+    case SDL_KEYUP:
+        out.key_sym = e.key.keysym.sym;
+        out.key_scancode = static_cast<int>(e.key.keysym.scancode);
+        out.key_mod = e.key.keysym.mod;
+        out.key_repeat = e.key.repeat != 0;
+        break;
+    case SDL_TEXTINPUT:
+        std::memcpy(out.text, e.text.text, sizeof(out.text));
+        break;
+    case SDL_MOUSEWHEEL:
+        out.wheel_y = e.wheel.y;
+        break;
+    case SDL_MOUSEMOTION:
+        out.motion_x = e.motion.x;
+        out.motion_y = e.motion.y;
+        out.motion_dx = e.motion.xrel;
+        out.motion_dy = e.motion.yrel;
+        break;
+    case SDL_MOUSEBUTTONUP:
+    case SDL_MOUSEBUTTONDOWN:
+        out.button = e.button.button;
+        out.button_x = e.button.x;
+        out.button_y = e.button.y;
+        break;
+    case SDL_FINGERMOTION:
+    case SDL_FINGERUP:
+    case SDL_FINGERDOWN:
+        out.finger_x = e.tfinger.x;
+        out.finger_y = e.tfinger.y;
+        out.finger_dx = e.tfinger.dx;
+        out.finger_dy = e.tfinger.dy;
+        out.finger_id = static_cast<std::int64_t>(e.tfinger.fingerId);
+        break;
+    case SDL_JOYAXISMOTION:
+        out.joy_axis_which = e.jaxis.which;
+        out.joy_axis_axis = e.jaxis.axis;
+        out.joy_axis_value = e.jaxis.value;
+        break;
+    case SDL_JOYBUTTONDOWN:
+    case SDL_JOYBUTTONUP:
+        out.joy_button_which = e.jbutton.which;
+        out.joy_button_button = e.jbutton.button;
+        break;
+    case SDL_JOYHATMOTION:
+        out.joy_hat_which = e.jhat.which;
+        out.joy_hat_hat = e.jhat.hat;
+        out.joy_hat_value = e.jhat.value;
+        break;
+    case SDL_WINDOWEVENT:
+        out.window_event = map_window_event(e.window.event);
+        out.window_data1 = e.window.data1;
+        out.window_data2 = e.window.data2;
+        break;
+    case SDL_USEREVENT:
+        out.user_code = e.user.code;
+        out.user_data1 = reinterpret_cast<std::intptr_t>(e.user.data1);
+        break;
+    default:
+        break;
+    }
     return true;
 }
 
