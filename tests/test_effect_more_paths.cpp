@@ -88,7 +88,7 @@ void test_effect_magic_shield_hits_weapon_and_enemy_paths()
         weapon->team_num = 2; // opposing team
         weapon->damage = 7.0f;
         weapon->setxy(102, 100);
-        og::runtime::current_session->myscreen_->oblist().push_back(std::move(weapon));
+        og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(weapon));
     }
 
     // Also add a nearby foe living.
@@ -138,7 +138,7 @@ void test_effect_boomerang_hits_weapon_and_enemy_paths()
         weapon->team_num = 2;
         weapon->damage = 3.0f;
         weapon->setxy(102, 100);
-        og::runtime::current_session->myscreen_->oblist().push_back(std::move(weapon));
+        og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(weapon));
     }
 
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
@@ -345,7 +345,7 @@ void test_effect_batch3_shield_and_boomerang_collision_loops()
         incoming->team_num = 2;
         incoming->damage = 2.0f;
         incoming->setxy(100, 100);
-        og::runtime::current_session->myscreen_->oblist().push_back(std::move(incoming));
+        og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(incoming));
     }
 
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);

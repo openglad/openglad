@@ -83,7 +83,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
         static_cast<short>(og::ui::difficulty_percent(og::runtime::current_session->current_difficulty_));
 
 	TRACE("game", "level loaded: scen%d", screenp->world().id);
-	for(auto& uptr : screenp->oblist())
+	for(auto& uptr : screenp->world().oblist)
 	{
 	    walker* w = uptr.get();
 		if (w)
@@ -147,7 +147,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num))
 	{
 		//                Log("already done level\n");
-		for(auto& uptr : og::runtime::current_session->myscreen_->oblist())
+		for(auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
 		{
 		    walker* w = uptr.get();
 			if (w)
@@ -167,7 +167,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			}
 		}
 
-			for(auto& uptr : screenp->weaplist())
+			for(auto& uptr : screenp->world().weaplist)
 			{
 			    walker* w = uptr.get();
 			if (w)
@@ -187,7 +187,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			}
 		}
 
-			for(auto& uptr : screenp->fxlist())
+			for(auto& uptr : screenp->world().fxlist)
 			{
 			    walker* w = uptr.get();
 			if (w)
@@ -228,7 +228,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
         {
             // Spectator mode: set a camera target but don't claim player control
             if (view->control && view_idx == 0)
-                screenp->control_hp = view->control->stats()->hitpoints;
+                screenp->world().control_hp = view->control->stats()->hitpoints;
         }
         else if (view->control && view->control->user == -1)
         {
@@ -236,7 +236,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
             view->control->set_act_type(ACT_CONTROL);
             view->control->stats()->clear_command();
             if (view_idx == 0)
-                screenp->control_hp = view->control->stats()->hitpoints;
+                screenp->world().control_hp = view->control->stats()->hitpoints;
         }
         ++view_idx;
     }

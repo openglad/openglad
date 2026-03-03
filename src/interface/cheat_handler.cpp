@@ -50,7 +50,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 			game_screen->save_data.my_team++;
 			game_screen->save_data.my_team %= MAX_TEAM;
 
-			for (auto& uptr : game_screen->oblist())
+			for (auto& uptr : game_screen->world().oblist)
 			{
 				walker* w = uptr.get();
 				if ((w->team_num == game_screen->save_data.my_team) &&
@@ -74,7 +74,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 
 	if (query_key_event(KEYCODE_F12, native_event))
 	{
-		for (auto& uptr : game_screen->oblist())
+		for (auto& uptr : game_screen->world().oblist)
 		{
 			walker* w = uptr.get();
 			if (w && w->query_order() == Order::Living && !control->is_friendly(w))
@@ -97,7 +97,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 
 	if (query_key_event(KEYCODE_F1, native_event))
 	{
-		game_screen->enemy_freeze += 50;
+		game_screen->world().enemy_freeze += 50;
 		set_palette(game_screen->bluepalette);
 	}
 
@@ -121,7 +121,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 	if (query_key_event(KEYCODE_h, native_event))
 	{
 		control->stats()->hitpoints += 100;
-		game_screen->control_hp += 100;
+		game_screen->world().control_hp += 100;
 	}
 
 	if (query_key_event(KEYCODE_i, native_event))

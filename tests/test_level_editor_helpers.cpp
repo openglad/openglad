@@ -112,15 +112,15 @@ struct ListsSwap {
     std::list<std::unique_ptr<walker>> saved_ob, saved_fx, saved_weap;
     ListsSwap()
     {
-        saved_ob.splice(saved_ob.end(), og::runtime::current_session->myscreen_->oblist());
-        saved_fx.splice(saved_fx.end(), og::runtime::current_session->myscreen_->fxlist());
-        saved_weap.splice(saved_weap.end(), og::runtime::current_session->myscreen_->weaplist());
+        saved_ob.splice(saved_ob.end(), og::runtime::current_session->myscreen_->world().oblist);
+        saved_fx.splice(saved_fx.end(), og::runtime::current_session->myscreen_->world().fxlist);
+        saved_weap.splice(saved_weap.end(), og::runtime::current_session->myscreen_->world().weaplist);
     }
     ~ListsSwap()
     {
-        og::runtime::current_session->myscreen_->oblist().splice(og::runtime::current_session->myscreen_->oblist().end(), saved_ob);
-        og::runtime::current_session->myscreen_->fxlist().splice(og::runtime::current_session->myscreen_->fxlist().end(), saved_fx);
-        og::runtime::current_session->myscreen_->weaplist().splice(og::runtime::current_session->myscreen_->weaplist().end(), saved_weap);
+        og::runtime::current_session->myscreen_->world().oblist.splice(og::runtime::current_session->myscreen_->world().oblist.end(), saved_ob);
+        og::runtime::current_session->myscreen_->world().fxlist.splice(og::runtime::current_session->myscreen_->world().fxlist.end(), saved_fx);
+        og::runtime::current_session->myscreen_->world().weaplist.splice(og::runtime::current_session->myscreen_->world().weaplist.end(), saved_weap);
     }
 };
 
@@ -151,33 +151,33 @@ void test_level_editor_some_hit_checks_all_lists()
     TEST_ASSERT(target1 != nullptr, "target1 should be created");
     walker* target1p = target1.get();
     target1p->setxy(10, 10);
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(target1));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(target1));
 
     walker* hit = some_hit(10, 10, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
     TEST_ASSERT(hit == target1p, "some_hit should find hit in oblist");
     TEST_ASSERT(probep->collide_ob == target1p, "collide_ob should be set");
 
-    og::runtime::current_session->myscreen_->oblist().clear();
+    og::runtime::current_session->myscreen_->world().oblist.clear();
 
     // fxlist hit
     auto target2 = make_living(FAMILY_ORC);
     walker* target2p = target2.get();
     target2p->setxy(10, 10);
-    og::runtime::current_session->myscreen_->fxlist().push_back(std::move(target2));
+    og::runtime::current_session->myscreen_->world().fxlist.push_back(std::move(target2));
     hit = some_hit(10, 10, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
     TEST_ASSERT(hit == target2p, "some_hit should find hit in fxlist");
 
-    og::runtime::current_session->myscreen_->fxlist().clear();
+    og::runtime::current_session->myscreen_->world().fxlist.clear();
 
     // weaplist hit
     auto target3 = make_living(FAMILY_ORC);
     walker* target3p = target3.get();
     target3p->setxy(10, 10);
-    og::runtime::current_session->myscreen_->weaplist().push_back(std::move(target3));
+    og::runtime::current_session->myscreen_->world().weaplist.push_back(std::move(target3));
     hit = some_hit(10, 10, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
     TEST_ASSERT(hit == target3p, "some_hit should find hit in weaplist");
 
-    og::runtime::current_session->myscreen_->weaplist().clear();
+    og::runtime::current_session->myscreen_->world().weaplist.clear();
 
     // no hit
     hit = some_hit(1000, 1000, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
@@ -230,8 +230,8 @@ void test_level_editor_create_new_campaign_and_detect_exists()
         if (fx_inside && fx_outside) {
             walker* fx_inside_p = fx_inside.get();
             walker* fx_outside_p = fx_outside.get();
-            og::runtime::current_session->myscreen_->fxlist().push_back(std::move(fx_inside));
-            og::runtime::current_session->myscreen_->fxlist().push_back(std::move(fx_outside));
+            og::runtime::current_session->myscreen_->world().fxlist.push_back(std::move(fx_inside));
+            og::runtime::current_session->myscreen_->world().fxlist.push_back(std::move(fx_outside));
             fx_inside_p->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
             fx_outside_p->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
             TEST_ASSERT(are_objects_outside_area(&og::runtime::current_session->myscreen_->level_runtime_data(), 0, 0, 10, 10),
@@ -247,8 +247,8 @@ void test_level_editor_create_new_campaign_and_detect_exists()
         if (weap_inside && weap_outside) {
             walker* weap_inside_p = weap_inside.get();
             walker* weap_outside_p = weap_outside.get();
-            og::runtime::current_session->myscreen_->weaplist().push_back(std::move(weap_inside));
-            og::runtime::current_session->myscreen_->weaplist().push_back(std::move(weap_outside));
+            og::runtime::current_session->myscreen_->world().weaplist.push_back(std::move(weap_inside));
+            og::runtime::current_session->myscreen_->world().weaplist.push_back(std::move(weap_outside));
             weap_inside_p->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
             weap_outside_p->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
             TEST_ASSERT(are_objects_outside_area(&og::runtime::current_session->myscreen_->level_runtime_data(), 0, 0, 10, 10),

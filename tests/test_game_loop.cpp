@@ -89,15 +89,15 @@ void test_game_frame_with_result_done_when_end_is_set()
     deps.enable_render = false;
     deps.enable_event_poll = false;
 
-    const char old_end = og::runtime::current_session->myscreen_->end;
-    og::runtime::current_session->myscreen_->end = 1;
+    const char old_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 1;
 
     const GameFrameResult result = game_frame_with_result(*og::runtime::current_session->myscreen_, st, deps);
     TEST_ASSERT_EQ(static_cast<int>(GameFrameResult::Done), static_cast<int>(result),
         "game_frame_with_result should report Done when screen end is set");
     TEST_ASSERT(st.done, "state.done should be set when end is set");
 
-    og::runtime::current_session->myscreen_->end = old_end;
+    og::runtime::current_session->myscreen_->world().end = old_end;
 }
 REGISTER_TEST(test_game_frame_with_result_done_when_end_is_set);
 
@@ -108,8 +108,8 @@ void test_game_frame_bool_wrapper_matches_typed_result()
     deps.enable_render = false;
     deps.enable_event_poll = false;
 
-    const char old_end = og::runtime::current_session->myscreen_->end;
-    og::runtime::current_session->myscreen_->end = 1;
+    const char old_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 1;
 
     const GameFrameResult typed = game_frame_with_result(*og::runtime::current_session->myscreen_, st, deps);
     st.done = false;
@@ -118,7 +118,7 @@ void test_game_frame_bool_wrapper_matches_typed_result()
     TEST_ASSERT_EQ(static_cast<int>(typed != GameFrameResult::Continue), static_cast<int>(wrapped),
         "bool wrapper should map Continue/non-Continue exactly");
 
-    og::runtime::current_session->myscreen_->end = old_end;
+    og::runtime::current_session->myscreen_->world().end = old_end;
 }
 REGISTER_TEST(test_game_frame_bool_wrapper_matches_typed_result);
 

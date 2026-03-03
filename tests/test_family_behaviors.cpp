@@ -1460,7 +1460,7 @@ void test_cleric_mystic_mace_success_path_direct()
     TEST_ASSERT(cleric->busy > 0, "mystic mace success should add busy delay");
 
     bool found_shield = false;
-    for (auto& uptr : og::runtime::current_session->myscreen_->oblist())
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
     {
         walker* w = uptr.get();
         if (w && w->query_order() == Order::FX && w->family == FAMILY_MAGIC_SHIELD &&
@@ -1470,7 +1470,7 @@ void test_cleric_mystic_mace_success_path_direct()
             break;
         }
     }
-    for (auto& uptr : og::runtime::current_session->myscreen_->fxlist())
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist)
     {
         walker* w = uptr.get();
         if (w && w->family == FAMILY_MAGIC_SHIELD && w->owner == cleric)
@@ -1611,7 +1611,7 @@ void test_cleric_raise_skeleton_and_ghost_from_blood()
     TEST_ASSERT(blood->dead, "blood should be consumed by raise skeleton");
 
     bool found_skeleton = false;
-    for (auto& uptr : og::runtime::current_session->myscreen_->oblist())
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
@@ -1632,7 +1632,7 @@ void test_cleric_raise_skeleton_and_ghost_from_blood()
     TEST_ASSERT(blood->dead, "blood should be consumed by raise ghost");
 
     bool found_ghost = false;
-    for (auto& uptr : og::runtime::current_session->myscreen_->oblist())
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
@@ -1663,7 +1663,7 @@ void test_cleric_resurrect_friendly_and_enemy_blood()
     TEST_ASSERT(blood_friend->dead, "friendly blood should be consumed");
 
     bool found_resurrected_friend = false;
-    for (auto& uptr : og::runtime::current_session->myscreen_->oblist())
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
@@ -1683,7 +1683,7 @@ void test_cleric_resurrect_friendly_and_enemy_blood()
     TEST_ASSERT(blood_enemy->dead, "enemy blood should be consumed");
 
     bool found_enemy_ghost = false;
-    for (auto& uptr : og::runtime::current_session->myscreen_->oblist())
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
@@ -1862,7 +1862,7 @@ void test_druid_batch3_special_branches()
     TEST_ASSERT(fd->do_special(druid), "protection should succeed with ally in range");
 
     walker* existing_circle = nullptr;
-    for (auto& uptr : og::runtime::current_session->myscreen_->weaplist())
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().weaplist)
     {
         walker* w = uptr.get();
         if (w && w->family == FAMILY_CIRCLE_PROTECTION)
@@ -2713,14 +2713,14 @@ void test_family_round10_orc_ghost_archer_slime_elf_edge_callbacks()
     }
 
     // SLIME AI: MAXOBS guard branch.
-    const int saved_numobs = og::runtime::current_session->myscreen_->living_count();
-    og::runtime::current_session->myscreen_->living_count() = MAXOBS;
+    const int saved_numobs = og::runtime::current_session->myscreen_->world().living_count;
+    og::runtime::current_session->myscreen_->world().living_count = MAXOBS;
     TEST_ASSERT(!slime_fd->check_special_ai(static_cast<living*>(orc)),
                 "slime check_special_ai should fail when numobs reaches MAXOBS");
-    og::runtime::current_session->myscreen_->living_count() = 0;
+    og::runtime::current_session->myscreen_->world().living_count = 0;
     TEST_ASSERT(slime_fd->check_special_ai(static_cast<living*>(orc)),
                 "slime check_special_ai should pass when numobs is below MAXOBS");
-    og::runtime::current_session->myscreen_->living_count() = saved_numobs;
+    og::runtime::current_session->myscreen_->world().living_count = saved_numobs;
 
     // ELF special basic branch should execute for case 1 when fire is available.
     walker* elf = add_living_to_level(FAMILY_ELF, 0, 100, 100);

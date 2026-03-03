@@ -435,7 +435,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 		// Reset the timer count to zero ...
 		reset_timer();
 
-		if (og::runtime::current_session->myscreen_->end)
+		if (og::runtime::current_session->myscreen_->world().end)
 			break;
 
 		// Get keys and stuff

@@ -526,7 +526,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         // Reset the timer count to zero ...
         reset_timer();
 
-        if(og::runtime::current_session->myscreen_->end)
+        if(og::runtime::current_session->myscreen_->world().end)
             break;
 
         // Get keys and stuff

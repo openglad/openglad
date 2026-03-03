@@ -551,7 +551,7 @@ void screen::init_common(short howmany, bool has_display)
 	timerstart = query_timer_control();
 	framecount = 0;
 
-	control_hp = 0;
+	world_.control_hp = 0;
 
 	// Load the palette ..
 	load_and_set_palette("our.pal", newpalette);
@@ -575,13 +575,13 @@ void screen::init_common(short howmany, bool has_display)
 	update_overscan_setting();
 
 	palmode = 0;
-	end = 0;
-	timer_wait = 6;
+	world_.end = 0;
+	world_.timer_wait = 6;
 	redrawme = 1;
 	cyclemode = 1;
-	enemy_freeze = 0;
-	level_done = 0;
-	retry = false;
+	world_.enemy_freeze = 0;
+	world_.level_done = 0;
+	world_.retry = false;
 
 	numviews = howmany;
     for (auto& view : viewob)
@@ -632,12 +632,6 @@ screen::screen(GameWorld& world, std::unique_ptr<video> video_impl, short howman
     , text_normal(video_impl_->text_normal_ref())
     , text_big(video_impl_->text_big_ref())
     , world_(world)
-    , control_hp(world_.control_hp)
-    , end(world_.end)
-    , timer_wait(world_.timer_wait)
-    , level_done(world_.level_done)
-    , retry(world_.retry)
-    , enemy_freeze(world_.enemy_freeze)
     , myloader(nullptr)
     , level_runtime_data_(1, false, &sdl_level_data_hooks(), &level_visuals_)
 {
@@ -701,20 +695,20 @@ void screen::ready_for_battle(short howmany)
 	// Clean stuff up
 	cleanup(howmany);
     
-    initialize_views();
+	initialize_views();
 	world_.reset_level_progress();
 
-	end = 0;
+	world_.end = 0;
 	
-	retry = false;
+	world_.retry = false;
 
 	redrawme = 1;
 
 	timerstart = query_timer_control();
 	framecount = 0;
-	enemy_freeze = 0;
+	world_.enemy_freeze = 0;
 
-	control_hp = 0;
+	world_.control_hp = 0;
 
 	palmode = 0;
 
@@ -753,7 +747,7 @@ void screen::reset(short howmany)
 		viewob[3] = std::make_unique<viewscreen>( 112, 16, 100, 168, 3);
 	}
 
-	end = 0;
+	world_.end = 0;
 
 	redrawme = 1;
 	
@@ -763,13 +757,13 @@ void screen::reset(short howmany)
 
 	timerstart = query_timer_control();
 	framecount = 0;
-	enemy_freeze = 0;
+	world_.enemy_freeze = 0;
 
-	control_hp = 0;
+	world_.control_hp = 0;
 
 	palmode = 0;
 
-	end = 0;
+	world_.end = 0;
 
 	redrawme = 1;
 
@@ -822,21 +816,6 @@ LevelRuntimeData::IoError screen::load_level_with_error()
 LevelRuntimeData::IoError screen::save_level_with_error()
 {
     return level_runtime_data_.save_with_error();
-}
-
-bool screen::query_grid_passable(float x, float y, walker  *ob)
-{
-	return world_.query_grid_passable(x, y, ob);
-}
-
-bool screen::query_object_passable(float x, float y, walker  *ob)
-{
-	return world_.query_object_passable(x, y, ob);
-}
-
-bool screen::query_passable(float x, float y, walker  *ob)
-{
-	return world_.query_passable(x, y, ob);
 }
 
 void screen::clear()
@@ -970,7 +949,7 @@ bool screen::act()
 				damage_tile(static_cast<short>(ev.a), static_cast<short>(ev.b));
 				break;
 			case og::sim::EventKind::SetEnd:
-				end = 1;
+				world_.end = 1;
 				break;
 			case og::sim::EventKind::RequestExitConfirmation:
 				if (first_exit_request == nullptr)
@@ -1064,13 +1043,13 @@ bool screen::act()
 	events.clear();
 
 	// Handle level completion / game ending.
-	if (world_.game_ended && !end)
+	if (world_.game_ended && !world_.end)
 	{
 		sync_save_data_from_world();
 		return endgame(world_.ending, world_.next_level);
 	}
 
-	if (end)
+	if (world_.end)
 		return 1;
 
 	return 1;
@@ -1085,10 +1064,10 @@ short screen::endgame(short ending)
 
 short screen::endgame(short ending, short nextlevel)
 {
-	    if(end)
-	    {
-	        return 1;
-	    }
+	if (world_.end)
+	{
+		return 1;
+	}
 
 	sync_save_data_from_world();
 	
@@ -1112,46 +1091,46 @@ short screen::endgame(short ending, short nextlevel)
 	}
 	
 	// Let's show the results!
-    retry = results_screen(ending, nextlevel, before, after);
+    world_.retry = results_screen(ending, nextlevel, before, after);
     
-    if(retry)
+    if (world_.retry)
     {
         // Retry without updating the roster and saving the game
-        end = 1;
+        world_.end = 1;
         sync_world_from_save_data();
         return 1;
     }
     
-	if (ending == 1)  // 1 = lose, for some reason
+	if (ending == 1) // 1 = lose, for some reason
 	{
 		if (nextlevel == -1) // generic defeat
 		{
-			end = 1;
+			world_.end = 1;
 		}
 		else // we're withdrawing to another level
 		{
-			end = 1;
+			world_.end = 1;
 		}
 	}
 	else if (ending == SCEN_TYPE_SAVE_ALL) // failed to save a guy
 	{
-		end = 1;
+		world_.end = 1;
 	}
-		else if (ending == 0) // we won
+	else if (ending == 0) // we won
+	{
+		Uint32 bonuscash[4] = {0, 0, 0, 0};
+		Uint32 allbonuscash = 0;
+		
+		// Update all the money!
+		for (int i=0; i < 4; i++)
 		{
-	        Uint32 bonuscash[4] = {0, 0, 0, 0};
-	        Uint32 allbonuscash = 0;
-	        
-			// Update all the money!
-			for (int i=0; i < 4; i++)
-			{
-				save_data.m_totalscore[i] += save_data.m_score[i];
-				save_data.m_totalcash[i] += (save_data.m_score[i]*2);
-				save_data.m_score[i] = 0;
-			}
-			for (int i=0; i < 4; i++)
-			{
-	            bonuscash[i] = get_time_bonus(i);
+			save_data.m_totalscore[i] += save_data.m_score[i];
+			save_data.m_totalcash[i] += (save_data.m_score[i]*2);
+			save_data.m_score[i] = 0;
+		}
+		for (int i=0; i < 4; i++)
+		{
+            bonuscash[i] = get_time_bonus(i);
 			save_data.m_totalcash[i] += bonuscash[i];
 			allbonuscash += bonuscash[i];
 		}
@@ -1167,27 +1146,17 @@ short screen::endgame(short ending, short nextlevel)
 		if (nextlevel != -1)
 			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
         
-        // Grab our team out of the level
-        save_data.update_guys(world_.oblist);
-        
-        // Autosave because we won
+		// Grab our team out of the level
+		save_data.update_guys(world_.oblist);
+		
+		// Autosave because we won
 		save_data.save("save0");
 
-		end = 1;
+		world_.end = 1;
 	}
 
 	sync_world_from_save_data();
 	return 1;
-}
-
-walker *screen::find_near_foe(walker  *ob)
-{
-	return world_.find_near_foe(ob);
-}
-
-walker  *screen::find_far_foe(walker  *ob)
-{
-	return world_.find_far_foe(ob);
 }
 
 walker* screen::set_walker(walker *ob, Order order, Sint32 family)
@@ -1271,38 +1240,6 @@ void screen::draw_panels(short howmany)
 	redraw(); // repaint the screen area ..
 	buffer_to_screen(0, 0, 320, 200);
 }
-
-walker  * screen::find_nearest_blood(walker  *who)
-{
-	return world_.find_nearest_blood(who);
-}
-
-std::list<walker*> screen::find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
-{
-	return world_.find_in_range(somelist, range, howmany, ob);
-}
-
-walker* screen::find_nearest_player(walker *ob)
-{
-	return world_.find_nearest_player(ob);
-}
-
-std::list<walker*> screen::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
-{
-	return world_.find_foes_in_range(somelist, range, howmany, ob);
-}
-
-std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range,
-                                      Sint32* howmany, walker* ob)
-{
-	return world_.find_friends_in_range(somelist, range, howmany, ob);
-}
-
-std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
-{
-    return world_.find_foe_weapons_in_range(somelist, range, howmany, ob);
-}
-
 
 // Uses pixel coordinates
 char screen::damage_tile(short xloc, short yloc) // damage the specified tile

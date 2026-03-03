@@ -140,7 +140,7 @@ void test_level_data_save_truncates_fixed_fields_and_rejects_null_object()
     og::runtime::current_session->myscreen_->world().title = std::string(100, 'T');         // >30, triggers truncation warning path
 
     // Insert a nullptr object to hit the defensive serialization failure path.
-    og::runtime::current_session->myscreen_->oblist().push_back(std::unique_ptr<walker>{});
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::unique_ptr<walker>{});
 
     TEST_ASSERT(!og::runtime::current_session->myscreen_->save_level(), "save should fail when oblist contains nullptr");
 
@@ -354,9 +354,9 @@ void test_level_data_load_failure_preserves_existing_world_state()
     sentinel->team_num = 3;
     sentinel->setxy(48, 64);
 
-    const std::size_t before_ob_count = og::runtime::current_session->myscreen_->oblist().size();
-    const std::size_t before_fx_count = og::runtime::current_session->myscreen_->fxlist().size();
-    const std::size_t before_weap_count = og::runtime::current_session->myscreen_->weaplist().size();
+    const std::size_t before_ob_count = og::runtime::current_session->myscreen_->world().oblist.size();
+    const std::size_t before_fx_count = og::runtime::current_session->myscreen_->world().fxlist.size();
+    const std::size_t before_weap_count = og::runtime::current_session->myscreen_->world().weaplist.size();
 
     TEST_ASSERT(!og::runtime::current_session->myscreen_->load_level(),
                 "load should fail for missing scenario");
@@ -364,11 +364,11 @@ void test_level_data_load_failure_preserves_existing_world_state()
                    (int)og::runtime::current_session->myscreen_->level_io_error(),
                    "missing scenario should report OpenReadFailed");
 
-    TEST_ASSERT_EQ(before_ob_count, og::runtime::current_session->myscreen_->oblist().size(),
+    TEST_ASSERT_EQ(before_ob_count, og::runtime::current_session->myscreen_->world().oblist.size(),
                    "failed load should preserve oblist");
-    TEST_ASSERT_EQ(before_fx_count, og::runtime::current_session->myscreen_->fxlist().size(),
+    TEST_ASSERT_EQ(before_fx_count, og::runtime::current_session->myscreen_->world().fxlist.size(),
                    "failed load should preserve fxlist");
-    TEST_ASSERT_EQ(before_weap_count, og::runtime::current_session->myscreen_->weaplist().size(),
+    TEST_ASSERT_EQ(before_weap_count, og::runtime::current_session->myscreen_->world().weaplist.size(),
                    "failed load should preserve weaplist");
     TEST_ASSERT(og::runtime::current_session->myscreen_->world().title == "preserve me",
                 "failed load should preserve world title");
@@ -377,9 +377,9 @@ void test_level_data_load_failure_preserves_existing_world_state()
     TEST_ASSERT(og::runtime::current_session->myscreen_->get_level_description_line(0) == "keep-description",
                 "failed load should preserve description");
 
-    walker* after = og::runtime::current_session->myscreen_->oblist().empty()
+    walker* after = og::runtime::current_session->myscreen_->world().oblist.empty()
         ? nullptr
-        : og::runtime::current_session->myscreen_->oblist().front().get();
+        : og::runtime::current_session->myscreen_->world().oblist.front().get();
     TEST_ASSERT(after == sentinel, "failed load should preserve existing object pointer");
     if (after)
     {

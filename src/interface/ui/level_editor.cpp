@@ -1314,7 +1314,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	std::string message;
 	Sint32 i, j; // for loops
 	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
-	Sint32 numobs = s->living_count();
+	Sint32 numobs = s->world().living_count;
 	Sint32 lm = 245;
 	Sint32 curline = 0;
 	Sint32 whichback;
@@ -1422,7 +1422,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         if(!message.empty())
             scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
 
-        numobs = s->living_count();
+        numobs = s->world().living_count;
         //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
         message = std::format("OB: {}", numobs);
         scentext.write_xy(lm,L_D(curline++),message.c_str(), DARK_BLUE, 1);
@@ -3093,7 +3093,7 @@ Sint32 level_editor()
 		// Reset the timer count to zero ...
 		reset_timer();
 
-		if (og::runtime::current_session->myscreen_->end)
+		if (og::runtime::current_session->myscreen_->world().end)
 		{
 		    done = true;
 			break;

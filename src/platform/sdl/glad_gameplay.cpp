@@ -50,7 +50,7 @@ void glad_init()
 
 #ifdef TESTING
     if (g_test_remove_exits) {
-        for (auto& uptr : current_screen->fxlist()) {
+        for (auto& uptr : current_screen->world().fxlist) {
             walker* w = uptr.get();
             if (w && w->query_order() == Order::Treasure && w->family == FAMILY_EXIT)
                 w->dead = 1;
@@ -127,7 +127,7 @@ short remaining_team(screen* s, char myteam)
 {
     short myfoes = 0;
 
-    const auto& foelist = s->oblist();
+    const auto& foelist = s->world().oblist;
     for (auto& uptr : foelist)
     {
         walker* w = uptr.get();

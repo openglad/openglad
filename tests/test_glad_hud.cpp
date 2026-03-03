@@ -79,11 +79,11 @@ void test_glad_remaining_counts()
         std::list<std::unique_ptr<walker>> saved;
         ObListSwap()
         {
-            saved.splice(saved.end(), og::runtime::current_session->myscreen_->oblist());
+            saved.splice(saved.end(), og::runtime::current_session->myscreen_->world().oblist);
         }
         ~ObListSwap()
         {
-            og::runtime::current_session->myscreen_->oblist().splice(og::runtime::current_session->myscreen_->oblist().end(), saved);
+            og::runtime::current_session->myscreen_->world().oblist.splice(og::runtime::current_session->myscreen_->world().oblist.end(), saved);
         }
     } swap;
 
@@ -98,17 +98,17 @@ void test_glad_remaining_counts()
     walker* foe1p = foe1.get();
     walker* foe2p = foe2.get();
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(ally));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(foe1));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(foe2));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(foe1));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(foe2));
 
     TEST_ASSERT_EQ(2, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp), "should count non-friendly living foes");
     TEST_ASSERT_EQ(2, (int)remaining_team(og::runtime::current_session->myscreen_, 0), "should count living on team 0 (including control)");
 
     foe2p->dead = 1;
     TEST_ASSERT_EQ(1, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp), "dead foes should not be counted");
-    og::runtime::current_session->myscreen_->oblist().clear();
+    og::runtime::current_session->myscreen_->world().oblist.clear();
 }
 REGISTER_TEST(test_glad_remaining_counts);
 

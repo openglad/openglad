@@ -129,7 +129,7 @@ GameSession::GameSession(const Config& session_cfg)
         game_.save = &myscreen_->save_data;
         myscreen_->level_runtime_data().set_sim_context(
             &myscreen_->save_data,
-            &myscreen_->enemy_freeze,
+            &myscreen_->world().enemy_freeze,
             ctx_.sim_events.get(),
             ctx_.rng,
             &cfg);

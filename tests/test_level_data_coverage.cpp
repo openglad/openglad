@@ -98,11 +98,11 @@ void test_level_data_save_rejects_null_fx_and_weap_entries()
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
-    og::runtime::current_session->myscreen_->fxlist().push_back(std::unique_ptr<walker>{});
+    og::runtime::current_session->myscreen_->world().fxlist.push_back(std::unique_ptr<walker>{});
     TEST_ASSERT(!og::runtime::current_session->myscreen_->save_level(), "save should fail when fxlist contains nullptr");
 
     og::runtime::current_session->myscreen_->world().delete_objects();
-    og::runtime::current_session->myscreen_->weaplist().push_back(std::unique_ptr<walker>{});
+    og::runtime::current_session->myscreen_->world().weaplist.push_back(std::unique_ptr<walker>{});
     TEST_ASSERT(!og::runtime::current_session->myscreen_->save_level(), "save should fail when weaplist contains nullptr");
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -116,17 +116,17 @@ void test_level_data_range_helpers_and_null_paths()
     std::int32_t howmany = 99;
     std::list<walker*> empty;
 
-    empty = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->oblist(), 120, &howmany, nullptr);
+    empty = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->world().oblist, 120, &howmany, nullptr);
     TEST_ASSERT(empty.empty(), "find_in_range nullptr actor should return empty");
     TEST_ASSERT_EQ(0, (int)howmany, "find_in_range should zero howmany");
 
-    empty = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->oblist(), 120, &howmany, nullptr);
+    empty = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->world().oblist, 120, &howmany, nullptr);
     TEST_ASSERT(empty.empty(), "find_foes_in_range nullptr actor should return empty");
 
-    empty = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->weaplist(), 120, &howmany, nullptr);
+    empty = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 120, &howmany, nullptr);
     TEST_ASSERT(empty.empty(), "find_foe_weapons_in_range nullptr actor should return empty");
 
-    empty = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->oblist(), 120, &howmany, nullptr);
+    empty = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->world().oblist, 120, &howmany, nullptr);
     TEST_ASSERT(empty.empty(), "find_friends_in_range nullptr actor should return empty");
 
     TEST_ASSERT(og::runtime::current_session->myscreen_->world().find_nearest_blood(nullptr) == nullptr, "find_nearest_blood nullptr should return null");
@@ -517,16 +517,16 @@ void test_level_data_range_helpers_positive_selection_paths()
     auto nearest_blood = og::runtime::current_session->myscreen_->world().find_nearest_blood(actor);
     TEST_ASSERT(nearest_blood == blood_near, "find_nearest_blood should return nearest stain");
 
-    auto in_range = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->oblist(), 80, &howmany, actor);
+    auto in_range = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->world().oblist, 80, &howmany, actor);
     TEST_ASSERT(!in_range.empty() && howmany > 0, "find_in_range should collect nearby non-dead walkers");
 
-    auto foes = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->oblist(), 100, &howmany, actor);
+    auto foes = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->world().oblist, 100, &howmany, actor);
     TEST_ASSERT((int)foes.size() >= 2 && howmany >= 2, "find_foes_in_range should include living + generator foes");
 
-    auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->weaplist(), 80, &howmany, actor);
+    auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 80, &howmany, actor);
     TEST_ASSERT(foe_weapons.size() == 1 && howmany == 1, "find_foe_weapons_in_range should include friendly weapon");
 
-    auto friends = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->oblist(), 80, &howmany, actor);
+    auto friends = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->world().oblist, 80, &howmany, actor);
     TEST_ASSERT(!friends.empty() && howmany >= 1, "find_friends_in_range should include friendly living walkers");
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -669,20 +669,20 @@ void test_level_data_round5_find_helpers_contiguous_block_paths()
                 "find_nearest_player should return null when no controlled walkers exist");
 
     std::int32_t howmany = -1;
-    auto in_range = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->oblist(), 128, &howmany, actor);
+    auto in_range = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->world().oblist, 128, &howmany, actor);
     TEST_ASSERT(!in_range.empty() && howmany > 0, "find_in_range should count nearby non-dead walkers");
 
-    auto foes = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->oblist(), 128, &howmany, actor);
+    auto foes = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->world().oblist, 128, &howmany, actor);
     TEST_ASSERT(!foes.empty() && howmany > 0, "find_foes_in_range should include living/generator enemies");
 
-    auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->weaplist(), 128, &howmany, actor);
+    auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 128, &howmany, actor);
     TEST_ASSERT(foe_weapons.empty(), "enemy weapon should be excluded because helper accepts friendly weapons");
 
     foe_weapon->team_num = actor->team_num;
-    foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->weaplist(), 128, &howmany, actor);
+    foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 128, &howmany, actor);
     TEST_ASSERT(!foe_weapons.empty() && howmany > 0, "friendly weapon should be included by helper predicate");
 
-    auto friends = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->oblist(), 128, &howmany, actor);
+    auto friends = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->world().oblist, 128, &howmany, actor);
     TEST_ASSERT(!friends.empty() && howmany > 0, "find_friends_in_range should include friendly living");
 
     TEST_ASSERT(og::runtime::current_session->myscreen_->world().find_nearest_blood(nullptr) == nullptr,
@@ -1302,18 +1302,18 @@ void test_level_data_round13_find_helpers_selection_and_filters()
                 "find_nearest_player should return nearest controlled walker");
 
     std::int32_t howmany = -1;
-    auto in_range = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->oblist(), 40, &howmany, actor);
+    auto in_range = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->world().oblist, 40, &howmany, actor);
     TEST_ASSERT(!in_range.empty() && howmany > 0, "find_in_range should collect nearby alive walkers");
 
-    auto foes = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->oblist(), 64, &howmany, actor);
+    auto foes = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->world().oblist, 64, &howmany, actor);
     TEST_ASSERT(!foes.empty() && howmany > 0, "find_foes_in_range should include nearby non-friendly living/generator");
 
-    auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->weaplist(), 64, &howmany, actor);
+    auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 64, &howmany, actor);
     TEST_ASSERT(!foe_weapons.empty() && howmany > 0, "find_foe_weapons_in_range should include friendly weapons only");
     for (walker* w : foe_weapons)
         TEST_ASSERT_EQ((int)actor->team_num, (int)w->team_num, "returned weapon should be on friendly team");
 
-    auto friends = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->oblist(), 64, &howmany, actor);
+    auto friends = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->world().oblist, 64, &howmany, actor);
     TEST_ASSERT(!friends.empty() && howmany > 0, "find_friends_in_range should include friendly living walkers");
     for (walker* w : friends)
         TEST_ASSERT_EQ((int)Order::Living, (int)w->query_order(), "friend results should be living walkers");
@@ -1364,16 +1364,16 @@ void test_level_data_round14_find_helper_exclusion_branches()
                 "find_nearest_blood should ignore dead blood stains");
 
     std::int32_t howmany = -1;
-    auto in_range = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->oblist(), 32, &howmany, actor);
+    auto in_range = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->world().oblist, 32, &howmany, actor);
     for (walker* w : in_range)
         TEST_ASSERT(!w->dead, "find_in_range should exclude dead objects");
 
-    auto foes = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->oblist(), 32, &howmany, actor);
+    auto foes = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->world().oblist, 32, &howmany, actor);
     TEST_ASSERT_EQ(1, (int)foes.size(), "find_foes_in_range should keep one alive enemy in range");
     if (!foes.empty())
         TEST_ASSERT(foes.front() == hidden_foe, "find_foes_in_range should exclude dead and friendly walkers");
 
-    auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->weaplist(), 32, &howmany, actor);
+    auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 32, &howmany, actor);
     TEST_ASSERT(foe_weapons.empty(), "find_foe_weapons_in_range should exclude enemy-team weapons");
 }
 REGISTER_TEST(test_level_data_round14_find_helper_exclusion_branches);

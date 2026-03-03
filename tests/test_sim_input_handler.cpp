@@ -49,8 +49,8 @@ void test_sim_find_next_control_player_first()
     // Transfer ownership to oblist
     walker* npc_ptr = npc.get();
     walker* player_ptr = player.get();
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(npc));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(player));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(npc));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(player));
 
     walker* found = sim_find_next_control(og::runtime::current_session->myscreen_->world(), 0);
     TEST_ASSERT(found == player_ptr, "should prefer player character over NPC");
@@ -67,7 +67,7 @@ void test_sim_find_next_control_team_fallback()
     npc->myguy = nullptr;
 
     walker* npc_ptr = npc.get();
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(npc));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(npc));
 
     walker* found = sim_find_next_control(og::runtime::current_session->myscreen_->world(), 0);
     TEST_ASSERT(found == npc_ptr, "should find team member as fallback");
@@ -112,7 +112,7 @@ void test_sim_input_assigns_control()
     auto w = make_living(0);
     TEST_ASSERT(w != nullptr, "walker should be created");
     w->stats()->hitpoints = 42.0f;
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
     InputState input;
     input.clear();
@@ -143,7 +143,7 @@ void test_sim_input_movement()
     walker* control = w.get();
     control->user = 0;
     control->set_act_type(ACT_CONTROL);
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
     InputState input;
     input.clear();
@@ -174,7 +174,7 @@ void test_sim_input_switch_special_wraps_and_debounces()
     control->user = 0;
     control->current_special = 1;
     control->stats()->level = 1;
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
     InputState input;
     input.clear();
@@ -216,8 +216,8 @@ void test_sim_input_yell_sets_follow_and_notification()
     ally->leader = nullptr;
     ally->action = 0;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(ally_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
 
     InputState input;
     input.clear();
@@ -254,8 +254,8 @@ void test_sim_input_shift_yell_summon_and_release()
     control->action = 0;
     ally->action = 0;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(ally_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
 
     InputState input;
     input.clear();
@@ -294,7 +294,7 @@ void test_sim_input_frozen_and_user_mismatch_early_returns()
     control->set_act_type(ACT_CONTROL);
     control->user = 1;
     control->stats()->frozen_delay = 2;
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
     InputState input;
     input.clear();
@@ -338,9 +338,9 @@ void test_sim_input_switch_char_forward_and_reverse_paths()
     w2->real_team_num = 255;
     w3->real_team_num = 255;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w1_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w2_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w3_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w1_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w2_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w3_up));
 
     InputState input;
     input.clear();
@@ -430,7 +430,7 @@ void test_sim_input_bonus_rounds_and_pressed_held_actions_paths()
     control->bonus_rounds = 2;
     control->stats()->set_bit_flags(BIT_ANIMATE, 1);
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
 
     InputState input;
     input.clear();
@@ -468,8 +468,8 @@ void test_sim_input_switch_char_forward_selects_next_friendly()
     oldcontrol->stats()->hitpoints = 33.0f;
     ally->stats()->hitpoints = 77.0f;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(ally_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
 
     InputState input;
     input.clear();
@@ -504,8 +504,8 @@ void test_sim_input_switch_char_reverse_and_missing_old_control_paths()
     control->set_act_type(ACT_CONTROL);
     ally->stats()->hitpoints = 88.0f;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(ally_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
 
     InputState input;
     input.clear();
@@ -558,7 +558,7 @@ void test_sim_input_switch_char_no_candidate_keeps_old_control_and_ticks()
     control->lasty = 0.0f;
     control->yo_delay = 4;
     control->stats()->hitpoints = 55.0f;
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
 
     InputState input;
     input.clear();
@@ -589,7 +589,7 @@ void test_sim_input_special_and_fire_paths()
 
     walker* control = control_up.get();
     control->set_act_type(ACT_CONTROL);
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
 
     InputState input;
     input.clear();
@@ -624,7 +624,7 @@ void test_sim_find_next_control_fallback_any_team_player()
     TEST_ASSERT(other_team_player != nullptr, "other-team player should be created");
     other_team_player->myguy = reinterpret_cast<guy*>(1);
     walker* expected = other_team_player.get();
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(other_team_player));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(other_team_player));
 
     walker* found = sim_find_next_control(og::runtime::current_session->myscreen_->world(), 0);
     TEST_ASSERT(found == expected, "fallback pass should find any alive player character");
@@ -645,8 +645,8 @@ void test_sim_input_switch_char_wraparound_forward_and_reverse()
     control->set_act_type(ACT_CONTROL);
     candidate->stats()->hitpoints = 61.0f;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(candidate_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(candidate_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
 
     InputState input;
     input.clear();
@@ -675,8 +675,8 @@ void test_sim_input_switch_char_wraparound_forward_and_reverse()
     reverse_control->set_act_type(ACT_CONTROL);
     reverse_candidate->stats()->hitpoints = 72.0f;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(reverse_control_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(reverse_candidate_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(reverse_control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(reverse_candidate_up));
 
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
@@ -701,7 +701,7 @@ void test_sim_input_switch_special_valid_advance_and_shift_yell_default_branch()
     control->set_act_type(ACT_CONTROL);
     control->current_special = 1;
     control->stats()->level = 20;
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
 
     SimInputDebounce debounce = {};
     std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
@@ -759,9 +759,9 @@ void test_sim_input_deep_branch_coverage_smoke()
                                                     test_wrap_seq, test_wrap_seq, test_wrap_seq, test_wrap_seq};
     control->ani = test_wrap_rows; // force animation wrap in idle branch
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(ally_before_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(ally_after_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_before_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_after_up));
 
     SimInputDebounce debounce = {};
     std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
@@ -862,8 +862,8 @@ void test_sim_input_cheat_gates_and_command_queue_skip_movement_block()
     control->current_special = 1;
     control->stats()->level = 30;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(ally_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
 
     SimInputDebounce debounce = {};
     std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
@@ -944,8 +944,8 @@ void test_sim_input_dead_control_reassigns_to_next_alive()
     control->dead = 1;
     replacement->stats()->hitpoints = 64.0f;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(dead_control_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(replacement_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(dead_control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(replacement_up));
 
     InputState input;
     input.clear();
@@ -1005,12 +1005,12 @@ void test_sim_input_switch_char_skips_ineligible_candidates_then_selects_valid()
     taken_up->owner = control;
     good_up->owner = control;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(nonliving));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(enemy_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(charmed_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(taken_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(good_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(nonliving));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(enemy_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(charmed_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(taken_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(good_up));
 
     InputState input;
     input.clear();
@@ -1042,7 +1042,7 @@ void test_sim_input_assigns_unowned_control_and_clears_commands()
     walker* control = w_up.get();
     control->stats()->force_command(COMMAND_FOLLOW, 3, 0, 0);
     TEST_ASSERT(control->stats()->has_commands(), "precondition: command queue is non-empty");
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w_up));
 
     InputState input;
     input.clear();
@@ -1075,7 +1075,7 @@ void test_sim_input_bonus_rounds_walks_when_last_vector_nonzero()
     control->bonus_rounds = 1;
     control->lastx = 1;
     control->lasty = 0;
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w_up));
 
     InputState input;
     input.clear();

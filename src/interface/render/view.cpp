@@ -503,7 +503,7 @@ void viewscreen::process_input(const InputState& input_state)
 				       && w->team_num == team;
 			};
 			walker* found = sim_cycle_next_character(
-				active_screen()->oblist(), oldcontrol, reverse, filter);
+				active_screen()->world().oblist, oldcontrol, reverse, filter);
 			if (found)
 				control = found;
 			if (control && control->dead)
@@ -540,7 +540,7 @@ void viewscreen::process_input(const InputState& input_state)
 	}
 
 	if (result.control_hp_changed)
-		active_screen()->control_hp = result.control_hp;
+		active_screen()->world().control_hp = result.control_hp;
 
 	if (!result.notify_text.empty())
 	{
@@ -850,7 +850,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
     
     // Build the list of characters
     std::list<walker*> ls;
-	for(auto& uptr : active_screen()->oblist())
+	for(auto& uptr : active_screen()->world().oblist)
 	{
 	    walker* w = uptr.get();
 		if (w && !w->dead
@@ -1348,17 +1348,17 @@ Sint32 viewscreen::change_speed(Sint32 whichway)
 {
 	if (whichway > 0)
 	{
-		active_screen()->timer_wait -= 2;
-		if (active_screen()->timer_wait < 0)
-			active_screen()->timer_wait = 0;
+		active_screen()->world().timer_wait -= 2;
+		if (active_screen()->world().timer_wait < 0)
+			active_screen()->world().timer_wait = 0;
 	}
 	else if (whichway < 0)
 	{
-		active_screen()->timer_wait += 2;
-		if (active_screen()->timer_wait > 20)
-			active_screen()->timer_wait = 20;
+		active_screen()->world().timer_wait += 2;
+		if (active_screen()->world().timer_wait > 20)
+			active_screen()->world().timer_wait = 20;
 	}
-	return static_cast<Sint32>((20-active_screen()->timer_wait)/2+1);
+	return static_cast<Sint32>((20-active_screen()->world().timer_wait)/2+1);
 }
 
 Sint32 viewscreen::change_gamma(Sint32 whichway)

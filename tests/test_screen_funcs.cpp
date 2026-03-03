@@ -27,14 +27,14 @@ void test_screen_first_of_found()
 	    TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
 	    // Add to oblist
-	    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w));
+	    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
     walker* found = og::runtime::current_session->myscreen_->first_of(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(found != nullptr, "first_of should find the soldier");
     TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)found->family, "found should be soldier");
 
     // Remove from oblist (don't double-delete)
-    og::runtime::current_session->myscreen_->oblist().pop_back();
+    og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
 REGISTER_TEST(test_screen_first_of_found);
 
@@ -52,7 +52,7 @@ void test_screen_first_of_with_team()
 	    TEST_ASSERT(w != nullptr, "create_walker should succeed");
 	    w->team_num = 7;
 
-	    og::runtime::current_session->myscreen_->oblist().push_back(std::move(w));
+	    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
     walker* found = og::runtime::current_session->myscreen_->first_of(Order::Living, FAMILY_SOLDIER, 7);
     TEST_ASSERT(found != nullptr, "first_of with matching team should find it");
@@ -61,7 +61,7 @@ void test_screen_first_of_with_team()
     TEST_ASSERT(not_found == nullptr || not_found->team_num != 99,
                 "first_of with wrong team should not find team 99 unit");
 
-    og::runtime::current_session->myscreen_->oblist().pop_back();
+    og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
 REGISTER_TEST(test_screen_first_of_with_team);
 
@@ -79,13 +79,13 @@ void test_screen_find_in_range_basic()
 	    seeker->setxy(100, 100);
 	    target->setxy(110, 100);
 
-	    og::runtime::current_session->myscreen_->oblist().push_back(std::move(target));
+	    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(target));
 
 	    Sint32 howmany = 0;
-	    auto result = og::runtime::current_session->myscreen_->find_in_range(og::runtime::current_session->myscreen_->oblist(), 500, &howmany, seeker.get());
+	    auto result = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->world().oblist, 500, &howmany, seeker.get());
 	    TEST_ASSERT(howmany > 0, "should find at least 1 in range");
 
-    og::runtime::current_session->myscreen_->oblist().pop_back();
+    og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
 REGISTER_TEST(test_screen_find_in_range_basic);
 
@@ -99,13 +99,13 @@ void test_screen_find_in_range_out_of_range()
 	    seeker->setxy(50, 50);
 	    target->setxy(250, 250);
 
-	    og::runtime::current_session->myscreen_->oblist().push_back(std::move(target));
+	    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(target));
 
 	    Sint32 howmany = 0;
-	    auto result = og::runtime::current_session->myscreen_->find_in_range(og::runtime::current_session->myscreen_->oblist(), 5, &howmany, seeker.get());
+	    auto result = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->world().oblist, 5, &howmany, seeker.get());
 	    (void)result; // range semantics vary; just verify no crash
 
-    og::runtime::current_session->myscreen_->oblist().pop_back();
+    og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
 REGISTER_TEST(test_screen_find_in_range_out_of_range);
 
@@ -125,13 +125,13 @@ void test_screen_find_foes_in_range()
 	    enemy->team_num = 1;
 	    enemy->setxy(110, 100);
 
-	    og::runtime::current_session->myscreen_->oblist().push_back(std::move(enemy));
+	    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(enemy));
 
 	    Sint32 howmany = 0;
-	    auto result = og::runtime::current_session->myscreen_->find_foes_in_range(og::runtime::current_session->myscreen_->oblist(), 500, &howmany, seeker.get());
+	    auto result = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->world().oblist, 500, &howmany, seeker.get());
 	    TEST_ASSERT(howmany > 0, "should find at least 1 foe in range");
 
-    og::runtime::current_session->myscreen_->oblist().pop_back();
+    og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
 REGISTER_TEST(test_screen_find_foes_in_range);
 
@@ -151,13 +151,13 @@ void test_screen_find_friends_in_range()
 	    friend_w->team_num = 0;
 	    friend_w->setxy(110, 100);
 
-	    og::runtime::current_session->myscreen_->oblist().push_back(std::move(friend_w));
+	    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(friend_w));
 
 	    Sint32 howmany = 0;
-	    auto result = og::runtime::current_session->myscreen_->find_friends_in_range(og::runtime::current_session->myscreen_->oblist(), 500, &howmany, seeker.get());
+	    auto result = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->world().oblist, 500, &howmany, seeker.get());
 	    TEST_ASSERT(howmany > 0, "should find at least 1 friend in range");
 
-    og::runtime::current_session->myscreen_->oblist().pop_back();
+    og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
 REGISTER_TEST(test_screen_find_friends_in_range);
 
@@ -190,7 +190,7 @@ void test_screen_query_grid_passable_center()
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->setxy(100, 100);
-    bool passable = og::runtime::current_session->myscreen_->query_grid_passable(100, 100, w.get());
+    bool passable = og::runtime::current_session->myscreen_->world().query_grid_passable(100, 100, w.get());
     // Just check it doesn't crash
     (void)passable;
 
@@ -204,7 +204,7 @@ void test_screen_query_grid_passable_flying()
 
     w->setxy(100, 100);
     // Flying entities should pass over more terrain
-    bool passable = og::runtime::current_session->myscreen_->query_grid_passable(100, 100, w.get());
+    bool passable = og::runtime::current_session->myscreen_->world().query_grid_passable(100, 100, w.get());
     (void)passable;
 
 }
@@ -215,7 +215,7 @@ void test_screen_query_grid_passable_out_of_bounds()
     auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
-    bool passable = og::runtime::current_session->myscreen_->query_grid_passable(-10, -10, w.get());
+    bool passable = og::runtime::current_session->myscreen_->world().query_grid_passable(-10, -10, w.get());
     TEST_ASSERT(!passable, "out-of-bounds should not be passable");
 
 }
@@ -231,7 +231,7 @@ void test_screen_find_far_foe_smoke()
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     w->team_num = 0;
 
-    walker* result = og::runtime::current_session->myscreen_->find_far_foe(w.get());
+    walker* result = og::runtime::current_session->myscreen_->world().find_far_foe(w.get());
     // May or may not find one, but should not crash
     (void)result;
 
@@ -249,7 +249,7 @@ void test_screen_find_near_foe_smoke()
     w->team_num = 0;
     w->setxy(100, 100);
 
-    walker* result = og::runtime::current_session->myscreen_->find_near_foe(w.get());
+    walker* result = og::runtime::current_session->myscreen_->world().find_near_foe(w.get());
     (void)result;
 
 }
@@ -280,7 +280,7 @@ void test_screen_query_passable_smoke()
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     w->setxy(100, 100);
 
-    bool p = og::runtime::current_session->myscreen_->query_passable(100, 100, w.get());
+    bool p = og::runtime::current_session->myscreen_->world().query_passable(100, 100, w.get());
     (void)p;
 
 }

@@ -53,7 +53,7 @@ static walker* make_special_guy(char family, unsigned char team = 0, short level
 static int count_family_in_oblist(char family)
 {
     int count = 0;
-    for (auto& uptr : og::runtime::current_session->myscreen_->oblist()) {
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
         walker* w = uptr.get();
         if (w && w->family == family)
             count++;
@@ -64,7 +64,7 @@ static int count_family_in_oblist(char family)
 static int count_family_in_fxlist(char family)
 {
     int count = 0;
-    for (auto& uptr : og::runtime::current_session->myscreen_->fxlist()) {
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist) {
         walker* w = uptr.get();
         if (w && w->family == family)
             count++;
@@ -79,7 +79,7 @@ static int count_family_all_lists(char family)
 
 static walker* find_first_alive_ob_by_family(char family)
 {
-    for (auto& uptr : og::runtime::current_session->myscreen_->oblist()) {
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
         walker* w = uptr.get();
         if (w && w->family == family && !w->dead)
             return w;
@@ -208,7 +208,7 @@ void test_walker_special_mage_teleport()
         // assume (x+96,y+96) is in-bounds or passable for every level.
         Sint32 mx = std::min<Sint32>(w->xpos + 96, og::runtime::current_session->myscreen_->world().pixmaxx - w->sizex - 2);
         Sint32 my = std::min<Sint32>(w->ypos + 96, og::runtime::current_session->myscreen_->world().pixmaxy - w->sizey - 2);
-        if (!og::runtime::current_session->myscreen_->query_passable(static_cast<float>(mx), static_cast<float>(my), w))
+        if (!og::runtime::current_session->myscreen_->world().query_passable(static_cast<float>(mx), static_cast<float>(my), w))
         {
             bool found = false;
             for (Sint32 x = 0; x < og::runtime::current_session->myscreen_->world().pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
@@ -219,7 +219,7 @@ void test_walker_special_mage_teleport()
                     const Sint32 dy = y - w->ypos;
                     if (dx * dx + dy * dy <= 64 * 64)
                         continue;
-                    if (og::runtime::current_session->myscreen_->query_passable(static_cast<float>(x), static_cast<float>(y), w))
+                    if (og::runtime::current_session->myscreen_->world().query_passable(static_cast<float>(x), static_cast<float>(y), w))
                     {
                         mx = x;
                         my = y;
@@ -337,12 +337,12 @@ void test_walker_special_mage_energy_wave()
 
     // special 3, no shifter: illusion summon variant.
     arch->stats()->magicpoints = 1500;
-    int total_before = static_cast<int>(og::runtime::current_session->myscreen_->oblist().size());
+    int total_before = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
     arch->current_special = 3;
     arch->shifter_down = 0;
     arch->busy = 0;
     (void)arch->special();
-    int total_after = static_cast<int>(og::runtime::current_session->myscreen_->oblist().size());
+    int total_after = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
     TEST_ASSERT(total_after >= total_before, "illusion summon path should not remove objects");
 
     // special 4: mind-control should retarget a nearby foe to archmage team.
@@ -765,11 +765,11 @@ void test_walker_special_archmage_illusion_rng_tables()
             SequenceRandom rng({pick});
             ctx.rng = &rng;
             set_global_context(&ctx);
-            int before = static_cast<int>(og::runtime::current_session->myscreen_->oblist().size());
+            int before = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
             arch->stats()->magicpoints = static_cast<float>(mp_tiers[t]);
             arch->busy = 0;
             (void)arch->special();
-            int after = static_cast<int>(og::runtime::current_session->myscreen_->oblist().size());
+            int after = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
             TEST_ASSERT(after >= before, "illusion summon case should not reduce object count");
             set_global_context(nullptr);
         }
@@ -1365,7 +1365,7 @@ void test_walker_special_success_returns_true_and_spends_mp()
 
     Sint32 mx = std::min<Sint32>(w->xpos + 96, og::runtime::current_session->myscreen_->world().pixmaxx - w->sizex - 2);
     Sint32 my = std::min<Sint32>(w->ypos + 96, og::runtime::current_session->myscreen_->world().pixmaxy - w->sizey - 2);
-    if (!og::runtime::current_session->myscreen_->query_passable(static_cast<float>(mx), static_cast<float>(my), w))
+    if (!og::runtime::current_session->myscreen_->world().query_passable(static_cast<float>(mx), static_cast<float>(my), w))
     {
         bool found = false;
         for (Sint32 x = 0; x < og::runtime::current_session->myscreen_->world().pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
@@ -1376,7 +1376,7 @@ void test_walker_special_success_returns_true_and_spends_mp()
                 const Sint32 dy = y - w->ypos;
                 if (dx * dx + dy * dy <= 64 * 64)
                     continue;
-                if (og::runtime::current_session->myscreen_->query_passable(static_cast<float>(x), static_cast<float>(y), w))
+                if (og::runtime::current_session->myscreen_->world().query_passable(static_cast<float>(x), static_cast<float>(y), w))
                 {
                     mx = x;
                     my = y;

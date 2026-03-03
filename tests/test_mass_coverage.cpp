@@ -170,13 +170,13 @@ MASS_TEST(test_mass_screen_reset, { og::runtime::current_session->myscreen_->res
 MASS_TEST(test_mass_screen_query_grid_passable, {
     reset_level_state();
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->query_grid_passable(100, 100, w);
+    (void)og::runtime::current_session->myscreen_->world().query_grid_passable(100, 100, w);
     reset_level_state();
 });
 MASS_TEST(test_mass_screen_query_object_passable, {
     reset_level_state();
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->query_object_passable(100, 100, w);
+    (void)og::runtime::current_session->myscreen_->world().query_object_passable(100, 100, w);
     reset_level_state();
 });
 MASS_TEST(test_mass_screen_clear, { og::runtime::current_session->myscreen_->clear(); });
@@ -184,30 +184,30 @@ MASS_TEST(test_mass_screen_redraw, { (void)og::runtime::current_session->myscree
 MASS_TEST(test_mass_screen_refresh, { og::runtime::current_session->myscreen_->refresh(); });
 
 MASS_TEST(test_mass_screen_endgame_one_arg, {
-    const char saved_end = og::runtime::current_session->myscreen_->end;
-    og::runtime::current_session->myscreen_->end = 1;
+    const char saved_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 1;
     (void)og::runtime::current_session->myscreen_->endgame(0);
-    og::runtime::current_session->myscreen_->end = saved_end;
+    og::runtime::current_session->myscreen_->world().end = saved_end;
 });
 
 MASS_TEST(test_mass_screen_endgame_two_args, {
-    const char saved_end = og::runtime::current_session->myscreen_->end;
-    og::runtime::current_session->myscreen_->end = 1;
+    const char saved_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 1;
     (void)og::runtime::current_session->myscreen_->endgame(0, -1);
-    og::runtime::current_session->myscreen_->end = saved_end;
+    og::runtime::current_session->myscreen_->world().end = saved_end;
 });
 
 MASS_TEST(test_mass_screen_find_near_foe, {
     reset_level_state();
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->find_near_foe(w);
+    (void)og::runtime::current_session->myscreen_->world().find_near_foe(w);
     reset_level_state();
 });
 
 MASS_TEST(test_mass_screen_find_far_foe, {
     reset_level_state();
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->find_far_foe(w);
+    (void)og::runtime::current_session->myscreen_->world().find_far_foe(w);
     reset_level_state();
 });
 
@@ -228,20 +228,20 @@ MASS_TEST(test_mass_screen_first_of, {
 });
 
 MASS_TEST(test_mass_screen_draw_panels, { og::runtime::current_session->myscreen_->draw_panels(1); });
-MASS_TEST(test_mass_screen_find_nearest_blood, { (void)og::runtime::current_session->myscreen_->find_nearest_blood(nullptr); });
+MASS_TEST(test_mass_screen_find_nearest_blood, { (void)og::runtime::current_session->myscreen_->world().find_nearest_blood(nullptr); });
 
 MASS_TEST(test_mass_screen_find_in_range, {
     reset_level_state();
     Sint32 n = 0;
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->find_in_range(og::runtime::current_session->myscreen_->oblist(), 32, &n, w);
+    (void)og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->world().oblist, 32, &n, w);
     reset_level_state();
 });
 
 MASS_TEST(test_mass_screen_find_nearest_player, {
     reset_level_state();
     walker* w = add_living(0);
-    (void)og::runtime::current_session->myscreen_->find_nearest_player(w);
+    (void)og::runtime::current_session->myscreen_->world().find_nearest_player(w);
     reset_level_state();
 });
 
@@ -250,7 +250,7 @@ MASS_TEST(test_mass_screen_find_foes_in_range, {
     Sint32 n = 0;
     walker* w = add_living(0);
     (void)add_living(1);
-    (void)og::runtime::current_session->myscreen_->find_foes_in_range(og::runtime::current_session->myscreen_->oblist(), 64, &n, w);
+    (void)og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->world().oblist, 64, &n, w);
     reset_level_state();
 });
 
@@ -259,7 +259,7 @@ MASS_TEST(test_mass_screen_find_friends_in_range, {
     Sint32 n = 0;
     walker* w = add_living(0);
     (void)add_living(0);
-    (void)og::runtime::current_session->myscreen_->find_friends_in_range(og::runtime::current_session->myscreen_->oblist(), 64, &n, w);
+    (void)og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->world().oblist, 64, &n, w);
     reset_level_state();
 });
 
@@ -268,7 +268,7 @@ MASS_TEST(test_mass_screen_find_foe_weapons_in_range, {
     Sint32 n = 0;
     walker* w = add_living(0);
     (void)add_weapon(FAMILY_KNIFE, 1);
-    (void)og::runtime::current_session->myscreen_->find_foe_weapons_in_range(og::runtime::current_session->myscreen_->weaplist(), 64, &n, w);
+    (void)og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 64, &n, w);
     reset_level_state();
 });
 

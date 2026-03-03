@@ -58,7 +58,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         s.redrawme = 0;
     }
 
-    if (s.end)
+    if (s.world().end)
     {
         st.done = true;
         return GameFrameResult::Done;
@@ -70,7 +70,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     picker_testing_mark_frame_advance();
 #endif
 
-    if (s.end)
+    if (s.world().end)
     {
         st.done = true;
         return GameFrameResult::Done;
@@ -125,7 +125,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         }
     }
 
-    if (s.end || st.done)
+    if (s.world().end || st.done)
     {
         st.done = true;
         return GameFrameResult::Done;
@@ -139,7 +139,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
 
     s.continuous_input();
 
-    if (s.end)
+    if (s.world().end)
     {
         st.done = true;
         return GameFrameResult::Done;
@@ -156,10 +156,10 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         if (og::runtime::current_session->g_game_speed_factor_ == 0.0f) {
             // Max speed: no delay
         } else if (og::runtime::current_session->g_game_speed_factor_ != 1.0f) {
-            Sint32 adjusted_wait = static_cast<Sint32>(s.timer_wait / og::runtime::current_session->g_game_speed_factor_);
+            Sint32 adjusted_wait = static_cast<Sint32>(s.world().timer_wait / og::runtime::current_session->g_game_speed_factor_);
             time_delay(adjusted_wait - query_timer());
         } else {
-            time_delay(s.timer_wait - query_timer());
+            time_delay(s.world().timer_wait - query_timer());
         }
     }
 #endif

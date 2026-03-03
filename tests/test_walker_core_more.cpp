@@ -893,9 +893,9 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
     {
         gen->dead = 1;
         gen->death_called = 0;
-        const size_t fx_before = og::runtime::current_session->myscreen_->fxlist().size();
+        const size_t fx_before = og::runtime::current_session->myscreen_->world().fxlist.size();
         TEST_ASSERT(gen->death(), "first generator death call should succeed");
-        TEST_ASSERT(og::runtime::current_session->myscreen_->fxlist().size() >= fx_before,
+        TEST_ASSERT(og::runtime::current_session->myscreen_->world().fxlist.size() >= fx_before,
                     "generator death should run explosion spawning path");
         TEST_ASSERT_EQ(0, (int)gen->death(), "second death call should hit death_called guard");
     }

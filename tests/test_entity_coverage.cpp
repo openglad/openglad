@@ -75,8 +75,8 @@ void test_sim_input_shift_yell_default_action_branch()
     control->set_act_type(ACT_CONTROL);
     control->action = 99;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(ally_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
 
     InputState input;
     input.clear();
@@ -112,8 +112,8 @@ void test_sim_input_switch_char_wraps_to_prior_candidate()
     candidate->stats()->hitpoints = 77.0f;
 
     // candidate is before control; forward scan should use wrap-around loop.
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(candidate_up));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(candidate_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
 
     InputState input;
     input.clear();
@@ -154,7 +154,7 @@ void test_sim_input_idle_animation_cycle_wraps()
                                                    test_seq, test_seq, test_seq, test_seq};
     control->ani = test_ani_rows;
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(control_up));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
 
     InputState input;
     input.clear();

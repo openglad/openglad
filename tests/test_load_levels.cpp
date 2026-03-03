@@ -53,7 +53,7 @@ void test_level_data_integrity() {
     TEST_ASSERT(og::runtime::current_session->myscreen_->world().grid.valid(), "level 1 should have a valid grid");
 
     // Level 1 should have some objects (enemies)
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->oblist().empty(),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(),
         "level 1 should have objects (enemies/npcs)");
 
     // Level ID should match what we requested

@@ -59,7 +59,7 @@ private:
 static int count_family_in_oblist(char family)
 {
     int count = 0;
-    for (auto& uptr : og::runtime::current_session->myscreen_->oblist()) {
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
         walker* w = uptr.get();
         if (w && w->family == family)
             count++;

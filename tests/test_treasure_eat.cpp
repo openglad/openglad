@@ -340,7 +340,7 @@ REGISTER_TEST(test_treasure_eat_default_fallback_and_teleporter_wraparound);
 void test_treasure_batch7_explicit_fxlist_teleporter_branches()
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
-    auto& fx = og::runtime::current_session->myscreen_->fxlist();
+    auto& fx = og::runtime::current_session->myscreen_->world().fxlist;
     fx.clear();
 
     auto before = std::make_unique<treasure>();
@@ -395,7 +395,7 @@ REGISTER_TEST(test_treasure_set_direct_frame_updates_frame_without_render_compon
 void test_treasure_find_teleport_target_filters_invalid_candidates_and_wraps()
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
-    auto& fx = og::runtime::current_session->myscreen_->fxlist();
+    auto& fx = og::runtime::current_session->myscreen_->world().fxlist;
     fx.clear();
 
     auto before = std::make_unique<treasure>();
@@ -448,7 +448,7 @@ REGISTER_TEST(test_treasure_find_teleport_target_filters_invalid_candidates_and_
 void test_treasure_round10_find_teleport_target_forward_wrap_and_empty_paths()
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
-    auto& fx = og::runtime::current_session->myscreen_->fxlist();
+    auto& fx = og::runtime::current_session->myscreen_->world().fxlist;
     fx.clear();
 
     auto self = std::make_unique<treasure>();

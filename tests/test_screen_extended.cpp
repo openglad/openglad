@@ -82,13 +82,13 @@ void test_screen_query_grid_passable_walking()
     w->setxy(100, 100);
 
     // Test various grid positions
-    short result = og::runtime::current_session->myscreen_->query_grid_passable(100, 100, w.get());
+    short result = og::runtime::current_session->myscreen_->world().query_grid_passable(100, 100, w.get());
     (void)result;
 
-    result = og::runtime::current_session->myscreen_->query_grid_passable(50, 50, w.get());
+    result = og::runtime::current_session->myscreen_->world().query_grid_passable(50, 50, w.get());
     (void)result;
 
-    result = og::runtime::current_session->myscreen_->query_grid_passable(200, 150, w.get());
+    result = og::runtime::current_session->myscreen_->world().query_grid_passable(200, 150, w.get());
     (void)result;
 
 }
@@ -102,7 +102,7 @@ void test_screen_query_grid_passable_weapon()
     if (!w) return;
     w->setxy(100, 100);
 
-    short result = og::runtime::current_session->myscreen_->query_grid_passable(100, 100, w.get());
+    short result = og::runtime::current_session->myscreen_->world().query_grid_passable(100, 100, w.get());
     (void)result;
 
 }
@@ -117,10 +117,10 @@ void test_screen_query_passable_living()
     auto w = make_walker_at(FAMILY_SOLDIER, 100, 100, 0);
     if (!w) return;
 
-    short result = og::runtime::current_session->myscreen_->query_passable(100, 100, w.get());
+    short result = og::runtime::current_session->myscreen_->world().query_passable(100, 100, w.get());
     (void)result;
 
-    result = og::runtime::current_session->myscreen_->query_passable(50, 50, w.get());
+    result = og::runtime::current_session->myscreen_->world().query_passable(50, 50, w.get());
     (void)result;
 
 }
@@ -159,7 +159,7 @@ REGISTER_TEST(test_screen_save_data_score);
 
 void test_screen_endgame_clears_mission_score_after_payout()
 {
-    const char saved_end = og::runtime::current_session->myscreen_->end;
+    const char saved_end = og::runtime::current_session->myscreen_->world().end;
 
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
@@ -168,7 +168,7 @@ void test_screen_endgame_clears_mission_score_after_payout()
     og::runtime::current_session->myscreen_->save_data.m_totalscore[0] = 1000;
     og::runtime::current_session->myscreen_->save_data.m_score[0] = 250;
     og::runtime::current_session->myscreen_->sync_world_from_save_data();
-    og::runtime::current_session->myscreen_->end = 0;
+    og::runtime::current_session->myscreen_->world().end = 0;
     (void)og::runtime::current_session->myscreen_->endgame(0, -1);
 
     TEST_ASSERT_EQ(1250, static_cast<int>(og::runtime::current_session->myscreen_->save_data.m_totalscore[0]),
@@ -176,13 +176,13 @@ void test_screen_endgame_clears_mission_score_after_payout()
     TEST_ASSERT_EQ(0, static_cast<int>(og::runtime::current_session->myscreen_->save_data.m_score[0]),
                    "mission score should reset after payout");
 
-    og::runtime::current_session->myscreen_->end = 0;
+    og::runtime::current_session->myscreen_->world().end = 0;
     (void)og::runtime::current_session->myscreen_->endgame(0, -1);
 
     TEST_ASSERT_EQ(1250, static_cast<int>(og::runtime::current_session->myscreen_->save_data.m_totalscore[0]),
                    "subsequent wins must not re-credit previous mission score");
 
-    og::runtime::current_session->myscreen_->end = saved_end;
+    og::runtime::current_session->myscreen_->world().end = saved_end;
 }
 REGISTER_TEST(test_screen_endgame_clears_mission_score_after_payout);
 
@@ -210,12 +210,12 @@ void test_screen_find_near_foe_with_enemies()
         return;
     }
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(enemy));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(enemy));
 
-    walker* found = og::runtime::current_session->myscreen_->find_near_foe(seeker.get());
+    walker* found = og::runtime::current_session->myscreen_->world().find_near_foe(seeker.get());
     (void)found;
 
-    og::runtime::current_session->myscreen_->oblist().pop_back();
+    og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
 REGISTER_TEST(test_screen_find_near_foe_with_enemies);
 
@@ -227,12 +227,12 @@ void test_screen_find_far_foe_with_enemies()
         return;
     }
 
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(enemy));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(enemy));
 
-    walker* found = og::runtime::current_session->myscreen_->find_far_foe(seeker.get());
+    walker* found = og::runtime::current_session->myscreen_->world().find_far_foe(seeker.get());
     (void)found;
 
-    og::runtime::current_session->myscreen_->oblist().pop_back();
+    og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
 REGISTER_TEST(test_screen_find_far_foe_with_enemies);
 
@@ -284,16 +284,16 @@ void test_screen_find_nearest_player_and_draw_panels()
 
     p1p->user = 0;
     p2->user = 1;
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(p1));
-    og::runtime::current_session->myscreen_->oblist().push_back(std::move(p2));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(p1));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(p2));
 
-    walker* nearest = og::runtime::current_session->myscreen_->find_nearest_player(seeker.get());
+    walker* nearest = og::runtime::current_session->myscreen_->world().find_nearest_player(seeker.get());
     TEST_ASSERT(nearest == p1p, "nearest player should be the closest user-controlled walker");
 
     og::runtime::current_session->myscreen_->draw_panels(1);
 
-    og::runtime::current_session->myscreen_->oblist().pop_back();
-    og::runtime::current_session->myscreen_->oblist().pop_back();
+    og::runtime::current_session->myscreen_->world().oblist.pop_back();
+    og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
 REGISTER_TEST(test_screen_find_nearest_player_and_draw_panels);
 
@@ -306,8 +306,8 @@ void test_screen_get_scen_title_paths_and_null_foe_guards()
     // Existing campaign levels may have varying metadata, but this path should not crash.
     (void)og::runtime::current_session->myscreen_->get_scen_title("level1", og::runtime::current_session->myscreen_);
 
-    TEST_ASSERT(og::runtime::current_session->myscreen_->find_near_foe(nullptr) == nullptr, "find_near_foe should guard nullptr");
-    TEST_ASSERT(og::runtime::current_session->myscreen_->find_far_foe(nullptr) == nullptr, "find_far_foe should guard nullptr");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().find_near_foe(nullptr) == nullptr, "find_near_foe should guard nullptr");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().find_far_foe(nullptr) == nullptr, "find_far_foe should guard nullptr");
 }
 REGISTER_TEST(test_screen_get_scen_title_paths_and_null_foe_guards);
 

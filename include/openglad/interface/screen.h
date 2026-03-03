@@ -181,13 +181,6 @@ public:
     void initialize_views();
     void cleanup(short);
     void clear();
-    bool query_passable(float x, float y, walker* ob);
-    bool query_object_passable(float x, float y, walker* ob);
-    bool query_grid_passable(float x, float y, walker* ob);
-    // Overloads to avoid implicit int->float conversions at call sites.
-    bool query_passable(Sint32 x, Sint32 y, walker* ob) { return query_passable(static_cast<float>(x), static_cast<float>(y), ob); }
-    bool query_object_passable(Sint32 x, Sint32 y, walker* ob) { return query_object_passable(static_cast<float>(x), static_cast<float>(y), ob); }
-    bool query_grid_passable(Sint32 x, Sint32 y, walker* ob) { return query_grid_passable(static_cast<float>(x), static_cast<float>(y), ob); }
     bool redraw();
     void refresh();
     walker* first_of(Order whatorder, unsigned char whatfamily, int team_num = -1);
@@ -198,15 +191,7 @@ public:
 
     short endgame(short ending);
     short endgame(short ending, short nextlevel); // what level next?
-    walker* find_near_foe(walker* ob);
-    walker* find_far_foe(walker* ob);
     void draw_panels(short howmany);
-    walker* find_nearest_blood(walker* who);
-    walker* find_nearest_player(walker* ob);
-    std::list<walker*> find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
-    std::list<walker*> find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
-    std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
-    std::list<walker*> find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
     char damage_tile(short xloc, short yloc); // damage the specified tile
     void do_notify(std::string_view message, walker* who); // printing text
     void report_mem();
@@ -237,16 +222,6 @@ public:
     const GameWorld& world() const { return world_; }
     LevelVisuals& level_visuals() { return level_visuals_; }
     const LevelVisuals& level_visuals() const { return level_visuals_; }
-    auto& oblist() { return world_.oblist; }
-    const auto& oblist() const { return world_.oblist; }
-    auto& fxlist() { return world_.fxlist; }
-    const auto& fxlist() const { return world_.fxlist; }
-    auto& weaplist() { return world_.weaplist; }
-    const auto& weaplist() const { return world_.weaplist; }
-    auto& dead_list() { return world_.dead_list; }
-    const auto& dead_list() const { return world_.dead_list; }
-    int& living_count() { return world_.living_count; }
-    const int& living_count() const { return world_.living_count; }
 
     // Delegated render data (preserves legacy field-style access).
     std::array<unsigned char, 768>& ourpalette;
@@ -264,13 +239,6 @@ public:
 
     // Level data
     GameWorld& world_;
-    // Forwarders to gameplay-owned game state.
-    float& control_hp;
-    char& end;
-    signed char& timer_wait;
-    short& level_done;
-    bool& retry;
-    Sint32& enemy_freeze;
     // Platform-owned entity loader (wired at setup time).
     loader* myloader;
     LevelVisuals level_visuals_;

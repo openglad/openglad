@@ -143,8 +143,8 @@ static void emscripten_frame_wrapper() {
 	// Calculate target frame time based on timer_wait (in ticks, 1 tick = 13.6ms)
 	// timer_wait defaults to 6, giving ~82ms per frame (~12 FPS)
 	short timer_wait = 6; // Safe default until myscreen is initialized
-	if (current_screen && current_screen->timer_wait > 0) {
-		timer_wait = current_screen->timer_wait;
+	if (current_screen && current_screen->world().timer_wait > 0) {
+		timer_wait = current_screen->world().timer_wait;
 	}
 	Uint32 target_frame_time;
 	if (og::runtime::current_session->g_game_speed_factor_ == 0.0f) {
