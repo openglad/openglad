@@ -36,6 +36,11 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 // allbuttons is now a macro → current_session->allbuttons_
 static inline auto& owned_buttons() { return og::runtime::current_session->owned_buttons_; }
 
+void og::runtime::VButtonDeleter::operator()(::vbutton* button) const
+{
+    delete button;
+}
+
 void get_input_events(bool);
 
 
@@ -397,10 +402,11 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
 
     for (Sint32 i = 0; i < numbuttons; i++)
     {
-        auto owned_button = std::make_unique<vbutton>(buttons[i].x,buttons[i].y,
-                                                      buttons[i].sizex, buttons[i].sizey,
-                                                      buttons[i].myfun, buttons[i].arg1,
-                                                      buttons[i].label, buttons[i].hotkey);
+        std::unique_ptr<vbutton, og::runtime::VButtonDeleter> owned_button(
+            new vbutton(buttons[i].x,buttons[i].y,
+                        buttons[i].sizex, buttons[i].sizey,
+                        buttons[i].myfun, buttons[i].arg1,
+                        buttons[i].label, buttons[i].hotkey));
         og::runtime::current_session->allbuttons_[i] = owned_button.get();
         owned_buttons()[static_cast<size_t>(i)] = std::move(owned_button);
         og::runtime::current_session->allbuttons_[i]->id = buttons[i].id;
@@ -459,14 +465,9 @@ Sint32 yes_or_no(Sint32 arg)
     return arg;
 }
 
-static cfg_store& active_config()
-{
-    return cfg;
-}
-
 void toggle_effect(const std::string& category, const std::string& setting)
 {
-    cfg_store& config = active_config();
+    cfg_store& config = cfg;
     if(config.is_on(category, setting))
         config.apply_setting(category, setting, "off");
     else
@@ -475,7 +476,7 @@ void toggle_effect(const std::string& category, const std::string& setting)
 
 void toggle_rendering_engine()
 {
-    cfg_store& config = active_config();
+    cfg_store& config = cfg;
     std::string engine = config.get_setting("graphics", "render");
     if(engine == "sai")
         engine = "eagle";
@@ -581,7 +582,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return REDRAW;
     case ButtonAction::ToggleFullscreen:
         toggle_effect("graphics", "fullscreen");
-        og::runtime::current_session->myscreen_->set_fullscreen(active_config().is_on("graphics", "fullscreen"));
+        og::runtime::current_session->myscreen_->set_fullscreen(cfg.is_on("graphics", "fullscreen"));
         return REDRAW;
     case ButtonAction::OverscanAdjust:
         return overscan_adjust(arg);
@@ -611,10 +612,10 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return REDRAW;
     case ButtonAction::RestoreDefaultSettings:
         restore_default_settings();
-        active_config().load_settings();
-        load_player_control_settings_from_cfg(active_config());
+        cfg.load_settings();
+        load_player_control_settings_from_cfg(cfg);
         og::runtime::current_session->overscan_percentage_ = static_cast<float>(
-            parse_int_strict(active_config().get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
+            parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
         update_overscan_setting();
         return REDRAW;
     case ButtonAction::RestoreDefaultControls:

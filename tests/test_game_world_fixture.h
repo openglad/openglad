@@ -27,12 +27,12 @@ struct TestGameWorld
         level.create_new_grid();
         level.set_sim_context(&save, &level.world().enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~TestGameWorld()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 
     GameWorld& world() { return level.world(); }

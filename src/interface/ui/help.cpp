@@ -40,8 +40,13 @@ inline constexpr Sint32 HELPTEXT_TOP = 40;
 inline constexpr Sint32 DISPLAY_LINES = 15;
 constexpr Sint32 text_down(Sint32 x) { return (x * 7) + HELPTEXT_TOP; }
 
-short end_of_file;                        // global flag ..
-char helptext[HELP_WIDTH][MAX_LINES];
+namespace
+{
+inline short& help_end_of_file()
+{
+    return og::runtime::current_session->help_end_of_file_;
+}
+} // namespace
 
 
 // Shared scrolling text viewer used by read_scenario and read_campaign_intro.
@@ -185,7 +190,7 @@ short read_campaign_intro(screen *s)
 	if (!data.load())
 		return 1;
 
-	end_of_file = 0;
+	help_end_of_file() = 0;
 	return scroll_text_view(s,
 		static_cast<int>(data.description.size()), 240,
 		data.title.c_str(), HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8, 244, 119,
@@ -201,7 +206,7 @@ std::string read_one_line(og::io::OgFile& infile, short length)
     newline.reserve(static_cast<size_t>(length));
     for (short i = 0; i < length; i++) {
         size_t n = infile.read(&temp, 1, 1);
-        if (n != 1) { end_of_file = 1; return newline; }
+        if (n != 1) { help_end_of_file() = 1; return newline; }
         if (temp == '\n' || temp == '\r') return newline;
         newline.push_back(temp);
     }
@@ -214,7 +219,7 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& inf
     for (i = 0; i < MAX_LINES; i++) {
         std::string someline = read_one_line(infile, HELP_WIDTH);
         snprintf(somearray[i], HELP_WIDTH, "%s", someline.c_str());
-        if (end_of_file) return i;
+        if (help_end_of_file()) return i;
     }
     return MAX_LINES;
 }

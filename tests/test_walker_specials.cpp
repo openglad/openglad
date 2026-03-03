@@ -295,7 +295,7 @@ void test_walker_special_mage_energy_wave()
     GameContext test_ctx;
 
     test_ctx.rng = &fixed_rng;
-    set_global_context(&test_ctx);
+    push_test_context(&test_ctx);
 
     // special 1, shifter_down: place teleport marker.
     arch->current_special = 1;
@@ -358,7 +358,7 @@ void test_walker_special_mage_energy_wave()
     (void)arch->special();
     TEST_ASSERT(control_target->team_num >= 0, "mind-control path should leave target in a valid team");
 
-    set_global_context(nullptr);
+    pop_test_context();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     // Drive act() into ACT_RANDOM branches (including act_random()).
@@ -379,18 +379,18 @@ void test_walker_special_mage_energy_wave()
         GameContext random_ctx;
     
         random_ctx.rng = &seq_rng;
-        set_global_context(&random_ctx);
+        push_test_context(&random_ctx);
         (void)actor->act();
         TEST_ASSERT(actor->act_type == ACT_RANDOM, "ACT_RANDOM path should preserve act type");
 
         // rng(4)==1 -> take the alternate search branch.
         FixedRandom nonzero_rng(1);
         random_ctx.rng = &nonzero_rng;
-        set_global_context(&random_ctx);
+        push_test_context(&random_ctx);
         actor->stats()->clear_command();
         (void)actor->act();
         TEST_ASSERT(actor->act_type == ACT_RANDOM, "ACT_RANDOM alternate path should preserve act type");
-        set_global_context(nullptr);
+        pop_test_context();
     }
     delete actor;
     delete enemy;
@@ -464,13 +464,13 @@ void test_walker_special_mage_energy_wave()
             for (Uint32 pick = 0; pick < static_cast<Uint32>(max_pick[t]); ++pick) {
                 SequenceRandom pick_rng({pick});
                 arch2_ctx.rng = &pick_rng;
-                set_global_context(&arch2_ctx);
+                push_test_context(&arch2_ctx);
 	                arch2->stats()->magicpoints = static_cast<float>(mp_tiers[t]);
 	                arch2->current_special = static_cast<char>(3);
 	                arch2->shifter_down = static_cast<short>(0);
 	                arch2->busy = 0;
 	                (void)arch2->special();
-	                set_global_context(nullptr);
+	                pop_test_context();
 	            }
 	        }
     }
@@ -522,9 +522,9 @@ void test_walker_special_cleric_raise_undead()
         GameContext test_ctx;
     
         test_ctx.rng = &seq_rng;
-        set_global_context(&test_ctx);
+        push_test_context(&test_ctx);
         Sint32 killed = w->turn_undead(24, 2);
-        set_global_context(nullptr);
+        pop_test_context();
         TEST_ASSERT(killed >= -1, "turn_undead should return a valid result");
     }
 
@@ -764,14 +764,14 @@ void test_walker_special_archmage_illusion_rng_tables()
         for (Uint32 pick = 0; pick < static_cast<Uint32>(max_pick[t]); ++pick) {
             SequenceRandom rng({pick});
             ctx.rng = &rng;
-            set_global_context(&ctx);
+            push_test_context(&ctx);
             int before = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
             arch->stats()->magicpoints = static_cast<float>(mp_tiers[t]);
             arch->busy = 0;
             (void)arch->special();
             int after = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
             TEST_ASSERT(after >= before, "illusion summon case should not reduce object count");
-            set_global_context(nullptr);
+            pop_test_context();
         }
     }
 
@@ -973,9 +973,9 @@ void test_walker_special_archmage_mind_control_stats_name_path()
     GameContext test_ctx;
 
     test_ctx.rng = &seq_rng;
-    set_global_context(&test_ctx);
+    push_test_context(&test_ctx);
     (void)arch->special();
-    set_global_context(nullptr);
+    pop_test_context();
     TEST_ASSERT(arch->stats()->magicpoints < mp_before,
                 "mind-control should spend MP for controlled targets");
 
@@ -1229,9 +1229,9 @@ void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
         GameContext test_ctx;
     
         test_ctx.rng = &seq_rng;
-        set_global_context(&test_ctx);
+        push_test_context(&test_ctx);
         (void)cleric->turn_undead(40, 3);
-        set_global_context(nullptr);
+        pop_test_context();
     }
 
     walker* guard = make_special_guy(FAMILY_ORC, 3, 4);
@@ -1257,9 +1257,9 @@ void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
         GameContext random_ctx;
     
         random_ctx.rng = &random_rng;
-        set_global_context(&random_ctx);
+        push_test_context(&random_ctx);
         (void)randomer->act();
-        set_global_context(nullptr);
+        pop_test_context();
     }
 
     delete randomer;

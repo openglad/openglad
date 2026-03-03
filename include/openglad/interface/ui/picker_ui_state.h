@@ -6,6 +6,8 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <vector>
+#include <openglad/interface/button.h>
 #include <openglad/resources/pixie_data.h>
 
 class pixieN;
@@ -39,4 +41,10 @@ struct PickerState {
     // Team build sessions (non-owning pointers, valid only during hire/train flows)
     og::ui::HireSession* hire_session = nullptr;
     og::ui::TrainSession* train_session = nullptr;
+
+    // Mutable menu descriptor arrays (Phase 12).
+    std::vector<button> main_options_buttons;
+    std::vector<button> control_options_buttons;
+    std::vector<button> trainmenu_buttons;
+    std::vector<button> hiremenu_buttons;
 };

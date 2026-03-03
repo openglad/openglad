@@ -95,7 +95,6 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/game_context.cpp
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
-    ${SRC_DIR}/platform/sdl/legacy_globals.cpp
     ${SRC_DIR}/interface/score_panel.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
@@ -196,6 +195,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/resources/level_file_io.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
+    ${SRC_DIR}/interface/session_state.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
     ${SRC_DIR}/interface/ui/level_picker.cpp
     ${SRC_DIR}/interface/ui/level_editor.cpp
@@ -299,7 +299,6 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/platform/sdl/game_loop.cpp
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
-    ${SRC_DIR}/platform/sdl/legacy_globals.cpp
     ${SRC_DIR}/interface/score_panel.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/interface/screen.cpp
@@ -323,7 +322,6 @@ set(OG_RENDER_SOURCES
     ${SRC_DIR}/interface/render/pixie.cpp
     ${SRC_DIR}/interface/render/pixien.cpp
     ${SRC_DIR}/interface/render/radar.cpp
-    ${SRC_DIR}/platform/sdl/sai2x.cpp
     ${SRC_DIR}/interface/render/text.cpp
     ${SRC_DIR}/interface/render/view.cpp
     ${SRC_DIR}/interface/render/walker_draw.cpp
@@ -370,8 +368,51 @@ set(OG_IO_SOURCES
 
 set(OG_PLATFORM_SOURCES
     ${SRC_DIR}/platform/sdl/native_input.cpp
+    ${SRC_DIR}/platform/sdl/sai2x.cpp
     ${SRC_DIR}/platform/sdl/sound.cpp
     ${SRC_DIR}/platform/sdl/video_sdl.cpp
+)
+
+# Phase 12 component targets
+set(OG_GAMEPLAY_COMPONENT_SOURCES
+    ${OG_SIM_SOURCES}
+    ${OG_ENTITIES_SOURCES}
+    ${SRC_DIR}/gameplay/stats.cpp
+    ${SRC_DIR}/gameplay/gameplay_context.cpp
+    ${SRC_DIR}/gameplay/game_world.cpp
+    ${SRC_DIR}/gameplay/sim_input_handler.cpp
+    ${SRC_DIR}/gameplay/smooth.cpp
+)
+
+set(OG_RESOURCES_COMPONENT_SOURCES
+    ${OG_DATA_SOURCES}
+    ${OG_IO_SOURCES}
+)
+
+set(OG_INTERFACE_COMPONENT_SOURCES
+    ${OG_INPUT_SOURCES}
+    ${OG_RENDER_SOURCES}
+    ${OG_UI_SOURCES}
+    ${SRC_DIR}/interface/score_panel.cpp
+    ${SRC_DIR}/interface/screen.cpp
+    ${SRC_DIR}/interface/platform_bridge.cpp
+    ${SRC_DIR}/interface/guy_create.cpp
+    ${SRC_DIR}/interface/session_state.cpp
+    ${SRC_DIR}/interface/level_runtime_data.cpp
+    ${SRC_DIR}/interface/walker_render_bridge.cpp
+    ${SRC_DIR}/interface/sdl_context_services.cpp
+    ${SRC_DIR}/interface/cheat_handler.cpp
+)
+
+set(OG_PLATFORM_SDL_COMPONENT_SOURCES
+    ${OG_PLATFORM_SOURCES}
+    ${SRC_DIR}/platform/sdl/game.cpp
+    ${SRC_DIR}/platform/game_context.cpp
+    ${SRC_DIR}/platform/sdl/game_loop.cpp
+    ${SRC_DIR}/platform/sdl/game_session.cpp
+    ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
+    ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
+    ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
 )
 
 # External C++ sources
@@ -602,6 +643,16 @@ function(configure_openglad_library target)
     endif()
 endfunction()
 
+function(configure_component_library target include_root)
+    target_include_directories(${target} PRIVATE ${include_root})
+    target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
+    target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
+    if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target} PRIVATE --coverage)
+        target_link_options(${target} PRIVATE --coverage)
+    endif()
+endfunction()
+
 function(configure_openglad_sdl_target target)
     if(NOT EMSCRIPTEN)
         # Opt-in SDL wiring: keeps gameplay-only targets free from platform deps.
@@ -646,6 +697,24 @@ endfunction()
 
 function(add_runtime_assets_dependency target)
     add_dependencies(${target} stage_runtime_assets)
+endfunction()
+
+function(prepare_component_include_root out_var component_name)
+    set(root "${CMAKE_BINARY_DIR}/component_includes/${component_name}")
+    set(openglad_root "${root}/openglad")
+    file(MAKE_DIRECTORY "${openglad_root}")
+    foreach(prefix IN LISTS ARGN)
+        set(src_dir "${CMAKE_SOURCE_DIR}/include/openglad/${prefix}")
+        if(NOT EXISTS "${src_dir}")
+            continue()
+        endif()
+        set(dst_dir "${openglad_root}/${prefix}")
+        if(EXISTS "${dst_dir}")
+            file(REMOVE_RECURSE "${dst_dir}")
+        endif()
+        file(COPY "${src_dir}" DESTINATION "${openglad_root}")
+    endforeach()
+    set(${out_var} "${root}" PARENT_SCOPE)
 endfunction()
 
 # Vendor header leak check: no third-party headers in public or internal code.
@@ -710,62 +779,78 @@ set(OG_EXTERNAL_LIBS
 )
 
 if(NOT EMSCRIPTEN)
-    # --- internal module targets (target-based architecture) ---
+    # --- component targets (Phase 12) ---
+    prepare_component_include_root(OG_CORE_INCLUDE_ROOT core
+        core interface legacy)
+    prepare_component_include_root(OG_GAMEPLAY_INCLUDE_ROOT gameplay
+        core gameplay legacy)
+    prepare_component_include_root(OG_RESOURCES_INCLUDE_ROOT resources
+        core gameplay resources legacy)
+    prepare_component_include_root(OG_INTERFACE_INCLUDE_ROOT interface
+        core gameplay resources interface legacy)
+
     add_library(og_core STATIC ${OG_CORE_SOURCES})
-    configure_openglad_library(og_core)
+    configure_component_library(og_core "${OG_CORE_INCLUDE_ROOT}")
 
-    add_library(og_sim STATIC ${OG_SIM_SOURCES})
-    configure_openglad_library(og_sim)
+    add_library(og_gameplay STATIC ${OG_GAMEPLAY_COMPONENT_SOURCES})
+    configure_component_library(og_gameplay "${OG_GAMEPLAY_INCLUDE_ROOT}")
+    target_include_directories(og_gameplay PRIVATE ${THIRD_PARTY_DIR}/micropather)
+    target_link_libraries(og_gameplay PUBLIC og_core ${OG_EXTERNAL_LIBS})
 
-    add_library(og_data STATIC ${OG_DATA_SOURCES})
-    configure_openglad_library(og_data)
-
-    add_library(og_entities STATIC ${OG_ENTITIES_SOURCES})
-    configure_openglad_library(og_entities)
-
-    add_library(og_io STATIC ${OG_IO_SOURCES})
-    configure_openglad_library(og_io)
-    configure_openglad_sdl_target(og_io)
-    target_include_directories(og_io PRIVATE
+    add_library(og_resources STATIC ${OG_RESOURCES_COMPONENT_SOURCES})
+    configure_component_library(og_resources "${OG_RESOURCES_INCLUDE_ROOT}")
+    configure_openglad_sdl_target(og_resources)
+    target_include_directories(og_resources PRIVATE
         ${THIRD_PARTY_DIR}/yam
         ${THIRD_PARTY_DIR}/libyaml/include
         ${THIRD_PARTY_DIR}/physfs
         ${THIRD_PARTY_DIR}/physfs/extras
         ${THIRD_PARTY_DIR}/libzip
     )
-    # og_io is the only OpenGlad module that links PhysFS/libzip/libyaml.
-    target_link_libraries(og_io PUBLIC ${OG_IO_EXTERNAL_LIBS})
+    target_link_libraries(og_resources PUBLIC
+        og_core
+        og_gameplay
+        ${OG_IO_EXTERNAL_LIBS}
+    )
 
-    add_library(og_runtime STATIC ${OG_RUNTIME_SOURCES})
-    configure_openglad_library(og_runtime)
-    configure_openglad_sdl_target(og_runtime)
-    target_include_directories(og_runtime PRIVATE ${THIRD_PARTY_DIR}/micropather)
+    add_library(og_interface STATIC ${OG_INTERFACE_COMPONENT_SOURCES})
+    configure_component_library(og_interface "${OG_INTERFACE_INCLUDE_ROOT}")
+    configure_openglad_sdl_target(og_interface)
+    target_link_libraries(og_interface PUBLIC
+        og_core
+        og_gameplay
+        og_resources
+    )
 
-    add_library(og_render STATIC ${OG_RENDER_SOURCES})
-    configure_openglad_library(og_render)
-    configure_openglad_sdl_target(og_render)
+    add_library(og_platform_sdl STATIC ${OG_PLATFORM_SDL_COMPONENT_SOURCES})
+    configure_component_library(og_platform_sdl "${OG_PUBLIC_INCLUDE_DIR}")
+    configure_openglad_sdl_target(og_platform_sdl)
+    target_link_libraries(og_platform_sdl PUBLIC
+        og_core
+        og_gameplay
+        og_resources
+        og_interface
+    )
+    add_dependencies(og_platform_sdl check_vendor_leaks)
 
-    add_library(og_input STATIC ${OG_INPUT_SOURCES})
-    configure_openglad_library(og_input)
-
-    add_library(og_ui STATIC ${OG_UI_SOURCES})
-    configure_openglad_library(og_ui)
-
-    add_library(og_platform STATIC ${OG_PLATFORM_SOURCES})
-    configure_openglad_library(og_platform)
-    configure_openglad_sdl_target(og_platform)
-
-    # Monolithic aggregate used by runtime executables without linker groups.
-    add_library(og_game_full STATIC ${GAME_SOURCES_NO_MAIN})
-    configure_openglad_library(og_game_full)
-    configure_openglad_sdl_target(og_game_full)
-    target_include_directories(og_game_full PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
-    target_link_libraries(og_game_full PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
-    add_dependencies(og_game_full check_vendor_leaks)
-
-    # --- aggregate target (non-main code) ---
+    # Aggregate target for executables/tests.
     add_library(og_game INTERFACE)
-    target_link_libraries(og_game INTERFACE og_game_full)
+    if(CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED)
+        target_link_libraries(og_game INTERFACE
+            "$<LINK_GROUP:RESCAN,og_platform_sdl,og_interface,og_resources,og_gameplay,og_core>"
+            og_runtime_deps
+        )
+    else()
+        target_link_libraries(og_game INTERFACE
+            og_platform_sdl
+            og_interface
+            og_resources
+            og_gameplay
+            og_core
+            og_platform_sdl
+            og_runtime_deps
+        )
+    endif()
 
     # Stage runtime assets into the build tree so tests and local runs do not
     # depend on pre-existing user data.
@@ -842,6 +927,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/gameplay_context.cpp
         ${SRC_DIR}/gameplay/game_world.cpp
         ${SRC_DIR}/gameplay/sim_input_handler.cpp
+        ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
         ${SRC_DIR}/gameplay/smooth.cpp
@@ -877,15 +963,10 @@ if(NOT EMSCRIPTEN)
         project_warnings
         project_sanitizers
         og_core
-        og_sim
-	        og_data
-	        og_entities
-	        og_io
-	        og_runtime
-        og_render
-        og_input
-        og_ui
-        og_platform
+        og_gameplay
+        og_resources
+        og_interface
+        og_platform_sdl
         og_ext_micropather
         og_ext_yam
         og_ext_yaml
@@ -980,6 +1061,7 @@ if(NOT EMSCRIPTEN)
         )
         configure_openglad_library(og_unit_tests)
         configure_openglad_sdl_target(og_unit_tests)
+        target_compile_definitions(og_unit_tests PRIVATE TESTING)
         target_link_libraries(og_unit_tests PRIVATE og_game)
         configure_openglad_runtime_target(og_unit_tests)
         add_test(NAME og_unit_tests COMMAND og_unit_tests)

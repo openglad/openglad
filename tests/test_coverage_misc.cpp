@@ -74,12 +74,12 @@ struct R17Fixture {
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~R17Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -296,7 +296,7 @@ OG_UNIT_TEST(test_coverage_r17_smooth_grass_water_and_dark_variants)
     SeqRandom rng{1, 2, 0, 0, 1, 0};
     GameContext gc;
     gc.rng = &rng;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd = make_grid(PIX_GRASS1);
@@ -339,7 +339,7 @@ OG_UNIT_TEST(test_coverage_r17_smooth_grass_water_and_dark_variants)
     set_at(pd, x, y + 1, PIX_FLOOR1);
     s.smooth(x, y);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 OG_UNIT_TEST(test_coverage_r17_save_data_reset_defaults)
@@ -868,7 +868,7 @@ OG_UNIT_TEST(test_coverage_r18_smooth_targeted_mask_branches)
     SeqRandom rng;
     GameContext gc;
     gc.rng = &rng;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd = make_grid(PIX_GRASS1);
@@ -920,7 +920,7 @@ OG_UNIT_TEST(test_coverage_r18_smooth_targeted_mask_branches)
     smoother empty;
     (void)empty.smooth(0, 0);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 OG_UNIT_TEST(test_coverage_r18_gparser_more_commandline_switches)
@@ -987,12 +987,12 @@ struct R19Fixture {
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~R19Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -1176,12 +1176,12 @@ struct R20Fixture {
 
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~R20Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -1346,7 +1346,7 @@ OG_UNIT_TEST(test_coverage_r20_smooth_dark_grass_specific_branches)
     ConstantRandom rng1{1};
     GameContext gc;
     gc.rng = &rng1;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd = make_grid(PIX_GRASS1);
@@ -1399,7 +1399,7 @@ OG_UNIT_TEST(test_coverage_r20_smooth_dark_grass_specific_branches)
                        TO_UP | TO_DOWN);
     s.smooth(x, y);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 OG_UNIT_TEST(test_coverage_r20_family_cleric_do_special_guard_conditions)
@@ -1529,12 +1529,12 @@ struct FinalR16Fixture {
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~FinalR16Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -1795,7 +1795,7 @@ OG_UNIT_TEST(test_final_r16_smooth_targeted_grass_and_dark_variants)
     SeqRandom seq{1, 2, 0, 1, 0, 3};
     GameContext gc;
     gc.rng = &seq;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd;
@@ -1839,7 +1839,7 @@ OG_UNIT_TEST(test_final_r16_smooth_targeted_grass_and_dark_variants)
     const Sint32 d = s.query_x_y(x, y);
     OG_ASSERT(d > 0);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 OG_UNIT_TEST(test_final_r16_stats_walker_level_data_and_picker_state)

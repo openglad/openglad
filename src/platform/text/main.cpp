@@ -55,13 +55,11 @@
 // Entity code references session members for legacy reasons.  The headless
 // session buffer below provides zero-initialized storage for myscreen_,
 // theprefs_, current_difficulty_, etc.
-#include <openglad/platform/game_session.h>
+#include <openglad/interface/session_state.h>
 namespace og::runtime {
-    // Zero-initialized storage that satisfies the symbol.  text_picker sets
-    // current_difficulty_ before simulation runs.
-    alignas(GameSession) static char headless_session_buf[sizeof(GameSession)]{};
-    thread_local SessionState* current_session = reinterpret_cast<GameSession*>(headless_session_buf);
-    std::atomic<SessionState*> primary_session{reinterpret_cast<GameSession*>(headless_session_buf)};
+    static thread_local SessionState* s_headless_session = new SessionState{};
+    thread_local SessionState* current_session = s_headless_session;
+    std::atomic<SessionState*> primary_session{s_headless_session};
 }
 
 // cfg is declared in <openglad/resources/gparser.h> (already included above).

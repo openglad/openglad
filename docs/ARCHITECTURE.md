@@ -25,30 +25,19 @@ The codebase has been through an aggressive modernization (branch `cpp-moderniza
 ```
 openglad/
 ├── include/openglad/       Public headers (stable module API surface)
-│   ├── core/               Pure utilities, math, constants
-│   ├── sim/                Deterministic simulation types
-│   ├── data/               Serialization and file format types
-│   ├── entities/           Game entity class hierarchy
-│   ├── io/                 Filesystem abstraction interfaces
-│   ├── runtime/            Game session, context, loop
-│   ├── render/             Graphics and viewport types
-│   ├── input/              Input handling and button types
-│   ├── ui/                 Menu state machines and view models
-│   ├── platform/           Platform I/O abstraction
+│   ├── core/               Foundation utilities and shared contracts
+│   ├── gameplay/           Simulation + entities + world state
+│   ├── resources/          Save/level/config/filesystem/archive APIs
+│   ├── interface/          UI, input translation, rendering-facing APIs
+│   ├── platform/           Runtime/session/platform bridges (SDL, text client)
 │   └── legacy/             Transitional headers (base.h, etc.)
 │
 ├── src/                    Private implementation
-│   ├── core/               combat_math.cpp, stats.cpp, util.cpp
-│   ├── sim/                sim_world, sim_event_log
-│   ├── data/               gloader, gparser, level_data, pixie_data, save_data
-│   ├── entities/           walker, living, weap, treasure, effect, guy, obmap
-│   ├── io/                 physfs_api, platform_io, yaml_stream, zip_api
-│   ├── runtime/            screen, game_loop, game_session, game_context, ...
-│   ├── render/             video, view, pixie, pixien, text, radar, pal32, walker_draw, ...
-│   ├── input/              input.cpp, button.cpp
-│   ├── ui/                 picker, level_editor, campaign_picker, intro, help, ...
-│   ├── platform/           sound.cpp
-│   └── glad.cpp            Entry point (main function)
+│   ├── core/               combat_math.cpp, util.cpp
+│   ├── gameplay/           walker/living/weap/treasure/effect, game_world, sim input
+│   ├── resources/          gloader, gparser, level/save IO, filesystem/zip/yaml
+│   ├── interface/          screen/view/render/text, picker/help/editor/results UI
+│   └── platform/           sdl runtime/session/loop/audio/video, text client
 │
 ├── tests/                  Integration test suite (~140 test files)
 │   └── unit/               Headless unit tests (no SDL)
@@ -83,245 +72,122 @@ openglad/
 
 ## Module Structure
 
-The codebase is organized into 10 internal modules, each built as a separate static library with restricted include paths. Public headers live under `include/openglad/<module>/`; private implementation lives under `src/<module>/`.
+OpenGlad now uses **4 top-level components + a core foundation layer**. The
+component targets are:
 
-### og_core — Pure Utilities
+- `og_core`
+- `og_gameplay`
+- `og_resources`
+- `og_interface`
+- `og_platform_sdl`
 
-Pure math, logging, time helpers, and compile-time constants. No SDL, no filesystem, no threads beyond the standard library.
+Legacy fine-grained module names (`sim`, `data`, `entities`, `runtime`,
+`render`, `input`, `ui`, etc.) remain visible in paths and headers, but
+build/dependency enforcement is now done at the component level.
 
-| File | Purpose |
-|------|---------|
-| `core/combat_math.cpp` | Damage calculation, hit/miss formulas |
-| `core/stats.cpp` | Entity statistics, command queue management |
-| `core/util.cpp` | Logging (`Log`/`LogWarn`/`LogError` via `std::format`), timer functions, safe int parsing |
+### `og_core` (foundation)
 
-### og_sim — Deterministic Simulation
+Pure utilities and fundamental types (`combat_math`, `util`, constants, common
+interfaces). No gameplay/session ownership logic.
 
-Headless, SDL-free simulation layer. Given a seed + input sequence, produces identical state and typed events. This is the foundation for separating game logic from rendering.
+### `og_gameplay`
 
-`screen::act()` delegates to `SimWorld::tick()`, which executes all entity logic, handles dead entity cleanup, checks level completion, and emits events into a `SimEventLog`. The runtime layer then drains events and dispatches them to sound, HUD, and visual effects.
+Deterministic simulation and entity behavior:
 
-Entity code emits events via `sim_emit.h` helpers (`emit_sound()`, `emit_notification()`, `emit_event()`) instead of making direct rendering/audio calls, completing the decoupling of simulation from presentation.
+- `GameWorld`, `GameplayContext`
+- `walker` family (`living`, `weap`, `treasure`, `effect`)
+- pathing, combat, AI families, simulation input handling
 
-| File | Purpose |
-|------|---------|
-| `sim/sim_world.cpp` | `SimWorld::tick()` — live game simulation tick (extracted from `screen::act()`) |
-| `sim/sim_event_log.cpp` | `SimEventLog` — accumulates events during a tick for deferred dispatch |
-| `sim/sim_emit.h` | Convenience helpers: `emit_sound()`, `emit_notification()`, `emit_event()` |
-| `sim/event.h` | `EventKind` enum: PlaySound, Notification, SetPalette, RequestRedraw |
+Gameplay is intentionally sandboxable and does not own rendering/audio devices.
 
-### og_data — Serialization and Persistence
+### `og_resources`
 
-File format parsing for campaigns, levels, saves, and configuration. Knows file formats but not SDL or UI.
+Data and persistence:
 
-| File | Purpose |
-|------|---------|
-| `data/gloader.cpp` | Loads game content from packages (sprites, AI definitions) |
-| `data/gparser.cpp` | Configuration and metadata parsing (`cfg_store`) |
-| `data/level_data.cpp` | Level layout: tiles, object placement, spatial indexing |
-| `data/pixie_data.cpp` | Sprite/animation metadata (`PixieData` struct) |
-| `data/save_data.cpp` | Save game serialization with versioning (`SaveDataIoError` enum) |
+- campaign/level/save/config loading and parsing
+- filesystem/archive/yaml wrappers
+- pixie/asset loading
 
-### og_entities — Game Object Hierarchy
+### `og_interface`
 
-All game objects (players, enemies, projectiles, items, effects) derive from `walker`. This module contains entity behavior, AI, combat, movement, and pathfinding. Drawing methods have been extracted to the render layer (`render/walker_draw.cpp`) to enforce the sim/rendering split — entity code no longer depends on viewscreen or video types.
+UI, view, and presentation logic:
 
-| File | Purpose |
-|------|---------|
-| `entities/walker.cpp` | Base entity: position, animation, stats, lifecycle |
-| `entities/walker_combat.cpp` | Combat: `attack()`, `fire_check()`, damage dealing |
-| `entities/walker_movement.cpp` | Movement: `walk()`, `walkstep()`, `setworldxy()` |
-| `entities/walker_pathing.cpp` | A* pathfinding via MicroPather integration |
-| `entities/walker_specials.cpp` | Special abilities: teleport, summon, turn undead |
-| `entities/living.cpp` | AI-controlled entities (enemies, NPCs) extending `walker` |
-| `entities/weap.cpp` | Projectiles and weapons extending `walker` |
-| `entities/treasure.cpp` | Collectible items (gold, potions, food) |
-| `entities/effect.cpp` | Visual effects (explosions, spells, blood) |
-| `entities/guy.cpp` | Persistent player character data (stats, XP, name) |
-| `entities/obmap.cpp` | Spatial hash grid for O(1) collision detection |
+- menus (`picker`, dialogs, campaign/level picker, results/help/intro)
+- rendering helpers (`view`, `text`, `radar`, `walker_draw`)
+- level editor tooling/state
+- player input translation and UI model state
 
-**Class hierarchy:**
-```
-SimEntity (SDL-free base: position, size, identity, state, animation frames)
-└── walker (base entity, optional WalkerRender component for graphics)
-    ├── living (AI entities with health, behavior, specials)
-    ├── weap (projectiles and weapons)
-    ├── treasure (collectible items)
-    └── effect (visual effects)
+### `og_platform_sdl`
 
-guy — persistent player character data (not a walker; bound via walker::myguy)
-obmap — spatial hash for collision queries
-WalkerRender — concrete render component wrapping pixieN (SDL only; nullptr in headless)
-LevelRender — concrete tile renderer wrapping PIX_MAX pixieN sprites (SDL only; nullptr in headless)
-```
+SDL-specific platform/runtime wiring:
 
-### og_io — Filesystem Abstraction
+- `GameSession`, lifecycle, loop bridges, native input event bridge
+- SDL video/audio integration and startup entrypoint support
 
-Wraps PhysFS, libzip, and libyaml behind narrow interfaces. Only this module (and og_platform) may include vendor headers.
-
-| File | Purpose |
-|------|---------|
-| `io/physfs_api.cpp` | PhysFS virtual filesystem mounting and file I/O |
-| `io/platform_io.cpp` | Platform-specific I/O operations |
-| `io/yaml_stream.cpp` | YAML configuration parsing via libyaml |
-| `io/zip_api.cpp` | ZIP archive creation and extraction |
-
-### og_runtime — Game Session Orchestration
-
-Owns the game session lifecycle, wires services together, manages the game loop and screen state machine.
-
-| File | Purpose |
-|------|---------|
-| `runtime/screen.cpp` | Game world: delegates to `SimWorld::tick()` for logic, owns redraw/event dispatch |
-| `runtime/game_loop.cpp` | Per-frame loop: `game_frame()` → input → act → render |
-| `runtime/game_session.cpp` | `GameSession` — RAII root owning screen, prefs, RNG |
-| `runtime/game_context.cpp` | `GameContext` — dependency injection container (`ctx()`) |
-| `runtime/game.cpp` | Game logic integration point |
-| `runtime/glad_gameplay.cpp` | Gameplay initialization and level transitions |
-| `runtime/score_panel.cpp` | HUD: HP/MP bars, score, team/foe counts, radar |
-| `runtime/screen_lifecycle.cpp` | Screen creation, reset, cleanup |
-| `runtime/legacy_globals.cpp` | Transitional global variable shims |
-
-**Key types:**
-
-- **`GameSession`** — RAII root for all runtime state. Owns the `screen`, `options`, and RNG. Installs legacy global shims (`myscreen`, `theprefs`). Production `main()` constructs one; tests construct one per test.
-- **`GameContext`** — Dependency injection container. Holds direct references to screen, prefs, config, RNG, and input state. Accessed globally via `ctx()`.
-- **`screen`** — The game world container. Extends `video` (graphics layer). Contains `level_data`, `save_data`, and up to 4 `viewscreen` objects for split-screen. The `act()` method delegates to `SimWorld::tick()` for game logic; `redraw()` handles rendering and event dispatch.
-
-### og_render — Graphics and Display
-
-SDL2 rendering: pixel buffers, viewports, sprites, text, radar, palette management, and image scaling.
-
-| File | Purpose |
-|------|---------|
-| `render/video.cpp` | SDL2 graphics abstraction: pixel buffer, drawing primitives |
-| `render/view.cpp` | Viewport/camera system (1–4 split-screen views), HUD overlay |
-| `render/pixie.cpp` | Base sprite/image class |
-| `render/pixien.cpp` | Animated sprite with frame management |
-| `render/text.cpp` | Bitmap font rendering system |
-| `render/radar.cpp` | Minimap display |
-| `render/pal32.cpp` | 8-bit to 32-bit palette conversion |
-| `render/smooth.cpp` | Tile edge smoothing algorithm |
-| `render/sai2x.cpp` | SAI2x pixel-art upscaling |
-| `render/walker_draw.cpp` | Entity rendering: `draw_walker()`, `draw_walker_tile()`, `draw_walker_path()`, health bars |
-| `render/graphlib.cpp` | Graphics utility functions |
-
-**Rendering pipeline:**
-```
-screen::redraw()
-  → video::clearbuffer()
-  → draw tile grid (level_data)
-  → draw_walker(w, view_buf) for each visible entity  (render layer, not entity layer)
-  → score_panel() — HUD overlay (HP, MP, score, specials)
-  → radar::draw() — minimap
-  → dispatch_sim_events() — play sounds, show notifications from tick
-  → video::buffer_to_screen() — present to SDL window
-```
-
-### og_input — User Input
-
-Translates SDL keyboard, mouse, and joystick events into game actions. Manages per-player key bindings and the UI button widget system.
-
-| File | Purpose |
-|------|---------|
-| `input/input.cpp` | Event polling, key mapping, per-player input state |
-| `input/button.cpp` | UI button widgets (`vbutton`), `allbuttons[]` global array |
-
-### og_ui — User Interface
-
-Menu controllers, the team picker, level editor, intro screen, help, and results display.
-
-| File | Purpose |
-|------|---------|
-| `ui/picker.cpp` | Main team selection and hiring UI |
-| `ui/picker_main_menu.cpp` | Main menu state machine flow |
-| `ui/picker_team_build.cpp` | Character stat editing and purchasing |
-| `ui/picker_input.cpp` | Menu input event handling |
-| `ui/picker_dialogs.cpp` | Dialog boxes and confirmations |
-| `ui/picker_accessible_levels.cpp` | Level accessibility and gating logic |
-| `ui/campaign_picker.cpp` | Campaign selection UI |
-| `ui/level_picker.cpp` | Level selection UI |
-| `ui/level_editor.cpp` | Scenario editor (openscen) |
-| `ui/level_editor_file_ops.cpp` | Editor file I/O |
-| `ui/level_editor_tools.cpp` | Editor placement/deletion tools |
-| `ui/level_editor_ui.cpp` | Editor UI rendering |
-| `ui/intro.cpp` | Splash/intro screen |
-| `ui/help.cpp` | In-game help display |
-| `ui/results_screen.cpp` | Post-battle results and level completion |
-
-### og_platform — Platform Services
-
-SDL initialization, audio device management, and platform-specific hooks (Emscripten async support).
-
-| File | Purpose |
-|------|---------|
-| `platform/sound.cpp` | SDL_mixer audio: sound effects and music playback |
+This is the outermost layer and can include all component headers.
 
 ---
 
 ## Dependency Direction Rules
 
-Dependencies flow **inward toward purity**. Outer layers depend on inner layers; never the reverse.
+Dependencies now flow through components:
 
 ```
-                    ┌───────────────────┐
-                    │       apps        │
-                    │ openglad / openscen│
-                    └────┬─────────┬────┘
-                         │         │
-                  ┌──────▼──┐  ┌──▼────────┐
-                  │  og_ui  │  │ og_render  │
-                  └────┬────┘  └─────┬──────┘
-                       │             │
-                       ▼             ▼
-                  ┌────┴─────────────┴───┐
-                  │      og_runtime      │
-                  └───┬──────────┬───────┘
-                      │          │
-               ┌──────▼──┐  ┌───▼─────┐
-               │ og_sim   │  │ og_data │
-               └────┬─────┘  └───┬─────┘
-                    │             │
-                    ▼             ▼
-                  ┌───────────────────┐
-                  │     og_core       │
-                  └───────────────────┘
-
-   og_input → og_core
-   og_io → og_core
-   og_platform → og_io → og_core
+og_core
+  ↑
+og_gameplay
+  ↑
+og_resources
+  ↑
+og_interface
+  ↑
+og_platform_sdl
 ```
 
-### Allowed Dependencies
+### Include Boundary Rules
 
-| Module | May depend on |
-|--------|---------------|
-| `og_core` | Standard library only |
-| `og_sim` | `og_core` |
-| `og_data` | `og_core` |
-| `og_io` | `og_core`, vendored I/O libs (physfs, libzip, libyaml) |
-| `og_entities` | `og_core`, `og_sim` (event emission), `og_render` (for pixieN base), micropather |
-| `og_runtime` | `og_core`, `og_sim`, `og_data`, `og_entities`, `og_io`, `og_render`, `og_input` |
-| `og_render` | `og_core`, SDL2 |
-| `og_input` | `og_core`, SDL2 |
-| `og_ui` | `og_runtime`, `og_render`, `og_input`, `og_data` |
-| `og_platform` | `og_io`, SDL2 |
+Each component target is built with restricted include roots:
 
-### Forbidden Dependencies
-
-- `og_sim` must NOT include SDL, render, ui, or platform headers
-- `og_data` must NOT depend on screen, UI globals, or rendering types
-- `og_core` must NOT depend on any other module
-- `og_entities` must NOT call rendering/audio/UI directly — use `og::sim::emit_*()` helpers instead
-- `og_ui` must NOT directly mutate deep sim internals — it issues commands to runtime
+- `og_gameplay`: `core/`, `gameplay/`
+- `og_resources`: `core/`, `gameplay/`, `resources/`
+- `og_interface`: `core/`, `gameplay/`, `resources/`, `interface/`
+- `og_platform_sdl`: full tree
 
 ### Enforcement
 
-A build-time check enforces these boundaries:
+Build and CI checks enforce boundaries:
 
-1. **`check_vendor_leaks.sh`** — Vendor headers (physfs, libzip, libyaml, zipint.h) may only appear in `src/io/`; micropather.h only in `src/entities/`. Public headers under `include/openglad/` must never include vendor headers.
+1. CMake target-level include root restriction per component
+2. `scripts/check_vendor_leaks.sh` vendor include checks
+3. `scripts/check_vendor_leaks.sh` component dependency include checks
 
-This check runs as a custom CMake target (`check_vendor_leaks`) that executes before the `og_game` aggregate target.
+### Runtime Context and Thread-Local Rules
+
+Phase 12 retired global context fallback behavior:
+
+- `set_global_context()` is removed
+- `ctx()` is strictly session-backed (`current_session->ctx_`) and asserts when no session exists
+- gameplay thread-local game-state pointer: `current_game`
+- platform thread-local game-state pointer: `current_session`
+
+### Global State Audit (Phase 12)
+
+Allowed process-level globals (documented exceptions):
+
+- `cfg` (process configuration)
+- `E_Screen` (global display singleton handle)
+- joystick handles and hardware scratch globals (`joysticks`, etc.)
+- text/render process scratch state (`letters1`, `letters_big`, `text_buffer`)
+- SAI2x color masks/line buffers
+- intro palette globals (`pal`, `mypalette`)
+
+Allowed thread-local exception:
+
+- `grass_rng` (rendering scratch RNG; non-authoritative game state)
+
+Accepted immutable registries:
+
+- family/effect/treasure/generator/weapon registries (`s_registry` init-once statics)
 
 ---
 

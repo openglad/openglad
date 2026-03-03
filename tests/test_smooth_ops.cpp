@@ -499,7 +499,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
     FixedRandom fixed0(0);
     FixedRandom fixed1(1);
     test_ctx.rng = &fixed0;
-    set_global_context(&test_ctx);
+    push_test_context(&test_ctx);
 
     // around == (TO_UP | TO_DOWN | TO_LEFT): right-middle branch, rng(2)==1
     {
@@ -633,7 +633,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         TEST_ASSERT_EQ((int)PIX_GRASS_DARK_1, (int)s.query_x_y(1, 1), "default dark-grass branch should map to dark_1");
     }
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 REGISTER_TEST(test_smooth_dark_grass_round7_branch_matrix_338_448);
 
@@ -678,7 +678,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
     FixedRandom fixed0(0);
     GameContext test_ctx;
     test_ctx.rng = &fixed0;
-    set_global_context(&test_ctx);
+    push_test_context(&test_ctx);
 
     // Dirt corner case: around == (TO_LEFT | TO_DOWN) => PIX_DIRTGRASS_LL1
     {
@@ -846,7 +846,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         TEST_ASSERT_EQ((int)PIX_TREE_MT, (int)s.query_x_y(1, 1), "trees vertical should map to trunk tile");
     }
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 void test_smooth_round11_water_and_tree_edge_masks_662_720()
@@ -854,7 +854,7 @@ void test_smooth_round11_water_and_tree_edge_masks_662_720()
     FixedRandom fixed0(0);
     GameContext test_ctx;
     test_ctx.rng = &fixed0;
-    set_global_context(&test_ctx);
+    push_test_context(&test_ctx);
 
     // TYPE_WATER diagonal-corner masks (smooth.cpp:662-669).
     {
@@ -905,6 +905,6 @@ void test_smooth_round11_water_and_tree_edge_masks_662_720()
         TEST_ASSERT_EQ((int)PIX_TREE_ML, (int)s.query_x_y(1, 1), "trees with missing upper-left should map to left edge");
     }
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 REGISTER_TEST(test_smooth_round11_water_and_tree_edge_masks_662_720);

@@ -19,11 +19,6 @@ static inline screen* active_screen()
     return og::runtime::current_session->myscreen_;
 }
 
-static inline cfg_store* active_config()
-{
-    return &cfg;
-}
-
 namespace
 {
 const SDL_Event& as_sdl_event(const void* native_event)
@@ -110,10 +105,10 @@ void handle_key_event(const void* native_event)
         else if(event.key.keysym.sym == SDLK_F12 && event.key.keysym.mod & KMOD_CTRL)
         {
             restore_default_settings();
-            active_config()->load_settings();
-            load_player_control_settings_from_cfg(*active_config());
+            cfg.load_settings();
+            load_player_control_settings_from_cfg(cfg);
             og::runtime::current_session->overscan_percentage_ = static_cast<float>(
-                parse_int_strict(active_config()->get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
+                parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
             update_overscan_setting();
         }
         break;

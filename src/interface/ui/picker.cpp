@@ -156,11 +156,6 @@ static inline void set_intercept_scope(PickerInterceptScope s) {
     pks().intercept_scope = static_cast<int>(s);
 }
 
-static cfg_store& active_config()
-{
-    return cfg;
-}
-
 // The mainmenu loop: keeps showing the main menu after submenus return.
 // quit() calls exit(0) directly, so we only re-enter here from submenu BACK.
 void picker_mainmenu_loop()
@@ -401,6 +396,10 @@ void picker_cleanup_resources()
 	pks().main_columns_data.free();
 	pks().main_title_logo_pix.reset();
 	pks().main_title_logo_data.free();
+    pks().main_options_buttons.clear();
+    pks().control_options_buttons.clear();
+    pks().trainmenu_buttons.clear();
+    pks().hiremenu_buttons.clear();
 }
 
 void picker_quit()
@@ -497,7 +496,7 @@ button mainmenu_buttons[] =
 inline constexpr Sint32 BUTTON_PADDING = 8;
 inline constexpr Sint32 BUTTON_PITCH = BUTTON_HEIGHT + BUTTON_PADDING;
 
-button main_options_buttons[] =
+static const button k_main_options_buttons[] =
 {
     button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=12, .down=1, .right=15}),
     button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2}),
@@ -523,7 +522,7 @@ button main_options_buttons[] =
 #define CTRL_PLAYER_PITCH 28
 #define CTRL_PLAYER_Y(i) (40 + (i) * CTRL_PLAYER_PITCH)
 
-button control_options_buttons[] =
+static const button k_control_options_buttons[] =
 {
     button("controls_back", "BACK", KEYSTATE_ESCAPE, 10, 8, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.down=1}),
     button("player1_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 30, CTRL_PLAYER_Y(0), 100, 15,
@@ -578,7 +577,7 @@ button details_buttons[] =
         button("promote", 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav{.down=0, .left=0}, false, true) // PROMOTE
     };
 
-button trainmenu_buttons[] =
+static const button k_trainmenu_buttons[] =
     {
         button("prev", "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, button_action_id(ButtonAction::CycleTeamGuy), -1, MenuNav{.down=2, .right=1}),
         button("next", "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, button_action_id(ButtonAction::CycleTeamGuy), 1, MenuNav{.down=3, .left=0, .right=16}),
@@ -603,7 +602,7 @@ button trainmenu_buttons[] =
 
     };
 
-button hiremenu_buttons[] =
+static const button k_hiremenu_buttons[] =
     {
         button("prev", "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, button_action_id(ButtonAction::CycleGuy), -1, MenuNav{.down=4, .right=1}),
         button("next", "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, button_action_id(ButtonAction::CycleGuy), 1, MenuNav{.down=3, .left=0, .right=3}),
@@ -645,6 +644,59 @@ button loadteam_buttons[] =
         button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=9, .down=0}),
 
     };
+
+namespace
+{
+template <std::size_t N>
+void reset_mutable_button_layout(std::vector<button>& out, const button (&defaults)[N])
+{
+    out.assign(defaults, defaults + N);
+}
+} // namespace
+
+button* picker_main_options_buttons()
+{
+    reset_mutable_button_layout(pks().main_options_buttons, k_main_options_buttons);
+    return pks().main_options_buttons.data();
+}
+
+int picker_main_options_button_count()
+{
+    return static_cast<int>(pks().main_options_buttons.size());
+}
+
+button* picker_control_options_buttons()
+{
+    reset_mutable_button_layout(pks().control_options_buttons, k_control_options_buttons);
+    return pks().control_options_buttons.data();
+}
+
+int picker_control_options_button_count()
+{
+    return static_cast<int>(pks().control_options_buttons.size());
+}
+
+button* picker_trainmenu_buttons()
+{
+    reset_mutable_button_layout(pks().trainmenu_buttons, k_trainmenu_buttons);
+    return pks().trainmenu_buttons.data();
+}
+
+int picker_trainmenu_button_count()
+{
+    return static_cast<int>(pks().trainmenu_buttons.size());
+}
+
+button* picker_hiremenu_buttons()
+{
+    reset_mutable_button_layout(pks().hiremenu_buttons, k_hiremenu_buttons);
+    return pks().hiremenu_buttons.data();
+}
+
+int picker_hiremenu_button_count()
+{
+    return static_cast<int>(pks().hiremenu_buttons.size());
+}
 
 
 void view_team(short left, short top, short right, short bottom)
@@ -748,7 +800,7 @@ void draw_toggle_effect_button(button& b, const std::string& category, const std
     if(b.hidden || b.no_draw)
         return;
     
-    if(active_config().is_on(category, setting))
+    if(cfg.is_on(category, setting))
         og::runtime::current_session->myscreen_->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
     else
         og::runtime::current_session->myscreen_->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, RED);
@@ -932,8 +984,8 @@ Sint32 edit_player_keymap(Sint32 arg)
 Sint32 main_controls_options()
 {
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
-    button* buttons = control_options_buttons;
-    const int num_buttons = array_size(control_options_buttons);
+    button* buttons = picker_control_options_buttons();
+    const int num_buttons = picker_control_options_button_count();
     int highlighted_button = 0;
     og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
     clear_keyboard();
@@ -994,15 +1046,16 @@ Sint32 main_options()
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
     
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
+
+	button* buttons = picker_main_options_buttons();
+	int num_buttons = picker_main_options_button_count();
+
     #if defined(OUYA) || defined(ANDROID)
-    main_options_buttons[3].hidden = main_options_buttons[3].no_draw = true;
-    main_options_buttons[2].nav.right = -1;
-    main_options_buttons[5].nav.up = 2;
+    buttons[3].hidden = buttons[3].no_draw = true;
+    buttons[2].nav.right = -1;
+    buttons[5].nav.up = 2;
     #endif
-    
-	button* buttons = main_options_buttons;
-	int num_buttons = array_size(main_options_buttons);
+
 	int highlighted_button = 0;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
@@ -1027,7 +1080,7 @@ Sint32 main_options()
         
         // Reset buttons
         reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-        buttons[2].label = active_config().get_setting("graphics", "render");
+        buttons[2].label = cfg.get_setting("graphics", "render");
         og::runtime::current_session->allbuttons_[2]->label = buttons[2].label;
 		
 		// Draw
@@ -1063,12 +1116,12 @@ Sint32 main_options()
         og::input_native::sleep_ms(10);
 	}
 	
-	og::runtime::current_session->myscreen_->soundp->set_sound(!active_config().is_on("sound", "sound"));
+	og::runtime::current_session->myscreen_->soundp->set_sound(!cfg.is_on("sound", "sound"));
 	// Sync overscan to config before saving (data/ can't depend on input/)
-	active_config().apply_setting("graphics", "overscan_percentage",
+	cfg.apply_setting("graphics", "overscan_percentage",
 	    std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
-    save_player_control_settings_to_cfg(active_config());
-	active_config().save_settings();
+    save_player_control_settings_to_cfg(cfg);
+	cfg.save_settings();
     
     return MENU_REDRAW;
 }

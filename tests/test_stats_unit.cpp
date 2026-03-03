@@ -413,12 +413,12 @@ struct StatsR14Fixture {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~StatsR14Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 

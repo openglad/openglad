@@ -8,8 +8,8 @@
 
 namespace {
 struct GlobalContextGuard {
-    explicit GlobalContextGuard(GameContext* ctx) { set_global_context(ctx); }
-    ~GlobalContextGuard() { set_global_context(nullptr); }
+    explicit GlobalContextGuard(GameContext* ctx) { push_test_context(ctx); }
+    ~GlobalContextGuard() { pop_test_context(); }
 };
 
 class ExposedSmoother : public smoother {

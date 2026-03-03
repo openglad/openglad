@@ -23,9 +23,16 @@ class guy;
 
 namespace og::runtime {
 
+struct VButtonDeleter {
+    void operator()(::vbutton* button) const;
+};
+
 // Interface-visible subset of session globals.
 // Platform's GameSession derives from this and owns additional lifecycle state.
 struct SessionState {
+    SessionState();
+    ~SessionState();
+
     ::screen* myscreen_ = nullptr;
     options* theprefs_ = nullptr;
 
@@ -54,7 +61,7 @@ struct SessionState {
     std::array<::vbutton*, kMaxButtons> allbuttons_ = {};
 
     // Button ownership (Phase 7d) — moved from button.cpp anonymous namespace.
-    std::array<std::unique_ptr<::vbutton>, kMaxButtons> owned_buttons_{};
+    std::array<std::unique_ptr<::vbutton, VButtonDeleter>, kMaxButtons> owned_buttons_{};
 
     // Render/palette state (Batch 6) — moved from pal32.cpp/video.cpp.
     unsigned char curpal_[768] = {};
@@ -92,6 +99,10 @@ struct SessionState {
     ::vbutton* localbuttons_ = nullptr;
     std::int32_t editguy_ = 0;
     std::string message_;
+
+    // Help UI state (Phase 12) — moved from help.cpp globals.
+    short help_end_of_file_ = 0;
+    std::array<std::array<char, 100>, 100> helptext_ = {};
 
     GameContext ctx_;
     GameplayContext game_;

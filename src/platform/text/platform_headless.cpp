@@ -14,6 +14,7 @@
 
 #include <openglad/core/util.h>
 #include <openglad/core/constants.h>
+#include <openglad/interface/session_state.h>
 
 #include <algorithm>
 #include <memory>
@@ -23,6 +24,11 @@
 #include <string>
 #include <utility>
 #include <unistd.h>
+
+void og::runtime::VButtonDeleter::operator()(::vbutton* button) const
+{
+    (void)button;
+}
 
 // current_difficulty lives in GameSession — the text client's headless_session_buf
 // in main.cpp provides zero-initialized storage. text_picker sets it at runtime.

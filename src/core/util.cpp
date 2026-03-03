@@ -39,16 +39,18 @@
 
 static auto g_app_start = std::chrono::steady_clock::now();
 
-// g_reset_time moved to GameSession::reset_time_ (Phase 6).
-// The runtime layer sets g_reset_time_ptr to &session->reset_time_ on session
-// creation, avoiding a circular core→runtime dependency in this file.
+namespace og::runtime {
+std::chrono::steady_clock::time_point* active_session_reset_time();
+}
+
+// Use the active session timer anchor when available; fallback is for
+// startup/headless paths before a session is installed.
 static auto s_fallback_reset_time = std::chrono::steady_clock::now();
-thread_local std::chrono::steady_clock::time_point* g_reset_time_ptr = nullptr;
 
 static inline auto& reset_time_ref()
 {
-    if (g_reset_time_ptr)
-        return *g_reset_time_ptr;
+    if (auto* session_reset_time = og::runtime::active_session_reset_time())
+        return *session_reset_time;
     return s_fallback_reset_time;
 }
 

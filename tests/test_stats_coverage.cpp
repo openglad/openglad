@@ -38,7 +38,7 @@ void test_stats_set_and_try_command_random_walk_paths()
     FixedRandom rng0(0);
     GameContext c;
     c.rng = &rng0;
-    set_global_context(&c);
+    push_test_context(&c);
 
     walker w;
     statistics s(&w);
@@ -54,7 +54,7 @@ void test_stats_set_and_try_command_random_walk_paths()
     s.add_command(COMMAND_DIE, 1, 0, 0);
     TEST_ASSERT_EQ(1, (int)s.delete_me, "COMMAND_DIE add should set delete_me immediately");
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 REGISTER_TEST(test_stats_set_and_try_command_random_walk_paths);
 

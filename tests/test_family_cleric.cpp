@@ -552,12 +552,12 @@ struct ClericR14Fixture {
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~ClericR14Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -700,12 +700,12 @@ struct ClericR15Fixture {
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~ClericR15Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 

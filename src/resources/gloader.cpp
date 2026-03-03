@@ -35,11 +35,6 @@
 #include <algorithm>
 #include <cstring>
 
-static inline cfg_store& active_config()
-{
-    return cfg;
-}
-
 #define SIZE_ORDERS 7 // see constants.h
 #define SIZE_FAMILIES 21  // see also NUM_FAMILIES in constants.h
 
@@ -496,7 +491,7 @@ loader::loader(EntityFactory entity_factory)
 	}
 
 	// Gore toggle: BLOOD and STAIN use alternate graphics when gore is off
-	if (active_config().is_on("effects", "gore")) {
+	if (cfg.is_on("effects", "gore")) {
 		graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood.pix");
 		graphics[PIX(Order::Treasure, FAMILY_STAIN)] = read_pixie_file("stain.pix");
 	} else {

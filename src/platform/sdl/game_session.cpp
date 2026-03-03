@@ -15,10 +15,10 @@
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/interface/render/pixien.h>  // complete type for PickerState's unique_ptr<pixieN>
-#include <openglad/interface/screen.h> // screen class (pulls in base.h → myscreen macro)
+#include <openglad/interface/screen.h> // screen class
 #include <openglad/interface/sound.h> // soundob complete type for play_sound
 #include <openglad/platform/video_sdl.h>
-#include <openglad/interface/render/view.h>    // options class (defines theprefs macro)
+#include <openglad/interface/render/view.h>    // options class
 #include <openglad/platform/sai2x.h>   // E_Screen
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
@@ -27,12 +27,6 @@
 
 // Defined in view.cpp — loads allkeys from defaults + keyprefs.dat.
 void init_allkeys(int allkeys[][16]);
-
-// The legacy global macros (myscreen, theprefs) expand through current_session.
-// This file manages current_session itself, so we #undef the macros to avoid
-// accidental expansion in the implementation below.
-#undef myscreen
-#undef theprefs
 
 namespace {
 PlatformBridge make_sdl_platform_bridge()
@@ -78,11 +72,6 @@ GameSession::GameSession(const Config& session_cfg)
 {
     set_platform_bridge(make_sdl_platform_bridge());
 
-    // Preserve mounted-campaign state that lives on the context.  This is
-    // populated before sessions are created (io_init) and must not be lost
-    // when we install a session-specific context.
-    GameContext& prev_ctx = ::ctx();
-
     prev_session_ = current_session;
     prev_game_ = current_game;
 
@@ -93,14 +82,10 @@ GameSession::GameSession(const Config& session_cfg)
     picker_ = std::make_unique<PickerState>();
     editor_ = std::make_unique<LevelEditorState>();
 
-    // Wire up the timer anchor so reset_timer()/query_timer() use this session's time.
-    g_reset_time_ptr = &reset_time_;
-
     if (cfg_.allocate_prefs) {
         prefs_owner_ = std::make_unique<options>();
         init_allkeys(allkeys_);
     }
-    ctx_.mounted_campaign = prev_ctx.mounted_campaign;
 
     if (cfg_.allocate_seeded_rng) {
         seeded_rng_ = std::make_unique<SeededRandom>(cfg_.rng_seed);
@@ -110,14 +95,12 @@ GameSession::GameSession(const Config& session_cfg)
         ctx_.rng = &production_rng_;
     }
 
-    // ctx() now reads from current_session->ctx_ directly; no need to
-    // call set_global_context.
+    // ctx() reads directly from current_session->ctx_.
     game_.sim_events = ctx_.sim_events.get();
     game_.config = &cfg;
     game_.world = &world_owner_;
 
-    // Set session members before creating the screen, because the screen
-    // constructor creates viewscreens whose constructors read theprefs (macro).
+    // Set prefs before creating the screen; viewscreen construction reads it.
     theprefs_ = prefs_owner_.get();
 
     // Initialize legacy video pointer (VGA linear buffer address from DOS era).
@@ -127,8 +110,7 @@ GameSession::GameSession(const Config& session_cfg)
     // to SDL's internal array — it's the same for all sessions.
     keystates_ = SDL_GetKeyboardState(nullptr);
 
-    // Ensure screen/viewscreen construction always runs with this session active
-    // so legacy macros (myscreen/theprefs) bind to the right context.
+    // Ensure screen/viewscreen construction always runs with this session active.
     struct ConstructionSessionScope final {
         ConstructionSessionScope(GameSession& session, bool persist_globals)
             : persist_globals_(persist_globals)
@@ -255,8 +237,7 @@ GameSession::SessionScope::SessionScope(GameSession& session)
     saved_session_ = current_session;
     saved_game_ = current_game;
 
-    // Install this session as current.  The legacy macros (myscreen, theprefs)
-    // dereference current_session, so this single pointer swap is sufficient.
+    // Install this session as current.
     // ctx() also reads from current_session->ctx_, so no separate context
     // installation is needed.
     current_session = session_;

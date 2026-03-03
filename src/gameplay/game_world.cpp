@@ -70,12 +70,10 @@ void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
 }
 }
 
-#ifdef TESTING
 namespace og::sim {
 // Test hook to shorten mission timeout checks in deterministic harnesses.
 std::int32_t g_test_level_tick_limit_override = 0;
 } // namespace og::sim
-#endif
 
 GameWorld::GameWorld(std::uint32_t seed)
     : rng_(seed)
@@ -862,10 +860,8 @@ void GameWorld::tick()
     level_tick_count_++;
 
     std::uint32_t max_level_ticks = 36000;
-#ifdef TESTING
     if (og::sim::g_test_level_tick_limit_override > 0)
         max_level_ticks = static_cast<std::uint32_t>(og::sim::g_test_level_tick_limit_override);
-#endif
     if (level_tick_count_ > max_level_ticks)
     {
         // Hard mission timeout safety net to avoid unbounded gameplay loops.

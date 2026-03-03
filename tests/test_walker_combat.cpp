@@ -319,9 +319,9 @@ void test_walker_act_with_commands()
             SequenceRandomCombat gen_rng({100, 0, 1, 1});
             GameContext gen_ctx;
             gen_ctx.rng = &gen_rng;
-            set_global_context(&gen_ctx);
+            push_test_context(&gen_ctx);
             (void)genp->act();
-            set_global_context(nullptr);
+            pop_test_context();
         }
 
         walker* proj = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
@@ -379,16 +379,16 @@ void test_walker_act_with_commands()
             // act_random(): rng(70)==0 -> refresh foe and drive fire path.
             SequenceRandomCombat base_rng1({0, 1, 0, 5, 0});
             base_ctx.rng = &base_rng1;
-            set_global_context(&base_ctx);
+            push_test_context(&base_ctx);
             (void)base_rand->act();
 
             // act(): rng(4)!=0 -> SEARCH command path.
             base_rand->foe = nullptr;
             SequenceRandomCombat base_rng2({1, 1, 1});
             base_ctx.rng = &base_rng2;
-            set_global_context(&base_ctx);
+            push_test_context(&base_ctx);
             (void)base_rand->act();
-            set_global_context(nullptr);
+            pop_test_context();
         }
         remove_and_delete(base_foe);
         // Kept alive until level_data.delete_objects() at test end.
@@ -411,16 +411,16 @@ void test_walker_act_with_commands()
         SequenceRandomCombat random_rng({0, 1, 0, 1, 0, 0});
         GameContext random_ctx;
         random_ctx.rng = &random_rng;
-        set_global_context(&random_ctx);
+        push_test_context(&random_ctx);
         (void)randomer->act();
 
         // act_random() branch where no foe is found and command is set.
         randomer->foe = nullptr;
         SequenceRandomCombat nofoe_rng({0, 1, 0, 1, 1, 1});
         random_ctx.rng = &nofoe_rng;
-        set_global_context(&random_ctx);
+        push_test_context(&random_ctx);
         (void)randomer->act();
-        set_global_context(nullptr);
+        pop_test_context();
     }
     remove_and_delete(randomer);
     remove_and_delete(random_foe);
@@ -790,16 +790,16 @@ void test_walker_act_random_generator_paths()
     // Trigger act_random() route and in-range logic.
     SequenceRandomCombat rng1({0, 1, 0, 0, 0});
     ctx.rng = &rng1;
-    set_global_context(&ctx);
+    push_test_context(&ctx);
     (void)genp->act();
 
     // Trigger 3-of-4 search branch with foe lookup.
     genp->foe = nullptr;
     SequenceRandomCombat rng2({1, 0, 0, 0});
     ctx.rng = &rng2;
-    set_global_context(&ctx);
+    push_test_context(&ctx);
     (void)genp->act();
-    set_global_context(nullptr);
+    pop_test_context();
 
     TEST_ASSERT_EQ(ACT_RANDOM, (int)genp->act_type, "generator should remain in ACT_RANDOM");
 

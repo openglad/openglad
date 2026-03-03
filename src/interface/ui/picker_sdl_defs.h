@@ -16,7 +16,15 @@ extern button mainmenu_buttons[];
 extern button createmenu_buttons[];
 extern button viewteam_buttons[];
 extern button details_buttons[];
-extern button trainmenu_buttons[];
-extern button hiremenu_buttons[];
 extern button saveteam_buttons[];
 extern button loadteam_buttons[];
+
+// Per-session mutable button descriptors (Phase 12).
+button* picker_main_options_buttons();
+int picker_main_options_button_count();
+button* picker_control_options_buttons();
+int picker_control_options_button_count();
+button* picker_trainmenu_buttons();
+int picker_trainmenu_button_count();
+button* picker_hiremenu_buttons();
+int picker_hiremenu_button_count();

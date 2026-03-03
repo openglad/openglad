@@ -63,11 +63,6 @@ void quit(Sint32 arg1);
 #include <cstdlib>
 #define MINIMUM_TIME 0
 
-static inline cfg_store& active_config()
-{
-    return cfg;
-}
-
 
 #define S_LEFT 1
 #define S_RIGHT 245
@@ -173,7 +168,7 @@ bool Rectf::contains(float X, float Y) const
     return (x <= X && x + w >= X && y + h <= Y && y >= Y);
 }
 
-Sint32 backgrounds[] = {
+static constexpr Sint32 kDefaultBackgrounds[] = {
                          PIX_GRASS1, PIX_GRASS2, PIX_GRASS_DARK_1, PIX_GRASS_DARK_2,
                          //PIX_GRASS_DARK_B1, PIX_GRASS_DARK_BR, PIX_GRASS_DARK_R1, PIX_GRASS_DARK_R2,
                          PIX_BOULDER_1, PIX_GRASS_DARK_LL, PIX_GRASS_DARK_UR, PIX_GRASS_RUBBLE,
@@ -233,22 +228,18 @@ Sint32 backgrounds[] = {
                          PIX_CLIFF_LEFT, PIX_CLIFF_BOTTOM, PIX_CLIFF_TOP, PIX_CLIFF_RIGHT,
                          PIX_CLIFF_LEFT, PIX_CLIFF_TOP_L, PIX_CLIFF_TOP_R, PIX_CLIFF_RIGHT,
                      };
+static constexpr std::size_t kNumBackgrounds =
+    sizeof(kDefaultBackgrounds) / sizeof(kDefaultBackgrounds[0]);
 
-class ObjectType
+static inline auto& backgrounds()
 {
-public:
-    Order order;
-    unsigned char family;
+    return eds().backgrounds;
+}
 
-	    ObjectType()
-	        : order(Order::Living), family(0)
-	    {}
-	    ObjectType(Order order_, unsigned char family_)
-	        : order(order_), family(family_)
-	    {}
-};
-
-std::vector<ObjectType> object_pane;
+static inline auto& object_pane()
+{
+    return eds().object_pane;
+}
 
 // eds().rowsdown and eds().maxrows moved into LevelEditorState (per-session via eds())
 
@@ -1320,7 +1311,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	Sint32 whichback;
 	
 	const char* blood_string;
-	if(active_config().is_on("effects", "gore"))
+	if(cfg.is_on("effects", "gore"))
 	{
         blood_string = "BLOOD";
 	}
@@ -1444,9 +1435,10 @@ Sint32 LevelEditorData::display_panel(screen* s)
         {
             for (j=0; j < 4; j++)
             {
-                whichback = (i+(j+eds().rowsdown)*4) % (sizeof(backgrounds)/4);
+                whichback = (i + (j + eds().rowsdown) * 4)
+                    % static_cast<Sint32>(backgrounds().size());
                 {
-                    auto& pix = s->level_visuals_.pixdata[ backgrounds[whichback] ];
+                    auto& pix = s->level_visuals_.pixdata[ backgrounds()[whichback] ];
                     s->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
                                         GRID_SIZE, GRID_SIZE,
                                         0, 0, 320, 200,
@@ -1504,14 +1496,14 @@ Sint32 LevelEditorData::display_panel(screen* s)
         {
             for (j=0; j < 4; j++)
             {
-                const int pane_size = static_cast<int>(object_pane.size());
+                const int pane_size = static_cast<int>(object_pane().size());
                 int index = 0;
                 if(pane_size > 0)
                 {
                     index = (i + ((j+eds().rowsdown) * PIX_OVER)) % pane_size;
                     newob->setxy(S_RIGHT+i*GRID_SIZE + level->level_visuals().topx, PIX_TOP+j*GRID_SIZE + level->level_visuals().topy);
-                    newob->set_data(s->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
-                    s->myloader->set_walker(newob, object_pane[index].order, object_pane[index].family);
+                    newob->set_data(s->myloader->graphics[PIX(object_pane()[index].order, object_pane()[index].family)]);
+                    s->myloader->set_walker(newob, object_pane()[index].order, object_pane()[index].family);
                     newob->team_num = static_cast<unsigned char>(object_brush.team);
                     draw_walker_tile(*newob, s->viewob[0].get());
                 }
@@ -2607,12 +2599,12 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     //windowx = (mx - PIX_LEFT) / GRID_SIZE;
                     windowx = (mx-S_RIGHT) / GRID_SIZE;
                     windowy = (my - PIX_TOP) / GRID_SIZE;
-                    const int pane_size = static_cast<int>(object_pane.size());
+                    const int pane_size = static_cast<int>(object_pane().size());
                     if(pane_size > 0)
                     {
                         const int index = (windowx + ((windowy+eds().rowsdown) * PIX_OVER)) % pane_size;
-                        object_brush.order = object_pane[index].order;
-                        object_brush.family = object_pane[index].family;
+                        object_brush.order = object_pane()[index].order;
+                        object_brush.family = object_pane()[index].family;
                     }
                 } // end of background grid window
                 else if(mx < 245-4 || my > L_D(7)-2)
@@ -2666,8 +2658,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     //windowx = (mx - PIX_LEFT) / GRID_SIZE;
                     windowx = (mx-S_RIGHT) / GRID_SIZE;
                     windowy = (my - PIX_TOP) / GRID_SIZE;
-                    terrain_brush.terrain = backgrounds[ (windowx + ((windowy+eds().rowsdown) * PIX_OVER))
-                                             % (sizeof(backgrounds)/4)];
+                    terrain_brush.terrain = backgrounds()[
+                        (windowx + ((windowy + eds().rowsdown) * PIX_OVER))
+                        % static_cast<Sint32>(backgrounds().size())];
                     terrain_brush.terrain %= NUM_BACKGROUNDS;
                 } // end of background grid window
                 else
@@ -3012,7 +3005,8 @@ Sint32 level_editor()
     
     // Initialize palette for cycling
     load_and_set_palette("our.pal", eds().scenpalette);
-    eds().maxrows = ((sizeof(backgrounds)/4) / 4);
+    backgrounds().assign(kDefaultBackgrounds, kDefaultBackgrounds + kNumBackgrounds);
+    eds().maxrows = static_cast<std::int32_t>(backgrounds().size() / 4);
     
     if(data.reloadCampaign())
         Log("Loaded campaign data successfully.\n");
@@ -3042,22 +3036,37 @@ Sint32 level_editor()
 
 	eds().redraw = 1;  // Redraw right away
 	
-	object_pane.clear();
+	object_pane().clear();
 	for(int family_idx = 0; family_idx < NUM_FAMILIES; family_idx++)
     {
-        object_pane.push_back(ObjectType(Order::Living, static_cast<unsigned char>(family_idx)));
+        object_pane().push_back(LevelEditorObjectType{
+            .order = Order::Living,
+            .family = static_cast<unsigned char>(family_idx),
+        });
     }
 	for(int treasure_idx = 0; treasure_idx < MAX_TREASURE+1; treasure_idx++)
     {
-        object_pane.push_back(ObjectType(Order::Treasure, static_cast<unsigned char>(treasure_idx)));
+        object_pane().push_back(LevelEditorObjectType{
+            .order = Order::Treasure,
+            .family = static_cast<unsigned char>(treasure_idx),
+        });
     }
 	for(int gen_idx = 0; gen_idx < 4; gen_idx++)
     {
-        object_pane.push_back(ObjectType(Order::Generator, static_cast<unsigned char>(gen_idx)));
+        object_pane().push_back(LevelEditorObjectType{
+            .order = Order::Generator,
+            .family = static_cast<unsigned char>(gen_idx),
+        });
     }
     
-    object_pane.push_back(ObjectType(Order::Weapon, FAMILY_DOOR));
-    object_pane.push_back(ObjectType(Order::Special, FAMILY_RESERVED_TEAM));
+    object_pane().push_back(LevelEditorObjectType{
+        .order = Order::Weapon,
+        .family = FAMILY_DOOR,
+    });
+    object_pane().push_back(LevelEditorObjectType{
+        .order = Order::Special,
+        .family = FAMILY_RESERVED_TEAM,
+    });
 	
 	// Minimap
 		myradar.start(data.level.get());

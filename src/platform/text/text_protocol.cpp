@@ -142,11 +142,10 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     };
     TextRandom entity_rng(args.seed);
 
-    // Set up GameContext minimally
-    GameContext text_ctx;
+    // Configure the active session context for this protocol run.
+    GameContext& text_ctx = ctx();
+    IRandom* prev_rng = text_ctx.rng;
     text_ctx.rng = &entity_rng;
-    text_ctx.sim_events = std::make_unique<og::sim::SimEventLog>();
-    set_global_context(&text_ctx);
 
     // Create level data and load (headless — no tile graphics)
     LevelRuntimeData level(args.level, true, &headless_level_data_hooks());
@@ -163,7 +162,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
 
     if (!level.load()) {
         std::fprintf(stderr, "Failed to load level %d\n", args.level);
-        set_global_context(nullptr);
+        text_ctx.rng = prev_rng;
         return 1;
     }
 
@@ -240,7 +239,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     }
 
     current_game = prev_game;
-    set_global_context(nullptr);
+    text_ctx.rng = prev_rng;
     return 0;
 }
 

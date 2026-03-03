@@ -17,8 +17,8 @@ public:
 
 struct GlobalContextGuard
 {
-    explicit GlobalContextGuard(GameContext* ctx) { set_global_context(ctx); }
-    ~GlobalContextGuard() { set_global_context(nullptr); }
+    explicit GlobalContextGuard(GameContext* ctx) { push_test_context(ctx); }
+    ~GlobalContextGuard() { pop_test_context(); }
     GlobalContextGuard(const GlobalContextGuard&) = delete;
     GlobalContextGuard& operator=(const GlobalContextGuard&) = delete;
 };

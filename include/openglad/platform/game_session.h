@@ -15,8 +15,8 @@ namespace og::runtime {
 
 // GameSession: RAII root object for runtime state.
 //
-// Owns the screen and prefs objects, installs them into legacy globals
-// (myscreen, theprefs), and sets up a GameContext for RNG / sim events.
+// Owns the screen/prefs objects and installs this session as the active
+// runtime context. Also sets up GameContext for RNG / sim events.
 class GameSession final : public SessionState {
 public:
     struct Config {

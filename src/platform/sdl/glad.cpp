@@ -54,10 +54,6 @@ inline options* active_prefs()
     return og::runtime::current_session->theprefs_;
 }
 
-inline cfg_store& active_config()
-{
-    return cfg;
-}
 } // namespace
 
 static inline Uint32 rng(Uint32 max_exclusive) {

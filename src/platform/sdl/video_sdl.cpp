@@ -36,11 +36,6 @@ static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
 
-static cfg_store& active_config()
-{
-    return cfg;
-}
-
 #define VIDEO_BUFFER_WIDTH 320
 #define VIDEO_WIDTH 320
 #define VIDEO_SIZE 64000
@@ -71,10 +66,10 @@ static void video_create_display()
 	RenderEngine render = RenderEngine::NoZoom;
 	int fullscreen_flag = 0;
 
-	if(active_config().is_on("graphics","fullscreen"))
+	if(cfg.is_on("graphics","fullscreen"))
 		fullscreen_flag = 1;
 
-	std::string qresult = active_config().get_setting("graphics", "render");
+	std::string qresult = cfg.get_setting("graphics", "render");
 	if(qresult == "normal")
 		render = RenderEngine::NoZoom;
 	else if(qresult == "sai")
@@ -91,11 +86,11 @@ static void video_create_display()
 	w = 320;
 	h = 200;
 #else
-	qresult = active_config().get_setting("graphics", "width");
+	qresult = cfg.get_setting("graphics", "width");
 	if(qresult.size() > 0)
 	    w = stoi(qresult);
 
-	qresult = active_config().get_setting("graphics", "height");
+	qresult = cfg.get_setting("graphics", "height");
 	if(qresult.size() > 0)
 	    h = stoi(qresult);
 #endif

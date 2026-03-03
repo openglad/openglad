@@ -68,9 +68,6 @@ void reset_timer();
 std::int32_t query_timer();
 std::int32_t query_timer_control();
 
-// Pointer to the active session's reset_time_ (set by GameSession ctor).
-// Lives in util.cpp; declared here so the runtime layer can wire it up.
-extern thread_local std::chrono::steady_clock::time_point* g_reset_time_ptr;
 void time_delay(std::int32_t);
 
 // Game speed factor: 1.0 = normal, 2.0 = 2x speed, 0.0 = max speed (no delays)

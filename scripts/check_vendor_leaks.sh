@@ -24,6 +24,103 @@ if grep -rn --include='*.cpp' --include='*.h' -E "${FS_VENDOR_INCLUDE_REGEX}" sr
     status=1
 fi
 
+# 3. Component include boundary check (Phase 12)
+# gameplay  -> core, gameplay
+# resources -> core, gameplay, resources
+# interface -> core, gameplay, resources, interface
+# platform  -> unrestricted (top-level orchestrator)
+is_allowed_dep() {
+    local source_component="$1"
+    local dep_component="$2"
+    case "${source_component}" in
+        gameplay)
+            [[ "${dep_component}" == "core" || "${dep_component}" == "gameplay" || "${dep_component}" == "legacy" ]]
+            ;;
+        resources)
+            [[ "${dep_component}" == "core" || "${dep_component}" == "gameplay" || "${dep_component}" == "resources" || "${dep_component}" == "legacy" ]]
+            ;;
+        interface)
+            [[ "${dep_component}" == "core" || "${dep_component}" == "gameplay" || "${dep_component}" == "resources" || "${dep_component}" == "interface" || "${dep_component}" == "legacy" ]]
+            ;;
+        platform)
+            return 0
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+source_component_for_file() {
+    local file="$1"
+    case "${file}" in
+        src/gameplay/*|include/openglad/gameplay/*)
+            echo "gameplay"
+            ;;
+        src/resources/*|include/openglad/resources/*)
+            echo "resources"
+            ;;
+        src/interface/*|include/openglad/interface/*)
+            echo "interface"
+            ;;
+        src/platform/*|include/openglad/platform/*)
+            echo "platform"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+dep_component_for_include_prefix() {
+    local prefix="$1"
+    case "${prefix}" in
+        core)
+            echo "core"
+            ;;
+        gameplay)
+            echo "gameplay"
+            ;;
+        resources)
+            echo "resources"
+            ;;
+        interface)
+            echo "interface"
+            ;;
+        platform)
+            echo "platform"
+            ;;
+        legacy)
+            echo "legacy"
+            ;;
+        *)
+            # Ignore compatibility wrapper prefixes from earlier architecture
+            # stages; the component-namespaced headers above are the strict
+            # enforcement surface for Phase 12.
+            echo ""
+            ;;
+    esac
+}
+
+while IFS= read -r file; do
+    source_component="$(source_component_for_file "${file}")"
+    [ -z "${source_component}" ] && continue
+
+    while IFS= read -r include_line; do
+        include_target="$(printf '%s' "${include_line}" | sed -E 's/^.*<openglad\/([^>]+)>.*/\1/')"
+        include_prefix="${include_target%%/*}"
+        dep_component="$(dep_component_for_include_prefix "${include_prefix}")"
+        [ -z "${dep_component}" ] && continue
+
+        if ! is_allowed_dep "${source_component}" "${dep_component}"; then
+            echo "ERROR: ${file} includes <openglad/${include_target}> (component=${dep_component}) but ${source_component} may not depend on it" >&2
+            status=1
+        fi
+    done < <(grep -nE '^[[:space:]]*#include[[:space:]]*<openglad/[^>]+>' "${file}" || true)
+done < <(find src/gameplay src/resources src/interface src/platform \
+               include/openglad/gameplay include/openglad/resources include/openglad/interface include/openglad/platform \
+               -type f \( -name '*.cpp' -o -name '*.h' \) 2>/dev/null)
+
 if [ $status -eq 0 ]; then
     echo "Vendor header check: OK"
 fi

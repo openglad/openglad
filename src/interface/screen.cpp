@@ -133,11 +133,6 @@ const char* save_data_io_error_string(SaveDataIoError err)
 
 } // namespace
 
-static inline cfg_store& active_config()
-{
-    return cfg;
-}
-
 
 // From picker.cpp
 extern Sint32 calculate_level(Uint32 temp_exp);
@@ -604,7 +599,7 @@ void screen::init_common(short howmany, bool has_display)
 	}
 
     soundp = create_soundob(false);
-    if (!active_config().is_on("sound", "sound")) {
+    if (!cfg.is_on("sound", "sound")) {
         soundp->set_sound(1);
     }
 

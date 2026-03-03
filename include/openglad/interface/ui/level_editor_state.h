@@ -3,7 +3,14 @@
 // LevelEditorState: per-session mutable state for the level editor (Phase 7b).
 // Kept in a separate header to avoid pulling editor types into game_session.h.
 
+#include <vector>
 #include <cstdint>
+#include <openglad/core/constants.h>
+
+struct LevelEditorObjectType {
+    Order order{Order::Living};
+    unsigned char family{0};
+};
 
 struct LevelEditorState {
     unsigned char scenpalette[768]{};
@@ -23,4 +30,8 @@ struct LevelEditorState {
     // Pan flags
     bool pan_left{false}, pan_right{false};
     bool pan_up{false}, pan_down{false};
+
+    // Terrain/object picker state (Phase 12).
+    std::vector<std::int32_t> backgrounds{};
+    std::vector<LevelEditorObjectType> object_pane{};
 };

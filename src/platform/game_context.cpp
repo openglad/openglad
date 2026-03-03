@@ -10,6 +10,8 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>
 
+#include <cassert>
+
 // The existing global random() function (defined in screen.cpp or text_client main)
 std::uint32_t random(std::uint32_t x);
 
@@ -29,30 +31,61 @@ void GameContext::poll_input()
     input_state_from_sdl(input);
 }
 
-// ---------------------------------------------------------------------------
-// Global context accessor
-// ---------------------------------------------------------------------------
-
-// Test-only override: when non-null, ctx() returns this instead of
-// the session context.  Production code never sets this; only tests
-// call set_global_context() to inject mock RNGs.
-static thread_local GameContext* s_test_context_override = nullptr;
-
 GameContext& ctx()
 {
-    if (s_test_context_override)
-        return *s_test_context_override;
-
-    if (og::runtime::current_session)
-        return og::runtime::current_session->ctx_;
-
-    // Pre-session fallback (e.g. during io_init before any GameSession exists).
-    static GameContext s_fallback;
-    return s_fallback;
+    assert(og::runtime::current_session != nullptr);
+    return og::runtime::current_session->ctx_;
 }
 
-void set_global_context(GameContext* context)
+namespace og::runtime {
+std::chrono::steady_clock::time_point* active_session_reset_time()
 {
-    s_test_context_override = context;
-    set_gameplay_rng_override(context ? &context->rng : nullptr);
+    if (!current_session)
+        return nullptr;
+    return &current_session->reset_time_;
+}
+} // namespace og::runtime
+
+namespace
+{
+struct TestContextSnapshot {
+    IRandom* rng = nullptr;
+    InputState input = {};
+};
+
+thread_local bool s_test_context_active = false;
+thread_local TestContextSnapshot s_test_context_snapshot{};
+} // namespace
+
+void push_test_context(GameContext* context)
+{
+    GameContext& active = ctx();
+    if (!s_test_context_active) {
+        s_test_context_snapshot = TestContextSnapshot{
+            .rng = active.rng,
+            .input = active.input,
+        };
+        s_test_context_active = true;
+    }
+
+    if (context) {
+        if (context->rng)
+            active.rng = context->rng;
+        active.input = context->input;
+        set_gameplay_rng_override(&context->rng);
+    } else {
+        set_gameplay_rng_override(nullptr);
+    }
+}
+
+void pop_test_context()
+{
+    if (!s_test_context_active)
+        return;
+
+    GameContext& active = ctx();
+    active.rng = s_test_context_snapshot.rng;
+    active.input = s_test_context_snapshot.input;
+    s_test_context_active = false;
+    set_gameplay_rng_override(active.rng ? &active.rng : nullptr);
 }

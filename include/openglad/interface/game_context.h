@@ -2,19 +2,15 @@
  * GameContext: dependency-injection point for non-global game subsystems.
  *
  * Holds state that doesn't have a legacy global equivalent: RNG interface,
- * input snapshot, simulation event log, and mounted-campaign tracking.
- * For screen, prefs, and config, use the globals directly (og::runtime::current_session->myscreen_,
- * og::runtime::current_session->theprefs_, cfg).
+ * input snapshot, and simulation event log. For screen, prefs, and config,
+ * use the session globals directly (og::runtime::current_session->...).
  *
- * ctx() returns current_session->ctx_ in normal operation.
- * Tests can call set_global_context() to temporarily override with a
- * mock RNG or custom sim-event log.
+ * ctx() is strictly session-backed (no fallback/override path).
  */
 #pragma once
 
 #include <cstdint>
 #include <memory>
-#include <string>
 
 #include <openglad/core/irandom.h>
 #include <openglad/gameplay/input_state.h>
@@ -44,7 +40,6 @@ struct GameContext {
     GameContext(GameContext&&) noexcept = default;
     GameContext& operator=(GameContext&&) noexcept = default;
 
-    std::string mounted_campaign;
     IRandom*    rng         = nullptr;
     InputState  input       = {};
 
@@ -61,4 +56,10 @@ struct GameContext {
 // ---------------------------------------------------------------------------
 
 GameContext& ctx();
-void set_global_context(GameContext* context);
+
+#ifdef TESTING
+// Test-only context overrides that snapshot and restore the active session
+// context (primarily RNG/input).
+void push_test_context(GameContext* context);
+void pop_test_context();
+#endif

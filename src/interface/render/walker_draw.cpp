@@ -22,12 +22,6 @@
 #include <span>
 #include <cmath>
 
-
-static inline cfg_store& active_config()
-{
-    return cfg;
-}
-
 // ---- Helpers ----
 
 static bool float_eq(float a, float b)
@@ -54,7 +48,7 @@ static void draw_damage_number(walker::DamageNumber& dn, viewscreen* view_buf)
 
 void draw_small_health_bar(walker* w, viewscreen* view_buf)
 {
-    if(!active_config().is_on("effects", "mini_hp_bar"))
+    if(!cfg.is_on("effects", "mini_hp_bar"))
     {
         return;
     }
@@ -127,12 +121,12 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
 
 bool draw_walker(walker& w, viewscreen* view_buf)
 {
-    const bool show_attack_lunge = active_config().is_on("effects", "attack_lunge");
-    const bool show_hit_recoil = active_config().is_on("effects", "hit_recoil");
-    const bool show_hit_flash = active_config().is_on("effects", "hit_flash");
-    const bool show_hit_anim = active_config().is_on("effects", "hit_anim");
-    const bool show_damage_numbers = active_config().is_on("effects", "damage_numbers");
-    const bool show_heal_numbers = active_config().is_on("effects", "heal_numbers");
+    const bool show_attack_lunge = cfg.is_on("effects", "attack_lunge");
+    const bool show_hit_recoil = cfg.is_on("effects", "hit_recoil");
+    const bool show_hit_flash = cfg.is_on("effects", "hit_flash");
+    const bool show_hit_anim = cfg.is_on("effects", "hit_anim");
+    const bool show_damage_numbers = cfg.is_on("effects", "damage_numbers");
+    const bool show_heal_numbers = cfg.is_on("effects", "heal_numbers");
 
     // Update the drawing coords from the real position
     w.xpos = static_cast<short>(w.worldx());
@@ -279,7 +273,7 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 
 bool draw_walker_tile(walker& w, viewscreen* view_buf)
 {
-    if (!active_config().is_on("effects", "hit_anim") &&
+    if (!cfg.is_on("effects", "hit_anim") &&
         w.query_order() == Order::FX && w.family == FAMILY_HIT)
     {
         return true;

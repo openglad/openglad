@@ -574,24 +574,25 @@ Sint32 create_hire_menu(Sint32 arg1)
     UiRect name_box = {description_box.x + description_box.w/2 - (126-34)/2, description_box.y - 71 + 8, 126 - 34, 24 - 8};
     UiRect name_box_inner = {name_box.x + 2, name_box.y + 2, name_box.w - 4, name_box.h - 4};
     
-    hiremenu_buttons[0].x = description_box.x + description_box.w/2 - hiremenu_buttons[0].sizex - 4 - 30;
-    hiremenu_buttons[0].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - hiremenu_buttons[0].sizey/2;
+    button* buttons = picker_hiremenu_buttons();
+    const int num_buttons = picker_hiremenu_button_count();
+
+    buttons[0].x = description_box.x + description_box.w/2 - buttons[0].sizex - 4 - 30;
+    buttons[0].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buttons[0].sizey/2;
     
-    hiremenu_buttons[1].x = description_box.x + description_box.w/2 + 4 + 30;
-    hiremenu_buttons[1].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - hiremenu_buttons[1].sizey/2;
+    buttons[1].x = description_box.x + description_box.w/2 + 4 + 30;
+    buttons[1].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buttons[1].sizey/2;
     
-    hiremenu_buttons[2].hidden = (og::runtime::current_session->myscreen_->save_data.numplayers == 1);
+    buttons[2].hidden = (og::runtime::current_session->myscreen_->save_data.numplayers == 1);
     
 	og::runtime::current_session->myscreen_->clearbuffer();
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
 	#ifdef DISABLE_MULTIPLAYER
-	hiremenu_buttons[2].hidden = true;
+	buttons[2].hidden = true;
 	#endif
-    
-	button* buttons = hiremenu_buttons;
-	int num_buttons = 5;
+
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
@@ -802,11 +803,14 @@ Sint32 create_train_menu(Sint32 arg1)
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 	
 	#ifdef DISABLE_MULTIPLAYER
-	trainmenu_buttons[18].hidden = true;
+	button* buttons = picker_trainmenu_buttons();
+	const int num_buttons = picker_trainmenu_button_count();
+	buttons[18].hidden = true;
+	#else
+	button* buttons = picker_trainmenu_buttons();
+	const int num_buttons = picker_trainmenu_button_count();
 	#endif
-    
-	button* buttons = trainmenu_buttons;
-	int num_buttons = 20;
+
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 	
