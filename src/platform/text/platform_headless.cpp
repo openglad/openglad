@@ -104,7 +104,7 @@ std::string get_asset_path()
 // Category C: Safe no-ops (documented)
 // ---------------------------------------------------------------------------
 
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/gloader.h>
 

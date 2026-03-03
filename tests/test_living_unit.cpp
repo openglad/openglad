@@ -1,6 +1,6 @@
 #include <openglad/gameplay/living.h>
 #include <openglad/gameplay/guy.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/sim_event_log.h>

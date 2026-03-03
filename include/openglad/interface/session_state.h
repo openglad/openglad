@@ -9,7 +9,7 @@
 
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/interface/game_context.h>
-#include <openglad/runtime/game_loop_state.h>
+#include <openglad/interface/game_loop_state.h>
 
 struct InputHardwareState;
 struct PickerState;

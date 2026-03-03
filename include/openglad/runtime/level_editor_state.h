@@ -1,26 +1,4 @@
 #pragma once
 
-// LevelEditorState: per-session mutable state for the level editor (Phase 7b).
-// Kept in a separate header to avoid pulling editor types into game_session.h.
-
-#include <cstdint>
-
-struct LevelEditorState {
-    unsigned char scenpalette[768]{};
-    std::int32_t redraw{1};
-    std::int32_t campaignchanged{0};
-    std::int32_t levelchanged{0};
-    std::int32_t cyclemode{1};
-    std::int32_t start_time_s{0};
-    std::int32_t rowsdown{0};
-    std::int32_t maxrows{0};
-
-    // Mouse state
-    int mouse_up_button{0};
-    int mouse_motion_x{0}, mouse_motion_y{0};
-    int mouse_last_x{0}, mouse_last_y{0};
-
-    // Pan flags
-    bool pan_left{false}, pan_right{false};
-    bool pan_up{false}, pan_down{false};
-};
+// Transitional shim: prefer including <openglad/interface/ui/level_editor_state.h>.
+#include <openglad/interface/ui/level_editor_state.h>

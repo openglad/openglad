@@ -23,7 +23,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/session_state.h>
-#include <openglad/runtime/input_hardware_state.h>
+#include <openglad/interface/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/test_trace.h>
 #include <cstdio>

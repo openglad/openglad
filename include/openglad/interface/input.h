@@ -330,7 +330,7 @@ struct MouseState
 
 // Input hardware state now lives in GameSession::input_hw_.
 // Macros preserve existing access patterns (mouse_state.x, player_joy[i], etc.).
-#include <openglad/runtime/input_hardware_state.h>
+#include <openglad/interface/input_hardware_state.h>
 InputHardwareState& input_hardware_state();
 int (&input_player_keys())[4][NUM_KEYS];
 int& input_raw_key_ref();

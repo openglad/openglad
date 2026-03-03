@@ -16,7 +16,7 @@
  */
 
 #include <openglad/interface/ui/level_picker.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/gameplay/walker.h>

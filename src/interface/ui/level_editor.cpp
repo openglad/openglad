@@ -31,13 +31,13 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/ui/level_picker.h>
 #include <span>
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/resources/gparser.h>
-#include <openglad/runtime/level_editor_state.h>
+#include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/interface/session_state.h>
 #include <algorithm>
 #include <cstdint>

@@ -12,8 +12,8 @@
 #include <algorithm>            // std::copy
 #include <openglad/gameplay/guy.h> // complete type for unique_ptr<guy> destructor
 #include <openglad/interface/button.h> // complete type for unique_ptr<vbutton> destructor
-#include <openglad/runtime/picker_ui_state.h>
-#include <openglad/runtime/level_editor_state.h>
+#include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/interface/render/pixien.h>  // complete type for PickerState's unique_ptr<pixieN>
 #include <openglad/interface/screen.h> // screen class (pulls in base.h → myscreen macro)
 #include <openglad/platform/video_sdl.h>

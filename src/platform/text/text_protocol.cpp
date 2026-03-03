@@ -10,7 +10,7 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/irandom.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/walker.h>

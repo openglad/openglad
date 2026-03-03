@@ -15,7 +15,7 @@
 #include "SDL.h"
 #include <functional>
 
-#include <openglad/runtime/game_loop_state.h>
+#include <openglad/interface/game_loop_state.h>
 
 class screen;
 

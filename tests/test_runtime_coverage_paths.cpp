@@ -1,5 +1,5 @@
 #include <openglad/resources/gparser.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/gameplay/treasure.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/input.h>

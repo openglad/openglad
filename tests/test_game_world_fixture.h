@@ -3,7 +3,7 @@
 #include <cstdint>
 
 #include <openglad/resources/gparser.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/gameplay/irandom.h>

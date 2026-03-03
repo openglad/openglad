@@ -31,7 +31,7 @@ extern std::atomic<int> g_test_game_frame_ticks;
 namespace og::sim { extern std::int32_t g_test_level_tick_limit_override; }
 #endif
 
-#include <openglad/runtime/picker_ui_state.h>
+#include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 

@@ -6,7 +6,7 @@
 
 #include <openglad/interface/input.h>
 #include <openglad/platform/game_session.h>
-#include <openglad/runtime/input_hardware_state.h>
+#include <openglad/interface/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/screen.h>
 #include <openglad/resources/gparser.h>

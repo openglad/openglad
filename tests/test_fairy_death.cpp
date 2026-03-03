@@ -25,7 +25,7 @@ extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
 #endif
 
-#include <openglad/runtime/picker_ui_state.h>
+#include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 // Picker globals that can leak across integration tests and affect menu start state

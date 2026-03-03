@@ -23,7 +23,7 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/level_visuals.h>
 #include <openglad/resources/save_data.h>
 

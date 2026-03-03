@@ -17,7 +17,7 @@
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 

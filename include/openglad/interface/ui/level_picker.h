@@ -18,7 +18,7 @@
 #pragma once
 
 #include <openglad/interface/screen.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <list>
 
 int pick_level(screen *screenp, int default_level, bool enable_delete = false);

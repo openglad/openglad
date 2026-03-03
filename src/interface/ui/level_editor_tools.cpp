@@ -16,9 +16,9 @@
  */
 
 #include <openglad/interface/screen.h>
-#include <openglad/runtime/level_editor_state.h>
+#include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/interface/session_state.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/gameplay/walker.h>
 
 static inline LevelEditorState& eds() { return *og::runtime::current_session->editor_; }

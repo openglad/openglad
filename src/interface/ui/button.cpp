@@ -25,7 +25,7 @@
 #include <openglad/legacy/test_trace.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
-#include <openglad/runtime/picker_ui_state.h>
+#include <openglad/interface/ui/picker_ui_state.h>
 #include <array>
 #include <mutex>
 #include <utility>

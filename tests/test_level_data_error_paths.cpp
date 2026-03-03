@@ -1,4 +1,4 @@
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/io.h>
 #include <openglad/interface/screen.h>

@@ -13,7 +13,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/view.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/level_render.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/gloader.h>

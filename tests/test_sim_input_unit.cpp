@@ -1,5 +1,5 @@
 #include <openglad/gameplay/sim_input_handler.h>
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/walker.h>

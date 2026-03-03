@@ -18,7 +18,7 @@
 
 // Definition of RADAR class
 
-#include <openglad/runtime/level_runtime_data.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <vector>
 
 class screen;
