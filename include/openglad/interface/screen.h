@@ -111,6 +111,9 @@ public:
                            Sint32 portstartx, Sint32 portstarty,
                            Sint32 portendx, Sint32 portendy,
                            void* sourceptr) override;
+    void* create_accel_surface(std::span<const unsigned char> indexed_pixels,
+                               Sint32 width, Sint32 height) override;
+    void destroy_accel_surface(void* surface) override;
     void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                        Sint32 walkerwidth, Sint32 walkerheight,
                        Sint32 portstartx, Sint32 portstarty,

@@ -1124,6 +1124,64 @@ void sdl_video::putbuffer_surface(Sint32 tilestartx, Sint32 tilestarty,
               static_cast<SDL_Surface*>(sourceptr));
 }
 
+void* sdl_video::create_accel_surface(std::span<const unsigned char> indexed_pixels,
+                                      Sint32 width, Sint32 height)
+{
+    if (width <= 0 || height <= 0)
+        return nullptr;
+
+    const std::size_t expected_size =
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    if (indexed_pixels.size() < expected_size)
+        return nullptr;
+
+    SDL_Surface* surface = SDL_CreateRGBSurface(
+        SDL_SWSURFACE, width, height, 32, 0, 0, 0, 0);
+    if (!surface) {
+        LogError("sdl_video::create_accel_surface: SDL_CreateRGBSurface failed: {}\n",
+                 SDL_GetError());
+        return nullptr;
+    }
+
+    if (SDL_MUSTLOCK(surface) && SDL_LockSurface(surface) != 0) {
+        LogError("sdl_video::create_accel_surface: SDL_LockSurface failed: {}\n",
+                 SDL_GetError());
+        SDL_FreeSurface(surface);
+        return nullptr;
+    }
+
+    Uint32* pixels = static_cast<Uint32*>(surface->pixels);
+    const std::size_t pitch_pixels = static_cast<std::size_t>(surface->pitch) /
+                                     sizeof(Uint32);
+    std::size_t src_index = 0;
+    for (Sint32 y = 0; y < height; ++y)
+    {
+        for (Sint32 x = 0; x < width; ++x, ++src_index)
+        {
+            int r, g, b;
+            query_palette_reg(indexed_pixels[src_index], &r, &g, &b);
+            pixels[static_cast<std::size_t>(y) * pitch_pixels +
+                   static_cast<std::size_t>(x)] =
+                SDL_MapRGB(surface->format,
+                           static_cast<Uint8>(r * 4),
+                           static_cast<Uint8>(g * 4),
+                           static_cast<Uint8>(b * 4));
+        }
+    }
+
+    if (SDL_MUSTLOCK(surface))
+        SDL_UnlockSurface(surface);
+
+    return surface;
+}
+
+void sdl_video::destroy_accel_surface(void* surface)
+{
+    if (!surface)
+        return;
+    SDL_FreeSurface(static_cast<SDL_Surface*>(surface));
+}
+
 
 // walkputbuffer draws active guys to the screen (basically all non-tiles
 // c-only since it isn't used that often (despite what you might think)

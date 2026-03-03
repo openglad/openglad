@@ -23,10 +23,22 @@
 		*changed the SDL surfaces to 24bit
 */
 #include <openglad/interface/render/pixie.h>
-#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
-#include "SDL.h"
+#include <cstddef>
+
+namespace
+{
+video* resolve_accel_video(video* fallback)
+{
+    if (fallback)
+        return fallback;
+    if (og::runtime::current_session && og::runtime::current_session->myscreen_)
+        return og::runtime::current_session->myscreen_;
+    return nullptr;
+}
+} // namespace
+
 // ************************************************************
 //  Pixie -- Base graphic object. It holds pixel by pixel data
 //  of what should appear on screen. When told to, it handles
@@ -68,8 +80,7 @@ pixie::pixie(const PixieData& data, int doaccel)
 // Destruct the pixie and its variables
 pixie::~pixie()
 {
-	if(accel)
-		SDL_FreeSurface(static_cast<SDL_Surface*>(bmp_surface));
+	set_accel(0);
 	//  delete oldbmp;
 }
 
@@ -114,7 +125,7 @@ short pixie::draw(viewscreen * view_buf)
 	xscreen = static_cast<Sint32>(xpos - view_buf->topx + view_buf->xloc);
 	yscreen = static_cast<Sint32>(ypos - view_buf->topy + view_buf->yloc);
 
-	if(accel)
+	if(accel && bmp_surface)
 	{
 		og::runtime::current_session->myscreen_->putbuffer_surface(
 		                             xscreen, yscreen, sizex, sizey,
@@ -202,33 +213,27 @@ short pixie::on_screen(viewscreen  *viewp)
 //buffers: this func initializes the bmp_surface
 void pixie::init_sdl_surface(void)
 {
-	int r,g,b,c,i,j,num;
-	SDL_Rect rect;
-
-	SDL_Surface* surface = SDL_CreateRGBSurface(SDL_SWSURFACE,sizex,sizey,32,
-	                                            0,0,0,0);
-	bmp_surface = surface;
-	if(!surface)
+	void* old_surface = bmp_surface;
+	video* old_video = accel_video_;
+	video* backend = resolve_accel_video(accel_video_);
+	if (!backend)
 	{
-		LogError("pixie::init_sdl_surface(): could not create bmp_surface\n");
+		return;
 	}
 
-	num=0;
-	for(i=0;i<sizey;i++)
-		for(j=0;j<sizex;j++)
-			{
-				query_palette_reg(bmp[num],&r,&g,&b);
-				c = SDL_MapRGB(surface->format,
-				               static_cast<Uint8>(r * 4),
-				               static_cast<Uint8>(g * 4),
-				               static_cast<Uint8>(b * 4));
-				rect.x = j;
-				rect.y = i;
-				rect.w = rect.h = 1;
-			SDL_FillRect(surface,&rect,c);
-			num++;
-		}
+	const std::size_t pixel_count =
+		static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
+	void* new_surface = backend->create_accel_surface({bmp, pixel_count}, sizex, sizey);
+	if (!new_surface)
+	{
+		return;
+	}
 
+	if (accel && old_surface && old_video)
+		old_video->destroy_accel_surface(old_surface);
+
+	bmp_surface = new_surface;
+	accel_video_ = backend;
 	accel = 1;
 }
 
@@ -241,10 +246,14 @@ void pixie::set_accel(int a)
 	}
 	else
 	{
-		if(accel)
+		if(accel && bmp_surface)
 		{
-			SDL_FreeSurface(static_cast<SDL_Surface*>(bmp_surface));
-			accel = 0;
+			video* backend = resolve_accel_video(accel_video_);
+			if (backend)
+				backend->destroy_accel_surface(bmp_surface);
 		}
+		accel = 0;
+		bmp_surface = nullptr;
+		accel_video_ = nullptr;
 	}
 }

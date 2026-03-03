@@ -84,6 +84,9 @@ public:
                                    Sint32 portstartx, Sint32 portstarty,
                                    Sint32 portendx, Sint32 portendy,
                                    void* sourceptr) = 0;
+    virtual void* create_accel_surface(std::span<const unsigned char> indexed_pixels,
+                                       Sint32 width, Sint32 height) = 0;
+    virtual void destroy_accel_surface(void* surface) = 0;
     virtual void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                                Sint32 walkerwidth, Sint32 walkerheight,
                                Sint32 portstartx, Sint32 portstarty,

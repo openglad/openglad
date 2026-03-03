@@ -28,6 +28,7 @@
 #include <openglad/interface/render/view.h>
 //buffers:  using input.h instead #include "int32.h"
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/io.h>
 #include <openglad/interface/screen.h>
@@ -35,7 +36,6 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/runtime/picker_ui_state.h>
 
-#include "SDL.h"
 #include <openglad/resources/gparser.h>
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
@@ -758,7 +758,8 @@ void draw_toggle_effect_button(button& b, const std::string& category, const std
 
 static std::string get_key_display_name_short(int keycode)
 {
-    std::string sname = SDL_GetKeyName(keycode);
+    const char* key_name = og::input_native::key_name(keycode);
+    std::string sname = key_name ? key_name : "Unknown Key";
 
     if (sname == "`") return "`";
     if (sname == "Up") return std::string(1, '\x01');
@@ -981,7 +982,7 @@ Sint32 main_controls_options()
 
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
     }
 
     return MENU_REDRAW;
@@ -1058,7 +1059,7 @@ Sint32 main_options()
         
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
 	}
 	
 	og::runtime::current_session->myscreen_->soundp->set_sound(!active_config().is_on("sound", "sound"));

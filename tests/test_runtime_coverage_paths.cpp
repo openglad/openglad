@@ -281,6 +281,52 @@ void test_game_session_auto_wires_level_data_sim_context()
 }
 REGISTER_TEST(test_game_session_auto_wires_level_data_sim_context);
 
+void test_game_session_subsession_construction_keeps_host_context()
+{
+    screen* host_screen = og::runtime::current_session->myscreen_;
+    options* host_prefs = og::runtime::current_session->theprefs_;
+    TEST_ASSERT(host_screen != nullptr, "host session should have an active screen");
+    TEST_ASSERT(host_prefs != nullptr, "host session should have active prefs");
+    if (!host_screen || !host_prefs)
+        return;
+
+    viewscreen* host_view0 = host_screen->viewob[0].get();
+    TEST_ASSERT(host_view0 != nullptr, "host session should have view 0");
+    if (!host_view0)
+        return;
+
+    int* host_view0_keys = host_view0->mykeys;
+
+    {
+        og::runtime::GameSession::Config sub_cfg;
+        sub_cfg.create_display = false;
+        sub_cfg.install_legacy_globals = false;
+        og::runtime::GameSession sub_session(sub_cfg);
+
+        screen* sub_screen = sub_session.screen_ptr();
+        TEST_ASSERT(sub_screen != nullptr, "sub-session should allocate a screen");
+        TEST_ASSERT(sub_screen != host_screen, "sub-session screen should not alias host");
+        TEST_ASSERT(sub_screen->viewob[0] != nullptr, "sub-session should initialize view 0");
+        TEST_ASSERT(sub_screen->viewob[0]->mykeys == sub_session.allkeys_[0],
+                    "sub-session view should bind to sub-session key state");
+
+        TEST_ASSERT(og::runtime::current_session->myscreen_ == host_screen,
+                    "sub-session construction must not overwrite host myscreen");
+        TEST_ASSERT(og::runtime::current_session->theprefs_ == host_prefs,
+                    "sub-session construction must not overwrite host prefs");
+        TEST_ASSERT(host_view0->mykeys == host_view0_keys,
+                    "host view key mapping should remain unchanged");
+    }
+
+    TEST_ASSERT(og::runtime::current_session->myscreen_ == host_screen,
+                "host myscreen should remain active after sub-session teardown");
+    TEST_ASSERT(og::runtime::current_session->theprefs_ == host_prefs,
+                "host prefs should remain active after sub-session teardown");
+    TEST_ASSERT(host_view0->mykeys == host_view0_keys,
+                "host view key mapping should remain unchanged after teardown");
+}
+REGISTER_TEST(test_game_session_subsession_construction_keeps_host_context);
+
 void test_treasure_core_methods_and_teleport_target_search()
 {
     clear_level_lists();

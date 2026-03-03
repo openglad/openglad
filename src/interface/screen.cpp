@@ -343,6 +343,17 @@ void screen::putbuffer_surface(Sint32 tilestartx, Sint32 tilestarty,
                                    sourceptr);
 }
 
+void* screen::create_accel_surface(std::span<const unsigned char> indexed_pixels,
+                                   Sint32 width, Sint32 height)
+{
+    return video_impl_->create_accel_surface(indexed_pixels, width, height);
+}
+
+void screen::destroy_accel_surface(void* surface)
+{
+    video_impl_->destroy_accel_surface(surface);
+}
+
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                            Sint32 walkerwidth, Sint32 walkerheight,
                            Sint32 portstartx, Sint32 portstarty,

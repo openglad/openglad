@@ -90,14 +90,34 @@ GameSession::GameSession(const Config& session_cfg)
     // to SDL's internal array — it's the same for all sessions.
     keystates_ = SDL_GetKeyboardState(nullptr);
 
-    // Install current_session so the theprefs macro resolves to this session's
-    // prefs during screen construction (viewscreen ctors read theprefs).
-    if (cfg_.install_legacy_globals) {
-        current_session = this;
-        primary_session.store(this, std::memory_order_release);
-        current_game = &game_;
-        primary_game.store(&game_, std::memory_order_release);
-    }
+    // Ensure screen/viewscreen construction always runs with this session active
+    // so legacy macros (myscreen/theprefs) bind to the right context.
+    struct ConstructionSessionScope final {
+        ConstructionSessionScope(GameSession& session, bool persist_globals)
+            : persist_globals_(persist_globals)
+            , saved_session_(current_session)
+            , saved_game_(current_game)
+        {
+            current_session = &session;
+            current_game = &session.game_;
+            if (persist_globals_) {
+                primary_session.store(&session, std::memory_order_release);
+                primary_game.store(&session.game_, std::memory_order_release);
+            }
+        }
+
+        ~ConstructionSessionScope()
+        {
+            if (!persist_globals_) {
+                current_session = saved_session_;
+                current_game = saved_game_;
+            }
+        }
+
+        bool persist_globals_ = false;
+        SessionState* saved_session_ = nullptr;
+        GameplayContext* saved_game_ = nullptr;
+    } construction_scope(*this, cfg_.install_legacy_globals);
 
     if (cfg_.allocate_screen) {
         screen_owner_ = std::make_unique<::screen>(

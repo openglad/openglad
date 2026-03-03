@@ -67,5 +67,8 @@ class pixie
 		unsigned short size;
 		unsigned char  *bmp,  *oldbmp;
 		// SDL-owned accelerated surface handle (platform type-erased at interface boundary).
-		void* bmp_surface;
+		void* bmp_surface = nullptr;
+		// Video backend that owns bmp_surface. Needed for safe teardown when
+		// current_session is temporarily pointing elsewhere.
+		video* accel_video_ = nullptr;
 };
