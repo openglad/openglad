@@ -121,6 +121,8 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
 
     READ_OR_FAIL(newgrid, 8, 1);
     newgrid[8] = '\0';
+    // Zardus: FIX: make sure they're lowercased
+    //buffers: PORT: make sure grid name is lowercase
     lowercase(newgrid);
     metadata.grid_file = newgrid;
 
@@ -553,6 +555,7 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
     char y = static_cast<char>(grid.h);
     std::string fullpath(gridname);
     fullpath += ".pix";
+    //buffers: PORT: make sure grid name is lowercase
     lowercase(fullpath);
 
     auto outfile = og::io::og_open_write("temp/pix/", fullpath.c_str());

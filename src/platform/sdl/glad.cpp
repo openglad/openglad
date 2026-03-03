@@ -108,6 +108,8 @@ void draw_gem(short x, short y, short color, screen * scr);
 
 void glad_main(screen *scr, Sint32 playermode);
 
+// Zardus: FIX: from view.cpp. We need this here so that it doesn't
+// try to create it before main and go nuts trying to load it
 // theprefs is now a macro defined in view.h (via game_session.h)
 
 // Frame state lives in GameSession::frame_state_

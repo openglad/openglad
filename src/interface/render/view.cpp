@@ -128,6 +128,7 @@ inline constexpr const char* KEY_FILE = "keyprefs.dat";
 //   for our prefs object (grumble grumble)
 // Zardus: these used to be static chars too
 const int *normalkeys[] = {key1,key2,key3,key4};
+// Zardus: keys is a sys var (apparently) so we'll use allkeys
 // allkeys now lives in GameSession::allkeys_ (Phase 5 migration).
 // File-local accessor for convenience.
 static inline auto& allkeys() { return og::runtime::current_session->allkeys_; }

@@ -66,6 +66,7 @@ class pixie
 	protected:
 		unsigned short size;
 		unsigned char  *bmp,  *oldbmp;
+		//buffers: same data as bmp but in a convient SDL_Surface
 		// SDL-owned accelerated surface handle (platform type-erased at interface boundary).
 		void* bmp_surface = nullptr;
 		// Video backend that owns bmp_surface. Needed for safe teardown when

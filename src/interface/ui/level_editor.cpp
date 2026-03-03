@@ -105,7 +105,9 @@ void info_box(walker  *target, screen * scr);
 void set_name(walker  *target, screen * scr);
 
 // myscreen and theprefs are now macros defined in base.h / view.h
+// Zardus: our prefs object from view.cpp
 
+//buffers: PORT: changed start_time to start_time_s to avoid conflict with input.cpp
 // eds().scenpalette, eds().redraw, eds().campaignchanged, eds().levelchanged, eds().cyclemode, start_time_s
 // moved into LevelEditorState (per-session via eds())
 

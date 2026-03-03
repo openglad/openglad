@@ -19,7 +19,7 @@ class TrainSession;
 } // namespace og::ui
 
 struct PickerState {
-    // Loaded backdrop assets
+    // Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
     PixieData backpics[5]{};
     std::array<std::unique_ptr<pixieN>, 5> backdrops{};
     PixieData main_title_logo_data{};

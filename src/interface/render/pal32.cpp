@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <span>
 
+//buffers: PORT: we need a palette to store the current palette
 // Palette globals live in GameSession — access via current_session->curpal_/temppal_.
 
 unsigned char our_pal_lookup(int index);

@@ -47,6 +47,7 @@ public:
     virtual void fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char flag) = 0;
     virtual void fastbox_outline(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color) = 0;
     virtual void point(Sint32 x, Sint32 y, unsigned char color) = 0;
+    //buffers: PORT: added below prototype
     virtual void pointb(Sint32 x, Sint32 y, unsigned char color) = 0;
     virtual void pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha) = 0;
     virtual void pointb(int offset, unsigned char color) = 0;

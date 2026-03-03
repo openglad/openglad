@@ -167,6 +167,7 @@ public:
     std::array<unsigned char, 64000> videobuffer{};
     short cyclemode;
 
+    //buffers: screen vars
     SDL_Surface* window;
     int screen_width, screen_height, fullscreen;
     int pdouble;
