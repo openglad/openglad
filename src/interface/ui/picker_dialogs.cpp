@@ -20,7 +20,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/io_common.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/screen.h>
 
 #include <cstring>

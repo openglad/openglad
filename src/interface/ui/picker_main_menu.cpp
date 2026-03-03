@@ -18,7 +18,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>

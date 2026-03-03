@@ -10,7 +10,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include <openglad/legacy/soundob.h>
+#include <openglad/core/sound_ids.h>
 
 #include "family_registry_base.h"
 

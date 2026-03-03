@@ -18,7 +18,7 @@
 
 // Definition of VIEWSCREEN class
 
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <memory>
 #include <string>

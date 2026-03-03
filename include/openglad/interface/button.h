@@ -46,7 +46,7 @@ inline constexpr char BUTTON_RIGHT  = 12; //11
 
 // myscreen is now a macro defined in base.h (via game_session.h).
 // button.h includes input.h but not base.h, so pull it in here.
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 
 // Holds array indices for navigating menu buttons.
 // Use C++20 designated initializers: MenuNav{.up=5, .down=3}

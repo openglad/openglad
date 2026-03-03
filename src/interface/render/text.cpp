@@ -19,7 +19,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 #include <cstdarg>
 #include <cstring>
 #include <span>

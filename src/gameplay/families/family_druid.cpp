@@ -15,7 +15,7 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include <openglad/legacy/soundob.h>
+#include <openglad/core/sound_ids.h>
 #include <openglad/gameplay/sim_emit.h>
 
 #include <format>

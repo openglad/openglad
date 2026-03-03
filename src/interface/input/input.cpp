@@ -25,7 +25,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/core/util.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <cstdio>
 #include <ctime>
 #include <cstring> //buffers: for strlen
@@ -41,7 +41,7 @@
 #endif
 
 #ifdef OUYA
-#include <openglad/legacy/OuyaController.h>
+#include <openglad/interface/OuyaController.h>
 #endif
 
 void quit(Sint32 arg1);

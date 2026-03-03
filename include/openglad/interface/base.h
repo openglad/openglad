@@ -34,10 +34,10 @@
 #include <fstream>
 #include <cmath>
 #include <cctype>
-#include <openglad/legacy/soundob.h> // sound constants (always needed)
+#include <openglad/core/sound_ids.h> // sound constants (always needed)
 #include <openglad/core/util.h>
 #include <openglad/resources/gparser.h>
-#include <openglad/legacy/pixdefs.h>
+#include <openglad/core/pixdefs.h>
 
 // Standard integer type aliases (previously from SDL_stdinc.h)
 using Uint8  = std::uint8_t;

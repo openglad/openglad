@@ -19,7 +19,7 @@
 /* ChangeLog
 	buffers: 7/31/02: *include cleanup
 */
-#include <openglad/legacy/colors.h>
+#include <openglad/core/colors.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>

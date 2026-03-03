@@ -13,7 +13,7 @@
 #include <openglad/interface/level_render.h>
 #include <openglad/gameplay/level_visuals_base.h>
 #include <openglad/gameplay/pixie_data.h>
-#include <openglad/legacy/pixdefs.h>
+#include <openglad/core/pixdefs.h>
 
 struct LevelVisuals : public og::gameplay::ILevelVisuals
 {

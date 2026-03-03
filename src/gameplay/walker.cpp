@@ -33,10 +33,10 @@
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/render_component_base.h>
 #include <openglad/gameplay/sim_emit.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include <openglad/legacy/soundob.h>
+#include <openglad/core/sound_ids.h>
 // pixieN include not needed here; render bridge is in walker_render_bridge.cpp
 #include <algorithm>
 #include <format>

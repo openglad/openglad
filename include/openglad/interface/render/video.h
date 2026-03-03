@@ -16,7 +16,7 @@
  */
 #pragma once
 
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 
 #include <array>
 #include <span>

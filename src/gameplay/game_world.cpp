@@ -14,7 +14,7 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
-#include <openglad/legacy/pixdefs.h>
+#include <openglad/core/pixdefs.h>
 
 #include <algorithm>
 #include <cstdlib>

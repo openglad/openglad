@@ -10,7 +10,7 @@
 // These were originally walker::draw(), walker::draw_tile(), etc.
 
 #include <openglad/interface/render/walker_draw.h>
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/interface/render/view.h>

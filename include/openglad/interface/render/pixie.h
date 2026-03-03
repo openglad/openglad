@@ -18,7 +18,7 @@
 
 // Definition of PIXIE class
 
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 #include <openglad/resources/pixie_data.h>
 
 class viewscreen;

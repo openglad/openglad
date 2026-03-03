@@ -46,26 +46,15 @@ std::chrono::steady_clock::time_point* active_session_reset_time()
 }
 } // namespace og::runtime
 
-namespace
-{
-struct TestContextSnapshot {
-    IRandom* rng = nullptr;
-    InputState input = {};
-};
-
-thread_local bool s_test_context_active = false;
-thread_local TestContextSnapshot s_test_context_snapshot{};
-} // namespace
-
 void push_test_context(GameContext* context)
 {
+    assert(og::runtime::current_session != nullptr);
+    og::runtime::SessionState& session = *og::runtime::current_session;
     GameContext& active = ctx();
-    if (!s_test_context_active) {
-        s_test_context_snapshot = TestContextSnapshot{
-            .rng = active.rng,
-            .input = active.input,
-        };
-        s_test_context_active = true;
+    if (!session.test_context_active_) {
+        session.test_context_rng_snapshot_ = active.rng;
+        session.test_context_input_snapshot_ = active.input;
+        session.test_context_active_ = true;
     }
 
     if (context) {
@@ -80,12 +69,14 @@ void push_test_context(GameContext* context)
 
 void pop_test_context()
 {
-    if (!s_test_context_active)
+    assert(og::runtime::current_session != nullptr);
+    og::runtime::SessionState& session = *og::runtime::current_session;
+    if (!session.test_context_active_)
         return;
 
     GameContext& active = ctx();
-    active.rng = s_test_context_snapshot.rng;
-    active.input = s_test_context_snapshot.input;
-    s_test_context_active = false;
+    active.rng = session.test_context_rng_snapshot_;
+    active.input = session.test_context_input_snapshot_;
+    session.test_context_active_ = false;
     set_gameplay_rng_override(active.rng ? &active.rng : nullptr);
 }

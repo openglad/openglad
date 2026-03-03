@@ -7,7 +7,7 @@
  */
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/interface/ui/picker_common.h>
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>

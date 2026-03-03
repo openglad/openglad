@@ -12,7 +12,7 @@
  * Follow-up work should move HUD rendering into a proper module namespace.
  */
 
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/gameplay/walker.h>

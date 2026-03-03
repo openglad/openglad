@@ -42,6 +42,7 @@ struct GameplayContext
     SaveData* save = nullptr;
     og::sim::SimEventLog* sim_events = nullptr;
     cfg_store* config = nullptr;
+    IRandom** rng_override_ref = nullptr;
     std::unique_ptr<GameplayPathfindingState> pathfinding;
 };
 

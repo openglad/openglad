@@ -11,7 +11,7 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/guy.h>
-#include <openglad/legacy/soundob.h>
+#include <openglad/core/sound_ids.h>
 
 // --- TREE and BLOOD: simple animation cycling ---
 

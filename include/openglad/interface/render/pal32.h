@@ -23,7 +23,7 @@
 //#include <stdio.h>
 //the above is included in palette.cpp now
 
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 #include <span>
 
 short load_and_set_palette(const char *filename, std::span<unsigned char> newpalette); // load/set palette from disk

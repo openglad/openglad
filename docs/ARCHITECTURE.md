@@ -244,7 +244,8 @@ GameSession
 │   ├── rng        — IRandom* (injectable: ProductionRandom, SeededRandom, FixedRandom)
 │   ├── input      — InputState (per-frame snapshot)
 │   └── sim_events — unique_ptr<SimEventLog> (event accumulator for sim/render decoupling)
-└── legacy shims   — installs myscreen, theprefs globals
+└── session pointers — `myscreen_` and `theprefs_` are owned by SessionState and
+   accessed directly via `og::runtime::current_session`
 ```
 
 ### Simulation Events and Event Log

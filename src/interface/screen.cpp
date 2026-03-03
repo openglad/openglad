@@ -39,8 +39,8 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
-#include <openglad/legacy/view_sizes.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/interface/view_sizes.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/interface/render/pal32.h>

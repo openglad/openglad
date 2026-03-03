@@ -22,7 +22,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/sim_emit.h>
 
 #include <list>

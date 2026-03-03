@@ -8,7 +8,7 @@
 #include <openglad/gameplay/weapon_family_descriptor.h>
 #include <openglad/gameplay/weap.h>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/legacy/soundob.h>
+#include <openglad/core/sound_ids.h>
 
 static bool rock_on_death(weap* self)
 {

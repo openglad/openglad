@@ -20,7 +20,7 @@
 	buffers: 7/31/02: *include cleanup
 	buffers: 8/15/02: *rewrote the file finding/loading code in read_pixie_file
 */
-#include <openglad/legacy/base.h> // PixieData + PIX_* indices + read_pixie_file decls
+#include <openglad/interface/base.h> // PixieData + PIX_* indices + read_pixie_file decls
 #include <string>
 #include <openglad/core/util.h>
 

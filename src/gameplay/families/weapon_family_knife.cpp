@@ -11,7 +11,7 @@
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/weap.h>
-#include <openglad/legacy/soundob.h>
+#include <openglad/core/sound_ids.h>
 
 static bool knife_on_death(weap* self)
 {

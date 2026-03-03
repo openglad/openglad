@@ -9,7 +9,7 @@
 #include <openglad/gameplay/effect_family_descriptor.h>
 #include <openglad/gameplay/effect.h>
 #include <openglad/gameplay/statistics.h>
-#include <openglad/legacy/soundob.h>
+#include <openglad/core/sound_ids.h>
 #include <openglad/gameplay/sim_emit.h>
 
 std::int32_t compute_explosion_range(std::int32_t level, short skip_exit);

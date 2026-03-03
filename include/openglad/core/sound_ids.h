@@ -14,10 +14,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-// Soundob.h file ..
 #pragma once
-
-#include <string>
 
 #ifndef OPNEGLAD_SHARED_SOUND_IDS_H
 #define OPNEGLAD_SHARED_SOUND_IDS_H
@@ -34,11 +31,11 @@ inline constexpr int SOUND_HEAL = 8;
 inline constexpr int SOUND_CHARGE = 9;
 inline constexpr int SOUND_FWIP = 10;
 inline constexpr int SOUND_EXPLODE = 11;
-inline constexpr int SOUND_DIE2 = 12;  // registered only
-inline constexpr int SOUND_ROAR = 13;  // orc, reg
-inline constexpr int SOUND_MONEY = 14; // reg
-inline constexpr int SOUND_EAT = 15;   // reg
+inline constexpr int SOUND_DIE2 = 12;
+inline constexpr int SOUND_ROAR = 13;
+inline constexpr int SOUND_MONEY = 14;
+inline constexpr int SOUND_EAT = 15;
 
-inline constexpr int NUMSOUNDS = 16;   // For now, let's use ALL sounds, regardless
+inline constexpr int NUMSOUNDS = 16;
 
 #endif // OPNEGLAD_SHARED_SOUND_IDS_H

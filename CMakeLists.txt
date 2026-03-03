@@ -712,7 +712,7 @@ function(prepare_component_include_root out_var component_name)
         if(EXISTS "${dst_dir}")
             file(REMOVE_RECURSE "${dst_dir}")
         endif()
-        file(COPY "${src_dir}" DESTINATION "${openglad_root}")
+        file(CREATE_LINK "${src_dir}" "${dst_dir}" SYMBOLIC COPY_ON_ERROR)
     endforeach()
     set(${out_var} "${root}" PARENT_SCOPE)
 endfunction()
@@ -781,13 +781,13 @@ set(OG_EXTERNAL_LIBS
 if(NOT EMSCRIPTEN)
     # --- component targets (Phase 12) ---
     prepare_component_include_root(OG_CORE_INCLUDE_ROOT core
-        core interface legacy)
+        core interface)
     prepare_component_include_root(OG_GAMEPLAY_INCLUDE_ROOT gameplay
-        core gameplay legacy)
+        core gameplay)
     prepare_component_include_root(OG_RESOURCES_INCLUDE_ROOT resources
-        core gameplay resources legacy)
+        core gameplay resources)
     prepare_component_include_root(OG_INTERFACE_INCLUDE_ROOT interface
-        core gameplay resources interface legacy)
+        core gameplay resources interface)
 
     add_library(og_core STATIC ${OG_CORE_SOURCES})
     configure_component_library(og_core "${OG_CORE_INCLUDE_ROOT}")

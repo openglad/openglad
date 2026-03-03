@@ -24,7 +24,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/game_context.h>

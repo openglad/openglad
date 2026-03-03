@@ -18,7 +18,7 @@
 
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/gameplay_context.h>
-#include <openglad/legacy/pixdefs.h>
+#include <openglad/core/pixdefs.h>
 #include <array>
 #include <cstdint>
 #include <cstdlib>

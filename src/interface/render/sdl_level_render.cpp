@@ -8,7 +8,7 @@
 
 #include <openglad/interface/level_render.h>
 #include <openglad/resources/pixie_data.h>
-#include <openglad/legacy/pixdefs.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/render/view.h>
 

@@ -18,7 +18,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/render/pal32.h>
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 
 void handle_cheat_keys(walker*& control, short mynum,
                        const void* native_event, const PlayerInput& pi,

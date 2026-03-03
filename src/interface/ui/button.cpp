@@ -22,7 +22,7 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/ui/picker_ui_state.h>

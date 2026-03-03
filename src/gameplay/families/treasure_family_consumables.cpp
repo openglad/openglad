@@ -10,7 +10,7 @@
 #include <openglad/gameplay/treasure.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/guy.h>
-#include <openglad/legacy/soundob.h>
+#include <openglad/core/sound_ids.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <format>
 #include <string>

@@ -104,6 +104,11 @@ struct SessionState {
     short help_end_of_file_ = 0;
     std::array<std::array<char, 100>, 100> helptext_ = {};
 
+    // Test-only context override snapshot used by push_test_context/pop_test_context.
+    bool test_context_active_ = false;
+    IRandom* test_context_rng_snapshot_ = nullptr;
+    InputState test_context_input_snapshot_ = {};
+
     GameContext ctx_;
     GameplayContext game_;
     GameLoopFrameState frame_state_;

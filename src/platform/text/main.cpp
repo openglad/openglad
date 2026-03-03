@@ -57,9 +57,9 @@
 // theprefs_, current_difficulty_, etc.
 #include <openglad/interface/session_state.h>
 namespace og::runtime {
-    static thread_local SessionState* s_headless_session = new SessionState{};
-    thread_local SessionState* current_session = s_headless_session;
-    std::atomic<SessionState*> primary_session{s_headless_session};
+    static SessionState s_headless_session{};
+    thread_local SessionState* current_session = &s_headless_session;
+    std::atomic<SessionState*> primary_session{&s_headless_session};
 }
 
 // cfg is declared in <openglad/resources/gparser.h> (already included above).

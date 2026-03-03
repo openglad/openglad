@@ -38,7 +38,7 @@ namespace og::sim { class SimEventLog; }
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/interface/level_visuals.h>
-#include <openglad/legacy/pixdefs.h>
+#include <openglad/core/pixdefs.h>
 
 class CampaignData
 {

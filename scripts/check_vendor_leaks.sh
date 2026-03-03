@@ -34,13 +34,13 @@ is_allowed_dep() {
     local dep_component="$2"
     case "${source_component}" in
         gameplay)
-            [[ "${dep_component}" == "core" || "${dep_component}" == "gameplay" || "${dep_component}" == "legacy" ]]
+            [[ "${dep_component}" == "core" || "${dep_component}" == "gameplay" ]]
             ;;
         resources)
-            [[ "${dep_component}" == "core" || "${dep_component}" == "gameplay" || "${dep_component}" == "resources" || "${dep_component}" == "legacy" ]]
+            [[ "${dep_component}" == "core" || "${dep_component}" == "gameplay" || "${dep_component}" == "resources" ]]
             ;;
         interface)
-            [[ "${dep_component}" == "core" || "${dep_component}" == "gameplay" || "${dep_component}" == "resources" || "${dep_component}" == "interface" || "${dep_component}" == "legacy" ]]
+            [[ "${dep_component}" == "core" || "${dep_component}" == "gameplay" || "${dep_component}" == "resources" || "${dep_component}" == "interface" ]]
             ;;
         platform)
             return 0

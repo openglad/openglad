@@ -16,8 +16,8 @@
  */
 
 #include <openglad/interface/level_runtime_data.h>
-#include <openglad/legacy/base.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/interface/base.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/level_file_io.h>

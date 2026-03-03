@@ -20,7 +20,7 @@
 // its current spin-wait (while + sleep + get_input_events) pattern
 // to a frame-based design.
 
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>

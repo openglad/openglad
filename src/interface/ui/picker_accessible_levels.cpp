@@ -16,7 +16,7 @@
  */
 
 #include <openglad/interface/ui/level_picker.h>
-#include <openglad/legacy/base.h>
+#include <openglad/interface/base.h>
 #include <algorithm>
 #include <list>
 #include <set>

@@ -16,8 +16,8 @@
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
-#include <openglad/legacy/soundob.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/sound_ids.h>
+#include <openglad/core/test_trace.h>
 
 #include <algorithm>
 

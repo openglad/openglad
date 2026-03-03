@@ -15,7 +15,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/text.h>
-#include <openglad/legacy/colors.h>
+#include <openglad/core/colors.h>
 
 namespace {
 struct IntRect {
