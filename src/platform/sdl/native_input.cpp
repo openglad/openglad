@@ -60,7 +60,9 @@ bool decode_event(const void* native_event, EventData& out)
     case SDL_KEYDOWN:
     case SDL_KEYUP:
         out.key_sym = e.key.keysym.sym;
-        out.key_scancode = static_cast<int>(e.key.keysym.scancode);
+        // Some synthetic events only initialize keycode; derive scancode from
+        // keycode to avoid loading a potentially invalid enum payload.
+        out.key_scancode = static_cast<int>(SDL_GetScancodeFromKey(out.key_sym));
         out.key_mod = e.key.keysym.mod;
         out.key_repeat = e.key.repeat != 0;
         break;

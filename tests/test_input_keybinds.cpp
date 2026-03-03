@@ -1,9 +1,12 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/runtime/game_session.h>
 #include <openglad/resources/gparser.h>
 #include "test_framework.h"
+
+#include <cstring>
 
 extern cfg_store cfg;
 
@@ -214,6 +217,24 @@ void test_input_wait_for_key_event_returns_fake_escape_in_test_mode()
     TEST_ASSERT_EQ((int)SDLK_ESCAPE, (int)e.key.keysym.sym, "wait_for_key_event should return escape in test mode");
 }
 REGISTER_TEST(test_input_wait_for_key_event_returns_fake_escape_in_test_mode);
+
+void test_native_input_decode_event_ignores_malformed_scancode_payload()
+{
+    SDL_Event e{};
+    std::memset(&e, 0x01, sizeof(e));
+    e.type = SDL_KEYDOWN;
+    e.key.type = SDL_KEYDOWN;
+    e.key.keysym.sym = SDLK_q;
+    e.key.repeat = 0;
+
+    og::input_native::EventData out{};
+    TEST_ASSERT(og::input_native::decode_event(&e, out), "decode_event should accept keydown payloads");
+    TEST_ASSERT_EQ((int)og::input_native::EventType::KeyDown, (int)out.type, "decoded event type should be keydown");
+    TEST_ASSERT_EQ((int)SDLK_q, out.key_sym, "decoded key symbol should match payload");
+    TEST_ASSERT_EQ((int)SDL_GetScancodeFromKey(SDLK_q), out.key_scancode,
+        "decoded scancode should derive from key symbol, not raw enum payload");
+}
+REGISTER_TEST(test_native_input_decode_event_ignores_malformed_scancode_payload);
 
 void test_input_state_from_sdl_respects_four_direction_mode()
 {
