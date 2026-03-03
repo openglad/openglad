@@ -108,16 +108,16 @@ bool write_file(const char* path, const void* data, std::size_t len)
     if (file == nullptr)
         return false;
 
-    bool ok = true;
+    bool write_ok = true;
     if (len > 0)
     {
         const PHYSFS_sint64 wrote =
             PHYSFS_writeBytes(file, data, static_cast<PHYSFS_uint64>(len));
-        ok = wrote == static_cast<PHYSFS_sint64>(len);
+        write_ok = wrote == static_cast<PHYSFS_sint64>(len);
     }
 
-    PHYSFS_close(file);
-    return ok;
+    const bool close_ok = PHYSFS_close(file) != 0;
+    return write_ok && close_ok;
 }
 
 bool exists(const char* path)

@@ -310,12 +310,25 @@ void io_init(int argc, char* argv[])
     // Make sure our directory tree exists and is set up
     create_dataopenglad();
 
-    og::resources::init(argv[0]);
-    og::resources::set_write_dir(get_user_path());
-
-    if(!og::resources::mount(get_user_path().c_str(), nullptr, 1))
+    const std::string user_path = get_user_path();
+    if (!og::resources::init(argv[0]))
     {
-        std::string msg = std::format("Fatal: Failed to mount user data path: {}", get_user_path());
+        std::string msg = std::format("Fatal: Failed to initialize PhysFS: {}",
+                                      og::resources::filesystem_last_error());
+        LogError("{}\n", msg);
+        throw std::runtime_error(msg);
+    }
+    if (!og::resources::set_write_dir(user_path))
+    {
+        std::string msg = std::format("Fatal: Failed to set write directory {}: {}",
+                                      user_path, og::resources::filesystem_last_error());
+        LogError("{}\n", msg);
+        throw std::runtime_error(msg);
+    }
+
+    if(!og::resources::mount(user_path.c_str(), nullptr, 1))
+    {
+        std::string msg = std::format("Fatal: Failed to mount user data path: {}", user_path);
         LogError("{}\n", msg);
         throw std::runtime_error(msg);
     }
