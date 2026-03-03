@@ -165,6 +165,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/render/pixien.cpp
     ${SRC_DIR}/interface/render/radar.cpp
     ${SRC_DIR}/interface/screen.cpp
+    ${SRC_DIR}/interface/platform_bridge.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
     ${SRC_DIR}/platform/sdl/sound.cpp
     ${SRC_DIR}/platform/sdl/native_input.cpp
@@ -185,6 +186,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/core/util.cpp
 		    ${SRC_DIR}/resources/platform_io.cpp
 		    ${SRC_DIR}/resources/io/platform_io_common.cpp
+		    ${SRC_DIR}/resources/io/filesystem.cpp
 		    ${SRC_DIR}/resources/io/physfs_api.cpp
 		    ${SRC_DIR}/resources/io/zip_api.cpp
 		    ${SRC_DIR}/resources/io/yaml_stream.cpp
@@ -301,6 +303,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/interface/score_panel.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/interface/screen.cpp
+    ${SRC_DIR}/interface/platform_bridge.cpp
     ${SRC_DIR}/interface/guy_create.cpp
     ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
@@ -358,6 +361,7 @@ set(OG_UI_SOURCES
 set(OG_IO_SOURCES
     ${SRC_DIR}/resources/platform_io.cpp
     ${SRC_DIR}/resources/io/platform_io_common.cpp
+    ${SRC_DIR}/resources/io/filesystem.cpp
     ${SRC_DIR}/resources/io/physfs_api.cpp
     ${SRC_DIR}/resources/io/zip_api.cpp
     ${SRC_DIR}/resources/io/yaml_stream.cpp
@@ -828,6 +832,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/input/input_state.cpp
         # io (shared SDL-free helpers + PhysFS/zip/yaml)
         ${SRC_DIR}/resources/io/platform_io_common.cpp
+        ${SRC_DIR}/resources/io/filesystem.cpp
         ${SRC_DIR}/resources/io/physfs_api.cpp
         ${SRC_DIR}/resources/io/zip_api.cpp
         ${SRC_DIR}/resources/io/yaml_stream.cpp
@@ -838,6 +843,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/game_world.cpp
         ${SRC_DIR}/gameplay/sim_input_handler.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
         ${SRC_DIR}/gameplay/smooth.cpp
         ${SRC_DIR}/gameplay/stats.cpp
     )

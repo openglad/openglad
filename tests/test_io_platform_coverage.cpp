@@ -1,6 +1,7 @@
 #include <openglad/resources/pixie_data.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/ogfile_yaml.h>
+#include <openglad/resources/filesystem.h>
 #include <openglad/resources/physfs_api.h>
 #include <openglad/resources/yaml_stream.h>
 #include <openglad/resources/zip_api.h>
@@ -109,6 +110,55 @@ void test_og_file_read_write_seek_and_pixie_paths()
     TEST_ASSERT(bad.data == nullptr, "truncated pix should fail payload read");
 }
 REGISTER_TEST(test_og_file_read_write_seek_and_pixie_paths);
+
+void test_resources_filesystem_api_mount_read_write_exists()
+{
+    namespace fs = std::filesystem;
+    const fs::path base = fs::path("temp") / "resources_fs_api";
+    std::error_code ec;
+    fs::create_directories(base, ec);
+
+    const fs::path mounted_input = base / "mounted_input.bin";
+    {
+        std::FILE* f = std::fopen(mounted_input.string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create mounted_input.bin");
+        if (!f)
+            return;
+        const unsigned char payload[] = {1, 3, 5, 7};
+        std::fwrite(payload, 1, sizeof(payload), f);
+        std::fclose(f);
+    }
+
+    TEST_ASSERT(og::resources::mount(base.string().c_str(), nullptr, 1),
+                "filesystem mount should succeed");
+    TEST_ASSERT(og::resources::exists("mounted_input.bin"),
+                "filesystem exists should see mounted file");
+
+    TEST_ASSERT(og::resources::set_write_dir(base.string()),
+                "filesystem set_write_dir should allow temp writes");
+    const unsigned char write_payload[] = {9, 8, 7, 6};
+    TEST_ASSERT(og::resources::write_file("write_out.bin", write_payload,
+                                          sizeof(write_payload)),
+                "filesystem write_file should succeed");
+    TEST_ASSERT(og::resources::exists("write_out.bin"),
+                "filesystem exists should see written file");
+
+    const auto written_bytes = og::resources::read_file("write_out.bin");
+    TEST_ASSERT(written_bytes.size() == sizeof(write_payload),
+                "filesystem read_file should read written bytes");
+    if (written_bytes.size() == sizeof(write_payload))
+    {
+        TEST_ASSERT(written_bytes[0] == 9 && written_bytes[1] == 8 &&
+                    written_bytes[2] == 7 && written_bytes[3] == 6,
+                    "written payload should round-trip");
+    }
+
+    TEST_ASSERT(og::resources::unmount(base.string().c_str()),
+                "filesystem unmount should succeed");
+    TEST_ASSERT(og::resources::set_write_dir(get_user_path()),
+                "filesystem write dir should restore to user path");
+}
+REGISTER_TEST(test_resources_filesystem_api_mount_read_write_exists);
 
 void test_yaml_stream_emitter_and_parser_paths()
 {

@@ -4,6 +4,8 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/event.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/combat_math.h>
@@ -1062,6 +1064,8 @@ void test_walker_combat_attack_rewards_single_credit_weapon_hit()
     const int exp_before = owner->myguy ? owner->myguy->exp : 0;
     const Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[owner->team_num];
     const float hp_before = target->stats()->hitpoints;
+    if (current_game && current_game->sim_events)
+        current_game->sim_events->clear();
 
     TEST_ASSERT(weapon->attack(target), "weapon attack should succeed");
 
@@ -1079,6 +1083,21 @@ void test_walker_combat_attack_rewards_single_credit_weapon_hit()
     const Uint32 expected_score = static_cast<Uint32>(dealt) + static_cast<Uint32>(target->stats()->level);
     TEST_ASSERT_EQ((int)expected_score, static_cast<int>(score_after - score_before),
                    "weapon hit should award score once per hit");
+
+    bool saw_score_change = false;
+    if (current_game && current_game->sim_events)
+    {
+        for (const auto& ev : current_game->sim_events->events())
+        {
+            if (ev.kind == og::sim::EventKind::ScoreChange &&
+                ev.a == static_cast<std::uint32_t>(owner->team_num))
+            {
+                saw_score_change = true;
+                break;
+            }
+        }
+    }
+    TEST_ASSERT(saw_score_change, "score award should emit ScoreChange event");
 
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world_.allied_mode = saved_allied_mode;

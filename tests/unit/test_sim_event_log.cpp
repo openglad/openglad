@@ -1,6 +1,9 @@
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/interface/platform_bridge.h>
 
 #include "unit.h"
+
+#include <string>
 
 OG_UNIT_TEST(test_sim_event_log_push_and_clear)
 {
@@ -98,4 +101,44 @@ OG_UNIT_TEST(test_sim_event_log_multiple_event_types)
     OG_ASSERT(log.events()[1].kind == og::sim::EventKind::Notification);
     OG_ASSERT(log.events()[2].kind == og::sim::EventKind::SetPalette);
     OG_ASSERT(log.events()[3].kind == og::sim::EventKind::RequestRedraw);
+}
+
+OG_UNIT_TEST(test_platform_bridge_set_and_invoke_callbacks)
+{
+    int present_calls = 0;
+    int played_sound = -1;
+    const char* music_file = nullptr;
+    int stop_calls = 0;
+    int create_w = -1;
+    int create_h = -1;
+
+    PlatformBridge bridge;
+    bridge.present_frame = [&present_calls]() { present_calls++; };
+    bridge.play_sound = [&played_sound](int sound_id) { played_sound = sound_id; };
+    bridge.play_music = [&music_file](const char* file) { music_file = file; };
+    bridge.stop_music = [&stop_calls]() { stop_calls++; };
+    bridge.create_surface = [&create_w, &create_h](int w, int h) -> video* {
+        create_w = w;
+        create_h = h;
+        return nullptr;
+    };
+
+    set_platform_bridge(bridge);
+
+    const PlatformBridge& active = platform_bridge();
+    active.present_frame();
+    active.play_sound(42);
+    active.play_music("song.ogg");
+    active.stop_music();
+    OG_ASSERT(active.create_surface(320, 200) == nullptr);
+
+    OG_ASSERT(present_calls == 1);
+    OG_ASSERT(played_sound == 42);
+    OG_ASSERT(music_file != nullptr);
+    OG_ASSERT(std::string(music_file) == "song.ogg");
+    OG_ASSERT(stop_calls == 1);
+    OG_ASSERT(create_w == 320);
+    OG_ASSERT(create_h == 200);
+
+    set_platform_bridge({});
 }

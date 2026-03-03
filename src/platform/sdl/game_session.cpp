@@ -16,11 +16,13 @@
 #include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/interface/render/pixien.h>  // complete type for PickerState's unique_ptr<pixieN>
 #include <openglad/interface/screen.h> // screen class (pulls in base.h → myscreen macro)
+#include <openglad/interface/sound.h> // soundob complete type for play_sound
 #include <openglad/platform/video_sdl.h>
 #include <openglad/interface/render/view.h>    // options class (defines theprefs macro)
 #include <openglad/platform/sai2x.h>   // E_Screen
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
+#include <openglad/interface/platform_bridge.h>
 #include "SDL.h"
 
 // Defined in view.cpp — loads allkeys from defaults + keyprefs.dat.
@@ -32,6 +34,39 @@ void init_allkeys(int allkeys[][16]);
 #undef myscreen
 #undef theprefs
 
+namespace {
+PlatformBridge make_sdl_platform_bridge()
+{
+    PlatformBridge bridge;
+
+    bridge.present_frame = [] {
+        if (E_Screen)
+            E_Screen->swap(0, 0, 320, 200);
+    };
+
+    bridge.play_sound = [](int sound_id) {
+        if (!og::runtime::current_session || !og::runtime::current_session->myscreen_ ||
+            !og::runtime::current_session->myscreen_->soundp || sound_id < 0)
+        {
+            return;
+        }
+        og::runtime::current_session->myscreen_->soundp->play_sound(
+            static_cast<short>(sound_id));
+    };
+
+    // Music callbacks are intentionally left as no-ops until music playback is
+    // moved behind a dedicated platform abstraction.
+    bridge.play_music = [](const char*) {};
+    bridge.stop_music = [] {};
+
+    bridge.create_surface = [](int, int) -> video* {
+        return new sdl_video(true);
+    };
+
+    return bridge;
+}
+} // namespace
+
 namespace og::runtime {
 
 thread_local SessionState* current_session = nullptr;
@@ -41,6 +76,8 @@ std::atomic<GameplayContext*> primary_game{nullptr};
 GameSession::GameSession(const Config& session_cfg)
     : cfg_(session_cfg)
 {
+    set_platform_bridge(make_sdl_platform_bridge());
+
     // Preserve mounted-campaign state that lives on the context.  This is
     // populated before sessions are created (io_init) and must not be lost
     // when we install a session-specific context.
@@ -120,9 +157,20 @@ GameSession::GameSession(const Config& session_cfg)
     } construction_scope(*this, cfg_.install_legacy_globals);
 
     if (cfg_.allocate_screen) {
+        std::unique_ptr<video> surface;
+        if (cfg_.create_display) {
+            const PlatformBridge& bridge = platform_bridge();
+            if (bridge.create_surface) {
+                surface.reset(bridge.create_surface(320, 200));
+            }
+        }
+        if (!surface) {
+            surface = std::make_unique<sdl_video>(cfg_.create_display);
+        }
+
         screen_owner_ = std::make_unique<::screen>(
             world_owner_,
-            std::make_unique<sdl_video>(cfg_.create_display),
+            std::move(surface),
             cfg_.numviews,
             cfg_.create_display);
         myscreen_ = screen_owner_.get();

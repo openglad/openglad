@@ -44,6 +44,7 @@
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/interface/render/pal32.h>
+#include <openglad/interface/platform_bridge.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <algorithm>
 #include <string>
@@ -484,6 +485,13 @@ void screen::darken_screen()
 
 void screen::swap()
 {
+    const PlatformBridge& bridge = platform_bridge();
+    if (bridge.present_frame)
+    {
+        bridge.present_frame();
+        return;
+    }
+
     video_impl_->swap();
 }
 
@@ -919,8 +927,13 @@ bool screen::act()
 		switch (ev.kind)
 		{
 			case og::sim::EventKind::PlaySound:
-				if (soundp)
-					soundp->play_sound(static_cast<short>(ev.a));
+				{
+					const PlatformBridge& bridge = platform_bridge();
+					if (bridge.play_sound)
+						bridge.play_sound(static_cast<int>(ev.a));
+					else if (soundp)
+						soundp->play_sound(static_cast<short>(ev.a));
+				}
 				break;
 			case og::sim::EventKind::Notification:
 				if (!ev.text.empty())
@@ -958,6 +971,11 @@ bool screen::act()
 			case og::sim::EventKind::WithdrawToLevel:
 				if (first_withdraw_request == nullptr)
 					first_withdraw_request = &ev;
+				break;
+			case og::sim::EventKind::ScoreChange:
+				// Gameplay already mutates world_.m_score; this event notifies
+				// interface code that score-dependent UI should refresh.
+				redrawme = 1;
 				break;
 			default:
 				break;

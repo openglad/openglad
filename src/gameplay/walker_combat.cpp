@@ -74,6 +74,16 @@ static bool is_valid_score_team(unsigned char team_num)
     return team_num < SCORE_TEAM_COUNT;
 }
 
+static void award_score(unsigned char team_num, std::uint32_t points)
+{
+    if (!(current_game && current_game->world && is_valid_score_team(team_num)))
+        return;
+
+    current_game->world->m_score[team_num] += points;
+    og::sim::emit_event(current_game->sim_events, og::sim::EventKind::ScoreChange,
+                        static_cast<std::uint32_t>(team_num), points);
+}
+
 void walker::do_heal_effects(walker* healer, walker* target, short amount)
 {
     if(healer)
@@ -282,11 +292,9 @@ bool walker::attack(walker  *target)
     {
         if (headguy->myguy)
             headguy->myguy->exp += attack_exp;
-        if (getscore && current_game && current_game->world && is_valid_score_team(team_num))
-        {
-            current_game->world->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i)
-                                                    + static_cast<std::uint32_t>(target->stats()->level);
-        }
+        if (getscore)
+            award_score(team_num, static_cast<std::uint32_t>(tempdamage_i)
+                                  + static_cast<std::uint32_t>(target->stats()->level));
     }
 
     if (target->stats()->hitpoints <= 0)
@@ -310,11 +318,9 @@ bool walker::attack(walker  *target)
                     //  myguy->kills++;
                     //  myguy->level_kills += target->stats()->level;
                     //}
-                    if (getscore && current_game && current_game->world && is_valid_score_team(team_num))
-                    {
-                        current_game->world->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i)
-                                                                + static_cast<std::uint32_t>(10 * target->stats()->level);
-                    }
+                    if (getscore)
+                        award_score(team_num, static_cast<std::uint32_t>(tempdamage_i)
+                                              + static_cast<std::uint32_t>(10 * target->stats()->level));
                     // If named, alert us of the enemy's death
                     if (target->stats()->name.size() && !(target->lifetime)
                             && (!target->owner) ) // do we have an NPC name?

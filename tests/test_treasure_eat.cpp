@@ -2,6 +2,8 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/event.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/treasure.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/legacy/base.h>
@@ -90,9 +92,25 @@ void test_treasure_eat_gold_bar()
     if (!gold) { delete eater; return; }
 
     Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[0];
+    if (current_game && current_game->sim_events)
+        current_game->sim_events->clear();
     gold->eat_me(eater);
     TEST_ASSERT(og::runtime::current_session->myscreen_->world_.m_score[0] > score_before, "gold bar adds score");
     TEST_ASSERT(gold->dead == 1, "gold bar consumed");
+    bool saw_score_change = false;
+    if (current_game && current_game->sim_events)
+    {
+        for (const auto& ev : current_game->sim_events->events())
+        {
+            if (ev.kind == og::sim::EventKind::ScoreChange &&
+                ev.a == static_cast<std::uint32_t>(eater->team_num))
+            {
+                saw_score_change = true;
+                break;
+            }
+        }
+    }
+    TEST_ASSERT(saw_score_change, "gold bar score should emit ScoreChange event");
 
     og::runtime::current_session->myscreen_->world_.m_score[0] = score_before;
     og::runtime::current_session->myscreen_->world().remove_ob(gold);

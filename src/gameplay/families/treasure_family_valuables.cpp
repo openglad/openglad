@@ -23,12 +23,22 @@ static bool is_valid_score_team(unsigned char team_num)
     return team_num < SCORE_TEAM_COUNT;
 }
 
+static void award_score(unsigned char team_num, std::uint32_t points)
+{
+    if (!(current_game && current_game->world && is_valid_score_team(team_num)))
+        return;
+
+    current_game->world->m_score[team_num] += points;
+    og::sim::emit_event(current_game->sim_events, og::sim::EventKind::ScoreChange,
+                        static_cast<std::uint32_t>(team_num), points);
+}
+
 static bool gold_bar_on_eat(treasure* self, walker* eater)
 {
     if (eater->team_num == 0 || eater->myguy)
     {
-        if (current_game && current_game->world && is_valid_score_team(eater->team_num))
-            current_game->world->m_score[eater->team_num] += (200 * self->stats()->level);
+        award_score(eater->team_num,
+                    static_cast<std::uint32_t>(200 * self->stats()->level));
         self->dead = 1;
         og::sim::emit_sound(current_game->sim_events, SOUND_MONEY);
     }
@@ -39,8 +49,8 @@ static bool silver_bar_on_eat(treasure* self, walker* eater)
 {
     if (eater->team_num == 0 || eater->myguy)
     {
-        if (current_game && current_game->world && is_valid_score_team(eater->team_num))
-            current_game->world->m_score[eater->team_num] += (50 * self->stats()->level);
+        award_score(eater->team_num,
+                    static_cast<std::uint32_t>(50 * self->stats()->level));
         self->dead = 1;
         og::sim::emit_sound(current_game->sim_events, SOUND_MONEY);
     }
@@ -51,8 +61,8 @@ static bool life_gem_on_eat(treasure* self, walker* eater)
 {
     if (eater->team_num != self->team_num) // only our team can get these
         return true;
-    if (current_game && current_game->world && is_valid_score_team(eater->team_num))
-        current_game->world->m_score[eater->team_num] += static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints));
+    award_score(eater->team_num,
+                static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints)));
     walker* flash = current_game->world->add_ob(Order::FX, FAMILY_FLASH);
     flash->ani_type = ANI_EXPAND_8;
     flash->center_on(self);

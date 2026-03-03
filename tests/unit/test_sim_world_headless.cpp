@@ -182,6 +182,11 @@ OG_UNIT_TEST(test_event_kind_withdraw_to_level_value)
     OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::WithdrawToLevel) == 17);
 }
 
+OG_UNIT_TEST(test_event_kind_score_change_value)
+{
+    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::ScoreChange) == 18);
+}
+
 OG_UNIT_TEST(test_emit_endgame_event)
 {
     og::sim::SimEventLog log;
@@ -263,6 +268,19 @@ OG_UNIT_TEST(test_emit_withdraw_to_level_event)
     OG_ASSERT(ev.kind == og::sim::EventKind::WithdrawToLevel);
     OG_ASSERT(ev.a == 5);
     OG_ASSERT(ev.b == 0);
+}
+
+OG_UNIT_TEST(test_emit_score_change_event)
+{
+    og::sim::SimEventLog log;
+    log.current_tick_ = 29;
+    og::sim::emit_event(&log, og::sim::EventKind::ScoreChange, 2, 125);
+
+    OG_ASSERT(log.size() == 1);
+    const auto& ev = log.events()[0];
+    OG_ASSERT(ev.kind == og::sim::EventKind::ScoreChange);
+    OG_ASSERT(ev.a == 2);
+    OG_ASSERT(ev.b == 125);
 }
 
 OG_UNIT_TEST(test_mixed_stream_with_phase2_events)

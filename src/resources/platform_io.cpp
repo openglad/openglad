@@ -19,7 +19,7 @@
 #include <openglad/core/util.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/resources/physfs_api.h>
+#include <openglad/resources/filesystem.h>
 #include "physfsrwops.h"  // PhysFS SDL_RWops bridge
 #include <openglad/resources/zip_api.h>
 #include <openglad/resources/yaml_stream.h>
@@ -310,10 +310,10 @@ void io_init(int argc, char* argv[])
     // Make sure our directory tree exists and is set up
     create_dataopenglad();
 
-    og::io::physfs_init(argv[0]);
-    og::io::physfs_set_write_dir(get_user_path());
+    og::resources::init(argv[0]);
+    og::resources::set_write_dir(get_user_path());
 
-    if(!og::io::physfs_mount(get_user_path(), nullptr, 1))
+    if(!og::resources::mount(get_user_path().c_str(), nullptr, 1))
     {
         std::string msg = std::format("Fatal: Failed to mount user data path: {}", get_user_path());
         LogError("{}\n", msg);
@@ -334,22 +334,23 @@ void io_init(int argc, char* argv[])
     Log("Mounting default campaign...\n");
     if (mount_campaign_package_with_error("org.openglad.gladiator") != CampaignPackageIoError::None)
     {
-        std::string msg = std::format("Fatal: Failed to mount default campaign: {}", og::io::physfs_last_error());
+        std::string msg = std::format("Fatal: Failed to mount default campaign: {}",
+                                      og::resources::filesystem_last_error());
         LogError("{}\n", msg);
         throw std::runtime_error(msg);
     }
     Log("Mounted default campaign\n");
     
     // Set up paths for default assets
-    if(!og::io::physfs_mount(get_asset_path() + "pix/", "pix/", 1))
+    if(!og::resources::mount((get_asset_path() + "pix/").c_str(), "pix/", 1))
     {
         LogWarn("Failed to mount default pix path (may be bundled in campaign)\n");
     }
-    if(!og::io::physfs_mount(get_asset_path() + "sound/", "sound/", 1))
+    if(!og::resources::mount((get_asset_path() + "sound/").c_str(), "sound/", 1))
     {
         LogWarn("Failed to mount default sound path (may be bundled in campaign)\n");
     }
-    if(!og::io::physfs_mount(get_asset_path() + "cfg/", "cfg/", 1))
+    if(!og::resources::mount((get_asset_path() + "cfg/").c_str(), "cfg/", 1))
     {
         LogWarn("Failed to mount default cfg path (may be bundled in campaign)\n");
     }
@@ -361,7 +362,7 @@ void io_exit()
     // Final sync before exit
     sync_filesystem();
 #endif
-    og::io::physfs_deinit();
+    og::resources::deinit();
 }
 
 void sync_filesystem()

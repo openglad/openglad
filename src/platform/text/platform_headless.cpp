@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <string>
+#include <utility>
 #include <unistd.h>
 
 // current_difficulty lives in GameSession — the text client's headless_session_buf
@@ -105,6 +106,7 @@ std::string get_asset_path()
 // ---------------------------------------------------------------------------
 
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/platform_bridge.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/gloader.h>
 
@@ -321,11 +323,19 @@ void load_map_data(PixieData*)
 // ---------------------------------------------------------------------------
 // Headless lifecycle (mirrors SDL io_init/io_exit/sync_filesystem)
 // ---------------------------------------------------------------------------
-#include <openglad/resources/physfs_api.h>
+#include <openglad/resources/filesystem.h>
 
 void io_init(int argc, char* argv[])
 {
     (void)argc;
+
+    PlatformBridge bridge;
+    bridge.present_frame = [] {};
+    bridge.play_sound = [](int) {};
+    bridge.play_music = [](const char*) {};
+    bridge.stop_music = [] {};
+    bridge.create_surface = [](int, int) -> video* { return nullptr; };
+    set_platform_bridge(std::move(bridge));
 
     // Create user directory tree
     std::string user_path = get_user_path();
@@ -335,16 +345,16 @@ void io_init(int argc, char* argv[])
     create_dir(user_path + "cfg/");
 
     // Initialize PhysFS
-    if (!og::io::physfs_init(argv[0])) {
+    if (!og::resources::init(argv[0])) {
         LogError("io_init(headless): physfs_init failed\n");
         return;
     }
-    if (!og::io::physfs_set_write_dir(user_path)) {
+    if (!og::resources::set_write_dir(user_path)) {
         LogError("io_init(headless): Failed to set write dir: {}\n", user_path);
         return;
     }
 
-    if (!og::io::physfs_mount(user_path, nullptr, 1)) {
+    if (!og::resources::mount(user_path.c_str(), nullptr, 1)) {
         LogError("io_init(headless): Failed to mount user path: {}\n", user_path);
     }
 
@@ -358,16 +368,16 @@ void io_init(int argc, char* argv[])
 
     // Mount asset directories
     std::string asset_path = get_asset_path();
-    og::io::physfs_mount(asset_path + "pix/", "pix/", 1);
-    og::io::physfs_mount(asset_path + "sound/", "sound/", 1);
-    og::io::physfs_mount(asset_path + "cfg/", "cfg/", 1);
+    og::resources::mount((asset_path + "pix/").c_str(), "pix/", 1);
+    og::resources::mount((asset_path + "sound/").c_str(), "sound/", 1);
+    og::resources::mount((asset_path + "cfg/").c_str(), "cfg/", 1);
 
     Log("io_init(headless): done\n");
 }
 
 void io_exit()
 {
-    og::io::physfs_deinit();
+    og::resources::deinit();
 }
 
 // No-op on non-web platforms (they use real filesystem)
