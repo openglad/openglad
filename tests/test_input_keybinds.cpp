@@ -2,7 +2,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/platform/game_context.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/resources/gparser.h>
 #include "test_framework.h"
 

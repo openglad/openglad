@@ -1,7 +1,7 @@
 #include <cstring>
 
 #include <openglad/interface/input.h>
-#include <openglad/runtime/game_session.h>
+#include <openglad/platform/game_session.h>
 #include "test_framework.h"
 
 

@@ -100,9 +100,9 @@ GameContext (DI container) → screen*, prefs*, cfg*, IRandom*, InputState
 ### Include Patterns
 
 ```cpp
-#include <openglad/entities/walker.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/video.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/render/video.h>
 #include <openglad/core/util.h>
 ```
 
@@ -158,7 +158,7 @@ New test source files must be added to the appropriate list in `CMakeLists.txt` 
 **Integration tests** (require SDL, use `test_framework.h`):
 
 ```cpp
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 
