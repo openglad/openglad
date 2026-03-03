@@ -29,6 +29,7 @@
 #include <openglad/core/util.h>
 #include <openglad/core/version.h>
 #include <openglad/resources/gparser.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/input.h>
@@ -177,8 +178,9 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
 // current_session and waits for the main thread to signal each frame.
 static void worker_thread_func(WorkerSync& sync, DemoSession& demo, int session_idx)
 {
-    // Install this session as thread_local current_session.
+    // Install this session as thread_local current_session and current_game.
     og::runtime::current_session = demo.session.get();
+    current_game = &demo.session->game_;
 
     // Simulation-only deps: no rendering, no event polling, no frame timing.
     // The main thread handles all of these.
