@@ -22,9 +22,9 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/runtime/picker_ui_state.h>
 #include <openglad/interface/ui/picker_common.h>
-#include "SDL.h"
 #include <array>
 #include <memory>
 
@@ -206,7 +206,7 @@ Sint32 mainmenu(Sint32 arg1)
         redraw_mainmenu();
         draw_highlight(buttons[highlighted_button]);
         game->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
 	}
 	
 	return retvalue;

@@ -590,16 +590,18 @@ function(configure_openglad_library target)
         $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:include>
     )
-    if(NOT EMSCRIPTEN)
-        # Use the imported SDL target for compile/link flags needed by sources
-        # that depend on platform SDL APIs.
-        target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
-    endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
     if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${target} PRIVATE --coverage)
         target_link_options(${target} PRIVATE --coverage)
+    endif()
+endfunction()
+
+function(configure_openglad_sdl_target target)
+    if(NOT EMSCRIPTEN)
+        # Opt-in SDL wiring: keeps gameplay-only targets free from platform deps.
+        target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
     endif()
 endfunction()
 
@@ -719,6 +721,7 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_io STATIC ${OG_IO_SOURCES})
     configure_openglad_library(og_io)
+    configure_openglad_sdl_target(og_io)
     target_include_directories(og_io PRIVATE
         ${THIRD_PARTY_DIR}/yam
         ${THIRD_PARTY_DIR}/libyaml/include
@@ -731,10 +734,12 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_runtime STATIC ${OG_RUNTIME_SOURCES})
     configure_openglad_library(og_runtime)
+    configure_openglad_sdl_target(og_runtime)
     target_include_directories(og_runtime PRIVATE ${THIRD_PARTY_DIR}/micropather)
 
     add_library(og_render STATIC ${OG_RENDER_SOURCES})
     configure_openglad_library(og_render)
+    configure_openglad_sdl_target(og_render)
 
     add_library(og_input STATIC ${OG_INPUT_SOURCES})
     configure_openglad_library(og_input)
@@ -744,10 +749,12 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_platform STATIC ${OG_PLATFORM_SOURCES})
     configure_openglad_library(og_platform)
+    configure_openglad_sdl_target(og_platform)
 
     # Monolithic aggregate used by runtime executables without linker groups.
     add_library(og_game_full STATIC ${GAME_SOURCES_NO_MAIN})
     configure_openglad_library(og_game_full)
+    configure_openglad_sdl_target(og_game_full)
     target_include_directories(og_game_full PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
     target_link_libraries(og_game_full PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
     add_dependencies(og_game_full check_vendor_leaks)
@@ -770,6 +777,7 @@ if(NOT EMSCRIPTEN)
     # --- openglad (main game) ---
     add_executable(openglad ${SRC_DIR}/platform/sdl/glad.cpp)
     configure_openglad_library(openglad)
+    configure_openglad_sdl_target(openglad)
     target_link_libraries(openglad PRIVATE og_game)
     configure_openglad_runtime_target(openglad)
     add_runtime_assets_dependency(openglad)
@@ -778,6 +786,7 @@ if(NOT EMSCRIPTEN)
     if(BUILD_EDITOR)
         add_executable(openscen ${SRC_DIR}/platform/sdl/glad.cpp)
         configure_openglad_library(openscen)
+        configure_openglad_sdl_target(openscen)
         target_link_libraries(openscen PRIVATE og_game)
         configure_openglad_runtime_target(openscen)
         target_compile_definitions(openscen PRIVATE OPENSCEN)
@@ -789,6 +798,7 @@ if(NOT EMSCRIPTEN)
     # demonstrating the de-singletonized engine.
     add_executable(openglad_demo ${SRC_DIR}/platform/sdl/demo.cpp)
     configure_openglad_library(openglad_demo)
+    configure_openglad_sdl_target(openglad_demo)
     target_link_libraries(openglad_demo PRIVATE og_game)
     configure_openglad_runtime_target(openglad_demo)
     add_runtime_assets_dependency(openglad_demo)
@@ -963,6 +973,7 @@ if(NOT EMSCRIPTEN)
             ${OG_UNIT_TEST_SOURCES}
         )
         configure_openglad_library(og_unit_tests)
+        configure_openglad_sdl_target(og_unit_tests)
         target_link_libraries(og_unit_tests PRIVATE og_game)
         configure_openglad_runtime_target(og_unit_tests)
         add_test(NAME og_unit_tests COMMAND og_unit_tests)
@@ -1240,6 +1251,7 @@ if(NOT EMSCRIPTEN)
 
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
         configure_openglad_library(og_game_test)
+        configure_openglad_sdl_target(og_game_test)
         target_include_directories(og_game_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
         target_compile_definitions(og_game_test PRIVATE TESTING)
         target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
@@ -1250,6 +1262,7 @@ if(NOT EMSCRIPTEN)
             ${TEST_SOURCES}
         )
         configure_openglad_library(openglad_test)
+        configure_openglad_sdl_target(openglad_test)
         target_compile_definitions(openglad_test PRIVATE TESTING)
         target_include_directories(openglad_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         # External API smoke tests include vendored headers directly.
@@ -1263,6 +1276,7 @@ if(NOT EMSCRIPTEN)
             ${DATA_TEST_SOURCES}
         )
         configure_openglad_library(og_data_tests)
+        configure_openglad_sdl_target(og_data_tests)
         target_compile_definitions(og_data_tests PRIVATE TESTING)
         target_include_directories(og_data_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(og_data_tests PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
@@ -1275,6 +1289,7 @@ if(NOT EMSCRIPTEN)
             ${RUNTIME_TEST_SOURCES}
         )
         configure_openglad_library(og_runtime_tests)
+        configure_openglad_sdl_target(og_runtime_tests)
         target_compile_definitions(og_runtime_tests PRIVATE TESTING)
         target_include_directories(og_runtime_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_include_directories(og_runtime_tests PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})

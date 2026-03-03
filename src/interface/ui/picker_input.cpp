@@ -17,7 +17,7 @@
 
 // TODO: Migrate isPlayerHoldingKey() calls in handle_menu_nav() to use
 // InputState/InputAction once the menu navigation loop is refactored from
-// its current spin-wait (while + SDL_Delay + get_input_events) pattern
+// its current spin-wait (while + sleep + get_input_events) pattern
 // to a frame-based design.
 
 #include <openglad/legacy/base.h>
@@ -27,7 +27,7 @@
 #include <openglad/interface/sound.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/runtime/picker_ui_state.h>
-#include "SDL.h"
+#include <openglad/interface/native_input.h>
 
 namespace {
 constexpr Sint32 OK_VALUE = 4;
@@ -91,7 +91,7 @@ void draw_highlight_interior(const button& b)
     if(!pks().menu_nav_enabled)
         return;
 
-    const float ticks = static_cast<float>(SDL_GetTicks());
+    const float ticks = static_cast<float>(og::input_native::ticks_ms());
     const float t = (1.0f + sinf(ticks / 300.0f)) * 0.5f;
     const float size = 3.0f;
     const float inset = t * size;
@@ -108,7 +108,7 @@ void draw_highlight(const button& b)
     if(!pks().menu_nav_enabled)
         return;
 
-    const float ticks = static_cast<float>(SDL_GetTicks());
+    const float ticks = static_cast<float>(og::input_native::ticks_ms());
     const float t = (1.0f + sinf(ticks / 300.0f)) * 0.5f;
     const float size = 3.0f;
     const float inset = t * size;
@@ -129,7 +129,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
     {
         while(isPlayerHoldingKey(0, KEY_UP))
         {
-            SDL_Delay(1);
+            og::input_native::sleep_ms(1);
             get_input_events(POLL);
         }
         next_button = buttons[highlighted_button].nav.up;
@@ -140,7 +140,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
     {
         while(isPlayerHoldingKey(0, KEY_DOWN))
         {
-            SDL_Delay(1);
+            og::input_native::sleep_ms(1);
             get_input_events(POLL);
         }
         next_button = buttons[highlighted_button].nav.down;
@@ -151,7 +151,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
     {
         while(isPlayerHoldingKey(0, KEY_LEFT))
         {
-            SDL_Delay(1);
+            og::input_native::sleep_ms(1);
             get_input_events(POLL);
         }
         next_button = buttons[highlighted_button].nav.left;
@@ -162,7 +162,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
     {
         while(isPlayerHoldingKey(0, KEY_RIGHT))
         {
-            SDL_Delay(1);
+            og::input_native::sleep_ms(1);
             get_input_events(POLL);
         }
         next_button = buttons[highlighted_button].nav.right;
@@ -173,7 +173,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
     {
         while(isPlayerHoldingKey(0, KEY_FIRE))
         {
-            SDL_Delay(1);
+            og::input_native::sleep_ms(1);
             get_input_events(POLL);
         }
 
@@ -208,12 +208,12 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
     if(pressed)
     {
         pks().menu_nav_enabled = true;
-        pks().menu_nav_enabled_time = SDL_GetTicks();
+        pks().menu_nav_enabled_time = og::input_native::ticks_ms();
     }
     // Turn it off if it's been a while since something was pressed.
     else if(pks().menu_nav_enabled)
     {
-        if(SDL_GetTicks() - pks().menu_nav_enabled_time > 5000)
+        if(og::input_native::ticks_ms() - pks().menu_nav_enabled_time > 5000)
             pks().menu_nav_enabled = MENU_NAV_DEFAULT;
     }
 

@@ -25,7 +25,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/native_input.h>
-#include <openglad/resources/io.h>
+#include <openglad/resources/io_common.h>
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -391,8 +391,8 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	}
     
     // Buttons
-    Sint16 screenW = 320;
-    Sint16 screenH = 200;
+    int screenW = 320;
+    int screenH = 200;
     UiRect prev = {screenW - 150, 20, 30, 10};
     UiRect next = {screenW - 150, screenH - 50, 30, 10};
     UiRect descbox = {prev.x - 40, prev.y + 15, 185, next.y - 10 - (prev.y + prev.h)};

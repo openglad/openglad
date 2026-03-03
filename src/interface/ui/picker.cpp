@@ -30,7 +30,8 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/core/util.h>
-#include <openglad/resources/io.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/interface/session_state.h>
@@ -213,7 +214,7 @@ static void picker_initialize_shared_menu_state()
 
 static void picker_load_default_save_if_present()
 {
-    RwopsPtr loadgame(open_read_file("save/", "save0.gtl"));
+    auto loadgame = og::io::og_open_read("save/", "save0.gtl");
     if (loadgame)
         og::runtime::current_session->myscreen_->save_data.load("save0");
 }

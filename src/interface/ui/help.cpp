@@ -19,11 +19,11 @@
 #include <vector>
 #include <string>
 #include <format>
-#include "SDL.h"
 #include <openglad/core/util.h>
 #include <openglad/core/version.h>
-#include <openglad/resources/io.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
@@ -32,7 +32,7 @@
 #include <emscripten.h>
 #define YIELD_SLEEP(ms) emscripten_sleep(ms)
 #else
-#define YIELD_SLEEP(ms) SDL_Delay(ms)
+#define YIELD_SLEEP(ms) og::input_native::sleep_ms(ms)
 #endif
 
 inline constexpr Sint32 HELPTEXT_LEFT = 40;
@@ -43,31 +43,6 @@ constexpr Sint32 text_down(Sint32 x) { return (x * 7) + HELPTEXT_TOP; }
 short end_of_file;                        // global flag ..
 char helptext[HELP_WIDTH][MAX_LINES];
 
-
-// This function reads one text line from file infile,
-// stopping at length (length), or when encountering an
-// end-of-line character ..
-std::string read_one_line(SDL_RWops *infile, short length)
-{
-	char temp;
-	std::string newline;
-    newline.reserve(static_cast<size_t>(length));
-
-	for (short i = 0; i < length; i++)
-	{
-		short readvalue = static_cast<short>(SDL_RWread(infile, &temp, 1, 1));
-		if (readvalue != 1)
-		{
-			end_of_file = 1;
-			return newline;
-		}
-		if (temp == '\n' || temp == '\r')
-			return newline;
-		newline.push_back(temp);
-	}
-
-	return newline;
-}
 
 // Shared scrolling text viewer used by read_scenario and read_campaign_intro.
 // GetLine(int index) should return a std::string for the given line index.
@@ -92,7 +67,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 
 	while (!query_input_continue())
 	{
-		SDL_Delay(10);
+		YIELD_SLEEP(10);
 		get_input_events(POLL);
 
 		short scroll_delta = get_and_reset_scroll_amount();
@@ -186,7 +161,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 
 	while (og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
 	{
-		SDL_Delay(1);
+		YIELD_SLEEP(1);
 		get_input_events(POLL);
 	}
 
@@ -217,29 +192,6 @@ short read_campaign_intro(screen *s)
 		[&](int idx) { return data.getDescriptionLine(idx); });
 }
 
-
-// This function fills the array with the help file
-// text ..
-// It returns the # of lines successfully filled ..
-short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile)
-//short fill_help_array(char somearray[80][80], FILE *infile)
-{
-	short i;
-
-	if (!infile)
-		return 0;
-
-	for (i=0; i < MAX_LINES; i++)
-	{
-		//somearray[i] = read_one_line(infile, HELP_WIDTH);
-        std::string someline = read_one_line(infile, HELP_WIDTH);
-		snprintf(somearray[i], HELP_WIDTH, "%s", someline.c_str());
-		if (end_of_file)
-			return i;
-	}
-
-	return MAX_LINES;
-}
 
 // OgFile-based overloads (used by tests and headless builds)
 std::string read_one_line(og::io::OgFile& infile, short length)
@@ -331,7 +283,7 @@ static bool help_files_loaded = false;
 static bool load_help_file(const char* filename, std::vector<std::string>& lines)
 {
 	lines.clear();
-	SDL_RWops* infile = open_read_file(filename);
+	auto infile = og::io::og_open_read(filename);
 	if (!infile)
 	{
 		Log("Could not open help file: {}", filename);
@@ -340,12 +292,12 @@ static bool load_help_file(const char* filename, std::vector<std::string>& lines
 	}
 
 	char line_buf[HELP_WIDTH];
-	int ch;
+	char ch = '\0';
 	int pos = 0;
 
 	while (true)
 	{
-		if (SDL_RWread(infile, &ch, 1, 1) != 1)
+		if (!og::io::og_read_exact(*infile, &ch, 1, 1))
 		{
 			// End of file - save any remaining content
 			if (pos > 0)
@@ -365,20 +317,18 @@ static bool load_help_file(const char* filename, std::vector<std::string>& lines
 			// Handle \r\n line endings
 			if (ch == '\r')
 			{
-				char next;
-				if (SDL_RWread(infile, &next, 1, 1) == 1 && next != '\n')
+				char next = '\0';
+				if (og::io::og_read_exact(*infile, &next, 1, 1) && next != '\n')
 				{
-					SDL_RWseek(infile, -1, RW_SEEK_CUR);
+					(void)infile->seek(-1, 1);
 				}
 			}
 		}
 		else if (pos < HELP_WIDTH - 1)
 		{
-			line_buf[pos++] = static_cast<char>(ch);
+			line_buf[pos++] = ch;
 		}
 	}
-
-	SDL_RWclose(infile);
 	return true;
 }
 

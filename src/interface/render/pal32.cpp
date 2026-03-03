@@ -29,7 +29,6 @@
 #include <cstddef>
 #include <cstdio>
 #include <span>
-#include "SDL_types.h"
 
 // Palette globals live in GameSession — access via current_session->curpal_/temppal_.
 

@@ -285,4 +285,14 @@ void show_cursor(bool show)
 {
     SDL_ShowCursor(show ? SDL_ENABLE : SDL_DISABLE);
 }
+
+void start_text_input()
+{
+    SDL_StartTextInput();
+}
+
+void stop_text_input()
+{
+    SDL_StopTextInput();
+}
 } // namespace og::input_native

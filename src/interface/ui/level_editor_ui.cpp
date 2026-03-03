@@ -17,7 +17,7 @@
 
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
-#include "SDL.h"
+#include <openglad/interface/native_input.h>
 #include <cstring>
 #include <list>
 #include <string>
@@ -29,6 +29,14 @@ static screen* active_screen()
 {
     return og::runtime::current_session->myscreen_;
 }
+
+struct UiRect
+{
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+};
 
 #ifdef TESTING
 std::vector<std::string>& level_editor_testing_prompt_queue_ref();
@@ -56,15 +64,15 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
     
     unsigned char forecolor = DARK_BLUE;
     
-    SDL_Rect done_button = {320 - 52, 0, 50, 14};
-    SDL_Rect cancel_button = {320 - 104, 0, 50, 14};
+    UiRect done_button = {320 - 52, 0, 50, 14};
+    UiRect cancel_button = {320 - 104, 0, 50, 14};
     
     #if defined(USE_TOUCH_INPUT) || defined(USE_CONTROLLER_INPUT)
-    SDL_Rect newline_button = {320 - 75, 16, 50, 14};
-    SDL_Rect up_button = {14, 0, 14, 14};
-    SDL_Rect down_button = {14, 14, 14, 14};
-    SDL_Rect left_button = {0, 14, 14, 14};
-    SDL_Rect right_button = {28, 14, 14, 14};
+    UiRect newline_button = {320 - 75, 16, 50, 14};
+    UiRect up_button = {14, 0, 14, 14};
+    UiRect down_button = {14, 14, 14, 14};
+    UiRect left_button = {0, 14, 14, 14};
+    UiRect right_button = {28, 14, 14, 14};
     #endif
     
     std::list<std::string> original_text = result;
@@ -74,7 +82,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
 	clear_text_input_event();
 	MouseState& mymouse = query_mouse_no_poll();
 	
-    SDL_StartTextInput();
+    og::input_native::start_text_input();
     
     if(result.size() == 0)
         result.push_back("");
@@ -94,7 +102,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
 	            int c = query_key();
 	            clear_key_press_event();
             
-            if (c == SDLK_RETURN)
+            if (c == KEYCODE_RETURN)
             {
                 #if defined(USE_TOUCH_INPUT) || defined(USE_CONTROLLER_INPUT)
                 done = true;  // Some soft keyboards might disappear anyhow if you press return...
@@ -108,7 +116,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                 cursor_pos = 0;
                 #endif
             }
-            else if (c == SDLK_BACKSPACE)
+            else if (c == KEYCODE_BACKSPACE)
             {
                 // At the beginning of the line?
                 if(cursor_pos == 0)
@@ -215,7 +223,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
         {
             while(og::runtime::current_session->keystates_[KEYSTATE_ESCAPE])
             {
-                SDL_Delay(1);
+                og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
 
@@ -229,7 +237,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             
             while(og::runtime::current_session->keystates_[KEYSTATE_DELETE])
             {
-                SDL_Delay(1);
+                og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
         }
@@ -245,7 +253,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             
             while(og::runtime::current_session->keystates_[KEYSTATE_UP])
             {
-                SDL_Delay(1);
+                og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
         }
@@ -264,7 +272,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             
             while(og::runtime::current_session->keystates_[KEYSTATE_DOWN])
             {
-                SDL_Delay(1);
+                og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
         }
@@ -281,7 +289,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             
             while(og::runtime::current_session->keystates_[KEYSTATE_LEFT])
             {
-                SDL_Delay(1);
+                og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
         }
@@ -303,7 +311,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             
             while(og::runtime::current_session->keystates_[KEYSTATE_RIGHT])
             {
-                SDL_Delay(1);
+                og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
         }
@@ -358,10 +366,10 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
 	        screen_ctx->ver_line(cursor_x, cursor_y, 10, RED);
 			screen_ctx->buffer_to_screen(0, 0, 320, 200);
 	        
-	        SDL_Delay(10);
+	        og::input_native::sleep_ms(10);
 	}
 
-    SDL_StopTextInput();
+    og::input_native::stop_text_input();
     
 	clear_keyboard();
     
@@ -421,4 +429,3 @@ std::vector<std::string>& level_editor_testing_prompt_queue_ref()
     return s_prompt_queue;
 }
 #endif
-

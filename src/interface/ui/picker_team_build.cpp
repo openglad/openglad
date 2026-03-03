@@ -24,15 +24,16 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
-#include <openglad/resources/io.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/runtime/picker_ui_state.h>
 #include <openglad/interface/render/walker_draw.h>
 
-#include "SDL.h"
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -56,6 +57,14 @@
 
 
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
+struct UiRect
+{
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+};
 
 // Sync current_guy from the active session's state.
 static void sync_current_guy_from_hire()
@@ -222,7 +231,7 @@ Sint32 create_team_menu(Sint32 arg1)
         
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
 	}
 
 	// Propagate MENU_EXIT if that's why we left the loop
@@ -271,7 +280,7 @@ Sint32 create_view_menu(Sint32 arg1)
         view_team(5,5,314, 160);
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
 	}
 	og::runtime::current_session->myscreen_->clearbuffer();
 
@@ -350,9 +359,9 @@ Sint32 create_progress_menu(Sint32 arg1)
     int visible_rows = 10;
 
     // Buttons
-    SDL_Rect prev_btn = {30, 170, 40, 20};
-    SDL_Rect next_btn = {80, 170, 40, 20};
-    SDL_Rect back_btn = {260, 170, 50, 20};
+    UiRect prev_btn = {30, 170, 40, 20};
+    UiRect next_btn = {80, 170, 40, 20};
+    UiRect back_btn = {260, 170, 50, 20};
 
     button buttons[] = {
         button("prev", "PREV", KEYSTATE_UNKNOWN, prev_btn.x, prev_btn.y, prev_btn.w, prev_btn.h, 0, -1, MenuNav{.right=1}),
@@ -378,7 +387,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         const int my = static_cast<int>(mymouse.y);
         if (clicked) {
             while (mymouse.left) {
-                SDL_Delay(1);
+                og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
         }
@@ -500,7 +509,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         draw_highlight(buttons[highlighted_button]);
 
         og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
     }
 
     og::runtime::current_session->myscreen_->clearbuffer();
@@ -550,20 +559,20 @@ Sint32 create_hire_menu(Sint32 arg1)
 	Sint32 clickvalue;
 
     
-    SDL_Rect stat_box = {196, 50 - 6 - 32, 104, 82 + 32};
-    SDL_Rect stat_box_inner = {stat_box.x + 4, stat_box.y + 4 + 6, stat_box.w - 8, stat_box.h - 8 - 6};
-    SDL_Rect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
+    UiRect stat_box = {196, 50 - 6 - 32, 104, 82 + 32};
+    UiRect stat_box_inner = {stat_box.x + 4, stat_box.y + 4 + 6, stat_box.w - 8, stat_box.h - 8 - 6};
+    UiRect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
     
-    SDL_Rect cost_box = {196, 130, 104, 31};
-    SDL_Rect cost_box_inner = {cost_box.x + 4, cost_box.y + 4, cost_box.w - 8, cost_box.h - 8};
-    SDL_Rect cost_box_content = {cost_box_inner.x + 4, cost_box_inner.y + 4, cost_box_inner.w - 8, cost_box_inner.h - 8};
+    UiRect cost_box = {196, 130, 104, 31};
+    UiRect cost_box_inner = {cost_box.x + 4, cost_box.y + 4, cost_box.w - 8, cost_box.h - 8};
+    UiRect cost_box_content = {cost_box_inner.x + 4, cost_box_inner.y + 4, cost_box_inner.w - 8, cost_box_inner.h - 8};
     
-    SDL_Rect description_box = {11, 71, 180, 90};
-    SDL_Rect description_box_inner = {description_box.x + 4, description_box.y + 4, description_box.w - 8, description_box.h - 8};
-    SDL_Rect description_box_content = {description_box_inner.x + 4, description_box_inner.y + 4, description_box_inner.w - 8, description_box_inner.h - 8};
+    UiRect description_box = {11, 71, 180, 90};
+    UiRect description_box_inner = {description_box.x + 4, description_box.y + 4, description_box.w - 8, description_box.h - 8};
+    UiRect description_box_content = {description_box_inner.x + 4, description_box_inner.y + 4, description_box_inner.w - 8, description_box_inner.h - 8};
     
-    SDL_Rect name_box = {description_box.x + description_box.w/2 - (126-34)/2, description_box.y - 71 + 8, 126 - 34, 24 - 8};
-    SDL_Rect name_box_inner = {name_box.x + 2, name_box.y + 2, name_box.w - 4, name_box.h - 4};
+    UiRect name_box = {description_box.x + description_box.w/2 - (126-34)/2, description_box.y - 71 + 8, 126 - 34, 24 - 8};
+    UiRect name_box_inner = {name_box.x + 2, name_box.y + 2, name_box.w - 4, name_box.h - 4};
     
     hiremenu_buttons[0].x = description_box.x + description_box.w/2 - hiremenu_buttons[0].sizex - 4 - 30;
     hiremenu_buttons[0].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - hiremenu_buttons[0].sizey/2;
@@ -726,7 +735,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         }
 		
 		// Separator bar
-		SDL_Rect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*line_height - 2, stat_box_content.w - 20, 2};
+		UiRect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*line_height - 2, stat_box_content.w - 20, 2};
 		og::runtime::current_session->myscreen_->draw_button_inverted(
 			r.x, r.y, r.w, r.h);
 		
@@ -742,7 +751,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
         
         if(arg1 == 1)
         {
@@ -770,12 +779,12 @@ Sint32 create_train_menu(Sint32 arg1)
 	Uint32 current_cost;
 	Sint32 clickvalue;
 	
-    SDL_Rect stat_box = {38, 66, 82, 94};
-    SDL_Rect stat_box_inner = {stat_box.x + 4, stat_box.y + 4, stat_box.w - 8, stat_box.h - 8};
-    SDL_Rect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
+    UiRect stat_box = {38, 66, 82, 94};
+    UiRect stat_box_inner = {stat_box.x + 4, stat_box.y + 4, stat_box.w - 8, stat_box.h - 8};
+    UiRect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
     
-    SDL_Rect info_box_inner = {176, 34, 304-176, 112+22-34};
-    SDL_Rect info_box_content = {info_box_inner.x + 4, info_box_inner.y + 4, info_box_inner.w - 8, info_box_inner.h - 8};
+    UiRect info_box_inner = {176, 34, 304-176, 112+22-34};
+    UiRect info_box_content = {info_box_inner.x + 4, info_box_inner.y + 4, info_box_inner.w - 8, info_box_inner.h - 8};
     
 	if (arg1)
 		arg1 = 1;
@@ -954,7 +963,7 @@ Sint32 create_train_menu(Sint32 arg1)
         
         linesdown++;
 		// Separator bar
-			SDL_Rect r = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
+			UiRect r = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
 			og::runtime::current_session->myscreen_->draw_button_inverted(
 				r.x, r.y, r.w, r.h);
         
@@ -972,7 +981,7 @@ Sint32 create_train_menu(Sint32 arg1)
         
         linesdown++;
 		// Separator bar
-			SDL_Rect r2 = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
+			UiRect r2 = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
 			og::runtime::current_session->myscreen_->draw_button_inverted(
 				r2.x, r2.y, r2.w, r2.h);
         
@@ -995,7 +1004,7 @@ Sint32 create_train_menu(Sint32 arg1)
 
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
 	}
 	pks().train_session = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();
@@ -1063,7 +1072,7 @@ static Sint32 create_slot_menu(button* buttons, const char* title)
 
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
 	}
 
 	return MENU_REDRAW;
@@ -1321,13 +1330,12 @@ Sint32 do_load(Sint32 arg1)
 
 std::string get_saved_name(const char * filename)
 {
-	SDL_RWops  *infile;
 	std::string temp_filename;
 
-	char temptext[10] = "GTL";
+	char temptext[4] = {};
     std::array<char, 40> savedgame{};
 	char temp_version = 1;
-	short temp_registered;
+	short temp_registered = 0;
 
 	// This only uses the first segment of the save format.
 	// See load_team_list() for full format
@@ -1342,39 +1350,42 @@ std::string get_saved_name(const char * filename)
 
 	temp_filename = std::format("{}.gtl", filename); // gladiator team list
 
-	if ( (infile = open_read_file("save/", temp_filename.c_str())) == nullptr ) // open for read
+	auto infile = og::io::og_open_read("save/", temp_filename.c_str());
+	if (!infile) // open for read
 	{
 		return std::string("EMPTY SLOT");
 	}
 
 	// Read id header
-	SDL_RWread(infile, temptext, 3, 1);
-	if ( std::string(temptext) != "GTL")
+	if (!og::io::og_read_exact(*infile, temptext, 1, 3) || std::string(temptext, 3) != "GTL")
 	{
-	    SDL_RWclose(infile);
 		return std::string("EMPTY SLOT");
 	}
 
 	// Read version number
-	SDL_RWread(infile, &temp_version, 1, 1);
+	if (!og::io::og_read_exact(*infile, &temp_version, 1, 1))
+        return std::string("EMPTY SLOT");
+
 	if (temp_version != 1)
 	{
 		if (temp_version >= 2)
 		{
 			if (temp_version >= 7)
-				SDL_RWread(infile, &temp_registered, 2, 1);
-			SDL_RWread(infile, savedgame.data(), 40, 1);
+            {
+                if (!og::io::og_read_exact(*infile, &temp_registered, 2, 1))
+                    return std::string("SAVED GAME");
+            }
+			if (!og::io::og_read_exact(*infile, savedgame.data(), 40, 1))
+                return std::string("SAVED GAME");
 		}
 		else
 		{
-            SDL_RWclose(infile);
 			return std::string("SAVED GAME");
 		}
 	}
 	else
 		return std::string("SAVED GAME");
 
-    SDL_RWclose(infile);
     const size_t name_len = strnlen(savedgame.data(), savedgame.size());
     return std::string(savedgame.data(), name_len);
 }
@@ -1475,10 +1486,9 @@ Sint32 go_menu(Sint32 arg1)
         og::runtime::current_session->myscreen_->reset(1);
         og::runtime::current_session->myscreen_->viewob[0]->resize(PREF_VIEW_FULL);
 
-        SDL_RWops* loadgame = open_read_file("save/", "save0.gtl");
+        auto loadgame = og::io::og_open_read("save/", "save0.gtl");
         if (loadgame)
         {
-            SDL_RWclose(loadgame);
             og::runtime::current_session->myscreen_->save_data.load("save0");
         }
     }

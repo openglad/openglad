@@ -237,7 +237,7 @@ void pixie::init_sdl_surface(void)
 	accel = 1;
 }
 
-//buffers: turn SDL_Surface accel on and off
+//buffers: toggle accelerated surface mode
 void pixie::set_accel(int a)
 {
 	if(a)

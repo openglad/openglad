@@ -119,4 +119,6 @@ void joystick_init_subsystem();
 
 void sleep_ms(int ms);
 void show_cursor(bool show);
+void start_text_input();
+void stop_text_input();
 } // namespace og::input_native

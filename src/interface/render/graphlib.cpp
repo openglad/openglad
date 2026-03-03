@@ -23,7 +23,6 @@
 #include <openglad/legacy/base.h> // PixieData + PIX_* indices + read_pixie_file decls
 #include <string>
 #include <openglad/core/util.h>
-#include <openglad/resources/io.h>
 
 // Use this for globally setting the graphics dir, etc..
 //char pix_directory[80];

@@ -16,7 +16,15 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/legacy/colors.h>
-#include "SDL.h"
+
+namespace {
+struct IntRect {
+    int x = 0;
+    int y = 0;
+    int w = 1;
+    int h = 1;
+};
+} // namespace
 
 static constexpr int OBRES = 32;
 
@@ -39,7 +47,7 @@ void obmap_debug_draw(obmap& map, screen* scr)
     for (auto& [w, positions] : map.walker_to_pos)
     {
         bool unset = true;
-        SDL_Rect r = {0, 0, 1, 1};
+        IntRect r{};
         for (auto& [px, py] : positions)
         {
             if (unset)

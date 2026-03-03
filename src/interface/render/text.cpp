@@ -18,8 +18,9 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/legacy/base.h>
-#include "SDL.h"
+#include <cstdarg>
 #include <cstring>
 #include <span>
 #include <string>
@@ -411,7 +412,7 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
 	clear_key_press_event();
 	clear_text_input_event();
 	
-    SDL_StartTextInput();
+    og::input_native::start_text_input();
     
 	while ( !string_done )
 	{
@@ -429,15 +430,15 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
             tempchar = query_key();
             clear_key_press_event();
             
-            if (tempchar == SDLK_RETURN)
+            if (tempchar == KEYCODE_RETURN)
                 string_done = 1;
-            else if (tempchar == SDLK_ESCAPE)
+            else if (tempchar == KEYCODE_ESCAPE)
             {
                 snprintf(editstring, sizeof(editstring), "%s", firststring);
                 string_done = 1;
                 return_null = true;
             }
-            else if (tempchar == SDLK_BACKSPACE && current_length > 0)
+            else if (tempchar == KEYCODE_BACKSPACE && current_length > 0)
             {
                 if (!has_typed) // first char, so replace text
                 {
@@ -453,7 +454,7 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
                 has_typed = 1;
             }
             // Other keys which will deselect the whole line
-            else if(tempchar == SDLK_LEFT || tempchar == SDLK_RIGHT || tempchar == SDLK_UP || tempchar == SDLK_DOWN || tempchar == SDLK_HOME || tempchar == SDLK_END)
+            else if(tempchar == KEYCODE_LEFT || tempchar == KEYCODE_RIGHT || tempchar == KEYCODE_UP || tempchar == KEYCODE_DOWN || tempchar == KEYCODE_HOME || tempchar == KEYCODE_END)
             {
                 has_typed = 1;
             }
@@ -509,7 +510,7 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
 		og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 	}
 
-    SDL_StopTextInput();
+    og::input_native::stop_text_input();
     
 	clear_keyboard();
 	if(return_null)
@@ -579,7 +580,7 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	clear_key_press_event();
 	clear_text_input_event();
 	
-    SDL_StartTextInput();
+    og::input_native::start_text_input();
     
 	while ( !string_done )
 	{
@@ -597,15 +598,15 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
             tempchar = query_key();
             clear_key_press_event();
             
-            if (tempchar == SDLK_RETURN)
+            if (tempchar == KEYCODE_RETURN)
                 string_done = 1;
-            else if (tempchar == SDLK_ESCAPE)
+            else if (tempchar == KEYCODE_ESCAPE)
             {
                 snprintf(editstring, sizeof(editstring), "%s", firststring);
                 string_done = 1;
                 return_null = true;
             }
-            else if (tempchar == SDLK_BACKSPACE && current_length > 0)
+            else if (tempchar == KEYCODE_BACKSPACE && current_length > 0)
             {
                 if (!has_typed) // first char, so replace text
                 {
@@ -621,7 +622,7 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
                 has_typed = 1;
             }
             // Other keys which will deselect the whole line
-            else if(tempchar == SDLK_LEFT || tempchar == SDLK_RIGHT || tempchar == SDLK_UP || tempchar == SDLK_DOWN || tempchar == SDLK_HOME || tempchar == SDLK_END)
+            else if(tempchar == KEYCODE_LEFT || tempchar == KEYCODE_RIGHT || tempchar == KEYCODE_UP || tempchar == KEYCODE_DOWN || tempchar == KEYCODE_HOME || tempchar == KEYCODE_END)
             {
                 has_typed = 1;
             }
@@ -678,7 +679,7 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 		og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 	}
 
-    SDL_StopTextInput();
+    og::input_native::stop_text_input();
     
 	clear_keyboard();
 	if(return_null)

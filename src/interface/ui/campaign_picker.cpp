@@ -16,15 +16,16 @@
  */
 
 #include <openglad/interface/ui/campaign_picker.h>
-#include <openglad/resources/io.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/resources/yaml_stream.h>
 #include <openglad/interface/render/pixie.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/core/util.h>
-#include "SDL.h"
 #include <format>
 #include <cstdint>
 #include <memory>
@@ -44,7 +45,24 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
 
 namespace
 {
+struct UiRect
+{
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+};
+
 constexpr std::int32_t kReleaseWaitPollLimit = 5000;
+
+int ogfile_read_handler(void* data, unsigned char* buffer, std::size_t size, std::size_t* size_read)
+{
+    auto* file = static_cast<og::io::OgFile*>(data);
+    if (!file || !size_read)
+        return 0;
+    *size_read = file->read(buffer, 1, size);
+    return 1;
+}
 
 void wait_for_mouse_release()
 {
@@ -53,7 +71,7 @@ void wait_for_mouse_release()
     while (mymouse.left)
     {
         get_input_events(POLL);
-        SDL_Delay(1);
+        og::input_native::sleep_ms(1);
         poll_count++;
         if (poll_count >= kReleaseWaitPollLimit)
         {
@@ -68,7 +86,7 @@ void wait_for_key_release(int key, const char* context)
     std::int32_t poll_count = 0;
     while (og::runtime::current_session->keystates_[key])
     {
-        SDL_Delay(1);
+        og::input_native::sleep_ms(1);
         get_input_events(POLL);
         poll_count++;
         if (poll_count >= kReleaseWaitPollLimit)
@@ -119,7 +137,7 @@ public:
     CampaignEntry(const std::string& campaign_id, int levels_completed);
     ~CampaignEntry();
     
-    void draw(const SDL_Rect& area, int team_power);
+    void draw(const UiRect& area, int team_power);
 };
 
 CampaignEntry::CampaignEntry(const std::string& campaign_id, int levels_completed)
@@ -131,46 +149,47 @@ CampaignEntry::CampaignEntry(const std::string& campaign_id, int levels_complete
     // Load the campaign data from <user_data>/scen/<id>.glad
     if(mount_campaign_package_with_error(campaign_id) == CampaignPackageIoError::None)
     {
-        SDL_RWops* rwops = open_read_file("campaign.yaml");
-        
-        og::io::YamlParser yaml;
-        yaml.set_input(rwops_read_handler, rwops);
-        
-        while(yaml.parse_next() == og::io::YamlParseResult::Ok)
+        auto infile = og::io::og_open_read("campaign.yaml");
+        if (infile)
         {
-            const og::io::YamlEvent& ev = yaml.event();
-            switch(ev.type)
+            og::io::YamlParser yaml;
+            yaml.set_input(ogfile_read_handler, infile.get());
+
+            while(yaml.parse_next() == og::io::YamlParseResult::Ok)
             {
-                case og::io::YamlEventType::Pair:
-                    if(ev.scalar == "title")
-                        title = ev.value;
-                    else if(ev.scalar == "version")
-                    {
-                        version = ev.value;
-                        saw_version = true;
-                    }
-                    else if(ev.scalar == "authors")
-                        authors = ev.value;
-                    else if(ev.scalar == "contributors")
-                        contributors = ev.value;
-                    else if(ev.scalar == "description")
-                        description = ev.value;
-                    else if(ev.scalar == "suggested_power")
-                        suggested_power = toInt(ev.value);
-                    else if(ev.scalar == "first_level")
-                    {
-                        first_level = toInt(ev.value);
-                        saw_first_level = true;
-                    }
-                break;
-                default:
+                const og::io::YamlEvent& ev = yaml.event();
+                switch(ev.type)
+                {
+                    case og::io::YamlEventType::Pair:
+                        if(ev.scalar == "title")
+                            title = ev.value;
+                        else if(ev.scalar == "version")
+                        {
+                            version = ev.value;
+                            saw_version = true;
+                        }
+                        else if(ev.scalar == "authors")
+                            authors = ev.value;
+                        else if(ev.scalar == "contributors")
+                            contributors = ev.value;
+                        else if(ev.scalar == "description")
+                            description = ev.value;
+                        else if(ev.scalar == "suggested_power")
+                            suggested_power = toInt(ev.value);
+                        else if(ev.scalar == "first_level")
+                        {
+                            first_level = toInt(ev.value);
+                            saw_first_level = true;
+                        }
                     break;
+                    default:
+                        break;
+                }
             }
+
+            yaml.close_input();
         }
-        
-        yaml.close_input();
-        SDL_RWclose(rwops);
-        
+
         // TODO: Get rating from website
         rating = 0.0f;
         
@@ -197,7 +216,7 @@ CampaignEntry::~CampaignEntry()
     icondata.free();
 }
 
-void CampaignEntry::draw(const SDL_Rect& area, int team_power)
+void CampaignEntry::draw(const UiRect& area, int team_power)
 {
     int x = area.x;
     int y = area.y;
@@ -272,7 +291,7 @@ void CampaignEntry::draw(const SDL_Rect& area, int team_power)
     }
     
     // Draw description box
-    SDL_Rect descbox = {160 - 225/2, Sint16(area.y + area.h + 35), 225, 60};
+    UiRect descbox = {160 - 225/2, area.y + area.h + 35, 225, 60};
     og::runtime::current_session->myscreen_->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
     
     // Print description
@@ -353,23 +372,23 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     }
     
     // Campaign icon positioning
-    SDL_Rect area;
+    UiRect area;
     area.x = 160 - 16;
     area.y = 15 + 20;
     area.w = 32;
     area.h = 32;
 
     // Buttons
-    Sint16 screenW = 320;
-    Sint16 screenH = 200;
-    SDL_Rect prev = {Sint16(area.x - 30 - 20), Sint16(area.y), 30, 10};
-    SDL_Rect next = {Sint16(area.x + area.w + 20), Sint16(area.y), 30, 10};
+    int screenW = 320;
+    int screenH = 200;
+    UiRect prev = {area.x - 30 - 20, area.y, 30, 10};
+    UiRect next = {area.x + area.w + 20, area.y, 30, 10};
 
-    SDL_Rect choose = {Sint16(screenW/2 + 20), Sint16(screenH - 15), 30, 10};
-    SDL_Rect cancel = {Sint16(screenW/2 - 38 - 20), Sint16(screenH - 15), 38, 10};
-    SDL_Rect delete_button = {Sint16(screenW - 50), 10, 38, 10};
-    SDL_Rect id_button = {Sint16(delete_button.x - 52 - 10), 10, 52, 10};
-    SDL_Rect reset_button = delete_button;
+    UiRect choose = {screenW/2 + 20, screenH - 15, 30, 10};
+    UiRect cancel = {screenW/2 - 38 - 20, screenH - 15, 38, 10};
+    UiRect delete_button = {screenW - 50, 10, 38, 10};
+    UiRect id_button = {delete_button.x - 52 - 10, 10, 52, 10};
+    UiRect reset_button = delete_button;
     
     
     // Controller input
@@ -600,7 +619,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
     }
 
     wait_for_key_release(KEYSTATE_q, "quit");

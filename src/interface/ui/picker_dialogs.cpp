@@ -17,12 +17,11 @@
 
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/core/util.h>
-#include <openglad/resources/io.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/interface/screen.h>
-
-#include "SDL.h"
 
 #include <cstring>
 #include <list>
@@ -100,15 +99,15 @@ void timed_dialog(const char* message, float delay_seconds)
 
     clear_key_press_event();
 
-    Uint32 start_time = SDL_GetTicks();
-    while (static_cast<float>(SDL_GetTicks() - start_time)/1000.0f < delay_seconds)
+    Uint32 start_time = og::input_native::ticks_ms();
+    while (static_cast<float>(og::input_native::ticks_ms() - start_time)/1000.0f < delay_seconds)
     {
         get_input_events(POLL);
 
         if(query_mouse().left || query_key_press_event())
             break;
 
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
     }
 }
 
@@ -209,7 +208,7 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
         draw_buttons(buttons, num_buttons);
         draw_highlight_interior(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
     }
 
     if(retvalue == YES_VALUE)
@@ -289,6 +288,6 @@ void popup_dialog(const char* title, const char* message)
         draw_buttons(buttons, num_buttons);
         draw_highlight_interior(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
     }
 }
