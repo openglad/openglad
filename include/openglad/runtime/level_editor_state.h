@@ -3,17 +3,17 @@
 // LevelEditorState: per-session mutable state for the level editor (Phase 7b).
 // Kept in a separate header to avoid pulling editor types into game_session.h.
 
-#include "SDL.h"
+#include <cstdint>
 
 struct LevelEditorState {
     unsigned char scenpalette[768]{};
-    Sint32 redraw{1};
-    Sint32 campaignchanged{0};
-    Sint32 levelchanged{0};
-    Sint32 cyclemode{1};
-    Sint32 start_time_s{0};
-    Sint32 rowsdown{0};
-    Sint32 maxrows{0};
+    std::int32_t redraw{1};
+    std::int32_t campaignchanged{0};
+    std::int32_t levelchanged{0};
+    std::int32_t cyclemode{1};
+    std::int32_t start_time_s{0};
+    std::int32_t rowsdown{0};
+    std::int32_t maxrows{0};
 
     // Mouse state
     int mouse_up_button{0};

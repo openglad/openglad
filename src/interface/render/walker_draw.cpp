@@ -19,7 +19,6 @@
 #include <openglad/runtime/level_runtime_data.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/smooth.h>
-#include "SDL.h"
 #include <span>
 #include <cmath>
 
@@ -75,11 +74,11 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
     const Sint32 portendx = view_buf->endx;
     const Sint32 portendy = view_buf->endy;
 
-    SDL_Rect r{static_cast<int>(walkerstartx),
-               static_cast<int>(walkerstarty + w->sizey + 1),
-               static_cast<int>(w->sizex),
-               1};
-    if(r.x < portstartx || r.x > portendx || r.y < portstarty || r.y > portendy)
+    const Sint32 bar_x = walkerstartx;
+    const Sint32 bar_y = walkerstarty + w->sizey + 1;
+    const Sint32 bar_w = w->sizex;
+    const Sint32 bar_h = 1;
+    if(bar_x < portstartx || bar_x > portendx || bar_y < portstarty || bar_y > portendy)
         return;
 
     // Last hit's effect
@@ -107,18 +106,18 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
     {
         if(ratio < 0.95f)
         {
-            const Sint32 max_w = r.w;
-            const float width_f = static_cast<float>(r.w);
+            const Sint32 max_w = bar_w;
+            const float width_f = static_cast<float>(bar_w);
 
             if(w->last_hitpoints > w->stats()->hitpoints && last_ratio <= 1.0f)
             {
                 const Sint32 last_w = static_cast<Sint32>(width_f * last_ratio);
-                og::runtime::current_session->myscreen_->draw_box(r.x, r.y, r.x + last_w, r.y + r.h, static_cast<unsigned char>(53), 1);
+                og::runtime::current_session->myscreen_->draw_box(bar_x, bar_y, bar_x + last_w, bar_y + bar_h, static_cast<unsigned char>(53), 1);
             }
 
             const Sint32 cur_w = static_cast<Sint32>(width_f * ratio);
-            og::runtime::current_session->myscreen_->draw_box(r.x, r.y, r.x + cur_w, r.y + r.h, whatcolor, 1);
-            og::runtime::current_session->myscreen_->draw_box(r.x-1, r.y-1, r.x + max_w+1, r.y + r.h+1, BLACK, 0);
+            og::runtime::current_session->myscreen_->draw_box(bar_x, bar_y, bar_x + cur_w, bar_y + bar_h, whatcolor, 1);
+            og::runtime::current_session->myscreen_->draw_box(bar_x - 1, bar_y - 1, bar_x + max_w + 1, bar_y + bar_h + 1, BLACK, 0);
         }
     }
 }

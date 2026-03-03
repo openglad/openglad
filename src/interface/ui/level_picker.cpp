@@ -24,8 +24,8 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/resources/io.h>
-#include "SDL.h"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -60,6 +60,14 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
 
 namespace
 {
+struct UiRect
+{
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+};
+
 constexpr std::int32_t kReleaseWaitPollLimit = 5000;
 
 void wait_for_mouse_release()
@@ -69,7 +77,7 @@ void wait_for_mouse_release()
     while (mymouse.left)
     {
         get_input_events(POLL);
-        SDL_Delay(1);
+        og::input_native::sleep_ms(1);
         poll_count++;
         if (poll_count >= kReleaseWaitPollLimit)
         {
@@ -84,7 +92,7 @@ void wait_for_key_release(int key, const char* context)
     std::int32_t poll_count = 0;
     while (og::runtime::current_session->keystates_[key])
     {
-        SDL_Delay(1);
+        og::input_native::sleep_ms(1);
         get_input_events(POLL);
         poll_count++;
         if (poll_count >= kReleaseWaitPollLimit)
@@ -221,7 +229,7 @@ class BrowserEntry
     public:
     
     LevelRuntimeData level_data;
-    SDL_Rect mapAreas;
+    UiRect mapAreas;
     radar myradar;
     std::string level_name;
     int max_enemy_level;
@@ -385,14 +393,14 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     // Buttons
     Sint16 screenW = 320;
     Sint16 screenH = 200;
-    SDL_Rect prev = {Sint16(screenW - 150), 20, 30, 10};
-    SDL_Rect next = {Sint16(screenW - 150), Sint16(screenH - 50), 30, 10};
-    SDL_Rect descbox = {Sint16(prev.x - 40), Sint16(prev.y + 15), 185, Uint16(next.y - 10 - (prev.y + prev.h))};
+    UiRect prev = {screenW - 150, 20, 30, 10};
+    UiRect next = {screenW - 150, screenH - 50, 30, 10};
+    UiRect descbox = {prev.x - 40, prev.y + 15, 185, next.y - 10 - (prev.y + prev.h)};
     
-    SDL_Rect choose = {Sint16(screenW - 50), Sint16(screenH - 30), 30, 10};
-    SDL_Rect cancel = {Sint16(screenW - 100), Sint16(screenH - 30), 38, 10};
-    SDL_Rect delete_button = {Sint16(screenW - 50), 10, 38, 10};
-    SDL_Rect id_button = {Sint16(delete_button.x - 52 - 10), 10, 52, 10};
+    UiRect choose = {screenW - 50, screenH - 30, 30, 10};
+    UiRect cancel = {screenW - 100, screenH - 30, 38, 10};
+    UiRect delete_button = {screenW - 50, 10, 38, 10};
+    UiRect id_button = {delete_button.x - 52 - 10, 10, 52, 10};
     
     // Controller input
     int retvalue = 0;
@@ -592,7 +600,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                     int y = entries[i]->myradar.yloc;
                     int w = entries[i]->myradar.xview;
                     int h = entries[i]->myradar.yview;
-                    SDL_Rect b = {Sint16(x - 2), Sint16(y - 2), Uint16(w + 2), Uint16(h + 2)};
+                    UiRect b = {x - 2, y - 2, w + 2, h + 2};
                     if((do_click && b.x <= mx && mx <= b.x+b.w
                        && b.y <= my && my <= b.y+b.h) || (retvalue == OK && highlighted_button - entry1_index == i))
                        {
@@ -676,7 +684,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         
         draw_highlight(buttons[highlighted_button]);
 		og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-		SDL_Delay(10);
+		og::input_native::sleep_ms(10);
 	}
 	
     wait_for_key_release(KEYSTATE_q, "quit");

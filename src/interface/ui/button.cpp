@@ -16,6 +16,7 @@
  */
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/render/text.h>
@@ -25,8 +26,8 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
 #include <openglad/runtime/picker_ui_state.h>
-#include "SDL.h"
 #include <array>
+#include <mutex>
 #include <utility>
 
 // Per-session picker state accessor.
@@ -299,7 +300,7 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
             }
             while (og::runtime::current_session->keystates_[hotkey])
             {
-                SDL_Delay(1);
+                og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
             return retvalue;
@@ -370,17 +371,16 @@ Sint32 vbutton::rightclick(Sint32 whichbutton)
 }
 
 #ifdef TESTING
-extern SDL_mutex* get_allbuttons_mutex();
+extern std::mutex& get_allbuttons_mutex();
 namespace
 {
-struct SdlMutexLock final
+struct AllButtonsLock final
 {
-    explicit SdlMutexLock(SDL_mutex* m) : m_(m) { SDL_LockMutex(m_); }
-    ~SdlMutexLock() { SDL_UnlockMutex(m_); }
-    SdlMutexLock(const SdlMutexLock&) = delete;
-    SdlMutexLock& operator=(const SdlMutexLock&) = delete;
+    explicit AllButtonsLock(std::mutex& mutex) : lock_(mutex) {}
+    AllButtonsLock(const AllButtonsLock&) = delete;
+    AllButtonsLock& operator=(const AllButtonsLock&) = delete;
 private:
-    SDL_mutex* m_;
+    std::lock_guard<std::mutex> lock_;
 };
 } // namespace
 #endif
@@ -390,7 +390,7 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
     TRACE("menu", "init_buttons count=%d", numbuttons);
 
 #ifdef TESTING
-    SdlMutexLock lock(get_allbuttons_mutex());
+    AllButtonsLock lock(get_allbuttons_mutex());
 #endif
 
     clear_allbuttons();

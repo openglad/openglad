@@ -185,6 +185,22 @@ void push_touch_event(EventType type, float x, float y, float dx, float dy, std:
     SDL_PushEvent(&event);
 }
 
+void push_mouse_button_event(bool down, int button, int x, int y)
+{
+    SDL_Event event;
+    std::memset(&event, 0, sizeof(event));
+    event.type = down ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+    event.button.button = static_cast<Uint8>(button);
+    event.button.x = x;
+    event.button.y = y;
+    SDL_PushEvent(&event);
+}
+
+std::uint32_t ticks_ms()
+{
+    return SDL_GetTicks();
+}
+
 const std::uint8_t* keyboard_state()
 {
     return SDL_GetKeyboardState(nullptr);

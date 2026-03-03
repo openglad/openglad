@@ -5,21 +5,21 @@
 #include <openglad/interface/input.h>
 #include <openglad/platform/game_session.h>
 #include "test_input_helpers.h"
+#include <mutex>
 #include <string>
 #include <vector>
 
 // Mutex to synchronize access to allbuttons[] between injector threads
 // and the main thread during menu transitions. Defined in test_framework.cpp.
-SDL_mutex* get_allbuttons_mutex();
+std::mutex& get_allbuttons_mutex();
 
 struct AllButtonsLock final
 {
-    AllButtonsLock() : m_(get_allbuttons_mutex()) { SDL_LockMutex(m_); }
-    ~AllButtonsLock() { SDL_UnlockMutex(m_); }
+    AllButtonsLock() : lock_(get_allbuttons_mutex()) {}
     AllButtonsLock(const AllButtonsLock&) = delete;
     AllButtonsLock& operator=(const AllButtonsLock&) = delete;
 private:
-    SDL_mutex* m_;
+    std::lock_guard<std::mutex> lock_;
 };
 
 struct Interactable {

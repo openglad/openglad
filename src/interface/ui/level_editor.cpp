@@ -26,6 +26,7 @@
 #include <openglad/gameplay/smooth.h>
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/io.h>
 #include <openglad/interface/render/text.h>
@@ -38,8 +39,8 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/runtime/level_editor_state.h>
 #include <openglad/interface/session_state.h>
-#include "SDL.h"
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <format>
 #include <memory>
@@ -264,7 +265,7 @@ bool prompt_for_string(const std::string& message, std::string& result);
 class SimpleButton
 {
 public:
-    SDL_Rect area;
+    Rect area;
     std::string label;
     bool remove_border;
     bool draw_top_separator;
@@ -582,7 +583,7 @@ public:
 
 bool are_objects_outside_area(LevelRuntimeData* level, int x, int y, int w, int h);
 enum class EventType;
-EventType handle_basic_editor_event(const SDL_Event& event);
+EventType handle_basic_editor_event(const void* native_event);
 
 #define DEFAULT_EDITOR_MENU_BUTTON_HEIGHT 20
 
@@ -1097,7 +1098,7 @@ bool activate_sub_menu_button(int mx, int my, std::list<std::pair<SimpleButton*,
     MouseState& mymouse = query_mouse_no_poll();
     while (mymouse.left)
     {
-        SDL_Delay(1);
+        og::input_native::sleep_ms(1);
         get_input_events(POLL);
     }
 
@@ -1134,7 +1135,7 @@ bool activate_menu_choice(int mx, int my, LevelEditorData& data, SimpleButton& b
     MouseState& mymouse = query_mouse_no_poll();
     while (mymouse.left)
     {
-        SDL_Delay(1);
+        og::input_native::sleep_ms(1);
         get_input_events(POLL);
     }
 
@@ -1154,7 +1155,7 @@ bool activate_menu_toggle_choice(int mx, int my, LevelEditorData& data, SimpleBu
     MouseState& mymouse = query_mouse_no_poll();
     while (mymouse.left)
     {
-        SDL_Delay(1);
+        og::input_native::sleep_ms(1);
         get_input_events(POLL);
     }
 
@@ -2316,7 +2317,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 
                 #ifdef ANDROID
                 // The soft keyboard on Android might take a little while to be ready again, so opening it right away doesn't always work.
-                SDL_Delay(1000);
+                og::input_native::sleep_ms(1000);
                 #endif
                 if(prompt_for_string( "Map Height", height))
                 {
@@ -2644,7 +2645,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             MouseState& mymouse = query_mouse_no_poll();
                             while ( mymouse.left && (query_timer()-eds().start_time_s) < 36 )
                             {
-                                SDL_Delay(1);
+                                og::input_native::sleep_ms(1);
                                 mymouse = query_mouse();
                             }
                             eds().levelchanged = 1;
@@ -2905,30 +2906,34 @@ std::string get_editor_level_label(Order order, Sint32 family, Sint32 level)
 
 enum class EventType { Handled, Text, Scroll, MouseMotion, MouseDown, MouseUp, KeyDown };
 
-EventType handle_basic_editor_event(const SDL_Event& event)
+EventType handle_basic_editor_event(const void* native_event)
 {
+    og::input_native::EventData event{};
+    if (!og::input_native::decode_event(native_event, event))
+        return EventType::Handled;
+
     switch (event.type)
     {
-    case SDL_WINDOWEVENT:   
-        handle_window_event(event);
+    case og::input_native::EventType::Window:
+        handle_window_event(native_event);
         return EventType::Handled;
-    case SDL_TEXTINPUT:
-        handle_text_event(event);
+    case og::input_native::EventType::TextInput:
+        handle_text_event(native_event);
         return EventType::Text;
-    case SDL_MOUSEWHEEL:
-        handle_mouse_event(event);
+    case og::input_native::EventType::MouseWheel:
+        handle_mouse_event(native_event);
         return EventType::Scroll;
-    case SDL_FINGERMOTION:
-        handle_mouse_event(event);
-        eds().mouse_motion_x = static_cast<int>(event.tfinger.dx * 320.0f);
-        eds().mouse_motion_y = static_cast<int>(event.tfinger.dy * 200.0f);
+    case og::input_native::EventType::FingerMotion:
+        handle_mouse_event(native_event);
+        eds().mouse_motion_x = static_cast<int>(event.finger_dx * 320.0f);
+        eds().mouse_motion_y = static_cast<int>(event.finger_dy * 200.0f);
         return EventType::MouseMotion;
-    case SDL_FINGERUP:
+    case og::input_native::EventType::FingerUp:
         {
             MouseState& mymouse = query_mouse_no_poll();
             int left_state = mymouse.left;
             int right_state = mymouse.right;
-            handle_mouse_event(event);
+            handle_mouse_event(native_event);
             if(left_state != mymouse.left)
                 eds().mouse_up_button = MOUSE_LEFT;
             else if(right_state != mymouse.right)
@@ -2937,26 +2942,26 @@ EventType handle_basic_editor_event(const SDL_Event& event)
                 eds().mouse_up_button = 0;
         }
         return EventType::MouseUp;
-    case SDL_FINGERDOWN:
-        handle_mouse_event(event);
+    case og::input_native::EventType::FingerDown:
+        handle_mouse_event(native_event);
         return EventType::MouseDown;
-    case SDL_KEYDOWN:
-        handle_key_event(event);
+    case og::input_native::EventType::KeyDown:
+        handle_key_event(native_event);
         return EventType::KeyDown;
-    case SDL_KEYUP:
-        handle_key_event(event);
+    case og::input_native::EventType::KeyUp:
+        handle_key_event(native_event);
         return EventType::Handled;
-    case SDL_MOUSEMOTION:
-        handle_mouse_event(event);
-        eds().mouse_motion_x = static_cast<int>(static_cast<float>(event.motion.xrel) * (320.0f / og::runtime::current_session->viewport_w_));
-        eds().mouse_motion_y = static_cast<int>(static_cast<float>(event.motion.yrel) * (200.0f / og::runtime::current_session->viewport_h_));
+    case og::input_native::EventType::MouseMotion:
+        handle_mouse_event(native_event);
+        eds().mouse_motion_x = static_cast<int>(static_cast<float>(event.motion_dx) * (320.0f / og::runtime::current_session->viewport_w_));
+        eds().mouse_motion_y = static_cast<int>(static_cast<float>(event.motion_dy) * (200.0f / og::runtime::current_session->viewport_h_));
         return EventType::MouseMotion;
-    case SDL_MOUSEBUTTONUP:
+    case og::input_native::EventType::MouseButtonUp:
         {
             MouseState& mymouse = query_mouse_no_poll();
             int left_state = mymouse.left;
             int right_state = mymouse.right;
-            handle_mouse_event(event);
+            handle_mouse_event(native_event);
             if(left_state != mymouse.left)
                 eds().mouse_up_button = MOUSE_LEFT;
             else if(right_state != mymouse.right)
@@ -2965,19 +2970,19 @@ EventType handle_basic_editor_event(const SDL_Event& event)
                 eds().mouse_up_button = 0;
         }
         return EventType::MouseUp;
-    case SDL_MOUSEBUTTONDOWN:
-        handle_mouse_event(event);
+    case og::input_native::EventType::MouseButtonDown:
+        handle_mouse_event(native_event);
         return EventType::MouseDown;
-    case SDL_JOYAXISMOTION:
-        handle_joy_event(event);
+    case og::input_native::EventType::JoyAxisMotion:
+        handle_joy_event(native_event);
         return EventType::Handled;
-    case SDL_JOYBUTTONDOWN:
-        handle_joy_event(event);
+    case og::input_native::EventType::JoyButtonDown:
+        handle_joy_event(native_event);
         return EventType::Handled;
-    case SDL_JOYBUTTONUP:
-        handle_joy_event(event);
+    case og::input_native::EventType::JoyButtonUp:
+        handle_joy_event(native_event);
         return EventType::Handled;
-    case SDL_QUIT:
+    case og::input_native::EventType::Quit:
         quit(0);
         return EventType::Handled;
     default:
@@ -3076,14 +3081,13 @@ Sint32 level_editor()
     
     float cycletimer = 0.0f;
 	grab_mouse();
-	Uint32 last_ticks = SDL_GetTicks();
-	Uint32 start_ticks = last_ticks;
+	std::uint32_t last_ticks = og::input_native::ticks_ms();
+	std::uint32_t start_ticks = last_ticks;
 
 	//
 	// This is the main program loop
 	//
 	bool done = false;
-	SDL_Event event;
 	while(!done)
 	{
 		// Reset the timer count to zero ...
@@ -3095,35 +3099,34 @@ Sint32 level_editor()
 			break;
 		}
 		
-        while(SDL_PollEvent(&event))
+        const void* native_event = nullptr;
+        while((native_event = og::input_native::poll_event()) != nullptr)
         {
+            og::input_native::EventData event_data{};
+            if (!og::input_native::decode_event(native_event, event_data))
+                continue;
+
             #ifdef USE_CONTROLLER_INPUT
-            if(didPlayerPressKey(0, KEY_FIRE, event))
+            if(didPlayerPressKey(0, KEY_FIRE, native_event))
             {
-                // Send fake mouse down event
-                SDL_Event event;
-                
-                event.type = SDL_MOUSEBUTTONDOWN;
-                event.button.button = SDL_BUTTON_LEFT;
-                event.button.x = mymouse.x * (og::runtime::current_session->viewport_w_ / 320) + og::runtime::current_session->viewport_offset_x_;
-                event.button.y = mymouse.y * (og::runtime::current_session->viewport_h_ / 200) + og::runtime::current_session->viewport_offset_y_;
-                SDL_PushEvent(&event);
+                const int event_x = static_cast<int>(static_cast<float>(mymouse.x) * (og::runtime::current_session->viewport_w_ / 320.0f)
+                                                     + og::runtime::current_session->viewport_offset_x_);
+                const int event_y = static_cast<int>(static_cast<float>(mymouse.y) * (og::runtime::current_session->viewport_h_ / 200.0f)
+                                                     + og::runtime::current_session->viewport_offset_y_);
+                og::input_native::push_mouse_button_event(true, og::input_native::kMouseButtonLeft, event_x, event_y);
                 continue;
             }
-            if(didPlayerReleaseKey(0, KEY_FIRE, event))
+            if(didPlayerReleaseKey(0, KEY_FIRE, native_event))
             {
-                // Send fake mouse up event
-                SDL_Event event;
-                
-                event.type = SDL_MOUSEBUTTONUP;
-                event.button.button = SDL_BUTTON_LEFT;
-                event.button.x = mymouse.x * (og::runtime::current_session->viewport_w_ / 320) + og::runtime::current_session->viewport_offset_x_;
-                event.button.y = mymouse.y * (og::runtime::current_session->viewport_h_ / 200) + og::runtime::current_session->viewport_offset_y_;
-                SDL_PushEvent(&event);
+                const int event_x = static_cast<int>(static_cast<float>(mymouse.x) * (og::runtime::current_session->viewport_w_ / 320.0f)
+                                                     + og::runtime::current_session->viewport_offset_x_);
+                const int event_y = static_cast<int>(static_cast<float>(mymouse.y) * (og::runtime::current_session->viewport_h_ / 200.0f)
+                                                     + og::runtime::current_session->viewport_offset_y_);
+                og::input_native::push_mouse_button_event(false, og::input_native::kMouseButtonLeft, event_x, event_y);
                 continue;
             }
             #endif
-            switch(handle_basic_editor_event(event))
+            switch(handle_basic_editor_event(native_event))
             {
             case EventType::MouseMotion:
                 data.mouse_motion(static_cast<int>(mymouse.x), static_cast<int>(mymouse.y), eds().mouse_motion_x, eds().mouse_motion_y);
@@ -3153,7 +3156,7 @@ Sint32 level_editor()
                 break;
             case EventType::KeyDown:
                 eds().redraw = 1;
-                if(event.key.keysym.sym == SDLK_ESCAPE)
+                if(event_data.key_sym == KEYCODE_ESCAPE)
                 {
                     if((!eds().levelchanged && !eds().campaignchanged)
                         || yes_or_no_prompt("Exit", "Quit without saving?", false))
@@ -3164,30 +3167,30 @@ Sint32 level_editor()
                 }
                 
                 // Change teams ..
-                else if(event.key.keysym.sym == SDLK_0)
+                else if(event_data.key_sym == KEYCODE_0)
                     object_brush.team = 0;
-                else if(event.key.keysym.sym == SDLK_1)
+                else if(event_data.key_sym == KEYCODE_1)
                     object_brush.team = 1;
-                else if(event.key.keysym.sym == SDLK_2)
+                else if(event_data.key_sym == KEYCODE_2)
                     object_brush.team = 2;
-                else if(event.key.keysym.sym == SDLK_3)
+                else if(event_data.key_sym == KEYCODE_3)
                     object_brush.team = 3;
-                else if(event.key.keysym.sym == SDLK_4)
+                else if(event_data.key_sym == KEYCODE_4)
                     object_brush.team = 4;
-                else if(event.key.keysym.sym == SDLK_5)
+                else if(event_data.key_sym == KEYCODE_5)
                     object_brush.team = 5;
-                else if(event.key.keysym.sym == SDLK_6)
+                else if(event_data.key_sym == KEYCODE_6)
                     object_brush.team = 6;
-                else if(event.key.keysym.sym == SDLK_7)
+                else if(event_data.key_sym == KEYCODE_7)
                     object_brush.team = 7;
                 // Toggle grid alignment
-                else if(event.key.keysym.sym == SDLK_g)
+                else if(event_data.key_sym == KEYCODE_g)
                 {
                     if(mode == Mode::Object || mode == Mode::Select)
                         data.activate_mode_button(&data.gridSnapButton);
                 }
                 // Save scenario
-                else if(event.key.keysym.sym == SDLK_s && (event.key.keysym.mod & KMOD_CTRL))
+                else if(event_data.key_sym == KEYCODE_s && (event_data.key_mod & KEYMOD_CTRL))
                 {
                     bool saved = false;
                     if(eds().levelchanged)
@@ -3218,22 +3221,22 @@ Sint32 level_editor()
                 }  // end of saving routines
 
                 // Change level of current guy being placed ..
-                else if(event.key.keysym.sym == SDLK_RIGHTBRACKET)
+                else if(event_data.key_sym == KEYCODE_RIGHTBRACKET)
                 {
                     if(mode == Mode::Object)
                         object_brush.level++;
                 }
-                else if(event.key.keysym.sym == SDLK_LEFTBRACKET)
+                else if(event_data.key_sym == KEYCODE_LEFTBRACKET)
                 {
                     if(mode == Mode::Object && object_brush.level > 1)
                         object_brush.level--;
                 }
-                else if(event.key.keysym.sym == SDLK_DELETE)
+                else if(event_data.key_sym == KEYCODE_DELETE)
                 {
                     if(mode == Mode::Select)
                         data.activate_mode_button(&data.deleteButton);
                 }
-                else if(event.key.keysym.sym == SDLK_o)
+                else if(event_data.key_sym == KEYCODE_o)
                 {
                     if(mode == Mode::Object)
                     {
@@ -3247,7 +3250,7 @@ Sint32 level_editor()
                     }
                     data.reset_mode_buttons();
                 }
-                else if(event.key.keysym.sym == SDLK_t)
+                else if(event_data.key_sym == KEYCODE_t)
                 {
                     if(mode == Mode::Terrain)
                     {
@@ -3262,13 +3265,13 @@ Sint32 level_editor()
                     data.reset_mode_buttons();
                 }
                 // Smooth current map, F5
-                else if(event.key.keysym.sym == SDLK_F5)
+                else if(event_data.key_sym == KEYCODE_F5)
                 {
                     data.resmooth_terrain();
                     eds().levelchanged = 1;
                 }
                 // Change to new palette ..
-                else if(event.key.keysym.sym == SDLK_F9)
+                else if(event_data.key_sym == KEYCODE_F9)
                 {
                     load_and_set_palette("our.pal", eds().scenpalette);
                 }
@@ -3295,7 +3298,7 @@ Sint32 level_editor()
             
 			while (og::runtime::current_session->keystates_[KEYSTATE_DOWN])
 			{
-				SDL_Delay(1);
+				og::input_native::sleep_ms(1);
 				get_input_events(POLL);
 			}
 		}
@@ -3313,7 +3316,7 @@ Sint32 level_editor()
             
 			while (og::runtime::current_session->keystates_[KEYSTATE_UP])
 			{
-				SDL_Delay(1);
+				og::input_native::sleep_ms(1);
 				get_input_events(POLL);
 			}
 		}
@@ -3504,10 +3507,10 @@ Sint32 level_editor()
             og::runtime::current_session->myscreen_->refresh();
 		}
         
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
         
 	    last_ticks = start_ticks;
-	    start_ticks = SDL_GetTicks();
+	    start_ticks = og::input_native::ticks_ms();
 
 	}
 	

@@ -4,8 +4,8 @@
 // Kept in a separate header to avoid pulling picker/pixie types into game_session.h.
 
 #include <array>
+#include <cstdint>
 #include <memory>
-#include "SDL.h"
 #include <openglad/resources/pixie_data.h>
 
 class pixieN;
@@ -30,7 +30,7 @@ struct PickerState {
 
     // Menu navigation
     bool menu_nav_enabled = false;
-    Uint32 menu_nav_enabled_time = 0;
+    std::uint32_t menu_nav_enabled_time = 0;
 
     // Intercept state (for test menu interception)
     int intercept_scope = 0;  // 0=None, 1=MainMenu, 2=TeamBuild

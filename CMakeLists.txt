@@ -591,11 +591,9 @@ function(configure_openglad_library target)
         $<INSTALL_INTERFACE:include>
     )
     if(NOT EMSCRIPTEN)
-        # Many legacy public headers still include SDL types; keep SDL includes
-        # visible to downstream targets until those headers are disentangled.
-        # Use the IMPORTED_TARGET from pkg_check_modules for reliable cross-platform
-        # include/flag propagation (especially macOS Homebrew framework paths).
-        target_link_libraries(${target} PUBLIC PkgConfig::SDL2)
+        # Use the imported SDL target for compile/link flags needed by sources
+        # that depend on platform SDL APIs.
+        target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
     endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)

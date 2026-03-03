@@ -15,10 +15,11 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
-#include "SDL.h"
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <format>
 #include <memory>
@@ -42,6 +43,17 @@ inline constexpr Sint32 OG_OK = 4;
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
+
+namespace
+{
+struct UiRect
+{
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+};
+}
 
 
 void show_ending_popup(int ending, int nextlevel)
@@ -233,12 +245,12 @@ float TroopResult::get_XP_gain() const
     
     if(lost_level())
     {
-        const Sint64 delta = static_cast<Sint64>(after->myguy->exp) - static_cast<Sint64>(before->exp);
+        const std::int64_t delta = static_cast<std::int64_t>(after->myguy->exp) - static_cast<std::int64_t>(before->exp);
         return static_cast<float>(delta) / static_cast<float>(calculate_exp(before->level));
     }
     
     {
-        const Sint64 delta = static_cast<Sint64>(after->myguy->exp) - static_cast<Sint64>(before->exp);
+        const std::int64_t delta = static_cast<std::int64_t>(after->myguy->exp) - static_cast<std::int64_t>(before->exp);
         return static_cast<float>(delta) / static_cast<float>(calculate_exp(before->level + 1));
     }
 }
@@ -375,7 +387,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 
     // Clear any stale input events after popup closes
     // This helps prevent ASYNCIFY state issues in Emscripten
-    SDL_Delay(50);  // Small delay to let browser events settle
+    og::input_native::sleep_ms(50);  // Small delay to let browser events settle
     get_input_events(POLL);  // Drain event queue
 
     LevelRuntimeData& level_data = og::runtime::current_session->myscreen_->level_runtime_data();
@@ -470,23 +482,23 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     float scroll = 0.0f;
     int frame = 0;
     
-    Sint16 screenW = 320;
-    Sint16 screenH = 200;
+    int screenW = 320;
+    int screenH = 200;
     
-    SDL_Rect area;
+    UiRect area;
     area.x = 50;
     area.y = 20;
     area.w = screenW - 2*area.x;
     area.h = screenH - 2*area.y;
     
-    SDL_Rect area_inner = {area.x + 3, area.y + 17, area.w - 6, area.h - 34};
+    UiRect area_inner = {area.x + 3, area.y + 17, area.w - 6, area.h - 34};
 
     // Buttons
-    SDL_Rect ok_rect = {Sint16(area.x + area.w/2 - 45), Sint16(area.y + area.h - 14), 35, 10};
-    SDL_Rect retry_rect = {Sint16(area.x + area.w/2 + 10), Sint16(area.y + area.h - 14), 35, 10};
+    UiRect ok_rect = {area.x + area.w/2 - 45, area.y + area.h - 14, 35, 10};
+    UiRect retry_rect = {area.x + area.w/2 + 10, area.y + area.h - 14, 35, 10};
 
-    SDL_Rect overview_rect = {Sint16(area.x + area.w/2 - 100), Sint16(area.y + 4), 50, 10};
-    SDL_Rect troops_rect = {Sint16(area.x + area.w/2 + 50), Sint16(area.y + 4), 50, 10};
+    UiRect overview_rect = {area.x + area.w/2 - 100, area.y + 4, 50, 10};
+    UiRect troops_rect = {area.x + area.w/2 + 50, area.y + 4, 50, 10};
     
     
     // Controller input
@@ -801,7 +813,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
-        SDL_Delay(10);
+        og::input_native::sleep_ms(10);
         
         frame++;
         if(frame > 1000000)

@@ -96,6 +96,8 @@ const void* wait_event();
 const void* make_test_keydown_event(int keycode, int scancode);
 void push_key_event(bool down, int keycode);
 void push_touch_event(EventType type, float x, float y, float dx, float dy, std::int64_t finger_id);
+void push_mouse_button_event(bool down, int button, int x, int y);
+std::uint32_t ticks_ms();
 
 const std::uint8_t* keyboard_state();
 int scancode_from_key(int keycode);

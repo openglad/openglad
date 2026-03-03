@@ -193,6 +193,7 @@ inline constexpr int KEYCODE_LCTRL = 1073742048;
 inline constexpr int KEYCODE_LSHIFT = 1073742049;
 inline constexpr int KEYCODE_LALT = 1073742050;
 inline constexpr int KEYCODE_RSHIFT = 1073742053;
+inline constexpr int KEYMOD_CTRL = 0x00C0;
 
 template <typename EventT>
 inline const void* to_native_event_ptr(const EventT& event)
