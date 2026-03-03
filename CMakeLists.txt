@@ -167,6 +167,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
     ${SRC_DIR}/platform/sdl/sound.cpp
+    ${SRC_DIR}/platform/sdl/native_input.cpp
     ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/interface/render/text.cpp
     ${SRC_DIR}/gameplay/treasure.cpp
@@ -364,6 +365,7 @@ set(OG_IO_SOURCES
 )
 
 set(OG_PLATFORM_SOURCES
+    ${SRC_DIR}/platform/sdl/native_input.cpp
     ${SRC_DIR}/platform/sdl/sound.cpp
     ${SRC_DIR}/platform/sdl/video_sdl.cpp
 )

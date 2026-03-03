@@ -19,7 +19,6 @@
 #include <openglad/runtime/level_runtime_data.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/legacy/base.h>
-#include "SDL.h"
 
 void handle_cheat_keys(walker*& control, short mynum,
                        const void* native_event, const PlayerInput& pi,
@@ -27,7 +26,6 @@ void handle_cheat_keys(walker*& control, short mynum,
 {
 	if (native_event == nullptr)
 		return;
-	const SDL_Event& event = *static_cast<const SDL_Event*>(native_event);
 
 	if (!pi.is_held(InputAction::Cheat) || !CHEAT_MODE)
 		return;
@@ -74,7 +72,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 		control->set_act_type(ACT_CONTROL);
 	}
 
-	if (query_key_event(SDLK_F12, event))
+	if (query_key_event(KEYCODE_F12, native_event))
 	{
 		for (auto& uptr : game_screen->oblist())
 		{
@@ -88,22 +86,22 @@ void handle_cheat_keys(walker*& control, short mynum,
 		}
 	}
 
-	if (query_key_event(SDLK_RIGHTBRACKET, event))
+	if (query_key_event(KEYCODE_RIGHTBRACKET, native_event))
 		control->stats()->level++;
 
-	if (query_key_event(SDLK_LEFTBRACKET, event))
+	if (query_key_event(KEYCODE_LEFTBRACKET, native_event))
 	{
 		if (control->stats()->level > 1)
 			control->stats()->level--;
 	}
 
-	if (query_key_event(SDLK_F1, event))
+	if (query_key_event(KEYCODE_F1, native_event))
 	{
 		game_screen->enemy_freeze += 50;
 		set_palette(game_screen->bluepalette);
 	}
 
-	if (query_key_event(SDLK_F2, event))
+	if (query_key_event(KEYCODE_F2, native_event))
 	{
 		newob = game_screen->world().add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
 		newob->owner = control;
@@ -112,7 +110,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 		newob->lifetime = 200;
 	}
 
-	if (query_key_event(SDLK_f, event))
+	if (query_key_event(KEYCODE_f, native_event))
 	{
 		if (control->stats()->query_bit_flags(BIT_FLYING))
 			control->stats()->set_bit_flags(BIT_FLYING, 0);
@@ -120,13 +118,13 @@ void handle_cheat_keys(walker*& control, short mynum,
 			control->stats()->set_bit_flags(BIT_FLYING, 1);
 	}
 
-	if (query_key_event(SDLK_h, event))
+	if (query_key_event(KEYCODE_h, native_event))
 	{
 		control->stats()->hitpoints += 100;
 		game_screen->control_hp += 100;
 	}
 
-	if (query_key_event(SDLK_i, event))
+	if (query_key_event(KEYCODE_i, native_event))
 	{
 		if (control->stats()->query_bit_flags(BIT_INVINCIBLE))
 			control->stats()->set_bit_flags(BIT_INVINCIBLE, 0);
@@ -134,22 +132,22 @@ void handle_cheat_keys(walker*& control, short mynum,
 			control->stats()->set_bit_flags(BIT_INVINCIBLE, 1);
 	}
 
-	if (query_key_event(SDLK_m, event))
+	if (query_key_event(KEYCODE_m, native_event))
 		control->stats()->magicpoints += 150;
 
-	if (query_key_event(SDLK_s, event))
+	if (query_key_event(KEYCODE_s, native_event))
 	{
 		control->speed_bonus_left = control->speed_bonus_left + 20;
 		control->speed_bonus = control->normal_stepsize;
 	}
 
-	if (query_key_event(SDLK_t, event))
+	if (query_key_event(KEYCODE_t, native_event))
 	{
 		Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(control->family)) + 1) % NUM_FAMILIES;
 		control->transform_to(control->query_order(), family);
 	}
 
-	if (query_key_event(SDLK_v, event))
+	if (query_key_event(KEYCODE_v, native_event))
 	{
 		if (control->invisibility_left < 3000)
 			control->invisibility_left = control->invisibility_left + 100;

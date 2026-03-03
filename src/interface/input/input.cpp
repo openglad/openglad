@@ -21,13 +21,11 @@
 //
 
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/runtime/input_hardware_state.h>
 #include <openglad/core/util.h>
-#include <openglad/resources/io.h>
-#include <openglad/resources/gparser.h>
 #include <openglad/legacy/test_trace.h>
-#include "SDL.h"
 #include <cstdio>
 #include <ctime>
 #include <cstring> //buffers: for strlen
@@ -39,7 +37,7 @@
 #include <emscripten.h>
 #define YIELD_SLEEP(ms) emscripten_sleep(ms)
 #else
-#define YIELD_SLEEP(ms) SDL_Delay(ms)
+#define YIELD_SLEEP(ms) og::input_native::sleep_ms(ms)
 #endif
 
 #ifdef OUYA
@@ -111,13 +109,13 @@ void update_overscan_setting()
 
 #define JOY_DEAD_ZONE 8000
 #define MAX_NUM_JOYSTICKS 10  // Just in case there are joysticks attached that are not useable (e.g. accelerometer)
-SDL_Joystick* joysticks[MAX_NUM_JOYSTICKS];
+og::input_native::JoystickHandle joysticks[MAX_NUM_JOYSTICKS];
 
 namespace
 {
-const SDL_Event& as_sdl_event(const void* native_event)
+bool as_event_data(const void* native_event, og::input_native::EventData& out)
 {
-    return *static_cast<const SDL_Event*>(native_event);
+    return og::input_native::decode_event(native_event, out);
 }
 
 constexpr int kModeFourIndex = 0;
@@ -126,78 +124,78 @@ constexpr int kNumControlModeKeymaps = 2;
 
 constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
     {
-        SDLK_w, SDLK_UNKNOWN, SDLK_d, SDLK_UNKNOWN,  // movements
-        SDLK_s, SDLK_UNKNOWN, SDLK_a, SDLK_UNKNOWN,
-        SDLK_LCTRL, SDLK_LALT,                  // fire & special
-        SDLK_BACKQUOTE,                         // switch guys
-        SDLK_TAB,                               // change special
-        SDLK_e,                                 // Yell
-        SDLK_LSHIFT,                            // Shifter
-        SDLK_1,                                 // Options menu
-        SDLK_F5,                                // Cheat key
+        KEYCODE_w, KEYCODE_UNKNOWN, KEYCODE_d, KEYCODE_UNKNOWN,  // movements
+        KEYCODE_s, KEYCODE_UNKNOWN, KEYCODE_a, KEYCODE_UNKNOWN,
+        KEYCODE_LCTRL, KEYCODE_LALT,                  // fire & special
+        KEYCODE_BACKQUOTE,                         // switch guys
+        KEYCODE_TAB,                               // change special
+        KEYCODE_e,                                 // Yell
+        KEYCODE_LSHIFT,                            // Shifter
+        KEYCODE_1,                                 // Options menu
+        KEYCODE_F5,                                // Cheat key
     },
     {
-        SDLK_UP, SDLK_UNKNOWN, SDLK_RIGHT, SDLK_UNKNOWN,  // movements
-        SDLK_DOWN, SDLK_UNKNOWN, SDLK_LEFT, SDLK_UNKNOWN,
-        SDLK_PERIOD, SDLK_SLASH,                // fire & special
-        SDLK_RETURN,                            // switch guys
-        SDLK_QUOTE,                             // change special
-        SDLK_BACKSLASH,                         // Yell
-        SDLK_RSHIFT,                            // Shifter
-        SDLK_2,                                 // Options menu
-        SDLK_F6,                                // Cheat key
+        KEYCODE_UP, KEYCODE_UNKNOWN, KEYCODE_RIGHT, KEYCODE_UNKNOWN,  // movements
+        KEYCODE_DOWN, KEYCODE_UNKNOWN, KEYCODE_LEFT, KEYCODE_UNKNOWN,
+        KEYCODE_PERIOD, KEYCODE_SLASH,                // fire & special
+        KEYCODE_RETURN,                            // switch guys
+        KEYCODE_QUOTE,                             // change special
+        KEYCODE_BACKSLASH,                         // Yell
+        KEYCODE_RSHIFT,                            // Shifter
+        KEYCODE_2,                                 // Options menu
+        KEYCODE_F6,                                // Cheat key
     },
     {
-        SDLK_i, SDLK_UNKNOWN, SDLK_l, SDLK_UNKNOWN,  // movements
-        SDLK_k, SDLK_UNKNOWN, SDLK_j, SDLK_UNKNOWN,
-        SDLK_SPACE, SDLK_SEMICOLON,             // fire & special
-        SDLK_MINUS,                             // switch guys
-        SDLK_9,                                 // change special
-        SDLK_u,                                 // Yell
-        SDLK_0,                                 // Shifter
-        SDLK_3,                                 // Options menu
-        SDLK_F7,                                // Cheat key
+        KEYCODE_i, KEYCODE_UNKNOWN, KEYCODE_l, KEYCODE_UNKNOWN,  // movements
+        KEYCODE_k, KEYCODE_UNKNOWN, KEYCODE_j, KEYCODE_UNKNOWN,
+        KEYCODE_SPACE, KEYCODE_SEMICOLON,             // fire & special
+        KEYCODE_MINUS,                             // switch guys
+        KEYCODE_9,                                 // change special
+        KEYCODE_u,                                 // Yell
+        KEYCODE_0,                                 // Shifter
+        KEYCODE_3,                                 // Options menu
+        KEYCODE_F7,                                // Cheat key
     },
     {
-        SDLK_t, SDLK_UNKNOWN, SDLK_h, SDLK_UNKNOWN,  // movements
-        SDLK_g, SDLK_UNKNOWN, SDLK_f, SDLK_UNKNOWN,
-        SDLK_5, SDLK_6,                         // fire & special
-        SDLK_EQUALS,                            // switch guys
-        SDLK_7,                                 // change special
-        SDLK_y,                                 // Yell
-        SDLK_8,                                 // Shifter
-        SDLK_4,                                 // Options menu
-        SDLK_F8,                                // Cheat key
+        KEYCODE_t, KEYCODE_UNKNOWN, KEYCODE_h, KEYCODE_UNKNOWN,  // movements
+        KEYCODE_g, KEYCODE_UNKNOWN, KEYCODE_f, KEYCODE_UNKNOWN,
+        KEYCODE_5, KEYCODE_6,                         // fire & special
+        KEYCODE_EQUALS,                            // switch guys
+        KEYCODE_7,                                 // change special
+        KEYCODE_y,                                 // Yell
+        KEYCODE_8,                                 // Shifter
+        KEYCODE_4,                                 // Options menu
+        KEYCODE_F8,                                // Cheat key
     }
 };
 constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
     {   // P1: clockwise W/E/D/C/X/Z/A/Q, Yell=S
-        SDLK_w, SDLK_e, SDLK_d, SDLK_c,
-        SDLK_x, SDLK_z, SDLK_a, SDLK_q,
-        SDLK_LCTRL, SDLK_LALT,
-        SDLK_BACKQUOTE, SDLK_TAB,
-        SDLK_s, SDLK_LSHIFT, SDLK_1, SDLK_F5,
+        KEYCODE_w, KEYCODE_e, KEYCODE_d, KEYCODE_c,
+        KEYCODE_x, KEYCODE_z, KEYCODE_a, KEYCODE_q,
+        KEYCODE_LCTRL, KEYCODE_LALT,
+        KEYCODE_BACKQUOTE, KEYCODE_TAB,
+        KEYCODE_s, KEYCODE_LSHIFT, KEYCODE_1, KEYCODE_F5,
     },
     {   // P2: arrows, no diagonal keys
-        SDLK_UP, SDLK_UNKNOWN, SDLK_RIGHT, SDLK_UNKNOWN,
-        SDLK_DOWN, SDLK_UNKNOWN, SDLK_LEFT, SDLK_UNKNOWN,
-        SDLK_PERIOD, SDLK_SLASH,
-        SDLK_RETURN, SDLK_QUOTE,
-        SDLK_BACKSLASH, SDLK_RSHIFT, SDLK_2, SDLK_F6,
+        KEYCODE_UP, KEYCODE_UNKNOWN, KEYCODE_RIGHT, KEYCODE_UNKNOWN,
+        KEYCODE_DOWN, KEYCODE_UNKNOWN, KEYCODE_LEFT, KEYCODE_UNKNOWN,
+        KEYCODE_PERIOD, KEYCODE_SLASH,
+        KEYCODE_RETURN, KEYCODE_QUOTE,
+        KEYCODE_BACKSLASH, KEYCODE_RSHIFT, KEYCODE_2, KEYCODE_F6,
     },
     {   // P3: clockwise I/O/L/./,/M/J/U, Yell=K
-        SDLK_i, SDLK_o, SDLK_l, SDLK_PERIOD,
-        SDLK_COMMA, SDLK_m, SDLK_j, SDLK_u,
-        SDLK_SPACE, SDLK_SEMICOLON,
-        SDLK_MINUS, SDLK_9,
-        SDLK_k, SDLK_0, SDLK_3, SDLK_F7,
+        KEYCODE_i, KEYCODE_o, KEYCODE_l, KEYCODE_PERIOD,
+        KEYCODE_COMMA, KEYCODE_m, KEYCODE_j, KEYCODE_u,
+        KEYCODE_SPACE, KEYCODE_SEMICOLON,
+        KEYCODE_MINUS, KEYCODE_9,
+        KEYCODE_k, KEYCODE_0, KEYCODE_3, KEYCODE_F7,
     },
     {   // P4: clockwise T/Y/H/N/B/V/F/R, Yell=G
-        SDLK_t, SDLK_y, SDLK_h, SDLK_n,
-        SDLK_b, SDLK_v, SDLK_f, SDLK_r,
-        SDLK_5, SDLK_6,
-        SDLK_EQUALS, SDLK_7,
-        SDLK_g, SDLK_8, SDLK_4, SDLK_F8,
+        KEYCODE_t, KEYCODE_y, KEYCODE_h, KEYCODE_n,
+        KEYCODE_b, KEYCODE_v, KEYCODE_f, KEYCODE_r,
+        KEYCODE_5, KEYCODE_6,
+        KEYCODE_EQUALS, KEYCODE_7,
+        KEYCODE_g, KEYCODE_8, KEYCODE_4, KEYCODE_F8,
     }
 };
 constexpr int kDefaultControlModes[4] = {
@@ -276,7 +274,7 @@ bool player_allows_diagonal_movement(int player_index)
 int get_player_key_binding_for_mode(int player_index, int mode, int key_enum)
 {
     if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
-        return SDLK_UNKNOWN;
+        return KEYCODE_UNKNOWN;
     const int mode_index = control_mode_keymap_index(mode);
     return hw().player_mode_keys[player_index][mode_index][key_enum];
 }
@@ -380,7 +378,7 @@ void activate_mode_keymap_for_player(int player_index, int mode)
 void init_input()
 {
     reset_default_player_controls();
-    og::runtime::current_session->keystates_ = SDL_GetKeyboardState(nullptr);
+    og::runtime::current_session->keystates_ = og::input_native::keyboard_state();
 
     // Set up joysticks
     for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
@@ -388,34 +386,32 @@ void init_input()
         joysticks[i] = nullptr;
     }
 
-    int numjoy;
-
-    numjoy = SDL_NumJoysticks();
+    const int numjoy = og::input_native::num_joysticks();
 
     for(int i = 0; i < numjoy; i++)
     {
-        joysticks[i] = SDL_JoystickOpen(i);
+        joysticks[i] = og::input_native::joystick_open(i);
         if(joysticks[i] == nullptr)
             continue;
         player_joy[i] = JoyData(i);
     }
 
-    SDL_JoystickEventState(SDL_ENABLE);
+    og::input_native::joystick_set_event_state(true);
 }
 
 void get_input_events(bool type)
 {
-    SDL_Event event;
-
     //key_press_event = 0;
-    
+
     if (type == POLL)
-        while (SDL_PollEvent(&event))
+    {
+        while (const void* event = og::input_native::poll_event())
             handle_events(event);
+    }
     if (type == WAIT)
     {
-        SDL_WaitEvent(&event);
-        handle_events(event);
+        if (const void* event = og::input_native::wait_event())
+            handle_events(event);
     }
 }
 
@@ -425,26 +421,12 @@ void get_input_events(bool type)
 
 void sendFakeKeyDownEvent(int keycode)
 {
-    SDL_Event event;
-    
-    event.type = SDL_KEYDOWN;
-    event.key.repeat = false;
-    event.key.keysym.sym = keycode;
-    event.key.keysym.mod = 0;
-    event.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
-    SDL_PushEvent(&event);
+    og::input_native::push_key_event(true, keycode);
 }
 
 void sendFakeKeyUpEvent(int keycode)
 {
-    SDL_Event event;
-    
-    event.type = SDL_KEYUP;
-    event.key.repeat = false;
-    event.key.keysym.sym = keycode;
-    event.key.keysym.mod = 0;
-    event.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
-    SDL_PushEvent(&event);
+    og::input_native::push_key_event(false, keycode);
 }
 
 // handle_window_event and handle_key_event are implemented in
@@ -452,100 +434,96 @@ void sendFakeKeyUpEvent(int keycode)
 
 void handle_text_event(const void* native_event)
 {
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return;
-    const SDL_Event& event = as_sdl_event(native_event);
-    og::runtime::current_session->raw_text_input_ = event.text.text;
+    og::runtime::current_session->raw_text_input_ = event.text;
     og::runtime::current_session->text_input_event_ = 1;
 }
 
 void handle_mouse_event(const void* native_event)
 {
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return;
-    const SDL_Event& event = as_sdl_event(native_event);
     switch(event.type)
     {
-    case SDL_MOUSEWHEEL:
-        og::runtime::current_session->scroll_amount_ = static_cast<short>(5*event.wheel.y);
+    case og::input_native::EventType::MouseWheel:
+        og::runtime::current_session->scroll_amount_ = static_cast<short>(5*event.wheel_y);
         og::runtime::current_session->key_press_event_ = 1;
         break;
 
 #ifndef USE_TOUCH_INPUT
         // Mouse event
-    case SDL_MOUSEMOTION:
-        mouse_state.x = (static_cast<float>(event.motion.x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.motion.y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
+    case og::input_native::EventType::MouseMotion:
+        mouse_state.x = (static_cast<float>(event.motion_x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
+        mouse_state.y = (static_cast<float>(event.motion_y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
         break;
-    case SDL_MOUSEBUTTONUP:
-        if (event.button.button == SDL_BUTTON_LEFT)
+    case og::input_native::EventType::MouseButtonUp:
+        if (event.button == og::input_native::kMouseButtonLeft)
             mouse_state.left = 0;
-        if (event.button.button == SDL_BUTTON_RIGHT)
+        if (event.button == og::input_native::kMouseButtonRight)
             mouse_state.right = 0;
-        
-        mouse_state.x = (static_cast<float>(event.button.x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.button.y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
+
+        mouse_state.x = (static_cast<float>(event.button_x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
+        mouse_state.y = (static_cast<float>(event.button_y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
         break;
-    case SDL_MOUSEBUTTONDOWN:
-        if (event.button.button == SDL_BUTTON_LEFT)
+    case og::input_native::EventType::MouseButtonDown:
+        if (event.button == og::input_native::kMouseButtonLeft)
             mouse_state.left = 1;
-        else if (event.button.button == SDL_BUTTON_RIGHT)
+        else if (event.button == og::input_native::kMouseButtonRight)
             mouse_state.right = 1;
 
-        mouse_state.x = (static_cast<float>(event.button.x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.button.y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
+        mouse_state.x = (static_cast<float>(event.button_x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
+        mouse_state.y = (static_cast<float>(event.button_y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
         break;
 #else
 #ifdef FAKE_TOUCH_EVENTS
     // Convert SDL mouse events to fake SDL touch events
-    case SDL_MOUSEMOTION:
+    case og::input_native::EventType::MouseMotion:
         {
-            SDL_Event e;
-            e.type = SDL_FINGERMOTION;
-            e.tfinger.x = event.motion.x/og::runtime::current_session->window_w_;
-            e.tfinger.y = event.motion.y/og::runtime::current_session->window_h_;
-            e.tfinger.dx = event.motion.xrel/og::runtime::current_session->window_w_;
-            e.tfinger.dy = event.motion.yrel/og::runtime::current_session->window_h_;
-            e.tfinger.touchId = 1;
-            e.tfinger.fingerId = 1;
-            SDL_PushEvent(&e);
+            og::input_native::push_touch_event(
+                og::input_native::EventType::FingerMotion,
+                event.motion_x / og::runtime::current_session->window_w_,
+                event.motion_y / og::runtime::current_session->window_h_,
+                event.motion_dx / og::runtime::current_session->window_w_,
+                event.motion_dy / og::runtime::current_session->window_h_,
+                1);
         }
         break;
-    case SDL_MOUSEBUTTONUP:
+    case og::input_native::EventType::MouseButtonUp:
         {
-            SDL_Event e;
-            e.type = SDL_FINGERUP;
-            e.tfinger.x = event.button.x/og::runtime::current_session->window_w_;
-            e.tfinger.y = event.button.y/og::runtime::current_session->window_h_;
-            e.tfinger.touchId = 1;
-            e.tfinger.fingerId = 1;
-            SDL_PushEvent(&e);
+            og::input_native::push_touch_event(
+                og::input_native::EventType::FingerUp,
+                event.button_x / og::runtime::current_session->window_w_,
+                event.button_y / og::runtime::current_session->window_h_,
+                0.0f, 0.0f,
+                1);
         }
         break;
-    case SDL_MOUSEBUTTONDOWN:
+    case og::input_native::EventType::MouseButtonDown:
         {
-            SDL_Event e;
-            e.type = SDL_FINGERDOWN;
-            e.tfinger.x = event.button.x/og::runtime::current_session->window_w_;
-            e.tfinger.y = event.button.y/og::runtime::current_session->window_h_;
-            e.tfinger.touchId = 1;
-            e.tfinger.fingerId = 1;
-            SDL_PushEvent(&e);
+            og::input_native::push_touch_event(
+                og::input_native::EventType::FingerDown,
+                event.button_x / og::runtime::current_session->window_w_,
+                event.button_y / og::runtime::current_session->window_h_,
+                0.0f, 0.0f,
+                1);
         }
         break;
 #endif
         // Mouse event
-    case SDL_FINGERMOTION:
+    case og::input_native::EventType::FingerMotion:
         {
-        int x = (event.tfinger.x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
-        int y = (event.tfinger.y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
+        int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
+        int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
         
         og::runtime::current_session->scroll_amount_ = y - mouse_state.y;
         
         mouse_state.x = x;
         mouse_state.y = y;
         
-        if(hw().moving && event.tfinger.fingerId == hw().movingTouch)
+        if(hw().moving && event.finger_id == hw().movingTouch)
         {
             hw().moving_touch_target_x = x;
             hw().moving_touch_target_y = y;
@@ -584,10 +562,10 @@ void handle_mouse_event(const void* native_event)
         }
         }
         break;
-    case SDL_FINGERUP:
+    case og::input_native::EventType::FingerUp:
         {
-            int x = (event.tfinger.x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
-            int y = (event.tfinger.y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
+            int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
+            int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
             if(hw().tapping)
             {
                 hw().tapping = false;
@@ -599,7 +577,7 @@ void handle_mouse_event(const void* native_event)
                 hw().start_tap_y = y;
             }
             
-            if(hw().moving && event.tfinger.fingerId == hw().movingTouch)
+            if(hw().moving && event.finger_id == hw().movingTouch)
             {
                 hw().moving = false;
                 
@@ -612,7 +590,7 @@ void handle_mouse_event(const void* native_event)
                 hw().touch_keystate[0][KEY_LEFT] = false;
                 hw().touch_keystate[0][KEY_UP_LEFT] = false;
             }
-            if(hw().firing && event.tfinger.fingerId == hw().firingTouch)
+            if(hw().firing && event.finger_id == hw().firingTouch)
             {
                 hw().firing = false;
                 hw().touch_keystate[0][KEY_FIRE] = false;
@@ -621,12 +599,12 @@ void handle_mouse_event(const void* native_event)
             mouse_state.left = 0;
         }
         break;
-    case SDL_FINGERDOWN:
+    case og::input_native::EventType::FingerDown:
         {
             hw().tapping = true;
             
-            int x = (event.tfinger.x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
-            int y = (event.tfinger.y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
+            int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
+            int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
             
             hw().start_tap_x = x;
             hw().start_tap_y = y;
@@ -638,7 +616,7 @@ void handle_mouse_event(const void* native_event)
                 hw().firing = true;
                 sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_FIRE]);
                 hw().touch_keystate[0][KEY_FIRE] = true;
-                hw().firingTouch = event.tfinger.fingerId;
+                hw().firingTouch = event.finger_id;
             }
             else if(SPECIAL_BUTTON_X <= x && x <= SPECIAL_BUTTON_X + BUTTON_DIM
                 && SPECIAL_BUTTON_Y <= y && y <= SPECIAL_BUTTON_Y + BUTTON_DIM)
@@ -680,37 +658,39 @@ void handle_mouse_event(const void* native_event)
                 else if(hw().moving_touch_y > 200 - (MOVE_AREA_DIM/2 + 1))
                     hw().moving_touch_y = 200 - (MOVE_AREA_DIM/2 + 1);
                 hw().moving = true;
-                hw().movingTouch = event.tfinger.fingerId;
+                hw().movingTouch = event.finger_id;
             }
             
             
             og::runtime::current_session->key_press_event_ = 1;
             mouse_state.left = 1;
-            mouse_state.x = event.tfinger.x * 320;
-            mouse_state.y = event.tfinger.y * 200;
+            mouse_state.x = event.finger_x * 320;
+            mouse_state.y = event.finger_y * 200;
         }
         break;
 #endif
+    default:
+        break;
     }
 }
 
 void handle_joy_event(const void* native_event)
 {
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return;
-    const SDL_Event& event = as_sdl_event(native_event);
     Log("Joystick event!\n");
     switch(event.type)
     {
-    case SDL_JOYAXISMOTION:
-        if (event.jaxis.value > 8000)
+    case og::input_native::EventType::JoyAxisMotion:
+        if (event.joy_axis_value > 8000)
         {
             //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2] = 1;
             //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1] = 0;
             og::runtime::current_session->key_press_event_ = 1;
             //raw_key = joy_startval[event.jaxis.which] + event.jaxis.axis * 2;
         }
-        else if (event.jaxis.value < -8000)
+        else if (event.joy_axis_value < -8000)
         {
             //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2] = 0;
             //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1] = 1;
@@ -723,86 +703,88 @@ void handle_joy_event(const void* native_event)
             //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1] = 0;
         }
         break;
-    case SDL_JOYBUTTONDOWN:
+    case og::input_native::EventType::JoyButtonDown:
         //key_list[joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button] = 1;
         //raw_key = joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button;
         og::runtime::current_session->key_press_event_ = 1;
         break;
-    case SDL_JOYBUTTONUP:
+    case og::input_native::EventType::JoyButtonUp:
         //key_list[joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button] = 0;
+        break;
+    default:
         break;
     }
 }
 
 void handle_events(const void* native_event)
 {
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return;
-    const SDL_Event& event = as_sdl_event(native_event);
     switch (event.type)
     {
-    case SDL_WINDOWEVENT:   
-        handle_window_event(event);
+    case og::input_native::EventType::Window:
+        handle_window_event(native_event);
     break;
-    case SDL_TEXTINPUT:
-        handle_text_event(event);
+    case og::input_native::EventType::TextInput:
+        handle_text_event(native_event);
         break;
-    case SDL_MOUSEWHEEL:
-        handle_mouse_event(event);
+    case og::input_native::EventType::MouseWheel:
+        handle_mouse_event(native_event);
         break;
-    case SDL_FINGERMOTION:
-        handle_mouse_event(event);
+    case og::input_native::EventType::FingerMotion:
+        handle_mouse_event(native_event);
         break;
-    case SDL_FINGERUP:
-        handle_mouse_event(event);
+    case og::input_native::EventType::FingerUp:
+        handle_mouse_event(native_event);
         break;
-    case SDL_FINGERDOWN:
-        handle_mouse_event(event);
+    case og::input_native::EventType::FingerDown:
+        handle_mouse_event(native_event);
         break;
-    case SDL_KEYDOWN:
-        handle_key_event(event);
+    case og::input_native::EventType::KeyDown:
+        handle_key_event(native_event);
         break;
-    case SDL_KEYUP:
-        handle_key_event(event);
+    case og::input_native::EventType::KeyUp:
+        handle_key_event(native_event);
         break;
-    case SDL_MOUSEMOTION:
-        handle_mouse_event(event);
+    case og::input_native::EventType::MouseMotion:
+        handle_mouse_event(native_event);
         break;
-    case SDL_MOUSEBUTTONUP:
-        handle_mouse_event(event);
+    case og::input_native::EventType::MouseButtonUp:
+        handle_mouse_event(native_event);
         break;
-    case SDL_MOUSEBUTTONDOWN:
-        handle_mouse_event(event);
+    case og::input_native::EventType::MouseButtonDown:
+        handle_mouse_event(native_event);
         break;
-    case SDL_JOYAXISMOTION:
-        handle_joy_event(event);
+    case og::input_native::EventType::JoyAxisMotion:
+        handle_joy_event(native_event);
         break;
-    case SDL_JOYBUTTONDOWN:
-        handle_joy_event(event);
+    case og::input_native::EventType::JoyButtonDown:
+        handle_joy_event(native_event);
         break;
-    case SDL_JOYBUTTONUP:
-        handle_joy_event(event);
+    case og::input_native::EventType::JoyButtonUp:
+        handle_joy_event(native_event);
         break;
-    case SDL_QUIT:
+    case og::input_native::EventType::Quit:
         quit(0);
         break;
     default:
-    #ifdef OUYA
-        if(event.type == OuyaControllerManager::BUTTON_DOWN_EVENT)
+#ifdef OUYA
+        if(event.raw_type == OuyaControllerManager::BUTTON_DOWN_EVENT)
         {
-            if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::O)
+            if(static_cast<OuyaController::ButtonEnum>(event.user_data1) == OuyaController::ButtonEnum::O)
                 og::runtime::current_session->input_continue_ = true;
-            else if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::DpadUp)
+            else if(static_cast<OuyaController::ButtonEnum>(event.user_data1) == OuyaController::ButtonEnum::DpadUp)
                 og::runtime::current_session->scroll_amount_ = 5;
-            else if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::DpadDown)
+            else if(static_cast<OuyaController::ButtonEnum>(event.user_data1) == OuyaController::ButtonEnum::DpadDown)
                 og::runtime::current_session->scroll_amount_ = -5;
-            else if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::Menu)
-                sendFakeKeyDownEvent(SDLK_ESCAPE);
+            else if(static_cast<OuyaController::ButtonEnum>(event.user_data1) == OuyaController::ButtonEnum::Menu)
+                sendFakeKeyDownEvent(KEYCODE_ESCAPE);
             og::runtime::current_session->key_press_event_ = 1;
         }
-        else if(event.type == OuyaControllerManager::AXIS_EVENT)
+        else if(event.raw_type == OuyaControllerManager::AXIS_EVENT)
         {
-            const OuyaController& c = OuyaControllerManager::getController(event.user.code);
+            const OuyaController& c = OuyaControllerManager::getController(event.user_code);
             
             // This should not be in an event or else it's jerky.
             float v = c.getAxisValue(OuyaController::AxisEnum::LsY) + c.getAxisValue(OuyaController::AxisEnum::RsY);
@@ -821,84 +803,84 @@ void handle_events(const void* native_event)
 
 bool query_key_event(int key, const void* native_event)
 {
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return false;
-    const SDL_Event& event = as_sdl_event(native_event);
-    return (event.type == SDL_KEYDOWN && event.key.keysym.sym == key);
+    return (event.type == og::input_native::EventType::KeyDown && event.key_sym == key);
 }
 
 bool isKeyboardEvent(const void* native_event)
 {
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return false;
-    const SDL_Event& event = as_sdl_event(native_event);
-    return (event.type == SDL_KEYDOWN);
+    return (event.type == og::input_native::EventType::KeyDown);
 }
 
 bool isJoystickEvent(const void* native_event)
 {
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return false;
-    const SDL_Event& event = as_sdl_event(native_event);
-    return (event.type == SDL_JOYAXISMOTION
-            || event.type == SDL_JOYHATMOTION
-            || event.type == SDL_JOYBUTTONDOWN);
+    return (event.type == og::input_native::EventType::JoyAxisMotion
+            || event.type == og::input_native::EventType::JoyHatMotion
+            || event.type == og::input_native::EventType::JoyButtonDown);
 }
 
 const void* wait_for_key_event()
 {
-    static SDL_Event event;
-    memset(&event, 0, sizeof(event));
 #ifdef TESTING
     // In test mode, return immediately with a fake ESC keypress
-    event.type = SDL_KEYDOWN;
-    event.key.keysym.sym = SDLK_ESCAPE;
-    event.key.keysym.scancode = SDL_SCANCODE_ESCAPE;
     TRACE("input", "wait_for_key_event: returning fake ESC (test mode)");
-    return &event;
+    return og::input_native::make_test_keydown_event(KEYCODE_ESCAPE, KEYSTATE_ESCAPE);
 #else
     while(1)
     {
-        while(SDL_PollEvent(&event))
+        while(const void* event = og::input_native::poll_event())
         {
-            if(event.type == SDL_QUIT
-                    || event.type == SDL_KEYDOWN
-                    || (event.type == SDL_JOYAXISMOTION && (event.jaxis.value > JOY_DEAD_ZONE || event.jaxis.value < -JOY_DEAD_ZONE))
-                    || event.type == SDL_JOYBUTTONDOWN
-                    || event.type == SDL_JOYHATMOTION
-              )
-                return &event;
+            og::input_native::EventData event_data;
+            if (!as_event_data(event, event_data))
+                continue;
+            if(event_data.type == og::input_native::EventType::Quit
+                    || event_data.type == og::input_native::EventType::KeyDown
+                    || (event_data.type == og::input_native::EventType::JoyAxisMotion
+                        && (event_data.joy_axis_value > JOY_DEAD_ZONE || event_data.joy_axis_value < -JOY_DEAD_ZONE))
+                    || event_data.type == og::input_native::EventType::JoyButtonDown
+                    || event_data.type == og::input_native::EventType::JoyHatMotion)
+                return event;
         }
         YIELD_SLEEP(10);
     }
-    return &event;
+    return nullptr;
 #endif
 }
 
 void quit_if_quit_event(const void* native_event)
 {
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return;
-    const SDL_Event& event = as_sdl_event(native_event);
-    if(event.type == SDL_QUIT)
+    if(event.type == og::input_native::EventType::Quit)
         quit(0);
 }
 
 void clear_events()
 {
-    SDL_Event event;
-    while(SDL_PollEvent(&event));
+    while (og::input_native::poll_event() != nullptr) {}
 }
 
 void assignKeyFromWaitEvent(int player_num, int key_enum)
 {
-    const SDL_Event& event = as_sdl_event(wait_for_key_event());
+    const void* event = wait_for_key_event();
+    og::input_native::EventData event_data;
+    if (!as_event_data(event, event_data))
+        return;
     quit_if_quit_event(event);
     if(isKeyboardEvent(event))
     {
-        if(event.key.keysym.sym != SDLK_ESCAPE)
+        if(event_data.key_sym != KEYCODE_ESCAPE)
         {
-            set_player_key_binding(player_num, key_enum, event.key.keysym.sym);
+            set_player_key_binding(player_num, key_enum, event_data.key_sym);
         }
     }
     else if(isJoystickEvent(event))
@@ -938,11 +920,11 @@ void wait_for_key(int somekey)
     return;
 #else
     // First wait for key press ..
-    while (!og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(somekey)])
+    while (!og::runtime::current_session->keystates_[og::input_native::scancode_from_key(somekey)])
         get_input_events(WAIT);
 
     // And now for the key to be released ..
-    while (!og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(somekey)])
+    while (!og::runtime::current_session->keystates_[og::input_native::scancode_from_key(somekey)])
         get_input_events(WAIT);
 #endif
 }
@@ -954,14 +936,14 @@ JoyData::JoyData()
 JoyData::JoyData(int joy_index)
     : index(-1), numAxes(0), numButtons(0), numHats(0)
 {
-    SDL_Joystick *js = joysticks[joy_index];
+    const og::input_native::JoystickHandle js = joysticks[joy_index];
     if(js == nullptr)
         return;
 
     this->index = joy_index;
-    numAxes = SDL_JoystickNumAxes(js);
-    numButtons = SDL_JoystickNumButtons(js);
-    numHats = SDL_JoystickNumHats(js);
+    numAxes = og::input_native::joystick_num_axes(js);
+    numButtons = og::input_native::joystick_num_buttons(js);
+    numHats = og::input_native::joystick_num_hats(js);
 
     // Clear all keys for this joystick
     for(int i = 0; i < NUM_KEYS; i++)
@@ -1033,9 +1015,9 @@ JoyData::JoyData(int joy_index)
 
 void JoyData::setKeyFromEvent(int key_enum, const void* native_event)
 {
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return;
-    const SDL_Event& event = as_sdl_event(native_event);
 
     // Diagonals are ignored because they are combinations of the cardinals
     // Things get really messy when diagonals are assigned
@@ -1047,51 +1029,44 @@ void JoyData::setKeyFromEvent(int key_enum, const void* native_event)
     }
 
     bool gotJoy = false;
-    if(event.type == SDL_JOYAXISMOTION)
+    if(event.type == og::input_native::EventType::JoyAxisMotion)
     {
-        if(event.jaxis.value >= 0)
+        if(event.joy_axis_value >= 0)
             key_type[key_enum] = POS_AXIS;
         else
             key_type[key_enum] = NEG_AXIS;
-        key_index[key_enum] = event.jaxis.axis;
-        index = event.jaxis.which;  // USES THE LAST JOYSTICK PRESSED
+        key_index[key_enum] = event.joy_axis_axis;
+        index = event.joy_axis_which;  // USES THE LAST JOYSTICK PRESSED
         gotJoy = true;
     }
-    else if(event.type == SDL_JOYBUTTONDOWN)
+    else if(event.type == og::input_native::EventType::JoyButtonDown)
     {
         key_type[key_enum] = BUTTON;
-        key_index[key_enum] = event.jbutton.button;
-        index = event.jbutton.which;  // USES THE LAST JOYSTICK PRESSED
+        key_index[key_enum] = event.joy_button_button;
+        index = event.joy_button_which;  // USES THE LAST JOYSTICK PRESSED
         gotJoy = true;
     }
-    else if(event.type == SDL_JOYHATMOTION)
+    else if(event.type == og::input_native::EventType::JoyHatMotion)
     {
         bool badHat = false;
-        if(event.jhat.value == SDL_HAT_UP)
+        if(event.joy_hat_value == og::input_native::kHatUp)
             key_type[key_enum] = HAT_UP;
-        else if(event.jhat.value == SDL_HAT_RIGHT)
+        else if(event.joy_hat_value == og::input_native::kHatRight)
             key_type[key_enum] = HAT_RIGHT;
-        else if(event.jhat.value == SDL_HAT_DOWN)
+        else if(event.joy_hat_value == og::input_native::kHatDown)
             key_type[key_enum] = HAT_DOWN;
-        else if(event.jhat.value == SDL_HAT_LEFT)
+        else if(event.joy_hat_value == og::input_native::kHatLeft)
             key_type[key_enum] = HAT_LEFT;
         else
         {
             badHat = true;
-            // Diagonals are ignored because they are combinations of the cardinals
-            /*else if(event.jhat.value == SDL_HAT_RIGHTUP)
-                key_type[key_enum] = HAT_UP_RIGHT;
-            else if(event.jhat.value == SDL_HAT_RIGHTDOWN)
-                key_type[key_enum] = HAT_DOWN_RIGHT;
-            else if(event.jhat.value == SDL_HAT_LEFTDOWN)
-                key_type[key_enum] = HAT_DOWN_LEFT;
-            else if(event.jhat.value == SDL_HAT_LEFTUP)
-                key_type[key_enum] = HAT_UP_LEFT;*/
+            // Diagonal hat values are ignored because they are combinations
+            // of the cardinals and complicate key assignment.
         }
         if(!badHat)
         {
-            key_index[key_enum] = event.jhat.hat;
-            index = event.jhat.which;  // USES THE LAST JOYSTICK PRESSED
+            key_index[key_enum] = event.joy_hat_hat;
+            index = event.joy_hat_which;  // USES THE LAST JOYSTICK PRESSED
             gotJoy = true;
         }
     }
@@ -1114,19 +1089,19 @@ bool JoyData::getState(int key_enum) const
     switch(key_type[key_enum])
     {
     case POS_AXIS:
-        return SDL_JoystickGetAxis(joysticks[index], key_index[key_enum]) > JOY_DEAD_ZONE;
+        return og::input_native::joystick_get_axis(joysticks[index], key_index[key_enum]) > JOY_DEAD_ZONE;
     case NEG_AXIS:
-        return SDL_JoystickGetAxis(joysticks[index], key_index[key_enum]) < -JOY_DEAD_ZONE;
+        return og::input_native::joystick_get_axis(joysticks[index], key_index[key_enum]) < -JOY_DEAD_ZONE;
     case BUTTON:
-        return SDL_JoystickGetButton(joysticks[index], key_index[key_enum]);
+        return og::input_native::joystick_get_button(joysticks[index], key_index[key_enum]);
     case HAT_UP:
-        return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_UP);
+        return (og::input_native::joystick_get_hat(joysticks[index], key_index[key_enum]) & og::input_native::kHatUp);
     case HAT_RIGHT:
-        return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_RIGHT);
+        return (og::input_native::joystick_get_hat(joysticks[index], key_index[key_enum]) & og::input_native::kHatRight);
     case HAT_DOWN:
-        return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_DOWN);
+        return (og::input_native::joystick_get_hat(joysticks[index], key_index[key_enum]) & og::input_native::kHatDown);
     case HAT_LEFT:
-        return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_LEFT);
+        return (og::input_native::joystick_get_hat(joysticks[index], key_index[key_enum]) & og::input_native::kHatLeft);
         // Diagonals are ignored because they are combinations of the cardinals
     case HAT_UP_RIGHT:
     case HAT_DOWN_RIGHT:
@@ -1141,38 +1116,38 @@ bool JoyData::getPress(int key_enum, const void* native_event) const
 {
     if(index < 0)
         return false;
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return false;
-    const SDL_Event& event = as_sdl_event(native_event);
 
     switch(key_type[key_enum])
     {
     case BUTTON:
-        if(event.type == SDL_JOYBUTTONDOWN)
+        if(event.type == og::input_native::EventType::JoyButtonDown)
         {
-            return (event.jbutton.which == index && event.jbutton.button == key_index[key_enum]);
+            return (event.joy_button_which == index && event.joy_button_button == key_index[key_enum]);
         }
         return false;
     case POS_AXIS:
-        if(event.type == SDL_JOYAXISMOTION)
+        if(event.type == og::input_native::EventType::JoyAxisMotion)
         {
-            return (event.jaxis.which == index && event.jaxis.axis == key_index[key_enum] && event.jaxis.value > JOY_DEAD_ZONE);
+            return (event.joy_axis_which == index && event.joy_axis_axis == key_index[key_enum] && event.joy_axis_value > JOY_DEAD_ZONE);
         }
         return false;
     case NEG_AXIS:
-        if(event.type == SDL_JOYAXISMOTION)
+        if(event.type == og::input_native::EventType::JoyAxisMotion)
         {
-            return (event.jaxis.which == index && event.jaxis.axis == key_index[key_enum] && event.jaxis.value < -JOY_DEAD_ZONE);
+            return (event.joy_axis_which == index && event.joy_axis_axis == key_index[key_enum] && event.joy_axis_value < -JOY_DEAD_ZONE);
         }
         return false;
     case HAT_UP:
-        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_UP);
+        return (event.joy_hat_which == index && event.joy_hat_hat == key_index[key_enum] && (event.joy_hat_value & og::input_native::kHatUp));
     case HAT_RIGHT:
-        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_RIGHT);
+        return (event.joy_hat_which == index && event.joy_hat_hat == key_index[key_enum] && (event.joy_hat_value & og::input_native::kHatRight));
     case HAT_DOWN:
-        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_DOWN);
+        return (event.joy_hat_which == index && event.joy_hat_hat == key_index[key_enum] && (event.joy_hat_value & og::input_native::kHatDown));
     case HAT_LEFT:
-        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_LEFT);
+        return (event.joy_hat_which == index && event.joy_hat_hat == key_index[key_enum] && (event.joy_hat_value & og::input_native::kHatLeft));
 
         // Diagonals are ignored because they are combinations of the cardinals
     case HAT_UP_RIGHT:
@@ -1188,38 +1163,38 @@ bool JoyData::getRelease(int key_enum, const void* native_event) const
 {
     if(index < 0)
         return false;
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return false;
-    const SDL_Event& event = as_sdl_event(native_event);
 
     switch(key_type[key_enum])
     {
     case BUTTON:
-        if(event.type == SDL_JOYBUTTONUP)
+        if(event.type == og::input_native::EventType::JoyButtonUp)
         {
-            return (event.jbutton.which == index && event.jbutton.button == key_index[key_enum]);
+            return (event.joy_button_which == index && event.joy_button_button == key_index[key_enum]);
         }
         return false;
     case POS_AXIS:
-        if(event.type == SDL_JOYAXISMOTION)
+        if(event.type == og::input_native::EventType::JoyAxisMotion)
         {
-            return (event.jaxis.which == index && event.jaxis.axis == key_index[key_enum] && event.jaxis.value < JOY_DEAD_ZONE);
+            return (event.joy_axis_which == index && event.joy_axis_axis == key_index[key_enum] && event.joy_axis_value < JOY_DEAD_ZONE);
         }
         return false;
     case NEG_AXIS:
-        if(event.type == SDL_JOYAXISMOTION)
+        if(event.type == og::input_native::EventType::JoyAxisMotion)
         {
-            return (event.jaxis.which == index && event.jaxis.axis == key_index[key_enum] && event.jaxis.value > -JOY_DEAD_ZONE);
+            return (event.joy_axis_which == index && event.joy_axis_axis == key_index[key_enum] && event.joy_axis_value > -JOY_DEAD_ZONE);
         }
         return false;
     case HAT_UP:
-        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_UP);
+        return (event.joy_hat_which == index && event.joy_hat_hat == key_index[key_enum] && (event.joy_hat_value & og::input_native::kHatUp));
     case HAT_RIGHT:
-        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_RIGHT);
+        return (event.joy_hat_which == index && event.joy_hat_hat == key_index[key_enum] && (event.joy_hat_value & og::input_native::kHatRight));
     case HAT_DOWN:
-        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_DOWN);
+        return (event.joy_hat_which == index && event.joy_hat_hat == key_index[key_enum] && (event.joy_hat_value & og::input_native::kHatDown));
     case HAT_LEFT:
-        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_LEFT);
+        return (event.joy_hat_which == index && event.joy_hat_hat == key_index[key_enum] && (event.joy_hat_value & og::input_native::kHatLeft));
 
         // Diagonals are ignored because they are combinations of the cardinals
     case HAT_UP_RIGHT:
@@ -1240,9 +1215,9 @@ void resetJoystick(int player_num)
 {
     // FIXME: SDL2 supports hotplugging, so I don't need to restart the joystick subsystem
     // Reset joystick subsystem
-    if(SDL_WasInit(SDL_INIT_JOYSTICK) & SDL_INIT_JOYSTICK)
-        SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
-    SDL_InitSubSystem(SDL_INIT_JOYSTICK);
+    if(og::input_native::joystick_subsystem_initialized())
+        og::input_native::joystick_quit_subsystem();
+    og::input_native::joystick_init_subsystem();
 
     // Set up joysticks
     for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
@@ -1250,10 +1225,10 @@ void resetJoystick(int player_num)
         joysticks[i] = nullptr;
     }
 
-    int numjoy = SDL_NumJoysticks();
+    int numjoy = og::input_native::num_joysticks();
     for(int i = 0; i < numjoy; i++)
     {
-        joysticks[i] = SDL_JoystickOpen(i);
+        joysticks[i] = og::input_native::joystick_open(i);
         if(joysticks[i] == nullptr)
             continue;
         // The joystick indices might change here.
@@ -1261,7 +1236,7 @@ void resetJoystick(int player_num)
         // so they might have buttons, etc. that are out of range for the new joystick.
     }
 
-    SDL_JoystickEventState(SDL_ENABLE);
+    og::input_native::joystick_set_event_state(true);
 
     player_joy[player_num] = JoyData(player_num);
 }
@@ -1352,24 +1327,24 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     if(player_joy[player_index].hasButtonSet(key_enum))
         return player_joy[player_index].getState(key_enum);
     else
-        return og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(og::runtime::current_session->player_keys_[player_index][key_enum])];
+        return og::runtime::current_session->keystates_[og::input_native::scancode_from_key(og::runtime::current_session->player_keys_[player_index][key_enum])];
     #endif
 }
 
 bool didPlayerPressKey(int player_index, int key_enum, const void* native_event)
 {
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return false;
-    const SDL_Event& event = as_sdl_event(native_event);
 
     #ifdef OUYA
     const OuyaController& c = OuyaControllerManager::getController(player_index);
-    if(event.user.code != player_index)
+    if(event.user_code != player_index)
         return false;
     
-    if(event.type == OuyaControllerManager::BUTTON_DOWN_EVENT)
+    if(event.raw_type == OuyaControllerManager::BUTTON_DOWN_EVENT)
     {
-        OuyaController::ButtonEnum button = static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1));
+        OuyaController::ButtonEnum button = static_cast<OuyaController::ButtonEnum>(event.user_data1);
         
         switch(key_enum)
         {
@@ -1397,7 +1372,7 @@ bool didPlayerPressKey(int player_index, int key_enum, const void* native_event)
             return false;
         }
     }
-    else if(event.type == OuyaControllerManager::AXIS_EVENT)
+    else if(event.raw_type == OuyaControllerManager::AXIS_EVENT)
     {
         switch(key_enum)
         {
@@ -1414,16 +1389,16 @@ bool didPlayerPressKey(int player_index, int key_enum, const void* native_event)
     if(player_joy[player_index].hasButtonSet(key_enum))
     {
         // This key is on the joystick, so check it.
-        return player_joy[player_index].getPress(key_enum, event);
+        return player_joy[player_index].getPress(key_enum, native_event);
     }
     else
     {
         // If the player is using KEYBOARD or doesn't have a joystick button set for this key, then check the keyboard.
-        if(event.type == SDL_KEYDOWN)
+        if(event.type == og::input_native::EventType::KeyDown)
         {
-            if(event.key.repeat) // Repeats don't count!
+            if(event.key_repeat) // Repeats don't count!
                 return false;
-            return (event.key.keysym.sym == og::runtime::current_session->player_keys_[player_index][key_enum]);
+            return (event.key_sym == og::runtime::current_session->player_keys_[player_index][key_enum]);
         }
         return false;
     }
@@ -1431,18 +1406,18 @@ bool didPlayerPressKey(int player_index, int key_enum, const void* native_event)
 
 bool didPlayerReleaseKey(int player_index, int key_enum, const void* native_event)
 {
-    if (!native_event)
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
         return false;
-    const SDL_Event& event = as_sdl_event(native_event);
 
     #ifdef OUYA
     const OuyaController& c = OuyaControllerManager::getController(player_index);
-    if(event.type != OuyaControllerManager::BUTTON_UP_EVENT)
+    if(event.raw_type != OuyaControllerManager::BUTTON_UP_EVENT)
         return false;
-    if(event.user.code != player_index)
+    if(event.user_code != player_index)
         return false;
     
-    OuyaController::ButtonEnum button = static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1));
+    OuyaController::ButtonEnum button = static_cast<OuyaController::ButtonEnum>(event.user_data1);
     
     switch(key_enum)
     {
@@ -1473,14 +1448,14 @@ bool didPlayerReleaseKey(int player_index, int key_enum, const void* native_even
     if(player_joy[player_index].hasButtonSet(key_enum))
     {
         // This key is on the joystick, so check it.
-        return player_joy[player_index].getRelease(key_enum, event);
+        return player_joy[player_index].getRelease(key_enum, native_event);
     }
     else
     {
         // If the player is using KEYBOARD or doesn't have a joystick button set for this key, then check the keyboard.
-        if(event.type == SDL_KEYUP)
+        if(event.type == og::input_native::EventType::KeyUp)
         {
-            return (event.key.keysym.sym == og::runtime::current_session->player_keys_[player_index][key_enum]);
+            return (event.key_sym == og::runtime::current_session->player_keys_[player_index][key_enum]);
         }
         return false;
     }
@@ -1492,13 +1467,13 @@ bool didPlayerReleaseKey(int player_index, int key_enum, const void* native_even
 
 void grab_mouse()
 {
-    SDL_ShowCursor(SDL_ENABLE);
+    og::input_native::show_cursor(true);
 }
 
 void release_mouse()
 {
     #ifndef FAKE_TOUCH_EVENTS
-    SDL_ShowCursor(SDL_DISABLE);
+    og::input_native::show_cursor(false);
     #endif
 }
 
@@ -1510,102 +1485,107 @@ MouseState& query_mouse()
     return mouse_state;
 }
 
-// Convert from scancode to ascii, ie, SDLK_a to 'A'
+// Convert from scancode to ascii, ie, KEYCODE_a to 'A'
 unsigned char convert_to_ascii(int scancode)
 {
     switch (scancode)
     {
-    case SDLK_a:
+    case KEYCODE_a:
         return 'A';
-    case SDLK_b:
+    case KEYCODE_b:
         return 'B';
-    case SDLK_c:
+    case KEYCODE_c:
         return 'C';
-    case SDLK_d:
+    case KEYCODE_d:
         return 'D';
-    case SDLK_e:
+    case KEYCODE_e:
         return 'E';
-    case SDLK_f:
+    case KEYCODE_f:
         return 'F';
-    case SDLK_g:
+    case KEYCODE_g:
         return 'G';
-    case SDLK_h:
+    case KEYCODE_h:
         return 'H';
-    case SDLK_i:
+    case KEYCODE_i:
         return 'I';
-    case SDLK_j:
+    case KEYCODE_j:
         return 'J';
-    case SDLK_k:
+    case KEYCODE_k:
         return 'K';
-    case SDLK_l:
+    case KEYCODE_l:
         return 'L';
-    case SDLK_m:
+    case KEYCODE_m:
         return 'M';
-    case SDLK_n:
+    case KEYCODE_n:
         return 'N';
-    case SDLK_o:
+    case KEYCODE_o:
         return 'O';
-    case SDLK_p:
+    case KEYCODE_p:
         return 'P';
-    case SDLK_q:
+    case KEYCODE_q:
         return 'Q';
-    case SDLK_r:
+    case KEYCODE_r:
         return 'R';
-    case SDLK_s:
+    case KEYCODE_s:
         return 'S';
-    case SDLK_t:
+    case KEYCODE_t:
         return 'T';
-    case SDLK_u:
+    case KEYCODE_u:
         return 'U';
-    case SDLK_v:
+    case KEYCODE_v:
         return 'V';
-    case SDLK_w:
+    case KEYCODE_w:
         return 'W';
-    case SDLK_x:
+    case KEYCODE_x:
         return 'X';
-    case SDLK_y:
+    case KEYCODE_y:
         return 'Y';
-    case SDLK_z:
+    case KEYCODE_z:
         return 'Z';
 
-    case SDLK_1:
+    case KEYCODE_1:
         return '1';
-    case SDLK_2:
+    case KEYCODE_2:
         return '2';
-    case SDLK_3:
+    case KEYCODE_3:
         return '3';
-    case SDLK_4:
+    case KEYCODE_4:
         return '4';
-    case SDLK_5:
+    case KEYCODE_5:
         return '5';
-    case SDLK_6:
+    case KEYCODE_6:
         return '6';
-    case SDLK_7:
+    case KEYCODE_7:
         return '7';
-    case SDLK_8:
+    case KEYCODE_8:
         return '8';
-    case SDLK_9:
+    case KEYCODE_9:
         return '9';
-    case SDLK_0:
+    case KEYCODE_0:
         return '0';
 
-    case SDLK_SPACE:
+    case KEYCODE_SPACE:
         return 32;
-        //    case SDLK_BACKSPACE: return 8;
-    case SDLK_RETURN:
+        //    case KEYCODE_BACKSPACE: return 8;
+    case KEYCODE_RETURN:
         return 13;
-    case SDLK_ESCAPE:
+    case KEYCODE_ESCAPE:
         return 27;
-    case SDLK_PERIOD:
+    case KEYCODE_PERIOD:
         return '.';
-    case SDLK_COMMA:
+    case KEYCODE_COMMA:
         return ',';
-    case SDLK_QUOTE:
+    case KEYCODE_QUOTE:
         return '\'';
-    case SDLK_BACKQUOTE:
+    case KEYCODE_BACKQUOTE:
         return '`';
 
     default:
         return 255;
     }
+}
+
+const char* query_key_name(int keycode)
+{
+    return og::input_native::key_name(keycode);
 }

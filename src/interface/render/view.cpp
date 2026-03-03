@@ -30,7 +30,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
-#include <openglad/resources/io.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/render/radar.h>
@@ -41,7 +41,6 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/gameplay/sim_input_handler.h>
-#include "SDL.h"
 #include <string>
 #include <format>
 #include <openglad/legacy/view_sizes.h>
@@ -67,67 +66,55 @@ inline constexpr int VIEW_TEAM_LEFT = 20;
 inline constexpr int VIEW_TEAM_BOTTOM = 198;
 inline constexpr int VIEW_TEAM_RIGHT = 280;
 
-inline constexpr SDL_Keycode SDLK_KP0 = SDLK_KP_0;
-inline constexpr SDL_Keycode SDLK_KP1 = SDLK_KP_1;
-inline constexpr SDL_Keycode SDLK_KP2 = SDLK_KP_2;
-inline constexpr SDL_Keycode SDLK_KP3 = SDLK_KP_3;
-inline constexpr SDL_Keycode SDLK_KP4 = SDLK_KP_4;
-inline constexpr SDL_Keycode SDLK_KP5 = SDLK_KP_5;
-inline constexpr SDL_Keycode SDLK_KP6 = SDLK_KP_6;
-inline constexpr SDL_Keycode SDLK_KP7 = SDLK_KP_7;
-inline constexpr SDL_Keycode SDLK_KP8 = SDLK_KP_8;
-inline constexpr SDL_Keycode SDLK_KP9 = SDLK_KP_9;
-
-
 // Zardus: these were originally static chars but are now ints
 // Now define the arrays with their default values
 
 const int key1[] = {
-                 SDLK_w, SDLK_e, SDLK_d, SDLK_c,  // movements
-                 SDLK_x, SDLK_z, SDLK_a, SDLK_q,
-                 SDLK_LCTRL, SDLK_LALT,                    // fire & special
-                 SDLK_TAB,                               // switch guys
-                 SDLK_1,                                 // change special
-                 SDLK_s,                                 // Yell
-                 SDLK_LSHIFT,                        // Shifter
-                 SDLK_2,                                 // Options menu
-                 SDLK_F5,                                 // Cheat key
+                 KEYCODE_w, KEYCODE_e, KEYCODE_d, KEYCODE_c,  // movements
+                 KEYCODE_x, KEYCODE_z, KEYCODE_a, KEYCODE_q,
+                 KEYCODE_LCTRL, KEYCODE_LALT,                    // fire & special
+                 KEYCODE_TAB,                               // switch guys
+                 KEYCODE_1,                                 // change special
+                 KEYCODE_s,                                 // Yell
+                 KEYCODE_LSHIFT,                        // Shifter
+                 KEYCODE_2,                                 // Options menu
+                 KEYCODE_F5,                                 // Cheat key
              };
              
 const int key2[] = {
-                 SDLK_KP8, SDLK_KP9, SDLK_KP6, SDLK_KP3,  // movements
-                 SDLK_KP2, SDLK_KP1, SDLK_KP4, SDLK_KP7,
-                 SDLK_KP0, SDLK_KP_ENTER,                    // fire & special
-                 SDLK_KP_PLUS,                          // switch guys
-                 SDLK_KP_MINUS,                         // change special
-                 SDLK_KP5,                                // Yell
-                 SDLK_KP_PERIOD,                                // Shifter
-                 SDLK_KP_MULTIPLY,                         // Options menu
-                 SDLK_F8,                                    // Cheat key
+                 KEYCODE_KP_8, KEYCODE_KP_9, KEYCODE_KP_6, KEYCODE_KP_3,  // movements
+                 KEYCODE_KP_2, KEYCODE_KP_1, KEYCODE_KP_4, KEYCODE_KP_7,
+                 KEYCODE_KP_0, KEYCODE_KP_ENTER,                    // fire & special
+                 KEYCODE_KP_PLUS,                          // switch guys
+                 KEYCODE_KP_MINUS,                         // change special
+                 KEYCODE_KP_5,                                // Yell
+                 KEYCODE_KP_PERIOD,                                // Shifter
+                 KEYCODE_KP_MULTIPLY,                         // Options menu
+                 KEYCODE_F8,                                    // Cheat key
              };
 
 const int key3[] = {
-                 SDLK_i, SDLK_o, SDLK_l, SDLK_PERIOD,  // movements
-                 SDLK_COMMA, SDLK_m, SDLK_j, SDLK_u,
-                 SDLK_SPACE, SDLK_SEMICOLON,                    // fire & special
-                 SDLK_BACKSPACE,                               // switch guys
-                 SDLK_7,                                 // change special
-                 SDLK_k,                                 // Yell
-                 SDLK_RSHIFT,                        // Shifter
-                 SDLK_8,                                 // Options menu
-                 SDLK_F7,                                 // Cheat key
+                 KEYCODE_i, KEYCODE_o, KEYCODE_l, KEYCODE_PERIOD,  // movements
+                 KEYCODE_COMMA, KEYCODE_m, KEYCODE_j, KEYCODE_u,
+                 KEYCODE_SPACE, KEYCODE_SEMICOLON,                    // fire & special
+                 KEYCODE_BACKSPACE,                               // switch guys
+                 KEYCODE_7,                                 // change special
+                 KEYCODE_k,                                 // Yell
+                 KEYCODE_RSHIFT,                        // Shifter
+                 KEYCODE_8,                                 // Options menu
+                 KEYCODE_F7,                                 // Cheat key
              };
 
 const int key4[] = {
-                 SDLK_t, SDLK_y, SDLK_h, SDLK_n,  // movements
-                 SDLK_b, SDLK_v, SDLK_f, SDLK_r,
-                 SDLK_5, SDLK_6,                    // fire & special
-                 SDLK_EQUALS,                               // switch guys
-                 SDLK_3,                                 // change special
-                 SDLK_g,                                 // Yell
-                 SDLK_MINUS,                        // Shifter
-                 SDLK_4,                                 // Options menu
-                 SDLK_F6,                                 // Cheat key
+                 KEYCODE_t, KEYCODE_y, KEYCODE_h, KEYCODE_n,  // movements
+                 KEYCODE_b, KEYCODE_v, KEYCODE_f, KEYCODE_r,
+                 KEYCODE_5, KEYCODE_6,                    // fire & special
+                 KEYCODE_EQUALS,                               // switch guys
+                 KEYCODE_3,                                 // change special
+                 KEYCODE_g,                                 // Yell
+                 KEYCODE_MINUS,                        // Shifter
+                 KEYCODE_4,                                 // Options menu
+                 KEYCODE_F6,                                 // Cheat key
              };
 
 // This is for saving/loading the key preferences
@@ -431,7 +418,6 @@ short viewscreen::input(const void* native_event)
 {
 	if (native_event == nullptr)
 		return 1;
-	const SDL_Event& event = *static_cast<const SDL_Event*>(native_event);
 
 	// Gameplay input (movement, fire, special, switch, yell, etc.) is now
 	// handled by process_input() via the SDL-independent InputState snapshot.
@@ -450,7 +436,7 @@ short viewscreen::input(const void* native_event)
 	// --- Debug keys (require raw SDL keycode checks) ---
 	if (!pi.is_held(InputAction::Cheat))
 	{
-		if (query_key_event(SDLK_F3, event))
+		if (query_key_event(KEYCODE_F3, native_event))
 		{
 			totaltime = (query_timer_control() - active_screen()->timerstart)/72;
 			totalframes = (active_screen()->framecount);
@@ -459,12 +445,12 @@ short viewscreen::input(const void* native_event)
 			active_screen()->viewob[0]->set_display_text(somemessage.c_str(), STANDARD_TEXT_TIME);
 		}
 
-		if (query_key_event(SDLK_F4, event))
+		if (query_key_event(KEYCODE_F4, native_event))
 			active_screen()->report_mem();
 	}
 
-	// Redisplay scenario text (Shift+/ = "?") — needs raw SDL for SDLK_SLASH
-	if (query_key_event(SDLK_SLASH, event) && pi.is_held(InputAction::Shift) && !pi.is_held(InputAction::Cheat))
+	// Redisplay scenario text (Shift+/ = "?") — needs raw SDL for KEYCODE_SLASH
+	if (query_key_event(KEYCODE_SLASH, native_event) && pi.is_held(InputAction::Shift) && !pi.is_held(InputAction::Cheat))
 	{
 		read_scenario(active_screen());
 		active_screen()->redrawme = 1;
@@ -472,7 +458,7 @@ short viewscreen::input(const void* native_event)
 	}
 
 	// --- Cheat keys (sim mutations handled in runtime layer) ---
-	handle_cheat_keys(controlob, mynum, event, pi, active_screen());
+	handle_cheat_keys(controlob, mynum, native_event, pi, active_screen());
 
 	return 1;
 }
@@ -1408,23 +1394,21 @@ void init_allkeys(int allkeys[][16])
 	for (int i = 0; i < 4; i++)
 		std::copy_n(normalkeys[i], 16, allkeys[i]);
 
-	SDL_RWops* infile = open_read_file(KEY_FILE);
+	og::io::OgFilePtr infile = og::io::og_open_read(KEY_FILE);
 	if (!infile)
 		return;
 
 	for (int i = 0; i < 4; i++)
 	{
-		SDL_RWread(infile, allkeys[i], 16 * sizeof(int), 1);
-		SDL_RWseek(infile, 10, RW_SEEK_CUR);  // skip prefs block
+		infile->read(allkeys[i], sizeof(int), 16);
+		infile->seek(10, SEEK_CUR);  // skip prefs block
 	}
-
-	SDL_RWclose(infile);
 }
 
 options::options()
 {
 	int i;
-	SDL_RWops *infile;
+	og::io::OgFilePtr infile;
 
 	// Set up preference defaults
 	for(i=0; i<4; i++)
@@ -1439,7 +1423,7 @@ options::options()
 		prefs[i][PREF_OVERLAY] = PREF_OVERLAY_OFF; // no button behind text
 	}
 
-	infile = open_read_file(KEY_FILE);
+	infile = og::io::og_open_read(KEY_FILE);
 
 	if (!infile) // failed to read
 		return;
@@ -1448,11 +1432,9 @@ options::options()
 	for (i=0; i < 4; i++)
 	{
 		// Skip allkeys data — now loaded separately by init_allkeys()
-		SDL_RWseek(infile, 16 * sizeof(int), RW_SEEK_CUR);
-		SDL_RWread(infile, prefs[i], 10, 1);
+		infile->seek(16 * sizeof(int), SEEK_CUR);
+		infile->read(prefs[i], 10, 1);
 	}
-
-	SDL_RWclose(infile);
 	return;
 }
 
@@ -1477,13 +1459,13 @@ short options::save(viewscreen *viewp)
 {
 	short prefnum = viewp->mynum;
 	Sint32 i;
-	SDL_RWops *outfile;
+	og::io::OgFilePtr outfile;
 
 	// Yes, we are ACTUALLY COPYING the data
 	std::copy_n(viewp->prefs, 10, prefs[prefnum]);
 	std::copy_n(viewp->mykeys, 16, allkeys()[prefnum]);
 
-	outfile = open_write_file(KEY_FILE);
+	outfile = og::io::og_open_write(KEY_FILE);
 
 	if (!outfile) // failed to write
 		return 0;
@@ -1491,11 +1473,9 @@ short options::save(viewscreen *viewp)
 	// Write the blobs of data ..
 	for (i=0; i < 4; i++)
 	{
-		SDL_RWwrite(outfile, allkeys()[i], 16 * sizeof(int), 1);
-		SDL_RWwrite(outfile, prefs[i], 10, 1);
+		outfile->write(allkeys()[i], 16 * sizeof(int), 1);
+		outfile->write(prefs[i], 10, 1);
 	}
-
-	SDL_RWclose(outfile);
 
 	return 1;
 }
@@ -1659,7 +1639,7 @@ Sint32 viewscreen::set_key_prefs()
 static const char* get_key_display_name(int keycode)
 {
 	static std::string buffer;
-	std::string sname = SDL_GetKeyName(keycode);
+	std::string sname = query_key_name(keycode);
 
 	// Map arrow keys to bitmap font arrow glyphs (indices 1-4)
 	if (sname == "Up") { buffer = std::string(1, '\x01'); return buffer.c_str(); }
@@ -1683,7 +1663,7 @@ static const char* get_key_display_name(int keycode)
 		return buffer.c_str();
 	}
 
-	return SDL_GetKeyName(keycode);
+	return query_key_name(keycode);
 }
 
 // view_key_bindings displays the current key bindings for this player

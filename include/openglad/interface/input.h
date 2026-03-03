@@ -103,6 +103,97 @@ inline constexpr int KEYSTATE_LSHIFT = 225;
 inline constexpr int KEYSTATE_RCTRL = 228;
 inline constexpr int KEYSTATE_RSHIFT = 229;
 
+// SDL2 keycode values copied into interface constants so interface code does
+// not include SDL headers.
+inline constexpr int KEYCODE_UNKNOWN = 0;
+inline constexpr int KEYCODE_RETURN = 13;
+inline constexpr int KEYCODE_ESCAPE = 27;
+inline constexpr int KEYCODE_BACKSPACE = 8;
+inline constexpr int KEYCODE_TAB = 9;
+inline constexpr int KEYCODE_SPACE = 32;
+inline constexpr int KEYCODE_QUOTE = 39;
+inline constexpr int KEYCODE_COMMA = 44;
+inline constexpr int KEYCODE_MINUS = 45;
+inline constexpr int KEYCODE_PERIOD = 46;
+inline constexpr int KEYCODE_SLASH = 47;
+inline constexpr int KEYCODE_0 = 48;
+inline constexpr int KEYCODE_1 = 49;
+inline constexpr int KEYCODE_2 = 50;
+inline constexpr int KEYCODE_3 = 51;
+inline constexpr int KEYCODE_4 = 52;
+inline constexpr int KEYCODE_5 = 53;
+inline constexpr int KEYCODE_6 = 54;
+inline constexpr int KEYCODE_7 = 55;
+inline constexpr int KEYCODE_8 = 56;
+inline constexpr int KEYCODE_9 = 57;
+inline constexpr int KEYCODE_SEMICOLON = 59;
+inline constexpr int KEYCODE_EQUALS = 61;
+inline constexpr int KEYCODE_LEFTBRACKET = 91;
+inline constexpr int KEYCODE_BACKSLASH = 92;
+inline constexpr int KEYCODE_RIGHTBRACKET = 93;
+inline constexpr int KEYCODE_BACKQUOTE = 96;
+inline constexpr int KEYCODE_a = 97;
+inline constexpr int KEYCODE_b = 98;
+inline constexpr int KEYCODE_c = 99;
+inline constexpr int KEYCODE_d = 100;
+inline constexpr int KEYCODE_e = 101;
+inline constexpr int KEYCODE_f = 102;
+inline constexpr int KEYCODE_g = 103;
+inline constexpr int KEYCODE_h = 104;
+inline constexpr int KEYCODE_i = 105;
+inline constexpr int KEYCODE_j = 106;
+inline constexpr int KEYCODE_k = 107;
+inline constexpr int KEYCODE_l = 108;
+inline constexpr int KEYCODE_m = 109;
+inline constexpr int KEYCODE_n = 110;
+inline constexpr int KEYCODE_o = 111;
+inline constexpr int KEYCODE_p = 112;
+inline constexpr int KEYCODE_q = 113;
+inline constexpr int KEYCODE_r = 114;
+inline constexpr int KEYCODE_s = 115;
+inline constexpr int KEYCODE_t = 116;
+inline constexpr int KEYCODE_u = 117;
+inline constexpr int KEYCODE_v = 118;
+inline constexpr int KEYCODE_w = 119;
+inline constexpr int KEYCODE_x = 120;
+inline constexpr int KEYCODE_y = 121;
+inline constexpr int KEYCODE_z = 122;
+inline constexpr int KEYCODE_DELETE = 127;
+inline constexpr int KEYCODE_UP = 1073741906;
+inline constexpr int KEYCODE_DOWN = 1073741905;
+inline constexpr int KEYCODE_LEFT = 1073741904;
+inline constexpr int KEYCODE_RIGHT = 1073741903;
+inline constexpr int KEYCODE_KP_MULTIPLY = 1073741909;
+inline constexpr int KEYCODE_KP_MINUS = 1073741910;
+inline constexpr int KEYCODE_KP_PLUS = 1073741911;
+inline constexpr int KEYCODE_KP_ENTER = 1073741912;
+inline constexpr int KEYCODE_KP_1 = 1073741913;
+inline constexpr int KEYCODE_KP_2 = 1073741914;
+inline constexpr int KEYCODE_KP_3 = 1073741915;
+inline constexpr int KEYCODE_KP_4 = 1073741916;
+inline constexpr int KEYCODE_KP_5 = 1073741917;
+inline constexpr int KEYCODE_KP_6 = 1073741918;
+inline constexpr int KEYCODE_KP_7 = 1073741919;
+inline constexpr int KEYCODE_KP_8 = 1073741920;
+inline constexpr int KEYCODE_KP_9 = 1073741921;
+inline constexpr int KEYCODE_KP_0 = 1073741922;
+inline constexpr int KEYCODE_KP_PERIOD = 1073741923;
+inline constexpr int KEYCODE_F1 = 1073741882;
+inline constexpr int KEYCODE_F2 = 1073741883;
+inline constexpr int KEYCODE_F3 = 1073741884;
+inline constexpr int KEYCODE_F4 = 1073741885;
+inline constexpr int KEYCODE_F5 = 1073741886;
+inline constexpr int KEYCODE_F6 = 1073741887;
+inline constexpr int KEYCODE_F7 = 1073741888;
+inline constexpr int KEYCODE_F8 = 1073741889;
+inline constexpr int KEYCODE_F9 = 1073741890;
+inline constexpr int KEYCODE_F10 = 1073741891;
+inline constexpr int KEYCODE_F12 = 1073741893;
+inline constexpr int KEYCODE_LCTRL = 1073742048;
+inline constexpr int KEYCODE_LSHIFT = 1073742049;
+inline constexpr int KEYCODE_LALT = 1073742050;
+inline constexpr int KEYCODE_RSHIFT = 1073742053;
+
 template <typename EventT>
 inline const void* to_native_event_ptr(const EventT& event)
 {
@@ -402,6 +493,8 @@ inline bool isJoystickEvent(const EventT& event)
 void clear_events();
 
 void assignKeyFromWaitEvent(int player_num, int key_enum);
+
+const char* query_key_name(int keycode);
 
 void clear_keyboard();
 void wait_for_key(int somekey);

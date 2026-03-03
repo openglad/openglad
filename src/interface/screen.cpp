@@ -45,7 +45,6 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/resources/level_data_hooks.h>
-#include "SDL.h"
 #include <algorithm>
 #include <string>
 #include <cstring>
@@ -838,7 +837,6 @@ void screen::clear()
 	//buffers: PORT:         videobuffer[i] = 0;
 	//buffers: PORT:  }
 	clearbuffer();
-	//SDL_FillRect(screen,nullptr,SDL_MapRGB(screen->format,0,0,0));
 
 	for (i=0; i < numviews; i ++)
 		viewob[i]->clear();
@@ -877,12 +875,11 @@ short screen::input(const void* native_event)
 {
 	// static text mytext;
 	short i;
-    if (native_event == nullptr)
-        return 1;
-    const SDL_Event& event = *static_cast<const SDL_Event*>(native_event);
+	if (native_event == nullptr)
+		return 1;
 
 	for (i=0; i < numviews; i++)
-		viewob[i]->input(event);
+		viewob[i]->input(native_event);
 
 	return 1;
 }
