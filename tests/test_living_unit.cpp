@@ -1,37 +1,41 @@
-#include <openglad/entities/living.h>
-#include <openglad/entities/guy.h>
-#include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
-#include <openglad/core/stats.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/core/constants.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
 #include "unit/unit.h"
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
+#include <openglad/platform/game_context.h>
 #include <array>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_living_r11.cpp ---
 namespace detail_living_r11 {
 namespace {
 
 struct LivingFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     LivingFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 };
@@ -40,7 +44,7 @@ living* add_living(LivingFixture& fx, char family, unsigned char team)
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(96, 96);
     w->sizex = 16;
     w->sizey = 16;
@@ -50,7 +54,7 @@ living* add_living(LivingFixture& fx, char family, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -169,24 +173,26 @@ namespace detail_living_r14 {
 namespace {
 
 struct LivingR14Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     LivingR14Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~LivingR14Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -194,7 +200,7 @@ living* add_living(LivingR14Fixture& fx, char family, unsigned char team, short 
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -205,7 +211,7 @@ living* add_living(LivingR14Fixture& fx, char family, unsigned char team, short 
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -280,14 +286,14 @@ OG_UNIT_TEST(test_living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_3
     self->attack_lunge = 1.0f;
     self->hit_recoil = 1.0f;
 
-    fx.level.grid.frames = 1;
-    fx.level.grid.w = 1;
-    fx.level.grid.h = 1;
-    fx.level.grid.data = std::make_unique<unsigned char[]>(1);
-    fx.level.grid.data[0] = PIX_TREE_M1;
-    fx.level.pixmaxx = GRID_SIZE;
-    fx.level.pixmaxy = GRID_SIZE;
-    fx.level.mysmoother.set_target(fx.level.grid);
+    fx.level.world().grid.frames = 1;
+    fx.level.world().grid.w = 1;
+    fx.level.world().grid.h = 1;
+    fx.level.world().grid.data = std::make_unique<unsigned char[]>(1);
+    fx.level.world().grid.data[0] = PIX_TREE_M1;
+    fx.level.world().pixmaxx = GRID_SIZE;
+    fx.level.world().pixmaxy = GRID_SIZE;
+    fx.level.world().mysmoother.set_target(fx.level.world().grid);
 
     cfg.apply_setting("effects", "damage_numbers", "on");
 
@@ -349,4 +355,3 @@ OG_UNIT_TEST(test_living_r14_lines_371_375_380_419_433_440_shove_walk_and_animat
     (void)self->walk(1.0f, 0.0f);
 }
 } // namespace detail_living_r14
-

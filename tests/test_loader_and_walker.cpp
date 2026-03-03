@@ -1,18 +1,18 @@
-#include <openglad/core/stats.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/guy.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <memory>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static std::unique_ptr<walker> create_living(char family)
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -85,13 +85,13 @@ void test_walker_attack_deals_damage_and_awards_score()
     target->stats()->hitpoints = 100;
     target->stats()->max_hitpoints = 100;
 
-    myscreen->save_data.m_score[0] = 0;
+    og::runtime::current_session->myscreen_->world_.m_score[0] = 0;
 
     bool ok = attacker->attack(target.get());
     TEST_ASSERT(ok, "attack should succeed against enemy living target");
     TEST_ASSERT(target->stats()->hitpoints < 100, "attack should reduce target HP");
     TEST_ASSERT(attacker->myguy->total_hits >= 1, "attack should increment attacker hits");
-    TEST_ASSERT(myscreen->save_data.m_score[0] > 0, "attack should award score for team 0");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world_.m_score[0] > 0, "attack should award score for team 0");
 
 }
 REGISTER_TEST(test_walker_attack_deals_damage_and_awards_score);

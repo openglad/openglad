@@ -3,6 +3,7 @@
 
 #include "test_framework.h"
 #include <openglad/core/util.h>
+#include <openglad/legacy/base.h>  // g_game_speed_factor macro, set_game_speed()
 
 void test_util_case_conversion_cstr()
 {
@@ -32,10 +33,10 @@ REGISTER_TEST(test_util_case_conversion_string);
 void test_util_game_speed_clamps()
 {
     set_game_speed(-5.0f);
-    TEST_ASSERT(g_game_speed_factor == 0.0f, "set_game_speed should clamp negatives to 0");
+    TEST_ASSERT(og::runtime::current_session->g_game_speed_factor_ == 0.0f, "set_game_speed should clamp negatives to 0");
 
     set_game_speed(2.0f);
-    TEST_ASSERT(g_game_speed_factor == 2.0f, "set_game_speed should accept >1 factors");
+    TEST_ASSERT(og::runtime::current_session->g_game_speed_factor_ == 2.0f, "set_game_speed should accept >1 factors");
 }
 REGISTER_TEST(test_util_game_speed_clamps);
 

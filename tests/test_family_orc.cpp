@@ -1,12 +1,12 @@
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/guy.h>
-#include <openglad/entities/living.h>
-#include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/core/constants.h>
 #include <openglad/legacy/base.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
@@ -14,6 +14,7 @@
 #endif
 #include <memory>
 #include "unit/unit.h"
+#include "test_gameplay_context_scope.h"
 
 const FamilyDescriptor& describe_family_orc();
 const FamilyDescriptor& describe_family_big_orc();
@@ -21,24 +22,26 @@ const FamilyDescriptor& describe_family_big_orc();
 namespace {
 
 struct OrcR15Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     OrcR15Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~OrcR15Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -46,7 +49,7 @@ living* add_living(OrcR15Fixture& fx, unsigned char team, char family, short x, 
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -55,7 +58,7 @@ living* add_living(OrcR15Fixture& fx, unsigned char team, char family, short x, 
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 

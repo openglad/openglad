@@ -1,10 +1,13 @@
-#include <openglad/input/input.h>
-#include <openglad/input/button.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/data/gparser.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/button.h>
+#include <openglad/interface/native_input.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/platform/game_session.h>
+#include <openglad/resources/gparser.h>
 #include "test_framework.h"
 
-extern int player_keys[4][NUM_KEYS];
+#include <cstring>
+
 extern cfg_store cfg;
 
 namespace
@@ -16,14 +19,14 @@ struct KeyBindingGuard
     int old;
 
     KeyBindingGuard(int player_, int key_enum_, int new_key)
-        : player(player_), key_enum(key_enum_), old(player_keys[player_][key_enum_])
+        : player(player_), key_enum(key_enum_), old(og::runtime::current_session->player_keys_[player_][key_enum_])
     {
-        player_keys[player][key_enum] = new_key;
+        og::runtime::current_session->player_keys_[player][key_enum] = new_key;
     }
 
     ~KeyBindingGuard()
     {
-        player_keys[player][key_enum] = old;
+        og::runtime::current_session->player_keys_[player][key_enum] = old;
     }
 };
 
@@ -209,11 +212,29 @@ REGISTER_TEST(test_input_key_binding_helpers_isAnyPlayerKey_and_isPlayerKey);
 
 void test_input_wait_for_key_event_returns_fake_escape_in_test_mode()
 {
-    SDL_Event e = wait_for_key_event();
+    const SDL_Event& e = *static_cast<const SDL_Event*>(wait_for_key_event());
     TEST_ASSERT_EQ((int)SDL_KEYDOWN, (int)e.type, "wait_for_key_event should return keydown in test mode");
     TEST_ASSERT_EQ((int)SDLK_ESCAPE, (int)e.key.keysym.sym, "wait_for_key_event should return escape in test mode");
 }
 REGISTER_TEST(test_input_wait_for_key_event_returns_fake_escape_in_test_mode);
+
+void test_native_input_decode_event_ignores_malformed_scancode_payload()
+{
+    SDL_Event e{};
+    std::memset(&e, 0x01, sizeof(e));
+    e.type = SDL_KEYDOWN;
+    e.key.type = SDL_KEYDOWN;
+    e.key.keysym.sym = SDLK_q;
+    e.key.repeat = 0;
+
+    og::input_native::EventData out{};
+    TEST_ASSERT(og::input_native::decode_event(&e, out), "decode_event should accept keydown payloads");
+    TEST_ASSERT_EQ((int)og::input_native::EventType::KeyDown, (int)out.type, "decoded event type should be keydown");
+    TEST_ASSERT_EQ((int)SDLK_q, out.key_sym, "decoded key symbol should match payload");
+    TEST_ASSERT_EQ((int)SDL_GetScancodeFromKey(SDLK_q), out.key_scancode,
+        "decoded scancode should derive from key symbol, not raw enum payload");
+}
+REGISTER_TEST(test_native_input_decode_event_ignores_malformed_scancode_payload);
 
 void test_input_state_from_sdl_respects_four_direction_mode()
 {
@@ -254,7 +275,7 @@ void test_input_mode_key_binding_updates_are_isolated_by_control_mode()
         0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
-    TEST_ASSERT_EQ(eight_before, player_keys[0][KEY_UP],
+    TEST_ASSERT_EQ(eight_before, og::runtime::current_session->player_keys_[0][KEY_UP],
         "switching to 8-direction should restore that mode's key binding");
     set_player_key_binding(0, KEY_UP, SDLK_2);
 
@@ -266,7 +287,7 @@ void test_input_mode_key_binding_updates_are_isolated_by_control_mode()
         "8-direction binding should update when editing in 8-direction mode");
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    TEST_ASSERT_EQ(static_cast<int>(SDLK_1), player_keys[0][KEY_UP],
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_1), og::runtime::current_session->player_keys_[0][KEY_UP],
         "switching back to 4-direction should restore 4-direction binding");
 }
 REGISTER_TEST(test_input_mode_key_binding_updates_are_isolated_by_control_mode);
@@ -276,23 +297,23 @@ void test_input_control_settings_cfg_roundtrip()
     cfg_store config;
     config.load_settings();
 
-    const int old_yell = player_keys[0][KEY_YELL];
+    const int old_yell = og::runtime::current_session->player_keys_[0][KEY_YELL];
     ControlModeGuard mode_guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
-    player_keys[0][KEY_YELL] = SDLK_z;
+    og::runtime::current_session->player_keys_[0][KEY_YELL] = SDLK_z;
     save_player_control_settings_to_cfg(config);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    player_keys[0][KEY_YELL] = SDLK_UNKNOWN;
+    og::runtime::current_session->player_keys_[0][KEY_YELL] = SDLK_UNKNOWN;
     load_player_control_settings_from_cfg(config);
 
     TEST_ASSERT_EQ(static_cast<int>(ControlDirectionMode::EightDirection), get_player_control_mode(0),
         "control mode should reload from config");
-    TEST_ASSERT_EQ(static_cast<int>(SDLK_z), player_keys[0][KEY_YELL],
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_z), og::runtime::current_session->player_keys_[0][KEY_YELL],
         "keybind should reload from config");
 
-    player_keys[0][KEY_YELL] = old_yell;
+    og::runtime::current_session->player_keys_[0][KEY_YELL] = old_yell;
 }
 REGISTER_TEST(test_input_control_settings_cfg_roundtrip);
 

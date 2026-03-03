@@ -1,8 +1,8 @@
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
-#include <openglad/platform/io.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/resources/io.h>
 #include <openglad/legacy/pixdefs.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
@@ -11,22 +11,22 @@
 #include <cstdio>
 #include <unistd.h>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // From level_editor.cpp
-void set_screen_pos(screen* myscreen, Sint32 x, Sint32 y);
+void set_screen_pos(screen* scr, Sint32 x, Sint32 y);
 char get_random_matching_tile(Sint32 whatback);
 Sint32 check_collide(Sint32 x, Sint32 y, Sint32 xsize, Sint32 ysize,
                      Sint32 x2, Sint32 y2, Sint32 xsize2, Sint32 ysize2);
-walker* some_hit(Sint32 x, Sint32 y, walker* ob, LevelData* data);
+walker* some_hit(Sint32 x, Sint32 y, walker* ob, LevelRuntimeData* data);
 bool create_new_campaign(const std::string& campaign_id);
 bool does_campaign_exist(const std::string& campaign_id);
-bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
+bool are_objects_outside_area(LevelRuntimeData* level, int x, int y, int w, int h);
 void get_connected_level_exits(int current_level, const std::list<int>& levels, std::set<int>& connected, std::list<std::string>& problems);
 std::string get_editor_family_label(Order order, Sint32 family, char livings[][20], const char* treasures[], const char* weapons[]);
 std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
 void importCampaignPicker();
-void shareCampaign(screen* myscreen);
+void shareCampaign(screen* scr);
 bool prompt_for_string(const std::string& message, std::string& result);
 int level_editor_test_exercise_internal_helpers();
 
@@ -37,9 +37,9 @@ static bool in_set(unsigned char v, unsigned char a, unsigned char b, unsigned c
 
 void test_level_editor_set_screen_pos_and_tile_matching()
 {
-    set_screen_pos(myscreen, 123, -45);
-    TEST_ASSERT_EQ(123, (int)myscreen->level_data.topx, "set_screen_pos should update topx");
-    TEST_ASSERT_EQ(-45, (int)myscreen->level_data.topy, "set_screen_pos should update topy");
+    set_screen_pos(og::runtime::current_session->myscreen_, 123, -45);
+    TEST_ASSERT_EQ(123, (int)og::runtime::current_session->myscreen_->level_visuals_.topx, "set_screen_pos should update topx");
+    TEST_ASSERT_EQ(-45, (int)og::runtime::current_session->myscreen_->level_visuals_.topy, "set_screen_pos should update topy");
 
     unsigned char t = (unsigned char)get_random_matching_tile(PIX_GRASS1);
     TEST_ASSERT(in_set(t, PIX_GRASS1, PIX_GRASS2, PIX_GRASS3, PIX_GRASS4), "grass variant should be one of grass tiles");
@@ -90,7 +90,7 @@ void test_level_editor_set_screen_pos_and_tile_matching()
     TEST_ASSERT(get_editor_level_label(static_cast<Order>(255), FAMILY_KNIFE, 8).empty(), "unknown order has empty level label");
 
     importCampaignPicker();
-    shareCampaign(myscreen);
+    shareCampaign(og::runtime::current_session->myscreen_);
     std::string name = "Default";
     TEST_ASSERT(prompt_for_string("Name", name), "prompt_for_string test-mode path should accept");
     TEST_ASSERT(level_editor_test_exercise_internal_helpers() > 0, "internal helper exerciser should run");
@@ -112,21 +112,21 @@ struct ListsSwap {
     std::list<std::unique_ptr<walker>> saved_ob, saved_fx, saved_weap;
     ListsSwap()
     {
-        saved_ob.splice(saved_ob.end(), myscreen->level_data.oblist);
-        saved_fx.splice(saved_fx.end(), myscreen->level_data.fxlist);
-        saved_weap.splice(saved_weap.end(), myscreen->level_data.weaplist);
+        saved_ob.splice(saved_ob.end(), og::runtime::current_session->myscreen_->world().oblist);
+        saved_fx.splice(saved_fx.end(), og::runtime::current_session->myscreen_->world().fxlist);
+        saved_weap.splice(saved_weap.end(), og::runtime::current_session->myscreen_->world().weaplist);
     }
     ~ListsSwap()
     {
-        myscreen->level_data.oblist.splice(myscreen->level_data.oblist.end(), saved_ob);
-        myscreen->level_data.fxlist.splice(myscreen->level_data.fxlist.end(), saved_fx);
-        myscreen->level_data.weaplist.splice(myscreen->level_data.weaplist.end(), saved_weap);
+        og::runtime::current_session->myscreen_->world().oblist.splice(og::runtime::current_session->myscreen_->world().oblist.end(), saved_ob);
+        og::runtime::current_session->myscreen_->world().fxlist.splice(og::runtime::current_session->myscreen_->world().fxlist.end(), saved_fx);
+        og::runtime::current_session->myscreen_->world().weaplist.splice(og::runtime::current_session->myscreen_->world().weaplist.end(), saved_weap);
     }
 };
 
 static std::unique_ptr<walker> make_living(unsigned char family)
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -151,36 +151,36 @@ void test_level_editor_some_hit_checks_all_lists()
     TEST_ASSERT(target1 != nullptr, "target1 should be created");
     walker* target1p = target1.get();
     target1p->setxy(10, 10);
-    myscreen->level_data.oblist.push_back(std::move(target1));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(target1));
 
-    walker* hit = some_hit(10, 10, probep, &myscreen->level_data);
+    walker* hit = some_hit(10, 10, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
     TEST_ASSERT(hit == target1p, "some_hit should find hit in oblist");
     TEST_ASSERT(probep->collide_ob == target1p, "collide_ob should be set");
 
-    myscreen->level_data.oblist.clear();
+    og::runtime::current_session->myscreen_->world().oblist.clear();
 
     // fxlist hit
     auto target2 = make_living(FAMILY_ORC);
     walker* target2p = target2.get();
     target2p->setxy(10, 10);
-    myscreen->level_data.fxlist.push_back(std::move(target2));
-    hit = some_hit(10, 10, probep, &myscreen->level_data);
+    og::runtime::current_session->myscreen_->world().fxlist.push_back(std::move(target2));
+    hit = some_hit(10, 10, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
     TEST_ASSERT(hit == target2p, "some_hit should find hit in fxlist");
 
-    myscreen->level_data.fxlist.clear();
+    og::runtime::current_session->myscreen_->world().fxlist.clear();
 
     // weaplist hit
     auto target3 = make_living(FAMILY_ORC);
     walker* target3p = target3.get();
     target3p->setxy(10, 10);
-    myscreen->level_data.weaplist.push_back(std::move(target3));
-    hit = some_hit(10, 10, probep, &myscreen->level_data);
+    og::runtime::current_session->myscreen_->world().weaplist.push_back(std::move(target3));
+    hit = some_hit(10, 10, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
     TEST_ASSERT(hit == target3p, "some_hit should find hit in weaplist");
 
-    myscreen->level_data.weaplist.clear();
+    og::runtime::current_session->myscreen_->world().weaplist.clear();
 
     // no hit
-    hit = some_hit(1000, 1000, probep, &myscreen->level_data);
+    hit = some_hit(1000, 1000, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
     TEST_ASSERT(hit == nullptr, "some_hit should return null when no overlap");
     TEST_ASSERT(probep->collide_ob == nullptr, "collide_ob should be cleared on miss");
 }
@@ -210,34 +210,34 @@ void test_level_editor_create_new_campaign_and_detect_exists()
     TEST_ASSERT(!missing_problems.empty(), "missing level should report at least one problem");
 
     // Area bounds checks for inside/outside object detection.
-    myscreen->level_data.create_new_grid();
-    walker* inside = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* outside = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    walker* inside = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* outside = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(inside != nullptr && outside != nullptr, "test objects should be created");
     if (inside && outside) {
         inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
         outside->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
-        TEST_ASSERT(are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+        TEST_ASSERT(are_objects_outside_area(&og::runtime::current_session->myscreen_->level_runtime_data(), 0, 0, 10, 10),
                     "outside object should be detected");
         outside->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
-        TEST_ASSERT(!are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+        TEST_ASSERT(!are_objects_outside_area(&og::runtime::current_session->myscreen_->level_runtime_data(), 0, 0, 10, 10),
                     "all objects inside area should report false");
 
-        loader* l = myscreen->level_data.myloader.get();
+        loader* l = og::runtime::current_session->myscreen_->myloader;
         auto fx_inside = l ? l->create_walker_owned(Order::FX, FAMILY_FLASH) : nullptr;
         auto fx_outside = l ? l->create_walker_owned(Order::FX, FAMILY_FLASH) : nullptr;
         TEST_ASSERT(fx_inside != nullptr && fx_outside != nullptr, "fx objects should be created");
         if (fx_inside && fx_outside) {
             walker* fx_inside_p = fx_inside.get();
             walker* fx_outside_p = fx_outside.get();
-            myscreen->level_data.fxlist.push_back(std::move(fx_inside));
-            myscreen->level_data.fxlist.push_back(std::move(fx_outside));
+            og::runtime::current_session->myscreen_->world().fxlist.push_back(std::move(fx_inside));
+            og::runtime::current_session->myscreen_->world().fxlist.push_back(std::move(fx_outside));
             fx_inside_p->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
             fx_outside_p->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
-            TEST_ASSERT(are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+            TEST_ASSERT(are_objects_outside_area(&og::runtime::current_session->myscreen_->level_runtime_data(), 0, 0, 10, 10),
                         "outside fx object should be detected");
             fx_outside_p->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
-            TEST_ASSERT(!are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+            TEST_ASSERT(!are_objects_outside_area(&og::runtime::current_session->myscreen_->level_runtime_data(), 0, 0, 10, 10),
                         "inside fx objects should report false");
         }
 
@@ -247,18 +247,18 @@ void test_level_editor_create_new_campaign_and_detect_exists()
         if (weap_inside && weap_outside) {
             walker* weap_inside_p = weap_inside.get();
             walker* weap_outside_p = weap_outside.get();
-            myscreen->level_data.weaplist.push_back(std::move(weap_inside));
-            myscreen->level_data.weaplist.push_back(std::move(weap_outside));
+            og::runtime::current_session->myscreen_->world().weaplist.push_back(std::move(weap_inside));
+            og::runtime::current_session->myscreen_->world().weaplist.push_back(std::move(weap_outside));
             weap_inside_p->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
             weap_outside_p->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
-            TEST_ASSERT(are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+            TEST_ASSERT(are_objects_outside_area(&og::runtime::current_session->myscreen_->level_runtime_data(), 0, 0, 10, 10),
                         "outside weapon object should be detected");
             weap_outside_p->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
-            TEST_ASSERT(!are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+            TEST_ASSERT(!are_objects_outside_area(&og::runtime::current_session->myscreen_->level_runtime_data(), 0, 0, 10, 10),
                         "inside weapon objects should report false");
         }
     }
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     delete_campaign(id);
 }

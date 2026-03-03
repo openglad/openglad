@@ -1,7 +1,7 @@
-#include <openglad/data/pixie_data.h>
+#include <openglad/resources/pixie_data.h>
 #include <openglad/legacy/pixdefs.h>
-#include <openglad/data/smooth.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/gameplay/smooth.h>
+#include <openglad/platform/game_context.h>
 #include "test_framework.h"
 
 #include <array>
@@ -17,8 +17,8 @@ public:
 
 struct GlobalContextGuard
 {
-    explicit GlobalContextGuard(GameContext* ctx) { set_global_context(ctx); }
-    ~GlobalContextGuard() { set_global_context(nullptr); }
+    explicit GlobalContextGuard(GameContext* ctx) { push_test_context(ctx); }
+    ~GlobalContextGuard() { pop_test_context(); }
     GlobalContextGuard(const GlobalContextGuard&) = delete;
     GlobalContextGuard& operator=(const GlobalContextGuard&) = delete;
 };

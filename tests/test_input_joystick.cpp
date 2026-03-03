@@ -1,9 +1,5 @@
-#include <openglad/input/input.h>
+#include <openglad/interface/input.h>
 #include "test_framework.h"
-
-extern JoyData player_joy[4];
-extern bool isKeyboardEvent(const SDL_Event& event);
-extern bool isJoystickEvent(const SDL_Event& event);
 extern void wait_for_key(int somekey);
 extern void resetJoystick(int player_num);
 

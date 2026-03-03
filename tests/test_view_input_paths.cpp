@@ -1,27 +1,26 @@
-#include <openglad/input/input.h>
-#include <openglad/input/input_action.h>
-#include <openglad/core/stats.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/input_action.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
-#include <openglad/render/view.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/screen.h>
+#include <openglad/platform/game_context.h>
 #include "test_framework.h"
 
 #include <list>
 #include <memory>
 
-extern screen* myscreen;
-extern int player_keys[4][NUM_KEYS];
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace
 {
 struct TeamListSwap
 {
     std::list<std::unique_ptr<walker>> saved_ob;
-    TeamListSwap() { saved_ob.splice(saved_ob.end(), myscreen->level_data.oblist); }
-    ~TeamListSwap() { myscreen->level_data.oblist.splice(myscreen->level_data.oblist.end(), saved_ob); }
+    TeamListSwap() { saved_ob.splice(saved_ob.end(), og::runtime::current_session->myscreen_->world().oblist); }
+    ~TeamListSwap() { og::runtime::current_session->myscreen_->world().oblist.splice(og::runtime::current_session->myscreen_->world().oblist.end(), saved_ob); }
 };
 
 struct KeyBindingGuard
@@ -30,11 +29,11 @@ struct KeyBindingGuard
     int key_enum;
     int old_key;
     KeyBindingGuard(int player_, int key_enum_, int new_key)
-        : player(player_), key_enum(key_enum_), old_key(player_keys[player_][key_enum_])
+        : player(player_), key_enum(key_enum_), old_key(og::runtime::current_session->player_keys_[player_][key_enum_])
     {
-        player_keys[player][key_enum] = new_key;
+        og::runtime::current_session->player_keys_[player][key_enum] = new_key;
     }
-    ~KeyBindingGuard() { player_keys[player][key_enum] = old_key; }
+    ~KeyBindingGuard() { og::runtime::current_session->player_keys_[player][key_enum] = old_key; }
 };
 
 struct KeyStateGuard
@@ -57,7 +56,7 @@ struct KeyStateGuard
 
 static std::unique_ptr<walker> make_living(unsigned char family, unsigned char team, int x, int y)
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -83,7 +82,7 @@ void test_view_input_switch_control_forward_and_reverse()
     KeyBindingGuard bind_shifter(0, KEY_SHIFTER, SDLK_LSHIFT);
     KeyStateGuard ks;
 
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "view should exist");
     v->mynum = 0;
     v->my_team = 0;
@@ -97,9 +96,9 @@ void test_view_input_switch_control_forward_and_reverse()
     walker* w2p = w2.get();
     walker* w3p = w3.get();
 
-    myscreen->level_data.oblist.push_back(std::move(w1));
-    myscreen->level_data.oblist.push_back(std::move(w2));
-    myscreen->level_data.oblist.push_back(std::move(w3));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w1));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w2));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w3));
     v->control = w1p;
 
     // Use process_input() with InputState for switch control.
@@ -133,7 +132,7 @@ void test_view_input_yell_and_shift_yell_team_actions()
     KeyBindingGuard bind_cheat(0, KEY_CHEAT, SDLK_c);
     KeyStateGuard ks;
 
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "view should exist");
     v->mynum = 0;
     v->my_team = 0;
@@ -148,8 +147,8 @@ void test_view_input_yell_and_shift_yell_team_actions()
     controlp->user = 0;
     allyp->leader = nullptr;
 
-    myscreen->level_data.oblist.push_back(std::move(control));
-    myscreen->level_data.oblist.push_back(std::move(ally));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally));
     v->control = controlp;
 
     // Plain YELL via process_input: followers get leader+follow, yo_delay set.
@@ -184,11 +183,11 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     KeyBindingGuard bind_cheat(0, KEY_CHEAT, SDLK_c);
     KeyStateGuard ks;
 
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "view should exist");
     v->mynum = 0;
     v->my_team = 0;
-    myscreen->save_data.my_team = 0;
+    og::runtime::current_session->myscreen_->save_data.my_team = 0;
 
     auto control = make_living(FAMILY_SOLDIER, 0, 20, 20);
     auto teammate = make_living(FAMILY_ELF, 0, 40, 20);
@@ -202,9 +201,9 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     controlp->set_act_type(ACT_CONTROL);
     controlp->stats()->level = 5;
 
-    myscreen->level_data.oblist.push_back(std::move(control));
-    myscreen->level_data.oblist.push_back(std::move(teammate));
-    myscreen->level_data.oblist.push_back(std::move(enemy));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(teammate));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(enemy));
     v->control = controlp;
 
     // Hold cheat key so cheat branch executes.
@@ -242,15 +241,15 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     TEST_ASSERT(v->control->stats()->level >= 1, "left bracket should keep level >= 1");
 
     // Extra cheat keys for additional input branches.
-    const int freeze_before = myscreen->enemy_freeze;
+    const int freeze_before = og::runtime::current_session->myscreen_->world().enemy_freeze;
     e.key.keysym.sym = SDLK_F1;
     v->input(e);
-    TEST_ASSERT(myscreen->enemy_freeze >= freeze_before + 50, "F1 should increase enemy freeze time");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().enemy_freeze >= freeze_before + 50, "F1 should increase enemy freeze time");
 
-    const size_t ob_count_before = myscreen->level_data.oblist.size();
+    const size_t ob_count_before = og::runtime::current_session->myscreen_->world().oblist.size();
     e.key.keysym.sym = SDLK_F2;
     v->input(e);
-    TEST_ASSERT(myscreen->level_data.oblist.size() >= ob_count_before, "F2 should keep oblist valid");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().oblist.size() >= ob_count_before, "F2 should keep oblist valid");
 
     const bool flying_before = v->control->stats()->query_bit_flags(BIT_FLYING) != 0;
     e.key.keysym.sym = SDLK_f;

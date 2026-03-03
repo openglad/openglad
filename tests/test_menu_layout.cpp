@@ -1,14 +1,7 @@
-#include <openglad/input/button.h>
+#include <openglad/interface/button.h>
 #include <openglad/legacy/test_trace.h>
+#include "../src/interface/ui/picker_sdl_defs.h"
 #include "test_framework.h"
-
-// Button arrays and their sizes defined in picker.cpp
-extern button main_options_buttons[];
-extern button control_options_buttons[];
-
-// Counts derived from the arrays (we know exact sizes from the source)
-static constexpr int NUM_MAIN_OPTIONS = 16;
-static constexpr int NUM_CONTROL_OPTIONS = 10;
 
 // Screen dimensions for the game
 static constexpr int SCREEN_W = 320;
@@ -144,27 +137,35 @@ static void check_nav_in_range(button* buttons, int count, const char* menu_name
 
 void test_main_options_buttons_no_overlap()
 {
-    check_no_overlaps(main_options_buttons, NUM_MAIN_OPTIONS, "main_options");
-    check_bounds(main_options_buttons, NUM_MAIN_OPTIONS, "main_options");
+    button* buttons = picker_main_options_buttons();
+    const int count = picker_main_options_button_count();
+    check_no_overlaps(buttons, count, "main_options");
+    check_bounds(buttons, count, "main_options");
 }
 REGISTER_TEST(test_main_options_buttons_no_overlap);
 
 void test_control_options_buttons_no_overlap()
 {
-    check_no_overlaps(control_options_buttons, NUM_CONTROL_OPTIONS, "control_options");
-    check_bounds(control_options_buttons, NUM_CONTROL_OPTIONS, "control_options");
+    button* buttons = picker_control_options_buttons();
+    const int count = picker_control_options_button_count();
+    check_no_overlaps(buttons, count, "control_options");
+    check_bounds(buttons, count, "control_options");
 }
 REGISTER_TEST(test_control_options_buttons_no_overlap);
 
 void test_main_options_nav_indices_in_range()
 {
-    check_nav_in_range(main_options_buttons, NUM_MAIN_OPTIONS, "main_options");
+    button* buttons = picker_main_options_buttons();
+    const int count = picker_main_options_button_count();
+    check_nav_in_range(buttons, count, "main_options");
 }
 REGISTER_TEST(test_main_options_nav_indices_in_range);
 
 void test_control_options_nav_indices_in_range()
 {
-    check_nav_in_range(control_options_buttons, NUM_CONTROL_OPTIONS, "control_options");
+    button* buttons = picker_control_options_buttons();
+    const int count = picker_control_options_button_count();
+    check_nav_in_range(buttons, count, "control_options");
 }
 REGISTER_TEST(test_control_options_nav_indices_in_range);
 

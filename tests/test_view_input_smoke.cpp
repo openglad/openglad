@@ -1,18 +1,18 @@
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/core/util.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/render/view.h>
+#include <openglad/interface/screen.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/interface/render/view.h>
 #include "test_framework.h"
 #include <cstring>
 #include <memory>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static std::unique_ptr<walker> create_living_on_team(unsigned char team)
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
@@ -38,7 +38,7 @@ static SDL_Event make_keydown(SDL_Keycode k)
 
 void test_viewscreen_input_f3_f4_smoke()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "viewob[0] should exist");
 
     auto control = create_living_on_team(0);
@@ -49,8 +49,8 @@ void test_viewscreen_input_f3_f4_smoke()
     v->my_team = 0;
 
     // Avoid divide-by-zero in the F3 FPS branch.
-    myscreen->timerstart = query_timer_control() - 200;
-    myscreen->framecount = 1234;
+    og::runtime::current_session->myscreen_->timerstart = query_timer_control() - 200;
+    og::runtime::current_session->myscreen_->framecount = 1234;
 
     // Exercise a couple of key-event branches.
     (void)v->input(make_keydown(SDLK_F3));
@@ -62,7 +62,7 @@ REGISTER_TEST(test_viewscreen_input_f3_f4_smoke);
 
 void test_viewscreen_input_consumes_bonus_rounds()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "viewob[0] should exist");
 
     auto control = create_living_on_team(0);

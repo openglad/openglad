@@ -1,20 +1,20 @@
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
-#include <openglad/render/view.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/guy_create.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include <memory>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static std::unique_ptr<walker> make_player_walker(char family, unsigned char team)
 {
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w) {
         w->team_num = team;
         w->user = -1;
@@ -26,7 +26,7 @@ static std::unique_ptr<walker> make_player_walker(char family, unsigned char tea
 
 static std::unique_ptr<walker> make_npc_walker(char family, unsigned char team)
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -46,11 +46,11 @@ void test_viewscreen_construct_destruct_and_clear()
     TEST_ASSERT(vs->myradar != nullptr, "viewscreen should create a radar");
 
     // Exercise viewscreen::clear() which writes into myscreen->videobuffer.
-    myscreen->videobuffer[0] = 123;
-    myscreen->videobuffer[63999] = 77;
+    og::runtime::current_session->myscreen_->videobuffer[0] = 123;
+    og::runtime::current_session->myscreen_->videobuffer[63999] = 77;
     vs->clear();
-    TEST_ASSERT_EQ(0, (int)myscreen->videobuffer[0], "clear should zero videobuffer[0]");
-    TEST_ASSERT_EQ(0, (int)myscreen->videobuffer[63999], "clear should zero videobuffer[63999]");
+    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->videobuffer[0], "clear should zero videobuffer[0]");
+    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->videobuffer[63999], "clear should zero videobuffer[63999]");
 }
 REGISTER_TEST(test_viewscreen_construct_destruct_and_clear);
 
@@ -65,11 +65,11 @@ void test_viewscreen_find_next_control_priorities()
         std::list<std::unique_ptr<walker>> saved;
         ObListSwap()
         {
-            saved.splice(saved.end(), myscreen->level_data.oblist);
+            saved.splice(saved.end(), og::runtime::current_session->myscreen_->world().oblist);
         }
         ~ObListSwap()
         {
-            myscreen->level_data.oblist.splice(myscreen->level_data.oblist.end(), saved);
+            og::runtime::current_session->myscreen_->world().oblist.splice(og::runtime::current_session->myscreen_->world().oblist.end(), saved);
         }
     } swap;
 
@@ -86,9 +86,9 @@ void test_viewscreen_find_next_control_priorities()
 
     // Insert in an order that would pick the player walker only if the priority
     // logic is working (player character loop runs first).
-    myscreen->level_data.oblist.push_back(std::move(npc_same_team));
-    myscreen->level_data.oblist.push_back(std::move(player_same_team));
-    myscreen->level_data.oblist.push_back(std::move(player_other_team));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(npc_same_team));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(player_same_team));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(player_other_team));
 
     walker* found1 = v.find_next_control();
     TEST_ASSERT(found1 == player_same_teamp, "should prefer un-controlled player character on team");
@@ -105,6 +105,6 @@ void test_viewscreen_find_next_control_priorities()
     TEST_ASSERT(found3 == player_other_teamp, "should fall back to any living player character");
 
     // Cleanup - remove just our inserted walkers.
-    myscreen->level_data.oblist.clear();
+    og::runtime::current_session->myscreen_->world().oblist.clear();
 }
 REGISTER_TEST(test_viewscreen_find_next_control_priorities);

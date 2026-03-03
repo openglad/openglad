@@ -60,13 +60,15 @@ public:
     yaml_parser_t _parser;
     yaml_event_t _event;
     yaml_event_t _peek_event;
+    bool _parser_initialized;
     FILE* _infile;
     std::list<ContainerType> _input_containers;
     bool _failed_peek;
     void clear_event();
-    
+
     // Output
     yaml_emitter_t _emitter;
+    bool _emitter_initialized;
     std::list<ContainerType> _output_containers;
     FILE* _outfile;
     

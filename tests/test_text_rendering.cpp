@@ -1,14 +1,14 @@
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <cstring>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 void test_text_write_variants_cover_common_paths()
 {
-    text& t = myscreen->text_normal;
-    text& big = myscreen->text_big;
+    text& t = og::runtime::current_session->myscreen_->text_normal;
+    text& big = og::runtime::current_session->myscreen_->text_big;
 
     TEST_ASSERT(t.query_width("ABC") > 0, "query_width should return >0 for non-empty text");
 
@@ -20,7 +20,7 @@ void test_text_write_variants_cover_common_paths()
     t.write_char_xy_alpha(10, 90, 'A', 220, 128);
 
     // viewscreen-targeted writes
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "viewob[0] should exist");
     t.write_xy(10, 110, "to view", 230, v);
 

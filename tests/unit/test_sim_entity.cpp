@@ -1,11 +1,13 @@
 // Headless tests for SimEntity and walker (G4).
 // These verify that SimEntity/walker can be created and manipulated without SDL.
 
-#include <openglad/sim/sim_entity.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
+#include <openglad/gameplay/sim_entity.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/statistics.h>
 #include "unit.h"
 
 OG_UNIT_TEST(test_sim_entity_default_construction)
@@ -17,8 +19,6 @@ OG_UNIT_TEST(test_sim_entity_default_construction)
     OG_ASSERT(e.user == -1);
     OG_ASSERT(e.team_num == 0);
     OG_ASSERT(e.real_team_num == 255);
-    OG_ASSERT(e.sim_level == nullptr);
-    OG_ASSERT(e.sim_events == nullptr);
 }
 
 OG_UNIT_TEST(test_sim_entity_set_position)
@@ -67,17 +67,25 @@ OG_UNIT_TEST(test_sim_entity_state_flags)
 
 OG_UNIT_TEST(test_sim_entity_event_log_binding)
 {
+    GameWorld world(7);
+    GameplayContext game_ctx;
+    game_ctx.world = &world;
+
     og::sim::SimEventLog log;
-    og::sim::SimEntity e;
-    e.sim_events = &log;
+    game_ctx.sim_events = &log;
 
-    OG_ASSERT(e.sim_events != nullptr);
-    OG_ASSERT(e.sim_events == &log);
+    GameplayContext* prev = current_game;
+    current_game = &game_ctx;
 
-    // Verify we can emit events through the bound log
-    e.sim_events->push(og::sim::EventKind::PlaySound, 42);
-    OG_ASSERT(e.sim_events->size() == 1);
-    OG_ASSERT(e.sim_events->events()[0].a == 42);
+    OG_ASSERT(current_game != nullptr);
+    OG_ASSERT(current_game->world == &world);
+    OG_ASSERT(current_game->sim_events == &log);
+
+    current_game->sim_events->push(og::sim::EventKind::PlaySound, 42);
+    OG_ASSERT(current_game->sim_events->size() == 1);
+    OG_ASSERT(current_game->sim_events->events()[0].a == 42);
+
+    current_game = prev;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,12 +120,8 @@ OG_UNIT_TEST(test_walker_headless_position_and_movement)
 
 OG_UNIT_TEST(test_walker_headless_with_rng)
 {
-    SeededRandom rng(42);
-    walker w;
-    w.sim_rng = &rng;
-
-    OG_ASSERT(w.sim_rng != nullptr);
-    std::uint32_t val = w.sim_rng->next(100);
+    GameWorld world(42);
+    std::uint32_t val = world.rng_.next(100);
     OG_ASSERT(val < 100);
 }
 

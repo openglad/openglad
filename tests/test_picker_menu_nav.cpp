@@ -1,15 +1,14 @@
-#include <openglad/input/button.h>
-#include <openglad/input/input.h>
+#include <openglad/interface/button.h>
+#include <openglad/interface/input.h>
 #include "test_framework.h"
 
 #include <chrono>
 #include <thread>
 
-extern int player_keys[4][NUM_KEYS];
 
 // From picker.cpp
-extern bool menu_nav_enabled;
-extern Uint32 menu_nav_enabled_time;
+#include <openglad/interface/ui/picker_ui_state.h>
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons);
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
@@ -22,11 +21,11 @@ struct KeyBindingGuard
     int key_enum;
     int old_key;
     KeyBindingGuard(int player_, int key_enum_, int new_key)
-        : player(player_), key_enum(key_enum_), old_key(player_keys[player_][key_enum_])
+        : player(player_), key_enum(key_enum_), old_key(og::runtime::current_session->player_keys_[player_][key_enum_])
     {
-        player_keys[player][key_enum] = new_key;
+        og::runtime::current_session->player_keys_[player][key_enum] = new_key;
     }
-    ~KeyBindingGuard() { player_keys[player][key_enum] = old_key; }
+    ~KeyBindingGuard() { og::runtime::current_session->player_keys_[player][key_enum] = old_key; }
 };
 
 struct KeyStateGuard
@@ -79,7 +78,7 @@ void test_picker_handle_menu_nav_moves_and_skips_hidden_targets()
 
     TEST_ASSERT(!activated, "directional nav should not activate button");
     TEST_ASSERT_EQ(0, highlighted, "up key should move highlight to nav.up");
-    TEST_ASSERT(menu_nav_enabled, "pressing nav key should enable menu nav");
+    TEST_ASSERT(pks().menu_nav_enabled, "pressing nav key should enable menu nav");
 
     // Right key points to hidden button index 2; highlight should stay unchanged.
     ks.set(SDLK_RIGHT, true);
@@ -120,13 +119,13 @@ void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
     Sint32 retvalue = 0;
 
     // Fire while nav disabled: should only mark pressed and re-enable nav.
-    menu_nav_enabled = false;
+    pks().menu_nav_enabled = false;
     ks.set(SDLK_SPACE, true);
     std::thread release_fire1(release_key_after, &ks, SDLK_SPACE, 10);
     bool activated = handle_menu_nav(buttons, highlighted, retvalue, false);
     release_fire1.join();
     TEST_ASSERT(!activated, "fire with nav disabled should not activate");
-    TEST_ASSERT(menu_nav_enabled, "fire should enable nav mode");
+    TEST_ASSERT(pks().menu_nav_enabled, "fire should enable nav mode");
 
     // Fire while nav enabled with use_global_vbuttons=false should return OK(4).
     retvalue = 0;
@@ -149,16 +148,16 @@ void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
     clear_allbuttons();
 
     // Smoke draw highlight routines under both nav states.
-    menu_nav_enabled = false;
+    pks().menu_nav_enabled = false;
     draw_highlight_interior(buttons[0]);
     draw_highlight(buttons[0]);
-    menu_nav_enabled = true;
+    pks().menu_nav_enabled = true;
     draw_highlight_interior(buttons[0]);
     draw_highlight(buttons[0]);
 
     // Expiry branch (no press + timeout).
-    menu_nav_enabled = true;
-    menu_nav_enabled_time = SDL_GetTicks() - 6000;
+    pks().menu_nav_enabled = true;
+    pks().menu_nav_enabled_time = SDL_GetTicks() - 6000;
     ks.set(SDLK_SPACE, false);
     (void)handle_menu_nav(buttons, highlighted, retvalue, false);
 }

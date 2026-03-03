@@ -1,19 +1,20 @@
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/living.h>
-#include <openglad/entities/guy.h>
-#include <openglad/core/stats.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/core/constants.h>
 #include "unit/unit.h"
-#include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/legacy/base.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_family_thief_coverage_push.cpp ---
 const FamilyDescriptor& describe_family_thief();
@@ -67,7 +68,6 @@ OG_UNIT_TEST(test_family_thief_do_special_busy_and_cloak_paths)
     const FamilyDescriptor& desc = describe_family_thief();
     living self;
     FixedRandom rng(7);
-    self.sim_rng = &rng;
     self.stats()->level = 3;
 
     self.current_special = 2; // cloak
@@ -90,13 +90,15 @@ namespace detail_family_thief_r12 {
 namespace {
 
 struct ThiefR12Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     ThiefR12Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -107,7 +109,7 @@ living* add_living(ThiefR12Fixture& fx, unsigned char team, char family = FAMILY
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -116,7 +118,7 @@ living* add_living(ThiefR12Fixture& fx, unsigned char team, char family = FAMILY
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -174,4 +176,3 @@ OG_UNIT_TEST(test_family_thief_r12_check_ai_and_special_paths)
     OG_ASSERT(desc.do_special(thief));
 }
 } // namespace detail_family_thief_r12
-

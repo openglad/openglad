@@ -1,13 +1,11 @@
 #include "SDL.h"
-#include <openglad/data/gparser.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
-#include <openglad/input/button.h>
+#include <openglad/interface/button.h>
 #include "test_interact.h"
-#include <openglad/input/input.h>
-#include <openglad/runtime/screen.h>
-extern MouseState mouse_state;
-
+#include <openglad/interface/input.h>
+#include <openglad/interface/screen.h>
 Sint32 yes_or_no(Sint32 arg);
 void toggle_rendering_engine();
 void toggle_effect(const std::string& category, const std::string& setting);
@@ -15,6 +13,7 @@ Sint32 leftmouse(button* buttons);
 
 static int release_scancode_after_delay(void* data)
 {
+    og::runtime::ensure_thread_session();
     SDL_Scancode scancode = *static_cast<SDL_Scancode*>(data);
     SDL_Delay(20);
     int numkeys = 0;
@@ -34,8 +33,8 @@ static void push_mouse_motion_game_coords(int game_x, int game_y)
     SDL_Event event{};
     event.type = SDL_MOUSEMOTION;
     event.motion.type = SDL_MOUSEMOTION;
-    event.motion.x = static_cast<int>(viewport_offset_x + (static_cast<float>(game_x) * viewport_w / 320.0f));
-    event.motion.y = static_cast<int>(viewport_offset_y + (static_cast<float>(game_y) * viewport_h / 200.0f));
+    event.motion.x = static_cast<int>(og::runtime::current_session->viewport_offset_x_ + (static_cast<float>(game_x) * og::runtime::current_session->viewport_w_ / 320.0f));
+    event.motion.y = static_cast<int>(og::runtime::current_session->viewport_offset_y_ + (static_cast<float>(game_y) * og::runtime::current_session->viewport_h_ / 200.0f));
     SDL_PushEvent(&event);
 }
 
@@ -101,10 +100,10 @@ void test_menu_button_misc_paths()
     push_mouse_motion_game_coords(15, 15);
     TEST_ASSERT_EQ(0, (int)b.rightclick(0), "rightclick direct path should succeed with myfunc=0");
 
-    allbuttons[0] = &b;
-    allbuttons[1] = nullptr;
+    og::runtime::current_session->allbuttons_[0] = &b;
+    og::runtime::current_session->allbuttons_[1] = nullptr;
     TEST_ASSERT_EQ(0, (int)b.rightclick(static_cast<button*>(nullptr)), "rightclick(button*) should dispatch");
-    allbuttons[0] = nullptr;
+    og::runtime::current_session->allbuttons_[0] = nullptr;
 
     int numkeys = 0;
     Uint8* keys = const_cast<Uint8*>(SDL_GetKeyboardState(&numkeys));
@@ -133,8 +132,8 @@ void test_menu_hover_highlight_draws_without_click_and_persists()
         button("hover", "HOVER", SDLK_h, 10, 10, 30, 10, 0, 0, MenuNav{}),
     };
 
-    vbutton* localbuttons = init_buttons(test_buttons, 1);
-    TEST_ASSERT(localbuttons != nullptr, "init_buttons should return first button");
+    vbutton* local_btns = init_buttons(test_buttons, 1);
+    TEST_ASSERT(local_btns != nullptr, "init_buttons should return first button");
     clear_events();
     mouse_state.left = false;
     mouse_state.right = false;
@@ -142,22 +141,22 @@ void test_menu_hover_highlight_draws_without_click_and_persists()
     clear_events();
     push_mouse_motion_game_coords(15, 15);
     leftmouse(test_buttons);
-    myscreen->clearbuffer();
+    og::runtime::current_session->myscreen_->clearbuffer();
     draw_buttons(test_buttons, 1);
-    TEST_ASSERT(localbuttons->had_focus, "hover should set focus without clicking");
+    TEST_ASSERT(local_btns->had_focus, "hover should set focus without clicking");
 
     // Without moving the mouse, highlight should persist frame-to-frame.
     leftmouse(test_buttons);
-    myscreen->clearbuffer();
+    og::runtime::current_session->myscreen_->clearbuffer();
     draw_buttons(test_buttons, 1);
-    TEST_ASSERT(localbuttons->had_focus, "hover highlight should persist while hovered");
+    TEST_ASSERT(local_btns->had_focus, "hover highlight should persist while hovered");
 
     clear_events();
     push_mouse_motion_game_coords(200, 150);
     leftmouse(test_buttons);
-    myscreen->clearbuffer();
+    og::runtime::current_session->myscreen_->clearbuffer();
     draw_buttons(test_buttons, 1);
-    TEST_ASSERT(!localbuttons->had_focus, "hover highlight should clear after leaving button bounds");
+    TEST_ASSERT(!local_btns->had_focus, "hover highlight should clear after leaving button bounds");
 
     clear_allbuttons();
 }

@@ -19,6 +19,9 @@
 
 #include <string>
 
+#ifndef OPNEGLAD_SHARED_SOUND_IDS_H
+#define OPNEGLAD_SHARED_SOUND_IDS_H
+
 inline constexpr int SOUND_BOW = 0;
 inline constexpr int SOUND_CLANG = 1;
 inline constexpr int SOUND_DIE1 = 2;
@@ -37,3 +40,5 @@ inline constexpr int SOUND_MONEY = 14; // reg
 inline constexpr int SOUND_EAT = 15;   // reg
 
 inline constexpr int NUMSOUNDS = 16;   // For now, let's use ALL sounds, regardless
+
+#endif // OPNEGLAD_SHARED_SOUND_IDS_H

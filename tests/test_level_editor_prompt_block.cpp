@@ -1,12 +1,12 @@
-#include <openglad/input/input.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 
 #include <list>
 #include <string>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // From level_editor.cpp
 bool prompt_for_string_block(const std::string& message, std::list<std::string>& result);
@@ -47,6 +47,7 @@ struct PromptBlockInjectData
 
 int prompt_block_escape_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     PromptBlockInjectData* d = static_cast<PromptBlockInjectData*>(data);
     PromptBlockInjectState* st = d->state;
     st->started = true;
@@ -74,6 +75,7 @@ int prompt_block_escape_injector(void* data)
 
 int prompt_block_editing_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     PromptBlockInjectData* d = static_cast<PromptBlockInjectData*>(data);
     PromptBlockInjectState* st = d->state;
     st->started = true;
@@ -106,7 +108,7 @@ int prompt_block_editing_injector(void* data)
 
 void test_level_editor_prompt_for_string_block_escape_cancel()
 {
-    (void)myscreen;
+    (void)og::runtime::current_session->myscreen_;
 
     std::list<std::string> original{
         "Line one",

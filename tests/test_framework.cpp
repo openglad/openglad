@@ -1,14 +1,13 @@
-#include "test_framework.h"
 #include "SDL.h"
-#include <openglad/runtime/screen.h>
-extern screen* myscreen;
+#include "test_framework.h"
+#include <openglad/interface/screen.h>
+#include <mutex>
+// myscreen is now a macro defined in base.h (via game_session.h)
 
-static SDL_mutex* s_allbuttons_mutex = nullptr;
+static std::mutex s_allbuttons_mutex;
 
-SDL_mutex* get_allbuttons_mutex()
+std::mutex& get_allbuttons_mutex()
 {
-    if (!s_allbuttons_mutex)
-        s_allbuttons_mutex = SDL_CreateMutex();
     return s_allbuttons_mutex;
 }
 
@@ -148,8 +147,8 @@ void run_all_tests() {
         // Test isolation: the test process is long-lived and uses global state.
         // Clear spawned objects and spatial index after each test so no test can
         // leak walkers into later tests (ASan/UAF + order-dependent failures).
-        if (myscreen != nullptr)
-            myscreen->level_data.delete_objects();
+        if (og::runtime::current_session->myscreen_ != nullptr)
+            og::runtime::current_session->myscreen_->world().delete_objects();
 
         if (g_tests_failed == failed_before) {
             g_tests_passed++;

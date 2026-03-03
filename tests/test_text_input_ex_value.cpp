@@ -1,4 +1,4 @@
-#include <openglad/render/text.h>
+#include <openglad/interface/render/text.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
@@ -9,6 +9,7 @@ namespace
 {
 static int injector_thread_backspace_text_and_return(void* data)
 {
+    og::runtime::ensure_thread_session();
     (void)data;
     SDL_Delay(50);
 
@@ -41,6 +42,7 @@ static int injector_thread_backspace_text_and_return(void* data)
 
 static int injector_thread_escape(void* data)
 {
+    og::runtime::ensure_thread_session();
     (void)data;
     SDL_Delay(50);
     SDL_Event ev{};

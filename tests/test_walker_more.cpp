@@ -1,19 +1,19 @@
-#include <openglad/core/stats.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/guy.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
-#include <openglad/render/view.h>
-#include <openglad/render/walker_draw.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/render/walker_draw.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include <memory>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static std::unique_ptr<walker> create_living(char family)
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     if (!l)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
@@ -57,7 +57,7 @@ void test_walker_misc_methods_smoke()
     w->center_on(nearby.get());
     w->set_direct_frame(0);
     // Avoid calling higher-level actions here (fire/teleport/turn_undead/etc.):
-    // they can spawn objects into `myscreen->level_data` which outlive this test's
+    // they can spawn objects into `myscreen->level_runtime_data()` which outlive this test's
     // locally-owned walkers and lead to UAF in later tests under ASan.
 
     // Reset is a large code path; smoke it to improve coverage.
@@ -98,7 +98,7 @@ REGISTER_TEST(test_walker_friendliness_and_attack_paths);
 
 void test_walker_specials_and_render_paths_smoke()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "viewob[0] should exist");
 
     auto w = create_living(FAMILY_SOLDIER);
@@ -174,7 +174,7 @@ void test_walker_myguy_move_and_weapon_heading_and_outline_named()
     // -----------------------------------------------------------------------
     // set_weapon_heading: deterministic switch coverage (no waver)
     // -----------------------------------------------------------------------
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
     if (!l)
         return;
@@ -332,20 +332,20 @@ void test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes()
     owner_a->team_num = 0;
     owner_b->team_num = 1;
 
-    const int old_allied_mode = a->sim_save->allied_mode;
+    const int old_allied_mode = og::runtime::current_session->myscreen_->world_.allied_mode;
 
     // Allied mode with one myguy missing (has_myguy == 2 path).
     owner_a->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     owner_b->clear_myguy();
     owner_b->team_num = 0;
-    a->sim_save->allied_mode = 1;
+    og::runtime::current_session->myscreen_->world_.allied_mode = 1;
     TEST_ASSERT(a->is_friendly(b.get()) != 0, "allied mode should treat team-0 non-myguy as friendly");
 
     owner_b->team_num = 1;
     TEST_ASSERT_EQ(0, (int)a->is_friendly(b.get()), "allied mode should reject non-team-0 when only one side has myguy");
 
     // Enemy mode path (allied_mode==0).
-    a->sim_save->allied_mode = 0;
+    og::runtime::current_session->myscreen_->world_.allied_mode = 0;
     owner_b->team_num = owner_a->team_num;
     TEST_ASSERT(a->is_friendly(b.get()) != 0, "enemy mode uses team equality");
 
@@ -354,10 +354,10 @@ void test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes()
     TEST_ASSERT_EQ(0, (int)a->is_friendly_to_team(0), "dead walker should not be friendly to any team");
     a->dead = 0;
     owner_a->clear_myguy();
-    a->sim_save->allied_mode = 0;
+    og::runtime::current_session->myscreen_->world_.allied_mode = 0;
     TEST_ASSERT(a->is_friendly_to_team(owner_a->team_num) != 0, "non-myguy path should still compare team");
 
-    a->sim_save->allied_mode = old_allied_mode;
+    og::runtime::current_session->myscreen_->world_.allied_mode = static_cast<short>(old_allied_mode);
 }
 REGISTER_TEST(test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes);
 
@@ -493,8 +493,8 @@ void test_walker_create_weapon_myguy_and_direction_and_cleric_branches()
 
     // Clean up only what we spawned; don't wipe global state (view controls, etc.).
     if (w1)
-        myscreen->level_data.remove_ob(w1);
+        og::runtime::current_session->myscreen_->world().remove_ob(w1);
     if (w2)
-        myscreen->level_data.remove_ob(w2);
+        og::runtime::current_session->myscreen_->world().remove_ob(w2);
 }
 REGISTER_TEST(test_walker_create_weapon_myguy_and_direction_and_cleric_branches);

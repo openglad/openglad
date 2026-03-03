@@ -11,19 +11,17 @@ extern "C" void __gcov_dump();
 
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
-#include <openglad/data/gparser.h>
-#include <openglad/platform/io.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/resources/io.h>
 #include <openglad/core/util.h>
-#include <openglad/input/input.h>
-#include <openglad/render/view.h> // options
+#include <openglad/interface/input.h>
+#include <openglad/interface/render/view.h> // options
 #include <format>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen_lifecycle.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/data/save_data.h>
-#include <openglad/sim/sim_event_log.h>
-extern screen* myscreen;
-extern options* theprefs;
+#include <openglad/platform/game_context.h>
+#include <openglad/platform/screen_lifecycle.h>
+#include <openglad/interface/screen.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/gameplay/sim_event_log.h>
 
 static void handle_test_signal(int sig)
 {
@@ -102,21 +100,24 @@ int main(int argc, char* argv[]) {
     io_init(argc, argv);
     // Avoid startup hangs in CI from filesystem-backed config loading in module suites.
     cfg.apply_setting("graphics", "overscan_percentage", "0");
-    overscan_percentage = static_cast<float>(
+
+    // Create a GameSession which owns screen + prefs and sets current_session.
+    // The legacy macros (myscreen, theprefs, overscan_percentage, etc.)
+    // dereference current_session, so this must precede any macro usage.
+    create_global_screen(1);
+    init_input();
+
+    // Now that current_session exists, apply overscan from cfg.
+    og::runtime::current_session->overscan_percentage_ = static_cast<float>(
         parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
     update_overscan_setting();
     cfg.apply_setting("graphics", "overscan_percentage",
-        std::format("{:.0f}", 100 * overscan_percentage));
-
-    static options test_prefs;
-    theprefs = &test_prefs;
-    create_global_screen(1);
-    init_input();
+        std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
 
     // Initialize sim context so walkers created for testing have a valid RNG etc.
     static og::sim::SimEventLog test_events;
     static ProductionRandom test_rng;
-    myscreen->level_data.set_sim_context(&myscreen->save_data, &myscreen->enemy_freeze,
+    og::runtime::current_session->myscreen_->level_runtime_data().set_sim_context(&og::runtime::current_session->myscreen_->save_data, &og::runtime::current_session->myscreen_->world().enemy_freeze,
                                          &test_events, &test_rng, &cfg);
 
     run_all_tests();

@@ -1,40 +1,37 @@
 #include <memory>
 #include <array>
-#include <openglad/data/pixie_data.h>
-#include <openglad/input/button.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/interface/button.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/render/pixien.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/render/pixien.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include <openglad/data/save_data.h>
-extern screen* myscreen;
+#include <openglad/resources/save_data.h>
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
-// Globals defined in picker.cpp that we need for cleanup
-extern PixieData main_title_logo_data, main_columns_data;
-extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
-extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
-extern PixieData backpics[5];
-extern vbutton *localbuttons;
+#include <openglad/interface/ui/picker_ui_state.h>
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
 
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        backdrops[i].reset();
-        backpics[i].free();
+        pks().backdrops[i].reset();
+        pks().backpics[i].free();
     }
     clear_allbuttons();
-    localbuttons = nullptr;
-    main_columns_pix.reset();
-    main_columns_data.free();
-    main_title_logo_pix.reset();
-    main_title_logo_data.free();
+    og::runtime::current_session->localbuttons_ = nullptr;
+    pks().main_columns_pix.reset();
+    pks().main_columns_data.free();
+    pks().main_title_logo_pix.reset();
+    pks().main_title_logo_data.free();
 }
 
 // Test: Open options menu, toggle some settings, then exit.
@@ -50,90 +47,103 @@ struct OptionsState {
     bool started;
     bool finished;
     bool saw_options;
+    bool entered_controls;
+    bool exited_controls;
+    bool used_options_back;
 };
 
 static int options_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     OptionsState* state = static_cast<OptionsState*>(data);
     state->started = true;
 
     // Wait for main menu
-    wait_for_interactable("options", 5000);
-    SDL_Delay(1500);
+    if (!wait_for_interactable("options", 5000)) {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(300);
 
     fprintf(stderr, "  [test] clicking options\n");
     interact("options");
 
     // Options menu buttons
-    SDL_Delay(500);
+    SDL_Delay(150);
     if (wait_for_interactable("toggle_hit_flash", 10000)) {
         state->saw_options = true;
-        SDL_Delay(500);
+        SDL_Delay(150);
 
         fprintf(stderr, "  [test] entering player controls\n");
         interact("player_controls");
-        SDL_Delay(400);
+        SDL_Delay(150);
         if (wait_for_interactable("player1_mode", 5000)) {
+            state->entered_controls = true;
             interact("player1_mode");
+            if (wait_for_interactable("controls_back", 5000)) {
+                SDL_Delay(200);
+                interact("controls_back");
+                state->exited_controls = true;
+            }
+            wait_for_interactable("toggle_hit_flash", 10000);
             SDL_Delay(150);
-            interact("player1_remap");
-            SDL_Delay(150);
-            interact("controls_back");
-            SDL_Delay(250);
         }
 
         // Toggle a few settings
         fprintf(stderr, "  [test] toggling hit flash\n");
         interact("toggle_hit_flash");
-        SDL_Delay(200);
+        SDL_Delay(80);
 
         fprintf(stderr, "  [test] toggling damage numbers\n");
         interact("toggle_damage_numbers");
-        SDL_Delay(200);
+        SDL_Delay(80);
 
         fprintf(stderr, "  [test] toggling gore\n");
         interact("toggle_gore");
-        SDL_Delay(200);
+        SDL_Delay(80);
 
         fprintf(stderr, "  [test] toggling sound/render/fullscreen\n");
         interact("toggle_sound");
-        SDL_Delay(200);
+        SDL_Delay(80);
         interact("toggle_rendering");
-        SDL_Delay(200);
+        SDL_Delay(80);
         interact("toggle_fullscreen");
-        SDL_Delay(200);
+        SDL_Delay(80);
 
         fprintf(stderr, "  [test] adjusting overscan\n");
         interact("overscan_plus");
-        SDL_Delay(200);
+        SDL_Delay(80);
         interact("overscan_minus");
-        SDL_Delay(200);
+        SDL_Delay(80);
 
         fprintf(stderr, "  [test] toggling additional effects\n");
         interact("toggle_mini_hp_bar");
-        SDL_Delay(200);
+        SDL_Delay(80);
         interact("toggle_hit_recoil");
-        SDL_Delay(200);
+        SDL_Delay(80);
         interact("toggle_attack_lunge");
-        SDL_Delay(200);
+        SDL_Delay(80);
         interact("toggle_hit_sparks");
-        SDL_Delay(200);
+        SDL_Delay(80);
         interact("toggle_heal_numbers");
-        SDL_Delay(200);
+        SDL_Delay(80);
 
         fprintf(stderr, "  [test] restoring defaults\n");
         interact("restore_defaults");
-        SDL_Delay(200);
+        SDL_Delay(80);
 
         // Click BACK to return to main menu
         fprintf(stderr, "  [test] clicking options_back\n");
-        interact("options_back");
+        if (wait_for_interactable("options_back", 5000)) {
+            interact("options_back");
+            state->used_options_back = true;
+        }
     }
 
     // Ensure mainmenu() returns so picker_main() can complete.
     // In test mode, QUIT does not exit the process; it just returns EXIT_VALUE.
-    if (wait_for_interactable("quit", 10000)) {
-        SDL_Delay(200);
+    if (wait_for_interactable("quit", 1000)) {
+        SDL_Delay(80);
         fprintf(stderr, "  [test] clicking quit\n");
         interact("quit");
     }
@@ -146,12 +156,12 @@ void test_options_menu() {
     trace_clear();
 
     // Need save data for continue_game
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    OptionsState state = { false, false, false };
+    OptionsState state = { false, false, false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(options_injector, "options_test", &state);
     TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
@@ -166,7 +176,11 @@ void test_options_menu() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
+    TEST_ASSERT(state.started, "injector thread should have started");
     TEST_ASSERT(state.finished, "injector thread should have completed");
     TEST_ASSERT(state.saw_options, "should have entered the options menu");
+    TEST_ASSERT(state.entered_controls, "should have entered controls submenu");
+    TEST_ASSERT(state.exited_controls, "should have exited via controls_back");
+    TEST_ASSERT(state.used_options_back, "should have exited options via options_back");
 }
 REGISTER_TEST(test_options_menu);

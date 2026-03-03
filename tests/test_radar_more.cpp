@@ -1,31 +1,31 @@
-#include <openglad/render/radar.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
+#include <openglad/interface/render/radar.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <vector>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace
 {
 struct GlobalContextGuard
 {
-    explicit GlobalContextGuard(GameContext* ctx) { set_global_context(ctx); }
-    ~GlobalContextGuard() { set_global_context(nullptr); }
+    explicit GlobalContextGuard(GameContext* ctx) { push_test_context(ctx); }
+    ~GlobalContextGuard() { pop_test_context(); }
     GlobalContextGuard(const GlobalContextGuard&) = delete;
     GlobalContextGuard& operator=(const GlobalContextGuard&) = delete;
 };
 
-static void set_tile(LevelData& d, int x, int y, unsigned char t)
+static void set_tile(LevelRuntimeData& d, int x, int y, unsigned char t)
 {
-    if (x < 0 || y < 0 || x >= d.grid.w || y >= d.grid.h)
+    if (x < 0 || y < 0 || x >= d.world().grid.w || y >= d.world().grid.h)
         return;
-    d.grid.data[y * d.grid.w + x] = t;
+    d.world().grid.data[y * d.world().grid.w + x] = t;
 }
 } // namespace
 
@@ -36,7 +36,7 @@ void test_radar_update_and_draw_covers_key_paths()
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
-    LevelData d(1);
+    LevelRuntimeData d(1);
     d.create_new_grid();
 
     // Place representative tiles to cover many radar::update() switch cases.
@@ -53,8 +53,8 @@ void test_radar_update_and_draw_covers_key_paths()
         PIX_WALLSIDE1, PIX_TORCH1,
     };
     int idx = 0;
-    for (int y = 0; y < d.grid.h && idx < (int)tiles.size(); y++)
-        for (int x = 0; x < d.grid.w && idx < (int)tiles.size(); x++)
+    for (int y = 0; y < d.world().grid.h && idx < (int)tiles.size(); y++)
+        for (int x = 0; x < d.world().grid.w && idx < (int)tiles.size(); x++)
             set_tile(d, x, y, tiles[idx++]);
 
     // Place a few objects to exercise radar::draw object filtering and colors.
@@ -104,29 +104,34 @@ void test_radar_update_and_draw_covers_key_paths()
         gold_fx->dead = 0;
     }
 
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
     vs->control = control;
     vs->radarstart = 0; // force radar::start path on first draw
 
-    radar r(vs, myscreen, 0);
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
     r.force_lower_position = true;
     r.start(&d);
     TEST_ASSERT(r.draw(&d) == 1, "radar draw should succeed");
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
 }
 REGISTER_TEST(test_radar_update_and_draw_covers_key_paths);
 
 void test_radar_start_default_uses_myscreen_level_data()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
 
-    radar r(vs, myscreen, 0);
-    r.start(); // wrapper path start(&myscreen->level_data)
-    (void)r.draw(&myscreen->level_data);
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(); // wrapper path start(&myscreen->level_runtime_data())
+    (void)r.draw(&og::runtime::current_session->myscreen_->level_runtime_data());
 }
 REGISTER_TEST(test_radar_start_default_uses_myscreen_level_data);

@@ -7,20 +7,22 @@ See LICENSE for details.
 */
 
 #include "yam.h"
+#include <cstring>
 
 
 Yam::Yam()
-    : _infile(NULL), _failed_peek(false), _outfile(NULL)
+    : _parser_initialized(false), _infile(NULL), _failed_peek(false),
+      _emitter_initialized(false), _outfile(NULL)
 {
     yaml_parser_initialize(&_parser);
+    _parser_initialized = true;
     _event.type = YAML_NO_EVENT;
     
     event.type = Yam::NONE;
     event.scalar = NULL;
     event.value = NULL;
-    
-    yaml_emitter_initialize(&_emitter);
-    yaml_emitter_set_encoding(&_emitter, YAML_UTF8_ENCODING);
+
+    memset(&_emitter, 0, sizeof(_emitter));
 }
 
 Yam::~Yam()
@@ -52,11 +54,17 @@ void Yam::set_input(const unsigned char* input, int length)
     close_input();
     
     yaml_parser_initialize(&_parser);
+    _parser_initialized = true;
     yaml_parser_set_input_string(&_parser, input, length);
 }
 
 void Yam::set_input(Yam_Read_Handler* handler, void* data)
 {
+    if (!_parser_initialized)
+    {
+        yaml_parser_initialize(&_parser);
+        _parser_initialized = true;
+    }
     yaml_parser_set_input(&_parser, handler, data);
 }
 
@@ -69,6 +77,7 @@ bool Yam::open_input_file(const char* filename)
         return false;
     
     yaml_parser_initialize(&_parser);
+    _parser_initialized = true;
     yaml_parser_set_input_file(&_parser, _infile);
     
     return true;
@@ -76,8 +85,11 @@ bool Yam::open_input_file(const char* filename)
 
 void Yam::close_input()
 {
-    if(&_parser.read_handler != NULL)
+    if(_parser_initialized)
+    {
         yaml_parser_delete(&_parser);
+        _parser_initialized = false;
+    }
     
     clear_event();
     
@@ -94,16 +106,23 @@ bool Yam::set_output(Yam_Write_Handler* handler, void* data)
     
     if(!yaml_emitter_initialize(&_emitter))
         return false;
+    _emitter_initialized = true;
     yaml_emitter_set_encoding(&_emitter, YAML_UTF8_ENCODING);
     
     yaml_emitter_set_output(&_emitter, handler, data);
     if(!yaml_emitter_open(&_emitter))
+    {
+        close_output();
         return false;
+    }
     
     yaml_event_t output_event;
         
     if(!yaml_document_start_event_initialize(&output_event, NULL, NULL, NULL, 0))
+    {
+        close_output();
         return false;
+    }
     
     yaml_emitter_emit(&_emitter, &output_event);
     return true;
@@ -119,16 +138,23 @@ bool Yam::open_output_file(const char* filename)
     
     if(!yaml_emitter_initialize(&_emitter))
         return false;
+    _emitter_initialized = true;
     yaml_emitter_set_encoding(&_emitter, YAML_UTF8_ENCODING);
     
     yaml_emitter_set_output_file(&_emitter, _outfile);
     if(!yaml_emitter_open(&_emitter))
+    {
+        close_output();
         return false;
+    }
     
     yaml_event_t output_event;
         
     if(!yaml_document_start_event_initialize(&output_event, NULL, NULL, NULL, 0))
+    {
+        close_output();
         return false;
+    }
     
     yaml_emitter_emit(&_emitter, &output_event);
     return true;
@@ -136,35 +162,40 @@ bool Yam::open_output_file(const char* filename)
 
 void Yam::close_output()
 {
-    if(_emitter.write_handler != NULL)
+    if(_emitter_initialized)
     {
-        while(_output_containers.size() > 0)
+        if(_emitter.write_handler != NULL)
         {
-            switch(_output_containers.back())
+            while(_output_containers.size() > 0)
             {
-            case C_MAPPING:
-                emit_end_mapping();
-                break;
-            case C_SEQUENCE:
-                emit_end_sequence();
-                break;
-            default:
-                break;
+                switch(_output_containers.back())
+                {
+                case C_MAPPING:
+                    emit_end_mapping();
+                    break;
+                case C_SEQUENCE:
+                    emit_end_sequence();
+                    break;
+                default:
+                    break;
+                }
+                
+                _output_containers.pop_back();
             }
-            
-            _output_containers.pop_back();
+
+            yaml_event_t output_event;
+            if (yaml_document_end_event_initialize(&output_event, 1))
+            {
+                yaml_emitter_emit(&_emitter, &output_event);
+            }
+
+            yaml_emitter_flush(&_emitter);
+            yaml_emitter_close(&_emitter);
         }
-        
-        yaml_event_t output_event;
-        if (yaml_document_end_event_initialize(&output_event, 1))
-        {
-            yaml_emitter_emit(&_emitter, &output_event);
-        }
-        
-        yaml_emitter_flush(&_emitter);
-        // Destroy the emitter
-        yaml_emitter_close(&_emitter);
+
         yaml_emitter_delete(&_emitter);
+        memset(&_emitter, 0, sizeof(_emitter));
+        _emitter_initialized = false;
     }
     
     if(_outfile)
@@ -379,4 +410,3 @@ bool Yam::emit_end_sequence()
     }
     return false;
 }
-

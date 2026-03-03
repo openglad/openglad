@@ -1,9 +1,9 @@
-#include <openglad/runtime/game_context.h>
+#include <openglad/platform/game_context.h>
 #include <openglad/core/combat_math.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // ---------------------------------------------------------------------------
 // GameContext basic tests
@@ -16,20 +16,20 @@ void test_ctx_returns_valid_context()
 }
 REGISTER_TEST(test_ctx_returns_valid_context);
 
-void test_set_global_context_overrides()
+void test_push_test_context_overrides_rng()
 {
     FixedRandom fixed(42);
     GameContext test_ctx;
     test_ctx.rng = &fixed;
 
-    set_global_context(&test_ctx);
-    TEST_ASSERT(ctx().rng == &fixed, "set_global_context should override the active context");
+    push_test_context(&test_ctx);
+    TEST_ASSERT(ctx().rng == &fixed, "push_test_context should override active RNG");
 
     // Restore
-    set_global_context(nullptr);
-    TEST_ASSERT(ctx().rng != &fixed, "restoring nullptr should return to default context");
+    pop_test_context();
+    TEST_ASSERT(ctx().rng != &fixed, "pop_test_context should restore default context");
 }
-REGISTER_TEST(test_set_global_context_overrides);
+REGISTER_TEST(test_push_test_context_overrides_rng);
 
 // ---------------------------------------------------------------------------
 // IRandom implementations
@@ -94,7 +94,7 @@ void test_seeded_rng_reset()
     rng.next(100); // advance
     rng.next(100);
 
-    rng.reset(42);
+    rng.state_ = 42;
     Uint32 after_reset = rng.next(100);
     TEST_ASSERT_EQ(static_cast<int>(first), static_cast<int>(after_reset),
                     "reset(42) should reproduce the same first value");
@@ -213,7 +213,7 @@ void test_deterministic_rng_via_game_context()
 
     GameContext test_ctx;
     test_ctx.rng = &rng1;
-    set_global_context(&test_ctx);
+    push_test_context(&test_ctx);
 
     // Run several damage calculations
     float results1[5];
@@ -222,11 +222,12 @@ void test_deterministic_rng_via_game_context()
 
     // Reset and replay with same seed
     test_ctx.rng = &rng2;
+    push_test_context(&test_ctx);
     float results2[5];
     for (int i = 0; i < 5; i++)
         results2[i] = compute_base_damage(20.0f, *ctx().rng);
 
-    set_global_context(nullptr);
+    pop_test_context();
 
     for (int i = 0; i < 5; i++) {
         TEST_ASSERT_EQ(static_cast<int>(results1[i] * 100),

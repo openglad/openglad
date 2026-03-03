@@ -1,7 +1,7 @@
 #include "SDL.h"
-#include <openglad/data/level_data.h>
-#include <openglad/entities/walker.h>
-#include <openglad/io/og_file.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/resources/og_file.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
@@ -13,12 +13,12 @@
 #include <vector>
 
 // Forward declarations from src/runtime/level_data.cpp (now using OgFile&)
-short load_version_2(og::io::OgFile& infile, LevelData* data);
-short load_version_3(og::io::OgFile& infile, LevelData* data);
-short load_version_4(og::io::OgFile& infile, LevelData* data);
-short load_version_5(og::io::OgFile& infile, LevelData* data);
-short load_version_6(og::io::OgFile& infile, LevelData* data, short version);
-short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
+short load_version_2(og::io::OgFile& infile, LevelRuntimeData* data);
+short load_version_3(og::io::OgFile& infile, LevelRuntimeData* data);
+short load_version_4(og::io::OgFile& infile, LevelRuntimeData* data);
+short load_version_5(og::io::OgFile& infile, LevelRuntimeData* data);
+short load_version_6(og::io::OgFile& infile, LevelRuntimeData* data, short version);
+short load_scenario_version(og::io::OgFile& infile, LevelRuntimeData* data, short version);
 
 // Memory-backed OgFile for testing (replaces SDL_RWFromConstMem)
 class MemoryOgFile final : public og::io::OgFile {
@@ -89,7 +89,7 @@ static void append_fixed8(std::vector<uint8_t>& out, const char* s)
 
 void test_level_data_load_version2_minimal_success()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");     // newgrid (8 bytes)
     append_i16(bytes, 1);             // listsize
@@ -111,7 +111,7 @@ REGISTER_TEST(test_level_data_load_version2_minimal_success);
 
 void test_level_data_load_version2_treasure_routes_to_fxlist()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");     // newgrid (8 bytes)
     append_i16(bytes, 1);             // listsize
@@ -128,13 +128,13 @@ void test_level_data_load_version2_treasure_routes_to_fxlist()
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_2(rw, &data);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_2 should succeed with a treasure object");
-    TEST_ASSERT(!data.fxlist.empty(), "treasure should route via add_fx_ob into fxlist for v2");
+    TEST_ASSERT(!data.world().fxlist.empty(), "treasure should route via add_fx_ob into fxlist for v2");
 }
 REGISTER_TEST(test_level_data_load_version2_treasure_routes_to_fxlist);
 
 void test_level_data_load_version2_truncated_object_payload_fails()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid"); // newgrid
     append_i16(bytes, 1);         // listsize
@@ -148,7 +148,7 @@ REGISTER_TEST(test_level_data_load_version2_truncated_object_payload_fails);
 
 void test_level_data_load_version2_invalid_family_fails_object_creation()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");     // newgrid (8 bytes)
     append_i16(bytes, 1);             // listsize
@@ -172,7 +172,7 @@ REGISTER_TEST(test_level_data_load_version2_invalid_family_fails_object_creation
 
 void test_level_data_load_version2_rejects_invalid_object_count()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 5000); // > MAX_SCENARIO_OBJECTS
@@ -184,7 +184,7 @@ REGISTER_TEST(test_level_data_load_version2_rejects_invalid_object_count);
 
 void test_level_data_load_version3_rejects_invalid_object_count()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 5000); // > MAX_SCENARIO_OBJECTS
@@ -196,7 +196,7 @@ REGISTER_TEST(test_level_data_load_version3_rejects_invalid_object_count);
 
 void test_level_data_load_version3_treasure_adds_at_start_success()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 1); // listsize
@@ -215,13 +215,13 @@ void test_level_data_load_version3_treasure_adds_at_start_success()
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_3(rw, &data);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_3 should succeed with treasure object");
-    TEST_ASSERT(!data.oblist.empty(), "v3 treasure path should still create an object");
+    TEST_ASSERT(!data.world().oblist.empty(), "v3 treasure path should still create an object");
 }
 REGISTER_TEST(test_level_data_load_version3_treasure_adds_at_start_success);
 
 void test_level_data_load_version3_truncated_object_payload_fails()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 1); // listsize
@@ -236,7 +236,7 @@ REGISTER_TEST(test_level_data_load_version3_truncated_object_payload_fails);
 
 void test_level_data_load_version3_zero_lines_minimal_success()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 1); // listsize
@@ -260,7 +260,7 @@ REGISTER_TEST(test_level_data_load_version3_zero_lines_minimal_success);
 
 void test_level_data_load_version3_truncates_long_description_line_and_discards_remaining_bytes()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 0); // listsize
@@ -278,7 +278,7 @@ REGISTER_TEST(test_level_data_load_version3_truncates_long_description_line_and_
 
 void test_level_data_load_version4_truncates_long_description_line()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 0); // listsize
@@ -296,7 +296,7 @@ REGISTER_TEST(test_level_data_load_version4_truncates_long_description_line);
 
 void test_level_data_load_version5_rejects_invalid_object_count()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_u8(bytes, 2);     // scenario type
@@ -309,7 +309,7 @@ REGISTER_TEST(test_level_data_load_version5_rejects_invalid_object_count);
 
 void test_level_data_load_version5_success_with_treasure_weapon_and_truncated_text()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_u8(bytes, 3); // scenario type
@@ -357,16 +357,16 @@ void test_level_data_load_version5_success_with_treasure_weapon_and_truncated_te
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_5(rw, &data);
     TEST_ASSERT_EQ(1, (int)ok, "load_version_5 should succeed on valid buffer");
-    TEST_ASSERT_EQ(3, (int)data.type, "load_version_5 should set scenario type");
-    TEST_ASSERT(!data.fxlist.empty(), "treasure object should populate fxlist");
-    TEST_ASSERT(!data.weaplist.empty(), "weapon object should populate weaplist");
+    TEST_ASSERT_EQ(3, (int)data.world().type, "load_version_5 should set scenario type");
+    TEST_ASSERT(!data.world().fxlist.empty(), "treasure object should populate fxlist");
+    TEST_ASSERT(!data.world().weaplist.empty(), "weapon object should populate weaplist");
     TEST_ASSERT(!data.description.empty(), "description line should be read");
 }
 REGISTER_TEST(test_level_data_load_version5_success_with_treasure_weapon_and_truncated_text);
 
 void test_level_data_load_version5_truncated_scenario_type_fails()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     // Truncate before scenario type byte.
@@ -378,7 +378,7 @@ REGISTER_TEST(test_level_data_load_version5_truncated_scenario_type_fails);
 
 void test_level_data_load_version5_truncated_object_payload_fails()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_u8(bytes, 1);  // scenario type
@@ -394,7 +394,7 @@ REGISTER_TEST(test_level_data_load_version5_truncated_object_payload_fails);
 
 void test_level_data_load_version5_missing_numlines_fails()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_u8(bytes, 1);  // scenario type
@@ -408,7 +408,7 @@ REGISTER_TEST(test_level_data_load_version5_missing_numlines_fails);
 
 void test_level_data_load_version5_truncated_discard_tail_fails()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_u8(bytes, 1);  // scenario type
@@ -427,39 +427,39 @@ REGISTER_TEST(test_level_data_load_version5_truncated_discard_tail_fails);
 void test_level_data_load_versions_2_3_4_missing_grid_or_count_fail()
 {
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes; // missing grid bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
         TEST_ASSERT_EQ(0, (int)load_version_2(rw, &data), "v2 should fail when grid field is missing");
     }
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid"); // missing listsize bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
         TEST_ASSERT_EQ(0, (int)load_version_2(rw, &data), "v2 should fail when object count field is missing");
     }
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes; // missing grid bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
         TEST_ASSERT_EQ(0, (int)load_version_3(rw, &data), "v3 should fail when grid field is missing");
     }
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid"); // missing listsize bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
         TEST_ASSERT_EQ(0, (int)load_version_3(rw, &data), "v3 should fail when object count field is missing");
     }
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes; // missing grid bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
         TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when grid field is missing");
     }
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid"); // missing listsize bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
@@ -470,7 +470,7 @@ REGISTER_TEST(test_level_data_load_versions_2_3_4_missing_grid_or_count_fail);
 
 void test_level_data_load_version4_truncated_discard_tail_fails()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 0); // listsize
@@ -487,7 +487,7 @@ REGISTER_TEST(test_level_data_load_version4_truncated_discard_tail_fails);
 
 void test_level_data_load_version4_truncated_numlines_or_width_fails()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
 
     // Missing numlines byte after one object should fail at numlines read.
     {
@@ -540,7 +540,7 @@ REGISTER_TEST(test_level_data_load_version4_truncated_numlines_or_width_fails);
 void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
 {
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_i16(bytes, 1);
@@ -559,7 +559,7 @@ void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
         TEST_ASSERT(ok == 0 || ok == 1, "v2 unknown-order input should not crash loader");
     }
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_i16(bytes, 1);
@@ -579,7 +579,7 @@ void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
         TEST_ASSERT(ok == 0 || ok == 1, "v3 unknown-order input should not crash loader");
     }
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_i16(bytes, 1);
@@ -601,7 +601,7 @@ void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
         TEST_ASSERT(ok == 0 || ok == 1, "v4 unknown-order input should not crash loader");
     }
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_u8(bytes, 1); // scenario type
@@ -633,7 +633,7 @@ void test_level_data_load_scenario_version_dispatcher_guards()
     const short null_result = load_scenario_version(rw, nullptr, 2);
     TEST_ASSERT_EQ(0, (int)null_result, "dispatcher should reject null data pointer");
 
-    LevelData data(1);
+    LevelRuntimeData data(1);
     MemoryOgFile rw2(bytes.data(), bytes.size());
     const short old_version_result = load_scenario_version(rw2, &data, 1);
     TEST_ASSERT_EQ(0, (int)old_version_result, "dispatcher should reject unsupported old version");
@@ -663,7 +663,7 @@ static void append_v6_object_record(std::vector<uint8_t>& out, uint8_t order, ui
 void test_level_data_load_version6plus_invalid_counts_and_object_fail_paths()
 {
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_bytes(bytes, "title", 5);
@@ -678,7 +678,7 @@ void test_level_data_load_version6plus_invalid_counts_and_object_fail_paths()
     }
 
     {
-        LevelData data(1);
+        LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_bytes(bytes, "title", 5);
@@ -699,7 +699,7 @@ REGISTER_TEST(test_level_data_load_version6plus_invalid_counts_and_object_fail_p
 
 void test_level_data_load_version6plus_truncated_description_discard_path()
 {
-    LevelData data(1);
+    LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_bytes(bytes, "title", 5);
@@ -743,7 +743,7 @@ void test_level_data_load_version6plus_named_objects_treasure_route_and_door_fix
         std::fclose(f);
     }
 
-    LevelData data(7777);
+    LevelRuntimeData data(7777);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid"); // -> grid.pix
     {
@@ -773,14 +773,14 @@ void test_level_data_load_version6plus_named_objects_treasure_route_and_door_fix
     MemoryOgFile rw(bytes.data(), bytes.size());
     TEST_ASSERT_EQ(1, (int)load_version_6(rw, &data, 9),
                    "v9 loader should parse treasure/door objects and long description");
-    TEST_ASSERT(!data.fxlist.empty(), "treasure object should be routed into fxlist");
-    TEST_ASSERT(!data.weaplist.empty(), "door object should be routed into weaplist");
-    if (!data.fxlist.empty())
-        TEST_ASSERT(data.fxlist.front()->stats()->query_bit_flags(BIT_NAMED) != 0,
+    TEST_ASSERT(!data.world().fxlist.empty(), "treasure object should be routed into fxlist");
+    TEST_ASSERT(!data.world().weaplist.empty(), "door object should be routed into weaplist");
+    if (!data.world().fxlist.empty())
+        TEST_ASSERT(data.world().fxlist.front()->stats()->query_bit_flags(BIT_NAMED) != 0,
                     "name length > 1 should set BIT_NAMED");
 
     bool saw_door = false;
-    for (auto& uptr : data.weaplist)
+    for (auto& uptr : data.world().weaplist)
     {
         walker* w = uptr.get();
         if (w && w->family == FAMILY_DOOR)
@@ -798,7 +798,7 @@ REGISTER_TEST(test_level_data_load_version6plus_named_objects_treasure_route_and
 void test_level_data_load_scenario_dispatch_case2_path()
 {
     // Minimal v2 payload through dispatcher (case 2 branch).
-    LevelData data(8888);
+    LevelRuntimeData data(8888);
     std::vector<uint8_t> bytes;
     append_fixed8(bytes, "grid");
     append_i16(bytes, 0); // listsize

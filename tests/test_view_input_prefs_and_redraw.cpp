@@ -1,15 +1,13 @@
-#include <openglad/input/input.h>
+#include <openglad/interface/input.h>
 #include <openglad/legacy/base.h>
-#include <openglad/entities/walker.h>
-#include <openglad/render/view.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <array>
 
-extern screen* myscreen;
-extern int player_keys[4][NUM_KEYS];
-extern const Uint8* keystates;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace
 {
@@ -19,13 +17,13 @@ struct KeyStateGuard
     std::array<Uint8, MAXKEYS> fake{};
     KeyStateGuard()
     {
-        saved = keystates;
+        saved = og::runtime::current_session->keystates_;
         fake.fill(0);
-        keystates = fake.data();
+        og::runtime::current_session->keystates_ = fake.data();
     }
     ~KeyStateGuard()
     {
-        keystates = saved;
+        og::runtime::current_session->keystates_ = saved;
     }
 };
 
@@ -41,6 +39,7 @@ static SDL_Event keydown(SDL_Keycode key)
 
 static int injector_press_and_release_escape(void* data)
 {
+    og::runtime::ensure_thread_session();
     auto* ks = static_cast<KeyStateGuard*>(data);
     SDL_Delay(40);
     ks->fake[KEYSTATE_ESCAPE] = 1;
@@ -53,7 +52,7 @@ static int injector_press_and_release_escape(void* data)
 
 void test_viewscreen_input_key_prefs_triggers_options_menu_branch()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
@@ -62,7 +61,7 @@ void test_viewscreen_input_key_prefs_triggers_options_menu_branch()
     // doesn't hit its missing-control guard.
     if (!vs->control)
     {
-        walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(w != nullptr, "control walker created");
         if (!w)
             return;
@@ -79,7 +78,7 @@ void test_viewscreen_input_key_prefs_triggers_options_menu_branch()
     SDL_Thread* th = SDL_CreateThread(injector_press_and_release_escape, "esc_inject", &ks);
     TEST_ASSERT(th != nullptr, "escape injector started");
 
-    const SDL_Keycode prefs_key = player_keys[0][KEY_PREFS];
+    const SDL_Keycode prefs_key = og::runtime::current_session->player_keys_[0][KEY_PREFS];
     (void)vs->input(keydown(prefs_key));
 
     int code = 0;
@@ -90,14 +89,14 @@ REGISTER_TEST(test_viewscreen_input_key_prefs_triggers_options_menu_branch);
 
 void test_viewscreen_input_shift_slash_triggers_read_scenario_branch()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
 
     if (!vs->control)
     {
-        walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(w != nullptr, "control walker created");
         if (!w)
             return;
@@ -112,34 +111,34 @@ void test_viewscreen_input_shift_slash_triggers_read_scenario_branch()
 
     KeyStateGuard ks;
     // Hold the shifter key (LSHIFT by default for player 0).
-    ks.fake[SDL_GetScancodeFromKey(player_keys[0][KEY_SHIFTER])] = 1;
+    ks.fake[SDL_GetScancodeFromKey(og::runtime::current_session->player_keys_[0][KEY_SHIFTER])] = 1;
     (void)vs->input(keydown(SDLK_SLASH));
-    ks.fake[SDL_GetScancodeFromKey(player_keys[0][KEY_SHIFTER])] = 0;
+    ks.fake[SDL_GetScancodeFromKey(og::runtime::current_session->player_keys_[0][KEY_SHIFTER])] = 0;
 }
 REGISTER_TEST(test_viewscreen_input_shift_slash_triggers_read_scenario_branch);
 
 void test_viewscreen_redraw_negative_scroll_draws_wall_edges_smoke()
 {
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
 
     // Ensure the level has a grid so redraw doesn't depend on prior tests.
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
 
-    const Sint32 saved_topx = myscreen->level_data.topx;
-    const Sint32 saved_topy = myscreen->level_data.topy;
+    const Sint32 saved_topx = og::runtime::current_session->myscreen_->level_visuals_.topx;
+    const Sint32 saved_topy = og::runtime::current_session->myscreen_->level_visuals_.topy;
     walker* saved_control = vs->control;
 
     vs->control = nullptr;
     // Force negative offsets so redraw's wall-edge branches run (j == -2 and j == -1).
-    myscreen->level_data.topx = -GRID_SIZE - 1;
-    myscreen->level_data.topy = -GRID_SIZE - 1;
+    og::runtime::current_session->myscreen_->level_visuals_.topx = -GRID_SIZE - 1;
+    og::runtime::current_session->myscreen_->level_visuals_.topy = -GRID_SIZE - 1;
     (void)vs->redraw();
 
-    myscreen->level_data.topx = saved_topx;
-    myscreen->level_data.topy = saved_topy;
+    og::runtime::current_session->myscreen_->level_visuals_.topx = saved_topx;
+    og::runtime::current_session->myscreen_->level_visuals_.topy = saved_topy;
     vs->control = saved_control;
 }
 REGISTER_TEST(test_viewscreen_redraw_negative_scroll_draws_wall_edges_smoke);

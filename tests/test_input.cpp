@@ -1,17 +1,9 @@
 #include <cstring>
 
-#include <openglad/input/input.h>
+#include <openglad/interface/input.h>
+#include <openglad/platform/game_session.h>
 #include "test_framework.h"
 
-extern float overscan_percentage;
-extern float window_w;
-extern float window_h;
-extern float viewport_offset_x;
-extern float viewport_offset_y;
-extern float viewport_w;
-extern float viewport_h;
-
-extern MouseState mouse_state;
 
 extern unsigned char convert_to_ascii(int scancode);
 
@@ -59,10 +51,10 @@ REGISTER_TEST(test_input_handle_text_event_sets_raw_text);
 void test_input_handle_mouse_motion_scales_to_game_coords()
 {
     // Configure a simple 2x scale window (640x400) that maps to 320x200.
-    viewport_offset_x = 0.0f;
-    viewport_offset_y = 0.0f;
-    viewport_w = 640.0f;
-    viewport_h = 400.0f;
+    og::runtime::current_session->viewport_offset_x_ = 0.0f;
+    og::runtime::current_session->viewport_offset_y_ = 0.0f;
+    og::runtime::current_session->viewport_w_ = 640.0f;
+    og::runtime::current_session->viewport_h_ = 400.0f;
 
     SDL_Event e{};
     e.type = SDL_MOUSEMOTION;
@@ -79,48 +71,48 @@ REGISTER_TEST(test_input_handle_mouse_motion_scales_to_game_coords);
 void test_input_overscan_clamps_and_updates_viewport()
 {
     // Save original viewport state so we don't poison later tests.
-    const float saved_window_w = window_w;
-    const float saved_window_h = window_h;
-    const float saved_overscan = overscan_percentage;
-    const float saved_vp_ox = viewport_offset_x;
-    const float saved_vp_oy = viewport_offset_y;
-    const float saved_vp_w = viewport_w;
-    const float saved_vp_h = viewport_h;
+    const float saved_window_w = og::runtime::current_session->window_w_;
+    const float saved_window_h = og::runtime::current_session->window_h_;
+    const float saved_overscan = og::runtime::current_session->overscan_percentage_;
+    const float saved_vp_ox = og::runtime::current_session->viewport_offset_x_;
+    const float saved_vp_oy = og::runtime::current_session->viewport_offset_y_;
+    const float saved_vp_w = og::runtime::current_session->viewport_w_;
+    const float saved_vp_h = og::runtime::current_session->viewport_h_;
 
-    window_w = 1000.0f;
-    window_h = 800.0f;
+    og::runtime::current_session->window_w_ = 1000.0f;
+    og::runtime::current_session->window_h_ = 800.0f;
 
-    overscan_percentage = -1.0f;
+    og::runtime::current_session->overscan_percentage_ = -1.0f;
     // Trigger update via resize event (calls update_overscan_setting internally).
     SDL_Event e{};
     e.type = SDL_WINDOWEVENT;
     e.window.event = SDL_WINDOWEVENT_RESIZED;
-    e.window.data1 = (int)window_w;
-    e.window.data2 = (int)window_h;
+    e.window.data1 = (int)og::runtime::current_session->window_w_;
+    e.window.data2 = (int)og::runtime::current_session->window_h_;
     handle_window_event(e);
 
-    TEST_ASSERT(overscan_percentage == 0.0f, "overscan should clamp at 0.0");
-    TEST_ASSERT_EQ(0, (int)viewport_offset_x, "offset x should be 0 at 0% overscan");
-    TEST_ASSERT_EQ(0, (int)viewport_offset_y, "offset y should be 0 at 0% overscan");
-    TEST_ASSERT_EQ((int)window_w, (int)viewport_w, "viewport_w should match window_w at 0% overscan");
-    TEST_ASSERT_EQ((int)window_h, (int)viewport_h, "viewport_h should match window_h at 0% overscan");
+    TEST_ASSERT(og::runtime::current_session->overscan_percentage_ == 0.0f, "overscan should clamp at 0.0");
+    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->viewport_offset_x_, "offset x should be 0 at 0% overscan");
+    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->viewport_offset_y_, "offset y should be 0 at 0% overscan");
+    TEST_ASSERT_EQ((int)og::runtime::current_session->window_w_, (int)og::runtime::current_session->viewport_w_, "viewport_w should match window_w at 0% overscan");
+    TEST_ASSERT_EQ((int)og::runtime::current_session->window_h_, (int)og::runtime::current_session->viewport_h_, "viewport_h should match window_h at 0% overscan");
 
-    overscan_percentage = 1.0f;
+    og::runtime::current_session->overscan_percentage_ = 1.0f;
     handle_window_event(e);
-    TEST_ASSERT(overscan_percentage == 0.25f, "overscan should clamp at 0.25");
-    TEST_ASSERT(viewport_offset_x > 0.0f, "offset x should be >0 with overscan");
-    TEST_ASSERT(viewport_offset_y > 0.0f, "offset y should be >0 with overscan");
-    TEST_ASSERT(viewport_w < window_w, "viewport_w should shrink with overscan");
-    TEST_ASSERT(viewport_h < window_h, "viewport_h should shrink with overscan");
+    TEST_ASSERT(og::runtime::current_session->overscan_percentage_ == 0.25f, "overscan should clamp at 0.25");
+    TEST_ASSERT(og::runtime::current_session->viewport_offset_x_ > 0.0f, "offset x should be >0 with overscan");
+    TEST_ASSERT(og::runtime::current_session->viewport_offset_y_ > 0.0f, "offset y should be >0 with overscan");
+    TEST_ASSERT(og::runtime::current_session->viewport_w_ < og::runtime::current_session->window_w_, "viewport_w should shrink with overscan");
+    TEST_ASSERT(og::runtime::current_session->viewport_h_ < og::runtime::current_session->window_h_, "viewport_h should shrink with overscan");
 
     // Restore viewport state.
-    window_w = saved_window_w;
-    window_h = saved_window_h;
-    overscan_percentage = saved_overscan;
-    viewport_offset_x = saved_vp_ox;
-    viewport_offset_y = saved_vp_oy;
-    viewport_w = saved_vp_w;
-    viewport_h = saved_vp_h;
+    og::runtime::current_session->window_w_ = saved_window_w;
+    og::runtime::current_session->window_h_ = saved_window_h;
+    og::runtime::current_session->overscan_percentage_ = saved_overscan;
+    og::runtime::current_session->viewport_offset_x_ = saved_vp_ox;
+    og::runtime::current_session->viewport_offset_y_ = saved_vp_oy;
+    og::runtime::current_session->viewport_w_ = saved_vp_w;
+    og::runtime::current_session->viewport_h_ = saved_vp_h;
 }
 REGISTER_TEST(test_input_overscan_clamps_and_updates_viewport);
 

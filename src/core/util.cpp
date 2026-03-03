@@ -38,7 +38,21 @@
 #endif
 
 static auto g_app_start = std::chrono::steady_clock::now();
-static auto g_reset_time = std::chrono::steady_clock::now();
+
+namespace og::runtime {
+std::chrono::steady_clock::time_point* active_session_reset_time();
+}
+
+// Use the active session timer anchor when available; fallback is for
+// startup/headless paths before a session is installed.
+static auto s_fallback_reset_time = std::chrono::steady_clock::now();
+
+static inline auto& reset_time_ref()
+{
+    if (auto* session_reset_time = og::runtime::active_session_reset_time())
+        return *session_reset_time;
+    return s_fallback_reset_time;
+}
 
 static std::uint32_t get_ticks_ms()
 {
@@ -47,12 +61,7 @@ static std::uint32_t get_ticks_ms()
         std::chrono::duration_cast<std::chrono::milliseconds>(now - g_app_start).count());
 }
 
-float g_game_speed_factor = 1.0f;
-
-void set_game_speed(float factor)
-{
-    g_game_speed_factor = (factor < 0.0f) ? 0.0f : factor;
-}
+// g_game_speed_factor and set_game_speed() moved to runtime/game_session.cpp (Batch 7).
 
 void init_logging()
 {
@@ -102,7 +111,7 @@ void release_timer()
 
 void reset_timer()
 {
-    g_reset_time = std::chrono::steady_clock::now();
+    reset_time_ref() = std::chrono::steady_clock::now();
 }
 
 std::int32_t query_timer()
@@ -111,7 +120,7 @@ std::int32_t query_timer()
     // that would return ticks / second. Gladiator used to use a frequency of 65536/4 ticks per hour,
     // or 1193180/16383 = 72.3 ticks per second. This translates into 13.6 milliseconds / tick
     auto elapsed_ms = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - g_reset_time).count());
+        std::chrono::steady_clock::now() - reset_time_ref()).count());
     return static_cast<std::int32_t>(elapsed_ms / 13.6);
 }
 

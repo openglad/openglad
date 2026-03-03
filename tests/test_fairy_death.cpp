@@ -1,19 +1,19 @@
 #include <memory>
 #include <array>
-#include <openglad/input/button.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/pixien.h>
-#include <openglad/entities/guy.h>
+#include <openglad/interface/button.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/render/pixien.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include <openglad/data/save_data.h>
+#include <openglad/resources/save_data.h>
 #include <openglad/core/util.h>
 
 #include <atomic>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
 void picker_main(Sint32 argc, char **argv);
@@ -25,18 +25,10 @@ extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
 #endif
 
-// Globals defined in picker.cpp that we need for cleanup
-extern PixieData main_title_logo_data, main_columns_data;
-extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
-extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
-extern PixieData backpics[5];
-extern vbutton *localbuttons;
+#include <openglad/interface/ui/picker_ui_state.h>
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
 // Picker globals that can leak across integration tests and affect menu start state
-extern std::unique_ptr<guy> current_guy;
-extern guy* old_guy;
-extern Sint32 current_type;
-extern Sint32 editguy;
-extern short current_team_num;
 
 // FAERIE is at index 12 in allowable_guys[]
 #define FAERIE_INDEX 12
@@ -44,22 +36,22 @@ extern short current_team_num;
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        backdrops[i].reset();
-        backpics[i].free();
+        pks().backdrops[i].reset();
+        pks().backpics[i].free();
     }
     clear_allbuttons();
-    localbuttons = nullptr;
-    main_columns_pix.reset();
-    main_columns_data.free();
-    main_title_logo_pix.reset();
-    main_title_logo_data.free();
+    og::runtime::current_session->localbuttons_ = nullptr;
+    pks().main_columns_pix.reset();
+    pks().main_columns_data.free();
+    pks().main_title_logo_pix.reset();
+    pks().main_title_logo_data.free();
 
     // Ensure the next test starts the hire menu from a clean state.
-    current_guy.reset();
-    old_guy = nullptr;      // Non-owning; may point into team_list[]
-    current_type = 0;
-    editguy = 0;
-    current_team_num = 0;
+    og::runtime::current_session->current_guy_.reset();
+    pks().old_guy = nullptr;      // Non-owning; may point into team_list[]
+    og::runtime::current_session->current_type_ = 0;
+    og::runtime::current_session->editguy_ = 0;
+    og::runtime::current_session->current_team_num_ = 0;
 }
 
 // Test: hire a lone fairy via the UI, start level 4 at max speed, stand there,
@@ -86,6 +78,7 @@ struct FairyState {
 
 static int fairy_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     FairyState* state = static_cast<FairyState*>(data);
     state->started = true;
 
@@ -126,7 +119,7 @@ static int fairy_injector(void* data)
     wait_for_interactable("go", 10000);
     SDL_Delay(500);
 
-    myscreen->save_data.scen_num = 4;
+    og::runtime::current_session->myscreen_->save_data.scen_num = 4;
     set_game_speed(0.0f);
 
     fprintf(stderr, "  [test] clicking go\n");
@@ -183,19 +176,19 @@ void test_fairy_death() {
 
     // Some integration tests leave the picker globals set, which changes the
     // starting class in the hire menu. Reset here so NEXT x12 always lands on FAERIE.
-    current_guy.reset();
-    old_guy = nullptr;
-    current_type = 0;
-    editguy = 0;
-    current_team_num = 0;
+    og::runtime::current_session->current_guy_.reset();
+    pks().old_guy = nullptr;
+    og::runtime::current_session->current_type_ = 0;
+    og::runtime::current_session->editguy_ = 0;
+    og::runtime::current_session->current_team_num_ = 0;
 
     // Start with empty team
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    FairyState state = { false, false, g_game_speed_factor };
+    FairyState state = { false, false, og::runtime::current_session->g_game_speed_factor_ };
     SDL_Thread* thread = SDL_CreateThread(fairy_injector, "fairy_injector", &state);
     TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
@@ -214,7 +207,7 @@ void test_fairy_death() {
     TEST_ASSERT(state.finished, "injector thread should have completed");
 
     // We lost — level 4 should NOT be marked completed
-    TEST_ASSERT(!myscreen->save_data.is_level_completed(4),
+    TEST_ASSERT(!og::runtime::current_session->myscreen_->save_data.is_level_completed(4),
                 "level 4 should NOT be completed (fairy should have died)");
 
     fprintf(stderr, "  [test] Fairy died as expected via UI hire flow\n");

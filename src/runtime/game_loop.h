@@ -1,4 +1,4 @@
 #pragma once
 
-// Transitional shim: prefer including <openglad/runtime/game_loop.h>.
-#include <openglad/runtime/game_loop.h>
+// Transitional shim: prefer including <openglad/platform/game_loop.h>.
+#include <openglad/platform/game_loop.h>

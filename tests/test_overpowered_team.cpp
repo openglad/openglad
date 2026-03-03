@@ -1,31 +1,28 @@
 #include <memory>
 #include <array>
-#include <openglad/input/button.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/pixien.h>
-#include <openglad/entities/guy.h>
+#include <openglad/interface/button.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/render/pixien.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include <openglad/data/save_data.h>
+#include <openglad/resources/save_data.h>
 #include <openglad/core/util.h>
 
 #include <atomic>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
-// Globals defined in picker.cpp that we need for cleanup
-extern PixieData main_title_logo_data, main_columns_data;
-extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
-extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
-extern PixieData backpics[5];
-extern vbutton *localbuttons;
+#include <openglad/interface/ui/picker_ui_state.h>
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
 
 #ifdef TESTING
 extern bool g_test_remove_exits;
@@ -39,15 +36,15 @@ extern std::atomic<int> g_test_game_epoch;
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        backdrops[i].reset();
-        backpics[i].free();
+        pks().backdrops[i].reset();
+        pks().backpics[i].free();
     }
     clear_allbuttons();
-    localbuttons = nullptr;
-    main_columns_pix.reset();
-    main_columns_data.free();
-    main_title_logo_pix.reset();
-    main_title_logo_data.free();
+    og::runtime::current_session->localbuttons_ = nullptr;
+    pks().main_columns_pix.reset();
+    pks().main_columns_data.free();
+    pks().main_title_logo_pix.reset();
+    pks().main_title_logo_data.free();
 }
 
 // Hire one of each character type via the actual UI, crank stats to absurd
@@ -71,6 +68,7 @@ struct OpState {
 
 static int op_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     OpState* state = static_cast<OpState*>(data);
     state->started = true;
 
@@ -116,10 +114,10 @@ static int op_injector(void* data)
     SDL_Delay(500);
 
     // Programmatically crank every stat to ludicrous levels
-    state->num_hired = myscreen->save_data.team_size;
+    state->num_hired = og::runtime::current_session->myscreen_->save_data.team_size;
     fprintf(stderr, "  [test] hired %d characters, cheating stats\n", state->num_hired);
-    for (int i = 0; i < myscreen->save_data.team_size; i++) {
-        guy* g = myscreen->save_data.team_list[i].get();
+    for (int i = 0; i < og::runtime::current_session->myscreen_->save_data.team_size; i++) {
+        guy* g = og::runtime::current_session->myscreen_->save_data.team_list[i].get();
         if (g) {
             g->strength = 200;
             g->dexterity = 200;
@@ -189,12 +187,12 @@ void test_overpowered_team() {
     trace_clear();
 
     // Start with empty team
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    OpState state = { false, false, g_game_speed_factor, 0 };
+    OpState state = { false, false, og::runtime::current_session->g_game_speed_factor_, 0 };
     SDL_Thread* thread = SDL_CreateThread(op_injector, "op_injector", &state);
     TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
@@ -213,7 +211,7 @@ void test_overpowered_team() {
     TEST_ASSERT(state.finished, "injector thread should have completed");
     TEST_ASSERT(state.num_hired >= 5,
                 "should have hired at least 5 characters via UI");
-    TEST_ASSERT(myscreen->save_data.is_level_completed(1),
+    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.is_level_completed(1),
                 "level 1 should be marked completed (team should have won)");
 
     fprintf(stderr, "  [test] Team of %d won level 1 via UI hire flow\n",

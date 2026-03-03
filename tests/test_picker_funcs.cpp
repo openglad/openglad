@@ -1,8 +1,8 @@
-#include <openglad/entities/guy.h>
-#include <openglad/input/button.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/button.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/ui/picker_common.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_common.h>
 #include "test_framework.h"
 #include <cstdlib>
 #include <cstring>
@@ -30,13 +30,10 @@ Sint32 return_menu(Sint32 arg);
 Sint32 name_guy(Sint32 arg);
 Sint32 edit_guy(Sint32 arg1);
 
-extern screen* myscreen;
-extern std::unique_ptr<guy> current_guy;
-extern short current_team_num;
-extern Sint32 current_difficulty;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
 
 // Button stat constants from picker.cpp
 #define BUT_STR 0
@@ -174,7 +171,7 @@ void test_get_random_name_all_families()
         TEST_ASSERT(strlen(name) > 0, "random name should not be empty for any family");
     }
 
-    std::string unique = og::ui::get_unique_name(FAMILY_SOLDIER, myscreen->save_data);
+    std::string unique = og::ui::get_unique_name(FAMILY_SOLDIER, og::runtime::current_session->myscreen_->save_data);
     TEST_ASSERT(!unique.empty(), "unique name should not be empty");
 }
 REGISTER_TEST(test_get_random_name_all_families);
@@ -186,25 +183,25 @@ REGISTER_TEST(test_get_random_name_all_families);
 void test_has_name_in_team_empty()
 {
     // Save and clear team
-    const unsigned char orig_size = myscreen->save_data.team_size;
-    myscreen->save_data.team_size = static_cast<unsigned char>(0);
+    const unsigned char orig_size = og::runtime::current_session->myscreen_->save_data.team_size;
+    og::runtime::current_session->myscreen_->save_data.team_size = static_cast<unsigned char>(0);
 
     // Use get_unique_name to verify name dedup works on empty team
-    std::string name1 = og::ui::get_unique_name(FAMILY_SOLDIER, myscreen->save_data);
+    std::string name1 = og::ui::get_unique_name(FAMILY_SOLDIER, og::runtime::current_session->myscreen_->save_data);
     TEST_ASSERT(!name1.empty(), "unique name should not be empty on empty team");
 
     guy* g = new guy(FAMILY_SOLDIER);
     g->name = "TestName";
-    myscreen->save_data.team_list[0].reset(g);
-    myscreen->save_data.team_size = static_cast<unsigned char>(1);
+    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(g);
+    og::runtime::current_session->myscreen_->save_data.team_size = static_cast<unsigned char>(1);
 
     // get_unique_name should return a name different from existing "TestName"
     // (though it may not collide anyway since random names vary)
-    std::string name2 = og::ui::get_unique_name(FAMILY_SOLDIER, myscreen->save_data);
+    std::string name2 = og::ui::get_unique_name(FAMILY_SOLDIER, og::runtime::current_session->myscreen_->save_data);
     TEST_ASSERT(!name2.empty(), "unique name should not be empty");
 
-    myscreen->save_data.team_list[0].reset(nullptr);
-    myscreen->save_data.team_size = orig_size;
+    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(nullptr);
+    og::runtime::current_session->myscreen_->save_data.team_size = orig_size;
 }
 REGISTER_TEST(test_has_name_in_team_empty);
 
@@ -214,11 +211,11 @@ REGISTER_TEST(test_has_name_in_team_empty);
 
 void test_how_many_empty_team()
 {
-    const unsigned char orig_size = myscreen->save_data.team_size;
+    const unsigned char orig_size = og::runtime::current_session->myscreen_->save_data.team_size;
     guy* orig_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        orig_list[i] = myscreen->save_data.team_list[i].release();
-        myscreen->save_data.team_list[i].reset(nullptr);
+        orig_list[i] = og::runtime::current_session->myscreen_->save_data.team_list[i].release();
+        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(nullptr);
     }
 
     Sint32 count = how_many(FAMILY_SOLDIER);
@@ -226,30 +223,30 @@ void test_how_many_empty_team()
 
     // Restore
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        myscreen->save_data.team_list[i].reset(orig_list[i]);
+        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(orig_list[i]);
     }
-    myscreen->save_data.team_size = orig_size;
+    og::runtime::current_session->myscreen_->save_data.team_size = orig_size;
 }
 REGISTER_TEST(test_how_many_empty_team);
 
 void test_how_many_with_team()
 {
     // Save originals
-    const unsigned char orig_size = myscreen->save_data.team_size;
+    const unsigned char orig_size = og::runtime::current_session->myscreen_->save_data.team_size;
     guy* orig_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        orig_list[i] = myscreen->save_data.team_list[i].release();
-        myscreen->save_data.team_list[i].reset(nullptr);
+        orig_list[i] = og::runtime::current_session->myscreen_->save_data.team_list[i].release();
+        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(nullptr);
     }
 
     // Add some guys
     guy* g1 = new guy(FAMILY_SOLDIER);
     guy* g2 = new guy(FAMILY_SOLDIER);
     guy* g3 = new guy(FAMILY_MAGE);
-    myscreen->save_data.team_list[0].reset(g1);
-    myscreen->save_data.team_list[1].reset(g2);
-    myscreen->save_data.team_list[2].reset(g3);
-    myscreen->save_data.team_size = static_cast<unsigned char>(3);
+    og::runtime::current_session->myscreen_->save_data.team_list[0].reset(g1);
+    og::runtime::current_session->myscreen_->save_data.team_list[1].reset(g2);
+    og::runtime::current_session->myscreen_->save_data.team_list[2].reset(g3);
+    og::runtime::current_session->myscreen_->save_data.team_size = static_cast<unsigned char>(3);
 
     TEST_ASSERT_EQ(2, (int)how_many(FAMILY_SOLDIER), "should count 2 soldiers");
     TEST_ASSERT_EQ(1, (int)how_many(FAMILY_MAGE), "should count 1 mage");
@@ -257,9 +254,9 @@ void test_how_many_with_team()
 
     // Cleanup
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        myscreen->save_data.team_list[i].reset(orig_list[i]);
+        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(orig_list[i]);
     }
-    myscreen->save_data.team_size = orig_size;
+    og::runtime::current_session->myscreen_->save_data.team_size = orig_size;
 
     // Additional picker utility/state coverage without registering new tests.
     TEST_ASSERT_EQ(-1, get_scen_num_from_filename(nullptr), "null input should return -1");
@@ -267,104 +264,104 @@ void test_how_many_with_team()
     TEST_ASSERT_EQ(123, get_scen_num_from_filename("scen123"), "numeric suffix should parse");
     TEST_ASSERT_EQ(42, get_scen_num_from_filename("file42"), "mixed prefix should parse trailing number");
 
-    vbutton* old2 = allbuttons[2];
-    vbutton* old6 = allbuttons[6];
-    vbutton* old7 = allbuttons[7];
-    vbutton* old18 = allbuttons[18];
-    std::unique_ptr<guy> old_current = std::move(current_guy);
-    short old_team_num = current_team_num;
-    Sint32 old_diff = current_difficulty;
-    const short old_allied = myscreen->save_data.allied_mode;
+    vbutton* old2 = og::runtime::current_session->allbuttons_[2];
+    vbutton* old6 = og::runtime::current_session->allbuttons_[6];
+    vbutton* old7 = og::runtime::current_session->allbuttons_[7];
+    vbutton* old18 = og::runtime::current_session->allbuttons_[18];
+    std::unique_ptr<guy> old_current = std::move(og::runtime::current_session->current_guy_);
+    short old_team_num = og::runtime::current_session->current_team_num_;
+    Sint32 old_diff = og::runtime::current_session->current_difficulty_;
+    const short old_allied = og::runtime::current_session->myscreen_->save_data.allied_mode;
 
-    allbuttons[2] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b2", KEYSTATE_UNKNOWN);
-    allbuttons[6] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b6", KEYSTATE_UNKNOWN);
-    allbuttons[7] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b7", KEYSTATE_UNKNOWN);
-    allbuttons[18] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b18", KEYSTATE_UNKNOWN);
+    og::runtime::current_session->allbuttons_[2] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b2", KEYSTATE_UNKNOWN);
+    og::runtime::current_session->allbuttons_[6] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b6", KEYSTATE_UNKNOWN);
+    og::runtime::current_session->allbuttons_[7] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b7", KEYSTATE_UNKNOWN);
+    og::runtime::current_session->allbuttons_[18] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b18", KEYSTATE_UNKNOWN);
 
-    current_guy = std::make_unique<guy>(FAMILY_SOLDIER);
-    current_guy->teamnum = 1;
-    current_team_num = 0;
-    current_difficulty = DIFFICULTY_SETTINGS - 1;
-    myscreen->save_data.allied_mode = static_cast<short>(0);
+    og::runtime::current_session->current_guy_ = std::make_unique<guy>(FAMILY_SOLDIER);
+    og::runtime::current_session->current_guy_->teamnum = 1;
+    og::runtime::current_session->current_team_num_ = 0;
+    og::runtime::current_session->current_difficulty_ = DIFFICULTY_SETTINGS - 1;
+    og::runtime::current_session->myscreen_->save_data.allied_mode = static_cast<short>(0);
 
     TEST_ASSERT_EQ(4, (int)set_difficulty(), "set_difficulty should return OK");
     TEST_ASSERT(
-        std::string(allbuttons[2]->label).find("Difficulty: ") == 0 ||
-        std::string(allbuttons[6]->label).find("Difficulty: ") == 0,
+        std::string(og::runtime::current_session->allbuttons_[2]->label).find("Difficulty: ") == 0 ||
+        std::string(og::runtime::current_session->allbuttons_[6]->label).find("Difficulty: ") == 0,
         "difficulty label should be updated");
 
     TEST_ASSERT_EQ(4, (int)change_teamnum(1), "change_teamnum should return OK");
-    TEST_ASSERT_EQ(2, (int)current_guy->teamnum, "team should increment");
-    TEST_ASSERT(std::string(allbuttons[18]->label).find("Playing on Team ") == 0, "team label should be updated");
+    TEST_ASSERT_EQ(2, (int)og::runtime::current_session->current_guy_->teamnum, "team should increment");
+    TEST_ASSERT(std::string(og::runtime::current_session->allbuttons_[18]->label).find("Playing on Team ") == 0, "team label should be updated");
 
     TEST_ASSERT_EQ(4, (int)change_hire_teamnum(1), "change_hire_teamnum should return OK");
-    TEST_ASSERT_EQ(1, (int)current_team_num, "hire team num should increment");
-    TEST_ASSERT_EQ(1, (int)current_guy->teamnum, "current guy team should mirror hire team");
-    TEST_ASSERT(std::string(allbuttons[2]->label).find("Hiring for Team ") == 0, "hire label should be updated");
+    TEST_ASSERT_EQ(1, (int)og::runtime::current_session->current_team_num_, "hire team num should increment");
+    TEST_ASSERT_EQ(1, (int)og::runtime::current_session->current_guy_->teamnum, "current guy team should mirror hire team");
+    TEST_ASSERT(std::string(og::runtime::current_session->allbuttons_[2]->label).find("Hiring for Team ") == 0, "hire label should be updated");
 
     TEST_ASSERT_EQ(4, (int)change_allied(), "change_allied should return OK");
-    TEST_ASSERT_EQ(1, myscreen->save_data.allied_mode, "allied mode should toggle on");
-    TEST_ASSERT(allbuttons[7]->label == "PVP: Ally", "allied label should update");
+    TEST_ASSERT_EQ(1, og::runtime::current_session->myscreen_->save_data.allied_mode, "allied mode should toggle on");
+    TEST_ASSERT(og::runtime::current_session->allbuttons_[7]->label == "PVP: Ally", "allied label should update");
     TEST_ASSERT_EQ(4, (int)change_allied(), "change_allied second toggle should return OK");
-    TEST_ASSERT_EQ(0, myscreen->save_data.allied_mode, "allied mode should toggle off");
-    TEST_ASSERT(allbuttons[7]->label == "PVP: Enemy", "enemy label should update");
+    TEST_ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.allied_mode, "allied mode should toggle off");
+    TEST_ASSERT(og::runtime::current_session->allbuttons_[7]->label == "PVP: Enemy", "enemy label should update");
 
     // Directly exercise picker helpers that were still uncovered.
-    const unsigned char saved_team_size = myscreen->save_data.team_size;
+    const unsigned char saved_team_size = og::runtime::current_session->myscreen_->save_data.team_size;
     guy* saved_team_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        saved_team_list[i] = myscreen->save_data.team_list[i].release();
-        myscreen->save_data.team_list[i].reset(nullptr);
+        saved_team_list[i] = og::runtime::current_session->myscreen_->save_data.team_list[i].release();
+        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(nullptr);
     }
-    myscreen->save_data.team_size = static_cast<unsigned char>(0);
+    og::runtime::current_session->myscreen_->save_data.team_size = static_cast<unsigned char>(0);
 
     guy* recruited = new guy(FAMILY_SOLDIER);
     Sint32 slot = add_guy(recruited);
     TEST_ASSERT(slot >= 0, "add_guy(guy*) should place recruit in a slot");
-    TEST_ASSERT(myscreen->save_data.team_size == static_cast<unsigned char>(1), "team size should increment after add_guy(guy*)");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.team_size == static_cast<unsigned char>(1), "team size should increment after add_guy(guy*)");
 
     TEST_ASSERT_EQ(1, (int)delete_all(), "delete_all should report number of removed members");
-    TEST_ASSERT(myscreen->save_data.team_size == static_cast<unsigned char>(0), "delete_all should clear team size");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.team_size == static_cast<unsigned char>(0), "delete_all should clear team size");
 
-    vbutton* old0 = allbuttons[0];
-    if (allbuttons[0] == nullptr) {
-        allbuttons[0] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b0", KEYSTATE_UNKNOWN);
+    vbutton* old0 = og::runtime::current_session->allbuttons_[0];
+    if (og::runtime::current_session->allbuttons_[0] == nullptr) {
+        og::runtime::current_session->allbuttons_[0] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b0", KEYSTATE_UNKNOWN);
     }
-    allbuttons[0]->label = "UNIT_TEST_SAVE";
+    og::runtime::current_session->allbuttons_[0]->label = "UNIT_TEST_SAVE";
     Sint32 save_ret = do_save(1);
     Sint32 load_ret = do_load(1);
     TEST_ASSERT(save_ret == load_ret, "do_save/do_load should return same menu status");
 
     TEST_ASSERT_EQ(1234, (int)return_menu(1234), "return_menu should echo its argument");
     quit(0); // test mode: should not exit
-    std::unique_ptr<guy> tmp_current = std::move(current_guy);
-    current_guy = nullptr;
+    std::unique_ptr<guy> tmp_current = std::move(og::runtime::current_session->current_guy_);
+    og::runtime::current_session->current_guy_ = nullptr;
     TEST_ASSERT_EQ(2, (int)name_guy(0), "name_guy with no current_guy should return REDRAW");
     TEST_ASSERT_EQ(-1, (int)edit_guy(0), "edit_guy with no current_guy should fail");
-    current_guy = std::move(tmp_current);
+    og::runtime::current_session->current_guy_ = std::move(tmp_current);
 
 
-    current_guy = std::move(old_current);
-    current_team_num = old_team_num;
-    current_difficulty = old_diff;
-    myscreen->save_data.allied_mode = old_allied;
+    og::runtime::current_session->current_guy_ = std::move(old_current);
+    og::runtime::current_session->current_team_num_ = old_team_num;
+    og::runtime::current_session->current_difficulty_ = old_diff;
+    og::runtime::current_session->myscreen_->save_data.allied_mode = old_allied;
 
-    delete allbuttons[2];
-    delete allbuttons[6];
-    delete allbuttons[7];
-    delete allbuttons[18];
+    delete og::runtime::current_session->allbuttons_[2];
+    delete og::runtime::current_session->allbuttons_[6];
+    delete og::runtime::current_session->allbuttons_[7];
+    delete og::runtime::current_session->allbuttons_[18];
     if (old0 == nullptr) {
-        delete allbuttons[0];
+        delete og::runtime::current_session->allbuttons_[0];
     }
-    allbuttons[0] = old0;
-    allbuttons[2] = old2;
-    allbuttons[6] = old6;
-    allbuttons[7] = old7;
-    allbuttons[18] = old18;
+    og::runtime::current_session->allbuttons_[0] = old0;
+    og::runtime::current_session->allbuttons_[2] = old2;
+    og::runtime::current_session->allbuttons_[6] = old6;
+    og::runtime::current_session->allbuttons_[7] = old7;
+    og::runtime::current_session->allbuttons_[18] = old18;
 
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        myscreen->save_data.team_list[i].reset(saved_team_list[i]);
+        og::runtime::current_session->myscreen_->save_data.team_list[i].reset(saved_team_list[i]);
     }
-    myscreen->save_data.team_size = saved_team_size;
+    og::runtime::current_session->myscreen_->save_data.team_size = saved_team_size;
 }
 REGISTER_TEST(test_how_many_with_team);

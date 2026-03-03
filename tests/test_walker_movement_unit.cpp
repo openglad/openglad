@@ -1,10 +1,10 @@
-#include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
 #include <memory>
 #include "unit/unit.h"
@@ -12,22 +12,26 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <array>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_walker_movement_push.cpp ---
 namespace detail_walker_movement_push {
 namespace {
 
 struct MovementFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     MovementFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 };
@@ -36,13 +40,13 @@ walker* add_living(MovementFixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
     w->setxy(64, 64);
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -117,16 +121,19 @@ namespace detail_walker_movement_r11 {
 namespace {
 
 struct WalkerMovementR11Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     WalkerMovementR11Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 };
@@ -135,13 +142,13 @@ walker* add_living(WalkerMovementR11Fixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
     w->setxy(96, 96);
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -243,13 +250,15 @@ namespace detail_walker_movement_r12 {
 namespace {
 
 struct MovementR12Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     MovementR12Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -260,13 +269,13 @@ walker* add_living(MovementR12Fixture& fx, char family = FAMILY_SOLDIER)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
     w->setxy(64, 64);
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -370,13 +379,15 @@ namespace detail_walker_movement_r14 {
 namespace {
 
 struct MovementR14Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     MovementR14Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -387,13 +398,13 @@ walker* add_living(MovementR14Fixture& fx, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
     w->setxy(x, y);
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -426,15 +437,15 @@ OG_UNIT_TEST(test_walker_movement_r14_lines_175_186_198_210_npc_fallback_cases)
     npc->curdir = FACE_UP;
     (void)npc->walkstep(0.0f, -1.0f);
 
-    npc->setxy(fx.level.pixmaxx - 1, 0);
+    npc->setxy(fx.level.world().pixmaxx - 1, 0);
     npc->curdir = FACE_RIGHT;
     (void)npc->walkstep(1.0f, 0.0f);
 
-    npc->setxy(0, fx.level.pixmaxy - 1);
+    npc->setxy(0, fx.level.world().pixmaxy - 1);
     npc->curdir = FACE_DOWN;
     (void)npc->walkstep(0.0f, 1.0f);
 
-    npc->setxy(0, fx.level.pixmaxy - 1);
+    npc->setxy(0, fx.level.world().pixmaxy - 1);
     npc->curdir = FACE_DOWN_RIGHT;
     (void)npc->walkstep(1.0f, 1.0f);
 
@@ -465,4 +476,3 @@ OG_UNIT_TEST(test_walker_movement_r14_lines_234_255_268_273_278_285_292_user_sli
     (void)user->turn(FACE_RIGHT);
 }
 } // namespace detail_walker_movement_r14
-

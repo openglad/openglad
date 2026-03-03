@@ -1,41 +1,38 @@
 #include <memory>
 #include <array>
-#include <openglad/data/pixie_data.h>
-#include <openglad/input/button.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/interface/button.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/render/pixien.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/render/pixien.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include <openglad/data/save_data.h>
-#include <openglad/entities/guy.h>
-extern screen* myscreen;
+#include <openglad/resources/save_data.h>
+#include <openglad/gameplay/guy.h>
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
-// Globals defined in picker.cpp that we need for cleanup
-extern PixieData main_title_logo_data, main_columns_data;
-extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
-extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
-extern PixieData backpics[5];
-extern vbutton *localbuttons;
+#include <openglad/interface/ui/picker_ui_state.h>
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
 
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        backdrops[i].reset();
-        backpics[i].free();
+        pks().backdrops[i].reset();
+        pks().backpics[i].free();
     }
     clear_allbuttons();
-    localbuttons = nullptr;
-    main_columns_pix.reset();
-    main_columns_data.free();
-    main_title_logo_pix.reset();
-    main_title_logo_data.free();
+    og::runtime::current_session->localbuttons_ = nullptr;
+    pks().main_columns_pix.reset();
+    pks().main_columns_data.free();
+    pks().main_title_logo_pix.reset();
+    pks().main_title_logo_data.free();
 }
 
 // Test: Continue -> Train Team -> interact with stat buttons -> Back -> Back
@@ -54,6 +51,7 @@ struct TrainState {
 
 static int train_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     TrainState* state = static_cast<TrainState*>(data);
     state->started = true;
 
@@ -149,11 +147,11 @@ void test_train_team() {
     trace_clear();
 
     // Set up a team with members so train menu doesn't show "NEED A TEAM!" popup
-    myscreen->save_data.reset();
-    myscreen->save_data.numplayers = 1;
-    myscreen->save_data.current_campaign = "org.openglad.gladiator";
-    myscreen->save_data.scen_num = 1;
-    myscreen->save_data.totalcash = 50000;  // Enough cash for training
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.totalcash = 50000;  // Enough cash for training
 
     // Add multiple classes at high level to hit create_detail_menu text branches.
     auto archmage = std::make_unique<guy>(FAMILY_ARCHMAGE);
@@ -166,14 +164,14 @@ void test_train_team() {
     druid->level = 10;
     thief->level = 10;
     orc->level = 10;
-    myscreen->save_data.team_list[0] = std::move(archmage);
-    myscreen->save_data.team_list[1] = std::move(cleric);
-    myscreen->save_data.team_list[2] = std::move(druid);
-    myscreen->save_data.team_list[3] = std::move(thief);
-    myscreen->save_data.team_list[4] = std::move(orc);
-    myscreen->save_data.team_size = 5;
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(archmage);
+    og::runtime::current_session->myscreen_->save_data.team_list[1] = std::move(cleric);
+    og::runtime::current_session->myscreen_->save_data.team_list[2] = std::move(druid);
+    og::runtime::current_session->myscreen_->save_data.team_list[3] = std::move(thief);
+    og::runtime::current_session->myscreen_->save_data.team_list[4] = std::move(orc);
+    og::runtime::current_session->myscreen_->save_data.team_size = 5;
 
-    myscreen->save_data.save("save0");
+    og::runtime::current_session->myscreen_->save_data.save("save0");
 
     TrainState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(train_injector, "train_test", &state);

@@ -28,7 +28,20 @@ jobs:
         run: cmake --preset web-emscripten
 
       - name: Build WASM target
-        run: cmake --build --preset web-emscripten --target play -j"$(nproc)"
+        run: |
+          for attempt in 1 2 3; do
+            echo "WASM build attempt ${attempt}/3"
+            if cmake --build --preset web-emscripten --target play -j"$(nproc)"; then
+              exit 0
+            fi
+            if [ "${attempt}" -lt 3 ]; then
+              echo "Build failed. Clearing Emscripten ports cache and retrying..."
+              rm -rf "${HOME}/.emscripten_ports"
+              sleep 10
+            fi
+          done
+          echo "WASM build failed after 3 attempts."
+          exit 1
 
       - name: Copy web assets to dist
         run: cp web/index.html web/hero.png web/help.html dist/

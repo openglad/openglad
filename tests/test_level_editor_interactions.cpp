@@ -1,13 +1,15 @@
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/ui/level_editor_state.h>
+#include <openglad/platform/game_session.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
+
+static inline LevelEditorState& eds() { return *og::runtime::current_session->editor_; }
 
 // From level_editor.cpp
 Sint32 level_editor();
-extern Sint32 levelchanged;
-extern Sint32 campaignchanged;
 
 struct EditorThreadState {
     bool started;
@@ -16,6 +18,7 @@ struct EditorThreadState {
 
 static int editor_injector_thread(void* data)
 {
+    og::runtime::ensure_thread_session();
     EditorThreadState* st = static_cast<EditorThreadState*>(data);
     st->started = true;
 
@@ -144,8 +147,8 @@ static int editor_injector_thread(void* data)
     inject_click(85, 105, 20);  // Save As...
 
     // Force the ESC quit prompt path (TESTING returns default without blocking).
-    levelchanged = 1;
-    campaignchanged = 1;
+    eds().levelchanged = 1;
+    eds().campaignchanged = 1;
 
     // Right-click pick path.
     SDL_Event right_down{};
@@ -227,7 +230,7 @@ static int editor_injector_thread(void* data)
 
     // Let it draw a few frames, then request exit.
     SDL_Delay(300);
-    myscreen->end = 1;
+    og::runtime::current_session->myscreen_->world().end = 1;
 
     st->finished = true;
     return 0;
@@ -236,7 +239,7 @@ static int editor_injector_thread(void* data)
 void test_level_editor_runs_and_handles_basic_input()
 {
     // Ensure the editor loop runs for a short period.
-    myscreen->end = 0;
+    og::runtime::current_session->myscreen_->world().end = 0;
 
     EditorThreadState st{false, false};
     SDL_Thread* thread = SDL_CreateThread(editor_injector_thread, "editor_injector", &st);
@@ -249,7 +252,7 @@ void test_level_editor_runs_and_handles_basic_input()
     SDL_WaitThread(thread, &thread_result);
 
     // Reset end flag for subsequent tests.
-    myscreen->end = 0;
+    og::runtime::current_session->myscreen_->world().end = 0;
 
     TEST_ASSERT(st.started, "injector thread should have started");
     TEST_ASSERT(st.finished, "injector thread should have finished");
@@ -294,6 +297,7 @@ static void push_mouse_drag(int x0, int y0, int x1, int y1)
 
 static int editor_edit_smoke_injector(void* data)
 {
+    og::runtime::ensure_thread_session();
     EditorThreadState* st = static_cast<EditorThreadState*>(data);
     st->started = true;
 
@@ -324,7 +328,7 @@ static int editor_edit_smoke_injector(void* data)
 
     // Exit editor.
     SDL_Delay(200);
-    myscreen->end = 1;
+    og::runtime::current_session->myscreen_->world().end = 1;
 
     st->finished = true;
     return 0;
@@ -333,7 +337,7 @@ static int editor_edit_smoke_injector(void* data)
 
 void test_level_editor_edits_terrain_and_places_objects_smoke()
 {
-    myscreen->end = 0;
+    og::runtime::current_session->myscreen_->world().end = 0;
 
     EditorThreadState st{false, false};
     SDL_Thread* thread = SDL_CreateThread(editor_edit_smoke_injector, "editor_edit_smoke", &st);
@@ -344,7 +348,7 @@ void test_level_editor_edits_terrain_and_places_objects_smoke()
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
 
-    myscreen->end = 0;
+    og::runtime::current_session->myscreen_->world().end = 0;
 
     TEST_ASSERT(st.started, "injector thread should have started");
     TEST_ASSERT(st.finished, "injector thread should have finished");

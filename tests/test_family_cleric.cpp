@@ -1,21 +1,22 @@
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/living.h>
-#include <openglad/core/stats.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/core/constants.h>
 #include "unit/unit.h"
-#include <openglad/entities/guy.h>
-#include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
-#include <openglad/entities/treasure.h>
+#include <openglad/gameplay/treasure.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/platform/game_context.h>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_family_cleric_coverage_push.cpp ---
 const FamilyDescriptor& describe_family_cleric();
@@ -78,16 +79,19 @@ namespace detail_family_cleric_r11 {
 namespace {
 
 struct ClericFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     ClericFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 };
@@ -96,7 +100,7 @@ living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_C
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -105,7 +109,7 @@ living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_C
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -267,13 +271,15 @@ namespace detail_family_cleric_r12 {
 namespace {
 
 struct ClericR12Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     ClericR12Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -284,7 +290,7 @@ living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMIL
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -293,7 +299,7 @@ living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMIL
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -414,14 +420,14 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
 
     auto s = std::make_unique<living>();
     s->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(s.get());
+    bind_test_entity_sim_context(fx.level, s.get());
     s->setxy(60, 60);
     s->team_num = 0;
     s->stats()->level = 6;
     s->lastx = 1.0f;
     s->lasty = 0.0f;
     living* self = s.get();
-    fx.level.oblist.push_back(std::move(s));
+    fx.level.world().oblist.push_back(std::move(s));
 
     walker* enemy = add_living(fx, 1, FAMILY_ORC);
     enemy->setxy(80, 60);
@@ -450,7 +456,6 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
 
     // treasure.cpp paths
     treasure lonely;
-    lonely.sim_level = &fx.level;
     lonely.stats()->level = 2;
     OG_ASSERT(lonely.find_teleport_target() == nullptr);
     OG_ASSERT(lonely.act());
@@ -458,8 +463,8 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
 
     auto t1 = std::make_unique<treasure>();
     auto t2 = std::make_unique<treasure>();
-    fx.level.wire_entity(t1.get());
-    fx.level.wire_entity(t2.get());
+    bind_test_entity_sim_context(fx.level, t1.get());
+    bind_test_entity_sim_context(fx.level, t2.get());
     t1->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     t2->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     t1->stats()->level = 3;
@@ -467,8 +472,8 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
     t2->dead = 0;
     treasure* t1_raw = t1.get();
     treasure* t2_raw = t2.get();
-    fx.level.fxlist.push_back(std::move(t1));
-    fx.level.fxlist.push_back(std::move(t2));
+    fx.level.world().fxlist.push_back(std::move(t1));
+    fx.level.world().fxlist.push_back(std::move(t2));
     OG_ASSERT(t1_raw->find_teleport_target() == t2_raw);
 }
 
@@ -532,25 +537,27 @@ namespace detail_family_cleric_r14 {
 namespace {
 
 struct ClericR14Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     ClericR14Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~ClericR14Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -558,7 +565,7 @@ living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMIL
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
     w->sizex = 16;
     w->sizey = 16;
@@ -567,7 +574,7 @@ living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMIL
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -678,25 +685,27 @@ namespace detail_family_cleric_r15 {
 namespace {
 
 struct ClericR15Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     ClericR15Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~ClericR15Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -704,7 +713,7 @@ living* add_living(ClericR15Fixture& fx, unsigned char team, char family, short 
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -713,7 +722,7 @@ living* add_living(ClericR15Fixture& fx, unsigned char team, char family, short 
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -793,4 +802,3 @@ OG_UNIT_TEST(test_family_cleric_r15_turn_undead_raise_and_resurrect_branches)
     (void)desc.do_special(cleric);
 }
 } // namespace detail_family_cleric_r15
-

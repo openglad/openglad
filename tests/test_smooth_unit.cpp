@@ -1,7 +1,7 @@
-#include <openglad/data/smooth.h>
-#include <openglad/data/pixie_data.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/gameplay/smooth.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
 #include "unit/unit.h"
 #if __has_include(<catch2/catch_test_macros.hpp>)
@@ -79,7 +79,7 @@ OG_UNIT_TEST(test_smooth_branch_matrix_on_center_tile)
     FixedRandom rng(0);
     GameContext gc;
     gc.rng = &rng;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
 
@@ -184,7 +184,7 @@ OG_UNIT_TEST(test_smooth_branch_matrix_on_center_tile)
         OG_ASSERT(center_value(pd) == 255);
     }
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 } // namespace detail_smooth_coverage_push
 
@@ -260,7 +260,7 @@ OG_UNIT_TEST(test_smooth_r11_dark_grass_and_wall_and_water_branches)
     FixedRandom rng0(0);
     GameContext gc;
     gc.rng = &rng0;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd = make_grid(PIX_GRASS1);
@@ -388,7 +388,7 @@ OG_UNIT_TEST(test_smooth_r11_dark_grass_and_wall_and_water_branches)
     // smooth() full-map return true and set_x_y guard line 903
     OG_ASSERT(s.smooth() == 1);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 } // namespace detail_smooth_r11
 
@@ -451,7 +451,7 @@ OG_UNIT_TEST(test_smooth_r12_light_wall_tree_dirt_darkdirt_coverage)
     FixedRandom rng(0);
     GameContext gc;
     gc.rng = &rng;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd = make_grid(PIX_GRASS1);
@@ -504,7 +504,7 @@ OG_UNIT_TEST(test_smooth_r12_light_wall_tree_dirt_darkdirt_coverage)
     s.smooth(3, 3);
 
     OG_ASSERT(s.smooth() == 1);
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 OG_UNIT_TEST(test_smooth_r12_rng_and_masked_switch_coverage)
@@ -512,7 +512,7 @@ OG_UNIT_TEST(test_smooth_r12_rng_and_masked_switch_coverage)
     SeqRandom rng;
     GameContext gc;
     gc.rng = &rng;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd = make_grid(PIX_GRASS1);
@@ -557,7 +557,7 @@ OG_UNIT_TEST(test_smooth_r12_rng_and_masked_switch_coverage)
     set_at(pd, 2, 3, PIX_GRASS1);
     s.smooth(3, 3);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 } // namespace detail_smooth_r12
 
@@ -611,7 +611,7 @@ OG_UNIT_TEST(test_smooth_r14_lines_437_447_499_572_604_614_wall_arrow_water_and_
     SeqRandom rng;
     GameContext gc;
     gc.rng = &rng;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd = make_grid(PIX_GRASS1);
@@ -653,7 +653,7 @@ OG_UNIT_TEST(test_smooth_r14_lines_437_447_499_572_604_614_wall_arrow_water_and_
     set_at(pd, x, y, 254);
     s.smooth(x, y);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 OG_UNIT_TEST(test_smooth_r14_lines_670_700_722_736_770_830_851_tree_dirt_darkdirt_mask_matrix)
@@ -661,7 +661,7 @@ OG_UNIT_TEST(test_smooth_r14_lines_670_700_722_736_770_830_851_tree_dirt_darkdir
     SeqRandom rng;
     GameContext gc;
     gc.rng = &rng;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd = make_grid(PIX_GRASS1);
@@ -691,7 +691,7 @@ OG_UNIT_TEST(test_smooth_r14_lines_670_700_722_736_770_830_851_tree_dirt_darkdir
         s.smooth(x, y);
     }
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 OG_UNIT_TEST(test_smooth_r14_lines_903_full_smooth_reset_paths)
@@ -699,7 +699,7 @@ OG_UNIT_TEST(test_smooth_r14_lines_903_full_smooth_reset_paths)
     SeqRandom rng;
     GameContext gc;
     gc.rng = &rng;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
 
@@ -712,7 +712,7 @@ OG_UNIT_TEST(test_smooth_r14_lines_903_full_smooth_reset_paths)
     s.reset();
     OG_ASSERT(s.smooth() == 0);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 } // namespace detail_smooth_r14
 

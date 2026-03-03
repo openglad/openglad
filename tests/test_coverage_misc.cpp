@@ -1,18 +1,19 @@
 #include <openglad/core/constants.h>
-#include <openglad/core/stats.h>
-#include <openglad/data/gparser.h>
-#include <openglad/data/level_data.h>
-#include <openglad/data/pixie_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/smooth.h>
-#include <openglad/entities/family_descriptor.h>
-#include <openglad/entities/family_registry.h>
-#include <openglad/entities/guy.h>
-#include <openglad/entities/living.h>
-#include <openglad/entities/walker.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/sim/irandom.h>
-#include <openglad/sim/sim_event_log.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/pixie_data.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/gameplay/smooth.h>
+#include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/irandom.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/legacy/base.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
@@ -22,14 +23,15 @@
 #include <memory>
 #include <vector>
 #include "unit/unit.h"
-#include <openglad/ui/picker_state.h>
-#include <openglad/ui/menu_model.h>
-#include <openglad/data/level_data_hooks.h>
+#include <openglad/interface/ui/picker_state.h>
+#include <openglad/interface/ui/menu_model.h>
+#include <openglad/resources/level_data_hooks.h>
 #include <string>
 #include <openglad/core/combat_math.h>
-#include <openglad/input/input_action.h>
-#include <openglad/input/input_state.h>
-#include <openglad/sim/sim_input_handler.h>
+#include <openglad/interface/input_action.h>
+#include <openglad/interface/input_state.h>
+#include <openglad/gameplay/sim_input_handler.h>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_coverage_r17.cpp ---
 namespace detail_coverage_r17 {
@@ -56,26 +58,28 @@ struct SeqRandom final : IRandom {
 };
 
 struct R17Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     R17Fixture()
+        : gameplay(level, save, events, cfg)
     {
         init_family_registry();
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~R17Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -83,7 +87,7 @@ living* add_living(R17Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -94,7 +98,7 @@ living* add_living(R17Fixture& fx, char family, unsigned char team, short x, sho
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -102,7 +106,7 @@ walker* add_fx(R17Fixture& fx, char family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -110,7 +114,7 @@ walker* add_fx(R17Fixture& fx, char family, short x, short y)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -273,12 +277,12 @@ OG_UNIT_TEST(test_coverage_r17_walker_movement_and_act_cleanup)
 
     assign_basic_ani(actor);
     actor->user = -1;
-    actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.pixmaxy - 1));
+    actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.world().pixmaxy - 1));
     actor->curdir = FACE_DOWN_LEFT;
     (void)actor->walkstep(-1.0f, 1.0f);
 
     actor->user = 0;
-    actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.pixmaxy - 1));
+    actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.world().pixmaxy - 1));
     actor->curdir = FACE_DOWN_LEFT;
     (void)actor->walkstep(-1.0f, 1.0f);
 
@@ -292,7 +296,7 @@ OG_UNIT_TEST(test_coverage_r17_smooth_grass_water_and_dark_variants)
     SeqRandom rng{1, 2, 0, 0, 1, 0};
     GameContext gc;
     gc.rng = &rng;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd = make_grid(PIX_GRASS1);
@@ -335,7 +339,7 @@ OG_UNIT_TEST(test_coverage_r17_smooth_grass_water_and_dark_variants)
     set_at(pd, x, y + 1, PIX_FLOOR1);
     s.smooth(x, y);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 OG_UNIT_TEST(test_coverage_r17_save_data_reset_defaults)
@@ -476,13 +480,15 @@ public:
 };
 
 struct MovementFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     MovementFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -505,13 +511,13 @@ walker* add_living(MovementFixture& fx, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
     w->setxy(x, y);
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -587,7 +593,7 @@ void set_neighbors_mask(PixieData& pd, int cx, int cy, unsigned char center,
 
 int g_clear_stale_view_controls_calls = 0;
 
-void test_clear_stale_view_controls(LevelData*)
+void test_clear_stale_view_controls(LevelRuntimeData*)
 {
     ++g_clear_stale_view_controls_calls;
 }
@@ -720,7 +726,7 @@ OG_UNIT_TEST(test_coverage_r18_family_cleric_check_special_default_false)
     MovementFixture fx;
     living self;
     self.set_order_family(Order::Living, FAMILY_CLERIC);
-    fx.level.wire_entity(&self);
+    bind_test_entity_sim_context(fx.level, &self);
     self.current_special = 1;
     self.stats()->max_magicpoints = 100.0f;
     self.stats()->magicpoints = 1.0f;
@@ -730,7 +736,7 @@ OG_UNIT_TEST(test_coverage_r18_family_cleric_check_special_default_false)
 OG_UNIT_TEST(test_coverage_r18_walker_movement_blocked_user_paths)
 {
     MovementFixture fx;
-    walker* user = add_living(fx, static_cast<short>(fx.level.pixmaxx - 1), static_cast<short>(fx.level.pixmaxy - 1));
+    walker* user = add_living(fx, static_cast<short>(fx.level.world().pixmaxx - 1), static_cast<short>(fx.level.world().pixmaxy - 1));
     OG_ASSERT(user != nullptr);
     assign_basic_ani(user);
 
@@ -743,15 +749,15 @@ OG_UNIT_TEST(test_coverage_r18_walker_movement_blocked_user_paths)
     OG_ASSERT(!user->walkstep(0.0f, -1.0f));
 
     // Hit user-slide branches where only one axis can move.
-    user->setxy(static_cast<short>(fx.level.pixmaxx - 1), static_cast<short>(10));
+    user->setxy(static_cast<short>(fx.level.world().pixmaxx - 1), static_cast<short>(10));
     user->curdir = FACE_DOWN_RIGHT;
     (void)user->walkstep(1.0f, 1.0f);
 
-    user->setxy(static_cast<short>(10), static_cast<short>(fx.level.pixmaxy - 1));
+    user->setxy(static_cast<short>(10), static_cast<short>(fx.level.world().pixmaxy - 1));
     user->curdir = FACE_DOWN_LEFT;
     (void)user->walkstep(-1.0f, 1.0f);
 
-    user->setxy(static_cast<short>(fx.level.pixmaxx - 1), static_cast<short>(10));
+    user->setxy(static_cast<short>(fx.level.world().pixmaxx - 1), static_cast<short>(10));
     user->curdir = FACE_UP_RIGHT;
     (void)user->walkstep(1.0f, -1.0f);
 
@@ -767,8 +773,8 @@ OG_UNIT_TEST(test_coverage_r18_walker_movement_blocked_user_paths)
     assign_resetting_ani(user);
     const int blocked_x = (user->xpos - 1) / GRID_SIZE;
     const int blocked_y = user->ypos / GRID_SIZE;
-    const int blocked_index = blocked_x + blocked_y * fx.level.grid.w;
-    fx.level.grid.data[blocked_index] = PIX_H_WALL1;
+    const int blocked_index = blocked_x + blocked_y * fx.level.world().grid.w;
+    fx.level.world().grid.data[blocked_index] = PIX_H_WALL1;
     user->curdir = FACE_LEFT;
     OG_ASSERT(!user->walk(-1.0f, 0.0f));
 }
@@ -830,31 +836,31 @@ OG_UNIT_TEST(test_coverage_r18_level_data_resize_and_delete_cleanup_branches)
     walker* off_map = add_living(fx, 400, 400);
     OG_ASSERT(keep && off_map);
 
-    fx.level.oblist.push_back(std::unique_ptr<walker>{});
-    fx.level.fxlist.push_back(std::unique_ptr<walker>{});
-    fx.level.weaplist.push_back(std::unique_ptr<walker>{});
+    fx.level.world().oblist.push_back(std::unique_ptr<walker>{});
+    fx.level.world().fxlist.push_back(std::unique_ptr<walker>{});
+    fx.level.world().weaplist.push_back(std::unique_ptr<walker>{});
 
     fx.level.resize_grid(3, 3);
-    for (auto& uptr : fx.level.oblist)
+    for (auto& uptr : fx.level.world().oblist)
     {
         OG_ASSERT(uptr != nullptr);
         OG_ASSERT(uptr.get() != off_map);
     }
-    for (auto& uptr : fx.level.fxlist)
+    for (auto& uptr : fx.level.world().fxlist)
         OG_ASSERT(uptr != nullptr);
-    for (auto& uptr : fx.level.weaplist)
+    for (auto& uptr : fx.level.world().weaplist)
         OG_ASSERT(uptr != nullptr);
 
     LevelDataHooks hooks{};
     hooks.clear_stale_view_controls = test_clear_stale_view_controls;
     g_clear_stale_view_controls_calls = 0;
-    LevelData with_hooks(1, true, &hooks);
+    LevelRuntimeData with_hooks(1, true, &hooks);
     with_hooks.create_new_grid();
-    with_hooks.myobmap->walker_to_pos[reinterpret_cast<walker*>(0x1)] = {};
+    with_hooks.world().myobmap->walker_to_pos[reinterpret_cast<walker*>(0x1)] = {};
     with_hooks.delete_objects();
     OG_ASSERT(g_clear_stale_view_controls_calls == 1);
-    OG_ASSERT(with_hooks.myobmap->walker_to_pos.empty());
-    OG_ASSERT(with_hooks.myobmap->pos_to_walker.empty());
+    OG_ASSERT(with_hooks.world().myobmap->walker_to_pos.empty());
+    OG_ASSERT(with_hooks.world().myobmap->pos_to_walker.empty());
 }
 
 OG_UNIT_TEST(test_coverage_r18_smooth_targeted_mask_branches)
@@ -862,7 +868,7 @@ OG_UNIT_TEST(test_coverage_r18_smooth_targeted_mask_branches)
     SeqRandom rng;
     GameContext gc;
     gc.rng = &rng;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd = make_grid(PIX_GRASS1);
@@ -914,7 +920,7 @@ OG_UNIT_TEST(test_coverage_r18_smooth_targeted_mask_branches)
     smoother empty;
     (void)empty.smooth(0, 0);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 OG_UNIT_TEST(test_coverage_r18_gparser_more_commandline_switches)
@@ -965,26 +971,28 @@ struct SeqRandom final : IRandom {
 };
 
 struct R19Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     R19Fixture()
+        : gameplay(level, save, events, cfg)
     {
         init_family_registry();
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~R19Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -992,7 +1000,7 @@ living* add_living(R19Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -1002,7 +1010,7 @@ living* add_living(R19Fixture& fx, char family, unsigned char team, short x, sho
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1091,15 +1099,11 @@ OG_UNIT_TEST(test_coverage_r19_walker_act_random_paths)
     self->foe = nullptr;
     self->set_act_type(ACT_RANDOM);
     SeqRandom rng_find_and_move{0, 1, 0};
-    self->sim_rng = &rng_find_and_move;
-    foe->sim_rng = &rng_find_and_move;
     (void)self->act();
 
     foe->dead = 1;
     self->foe = nullptr;
     SeqRandom rng_find_none{0, 1, 0};
-    self->sim_rng = &rng_find_none;
-    foe->sim_rng = &rng_find_none;
     (void)self->act();
 }
 } // namespace detail_coverage_r19
@@ -1153,28 +1157,31 @@ struct SequenceRandom final : IRandom {
 };
 
 struct R20Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     ConstantRandom rng{1};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     R20Fixture()
+        : gameplay(level, save, events, cfg)
     {
         init_family_registry();
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
 
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~R20Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -1182,7 +1189,7 @@ walker* add_walker(R20Fixture& fx, Order order, char family, unsigned char team,
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(order, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -1194,9 +1201,9 @@ walker* add_walker(R20Fixture& fx, Order order, char family, unsigned char team,
     w->dead = 0;
     walker* out = w.get();
     if (order == Order::Weapon)
-        fx.level.weaplist.push_back(std::move(w));
+        fx.level.world().weaplist.push_back(std::move(w));
     else
-        fx.level.oblist.push_back(std::move(w));
+        fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1204,7 +1211,7 @@ living* add_living(R20Fixture& fx, char family, unsigned char team, short x, sho
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -1215,7 +1222,7 @@ living* add_living(R20Fixture& fx, char family, unsigned char team, short x, sho
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1261,7 +1268,6 @@ OG_UNIT_TEST(test_coverage_r20_walker_act_random_no_foe_and_chase_paths)
     OG_ASSERT(self != nullptr);
 
     SequenceRandom rng_no_foe{0, 1, 1};
-    self->sim_rng = &rng_no_foe;
     self->foe = nullptr;
     self->lineofsight = 1;
     self->set_act_type(ACT_RANDOM);
@@ -1271,7 +1277,6 @@ OG_UNIT_TEST(test_coverage_r20_walker_act_random_no_foe_and_chase_paths)
     OG_ASSERT(foe != nullptr);
     self->stats()->clear_command();
     SequenceRandom rng_chase{0, 1, 1};
-    self->sim_rng = &rng_chase;
     self->foe = foe;
     self->lineofsight = 1;
     self->collide_ob = reinterpret_cast<walker*>(0x1);
@@ -1317,20 +1322,20 @@ OG_UNIT_TEST(test_coverage_r20_level_data_add_paths_and_clear_reset)
     walker* weap = fx.level.add_weap_ob(Order::Weapon, FAMILY_ARROW);
     OG_ASSERT(weap != nullptr);
 
-    fx.level.title = "changed";
-    fx.level.type = 7;
-    fx.level.par_value = 9;
-    fx.level.time_bonus_limit = 10;
-    fx.level.topx = 5;
-    fx.level.topy = 6;
+    fx.level.world().title = "changed";
+    fx.level.world().type = 7;
+    fx.level.world().par_value = 9;
+    fx.level.world().time_bonus_limit = 10;
+    fx.level.level_visuals().topx = 5;
+    fx.level.level_visuals().topy = 6;
     fx.level.clear();
 
-    OG_ASSERT(fx.level.title == "New Level");
-    OG_ASSERT(fx.level.type == 0);
-    OG_ASSERT(fx.level.par_value == 1);
-    OG_ASSERT(fx.level.time_bonus_limit == 4000);
-    OG_ASSERT(fx.level.topx == 0);
-    OG_ASSERT(fx.level.topy == 0);
+    OG_ASSERT(fx.level.world().title == "New Level");
+    OG_ASSERT(fx.level.world().type == 0);
+    OG_ASSERT(fx.level.world().par_value == 1);
+    OG_ASSERT(fx.level.world().time_bonus_limit == 4000);
+    OG_ASSERT(fx.level.level_visuals().topx == 0);
+    OG_ASSERT(fx.level.level_visuals().topy == 0);
 
     walker dummy;
     OG_ASSERT(fx.level.remove_ob(&dummy) == 0);
@@ -1341,7 +1346,7 @@ OG_UNIT_TEST(test_coverage_r20_smooth_dark_grass_specific_branches)
     ConstantRandom rng1{1};
     GameContext gc;
     gc.rng = &rng1;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd = make_grid(PIX_GRASS1);
@@ -1394,7 +1399,7 @@ OG_UNIT_TEST(test_coverage_r20_smooth_dark_grass_specific_branches)
                        TO_UP | TO_DOWN);
     s.smooth(x, y);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 OG_UNIT_TEST(test_coverage_r20_family_cleric_do_special_guard_conditions)
@@ -1506,27 +1511,30 @@ struct SeqRandom final : IRandom {
 };
 
 struct FinalR16Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{1};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     FinalR16Fixture()
+        : gameplay(level, save, events, cfg)
     {
         init_family_registry();
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
 
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~FinalR16Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -1534,7 +1542,7 @@ living* add_living(FinalR16Fixture& fx, char family, unsigned char team, short x
 {
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -1545,7 +1553,7 @@ living* add_living(FinalR16Fixture& fx, char family, unsigned char team, short x
     w->real_team_num = 255;
     w->dead = 0;
     living* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1553,7 +1561,7 @@ walker* add_fx(FinalR16Fixture& fx, char family, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::FX, family);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
     w->sizex = 16;
     w->sizey = 16;
@@ -1561,7 +1569,7 @@ walker* add_fx(FinalR16Fixture& fx, char family, short x, short y)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -1737,7 +1745,7 @@ OG_UNIT_TEST(test_final_r16_walker_specials_teleport_and_turn_undead)
     const std::int32_t killed = self->turn_undead(120, 5);
     OG_ASSERT(killed >= 0);
 
-    for (auto& uptr : fx.level.oblist)
+    for (auto& uptr : fx.level.world().oblist)
         uptr->dead = 1;
     OG_ASSERT(self->turn_undead(120, 5) == -1);
 }
@@ -1768,14 +1776,14 @@ OG_UNIT_TEST(test_final_r16_sim_input_switch_special_and_yell)
     control_living->current_special = 4;
     pi.pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     const SimInputResult s0 = sim_process_player_input(
-        pi, control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        pi, control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(!s0.endgame_requested);
     OG_ASSERT(control_living->current_special == 1);
 
     pi = {};
     pi.pressed[static_cast<int>(InputAction::Yell)] = true;
     const SimInputResult s1 = sim_process_player_input(
-        pi, control, fx.level, 0, 0, debounce, special_names, &fx.events);
+        pi, control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     OG_ASSERT(s1.play_sound == SOUND_YO);
     OG_ASSERT(s1.notify_text == "Yo!");
     OG_ASSERT(control_living->yo_delay == 30);
@@ -1787,7 +1795,7 @@ OG_UNIT_TEST(test_final_r16_smooth_targeted_grass_and_dark_variants)
     SeqRandom seq{1, 2, 0, 1, 0, 3};
     GameContext gc;
     gc.rng = &seq;
-    set_global_context(&gc);
+    push_test_context(&gc);
 
     smoother s;
     PixieData pd;
@@ -1831,7 +1839,7 @@ OG_UNIT_TEST(test_final_r16_smooth_targeted_grass_and_dark_variants)
     const Sint32 d = s.query_x_y(x, y);
     OG_ASSERT(d > 0);
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 OG_UNIT_TEST(test_final_r16_stats_walker_level_data_and_picker_state)
@@ -1858,7 +1866,7 @@ OG_UNIT_TEST(test_final_r16_stats_walker_level_data_and_picker_state)
 
     OG_ASSERT(fx.level.find_near_foe(a) == b);
     std::int32_t howmany = 0;
-    OG_ASSERT(!fx.level.find_foes_in_range(fx.level.oblist, 120, &howmany, a).empty());
+    OG_ASSERT(!fx.level.find_foes_in_range(fx.level.world().oblist, 120, &howmany, a).empty());
 
     MenuClient client;
     static const og::ui::PickerMenuItem unknown{"u", "u", og::ui::PickerMenuCommand::SetDifficulty, 0};
@@ -1877,4 +1885,3 @@ OG_UNIT_TEST(test_final_r16_stats_walker_level_data_and_picker_state)
     og::ui::run_picker(client);
 }
 } // namespace detail_final_coverage_r16
-

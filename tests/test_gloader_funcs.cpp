@@ -1,15 +1,15 @@
-#include <openglad/core/stats.h>
-#include <openglad/entities/walker.h>
-#include <openglad/render/pixien.h>
-#include <openglad/entities/guy.h>
-#include <openglad/data/gloader.h>
-#include <openglad/data/gparser.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/render/pixien.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/interface/screen.h>
+#include <openglad/platform/game_context.h>
 #include "test_framework.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 // ---------------------------------------------------------------------------
 // create_walker for all order+family combos
@@ -18,7 +18,7 @@ extern screen* myscreen;
 
 void test_gloader_create_living_all()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
@@ -37,7 +37,7 @@ REGISTER_TEST(test_gloader_create_living_all);
 
 void test_gloader_create_weapon_families()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     short weap_families[] = { FAMILY_KNIFE, FAMILY_ROCK, FAMILY_ARROW,
@@ -63,7 +63,7 @@ REGISTER_TEST(test_gloader_create_weapon_families);
 
 void test_gloader_create_treasure()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     auto w = l->create_walker_owned(Order::Treasure, FAMILY_STAIN);
@@ -85,7 +85,7 @@ REGISTER_TEST(test_gloader_create_treasure);
 
 void test_gloader_create_effect()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     auto w = l->create_walker_owned(Order::FX, FAMILY_EXPLOSION);
@@ -107,7 +107,7 @@ REGISTER_TEST(test_gloader_create_effect);
 
 void test_gloader_create_generator()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     auto w = l->create_walker_owned(Order::Generator, FAMILY_TENT);
@@ -133,7 +133,7 @@ REGISTER_TEST(test_gloader_create_generator);
 
 void test_gloader_set_derived_stats_all()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
@@ -156,14 +156,14 @@ REGISTER_TEST(test_gloader_set_derived_stats_all);
 
 void test_gloader_set_walker()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
 
     auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "walker created");
     walker* wp = w.get();
 
-    myscreen->set_walker(wp, Order::Living, FAMILY_MAGE);
+    og::runtime::current_session->myscreen_->set_walker(wp, Order::Living, FAMILY_MAGE);
     TEST_ASSERT_EQ((int)FAMILY_MAGE, (int)wp->family, "family should change to mage");
 
     const Order orders[] = {Order::Living, Order::Weapon, Order::Treasure, Order::FX, Order::Generator, Order::Special};
@@ -193,7 +193,7 @@ REGISTER_TEST(test_gloader_set_walker);
 
 void test_gloader_invalid_family_clamp_paths()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
     if (!l)
         return;
@@ -222,7 +222,7 @@ REGISTER_TEST(test_gloader_invalid_family_clamp_paths);
 
 void test_gloader_order_special_and_invalid_graphics_paths()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
     if (!l)
         return;
@@ -250,7 +250,7 @@ REGISTER_TEST(test_gloader_order_special_and_invalid_graphics_paths);
 
 void test_gloader_set_walker_descriptor_flag_and_default_paths()
 {
-    loader* l = myscreen->level_data.myloader.get();
+    loader* l = og::runtime::current_session->myscreen_->myloader;
     TEST_ASSERT(l != nullptr, "loader exists");
     if (!l)
         return;
@@ -295,6 +295,18 @@ void test_gloader_set_walker_descriptor_flag_and_default_paths()
     TEST_ASSERT(w->stats()->query_bit_flags(BIT_PHANTOM) != 0, "magic shield effect should set BIT_PHANTOM");
 }
 REGISTER_TEST(test_gloader_set_walker_descriptor_flag_and_default_paths);
+
+void test_gloader_respects_optional_attach_render_callback()
+{
+    EntityFactory factory;
+    factory.report_error = [](const std::string&) {};
+
+    loader custom_loader(factory);
+    auto w = custom_loader.create_walker_owned(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker should still be created when attach_render callback is empty");
+    TEST_ASSERT(!w->has_render(), "empty attach_render callback must not attach render components");
+}
+REGISTER_TEST(test_gloader_respects_optional_attach_render_callback);
 
 void test_gloader_active_config_branch_with_ctx_and_global_cfg()
 {

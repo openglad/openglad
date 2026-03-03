@@ -1,5 +1,9 @@
 #include "unit.h"
-#include <openglad/entities/family_registries.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/gameplay/family_registries.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/platform/game_session.h>
+#include <openglad/gameplay/sim_event_log.h>
 
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);
@@ -7,12 +11,42 @@ extern "C" void __gcov_dump(void);
 
 int main()
 {
+    // Entity code (living/walker) dereferences current_session->current_difficulty_.
+    // Provide a zero-initialized session so set_difficulty() doesn't segfault.
+    og::runtime::GameSession::Config cfg{};
+    cfg.allocate_screen = false;
+    cfg.allocate_prefs = false;
+    cfg.install_legacy_globals = true;
+    og::runtime::GameSession session(cfg);
+    GameWorld fallback_world(0);
+    SaveData fallback_save;
+    og::sim::SimEventLog fallback_events;
+
+    session.game_.world = &fallback_world;
+    session.game_.save = &fallback_save;
+    session.game_.sim_events = &fallback_events;
+    current_game = &session.game_;
+
+    auto gameplay_context_intact = [&]() {
+        return current_game == &session.game_ &&
+               session.game_.world == &fallback_world &&
+               session.game_.save == &fallback_save &&
+               session.game_.sim_events == &fallback_events;
+    };
+
     init_all_registries();
 
     int passed = 0;
     int failed = 0;
     for (const auto& tc : og::unit::registry())
     {
+        if (!gameplay_context_intact())
+        {
+            ++failed;
+            std::fprintf(stderr, "[  FAILED  ] %s (gameplay context corrupted before test)\n", tc.name);
+            break;
+        }
+
         std::fprintf(stderr, "[ RUN      ] %s\n", tc.name);
         try {
             tc.fn();
@@ -21,6 +55,13 @@ int main()
         } catch (...) {
             ++failed;
             std::fprintf(stderr, "[  FAILED  ] %s (threw)\n", tc.name);
+        }
+
+        if (!gameplay_context_intact())
+        {
+            ++failed;
+            std::fprintf(stderr, "[  FAILED  ] %s (corrupted gameplay context)\n", tc.name);
+            break;
         }
     }
 

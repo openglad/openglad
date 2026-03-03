@@ -1,10 +1,10 @@
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/data/smooth.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/interface/screen.h>
+#include <openglad/gameplay/smooth.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static void run_smooth_branch_outputs_with_fixed_rng();
 static PixieData make_center_pattern(unsigned char fill, unsigned char center,
@@ -37,9 +37,9 @@ REGISTER_TEST(test_smooth_query_x_y_negative);
 void test_smooth_query_x_y_with_grid()
 {
     // Use the level's grid
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     smoother s;
-    s.set_target(myscreen->level_data.grid);
+    s.set_target(og::runtime::current_session->myscreen_->world().grid);
 
     // Valid query
     Sint32 result = s.query_x_y(0, 0);
@@ -224,9 +224,9 @@ REGISTER_TEST(test_smooth_query_genre_light_grass);
 
 void test_smooth_smooth_full_grid()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     smoother s;
-    s.set_target(myscreen->level_data.grid);
+    s.set_target(og::runtime::current_session->myscreen_->world().grid);
 
     // Should not crash
     Sint32 result = s.smooth();
@@ -479,8 +479,8 @@ REGISTER_TEST(test_smooth_smooth_mixed_terrain);
 void test_smooth_reset()
 {
     smoother s;
-    myscreen->level_data.create_new_grid();
-    s.set_target(myscreen->level_data.grid);
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    s.set_target(og::runtime::current_session->myscreen_->world().grid);
 
     Sint32 before = s.query_x_y(0, 0);
     (void)before;
@@ -499,7 +499,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
     FixedRandom fixed0(0);
     FixedRandom fixed1(1);
     test_ctx.rng = &fixed0;
-    set_global_context(&test_ctx);
+    push_test_context(&test_ctx);
 
     // around == (TO_UP | TO_DOWN | TO_LEFT): right-middle branch, rng(2)==1
     {
@@ -633,7 +633,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         TEST_ASSERT_EQ((int)PIX_GRASS_DARK_1, (int)s.query_x_y(1, 1), "default dark-grass branch should map to dark_1");
     }
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 REGISTER_TEST(test_smooth_dark_grass_round7_branch_matrix_338_448);
 
@@ -678,7 +678,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
     FixedRandom fixed0(0);
     GameContext test_ctx;
     test_ctx.rng = &fixed0;
-    set_global_context(&test_ctx);
+    push_test_context(&test_ctx);
 
     // Dirt corner case: around == (TO_LEFT | TO_DOWN) => PIX_DIRTGRASS_LL1
     {
@@ -846,7 +846,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         TEST_ASSERT_EQ((int)PIX_TREE_MT, (int)s.query_x_y(1, 1), "trees vertical should map to trunk tile");
     }
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 
 void test_smooth_round11_water_and_tree_edge_masks_662_720()
@@ -854,7 +854,7 @@ void test_smooth_round11_water_and_tree_edge_masks_662_720()
     FixedRandom fixed0(0);
     GameContext test_ctx;
     test_ctx.rng = &fixed0;
-    set_global_context(&test_ctx);
+    push_test_context(&test_ctx);
 
     // TYPE_WATER diagonal-corner masks (smooth.cpp:662-669).
     {
@@ -905,6 +905,6 @@ void test_smooth_round11_water_and_tree_edge_masks_662_720()
         TEST_ASSERT_EQ((int)PIX_TREE_ML, (int)s.query_x_y(1, 1), "trees with missing upper-left should map to left edge");
     }
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 REGISTER_TEST(test_smooth_round11_water_and_tree_edge_masks_662_720);

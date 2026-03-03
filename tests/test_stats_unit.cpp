@@ -1,34 +1,38 @@
-#include <openglad/data/level_data.h>
-#include <openglad/data/save_data.h>
-#include <openglad/data/gparser.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
-#include <openglad/sim/sim_event_log.h>
-#include <openglad/sim/irandom.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
 #include <memory>
 #include "unit/unit.h"
-#include <openglad/runtime/game_context.h>
+#include <openglad/platform/game_context.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
-#include <openglad/entities/guy.h>
+#include <openglad/gameplay/guy.h>
+#include "test_gameplay_context_scope.h"
 
 // --- From test_stats_coverage_push.cpp ---
 namespace detail_stats_coverage_push {
 namespace {
 
 struct StatsFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     StatsFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 };
@@ -37,7 +41,7 @@ walker* add_living(StatsFixture& fx, unsigned char team)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -46,7 +50,7 @@ walker* add_living(StatsFixture& fx, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -123,16 +127,19 @@ namespace detail_stats_r11 {
 namespace {
 
 struct StatsFixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{1};
+    ScopedGameplayContext gameplay;
 
     StatsFixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         save.allied_mode = 0;
+        level.world().allied_mode = save.allied_mode;
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
     }
 };
@@ -141,7 +148,7 @@ walker* add_living(StatsFixture& fx, unsigned char team)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -150,7 +157,7 @@ walker* add_living(StatsFixture& fx, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -246,13 +253,16 @@ OG_UNIT_TEST(test_stats_r11_direct_walk_and_walk_to_foe_tail_branches)
     foe->dead = 1;
     w->stats()->force_command(COMMAND_WALK, 5, 1, 0);
     w->path_check_counter = 0;
+    fx.level.world().rng_.state_ = 1;
     OG_ASSERT(w->stats()->walk_to_foe());
+    OG_ASSERT(w->stats()->commands.empty() || w->stats()->commands.front().commandcount >= 0);
 
     // close foe => tempdistance < 30 tail branch line 1032
     foe->dead = 0;
     foe->setxy(100, 96);
     w->stats()->force_command(COMMAND_SEARCH, 5, 0, 0);
     w->path_check_counter = 1;
+    fx.level.world().rng_.state_ = 1;
     OG_ASSERT(w->stats()->walk_to_foe());
     OG_ASSERT(w->stats()->commands.empty() || w->stats()->commands.front().commandcount >= 0);
 }
@@ -263,13 +273,15 @@ namespace detail_stats_r12 {
 namespace {
 
 struct StatsR12Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
 
     StatsR12Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
@@ -280,7 +292,7 @@ walker* add_living(StatsR12Fixture& fx, unsigned char team)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -289,7 +301,7 @@ walker* add_living(StatsR12Fixture& fx, unsigned char team)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -387,24 +399,26 @@ namespace detail_stats_r14 {
 namespace {
 
 struct StatsR14Fixture {
-    LevelData level{1, true};
+    LevelRuntimeData level{1, true};
     SaveData save;
     std::int32_t enemy_freeze = 0;
     og::sim::SimEventLog events;
     FixedRandom rng{0};
+    ScopedGameplayContext gameplay;
     GameContext gc;
 
     StatsR14Fixture()
+        : gameplay(level, save, events, cfg)
     {
         level.create_new_grid();
         level.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg);
         gc.rng = &rng;
-        set_global_context(&gc);
+        push_test_context(&gc);
     }
 
     ~StatsR14Fixture()
     {
-        set_global_context(nullptr);
+        pop_test_context();
     }
 };
 
@@ -412,7 +426,7 @@ walker* add_living(StatsR14Fixture& fx, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 16;
     w->sizey = 16;
     w->stepsize = 1.0f;
@@ -421,7 +435,7 @@ walker* add_living(StatsR14Fixture& fx, unsigned char team, short x, short y)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.oblist.push_back(std::move(w));
+    fx.level.world().oblist.push_back(std::move(w));
     return out;
 }
 
@@ -429,7 +443,7 @@ walker* add_weapon(StatsR14Fixture& fx, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Weapon, FAMILY_ARROW);
-    fx.level.wire_entity(w.get());
+    bind_test_entity_sim_context(fx.level, w.get());
     w->sizex = 8;
     w->sizey = 8;
     w->stepsize = 1.0f;
@@ -438,7 +452,7 @@ walker* add_weapon(StatsR14Fixture& fx, unsigned char team, short x, short y)
     w->real_team_num = 255;
     w->dead = 0;
     walker* out = w.get();
-    fx.level.weaplist.push_back(std::move(w));
+    fx.level.world().weaplist.push_back(std::move(w));
     return out;
 }
 
@@ -542,4 +556,3 @@ OG_UNIT_TEST(test_stats_r14_lines_440_453_468_502_520_591_708_729_750_755_898_di
     self->stats()->walk_to_foe();
 }
 } // namespace detail_stats_r14
-

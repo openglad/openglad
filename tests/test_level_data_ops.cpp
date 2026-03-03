@@ -1,14 +1,15 @@
 #include "SDL.h"
-#include <openglad/entities/guy.h>
-#include <openglad/data/gloader.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
-#include <openglad/platform/io.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/resources/io.h>
+#include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
-#include <openglad/io/og_file.h>
+#include <openglad/resources/og_file.h>
 
 #include <cstdint>
 #include <cstring>
@@ -16,8 +17,8 @@
 #include <unistd.h>
 #include <vector>
 
-extern screen* myscreen;
-short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
+// myscreen is now a macro defined in base.h (via game_session.h)
+short load_scenario_version(og::io::OgFile& infile, LevelRuntimeData* data, short version);
 
 // Memory-backed OgFile for testing (replaces SDL_RWFromConstMem)
 class MemoryOgFile final : public og::io::OgFile {
@@ -161,147 +162,147 @@ void teardown_editor_campaign_fixture()
 } // namespace
 
 // ---------------------------------------------------------------------------
-// LevelData::clear
+// LevelRuntimeData::clear
 // ---------------------------------------------------------------------------
 
 void test_level_data_clear()
 {
-    myscreen->level_data.title = "Modified";
-    myscreen->level_data.type = 5;
-    myscreen->level_data.par_value = 99;
-    myscreen->level_data.time_bonus_limit = 9999;
-    myscreen->level_data.topx = 50;
-    myscreen->level_data.topy = 50;
+    og::runtime::current_session->myscreen_->world().title = "Modified";
+    og::runtime::current_session->myscreen_->world().type = 5;
+    og::runtime::current_session->myscreen_->world().par_value = 99;
+    og::runtime::current_session->myscreen_->world().time_bonus_limit = 9999;
+    og::runtime::current_session->myscreen_->level_visuals_.topx = 50;
+    og::runtime::current_session->myscreen_->level_visuals_.topy = 50;
 
-    myscreen->level_data.clear();
+    og::runtime::current_session->myscreen_->level_runtime_data().clear();
 
-    TEST_ASSERT(myscreen->level_data.title == "New Level", "title reset");
-    TEST_ASSERT_EQ(0, (int)myscreen->level_data.type, "type reset");
-    TEST_ASSERT_EQ(1, (int)myscreen->level_data.par_value, "par_value reset");
-    TEST_ASSERT_EQ(4000, (int)myscreen->level_data.time_bonus_limit, "time_bonus_limit reset");
-    TEST_ASSERT_EQ(0, (int)myscreen->level_data.topx, "topx reset");
-    TEST_ASSERT_EQ(0, (int)myscreen->level_data.topy, "topy reset");
-    TEST_ASSERT_EQ(0, (int)myscreen->level_data.numobs, "numobs reset");
-    TEST_ASSERT(myscreen->level_data.oblist.empty(), "oblist reset");
-    TEST_ASSERT(myscreen->level_data.fxlist.empty(), "fxlist reset");
-    TEST_ASSERT(myscreen->level_data.weaplist.empty(), "weaplist reset");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().title == "New Level", "title reset");
+    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->world().type, "type reset");
+    TEST_ASSERT_EQ(1, (int)og::runtime::current_session->myscreen_->world().par_value, "par_value reset");
+    TEST_ASSERT_EQ(4000, (int)og::runtime::current_session->myscreen_->world().time_bonus_limit, "time_bonus_limit reset");
+    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->level_visuals_.topx, "topx reset");
+    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->level_visuals_.topy, "topy reset");
+    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->world().living_count, "numobs reset");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().oblist.empty(), "oblist reset");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().fxlist.empty(), "fxlist reset");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().weaplist.empty(), "weaplist reset");
 
     // Restore grid for other tests
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
 }
 REGISTER_TEST(test_level_data_clear);
 
 // ---------------------------------------------------------------------------
-// LevelData::create_new_grid
+// LevelRuntimeData::create_new_grid
 // ---------------------------------------------------------------------------
 
 void test_level_data_create_new_grid()
 {
-    myscreen->level_data.create_new_grid();
-    TEST_ASSERT(myscreen->level_data.grid.valid(), "grid should be valid");
-    TEST_ASSERT_EQ(40, (int)myscreen->level_data.grid.w, "grid width 40");
-    TEST_ASSERT_EQ(60, (int)myscreen->level_data.grid.h, "grid height 60");
-    TEST_ASSERT(myscreen->level_data.pixmaxx > 0, "pixmaxx positive");
-    TEST_ASSERT(myscreen->level_data.pixmaxy > 0, "pixmaxy positive");
-    TEST_ASSERT(myscreen->level_data.grid.data != nullptr, "grid data allocated");
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().grid.valid(), "grid should be valid");
+    TEST_ASSERT_EQ(40, (int)og::runtime::current_session->myscreen_->world().grid.w, "grid width 40");
+    TEST_ASSERT_EQ(60, (int)og::runtime::current_session->myscreen_->world().grid.h, "grid height 60");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().pixmaxx > 0, "pixmaxx positive");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().pixmaxy > 0, "pixmaxy positive");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().grid.data != nullptr, "grid data allocated");
 
     // Grass tile generation should stay in expected range.
     for (int i = 0; i < 25; i++)
     {
-        unsigned char t = myscreen->level_data.grid.data[i];
+        unsigned char t = og::runtime::current_session->myscreen_->world().grid.data[i];
         TEST_ASSERT(t >= PIX_GRASS1 && t <= PIX_GRASS4, "new grid tiles should be grass variants");
     }
 }
 REGISTER_TEST(test_level_data_create_new_grid);
 
 // ---------------------------------------------------------------------------
-// LevelData::resize_grid
+// LevelRuntimeData::resize_grid
 // ---------------------------------------------------------------------------
 
 void test_level_data_resize_grid_grow()
 {
-    myscreen->level_data.create_new_grid();
-    int old_w = myscreen->level_data.grid.w;
-    int old_h = myscreen->level_data.grid.h;
-    unsigned char old00 = myscreen->level_data.grid.data[0];
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    int old_w = og::runtime::current_session->myscreen_->world().grid.w;
+    int old_h = og::runtime::current_session->myscreen_->world().grid.h;
+    unsigned char old00 = og::runtime::current_session->myscreen_->world().grid.data[0];
 
-    myscreen->level_data.resize_grid(50, 70);
-    TEST_ASSERT_EQ(50, (int)myscreen->level_data.grid.w, "resized width");
-    TEST_ASSERT_EQ(70, (int)myscreen->level_data.grid.h, "resized height");
-    TEST_ASSERT_EQ((int)old00, (int)myscreen->level_data.grid.data[0], "existing cells should be preserved");
+    og::runtime::current_session->myscreen_->world().resize_grid(50, 70);
+    TEST_ASSERT_EQ(50, (int)og::runtime::current_session->myscreen_->world().grid.w, "resized width");
+    TEST_ASSERT_EQ(70, (int)og::runtime::current_session->myscreen_->world().grid.h, "resized height");
+    TEST_ASSERT_EQ((int)old00, (int)og::runtime::current_session->myscreen_->world().grid.data[0], "existing cells should be preserved");
     (void)old_w;
     (void)old_h;
 
     // Restore
-    myscreen->level_data.resize_grid(40, 60);
+    og::runtime::current_session->myscreen_->world().resize_grid(40, 60);
 }
 REGISTER_TEST(test_level_data_resize_grid_grow);
 
 void test_level_data_resize_grid_shrink()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.resize_grid(20, 30);
-    TEST_ASSERT_EQ(20, (int)myscreen->level_data.grid.w, "shrunk width");
-    TEST_ASSERT_EQ(30, (int)myscreen->level_data.grid.h, "shrunk height");
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().resize_grid(20, 30);
+    TEST_ASSERT_EQ(20, (int)og::runtime::current_session->myscreen_->world().grid.w, "shrunk width");
+    TEST_ASSERT_EQ(30, (int)og::runtime::current_session->myscreen_->world().grid.h, "shrunk height");
 
     // Restore
-    myscreen->level_data.resize_grid(40, 60);
+    og::runtime::current_session->myscreen_->world().resize_grid(40, 60);
 }
 REGISTER_TEST(test_level_data_resize_grid_shrink);
 
 void test_level_data_resize_grid_invalid()
 {
-    myscreen->level_data.create_new_grid();
-    int w_before = myscreen->level_data.grid.w;
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    int w_before = og::runtime::current_session->myscreen_->world().grid.w;
 
-    myscreen->level_data.resize_grid(2, 2); // too small
-    TEST_ASSERT_EQ(w_before, (int)myscreen->level_data.grid.w, "invalid resize should be no-op");
+    og::runtime::current_session->myscreen_->world().resize_grid(2, 2); // too small
+    TEST_ASSERT_EQ(w_before, (int)og::runtime::current_session->myscreen_->world().grid.w, "invalid resize should be no-op");
 
-    myscreen->level_data.resize_grid(256, 256); // too large
-    TEST_ASSERT_EQ(w_before, (int)myscreen->level_data.grid.w, "oversized resize should be no-op");
+    og::runtime::current_session->myscreen_->world().resize_grid(256, 256); // too large
+    TEST_ASSERT_EQ(w_before, (int)og::runtime::current_session->myscreen_->world().grid.w, "oversized resize should be no-op");
 }
 REGISTER_TEST(test_level_data_resize_grid_invalid);
 
 // ---------------------------------------------------------------------------
-// LevelData::add_ob / remove_ob
+// LevelRuntimeData::add_ob / remove_ob
 // ---------------------------------------------------------------------------
 
 void test_level_data_add_ob_living()
 {
-    int obs_before = myscreen->level_data.numobs;
-    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    int obs_before = og::runtime::current_session->myscreen_->world().living_count;
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "add_ob living should succeed");
-    TEST_ASSERT_EQ(obs_before + 1, myscreen->level_data.numobs, "numobs incremented");
-    myscreen->level_data.remove_ob(w);
-    TEST_ASSERT_EQ(obs_before, myscreen->level_data.numobs, "numobs decremented");
+    TEST_ASSERT_EQ(obs_before + 1, og::runtime::current_session->myscreen_->world().living_count, "numobs incremented");
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
+    TEST_ASSERT_EQ(obs_before, og::runtime::current_session->myscreen_->world().living_count, "numobs decremented");
 }
 REGISTER_TEST(test_level_data_add_ob_living);
 
 void test_level_data_add_ob_weapon()
 {
-    int obs_before = myscreen->level_data.numobs;
-    walker* w = myscreen->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+    int obs_before = og::runtime::current_session->myscreen_->world().living_count;
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(w != nullptr, "add_ob weapon should succeed");
-    TEST_ASSERT_EQ(obs_before, myscreen->level_data.numobs, "weapon should not increment numobs");
-    myscreen->level_data.remove_ob(w);
+    TEST_ASSERT_EQ(obs_before, og::runtime::current_session->myscreen_->world().living_count, "weapon should not increment numobs");
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_level_data_add_ob_weapon);
 
 void test_level_data_add_fx_ob()
 {
-    int obs_before = myscreen->level_data.numobs;
-    walker* w = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    int obs_before = og::runtime::current_session->myscreen_->world().living_count;
+    walker* w = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     TEST_ASSERT(w != nullptr, "add_fx_ob should succeed");
-    TEST_ASSERT_EQ(obs_before, myscreen->level_data.numobs, "fx should not increment numobs");
-    myscreen->level_data.remove_ob(w);
+    TEST_ASSERT_EQ(obs_before, og::runtime::current_session->myscreen_->world().living_count, "fx should not increment numobs");
+    og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 REGISTER_TEST(test_level_data_add_fx_ob);
 
 void test_level_data_add_weap_ob()
 {
-    walker* w = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* w = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(w != nullptr, "add_weap_ob should succeed");
-    short result = myscreen->level_data.remove_ob(w);
+    short result = og::runtime::current_session->myscreen_->world().remove_ob(w);
     TEST_ASSERT_EQ(1, (int)result, "remove_ob should find weapon");
 }
 REGISTER_TEST(test_level_data_add_weap_ob);
@@ -309,47 +310,47 @@ REGISTER_TEST(test_level_data_add_weap_ob);
 void test_level_data_remove_ob_from_each_list()
 {
     // Add to oblist (living)
-    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* living = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(living != nullptr, "living created");
 
     // Add to fxlist
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     TEST_ASSERT(fx != nullptr, "fx created");
 
     // Add to weaplist
-    walker* weap = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* weap = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(weap != nullptr, "weap created");
 
     // Remove from each
-    short r1 = myscreen->level_data.remove_ob(weap);
+    short r1 = og::runtime::current_session->myscreen_->world().remove_ob(weap);
     TEST_ASSERT_EQ(1, (int)r1, "removed from weaplist");
 
-    short r2 = myscreen->level_data.remove_ob(fx);
+    short r2 = og::runtime::current_session->myscreen_->world().remove_ob(fx);
     TEST_ASSERT_EQ(1, (int)r2, "removed from fxlist");
 
-    short r3 = myscreen->level_data.remove_ob(living);
+    short r3 = og::runtime::current_session->myscreen_->world().remove_ob(living);
     TEST_ASSERT_EQ(1, (int)r3, "removed from oblist");
 
-    auto non_member = myscreen->level_data.myloader->create_walker_owned(Order::Living, FAMILY_SOLDIER);
+    auto non_member = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(non_member != nullptr, "non-member walker created");
-    short r4 = myscreen->level_data.remove_ob(non_member.get());
+    short r4 = og::runtime::current_session->myscreen_->world().remove_ob(non_member.get());
     TEST_ASSERT_EQ(0, (int)r4, "removing non-member object should fail");
-    short r5 = myscreen->level_data.remove_ob(nullptr);
+    short r5 = og::runtime::current_session->myscreen_->world().remove_ob(nullptr);
     TEST_ASSERT_EQ(0, (int)r5, "removing null should fail");
 }
 REGISTER_TEST(test_level_data_remove_ob_from_each_list);
 
 // ---------------------------------------------------------------------------
-// LevelData::delete_objects
+// LevelRuntimeData::delete_objects
 // ---------------------------------------------------------------------------
 
 void test_level_data_delete_objects()
 {
     // Add some objects
-    walker* living1 = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* living2 = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
-    walker* weap = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* living1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* living2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
+    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    walker* weap = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
 
     TEST_ASSERT(living1 != nullptr, "living1 created");
     TEST_ASSERT(living2 != nullptr, "living2 created");
@@ -362,75 +363,74 @@ void test_level_data_delete_objects()
     fx->setxy(50, 50);
     weap->setxy(70, 70);
 
-    auto dead = myscreen->level_data.myloader->create_walker_owned(Order::Living, FAMILY_ORC);
+    auto dead = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Living, FAMILY_ORC);
     TEST_ASSERT(dead != nullptr, "dead_list walker created");
-    dead->myobmap = myscreen->level_data.myobmap.get();
     dead->setxy(90, 90);
-    myscreen->level_data.dead_list.push_back(std::move(dead));
+    og::runtime::current_session->myscreen_->world().dead_list.push_back(std::move(dead));
 
-    TEST_ASSERT(myscreen->level_data.myobmap != nullptr, "myobmap exists");
-    TEST_ASSERT(myscreen->level_data.myobmap->size() > 0, "obmap has entries before delete_objects()");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().myobmap != nullptr, "myobmap exists");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().myobmap->size() > 0, "obmap has entries before delete_objects()");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    TEST_ASSERT(myscreen->level_data.oblist.empty(), "oblist empty");
-    TEST_ASSERT(myscreen->level_data.fxlist.empty(), "fxlist empty");
-    TEST_ASSERT(myscreen->level_data.weaplist.empty(), "weaplist empty");
-    TEST_ASSERT(myscreen->level_data.dead_list.empty(), "dead_list empty");
-    TEST_ASSERT_EQ(0, myscreen->level_data.numobs, "numobs 0");
-    TEST_ASSERT_EQ(0, (int)myscreen->level_data.myobmap->size(), "obmap has no walkers after delete_objects()");
-    TEST_ASSERT(myscreen->level_data.myobmap->pos_to_walker.empty(), "obmap pos_to_walker empty");
-    TEST_ASSERT(myscreen->level_data.myobmap->walker_to_pos.empty(), "obmap walker_to_pos empty");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().oblist.empty(), "oblist empty");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().fxlist.empty(), "fxlist empty");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().weaplist.empty(), "weaplist empty");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().dead_list.empty(), "dead_list empty");
+    TEST_ASSERT_EQ(0, og::runtime::current_session->myscreen_->world().living_count, "numobs 0");
+    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->myscreen_->world().myobmap->size(), "obmap has no walkers after delete_objects()");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().myobmap->pos_to_walker.empty(), "obmap pos_to_walker empty");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().myobmap->walker_to_pos.empty(), "obmap walker_to_pos empty");
 }
 REGISTER_TEST(test_level_data_delete_objects);
 
 // ---------------------------------------------------------------------------
-// LevelData::set_draw_pos / add_draw_pos
+// LevelRuntimeData::set_draw_pos / add_draw_pos
 // ---------------------------------------------------------------------------
 
 void test_level_data_set_draw_pos()
 {
-    myscreen->level_data.set_draw_pos(100, 200);
-    TEST_ASSERT_EQ(100, (int)myscreen->level_data.topx, "topx set");
-    TEST_ASSERT_EQ(200, (int)myscreen->level_data.topy, "topy set");
+    og::runtime::current_session->myscreen_->set_level_draw_pos(100, 200);
+    TEST_ASSERT_EQ(100, (int)og::runtime::current_session->myscreen_->level_visuals_.topx, "topx set");
+    TEST_ASSERT_EQ(200, (int)og::runtime::current_session->myscreen_->level_visuals_.topy, "topy set");
 
-    myscreen->level_data.set_draw_pos(0, 0);
+    og::runtime::current_session->myscreen_->set_level_draw_pos(0, 0);
 }
 REGISTER_TEST(test_level_data_set_draw_pos);
 
 void test_level_data_add_draw_pos()
 {
-    myscreen->level_data.set_draw_pos(100, 200);
-    myscreen->level_data.add_draw_pos(10, 20);
-    TEST_ASSERT_EQ(110, (int)myscreen->level_data.topx, "topx added");
-    TEST_ASSERT_EQ(220, (int)myscreen->level_data.topy, "topy added");
+    og::runtime::current_session->myscreen_->set_level_draw_pos(100, 200);
+    og::runtime::current_session->myscreen_->add_level_draw_pos(10, 20);
+    TEST_ASSERT_EQ(110, (int)og::runtime::current_session->myscreen_->level_visuals_.topx, "topx added");
+    TEST_ASSERT_EQ(220, (int)og::runtime::current_session->myscreen_->level_visuals_.topy, "topy added");
 
-    myscreen->level_data.add_draw_pos(-5, -10);
-    TEST_ASSERT_EQ(105, (int)myscreen->level_data.topx, "topx supports negative deltas");
-    TEST_ASSERT_EQ(210, (int)myscreen->level_data.topy, "topy supports negative deltas");
+    og::runtime::current_session->myscreen_->add_level_draw_pos(-5, -10);
+    TEST_ASSERT_EQ(105, (int)og::runtime::current_session->myscreen_->level_visuals_.topx, "topx supports negative deltas");
+    TEST_ASSERT_EQ(210, (int)og::runtime::current_session->myscreen_->level_visuals_.topy, "topy supports negative deltas");
 
-    myscreen->level_data.set_draw_pos(0, 0);
+    og::runtime::current_session->myscreen_->set_level_draw_pos(0, 0);
 }
 REGISTER_TEST(test_level_data_add_draw_pos);
 
 // ---------------------------------------------------------------------------
-// LevelData::get_description_line
+// LevelRuntimeData::get_description_line
 // ---------------------------------------------------------------------------
 
 void test_level_data_get_description_line()
 {
-    myscreen->level_data.description.clear();
-    myscreen->level_data.description.push_back("Line 1");
-    myscreen->level_data.description.push_back("Line 2");
-    myscreen->level_data.description.push_back("Line 3");
+    og::runtime::current_session->myscreen_->level_description().clear();
+    og::runtime::current_session->myscreen_->level_description().push_back("Line 1");
+    og::runtime::current_session->myscreen_->level_description().push_back("Line 2");
+    og::runtime::current_session->myscreen_->level_description().push_back("Line 3");
 
-    TEST_ASSERT(myscreen->level_data.get_description_line(0) == "Line 1", "line 0");
-    TEST_ASSERT(myscreen->level_data.get_description_line(1) == "Line 2", "line 1");
-    TEST_ASSERT(myscreen->level_data.get_description_line(2) == "Line 3", "line 2");
-    TEST_ASSERT(myscreen->level_data.get_description_line(10) == "", "out of bounds returns empty");
-    TEST_ASSERT(myscreen->level_data.get_description_line(-1) == "Line 1", "negative index returns first line");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->get_level_description_line(0) == "Line 1", "line 0");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->get_level_description_line(1) == "Line 2", "line 1");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->get_level_description_line(2) == "Line 3", "line 2");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->get_level_description_line(10) == "", "out of bounds returns empty");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->get_level_description_line(-1) == "Line 1", "negative index returns first line");
 
-    myscreen->level_data.description.clear();
+    og::runtime::current_session->myscreen_->level_description().clear();
 
     CampaignData c("org.openglad.tests");
     c.description.clear();
@@ -480,63 +480,63 @@ void test_level_data_get_description_line()
     {
         std::vector<uint8_t> blob3 = make_scenario_blob_with_one_object(false, false);
         MemoryOgFile rw3(blob3.data(), blob3.size());
-        myscreen->level_data.delete_objects();
-        myscreen->level_data.description.clear();
-        short r3 = load_scenario_version(rw3, &myscreen->level_data, 3);
+        og::runtime::current_session->myscreen_->world().delete_objects();
+        og::runtime::current_session->myscreen_->level_description().clear();
+        short r3 = load_scenario_version(rw3, &og::runtime::current_session->myscreen_->level_runtime_data(), 3);
         TEST_ASSERT_EQ(1, (int)r3, "load_scenario_version v3 should succeed");
-        TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v3 should load at least one object");
-        TEST_ASSERT(!myscreen->level_data.description.empty(), "v3 should load description lines");
+        TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(), "v3 should load at least one object");
+        TEST_ASSERT(!og::runtime::current_session->myscreen_->level_description().empty(), "v3 should load description lines");
     }
     {
         std::vector<uint8_t> blob4 = make_scenario_blob_with_one_object(false, true);
         MemoryOgFile rw4(blob4.data(), blob4.size());
-        myscreen->level_data.delete_objects();
-        myscreen->level_data.description.clear();
-        short r4 = load_scenario_version(rw4, &myscreen->level_data, 4);
+        og::runtime::current_session->myscreen_->world().delete_objects();
+        og::runtime::current_session->myscreen_->level_description().clear();
+        short r4 = load_scenario_version(rw4, &og::runtime::current_session->myscreen_->level_runtime_data(), 4);
         TEST_ASSERT_EQ(1, (int)r4, "load_scenario_version v4 should succeed");
-        TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v4 should load at least one object");
+        TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(), "v4 should load at least one object");
     }
     {
         std::vector<uint8_t> blob5 = make_scenario_blob_with_one_object(true, true);
         MemoryOgFile rw5(blob5.data(), blob5.size());
-        myscreen->level_data.delete_objects();
-        myscreen->level_data.description.clear();
-        short r5 = load_scenario_version(rw5, &myscreen->level_data, 5);
+        og::runtime::current_session->myscreen_->world().delete_objects();
+        og::runtime::current_session->myscreen_->level_description().clear();
+        short r5 = load_scenario_version(rw5, &og::runtime::current_session->myscreen_->level_runtime_data(), 5);
         TEST_ASSERT_EQ(1, (int)r5, "load_scenario_version v5 should succeed");
-        TEST_ASSERT_EQ(2, (int)myscreen->level_data.type, "v5 should load scenario type");
-        TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v5 should load at least one object");
+        TEST_ASSERT_EQ(2, (int)og::runtime::current_session->myscreen_->world().type, "v5 should load scenario type");
+        TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(), "v5 should load at least one object");
     }
     {
         // Unknown version should hit default branch and report failure.
         std::vector<uint8_t> tiny = {0};
         MemoryOgFile rw_bad(tiny.data(), tiny.size());
-        short bad = load_scenario_version(rw_bad, &myscreen->level_data, 42);
+        short bad = load_scenario_version(rw_bad, &og::runtime::current_session->myscreen_->level_runtime_data(), 42);
         TEST_ASSERT_EQ(0, (int)bad, "unknown scenario version should fail");
     }
 
     // Save with populated ob/fx/weap/description to cover all object-list loops.
-    myscreen->level_data.id = 99;
-    myscreen->level_data.grid_file = "grid";
-    myscreen->level_data.title = "Coverage Level";
-    myscreen->level_data.type = 3;
-    myscreen->level_data.par_value = 7;
-    myscreen->level_data.time_bonus_limit = 1234;
-    myscreen->level_data.description.clear();
-    myscreen->level_data.description.push_back("desc-a");
-    myscreen->level_data.description.push_back("desc-b");
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().id = 99;
+    og::runtime::current_session->myscreen_->level_grid_file() = "grid";
+    og::runtime::current_session->myscreen_->world().title = "Coverage Level";
+    og::runtime::current_session->myscreen_->world().type = 3;
+    og::runtime::current_session->myscreen_->world().par_value = 7;
+    og::runtime::current_session->myscreen_->world().time_bonus_limit = 1234;
+    og::runtime::current_session->myscreen_->level_description().clear();
+    og::runtime::current_session->myscreen_->level_description().push_back("desc-a");
+    og::runtime::current_session->myscreen_->level_description().push_back("desc-b");
+    og::runtime::current_session->myscreen_->world().delete_objects();
     std::filesystem::create_directories("temp/scen");
     std::filesystem::create_directories("temp/pix");
 
-    walker* ob = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
-    walker* wp = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* ob = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* wp = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(ob && fx && wp, "save-loop objects should be created");
     if (ob) ob->stats()->name = "OB";
     if (fx) fx->stats()->name = "FX";
     if (wp) wp->stats()->name = "WP";
-    TEST_ASSERT(myscreen->level_data.save(), "save should succeed with populated lists");
-    myscreen->level_data.delete_objects();
+    TEST_ASSERT(og::runtime::current_session->myscreen_->save_level(), "save should succeed with populated lists");
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     delete_campaign(tmp_id);
 }
@@ -549,20 +549,20 @@ void test_level_data_save_description_serialization_bounds()
     const std::string boundary_line(79, 'B');
     const std::string long_line(400, 'L');
 
-    myscreen->level_data.id = kScenarioId;
-    myscreen->level_data.grid_file = "grid";
-    myscreen->level_data.title = "Save Desc Regression";
-    myscreen->level_data.type = 1;
-    myscreen->level_data.par_value = 2;
-    myscreen->level_data.time_bonus_limit = 3000;
-    myscreen->level_data.delete_objects();
-    myscreen->level_data.description.clear();
-    myscreen->level_data.description.push_back(empty_line);
-    myscreen->level_data.description.push_back(boundary_line);
-    myscreen->level_data.description.push_back(long_line);
+    og::runtime::current_session->myscreen_->world().id = kScenarioId;
+    og::runtime::current_session->myscreen_->level_grid_file() = "grid";
+    og::runtime::current_session->myscreen_->world().title = "Save Desc Regression";
+    og::runtime::current_session->myscreen_->world().type = 1;
+    og::runtime::current_session->myscreen_->world().par_value = 2;
+    og::runtime::current_session->myscreen_->world().time_bonus_limit = 3000;
+    og::runtime::current_session->myscreen_->world().delete_objects();
+    og::runtime::current_session->myscreen_->level_description().clear();
+    og::runtime::current_session->myscreen_->level_description().push_back(empty_line);
+    og::runtime::current_session->myscreen_->level_description().push_back(boundary_line);
+    og::runtime::current_session->myscreen_->level_description().push_back(long_line);
     std::filesystem::create_directories("temp/scen");
 
-    TEST_ASSERT(myscreen->level_data.save(), "save should succeed for description bounds regression");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->save_level(), "save should succeed for description bounds regression");
 
     const std::string scen_path = "temp/scen/scen" + std::to_string(kScenarioId) + ".fss";
     std::vector<uint8_t> bytes;
@@ -640,49 +640,49 @@ void test_level_data_load_version4_5_name_field_without_nul_is_bounded()
     {
         std::vector<uint8_t> blob4 = make_blob(false);
         MemoryOgFile rw4(blob4.data(), blob4.size());
-        myscreen->level_data.delete_objects();
-        myscreen->level_data.description.clear();
-        short r4 = load_scenario_version(rw4, &myscreen->level_data, 4);
+        og::runtime::current_session->myscreen_->world().delete_objects();
+        og::runtime::current_session->myscreen_->level_description().clear();
+        short r4 = load_scenario_version(rw4, &og::runtime::current_session->myscreen_->level_runtime_data(), 4);
         TEST_ASSERT_EQ(1, (int)r4, "v4 should load with full 12-byte non-NUL name");
-        TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v4 should create an object");
-        TEST_ASSERT(myscreen->level_data.oblist.front()->stats()->name == expected_name,
+        TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(), "v4 should create an object");
+        TEST_ASSERT(og::runtime::current_session->myscreen_->world().oblist.front()->stats()->name == expected_name,
             "v4 name should be bounded to 12 bytes");
     }
 
     {
         std::vector<uint8_t> blob5 = make_blob(true);
         MemoryOgFile rw5(blob5.data(), blob5.size());
-        myscreen->level_data.delete_objects();
-        myscreen->level_data.description.clear();
-        short r5 = load_scenario_version(rw5, &myscreen->level_data, 5);
+        og::runtime::current_session->myscreen_->world().delete_objects();
+        og::runtime::current_session->myscreen_->level_description().clear();
+        short r5 = load_scenario_version(rw5, &og::runtime::current_session->myscreen_->level_runtime_data(), 5);
         TEST_ASSERT_EQ(1, (int)r5, "v5 should load with full 12-byte non-NUL name");
-        TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v5 should create an object");
-        TEST_ASSERT(myscreen->level_data.oblist.front()->stats()->name == expected_name,
+        TEST_ASSERT(!og::runtime::current_session->myscreen_->world().oblist.empty(), "v5 should create an object");
+        TEST_ASSERT(og::runtime::current_session->myscreen_->world().oblist.front()->stats()->name == expected_name,
             "v5 name should be bounded to 12 bytes");
     }
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_level_data_load_version4_5_name_field_without_nul_is_bounded);
 
 // ---------------------------------------------------------------------------
-// LevelData::resize_grid with objects - tests off-map cleanup
+// LevelRuntimeData::resize_grid with objects - tests off-map cleanup
 // ---------------------------------------------------------------------------
 
 void test_level_data_resize_grid_removes_offmap()
 {
-    myscreen->level_data.create_new_grid();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
     // Add an object far out
-    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     if (w) {
         w->setxy(500, 500); // way beyond 40*GRID_SIZE
-        size_t before = myscreen->level_data.oblist.size();
-        myscreen->level_data.resize_grid(10, 10);
+        size_t before = og::runtime::current_session->myscreen_->world().oblist.size();
+        og::runtime::current_session->myscreen_->world().resize_grid(10, 10);
         // Object at (500,500) should be removed from 10*GRID_SIZE grid
-        TEST_ASSERT(myscreen->level_data.oblist.size() < before, "off-map objects removed");
+        TEST_ASSERT(og::runtime::current_session->myscreen_->world().oblist.size() < before, "off-map objects removed");
     }
     // Restore
-    myscreen->level_data.resize_grid(40, 60);
+    og::runtime::current_session->myscreen_->world().resize_grid(40, 60);
 }
 REGISTER_TEST(test_level_data_resize_grid_removes_offmap);
 
@@ -720,10 +720,10 @@ REGISTER_TEST_WITH_FIXTURE(
 
 void test_level_data_find_foe_helpers_return_null_without_valid_targets()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr, "actor should be created");
     if (!actor)
         return;
@@ -731,8 +731,8 @@ void test_level_data_find_foe_helpers_return_null_without_valid_targets()
     actor->setxy(64, 64);
 
     // Friendly and dead enemies should be ignored by foe selection helpers.
-    walker* friendly = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
-    walker* dead_enemy = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* friendly = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
+    walker* dead_enemy = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(friendly && dead_enemy, "fixtures should be created");
     if (!(friendly && dead_enemy))
         return;
@@ -742,11 +742,11 @@ void test_level_data_find_foe_helpers_return_null_without_valid_targets()
     dead_enemy->dead = 1;
     dead_enemy->setxy(128, 64);
 
-    TEST_ASSERT(myscreen->level_data.find_far_foe(actor) == nullptr,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().find_far_foe(actor) == nullptr,
                 "find_far_foe should return null when no valid foes exist");
-    TEST_ASSERT(myscreen->level_data.find_near_foe(actor) == nullptr,
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().find_near_foe(actor) == nullptr,
                 "find_near_foe should return null when no valid foes exist");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_level_data_find_foe_helpers_return_null_without_valid_targets);

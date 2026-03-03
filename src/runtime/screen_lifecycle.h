@@ -1,5 +1,4 @@
 #pragma once
 
-// Transitional shim: prefer including <openglad/runtime/screen_lifecycle.h>.
-#include <openglad/runtime/screen_lifecycle.h>
-
+// Transitional shim: prefer including <openglad/interface/screen_lifecycle.h>.
+#include <openglad/interface/screen_lifecycle.h>

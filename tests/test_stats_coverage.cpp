@@ -1,11 +1,11 @@
-#include <openglad/core/stats.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 void test_stats_constructor_null_controller_defaults_and_no_command_guard()
 {
@@ -38,7 +38,7 @@ void test_stats_set_and_try_command_random_walk_paths()
     FixedRandom rng0(0);
     GameContext c;
     c.rng = &rng0;
-    set_global_context(&c);
+    push_test_context(&c);
 
     walker w;
     statistics s(&w);
@@ -54,7 +54,7 @@ void test_stats_set_and_try_command_random_walk_paths()
     s.add_command(COMMAND_DIE, 1, 0, 0);
     TEST_ASSERT_EQ(1, (int)s.delete_me, "COMMAND_DIE add should set delete_me immediately");
 
-    set_global_context(nullptr);
+    pop_test_context();
 }
 REGISTER_TEST(test_stats_set_and_try_command_random_walk_paths);
 
@@ -89,14 +89,13 @@ REGISTER_TEST(test_stats_batch2_command_edge_paths_smoke);
 
 void test_stats_round6_block_query_switches_all_directions()
 {
-    myscreen->level_data.create_new_grid();
-    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
         return;
 
     w->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
-    w->sim_level = &myscreen->level_data;
 
     for (int dir = 0; dir < 8; dir++)
     {
@@ -145,14 +144,13 @@ REGISTER_TEST(test_stats_round6_walk_clamp_extremes_and_empty_queue_paths);
 
 void test_stats_round7a_command_clamps_and_direction_switches()
 {
-    myscreen->level_data.create_new_grid();
-    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
         return;
 
     w->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
-    w->sim_level = &myscreen->level_data;
 
     // Explicitly hit both +/- clamp sides in add/force command.
     w->stats()->add_command(COMMAND_WALK, 1, -9, 9);
@@ -194,16 +192,15 @@ REGISTER_TEST(test_stats_round7a_command_clamps_and_direction_switches);
 
 void test_stats_round7a_follow_and_die_do_command_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr, "actor created");
     if (!actor)
         return;
 
     actor->setxy(64, 64);
-    actor->sim_level = &myscreen->level_data;
 
     // Follow with no eligible leader: find_follow_leader() null -> command count zero path.
     actor->stats()->clear_command();
@@ -211,7 +208,7 @@ void test_stats_round7a_follow_and_die_do_command_paths()
     (void)actor->stats()->do_command();
 
     // Follow with foe set: immediate early stop path in COMMAND_FOLLOW.
-    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(foe != nullptr, "foe created");
     if (foe)
     {

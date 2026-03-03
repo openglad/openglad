@@ -1,21 +1,21 @@
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/guy_create.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
-#include <openglad/render/view.h>
-#include <openglad/render/walker_draw.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/render/walker_draw.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 #include <cstdint>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static walker* make_guy(char family, unsigned char team)
 {
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w)
         w->setxy(32, 32);
     return w.release();
@@ -23,7 +23,7 @@ static walker* make_guy(char family, unsigned char team)
 
 void test_walker_pathfinding_follow_and_draw_path_smoke()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "viewob[0] should exist");
 
     walker* a = make_guy(FAMILY_SOLDIER, 0);
@@ -52,7 +52,7 @@ REGISTER_TEST(test_walker_pathfinding_follow_and_draw_path_smoke);
 
 void test_walker_damage_numbers_and_compute_outline_smoke()
 {
-    viewscreen* v = myscreen->viewob[0].get();
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(v != nullptr, "viewob[0] should exist");
 
     walker* w = make_guy(FAMILY_SOLDIER, 0);

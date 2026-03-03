@@ -1,23 +1,22 @@
-#include <openglad/input/input.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/entities/walker.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
+#include <openglad/interface/input.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <array>
 #include <cstring>
 
-extern screen* myscreen;
-extern const Uint8* keystates;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace
 {
 struct GlobalContextGuard
 {
-    explicit GlobalContextGuard(GameContext* ctx) { set_global_context(ctx); }
-    ~GlobalContextGuard() { set_global_context(nullptr); }
+    explicit GlobalContextGuard(GameContext* ctx) { push_test_context(ctx); }
+    ~GlobalContextGuard() { pop_test_context(); }
     GlobalContextGuard(const GlobalContextGuard&) = delete;
     GlobalContextGuard& operator=(const GlobalContextGuard&) = delete;
 };
@@ -28,25 +27,26 @@ struct KeyStateGuard
     std::array<Uint8, MAXKEYS> fake{};
     KeyStateGuard()
     {
-        saved = keystates;
+        saved = og::runtime::current_session->keystates_;
         fake.fill(0);
-        keystates = fake.data();
+        og::runtime::current_session->keystates_ = fake.data();
     }
     ~KeyStateGuard()
     {
-        keystates = saved;
+        og::runtime::current_session->keystates_ = saved;
     }
-    void pulse(SDL_Scancode sc, int down_ms = 30)
+    void pulse(int scancode, int down_ms = 30)
     {
-        fake[sc] = 1;
+        fake[static_cast<std::size_t>(scancode)] = 1;
         SDL_Delay(down_ms);
-        fake[sc] = 0;
+        fake[static_cast<std::size_t>(scancode)] = 0;
         SDL_Delay(5);
     }
 };
 
 static int injector_thread_options_menu(void* data)
 {
+    og::runtime::ensure_thread_session();
     KeyStateGuard* ks = static_cast<KeyStateGuard*>(data);
     SDL_Delay(50);
 
@@ -81,7 +81,7 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
-    viewscreen* vs = myscreen->viewob[0].get();
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     TEST_ASSERT(vs != nullptr, "viewscreen exists");
     if (!vs)
         return;
@@ -89,7 +89,7 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
     // Ensure we have a controlled living so options_menu doesn't early-return.
     if (!vs->control)
     {
-        walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
         TEST_ASSERT(w != nullptr, "control walker created");
         if (w)
         {

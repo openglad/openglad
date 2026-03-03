@@ -1,5 +1,5 @@
 #pragma once
 
-// Transitional shim: prefer including <openglad/runtime/game_context.h>.
-#include <openglad/runtime/game_context.h>
+// Transitional shim: prefer including <openglad/platform/game_context.h>.
+#include <openglad/platform/game_context.h>
 

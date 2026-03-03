@@ -1,27 +1,27 @@
-#include <openglad/core/stats.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
-#include <openglad/data/gloader.h>
-#include <openglad/data/save_data.h>
-#include <openglad/entities/living.h>
-#include <openglad/entities/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/guy_create.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
-#include <openglad/render/view.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/render/view.h>
+#include <openglad/interface/screen.h>
 #include "test_framework.h"
 
 #include <memory>
 #include <vector>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace
 {
 struct GlobalContextGuard
 {
-    explicit GlobalContextGuard(GameContext* ctx) { set_global_context(ctx); }
-    ~GlobalContextGuard() { set_global_context(nullptr); }
+    explicit GlobalContextGuard(GameContext* ctx) { push_test_context(ctx); }
+    ~GlobalContextGuard() { pop_test_context(); }
     GlobalContextGuard(const GlobalContextGuard&) = delete;
     GlobalContextGuard& operator=(const GlobalContextGuard&) = delete;
 };
@@ -31,7 +31,7 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team = 0, 
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(level, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w)
         w->setxy(100, 100);
     return w;
@@ -95,8 +95,8 @@ REGISTER_TEST(test_walker_compute_outline_state_transitions);
 
 void test_walker_generator_fire_sets_weapon_lifetime_or_owner_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -107,7 +107,7 @@ void test_walker_generator_fire_sets_weapon_lifetime_or_owner_paths()
     // sticks to the generator-specific weapon creation path plus create_weapon().
 
     // Generator: mage tower (generator-only create_weapon path).
-    walker* gen_tower = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    walker* gen_tower = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
     TEST_ASSERT(gen_tower != nullptr, "generator tower created");
     if (gen_tower) {
         gen_tower->team_num = 2;
@@ -126,7 +126,7 @@ void test_walker_generator_fire_sets_weapon_lifetime_or_owner_paths()
     }
 
     // Generator: tent (default generator branch).
-    walker* gen_tent = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    walker* gen_tent = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TENT);
     TEST_ASSERT(gen_tent != nullptr, "generator tent created");
     if (gen_tent) {
         gen_tent->team_num = 3;
@@ -144,20 +144,20 @@ void test_walker_generator_fire_sets_weapon_lifetime_or_owner_paths()
         }
     }
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_generator_fire_sets_weapon_lifetime_or_owner_paths);
 
 void test_walker_generator_create_weapon_special_case()
 {
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     FixedRandom fixed_rng(1);
     GameContext c;
     c.rng = &fixed_rng;
     GlobalContextGuard guard(&c);
 
-    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TREEHOUSE);
+    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TREEHOUSE);
     TEST_ASSERT(gen != nullptr, "generator created");
     if (gen) {
         gen->team_num = 1;
@@ -168,21 +168,20 @@ void test_walker_generator_create_weapon_special_case()
         TEST_ASSERT(weapon != nullptr, "create_weapon should return a spawned living for generators");
     }
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_generator_create_weapon_special_case);
 
 void test_walker_act_guard_and_random_branch_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto actor = make_living(FAMILY_ORC, 1, 4);
     TEST_ASSERT(actor != nullptr, "actor created");
     if (!actor)
         return;
 
-    actor->sim_level = &myscreen->level_data;
     actor->setxy(96, 96);
 
     {
@@ -211,7 +210,7 @@ void test_walker_act_guard_and_random_branch_paths()
         (void)actor->stats()->has_commands();
     }
 
-    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(foe != nullptr, "foe created");
     if (foe)
     {
@@ -235,23 +234,16 @@ void test_walker_act_guard_and_random_branch_paths()
         TEST_ASSERT(actor->foe == foe, "ACT_RANDOM visible-foe branch should keep the selected foe");
     }
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_act_guard_and_random_branch_paths);
 
 void test_walker_act_generate_zero_vector_and_hp_cap_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    // next(60)=59 and next(300+numobs*8)=0 satisfy generation condition.
-    // next(3)=1 for both axes gives 0,0 to trigger the fallback lastx=1 branch.
-    SequenceRandom rng_seq({59, 0, 1, 1, 0, 0, 0});
-    GameContext c;
-    c.rng = &rng_seq;
-    GlobalContextGuard guard(&c);
-
-    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TENT);
     TEST_ASSERT(gen != nullptr, "generator created");
     if (!gen)
         return;
@@ -262,20 +254,29 @@ void test_walker_act_generate_zero_vector_and_hp_cap_paths()
     gen->default_weapon = FAMILY_ELF;
     gen->current_weapon = gen->default_weapon;
 
+    TEST_ASSERT(current_game != nullptr && current_game->world != nullptr,
+                "current_game world context must be active");
+    if (!(current_game && current_game->world))
+        return;
+    // Seed chosen so act_generate() deterministic SimRandom hits:
+    // next(60) > next(300), then next(3)==1 and next(3)==1 (zero vector fallback).
+    current_game->world->rng_.state_ = 18;
+
     gen->set_act_type(ACT_GENERATE);
     (void)gen->act();
-    TEST_ASSERT_EQ(1, (int)gen->lastx, "act_generate should force lastx=1 when random step vector is zero");
+    TEST_ASSERT_EQ(1, static_cast<int>(gen->lastx),
+                   "act_generate should force lastx=1 when random step vector is zero");
     TEST_ASSERT_EQ((int)gen->stats()->max_hitpoints, (int)gen->stats()->hitpoints,
                    "act_generate should clamp hitpoints at max");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_act_generate_zero_vector_and_hp_cap_paths);
 
 void test_walker_act_guard_else_and_act_random_turn_walk_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto actor = make_living(FAMILY_ORC, 1, 4);
     auto foe = make_living(FAMILY_SOLDIER, 2, 4);
@@ -283,28 +284,24 @@ void test_walker_act_guard_else_and_act_random_turn_walk_paths()
     if (!(actor && foe))
         return;
 
-    actor->sim_level = &myscreen->level_data;
-    foe->sim_level = &myscreen->level_data;
     actor->setxy(96, 96);
     foe->setxy(128, 96);
 
     // No nearby foe case: hit act_guard() else return path.
     actor->foe = nullptr;
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
     actor->set_act_type(ACT_GUARD);
     TEST_ASSERT(!actor->act(), "ACT_GUARD should return false when no foe is found");
 
     // Recreate context and drive act_random() through fire_check-false turn + walkstep path.
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
     actor = make_living(FAMILY_ORC, 1, 4);
     foe = make_living(FAMILY_SOLDIER, 2, 4);
     TEST_ASSERT(actor != nullptr && foe != nullptr, "walkers recreated");
     if (!(actor && foe))
         return;
 
-    actor->sim_level = &myscreen->level_data;
-    foe->sim_level = &myscreen->level_data;
     actor->setxy(96, 96);
     foe->setxy(128, 96);
     actor->foe = foe.get();
@@ -320,17 +317,17 @@ void test_walker_act_guard_else_and_act_random_turn_walk_paths()
     (void)actor->act();
     TEST_ASSERT(actor->act_type != ACT_FIRE, "act_random blocked fire path should not set ACT_FIRE");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_act_guard_else_and_act_random_turn_walk_paths);
 
 void test_walker_query_next_to_and_generator_fire_check_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* blocker = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* blocker = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(actor != nullptr && blocker != nullptr, "walkers created");
     if (!(actor && blocker))
         return;
@@ -351,28 +348,27 @@ void test_walker_query_next_to_and_generator_fire_check_paths()
     blocker->setxy(10, 10); // clear proximity
     TEST_ASSERT(!actor->query_next_to(), "query_next_to should return false when next tile is passable");
 
-    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TENT);
     TEST_ASSERT(gen != nullptr, "generator created");
     if (gen)
     {
         TEST_ASSERT(gen->fire_check(1, 0), "generator fire_check should always succeed");
     }
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_query_next_to_and_generator_fire_check_paths);
 
 void test_walker_init_fire_turn_busy_and_fire_fallback_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto w_up = make_living(FAMILY_SOLDIER, 0, 3);
     TEST_ASSERT(w_up != nullptr, "walker created");
     if (!w_up)
         return;
     walker* w = w_up.get();
-    w->sim_level = &myscreen->level_data;
     w->setxy(160, 160);
     w->lastx = 1;
     w->lasty = 0;
@@ -411,24 +407,22 @@ REGISTER_TEST(test_walker_init_fire_turn_busy_and_fire_fallback_paths);
 
 void test_walker_round5_act_switch_random_and_fire_branches()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr && foe != nullptr, "actor and foe should be created");
     if (!(actor && foe))
         return;
 
     actor->team_num = 1;
     actor->setxy(96, 96);
-    actor->sim_level = &myscreen->level_data;
     actor->ani_type = ANI_WALK;
     actor->stats()->clear_command();
 
     foe->team_num = 2;
     foe->setxy(128, 96);
-    foe->sim_level = &myscreen->level_data;
 
     // ACT_GUARD no-foe path: break from switch then return 0.
     actor->foe = nullptr;
@@ -444,7 +438,6 @@ void test_walker_round5_act_switch_random_and_fire_branches()
 
     // ACT_RANDOM 1/4 + 1/20 branch should queue COMMAND_WALK.
     SequenceRandom rng_walk_branch({0, 0, 5, 1, 2});
-    actor->sim_rng = &rng_walk_branch;
     actor->stats()->clear_command();
     actor->ani_type = ANI_WALK;
     actor->foe = nullptr;
@@ -453,52 +446,47 @@ void test_walker_round5_act_switch_random_and_fire_branches()
 
     // ACT_RANDOM 3/4 branch should acquire far foe and queue COMMAND_SEARCH.
     SequenceRandom rng_search_branch({3, 0});
-    actor->sim_rng = &rng_search_branch;
     actor->stats()->clear_command();
     actor->ani_type = ANI_WALK;
     actor->foe = nullptr;
     actor->set_act_type(ACT_RANDOM);
     (void)actor->act();
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_round5_act_switch_random_and_fire_branches);
 
 void test_walker_round5_act_random_contiguous_block_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr && foe != nullptr, "actor and foe should be created");
     if (!(actor && foe))
         return;
 
     actor->team_num = 1;
     actor->setxy(96, 96);
-    actor->sim_level = &myscreen->level_data;
     actor->ani_type = ANI_WALK;
     actor->lineofsight = 20;
 
     foe->team_num = 2;
     foe->setxy(112, 96);
-    foe->sim_level = &myscreen->level_data;
 
     // No-foe branch: find_far_foe fails and queues COMMAND_RANDOM_WALK.
-    myscreen->level_data.delete_objects();
-    actor = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    og::runtime::current_session->myscreen_->world().delete_objects();
+    actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(actor != nullptr, "actor should be recreated");
     if (!actor)
         return;
     actor->team_num = 1;
     actor->setxy(96, 96);
-    actor->sim_level = &myscreen->level_data;
     actor->lineofsight = 20;
     actor->ani_type = ANI_WALK;
 
     SequenceRandom rng_no_foe({0, 1, 0});
-    actor->sim_rng = &rng_no_foe;
     actor->foe = nullptr;
     actor->stats()->clear_command();
     actor->ani_type = ANI_WALK;
@@ -506,28 +494,25 @@ void test_walker_round5_act_random_contiguous_block_paths()
     (void)actor->act();
 
     // Rebuild actor/foe pair for LOS branches.
-    myscreen->level_data.delete_objects();
-    actor = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->world().delete_objects();
+    actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr && foe != nullptr, "actor and foe should be recreated");
     if (!(actor && foe))
         return;
 
     actor->team_num = 1;
     actor->setxy(96, 96);
-    actor->sim_level = &myscreen->level_data;
     actor->ani_type = ANI_WALK;
     actor->lineofsight = 20;
     actor->foe = foe;
 
     foe->team_num = 2;
     foe->setxy(112, 96);
-    foe->sim_level = &myscreen->level_data;
 
     // In-range foe with blocked ranged attack path: fire_check false -> turn/walkstep.
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     SequenceRandom rng_turn_walk({0, 1, 1});
-    actor->sim_rng = &rng_turn_walk;
     actor->stats()->clear_command();
     actor->set_act_type(ACT_RANDOM);
     (void)actor->act();
@@ -535,21 +520,20 @@ void test_walker_round5_act_random_contiguous_block_paths()
     // In-range foe with clear fire path: init_fire + COMMAND_FIRE path.
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     SequenceRandom rng_fire_cmd({0, 1, 1, 7});
-    actor->sim_rng = &rng_fire_cmd;
     actor->stats()->clear_command();
     actor->set_act_type(ACT_RANDOM);
     (void)actor->act();
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_round5_act_random_contiguous_block_paths);
 
 void test_walker_round6_init_fire_animate_and_misc_guards()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "walker should be created");
     if (!w)
         return;
@@ -583,7 +567,7 @@ void test_walker_round6_init_fire_animate_and_misc_guards()
     TEST_ASSERT(!headless.animate(), "animate should return false when ani is null");
 
     // ACT() pointer cleanup and recoil/lunge clamping.
-    walker* dead_target = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* dead_target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT(dead_target != nullptr, "dead target should be created");
     if (dead_target)
     {
@@ -620,11 +604,11 @@ REGISTER_TEST(test_walker_round6_init_fire_animate_and_misc_guards);
 
 void test_walker_round6_fire_and_friendliness_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* target = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(actor && target, "actor/target should be created");
     if (!(actor && target))
         return;
@@ -662,10 +646,8 @@ void test_walker_round6_fire_and_friendliness_paths()
     TEST_ASSERT(diagonal_weapon != nullptr, "create_weapon should succeed for living actor");
 
     // is_friendly / is_friendly_to_team paths with allied mode and myguy combinations.
-    SaveData save;
-    save.allied_mode = 1;
-    actor->sim_save = &save;
-    target->sim_save = &save;
+    GameWorld& world = og::runtime::current_session->myscreen_->world_;
+    world.allied_mode = 1;
     actor->team_num = 0;
     target->team_num = 2;
     actor->clear_myguy();
@@ -684,29 +666,26 @@ REGISTER_TEST(test_walker_round6_fire_and_friendliness_paths);
 
 void test_walker_round6_guard_and_random_direct_branches()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr && foe != nullptr, "actor and foe should be created");
     if (!(actor && foe))
         return;
 
-    actor->sim_level = &myscreen->level_data;
     actor->team_num = 1;
     actor->setxy(96, 96);
     actor->lineofsight = 20;
     actor->stats()->magicpoints = 9999.0f;
     actor->stats()->weapon_cost = 0.0f;
 
-    foe->sim_level = &myscreen->level_data;
     foe->team_num = 2;
     foe->setxy(112, 96);
 
     // act_guard() foe path via act(): set facing + queue fire command.
     SequenceRandom guard_rng({7});
-    actor->sim_rng = &guard_rng;
     actor->ani_type = ANI_WALK;
     actor->set_act_type(ACT_GUARD);
     (void)actor->act();
@@ -716,7 +695,6 @@ void test_walker_round6_guard_and_random_direct_branches()
     actor->curdir = FACE_UP;
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     SequenceRandom blocked_rng({1, 0, 0});
-    actor->sim_rng = &blocked_rng;
     actor->ani_type = ANI_WALK;
     actor->set_act_type(ACT_RANDOM);
     TEST_ASSERT(actor->act(), "ACT_RANDOM should still act when ranged attack is blocked");
@@ -729,21 +707,20 @@ void test_walker_round6_guard_and_random_direct_branches()
     actor->busy = 0;
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     SequenceRandom fire_rng({1, 5});
-    actor->sim_rng = &fire_rng;
     actor->set_act_type(ACT_RANDOM);
     (void)actor->act();
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_round6_guard_and_random_direct_branches);
 
 void test_walker_round7a_compute_outline_and_friendliness_edge_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* viewer = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* subject = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* viewer = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* subject = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(viewer && subject, "viewer/subject created");
     if (!(viewer && subject))
         return;
@@ -783,10 +760,8 @@ void test_walker_round7a_compute_outline_and_friendliness_edge_paths()
                 "compute_outline should settle into neutral or team outline");
 
     // is_friendly null/dead guards and owner-chain branches.
-    SaveData save;
-    save.allied_mode = 1;
-    subject->sim_save = &save;
-    viewer->sim_save = &save;
+    GameWorld& world = og::runtime::current_session->myscreen_->world_;
+    world.allied_mode = 1;
 
     TEST_ASSERT_EQ(0, (int)subject->is_friendly(nullptr), "is_friendly should reject null");
 
@@ -799,7 +774,7 @@ void test_walker_round7a_compute_outline_and_friendliness_edge_paths()
     viewer->dead = 0;
 
     // Owner-loop traversal with one side missing myguy (has_myguy==2 path).
-    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    walker* owner = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
     TEST_ASSERT(owner != nullptr, "owner created");
     if (owner)
     {
@@ -816,10 +791,10 @@ REGISTER_TEST(test_walker_round7a_compute_outline_and_friendliness_edge_paths);
 
 void test_walker_round7a_death_guard_and_friendliness_team_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
         return;
@@ -831,31 +806,29 @@ void test_walker_round7a_death_guard_and_friendliness_team_paths()
     TEST_ASSERT_EQ(0, (int)w->death(), "second death call should hit death_called guard");
 
     // is_friendly_to_team paths for no myguy and hired allied modes.
-    SaveData save;
-    w->sim_save = &save;
+    GameWorld& world = og::runtime::current_session->myscreen_->world_;
     w->dead = 0;
     w->team_num = 2;
     w->clear_myguy();
 
-    save.allied_mode = 0;
+    world.allied_mode = 0;
     TEST_ASSERT_EQ(1, (int)w->is_friendly_to_team(2), "enemy mode should only match own team");
     TEST_ASSERT_EQ(0, (int)w->is_friendly_to_team(0), "enemy mode should reject other teams");
 
-    save.allied_mode = 1;
+    world.allied_mode = 1;
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     TEST_ASSERT_EQ(1, (int)w->is_friendly_to_team(0), "hired unit in allied mode should be friendly to team 0");
     TEST_ASSERT_EQ(0, (int)w->is_friendly_to_team(3), "hired unit in allied mode should reject non-zero teams");
 
     // Explicit has_myguy==0 path in is_friendly.
-    walker* other = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* other = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(other != nullptr, "other created");
     if (other)
     {
-        other->sim_save = &save;
         other->team_num = 2;
         other->clear_myguy();
         w->clear_myguy();
-        save.allied_mode = 1;
+        world.allied_mode = 1;
         TEST_ASSERT_EQ(1, (int)w->is_friendly(other), "both without myguy should compare teams only");
         other->team_num = 1;
         TEST_ASSERT_EQ(0, (int)w->is_friendly(other), "both without myguy different teams should be unfriendly");
@@ -865,11 +838,11 @@ REGISTER_TEST(test_walker_round7a_death_guard_and_friendliness_team_paths);
 
 void test_walker_round7b_base_act_guard_random_and_death_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
-    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TENT);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(actor != nullptr && foe != nullptr, "actor and foe created");
     if (!(actor && foe))
         return;
@@ -877,24 +850,22 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
     actor->team_num = 1;
     actor->setxy(96, 96);
     actor->lineofsight = 2;
-    actor->sim_level = &myscreen->level_data;
     foe->team_num = 2;
     foe->setxy(128, 128);
 
     // Base walker::act_guard() no-foe return branch.
-    myscreen->level_data.delete_objects();
-    actor = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    og::runtime::current_session->myscreen_->world().delete_objects();
+    actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TENT);
     TEST_ASSERT(actor != nullptr, "actor recreated");
     if (!actor)
         return;
     actor->team_num = 1;
     actor->setxy(96, 96);
-    actor->sim_level = &myscreen->level_data;
     actor->set_act_type(ACT_GUARD);
     TEST_ASSERT(!actor->act(), "base ACT_GUARD should return false when no foe is found");
 
     // Base walker::act_random() in-range fire path.
-    foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(foe != nullptr, "foe recreated");
     if (!foe)
         return;
@@ -905,36 +876,34 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
     actor->set_act_type(ACT_RANDOM);
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     SequenceRandom rng_fire({5, 7});
-    actor->sim_rng = &rng_fire;
     (void)actor->act();
 
     // Base walker::act_random() blocked-ranged path -> turn + walkstep.
     actor->foe = foe;
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     SequenceRandom rng_turn_walk({5});
-    actor->sim_rng = &rng_turn_walk;
     TEST_ASSERT(actor->act(), "base ACT_RANDOM should still act when ranged attack is blocked");
     TEST_ASSERT(actor->act_type != ACT_FIRE,
                 "blocked-ranged act_random path should not transition to ACT_FIRE");
 
     // Base walker::death() generator explosion and death_called guard.
-    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TENT);
     TEST_ASSERT(gen != nullptr, "generator created");
     if (gen)
     {
         gen->dead = 1;
         gen->death_called = 0;
-        const size_t fx_before = myscreen->level_data.fxlist.size();
+        const size_t fx_before = og::runtime::current_session->myscreen_->world().fxlist.size();
         TEST_ASSERT(gen->death(), "first generator death call should succeed");
-        TEST_ASSERT(myscreen->level_data.fxlist.size() >= fx_before,
+        TEST_ASSERT(og::runtime::current_session->myscreen_->world().fxlist.size() >= fx_before,
                     "generator death should run explosion spawning path");
         TEST_ASSERT_EQ(0, (int)gen->death(), "second death call should hit death_called guard");
     }
 
     // Save-all early-return event branch in living death path.
-    const short old_type = myscreen->level_data.type;
-    myscreen->level_data.type = static_cast<short>(SCEN_TYPE_SAVE_ALL);
-    walker* named = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    const short old_type = og::runtime::current_session->myscreen_->world().type;
+    og::runtime::current_session->myscreen_->world().type = static_cast<short>(SCEN_TYPE_SAVE_ALL);
+    walker* named = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(named != nullptr, "named living created");
     if (named)
     {
@@ -944,10 +913,10 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
         named->death_called = 0;
         TEST_ASSERT(named->death(), "save-all named death path should return true");
     }
-    myscreen->level_data.type = old_type;
+    og::runtime::current_session->myscreen_->world().type = old_type;
 
     // FX-order death branch (log-only, returns success).
-    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_FLASH);
     TEST_ASSERT(fx != nullptr, "fx created");
     if (fx)
     {
@@ -956,28 +925,26 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
         TEST_ASSERT(fx->death(), "fx death branch should return true");
     }
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_round7b_base_act_guard_random_and_death_paths);
 
 void test_walker_round11_friendliness_owner_chain_and_difficulty_paths_1480_1615()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* target = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* actor_owner = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
-    walker* actor_root = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
-    walker* target_owner = myscreen->level_data.add_ob(Order::Living, FAMILY_DRUID);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* actor_owner = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
+    walker* actor_root = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
+    walker* target_owner = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_DRUID);
     TEST_ASSERT(actor && target && actor_owner && actor_root && target_owner, "fixtures created");
     if (!(actor && target && actor_owner && actor_root && target_owner))
         return;
 
-    SaveData save;
-    save.allied_mode = 1;
-    actor->sim_save = &save;
-    target->sim_save = &save;
+    GameWorld& world = og::runtime::current_session->myscreen_->world_;
+    world.allied_mode = 1;
 
     // Owner-chain traversal: actor -> actor_owner -> actor_root -> self.
     actor_owner->owner = actor_root;
@@ -1021,10 +988,10 @@ REGISTER_TEST(test_walker_round11_friendliness_owner_chain_and_difficulty_paths_
 
 void test_walker_round8_death_obmap_cleanup_and_act_control_fallthrough_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "walker created");
     if (!w)
         return;
@@ -1044,30 +1011,25 @@ void test_walker_round8_death_obmap_cleanup_and_act_control_fallthrough_paths()
     TEST_ASSERT_EQ(0, (int)w->attack_lunge, "act should clamp attack_lunge to zero");
     TEST_ASSERT_EQ(0, (int)w->hit_recoil, "act should clamp hit_recoil to zero");
 
-    // Exercise death() branch that removes from active obmap and alternate myobmap.
-    obmap spare_map;
-    spare_map.add(w, w->xpos, w->ypos);
-    w->myobmap = &spare_map;
+    // Exercise death() branch that removes the walker from the active obmap.
     w->dead = 1;
     w->death_called = 0;
-    const size_t active_before = myscreen->level_data.myobmap->size();
-    const size_t spare_before = spare_map.size();
+    const size_t active_before = og::runtime::current_session->myscreen_->world().myobmap->size();
     TEST_ASSERT(w->death(), "death should succeed with alternate myobmap");
-    TEST_ASSERT(spare_map.size() < spare_before, "death should remove from alternate myobmap");
-    TEST_ASSERT(myscreen->level_data.myobmap->size() <= active_before, "death should remove from active obmap");
+    TEST_ASSERT(og::runtime::current_session->myscreen_->world().myobmap->size() <= active_before, "death should remove from active obmap");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_round8_death_obmap_cleanup_and_act_control_fallthrough_paths);
 
 void test_walker_round13_act_command_short_circuit_and_switch_paths_625_707()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
     TEST_ASSERT(actor && foe && gen, "fixtures created");
     if (!(actor && foe && gen))
         return;
@@ -1100,17 +1062,17 @@ void test_walker_round13_act_command_short_circuit_and_switch_paths_625_707()
     actor->set_act_type(99);
     TEST_ASSERT(!actor->act(), "unknown act type should return false");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_round13_act_command_short_circuit_and_switch_paths_625_707);
 
 void test_walker_round14_distance_color_and_friendliness_modes_1480_1615()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* a = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* b = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* a = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* b = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(a && b, "fixtures created");
     if (!(a && b))
         return;
@@ -1129,14 +1091,12 @@ void test_walker_round14_distance_color_and_friendliness_modes_1480_1615()
     a->team_num = 3;
     TEST_ASSERT_EQ(88, (int)a->query_team_color(), "team color should map to team*16+40");
 
-    SaveData save;
-    a->sim_save = &save;
-    b->sim_save = &save;
+    GameWorld& world = og::runtime::current_session->myscreen_->world_;
     a->dead = 0;
     b->dead = 0;
 
     // Enemy mode (allied_mode == 0) compares team numbers.
-    save.allied_mode = 0;
+    world.allied_mode = 0;
     a->team_num = 1;
     b->team_num = 1;
     a->clear_myguy();
@@ -1148,7 +1108,7 @@ void test_walker_round14_distance_color_and_friendliness_modes_1480_1615()
     TEST_ASSERT_EQ(0, (int)a->is_friendly_to_team(0), "enemy mode should reject other teams");
 
     // Allied mode with both myguy pointers should return friendly.
-    save.allied_mode = 1;
+    world.allied_mode = 1;
     a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     b->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
     TEST_ASSERT_EQ(1, (int)a->is_friendly(b), "allied mode with both myguy pointers should be friendly");
@@ -1162,12 +1122,12 @@ REGISTER_TEST(test_walker_round14_distance_color_and_friendliness_modes_1480_161
 
 void test_walker_round15_set_difficulty_generator_and_non_player_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
-    walker* enemy = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* player = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
+    walker* enemy = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* player = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(gen && enemy && player, "fixtures created");
     if (!(gen && enemy && player))
         return;
@@ -1191,16 +1151,15 @@ REGISTER_TEST(test_walker_round15_set_difficulty_generator_and_non_player_paths)
 
 void test_walker_round16_act_random_no_foe_far_search_fallback_path()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
     TEST_ASSERT(actor != nullptr, "actor created");
     if (!actor)
         return;
 
     SequenceRandom rng({1}); // rng(4)!=0 => ACT_RANDOM else branch
-    actor->sim_rng = &rng;
     actor->set_act_type(ACT_RANDOM);
     actor->ani_type = ANI_WALK;
     actor->foe = nullptr;
@@ -1214,11 +1173,11 @@ REGISTER_TEST(test_walker_round16_act_random_no_foe_far_search_fallback_path);
 
 void test_walker_round17_query_next_to_and_fire_check_early_branches()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* blocker = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* blocker = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(actor && blocker, "fixtures created");
     if (!(actor && blocker))
         return;
@@ -1234,11 +1193,11 @@ void test_walker_round17_query_next_to_and_fire_check_early_branches()
     blocker->sizey = 12;
 
     TEST_ASSERT(actor->query_next_to(), "query_next_to should report blocked when adjacent tile is occupied");
-    myscreen->level_data.remove_ob(blocker);
+    og::runtime::current_session->myscreen_->world().remove_ob(blocker);
     TEST_ASSERT(!actor->query_next_to(), "query_next_to should report pass when adjacent tile is clear");
 
     // fire_check generator early return path (walker.cpp:943-944).
-    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
     TEST_ASSERT(gen != nullptr, "generator created");
     if (gen)
         TEST_ASSERT(gen->fire_check(1, 0), "generator fire_check should short-circuit true");
@@ -1250,7 +1209,7 @@ void test_walker_round17_query_next_to_and_fire_check_early_branches()
     TEST_ASSERT(!actor->fire_check(1, 0), "fire_check should fail when actor has no foe");
 
     // fire_check BIT_NO_RANGED early return path (walker.cpp:962-965).
-    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(foe != nullptr, "foe created");
     if (foe)
     {
@@ -1264,11 +1223,11 @@ REGISTER_TEST(test_walker_round17_query_next_to_and_fire_check_early_branches);
 
 void test_walker_round18_animate_teleport_and_skelgrow_completion_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
     // ANI_TELE_OUT + family teleport handler branch (walker.cpp:817-821).
-    walker* mage = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    walker* mage = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
     TEST_ASSERT(mage != nullptr, "mage created");
     if (mage)
     {
@@ -1280,7 +1239,7 @@ void test_walker_round18_animate_teleport_and_skelgrow_completion_paths()
     }
 
     // ANI_SKEL_GROW completion branch (walker.cpp:807-815).
-    walker* skeleton = myscreen->level_data.add_ob(Order::Living, FAMILY_SKELETON);
+    walker* skeleton = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SKELETON);
     TEST_ASSERT(skeleton != nullptr, "skeleton created");
     if (skeleton)
     {
@@ -1294,12 +1253,12 @@ REGISTER_TEST(test_walker_round18_animate_teleport_and_skelgrow_completion_paths
 
 void test_walker_round19_move_myguy_fire_callback_and_act_random_no_foe_paths()
 {
-    myscreen->level_data.create_new_grid();
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 
-    walker* source = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* target = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
-    walker* target2 = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* source = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    walker* target2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT(source && target && target2, "fixtures created");
     if (!(source && target && target2))
         return;
@@ -1330,10 +1289,10 @@ void test_walker_round19_move_myguy_fire_callback_and_act_random_no_foe_paths()
     TEST_ASSERT(source->fire() == nullptr, "soldier fire should return nullptr when on_fire_weapon rejects");
 
     // Drive ACT_RANDOM -> act_random() no-foe path so it queues random walk.
-    myscreen->level_data.remove_ob(target);
-    myscreen->level_data.remove_ob(target2);
-    SequenceRandom rng({0, 1, 0, 1, 2});
-    source->sim_rng = &rng;
+    og::runtime::current_session->myscreen_->world().remove_ob(target);
+    og::runtime::current_session->myscreen_->world().remove_ob(target2);
+    TEST_ASSERT(current_game != nullptr && current_game->world != nullptr, "current_game world context must be active");
+    current_game->world->rng_.state_ = 0;
     source->foe = nullptr;
     source->stats()->clear_command();
     source->set_act_type(ACT_RANDOM);
@@ -1341,6 +1300,6 @@ void test_walker_round19_move_myguy_fire_callback_and_act_random_no_foe_paths()
     const bool acted = source->act();
     TEST_ASSERT(!acted, "ACT_RANDOM act_random no-foe subpath should hit final false return");
 
-    myscreen->level_data.delete_objects();
+    og::runtime::current_session->myscreen_->world().delete_objects();
 }
 REGISTER_TEST(test_walker_round19_move_myguy_fire_callback_and_act_random_no_foe_paths);

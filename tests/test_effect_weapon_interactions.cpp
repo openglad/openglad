@@ -1,15 +1,15 @@
-#include <openglad/entities/guy.h>
-#include <openglad/runtime/guy_create.h>
-#include <openglad/entities/walker.h>
-#include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/guy_create.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <unordered_set>
 #include <vector>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 static std::unordered_set<walker*> snapshot_ptrs(const std::list<std::unique_ptr<walker>>& lst)
 {
@@ -20,21 +20,21 @@ static std::unordered_set<walker*> snapshot_ptrs(const std::list<std::unique_ptr
     return out;
 }
 
-static void remove_new_objects(LevelData& level,
+static void remove_new_objects(LevelRuntimeData& level,
                                const std::unordered_set<walker*>& ob_before,
                                const std::unordered_set<walker*>& fx_before,
                                const std::unordered_set<walker*>& weap_before)
 {
     std::vector<walker*> to_remove;
-    to_remove.reserve(level.oblist.size() + level.fxlist.size() + level.weaplist.size());
+    to_remove.reserve(level.world().oblist.size() + level.world().fxlist.size() + level.world().weaplist.size());
 
-    for (auto& up : level.oblist)
+    for (auto& up : level.world().oblist)
         if (up && !ob_before.contains(up.get()))
             to_remove.push_back(up.get());
-    for (auto& up : level.fxlist)
+    for (auto& up : level.world().fxlist)
         if (up && !fx_before.contains(up.get()))
             to_remove.push_back(up.get());
-    for (auto& up : level.weaplist)
+    for (auto& up : level.world().weaplist)
         if (up && !weap_before.contains(up.get()))
             to_remove.push_back(up.get());
 
@@ -47,7 +47,7 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = guy_create_walker_owned(g, myscreen);
+    auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w)
         w->setxy(100, 100);
     return w;
@@ -55,14 +55,14 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team)
 
 void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enemies()
 {
-    TEST_ASSERT(myscreen != nullptr, "myscreen exists");
-    if (!myscreen)
+    TEST_ASSERT(og::runtime::current_session->myscreen_ != nullptr, "myscreen exists");
+    if (!og::runtime::current_session->myscreen_)
         return;
 
-    LevelData& level = myscreen->level_data;
-    auto ob_before = snapshot_ptrs(level.oblist);
-    auto fx_before = snapshot_ptrs(level.fxlist);
-    auto weap_before = snapshot_ptrs(level.weaplist);
+    LevelRuntimeData& level = og::runtime::current_session->myscreen_->level_runtime_data();
+    auto ob_before = snapshot_ptrs(level.world().oblist);
+    auto fx_before = snapshot_ptrs(level.world().fxlist);
+    auto weap_before = snapshot_ptrs(level.world().weaplist);
 
     // Owner (team 1) for the effects.
     auto owner = make_living(FAMILY_SOLDIER, 1);
@@ -71,10 +71,10 @@ void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enem
         return;
     walker* owner_raw = owner.get();
     owner_raw->setxy(100, 100);
-    level.oblist.push_back(std::move(owner));
+    level.world().oblist.push_back(std::move(owner));
 
     // A friendly weapon placed in oblist (screen::find_foe_weapons_in_range iterates oblist).
-    auto weap = level.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
+    auto weap = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weap != nullptr, "weapon created");
     if (!weap) {
         remove_new_objects(level, ob_before, fx_before, weap_before);
@@ -83,7 +83,7 @@ void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enem
     weap->team_num = 1;     // friendly to the effect
     weap->damage = 2.0f;    // ensures hitpoint subtraction takes effect
     weap->setxy(100, 100);  // within range
-    level.oblist.push_back(std::move(weap));
+    level.world().oblist.push_back(std::move(weap));
 
     // An enemy living within range for find_foes_in_range.
     walker* enemy = level.add_ob(Order::Living, FAMILY_ORC);

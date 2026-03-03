@@ -1,11 +1,11 @@
-#include <openglad/ui/results_screen.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/interface/ui/results_screen.h>
+#include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <map>
 
-extern screen* myscreen;
+// myscreen is now a macro defined in base.h (via game_session.h)
 
 void test_results_screen_ending_branches_smoke()
 {
@@ -15,12 +15,12 @@ void test_results_screen_ending_branches_smoke()
     (void)results_screen(1, 2);
 
     // Victory, completed vs not completed.
-    myscreen->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     // Make sure completion state is deterministic: clear and set once.
-    myscreen->save_data.current_levels.clear();
+    og::runtime::current_session->myscreen_->save_data.current_levels.clear();
     (void)results_screen(0, 2); // not completed -> "Victory!"
 
-    myscreen->save_data.current_levels[myscreen->save_data.current_campaign] = myscreen->save_data.scen_num;
+    og::runtime::current_session->myscreen_->save_data.current_levels[og::runtime::current_session->myscreen_->save_data.current_campaign] = og::runtime::current_session->myscreen_->save_data.scen_num;
     (void)results_screen(0, 2); // completed -> "Traveling on..."
 
     // Special defeat type.

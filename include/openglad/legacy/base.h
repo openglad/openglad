@@ -16,6 +16,9 @@
  */
 #pragma once
 
+#ifndef OPNEGLAD_SHARED_BASE_H
+#define OPNEGLAD_SHARED_BASE_H
+
 // BASE definitions (perhaps this should be broken up some more
 
 /* ChangeLog
@@ -33,7 +36,7 @@
 #include <cctype>
 #include <openglad/legacy/soundob.h> // sound constants (always needed)
 #include <openglad/core/util.h>
-#include <openglad/data/gparser.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/legacy/pixdefs.h>
 
 // Standard integer type aliases (previously from SDL_stdinc.h)
@@ -86,8 +89,10 @@ struct meminfo
 	unsigned Reserved[3];
 };
 
-// Observer pointer (non-owning). Owned by og::runtime::GameSession.
-extern screen * myscreen;
+// Access session state via og::runtime::current_session->member_ directly.
+#include <openglad/interface/session_state.h>
+
+void set_game_speed(float factor);
 
 inline constexpr int MAX_LEVELS = 500; // Maximum number of scenarios allowed ..
 
@@ -106,8 +111,8 @@ inline constexpr int HELP_WIDTH = 100;   // maximum length of display line
 // must not call these.
 namespace og::io { class OgFile; }
 short   fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& infile);
-short   read_campaign_intro(screen *myscreen);
-short   read_scenario(screen  *myscreen);
+short   read_campaign_intro(screen *scr);
+short   read_scenario(screen  *scr);
 std::string read_one_line(og::io::OgFile& infile, short length);
 
 //color defines:
@@ -153,7 +158,7 @@ inline constexpr unsigned char MAX_MP_COLOR = 64; // When mp's are over max :)
 
 // Game constants (families, facings, commands, etc.) now live in core/constants.h
 #include <openglad/core/constants.h>
-#include <openglad/core/stats.h>
+#include <openglad/gameplay/statistics.h>
 
 inline constexpr int STANDARD_TEXT_TIME = 75;   // how many cycles to display text?
 inline constexpr const char* TEXT_1 = "text.pix";       // standard text pixie
@@ -182,12 +187,12 @@ enum class LoadSavedGameError
     FallbackLevelLoadFailed
 };
 
-short load_saved_game(const char *filename, screen  *myscreen);
-LoadSavedGameError load_saved_game_with_error(const char *filename, screen *myscreen);
+short load_saved_game(const char *filename, screen  *scr);
+LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scr);
 
 #define OUTLINE_INVISIBLE query_team_color() //
 
-#include <openglad/data/pixie_data.h>
+#include <openglad/resources/pixie_data.h>
 PixieData read_pixie_file(const char  * filename);
 
 // Some stuff for palette
@@ -201,3 +206,5 @@ using palette = rgb[256];
 void set_vga_palette(palette p);
 rgb set_rgb(char r, char g, char b);
 short read_palette(FILE  *f, palette p);
+
+#endif // OPNEGLAD_SHARED_BASE_H
