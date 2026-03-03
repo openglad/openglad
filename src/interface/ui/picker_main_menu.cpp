@@ -30,10 +30,8 @@
 
 #ifndef DISABLE_MULTIPLAYER
 constexpr int OPTIONS_BUTTON_INDEX = 10;
-constexpr int MAINMENU_BUTTON_COUNT = 11;
 #else
 constexpr int OPTIONS_BUTTON_INDEX = 5;
-constexpr int MAINMENU_BUTTON_COUNT = 6;
 #endif
 
 #include "picker_sdl_defs.h"
@@ -154,8 +152,8 @@ Sint32 mainmenu(Sint32 arg1)
 
 	// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
-	button* buttons = mainmenu_buttons;
-	int num_buttons = MAINMENU_BUTTON_COUNT;
+	button* buttons = picker_mainmenu_buttons();
+	int num_buttons = picker_mainmenu_button_count();
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 	

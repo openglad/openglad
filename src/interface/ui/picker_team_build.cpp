@@ -179,8 +179,8 @@ Sint32 create_team_menu(Sint32 arg1)
 	
 	text& mytext = og::runtime::current_session->myscreen_->text_normal;
 	
-	button* buttons = createmenu_buttons;
-	int num_buttons = 10;
+	button* buttons = picker_createmenu_buttons();
+	int num_buttons = picker_createmenu_button_count();
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 	draw_backdrop();
@@ -252,8 +252,8 @@ Sint32 create_view_menu(Sint32 arg1)
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 
-	button* buttons = viewteam_buttons;
-	int num_buttons = 2;
+	button* buttons = picker_viewteam_buttons();
+	int num_buttons = picker_viewteam_button_count();
 	int highlighted_button = 1;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
@@ -1016,13 +1016,12 @@ Sint32 create_train_menu(Sint32 arg1)
 	return MENU_REDRAW;
 }
 
-static Sint32 create_slot_menu(button* buttons, const char* title)
+static Sint32 create_slot_menu(button* buttons, int num_buttons, const char* title)
 {
 	Sint32 retvalue=0;
 	text& menutext = og::runtime::current_session->myscreen_->text_normal;
 
 	// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-	int num_buttons = 11;
 	int highlighted_button = 10;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
@@ -1084,12 +1083,14 @@ static Sint32 create_slot_menu(button* buttons, const char* title)
 
 Sint32 create_load_menu(Sint32 /*arg1*/)
 {
-	return create_slot_menu(loadteam_buttons, "Gladiator: Load Game");
+	button* buttons = picker_loadteam_buttons();
+	return create_slot_menu(buttons, picker_loadteam_button_count(), "Gladiator: Load Game");
 }
 
 Sint32 create_save_menu(Sint32 /*arg1*/)
 {
-	return create_slot_menu(saveteam_buttons, "Gladiator: Save Game");
+	button* buttons = picker_saveteam_buttons();
+	return create_slot_menu(buttons, picker_saveteam_button_count(), "Gladiator: Save Game");
 }
 
 // --- Session-based thin wrappers for button callbacks ---

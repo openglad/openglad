@@ -393,9 +393,14 @@ void picker_cleanup_resources()
     clear_allbuttons();
 
 	pks().main_columns_pix.reset();
-	pks().main_columns_data.free();
+    pks().main_columns_data.free();
     pks().main_title_logo_pix.reset();
     pks().main_title_logo_data.free();
+    pks().mainmenu_buttons.clear();
+    pks().createmenu_buttons.clear();
+    pks().viewteam_buttons.clear();
+    pks().saveteam_buttons.clear();
+    pks().loadteam_buttons.clear();
     pks().main_options_buttons.clear();
     pks().control_options_buttons.clear();
     pks().details_buttons.clear();
@@ -419,7 +424,7 @@ void picker_quit()
 
 #ifdef __EMSCRIPTEN__
 // Web build: Replace QUIT with HELP (QUIT doesn't make sense in browser)
-button mainmenu_buttons[] =
+static const button k_mainmenu_buttons[] =
     {
         button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
         button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=5}),
@@ -440,7 +445,7 @@ button mainmenu_buttons[] =
 #define OPTIONS_BUTTON_INDEX 10
 
 #else // Native build
-button mainmenu_buttons[] =
+static const button k_mainmenu_buttons[] =
     {
         button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
         button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=5}),
@@ -465,7 +470,7 @@ button mainmenu_buttons[] =
 
 #ifdef __EMSCRIPTEN__
 // Web build without multiplayer: Replace QUIT with HELP
-button mainmenu_buttons[] =
+static const button k_mainmenu_buttons[] =
     {
         button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 70, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
         button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 95, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
@@ -478,7 +483,7 @@ button mainmenu_buttons[] =
 #define OPTIONS_BUTTON_INDEX 5
 
 #else // Native build without multiplayer
-button mainmenu_buttons[] =
+static const button k_mainmenu_buttons[] =
     {
         button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 70, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
         button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 95, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
@@ -547,7 +552,7 @@ static const button k_control_options_buttons[] =
 };
 
 // beginmenu (first menu of new game), create_team_menu
-button createmenu_buttons[] =
+static const button k_createmenu_buttons[] =
     {
         button("view_team", "VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, button_action_id(ButtonAction::CreateViewMenu), -1, MenuNav{.down=3, .right=1}),
         button("train_team", "TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, button_action_id(ButtonAction::CreateTrainMenu), -1, MenuNav{.down=4, .left=0, .right=2}),
@@ -563,7 +568,7 @@ button createmenu_buttons[] =
 
     };
 
-button viewteam_buttons[] =
+static const button k_viewteam_buttons[] =
     {
         //  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, button_action_id(ButtonAction::CreateTrainMenu), -1},
         //  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, button_action_id(ButtonAction::CreateHireMenu), -1},
@@ -614,7 +619,7 @@ static const button k_hiremenu_buttons[] =
     };
 
 
-button saveteam_buttons[] =
+static const button k_saveteam_buttons[] =
     {
         button("save_slot_1", "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, button_action_id(ButtonAction::DoSave), 1, MenuNav{.up=10, .down=1}),
         button("save_slot_2", "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, button_action_id(ButtonAction::DoSave), 2, MenuNav{.up=0, .down=2}),
@@ -630,7 +635,7 @@ button saveteam_buttons[] =
 
     };
 
-button loadteam_buttons[] =
+static const button k_loadteam_buttons[] =
     {
         button("load_slot_1", "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, button_action_id(ButtonAction::DoLoad), 1, MenuNav{.up=10, .down=1}),
         button("load_slot_2", "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, button_action_id(ButtonAction::DoLoad), 2, MenuNav{.up=0, .down=2}),
@@ -654,6 +659,61 @@ void reset_mutable_button_layout(std::vector<button>& out, const button (&defaul
     out.assign(defaults, defaults + N);
 }
 } // namespace
+
+button* picker_mainmenu_buttons()
+{
+    reset_mutable_button_layout(pks().mainmenu_buttons, k_mainmenu_buttons);
+    return pks().mainmenu_buttons.data();
+}
+
+int picker_mainmenu_button_count()
+{
+    return static_cast<int>(pks().mainmenu_buttons.size());
+}
+
+button* picker_createmenu_buttons()
+{
+    reset_mutable_button_layout(pks().createmenu_buttons, k_createmenu_buttons);
+    return pks().createmenu_buttons.data();
+}
+
+int picker_createmenu_button_count()
+{
+    return static_cast<int>(pks().createmenu_buttons.size());
+}
+
+button* picker_viewteam_buttons()
+{
+    reset_mutable_button_layout(pks().viewteam_buttons, k_viewteam_buttons);
+    return pks().viewteam_buttons.data();
+}
+
+int picker_viewteam_button_count()
+{
+    return static_cast<int>(pks().viewteam_buttons.size());
+}
+
+button* picker_saveteam_buttons()
+{
+    reset_mutable_button_layout(pks().saveteam_buttons, k_saveteam_buttons);
+    return pks().saveteam_buttons.data();
+}
+
+int picker_saveteam_button_count()
+{
+    return static_cast<int>(pks().saveteam_buttons.size());
+}
+
+button* picker_loadteam_buttons()
+{
+    reset_mutable_button_layout(pks().loadteam_buttons, k_loadteam_buttons);
+    return pks().loadteam_buttons.data();
+}
+
+int picker_loadteam_button_count()
+{
+    return static_cast<int>(pks().loadteam_buttons.size());
+}
 
 button* picker_main_options_buttons()
 {

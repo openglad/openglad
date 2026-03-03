@@ -8,17 +8,21 @@ inline constexpr int32_t MENU_OK     = 4;
 
 inline constexpr int32_t BUTTON_HEIGHT = 15;
 
-// Forward declare button for extern arrays.
+// Forward declare button for menu descriptor arrays.
 struct button;
 
-// Button arrays defined in picker.cpp.
-extern button mainmenu_buttons[];
-extern button createmenu_buttons[];
-extern button viewteam_buttons[];
-extern button saveteam_buttons[];
-extern button loadteam_buttons[];
-
 // Per-session mutable button descriptors (Phase 12).
+button* picker_mainmenu_buttons();
+int picker_mainmenu_button_count();
+button* picker_createmenu_buttons();
+int picker_createmenu_button_count();
+button* picker_viewteam_buttons();
+int picker_viewteam_button_count();
+button* picker_saveteam_buttons();
+int picker_saveteam_button_count();
+button* picker_loadteam_buttons();
+int picker_loadteam_button_count();
+
 button* picker_main_options_buttons();
 int picker_main_options_button_count();
 button* picker_control_options_buttons();
