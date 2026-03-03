@@ -2,7 +2,7 @@
 
 OpenGlad is a cross-platform C++ port of the DOS game **Gladiator** (1995) — a top-down, gauntlet-style action RPG with up to 4-player split-screen multiplayer, 15+ character classes, a built-in scenario editor, and campaign support. Licensed under GPL v2.
 
-The codebase has been through an aggressive modernization (branch `cpp-modernization-plan`) that introduced modular architecture with enforced dependency rules, RAII ownership, a deterministic simulation layer, and a modern CMake build system targeting C++20.
+The codebase has been through an aggressive modernization (branch `cpp-modernization-plan`) that introduced modular architecture with enforced dependency rules, RAII ownership, a deterministic simulation layer, concurrent multi-session support, and a modern CMake build system targeting C++20.
 
 ---
 
@@ -12,6 +12,8 @@ The codebase has been through an aggressive modernization (branch `cpp-moderniza
 - [Module Structure](#module-structure)
 - [Dependency Direction Rules](#dependency-direction-rules)
 - [Key Data Structures](#key-data-structures)
+- [Concurrent Sessions](#concurrent-sessions)
+- [Data-Driven Family System](#data-driven-family-system)
 - [Game Loop](#game-loop)
 - [Campaigns, Levels, and Scenarios](#campaigns-levels-and-scenarios)
 - [Build System](#build-system)
@@ -39,8 +41,8 @@ openglad/
 │   ├── interface/          screen/view/render/text, picker/help/editor/results UI
 │   └── platform/           sdl runtime/session/loop/audio/video, text client
 │
-├── tests/                  Integration test suite (~140 test files)
-│   └── unit/               Headless unit tests (no SDL)
+├── tests/                  Integration test suite (~172 test files, ~1331 cases)
+│   └── unit/               Headless unit tests (~10 files, ~152 cases)
 │
 ├── third_party/            Vendored external libraries
 │   ├── physfs/             PhysicsFS 3.2.0 (virtual filesystem)
@@ -232,21 +234,35 @@ screen
 
 ### Session and Context
 
-**`GameSession`** is the RAII root that owns all runtime state:
+**`GameSession`** is the RAII root that owns all runtime state. Multiple sessions can coexist in a single process (see [Concurrent Sessions](#concurrent-sessions)).
 
 ```
 GameSession
-├── screen_owner_  — unique_ptr<screen>
-├── ctx_           — GameContext (dependency injection)
-│   ├── game_screen — pointer to screen
-│   ├── prefs      — unique_ptr<options>
-│   ├── config     — cfg_store*
-│   ├── rng        — IRandom* (injectable: ProductionRandom, SeededRandom, FixedRandom)
-│   ├── input      — InputState (per-frame snapshot)
-│   └── sim_events — unique_ptr<SimEventLog> (event accumulator for sim/render decoupling)
-└── session pointers — `myscreen_` and `theprefs_` are owned by SessionState and
-   accessed directly via `og::runtime::current_session`
+├── screen_owner_       — unique_ptr<screen>
+├── session_surface_    — SDL_Surface* (per-session 320x200 render target; null if display owner)
+├── ctx_                — GameContext (dependency injection)
+│   ├── game_screen     — pointer to screen
+│   ├── prefs           — unique_ptr<options>
+│   ├── config          — cfg_store*
+│   ├── rng             — IRandom* (injectable: ProductionRandom, SeededRandom, FixedRandom)
+│   ├── input           — InputState (per-frame snapshot)
+│   └── sim_events      — unique_ptr<SimEventLog> (event accumulator for sim/render decoupling)
+├── production_rng_     — default RNG (used unless allocate_seeded_rng)
+├── seeded_rng_         — unique_ptr<SeededRandom> (optional, per-session deterministic RNG)
+└── session pointers    — `myscreen_` and `theprefs_` owned by SessionState,
+    accessed via `og::runtime::current_session`
 ```
+
+**`GameSession::Config`** controls session creation:
+
+| Field | Default | Purpose |
+|-------|---------|---------|
+| `numviews` | 1 | Number of split-screen views |
+| `allocate_screen` | true | Create a screen object |
+| `create_display` | true | Own the SDL display (false = sub-session sharing a window) |
+| `install_legacy_globals` | true | Install `myscreen`/`theprefs` globals |
+| `allocate_seeded_rng` | false | Create a per-session deterministic RNG |
+| `rng_seed` | 0 | Seed for the per-session RNG |
 
 ### Simulation Events and Event Log
 
@@ -283,6 +299,99 @@ Runtime layer (after SimWorld::tick() returns)
 ```
 
 **`SimEventLog`** is owned by `GameContext` (`ctx().sim_events`), making it globally accessible to entity code without passing extra parameters through the call chain.
+
+---
+
+## Concurrent Sessions
+
+The engine supports multiple `GameSession` instances coexisting in a single process. This enables the demo binary (12 AI-controlled games in a grid) and opens the door for future multiplayer server architectures.
+
+### SessionScope RAII Guard
+
+`GameSession::SessionScope` is a nested RAII class that makes a session "active" by swapping thread-local globals:
+
+```cpp
+{
+    auto scope = session.activate();  // saves current globals, installs session's globals
+    game_frame(screen, state);        // all code sees this session's screen/prefs/ctx
+}                                     // ~SessionScope restores previous globals
+```
+
+**On activation:**
+- Saves current `thread_local current_session` and `current_game`
+- Installs the session's globals
+- If the session has a `session_surface_`, swaps `E_Screen->render` to point to it
+
+**On destruction:**
+- Restores the previous render surface (if swapped)
+- Restores previous session globals
+
+### Per-Session Render Surfaces
+
+Sessions that don't own the display (`create_display=false`) allocate a private 320x200 32-bit `SDL_Surface`. When activated via `SessionScope`, `E_Screen->render` is redirected to this surface, so all rendering calls write to the session's private buffer instead of the shared display.
+
+The display-owning "host" session renders directly to the display and doesn't allocate a separate surface.
+
+### Demo Binary (`openglad_demo`)
+
+Demonstrates concurrent sessions by running N independent AI-controlled games in a grid layout:
+
+```
+Main thread                          Worker threads (1 per session)
+─────────                            ──────────────────────────────
+Signal workers to tick        ──→    game_frame() (sim only, no render)
+Wait for completion           ←──    Signal done
+For each session:
+  SessionScope activate
+  Render to session_surface_
+Composite all surfaces into grid
+SDL_RenderPresent (once)
+```
+
+- Queries native display resolution to calculate grid size (e.g., 4×3 on 1280×600+)
+- 1 host session (owns SDL window) + N sub-sessions (headless render targets)
+- Each sub-session gets a unique random seed and random scenario assignment
+- All sessions run in spectator mode (0-player, fully AI-controlled)
+
+### Spectator Mode (0-Player)
+
+Setting `save_data.numplayers = 0` enables spectator mode:
+
+- Uses 1 viewscreen (camera only, no player control)
+- Skips all player input processing (movement, fire, special, yell)
+- Only `InputAction::SwitchChar` works (cycles camera target)
+- All characters remain AI-controlled
+
+In the picker UI, right-clicking the player count button sets spectator mode, displaying a "SPECTATOR" label.
+
+---
+
+## Data-Driven Family System
+
+Character classes are defined via `FamilyDescriptor` structs in a central registry, replacing the old scattered hardcoded arrays and switch statements.
+
+```cpp
+struct FamilyDescriptor {
+    int family_id;
+    const char* name;              // "SOLDIER", "ELF", etc.
+    const char* short_name;        // abbreviated picker label
+    std::int32_t base_stats[6];    // STR, DEX, CON, INT, ARMOR, LVL
+    std::int32_t hiring_cost;
+    float derived_bonuses[8];      // HP, MP, ATK, RATK, RNG, DEF, SPD, ATKSPD
+    const char* pix_filename;      // sprite file ("monk.pix")
+    const char* description;       // multiline UI text
+    bool is_playable;
+    int playable_order;
+    // ... callback function pointers for specials, AI, death, etc.
+};
+```
+
+**Adding a new character class:** Create `family_foo.cpp` with a `FamilyDescriptor` and register it in `family_registry.cpp`. No parallel arrays or scattered switch statements to update.
+
+**Key files:**
+- `include/openglad/gameplay/families/family_descriptor.h` — `FamilyDescriptor` struct
+- `include/openglad/gameplay/families/family_registry.h` — registry lookup API
+- `src/gameplay/families/` — per-family descriptor files + registry
 
 ---
 
@@ -384,7 +493,7 @@ save_data
 ├── current_level           — next level to play
 ├── completed_levels        — set of finished level IDs
 ├── score, cash             — team resources
-└── numplayers              — 1–4 player count
+└── numplayers              — 0–4 player count (0 = spectator mode)
 ```
 
 Save slots are numbered 0–9. Slot 0 is the auto-save. The game saves after each completed level.
@@ -399,7 +508,7 @@ Campaigns can be distributed as ZIP archives. The `zip_api` module handles creat
 
 ### CMake (Primary)
 
-The project uses CMake 3.25+ with preset-based configuration. The root `CMakeLists.txt` defines all module targets, external library targets, and test binaries.
+The project uses CMake 3.25+ with preset-based configuration. The root `CMakeLists.txt` defines all component targets, external library targets, and test binaries.
 
 **Configure and build:**
 ```bash
@@ -422,24 +531,32 @@ ctest --preset ci-test         # Run tests
 
 ### CMake Targets
 
-**Module libraries** (native builds):
-`og_core`, `og_sim`, `og_data`, `og_entities`, `og_io`, `og_runtime`, `og_render`, `og_input`, `og_ui`, `og_platform`
+**Component libraries** (build/dependency enforcement level):
+`og_core`, `og_gameplay`, `og_resources`, `og_interface`, `og_platform_sdl`
 
 **External libraries:**
 `og_ext_micropather`, `og_ext_yam`, `og_ext_yaml`, `og_ext_zlib`, `og_ext_libzip`, `og_ext_physfs`
 
 **Aggregate target:**
-`og_game` — INTERFACE library linking all modules with `--start-group`/`--end-group` for cyclic resolution.
+`og_game` — INTERFACE library linking all component libraries with `--start-group`/`--end-group` for cyclic resolution.
 
 **Executables:**
 - `openglad` — The game
 - `openscen` — The level editor (same source as openglad, compiled with `-DOPENSCEN`)
+- `openglad_demo` — Multi-session demo (N concurrent AI-controlled games in a grid)
+- `openglad_text` — Headless text-mode client (no SDL)
 
-**Test executables:**
-- `og_unit_tests` — Headless unit tests (no SDL/video init)
-- `openglad_test` — Full integration test suite (~140 tests)
-- `og_data_tests` — Data/IO module tests (subset)
-- `og_runtime_tests` — Runtime module tests (subset)
+**Test executables (10 CTest entries):**
+- `og_unit_tests` — Headless unit tests (~152 cases, no SDL/video init)
+- `openglad_test` — Full integration test suite (~1331 cases)
+- `openglad_test_menu` — Menu-specific integration tests (filtered subset)
+- `openglad_test_picker` — Picker-specific integration tests (filtered subset)
+- `og_data_tests` — Data/IO module tests
+- `og_runtime_tests` — Runtime module tests
+- `openglad_text_sim` — Text client simulation tests
+- `openglad_text_picker_interactive` — Text client picker tests
+- `openglad_text_unsupported` — Text client unsupported-operation tests
+- `emscripten_build_test` — WebAssembly build verification (skipped on native)
 
 ### Compiler Settings
 
@@ -504,13 +621,17 @@ Key flags: `-sUSE_SDL=2`, `-sUSE_SDL_MIXER=2`, `-sASYNCIFY`, `-sALLOW_MEMORY_GRO
 ```
 ┌─────────────────────────────────────────┐
 │         End-to-End / Smoke Tests        │  Full game flows, menu navigation
-│         (openglad_test, ~140 tests)     │  Requires SDL (offscreen driver)
+│       (openglad_test, ~1331 cases)      │  Requires SDL (offscreen driver)
 ├─────────────────────────────────────────┤
 │         Module Integration Tests        │  Data/IO, runtime subsystems
 │   (og_data_tests, og_runtime_tests)     │  Requires SDL (offscreen driver)
 ├─────────────────────────────────────────┤
+│         Text Client Tests              │  Headless simulation, picker
+│   (openglad_text_sim, etc.)            │  No display required
+├─────────────────────────────────────────┤
 │           Headless Unit Tests           │  Pure logic, no SDL init
-│           (og_unit_tests)               │  GameSession RAII, sim determinism
+│        (og_unit_tests, ~152 cases)      │  GameSession RAII, sim determinism,
+│                                         │  session isolation, spectator mode
 └─────────────────────────────────────────┘
 ```
 
@@ -566,12 +687,14 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | File | Purpose |
 |------|---------|
 | `src/glad.cpp` | **Entry point.** `main()`, Emscripten frame wrapper, game state machine |
+| `src/platform/sdl/game_session.cpp` | RAII root: creates screen, prefs, SessionScope, per-session surfaces |
+| `src/platform/sdl/demo.cpp` | Multi-session demo: N concurrent AI games in a grid |
 | `src/runtime/screen.cpp` | Game world: `act()` delegates to `SimWorld::tick()`, `redraw()` renders + dispatches events |
 | `src/runtime/game_loop.cpp` | Per-frame loop: `game_frame()` and `game_frame_with_result()` |
-| `src/runtime/game_session.cpp` | RAII root: creates screen, prefs, installs legacy globals |
 | `src/runtime/game_context.cpp` | `GameContext` and `ctx()` global accessor |
 | `src/entities/walker.cpp` | Base entity class — all game objects inherit from this |
 | `src/entities/living.cpp` | AI behavior for enemies and NPCs |
+| `src/gameplay/families/` | Data-driven `FamilyDescriptor` per-class files + registry |
 | `src/ui/picker.cpp` | Team selection UI — main menu loop |
 | `src/ui/level_editor.cpp` | Scenario editor (openscen binary) |
 | `src/render/video.cpp` | SDL2 graphics layer — pixel buffer management |
@@ -582,8 +705,11 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `src/sim/sim_world.cpp` | Live game simulation tick (extracted from `screen::act()`) |
 | `src/sim/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
 | `src/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
-| `CMakeLists.txt` | Build system — module targets, test binaries, install rules |
+| `include/openglad/platform/game_session.h` | GameSession + SessionScope + Config definitions |
+| `include/openglad/gameplay/families/family_descriptor.h` | `FamilyDescriptor` struct for data-driven classes |
+| `include/openglad/gameplay/families/family_registry.h` | Family registry lookup API |
+| `CMakeLists.txt` | Build system — component targets, test binaries, install rules |
 | `CMakePresets.json` | Build presets for dev, CI, and web |
-| `docs/architecture-rules.md` | Enforced module dependency rules |
+| `docs/architecture-rules.md` | Enforced component dependency rules |
 | `tests/test_main.cpp` | Integration test runner entry point |
 | `tests/unit/unit_main.cpp` | Unit test runner entry point |
