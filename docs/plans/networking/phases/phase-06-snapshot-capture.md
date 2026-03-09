@@ -1,6 +1,6 @@
 # Phase 6: Snapshot Capture (World -> Snapshot)
 
-> **See also:** [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Phase 2 (bug fix prerequisites)](phase-02-cross-reference-ids.md) | [Context](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Phase 2 (bug fix prerequisites)](phase-02-cross-reference-ids.md) | [Context](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Read a live GameWorld and produce a WorldSnapshot.
 

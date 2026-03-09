@@ -1,6 +1,6 @@
 # Phase 4: InputState Serialization
 
-> **See also:** [Context & Key Decisions](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Context & Key Decisions](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 `InputState` is what clients send to the server every tick. Defined at `include/openglad/gameplay/input_state.h`.
 

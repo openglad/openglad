@@ -1,6 +1,6 @@
 # Phase 15: Split `screen::act()` Into Sub-Methods (Pure Refactor)
 
-> **See also:** [Phase 14 (GameServer/GameClient)](phase-14-server-client.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 14 (GameServer/GameClient)](phase-14-server-client.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Extract the internals of `screen::act()` into three new methods, leaving `screen::act()` as a thin wrapper that calls them in sequence. **All ~894 existing tests pass unchanged** — this is a behavior-identical refactor.
 

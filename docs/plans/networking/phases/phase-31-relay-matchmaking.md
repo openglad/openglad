@@ -1,6 +1,6 @@
 # Phase 31: Relay Server + Matchmaking (Cloudflare Workers)
 
-> **See also:** [Phase 28 (Join Game UI)](phase-28-join-game-ui.md) | [Phase 24 (WebSocket Server)](phase-24-websocket-server.md) | [Context (Bandwidth Budget)](../common/context.md) | [Execution Order](../common/execution-order.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 28 (Join Game UI)](phase-28-join-game-ui.md) | [Phase 24 (WebSocket Server)](phase-24-websocket-server.md) | [Context (Bandwidth Budget)](docs/plans/networking/common/context.md) | [Execution Order](docs/plans/networking/common/execution-order.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Players behind NAT can't host without port forwarding. A lightweight relay server sidesteps this entirely — both host and joiner connect outbound to the relay, which forwards traffic between them. Deployed on Cloudflare Workers for global edge presence, zero infrastructure management, and free/cheap tier.
 

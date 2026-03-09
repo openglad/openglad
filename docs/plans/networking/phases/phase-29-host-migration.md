@@ -1,6 +1,6 @@
 # Phase 29: Host Migration (Lobby Only)
 
-> **See also:** [Phase 20 (Lobby Server)](phase-20-lobby-server.md) | [Context (Known UX Limitations)](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 20 (Lobby Server)](phase-20-lobby-server.md) | [Context (Known UX Limitations)](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Formalize first-client-is-host with migration on disconnect **in the lobby**.
 

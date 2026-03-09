@@ -1,6 +1,6 @@
 # Phase 14: GameServer and GameClient
 
-> **See also:** [Context & Key Decisions](../common/context.md) | [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Phase 13 (InProcessTransport)](phase-13-inprocess-transport.md) | [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Context & Key Decisions](docs/plans/networking/common/context.md) | [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Phase 13 (InProcessTransport)](phase-13-inprocess-transport.md) | [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 The core server-authoritative objects. This is the convergence point where everything comes together.
 

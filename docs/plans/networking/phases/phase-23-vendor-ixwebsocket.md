@@ -1,6 +1,6 @@
 # Phase 23: Vendor IXWebSocket
 
-> **See also:** [Context (Module Placement)](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Context (Module Placement)](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 **Changes:**
 - Add source to `third_party/ixwebsocket/`

@@ -1,6 +1,6 @@
 # Phase 1: Add Entity Unique IDs
 
-> **See also:** [Context & Key Decisions](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Context & Key Decisions](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Entities are currently identified by pointer only. The only existing ID system is `guy::id` (character-level, for duplicate detection in `SaveData::team_list`), which is unrelated. Everything downstream (serialization, snapshots, cross-references) needs stable entity-level IDs.
 

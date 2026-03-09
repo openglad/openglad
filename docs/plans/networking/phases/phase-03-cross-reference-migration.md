@@ -1,6 +1,6 @@
 # Phase 3: Compiler-Driven Cross-Reference Migration
 
-> **See also:** [Phase 2](phase-02-cross-reference-ids.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 2](phase-02-cross-reference-ids.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Make all 5 cross-reference pointer fields private, then fix every compiler error to use the setters from Phase 2. This enforces that all future code uses the dual pointer+ID setters, eliminating the need for `sync_ids_from_pointers()`.
 

@@ -1,6 +1,6 @@
 # Phase 10: Input Replay System
 
-> **See also:** [Phase 0 (deterministic RNG)](phase-00-migrate-rand.md) | [Phase 4 (InputState serialization)](phase-04-input-serialization.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 0 (deterministic RNG)](phase-00-migrate-rand.md) | [Phase 4 (InputState serialization)](phase-04-input-serialization.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 With deterministic RNG (Phase 0), InputState serialization (Phase 4), and snapshot infrastructure (Phases 5-8), the codebase has everything needed for an input replay system. This is invaluable for debugging desync issues during later networking phases — record a game on the server, replay it offline to reproduce divergence.
 

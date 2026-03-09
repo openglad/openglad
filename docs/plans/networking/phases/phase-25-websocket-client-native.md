@@ -1,6 +1,6 @@
 # Phase 25: WebSocket Client Transport (Native)
 
-> **See also:** [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Phase 23 (IXWebSocket)](phase-23-vendor-ixwebsocket.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Phase 23 (IXWebSocket)](phase-23-vendor-ixwebsocket.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 `WebSocketClientTransport : ITransport` using IXWebSocket.
 

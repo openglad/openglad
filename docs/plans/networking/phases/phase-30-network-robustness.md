@@ -1,6 +1,6 @@
 # Phase 30: Network Robustness
 
-> **See also:** [Phase 14 (GameServer/GameClient)](phase-14-server-client.md) | [Phase 12 (Hello handshake)](phase-12-transport-interface.md) | [Context](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 14 (GameServer/GameClient)](phase-14-server-client.md) | [Phase 12 (Hello handshake)](phase-12-transport-interface.md) | [Context](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Polish for real-world conditions.
 

@@ -1,6 +1,6 @@
 # Phase 9: Snapshot Size Benchmark
 
-> **See also:** [Phase 8 (Serialization)](phase-08-serialization-delta.md) | [Context (Bandwidth Budget)](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 8 (Serialization)](phase-08-serialization-delta.md) | [Context (Bandwidth Budget)](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Before committing to the serialization format, measure actual snapshot sizes on real game data. This validates the bandwidth budget and catches size estimate errors early.
 

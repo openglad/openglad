@@ -1,6 +1,6 @@
 # Phase 0: Migrate `rand()` to `SimRandom`
 
-> **See also:** [Context & Key Decisions](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Context & Key Decisions](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Gameplay code uses C stdlib `rand()` in ~17 call sites, making the simulation non-deterministic across runs. While the snapshot-based architecture tolerates this (server is authoritative), fixing it enables future deterministic replay, easier debugging, and lockstep optimization.
 

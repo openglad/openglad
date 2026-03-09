@@ -1,6 +1,6 @@
 # Phase 11: Decouple Sim Tick from Render Frame
 
-> **See also:** [Context (Sim Tick Rate)](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Context (Sim Tick Rate)](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 **Medium refactor.** The Emscripten build has a reference accumulator implementation, but it lives in a different function (`emscripten_frame_wrapper()` in `glad.cpp:133-223`) from the native game loop (`game_frame_with_result()` in `game_loop.cpp:39-168`). This phase restructures the native game loop — not just removing `#ifdef` guards.
 

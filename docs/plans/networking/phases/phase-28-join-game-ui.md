@@ -1,6 +1,6 @@
 # Phase 28: Client "Join Game" UI
 
-> **See also:** [Phase 24 (WebSocket Server)](phase-24-websocket-server.md) | [Phase 25 (WebSocket Client)](phase-25-websocket-client-native.md) | [Phase 31 (Relay)](phase-31-relay-matchmaking.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 24 (WebSocket Server)](phase-24-websocket-server.md) | [Phase 25 (WebSocket Client)](phase-25-websocket-client-native.md) | [Phase 31 (Relay)](phase-31-relay-matchmaking.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Add "Host Game" / "Join Game" to picker menu with support for both direct connections and relay.
 

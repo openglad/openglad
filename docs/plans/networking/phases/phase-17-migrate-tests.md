@@ -1,6 +1,6 @@
 # Phase 17: Migrate Tests and Delete Compatibility Wrapper
 
-> **See also:** [Phase 16 (Wire Up)](phase-16-wire-server-client.md) | [Phase 13 (NetworkTestFixture)](phase-13-inprocess-transport.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 16 (Wire Up)](phase-16-wire-server-client.md) | [Phase 13 (NetworkTestFixture)](phase-13-inprocess-transport.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Migrate all ~145 integration tests from `game_frame()` → `screen::act()` to the GameServer/GameClient path, then delete the `screen::act()` wrapper.
 

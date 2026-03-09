@@ -1,6 +1,6 @@
 # Phase 24: WebSocket Server Transport
 
-> **See also:** [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Phase 23 (IXWebSocket)](phase-23-vendor-ixwebsocket.md) | [Phase 1 (thread safety invariant)](phase-01-entity-unique-ids.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Phase 23 (IXWebSocket)](phase-23-vendor-ixwebsocket.md) | [Phase 1 (thread safety invariant)](phase-01-entity-unique-ids.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 `WebSocketServerTransport : ITransport` using IXWebSocket.
 

@@ -1,6 +1,6 @@
 # Phase 7: Snapshot Application (Snapshot -> World)
 
-> **See also:** [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Phase 6 (Capture)](phase-06-snapshot-capture.md) | [Context](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Phase 6 (Capture)](phase-06-snapshot-capture.md) | [Context](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Apply a WorldSnapshot to a GameWorld, replacing its state. This is what clients do when they receive a server snapshot.
 

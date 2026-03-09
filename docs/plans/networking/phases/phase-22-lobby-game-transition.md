@@ -1,6 +1,6 @@
 # Phase 22: Lobby -> Game Transition
 
-> **See also:** [Phase 20 (Lobby Server)](phase-20-lobby-server.md) | [Phase 21 (Lobby Client UI)](phase-21-lobby-client-ui.md) | [Phase 14 (GameServer/GameClient)](phase-14-server-client.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 20 (Lobby Server)](phase-20-lobby-server.md) | [Phase 21 (Lobby Client UI)](phase-21-lobby-client-ui.md) | [Phase 14 (GameServer/GameClient)](phase-14-server-client.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Wire lobby completion to GameServer/GameClient creation.
 

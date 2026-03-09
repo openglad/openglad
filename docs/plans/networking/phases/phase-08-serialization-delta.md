@@ -1,6 +1,6 @@
 # Phase 8: Snapshot Serialization + Delta Compression
 
-> **See also:** [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Phase 2 (dirty tracking)](phase-02-cross-reference-ids.md) | [Context](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Phase 2 (dirty tracking)](phase-02-cross-reference-ids.md) | [Context](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Convert WorldSnapshot to/from byte stream for transport, including both full keyframe and delta formats. This phase also completes the dirty tracking instrumentation deferred from Phase 3.
 

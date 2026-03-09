@@ -1,6 +1,6 @@
 # Phase 5: WorldSnapshot Data Structure
 
-> **See also:** [Context & Key Decisions](../common/context.md) | [Phase 2 (dirty tracking)](phase-02-cross-reference-ids.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Context & Key Decisions](docs/plans/networking/common/context.md) | [Phase 2 (dirty tracking)](phase-02-cross-reference-ids.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Define the snapshot structs that represent a complete world state at a point in time. This phase requires explicitly deciding what to serialize and what to skip.
 
@@ -52,7 +52,7 @@ Define the snapshot structs that represent a complete world state at a point in 
 - `walker::myguy` — non-owning pointer, reconstructed from `guy_id` (see myguy section below)
 - `walker::foe`, `walker::leader`, `walker::owner`, `walker::collide_ob` — raw pointers, reconstructed from `_id` fields via `find_by_id()` in `apply_snapshot()`
 - `statistics::controller` — raw pointer, reconstructed from `controller_id` via `find_by_id()`
-- `statistics::commands` — AI command queue. On snapshot restore, AI re-evaluates next tick. Serializing queued commands adds complexity for minimal benefit since commands are generated fresh each tick based on world state. **Known side effect:** discarding in-flight commands causes AI behavioral jitter (see "Known UX Limitations" in [Context](../common/context.md)).
+- `statistics::commands` — AI command queue. On snapshot restore, AI re-evaluates next tick. Serializing queued commands adds complexity for minimal benefit since commands are generated fresh each tick based on world state. **Known side effect:** discarding in-flight commands causes AI behavioral jitter (see "Known UX Limitations" in [Context](docs/plans/networking/common/context.md)).
 - `statistics::name` — NPC name string, reconstruct from family/order on entity creation
 - `statistics::walkrounds` — **deleted in Phase 0** (dead code cleanup). No longer exists.
 

@@ -1,6 +1,6 @@
 # Phase 16: Wire Up GameServer/GameClient Alongside Old Path
 
-> **See also:** [Phase 14 (GameServer/GameClient)](phase-14-server-client.md) | [Phase 15 (screen::act() split)](phase-15-split-screen-act.md) | [Phase 13 (InProcessTransport)](phase-13-inprocess-transport.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 14 (GameServer/GameClient)](phase-14-server-client.md) | [Phase 15 (screen::act() split)](phase-15-split-screen-act.md) | [Phase 13 (InProcessTransport)](phase-13-inprocess-transport.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Create the GameServer/GameClient in-process wiring, running alongside the existing `screen::act()` path. Both paths work during this phase.
 

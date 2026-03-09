@@ -1,6 +1,6 @@
 # Phase 12: ITransport Interface + Protocol Framing
 
-> **See also:** [Context & Key Decisions](../common/context.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Context & Key Decisions](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Abstract transport for server/client communication.
 

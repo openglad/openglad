@@ -1,6 +1,6 @@
 # Phase 19: Lobby Data Model
 
-> **See also:** [Phase 12 (Protocol Framing)](phase-12-transport-interface.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 12 (Protocol Framing)](phase-12-transport-interface.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 **Changes:**
 - New header: `include/openglad/gameplay/lobby_state.h`

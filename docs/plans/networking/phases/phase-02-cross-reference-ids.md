@@ -1,6 +1,6 @@
 # Phase 2: Add Cross-Reference ID Fields
 
-> **See also:** [Context & Key Decisions](../common/context.md) | [Phase 1](phase-01-entity-unique-ids.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Context & Key Decisions](docs/plans/networking/common/context.md) | [Phase 1](phase-01-entity-unique-ids.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Walker has raw pointer cross-references that can't be serialized. Add parallel ID fields and setter helpers alongside the existing public pointers. This phase intentionally does **not** make the pointers private — that's a large mechanical refactor (~477+ compiler errors) that is deferred to a later cleanup to avoid blocking the networking critical path.
 

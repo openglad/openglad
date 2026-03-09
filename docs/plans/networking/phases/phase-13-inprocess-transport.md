@@ -1,6 +1,6 @@
 # Phase 13: In-Process Transport
 
-> **See also:** [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Verification Strategy](../common/verification-strategy.md)
+> **See also:** [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Direct function call transport for local play — `send()` on one side enqueues to the other's receive buffer.
 
