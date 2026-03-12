@@ -391,6 +391,7 @@ TEST_F(WalkerSpecials, mage_energy_wave)
         push_test_context(&random_ctx);
         (void)actor->act();
         ASSERT_TRUE(actor->act_type == ACT_RANDOM) << "ACT_RANDOM path should preserve act type";
+        pop_test_context();
 
         // rng(4)==1 -> take the alternate search branch.
         FixedRandom nonzero_rng(1);
@@ -1291,11 +1292,15 @@ TEST_F(WalkerSpecials, guard_paths_and_teleport_failures)
     w->stats()->magicpoints = 0;
     ASSERT_TRUE(!w->special()) << "insufficient MP special should fail";
 
-    // order guard
-    w->stats()->magicpoints = 500;
-    w->set_order_family(Order::FX, FAMILY_MARKER);
-    ASSERT_TRUE(!w->special()) << "non-living special should fail";
-    w->set_order_family(Order::Living, FAMILY_MAGE);
+    // order guard: exercise the base walker path directly. `living::query_order()`
+    // always reports Order::Living, so mutating a living's stored order does not
+    // cover the non-living early return deterministically.
+    walker non_living_special;
+    non_living_special.current_special = 1;
+    non_living_special.stats()->special_cost[1] = 0;
+    non_living_special.stats()->magicpoints = 500;
+    non_living_special.set_order_family(Order::FX, FAMILY_MARKER);
+    ASSERT_TRUE(!non_living_special.special()) << "non-living special should fail";
 
     // teleport_ranged failure branch
     w->setxy(-200, -200);

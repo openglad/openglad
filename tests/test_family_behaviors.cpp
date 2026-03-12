@@ -1461,7 +1461,9 @@ TEST(FamilyBehaviors, cleric_turn_undead_success_with_undead_targets)
     cleric->busy = 0;
     cleric->team_num = 1;
     cleric->stats()->level = 6;
-    ConstRandomFamily deterministic_rng(39);
+    // turn_undead() uses world RNG directly; seed it so the kill check is
+    // deterministic under shuffled execution as well.
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 1;
 
     bool ok = fd->do_special(cleric);
     ASSERT_TRUE(ok) << "turn undead branch should execute when an undead foe is nearby";
