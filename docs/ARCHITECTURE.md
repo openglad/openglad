@@ -629,15 +629,18 @@ Key flags: `-sUSE_SDL=2`, `-sUSE_SDL_MIXER=2`, `-sASYNCIFY`, `-sALLOW_MEMORY_GRO
 
 ### Test Frameworks
 
-**Integration tests** (`tests/test_framework.h`):
-- Self-registering via `TEST(Suite, Name)` and `TEST_F(Fixture, Name)`
-- Assertions: `ASSERT_TRUE(cond)`, `ASSERT_EQ(expected, actual)`, `ASSERT_STREQ(expected, actual)`
-- Optional fixtures use `SetUp()` / `TearDown()` on the fixture class
-- Binary-local filtering: `./build/ci-test/og_test_picker --list-tests` or `./build/ci-test/og_test_view --filter redraw`
+All native test binaries use real GoogleTest (`<gtest/gtest.h>`).
+
+**Integration tests** (`tests/integration_main.cpp`):
+- SDL-backed GoogleTest binaries grouped under `og_test_*`
+- Standard `TEST(Suite, Name)` and `TEST_F(Fixture, Name)` cases with `ASSERT_*` / `EXPECT_*`
+- Binary-local listing/filtering via `--gtest_list_tests`, `--gtest_filter`, and `--gtest_shuffle`
+- Per-test world cleanup handled by a GoogleTest event listener after each case
 - Trace system: `TRACE("category", "message")` for behavioral verification
 
-**Unit tests** (`tests/unit/unit.h`):
-- Lightweight `TEST(Suite, Name)` registration with `ASSERT_TRUE(cond)` mapped to `OG_ASSERT(cond)`
+**Unit tests** (`tests/unit/unit_main.cpp`):
+- Headless GoogleTest binaries grouped under `og_unit_*`
+- Shared headless `GameSession` plus fallback world/save/event context restored by a listener
 - No SDL initialization; pure logic only
 
 ### UI/Menu Testing Pattern
@@ -701,5 +704,5 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `CMakeLists.txt` | Build system — component targets, test binaries, install rules |
 | `CMakePresets.json` | Build presets for dev, CI, and web |
 | `docs/architecture-rules.md` | Enforced component dependency rules |
-| `tests/test_main.cpp` | Integration test runner entry point |
+| `tests/integration_main.cpp` | Integration test runner entry point |
 | `tests/unit/unit_main.cpp` | Unit test runner entry point |
