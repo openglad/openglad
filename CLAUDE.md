@@ -146,12 +146,11 @@ ctest --preset ci-test
 
 | Binary | Description |
 |--------|-------------|
-| `og_unit_tests` | Headless unit tests — no SDL init |
-| `openglad_test` | Full integration suite (~894 tests) |
-| `og_data_tests` | Data/IO module tests |
-| `og_runtime_tests` | Runtime module tests |
+| `og_unit_*` | Four headless unit group binaries (291 tests total) |
+| `og_test_*` | Twenty SDL integration group binaries (1496 tests total) |
+| `openglad_text` | Headless text client exercised via CTest script entries |
 
-New test source files must be added to the appropriate list in `CMakeLists.txt` (see `TEST_SOURCES`, `DATA_TEST_SOURCES`, `RUNTIME_TEST_SOURCES`).
+New integration test source files must be added to `ALL_INTEGRATION_TEST_SOURCES` and assigned to an `og_add_test_group(...)` call in `CMakeLists.txt`. New headless unit tests should be assigned to an `og_add_unit_group(...)` call.
 
 ### Writing Tests
 
