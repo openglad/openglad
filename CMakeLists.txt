@@ -1532,6 +1532,10 @@ if(NOT EMSCRIPTEN)
                 og_test_menu_ui
                 PROPERTIES PROCESSORS 3
             )
+            # Menu UI coverage still runs substantially slower on GitHub's
+            # 4-core runners than it does locally, so keep its per-test budget
+            # higher without loosening the default timeout for the full suite.
+            set_tests_properties(og_test_menu_ui PROPERTIES TIMEOUT 300)
         endif()
 
         add_test(NAME openglad_text_sim
