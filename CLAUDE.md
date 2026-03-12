@@ -213,7 +213,7 @@ Menu functions block in event loops. Tests use an injector thread:
 
 static int my_injector_thread(void* data) {
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);  // Wait for fadeblack animation
+    SDL_Delay(750);  // Wait for fadeblack animation
     interact("continue_game");
     return 0;
 }
@@ -232,7 +232,7 @@ TEST(MenuFlow, main_menu_flow) {
 **Key rules for menu tests:**
 - Use `interact("button_id")` to click buttons — don't compute raw coordinates
 - Use `wait_for_interactable("id", timeout_ms)` before clicking
-- Always `SDL_Delay(1500)` after `wait_for_interactable` — `fadeblack()` eats events
+- Always `SDL_Delay(750)` after `wait_for_interactable` — `fadeblack()` eats events
 - Set `g_picker_max_mainmenu_calls` to limit loop iterations
 - Call `cleanup_picker_state()` after the test
 
