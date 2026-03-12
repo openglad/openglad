@@ -1,7 +1,7 @@
 #include <openglad/interface/input.h>
 #include "test_framework.h"
 
-void test_input_handle_events_dispatches_various_event_types()
+TEST(InputEventDispatch, input_handle_events_dispatches_various_event_types)
 {
     SDL_Event e{};
 
@@ -53,4 +53,4 @@ void test_input_handle_events_dispatches_various_event_types()
     e.type = SDL_QUIT;
     handle_events(e);
 }
-REGISTER_TEST(test_input_handle_events_dispatches_various_event_types);
+

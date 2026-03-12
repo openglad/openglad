@@ -17,7 +17,7 @@ struct GlobalContextGuard
 };
 } // namespace
 
-void test_statistics_hit_response_archer_runs_away_and_queues_walk()
+TEST(StatsHitResponseMore, statistics_hit_response_archer_runs_away_and_queues_walk)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
@@ -28,7 +28,7 @@ void test_statistics_hit_response_archer_runs_away_and_queues_walk()
 
     walker* archer = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    TEST_ASSERT(archer != nullptr && foe != nullptr, "actors created");
+    ASSERT_TRUE(archer != nullptr && foe != nullptr) << "actors created";
     if (!(archer && foe))
         return;
 
@@ -38,8 +38,8 @@ void test_statistics_hit_response_archer_runs_away_and_queues_walk()
     archer->foe = nullptr;
 
     archer->stats()->hit_response(foe);
-    TEST_ASSERT(archer->stats()->has_commands(), "archer hit_response should queue a walk away command");
+    ASSERT_TRUE(archer->stats()->has_commands()) << "archer hit_response should queue a walk away command";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_TEST(test_statistics_hit_response_archer_runs_away_and_queues_walk);
+

@@ -23,12 +23,12 @@ static std::unique_ptr<walker> create_living(char family)
     return w;
 }
 
-void test_walker_misc_methods_smoke()
+TEST(WalkerMore, walker_misc_methods_smoke)
 {
     auto w = create_living(FAMILY_SOLDIER);
     auto nearby = create_living(FAMILY_ORC);
-    TEST_ASSERT(w != nullptr, "create_walker(soldier) should succeed");
-    TEST_ASSERT(nearby != nullptr, "create_walker(orc) should succeed");
+    ASSERT_TRUE(w != nullptr) << "create_walker(soldier) should succeed";
+    ASSERT_TRUE(nearby != nullptr) << "create_walker(orc) should succeed";
     nearby->setxy(64, 64);
 
     // Basic movement helpers (should not crash).
@@ -40,7 +40,7 @@ void test_walker_misc_methods_smoke()
     w->turn(1);
 
     // Path helpers and distance checks.
-    TEST_ASSERT(w->distance_to_ob(w.get()) == 0, "distance to self should be 0");
+    ASSERT_TRUE(w->distance_to_ob(w.get()) == 0) << "distance to self should be 0";
     (void)w->distance_to_ob_center(w.get());
     (void)w->get_current_angle();
     (void)w->old_act_type;
@@ -66,21 +66,21 @@ void test_walker_misc_methods_smoke()
     w->set_difficulty(2);
 
 }
-REGISTER_TEST(test_walker_misc_methods_smoke);
 
-void test_walker_friendliness_and_attack_paths()
+
+TEST(WalkerMore, walker_friendliness_and_attack_paths)
 {
     auto a = create_living(FAMILY_SOLDIER);
     auto b = create_living(FAMILY_SMALL_SLIME);
-    TEST_ASSERT(a != nullptr, "create_walker(attacker) should succeed");
-    TEST_ASSERT(b != nullptr, "create_walker(target) should succeed");
+    ASSERT_TRUE(a != nullptr) << "create_walker(attacker) should succeed";
+    ASSERT_TRUE(b != nullptr) << "create_walker(target) should succeed";
 
     a->team_num = 0;
     b->team_num = 1;
 
-    TEST_ASSERT(!a->is_friendly(b.get()), "enemy should not be friendly");
-    TEST_ASSERT(a->is_friendly_to_team(0), "same team should be friendly");
-    TEST_ASSERT(!a->is_friendly_to_team(1), "other team should not be friendly");
+    ASSERT_TRUE(!a->is_friendly(b.get())) << "enemy should not be friendly";
+    ASSERT_TRUE(a->is_friendly_to_team(0)) << "same team should be friendly";
+    ASSERT_TRUE(!a->is_friendly_to_team(1)) << "other team should not be friendly";
 
     // Give attacker a guy to record tallies.
     a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
@@ -94,15 +94,15 @@ void test_walker_friendliness_and_attack_paths()
     (void)a->attack(b.get());
 
 }
-REGISTER_TEST(test_walker_friendliness_and_attack_paths);
 
-void test_walker_specials_and_render_paths_smoke()
+
+TEST(WalkerMore, walker_specials_and_render_paths_smoke)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(v != nullptr, "viewob[0] should exist");
+    ASSERT_TRUE(v != nullptr) << "viewob[0] should exist";
 
     auto w = create_living(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "create_walker(soldier) should succeed");
+    ASSERT_TRUE(w != nullptr) << "create_walker(soldier) should succeed";
     w->team_num = 0;
 
     // Give the walker a guy so specials/XP paths have something to update.
@@ -122,14 +122,14 @@ void test_walker_specials_and_render_paths_smoke()
     (void)w->old_act_type;
 
 }
-REGISTER_TEST(test_walker_specials_and_render_paths_smoke);
 
-void test_walker_myguy_move_and_weapon_heading_and_outline_named()
+
+TEST(WalkerMore, walker_myguy_move_and_weapon_heading_and_outline_named)
 {
     auto owner = create_living(FAMILY_SOLDIER);
     auto target = create_living(FAMILY_ORC);
-    TEST_ASSERT(owner != nullptr, "owner created");
-    TEST_ASSERT(target != nullptr, "target created");
+    ASSERT_TRUE(owner != nullptr) << "owner created";
+    ASSERT_TRUE(target != nullptr) << "target created";
     if (!owner || !target)
         return;
 
@@ -137,20 +137,20 @@ void test_walker_myguy_move_and_weapon_heading_and_outline_named()
     // myguy ownership/view helpers
     // -----------------------------------------------------------------------
     owner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
-    TEST_ASSERT(owner->myguy != nullptr, "owner has myguy");
+    ASSERT_TRUE(owner->myguy != nullptr) << "owner has myguy";
     owner->move_myguy_to(target.get());
-    TEST_ASSERT(owner->myguy == nullptr, "owner myguy cleared after move");
-    TEST_ASSERT(target->myguy != nullptr, "target received owned myguy");
+    ASSERT_TRUE(owner->myguy == nullptr) << "owner myguy cleared after move";
+    ASSERT_TRUE(target->myguy != nullptr) << "target received owned myguy";
 
     // Move a non-owned view pointer.
     guy view_guy(FAMILY_SOLDIER);
     owner->set_myguy_view(&view_guy);
     owner->move_myguy_to(target.get());
-    TEST_ASSERT(owner->myguy == nullptr, "owner view cleared after move");
-    TEST_ASSERT(target->myguy == &view_guy, "target received view myguy");
+    ASSERT_TRUE(owner->myguy == nullptr) << "owner view cleared after move";
+    ASSERT_TRUE(target->myguy == &view_guy) << "target received view myguy";
 
     target->clear_myguy();
-    TEST_ASSERT(target->myguy == nullptr, "clear_myguy clears view/ownership");
+    ASSERT_TRUE(target->myguy == nullptr) << "clear_myguy clears view/ownership";
 
     // -----------------------------------------------------------------------
     // compute_outline: OUTLINE_NAMED transition branches
@@ -160,27 +160,25 @@ void test_walker_myguy_move_and_weapon_heading_and_outline_named()
     owner->invulnerable_left = 1;
     owner->flight_left = 0;
     owner->compute_outline(/*viewer_control*/ nullptr);
-    TEST_ASSERT(owner->outline == OUTLINE_INVULNERABLE,
-                "named should transition to invulnerable when invulnerable_left set");
+    ASSERT_TRUE(owner->outline == OUTLINE_INVULNERABLE) << "named should transition to invulnerable when invulnerable_left set";
 
     owner->outline = OUTLINE_NAMED;
     owner->invisibility_left = 0;
     owner->invulnerable_left = 0;
     owner->flight_left = 1;
     owner->compute_outline(/*viewer_control*/ nullptr);
-    TEST_ASSERT(owner->outline == OUTLINE_FLYING,
-                "named should transition to flying when flight_left set");
+    ASSERT_TRUE(owner->outline == OUTLINE_FLYING) << "named should transition to flying when flight_left set";
 
     // -----------------------------------------------------------------------
     // set_weapon_heading: deterministic switch coverage (no waver)
     // -----------------------------------------------------------------------
     loader* l = og::runtime::current_session->myscreen_->myloader;
-    TEST_ASSERT(l != nullptr, "loader exists");
+    ASSERT_TRUE(l != nullptr) << "loader exists";
     if (!l)
         return;
 
     auto weapon = l->create_walker_owned(Order::Weapon, FAMILY_ARROW);
-    TEST_ASSERT(weapon != nullptr, "weapon created");
+    ASSERT_TRUE(weapon != nullptr) << "weapon created";
     if (!weapon)
         return;
     weapon->stepsize = 0; // waver becomes 0
@@ -193,54 +191,46 @@ void test_walker_myguy_move_and_weapon_heading_and_outline_named()
     owner->lastx = 1;
     owner->lasty = 0;
     owner->set_weapon_heading(weapon.get());
-    TEST_ASSERT_EQ(static_cast<int>(owner->xpos + owner->sizex + 1), static_cast<int>(weapon->xpos),
-                   "FACE_RIGHT sets weapon xpos");
+    ASSERT_EQ(static_cast<int>(owner->xpos + owner->sizex + 1), static_cast<int>(weapon->xpos)) << "FACE_RIGHT sets weapon xpos";
 
     // FACE_LEFT
     owner->lastx = -1;
     owner->lasty = 0;
     owner->set_weapon_heading(weapon.get());
-    TEST_ASSERT_EQ(static_cast<int>(owner->xpos - weapon->sizex - 1), static_cast<int>(weapon->xpos),
-                   "FACE_LEFT sets weapon xpos");
+    ASSERT_EQ(static_cast<int>(owner->xpos - weapon->sizex - 1), static_cast<int>(weapon->xpos)) << "FACE_LEFT sets weapon xpos";
 
     // FACE_DOWN
     owner->lastx = 0;
     owner->lasty = 1;
     owner->set_weapon_heading(weapon.get());
-    TEST_ASSERT_EQ(static_cast<int>(owner->ypos + owner->sizey + 1), static_cast<int>(weapon->ypos),
-                   "FACE_DOWN sets weapon ypos");
+    ASSERT_EQ(static_cast<int>(owner->ypos + owner->sizey + 1), static_cast<int>(weapon->ypos)) << "FACE_DOWN sets weapon ypos";
 
     // FACE_UP
     owner->lastx = 0;
     owner->lasty = -1;
     owner->set_weapon_heading(weapon.get());
-    TEST_ASSERT_EQ(static_cast<int>(owner->ypos - weapon->sizey - 1), static_cast<int>(weapon->ypos),
-                   "FACE_UP sets weapon ypos");
+    ASSERT_EQ(static_cast<int>(owner->ypos - weapon->sizey - 1), static_cast<int>(weapon->ypos)) << "FACE_UP sets weapon ypos";
 
     // Diagonals.
     owner->lastx = 1;
     owner->lasty = -1;
     owner->set_weapon_heading(weapon.get());
-    TEST_ASSERT_EQ(static_cast<int>(owner->xpos + owner->sizex + 1), static_cast<int>(weapon->xpos),
-                   "FACE_UP_RIGHT sets weapon xpos");
+    ASSERT_EQ(static_cast<int>(owner->xpos + owner->sizex + 1), static_cast<int>(weapon->xpos)) << "FACE_UP_RIGHT sets weapon xpos";
 
     owner->lastx = -1;
     owner->lasty = -1;
     owner->set_weapon_heading(weapon.get());
-    TEST_ASSERT_EQ(static_cast<int>(owner->xpos - weapon->sizex - 1), static_cast<int>(weapon->xpos),
-                   "FACE_UP_LEFT sets weapon xpos");
+    ASSERT_EQ(static_cast<int>(owner->xpos - weapon->sizex - 1), static_cast<int>(weapon->xpos)) << "FACE_UP_LEFT sets weapon xpos";
 
     owner->lastx = 1;
     owner->lasty = 1;
     owner->set_weapon_heading(weapon.get());
-    TEST_ASSERT_EQ(static_cast<int>(owner->xpos + owner->sizex + 1), static_cast<int>(weapon->xpos),
-                   "FACE_DOWN_RIGHT sets weapon xpos");
+    ASSERT_EQ(static_cast<int>(owner->xpos + owner->sizex + 1), static_cast<int>(weapon->xpos)) << "FACE_DOWN_RIGHT sets weapon xpos";
 
     owner->lastx = -1;
     owner->lasty = 1;
     owner->set_weapon_heading(weapon.get());
-    TEST_ASSERT_EQ(static_cast<int>(owner->xpos - weapon->sizex - 1), static_cast<int>(weapon->xpos),
-                   "FACE_DOWN_LEFT sets weapon xpos");
+    ASSERT_EQ(static_cast<int>(owner->xpos - weapon->sizex - 1), static_cast<int>(weapon->xpos)) << "FACE_DOWN_LEFT sets weapon xpos";
 
     // -----------------------------------------------------------------------
     // walker::act switch: deterministic small cases
@@ -250,20 +240,20 @@ void test_walker_myguy_move_and_weapon_heading_and_outline_named()
 
     owner->set_act_type(ACT_DIE);
     owner->dead = 0;
-    TEST_ASSERT(owner->act() == 1, "ACT_DIE act returns 1");
-    TEST_ASSERT(owner->dead == 1, "ACT_DIE sets dead");
+    ASSERT_TRUE(owner->act() == 1) << "ACT_DIE act returns 1";
+    ASSERT_TRUE(owner->dead == 1) << "ACT_DIE sets dead";
 
     owner->dead = 0;
     owner->set_act_type(127);
-    TEST_ASSERT(owner->act() == 0, "unknown act_type returns 0");
+    ASSERT_TRUE(owner->act() == 0) << "unknown act_type returns 0";
 }
-REGISTER_TEST(test_walker_myguy_move_and_weapon_heading_and_outline_named);
 
-void test_walker_init_fire_and_fire_check_gate_branches()
+
+TEST(WalkerMore, walker_init_fire_and_fire_check_gate_branches)
 {
     auto w = create_living(FAMILY_SOLDIER);
     auto foe = create_living(FAMILY_ORC);
-    TEST_ASSERT(w && foe, "walkers created");
+    ASSERT_TRUE(w && foe) << "walkers created";
     if (!(w && foe))
         return;
 
@@ -275,55 +265,55 @@ void test_walker_init_fire_and_fire_check_gate_branches()
     w->curdir = FACE_LEFT;
     w->enddir = FACE_LEFT;
     w->set_act_type(ACT_CONTROL);
-    TEST_ASSERT(!w->init_fire(1, 0), "ACT_CONTROL init_fire should fail when facing differs");
+    ASSERT_TRUE(!w->init_fire(1, 0)) << "ACT_CONTROL init_fire should fail when facing differs";
 
     // init_fire: busy gate.
     w->set_act_type(ACT_RANDOM);
     w->curdir = FACE_RIGHT;
     w->enddir = FACE_RIGHT;
     w->busy = 3;
-    TEST_ASSERT(!w->init_fire(1, 0), "busy init_fire should fail");
+    ASSERT_TRUE(!w->init_fire(1, 0)) << "busy init_fire should fail";
     w->busy = 0;
 
     // fire_check: no foe.
     w->foe = nullptr;
-    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail without foe");
+    ASSERT_TRUE(!w->fire_check(1, 0)) << "fire_check should fail without foe";
     w->foe = foe.get();
 
     // fire_check: no-ranged bit.
     w->stats()->set_bit_flags(BIT_NO_RANGED, 1);
-    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail with BIT_NO_RANGED");
+    ASSERT_TRUE(!w->fire_check(1, 0)) << "fire_check should fail with BIT_NO_RANGED";
     w->stats()->set_bit_flags(BIT_NO_RANGED, 0);
 
     // fire_check: insufficient magic for weapon cost.
     w->stats()->weapon_cost = 9999;
     w->stats()->magicpoints = 0;
-    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail when weapon_cost exceeds magicpoints");
+    ASSERT_TRUE(!w->fire_check(1, 0)) << "fire_check should fail when weapon_cost exceeds magicpoints";
     w->stats()->weapon_cost = 0;
     w->stats()->magicpoints = 100;
 
     // fire_check: target direction mismatch with current facing.
     w->curdir = FACE_LEFT;
-    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail when targetdir differs from curdir");
+    ASSERT_TRUE(!w->fire_check(1, 0)) << "fire_check should fail when targetdir differs from curdir";
 }
-REGISTER_TEST(test_walker_init_fire_and_fire_check_gate_branches);
 
-void test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes()
+
+TEST(WalkerMore, walker_round6_friendliness_null_dead_owner_chain_and_allied_modes)
 {
     auto a = create_living(FAMILY_SOLDIER);
     auto b = create_living(FAMILY_ARCHER);
     auto owner_a = create_living(FAMILY_MAGE);
     auto owner_b = create_living(FAMILY_ORC);
-    TEST_ASSERT(a && b && owner_a && owner_b, "walkers created");
+    ASSERT_TRUE(a && b && owner_a && owner_b) << "walkers created";
     if (!(a && b && owner_a && owner_b))
         return;
 
     // Null target guard.
-    TEST_ASSERT_EQ(0, (int)a->is_friendly(nullptr), "is_friendly should return 0 for null target");
+    ASSERT_EQ(0, (int)a->is_friendly(nullptr)) << "is_friendly should return 0 for null target";
 
     // Dead target guard.
     b->dead = 1;
-    TEST_ASSERT_EQ(0, (int)a->is_friendly(b.get()), "dead target should be unfriendly");
+    ASSERT_EQ(0, (int)a->is_friendly(b.get())) << "dead target should be unfriendly";
     b->dead = 0;
 
     // Owner-chain traversal branches.
@@ -339,33 +329,33 @@ void test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes()
     owner_b->clear_myguy();
     owner_b->team_num = 0;
     og::runtime::current_session->myscreen_->world_.allied_mode = 1;
-    TEST_ASSERT(a->is_friendly(b.get()) != 0, "allied mode should treat team-0 non-myguy as friendly");
+    ASSERT_TRUE(a->is_friendly(b.get()) != 0) << "allied mode should treat team-0 non-myguy as friendly";
 
     owner_b->team_num = 1;
-    TEST_ASSERT_EQ(0, (int)a->is_friendly(b.get()), "allied mode should reject non-team-0 when only one side has myguy");
+    ASSERT_EQ(0, (int)a->is_friendly(b.get())) << "allied mode should reject non-team-0 when only one side has myguy";
 
     // Enemy mode path (allied_mode==0).
     og::runtime::current_session->myscreen_->world_.allied_mode = 0;
     owner_b->team_num = owner_a->team_num;
-    TEST_ASSERT(a->is_friendly(b.get()) != 0, "enemy mode uses team equality");
+    ASSERT_TRUE(a->is_friendly(b.get()) != 0) << "enemy mode uses team equality";
 
     // is_friendly_to_team dead and no-myguy paths.
     a->dead = 1;
-    TEST_ASSERT_EQ(0, (int)a->is_friendly_to_team(0), "dead walker should not be friendly to any team");
+    ASSERT_EQ(0, (int)a->is_friendly_to_team(0)) << "dead walker should not be friendly to any team";
     a->dead = 0;
     owner_a->clear_myguy();
     og::runtime::current_session->myscreen_->world_.allied_mode = 0;
-    TEST_ASSERT(a->is_friendly_to_team(owner_a->team_num) != 0, "non-myguy path should still compare team");
+    ASSERT_TRUE(a->is_friendly_to_team(owner_a->team_num) != 0) << "non-myguy path should still compare team";
 
     og::runtime::current_session->myscreen_->world_.allied_mode = static_cast<short>(old_allied_mode);
 }
-REGISTER_TEST(test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes);
 
-void test_walker_round6_act_fire_collision_attack_path()
+
+TEST(WalkerMore, walker_round6_act_fire_collision_attack_path)
 {
     auto weapon = create_living(FAMILY_ARROW);
     auto target = create_living(FAMILY_ORC);
-    TEST_ASSERT(weapon && target, "walkers created");
+    ASSERT_TRUE(weapon && target) << "walkers created";
     if (!(weapon && target))
         return;
 
@@ -382,47 +372,47 @@ void test_walker_round6_act_fire_collision_attack_path()
 
     const float hp_before = target->stats()->hitpoints;
     weapon->set_act_type(ACT_FIRE);
-    TEST_ASSERT(weapon->act(), "act() should dispatch to act_fire");
-    TEST_ASSERT(target->stats()->hitpoints <= hp_before, "collision branch should attack target");
+    ASSERT_TRUE(weapon->act()) << "act() should dispatch to act_fire";
+    ASSERT_TRUE(target->stats()->hitpoints <= hp_before) << "collision branch should attack target";
 }
-REGISTER_TEST(test_walker_round6_act_fire_collision_attack_path);
 
-void test_walker_friendliness_null_dead_and_allied_mode_paths()
+
+TEST(WalkerMore, walker_friendliness_null_dead_and_allied_mode_paths)
 {
     auto a = create_living(FAMILY_SOLDIER);
     auto b = create_living(FAMILY_ORC);
-    TEST_ASSERT(a && b, "walkers created");
+    ASSERT_TRUE(a && b) << "walkers created";
     if (!(a && b))
         return;
 
     a->team_num = 0;
     b->team_num = 1;
 
-    TEST_ASSERT(!a->is_friendly(nullptr), "null target should be unfriendly");
+    ASSERT_TRUE(!a->is_friendly(nullptr)) << "null target should be unfriendly";
 
     b->dead = 1;
-    TEST_ASSERT(!a->is_friendly(b.get()), "dead target should be unfriendly");
+    ASSERT_TRUE(!a->is_friendly(b.get())) << "dead target should be unfriendly";
     b->dead = 0;
 
     a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     b->clear_myguy();
 
     b->team_num = 0;
-    TEST_ASSERT(a->is_friendly(b.get()) != 0, "team 0 target with one myguy should be treated as friendly");
+    ASSERT_TRUE(a->is_friendly(b.get()) != 0) << "team 0 target with one myguy should be treated as friendly";
 
-    TEST_ASSERT(a->is_friendly_to_team(1) == 0 || a->is_friendly_to_team(1) == 1, "friendly-to-team path should execute");
+    ASSERT_TRUE(a->is_friendly_to_team(1) == 0 || a->is_friendly_to_team(1) == 1) << "friendly-to-team path should execute";
 
     a->dead = 1;
-    TEST_ASSERT(!a->is_friendly_to_team(0), "dead walker should be unfriendly to all teams");
+    ASSERT_TRUE(!a->is_friendly_to_team(0)) << "dead walker should be unfriendly to all teams";
     a->dead = 0;
 }
-REGISTER_TEST(test_walker_friendliness_null_dead_and_allied_mode_paths);
 
-void test_walker_batch2_misc_uncovered_paths_smoke()
+
+TEST(WalkerMore, walker_batch2_misc_uncovered_paths_smoke)
 {
     auto w = create_living(FAMILY_SOLDIER);
     auto t = create_living(FAMILY_ORC);
-    TEST_ASSERT(w && t, "walkers created");
+    ASSERT_TRUE(w && t) << "walkers created";
     if (!(w && t))
         return;
 
@@ -430,7 +420,7 @@ void test_walker_batch2_misc_uncovered_paths_smoke()
     w->move_myguy_to(nullptr);
 
     // default virtual-like hooks that log and return fallback values.
-    TEST_ASSERT(w->eat_me(t.get()) == 0, "eat_me non-treasure fallback should return 0");
+    ASSERT_TRUE(w->eat_me(t.get()) == 0) << "eat_me non-treasure fallback should return 0";
     (void)w->do_summon(1, 5);
     (void)w->check_special();
 
@@ -456,12 +446,12 @@ void test_walker_batch2_misc_uncovered_paths_smoke()
     w->set_act_type(ACT_RANDOM);
     (void)w->act();
 }
-REGISTER_TEST(test_walker_batch2_misc_uncovered_paths_smoke);
 
-void test_walker_create_weapon_myguy_and_direction_and_cleric_branches()
+
+TEST(WalkerMore, walker_create_weapon_myguy_and_direction_and_cleric_branches)
 {
     auto shooter = create_living(FAMILY_CLERIC);
-    TEST_ASSERT(shooter != nullptr, "shooter created");
+    ASSERT_TRUE(shooter != nullptr) << "shooter created";
     if (!shooter)
         return;
 
@@ -476,7 +466,7 @@ void test_walker_create_weapon_myguy_and_direction_and_cleric_branches()
     shooter->lastx = shooter->stepsize;
     shooter->lasty = 0;
     walker* w1 = shooter->create_weapon();
-    TEST_ASSERT(w1 != nullptr, "weapon created (with myguy)");
+    ASSERT_TRUE(w1 != nullptr) << "weapon created (with myguy)";
 
     // Without myguy and diagonal direction, create_weapon takes the else branch
     // and skips the cardinal-range scaling.
@@ -484,11 +474,11 @@ void test_walker_create_weapon_myguy_and_direction_and_cleric_branches()
     shooter->lastx = shooter->stepsize;
     shooter->lasty = shooter->stepsize;
     walker* w2 = shooter->create_weapon();
-    TEST_ASSERT(w2 != nullptr, "weapon created (no myguy)");
+    ASSERT_TRUE(w2 != nullptr) << "weapon created (no myguy)";
 
     // Cleric special-case: weapon is configured with glow-grow and extra lifetime.
     if (w1) {
-        TEST_ASSERT(w1->ani_type == ANI_GLOWGROW, "cleric weapon uses glowgrow");
+        ASSERT_TRUE(w1->ani_type == ANI_GLOWGROW) << "cleric weapon uses glowgrow";
     }
 
     // Clean up only what we spawned; don't wipe global state (view controls, etc.).
@@ -497,4 +487,4 @@ void test_walker_create_weapon_myguy_and_direction_and_cleric_branches()
     if (w2)
         og::runtime::current_session->myscreen_->world().remove_ob(w2);
 }
-REGISTER_TEST(test_walker_create_weapon_myguy_and_direction_and_cleric_branches);
+

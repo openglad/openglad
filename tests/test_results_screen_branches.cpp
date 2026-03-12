@@ -7,7 +7,7 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
-void test_results_screen_ending_branches_smoke()
+TEST(ResultsScreenBranches, results_screen_ending_branches_smoke)
 {
     // Defeat generic.
     (void)results_screen(1, -1);
@@ -26,12 +26,12 @@ void test_results_screen_ending_branches_smoke()
     // Special defeat type.
     (void)results_screen(SCEN_TYPE_SAVE_ALL, -1);
 }
-REGISTER_TEST(test_results_screen_ending_branches_smoke);
 
-void test_results_screen_overload_calls_smoke()
+
+TEST(ResultsScreenBranches, results_screen_overload_calls_smoke)
 {
     std::map<int, guy*> before;
     std::map<int, walker*> after;
     (void)results_screen(0, 2, before, after);
 }
-REGISTER_TEST(test_results_screen_overload_calls_smoke);
+

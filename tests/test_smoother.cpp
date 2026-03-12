@@ -59,7 +59,7 @@ static void set_neighbors(unsigned char* g, int w, unsigned char center, unsigne
 }
 } // namespace
 
-void test_smoother_query_genre_maps_known_tiles()
+TEST(Smoother, query_genre_maps_known_tiles)
 {
     // Place representative tiles for each genre and validate mapping.
     PixieData grid = make_grid(10, 1, PIX_GRASS1);
@@ -79,20 +79,20 @@ void test_smoother_query_genre_maps_known_tiles()
     smoother s;
     s.set_target(grid);
 
-    TEST_ASSERT_EQ(TYPE_GRASS, s.query_genre_x_y(0, 0), "grass should map to TYPE_GRASS");
-    TEST_ASSERT_EQ(TYPE_WATER, s.query_genre_x_y(1, 0), "water should map to TYPE_WATER");
-    TEST_ASSERT_EQ(TYPE_DIRT, s.query_genre_x_y(2, 0), "dirt should map to TYPE_DIRT");
-    TEST_ASSERT_EQ(TYPE_DIRT_DARK, s.query_genre_x_y(3, 0), "dark dirt should map to TYPE_DIRT_DARK");
-    TEST_ASSERT_EQ(TYPE_CARPET, s.query_genre_x_y(4, 0), "carpet should map to TYPE_CARPET");
-    TEST_ASSERT_EQ(TYPE_WALL, s.query_genre_x_y(5, 0), "wall should map to TYPE_WALL");
-    TEST_ASSERT_EQ(TYPE_TREES, s.query_genre_x_y(6, 0), "trees should map to TYPE_TREES");
-    TEST_ASSERT_EQ(TYPE_COBBLE, s.query_genre_x_y(7, 0), "cobble should map to TYPE_COBBLE");
-    TEST_ASSERT_EQ(TYPE_GRASS_DARK, s.query_genre_x_y(8, 0), "dark grass should map to TYPE_GRASS_DARK");
-    TEST_ASSERT_EQ(TYPE_GRASS_LIGHT, s.query_genre_x_y(9, 0), "light grass should map to TYPE_GRASS_LIGHT");
+    ASSERT_EQ(TYPE_GRASS, s.query_genre_x_y(0, 0)) << "grass should map to TYPE_GRASS";
+    ASSERT_EQ(TYPE_WATER, s.query_genre_x_y(1, 0)) << "water should map to TYPE_WATER";
+    ASSERT_EQ(TYPE_DIRT, s.query_genre_x_y(2, 0)) << "dirt should map to TYPE_DIRT";
+    ASSERT_EQ(TYPE_DIRT_DARK, s.query_genre_x_y(3, 0)) << "dark dirt should map to TYPE_DIRT_DARK";
+    ASSERT_EQ(TYPE_CARPET, s.query_genre_x_y(4, 0)) << "carpet should map to TYPE_CARPET";
+    ASSERT_EQ(TYPE_WALL, s.query_genre_x_y(5, 0)) << "wall should map to TYPE_WALL";
+    ASSERT_EQ(TYPE_TREES, s.query_genre_x_y(6, 0)) << "trees should map to TYPE_TREES";
+    ASSERT_EQ(TYPE_COBBLE, s.query_genre_x_y(7, 0)) << "cobble should map to TYPE_COBBLE";
+    ASSERT_EQ(TYPE_GRASS_DARK, s.query_genre_x_y(8, 0)) << "dark grass should map to TYPE_GRASS_DARK";
+    ASSERT_EQ(TYPE_GRASS_LIGHT, s.query_genre_x_y(9, 0)) << "light grass should map to TYPE_GRASS_LIGHT";
 }
-REGISTER_TEST(test_smoother_query_genre_maps_known_tiles);
 
-void test_smoother_surrounds_bitmask_counts_neighbors()
+
+TEST(Smoother, surrounds_bitmask_counts_neighbors)
 {
     // 3x3 grid with center water and water on up+left, others grass.
     PixieData grid = make_grid(3, 3, PIX_GRASS1);
@@ -106,11 +106,11 @@ void test_smoother_surrounds_bitmask_counts_neighbors()
 
     Sint32 mask = s.surrounds(1, 1, TYPE_WATER);
     // up=1, right=2, down=4, left=8
-    TEST_ASSERT_EQ(1 + 8, mask, "surrounds should return bitmask of matching neighbors");
+    ASSERT_EQ(1 + 8, mask) << "surrounds should return bitmask of matching neighbors";
 }
-REGISTER_TEST(test_smoother_surrounds_bitmask_counts_neighbors);
 
-void test_smoother_smooth_covers_multiple_genres_and_around_masks()
+
+TEST(Smoother, smooth_covers_multiple_genres_and_around_masks)
 {
     // smooth() depends on ctx().rng; provide deterministic sequencing.
     SequenceRandom seq_rng({0, 1, 2, 3, 0, 1, 2, 3, 5, 0, 19, 0});
@@ -232,4 +232,4 @@ void test_smoother_smooth_covers_multiple_genres_and_around_masks()
         (void)s.smooth(1, 2);
     }
 }
-REGISTER_TEST(test_smoother_smooth_covers_multiple_genres_and_around_masks);
+

@@ -3,7 +3,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/pixien.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
@@ -90,7 +90,7 @@ static int save_menu_injector(void* data)
     return 0;
 }
 
-void test_save_team_menu() {
+TEST(SaveMenu, save_team_menu) {
     trace_clear();
 
     // Need some team data
@@ -105,7 +105,7 @@ void test_save_team_menu() {
 
     SaveMenuState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(save_menu_injector, "save_menu_test", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -118,7 +118,7 @@ void test_save_team_menu() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.saw_save_menu, "should have seen the save team menu");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_save_menu) << "should have seen the save team menu";
 }
-REGISTER_TEST(test_save_team_menu);
+

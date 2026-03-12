@@ -31,95 +31,95 @@ static std::unique_ptr<walker> make_living_guy(char family, unsigned char team =
 // Pure functions: orbit_offset
 // ---------------------------------------------------------------------------
 
-void test_orbit_offset_all_cycles()
+TEST(EffectAct, orbit_offset_all_cycles)
 {
     for (int i = 0; i < 16; i++) {
         float xd = 0, yd = 0;
         orbit_offset(i, xd, yd);
-        TEST_ASSERT(xd != 0 || yd != 0, "orbit offset should be non-zero");
+        ASSERT_TRUE(xd != 0 || yd != 0) << "orbit offset should be non-zero";
     }
 }
-REGISTER_TEST(test_orbit_offset_all_cycles);
 
-void test_orbit_offset_wraps()
+
+TEST(EffectAct, orbit_offset_wraps)
 {
     float xd1, yd1, xd2, yd2;
     orbit_offset(0, xd1, yd1);
     orbit_offset(16, xd2, yd2);
-    TEST_ASSERT(xd1 == xd2, "cycle 16 wraps to 0");
-    TEST_ASSERT(yd1 == yd2, "cycle 16 wraps to 0");
+    ASSERT_TRUE(xd1 == xd2) << "cycle 16 wraps to 0";
+    ASSERT_TRUE(yd1 == yd2) << "cycle 16 wraps to 0";
 }
-REGISTER_TEST(test_orbit_offset_wraps);
+
 
 // ---------------------------------------------------------------------------
 // Pure functions: compute_explosion_range
 // ---------------------------------------------------------------------------
 
-void test_explosion_range_basic2()
+TEST(EffectAct, explosion_range_basic2)
 {
     Sint32 r = compute_explosion_range(10, 0);
-    TEST_ASSERT_EQ(40, (int)r, "level 10 => range 40");
+    ASSERT_EQ(40, (int)r) << "level 10 => range 40";
 }
-REGISTER_TEST(test_explosion_range_basic2);
 
-void test_explosion_range_capped()
+
+TEST(EffectAct, explosion_range_capped)
 {
     Sint32 r = compute_explosion_range(100, 0);
-    TEST_ASSERT_EQ(96, (int)r, "capped at 96");
+    ASSERT_EQ(96, (int)r) << "capped at 96";
 }
-REGISTER_TEST(test_explosion_range_capped);
 
-void test_explosion_range_min()
+
+TEST(EffectAct, explosion_range_min)
 {
     Sint32 r = compute_explosion_range(1, 0);
-    TEST_ASSERT_EQ(16, (int)r, "min is 16");
+    ASSERT_EQ(16, (int)r) << "min is 16";
 }
-REGISTER_TEST(test_explosion_range_min);
 
-void test_explosion_range_skip_exit()
+
+TEST(EffectAct, explosion_range_skip_exit)
 {
     Sint32 r = compute_explosion_range(10, 1);
-    TEST_ASSERT_EQ(16, (int)r, "skip_exit sets range to 0 then min caps to 16");
+    ASSERT_EQ(16, (int)r) << "skip_exit sets range to 0 then min caps to 16";
 }
-REGISTER_TEST(test_explosion_range_skip_exit);
+
 
 // ---------------------------------------------------------------------------
 // Pure functions: hits (collision detection)
 // ---------------------------------------------------------------------------
 
-void test_hits_overlap2()
+TEST(EffectAct, hits_overlap2)
 {
     bool r = hits(0, 0, 10, 10, 5, 5, 10, 10);
-    TEST_ASSERT(r, "overlapping rectangles should hit");
+    ASSERT_TRUE(r) << "overlapping rectangles should hit";
 }
-REGISTER_TEST(test_hits_overlap2);
 
-void test_hits_no_overlap()
+
+TEST(EffectAct, hits_no_overlap)
 {
     bool r = hits(0, 0, 10, 10, 20, 20, 10, 10);
-    TEST_ASSERT(!r, "non-overlapping rectangles should not hit");
+    ASSERT_TRUE(!r) << "non-overlapping rectangles should not hit";
 }
-REGISTER_TEST(test_hits_no_overlap);
 
-void test_hits_adjacent()
+
+TEST(EffectAct, hits_adjacent)
 {
     bool r = hits(0, 0, 10, 10, 10, 0, 10, 10);
     (void)r; // exactly touching, behavior may vary
 }
-REGISTER_TEST(test_hits_adjacent);
 
-void test_hits_contained2()
+
+TEST(EffectAct, hits_contained2)
 {
     bool r = hits(0, 0, 20, 20, 5, 5, 5, 5);
-    TEST_ASSERT(r, "contained rectangle should hit");
+    ASSERT_TRUE(r) << "contained rectangle should hit";
 }
-REGISTER_TEST(test_hits_contained2);
+
 
 // ---------------------------------------------------------------------------
 // effect::act - various effect families
 // ---------------------------------------------------------------------------
 
-void test_effect_act_explosion()
+TEST(EffectAct, explosion)
 {
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     if (!fx) return;
@@ -128,9 +128,9 @@ void test_effect_act_explosion()
     fx->act();
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_act_explosion);
 
-void test_effect_act_magic_shield()
+
+TEST(EffectAct, magic_shield)
 {
     auto owner = make_living_guy(FAMILY_MAGE, 0);
     if (!owner) return;
@@ -145,9 +145,9 @@ void test_effect_act_magic_shield()
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_act_magic_shield);
 
-void test_effect_act_magic_shield_no_owner()
+
+TEST(EffectAct, magic_shield_no_owner)
 {
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     if (!fx) return;
@@ -155,12 +155,12 @@ void test_effect_act_magic_shield_no_owner()
     fx->owner = nullptr;
     fx->act();
     // Should die since no owner
-    TEST_ASSERT(fx->dead == 1, "shield without owner dies");
+    ASSERT_TRUE(fx->dead == 1) << "shield without owner dies";
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_act_magic_shield_no_owner);
 
-void test_effect_act_boomerang()
+
+TEST(EffectAct, boomerang)
 {
     auto owner = make_living_guy(FAMILY_SOLDIER, 0);
     if (!owner) return;
@@ -176,9 +176,9 @@ void test_effect_act_boomerang()
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_act_boomerang);
 
-void test_effect_act_boomerang_expired()
+
+TEST(EffectAct, boomerang_expired)
 {
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_BOOMERANG);
     if (!fx) return;
@@ -186,12 +186,12 @@ void test_effect_act_boomerang_expired()
     fx->owner = nullptr;
     fx->drawcycle = 254;
     fx->act();
-    TEST_ASSERT(fx->dead == 1, "expired boomerang dies");
+    ASSERT_TRUE(fx->dead == 1) << "expired boomerang dies";
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_act_boomerang_expired);
 
-void test_effect_act_cloud()
+
+TEST(EffectAct, cloud)
 {
     auto owner = make_living_guy(FAMILY_DRUID, 0);
     if (!owner) return;
@@ -207,9 +207,9 @@ void test_effect_act_cloud()
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_act_cloud);
 
-void test_effect_act_cloud_expired()
+
+TEST(EffectAct, cloud_expired)
 {
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CLOUD);
     if (!fx) return;
@@ -217,12 +217,12 @@ void test_effect_act_cloud_expired()
     fx->owner = fx;
     fx->lifetime = 0;
     fx->act();
-    TEST_ASSERT(fx->dead == 1, "expired cloud dies");
+    ASSERT_TRUE(fx->dead == 1) << "expired cloud dies";
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_act_cloud_expired);
 
-void test_effect_act_ghost_scare()
+
+TEST(EffectAct, ghost_scare)
 {
     auto owner = make_living_guy(FAMILY_GHOST, 0);
     if (!owner) return;
@@ -235,13 +235,13 @@ void test_effect_act_ghost_scare()
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_act_ghost_scare);
+
 
 // ---------------------------------------------------------------------------
 // effect::animate
 // ---------------------------------------------------------------------------
 
-void test_effect_animate_explosion()
+TEST(EffectAct, effect_animate_explosion)
 {
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     if (!fx) return;
@@ -250,9 +250,9 @@ void test_effect_animate_explosion()
     fx->animate();
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_animate_explosion);
 
-void test_effect_animate_magic_shield()
+
+TEST(EffectAct, effect_animate_magic_shield)
 {
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     if (!fx) return;
@@ -260,13 +260,13 @@ void test_effect_animate_magic_shield()
     fx->animate();
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_animate_magic_shield);
+
 
 // ---------------------------------------------------------------------------
 // effect::death
 // ---------------------------------------------------------------------------
 
-void test_effect_death_explosion()
+TEST(EffectAct, effect_death_explosion)
 {
     auto owner = make_living_guy(FAMILY_MAGE, 0);
     if (!owner) return;
@@ -282,9 +282,9 @@ void test_effect_death_explosion()
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_death_explosion);
 
-void test_effect_death_ghost_scare()
+
+TEST(EffectAct, effect_death_ghost_scare)
 {
     auto owner = make_living_guy(FAMILY_GHOST, 0);
     if (!owner) return;
@@ -298,4 +298,4 @@ void test_effect_death_ghost_scare()
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-REGISTER_TEST(test_effect_death_ghost_scare);
+

@@ -74,7 +74,7 @@ static int injector_thread_options_menu(void* data)
 }
 } // namespace
 
-void test_viewscreen_options_menu_driven_exercises_hotkeys()
+TEST(ViewOptionsMenuDriven, viewscreen_options_menu_driven_exercises_hotkeys)
 {
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -82,7 +82,7 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
     GlobalContextGuard guard(&c);
 
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(vs != nullptr, "viewscreen exists");
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
     if (!vs)
         return;
 
@@ -90,7 +90,7 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
     if (!vs->control)
     {
         walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-        TEST_ASSERT(w != nullptr, "control walker created");
+        ASSERT_TRUE(w != nullptr) << "control walker created";
         if (w)
         {
             w->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
@@ -105,7 +105,7 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
     KeyStateGuard ks;
 
     SDL_Thread* th = SDL_CreateThread(injector_thread_options_menu, "opts_fake_keystates", &ks);
-    TEST_ASSERT(th != nullptr, "injector thread started");
+    ASSERT_TRUE(th != nullptr) << "injector thread started";
 
     vs->options_menu();
 
@@ -117,4 +117,4 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
     vs->prefs[PREF_VIEW] = saved_view;
     vs->resize(saved_view);
 }
-REGISTER_TEST(test_viewscreen_options_menu_driven_exercises_hotkeys);
+

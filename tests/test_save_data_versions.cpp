@@ -91,7 +91,7 @@ static void write_save_file(const std::string& filename_no_ext,
 {
     std::string fname = filename_no_ext + ".gtl";
     SDL_RWops* out = open_write_file("save/", fname.c_str());
-    TEST_ASSERT(out != nullptr, "open_write_file for save");
+    ASSERT_TRUE(out != nullptr) << "open_write_file for save";
 
     // Header + version
     rw_write(out, "GTL", 3);
@@ -183,21 +183,21 @@ static void write_save_file(const std::string& filename_no_ext,
     SDL_RWclose(out);
 }
 
-void test_save_data_load_rejects_bad_header()
+TEST(SaveDataVersions, save_data_load_rejects_bad_header)
 {
     SDL_RWops* out = open_write_file("save/", "bad_header.gtl");
-    TEST_ASSERT(out != nullptr, "open_write_file bad header");
+    ASSERT_TRUE(out != nullptr) << "open_write_file bad header";
     rw_write(out, "BAD", 3);
     char v = 9;
     rw_write_val(out, v);
     SDL_RWclose(out);
 
     SaveData tmp;
-    TEST_ASSERT(!tmp.load("bad_header"), "bad header should fail load");
+    ASSERT_TRUE(!tmp.load("bad_header")) << "bad header should fail load";
 }
-REGISTER_TEST(test_save_data_load_rejects_bad_header);
 
-void test_save_data_load_v4_uses_200_levelstatus()
+
+TEST(SaveDataVersions, save_data_load_v4_uses_200_levelstatus)
 {
     GuyRecord g{};
     g.family = FAMILY_SOLDIER;
@@ -223,13 +223,13 @@ void test_save_data_load_v4_uses_200_levelstatus()
                     /*levelstatus_200=*/&status);
 
     SaveData tmp;
-    TEST_ASSERT(tmp.load("ver4_200"), "v4 load should succeed");
-    TEST_ASSERT_EQ(1, tmp.team_size, "v4 should load 1 guy");
-    TEST_ASSERT(tmp.is_level_completed(3), "v4 should mark level completed from status array");
+    ASSERT_TRUE(tmp.load("ver4_200")) << "v4 load should succeed";
+    ASSERT_EQ(1, tmp.team_size) << "v4 should load 1 guy";
+    ASSERT_TRUE(tmp.is_level_completed(3)) << "v4 should mark level completed from status array";
 }
-REGISTER_TEST(test_save_data_load_v4_uses_200_levelstatus);
 
-void test_save_data_load_v7_reads_allied_and_scores()
+
+TEST(SaveDataVersions, save_data_load_v7_reads_allied_and_scores)
 {
     GuyRecord g{};
     g.family = FAMILY_ARCHER;
@@ -255,14 +255,14 @@ void test_save_data_load_v7_reads_allied_and_scores()
                     /*levelstatus_200=*/nullptr);
 
     SaveData tmp;
-    TEST_ASSERT(tmp.load("ver7_allied"), "v7 load should succeed");
-    TEST_ASSERT_EQ(2, (int)tmp.numplayers, "v7 should load numplayers");
-    TEST_ASSERT_EQ(0, (int)tmp.allied_mode, "v7 should load allied_mode");
-    TEST_ASSERT(tmp.is_level_completed(10), "v7 should mark cleared levels from 500-byte status array");
+    ASSERT_TRUE(tmp.load("ver7_allied")) << "v7 load should succeed";
+    ASSERT_EQ(2, (int)tmp.numplayers) << "v7 should load numplayers";
+    ASSERT_EQ(0, (int)tmp.allied_mode) << "v7 should load allied_mode";
+    ASSERT_TRUE(tmp.is_level_completed(10)) << "v7 should mark cleared levels from 500-byte status array";
 }
-REGISTER_TEST(test_save_data_load_v7_reads_allied_and_scores);
 
-void test_save_data_load_v9_uses_campaign_list()
+
+TEST(SaveDataVersions, save_data_load_v9_uses_campaign_list)
 {
     GuyRecord g{};
     g.family = FAMILY_MAGE;
@@ -285,17 +285,17 @@ void test_save_data_load_v9_uses_campaign_list()
                     /*levelstatus_200=*/nullptr);
 
     SaveData tmp;
-    TEST_ASSERT(tmp.load("ver9_campaigns"), "v9 load should succeed");
-    TEST_ASSERT_EQ(1, tmp.team_size, "v9 should load 1 guy");
-    TEST_ASSERT(tmp.current_levels.count("org.openglad.gladiator") > 0, "v9 should populate current_levels");
-    TEST_ASSERT(tmp.completed_levels.count("org.openglad.gladiator") > 0, "v9 should populate completed_levels");
+    ASSERT_TRUE(tmp.load("ver9_campaigns")) << "v9 load should succeed";
+    ASSERT_EQ(1, tmp.team_size) << "v9 should load 1 guy";
+    ASSERT_TRUE(tmp.current_levels.count("org.openglad.gladiator") > 0) << "v9 should populate current_levels";
+    ASSERT_TRUE(tmp.completed_levels.count("org.openglad.gladiator") > 0) << "v9 should populate completed_levels";
 }
-REGISTER_TEST(test_save_data_load_v9_uses_campaign_list);
 
-void test_save_data_load_non_nul_terminated_save_name_is_bounded()
+
+TEST(SaveDataVersions, save_data_load_non_nul_terminated_save_name_is_bounded)
 {
     SDL_RWops* out = open_write_file("save/", "ver9_non_nul_name.gtl");
-    TEST_ASSERT(out != nullptr, "open_write_file non-nul save-name");
+    ASSERT_TRUE(out != nullptr) << "open_write_file non-nul save-name";
     if (!out)
         return;
 
@@ -345,17 +345,16 @@ void test_save_data_load_non_nul_terminated_save_name_is_bounded()
     SDL_RWclose(out);
 
     SaveData tmp;
-    TEST_ASSERT(tmp.load("ver9_non_nul_name"), "v9 load with non-nul save-name should succeed");
-    TEST_ASSERT_EQ(40, (int)tmp.save_name.size(), "save_name should remain bounded to 40 bytes");
-    TEST_ASSERT(tmp.save_name == std::string(40, 'N'),
-                "save_name content should be exactly the 40-byte field");
+    ASSERT_TRUE(tmp.load("ver9_non_nul_name")) << "v9 load with non-nul save-name should succeed";
+    ASSERT_EQ(40, (int)tmp.save_name.size()) << "save_name should remain bounded to 40 bytes";
+    ASSERT_TRUE(tmp.save_name == std::string(40, 'N')) << "save_name content should be exactly the 40-byte field";
 }
-REGISTER_TEST(test_save_data_load_non_nul_terminated_save_name_is_bounded);
 
-void test_save_data_load_with_error_truncated_file_reports_read_failed()
+
+TEST(SaveDataVersions, save_data_load_with_error_truncated_file_reports_read_failed)
 {
     SDL_RWops* out = open_write_file("save/", "truncated_read_fail.gtl");
-    TEST_ASSERT(out != nullptr, "open_write_file truncated save");
+    ASSERT_TRUE(out != nullptr) << "open_write_file truncated save";
     // Valid header + version, then truncate before required fields.
     rw_write(out, "GTL", 3);
     char version = 9;
@@ -364,12 +363,11 @@ void test_save_data_load_with_error_truncated_file_reports_read_failed()
 
     SaveData tmp;
     SaveDataIoError err = tmp.load_with_error("truncated_read_fail");
-    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::ReadFailed), static_cast<int>(err),
-        "truncated save should report ReadFailed");
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::ReadFailed), static_cast<int>(err)) << "truncated save should report ReadFailed";
 }
-REGISTER_TEST(test_save_data_load_with_error_truncated_file_reports_read_failed);
 
-void test_save_data_load_with_error_campaign_mount_failure()
+
+TEST(SaveDataVersions, save_data_load_with_error_campaign_mount_failure)
 {
     GuyRecord g{};
     g.family = FAMILY_SOLDIER;
@@ -393,16 +391,14 @@ void test_save_data_load_with_error_campaign_mount_failure()
 
     SaveData tmp;
     SaveDataIoError err = tmp.load_with_error("ver9_bad_campaign");
-    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::CampaignLoadFailed), static_cast<int>(err),
-        "invalid current campaign should report CampaignLoadFailed");
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::CampaignLoadFailed), static_cast<int>(err)) << "invalid current campaign should report CampaignLoadFailed";
 
     // Restore expected mounted campaign for other tests.
-    TEST_ASSERT(mount_campaign_package_with_error("org.openglad.gladiator") == CampaignPackageIoError::None,
-        "should remount default campaign after CampaignLoadFailed test");
+    ASSERT_TRUE(mount_campaign_package_with_error("org.openglad.gladiator") == CampaignPackageIoError::None) << "should remount default campaign after CampaignLoadFailed test";
 }
-REGISTER_TEST(test_save_data_load_with_error_campaign_mount_failure);
 
-void test_save_data_load_rejects_negative_team_size()
+
+TEST(SaveDataVersions, save_data_load_rejects_negative_team_size)
 {
     write_save_file("ver9_negative_team_size",
                     /*version=*/9,
@@ -420,15 +416,12 @@ void test_save_data_load_rejects_negative_team_size()
                     /*levelstatus_200=*/nullptr);
 
     SaveData tmp;
-    TEST_ASSERT(!tmp.load("ver9_negative_team_size"),
-                "load should fail when team listsize is negative");
-    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::ReadFailed),
-                   static_cast<int>(tmp.last_io_error()),
-                   "negative team listsize should report ReadFailed");
+    ASSERT_TRUE(!tmp.load("ver9_negative_team_size")) << "load should fail when team listsize is negative";
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::ReadFailed), static_cast<int>(tmp.last_io_error())) << "negative team listsize should report ReadFailed";
 }
-REGISTER_TEST(test_save_data_load_rejects_negative_team_size);
 
-void test_save_data_load_rejects_unbounded_numplayers()
+
+TEST(SaveDataVersions, save_data_load_rejects_unbounded_numplayers)
 {
     write_save_file("ver9_unbounded_numplayers",
                     /*version=*/9,
@@ -446,15 +439,12 @@ void test_save_data_load_rejects_unbounded_numplayers()
                     /*levelstatus_200=*/nullptr);
 
     SaveData tmp;
-    TEST_ASSERT(!tmp.load("ver9_unbounded_numplayers"),
-                "load should fail when numplayers exceeds fixed score/view arrays");
-    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::ReadFailed),
-                   static_cast<int>(tmp.last_io_error()),
-                   "invalid numplayers should report ReadFailed");
+    ASSERT_TRUE(!tmp.load("ver9_unbounded_numplayers")) << "load should fail when numplayers exceeds fixed score/view arrays";
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::ReadFailed), static_cast<int>(tmp.last_io_error())) << "invalid numplayers should report ReadFailed";
 }
-REGISTER_TEST(test_save_data_load_rejects_unbounded_numplayers);
 
-void test_save_data_save_with_error_open_write_failed_for_missing_directory()
+
+TEST(SaveDataVersions, save_data_save_with_error_open_write_failed_for_missing_directory)
 {
     const std::string bad_subdir = "save/typed_save_missing_dir";
     std::error_code ec;
@@ -463,12 +453,11 @@ void test_save_data_save_with_error_open_write_failed_for_missing_directory()
     SaveData tmp;
     tmp.current_campaign = "org.openglad.gladiator";
     SaveDataIoError err = tmp.save_with_error("typed_save_missing_dir/slot1");
-    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::OpenWriteFailed), static_cast<int>(err),
-        "save_with_error should report OpenWriteFailed for missing nested directory");
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::OpenWriteFailed), static_cast<int>(err)) << "save_with_error should report OpenWriteFailed for missing nested directory";
 }
-REGISTER_TEST(test_save_data_save_with_error_open_write_failed_for_missing_directory);
 
-void test_save_data_v9_roundtrip_preserves_campaign_progress_maps()
+
+TEST(SaveDataVersions, save_data_v9_roundtrip_preserves_campaign_progress_maps)
 {
     SaveData src;
     src.current_campaign = "org.openglad.gladiator";
@@ -481,36 +470,25 @@ void test_save_data_v9_roundtrip_preserves_campaign_progress_maps()
     src.completed_levels["org.openglad.other"].insert(2);
 
     SaveDataIoError save_err = src.save_with_error("typed_save_roundtrip_v9");
-    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::None), static_cast<int>(save_err),
-        "save_with_error should succeed for roundtrip save");
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None), static_cast<int>(save_err)) << "save_with_error should succeed for roundtrip save";
 
     SaveData loaded;
     SaveDataIoError load_err = loaded.load_with_error("typed_save_roundtrip_v9");
-    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::None), static_cast<int>(load_err),
-        "load_with_error should succeed for roundtrip save");
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None), static_cast<int>(load_err)) << "load_with_error should succeed for roundtrip save";
 
-    TEST_ASSERT(loaded.current_levels.count("org.openglad.gladiator") > 0,
-        "current_levels should include default campaign");
-    TEST_ASSERT_EQ(1, loaded.current_levels["org.openglad.gladiator"],
-        "default campaign current level should remain valid after reload");
-    TEST_ASSERT(loaded.current_levels.count("org.openglad.other") > 0,
-        "current_levels should include secondary campaign");
-    TEST_ASSERT_EQ(2, loaded.current_levels["org.openglad.other"],
-        "secondary campaign current level should roundtrip");
-    TEST_ASSERT(loaded.completed_levels.count("org.openglad.gladiator") > 0,
-        "completed_levels should include default campaign");
-    TEST_ASSERT(loaded.completed_levels["org.openglad.gladiator"].count(1) > 0,
-        "completed level 1 should roundtrip");
-    TEST_ASSERT(loaded.completed_levels["org.openglad.gladiator"].count(3) > 0,
-        "completed level 3 should roundtrip");
-    TEST_ASSERT(loaded.completed_levels.count("org.openglad.other") > 0,
-        "completed_levels should include secondary campaign");
-    TEST_ASSERT(loaded.completed_levels["org.openglad.other"].count(2) > 0,
-        "secondary campaign completed level should roundtrip");
+    ASSERT_TRUE(loaded.current_levels.count("org.openglad.gladiator") > 0) << "current_levels should include default campaign";
+    ASSERT_EQ(1, loaded.current_levels["org.openglad.gladiator"]) << "default campaign current level should remain valid after reload";
+    ASSERT_TRUE(loaded.current_levels.count("org.openglad.other") > 0) << "current_levels should include secondary campaign";
+    ASSERT_EQ(2, loaded.current_levels["org.openglad.other"]) << "secondary campaign current level should roundtrip";
+    ASSERT_TRUE(loaded.completed_levels.count("org.openglad.gladiator") > 0) << "completed_levels should include default campaign";
+    ASSERT_TRUE(loaded.completed_levels["org.openglad.gladiator"].count(1) > 0) << "completed level 1 should roundtrip";
+    ASSERT_TRUE(loaded.completed_levels["org.openglad.gladiator"].count(3) > 0) << "completed level 3 should roundtrip";
+    ASSERT_TRUE(loaded.completed_levels.count("org.openglad.other") > 0) << "completed_levels should include secondary campaign";
+    ASSERT_TRUE(loaded.completed_levels["org.openglad.other"].count(2) > 0) << "secondary campaign completed level should roundtrip";
 }
-REGISTER_TEST(test_save_data_v9_roundtrip_preserves_campaign_progress_maps);
 
-void test_save_data_update_guys_copies_only_live_entries_with_myguy()
+
+TEST(SaveDataVersions, save_data_update_guys_copies_only_live_entries_with_myguy)
 {
     std::list<std::unique_ptr<walker>> oblist;
 
@@ -534,17 +512,17 @@ void test_save_data_update_guys_copies_only_live_entries_with_myguy()
     SaveData data;
     data.update_guys(oblist);
 
-    TEST_ASSERT_EQ(1, (int)data.team_size, "update_guys should copy only live walkers with myguy");
-    TEST_ASSERT(data.team_list[0] != nullptr, "copied guy should exist");
+    ASSERT_EQ(1, (int)data.team_size) << "update_guys should copy only live walkers with myguy";
+    ASSERT_TRUE(data.team_list[0] != nullptr) << "copied guy should exist";
     if (data.team_list[0])
-        TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)data.team_list[0]->family, "copied guy should match source family");
+        ASSERT_EQ((int)FAMILY_SOLDIER, (int)data.team_list[0]->family) << "copied guy should match source family";
 }
-REGISTER_TEST(test_save_data_update_guys_copies_only_live_entries_with_myguy);
 
-void test_save_data_unsupported_version_and_campaign_helper_branches()
+
+TEST(SaveDataVersions, save_data_unsupported_version_and_campaign_helper_branches)
 {
     SDL_RWops* out = open_write_file("save/", "unsupported_ver0.gtl");
-    TEST_ASSERT(out != nullptr, "open_write_file unsupported version");
+    ASSERT_TRUE(out != nullptr) << "open_write_file unsupported version";
     if (!out)
         return;
     rw_write(out, "GTL", 3);
@@ -553,24 +531,19 @@ void test_save_data_unsupported_version_and_campaign_helper_branches()
     SDL_RWclose(out);
 
     SaveData tmp;
-    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::UnsupportedVersion),
-                   static_cast<int>(tmp.load_with_error("unsupported_ver0")),
-                   "version 0 save should report UnsupportedVersion");
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::UnsupportedVersion), static_cast<int>(tmp.load_with_error("unsupported_ver0"))) << "version 0 save should report UnsupportedVersion";
 
     tmp.completed_levels.clear();
     tmp.add_level_completed("test.campaign", 2);
     tmp.add_level_completed("test.campaign", 5);
-    TEST_ASSERT_EQ(2, tmp.get_num_levels_completed("test.campaign"),
-                   "helper should count completed levels for present campaign");
-    TEST_ASSERT_EQ(0, tmp.get_num_levels_completed("missing.campaign"),
-                   "helper should return 0 for missing campaign");
+    ASSERT_EQ(2, tmp.get_num_levels_completed("test.campaign")) << "helper should count completed levels for present campaign";
+    ASSERT_EQ(0, tmp.get_num_levels_completed("missing.campaign")) << "helper should return 0 for missing campaign";
     tmp.reset_campaign("test.campaign");
-    TEST_ASSERT_EQ(0, tmp.get_num_levels_completed("test.campaign"),
-                   "reset_campaign should clear existing campaign progress");
+    ASSERT_EQ(0, tmp.get_num_levels_completed("test.campaign")) << "reset_campaign should clear existing campaign progress";
 }
-REGISTER_TEST(test_save_data_unsupported_version_and_campaign_helper_branches);
 
-void test_save_data_save_with_team_entry_and_wrapper_none_path()
+
+TEST(SaveDataVersions, save_data_save_with_team_entry_and_wrapper_none_path)
 {
     SaveData tmp;
     tmp.current_campaign = "org.openglad.gladiator";
@@ -597,44 +570,35 @@ void test_save_data_save_with_team_entry_and_wrapper_none_path()
     tmp.completed_levels["org.openglad.gladiator"].insert(1);
     tmp.completed_levels["org.openglad.gladiator"].insert(2);
 
-    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
-                   static_cast<int>(tmp.save_with_error("typed_save_with_team")),
-                   "save_with_error should succeed for one-team-entry save");
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None), static_cast<int>(tmp.save_with_error("typed_save_with_team"))) << "save_with_error should succeed for one-team-entry save";
 
     SaveData loaded;
-    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
-                   static_cast<int>(loaded.load_with_error("typed_save_with_team")),
-                   "load_with_error wrapper should return None for saved file");
-    TEST_ASSERT_EQ(1, (int)loaded.team_size, "loaded team should contain one entry");
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None), static_cast<int>(loaded.load_with_error("typed_save_with_team"))) << "load_with_error wrapper should return None for saved file";
+    ASSERT_EQ(1, (int)loaded.team_size) << "loaded team should contain one entry";
 }
-REGISTER_TEST(test_save_data_save_with_team_entry_and_wrapper_none_path);
 
-void test_save_data_round8_open_write_failure_and_is_level_completed_paths()
+
+TEST(SaveDataVersions, save_data_round8_open_write_failure_and_is_level_completed_paths)
 {
     SaveData data;
     data.current_campaign = "round8.campaign";
     data.completed_levels.clear();
 
-    TEST_ASSERT(!data.is_level_completed(3),
-                "is_level_completed should be false when current campaign is absent");
+    ASSERT_TRUE(!data.is_level_completed(3)) << "is_level_completed should be false when current campaign is absent";
 
     data.add_level_completed("round8.campaign", 3);
-    TEST_ASSERT(data.is_level_completed(3),
-                "is_level_completed should be true after adding the level to current campaign");
-    TEST_ASSERT(!data.is_level_completed(99),
-                "is_level_completed should be false for a non-completed level index");
+    ASSERT_TRUE(data.is_level_completed(3)) << "is_level_completed should be true after adding the level to current campaign";
+    ASSERT_TRUE(!data.is_level_completed(99)) << "is_level_completed should be false for a non-completed level index";
 
     data.reset_campaign("round8.campaign");
-    TEST_ASSERT(!data.is_level_completed(3),
-                "is_level_completed should become false after reset_campaign");
+    ASSERT_TRUE(!data.is_level_completed(3)) << "is_level_completed should become false after reset_campaign";
 
     const SaveDataIoError err = data.save_with_error("round8/missing_parent_path");
-    TEST_ASSERT_EQ((int)SaveDataIoError::OpenWriteFailed, (int)err,
-                   "save_with_error should report OpenWriteFailed when parent path is missing");
+    ASSERT_EQ((int)SaveDataIoError::OpenWriteFailed, (int)err) << "save_with_error should report OpenWriteFailed when parent path is missing";
 }
-REGISTER_TEST(test_save_data_round8_open_write_failure_and_is_level_completed_paths);
 
-void test_save_data_round9_reset_campaign_missing_entry_is_noop()
+
+TEST(SaveDataVersions, save_data_round9_reset_campaign_missing_entry_is_noop)
 {
     SaveData data;
     data.completed_levels.clear();
@@ -642,8 +606,7 @@ void test_save_data_round9_reset_campaign_missing_entry_is_noop()
 
     // Missing campaign path should be a no-op.
     data.reset_campaign("round9.none");
-    TEST_ASSERT_EQ(0, data.get_num_levels_completed("round9.none"),
-                   "reset_campaign should keep missing campaign at zero levels");
+    ASSERT_EQ(0, data.get_num_levels_completed("round9.none")) << "reset_campaign should keep missing campaign at zero levels";
 
     // Existing campaign path should clear only that campaign's levels.
     data.add_level_completed("round9.a", 1);
@@ -651,9 +614,7 @@ void test_save_data_round9_reset_campaign_missing_entry_is_noop()
     data.add_level_completed("round9.b", 3);
     data.reset_campaign("round9.a");
 
-    TEST_ASSERT_EQ(0, data.get_num_levels_completed("round9.a"),
-                   "reset_campaign should clear target campaign progress");
-    TEST_ASSERT_EQ(1, data.get_num_levels_completed("round9.b"),
-                   "reset_campaign should not clear other campaign progress");
+    ASSERT_EQ(0, data.get_num_levels_completed("round9.a")) << "reset_campaign should clear target campaign progress";
+    ASSERT_EQ(1, data.get_num_levels_completed("round9.b")) << "reset_campaign should not clear other campaign progress";
 }
-REGISTER_TEST(test_save_data_round9_reset_campaign_missing_entry_is_noop);
+

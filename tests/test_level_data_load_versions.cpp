@@ -87,7 +87,7 @@ static void append_fixed8(std::vector<uint8_t>& out, const char* s)
 }
 } // namespace
 
-void test_level_data_load_version2_minimal_success()
+TEST(LevelDataLoadVersions, level_data_load_version2_minimal_success)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -105,11 +105,11 @@ void test_level_data_load_version2_minimal_success()
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_2(rw, &data);
-    TEST_ASSERT_EQ(1, (int)ok, "load_version_2 should succeed on minimal buffer");
+    ASSERT_EQ(1, (int)ok) << "load_version_2 should succeed on minimal buffer";
 }
-REGISTER_TEST(test_level_data_load_version2_minimal_success);
 
-void test_level_data_load_version2_treasure_routes_to_fxlist()
+
+TEST(LevelDataLoadVersions, level_data_load_version2_treasure_routes_to_fxlist)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -127,12 +127,12 @@ void test_level_data_load_version2_treasure_routes_to_fxlist()
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_2(rw, &data);
-    TEST_ASSERT_EQ(1, (int)ok, "load_version_2 should succeed with a treasure object");
-    TEST_ASSERT(!data.world().fxlist.empty(), "treasure should route via add_fx_ob into fxlist for v2");
+    ASSERT_EQ(1, (int)ok) << "load_version_2 should succeed with a treasure object";
+    ASSERT_TRUE(!data.world().fxlist.empty()) << "treasure should route via add_fx_ob into fxlist for v2";
 }
-REGISTER_TEST(test_level_data_load_version2_treasure_routes_to_fxlist);
 
-void test_level_data_load_version2_truncated_object_payload_fails()
+
+TEST(LevelDataLoadVersions, level_data_load_version2_truncated_object_payload_fails)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -142,11 +142,11 @@ void test_level_data_load_version2_truncated_object_payload_fails()
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_2(rw, &data);
-    TEST_ASSERT_EQ(0, (int)ok, "load_version_2 should fail on truncated object payload");
+    ASSERT_EQ(0, (int)ok) << "load_version_2 should fail on truncated object payload";
 }
-REGISTER_TEST(test_level_data_load_version2_truncated_object_payload_fails);
 
-void test_level_data_load_version2_invalid_family_fails_object_creation()
+
+TEST(LevelDataLoadVersions, level_data_load_version2_invalid_family_fails_object_creation)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -166,11 +166,11 @@ void test_level_data_load_version2_invalid_family_fails_object_creation()
     short ok = load_version_2(rw, &data);
     // Some loaders tolerate unknown family values by clamping/defaulting, so
     // this isn't guaranteed to fail. We mainly want to ensure it doesn't crash.
-    TEST_ASSERT_EQ(1, (int)ok, "load_version_2 should not crash on unknown family values");
+    ASSERT_EQ(1, (int)ok) << "load_version_2 should not crash on unknown family values";
 }
-REGISTER_TEST(test_level_data_load_version2_invalid_family_fails_object_creation);
 
-void test_level_data_load_version2_rejects_invalid_object_count()
+
+TEST(LevelDataLoadVersions, level_data_load_version2_rejects_invalid_object_count)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -178,11 +178,11 @@ void test_level_data_load_version2_rejects_invalid_object_count()
     append_i16(bytes, 5000); // > MAX_SCENARIO_OBJECTS
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_2(rw, &data);
-    TEST_ASSERT_EQ(0, (int)ok, "load_version_2 should reject invalid list size");
+    ASSERT_EQ(0, (int)ok) << "load_version_2 should reject invalid list size";
 }
-REGISTER_TEST(test_level_data_load_version2_rejects_invalid_object_count);
 
-void test_level_data_load_version3_rejects_invalid_object_count()
+
+TEST(LevelDataLoadVersions, level_data_load_version3_rejects_invalid_object_count)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -190,11 +190,11 @@ void test_level_data_load_version3_rejects_invalid_object_count()
     append_i16(bytes, 5000); // > MAX_SCENARIO_OBJECTS
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_3(rw, &data);
-    TEST_ASSERT_EQ(0, (int)ok, "load_version_3 should reject invalid list size");
+    ASSERT_EQ(0, (int)ok) << "load_version_3 should reject invalid list size";
 }
-REGISTER_TEST(test_level_data_load_version3_rejects_invalid_object_count);
 
-void test_level_data_load_version3_treasure_adds_at_start_success()
+
+TEST(LevelDataLoadVersions, level_data_load_version3_treasure_adds_at_start_success)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -214,12 +214,12 @@ void test_level_data_load_version3_treasure_adds_at_start_success()
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_3(rw, &data);
-    TEST_ASSERT_EQ(1, (int)ok, "load_version_3 should succeed with treasure object");
-    TEST_ASSERT(!data.world().oblist.empty(), "v3 treasure path should still create an object");
+    ASSERT_EQ(1, (int)ok) << "load_version_3 should succeed with treasure object";
+    ASSERT_TRUE(!data.world().oblist.empty()) << "v3 treasure path should still create an object";
 }
-REGISTER_TEST(test_level_data_load_version3_treasure_adds_at_start_success);
 
-void test_level_data_load_version3_truncated_object_payload_fails()
+
+TEST(LevelDataLoadVersions, level_data_load_version3_truncated_object_payload_fails)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -230,11 +230,11 @@ void test_level_data_load_version3_truncated_object_payload_fails()
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_3(rw, &data);
-    TEST_ASSERT_EQ(0, (int)ok, "load_version_3 should fail on truncated object payload");
+    ASSERT_EQ(0, (int)ok) << "load_version_3 should fail on truncated object payload";
 }
-REGISTER_TEST(test_level_data_load_version3_truncated_object_payload_fails);
 
-void test_level_data_load_version3_zero_lines_minimal_success()
+
+TEST(LevelDataLoadVersions, level_data_load_version3_zero_lines_minimal_success)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -254,11 +254,11 @@ void test_level_data_load_version3_zero_lines_minimal_success()
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_3(rw, &data);
-    TEST_ASSERT_EQ(1, (int)ok, "load_version_3 should succeed with zero description lines");
+    ASSERT_EQ(1, (int)ok) << "load_version_3 should succeed with zero description lines";
 }
-REGISTER_TEST(test_level_data_load_version3_zero_lines_minimal_success);
 
-void test_level_data_load_version3_truncates_long_description_line_and_discards_remaining_bytes()
+
+TEST(LevelDataLoadVersions, level_data_load_version3_truncates_long_description_line_and_discards_remaining_bytes)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -271,12 +271,12 @@ void test_level_data_load_version3_truncates_long_description_line_and_discards_
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_3(rw, &data);
-    TEST_ASSERT_EQ(1, (int)ok, "load_version_3 should succeed with truncated description line");
-    TEST_ASSERT(!data.description.empty(), "description should contain at least one line");
+    ASSERT_EQ(1, (int)ok) << "load_version_3 should succeed with truncated description line";
+    ASSERT_TRUE(!data.description.empty()) << "description should contain at least one line";
 }
-REGISTER_TEST(test_level_data_load_version3_truncates_long_description_line_and_discards_remaining_bytes);
 
-void test_level_data_load_version4_truncates_long_description_line()
+
+TEST(LevelDataLoadVersions, level_data_load_version4_truncates_long_description_line)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -289,12 +289,12 @@ void test_level_data_load_version4_truncates_long_description_line()
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_4(rw, &data);
-    TEST_ASSERT_EQ(1, (int)ok, "load_version_4 should succeed with truncated description line");
-    TEST_ASSERT(!data.description.empty(), "description should contain at least one line");
+    ASSERT_EQ(1, (int)ok) << "load_version_4 should succeed with truncated description line";
+    ASSERT_TRUE(!data.description.empty()) << "description should contain at least one line";
 }
-REGISTER_TEST(test_level_data_load_version4_truncates_long_description_line);
 
-void test_level_data_load_version5_rejects_invalid_object_count()
+
+TEST(LevelDataLoadVersions, level_data_load_version5_rejects_invalid_object_count)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -303,11 +303,11 @@ void test_level_data_load_version5_rejects_invalid_object_count()
     append_i16(bytes, 5000); // > MAX_SCENARIO_OBJECTS
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_5(rw, &data);
-    TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should reject invalid list size");
+    ASSERT_EQ(0, (int)ok) << "load_version_5 should reject invalid list size";
 }
-REGISTER_TEST(test_level_data_load_version5_rejects_invalid_object_count);
 
-void test_level_data_load_version5_success_with_treasure_weapon_and_truncated_text()
+
+TEST(LevelDataLoadVersions, level_data_load_version5_success_with_treasure_weapon_and_truncated_text)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -356,15 +356,15 @@ void test_level_data_load_version5_success_with_treasure_weapon_and_truncated_te
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_5(rw, &data);
-    TEST_ASSERT_EQ(1, (int)ok, "load_version_5 should succeed on valid buffer");
-    TEST_ASSERT_EQ(3, (int)data.world().type, "load_version_5 should set scenario type");
-    TEST_ASSERT(!data.world().fxlist.empty(), "treasure object should populate fxlist");
-    TEST_ASSERT(!data.world().weaplist.empty(), "weapon object should populate weaplist");
-    TEST_ASSERT(!data.description.empty(), "description line should be read");
+    ASSERT_EQ(1, (int)ok) << "load_version_5 should succeed on valid buffer";
+    ASSERT_EQ(3, (int)data.world().type) << "load_version_5 should set scenario type";
+    ASSERT_TRUE(!data.world().fxlist.empty()) << "treasure object should populate fxlist";
+    ASSERT_TRUE(!data.world().weaplist.empty()) << "weapon object should populate weaplist";
+    ASSERT_TRUE(!data.description.empty()) << "description line should be read";
 }
-REGISTER_TEST(test_level_data_load_version5_success_with_treasure_weapon_and_truncated_text);
 
-void test_level_data_load_version5_truncated_scenario_type_fails()
+
+TEST(LevelDataLoadVersions, level_data_load_version5_truncated_scenario_type_fails)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -372,11 +372,11 @@ void test_level_data_load_version5_truncated_scenario_type_fails()
     // Truncate before scenario type byte.
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_5(rw, &data);
-    TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail when scenario type byte is missing");
+    ASSERT_EQ(0, (int)ok) << "load_version_5 should fail when scenario type byte is missing";
 }
-REGISTER_TEST(test_level_data_load_version5_truncated_scenario_type_fails);
 
-void test_level_data_load_version5_truncated_object_payload_fails()
+
+TEST(LevelDataLoadVersions, level_data_load_version5_truncated_object_payload_fails)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -388,11 +388,11 @@ void test_level_data_load_version5_truncated_object_payload_fails()
     // Truncated before full object payload is available.
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_5(rw, &data);
-    TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail on truncated object payload");
+    ASSERT_EQ(0, (int)ok) << "load_version_5 should fail on truncated object payload";
 }
-REGISTER_TEST(test_level_data_load_version5_truncated_object_payload_fails);
 
-void test_level_data_load_version5_missing_numlines_fails()
+
+TEST(LevelDataLoadVersions, level_data_load_version5_missing_numlines_fails)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -402,11 +402,11 @@ void test_level_data_load_version5_missing_numlines_fails()
     // Truncate before numlines byte.
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_5(rw, &data);
-    TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail when numlines byte is missing");
+    ASSERT_EQ(0, (int)ok) << "load_version_5 should fail when numlines byte is missing";
 }
-REGISTER_TEST(test_level_data_load_version5_missing_numlines_fails);
 
-void test_level_data_load_version5_truncated_discard_tail_fails()
+
+TEST(LevelDataLoadVersions, level_data_load_version5_truncated_discard_tail_fails)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -420,55 +420,55 @@ void test_level_data_load_version5_truncated_discard_tail_fails()
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_5(rw, &data);
-    TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail when long-line discard bytes are truncated");
+    ASSERT_EQ(0, (int)ok) << "load_version_5 should fail when long-line discard bytes are truncated";
 }
-REGISTER_TEST(test_level_data_load_version5_truncated_discard_tail_fails);
 
-void test_level_data_load_versions_2_3_4_missing_grid_or_count_fail()
+
+TEST(LevelDataLoadVersions, 2_3_4_missing_grid_or_count_fail)
 {
     {
         LevelRuntimeData data(1);
         std::vector<uint8_t> bytes; // missing grid bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_2(rw, &data), "v2 should fail when grid field is missing");
+        ASSERT_EQ(0, (int)load_version_2(rw, &data)) << "v2 should fail when grid field is missing";
     }
     {
         LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid"); // missing listsize bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_2(rw, &data), "v2 should fail when object count field is missing");
+        ASSERT_EQ(0, (int)load_version_2(rw, &data)) << "v2 should fail when object count field is missing";
     }
     {
         LevelRuntimeData data(1);
         std::vector<uint8_t> bytes; // missing grid bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_3(rw, &data), "v3 should fail when grid field is missing");
+        ASSERT_EQ(0, (int)load_version_3(rw, &data)) << "v3 should fail when grid field is missing";
     }
     {
         LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid"); // missing listsize bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_3(rw, &data), "v3 should fail when object count field is missing");
+        ASSERT_EQ(0, (int)load_version_3(rw, &data)) << "v3 should fail when object count field is missing";
     }
     {
         LevelRuntimeData data(1);
         std::vector<uint8_t> bytes; // missing grid bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when grid field is missing");
+        ASSERT_EQ(0, (int)load_version_4(rw, &data)) << "v4 should fail when grid field is missing";
     }
     {
         LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid"); // missing listsize bytes
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when object count field is missing");
+        ASSERT_EQ(0, (int)load_version_4(rw, &data)) << "v4 should fail when object count field is missing";
     }
 }
-REGISTER_TEST(test_level_data_load_versions_2_3_4_missing_grid_or_count_fail);
 
-void test_level_data_load_version4_truncated_discard_tail_fails()
+
+TEST(LevelDataLoadVersions, level_data_load_version4_truncated_discard_tail_fails)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -481,11 +481,11 @@ void test_level_data_load_version4_truncated_discard_tail_fails()
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     short ok = load_version_4(rw, &data);
-    TEST_ASSERT_EQ(0, (int)ok, "load_version_4 should fail when long-line discard bytes are truncated");
+    ASSERT_EQ(0, (int)ok) << "load_version_4 should fail when long-line discard bytes are truncated";
 }
-REGISTER_TEST(test_level_data_load_version4_truncated_discard_tail_fails);
 
-void test_level_data_load_version4_truncated_numlines_or_width_fails()
+
+TEST(LevelDataLoadVersions, level_data_load_version4_truncated_numlines_or_width_fails)
 {
     LevelRuntimeData data(1);
 
@@ -508,7 +508,7 @@ void test_level_data_load_version4_truncated_numlines_or_width_fails()
             append_u8(bytes, 0);
 
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when numlines byte is missing");
+        ASSERT_EQ(0, (int)load_version_4(rw, &data)) << "v4 should fail when numlines byte is missing";
     }
 
     // numlines present but first line width byte missing should fail in line loop.
@@ -532,12 +532,12 @@ void test_level_data_load_version4_truncated_numlines_or_width_fails()
         // width byte intentionally omitted
 
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when description width byte is missing");
+        ASSERT_EQ(0, (int)load_version_4(rw, &data)) << "v4 should fail when description width byte is missing";
     }
 }
-REGISTER_TEST(test_level_data_load_version4_truncated_numlines_or_width_fails);
 
-void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
+
+TEST(LevelDataLoadVersions, 2_to_5_invalid_order_fails_object_creation)
 {
     {
         LevelRuntimeData data(1);
@@ -556,7 +556,7 @@ void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
         MemoryOgFile rw(bytes.data(), bytes.size());
         const short ok = load_version_2(rw, &data);
         // Legacy v2 behavior can differ based on loader state; ensure stability/no crash.
-        TEST_ASSERT(ok == 0 || ok == 1, "v2 unknown-order input should not crash loader");
+        ASSERT_TRUE(ok == 0 || ok == 1) << "v2 unknown-order input should not crash loader";
     }
     {
         LevelRuntimeData data(1);
@@ -576,7 +576,7 @@ void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
         append_u8(bytes, 0); // numlines
         MemoryOgFile rw(bytes.data(), bytes.size());
         const short ok = load_version_3(rw, &data);
-        TEST_ASSERT(ok == 0 || ok == 1, "v3 unknown-order input should not crash loader");
+        ASSERT_TRUE(ok == 0 || ok == 1) << "v3 unknown-order input should not crash loader";
     }
     {
         LevelRuntimeData data(1);
@@ -598,7 +598,7 @@ void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
         append_u8(bytes, 0); // numlines
         MemoryOgFile rw(bytes.data(), bytes.size());
         const short ok = load_version_4(rw, &data);
-        TEST_ASSERT(ok == 0 || ok == 1, "v4 unknown-order input should not crash loader");
+        ASSERT_TRUE(ok == 0 || ok == 1) << "v4 unknown-order input should not crash loader";
     }
     {
         LevelRuntimeData data(1);
@@ -621,24 +621,24 @@ void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
         append_u8(bytes, 0); // numlines
         MemoryOgFile rw(bytes.data(), bytes.size());
         const short ok = load_version_5(rw, &data);
-        TEST_ASSERT(ok == 0 || ok == 1, "v5 unknown-order input should not crash loader");
+        ASSERT_TRUE(ok == 0 || ok == 1) << "v5 unknown-order input should not crash loader";
     }
 }
-REGISTER_TEST(test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation);
 
-void test_level_data_load_scenario_version_dispatcher_guards()
+
+TEST(LevelDataLoadVersions, level_data_load_scenario_version_dispatcher_guards)
 {
     std::vector<uint8_t> bytes;
     MemoryOgFile rw(bytes.data(), bytes.size());
     const short null_result = load_scenario_version(rw, nullptr, 2);
-    TEST_ASSERT_EQ(0, (int)null_result, "dispatcher should reject null data pointer");
+    ASSERT_EQ(0, (int)null_result) << "dispatcher should reject null data pointer";
 
     LevelRuntimeData data(1);
     MemoryOgFile rw2(bytes.data(), bytes.size());
     const short old_version_result = load_scenario_version(rw2, &data, 1);
-    TEST_ASSERT_EQ(0, (int)old_version_result, "dispatcher should reject unsupported old version");
+    ASSERT_EQ(0, (int)old_version_result) << "dispatcher should reject unsupported old version";
 }
-REGISTER_TEST(test_level_data_load_scenario_version_dispatcher_guards);
+
 
 static void append_v6_object_record(std::vector<uint8_t>& out, uint8_t order, uint8_t family, int16_t x, int16_t y,
                                     uint8_t team, uint8_t facing, uint8_t command, int16_t level, const char* name12)
@@ -660,7 +660,7 @@ static void append_v6_object_record(std::vector<uint8_t>& out, uint8_t order, ui
         append_u8(out, 0);
 }
 
-void test_level_data_load_version6plus_invalid_counts_and_object_fail_paths()
+TEST(LevelDataLoadVersions, level_data_load_version6plus_invalid_counts_and_object_fail_paths)
 {
     {
         LevelRuntimeData data(1);
@@ -674,7 +674,7 @@ void test_level_data_load_version6plus_invalid_counts_and_object_fail_paths()
         append_i16(bytes, 100); // time limit (v9+ path)
         append_i16(bytes, 5000); // invalid list size
         MemoryOgFile rw(bytes.data(), bytes.size());
-        TEST_ASSERT_EQ(0, (int)load_version_6(rw, &data, 9), "v9 loader should reject invalid object count");
+        ASSERT_EQ(0, (int)load_version_6(rw, &data, 9)) << "v9 loader should reject invalid object count";
     }
 
     {
@@ -692,12 +692,12 @@ void test_level_data_load_version6plus_invalid_counts_and_object_fail_paths()
         append_u8(bytes, 0); // num lines
         MemoryOgFile rw(bytes.data(), bytes.size());
         const short ok = load_version_6(rw, &data, 9);
-        TEST_ASSERT(ok == 0 || ok == 1, "v9 loader unknown order should not crash");
+        ASSERT_TRUE(ok == 0 || ok == 1) << "v9 loader unknown order should not crash";
     }
 }
-REGISTER_TEST(test_level_data_load_version6plus_invalid_counts_and_object_fail_paths);
 
-void test_level_data_load_version6plus_truncated_description_discard_path()
+
+TEST(LevelDataLoadVersions, level_data_load_version6plus_truncated_description_discard_path)
 {
     LevelRuntimeData data(1);
     std::vector<uint8_t> bytes;
@@ -716,12 +716,11 @@ void test_level_data_load_version6plus_truncated_description_discard_path()
 
     MemoryOgFile rw(bytes.data(), bytes.size());
     const short loaded = load_version_6(rw, &data, 9);
-    TEST_ASSERT_EQ(0, (int)loaded,
-                   "v9 loader should fail when long description discard tail is truncated");
+    ASSERT_EQ(0, (int)loaded) << "v9 loader should fail when long description discard tail is truncated";
 }
-REGISTER_TEST(test_level_data_load_version6plus_truncated_description_discard_path);
 
-void test_level_data_load_version6plus_named_objects_treasure_route_and_door_fixup()
+
+TEST(LevelDataLoadVersions, level_data_load_version6plus_named_objects_treasure_route_and_door_fixup)
 {
     namespace fs = std::filesystem;
     const fs::path grid_path = "grid.pix";
@@ -731,7 +730,7 @@ void test_level_data_load_version6plus_named_objects_treasure_route_and_door_fix
     // Build a tiny 4x4 pixie: mostly grass with a wall directly above door tile (2,2)->(2,1).
     {
         std::FILE* f = std::fopen(grid_path.string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create grid.pix fixture");
+        ASSERT_TRUE(f != nullptr) << "create grid.pix fixture";
         if (!f)
             return;
         const unsigned char header[] = {1, 4, 4}; // frames,w,h
@@ -771,13 +770,11 @@ void test_level_data_load_version6plus_named_objects_treasure_route_and_door_fix
         append_u8(bytes, 'n');
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    TEST_ASSERT_EQ(1, (int)load_version_6(rw, &data, 9),
-                   "v9 loader should parse treasure/door objects and long description");
-    TEST_ASSERT(!data.world().fxlist.empty(), "treasure object should be routed into fxlist");
-    TEST_ASSERT(!data.world().weaplist.empty(), "door object should be routed into weaplist");
+    ASSERT_EQ(1, (int)load_version_6(rw, &data, 9)) << "v9 loader should parse treasure/door objects and long description";
+    ASSERT_TRUE(!data.world().fxlist.empty()) << "treasure object should be routed into fxlist";
+    ASSERT_TRUE(!data.world().weaplist.empty()) << "door object should be routed into weaplist";
     if (!data.world().fxlist.empty())
-        TEST_ASSERT(data.world().fxlist.front()->stats()->query_bit_flags(BIT_NAMED) != 0,
-                    "name length > 1 should set BIT_NAMED");
+        ASSERT_TRUE(data.world().fxlist.front()->stats()->query_bit_flags(BIT_NAMED) != 0) << "name length > 1 should set BIT_NAMED";
 
     bool saw_door = false;
     for (auto& uptr : data.world().weaplist)
@@ -786,16 +783,16 @@ void test_level_data_load_version6plus_named_objects_treasure_route_and_door_fix
         if (w && w->family == FAMILY_DOOR)
         {
             saw_door = true;
-            TEST_ASSERT_EQ(1, (int)w->frame, "door with wall above should be frame 1 after fixup");
+            ASSERT_EQ(1, (int)w->frame) << "door with wall above should be frame 1 after fixup";
         }
     }
-    TEST_ASSERT(saw_door, "door object should be present in loaded weapon list");
+    ASSERT_TRUE(saw_door) << "door object should be present in loaded weapon list";
 
     fs::remove(grid_path, ec);
 }
-REGISTER_TEST(test_level_data_load_version6plus_named_objects_treasure_route_and_door_fixup);
 
-void test_level_data_load_scenario_dispatch_case2_path()
+
+TEST(LevelDataLoadVersions, level_data_load_scenario_dispatch_case2_path)
 {
     // Minimal v2 payload through dispatcher (case 2 branch).
     LevelRuntimeData data(8888);
@@ -804,6 +801,6 @@ void test_level_data_load_scenario_dispatch_case2_path()
     append_i16(bytes, 0); // listsize
     MemoryOgFile rw(bytes.data(), bytes.size());
     const short result = load_scenario_version(rw, &data, 2);
-    TEST_ASSERT(result == 0 || result == 1, "dispatch case 2 should execute without crashing");
+    ASSERT_TRUE(result == 0 || result == 1) << "dispatch case 2 should execute without crashing";
 }
-REGISTER_TEST(test_level_data_load_scenario_dispatch_case2_path);
+

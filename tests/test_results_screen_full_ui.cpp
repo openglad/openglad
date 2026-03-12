@@ -54,7 +54,7 @@ static int results_ui_injector(void* data)
 }
 } // namespace
 
-void test_results_screen_full_ui_overview_and_troops_paths()
+TEST(ResultsScreenFullUi, overview_and_troops_paths)
 {
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
@@ -73,7 +73,7 @@ void test_results_screen_full_ui_overview_and_troops_paths()
     auto* w1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     auto* w2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_MAGE);
     auto* w3 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
-    TEST_ASSERT(w1 != nullptr && w2 != nullptr && w3 != nullptr, "expected walkers for results test");
+    ASSERT_TRUE(w1 != nullptr && w2 != nullptr && w3 != nullptr) << "expected walkers for results test";
     w1->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     w2->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     w3->set_owned_myguy(std::make_unique<guy>(FAMILY_ARCHER));
@@ -132,7 +132,7 @@ void test_results_screen_full_ui_overview_and_troops_paths()
 
     ResultsThreadState st{};
     SDL_Thread* thread = SDL_CreateThread(results_ui_injector, "results_ui_injector", &st);
-    TEST_ASSERT(thread != nullptr, "failed to create results injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create results injector thread";
 
     const bool retry = results_screen(0, 2, before, after);
 
@@ -142,7 +142,7 @@ void test_results_screen_full_ui_overview_and_troops_paths()
     results_screen_testing_set_force_full(false);
     og::runtime::current_session->myscreen_->world().end = saved_end;
 
-    TEST_ASSERT(st.started && st.finished, "results UI injector should run");
-    TEST_ASSERT(!retry, "OK path should not request retry");
+    ASSERT_TRUE(st.started && st.finished) << "results UI injector should run";
+    ASSERT_TRUE(!retry) << "OK path should not request retry";
 }
-REGISTER_TEST(test_results_screen_full_ui_overview_and_troops_paths);
+

@@ -29,8 +29,6 @@ static void teardown_walker_special_test()
     }
 }
 
-#define REGISTER_SPECIAL_TEST(func) \
-    REGISTER_TEST_WITH_FIXTURE(func, nullptr, teardown_walker_special_test)
 
 static walker* make_special_guy(char family, unsigned char team = 0, short level = 3)
 {
@@ -118,88 +116,99 @@ public:
     }
 };
 
+class WalkerSpecials {
+public:
+    void SetUp()
+    {}
+
+    void TearDown()
+    {
+        teardown_walker_special_test();
+    }
+};
+
 // ---------------------------------------------------------------------------
 // special() - exercises the massive family switch (lines 2293-3909)
 // Each family test covers a different switch case
 // ---------------------------------------------------------------------------
 
-void test_walker_special_soldier_charge()
+TEST_F(WalkerSpecials, soldier_charge)
 {
     walker* w = make_special_guy(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->current_special = 1; // charge
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_soldier_charge);
 
-void test_walker_special_soldier_boomerang()
+
+TEST_F(WalkerSpecials, soldier_boomerang)
 {
     walker* w = make_special_guy(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 2; // boomerang
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_soldier_boomerang);
 
-void test_walker_special_soldier_whirlwind()
+
+TEST_F(WalkerSpecials, soldier_whirlwind)
 {
     walker* w = make_special_guy(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 3; // whirlwind
     w->busy = 0;
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_soldier_whirlwind);
 
-void test_walker_special_archer_fire_arrows()
+
+TEST_F(WalkerSpecials, archer_fire_arrows)
 {
     walker* w = make_special_guy(FAMILY_ARCHER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->current_special = 1; // fire arrows
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_archer_fire_arrows);
 
-void test_walker_special_archer_flurry()
+
+TEST_F(WalkerSpecials, archer_flurry)
 {
     walker* w = make_special_guy(FAMILY_ARCHER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->busy = 0;
     w->current_special = 2; // flurry
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_archer_flurry);
 
-void test_walker_special_archer_exploding()
+
+TEST_F(WalkerSpecials, archer_exploding)
 {
     walker* w = make_special_guy(FAMILY_ARCHER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->busy = 0;
     w->current_special = 3; // exploding arrows
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_archer_exploding);
 
-void test_walker_special_mage_teleport()
+
+TEST_F(WalkerSpecials, mage_teleport)
 {
     walker* w = make_special_guy(FAMILY_MAGE);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 1; // teleport
     w->special();
 
     // Direct teleport marker path (marker consumed at lifetime 1).
     walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
-    TEST_ASSERT(marker != nullptr, "teleport marker created");
+    ASSERT_TRUE(marker != nullptr) << "teleport marker created";
     if (marker) {
         marker->owner = w;
         marker->dead = 0;
@@ -230,12 +239,12 @@ void test_walker_special_mage_teleport()
             }
         }
         marker->setxy(mx, my);
-        TEST_ASSERT(w->teleport(), "teleport with marker should succeed");
+        ASSERT_TRUE(w->teleport()) << "teleport with marker should succeed";
     }
 
     // Marker-present but too-close path should go through fallback logic.
     marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
-    TEST_ASSERT(marker != nullptr, "near marker created");
+    ASSERT_TRUE(marker != nullptr) << "near marker created";
     if (marker) {
         marker->owner = w;
         marker->dead = 0;
@@ -248,38 +257,38 @@ void test_walker_special_mage_teleport()
     (void)w->teleport_ranged(24);
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_mage_teleport);
 
-void test_walker_special_mage_freeze()
+
+TEST_F(WalkerSpecials, mage_freeze)
 {
     walker* w = make_special_guy(FAMILY_MAGE);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 2; // freeze time
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_mage_freeze);
 
-void test_walker_special_mage_energy_wave()
+
+TEST_F(WalkerSpecials, mage_energy_wave)
 {
     walker* w = make_special_guy(FAMILY_MAGE);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 3; // energy wave
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->busy = 0;
     walker* mage_target = make_special_guy(FAMILY_ORC, 2, 2);
-    TEST_ASSERT(mage_target != nullptr, "mage target created");
+    ASSERT_TRUE(mage_target != nullptr) << "mage target created";
     mage_target->setxy(w->xpos + 8, w->ypos + 8);
     int before_wave = count_family_all_lists(FAMILY_WAVE);
     (void)w->special();
     int after_wave = count_family_all_lists(FAMILY_WAVE);
-    TEST_ASSERT(after_wave >= before_wave, "energy wave path should run without removing waves");
+    ASSERT_TRUE(after_wave >= before_wave) << "energy wave path should run without removing waves";
 
     // Exercise archmage heavy branches: marker teleport, chain lightning,
     // summon variants, and mind-control.
     og::runtime::current_session->myscreen_->world().delete_objects();
     walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
-    TEST_ASSERT(arch != nullptr, "archmage created");
+    ASSERT_TRUE(arch != nullptr) << "archmage created";
     arch->setxy(120, 120);
     arch->stats()->magicpoints = 1800;
     arch->stats()->max_magicpoints = 1800;
@@ -303,11 +312,11 @@ void test_walker_special_mage_energy_wave()
     int markers_before = count_family_in_oblist(FAMILY_MARKER);
     (void)arch->special();
     int markers_after = count_family_in_oblist(FAMILY_MARKER);
-    TEST_ASSERT(markers_after >= markers_before, "marker path should not remove markers");
+    ASSERT_TRUE(markers_after >= markers_before) << "marker path should not remove markers";
 
     // special 2, normal: create explosion FX against a nearby foe.
     walker* foe = make_special_guy(FAMILY_ORC, 2, 3);
-    TEST_ASSERT(foe != nullptr, "foe created for archmage special 2");
+    ASSERT_TRUE(foe != nullptr) << "foe created for archmage special 2";
     foe->setxy(arch->xpos + 10, arch->ypos + 10);
     int explode_before = count_family_all_lists(FAMILY_EXPLOSION);
     arch->current_special = 2;
@@ -315,7 +324,7 @@ void test_walker_special_mage_energy_wave()
     arch->busy = 0;
     (void)arch->special();
     int explode_after = count_family_all_lists(FAMILY_EXPLOSION);
-    TEST_ASSERT(explode_after >= explode_before, "burst path should not reduce explosion count");
+    ASSERT_TRUE(explode_after >= explode_before) << "burst path should not reduce explosion count";
 
     // special 2, shifter_down: chain lightning path should create FAMILY_CHAIN.
     int chain_before = count_family_all_lists(FAMILY_CHAIN);
@@ -324,7 +333,7 @@ void test_walker_special_mage_energy_wave()
     arch->busy = 0;
     (void)arch->special();
     int chain_after = count_family_all_lists(FAMILY_CHAIN);
-    TEST_ASSERT(chain_after >= chain_before, "chain lightning path should not reduce chain FX count");
+    ASSERT_TRUE(chain_after >= chain_before) << "chain lightning path should not reduce chain FX count";
 
     // special 3, shifter_down: true summon (fire elemental).
     int fire_before = count_family_in_oblist(FAMILY_FIREELEMENTAL);
@@ -333,7 +342,7 @@ void test_walker_special_mage_energy_wave()
     arch->busy = 0;
     (void)arch->special();
     int fire_after = count_family_in_oblist(FAMILY_FIREELEMENTAL);
-    TEST_ASSERT(fire_after >= fire_before, "true summon path should not remove fire elementals");
+    ASSERT_TRUE(fire_after >= fire_before) << "true summon path should not remove fire elementals";
 
     // special 3, no shifter: illusion summon variant.
     arch->stats()->magicpoints = 1500;
@@ -343,20 +352,20 @@ void test_walker_special_mage_energy_wave()
     arch->busy = 0;
     (void)arch->special();
     int total_after = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
-    TEST_ASSERT(total_after >= total_before, "illusion summon path should not remove objects");
+    ASSERT_TRUE(total_after >= total_before) << "illusion summon path should not remove objects";
 
     // special 4: mind-control should retarget a nearby foe to archmage team.
     walker* control_target = find_first_alive_ob_by_family(FAMILY_ORC);
     if (!control_target) {
         control_target = make_special_guy(FAMILY_ORC, 3, 2);
-        TEST_ASSERT(control_target != nullptr, "control target created");
+        ASSERT_TRUE(control_target != nullptr) << "control target created";
         control_target->setxy(arch->xpos + 5, arch->ypos + 5);
     }
     arch->current_special = 4;
     arch->shifter_down = 0;
     arch->busy = 0;
     (void)arch->special();
-    TEST_ASSERT(control_target->team_num >= 0, "mind-control path should leave target in a valid team");
+    ASSERT_TRUE(control_target->team_num >= 0) << "mind-control path should leave target in a valid team";
 
     pop_test_context();
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -364,7 +373,7 @@ void test_walker_special_mage_energy_wave()
     // Drive act() into ACT_RANDOM branches (including act_random()).
     walker* actor = make_special_guy(FAMILY_ORC, 1, 4);
     walker* enemy = make_special_guy(FAMILY_SOLDIER, 2, 4);
-    TEST_ASSERT(actor != nullptr && enemy != nullptr, "actor/enemy should be created for ACT_RANDOM");
+    ASSERT_TRUE(actor != nullptr && enemy != nullptr) << "actor/enemy should be created for ACT_RANDOM";
     if (actor && enemy) {
         actor->setxy(100, 100);
         enemy->setxy(108, 100);
@@ -381,7 +390,7 @@ void test_walker_special_mage_energy_wave()
         random_ctx.rng = &seq_rng;
         push_test_context(&random_ctx);
         (void)actor->act();
-        TEST_ASSERT(actor->act_type == ACT_RANDOM, "ACT_RANDOM path should preserve act type");
+        ASSERT_TRUE(actor->act_type == ACT_RANDOM) << "ACT_RANDOM path should preserve act type";
 
         // rng(4)==1 -> take the alternate search branch.
         FixedRandom nonzero_rng(1);
@@ -389,7 +398,7 @@ void test_walker_special_mage_energy_wave()
         push_test_context(&random_ctx);
         actor->stats()->clear_command();
         (void)actor->act();
-        TEST_ASSERT(actor->act_type == ACT_RANDOM, "ACT_RANDOM alternate path should preserve act type");
+        ASSERT_TRUE(actor->act_type == ACT_RANDOM) << "ACT_RANDOM alternate path should preserve act type";
         pop_test_context();
     }
     delete actor;
@@ -410,8 +419,7 @@ void test_walker_special_mage_energy_wave()
         walker* ally = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
         walker* foe2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
         walker* blood = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
-        TEST_ASSERT(a != nullptr && ally != nullptr && foe2 != nullptr && blood != nullptr,
-                    "special sweep objects should be created");
+        ASSERT_TRUE(a != nullptr && ally != nullptr && foe2 != nullptr && blood != nullptr) << "special sweep objects should be created";
         if (!(a && ally && foe2 && blood)) {
             continue;
         }
@@ -451,7 +459,7 @@ void test_walker_special_mage_energy_wave()
     // Target uncovered archmage illusion case tables (rng(3/5/7/9) branches).
     og::runtime::current_session->myscreen_->world().delete_objects();
     walker* arch2 = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
-    TEST_ASSERT(arch2 != nullptr, "archmage branch sweeper created");
+    ASSERT_TRUE(arch2 != nullptr) << "archmage branch sweeper created";
     if (arch2) {
         arch2->setxy(120, 120);
         arch2->stats()->special_cost[3] = 0;
@@ -478,32 +486,32 @@ void test_walker_special_mage_energy_wave()
     og::runtime::current_session->myscreen_->world().delete_objects();
 
 }
-REGISTER_SPECIAL_TEST(test_walker_special_mage_energy_wave);
 
-void test_walker_special_cleric_heal()
+
+TEST_F(WalkerSpecials, cleric_heal)
 {
     walker* w = make_special_guy(FAMILY_CLERIC);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 1; // heal
     w->shifter_down = 0;
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_cleric_heal);
 
-void test_walker_special_cleric_raise_undead()
+
+TEST_F(WalkerSpecials, cleric_raise_undead)
 {
     walker* w = make_special_guy(FAMILY_CLERIC);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 2; // raise undead
     w->special();
 
     Sint32 none = w->turn_undead(3, 1);
-    TEST_ASSERT_EQ(-1, (int)none, "turn_undead should return -1 when no foes are in range");
+    ASSERT_EQ(-1, (int)none) << "turn_undead should return -1 when no foes are in range";
 
     walker* skel = make_special_guy(FAMILY_SKELETON, 2, 1);
     walker* ghost = make_special_guy(FAMILY_GHOST, 2, 1);
     walker* orc = make_special_guy(FAMILY_ORC, 2, 1);
-    TEST_ASSERT(skel != nullptr && ghost != nullptr && orc != nullptr, "foes created");
+    ASSERT_TRUE(skel != nullptr && ghost != nullptr && orc != nullptr) << "foes created";
     if (skel && ghost && orc) {
         skel->setxy(w->xpos + 1, w->ypos + 1);
         ghost->setxy(w->xpos + 2, w->ypos + 1);
@@ -525,227 +533,227 @@ void test_walker_special_cleric_raise_undead()
         push_test_context(&test_ctx);
         Sint32 killed = w->turn_undead(24, 2);
         pop_test_context();
-        TEST_ASSERT(killed >= -1, "turn_undead should return a valid result");
+        ASSERT_TRUE(killed >= -1) << "turn_undead should return a valid result";
     }
 
     delete skel;
     delete ghost;
     delete orc;
 }
-REGISTER_SPECIAL_TEST(test_walker_special_cleric_raise_undead);
 
-void test_walker_special_elf_rocks()
+
+TEST_F(WalkerSpecials, elf_rocks)
 {
     walker* w = make_special_guy(FAMILY_ELF);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 1; // rocks
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->busy = 0;
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_elf_rocks);
 
-void test_walker_special_elf_speed()
+
+TEST_F(WalkerSpecials, elf_speed)
 {
     walker* w = make_special_guy(FAMILY_ELF);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 2; // speed
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_elf_speed);
 
-void test_walker_special_elf_heal()
+
+TEST_F(WalkerSpecials, elf_heal)
 {
     walker* w = make_special_guy(FAMILY_ELF);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 3; // nature heal
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_elf_heal);
 
-void test_walker_special_thief_stealth()
+
+TEST_F(WalkerSpecials, thief_stealth)
 {
     walker* w = make_special_guy(FAMILY_THIEF);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 1; // stealth
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_thief_stealth);
 
-void test_walker_special_thief_taunt()
+
+TEST_F(WalkerSpecials, thief_taunt)
 {
     walker* w = make_special_guy(FAMILY_THIEF);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 2; // taunt
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_thief_taunt);
 
-void test_walker_special_skeleton_tunnel()
+
+TEST_F(WalkerSpecials, skeleton_tunnel)
 {
     walker* w = make_special_guy(FAMILY_SKELETON);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 1; // tunnel
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_skeleton_tunnel);
 
-void test_walker_special_fireelemental_explode()
+
+TEST_F(WalkerSpecials, fireelemental_explode)
 {
     walker* w = make_special_guy(FAMILY_FIREELEMENTAL);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 1; // explode
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_fireelemental_explode);
 
-void test_walker_special_faerie_charm()
+
+TEST_F(WalkerSpecials, faerie_charm)
 {
     walker* w = make_special_guy(FAMILY_FAERIE);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 1; // charm
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_faerie_charm);
 
-void test_walker_special_druid_plant_tree()
+
+TEST_F(WalkerSpecials, druid_plant_tree)
 {
     walker* w = make_special_guy(FAMILY_DRUID);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 1; // plant tree
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_druid_plant_tree);
 
-void test_walker_special_druid_summon()
+
+TEST_F(WalkerSpecials, druid_summon)
 {
     walker* w = make_special_guy(FAMILY_DRUID);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 2; // summon animal
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_druid_summon);
 
-void test_walker_special_ghost_scare()
+
+TEST_F(WalkerSpecials, ghost_scare)
 {
     walker* w = make_special_guy(FAMILY_GHOST);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 1; // scare
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_ghost_scare);
 
-void test_walker_special_orc_howl()
+
+TEST_F(WalkerSpecials, orc_howl)
 {
     walker* w = make_special_guy(FAMILY_ORC);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->current_special = 1; // howl
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_orc_howl);
 
-void test_walker_special_barbarian_hurl()
+
+TEST_F(WalkerSpecials, barbarian_hurl)
 {
     walker* w = make_special_guy(FAMILY_BARBARIAN);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->busy = 0;
     w->current_special = 1; // hurl boulder
     w->special();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_barbarian_hurl);
+
 
 // ---------------------------------------------------------------------------
 // special() when dead, no stats, or not enough magic
 // ---------------------------------------------------------------------------
 
-void test_walker_special_dead()
+TEST_F(WalkerSpecials, dead)
 {
     walker* w = make_special_guy(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->dead = 1;
     bool result = w->special();
-    TEST_ASSERT(!result, "dead walker should not special");
+    ASSERT_TRUE(!result) << "dead walker should not special";
     w->dead = 0; // so destructor works
     w->current_special = 3;
     w->stats()->magicpoints = w->stats()->special_cost[3];
 
     walker* weapon = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_KNIFE);
-    TEST_ASSERT(weapon != nullptr, "weapon created");
+    ASSERT_TRUE(weapon != nullptr) << "weapon created";
     if (weapon) {
         weapon->current_special = 1;
         weapon->stats()->magicpoints = weapon->stats()->special_cost[1];
-        TEST_ASSERT(!weapon->special(), "non-living special should fail early");
+        ASSERT_TRUE(!weapon->special()) << "non-living special should fail early";
     }
 }
-REGISTER_SPECIAL_TEST(test_walker_special_dead);
 
-void test_walker_special_no_magic()
+
+TEST_F(WalkerSpecials, no_magic)
 {
     walker* w = make_special_guy(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->stats()->magicpoints = 0;
     bool result = w->special();
-    TEST_ASSERT(!result, "no magic should fail special");
+    ASSERT_TRUE(!result) << "no magic should fail special";
 
     // Exercise specific "not enough for selected special" index path.
     w->set_order_family(Order::Living, FAMILY_MAGE);
     w->current_special = 4;
     w->stats()->special_cost[4] = 50;
     w->stats()->magicpoints = 49;
-    TEST_ASSERT(!w->special(), "insufficient MP for selected special index should fail");
+    ASSERT_TRUE(!w->special()) << "insufficient MP for selected special index should fail";
 
     // Exercise base-class fallback implementations explicitly.
-    TEST_ASSERT_EQ(-1, (int)w->walker::shove(nullptr, static_cast<short>(0), static_cast<short>(0)), "base shove should return -1");
-    TEST_ASSERT_EQ(-1, (int)w->walker::shove(w, static_cast<short>(1), static_cast<short>(0)), "base shove log path should still return -1");
-    TEST_ASSERT(!w->walker::eat_me(nullptr), "base eat_me fallback should return false");
-    TEST_ASSERT(w->walker::do_summon(1, 10) == nullptr, "base do_summon fallback should return null");
-    TEST_ASSERT(!w->walker::check_special(), "base check_special fallback should return false");
+    ASSERT_EQ(-1, (int)w->walker::shove(nullptr, static_cast<short>(0), static_cast<short>(0))) << "base shove should return -1";
+    ASSERT_EQ(-1, (int)w->walker::shove(w, static_cast<short>(1), static_cast<short>(0))) << "base shove log path should still return -1";
+    ASSERT_TRUE(!w->walker::eat_me(nullptr)) << "base eat_me fallback should return false";
+    ASSERT_TRUE(w->walker::do_summon(1, 10) == nullptr) << "base do_summon fallback should return null";
+    ASSERT_TRUE(!w->walker::check_special()) << "base check_special fallback should return false";
 
 }
-REGISTER_SPECIAL_TEST(test_walker_special_no_magic);
+
 
 // ---------------------------------------------------------------------------
 // death() - exercises order/family switches (lines 4422-4534)
 // ---------------------------------------------------------------------------
 
-void test_walker_death_fire_elemental()
+TEST_F(WalkerSpecials, walker_death_fire_elemental)
 {
     walker* w = make_special_guy(FAMILY_FIREELEMENTAL, 1);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->dead = 1;
     w->death();
 }
-REGISTER_SPECIAL_TEST(test_walker_death_fire_elemental);
 
-void test_walker_death_with_myguy()
+
+TEST_F(WalkerSpecials, walker_death_with_myguy)
 {
     walker* w = make_special_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker created");
-    TEST_ASSERT(w->myguy != nullptr, "should have myguy");
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    ASSERT_TRUE(w->myguy != nullptr) << "should have myguy";
     w->dead = 1;
     w->death();
 
     // Also exercise generator-death explosion fan-out path.
     walker* generator = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
-    TEST_ASSERT(generator != nullptr, "generator created");
+    ASSERT_TRUE(generator != nullptr) << "generator created";
     int fx_before = count_family_all_lists(FAMILY_EXPLOSION);
     generator->dead = 1;
     generator->death();
     int fx_after = count_family_all_lists(FAMILY_EXPLOSION);
-    TEST_ASSERT(fx_after >= fx_before + 1, "generator death should spawn explosion FX");
+    ASSERT_TRUE(fx_after >= fx_before + 1) << "generator death should spawn explosion FX";
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_death_with_myguy);
 
-void test_walker_special_archmage_illusion_rng_tables()
+
+TEST_F(WalkerSpecials, archmage_illusion_rng_tables)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
-    TEST_ASSERT(arch != nullptr, "archmage created");
+    ASSERT_TRUE(arch != nullptr) << "archmage created";
     if (!arch) {
         return;
     }
@@ -770,7 +778,7 @@ void test_walker_special_archmage_illusion_rng_tables()
             arch->busy = 0;
             (void)arch->special();
             int after = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
-            TEST_ASSERT(after >= before, "illusion summon case should not reduce object count");
+            ASSERT_TRUE(after >= before) << "illusion summon case should not reduce object count";
             pop_test_context();
         }
     }
@@ -778,14 +786,14 @@ void test_walker_special_archmage_illusion_rng_tables()
     og::runtime::current_session->myscreen_->world().delete_objects();
     delete arch;
 }
-REGISTER_SPECIAL_TEST(test_walker_special_archmage_illusion_rng_tables);
 
-void test_walker_special_mage_marker_remove_and_freeze_enemy_branch()
+
+TEST_F(WalkerSpecials, mage_marker_remove_and_freeze_enemy_branch)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* mage = make_special_guy(FAMILY_MAGE, 2, 6);
-    TEST_ASSERT(mage != nullptr, "mage created");
+    ASSERT_TRUE(mage != nullptr) << "mage created";
     if (!mage) {
         return;
     }
@@ -800,7 +808,7 @@ void test_walker_special_mage_marker_remove_and_freeze_enemy_branch()
     }
 
     walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
-    TEST_ASSERT(marker != nullptr, "marker created");
+    ASSERT_TRUE(marker != nullptr) << "marker created";
     if (marker) {
         marker->owner = mage;
         marker->dead = 0;
@@ -817,7 +825,7 @@ void test_walker_special_mage_marker_remove_and_freeze_enemy_branch()
         mage->clear_myguy();
     }
     walker* ally = make_special_guy(FAMILY_ORC, 3, 2);
-    TEST_ASSERT(ally != nullptr, "ally created");
+    ASSERT_TRUE(ally != nullptr) << "ally created";
     if (ally) {
         ally->setxy(mage->xpos + 6, mage->ypos + 6);
     }
@@ -827,16 +835,16 @@ void test_walker_special_mage_marker_remove_and_freeze_enemy_branch()
     delete mage;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_mage_marker_remove_and_freeze_enemy_branch);
 
-void test_walker_special_mage_wave_and_burst_with_targets()
+
+TEST_F(WalkerSpecials, mage_wave_and_burst_with_targets)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* mage = make_special_guy(FAMILY_MAGE, 1, 7);
     walker* foe1 = make_special_guy(FAMILY_ORC, 2, 3);
     walker* foe2 = make_special_guy(FAMILY_SKELETON, 2, 3);
-    TEST_ASSERT(mage != nullptr && foe1 != nullptr && foe2 != nullptr, "mage and foes created");
+    ASSERT_TRUE(mage != nullptr && foe1 != nullptr && foe2 != nullptr) << "mage and foes created";
     if (!(mage && foe1 && foe2)) {
         return;
     }
@@ -862,15 +870,15 @@ void test_walker_special_mage_wave_and_burst_with_targets()
     delete mage;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_mage_wave_and_burst_with_targets);
 
-void test_walker_special_archmage_low_int_marker_chain_and_summon_true()
+
+TEST_F(WalkerSpecials, archmage_low_int_marker_chain_and_summon_true)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
     walker* foe = make_special_guy(FAMILY_ORC, 2, 2);
-    TEST_ASSERT(arch != nullptr && foe != nullptr, "arch and foe created");
+    ASSERT_TRUE(arch != nullptr && foe != nullptr) << "arch and foe created";
     if (!(arch && foe)) {
         return;
     }
@@ -897,7 +905,7 @@ void test_walker_special_archmage_low_int_marker_chain_and_summon_true()
         arch->myguy->intelligence = 220;
     }
     walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
-    TEST_ASSERT(marker != nullptr, "arch marker created");
+    ASSERT_TRUE(marker != nullptr) << "arch marker created";
     if (marker) {
         marker->owner = arch;
         marker->dead = 0;
@@ -924,9 +932,9 @@ void test_walker_special_archmage_low_int_marker_chain_and_summon_true()
     delete arch;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_archmage_low_int_marker_chain_and_summon_true);
 
-void test_walker_special_archmage_mind_control_stats_name_path()
+
+TEST_F(WalkerSpecials, archmage_mind_control_stats_name_path)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
@@ -934,8 +942,7 @@ void test_walker_special_archmage_mind_control_stats_name_path()
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     walker* foe2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     walker* foe3 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    TEST_ASSERT(arch != nullptr && foe != nullptr && foe2 != nullptr && foe3 != nullptr,
-                "arch and mind-control targets created");
+    ASSERT_TRUE(arch != nullptr && foe != nullptr && foe2 != nullptr && foe3 != nullptr) << "arch and mind-control targets created";
     if (!(arch && foe && foe2 && foe3)) {
         delete arch;
         og::runtime::current_session->myscreen_->world().delete_objects();
@@ -976,21 +983,20 @@ void test_walker_special_archmage_mind_control_stats_name_path()
     push_test_context(&test_ctx);
     (void)arch->special();
     pop_test_context();
-    TEST_ASSERT(arch->stats()->magicpoints < mp_before,
-                "mind-control should spend MP for controlled targets");
+    ASSERT_TRUE(arch->stats()->magicpoints < mp_before) << "mind-control should spend MP for controlled targets";
 
     delete arch;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_archmage_mind_control_stats_name_path);
 
-void test_walker_special_druid_circle_existing_protection_branch()
+
+TEST_F(WalkerSpecials, druid_circle_existing_protection_branch)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* druid = make_special_guy(FAMILY_DRUID, 1, 6);
     walker* ally = make_special_guy(FAMILY_SOLDIER, 1, 5);
-    TEST_ASSERT(druid != nullptr && ally != nullptr, "druid and ally created");
+    ASSERT_TRUE(druid != nullptr && ally != nullptr) << "druid and ally created";
     if (!(druid && ally)) {
         return;
     }
@@ -1001,7 +1007,7 @@ void test_walker_special_druid_circle_existing_protection_branch()
     druid->current_special = 4;
 
     walker* existing = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
-    TEST_ASSERT(existing != nullptr, "existing protection created");
+    ASSERT_TRUE(existing != nullptr) << "existing protection created";
     if (existing) {
         existing->owner = ally;
         existing->team_num = ally->team_num;
@@ -1014,14 +1020,13 @@ void test_walker_special_druid_circle_existing_protection_branch()
     delete druid;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_druid_circle_existing_protection_branch);
 
-void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
+TEST_F(WalkerSpecials, orc_eat_corpse_and_barbarian_exploding_boulder_npc)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* orc = make_special_guy(FAMILY_ORC, 2, 4);
-    TEST_ASSERT(orc != nullptr, "orc created");
+    ASSERT_TRUE(orc != nullptr) << "orc created";
     if (!orc) {
         return;
     }
@@ -1035,7 +1040,7 @@ void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
     orc->busy = 0;
 
     walker* blood = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
-    TEST_ASSERT(blood != nullptr, "blood created");
+    ASSERT_TRUE(blood != nullptr) << "blood created";
     if (blood) {
         blood->team_num = 3;
         blood->stats()->level = 3;
@@ -1044,7 +1049,7 @@ void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
     (void)orc->special();
 
     walker* barb = make_special_guy(FAMILY_BARBARIAN, 2, 5);
-    TEST_ASSERT(barb != nullptr, "barbarian created");
+    ASSERT_TRUE(barb != nullptr) << "barbarian created";
     if (barb) {
         if (barb->myguy) {
             barb->clear_myguy();
@@ -1061,20 +1066,20 @@ void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
     delete orc;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc);
 
-void test_walker_special_cleric_raise_skeleton_and_ghost_from_stain()
+
+TEST_F(WalkerSpecials, cleric_raise_skeleton_and_ghost_from_stain)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 6);
-    TEST_ASSERT(cleric != nullptr, "cleric created");
+    ASSERT_TRUE(cleric != nullptr) << "cleric created";
     if (!cleric)
         return;
 
     // Place a blood stain close by but not colliding with other objects.
     walker* stain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
-    TEST_ASSERT(stain != nullptr, "stain created");
+    ASSERT_TRUE(stain != nullptr) << "stain created";
     if (!stain) {
         delete cleric;
         return;
@@ -1104,14 +1109,14 @@ void test_walker_special_cleric_raise_skeleton_and_ghost_from_stain()
     delete cleric;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_cleric_raise_skeleton_and_ghost_from_stain);
 
-void test_walker_special_cleric_mystic_mace_low_int_and_success_paths()
+
+TEST_F(WalkerSpecials, cleric_mystic_mace_low_int_and_success_paths)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 8);
-    TEST_ASSERT(cleric != nullptr, "cleric created");
+    ASSERT_TRUE(cleric != nullptr) << "cleric created";
     if (!cleric)
         return;
 
@@ -1127,8 +1132,7 @@ void test_walker_special_cleric_mystic_mace_low_int_and_success_paths()
     int shields_before = count_family_all_lists(FAMILY_MAGIC_SHIELD);
     (void)cleric->special();
     int shields_after_low_int = count_family_all_lists(FAMILY_MAGIC_SHIELD);
-    TEST_ASSERT_EQ(shields_before, shields_after_low_int,
-                   "low-int mystic mace path should not create shield");
+    ASSERT_EQ(shields_before, shields_after_low_int) << "low-int mystic mace path should not create shield";
 
     if (cleric->myguy) {
         cleric->myguy->intelligence = 120;
@@ -1137,24 +1141,22 @@ void test_walker_special_cleric_mystic_mace_low_int_and_success_paths()
     float mp_before = cleric->stats()->magicpoints;
     (void)cleric->special();
     int shields_after_success = count_family_all_lists(FAMILY_MAGIC_SHIELD);
-    TEST_ASSERT(shields_after_success > shields_after_low_int,
-                "valid mystic mace cast should create shield fx");
-    TEST_ASSERT(cleric->busy > 0, "valid mystic mace should set busy");
-    TEST_ASSERT(cleric->stats()->magicpoints < mp_before,
-                "valid mystic mace should spend magicpoints");
+    ASSERT_TRUE(shields_after_success > shields_after_low_int) << "valid mystic mace cast should create shield fx";
+    ASSERT_TRUE(cleric->busy > 0) << "valid mystic mace should set busy";
+    ASSERT_TRUE(cleric->stats()->magicpoints < mp_before) << "valid mystic mace should spend magicpoints";
 
     delete cleric;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_cleric_mystic_mace_low_int_and_success_paths);
 
-void test_walker_special_cleric_resurrect_friendly_and_enemy_stains()
+
+TEST_F(WalkerSpecials, cleric_resurrect_friendly_and_enemy_stains)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 8);
     walker* ally = make_special_guy(FAMILY_SOLDIER, 1, 5);
-    TEST_ASSERT(cleric != nullptr && ally != nullptr, "cleric and ally created");
+    ASSERT_TRUE(cleric != nullptr && ally != nullptr) << "cleric and ally created";
     if (!(cleric && ally))
         return;
 
@@ -1171,8 +1173,7 @@ void test_walker_special_cleric_resurrect_friendly_and_enemy_stains()
     int soldiers_before = count_family_in_oblist(FAMILY_SOLDIER);
     (void)cleric->special();
     int soldiers_after = count_family_in_oblist(FAMILY_SOLDIER);
-    TEST_ASSERT(soldiers_after >= soldiers_before,
-                "friendly stain should allow resurrecting original family");
+    ASSERT_TRUE(soldiers_after >= soldiers_before) << "friendly stain should allow resurrecting original family";
 
     delete ally;
     delete cleric;
@@ -1181,9 +1182,9 @@ void test_walker_special_cleric_resurrect_friendly_and_enemy_stains()
     // Enemy-stain branch depends on map passability and alliance mode interactions;
     // keep this test deterministic by validating the friendly resurrection path only.
 }
-REGISTER_SPECIAL_TEST(test_walker_special_cleric_resurrect_friendly_and_enemy_stains);
 
-void test_walker_special_elf_rock_barrage_level4_smoke()
+
+TEST_F(WalkerSpecials, elf_rock_barrage_level4_smoke)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
@@ -1191,7 +1192,7 @@ void test_walker_special_elf_rock_barrage_level4_smoke()
     srand(123);
 
     walker* elf = make_special_guy(FAMILY_ELF, 1, 6);
-    TEST_ASSERT(elf != nullptr, "elf created");
+    ASSERT_TRUE(elf != nullptr) << "elf created";
     if (!elf)
         return;
 
@@ -1208,16 +1209,16 @@ void test_walker_special_elf_rock_barrage_level4_smoke()
     delete elf;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_elf_rock_barrage_level4_smoke);
 
-void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
+
+TEST_F(WalkerSpecials, walker_turn_undead_attack_kill_branch_and_act_guard_random_edges)
 {
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 7);
     walker* skel = make_special_guy(FAMILY_SKELETON, 2, 1);
     walker* ghost = make_special_guy(FAMILY_GHOST, 2, 1);
-    TEST_ASSERT(cleric != nullptr && skel != nullptr && ghost != nullptr, "cleric and undead created");
+    ASSERT_TRUE(cleric != nullptr && skel != nullptr && ghost != nullptr) << "cleric and undead created";
     if (cleric && skel && ghost) {
         cleric->setxy(100, 100);
         skel->setxy(102, 100);
@@ -1236,7 +1237,7 @@ void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
 
     walker* guard = make_special_guy(FAMILY_ORC, 3, 4);
     walker* foe = make_special_guy(FAMILY_SOLDIER, 2, 2);
-    TEST_ASSERT(guard != nullptr && foe != nullptr, "guard and foe created");
+    ASSERT_TRUE(guard != nullptr && foe != nullptr) << "guard and foe created";
     if (guard && foe) {
         guard->setxy(140, 140);
         foe->setxy(146, 140);
@@ -1245,7 +1246,7 @@ void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
     }
 
     walker* randomer = make_special_guy(FAMILY_ORC, 5, 4);
-    TEST_ASSERT(randomer != nullptr, "randomer created");
+    ASSERT_TRUE(randomer != nullptr) << "randomer created";
     if (randomer) {
         randomer->setxy(160, 160);
         randomer->foe = nullptr;
@@ -1270,55 +1271,55 @@ void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
     delete cleric;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges);
 
-void test_walker_special_guard_paths_and_teleport_failures()
+
+TEST_F(WalkerSpecials, guard_paths_and_teleport_failures)
 {
     walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
-    TEST_ASSERT(w != nullptr, "mage created");
+    ASSERT_TRUE(w != nullptr) << "mage created";
     if (!w)
         return;
 
     // dead guard
     w->dead = 1;
-    TEST_ASSERT(!w->special(), "dead walker special should fail");
+    ASSERT_TRUE(!w->special()) << "dead walker special should fail";
     w->dead = 0;
 
     // magic cost guard
     w->current_special = 1;
     w->stats()->special_cost[1] = 50;
     w->stats()->magicpoints = 0;
-    TEST_ASSERT(!w->special(), "insufficient MP special should fail");
+    ASSERT_TRUE(!w->special()) << "insufficient MP special should fail";
 
     // order guard
     w->stats()->magicpoints = 500;
     w->set_order_family(Order::FX, FAMILY_MARKER);
-    TEST_ASSERT(!w->special(), "non-living special should fail");
+    ASSERT_TRUE(!w->special()) << "non-living special should fail";
     w->set_order_family(Order::Living, FAMILY_MAGE);
 
     // teleport_ranged failure branch
     w->setxy(-200, -200);
-    TEST_ASSERT(!w->teleport_ranged(0), "teleport_ranged should fail when no passable destination exists");
+    ASSERT_TRUE(!w->teleport_ranged(0)) << "teleport_ranged should fail when no passable destination exists";
 
     // turn_undead no-target branch
-    TEST_ASSERT_EQ(-1, (int)w->turn_undead(10, 1), "turn_undead should return -1 with no foes in range");
+    ASSERT_EQ(-1, (int)w->turn_undead(10, 1)) << "turn_undead should return -1 with no foes in range";
 
     delete w;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_guard_paths_and_teleport_failures);
 
-void test_walker_special_no_stats_guard()
+
+TEST_F(WalkerSpecials, no_stats_guard)
 {
     NoStatsWalker no_stats;
-    TEST_ASSERT(!no_stats.special(), "special should fail safely when stats are missing");
+    ASSERT_TRUE(!no_stats.special()) << "special should fail safely when stats are missing";
 }
-REGISTER_SPECIAL_TEST(test_walker_special_no_stats_guard);
 
-void test_walker_special_unknown_family_and_teleport_ranged_fail_loop()
+
+TEST_F(WalkerSpecials, unknown_family_and_teleport_ranged_fail_loop)
 {
     walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -1327,22 +1328,22 @@ void test_walker_special_unknown_family_and_teleport_ranged_fail_loop()
     w->current_special = 1;
     w->stats()->special_cost[1] = 0;
     w->stats()->magicpoints = 100;
-    TEST_ASSERT(!w->special(), "unknown living family special should fall through and return false");
+    ASSERT_TRUE(!w->special()) << "unknown living family special should fall through and return false";
 
     // teleport_ranged(): exhaust keep_going loop and hit explicit false return.
     w->set_order_family(Order::Living, FAMILY_MAGE);
     w->setxy(-1000, -1000);
-    TEST_ASSERT(!w->teleport_ranged(1), "teleport_ranged should fail after retries on invalid area");
+    ASSERT_TRUE(!w->teleport_ranged(1)) << "teleport_ranged should fail after retries on invalid area";
 
     delete w;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_unknown_family_and_teleport_ranged_fail_loop);
 
-void test_walker_special_success_returns_true_and_spends_mp()
+
+TEST_F(WalkerSpecials, success_returns_true_and_spends_mp)
 {
     walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -1352,7 +1353,7 @@ void test_walker_special_success_returns_true_and_spends_mp()
     w->stats()->magicpoints = 50;
 
     walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
-    TEST_ASSERT(marker != nullptr, "teleport marker created");
+    ASSERT_TRUE(marker != nullptr) << "teleport marker created";
     if (!marker) {
         delete w;
         og::runtime::current_session->myscreen_->world().delete_objects();
@@ -1389,11 +1390,9 @@ void test_walker_special_success_returns_true_and_spends_mp()
     marker->setxy(mx, my);
 
     const float mp_before = w->stats()->magicpoints;
-    TEST_ASSERT(w->special(), "successful special should return true");
-    TEST_ASSERT(w->stats()->magicpoints == mp_before - w->stats()->special_cost[1],
-                "successful special should spend configured MP cost");
+    ASSERT_TRUE(w->special()) << "successful special should return true";
+    ASSERT_TRUE(w->stats()->magicpoints == mp_before - w->stats()->special_cost[1]) << "successful special should spend configured MP cost";
 
     delete w;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_SPECIAL_TEST(test_walker_special_success_returns_true_and_spends_mp);

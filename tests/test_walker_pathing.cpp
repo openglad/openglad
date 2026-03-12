@@ -21,15 +21,15 @@ static walker* make_guy(char family, unsigned char team)
     return w.release();
 }
 
-void test_walker_pathfinding_follow_and_draw_path_smoke()
+TEST(WalkerPathing, walker_pathfinding_follow_and_draw_path_smoke)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(v != nullptr, "viewob[0] should exist");
+    ASSERT_TRUE(v != nullptr) << "viewob[0] should exist";
 
     walker* a = make_guy(FAMILY_SOLDIER, 0);
     walker* b = make_guy(FAMILY_ORC, 1);
-    TEST_ASSERT(a != nullptr, "attacker should be created");
-    TEST_ASSERT(b != nullptr, "target should be created");
+    ASSERT_TRUE(a != nullptr) << "attacker should be created";
+    ASSERT_TRUE(b != nullptr) << "target should be created";
 
     a->foe = b;
     b->setxy(96, 32);
@@ -48,15 +48,15 @@ void test_walker_pathfinding_follow_and_draw_path_smoke()
     delete a;
     delete b;
 }
-REGISTER_TEST(test_walker_pathfinding_follow_and_draw_path_smoke);
 
-void test_walker_damage_numbers_and_compute_outline_smoke()
+
+TEST(WalkerPathing, walker_damage_numbers_and_compute_outline_smoke)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(v != nullptr, "viewob[0] should exist");
+    ASSERT_TRUE(v != nullptr) << "viewob[0] should exist";
 
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker should be created");
+    ASSERT_TRUE(w != nullptr) << "walker should be created";
 
     // Damage numbers only draw for the controlling walker.
     v->control = w;
@@ -74,12 +74,12 @@ void test_walker_damage_numbers_and_compute_outline_smoke()
     // Restore view control.
     v->control = nullptr;
 }
-REGISTER_TEST(test_walker_damage_numbers_and_compute_outline_smoke);
 
-void test_walker_pathing_round10_follow_path_node_erase_and_normalize_paths()
+
+TEST(WalkerPathing, round10_follow_path_node_erase_and_normalize_paths)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker should be created");
+    ASSERT_TRUE(w != nullptr) << "walker should be created";
     if (!w)
         return;
 
@@ -97,7 +97,7 @@ void test_walker_pathing_round10_follow_path_node_erase_and_normalize_paths()
     w->path_to_foe.clear();
     w->path_to_foe.push_back(make_state(32, 32));
     w->follow_path_to_foe();
-    TEST_ASSERT(w->path_to_foe.empty(), "follow_path_to_foe should erase already-reached node");
+    ASSERT_TRUE(w->path_to_foe.empty()) << "follow_path_to_foe should erase already-reached node";
 
     // Diagonal node -> normalize dx/dy and walkstep branch.
     w->path_to_foe.clear();
@@ -105,9 +105,8 @@ void test_walker_pathing_round10_follow_path_node_erase_and_normalize_paths()
     const short x_before = w->xpos;
     const short y_before = w->ypos;
     w->follow_path_to_foe();
-    TEST_ASSERT(w->xpos >= x_before && w->ypos >= y_before,
-                "follow_path_to_foe should move toward diagonal next node");
+    ASSERT_TRUE(w->xpos >= x_before && w->ypos >= y_before) << "follow_path_to_foe should move toward diagonal next node";
 
     delete w;
 }
-REGISTER_TEST(test_walker_pathing_round10_follow_path_node_erase_and_normalize_paths);
+

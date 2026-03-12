@@ -47,22 +47,22 @@ Sint32 edit_guy(Sint32 arg1);
 // get_class_description tests
 // ---------------------------------------------------------------------------
 
-void test_get_class_description_soldier()
+TEST(PickerFuncs, get_class_description_soldier)
 {
     std::string desc = get_class_description(FAMILY_SOLDIER);
-    TEST_ASSERT(!desc.empty(), "soldier description should not be empty");
-    TEST_ASSERT(desc.find("Soldier") != std::string::npos || desc.find("soldier") != std::string::npos || desc.find("fighter") != std::string::npos || desc.size() > 10, "soldier description should contain useful text");
+    ASSERT_TRUE(!desc.empty()) << "soldier description should not be empty";
+    ASSERT_TRUE(desc.find("Soldier") != std::string::npos || desc.find("soldier") != std::string::npos || desc.find("fighter") != std::string::npos || desc.size() > 10) << "soldier description should contain useful text";
 }
-REGISTER_TEST(test_get_class_description_soldier);
 
-void test_get_class_description_mage()
+
+TEST(PickerFuncs, get_class_description_mage)
 {
     std::string desc = get_class_description(FAMILY_MAGE);
-    TEST_ASSERT(!desc.empty(), "mage description should not be empty");
+    ASSERT_TRUE(!desc.empty()) << "mage description should not be empty";
 }
-REGISTER_TEST(test_get_class_description_mage);
 
-void test_get_class_description_all_families()
+
+TEST(PickerFuncs, get_class_description_all_families)
 {
     unsigned char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
@@ -71,24 +71,24 @@ void test_get_class_description_all_families()
                         FAMILY_ARCHMAGE, FAMILY_BIG_ORC };
     for (int i = 0; i < 16; i++) {
         std::string desc = get_class_description(families[i]);
-        TEST_ASSERT(!desc.empty(), "every family should have a description");
+        ASSERT_TRUE(!desc.empty()) << "every family should have a description";
     }
 }
-REGISTER_TEST(test_get_class_description_all_families);
+
 
 // ---------------------------------------------------------------------------
 // family_name_copy tests
 // ---------------------------------------------------------------------------
 
-void test_family_name_copy_soldier()
+TEST(PickerFuncs, family_name_copy_soldier)
 {
     const char* name = family_name_copy(FAMILY_SOLDIER);
-    TEST_ASSERT(name != nullptr, "soldier name should not be null");
-    TEST_ASSERT(strlen(name) > 0, "soldier name should not be empty");
+    ASSERT_TRUE(name != nullptr) << "soldier name should not be null";
+    ASSERT_TRUE(strlen(name) > 0) << "soldier name should not be empty";
 }
-REGISTER_TEST(test_family_name_copy_soldier);
 
-void test_family_name_copy_all_families()
+
+TEST(PickerFuncs, family_name_copy_all_families)
 {
     short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
@@ -96,69 +96,69 @@ void test_family_name_copy_all_families()
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
         const char* name = family_name_copy(families[i]);
-        TEST_ASSERT(name != nullptr, "family name should not be null");
-        TEST_ASSERT(strlen(name) > 0, "family name should not be empty");
+        ASSERT_TRUE(name != nullptr) << "family name should not be null";
+        ASSERT_TRUE(strlen(name) > 0) << "family name should not be empty";
     }
 
-    TEST_ASSERT(std::string(family_name_copy(FAMILY_BIG_ORC)) == "ORC CAP.", "big orc label from registry");
-    TEST_ASSERT(std::string(get_family_string(FAMILY_BIG_ORC)) == "ORC CAPTAIN", "big orc full label");
-    TEST_ASSERT(std::string(get_family_string(255)) == "BEAST", "unknown family full label fallback");
+    ASSERT_TRUE(std::string(family_name_copy(FAMILY_BIG_ORC)) == "ORC CAP.") << "big orc label from registry";
+    ASSERT_TRUE(std::string(get_family_string(FAMILY_BIG_ORC)) == "ORC CAPTAIN") << "big orc full label";
+    ASSERT_TRUE(std::string(get_family_string(255)) == "BEAST") << "unknown family full label fallback";
 }
-REGISTER_TEST(test_family_name_copy_all_families);
+
 
 // ---------------------------------------------------------------------------
 // get_training_cost_rating tests
 // ---------------------------------------------------------------------------
 
-void test_get_training_cost_rating_returns_stars()
+TEST(PickerFuncs, get_training_cost_rating_returns_stars)
 {
     const char* rating = get_training_cost_rating(FAMILY_SOLDIER, BUT_STR);
-    TEST_ASSERT(rating != nullptr, "rating should not be null");
+    ASSERT_TRUE(rating != nullptr) << "rating should not be null";
     // Rating is 0-5 asterisks
     size_t len = strlen(rating);
-    TEST_ASSERT(len <= 5, "rating should be at most 5 characters");
+    ASSERT_TRUE(len <= 5) << "rating should be at most 5 characters";
     for (size_t i = 0; i < len; i++) {
-        TEST_ASSERT(rating[i] == '*', "rating should only contain asterisks");
+        ASSERT_TRUE(rating[i] == '*') << "rating should only contain asterisks";
     }
 }
-REGISTER_TEST(test_get_training_cost_rating_returns_stars);
 
-void test_get_training_cost_rating_varies_by_stat()
+
+TEST(PickerFuncs, get_training_cost_rating_varies_by_stat)
 {
     // Soldier STR cost is 6 (cheap), INT cost is 25 (expensive)
     const char* str_rating = get_training_cost_rating(FAMILY_SOLDIER, BUT_STR);
     const char* int_rating = get_training_cost_rating(FAMILY_SOLDIER, BUT_INT);
     // Cheaper stats should have more stars
-    TEST_ASSERT(strlen(str_rating) >= strlen(int_rating), "cheaper stat should have >= stars");
+    ASSERT_TRUE(strlen(str_rating) >= strlen(int_rating)) << "cheaper stat should have >= stars";
 }
-REGISTER_TEST(test_get_training_cost_rating_varies_by_stat);
 
-void test_get_training_cost_rating_all_families()
+
+TEST(PickerFuncs, get_training_cost_rating_all_families)
 {
     for (int fam = 0; fam <= FAMILY_ARCHMAGE; fam++) {
         for (int stat = 0; stat < 5; stat++) {
             const char* rating = get_training_cost_rating(static_cast<unsigned char>(fam), stat);
-            TEST_ASSERT(rating != nullptr, "rating should not be null");
-            TEST_ASSERT(strlen(rating) <= 5, "rating should be at most 5 chars");
+            ASSERT_TRUE(rating != nullptr) << "rating should not be null";
+            ASSERT_TRUE(strlen(rating) <= 5) << "rating should be at most 5 chars";
         }
     }
 }
-REGISTER_TEST(test_get_training_cost_rating_all_families);
+
 
 // ---------------------------------------------------------------------------
 // get_random_name tests
 // ---------------------------------------------------------------------------
 
-void test_get_random_name_returns_nonempty()
+TEST(PickerFuncs, get_random_name_returns_nonempty)
 {
     srand(42);
     const char* name = og::ui::get_random_name(FAMILY_SOLDIER);
-    TEST_ASSERT(name != nullptr, "random name should not be null");
-    TEST_ASSERT(strlen(name) > 0, "random name should not be empty");
+    ASSERT_TRUE(name != nullptr) << "random name should not be null";
+    ASSERT_TRUE(strlen(name) > 0) << "random name should not be empty";
 }
-REGISTER_TEST(test_get_random_name_returns_nonempty);
 
-void test_get_random_name_all_families()
+
+TEST(PickerFuncs, get_random_name_all_families)
 {
     srand(42);
     unsigned char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
@@ -167,20 +167,20 @@ void test_get_random_name_all_families()
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
         const char* name = og::ui::get_random_name(families[i]);
-        TEST_ASSERT(name != nullptr, "random name should not be null for any family");
-        TEST_ASSERT(strlen(name) > 0, "random name should not be empty for any family");
+        ASSERT_TRUE(name != nullptr) << "random name should not be null for any family";
+        ASSERT_TRUE(strlen(name) > 0) << "random name should not be empty for any family";
     }
 
     std::string unique = og::ui::get_unique_name(FAMILY_SOLDIER, og::runtime::current_session->myscreen_->save_data);
-    TEST_ASSERT(!unique.empty(), "unique name should not be empty");
+    ASSERT_TRUE(!unique.empty()) << "unique name should not be empty";
 }
-REGISTER_TEST(test_get_random_name_all_families);
+
 
 // ---------------------------------------------------------------------------
 // has_name_in_team tests
 // ---------------------------------------------------------------------------
 
-void test_has_name_in_team_empty()
+TEST(PickerFuncs, has_name_in_team_empty)
 {
     // Save and clear team
     const unsigned char orig_size = og::runtime::current_session->myscreen_->save_data.team_size;
@@ -188,7 +188,7 @@ void test_has_name_in_team_empty()
 
     // Use get_unique_name to verify name dedup works on empty team
     std::string name1 = og::ui::get_unique_name(FAMILY_SOLDIER, og::runtime::current_session->myscreen_->save_data);
-    TEST_ASSERT(!name1.empty(), "unique name should not be empty on empty team");
+    ASSERT_TRUE(!name1.empty()) << "unique name should not be empty on empty team";
 
     guy* g = new guy(FAMILY_SOLDIER);
     g->name = "TestName";
@@ -198,18 +198,18 @@ void test_has_name_in_team_empty()
     // get_unique_name should return a name different from existing "TestName"
     // (though it may not collide anyway since random names vary)
     std::string name2 = og::ui::get_unique_name(FAMILY_SOLDIER, og::runtime::current_session->myscreen_->save_data);
-    TEST_ASSERT(!name2.empty(), "unique name should not be empty");
+    ASSERT_TRUE(!name2.empty()) << "unique name should not be empty";
 
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset(nullptr);
     og::runtime::current_session->myscreen_->save_data.team_size = orig_size;
 }
-REGISTER_TEST(test_has_name_in_team_empty);
+
 
 // ---------------------------------------------------------------------------
 // how_many tests
 // ---------------------------------------------------------------------------
 
-void test_how_many_empty_team()
+TEST(PickerFuncs, how_many_empty_team)
 {
     const unsigned char orig_size = og::runtime::current_session->myscreen_->save_data.team_size;
     guy* orig_list[MAX_TEAM_SIZE];
@@ -219,7 +219,7 @@ void test_how_many_empty_team()
     }
 
     Sint32 count = how_many(FAMILY_SOLDIER);
-    TEST_ASSERT_EQ(0, (int)count, "empty team should have 0 of any family");
+    ASSERT_EQ(0, (int)count) << "empty team should have 0 of any family";
 
     // Restore
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
@@ -227,9 +227,9 @@ void test_how_many_empty_team()
     }
     og::runtime::current_session->myscreen_->save_data.team_size = orig_size;
 }
-REGISTER_TEST(test_how_many_empty_team);
 
-void test_how_many_with_team()
+
+TEST(PickerFuncs, how_many_with_team)
 {
     // Save originals
     const unsigned char orig_size = og::runtime::current_session->myscreen_->save_data.team_size;
@@ -248,9 +248,9 @@ void test_how_many_with_team()
     og::runtime::current_session->myscreen_->save_data.team_list[2].reset(g3);
     og::runtime::current_session->myscreen_->save_data.team_size = static_cast<unsigned char>(3);
 
-    TEST_ASSERT_EQ(2, (int)how_many(FAMILY_SOLDIER), "should count 2 soldiers");
-    TEST_ASSERT_EQ(1, (int)how_many(FAMILY_MAGE), "should count 1 mage");
-    TEST_ASSERT_EQ(0, (int)how_many(FAMILY_ARCHER), "should count 0 archers");
+    ASSERT_EQ(2, (int)how_many(FAMILY_SOLDIER)) << "should count 2 soldiers";
+    ASSERT_EQ(1, (int)how_many(FAMILY_MAGE)) << "should count 1 mage";
+    ASSERT_EQ(0, (int)how_many(FAMILY_ARCHER)) << "should count 0 archers";
 
     // Cleanup
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
@@ -259,10 +259,10 @@ void test_how_many_with_team()
     og::runtime::current_session->myscreen_->save_data.team_size = orig_size;
 
     // Additional picker utility/state coverage without registering new tests.
-    TEST_ASSERT_EQ(-1, get_scen_num_from_filename(nullptr), "null input should return -1");
-    TEST_ASSERT_EQ(-1, get_scen_num_from_filename("scen"), "no numeric suffix should return -1");
-    TEST_ASSERT_EQ(123, get_scen_num_from_filename("scen123"), "numeric suffix should parse");
-    TEST_ASSERT_EQ(42, get_scen_num_from_filename("file42"), "mixed prefix should parse trailing number");
+    ASSERT_EQ(-1, get_scen_num_from_filename(nullptr)) << "null input should return -1";
+    ASSERT_EQ(-1, get_scen_num_from_filename("scen")) << "no numeric suffix should return -1";
+    ASSERT_EQ(123, get_scen_num_from_filename("scen123")) << "numeric suffix should parse";
+    ASSERT_EQ(42, get_scen_num_from_filename("file42")) << "mixed prefix should parse trailing number";
 
     vbutton* old2 = og::runtime::current_session->allbuttons_[2];
     vbutton* old6 = og::runtime::current_session->allbuttons_[6];
@@ -284,27 +284,25 @@ void test_how_many_with_team()
     og::runtime::current_session->current_difficulty_ = DIFFICULTY_SETTINGS - 1;
     og::runtime::current_session->myscreen_->save_data.allied_mode = static_cast<short>(0);
 
-    TEST_ASSERT_EQ(4, (int)set_difficulty(), "set_difficulty should return OK");
-    TEST_ASSERT(
-        std::string(og::runtime::current_session->allbuttons_[2]->label).find("Difficulty: ") == 0 ||
-        std::string(og::runtime::current_session->allbuttons_[6]->label).find("Difficulty: ") == 0,
-        "difficulty label should be updated");
+    ASSERT_EQ(4, (int)set_difficulty()) << "set_difficulty should return OK";
+    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[2]->label).find("Difficulty: ") == 0 ||
+        std::string(og::runtime::current_session->allbuttons_[6]->label).find("Difficulty: ") == 0) << "difficulty label should be updated";
 
-    TEST_ASSERT_EQ(4, (int)change_teamnum(1), "change_teamnum should return OK");
-    TEST_ASSERT_EQ(2, (int)og::runtime::current_session->current_guy_->teamnum, "team should increment");
-    TEST_ASSERT(std::string(og::runtime::current_session->allbuttons_[18]->label).find("Playing on Team ") == 0, "team label should be updated");
+    ASSERT_EQ(4, (int)change_teamnum(1)) << "change_teamnum should return OK";
+    ASSERT_EQ(2, (int)og::runtime::current_session->current_guy_->teamnum) << "team should increment";
+    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[18]->label).find("Playing on Team ") == 0) << "team label should be updated";
 
-    TEST_ASSERT_EQ(4, (int)change_hire_teamnum(1), "change_hire_teamnum should return OK");
-    TEST_ASSERT_EQ(1, (int)og::runtime::current_session->current_team_num_, "hire team num should increment");
-    TEST_ASSERT_EQ(1, (int)og::runtime::current_session->current_guy_->teamnum, "current guy team should mirror hire team");
-    TEST_ASSERT(std::string(og::runtime::current_session->allbuttons_[2]->label).find("Hiring for Team ") == 0, "hire label should be updated");
+    ASSERT_EQ(4, (int)change_hire_teamnum(1)) << "change_hire_teamnum should return OK";
+    ASSERT_EQ(1, (int)og::runtime::current_session->current_team_num_) << "hire team num should increment";
+    ASSERT_EQ(1, (int)og::runtime::current_session->current_guy_->teamnum) << "current guy team should mirror hire team";
+    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[2]->label).find("Hiring for Team ") == 0) << "hire label should be updated";
 
-    TEST_ASSERT_EQ(4, (int)change_allied(), "change_allied should return OK");
-    TEST_ASSERT_EQ(1, og::runtime::current_session->myscreen_->save_data.allied_mode, "allied mode should toggle on");
-    TEST_ASSERT(og::runtime::current_session->allbuttons_[7]->label == "PVP: Ally", "allied label should update");
-    TEST_ASSERT_EQ(4, (int)change_allied(), "change_allied second toggle should return OK");
-    TEST_ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.allied_mode, "allied mode should toggle off");
-    TEST_ASSERT(og::runtime::current_session->allbuttons_[7]->label == "PVP: Enemy", "enemy label should update");
+    ASSERT_EQ(4, (int)change_allied()) << "change_allied should return OK";
+    ASSERT_EQ(1, og::runtime::current_session->myscreen_->save_data.allied_mode) << "allied mode should toggle on";
+    ASSERT_TRUE(og::runtime::current_session->allbuttons_[7]->label == "PVP: Ally") << "allied label should update";
+    ASSERT_EQ(4, (int)change_allied()) << "change_allied second toggle should return OK";
+    ASSERT_EQ(0, og::runtime::current_session->myscreen_->save_data.allied_mode) << "allied mode should toggle off";
+    ASSERT_TRUE(og::runtime::current_session->allbuttons_[7]->label == "PVP: Enemy") << "enemy label should update";
 
     // Directly exercise picker helpers that were still uncovered.
     const unsigned char saved_team_size = og::runtime::current_session->myscreen_->save_data.team_size;
@@ -317,11 +315,11 @@ void test_how_many_with_team()
 
     guy* recruited = new guy(FAMILY_SOLDIER);
     Sint32 slot = add_guy(recruited);
-    TEST_ASSERT(slot >= 0, "add_guy(guy*) should place recruit in a slot");
-    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.team_size == static_cast<unsigned char>(1), "team size should increment after add_guy(guy*)");
+    ASSERT_TRUE(slot >= 0) << "add_guy(guy*) should place recruit in a slot";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.team_size == static_cast<unsigned char>(1)) << "team size should increment after add_guy(guy*)";
 
-    TEST_ASSERT_EQ(1, (int)delete_all(), "delete_all should report number of removed members");
-    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.team_size == static_cast<unsigned char>(0), "delete_all should clear team size");
+    ASSERT_EQ(1, (int)delete_all()) << "delete_all should report number of removed members";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.team_size == static_cast<unsigned char>(0)) << "delete_all should clear team size";
 
     vbutton* old0 = og::runtime::current_session->allbuttons_[0];
     if (og::runtime::current_session->allbuttons_[0] == nullptr) {
@@ -330,14 +328,14 @@ void test_how_many_with_team()
     og::runtime::current_session->allbuttons_[0]->label = "UNIT_TEST_SAVE";
     Sint32 save_ret = do_save(1);
     Sint32 load_ret = do_load(1);
-    TEST_ASSERT(save_ret == load_ret, "do_save/do_load should return same menu status");
+    ASSERT_TRUE(save_ret == load_ret) << "do_save/do_load should return same menu status";
 
-    TEST_ASSERT_EQ(1234, (int)return_menu(1234), "return_menu should echo its argument");
+    ASSERT_EQ(1234, (int)return_menu(1234)) << "return_menu should echo its argument";
     quit(0); // test mode: should not exit
     std::unique_ptr<guy> tmp_current = std::move(og::runtime::current_session->current_guy_);
     og::runtime::current_session->current_guy_ = nullptr;
-    TEST_ASSERT_EQ(2, (int)name_guy(0), "name_guy with no current_guy should return REDRAW");
-    TEST_ASSERT_EQ(-1, (int)edit_guy(0), "edit_guy with no current_guy should fail");
+    ASSERT_EQ(2, (int)name_guy(0)) << "name_guy with no current_guy should return REDRAW";
+    ASSERT_EQ(-1, (int)edit_guy(0)) << "edit_guy with no current_guy should fail";
     og::runtime::current_session->current_guy_ = std::move(tmp_current);
 
 
@@ -364,4 +362,4 @@ void test_how_many_with_team()
     }
     og::runtime::current_session->myscreen_->save_data.team_size = saved_team_size;
 }
-REGISTER_TEST(test_how_many_with_team);
+

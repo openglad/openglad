@@ -150,10 +150,12 @@ void run_all_tests() {
         if (og::runtime::current_session->myscreen_ != nullptr)
             og::runtime::current_session->myscreen_->world().delete_objects();
 
+        g_tests_run++;
         if (g_tests_failed == failed_before) {
             g_tests_passed++;
-            g_tests_run++;
             fprintf(stderr, "PASS\n");
+        } else {
+            fprintf(stderr, "FAIL\n");
         }
     }
 

@@ -50,10 +50,10 @@ static int injector_press_and_release_escape(void* data)
 }
 } // namespace
 
-void test_viewscreen_input_key_prefs_triggers_options_menu_branch()
+TEST(ViewInputPrefsAndRedraw, viewscreen_input_key_prefs_triggers_options_menu_branch)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(vs != nullptr, "viewscreen exists");
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
     if (!vs)
         return;
 
@@ -62,7 +62,7 @@ void test_viewscreen_input_key_prefs_triggers_options_menu_branch()
     if (!vs->control)
     {
         walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-        TEST_ASSERT(w != nullptr, "control walker created");
+        ASSERT_TRUE(w != nullptr) << "control walker created";
         if (!w)
             return;
         w->team_num = 0;
@@ -76,7 +76,7 @@ void test_viewscreen_input_key_prefs_triggers_options_menu_branch()
 
     KeyStateGuard ks;
     SDL_Thread* th = SDL_CreateThread(injector_press_and_release_escape, "esc_inject", &ks);
-    TEST_ASSERT(th != nullptr, "escape injector started");
+    ASSERT_TRUE(th != nullptr) << "escape injector started";
 
     const SDL_Keycode prefs_key = og::runtime::current_session->player_keys_[0][KEY_PREFS];
     (void)vs->input(keydown(prefs_key));
@@ -85,19 +85,19 @@ void test_viewscreen_input_key_prefs_triggers_options_menu_branch()
     if (th)
         SDL_WaitThread(th, &code);
 }
-REGISTER_TEST(test_viewscreen_input_key_prefs_triggers_options_menu_branch);
 
-void test_viewscreen_input_shift_slash_triggers_read_scenario_branch()
+
+TEST(ViewInputPrefsAndRedraw, viewscreen_input_shift_slash_triggers_read_scenario_branch)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(vs != nullptr, "viewscreen exists");
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
     if (!vs)
         return;
 
     if (!vs->control)
     {
         walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-        TEST_ASSERT(w != nullptr, "control walker created");
+        ASSERT_TRUE(w != nullptr) << "control walker created";
         if (!w)
             return;
         w->team_num = 0;
@@ -115,12 +115,12 @@ void test_viewscreen_input_shift_slash_triggers_read_scenario_branch()
     (void)vs->input(keydown(SDLK_SLASH));
     ks.fake[SDL_GetScancodeFromKey(og::runtime::current_session->player_keys_[0][KEY_SHIFTER])] = 0;
 }
-REGISTER_TEST(test_viewscreen_input_shift_slash_triggers_read_scenario_branch);
 
-void test_viewscreen_redraw_negative_scroll_draws_wall_edges_smoke()
+
+TEST(ViewInputPrefsAndRedraw, viewscreen_redraw_negative_scroll_draws_wall_edges_smoke)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(vs != nullptr, "viewscreen exists");
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
     if (!vs)
         return;
 
@@ -141,4 +141,4 @@ void test_viewscreen_redraw_negative_scroll_draws_wall_edges_smoke()
     og::runtime::current_session->myscreen_->level_visuals_.topy = saved_topy;
     vs->control = saved_control;
 }
-REGISTER_TEST(test_viewscreen_redraw_negative_scroll_draws_wall_edges_smoke);
+

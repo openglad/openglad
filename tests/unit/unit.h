@@ -25,16 +25,16 @@ struct Registrar {
 
 } // namespace og::unit
 
-#define OG_UNIT_TEST(name) \
-    static void name(); \
-    static ::og::unit::Registrar name##_registrar(#name, &name); \
-    static void name()
+#define TEST(suite, name) \
+    static void suite##_##name(); \
+    static ::og::unit::Registrar suite##_##name##_registrar( \
+        #suite "." #name, &suite##_##name); \
+    static void suite##_##name()
 
-#define OG_ASSERT(cond) \
+#define ASSERT_TRUE(cond) \
     do { \
         if (!(cond)) { \
             std::fprintf(stderr, "ASSERT FAILED: %s (%s:%d)\n", #cond, __FILE__, __LINE__); \
             std::abort(); \
         } \
     } while (0)
-

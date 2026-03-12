@@ -57,7 +57,7 @@ static bool read_physfs_file_all(const char* vpath, std::string* out)
     return true;
 }
 
-void test_external_physfs_mount_zip_and_read_deflated_files()
+TEST(ExternalPhysfsZip, external_physfs_mount_zip_and_read_deflated_files)
 {
     // Zip file created by Python's zipfile with ZIP_DEFLATED compression.
     static const uint8_t kZip[] = {
@@ -87,32 +87,27 @@ void test_external_physfs_mount_zip_and_read_deflated_files()
 
     std::vector<uint8_t> bytes(kZip, kZip + sizeof(kZip));
     std::string zip_path;
-    TEST_ASSERT(write_temp_file_bytes(bytes, "_ziptest.zip", &zip_path),
-                "write zip temp file");
+    ASSERT_TRUE(write_temp_file_bytes(bytes, "_ziptest.zip", &zip_path)) << "write zip temp file";
 
     // PhysFS is initialized by io_init() in tests/test_main.cpp; here we just
     // exercise mounting and reading via the zip archiver + inflate paths.
-    TEST_ASSERT(PHYSFS_isInit(), "PHYSFS should be initialized");
+    ASSERT_TRUE(PHYSFS_isInit()) << "PHYSFS should be initialized";
 
-    TEST_ASSERT(PHYSFS_mount(zip_path.c_str(), nullptr, 1),
-                "PHYSFS_mount zip archive");
+    ASSERT_TRUE(PHYSFS_mount(zip_path.c_str(), nullptr, 1)) << "PHYSFS_mount zip archive";
 
     // Enumerate to touch directory iteration code paths.
     char** files = PHYSFS_enumerateFiles("dir");
-    TEST_ASSERT(files != nullptr, "PHYSFS_enumerateFiles");
+    ASSERT_TRUE(files != nullptr) << "PHYSFS_enumerateFiles";
     PHYSFS_freeList(files);
 
     std::string hello;
-    TEST_ASSERT(read_physfs_file_all("hello.txt", &hello),
-                "read hello.txt from zip");
-    TEST_ASSERT(hello == "Hello from zip!\n", "hello.txt contents");
+    ASSERT_TRUE(read_physfs_file_all("hello.txt", &hello)) << "read hello.txt from zip";
+    ASSERT_TRUE(hello == "Hello from zip!\n") << "hello.txt contents";
 
     std::string nested;
-    TEST_ASSERT(read_physfs_file_all("dir/nested.txt", &nested),
-                "read nested.txt from zip");
-    TEST_ASSERT(nested == "Nested file contents.", "nested.txt contents");
+    ASSERT_TRUE(read_physfs_file_all("dir/nested.txt", &nested)) << "read nested.txt from zip";
+    ASSERT_TRUE(nested == "Nested file contents.") << "nested.txt contents";
 
-    TEST_ASSERT(PHYSFS_unmount(zip_path.c_str()),
-                "PHYSFS_unmount zip archive");
+    ASSERT_TRUE(PHYSFS_unmount(zip_path.c_str())) << "PHYSFS_unmount zip archive";
 }
-REGISTER_TEST(test_external_physfs_mount_zip_and_read_deflated_files);
+

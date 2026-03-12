@@ -127,7 +127,7 @@ static bool dev_full_write_fails_as_expected()
     return n < 0 && saved_errno == ENOSPC;
 }
 
-void test_level_data_save_truncates_fixed_fields_and_rejects_null_object()
+TEST(LevelDataErrorPaths, level_data_save_truncates_fixed_fields_and_rejects_null_object)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -142,13 +142,13 @@ void test_level_data_save_truncates_fixed_fields_and_rejects_null_object()
     // Insert a nullptr object to hit the defensive serialization failure path.
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::unique_ptr<walker>{});
 
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->save_level(), "save should fail when oblist contains nullptr");
+    ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_level()) << "save should fail when oblist contains nullptr";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_TEST(test_level_data_save_truncates_fixed_fields_and_rejects_null_object);
 
-void test_level_data_save_reports_failure_when_grid_write_fails()
+
+TEST(LevelDataErrorPaths, level_data_save_reports_failure_when_grid_write_fails)
 {
     const int old_id = og::runtime::current_session->myscreen_->world().id;
     const std::string old_grid_file = og::runtime::current_session->myscreen_->level_grid_file();
@@ -165,20 +165,18 @@ void test_level_data_save_reports_failure_when_grid_write_fails()
     std::error_code ec;
     fs::remove_all("temp/pix/missing_dir", ec);
 
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->save_level(), "save should fail when grid file cannot be written");
-    TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::OpenWriteFailed, (int)og::runtime::current_session->myscreen_->level_io_error(),
-        "save should propagate grid write failure as OpenWriteFailed");
-    TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::OpenWriteFailed, (int)og::runtime::current_session->myscreen_->save_level_with_error(),
-        "save_with_error should report grid write failure");
+    ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_level()) << "save should fail when grid file cannot be written";
+    ASSERT_EQ((int)LevelRuntimeData::IoError::OpenWriteFailed, (int)og::runtime::current_session->myscreen_->level_io_error()) << "save should propagate grid write failure as OpenWriteFailed";
+    ASSERT_EQ((int)LevelRuntimeData::IoError::OpenWriteFailed, (int)og::runtime::current_session->myscreen_->save_level_with_error()) << "save_with_error should report grid write failure";
 
     og::runtime::current_session->myscreen_->world().id = old_id;
     og::runtime::current_session->myscreen_->level_grid_file() = old_grid_file;
     og::runtime::current_session->myscreen_->world().title = old_title;
     og::runtime::current_session->myscreen_->level_description() = old_description;
 }
-REGISTER_TEST(test_level_data_save_reports_failure_when_grid_write_fails);
 
-void test_level_data_save_reports_failure_when_grid_write_is_short()
+
+TEST(LevelDataErrorPaths, level_data_save_reports_failure_when_grid_write_is_short)
 {
     if (!dev_full_write_fails_as_expected()) {
         fprintf(stderr, "  INFO: /dev/full unavailable or not ENOSPC; skipping test\n");
@@ -212,14 +210,9 @@ void test_level_data_save_reports_failure_when_grid_write_is_short()
         return;
     }
 
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->save_level(),
-                "save should fail when grid file write returns short");
-    TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::OpenWriteFailed,
-                   (int)og::runtime::current_session->myscreen_->level_io_error(),
-                   "save should propagate short grid write as OpenWriteFailed");
-    TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::OpenWriteFailed,
-                   (int)og::runtime::current_session->myscreen_->save_level_with_error(),
-                   "save_with_error should report short grid write as OpenWriteFailed");
+    ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_level()) << "save should fail when grid file write returns short";
+    ASSERT_EQ((int)LevelRuntimeData::IoError::OpenWriteFailed, (int)og::runtime::current_session->myscreen_->level_io_error()) << "save should propagate short grid write as OpenWriteFailed";
+    ASSERT_EQ((int)LevelRuntimeData::IoError::OpenWriteFailed, (int)og::runtime::current_session->myscreen_->save_level_with_error()) << "save_with_error should report short grid write as OpenWriteFailed";
 
     fs::remove(grid_path, ec);
     og::runtime::current_session->myscreen_->world().id = old_id;
@@ -227,9 +220,9 @@ void test_level_data_save_reports_failure_when_grid_write_is_short()
     og::runtime::current_session->myscreen_->world().title = old_title;
     og::runtime::current_session->myscreen_->level_description() = old_description;
 }
-REGISTER_TEST(test_level_data_save_reports_failure_when_grid_write_is_short);
 
-void test_level_data_save_caps_object_count_to_loader_limit()
+
+TEST(LevelDataErrorPaths, level_data_save_caps_object_count_to_loader_limit)
 {
     if (!dev_full_write_fails_as_expected()) {
         fprintf(stderr, "  INFO: /dev/full unavailable or not ENOSPC; skipping test\n");
@@ -256,20 +249,17 @@ void test_level_data_save_caps_object_count_to_loader_limit()
     for (int i = 0; i < kObjectCount; ++i)
     {
         walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
-        TEST_ASSERT(w != nullptr, "add_ob should succeed while building large object list");
+        ASSERT_TRUE(w != nullptr) << "add_ob should succeed while building large object list";
     }
 
-    TEST_ASSERT(og::runtime::current_session->myscreen_->save_level(), "save should succeed even when object count exceeds loader limit");
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->save_level()) << "save should succeed even when object count exceeds loader limit";
 
     short serialized_count = -1;
     const fs::path scen_path = fs::path("temp/scen") / "scen125.fss";
-    TEST_ASSERT(read_scenario_object_count(scen_path, &serialized_count),
-        "should read serialized object count from scenario file");
-    TEST_ASSERT_EQ(kMaxScenarioObjects, static_cast<int>(serialized_count),
-        "save should clamp serialized object count to loader max");
+    ASSERT_TRUE(read_scenario_object_count(scen_path, &serialized_count)) << "should read serialized object count from scenario file";
+    ASSERT_EQ(kMaxScenarioObjects, static_cast<int>(serialized_count)) << "save should clamp serialized object count to loader max";
 
-    TEST_ASSERT(scenario_file_has_consistent_object_block(scen_path, serialized_count),
-        "save should serialize object records consistently with the serialized object count");
+    ASSERT_TRUE(scenario_file_has_consistent_object_block(scen_path, serialized_count)) << "save should serialize object records consistently with the serialized object count";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().id = old_id;
@@ -277,9 +267,9 @@ void test_level_data_save_caps_object_count_to_loader_limit()
     og::runtime::current_session->myscreen_->world().title = old_title;
     og::runtime::current_session->myscreen_->level_description() = old_description;
 }
-REGISTER_TEST(test_level_data_save_caps_object_count_to_loader_limit);
 
-void test_level_data_save_reports_failure_when_scenario_write_fails()
+
+TEST(LevelDataErrorPaths, level_data_save_reports_failure_when_scenario_write_fails)
 {
     if (!dev_full_write_fails_as_expected()) {
         fprintf(stderr, "  INFO: /dev/full unavailable or not ENOSPC; skipping test\n");
@@ -310,11 +300,9 @@ void test_level_data_save_reports_failure_when_scenario_write_fails()
         return;
     }
 
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->save_level(), "save should fail when scenario file write fails");
-    TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::SerializeFailed, (int)og::runtime::current_session->myscreen_->level_io_error(),
-        "save should propagate scenario write failure as SerializeFailed");
-    TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::SerializeFailed, (int)og::runtime::current_session->myscreen_->save_level_with_error(),
-        "save_with_error should report scenario write failure");
+    ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_level()) << "save should fail when scenario file write fails";
+    ASSERT_EQ((int)LevelRuntimeData::IoError::SerializeFailed, (int)og::runtime::current_session->myscreen_->level_io_error()) << "save should propagate scenario write failure as SerializeFailed";
+    ASSERT_EQ((int)LevelRuntimeData::IoError::SerializeFailed, (int)og::runtime::current_session->myscreen_->save_level_with_error()) << "save_with_error should report scenario write failure";
 
     fs::remove(scen_file, ec);
     og::runtime::current_session->myscreen_->world().id = old_id;
@@ -322,9 +310,9 @@ void test_level_data_save_reports_failure_when_scenario_write_fails()
     og::runtime::current_session->myscreen_->world().title = old_title;
     og::runtime::current_session->myscreen_->level_description() = old_description;
 }
-REGISTER_TEST(test_level_data_save_reports_failure_when_scenario_write_fails);
 
-void test_level_data_load_failure_preserves_existing_world_state()
+
+TEST(LevelDataErrorPaths, level_data_load_failure_preserves_existing_world_state)
 {
     const int old_id = og::runtime::current_session->myscreen_->world().id;
     const std::string old_grid_file = og::runtime::current_session->myscreen_->level_grid_file();
@@ -343,7 +331,7 @@ void test_level_data_load_failure_preserves_existing_world_state()
     fs::remove(fs::path("scen") / "scen19991.fss", ec);
 
     walker* sentinel = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    TEST_ASSERT(sentinel != nullptr, "fixture object should be created");
+    ASSERT_TRUE(sentinel != nullptr) << "fixture object should be created";
     if (!sentinel) {
         og::runtime::current_session->myscreen_->world().id = old_id;
         og::runtime::current_session->myscreen_->level_grid_file() = old_grid_file;
@@ -358,34 +346,25 @@ void test_level_data_load_failure_preserves_existing_world_state()
     const std::size_t before_fx_count = og::runtime::current_session->myscreen_->world().fxlist.size();
     const std::size_t before_weap_count = og::runtime::current_session->myscreen_->world().weaplist.size();
 
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->load_level(),
-                "load should fail for missing scenario");
-    TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::OpenReadFailed,
-                   (int)og::runtime::current_session->myscreen_->level_io_error(),
-                   "missing scenario should report OpenReadFailed");
+    ASSERT_TRUE(!og::runtime::current_session->myscreen_->load_level()) << "load should fail for missing scenario";
+    ASSERT_EQ((int)LevelRuntimeData::IoError::OpenReadFailed, (int)og::runtime::current_session->myscreen_->level_io_error()) << "missing scenario should report OpenReadFailed";
 
-    TEST_ASSERT_EQ(before_ob_count, og::runtime::current_session->myscreen_->world().oblist.size(),
-                   "failed load should preserve oblist");
-    TEST_ASSERT_EQ(before_fx_count, og::runtime::current_session->myscreen_->world().fxlist.size(),
-                   "failed load should preserve fxlist");
-    TEST_ASSERT_EQ(before_weap_count, og::runtime::current_session->myscreen_->world().weaplist.size(),
-                   "failed load should preserve weaplist");
-    TEST_ASSERT(og::runtime::current_session->myscreen_->world().title == "preserve me",
-                "failed load should preserve world title");
-    TEST_ASSERT(og::runtime::current_session->myscreen_->level_grid_file() == "preserve_grid",
-                "failed load should preserve grid file");
-    TEST_ASSERT(og::runtime::current_session->myscreen_->get_level_description_line(0) == "keep-description",
-                "failed load should preserve description");
+    ASSERT_EQ(before_ob_count, og::runtime::current_session->myscreen_->world().oblist.size()) << "failed load should preserve oblist";
+    ASSERT_EQ(before_fx_count, og::runtime::current_session->myscreen_->world().fxlist.size()) << "failed load should preserve fxlist";
+    ASSERT_EQ(before_weap_count, og::runtime::current_session->myscreen_->world().weaplist.size()) << "failed load should preserve weaplist";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().title == "preserve me") << "failed load should preserve world title";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->level_grid_file() == "preserve_grid") << "failed load should preserve grid file";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->get_level_description_line(0) == "keep-description") << "failed load should preserve description";
 
     walker* after = og::runtime::current_session->myscreen_->world().oblist.empty()
         ? nullptr
         : og::runtime::current_session->myscreen_->world().oblist.front().get();
-    TEST_ASSERT(after == sentinel, "failed load should preserve existing object pointer");
+    ASSERT_TRUE(after == sentinel) << "failed load should preserve existing object pointer";
     if (after)
     {
-        TEST_ASSERT_EQ(3, (int)after->team_num, "failed load should preserve object fields");
-        TEST_ASSERT_EQ(48, (int)after->xpos, "failed load should preserve object x");
-        TEST_ASSERT_EQ(64, (int)after->ypos, "failed load should preserve object y");
+        ASSERT_EQ(3, (int)after->team_num) << "failed load should preserve object fields";
+        ASSERT_EQ(48, (int)after->xpos) << "failed load should preserve object x";
+        ASSERT_EQ(64, (int)after->ypos) << "failed load should preserve object y";
     }
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -394,9 +373,9 @@ void test_level_data_load_failure_preserves_existing_world_state()
     og::runtime::current_session->myscreen_->world().title = old_title;
     og::runtime::current_session->myscreen_->level_description() = old_description;
 }
-REGISTER_TEST(test_level_data_load_failure_preserves_existing_world_state);
 
-void test_level_data_load_reports_parse_failed_when_grid_pix_missing()
+
+TEST(LevelDataErrorPaths, level_data_load_reports_parse_failed_when_grid_pix_missing)
 {
     constexpr int kMissingGridScenarioId = 19992;
     constexpr std::array<char, 8> kMissingGridName = {'n', 'o', 'g', 'r', 'i', 'd', '9', 'x'};
@@ -420,8 +399,7 @@ void test_level_data_load_reports_parse_failed_when_grid_pix_missing()
     scenario_bytes.push_back(0);             // description line count
 
     const fs::path scen_path = fs::path("scen") / "scen19992.fss";
-    TEST_ASSERT(write_file_bytes(scen_path, scenario_bytes),
-                "missing-grid scenario fixture should be written");
+    ASSERT_TRUE(write_file_bytes(scen_path, scenario_bytes)) << "missing-grid scenario fixture should be written";
 
     std::error_code ec;
     fs::remove(fs::path("pix") / "nogrid9x.pix", ec);
@@ -433,14 +411,9 @@ void test_level_data_load_reports_parse_failed_when_grid_pix_missing()
     og::runtime::current_session->myscreen_->level_description().clear();
     og::runtime::current_session->myscreen_->level_description().push_back("preserve-line");
 
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->load_level(),
-                "load should fail when referenced grid pix is missing");
-    TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::ParseFailed,
-                   (int)og::runtime::current_session->myscreen_->level_io_error(),
-                   "missing grid pix should map to ParseFailed");
-    TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::ParseFailed,
-                   (int)og::runtime::current_session->myscreen_->load_level_with_error(),
-                   "load_with_error should report ParseFailed for missing grid pix");
+    ASSERT_TRUE(!og::runtime::current_session->myscreen_->load_level()) << "load should fail when referenced grid pix is missing";
+    ASSERT_EQ((int)LevelRuntimeData::IoError::ParseFailed, (int)og::runtime::current_session->myscreen_->level_io_error()) << "missing grid pix should map to ParseFailed";
+    ASSERT_EQ((int)LevelRuntimeData::IoError::ParseFailed, (int)og::runtime::current_session->myscreen_->load_level_with_error()) << "load_with_error should report ParseFailed for missing grid pix";
 
     fs::remove(scen_path, ec);
     og::runtime::current_session->myscreen_->world().id = old_id;
@@ -448,9 +421,9 @@ void test_level_data_load_reports_parse_failed_when_grid_pix_missing()
     og::runtime::current_session->myscreen_->world().title = old_title;
     og::runtime::current_session->myscreen_->level_description() = old_description;
 }
-REGISTER_TEST(test_level_data_load_reports_parse_failed_when_grid_pix_missing);
 
-void test_campaign_data_load_reports_open_read_failed_when_campaign_yaml_missing()
+
+TEST(LevelDataErrorPaths, campaign_data_load_reports_open_read_failed_when_campaign_yaml_missing)
 {
     // Create a minimal zip campaign package with no campaign.yaml so CampaignData::load
     // takes the OpenReadFailed branch.
@@ -460,20 +433,19 @@ void test_campaign_data_load_reports_open_read_failed_when_campaign_yaml_missing
     const fs::path base = fs::temp_directory_path() / (std::string("openglad_missing_yaml_") + std::to_string(::getpid()));
     const fs::path indir = base / "in";
     fs::create_directories(indir);
-    TEST_ASSERT(write_file_bytes(indir / "dummy.txt", "x"), "write dummy");
+    ASSERT_TRUE(write_file_bytes(indir / "dummy.txt", "x")) << "write dummy";
 
     const fs::path outfile = fs::path(get_user_path()) / "campaigns" / (id + ".glad");
-    TEST_ASSERT(zip_contents_with_error(indir.string(), outfile.string()) == ArchiveIoError::None, "zip_contents should create campaign package");
+    ASSERT_TRUE(zip_contents_with_error(indir.string(), outfile.string()) == ArchiveIoError::None) << "zip_contents should create campaign package";
 
     CampaignData cd(id);
-    TEST_ASSERT_EQ((int)CampaignData::IoError::OpenReadFailed, (int)cd.load_with_error(),
-        "load_with_error should report OpenReadFailed when campaign.yaml missing");
+    ASSERT_EQ((int)CampaignData::IoError::OpenReadFailed, (int)cd.load_with_error()) << "load_with_error should report OpenReadFailed when campaign.yaml missing";
 
     delete_campaign(id);
     std::error_code ec;
     fs::remove_all(base, ec);
 }
-REGISTER_TEST(test_campaign_data_load_reports_open_read_failed_when_campaign_yaml_missing);
+
 
 // Note: We intentionally do not test the "ParseFailed" path here because the
 // Yam parser can hang on certain malformed inputs. Coverage is better served

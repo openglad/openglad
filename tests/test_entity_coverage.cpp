@@ -35,10 +35,10 @@ static void clear_level()
 
 } // namespace
 
-void test_sim_input_reverse_switch_missing_old_control_keeps_old()
+TEST(EntityCoverage, sim_input_reverse_switch_missing_old_control_keeps_old)
 {
     auto orphan_up = make_living(0, 0);
-    TEST_ASSERT(orphan_up != nullptr, "orphan control should exist");
+    ASSERT_TRUE(orphan_up != nullptr) << "orphan control should exist";
 
     walker* control = orphan_up.get();
     control->set_act_type(ACT_CONTROL);
@@ -57,19 +57,19 @@ void test_sim_input_reverse_switch_missing_old_control_keeps_old()
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
-    TEST_ASSERT(control == orphan_up.get(), "missing reverse entry should keep old control");
-    TEST_ASSERT(result.control_hp_changed, "missing reverse entry should report hp");
-    TEST_ASSERT(result.control_hp == 21.0f, "hp should match preserved control");
+    ASSERT_TRUE(control == orphan_up.get()) << "missing reverse entry should keep old control";
+    ASSERT_TRUE(result.control_hp_changed) << "missing reverse entry should report hp";
+    ASSERT_TRUE(result.control_hp == 21.0f) << "hp should match preserved control";
 }
-REGISTER_TEST(test_sim_input_reverse_switch_missing_old_control_keeps_old);
 
-void test_sim_input_shift_yell_default_action_branch()
+
+TEST(EntityCoverage, sim_input_shift_yell_default_action_branch)
 {
     clear_level();
 
     auto control_up = make_living(0, 0);
     auto ally_up = make_living(0, -1);
-    TEST_ASSERT(control_up != nullptr && ally_up != nullptr, "walkers should be created");
+    ASSERT_TRUE(control_up != nullptr && ally_up != nullptr) << "walkers should be created";
 
     walker* control = control_up.get();
     control->set_act_type(ACT_CONTROL);
@@ -91,20 +91,20 @@ void test_sim_input_shift_yell_default_action_branch()
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
-    TEST_ASSERT_EQ(0, control->action, "default shift+yell branch should reset action to 0");
-    TEST_ASSERT(result.new_control == control, "control should be preserved");
+    ASSERT_EQ(0, control->action) << "default shift+yell branch should reset action to 0";
+    ASSERT_TRUE(result.new_control == control) << "control should be preserved";
 
     clear_level();
 }
-REGISTER_TEST(test_sim_input_shift_yell_default_action_branch);
 
-void test_sim_input_switch_char_wraps_to_prior_candidate()
+
+TEST(EntityCoverage, sim_input_switch_char_wraps_to_prior_candidate)
 {
     clear_level();
 
     auto candidate_up = make_living(0, -1);
     auto control_up = make_living(0, 0);
-    TEST_ASSERT(candidate_up != nullptr && control_up != nullptr, "walkers should be created");
+    ASSERT_TRUE(candidate_up != nullptr && control_up != nullptr) << "walkers should be created";
 
     walker* candidate = candidate_up.get();
     walker* control = control_up.get();
@@ -127,19 +127,19 @@ void test_sim_input_switch_char_wraps_to_prior_candidate()
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
-    TEST_ASSERT(control == candidate, "switch should wrap to prior candidate");
-    TEST_ASSERT(result.control_hp == 77.0f, "reported hp should match wrapped candidate");
+    ASSERT_TRUE(control == candidate) << "switch should wrap to prior candidate";
+    ASSERT_TRUE(result.control_hp == 77.0f) << "reported hp should match wrapped candidate";
 
     clear_level();
 }
-REGISTER_TEST(test_sim_input_switch_char_wraps_to_prior_candidate);
 
-void test_sim_input_idle_animation_cycle_wraps()
+
+TEST(EntityCoverage, sim_input_idle_animation_cycle_wraps)
 {
     clear_level();
 
     auto control_up = make_living(0, 0);
-    TEST_ASSERT(control_up != nullptr, "control should exist");
+    ASSERT_TRUE(control_up != nullptr) << "control should exist";
 
     walker* control = control_up.get();
     control->set_act_type(ACT_CONTROL);
@@ -167,10 +167,10 @@ void test_sim_input_idle_animation_cycle_wraps()
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
-    TEST_ASSERT_EQ(0, (int)control->cycle, "idle animation should wrap cycle at -1 sentinel");
-    TEST_ASSERT_EQ(9, (int)control->frame, "idle animation should set frame from ani table");
-    TEST_ASSERT(result.new_control == control, "idle path should keep control");
+    ASSERT_EQ(0, (int)control->cycle) << "idle animation should wrap cycle at -1 sentinel";
+    ASSERT_EQ(9, (int)control->frame) << "idle animation should set frame from ani table";
+    ASSERT_TRUE(result.new_control == control) << "idle path should keep control";
 
     clear_level();
 }
-REGISTER_TEST(test_sim_input_idle_animation_cycle_wraps);
+

@@ -95,7 +95,7 @@ int name_guy_injector(void*)
 }
 } // namespace
 
-void test_picker_name_guy_paths()
+TEST(PickerUncovered, picker_name_guy_paths)
 {
     PickerStateGuard guard;
 
@@ -104,11 +104,11 @@ void test_picker_name_guy_paths()
     og::runtime::current_session->current_guy_->name = "CURSORIG";
 
     SDL_Thread* rename_current_thread = SDL_CreateThread(name_guy_injector, "picker_name_current", nullptr);
-    TEST_ASSERT(rename_current_thread != nullptr, "rename-current injector should be created");
-    TEST_ASSERT_EQ(2, (int)name_guy(0), "name_guy(0) should return REDRAW");
+    ASSERT_TRUE(rename_current_thread != nullptr) << "rename-current injector should be created";
+    ASSERT_EQ(2, (int)name_guy(0)) << "name_guy(0) should return REDRAW";
     int thread_result = 0;
     SDL_WaitThread(rename_current_thread, &thread_result);
-    TEST_ASSERT(og::runtime::current_session->current_guy_->name == "CURSORIG", "return without text should preserve current guy name");
+    ASSERT_TRUE(og::runtime::current_session->current_guy_->name == "CURSORIG") << "return without text should preserve current guy name";
 
     TeamSlotGuard slot_guard(0);
     og::runtime::current_session->editguy_ = 0;
@@ -116,18 +116,18 @@ void test_picker_name_guy_paths()
     og::runtime::current_session->myscreen_->save_data.team_list[0]->name = "TEAMORIG";
 
     SDL_Thread* rename_team_thread = SDL_CreateThread(name_guy_injector, "picker_name_team", nullptr);
-    TEST_ASSERT(rename_team_thread != nullptr, "rename-team injector should be created");
-    TEST_ASSERT_EQ(2, (int)name_guy(1), "name_guy(1) should return REDRAW");
+    ASSERT_TRUE(rename_team_thread != nullptr) << "rename-team injector should be created";
+    ASSERT_EQ(2, (int)name_guy(1)) << "name_guy(1) should return REDRAW";
     SDL_WaitThread(rename_team_thread, &thread_result);
-    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.team_list[0]->name == "TEAMORIG", "return without text should preserve team guy name");
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.team_list[0]->name == "TEAMORIG") << "return without text should preserve team guy name";
 
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset();
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset(nullptr);
     og::runtime::current_session->current_guy_ = std::move(original_current);
 }
-REGISTER_TEST(test_picker_name_guy_paths);
 
-void test_picker_edit_guy_paths()
+
+TEST(PickerUncovered, picker_edit_guy_paths)
 {
     PickerStateGuard guard;
     TeamSlotGuard slot_guard(0);
@@ -136,7 +136,7 @@ void test_picker_edit_guy_paths()
     og::runtime::current_session->myscreen_->save_data.team_size = 0;
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset(nullptr);
     og::ui::TrainSession empty_session(og::runtime::current_session->myscreen_->save_data);
-    TEST_ASSERT(empty_session.empty(), "session should be empty with no team");
+    ASSERT_TRUE(empty_session.empty()) << "session should be empty with no team";
 
     // Successful accept path.
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset(new guy(FAMILY_SOLDIER));
@@ -145,31 +145,31 @@ void test_picker_edit_guy_paths()
     og::runtime::current_session->myscreen_->save_data.m_totalcash[0] = 100000;
 
     og::ui::TrainSession session(og::runtime::current_session->myscreen_->save_data);
-    TEST_ASSERT(!session.empty(), "session should not be empty");
+    ASSERT_TRUE(!session.empty()) << "session should not be empty";
 
     session.increase_stat(og::ui::TrainSession::Stat::Strength, 1);
-    TEST_ASSERT(session.current_cost() > 0, "cost should be positive after stat increase");
-    TEST_ASSERT(session.accept(), "accept should succeed with enough gold");
+    ASSERT_TRUE(session.current_cost() > 0) << "cost should be positive after stat increase";
+    ASSERT_TRUE(session.accept()) << "accept should succeed with enough gold";
 
     og::runtime::current_session->myscreen_->save_data.team_list[0].reset(nullptr);
     og::runtime::current_session->myscreen_->save_data.team_size = 0;
 }
-REGISTER_TEST(test_picker_edit_guy_paths);
 
-void test_picker_campaign_and_level_wrappers_cancel_fast()
+
+TEST(PickerUncovered, picker_campaign_and_level_wrappers_cancel_fast)
 {
     PickerStateGuard guard;
 
     og::runtime::current_session->myscreen_->world().end = 1;
     int scen_before = og::runtime::current_session->myscreen_->save_data.scen_num;
 
-    TEST_ASSERT_EQ(2, (int)do_pick_campaign(0), "do_pick_campaign should return REDRAW");
-    TEST_ASSERT_EQ(2, (int)do_set_scen_level(0), "do_set_scen_level should return REDRAW");
-    TEST_ASSERT_EQ(scen_before, (int)og::runtime::current_session->myscreen_->save_data.scen_num, "cancel paths should preserve selected scenario");
+    ASSERT_EQ(2, (int)do_pick_campaign(0)) << "do_pick_campaign should return REDRAW";
+    ASSERT_EQ(2, (int)do_set_scen_level(0)) << "do_set_scen_level should return REDRAW";
+    ASSERT_EQ(scen_before, (int)og::runtime::current_session->myscreen_->save_data.scen_num) << "cancel paths should preserve selected scenario";
 }
-REGISTER_TEST(test_picker_campaign_and_level_wrappers_cancel_fast);
 
-void test_picker_team_wraps_on_negative_step()
+
+TEST(PickerUncovered, picker_team_wraps_on_negative_step)
 {
     PickerStateGuard guard;
     OwnedButtonReplacementGuard button2_guard(2, "b2");
@@ -180,17 +180,17 @@ void test_picker_team_wraps_on_negative_step()
     og::runtime::current_session->current_guy_->teamnum = static_cast<short>(0);
     og::runtime::current_session->current_team_num_ = static_cast<short>(0);
 
-    TEST_ASSERT_EQ(4, (int)change_teamnum(-1), "change_teamnum should return OK");
-    TEST_ASSERT_EQ(3, (int)og::runtime::current_session->current_guy_->teamnum, "change_teamnum should wrap 0 -> 3 for arg -1");
-    TEST_ASSERT_STR_EQ("Playing on Team 4", og::runtime::current_session->allbuttons_[18]->label.c_str(), "team label should wrap to Team 4");
+    ASSERT_EQ(4, (int)change_teamnum(-1)) << "change_teamnum should return OK";
+    ASSERT_EQ(3, (int)og::runtime::current_session->current_guy_->teamnum) << "change_teamnum should wrap 0 -> 3 for arg -1";
+    ASSERT_STREQ("Playing on Team 4", og::runtime::current_session->allbuttons_[18]->label.c_str()) << "team label should wrap to Team 4";
 
     og::runtime::current_session->current_guy_->teamnum = static_cast<short>(0);
     og::runtime::current_session->current_team_num_ = static_cast<short>(0);
-    TEST_ASSERT_EQ(4, (int)change_hire_teamnum(-1), "change_hire_teamnum should return OK");
-    TEST_ASSERT_EQ(3, (int)og::runtime::current_session->current_team_num_, "change_hire_teamnum should wrap 0 -> 3 for arg -1");
-    TEST_ASSERT_EQ(3, (int)og::runtime::current_session->current_guy_->teamnum, "change_hire_teamnum should mirror to current_guy");
-    TEST_ASSERT_STR_EQ("Hiring for Team 4", og::runtime::current_session->allbuttons_[2]->label.c_str(), "hire label should wrap to Team 4");
+    ASSERT_EQ(4, (int)change_hire_teamnum(-1)) << "change_hire_teamnum should return OK";
+    ASSERT_EQ(3, (int)og::runtime::current_session->current_team_num_) << "change_hire_teamnum should wrap 0 -> 3 for arg -1";
+    ASSERT_EQ(3, (int)og::runtime::current_session->current_guy_->teamnum) << "change_hire_teamnum should mirror to current_guy";
+    ASSERT_STREQ("Hiring for Team 4", og::runtime::current_session->allbuttons_[2]->label.c_str()) << "hire label should wrap to Team 4";
 
     og::runtime::current_session->current_team_num_ = saved_team_num;
 }
-REGISTER_TEST(test_picker_team_wraps_on_negative_step);
+

@@ -40,7 +40,7 @@ static void run_sai2x_ex2_and_supereagle_write_output();
 static void run_sai2x_surface_wrapper_guards_and_scaling();
 static void run_sai2x_screen_class_paths();
 
-void test_sai2x_super2xsai_ex_runs_on_small_buffer()
+TEST(Sai2xScaler, sai2x_super2xsai_ex_runs_on_small_buffer)
 {
     // Initialize masks for 32bpp.
     Init_2xSaI();
@@ -70,13 +70,13 @@ void test_sai2x_super2xsai_ex_runs_on_small_buffer()
             break;
         }
     }
-    TEST_ASSERT(any, "Super2xSaI_ex should write to the output buffer");
+    ASSERT_TRUE(any) << "Super2xSaI_ex should write to the output buffer";
 
     run_sai2x_ex2_and_supereagle_write_output();
     run_sai2x_surface_wrapper_guards_and_scaling();
     run_sai2x_screen_class_paths();
 }
-REGISTER_TEST(test_sai2x_super2xsai_ex_runs_on_small_buffer);
+
 
 static void run_sai2x_ex2_and_supereagle_write_output()
 {
@@ -112,8 +112,8 @@ static void run_sai2x_ex2_and_supereagle_write_output()
         }
     }
 
-    TEST_ASSERT(any_sai, "Super2xSaI_ex2 should write to destination");
-    TEST_ASSERT(any_eagle, "Scale_SuperEagle should write to destination");
+    ASSERT_TRUE(any_sai) << "Super2xSaI_ex2 should write to destination";
+    ASSERT_TRUE(any_eagle) << "Scale_SuperEagle should write to destination";
 }
 
 static void run_sai2x_surface_wrapper_guards_and_scaling()
@@ -125,7 +125,7 @@ static void run_sai2x_surface_wrapper_guards_and_scaling()
 
     SDL_Surface* src = SDL_CreateRGBSurfaceWithFormat(0, 8, 8, 32, SDL_PIXELFORMAT_ARGB8888);
     SDL_Surface* dst = SDL_CreateRGBSurfaceWithFormat(0, 16, 16, 32, SDL_PIXELFORMAT_ARGB8888);
-    TEST_ASSERT(src != nullptr && dst != nullptr, "surfaces should allocate");
+    ASSERT_TRUE(src != nullptr && dst != nullptr) << "surfaces should allocate";
     if (!src || !dst)
         return;
 
@@ -148,7 +148,7 @@ static void run_sai2x_surface_wrapper_guards_and_scaling()
             break;
         }
     }
-    TEST_ASSERT(any, "Super2xSaI surface wrapper should write output on valid input");
+    ASSERT_TRUE(any) << "Super2xSaI surface wrapper should write output on valid input";
 
     SDL_FreeSurface(src);
     SDL_FreeSurface(dst);
@@ -179,7 +179,7 @@ static void run_sai2x_screen_class_paths()
         char bmp_path[512] = {};
         std::snprintf(bmp_path, sizeof(bmp_path), "%s", path.c_str());
         s.SaveBMP(s.render, bmp_path);
-        TEST_ASSERT(std::filesystem::exists(path), "SaveBMP should create output file");
+        ASSERT_TRUE(std::filesystem::exists(path)) << "SaveBMP should create output file";
         std::filesystem::remove(path);
     }
 }

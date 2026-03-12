@@ -52,58 +52,58 @@ walker* add_living(MovementFixture& fx, char family = FAMILY_SOLDIER)
 
 } // namespace
 
-OG_UNIT_TEST(test_walker_movement_facing_thresholds)
+TEST(WalkerMovementUnit, walker_movement_facing_thresholds)
 {
     MovementFixture fx;
     walker* w = add_living(fx);
-    OG_ASSERT(w != nullptr);
+    ASSERT_TRUE(w != nullptr);
 
-    OG_ASSERT(w->facing(0, 1) == FACE_DOWN);
-    OG_ASSERT(w->facing(0, -1) == FACE_UP);
-    OG_ASSERT(w->facing(1, 0) == FACE_RIGHT);
-    OG_ASSERT(w->facing(-1, 0) == FACE_LEFT);
-    OG_ASSERT(w->facing(1, 1) == FACE_DOWN_RIGHT);
-    OG_ASSERT(w->facing(1, -1) == FACE_UP_RIGHT);
-    OG_ASSERT(w->facing(-1, 1) == FACE_DOWN_LEFT);
-    OG_ASSERT(w->facing(-1, -1) == FACE_UP_LEFT);
+    ASSERT_TRUE(w->facing(0, 1) == FACE_DOWN);
+    ASSERT_TRUE(w->facing(0, -1) == FACE_UP);
+    ASSERT_TRUE(w->facing(1, 0) == FACE_RIGHT);
+    ASSERT_TRUE(w->facing(-1, 0) == FACE_LEFT);
+    ASSERT_TRUE(w->facing(1, 1) == FACE_DOWN_RIGHT);
+    ASSERT_TRUE(w->facing(1, -1) == FACE_UP_RIGHT);
+    ASSERT_TRUE(w->facing(-1, 1) == FACE_DOWN_LEFT);
+    ASSERT_TRUE(w->facing(-1, -1) == FACE_UP_LEFT);
 }
 
-OG_UNIT_TEST(test_walker_movement_turn_stationary_and_normal)
+TEST(WalkerMovementUnit, walker_movement_turn_stationary_and_normal)
 {
     MovementFixture fx;
     walker* normal = add_living(fx, FAMILY_SOLDIER);
-    OG_ASSERT(normal != nullptr);
+    ASSERT_TRUE(normal != nullptr);
     normal->stepsize = 2.0f;
     normal->curdir = FACE_UP;
     normal->lastx = 0.0f;
     normal->lasty = -normal->stepsize;
     normal->turn(FACE_RIGHT);
-    OG_ASSERT(normal->curdir != FACE_UP);
-    OG_ASSERT(!(normal->lastx == 0.0f && normal->lasty == -normal->stepsize));
+    ASSERT_TRUE(normal->curdir != FACE_UP);
+    ASSERT_TRUE(!(normal->lastx == 0.0f && normal->lasty == -normal->stepsize));
 
     walker* tower = add_living(fx, FAMILY_TOWER1);
-    OG_ASSERT(tower != nullptr);
+    ASSERT_TRUE(tower != nullptr);
     tower->stepsize = 3.0f;
     tower->lastx = 9.0f;
     tower->lasty = -4.0f;
     tower->curdir = FACE_UP;
     tower->turn(FACE_LEFT);
-    OG_ASSERT(tower->lastx == 9.0f);
-    OG_ASSERT(tower->lasty == -4.0f);
+    ASSERT_TRUE(tower->lastx == 9.0f);
+    ASSERT_TRUE(tower->lasty == -4.0f);
 }
 
-OG_UNIT_TEST(test_walker_movement_walk_and_walkstep_edge_paths)
+TEST(WalkerMovementUnit, walker_movement_walk_and_walkstep_edge_paths)
 {
     MovementFixture fx;
     walker* w = add_living(fx);
-    OG_ASSERT(w != nullptr);
+    ASSERT_TRUE(w != nullptr);
 
     w->curdir = FACE_RIGHT;
-    OG_ASSERT(w->walk(1.0f, 0.0f));
+    ASSERT_TRUE(w->walk(1.0f, 0.0f));
 
     w->setxy(0, 0);
     w->curdir = FACE_LEFT;
-    OG_ASSERT(!w->walk(-1.0f, 0.0f));
+    ASSERT_TRUE(!w->walk(-1.0f, 0.0f));
 
     w->user = -1;
     (void)w->walkstep(-1.0f, -1.0f);
@@ -168,15 +168,15 @@ void assign_ani(walker* w)
 
 } // namespace
 
-OG_UNIT_TEST(test_walker_movement_r11_move_worldmove_setxy_and_setworldxy)
+TEST(WalkerMovementUnit, walker_movement_r11_move_worldmove_setxy_and_setworldxy)
 {
     WalkerMovementR11Fixture fx;
     walker* w = add_living(fx);
-    OG_ASSERT(w != nullptr);
+    ASSERT_TRUE(w != nullptr);
 
     (void)w->move(1, -1);
     w->worldmove(0.5f, -0.5f);
-    OG_ASSERT(w->xpos != 0 || w->ypos != 0);
+    ASSERT_TRUE(w->xpos != 0 || w->ypos != 0);
 
     w->ignore = 1;
     (void)w->setxy(100, 100);
@@ -184,11 +184,11 @@ OG_UNIT_TEST(test_walker_movement_r11_move_worldmove_setxy_and_setworldxy)
     w->ignore = 0;
 }
 
-OG_UNIT_TEST(test_walker_movement_r11_walkstep_npc_and_user_slide_paths)
+TEST(WalkerMovementUnit, walker_movement_r11_walkstep_npc_and_user_slide_paths)
 {
     WalkerMovementR11Fixture fx;
     walker* w = add_living(fx);
-    OG_ASSERT(w != nullptr);
+    ASSERT_TRUE(w != nullptr);
     assign_ani(w);
 
     // Force blocked movement by surrounding a tile with non-passable wall tile.
@@ -210,17 +210,17 @@ OG_UNIT_TEST(test_walker_movement_r11_walkstep_npc_and_user_slide_paths)
     (void)w->walkstep(-1.0f, -1.0f);
 }
 
-OG_UNIT_TEST(test_walker_movement_r11_walk_turn_and_angles)
+TEST(WalkerMovementUnit, walker_movement_r11_walk_turn_and_angles)
 {
     WalkerMovementR11Fixture fx;
     walker* w = add_living(fx);
-    OG_ASSERT(w != nullptr);
+    ASSERT_TRUE(w != nullptr);
     assign_ani(w);
 
     // walk(0,0) and changed-direction branch
-    OG_ASSERT(w->walk(0.0f, 0.0f));
+    ASSERT_TRUE(w->walk(0.0f, 0.0f));
     w->curdir = FACE_UP;
-    OG_ASSERT(w->walk(1.0f, 0.0f));
+    ASSERT_TRUE(w->walk(1.0f, 0.0f));
 
     // blocked path with BIT_ANIMATE branch
     w->stats()->set_bit_flags(BIT_ANIMATE, 1);
@@ -296,40 +296,40 @@ void assign_basic_ani(walker* w)
 
 } // namespace
 
-OG_UNIT_TEST(test_walker_movement_r12_stationary_slope_and_animate_paths)
+TEST(WalkerMovementUnit, walker_movement_r12_stationary_slope_and_animate_paths)
 {
     MovementR12Fixture fx;
     walker* station = add_living(fx, FAMILY_TOWER1);
     walker* mover = add_living(fx, FAMILY_SOLDIER);
-    OG_ASSERT(station && mover);
+    ASSERT_TRUE(station && mover);
 
     station->stepsize = 3.0f;
-    OG_ASSERT(station->walkstep(1.0f, 0.0f));
-    OG_ASSERT(station->lastx == 1.0f);
-    OG_ASSERT(station->lasty == 0.0f);
+    ASSERT_TRUE(station->walkstep(1.0f, 0.0f));
+    ASSERT_TRUE(station->lastx == 1.0f);
+    ASSERT_TRUE(station->lasty == 0.0f);
 
-    OG_ASSERT(mover->facing(2, 5) == FACE_DOWN);
-    OG_ASSERT(mover->facing(2, 1) == FACE_DOWN_RIGHT);
-    OG_ASSERT(mover->facing(2, -1) == FACE_UP_RIGHT);
-    OG_ASSERT(mover->facing(2, -5) == FACE_UP);
-    OG_ASSERT(mover->facing(-2, 5) == FACE_DOWN);
-    OG_ASSERT(mover->facing(-2, 1) == FACE_DOWN_LEFT);
-    OG_ASSERT(mover->facing(-2, -1) == FACE_UP_LEFT);
-    OG_ASSERT(mover->facing(-2, -5) == FACE_UP);
+    ASSERT_TRUE(mover->facing(2, 5) == FACE_DOWN);
+    ASSERT_TRUE(mover->facing(2, 1) == FACE_DOWN_RIGHT);
+    ASSERT_TRUE(mover->facing(2, -1) == FACE_UP_RIGHT);
+    ASSERT_TRUE(mover->facing(2, -5) == FACE_UP);
+    ASSERT_TRUE(mover->facing(-2, 5) == FACE_DOWN);
+    ASSERT_TRUE(mover->facing(-2, 1) == FACE_DOWN_LEFT);
+    ASSERT_TRUE(mover->facing(-2, -1) == FACE_UP_LEFT);
+    ASSERT_TRUE(mover->facing(-2, -5) == FACE_UP);
 
     assign_basic_ani(mover);
     mover->stats()->set_bit_flags(BIT_ANIMATE, 1);
     mover->setxy(0, 0);
     mover->curdir = FACE_LEFT;
-    OG_ASSERT(!mover->walk(-1.0f, 0.0f));
+    ASSERT_TRUE(!mover->walk(-1.0f, 0.0f));
 }
 
-OG_UNIT_TEST(test_walker_movement_r12_walkstep_npc_and_user_slide_paths)
+TEST(WalkerMovementUnit, walker_movement_r12_walkstep_npc_and_user_slide_paths)
 {
     MovementR12Fixture fx;
     walker* npc = add_living(fx, FAMILY_SOLDIER);
     walker* user = add_living(fx, FAMILY_SOLDIER);
-    OG_ASSERT(npc && user);
+    ASSERT_TRUE(npc && user);
     assign_basic_ani(npc);
     assign_basic_ani(user);
 
@@ -339,7 +339,7 @@ OG_UNIT_TEST(test_walker_movement_r12_walkstep_npc_and_user_slide_paths)
     (void)npc->walk();
 
     // shove non-living fallback path
-    OG_ASSERT(npc->shove(user, 1, 0) == -1);
+    ASSERT_TRUE(npc->shove(user, 1, 0) == -1);
 
     npc->setxy(0, 0);
     npc->stepsize = 1.0f;
@@ -366,7 +366,7 @@ OG_UNIT_TEST(test_walker_movement_r12_walkstep_npc_and_user_slide_paths)
     user->stats()->set_bit_flags(BIT_ANIMATE, 1);
     user->setxy(0, 0);
     user->curdir = FACE_LEFT;
-    OG_ASSERT(!user->walk(-1.0f, 0.0f));
+    ASSERT_TRUE(!user->walk(-1.0f, 0.0f));
 
     // turn default branch via invalid curdir.
     user->curdir = 127;
@@ -425,11 +425,11 @@ void assign_basic_ani(walker* w)
 
 } // namespace
 
-OG_UNIT_TEST(test_walker_movement_r14_lines_175_186_198_210_npc_fallback_cases)
+TEST(WalkerMovementUnit, walker_movement_r14_lines_175_186_198_210_npc_fallback_cases)
 {
     MovementR14Fixture fx;
     walker* npc = add_living(fx, 0, 0);
-    OG_ASSERT(npc != nullptr);
+    ASSERT_TRUE(npc != nullptr);
 
     assign_basic_ani(npc);
     npc->user = -1;
@@ -454,11 +454,11 @@ OG_UNIT_TEST(test_walker_movement_r14_lines_175_186_198_210_npc_fallback_cases)
     (void)npc->walkstep(-1.0f, -1.0f);
 }
 
-OG_UNIT_TEST(test_walker_movement_r14_lines_234_255_268_273_278_285_292_user_slide_and_turn_default)
+TEST(WalkerMovementUnit, walker_movement_r14_lines_234_255_268_273_278_285_292_user_slide_and_turn_default)
 {
     MovementR14Fixture fx;
     walker* user = add_living(fx, 0, 0);
-    OG_ASSERT(user != nullptr);
+    ASSERT_TRUE(user != nullptr);
 
     assign_basic_ani(user);
     user->user = 0;

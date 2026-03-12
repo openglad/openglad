@@ -75,7 +75,7 @@ TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
 
 } // namespace
 
-OG_UNIT_TEST(test_sim_world_r15_normal_tick_cleanup_and_dead_entity_removal)
+TEST(SimWorld, r15_normal_tick_cleanup_and_dead_entity_removal)
 {
     SimWorldR15Fixture fx;
     GameWorld& world = fx.world();
@@ -85,12 +85,12 @@ OG_UNIT_TEST(test_sim_world_r15_normal_tick_cleanup_and_dead_entity_removal)
     TickWalker* ally = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     TickWalker* enemy = add_ob(fx, Order::Living, FAMILY_ORC, 1, 76, 64);
     TickWalker* dead_ob = add_ob(fx, Order::Living, FAMILY_ORC, 1, 90, 64, true);
-    OG_ASSERT(ally && enemy && dead_ob);
+    ASSERT_TRUE(ally && enemy && dead_ob);
 
     TickWalker* live_weap = add_weap(fx, Order::Weapon, FAMILY_KNIFE, 0, false);
     TickWalker* dead_weap = add_weap(fx, Order::Weapon, FAMILY_KNIFE, 0, true);
     TickWalker* dead_fx = add_fx(fx, Order::FX, FAMILY_EXPLOSION, 0, true);
-    OG_ASSERT(live_weap && dead_weap && dead_fx);
+    ASSERT_TRUE(live_weap && dead_weap && dead_fx);
 
     ally->foe = dead_ob;
     ally->leader = dead_ob;
@@ -105,25 +105,25 @@ OG_UNIT_TEST(test_sim_world_r15_normal_tick_cleanup_and_dead_entity_removal)
     fx.level.numobs = 3;
 
     world.tick();
-    OG_ASSERT(world.level_done == 0);
-    OG_ASSERT(!world.game_ended);
-    OG_ASSERT(ally->acts > 0);
-    OG_ASSERT(enemy->acts > 0);
-    OG_ASSERT(live_weap->acts > 0);
-    OG_ASSERT(ally->foe == nullptr);
-    OG_ASSERT(ally->leader == nullptr);
-    OG_ASSERT(ally->owner == nullptr);
-    OG_ASSERT(ally->collide_ob == nullptr);
-    OG_ASSERT(live_weap->foe == nullptr);
-    OG_ASSERT(live_weap->leader == nullptr);
-    OG_ASSERT(live_weap->owner == nullptr);
-    OG_ASSERT(live_weap->collide_ob == nullptr);
-    OG_ASSERT(!fx.level.world().dead_list.empty());
-    OG_ASSERT(fx.level.world().weaplist.size() == 1);
-    OG_ASSERT(fx.level.world().fxlist.empty());
+    ASSERT_TRUE(world.level_done == 0);
+    ASSERT_TRUE(!world.game_ended);
+    ASSERT_TRUE(ally->acts > 0);
+    ASSERT_TRUE(enemy->acts > 0);
+    ASSERT_TRUE(live_weap->acts > 0);
+    ASSERT_TRUE(ally->foe == nullptr);
+    ASSERT_TRUE(ally->leader == nullptr);
+    ASSERT_TRUE(ally->owner == nullptr);
+    ASSERT_TRUE(ally->collide_ob == nullptr);
+    ASSERT_TRUE(live_weap->foe == nullptr);
+    ASSERT_TRUE(live_weap->leader == nullptr);
+    ASSERT_TRUE(live_weap->owner == nullptr);
+    ASSERT_TRUE(live_weap->collide_ob == nullptr);
+    ASSERT_TRUE(!fx.level.world().dead_list.empty());
+    ASSERT_TRUE(fx.level.world().weaplist.size() == 1);
+    ASSERT_TRUE(fx.level.world().fxlist.empty());
 }
 
-OG_UNIT_TEST(test_sim_world_r15_freeze_tick_and_level_done_paths)
+TEST(SimWorld, r15_freeze_tick_and_level_done_paths)
 {
     SimWorldR15Fixture fx;
     GameWorld& world = fx.world();
@@ -133,22 +133,22 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_tick_and_level_done_paths)
     TickWalker* ally = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     TickWalker* enemy = add_ob(fx, Order::Living, FAMILY_ORC, 1, 80, 64);
     TickWalker* exit_fx = add_fx(fx, Order::Treasure, FAMILY_EXIT, 0, false);
-    OG_ASSERT(ally && enemy && exit_fx);
+    ASSERT_TRUE(ally && enemy && exit_fx);
 
     world.enemy_freeze = 11;
     world.tick();
-    OG_ASSERT(world.level_done == 1);
-    OG_ASSERT(!world.game_ended);
-    OG_ASSERT(ally->acts > 0);
-    OG_ASSERT(enemy->acts == 0);
+    ASSERT_TRUE(world.level_done == 1);
+    ASSERT_TRUE(!world.game_ended);
+    ASSERT_TRUE(ally->acts > 0);
+    ASSERT_TRUE(enemy->acts == 0);
 
     world.enemy_freeze = 2;
     const std::size_t before_events = fx.events.size();
     world.tick();
-    OG_ASSERT(fx.events.size() > before_events);
+    ASSERT_TRUE(fx.events.size() > before_events);
 }
 
-OG_UNIT_TEST(test_sim_world_r15_freeze_uses_friendliness_not_team_zero)
+TEST(SimWorld, r15_freeze_uses_friendliness_not_team_zero)
 {
     SimWorldR15Fixture fx;
     GameWorld& world = fx.world();
@@ -157,18 +157,18 @@ OG_UNIT_TEST(test_sim_world_r15_freeze_uses_friendliness_not_team_zero)
 
     TickWalker* friendly = add_ob(fx, Order::Living, FAMILY_SOLDIER, 1, 64, 64);
     TickWalker* hostile = add_ob(fx, Order::Living, FAMILY_ORC, 0, 80, 64);
-    OG_ASSERT(friendly && hostile);
+    ASSERT_TRUE(friendly && hostile);
 
     world.enemy_freeze = 11;
     world.tick();
 
-    OG_ASSERT(world.level_done == 2);
-    OG_ASSERT(world.game_ended);
-    OG_ASSERT(friendly->acts > 0);
-    OG_ASSERT(hostile->acts == 0);
+    ASSERT_TRUE(world.level_done == 2);
+    ASSERT_TRUE(world.game_ended);
+    ASSERT_TRUE(friendly->acts > 0);
+    ASSERT_TRUE(hostile->acts == 0);
 }
 
-OG_UNIT_TEST(test_sim_world_r15_end_flag_and_auto_advance_paths)
+TEST(SimWorld, r15_end_flag_and_auto_advance_paths)
 {
     SimWorldR15Fixture fx;
     GameWorld& world = fx.world();
@@ -176,22 +176,22 @@ OG_UNIT_TEST(test_sim_world_r15_end_flag_and_auto_advance_paths)
     world.my_team = 0;
 
     TickWalker* enemy = add_ob(fx, Order::Living, FAMILY_ORC, 1, 80, 80);
-    OG_ASSERT(enemy != nullptr);
+    ASSERT_TRUE(enemy != nullptr);
 
     world.end = 1;
     world.tick();
-    OG_ASSERT(world.game_ended);
+    ASSERT_TRUE(world.game_ended);
 
     SimWorldR15Fixture empty_fx;
     GameWorld& world2 = empty_fx.world();
     world2.rng_.state_ = 9;
     world2.tick();
-    OG_ASSERT(world2.game_ended);
-    OG_ASSERT(world2.level_done == 2);
-    OG_ASSERT(world2.next_level == static_cast<short>(empty_fx.level.world().id + 1));
+    ASSERT_TRUE(world2.game_ended);
+    ASSERT_TRUE(world2.level_done == 2);
+    ASSERT_TRUE(world2.next_level == static_cast<short>(empty_fx.level.world().id + 1));
 }
 
-OG_UNIT_TEST(test_sim_world_r15_reset_level_progress_clears_timeout_for_same_level)
+TEST(SimWorld, r15_reset_level_progress_clears_timeout_for_same_level)
 {
 #ifdef TESTING
     SimWorldR15Fixture fx;
@@ -200,7 +200,7 @@ OG_UNIT_TEST(test_sim_world_r15_reset_level_progress_clears_timeout_for_same_lev
     world.my_team = 0;
 
     TickWalker* enemy = add_ob(fx, Order::Living, FAMILY_ORC, 1, 80, 64);
-    OG_ASSERT(enemy != nullptr);
+    ASSERT_TRUE(enemy != nullptr);
 
     struct TickLimitGuard {
         std::int32_t saved = 0;
@@ -216,13 +216,13 @@ OG_UNIT_TEST(test_sim_world_r15_reset_level_progress_clears_timeout_for_same_lev
     } guard;
 
     world.tick();
-    OG_ASSERT(!world.game_ended);
+    ASSERT_TRUE(!world.game_ended);
 
     world.tick();
-    OG_ASSERT(world.game_ended);
+    ASSERT_TRUE(world.game_ended);
 
     world.reset_level_progress();
     world.tick();
-    OG_ASSERT(!world.game_ended);
+    ASSERT_TRUE(!world.game_ended);
 #endif
 }

@@ -23,7 +23,7 @@
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
 #include <openglad/legacy/base.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/resources/io.h>
 #include <format>
 #include <cstring>

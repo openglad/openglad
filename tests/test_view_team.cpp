@@ -2,7 +2,7 @@
 #include <array>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include "test_framework.h"
@@ -205,7 +205,7 @@ static int view_team_injector(void* data)
     return 0;
 }
 
-void test_view_team() {
+TEST(ViewTeam, view_team) {
     trace_clear();
 
     // Set up a team so view has something to show
@@ -227,7 +227,7 @@ void test_view_team() {
 
     ViewState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(view_team_injector, "view_test", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -240,9 +240,9 @@ void test_view_team() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
 }
-REGISTER_TEST(test_view_team);
+
 
 struct ViewTeamGoState {
     bool started;
@@ -306,7 +306,7 @@ static int view_team_go_injector(void* data)
     return 0;
 }
 
-void test_view_team_go_starts_level() {
+TEST(ViewTeam, go_starts_level) {
     trace_clear();
 
     og::runtime::current_session->myscreen_->save_data.reset();
@@ -325,7 +325,7 @@ void test_view_team_go_starts_level() {
 
     ViewTeamGoState state = { false, false, false, false, false, og::runtime::current_session->g_game_speed_factor_ };
     SDL_Thread* thread = SDL_CreateThread(view_team_go_injector, "view_team_go", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -338,12 +338,12 @@ void test_view_team_go_starts_level() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.saw_view_menu, "should have entered the view team menu");
-    TEST_ASSERT(state.game_started, "GO from view team should start the game");
-    TEST_ASSERT(state.game_finished, "started game should return to picker");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_view_menu) << "should have entered the view team menu";
+    ASSERT_TRUE(state.game_started) << "GO from view team should start the game";
+    ASSERT_TRUE(state.game_finished) << "started game should return to picker";
 }
-REGISTER_TEST(test_view_team_go_starts_level);
+
 
 struct DirectMenuClickState {
     bool finished;
@@ -403,7 +403,7 @@ static int direct_menu_click_injector(void* data)
     return 0;
 }
 
-void test_create_view_menu_direct_back()
+TEST(ViewTeam, create_view_menu_direct_back)
 {
     trace_clear();
 
@@ -418,7 +418,7 @@ void test_create_view_menu_direct_back()
     std::atomic<bool> menu_done{false};
     DirectMenuClickState state = { false, false, "back", 160, &menu_done };
     SDL_Thread* thread = SDL_CreateThread(direct_menu_click_injector, "direct_view_back", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create direct view-menu injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create direct view-menu injector thread";
 
     const Sint32 ret = create_view_menu(0);
     menu_done.store(true, std::memory_order_release);
@@ -427,13 +427,13 @@ void test_create_view_menu_direct_back()
     SDL_WaitThread(thread, &thread_result);
     cleanup_picker_state();
 
-    TEST_ASSERT(state.finished, "direct view-menu injector should complete");
-    TEST_ASSERT(state.clicked_target, "direct view-menu injector should click back");
-    TEST_ASSERT(ret & 2, "create_view_menu(back) should return REDRAW");
+    ASSERT_TRUE(state.finished) << "direct view-menu injector should complete";
+    ASSERT_TRUE(state.clicked_target) << "direct view-menu injector should click back";
+    ASSERT_TRUE(ret & 2) << "create_view_menu(back) should return REDRAW";
 }
-REGISTER_TEST(test_create_view_menu_direct_back);
 
-void test_create_team_menu_direct_back()
+
+TEST(ViewTeam, create_team_menu_direct_back)
 {
     trace_clear();
 
@@ -448,7 +448,7 @@ void test_create_team_menu_direct_back()
     std::atomic<bool> menu_done{false};
     DirectMenuClickState state = { false, false, "back", 100, &menu_done };
     SDL_Thread* thread = SDL_CreateThread(direct_menu_click_injector, "direct_team_back", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create direct team-menu injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create direct team-menu injector thread";
 
     const Sint32 ret = create_team_menu(0);
     menu_done.store(true, std::memory_order_release);
@@ -457,11 +457,11 @@ void test_create_team_menu_direct_back()
     SDL_WaitThread(thread, &thread_result);
     cleanup_picker_state();
 
-    TEST_ASSERT(state.finished, "direct team-menu injector should complete");
-    TEST_ASSERT(state.clicked_target, "direct team-menu injector should click back");
-    TEST_ASSERT(ret & 1, "create_team_menu(back) should propagate EXIT");
+    ASSERT_TRUE(state.finished) << "direct team-menu injector should complete";
+    ASSERT_TRUE(state.clicked_target) << "direct team-menu injector should click back";
+    ASSERT_TRUE(ret & 1) << "create_team_menu(back) should propagate EXIT";
 }
-REGISTER_TEST(test_create_team_menu_direct_back);
+
 
 struct ViewTeamGoLevel17State {
     bool finished;
@@ -537,7 +537,7 @@ static int view_team_go_level17_injector(void* data)
     return 0;
 }
 
-void test_view_team_go_level17_no_hang()
+TEST(ViewTeam, go_level17_no_hang)
 {
     trace_clear();
 
@@ -565,7 +565,7 @@ void test_view_team_go_level17_no_hang()
     ViewTeamGoLevel17State state{};
     state.original_speed = og::runtime::current_session->g_game_speed_factor_;
     SDL_Thread* thread = SDL_CreateThread(view_team_go_level17_injector, "view_team_go_lv17", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create level17 injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create level17 injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -577,10 +577,10 @@ void test_view_team_go_level17_no_hang()
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should complete");
-    TEST_ASSERT(state.saw_view_menu, "should enter view team menu");
-    TEST_ASSERT(state.game_started, "GO should start level 17");
-    TEST_ASSERT(state.frame_progressed, "level 17 should advance frames");
-    TEST_ASSERT(state.game_finished, "level 17 should return to picker (no hang)");
+    ASSERT_TRUE(state.finished) << "injector thread should complete";
+    ASSERT_TRUE(state.saw_view_menu) << "should enter view team menu";
+    ASSERT_TRUE(state.game_started) << "GO should start level 17";
+    ASSERT_TRUE(state.frame_progressed) << "level 17 should advance frames";
+    ASSERT_TRUE(state.game_finished) << "level 17 should return to picker (no hang)";
 }
-REGISTER_TEST(test_view_team_go_level17_no_hang);
+

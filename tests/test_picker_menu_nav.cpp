@@ -53,7 +53,7 @@ static void release_key_after(KeyStateGuard* ks, SDL_Keycode key, int delay_ms)
 }
 } // namespace
 
-void test_picker_handle_menu_nav_moves_and_skips_hidden_targets()
+TEST(PickerMenuNav, picker_handle_menu_nav_moves_and_skips_hidden_targets)
 {
     disablePlayerJoystick(0);
     KeyBindingGuard b_up(0, KEY_UP, SDLK_UP);
@@ -76,37 +76,37 @@ void test_picker_handle_menu_nav_moves_and_skips_hidden_targets()
     bool activated = handle_menu_nav(buttons, highlighted, retvalue, false);
     release_up.join();
 
-    TEST_ASSERT(!activated, "directional nav should not activate button");
-    TEST_ASSERT_EQ(0, highlighted, "up key should move highlight to nav.up");
-    TEST_ASSERT(pks().menu_nav_enabled, "pressing nav key should enable menu nav");
+    ASSERT_TRUE(!activated) << "directional nav should not activate button";
+    ASSERT_EQ(0, highlighted) << "up key should move highlight to nav.up";
+    ASSERT_TRUE(pks().menu_nav_enabled) << "pressing nav key should enable menu nav";
 
     // Right key points to hidden button index 2; highlight should stay unchanged.
     ks.set(SDLK_RIGHT, true);
     std::thread release_right(release_key_after, &ks, SDLK_RIGHT, 10);
     activated = handle_menu_nav(buttons, highlighted, retvalue, false);
     release_right.join();
-    TEST_ASSERT(!activated, "moving to hidden target should not activate");
-    TEST_ASSERT_EQ(0, highlighted, "hidden nav target should be ignored");
+    ASSERT_TRUE(!activated) << "moving to hidden target should not activate";
+    ASSERT_EQ(0, highlighted) << "hidden nav target should be ignored";
 
     // Down should move from 0 back to 1.
     ks.set(SDLK_DOWN, true);
     std::thread release_down(release_key_after, &ks, SDLK_DOWN, 10);
     activated = handle_menu_nav(buttons, highlighted, retvalue, false);
     release_down.join();
-    TEST_ASSERT(!activated, "down movement should not activate");
-    TEST_ASSERT_EQ(1, highlighted, "down key should move highlight to nav.down");
+    ASSERT_TRUE(!activated) << "down movement should not activate";
+    ASSERT_EQ(1, highlighted) << "down key should move highlight to nav.down";
 
     // Left for button1 is invalid (-1), so highlight should remain.
     ks.set(SDLK_LEFT, true);
     std::thread release_left(release_key_after, &ks, SDLK_LEFT, 10);
     activated = handle_menu_nav(buttons, highlighted, retvalue, false);
     release_left.join();
-    TEST_ASSERT(!activated, "invalid nav target should not activate");
-    TEST_ASSERT_EQ(1, highlighted, "invalid nav target should leave highlight unchanged");
+    ASSERT_TRUE(!activated) << "invalid nav target should not activate";
+    ASSERT_EQ(1, highlighted) << "invalid nav target should leave highlight unchanged";
 }
-REGISTER_TEST(test_picker_handle_menu_nav_moves_and_skips_hidden_targets);
 
-void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
+
+TEST(PickerMenuNav, picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke)
 {
     disablePlayerJoystick(0);
     KeyBindingGuard b_fire(0, KEY_FIRE, SDLK_SPACE);
@@ -124,8 +124,8 @@ void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
     std::thread release_fire1(release_key_after, &ks, SDLK_SPACE, 10);
     bool activated = handle_menu_nav(buttons, highlighted, retvalue, false);
     release_fire1.join();
-    TEST_ASSERT(!activated, "fire with nav disabled should not activate");
-    TEST_ASSERT(pks().menu_nav_enabled, "fire should enable nav mode");
+    ASSERT_TRUE(!activated) << "fire with nav disabled should not activate";
+    ASSERT_TRUE(pks().menu_nav_enabled) << "fire should enable nav mode";
 
     // Fire while nav enabled with use_global_vbuttons=false should return OK(4).
     retvalue = 0;
@@ -133,8 +133,8 @@ void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
     std::thread release_fire2(release_key_after, &ks, SDLK_SPACE, 10);
     activated = handle_menu_nav(buttons, highlighted, retvalue, false);
     release_fire2.join();
-    TEST_ASSERT(activated, "fire with nav enabled should activate");
-    TEST_ASSERT_EQ(4, (int)retvalue, "activation without global vbuttons should return OK");
+    ASSERT_TRUE(activated) << "fire with nav enabled should activate";
+    ASSERT_EQ(4, (int)retvalue) << "activation without global vbuttons should return OK";
 
     // Fire while nav enabled with global vbuttons path.
     vbutton* primary_button = init_buttons(buttons, 1);
@@ -144,7 +144,7 @@ void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
     std::thread release_fire3(release_key_after, &ks, SDLK_SPACE, 10);
     activated = handle_menu_nav(buttons, highlighted, retvalue, true);
     release_fire3.join();
-    TEST_ASSERT(activated, "fire with global vbuttons should activate");
+    ASSERT_TRUE(activated) << "fire with global vbuttons should activate";
     clear_allbuttons();
 
     // Smoke draw highlight routines under both nav states.
@@ -161,4 +161,4 @@ void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
     ks.set(SDLK_SPACE, false);
     (void)handle_menu_nav(buttons, highlighted, retvalue, false);
 }
-REGISTER_TEST(test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke);
+

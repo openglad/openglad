@@ -4,7 +4,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/gameplay/guy.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
@@ -171,7 +171,7 @@ static int fairy_injector(void* data)
     return 0;
 }
 
-void test_fairy_death() {
+TEST(FairyDeath, fairy_death) {
     trace_clear();
 
     // Some integration tests leave the picker globals set, which changes the
@@ -190,7 +190,7 @@ void test_fairy_death() {
 
     FairyState state = { false, false, og::runtime::current_session->g_game_speed_factor_ };
     SDL_Thread* thread = SDL_CreateThread(fairy_injector, "fairy_injector", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -204,12 +204,11 @@ void test_fairy_death() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
 
     // We lost — level 4 should NOT be marked completed
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->save_data.is_level_completed(4),
-                "level 4 should NOT be completed (fairy should have died)");
+    ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_data.is_level_completed(4)) << "level 4 should NOT be completed (fairy should have died)";
 
     fprintf(stderr, "  [test] Fairy died as expected via UI hire flow\n");
 }
-REGISTER_TEST(test_fairy_death);
+

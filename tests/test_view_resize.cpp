@@ -9,7 +9,7 @@
 // Tests the big switch statement for 1/2/3/4 player resize configurations
 // ---------------------------------------------------------------------------
 
-void test_view_resize_1p_panels()
+TEST(ViewResize, 1p_panels)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -18,15 +18,15 @@ void test_view_resize_1p_panels()
     vs->mynum = 0;
 
     vs->resize(PREF_VIEW_PANELS);
-    TEST_ASSERT(vs->xloc == 44, "1p panels xloc");
-    TEST_ASSERT(vs->xview == 232, "1p panels xview");
+    ASSERT_TRUE(vs->xloc == 44) << "1p panels xloc";
+    ASSERT_TRUE(vs->xview == 232) << "1p panels xview";
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->resize(PREF_VIEW_FULL);
 }
-REGISTER_TEST(test_view_resize_1p_panels);
 
-void test_view_resize_1p_view1()
+
+TEST(ViewResize, 1p_view1)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -35,14 +35,14 @@ void test_view_resize_1p_view1()
     vs->mynum = 0;
 
     vs->resize(PREF_VIEW_1);
-    TEST_ASSERT(vs->xview == 192, "1p view1 xview");
+    ASSERT_TRUE(vs->xview == 192) << "1p view1 xview";
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->resize(PREF_VIEW_FULL);
 }
-REGISTER_TEST(test_view_resize_1p_view1);
 
-void test_view_resize_1p_view2()
+
+TEST(ViewResize, 1p_view2)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -51,14 +51,14 @@ void test_view_resize_1p_view2()
     vs->mynum = 0;
 
     vs->resize(PREF_VIEW_2);
-    TEST_ASSERT(vs->xview == 148, "1p view2 xview");
+    ASSERT_TRUE(vs->xview == 148) << "1p view2 xview";
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->resize(PREF_VIEW_FULL);
 }
-REGISTER_TEST(test_view_resize_1p_view2);
 
-void test_view_resize_1p_view3()
+
+TEST(ViewResize, 1p_view3)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -67,16 +67,16 @@ void test_view_resize_1p_view3()
     vs->mynum = 0;
 
     vs->resize(PREF_VIEW_3);
-    TEST_ASSERT(vs->xview == 108, "1p view3 xview");
+    ASSERT_TRUE(vs->xview == 108) << "1p view3 xview";
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->resize(PREF_VIEW_FULL);
 }
-REGISTER_TEST(test_view_resize_1p_view3);
+
 
 // --- 2-player mode ---
 
-void test_view_resize_2p_player0_all()
+TEST(ViewResize, 2p_player0_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -87,25 +87,25 @@ void test_view_resize_2p_player0_all()
 
     vs->resize(PREF_VIEW_FULL);
     vs->resize(PREF_VIEW_PANELS);
-    TEST_ASSERT(vs->xloc == 4, "2p p0 panels xloc");
-    TEST_ASSERT(vs->xview == 152, "2p p0 panels xview");
+    ASSERT_TRUE(vs->xloc == 4) << "2p p0 panels xloc";
+    ASSERT_TRUE(vs->xview == 152) << "2p p0 panels xview";
 
     vs->resize(PREF_VIEW_1);
-    TEST_ASSERT(vs->xview == 152, "2p p0 view1 xview");
+    ASSERT_TRUE(vs->xview == 152) << "2p p0 view1 xview";
 
     vs->resize(PREF_VIEW_2);
-    TEST_ASSERT(vs->xview == 152, "2p p0 view2 xview");
+    ASSERT_TRUE(vs->xview == 152) << "2p p0 view2 xview";
 
     vs->resize(PREF_VIEW_3);
-    TEST_ASSERT(vs->xview == 152, "2p p0 view3 xview");
+    ASSERT_TRUE(vs->xview == 152) << "2p p0 view3 xview";
 
     og::runtime::current_session->myscreen_->numviews = old_numviews;
     vs->mynum = old_mynum;
     vs->resize(PREF_VIEW_FULL);
 }
-REGISTER_TEST(test_view_resize_2p_player0_all);
 
-void test_view_resize_2p_player1_all()
+
+TEST(ViewResize, 2p_player1_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -116,8 +116,8 @@ void test_view_resize_2p_player1_all()
 
     vs->resize(PREF_VIEW_FULL);
     vs->resize(PREF_VIEW_PANELS);
-    TEST_ASSERT(vs->xloc == 164, "2p p1 panels xloc");
-    TEST_ASSERT(vs->xview == 152, "2p p1 panels xview");
+    ASSERT_TRUE(vs->xloc == 164) << "2p p1 panels xloc";
+    ASSERT_TRUE(vs->xview == 152) << "2p p1 panels xview";
 
     vs->resize(PREF_VIEW_1);
     vs->resize(PREF_VIEW_2);
@@ -127,11 +127,11 @@ void test_view_resize_2p_player1_all()
     vs->mynum = old_mynum;
     vs->resize(PREF_VIEW_FULL);
 }
-REGISTER_TEST(test_view_resize_2p_player1_all);
+
 
 // --- 3-player mode ---
 
-void test_view_resize_3p_player0_all()
+TEST(ViewResize, 3p_player0_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -142,8 +142,8 @@ void test_view_resize_3p_player0_all()
 
     vs->resize(PREF_VIEW_FULL);
     vs->resize(PREF_VIEW_PANELS);
-    TEST_ASSERT(vs->xloc == 4, "3p p0 panels xloc");
-    TEST_ASSERT(vs->xview == 100, "3p p0 panels xview");
+    ASSERT_TRUE(vs->xloc == 4) << "3p p0 panels xloc";
+    ASSERT_TRUE(vs->xview == 100) << "3p p0 panels xview";
 
     vs->resize(PREF_VIEW_1);
     vs->resize(PREF_VIEW_2);
@@ -153,9 +153,9 @@ void test_view_resize_3p_player0_all()
     vs->mynum = old_mynum;
     vs->resize(PREF_VIEW_FULL);
 }
-REGISTER_TEST(test_view_resize_3p_player0_all);
 
-void test_view_resize_3p_player1_all()
+
+TEST(ViewResize, 3p_player1_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -166,7 +166,7 @@ void test_view_resize_3p_player1_all()
 
     vs->resize(PREF_VIEW_FULL);
     vs->resize(PREF_VIEW_PANELS);
-    TEST_ASSERT(vs->xloc == 216, "3p p1 panels xloc");
+    ASSERT_TRUE(vs->xloc == 216) << "3p p1 panels xloc";
 
     vs->resize(PREF_VIEW_1);
     vs->resize(PREF_VIEW_2);
@@ -176,9 +176,9 @@ void test_view_resize_3p_player1_all()
     vs->mynum = old_mynum;
     vs->resize(PREF_VIEW_FULL);
 }
-REGISTER_TEST(test_view_resize_3p_player1_all);
 
-void test_view_resize_3p_player2_all()
+
+TEST(ViewResize, 3p_player2_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -189,7 +189,7 @@ void test_view_resize_3p_player2_all()
 
     vs->resize(PREF_VIEW_FULL);
     vs->resize(PREF_VIEW_PANELS);
-    TEST_ASSERT(vs->xloc == 112, "3p p2 panels xloc");
+    ASSERT_TRUE(vs->xloc == 112) << "3p p2 panels xloc";
 
     vs->resize(PREF_VIEW_1);
     vs->resize(PREF_VIEW_2);
@@ -199,11 +199,11 @@ void test_view_resize_3p_player2_all()
     vs->mynum = old_mynum;
     vs->resize(PREF_VIEW_FULL);
 }
-REGISTER_TEST(test_view_resize_3p_player2_all);
+
 
 // --- 4-player mode ---
 
-void test_view_resize_4p_all_players()
+TEST(ViewResize, 4p_all_players)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -220,4 +220,4 @@ void test_view_resize_4p_all_players()
     vs->mynum = old_mynum;
     vs->resize(PREF_VIEW_FULL);
 }
-REGISTER_TEST(test_view_resize_4p_all_players);
+

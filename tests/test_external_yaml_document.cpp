@@ -100,7 +100,7 @@ static bool dump_yaml_document(const std::string& input, std::string* out)
     return true;
 }
 
-void test_external_yaml_parser_load_multi_document_stream()
+TEST(ExternalYamlDocument, external_yaml_parser_load_multi_document_stream)
 {
     const std::string input =
         "---\n"
@@ -115,12 +115,12 @@ void test_external_yaml_parser_load_multi_document_stream()
         "...\n";
 
     int docs = 0;
-    TEST_ASSERT(load_yaml_documents(input, &docs), "yaml_parser_load should succeed");
-    TEST_ASSERT_EQ(2, docs, "should parse two documents");
+    ASSERT_TRUE(load_yaml_documents(input, &docs)) << "yaml_parser_load should succeed";
+    ASSERT_EQ(2, docs) << "should parse two documents";
 }
-REGISTER_TEST(test_external_yaml_parser_load_multi_document_stream);
 
-void test_external_yaml_emitter_dump_and_reload()
+
+TEST(ExternalYamlDocument, external_yaml_emitter_dump_and_reload)
 {
     const std::string input =
         "root:\n"
@@ -128,23 +128,23 @@ void test_external_yaml_emitter_dump_and_reload()
         "  map: {k: v}\n";
 
     std::string dumped;
-    TEST_ASSERT(dump_yaml_document(input, &dumped), "yaml_emitter_dump should succeed");
-    TEST_ASSERT(!dumped.empty(), "dumped yaml should not be empty");
+    ASSERT_TRUE(dump_yaml_document(input, &dumped)) << "yaml_emitter_dump should succeed";
+    ASSERT_TRUE(!dumped.empty()) << "dumped yaml should not be empty";
 
     int docs = 0;
-    TEST_ASSERT(load_yaml_documents(dumped, &docs), "dumped yaml should parse");
-    TEST_ASSERT_EQ(1, docs, "dumped yaml should contain one document");
+    ASSERT_TRUE(load_yaml_documents(dumped, &docs)) << "dumped yaml should parse";
+    ASSERT_EQ(1, docs) << "dumped yaml should contain one document";
 }
-REGISTER_TEST(test_external_yaml_emitter_dump_and_reload);
 
-void test_external_yaml_parser_load_error_on_invalid_input()
+
+TEST(ExternalYamlDocument, external_yaml_parser_load_error_on_invalid_input)
 {
     const std::string bad =
         "---\n"
         "x: [1, 2\n"; // missing closing ]
 
     int docs = 0;
-    TEST_ASSERT(!load_yaml_documents(bad, &docs), "invalid yaml should fail load");
+    ASSERT_TRUE(!load_yaml_documents(bad, &docs)) << "invalid yaml should fail load";
 }
-REGISTER_TEST(test_external_yaml_parser_load_error_on_invalid_input);
+
 

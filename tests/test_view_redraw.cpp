@@ -23,7 +23,7 @@ static walker* make_guy(char family, unsigned char team = 0)
 // viewscreen::redraw(LevelRuntimeData*, bool) - the big grid rendering function
 // ---------------------------------------------------------------------------
 
-void test_view_redraw_with_level_data()
+TEST(ViewRedraw, with_level_data)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -32,11 +32,11 @@ void test_view_redraw_with_level_data()
     og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
 
     bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false);
-    TEST_ASSERT(result, "redraw with level data should succeed");
+    ASSERT_TRUE(result) << "redraw with level data should succeed";
 }
-REGISTER_TEST(test_view_redraw_with_level_data);
 
-void test_view_redraw_with_control()
+
+TEST(ViewRedraw, with_control)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -50,13 +50,13 @@ void test_view_redraw_with_control()
 
     vs->control = w;
     bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false);
-    TEST_ASSERT(result, "redraw with control should succeed");
+    ASSERT_TRUE(result) << "redraw with control should succeed";
     vs->control = nullptr;
 
 }
-REGISTER_TEST(test_view_redraw_with_control);
 
-void test_view_redraw_no_control()
+
+TEST(ViewRedraw, no_control)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -68,14 +68,14 @@ void test_view_redraw_no_control()
 
     vs->control = nullptr;
     bool result = vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false);
-    TEST_ASSERT(result, "redraw without control uses level data pos");
+    ASSERT_TRUE(result) << "redraw without control uses level data pos";
 
     og::runtime::current_session->myscreen_->level_visuals_.topx = 0;
     og::runtime::current_session->myscreen_->level_visuals_.topy = 0;
 }
-REGISTER_TEST(test_view_redraw_no_control);
 
-void test_view_redraw_negative_pos()
+
+TEST(ViewRedraw, negative_pos)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -93,13 +93,13 @@ void test_view_redraw_negative_pos()
     vs->control = nullptr;
 
 }
-REGISTER_TEST(test_view_redraw_negative_pos);
+
 
 // ---------------------------------------------------------------------------
 // viewscreen::draw_obs(LevelRuntimeData*)
 // ---------------------------------------------------------------------------
 
-void test_view_draw_obs_with_level_data()
+TEST(ViewRedraw, view_draw_obs_with_level_data)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -107,9 +107,9 @@ void test_view_draw_obs_with_level_data()
     og::runtime::current_session->myscreen_->world().create_new_grid();
     vs->draw_obs(&og::runtime::current_session->myscreen_->level_runtime_data());
 }
-REGISTER_TEST(test_view_draw_obs_with_level_data);
 
-void test_view_draw_obs_with_entities()
+
+TEST(ViewRedraw, view_draw_obs_with_entities)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -125,13 +125,13 @@ void test_view_draw_obs_with_entities()
 
     og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
-REGISTER_TEST(test_view_draw_obs_with_entities);
+
 
 // ---------------------------------------------------------------------------
 // viewscreen::clear_text
 // ---------------------------------------------------------------------------
 
-void test_view_clear_text()
+TEST(ViewRedraw, view_clear_text)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -140,13 +140,13 @@ void test_view_clear_text()
     vs->clear_text();
     // Exercise the clear_text code path
 }
-REGISTER_TEST(test_view_clear_text);
+
 
 // ---------------------------------------------------------------------------
 // viewscreen::shift_text
 // ---------------------------------------------------------------------------
 
-void test_view_shift_text()
+TEST(ViewRedraw, view_shift_text)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -154,13 +154,13 @@ void test_view_shift_text()
     vs->set_display_text("First message", 30);
     vs->shift_text(0);
 }
-REGISTER_TEST(test_view_shift_text);
+
 
 // ---------------------------------------------------------------------------
 // viewscreen::display_text
 // ---------------------------------------------------------------------------
 
-void test_view_display_text_with_cycles()
+TEST(ViewRedraw, view_display_text_with_cycles)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -169,13 +169,13 @@ void test_view_display_text_with_cycles()
     vs->display_text();
     // textcycles should decrement
 }
-REGISTER_TEST(test_view_display_text_with_cycles);
+
 
 // ---------------------------------------------------------------------------
 // viewscreen::change_gamma
 // ---------------------------------------------------------------------------
 
-void test_view_change_gamma()
+TEST(ViewRedraw, view_change_gamma)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -185,4 +185,4 @@ void test_view_change_gamma()
     Sint32 g2 = vs->change_gamma(-1);
     (void)g0; (void)g1; (void)g2;
 }
-REGISTER_TEST(test_view_change_gamma);
+

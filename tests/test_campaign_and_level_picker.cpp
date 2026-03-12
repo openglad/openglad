@@ -152,23 +152,23 @@ static int level_picker_delete_then_cancel_injector(void* data)
     return 0;
 }
 
-void test_campaign_picker_cancel_esc_does_not_crash()
+TEST(CampaignAndLevelPicker, campaign_picker_cancel_esc_does_not_crash)
 {
     cleanup_leftover_test_campaigns();
 
-    TEST_ASSERT(isDir("."), "isDir should report current directory as directory");
-    TEST_ASSERT(!isDir("./definitely_missing_openglad_path"), "isDir should report missing path as not directory");
+    ASSERT_TRUE(isDir(".")) << "isDir should report current directory as directory";
+    ASSERT_TRUE(!isDir("./definitely_missing_openglad_path")) << "isDir should report missing path as not directory";
 
-    TEST_ASSERT(sort_scen("level2", "level10"), "sort_scen should order numeric suffixes");
-    TEST_ASSERT(!sort_scen("abc9", "abc2"), "sort_scen should not invert numeric suffix ordering");
-    TEST_ASSERT_EQ(42, toInt("42"), "toInt should parse decimal text");
+    ASSERT_TRUE(sort_scen("level2", "level10")) << "sort_scen should order numeric suffixes";
+    ASSERT_TRUE(!sort_scen("abc9", "abc2")) << "sort_scen should not invert numeric suffix ordering";
+    ASSERT_EQ(42, toInt("42")) << "toInt should parse decimal text";
 
     std::map<std::string, int> current_levels;
     const std::string mounted = get_mounted_campaign();
     current_levels[mounted] = 7;
-    TEST_ASSERT_EQ(7, load_campaign(mounted, current_levels, 1), "load_campaign should use tracked current level");
+    ASSERT_EQ(7, load_campaign(mounted, current_levels, 1)) << "load_campaign should use tracked current level";
     current_levels.clear();
-    TEST_ASSERT_EQ(4, load_campaign(mounted, current_levels, 4), "load_campaign should fall back to first level");
+    ASSERT_EQ(4, load_campaign(mounted, current_levels, 4)) << "load_campaign should fall back to first level";
 
     show_ending_popup(1, -1);
     show_ending_popup(1, 3);
@@ -180,11 +180,11 @@ void test_campaign_picker_cancel_esc_does_not_crash()
     og::runtime::current_session->myscreen_->world().end = 1;
     CampaignResult canceled = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
     og::runtime::current_session->myscreen_->world().end = old_end;
-    TEST_ASSERT(canceled.id.empty(), "campaign picker early-exit should return empty campaign id");
+    ASSERT_TRUE(canceled.id.empty()) << "campaign picker early-exit should return empty campaign id";
 }
-REGISTER_TEST(test_campaign_picker_cancel_esc_does_not_crash);
 
-void test_campaign_picker_draw_loop_exits_on_q()
+
+TEST(CampaignAndLevelPicker, campaign_picker_draw_loop_exits_on_q)
 {
     cleanup_leftover_test_campaigns();
 
@@ -192,7 +192,7 @@ void test_campaign_picker_draw_loop_exits_on_q()
     og::runtime::current_session->myscreen_->world().end = 0;
 
     SDL_Thread* thread = SDL_CreateThread(hold_q_key_for_picker, "picker_q_hold", nullptr);
-    TEST_ASSERT(thread != nullptr, "failed to create picker q-hold thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create picker q-hold thread";
 
     CampaignResult out = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
 
@@ -200,11 +200,11 @@ void test_campaign_picker_draw_loop_exits_on_q()
     SDL_WaitThread(thread, &thread_result);
     og::runtime::current_session->myscreen_->world().end = old_end;
 
-    TEST_ASSERT(out.id.empty(), "q exit path should not select a campaign");
+    ASSERT_TRUE(out.id.empty()) << "q exit path should not select a campaign";
 }
-REGISTER_TEST(test_campaign_picker_draw_loop_exits_on_q);
 
-void test_campaign_picker_mouse_choose_and_cancel_paths()
+
+TEST(CampaignAndLevelPicker, campaign_picker_mouse_choose_and_cancel_paths)
 {
     cleanup_leftover_test_campaigns();
 
@@ -222,27 +222,27 @@ void test_campaign_picker_mouse_choose_and_cancel_paths()
     og::runtime::current_session->myscreen_->world().end = 0;
 
     SDL_Thread* choose_thread = SDL_CreateThread(picker_choose_injector, "picker_choose", nullptr);
-    TEST_ASSERT(choose_thread != nullptr, "failed to create choose injector");
+    ASSERT_TRUE(choose_thread != nullptr) << "failed to create choose injector";
     CampaignResult chosen = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
     int choose_rc = 0;
     SDL_WaitThread(choose_thread, &choose_rc);
-    TEST_ASSERT(!chosen.id.empty(), "choose path should return a selected campaign id");
+    ASSERT_TRUE(!chosen.id.empty()) << "choose path should return a selected campaign id";
     // Ensure later tests run against the baseline default campaign that has scenarios.
-    TEST_ASSERT(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None, "failed to restore mounted campaign after choose path");
+    ASSERT_TRUE(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None) << "failed to restore mounted campaign after choose path";
 
     SDL_Thread* cancel_thread = SDL_CreateThread(picker_cancel_injector, "picker_cancel", nullptr);
-    TEST_ASSERT(cancel_thread != nullptr, "failed to create cancel injector");
+    ASSERT_TRUE(cancel_thread != nullptr) << "failed to create cancel injector";
     CampaignResult canceled = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
     int cancel_rc = 0;
     SDL_WaitThread(cancel_thread, &cancel_rc);
-    TEST_ASSERT(canceled.id.empty(), "cancel path should not return a campaign id");
-    TEST_ASSERT(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None, "failed to restore mounted campaign after cancel path");
+    ASSERT_TRUE(canceled.id.empty()) << "cancel path should not return a campaign id";
+    ASSERT_TRUE(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None) << "failed to restore mounted campaign after cancel path";
 
     og::runtime::current_session->myscreen_->world().end = old_end;
 }
-REGISTER_TEST(test_campaign_picker_mouse_choose_and_cancel_paths);
 
-void test_campaign_picker_delete_and_reset_prompt_paths()
+
+TEST(CampaignAndLevelPicker, campaign_picker_delete_and_reset_prompt_paths)
 {
     cleanup_leftover_test_campaigns();
 
@@ -258,64 +258,62 @@ void test_campaign_picker_delete_and_reset_prompt_paths()
     og::runtime::current_session->myscreen_->world().end = 0;
 
     SDL_Thread* delete_thread = SDL_CreateThread(campaign_delete_then_cancel_injector, "picker_delete_cancel", nullptr);
-    TEST_ASSERT(delete_thread != nullptr, "failed to create campaign delete injector");
+    ASSERT_TRUE(delete_thread != nullptr) << "failed to create campaign delete injector";
     CampaignResult after_delete_prompt = pick_campaign(&og::runtime::current_session->myscreen_->save_data, true);
     int delete_rc = 0;
     SDL_WaitThread(delete_thread, &delete_rc);
-    TEST_ASSERT(after_delete_prompt.id.empty(), "delete+cancel path should return empty campaign id");
+    ASSERT_TRUE(after_delete_prompt.id.empty()) << "delete+cancel path should return empty campaign id";
 
     SDL_Thread* reset_thread = SDL_CreateThread(campaign_reset_then_cancel_injector, "picker_reset_cancel", nullptr);
-    TEST_ASSERT(reset_thread != nullptr, "failed to create campaign reset injector");
+    ASSERT_TRUE(reset_thread != nullptr) << "failed to create campaign reset injector";
     CampaignResult after_reset_prompt = pick_campaign(&og::runtime::current_session->myscreen_->save_data, false);
     int reset_rc = 0;
     SDL_WaitThread(reset_thread, &reset_rc);
-    TEST_ASSERT(after_reset_prompt.id.empty(), "reset+cancel path should return empty campaign id");
+    ASSERT_TRUE(after_reset_prompt.id.empty()) << "reset+cancel path should return empty campaign id";
 
     og::runtime::current_session->myscreen_->world().end = old_end;
 }
-REGISTER_TEST(test_campaign_picker_delete_and_reset_prompt_paths);
 
-void test_load_campaign_invalid_id_reports_error()
+
+TEST(CampaignAndLevelPicker, load_campaign_invalid_id_reports_error)
 {
     std::map<std::string, int> current_levels;
     const std::string old_campaign = get_mounted_campaign();
 
     int rv = load_campaign("org.openglad.this_campaign_should_not_exist", current_levels, 1);
-    TEST_ASSERT_EQ(-2, rv, "load_campaign should return -2 when mount fails");
+    ASSERT_EQ(-2, rv) << "load_campaign should return -2 when mount fails";
 
     // Restore environment for tests that expect a mounted campaign.
-    TEST_ASSERT(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None, "failed to remount original campaign");
+    ASSERT_TRUE(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None) << "failed to remount original campaign";
 }
-REGISTER_TEST(test_load_campaign_invalid_id_reports_error);
 
-void test_load_campaign_with_error_typed_result_paths()
+
+TEST(CampaignAndLevelPicker, load_campaign_with_error_typed_result_paths)
 {
     std::map<std::string, int> current_levels;
     current_levels["org.openglad.gladiator"] = 7;
 
     const std::string old_campaign = get_mounted_campaign();
     CampaignLoadResult typed = load_campaign_with_error("org.openglad.gladiator", current_levels, 1);
-    TEST_ASSERT_EQ(static_cast<int>(CampaignLoadError::None), static_cast<int>(typed.error),
-        "typed load_campaign should succeed for mounted campaign");
-    TEST_ASSERT_EQ(7, typed.current_level, "typed load_campaign should return mapped current level");
+    ASSERT_EQ(static_cast<int>(CampaignLoadError::None), static_cast<int>(typed.error)) << "typed load_campaign should succeed for mounted campaign";
+    ASSERT_EQ(7, typed.current_level) << "typed load_campaign should return mapped current level";
 
     typed = load_campaign_with_error("org.openglad.this_campaign_should_not_exist", current_levels, 1);
-    TEST_ASSERT_EQ(static_cast<int>(CampaignLoadError::MountFailed), static_cast<int>(typed.error),
-        "typed load_campaign should report MountFailed for invalid campaign");
+    ASSERT_EQ(static_cast<int>(CampaignLoadError::MountFailed), static_cast<int>(typed.error)) << "typed load_campaign should report MountFailed for invalid campaign";
 
     // Restore environment for tests that expect a mounted campaign.
-    TEST_ASSERT(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None, "failed to remount original campaign");
+    ASSERT_TRUE(mount_campaign_package_with_error(old_campaign) == CampaignPackageIoError::None) << "failed to remount original campaign";
 }
-REGISTER_TEST(test_load_campaign_with_error_typed_result_paths);
 
-void test_level_picker_cancel_esc_returns_default()
+
+TEST(CampaignAndLevelPicker, level_picker_cancel_esc_returns_default)
 {
     LevelRuntimeData ld(1);
     ld.create_new_grid();
     walker* e1 = ld.add_ob(Order::Living, FAMILY_ORC);
     walker* e2 = ld.add_ob(Order::Living, FAMILY_BIG_ORC);
     walker* ally = ld.add_ob(Order::Living, FAMILY_SOLDIER);
-    TEST_ASSERT(e1 && e2 && ally, "level test walkers should be created");
+    ASSERT_TRUE(e1 && e2 && ally) << "level test walkers should be created";
     if (e1 && e2 && ally) {
         e1->team_num = 1;
         e2->team_num = 1;
@@ -327,7 +325,7 @@ void test_level_picker_cancel_esc_returns_default()
     walker* x1 = ld.add_fx_ob(Order::Treasure, FAMILY_EXIT);
     walker* x2 = ld.add_fx_ob(Order::Treasure, FAMILY_EXIT);
     walker* x3 = ld.add_fx_ob(Order::Treasure, FAMILY_EXIT);
-    TEST_ASSERT(x1 && x2 && x3, "exit markers should be created");
+    ASSERT_TRUE(x1 && x2 && x3) << "exit markers should be created";
     if (x1 && x2 && x3) {
         x1->stats()->level = 9;
         x2->stats()->level = 5;
@@ -340,24 +338,24 @@ void test_level_picker_cancel_esc_returns_default()
     float difficulty = 0.0f;
     std::list<int> exits;
     getLevelStats(ld, &max_enemy, &avg_enemy, &num_enemy, &difficulty, exits);
-    TEST_ASSERT_EQ(2, num_enemy, "getLevelStats should count enemy team members");
-    TEST_ASSERT_EQ(4, max_enemy, "getLevelStats should report max enemy level");
-    TEST_ASSERT(avg_enemy > 2.9f && avg_enemy < 3.1f, "getLevelStats should report average enemy level");
-    TEST_ASSERT(difficulty > 8.9f && difficulty < 9.1f, "getLevelStats should subtract ally difficulty");
-    TEST_ASSERT_EQ(2, (int)exits.size(), "getLevelStats should sort and uniquify exits");
-    TEST_ASSERT_EQ(5, exits.front(), "getLevelStats exits should be sorted");
-    TEST_ASSERT_EQ(9, exits.back(), "getLevelStats exits should include highest exit level");
+    ASSERT_EQ(2, num_enemy) << "getLevelStats should count enemy team members";
+    ASSERT_EQ(4, max_enemy) << "getLevelStats should report max enemy level";
+    ASSERT_TRUE(avg_enemy > 2.9f && avg_enemy < 3.1f) << "getLevelStats should report average enemy level";
+    ASSERT_TRUE(difficulty > 8.9f && difficulty < 9.1f) << "getLevelStats should subtract ally difficulty";
+    ASSERT_EQ(2, (int)exits.size()) << "getLevelStats should sort and uniquify exits";
+    ASSERT_EQ(5, exits.front()) << "getLevelStats exits should be sorted";
+    ASSERT_EQ(9, exits.back()) << "getLevelStats exits should include highest exit level";
     ld.delete_objects();
 
     char old_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 1;
     int canceled = pick_level(og::runtime::current_session->myscreen_, 1, false);
     og::runtime::current_session->myscreen_->world().end = old_end;
-    TEST_ASSERT_EQ(1, canceled, "level cancel should return default level");
+    ASSERT_EQ(1, canceled) << "level cancel should return default level";
 }
-REGISTER_TEST(test_level_picker_cancel_esc_returns_default);
 
-void test_level_picker_choose_and_delete_prompt_paths()
+
+TEST(CampaignAndLevelPicker, level_picker_choose_and_delete_prompt_paths)
 {
     ViewportGuard guard;
     og::runtime::current_session->window_w_ = 320;
@@ -371,19 +369,19 @@ void test_level_picker_choose_and_delete_prompt_paths()
     og::runtime::current_session->myscreen_->world().end = 0;
 
     SDL_Thread* choose_thread = SDL_CreateThread(level_picker_choose_injector, "level_picker_choose", nullptr);
-    TEST_ASSERT(choose_thread != nullptr, "failed to create level picker choose injector");
+    ASSERT_TRUE(choose_thread != nullptr) << "failed to create level picker choose injector";
     int chosen = pick_level(og::runtime::current_session->myscreen_, 1, false);
     int choose_rc = 0;
     SDL_WaitThread(choose_thread, &choose_rc);
-    TEST_ASSERT(chosen > 0, "choose path should return a valid level id");
+    ASSERT_TRUE(chosen > 0) << "choose path should return a valid level id";
 
     SDL_Thread* delete_thread = SDL_CreateThread(level_picker_delete_then_cancel_injector, "level_picker_delete_cancel", nullptr);
-    TEST_ASSERT(delete_thread != nullptr, "failed to create level picker delete injector");
+    ASSERT_TRUE(delete_thread != nullptr) << "failed to create level picker delete injector";
     int canceled_after_delete_prompt = pick_level(og::runtime::current_session->myscreen_, 1, true);
     int delete_rc = 0;
     SDL_WaitThread(delete_thread, &delete_rc);
-    TEST_ASSERT_EQ(1, canceled_after_delete_prompt, "delete prompt + cancel should keep default level");
+    ASSERT_EQ(1, canceled_after_delete_prompt) << "delete prompt + cancel should keep default level";
 
     og::runtime::current_session->myscreen_->world().end = old_end;
 }
-REGISTER_TEST(test_level_picker_choose_and_delete_prompt_paths);
+

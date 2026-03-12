@@ -2,7 +2,7 @@
 #include <array>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include "test_framework.h"
@@ -143,7 +143,7 @@ static int train_injector(void* data)
     return 0;
 }
 
-void test_train_team() {
+TEST(TrainTeam, train_team) {
     trace_clear();
 
     // Set up a team with members so train menu doesn't show "NEED A TEAM!" popup
@@ -175,7 +175,7 @@ void test_train_team() {
 
     TrainState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(train_injector, "train_test", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -188,7 +188,7 @@ void test_train_team() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.saw_train_menu, "should have entered the train menu");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_train_menu) << "should have entered the train menu";
 }
-REGISTER_TEST(test_train_team);
+

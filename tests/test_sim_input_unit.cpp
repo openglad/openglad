@@ -62,23 +62,23 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
 
 } // namespace
 
-OG_UNIT_TEST(test_sim_input_find_next_control_priorities)
+TEST(SimInputUnit, sim_input_find_next_control_priorities)
 {
     SimInputFixture fx;
     walker* team_npc = add_living(fx, 0, -1);
     walker* player_like = add_living(fx, 0, -1);
-    OG_ASSERT(team_npc != nullptr);
-    OG_ASSERT(player_like != nullptr);
+    ASSERT_TRUE(team_npc != nullptr);
+    ASSERT_TRUE(player_like != nullptr);
 
     walker* found = sim_find_next_control(fx.level.world(), 0);
-    OG_ASSERT(found == team_npc);
+    ASSERT_TRUE(found == team_npc);
 
     team_npc->user = 0;
     found = sim_find_next_control(fx.level.world(), 0);
-    OG_ASSERT(found == player_like);
+    ASSERT_TRUE(found == player_like);
 }
 
-OG_UNIT_TEST(test_sim_input_endgame_and_control_assignment_paths)
+TEST(SimInputUnit, sim_input_endgame_and_control_assignment_paths)
 {
     SimInputFixture fx;
     walker* control = nullptr;
@@ -89,26 +89,26 @@ OG_UNIT_TEST(test_sim_input_endgame_and_control_assignment_paths)
 
     SimInputResult result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(result.endgame_requested);
-    OG_ASSERT(result.endgame_type == 1);
+    ASSERT_TRUE(result.endgame_requested);
+    ASSERT_TRUE(result.endgame_type == 1);
 
     walker* w = add_living(fx, 0, -1);
     w->stats()->hitpoints = 37.0f;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(!result.endgame_requested);
-    OG_ASSERT(control == w);
-    OG_ASSERT(result.control_hp_changed);
-    OG_ASSERT(result.control_hp == 37.0f);
+    ASSERT_TRUE(!result.endgame_requested);
+    ASSERT_TRUE(control == w);
+    ASSERT_TRUE(result.control_hp_changed);
+    ASSERT_TRUE(result.control_hp == 37.0f);
 }
 
-OG_UNIT_TEST(test_sim_input_switch_special_yell_and_mismatch_paths)
+TEST(SimInputUnit, sim_input_switch_special_yell_and_mismatch_paths)
 {
     SimInputFixture fx;
     walker* control = add_living(fx, 0, 0);
     walker* ally = add_living(fx, 0, -1);
-    OG_ASSERT(control != nullptr);
-    OG_ASSERT(ally != nullptr);
+    ASSERT_TRUE(control != nullptr);
+    ASSERT_TRUE(ally != nullptr);
     control->set_act_type(ACT_CONTROL);
     ally->set_act_type(ACT_RANDOM);
 
@@ -121,9 +121,9 @@ OG_UNIT_TEST(test_sim_input_switch_special_yell_and_mismatch_paths)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     SimInputResult result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(debounce.changedspec == 1);
-    OG_ASSERT(control->current_special == 1);
-    OG_ASSERT(result.new_control == control);
+    ASSERT_TRUE(debounce.changedspec == 1);
+    ASSERT_TRUE(control->current_special == 1);
+    ASSERT_TRUE(result.new_control == control);
 
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
@@ -131,26 +131,26 @@ OG_UNIT_TEST(test_sim_input_switch_special_yell_and_mismatch_paths)
     control->action = 0;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(result.notify_text == "SUMMONING DEFENSE!");
-    OG_ASSERT(ally->action == ACTION_FOLLOW);
+    ASSERT_TRUE(result.notify_text == "SUMMONING DEFENSE!");
+    ASSERT_TRUE(ally->action == ACTION_FOLLOW);
 
     control->action = ACTION_FOLLOW;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(result.notify_text == "RELEASING MEN!");
-    OG_ASSERT(ally->action == 0);
+    ASSERT_TRUE(result.notify_text == "RELEASING MEN!");
+    ASSERT_TRUE(ally->action == 0);
 
     control->user = 1;
     input.clear();
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(result.new_control == control);
+    ASSERT_TRUE(result.new_control == control);
 
     control->user = 0;
     control->stats()->frozen_delay = 1;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(control->stats()->frozen_delay == 0);
+    ASSERT_TRUE(control->stats()->frozen_delay == 0);
 }
 } // namespace detail_sim_input_coverage_push
 
@@ -212,7 +212,7 @@ void assign_basic_ani(walker* w)
 
 } // namespace
 
-OG_UNIT_TEST(test_sim_input_r11_switch_char_error_and_wrap_paths)
+TEST(SimInputUnit, sim_input_r11_switch_char_error_and_wrap_paths)
 {
     SimInputFixture fx;
     SimInputDebounce debounce{};
@@ -228,8 +228,8 @@ OG_UNIT_TEST(test_sim_input_r11_switch_char_error_and_wrap_paths)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     SimInputResult result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(result.control_hp_changed);
-    OG_ASSERT(control == &orphan);
+    ASSERT_TRUE(result.control_hp_changed);
+    ASSERT_TRUE(control == &orphan);
 
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
@@ -237,8 +237,8 @@ OG_UNIT_TEST(test_sim_input_r11_switch_char_error_and_wrap_paths)
     debounce.changedchar = 0;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(result.control_hp_changed);
-    OG_ASSERT(control == &orphan);
+    ASSERT_TRUE(result.control_hp_changed);
+    ASSERT_TRUE(control == &orphan);
 
     // Forward wrap and reverse wrap over eligible entries.
     walker* a = add_living(fx, 0, -1);
@@ -252,7 +252,7 @@ OG_UNIT_TEST(test_sim_input_r11_switch_char_error_and_wrap_paths)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(control == b || control == c);
+    ASSERT_TRUE(control == b || control == c);
 
     input.clear();
     debounce.changedchar = 0;
@@ -264,15 +264,15 @@ OG_UNIT_TEST(test_sim_input_r11_switch_char_error_and_wrap_paths)
     c->user = -1;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(control == c || control == b);
+    ASSERT_TRUE(control == c || control == b);
 }
 
-OG_UNIT_TEST(test_sim_input_r11_switch_special_yell_and_action_default)
+TEST(SimInputUnit, sim_input_r11_switch_special_yell_and_action_default)
 {
     SimInputFixture fx;
     walker* control = add_living(fx, 0, 0);
     walker* ally = add_living(fx, 0, -1);
-    OG_ASSERT(control != nullptr && ally != nullptr);
+    ASSERT_TRUE(control != nullptr && ally != nullptr);
     control->set_act_type(ACT_CONTROL);
     ally->set_act_type(ACT_RANDOM);
 
@@ -286,16 +286,16 @@ OG_UNIT_TEST(test_sim_input_r11_switch_special_yell_and_action_default)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     SimInputResult result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(control->current_special == 1); // wrap due to NONE
+    ASSERT_TRUE(control->current_special == 1); // wrap due to NONE
 
     input.clear();
     debounce.changedspec = 0;
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(result.play_sound == SOUND_YO);
-    OG_ASSERT(control->yo_delay == 30);
-    OG_ASSERT(ally->leader == control);
+    ASSERT_TRUE(result.play_sound == SOUND_YO);
+    ASSERT_TRUE(control->yo_delay == 30);
+    ASSERT_TRUE(ally->leader == control);
 
     // Shift+Yell default case in switch(control->action)
     input.clear();
@@ -304,14 +304,14 @@ OG_UNIT_TEST(test_sim_input_r11_switch_special_yell_and_action_default)
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(control->action == 0);
+    ASSERT_TRUE(control->action == 0);
 }
 
-OG_UNIT_TEST(test_sim_input_r11_animate_movement_and_bit_animate_paths)
+TEST(SimInputUnit, sim_input_r11_animate_movement_and_bit_animate_paths)
 {
     SimInputFixture fx;
     walker* control = add_living(fx, 0, 0);
-    OG_ASSERT(control != nullptr);
+    ASSERT_TRUE(control != nullptr);
     control->set_act_type(ACT_CONTROL);
     assign_basic_ani(control);
 
@@ -325,7 +325,7 @@ OG_UNIT_TEST(test_sim_input_r11_animate_movement_and_bit_animate_paths)
     input.clear();
     SimInputResult result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(result.new_control == control);
+    ASSERT_TRUE(result.new_control == control);
 
     // movement branch (walkstep)
     control->ani_type = ANI_WALK;
@@ -334,7 +334,7 @@ OG_UNIT_TEST(test_sim_input_r11_animate_movement_and_bit_animate_paths)
     const float x_before = control->xpos;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(control->xpos >= x_before);
+    ASSERT_TRUE(control->xpos >= x_before);
 
     // BIT_ANIMATE idle animation branch + frame reset path
     control->stats()->set_bit_flags(BIT_ANIMATE, 1);
@@ -342,7 +342,7 @@ OG_UNIT_TEST(test_sim_input_r11_animate_movement_and_bit_animate_paths)
     input.clear();
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    OG_ASSERT(control->cycle == 0);
+    ASSERT_TRUE(control->cycle == 0);
 
     // held fire path
     input.clear();

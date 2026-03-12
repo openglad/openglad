@@ -21,10 +21,10 @@ static std::unique_ptr<walker> make_walker(char family)
     return w;
 }
 
-void test_stats_navigation_blocked_helpers_and_follow_fallback()
+TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -89,7 +89,7 @@ void test_stats_navigation_blocked_helpers_and_follow_fallback()
 
     // Always cover the numviews==1 branch deterministically.
     auto view0_control = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(view0_control != nullptr, "view0 control created");
+    ASSERT_TRUE(view0_control != nullptr) << "view0 control created";
     if (!view0_control)
         return;
     view0_control->setxy(200, 200);
@@ -102,8 +102,7 @@ void test_stats_navigation_blocked_helpers_and_follow_fallback()
     (void)w->stats()->do_command();
 
     // Accept either outcome; the code may clear leader when already too close.
-    TEST_ASSERT((w->leader == nullptr) || (w->leader == og::runtime::current_session->myscreen_->viewob[0]->control),
-                "single-view follow should be stable");
+    ASSERT_TRUE((w->leader == nullptr) || (w->leader == og::runtime::current_session->myscreen_->viewob[0]->control)) << "single-view follow should be stable";
 
     // Optionally cover the 2-view branch where neither view has yo_delay.
     if (og::runtime::current_session->myscreen_->viewob[1]) {
@@ -119,8 +118,8 @@ void test_stats_navigation_blocked_helpers_and_follow_fallback()
             w->leader = nullptr;
             w->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
             (void)w->stats()->do_command();
-            TEST_ASSERT(w->leader == nullptr, "two-view follow with no yo_delay should not pick a leader");
+            ASSERT_TRUE(w->leader == nullptr) << "two-view follow with no yo_delay should not pick a leader";
         }
     }
 }
-REGISTER_TEST(test_stats_navigation_blocked_helpers_and_follow_fallback);
+

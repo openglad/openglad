@@ -17,24 +17,24 @@ static PixieData make_center_pattern(unsigned char fill, unsigned char center,
 // smoother query_x_y
 // ---------------------------------------------------------------------------
 
-void test_smooth_query_x_y_no_grid()
+TEST(SmoothOps, smooth_query_x_y_no_grid)
 {
     smoother s;
     // No grid set - should return PIX_GRASS1
     Sint32 result = s.query_x_y(0, 0);
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)result, "no grid returns PIX_GRASS1");
+    ASSERT_EQ((int)PIX_GRASS1, (int)result) << "no grid returns PIX_GRASS1";
 }
-REGISTER_TEST(test_smooth_query_x_y_no_grid);
 
-void test_smooth_query_x_y_negative()
+
+TEST(SmoothOps, smooth_query_x_y_negative)
 {
     smoother s;
     Sint32 result = s.query_x_y(-1, -1);
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)result, "negative returns PIX_GRASS1");
+    ASSERT_EQ((int)PIX_GRASS1, (int)result) << "negative returns PIX_GRASS1";
 }
-REGISTER_TEST(test_smooth_query_x_y_negative);
 
-void test_smooth_query_x_y_with_grid()
+
+TEST(SmoothOps, smooth_query_x_y_with_grid)
 {
     // Use the level's grid
     og::runtime::current_session->myscreen_->world().create_new_grid();
@@ -43,19 +43,19 @@ void test_smooth_query_x_y_with_grid()
 
     // Valid query
     Sint32 result = s.query_x_y(0, 0);
-    TEST_ASSERT(result >= 0, "valid position returns non-negative");
+    ASSERT_TRUE(result >= 0) << "valid position returns non-negative";
 
     // Out of bounds
     result = s.query_x_y(9999, 9999);
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)result, "out of bounds returns PIX_GRASS1");
+    ASSERT_EQ((int)PIX_GRASS1, (int)result) << "out of bounds returns PIX_GRASS1";
 }
-REGISTER_TEST(test_smooth_query_x_y_with_grid);
+
 
 // ---------------------------------------------------------------------------
 // smoother query_genre_x_y
 // ---------------------------------------------------------------------------
 
-void test_smooth_query_genre_grass()
+TEST(SmoothOps, smooth_query_genre_grass)
 {
     // Create a grid with known grass values
     PixieData pd;
@@ -70,11 +70,11 @@ void test_smooth_query_genre_grass()
     s.set_target(pd);
 
     Sint32 genre = s.query_genre_x_y(0, 0);
-    TEST_ASSERT_EQ(TYPE_GRASS, (int)genre, "grass tile returns TYPE_GRASS");
+    ASSERT_EQ(TYPE_GRASS, (int)genre) << "grass tile returns TYPE_GRASS";
 }
-REGISTER_TEST(test_smooth_query_genre_grass);
 
-void test_smooth_query_genre_water()
+
+TEST(SmoothOps, smooth_query_genre_water)
 {
     PixieData pd;
     pd.w = 4;
@@ -88,11 +88,11 @@ void test_smooth_query_genre_water()
     s.set_target(pd);
 
     Sint32 genre = s.query_genre_x_y(0, 0);
-    TEST_ASSERT_EQ(TYPE_WATER, (int)genre, "water tile returns TYPE_WATER");
+    ASSERT_EQ(TYPE_WATER, (int)genre) << "water tile returns TYPE_WATER";
 }
-REGISTER_TEST(test_smooth_query_genre_water);
 
-void test_smooth_query_genre_wall()
+
+TEST(SmoothOps, smooth_query_genre_wall)
 {
     PixieData pd;
     pd.w = 4;
@@ -106,11 +106,11 @@ void test_smooth_query_genre_wall()
     s.set_target(pd);
 
     Sint32 genre = s.query_genre_x_y(0, 0);
-    TEST_ASSERT_EQ(TYPE_WALL, (int)genre, "wall tile returns TYPE_WALL");
+    ASSERT_EQ(TYPE_WALL, (int)genre) << "wall tile returns TYPE_WALL";
 }
-REGISTER_TEST(test_smooth_query_genre_wall);
 
-void test_smooth_query_genre_trees()
+
+TEST(SmoothOps, smooth_query_genre_trees)
 {
     PixieData pd;
     pd.w = 4;
@@ -124,11 +124,11 @@ void test_smooth_query_genre_trees()
     s.set_target(pd);
 
     Sint32 genre = s.query_genre_x_y(0, 0);
-    TEST_ASSERT_EQ(TYPE_TREES, (int)genre, "tree tile returns TYPE_TREES");
+    ASSERT_EQ(TYPE_TREES, (int)genre) << "tree tile returns TYPE_TREES";
 }
-REGISTER_TEST(test_smooth_query_genre_trees);
 
-void test_smooth_query_genre_dirt()
+
+TEST(SmoothOps, smooth_query_genre_dirt)
 {
     PixieData pd;
     pd.w = 4;
@@ -142,11 +142,11 @@ void test_smooth_query_genre_dirt()
     s.set_target(pd);
 
     Sint32 genre = s.query_genre_x_y(0, 0);
-    TEST_ASSERT_EQ(TYPE_DIRT, (int)genre, "dirt tile returns TYPE_DIRT");
+    ASSERT_EQ(TYPE_DIRT, (int)genre) << "dirt tile returns TYPE_DIRT";
 }
-REGISTER_TEST(test_smooth_query_genre_dirt);
 
-void test_smooth_query_genre_carpet()
+
+TEST(SmoothOps, smooth_query_genre_carpet)
 {
     PixieData pd;
     pd.w = 4;
@@ -160,11 +160,11 @@ void test_smooth_query_genre_carpet()
     s.set_target(pd);
 
     Sint32 genre = s.query_genre_x_y(0, 0);
-    TEST_ASSERT_EQ(TYPE_CARPET, (int)genre, "carpet tile returns TYPE_CARPET");
+    ASSERT_EQ(TYPE_CARPET, (int)genre) << "carpet tile returns TYPE_CARPET";
 }
-REGISTER_TEST(test_smooth_query_genre_carpet);
 
-void test_smooth_query_genre_cobble()
+
+TEST(SmoothOps, smooth_query_genre_cobble)
 {
     PixieData pd;
     pd.w = 4;
@@ -178,11 +178,11 @@ void test_smooth_query_genre_cobble()
     s.set_target(pd);
 
     Sint32 genre = s.query_genre_x_y(0, 0);
-    TEST_ASSERT_EQ(TYPE_COBBLE, (int)genre, "cobble tile returns TYPE_COBBLE");
+    ASSERT_EQ(TYPE_COBBLE, (int)genre) << "cobble tile returns TYPE_COBBLE";
 }
-REGISTER_TEST(test_smooth_query_genre_cobble);
 
-void test_smooth_query_genre_dark_grass()
+
+TEST(SmoothOps, smooth_query_genre_dark_grass)
 {
     PixieData pd;
     pd.w = 4;
@@ -196,11 +196,11 @@ void test_smooth_query_genre_dark_grass()
     s.set_target(pd);
 
     Sint32 genre = s.query_genre_x_y(0, 0);
-    TEST_ASSERT_EQ(TYPE_GRASS_DARK, (int)genre, "dark grass returns TYPE_GRASS_DARK");
+    ASSERT_EQ(TYPE_GRASS_DARK, (int)genre) << "dark grass returns TYPE_GRASS_DARK";
 }
-REGISTER_TEST(test_smooth_query_genre_dark_grass);
 
-void test_smooth_query_genre_light_grass()
+
+TEST(SmoothOps, smooth_query_genre_light_grass)
 {
     PixieData pd;
     pd.w = 4;
@@ -214,15 +214,15 @@ void test_smooth_query_genre_light_grass()
     s.set_target(pd);
 
     Sint32 genre = s.query_genre_x_y(0, 0);
-    TEST_ASSERT_EQ(TYPE_GRASS_LIGHT, (int)genre, "light grass returns TYPE_GRASS_LIGHT");
+    ASSERT_EQ(TYPE_GRASS_LIGHT, (int)genre) << "light grass returns TYPE_GRASS_LIGHT";
 }
-REGISTER_TEST(test_smooth_query_genre_light_grass);
+
 
 // ---------------------------------------------------------------------------
 // smoother smooth() - full grid smooth
 // ---------------------------------------------------------------------------
 
-void test_smooth_smooth_full_grid()
+TEST(SmoothOps, smooth_smooth_full_grid)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     smoother s;
@@ -232,13 +232,13 @@ void test_smooth_smooth_full_grid()
     Sint32 result = s.smooth();
     (void)result;
 }
-REGISTER_TEST(test_smooth_smooth_full_grid);
+
 
 // ---------------------------------------------------------------------------
 // smoother smooth(x,y) - single cell smooth for various terrain types
 // ---------------------------------------------------------------------------
 
-void test_smooth_smooth_single_grass()
+TEST(SmoothOps, smooth_smooth_single_grass)
 {
     PixieData pd;
     pd.w = 5;
@@ -254,9 +254,9 @@ void test_smooth_smooth_single_grass()
     Sint32 result = s.smooth(2, 2);
     (void)result;
 }
-REGISTER_TEST(test_smooth_smooth_single_grass);
 
-void test_smooth_smooth_water_surrounded()
+
+TEST(SmoothOps, smooth_smooth_water_surrounded)
 {
     PixieData pd;
     pd.w = 5;
@@ -272,9 +272,9 @@ void test_smooth_smooth_water_surrounded()
     Sint32 result = s.smooth(2, 2);
     (void)result;
 }
-REGISTER_TEST(test_smooth_smooth_water_surrounded);
 
-void test_smooth_smooth_wall_surrounded()
+
+TEST(SmoothOps, smooth_smooth_wall_surrounded)
 {
     PixieData pd;
     pd.w = 5;
@@ -289,9 +289,9 @@ void test_smooth_smooth_wall_surrounded()
     Sint32 result = s.smooth(2, 2);
     (void)result;
 }
-REGISTER_TEST(test_smooth_smooth_wall_surrounded);
 
-void test_smooth_smooth_grass_water_border()
+
+TEST(SmoothOps, smooth_smooth_grass_water_border)
 {
     PixieData pd;
     pd.w = 5;
@@ -309,9 +309,9 @@ void test_smooth_smooth_grass_water_border()
     s.smooth(2, 2);
     s.smooth(2, 3);
 }
-REGISTER_TEST(test_smooth_smooth_grass_water_border);
 
-void test_smooth_smooth_tree_border()
+
+TEST(SmoothOps, smooth_smooth_tree_border)
 {
     PixieData pd;
     pd.w = 5;
@@ -327,9 +327,9 @@ void test_smooth_smooth_tree_border()
     s.set_target(pd);
     s.smooth(2, 2);
 }
-REGISTER_TEST(test_smooth_smooth_tree_border);
 
-void test_smooth_smooth_dirt_border()
+
+TEST(SmoothOps, smooth_smooth_dirt_border)
 {
     PixieData pd;
     pd.w = 5;
@@ -346,9 +346,9 @@ void test_smooth_smooth_dirt_border()
     s.smooth(2, 2);
     s.smooth(3, 2);
 }
-REGISTER_TEST(test_smooth_smooth_dirt_border);
 
-void test_smooth_smooth_carpet_border()
+
+TEST(SmoothOps, smooth_smooth_carpet_border)
 {
     PixieData pd;
     pd.w = 5;
@@ -372,9 +372,9 @@ void test_smooth_smooth_carpet_border()
     s.smooth(1, 1);
     s.smooth(3, 3);
 }
-REGISTER_TEST(test_smooth_smooth_carpet_border);
 
-void test_smooth_smooth_cobble_border()
+
+TEST(SmoothOps, smooth_smooth_cobble_border)
 {
     PixieData pd;
     pd.w = 5;
@@ -391,9 +391,9 @@ void test_smooth_smooth_cobble_border()
     s.smooth(1, 0);
     s.smooth(0, 1);
 }
-REGISTER_TEST(test_smooth_smooth_cobble_border);
 
-void test_smooth_smooth_dark_grass_border()
+
+TEST(SmoothOps, smooth_smooth_dark_grass_border)
 {
     PixieData pd;
     pd.w = 5;
@@ -409,9 +409,9 @@ void test_smooth_smooth_dark_grass_border()
     s.smooth(2, 2);
     s.smooth(2, 3);
 }
-REGISTER_TEST(test_smooth_smooth_dark_grass_border);
 
-void test_smooth_smooth_light_grass_border()
+
+TEST(SmoothOps, smooth_smooth_light_grass_border)
 {
     PixieData pd;
     pd.w = 5;
@@ -427,9 +427,9 @@ void test_smooth_smooth_light_grass_border()
     s.smooth(2, 2);
     s.smooth(2, 3);
 }
-REGISTER_TEST(test_smooth_smooth_light_grass_border);
 
-void test_smooth_smooth_all_edges()
+
+TEST(SmoothOps, smooth_smooth_all_edges)
 {
     PixieData pd;
     pd.w = 5;
@@ -447,9 +447,9 @@ void test_smooth_smooth_all_edges()
         for (int x = 0; x < 5; x++)
             s.smooth(x, y);
 }
-REGISTER_TEST(test_smooth_smooth_all_edges);
 
-void test_smooth_smooth_mixed_terrain()
+
+TEST(SmoothOps, smooth_smooth_mixed_terrain)
 {
     PixieData pd;
     pd.w = 7;
@@ -470,13 +470,13 @@ void test_smooth_smooth_mixed_terrain()
         for (int x = 0; x < 7; x++)
             s.smooth(x, y);
 }
-REGISTER_TEST(test_smooth_smooth_mixed_terrain);
+
 
 // ---------------------------------------------------------------------------
 // smoother reset
 // ---------------------------------------------------------------------------
 
-void test_smooth_reset()
+TEST(SmoothOps, smooth_reset)
 {
     smoother s;
     og::runtime::current_session->myscreen_->world().create_new_grid();
@@ -487,13 +487,13 @@ void test_smooth_reset()
 
     s.reset();
     Sint32 after = s.query_x_y(0, 0);
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)after, "after reset returns PIX_GRASS1");
+    ASSERT_EQ((int)PIX_GRASS1, (int)after) << "after reset returns PIX_GRASS1";
 
     run_smooth_branch_outputs_with_fixed_rng();
 }
-REGISTER_TEST(test_smooth_reset);
 
-void test_smooth_dark_grass_round7_branch_matrix_338_448()
+
+TEST(SmoothOps, smooth_dark_grass_round7_branch_matrix_338_448)
 {
     GameContext test_ctx;
     FixedRandom fixed0(0);
@@ -510,7 +510,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         s.set_target(pd);
         test_ctx.rng = &fixed1;
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_R2, (int)s.query_x_y(1, 1), "right-middle dark-grass branch should choose R2");
+        ASSERT_EQ((int)PIX_GRASS_DARK_R2, (int)s.query_x_y(1, 1)) << "right-middle dark-grass branch should choose R2";
     }
 
     // around == (TO_LEFT | TO_DOWN): top-right branch with right grass / non-grass
@@ -521,7 +521,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_LL, (int)s.query_x_y(1, 1), "top-right branch with grass right should map to LL");
+        ASSERT_EQ((int)PIX_GRASS_DARK_LL, (int)s.query_x_y(1, 1)) << "top-right branch with grass right should map to LL";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
@@ -530,7 +530,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B2, (int)s.query_x_y(1, 1), "top-right branch with non-grass right should map to B2");
+        ASSERT_EQ((int)PIX_GRASS_DARK_B2, (int)s.query_x_y(1, 1)) << "top-right branch with non-grass right should map to B2";
     }
 
     // around == (TO_LEFT | TO_RIGHT | TO_UP): bottom-middle branch with rubble path.
@@ -542,7 +542,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         s.set_target(pd);
         test_ctx.rng = &fixed0; // rng(2)==0 then rng(20)==0 => rubble override
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_RUBBLE, (int)s.query_x_y(1, 1), "bottom-middle branch should allow rubble override");
+        ASSERT_EQ((int)PIX_GRASS_RUBBLE, (int)s.query_x_y(1, 1)) << "bottom-middle branch should allow rubble override";
     }
 
     // around == TO_LEFT : right-thin branch with grass/non-grass right.
@@ -553,7 +553,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_LL, (int)s.query_x_y(1, 1), "right-thin branch with grass right should map LL");
+        ASSERT_EQ((int)PIX_GRASS_DARK_LL, (int)s.query_x_y(1, 1)) << "right-thin branch with grass right should map LL";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
@@ -562,7 +562,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)s.query_x_y(1, 1), "right-thin branch with non-grass right should map B1");
+        ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)s.query_x_y(1, 1)) << "right-thin branch with non-grass right should map B1";
     }
 
     // around masks for remaining explicit branches.
@@ -574,8 +574,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         s.set_target(pd);
         test_ctx.rng = &fixed1; // pick one of the random dark variants
         s.smooth(1, 1);
-        TEST_ASSERT(s.query_x_y(1, 1) >= PIX_GRASS_DARK_1 && s.query_x_y(1, 1) <= PIX_GRASS_DARK_4,
-                    "left-middle/top-left branch should choose dark-grass variant");
+        ASSERT_TRUE(s.query_x_y(1, 1) >= PIX_GRASS_DARK_1 && s.query_x_y(1, 1) <= PIX_GRASS_DARK_4) << "left-middle/top-left branch should choose dark-grass variant";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
@@ -585,7 +584,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         s.set_target(pd);
         test_ctx.rng = &fixed0;
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_R1, (int)s.query_x_y(1, 1), "center-vertical branch should map to R1/R2");
+        ASSERT_EQ((int)PIX_GRASS_DARK_R1, (int)s.query_x_y(1, 1)) << "center-vertical branch should map to R1/R2";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
@@ -594,7 +593,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_LL, (int)s.query_x_y(1, 1), "top-alone branch should map LL/B1");
+        ASSERT_EQ((int)PIX_GRASS_DARK_LL, (int)s.query_x_y(1, 1)) << "top-alone branch should map LL/B1";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
@@ -603,7 +602,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)s.query_x_y(1, 1), "bottom-left branch should map UR/B1");
+        ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)s.query_x_y(1, 1)) << "bottom-left branch should map UR/B1";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
@@ -612,7 +611,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)s.query_x_y(1, 1), "left-alone branch should map UR/B1");
+        ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)s.query_x_y(1, 1)) << "left-alone branch should map UR/B1";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
@@ -621,7 +620,7 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)s.query_x_y(1, 1), "bottom-alone branch should map UR/B1");
+        ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)s.query_x_y(1, 1)) << "bottom-alone branch should map UR/B1";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_DARK_1,
@@ -630,12 +629,12 @@ void test_smooth_dark_grass_round7_branch_matrix_338_448()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_1, (int)s.query_x_y(1, 1), "default dark-grass branch should map to dark_1");
+        ASSERT_EQ((int)PIX_GRASS_DARK_1, (int)s.query_x_y(1, 1)) << "default dark-grass branch should map to dark_1";
     }
 
     pop_test_context();
 }
-REGISTER_TEST(test_smooth_dark_grass_round7_branch_matrix_338_448);
+
 
 static PixieData make_uniform_grid(int w, int h, unsigned char fill)
 {
@@ -689,7 +688,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_DIRTGRASS_LL1, (int)s.query_x_y(1, 1), "dirt top-right edge should map to LL transition");
+        ASSERT_EQ((int)PIX_DIRTGRASS_LL1, (int)s.query_x_y(1, 1)) << "dirt top-right edge should map to LL transition";
     }
 
     // Dark dirt corner case: around == (TO_DOWN | TO_RIGHT) => PIX_DIRTGRASS_DARK_LR1
@@ -701,7 +700,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_DIRTGRASS_DARK_LR1, (int)s.query_x_y(1, 1), "dark dirt top-left edge should map to LR transition");
+        ASSERT_EQ((int)PIX_DIRTGRASS_DARK_LR1, (int)s.query_x_y(1, 1)) << "dark dirt top-left edge should map to LR transition";
     }
 
     // Cobble deterministic RNG branches.
@@ -710,7 +709,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_COBBLE_1, (int)s.query_x_y(1, 1), "cobble rng=0 should choose variant 1");
+        ASSERT_EQ((int)PIX_COBBLE_1, (int)s.query_x_y(1, 1)) << "cobble rng=0 should choose variant 1";
     }
 
     FixedRandom fixed3(3);
@@ -720,7 +719,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_COBBLE_4, (int)s.query_x_y(1, 1), "cobble rng=3 should choose variant 4");
+        ASSERT_EQ((int)PIX_COBBLE_4, (int)s.query_x_y(1, 1)) << "cobble rng=3 should choose variant 4";
     }
 
     // Wall arrow slit variants based on tile above.
@@ -732,7 +731,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_WALL4, (int)s.query_x_y(1, 1), "arrow slit over pavement should become stone arrow wall");
+        ASSERT_EQ((int)PIX_WALL4, (int)s.query_x_y(1, 1)) << "arrow slit over pavement should become stone arrow wall";
     }
     {
         PixieData pd = make_uniform_grid(3, 3, PIX_H_WALL1);
@@ -741,7 +740,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_WALL_ARROW_FLOOR, (int)s.query_x_y(1, 1), "arrow slit over floor should become floor arrow wall");
+        ASSERT_EQ((int)PIX_WALL_ARROW_FLOOR, (int)s.query_x_y(1, 1)) << "arrow slit over floor should become floor arrow wall";
     }
 
     // Wall base crack branch (around == 11 and rng(10) == 0).
@@ -754,7 +753,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_WALLSIDE_CRACK_C1, (int)s.query_x_y(1, 1), "wall base should choose crack when rng hits 0");
+        ASSERT_EQ((int)PIX_WALLSIDE_CRACK_C1, (int)s.query_x_y(1, 1)) << "wall base should choose crack when rng hits 0";
     }
 
     // Unknown type should remain unchanged.
@@ -763,7 +762,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ(222, (int)s.query_x_y(1, 1), "unknown tile type should remain unchanged");
+        ASSERT_EQ(222, (int)s.query_x_y(1, 1)) << "unknown tile type should remain unchanged";
     }
 
     // Grass to water corner transitions.
@@ -774,7 +773,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASSWATER_LL, (int)s.query_x_y(1, 1), "grass-water LL transition");
+        ASSERT_EQ((int)PIX_GRASSWATER_LL, (int)s.query_x_y(1, 1)) << "grass-water LL transition";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS1,
@@ -783,7 +782,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASSWATER_UR, (int)s.query_x_y(1, 1), "grass-water UR transition");
+        ASSERT_EQ((int)PIX_GRASSWATER_UR, (int)s.query_x_y(1, 1)) << "grass-water UR transition";
     }
 
     // Carpet and light-grass shape selection.
@@ -794,7 +793,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_CARPET_SMALL_TINY, (int)s.query_x_y(1, 1), "isolated carpet should become tiny");
+        ASSERT_EQ((int)PIX_CARPET_SMALL_TINY, (int)s.query_x_y(1, 1)) << "isolated carpet should become tiny";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_LIGHT_1,
@@ -803,7 +802,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_GRASS_LIGHT_LEFT_BOTTOM, (int)s.query_x_y(1, 1), "light grass up+right mask should map to left-bottom variant");
+        ASSERT_EQ((int)PIX_GRASS_LIGHT_LEFT_BOTTOM, (int)s.query_x_y(1, 1)) << "light grass up+right mask should map to left-bottom variant";
     }
 
     // Water edge variants.
@@ -814,7 +813,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_WATERGRASS_LL, (int)s.query_x_y(1, 1), "water with only up neighbor should map LL/left cap");
+        ASSERT_EQ((int)PIX_WATERGRASS_LL, (int)s.query_x_y(1, 1)) << "water with only up neighbor should map LL/left cap";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_WATER1,
@@ -823,7 +822,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)s.query_x_y(1, 1), "water with only right neighbor should map UL/upper cap");
+        ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)s.query_x_y(1, 1)) << "water with only right neighbor should map UL/upper cap";
     }
 
     // Trees: top-middle and center-vertical variants.
@@ -834,7 +833,7 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_TREE_T1, (int)s.query_x_y(1, 1), "trees top-middle should map to top tile");
+        ASSERT_EQ((int)PIX_TREE_T1, (int)s.query_x_y(1, 1)) << "trees top-middle should map to top tile";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_TREE_M1,
@@ -843,13 +842,13 @@ static void run_smooth_branch_outputs_with_fixed_rng()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_TREE_MT, (int)s.query_x_y(1, 1), "trees vertical should map to trunk tile");
+        ASSERT_EQ((int)PIX_TREE_MT, (int)s.query_x_y(1, 1)) << "trees vertical should map to trunk tile";
     }
 
     pop_test_context();
 }
 
-void test_smooth_round11_water_and_tree_edge_masks_662_720()
+TEST(SmoothOps, smooth_round11_water_and_tree_edge_masks_662_720)
 {
     FixedRandom fixed0(0);
     GameContext test_ctx;
@@ -864,7 +863,7 @@ void test_smooth_round11_water_and_tree_edge_masks_662_720()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_WATERGRASS_LR, (int)s.query_x_y(1, 1), "water up+left should map LR");
+        ASSERT_EQ((int)PIX_WATERGRASS_LR, (int)s.query_x_y(1, 1)) << "water up+left should map LR";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_WATER1,
@@ -873,7 +872,7 @@ void test_smooth_round11_water_and_tree_edge_masks_662_720()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)s.query_x_y(1, 1), "water down+right should map UL");
+        ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)s.query_x_y(1, 1)) << "water down+right should map UL";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_WATER1,
@@ -882,7 +881,7 @@ void test_smooth_round11_water_and_tree_edge_masks_662_720()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_WATERGRASS_UR, (int)s.query_x_y(1, 1), "water down+left should map UR");
+        ASSERT_EQ((int)PIX_WATERGRASS_UR, (int)s.query_x_y(1, 1)) << "water down+left should map UR";
     }
 
     // TYPE_TREES TO_AROUND edge-side selection (smooth.cpp:715-720).
@@ -893,7 +892,7 @@ void test_smooth_round11_water_and_tree_edge_masks_662_720()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_TREE_MR, (int)s.query_x_y(1, 1), "trees with missing upper-right should map to right edge");
+        ASSERT_EQ((int)PIX_TREE_MR, (int)s.query_x_y(1, 1)) << "trees with missing upper-right should map to right edge";
     }
     {
         PixieData pd = make_center_pattern(PIX_GRASS1, PIX_TREE_M1,
@@ -902,9 +901,9 @@ void test_smooth_round11_water_and_tree_edge_masks_662_720()
         smoother s;
         s.set_target(pd);
         s.smooth(1, 1);
-        TEST_ASSERT_EQ((int)PIX_TREE_ML, (int)s.query_x_y(1, 1), "trees with missing upper-left should map to left edge");
+        ASSERT_EQ((int)PIX_TREE_ML, (int)s.query_x_y(1, 1)) << "trees with missing upper-left should map to left edge";
     }
 
     pop_test_context();
 }
-REGISTER_TEST(test_smooth_round11_water_and_tree_edge_masks_662_720);
+

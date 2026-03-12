@@ -44,10 +44,10 @@ static void cleanup_screenshots()
 }
 } // namespace
 
-void test_video_putbuffer_surface_clipping_and_blit()
+TEST(VideoModesMore, video_putbuffer_surface_clipping_and_blit)
 {
     SurfacePtr surf = make_surface(32, 32);
-    TEST_ASSERT(surf != nullptr, "SDL surface created");
+    ASSERT_TRUE(surf != nullptr) << "SDL surface created";
     if (!surf)
         return;
 
@@ -66,9 +66,9 @@ void test_video_putbuffer_surface_clipping_and_blit()
     // No clipping.
     og::runtime::current_session->myscreen_->putbuffer_surface(10, 10, 16, 16, 0, 0, 319, 199, surf.get());
 }
-REGISTER_TEST(test_video_putbuffer_surface_clipping_and_blit);
 
-void test_video_walkputbuffer_modes_invisible_outline_phantom()
+
+TEST(VideoModesMore, video_walkputbuffer_modes_invisible_outline_phantom)
 {
     // A small sprite with edges and a transparent interior to exercise outline
     // and transparency checks. Use some >247 indices to hit team color remap.
@@ -134,9 +134,9 @@ void test_video_walkputbuffer_modes_invisible_outline_phantom()
 
     ctx().rng = old_rng;
 }
-REGISTER_TEST(test_video_walkputbuffer_modes_invisible_outline_phantom);
 
-void test_video_save_screenshot_smoke_and_cleanup()
+
+TEST(VideoModesMore, video_save_screenshot_smoke_and_cleanup)
 {
     cleanup_screenshots();
 
@@ -145,4 +145,4 @@ void test_video_save_screenshot_smoke_and_cleanup()
 
     cleanup_screenshots();
 }
-REGISTER_TEST(test_video_save_screenshot_smoke_and_cleanup);
+

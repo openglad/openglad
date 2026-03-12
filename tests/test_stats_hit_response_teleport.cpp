@@ -55,9 +55,9 @@ struct RngGuard
     RngGuard& operator=(const RngGuard&) = delete;
 };
 
-void test_stats_hit_response_mage_and_archmage_teleport_branches()
+TEST(StatsHitResponseTeleport, stats_hit_response_mage_and_archmage_teleport_branches)
 {
-    TEST_ASSERT(og::runtime::current_session->myscreen_ != nullptr, "myscreen exists");
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ != nullptr) << "myscreen exists";
     if (!og::runtime::current_session->myscreen_)
         return;
 
@@ -70,14 +70,14 @@ void test_stats_hit_response_mage_and_archmage_teleport_branches()
     RngGuard rng_guard(&fixed_rng);
 
     walker* foe = level.add_ob(Order::Living, FAMILY_ORC);
-    TEST_ASSERT(foe != nullptr, "foe created");
+    ASSERT_TRUE(foe != nullptr) << "foe created";
     if (!foe)
         return;
     foe->team_num = 1;
     foe->setxy(160, 100);
 
     walker* mage = level.add_ob(Order::Living, FAMILY_MAGE);
-    TEST_ASSERT(mage != nullptr, "mage created");
+    ASSERT_TRUE(mage != nullptr) << "mage created";
     if (mage) {
         mage->team_num = 0;
         mage->setxy(100, 100);
@@ -89,11 +89,11 @@ void test_stats_hit_response_mage_and_archmage_teleport_branches()
         mage->stats()->special_cost[1] = 0;
 
         mage->stats()->hit_response(foe);
-        TEST_ASSERT(mage->current_special == 1, "mage hit_response should set teleport special");
+        ASSERT_TRUE(mage->current_special == 1) << "mage hit_response should set teleport special";
     }
 
     walker* arch = level.add_ob(Order::Living, FAMILY_ARCHMAGE);
-    TEST_ASSERT(arch != nullptr, "archmage created");
+    ASSERT_TRUE(arch != nullptr) << "archmage created";
     if (arch) {
         arch->team_num = 0;
         arch->setxy(120, 100);
@@ -105,9 +105,9 @@ void test_stats_hit_response_mage_and_archmage_teleport_branches()
         arch->stats()->special_cost[1] = 0;
 
         arch->stats()->hit_response(foe);
-        TEST_ASSERT(arch->current_special == 1, "archmage hit_response should set teleport special");
+        ASSERT_TRUE(arch->current_special == 1) << "archmage hit_response should set teleport special";
     }
 
     remove_new_leveldata_objects(level, ob_before, fx_before, weap_before);
 }
-REGISTER_TEST(test_stats_hit_response_mage_and_archmage_teleport_branches);
+

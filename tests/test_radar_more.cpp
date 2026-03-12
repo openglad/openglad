@@ -29,7 +29,7 @@ static void set_tile(LevelRuntimeData& d, int x, int y, unsigned char t)
 }
 } // namespace
 
-void test_radar_update_and_draw_covers_key_paths()
+TEST(RadarMore, radar_update_and_draw_covers_key_paths)
 {
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -105,7 +105,7 @@ void test_radar_update_and_draw_covers_key_paths()
     }
 
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(vs != nullptr, "viewscreen exists");
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
     if (!vs)
         return;
     walker* saved_control = vs->control;
@@ -116,17 +116,17 @@ void test_radar_update_and_draw_covers_key_paths()
     radar r(vs, og::runtime::current_session->myscreen_, 0);
     r.force_lower_position = true;
     r.start(&d);
-    TEST_ASSERT(r.draw(&d) == 1, "radar draw should succeed");
+    ASSERT_TRUE(r.draw(&d) == 1) << "radar draw should succeed";
 
     vs->control = saved_control;
     vs->radarstart = saved_radarstart;
 }
-REGISTER_TEST(test_radar_update_and_draw_covers_key_paths);
 
-void test_radar_start_default_uses_myscreen_level_data()
+
+TEST(RadarMore, radar_start_default_uses_myscreen_level_data)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(vs != nullptr, "viewscreen exists");
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
     if (!vs)
         return;
 
@@ -134,4 +134,4 @@ void test_radar_start_default_uses_myscreen_level_data()
     r.start(); // wrapper path start(&myscreen->level_runtime_data())
     (void)r.draw(&og::runtime::current_session->myscreen_->level_runtime_data());
 }
-REGISTER_TEST(test_radar_start_default_uses_myscreen_level_data);
+

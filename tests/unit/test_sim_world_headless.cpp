@@ -7,83 +7,83 @@
 
 // --- EventKind values ---
 
-OG_UNIT_TEST(test_event_kind_set_palette_value)
+TEST(SimWorldHeadless, event_kind_set_palette_value)
 {
-    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::SetPalette) == 11);
+    ASSERT_TRUE(static_cast<std::uint32_t>(og::sim::EventKind::SetPalette) == 11);
 }
 
-OG_UNIT_TEST(test_event_kind_request_redraw_value)
+TEST(SimWorldHeadless, event_kind_request_redraw_value)
 {
-    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::RequestRedraw) == 12);
+    ASSERT_TRUE(static_cast<std::uint32_t>(og::sim::EventKind::RequestRedraw) == 12);
 }
 
 // --- SimEventLog handles new event types ---
 
-OG_UNIT_TEST(test_sim_event_log_set_palette_event)
+TEST(SimWorldHeadless, sim_event_log_set_palette_event)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 1;
     log.push(og::sim::EventKind::SetPalette, 0, 0);
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::SetPalette);
-    OG_ASSERT(ev.a == 0);
-    OG_ASSERT(ev.tick == 1);
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::SetPalette);
+    ASSERT_TRUE(ev.a == 0);
+    ASSERT_TRUE(ev.tick == 1);
 }
 
-OG_UNIT_TEST(test_sim_event_log_set_palette_blue)
+TEST(SimWorldHeadless, sim_event_log_set_palette_blue)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 2;
     log.push(og::sim::EventKind::SetPalette, 1, 0);
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::SetPalette);
-    OG_ASSERT(ev.a == 1);
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::SetPalette);
+    ASSERT_TRUE(ev.a == 1);
 }
 
-OG_UNIT_TEST(test_sim_event_log_request_redraw_event)
+TEST(SimWorldHeadless, sim_event_log_request_redraw_event)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 3;
     log.push(og::sim::EventKind::RequestRedraw, 0, 0);
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::RequestRedraw);
-    OG_ASSERT(ev.tick == 3);
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::RequestRedraw);
+    ASSERT_TRUE(ev.tick == 3);
 }
 
 // --- emit_event convenience helper ---
 
-OG_UNIT_TEST(test_emit_event_set_palette)
+TEST(SimWorldHeadless, emit_event_set_palette)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 5;
 
     og::sim::emit_event(&log, og::sim::EventKind::SetPalette, 1);
 
-    OG_ASSERT(log.size() == 1);
-    OG_ASSERT(log.events()[0].kind == og::sim::EventKind::SetPalette);
-    OG_ASSERT(log.events()[0].a == 1);
+    ASSERT_TRUE(log.size() == 1);
+    ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::SetPalette);
+    ASSERT_TRUE(log.events()[0].a == 1);
 }
 
-OG_UNIT_TEST(test_emit_event_request_redraw)
+TEST(SimWorldHeadless, emit_event_request_redraw)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 7;
 
     og::sim::emit_event(&log, og::sim::EventKind::RequestRedraw);
 
-    OG_ASSERT(log.size() == 1);
-    OG_ASSERT(log.events()[0].kind == og::sim::EventKind::RequestRedraw);
+    ASSERT_TRUE(log.size() == 1);
+    ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::RequestRedraw);
 }
 
 // --- Mixed event stream with new types ---
 
-OG_UNIT_TEST(test_mixed_event_stream_with_new_types)
+TEST(SimWorldHeadless, mixed_event_stream_with_new_types)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 1;
@@ -93,16 +93,16 @@ OG_UNIT_TEST(test_mixed_event_stream_with_new_types)
     log.push(og::sim::EventKind::SetPalette, 1, 0);
     log.push(og::sim::EventKind::RequestRedraw, 0, 0);
 
-    OG_ASSERT(log.size() == 4);
-    OG_ASSERT(log.events()[0].kind == og::sim::EventKind::PlaySound);
-    OG_ASSERT(log.events()[1].kind == og::sim::EventKind::Notification);
-    OG_ASSERT(log.events()[2].kind == og::sim::EventKind::SetPalette);
-    OG_ASSERT(log.events()[3].kind == og::sim::EventKind::RequestRedraw);
+    ASSERT_TRUE(log.size() == 4);
+    ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::PlaySound);
+    ASSERT_TRUE(log.events()[1].kind == og::sim::EventKind::Notification);
+    ASSERT_TRUE(log.events()[2].kind == og::sim::EventKind::SetPalette);
+    ASSERT_TRUE(log.events()[3].kind == og::sim::EventKind::RequestRedraw);
 }
 
 // --- SimRandom deterministic RNG ---
 
-OG_UNIT_TEST(test_sim_random_same_seed_same_sequence)
+TEST(SimWorldHeadless, sim_random_same_seed_same_sequence)
 {
     og::sim::SimRandom rng1(42);
     og::sim::SimRandom rng2(42);
@@ -110,20 +110,20 @@ OG_UNIT_TEST(test_sim_random_same_seed_same_sequence)
     // Same seed must produce identical sequences
     for (int i = 0; i < 100; i++)
     {
-        OG_ASSERT(rng1.next(1000) == rng2.next(1000));
+        ASSERT_TRUE(rng1.next(1000) == rng2.next(1000));
     }
 }
 
-OG_UNIT_TEST(test_sim_random_different_seeds_differ)
+TEST(SimWorldHeadless, sim_random_different_seeds_differ)
 {
     og::sim::SimRandom rng1(42);
     og::sim::SimRandom rng2(99);
 
     // Different seeds should produce different first values
-    OG_ASSERT(rng1.next(1000) != rng2.next(1000));
+    ASSERT_TRUE(rng1.next(1000) != rng2.next(1000));
 }
 
-OG_UNIT_TEST(test_sim_random_reset_reproduces)
+TEST(SimWorldHeadless, sim_random_reset_reproduces)
 {
     og::sim::SimRandom rng(123);
     auto v1 = rng.next(1000);
@@ -131,77 +131,77 @@ OG_UNIT_TEST(test_sim_random_reset_reproduces)
     auto v3 = rng.next(1000);
 
     rng.state_ = 123;
-    OG_ASSERT(rng.next(1000) == v1);
-    OG_ASSERT(rng.next(1000) == v2);
-    OG_ASSERT(rng.next(1000) == v3);
+    ASSERT_TRUE(rng.next(1000) == v1);
+    ASSERT_TRUE(rng.next(1000) == v2);
+    ASSERT_TRUE(rng.next(1000) == v3);
 }
 
-OG_UNIT_TEST(test_sim_random_zero_max_returns_zero)
+TEST(SimWorldHeadless, sim_random_zero_max_returns_zero)
 {
     og::sim::SimRandom rng(42);
-    OG_ASSERT(rng.next(0) == 0);
+    ASSERT_TRUE(rng.next(0) == 0);
 }
 
-OG_UNIT_TEST(test_sim_world_owns_rng)
+TEST(SimWorldHeadless, sim_world_owns_rng)
 {
     GameWorld world1(42);
     GameWorld world2(42);
 
     // Both worlds should have the same RNG state
-    OG_ASSERT(world1.rng_.state_ == world2.rng_.state_);
+    ASSERT_TRUE(world1.rng_.state_ == world2.rng_.state_);
 
     // After advancing one, they should differ
     world1.rng_.next(100);
-    OG_ASSERT(world1.rng_.state_ != world2.rng_.state_);
+    ASSERT_TRUE(world1.rng_.state_ != world2.rng_.state_);
 }
 
 // --- EndGame, DamageTile, SetEnd event kinds (Phase 2: G5, G6) ---
 
-OG_UNIT_TEST(test_event_kind_endgame_value)
+TEST(SimWorldHeadless, event_kind_endgame_value)
 {
-    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::EndGame) == 13);
+    ASSERT_TRUE(static_cast<std::uint32_t>(og::sim::EventKind::EndGame) == 13);
 }
 
-OG_UNIT_TEST(test_event_kind_damage_tile_value)
+TEST(SimWorldHeadless, event_kind_damage_tile_value)
 {
-    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::DamageTile) == 14);
+    ASSERT_TRUE(static_cast<std::uint32_t>(og::sim::EventKind::DamageTile) == 14);
 }
 
-OG_UNIT_TEST(test_event_kind_set_end_value)
+TEST(SimWorldHeadless, event_kind_set_end_value)
 {
-    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::SetEnd) == 15);
+    ASSERT_TRUE(static_cast<std::uint32_t>(og::sim::EventKind::SetEnd) == 15);
 }
 
-OG_UNIT_TEST(test_event_kind_request_exit_confirmation_value)
+TEST(SimWorldHeadless, event_kind_request_exit_confirmation_value)
 {
-    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::RequestExitConfirmation) == 16);
+    ASSERT_TRUE(static_cast<std::uint32_t>(og::sim::EventKind::RequestExitConfirmation) == 16);
 }
 
-OG_UNIT_TEST(test_event_kind_withdraw_to_level_value)
+TEST(SimWorldHeadless, event_kind_withdraw_to_level_value)
 {
-    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::WithdrawToLevel) == 17);
+    ASSERT_TRUE(static_cast<std::uint32_t>(og::sim::EventKind::WithdrawToLevel) == 17);
 }
 
-OG_UNIT_TEST(test_event_kind_score_change_value)
+TEST(SimWorldHeadless, event_kind_score_change_value)
 {
-    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::ScoreChange) == 18);
+    ASSERT_TRUE(static_cast<std::uint32_t>(og::sim::EventKind::ScoreChange) == 18);
 }
 
-OG_UNIT_TEST(test_emit_endgame_event)
+TEST(SimWorldHeadless, emit_endgame_event)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 10;
     og::sim::emit_event(&log, og::sim::EventKind::EndGame, 0, 5);
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::EndGame);
-    OG_ASSERT(ev.a == 0);  // ending type: normal
-    OG_ASSERT(ev.b == 5);  // next_level
-    OG_ASSERT(ev.tick == 10);
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::EndGame);
+    ASSERT_TRUE(ev.a == 0);  // ending type: normal
+    ASSERT_TRUE(ev.b == 5);  // next_level
+    ASSERT_TRUE(ev.tick == 10);
 }
 
-OG_UNIT_TEST(test_emit_endgame_save_all_failure)
+TEST(SimWorldHeadless, emit_endgame_save_all_failure)
 {
     // Simulates walker::death() emitting EndGame with SCEN_TYPE_SAVE_ALL
     og::sim::SimEventLog log;
@@ -209,81 +209,81 @@ OG_UNIT_TEST(test_emit_endgame_save_all_failure)
     og::sim::emit_event(&log, og::sim::EventKind::EndGame,
                         4, static_cast<std::uint32_t>(-1));
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::EndGame);
-    OG_ASSERT(ev.a == 4);  // SCEN_TYPE_SAVE_ALL
-    OG_ASSERT(ev.b == static_cast<std::uint32_t>(-1));  // no next level
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::EndGame);
+    ASSERT_TRUE(ev.a == 4);  // SCEN_TYPE_SAVE_ALL
+    ASSERT_TRUE(ev.b == static_cast<std::uint32_t>(-1));  // no next level
 }
 
-OG_UNIT_TEST(test_emit_damage_tile_event)
+TEST(SimWorldHeadless, emit_damage_tile_event)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 15;
     og::sim::emit_event(&log, og::sim::EventKind::DamageTile, 120, 240);
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::DamageTile);
-    OG_ASSERT(ev.a == 120);  // x_pixel
-    OG_ASSERT(ev.b == 240);  // y_pixel
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::DamageTile);
+    ASSERT_TRUE(ev.a == 120);  // x_pixel
+    ASSERT_TRUE(ev.b == 240);  // y_pixel
 }
 
-OG_UNIT_TEST(test_emit_set_end_event)
+TEST(SimWorldHeadless, emit_set_end_event)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 25;
     og::sim::emit_event(&log, og::sim::EventKind::SetEnd);
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::SetEnd);
-    OG_ASSERT(ev.a == 0);
-    OG_ASSERT(ev.b == 0);
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::SetEnd);
+    ASSERT_TRUE(ev.a == 0);
+    ASSERT_TRUE(ev.b == 0);
 }
 
-OG_UNIT_TEST(test_emit_request_exit_confirmation_with_text)
+TEST(SimWorldHeadless, emit_request_exit_confirmation_with_text)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 27;
     og::sim::emit_event_text(&log, og::sim::EventKind::RequestExitConfirmation,
                              "Exit to Level 3?", 3, 0);
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::RequestExitConfirmation);
-    OG_ASSERT(ev.a == 3);
-    OG_ASSERT(ev.b == 0);
-    OG_ASSERT(ev.text == "Exit to Level 3?");
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::RequestExitConfirmation);
+    ASSERT_TRUE(ev.a == 3);
+    ASSERT_TRUE(ev.b == 0);
+    ASSERT_TRUE(ev.text == "Exit to Level 3?");
 }
 
-OG_UNIT_TEST(test_emit_withdraw_to_level_event)
+TEST(SimWorldHeadless, emit_withdraw_to_level_event)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 28;
     og::sim::emit_event(&log, og::sim::EventKind::WithdrawToLevel, 5, 0);
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::WithdrawToLevel);
-    OG_ASSERT(ev.a == 5);
-    OG_ASSERT(ev.b == 0);
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::WithdrawToLevel);
+    ASSERT_TRUE(ev.a == 5);
+    ASSERT_TRUE(ev.b == 0);
 }
 
-OG_UNIT_TEST(test_emit_score_change_event)
+TEST(SimWorldHeadless, emit_score_change_event)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 29;
     og::sim::emit_event(&log, og::sim::EventKind::ScoreChange, 2, 125);
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::ScoreChange);
-    OG_ASSERT(ev.a == 2);
-    OG_ASSERT(ev.b == 125);
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::ScoreChange);
+    ASSERT_TRUE(ev.a == 2);
+    ASSERT_TRUE(ev.b == 125);
 }
 
-OG_UNIT_TEST(test_mixed_stream_with_phase2_events)
+TEST(SimWorldHeadless, mixed_stream_with_phase2_events)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 1;
@@ -294,31 +294,31 @@ OG_UNIT_TEST(test_mixed_stream_with_phase2_events)
     log.push(og::sim::EventKind::SetEnd, 0, 0);
     log.push(og::sim::EventKind::EndGame, 0, 3);
 
-    OG_ASSERT(log.size() == 5);
-    OG_ASSERT(log.events()[0].kind == og::sim::EventKind::PlaySound);
-    OG_ASSERT(log.events()[1].kind == og::sim::EventKind::DamageTile);
-    OG_ASSERT(log.events()[1].a == 50);
-    OG_ASSERT(log.events()[1].b == 60);
-    OG_ASSERT(log.events()[2].kind == og::sim::EventKind::Notification);
-    OG_ASSERT(log.events()[3].kind == og::sim::EventKind::SetEnd);
-    OG_ASSERT(log.events()[4].kind == og::sim::EventKind::EndGame);
-    OG_ASSERT(log.events()[4].b == 3);
+    ASSERT_TRUE(log.size() == 5);
+    ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::PlaySound);
+    ASSERT_TRUE(log.events()[1].kind == og::sim::EventKind::DamageTile);
+    ASSERT_TRUE(log.events()[1].a == 50);
+    ASSERT_TRUE(log.events()[1].b == 60);
+    ASSERT_TRUE(log.events()[2].kind == og::sim::EventKind::Notification);
+    ASSERT_TRUE(log.events()[3].kind == og::sim::EventKind::SetEnd);
+    ASSERT_TRUE(log.events()[4].kind == og::sim::EventKind::EndGame);
+    ASSERT_TRUE(log.events()[4].b == 3);
 }
 
 // --- emit_* with null log is a no-op ---
 
-OG_UNIT_TEST(test_emit_sound_null_log_is_noop)
+TEST(SimWorldHeadless, emit_sound_null_log_is_noop)
 {
     // Should not crash
     og::sim::emit_sound(nullptr, 42);
 }
 
-OG_UNIT_TEST(test_emit_notification_null_log_is_noop)
+TEST(SimWorldHeadless, emit_notification_null_log_is_noop)
 {
     og::sim::emit_notification(nullptr, "test");
 }
 
-OG_UNIT_TEST(test_emit_event_null_log_is_noop)
+TEST(SimWorldHeadless, emit_event_null_log_is_noop)
 {
     og::sim::emit_event(nullptr, og::sim::EventKind::PlaySound, 1);
 }

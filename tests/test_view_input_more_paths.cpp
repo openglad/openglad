@@ -48,10 +48,10 @@ static SDL_Event dummy_event()
 }
 } // namespace
 
-void test_viewscreen_input_switch_yell_and_special_switch_paths()
+TEST(ViewInputMorePaths, viewscreen_input_switch_yell_and_special_switch_paths)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(vs != nullptr, "viewscreen exists");
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
     if (!vs)
         return;
 
@@ -59,7 +59,7 @@ void test_viewscreen_input_switch_yell_and_special_switch_paths()
     walker* w0 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     walker* w1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ELF);
     walker* w2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ARCHER);
-    TEST_ASSERT(w0 && w1 && w2, "walkers created");
+    ASSERT_TRUE(w0 && w1 && w2) << "walkers created";
     if (!(w0 && w1 && w2))
         return;
 
@@ -91,7 +91,7 @@ void test_viewscreen_input_switch_yell_and_special_switch_paths()
     // Switch control forward (KEY_SWITCH is backquote for player 0).
     ks.fake[SDL_SCANCODE_LSHIFT] = 0;
     (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SWITCH])));
-    TEST_ASSERT(vs->control != nullptr, "control should remain valid after switch");
+    ASSERT_TRUE(vs->control != nullptr) << "control should remain valid after switch";
 
     // Reset the debounce flag by providing a non-switch event.
     (void)vs->input(dummy_event());
@@ -99,7 +99,7 @@ void test_viewscreen_input_switch_yell_and_special_switch_paths()
     // Switch control reverse by holding shifter.
     ks.fake[SDL_SCANCODE_LSHIFT] = 1;
     (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SWITCH])));
-    TEST_ASSERT(vs->control != nullptr, "control should remain valid after reverse switch");
+    ASSERT_TRUE(vs->control != nullptr) << "control should remain valid after reverse switch";
     ks.fake[SDL_SCANCODE_LSHIFT] = 0;
 
     // Yell for help: KEY_YELL is 's' for player 0, requires not holding shifter.
@@ -128,4 +128,4 @@ void test_viewscreen_input_switch_yell_and_special_switch_paths()
     (void)vs->input(dummy_event());
     (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SPECIAL_SWITCH])));
 }
-REGISTER_TEST(test_viewscreen_input_switch_yell_and_special_switch_paths);
+

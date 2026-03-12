@@ -69,19 +69,19 @@ static int injector_clear_escape(void* data)
 }
 } // namespace
 
-void test_view_get_keypress_consumes_next_key_event()
+TEST(ViewGetKeypressAndEdgeCases, view_get_keypress_consumes_next_key_event)
 {
     // Queue a keydown event so get_keypress() can read it deterministically.
     sendFakeKeyDownEvent(SDLK_a);
     const int k = get_keypress();
-    TEST_ASSERT_EQ(static_cast<int>(SDLK_a), k, "get_keypress should return queued SDL key");
+    ASSERT_EQ(static_cast<int>(SDLK_a), k) << "get_keypress should return queued SDL key";
 }
-REGISTER_TEST(test_view_get_keypress_consumes_next_key_event);
 
-void test_viewscreen_options_menu_missing_control_returns()
+
+TEST(ViewGetKeypressAndEdgeCases, viewscreen_options_menu_missing_control_returns)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(v != nullptr, "view should exist");
+    ASSERT_TRUE(v != nullptr) << "view should exist";
     if (!v)
         return;
 
@@ -90,12 +90,12 @@ void test_viewscreen_options_menu_missing_control_returns()
     v->options_menu(); // should early-return without hanging
     v->control = saved;
 }
-REGISTER_TEST(test_viewscreen_options_menu_missing_control_returns);
 
-void test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns()
+
+TEST(ViewGetKeypressAndEdgeCases, viewscreen_input_switch_control_not_in_oblist_logs_and_returns)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(v != nullptr, "view should exist");
+    ASSERT_TRUE(v != nullptr) << "view should exist";
     if (!v)
         return;
 
@@ -130,12 +130,12 @@ void test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns()
 
     v->control = saved_control;
 }
-REGISTER_TEST(test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns);
 
-void test_viewscreen_options_menu_covers_view_size_label_cases()
+
+TEST(ViewGetKeypressAndEdgeCases, viewscreen_options_menu_covers_view_size_label_cases)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(v != nullptr, "view should exist");
+    ASSERT_TRUE(v != nullptr) << "view should exist";
     if (!v)
         return;
 
@@ -143,7 +143,7 @@ void test_viewscreen_options_menu_covers_view_size_label_cases()
     if (!v->control)
     {
         walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-        TEST_ASSERT(w != nullptr, "control created");
+        ASSERT_TRUE(w != nullptr) << "control created";
         if (!w)
             return;
         w->team_num = 0;
@@ -183,4 +183,4 @@ void test_viewscreen_options_menu_covers_view_size_label_cases()
     v->prefs[PREF_VIEW] = saved_view;
     v->resize(saved_view);
 }
-REGISTER_TEST(test_viewscreen_options_menu_covers_view_size_label_cases);
+

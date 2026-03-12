@@ -7,7 +7,7 @@
 #include <memory>
 #include "unit/unit.h"
 
-OG_UNIT_TEST(test_save_data_update_guys_clamps_to_max_team_size)
+TEST(SaveDataUnit, save_data_update_guys_clamps_to_max_team_size)
 {
     SaveData save;
     std::list<std::unique_ptr<walker>> oblist;
@@ -26,8 +26,8 @@ OG_UNIT_TEST(test_save_data_update_guys_clamps_to_max_team_size)
 
     save.update_guys(oblist);
 
-    OG_ASSERT(static_cast<int>(save.team_size) == MAX_TEAM_SIZE);
-    OG_ASSERT(save.team_list.front() != nullptr);
-    OG_ASSERT(save.team_list.back() != nullptr);
-    OG_ASSERT(save.team_list[MAX_TEAM_SIZE - 1]->exp == static_cast<std::uint32_t>(100 + (MAX_TEAM_SIZE - 1)));
+    ASSERT_TRUE(static_cast<int>(save.team_size) == MAX_TEAM_SIZE);
+    ASSERT_TRUE(save.team_list.front() != nullptr);
+    ASSERT_TRUE(save.team_list.back() != nullptr);
+    ASSERT_TRUE(save.team_list[MAX_TEAM_SIZE - 1]->exp == static_cast<std::uint32_t>(100 + (MAX_TEAM_SIZE - 1)));
 }

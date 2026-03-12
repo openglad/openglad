@@ -5,7 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #ifdef TESTING
 
 #include <cstring>

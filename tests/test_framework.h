@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <sstream>
+#include <string>
 #include "SDL.h"
 
 extern int g_tests_run;
@@ -20,71 +22,90 @@ struct TestEntry {
     test_hook_t teardown;
 };
 
+struct OgTestMessage {
+    std::string str;
+
+    template<typename T>
+    OgTestMessage& operator<<(T val)
+    {
+        std::ostringstream oss;
+        oss << val;
+        str += oss.str();
+        return *this;
+    }
+};
+
+struct OgAssertHelper {
+    const char* file;
+    int line;
+    const char* expr;
+
+    void operator=(OgTestMessage msg)
+    {
+        fprintf(stderr, "  FAIL: %s", expr);
+        if (!msg.str.empty())
+            fprintf(stderr, " - %s", msg.str.c_str());
+        fprintf(stderr, " (%s:%d)\n", file, line);
+        g_tests_failed++;
+    }
+};
+
 #define MAX_TESTS 4096
 extern TestEntry g_test_registry[MAX_TESTS];
 extern int g_test_registry_count;
 
-#define REGISTER_TEST(func) \
-    static struct _reg_##func { \
-        _reg_##func() { \
-            if (g_test_registry_count >= MAX_TESTS) { \
-                fprintf(stderr, "FATAL: too many tests registered (max %d)\n", MAX_TESTS); \
-                abort(); \
-            } \
-            g_test_registry[g_test_registry_count].name = #func; \
-            g_test_registry[g_test_registry_count].fn = func; \
-            g_test_registry[g_test_registry_count].setup = nullptr; \
-            g_test_registry[g_test_registry_count].teardown = nullptr; \
-            g_test_registry_count++; \
-        } \
-    } _reg_instance_##func
+#define OG_TEST_CONCAT_IMPL(a, b) a##b
+#define OG_TEST_CONCAT(a, b) OG_TEST_CONCAT_IMPL(a, b)
+#define OG_TEST_PASTE(a, b) OG_TEST_CONCAT(OG_TEST_CONCAT(a, _), b)
 
-#define REGISTER_TEST_WITH_FIXTURE(func, setup_fn, teardown_fn) \
-    static struct _reg_##func { \
-        _reg_##func() { \
+#define OG_ADD_TEST_NAMED(func, test_name, setup_fn, teardown_fn) \
+    static struct OG_TEST_PASTE(_reg, func) { \
+        OG_TEST_PASTE(_reg, func)() { \
             if (g_test_registry_count >= MAX_TESTS) { \
                 fprintf(stderr, "FATAL: too many tests registered (max %d)\n", MAX_TESTS); \
                 abort(); \
             } \
-            g_test_registry[g_test_registry_count].name = #func; \
+            g_test_registry[g_test_registry_count].name = test_name; \
             g_test_registry[g_test_registry_count].fn = func; \
             g_test_registry[g_test_registry_count].setup = setup_fn; \
             g_test_registry[g_test_registry_count].teardown = teardown_fn; \
             g_test_registry_count++; \
         } \
-    } _reg_fixture_instance_##func
+    } OG_TEST_PASTE(_reg_instance, func)
 
-#define TEST_ASSERT(cond, msg) \
-    do { \
-        if (!(cond)) { \
-            fprintf(stderr, "  FAIL: %s (%s:%d)\n", msg, __FILE__, __LINE__); \
-            g_tests_failed++; \
-            g_tests_run++; \
-            return; \
-        } \
-    } while(0)
+#define ASSERT_TRUE(cond) \
+    if (cond) ; \
+    else return OgAssertHelper{__FILE__, __LINE__, #cond} = OgTestMessage{}
 
-#define TEST_ASSERT_EQ(expected, actual, msg) \
-    do { \
-        if ((expected) != (actual)) { \
-            fprintf(stderr, "  FAIL: %s (expected %d, got %d) (%s:%d)\n", \
-                    msg, static_cast<int>(expected), static_cast<int>(actual), __FILE__, __LINE__); \
-            g_tests_failed++; \
-            g_tests_run++; \
-            return; \
-        } \
-    } while(0)
+#define ASSERT_EQ(expected, actual) \
+    if ((expected) == (actual)) ; \
+    else return OgAssertHelper{__FILE__, __LINE__, \
+        "ASSERT_EQ(" #expected ", " #actual ")"} = \
+        (OgTestMessage{} << "Expected: " << (expected) << ", Actual: " << (actual))
 
-#define TEST_ASSERT_STR_EQ(expected, actual, msg) \
-    do { \
-        if (strcmp((expected), (actual)) != 0) { \
-            fprintf(stderr, "  FAIL: %s (expected \"%s\", got \"%s\") (%s:%d)\n", \
-                    msg, (expected), (actual), __FILE__, __LINE__); \
-            g_tests_failed++; \
-            g_tests_run++; \
-            return; \
-        } \
-    } while(0)
+#define ASSERT_STREQ(expected, actual) \
+    if (std::strcmp((expected), (actual)) == 0) ; \
+    else return OgAssertHelper{__FILE__, __LINE__, \
+        "ASSERT_STREQ(" #expected ", " #actual ")"} = \
+        (OgTestMessage{} << "Expected: \"" << (expected) << "\", Actual: \"" << (actual) << "\"")
+
+#define TEST(suite, name) \
+    static void OG_TEST_PASTE(suite, name)(); \
+    OG_ADD_TEST_NAMED(OG_TEST_PASTE(suite, name), #suite "." #name, nullptr, nullptr); \
+    static void OG_TEST_PASTE(suite, name)()
+
+#define TEST_F(fixture, name) \
+    struct OG_TEST_CONCAT(OG_TEST_PASTE(fixture, name), _cls) : fixture { void TestBody(); }; \
+    static void OG_TEST_CONCAT(OG_TEST_PASTE(fixture, name), _fn)() { \
+        OG_TEST_CONCAT(OG_TEST_PASTE(fixture, name), _cls) inst; \
+        const int failed_before = g_tests_failed; \
+        inst.SetUp(); \
+        if (g_tests_failed == failed_before) \
+            inst.TestBody(); \
+        inst.TearDown(); \
+    } \
+    OG_ADD_TEST_NAMED(OG_TEST_CONCAT(OG_TEST_PASTE(fixture, name), _fn), #fixture "." #name, nullptr, nullptr); \
+    void OG_TEST_CONCAT(OG_TEST_PASTE(fixture, name), _cls)::TestBody()
 
 void run_all_tests();
 void list_all_tests(FILE* out);

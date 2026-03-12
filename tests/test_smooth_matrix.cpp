@@ -43,7 +43,7 @@ static void set_neighbors_for_mask(PixieData& g, int cx, int cy, unsigned char s
 }
 } // namespace
 
-void test_smooth_matrix_covers_carpet_and_light_grass_masks()
+TEST(SmoothMatrix, covers_carpet_and_light_grass_masks)
 {
     FixedRandom rng(1);
     GameContext ctx;
@@ -61,8 +61,7 @@ void test_smooth_matrix_covers_carpet_and_light_grass_masks()
         (void)s.smooth(2, 2);
 
         const unsigned char cv = at(carpet, 2, 2);
-        TEST_ASSERT(cv >= PIX_CARPET_LL && cv <= PIX_CARPET_SMALL_TINY,
-                    "carpet mask smoothing should emit a carpet tile variant");
+        ASSERT_TRUE(cv >= PIX_CARPET_LL && cv <= PIX_CARPET_SMALL_TINY) << "carpet mask smoothing should emit a carpet tile variant";
 
         PixieData light = make_grid(5, 5, PIX_GRASS1);
         at(light, 2, 2) = PIX_GRASS_LIGHT_1;
@@ -71,13 +70,12 @@ void test_smooth_matrix_covers_carpet_and_light_grass_masks()
         (void)s.smooth(2, 2);
 
         const unsigned char lv = at(light, 2, 2);
-        TEST_ASSERT(lv >= PIX_GRASS_LIGHT_1 && lv <= PIX_GRASS_LIGHT_LEFT_TOP,
-                    "light-grass mask smoothing should emit a light-grass variant");
+        ASSERT_TRUE(lv >= PIX_GRASS_LIGHT_1 && lv <= PIX_GRASS_LIGHT_LEFT_TOP) << "light-grass mask smoothing should emit a light-grass variant";
     }
 }
-REGISTER_TEST(test_smooth_matrix_covers_carpet_and_light_grass_masks);
 
-void test_smooth_matrix_covers_water_tree_dirt_and_dark_dirt_masks()
+
+TEST(SmoothMatrix, covers_water_tree_dirt_and_dark_dirt_masks)
 {
     FixedRandom rng(2);
     GameContext ctx;
@@ -113,11 +111,11 @@ void test_smooth_matrix_covers_water_tree_dirt_and_dark_dirt_masks()
         (void)s.smooth(2, 2);
     }
 
-    TEST_ASSERT(true, "matrix smooth branch execution completed");
+    ASSERT_TRUE(true) << "matrix smooth branch execution completed";
 }
-REGISTER_TEST(test_smooth_matrix_covers_water_tree_dirt_and_dark_dirt_masks);
 
-void test_smooth_matrix_covers_grass_dark_grass_wall_and_cobble_paths()
+
+TEST(SmoothMatrix, covers_grass_dark_grass_wall_and_cobble_paths)
 {
     FixedRandom rng(0);
     GameContext ctx;
@@ -153,11 +151,11 @@ void test_smooth_matrix_covers_grass_dark_grass_wall_and_cobble_paths()
         (void)s.smooth(2, 2);
     }
 
-    TEST_ASSERT(true, "matrix smooth coverage across remaining genres completed");
+    ASSERT_TRUE(true) << "matrix smooth coverage across remaining genres completed";
 }
-REGISTER_TEST(test_smooth_matrix_covers_grass_dark_grass_wall_and_cobble_paths);
 
-void test_smooth_matrix_targets_tree_dirt_dark_dirt_large_mask_blocks()
+
+TEST(SmoothMatrix, targets_tree_dirt_dark_dirt_large_mask_blocks)
 {
     FixedRandom rng(0);
     GameContext ctx;
@@ -180,7 +178,7 @@ void test_smooth_matrix_targets_tree_dirt_dark_dirt_large_mask_blocks()
         set_neighbors_for_mask(tree, 2, 2, PIX_TREE_M1, PIX_GRASS1, c.mask);
         s.set_target(tree);
         (void)s.smooth(2, 2);
-        TEST_ASSERT_EQ((int)c.expect, (int)at(tree, 2, 2), "tree mask branch should select expected tile");
+        ASSERT_EQ((int)c.expect, (int)at(tree, 2, 2)) << "tree mask branch should select expected tile";
     }
 
     const MaskExpect dirt_cases[] = {
@@ -196,7 +194,7 @@ void test_smooth_matrix_targets_tree_dirt_dark_dirt_large_mask_blocks()
         set_neighbors_for_mask(dirt, 2, 2, PIX_DIRT_1, PIX_GRASS1, c.mask);
         s.set_target(dirt);
         (void)s.smooth(2, 2);
-        TEST_ASSERT_EQ((int)c.expect, (int)at(dirt, 2, 2), "dirt mask branch should select expected tile");
+        ASSERT_EQ((int)c.expect, (int)at(dirt, 2, 2)) << "dirt mask branch should select expected tile";
     }
 
     const MaskExpect dark_cases[] = {
@@ -213,12 +211,12 @@ void test_smooth_matrix_targets_tree_dirt_dark_dirt_large_mask_blocks()
         set_neighbors_for_mask(dd, 2, 2, PIX_DIRT_DARK_1, PIX_GRASS1, c.mask);
         s.set_target(dd);
         (void)s.smooth(2, 2);
-        TEST_ASSERT_EQ((int)c.expect, (int)at(dd, 2, 2), "dark dirt mask branch should select expected tile");
+        ASSERT_EQ((int)c.expect, (int)at(dd, 2, 2)) << "dark dirt mask branch should select expected tile";
     }
 }
-REGISTER_TEST(test_smooth_matrix_targets_tree_dirt_dark_dirt_large_mask_blocks);
 
-void test_smooth_query_helpers_and_grass_water_corner_branches()
+
+TEST(SmoothMatrix, smooth_query_helpers_and_grass_water_corner_branches)
 {
     FixedRandom rng(0);
     GameContext ctx;
@@ -228,15 +226,15 @@ void test_smooth_query_helpers_and_grass_water_corner_branches()
     smoother s;
 
     // query_x_y guard rails before target is set.
-    TEST_ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(0, 0), "query_x_y should default to grass before target is set");
+    ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(0, 0)) << "query_x_y should default to grass before target is set";
 
     PixieData base = make_grid(3, 3, PIX_GRASS1);
     s.set_target(base);
-    TEST_ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(-1, 0), "query_x_y should clamp negative x to grass");
-    TEST_ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(0, -1), "query_x_y should clamp negative y to grass");
-    TEST_ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(3, 1), "query_x_y should clamp x>=maxx to grass");
-    TEST_ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(1, 3), "query_x_y should clamp y>=maxy to grass");
-    TEST_ASSERT_EQ(TYPE_GRASS, (int)s.query_genre_x_y(1, 1), "query_genre_x_y should classify grass tile");
+    ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(-1, 0)) << "query_x_y should clamp negative x to grass";
+    ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(0, -1)) << "query_x_y should clamp negative y to grass";
+    ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(3, 1)) << "query_x_y should clamp x>=maxx to grass";
+    ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(1, 3)) << "query_x_y should clamp y>=maxy to grass";
+    ASSERT_EQ(TYPE_GRASS, (int)s.query_genre_x_y(1, 1)) << "query_genre_x_y should classify grass tile";
 
     auto run_grass_case = [&](auto setup, unsigned char expected, const char* msg) {
         PixieData g = make_grid(5, 5, PIX_GRASS1);
@@ -244,7 +242,7 @@ void test_smooth_query_helpers_and_grass_water_corner_branches()
         setup(g);
         s.set_target(g);
         (void)s.smooth(2, 2);
-        TEST_ASSERT_EQ((int)expected, (int)at(g, 2, 2), msg);
+        ASSERT_EQ((int)expected, (int)at(g, 2, 2)) << msg;
     };
 
     run_grass_case(
@@ -291,4 +289,4 @@ void test_smooth_query_helpers_and_grass_water_corner_branches()
         PIX_GRASSWATER_LR,
         "grass-water LR branch should produce PIX_GRASSWATER_LR");
 }
-REGISTER_TEST(test_smooth_query_helpers_and_grass_water_corner_branches);
+

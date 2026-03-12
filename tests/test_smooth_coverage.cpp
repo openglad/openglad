@@ -42,25 +42,25 @@ static void set_same_neighbors(PixieData& g, int cx, int cy, unsigned char same,
 
 static void set_diagonals(PixieData& g, int cx, int cy, unsigned char ul, unsigned char ur, unsigned char dl, unsigned char dr);
 
-void test_smooth_query_and_reset_out_of_bounds_paths()
+TEST(SmoothCoverage, smooth_query_and_reset_out_of_bounds_paths)
 {
     smoother s;
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 0), "query_x_y should fallback before set_target");
-    TEST_ASSERT_EQ(0, (int)s.smooth(), "smooth() should return 0 with no grid");
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 0)) << "query_x_y should fallback before set_target";
+    ASSERT_EQ(0, (int)s.smooth()) << "smooth() should return 0 with no grid";
 
     PixieData grid = make_grid(3, 3, PIX_GRASS1);
     s.set_target(grid);
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(-1, 0), "negative x should fallback");
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, -1), "negative y should fallback");
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(3, 0), "x out of range should fallback");
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 3), "y out of range should fallback");
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(-1, 0)) << "negative x should fallback";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, -1)) << "negative y should fallback";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(3, 0)) << "x out of range should fallback";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 3)) << "y out of range should fallback";
 
     s.reset();
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(1, 1), "query_x_y should fallback after reset");
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(1, 1)) << "query_x_y should fallback after reset";
 }
-REGISTER_TEST(test_smooth_query_and_reset_out_of_bounds_paths);
 
-void test_smooth_wall_arrow_slit_branches()
+
+TEST(SmoothCoverage, smooth_wall_arrow_slit_branches)
 {
     FixedRandom rng1(1);
     GameContext c;
@@ -74,26 +74,26 @@ void test_smooth_wall_arrow_slit_branches()
     at(grid, 2, 2) = PIX_WALL_ARROW_GRASS;
     at(grid, 2, 1) = PIX_GRASS1;
     (void)s.smooth(2, 2);
-    TEST_ASSERT_EQ((int)PIX_WALL_ARROW_GRASS, (int)at(grid, 2, 2), "up grass should keep grass arrow slit");
+    ASSERT_EQ((int)PIX_WALL_ARROW_GRASS, (int)at(grid, 2, 2)) << "up grass should keep grass arrow slit";
 
     at(grid, 2, 2) = PIX_WALL_ARROW_GRASS;
     at(grid, 2, 1) = PIX_GRASS_DARK_1;
     (void)s.smooth(2, 2);
-    TEST_ASSERT_EQ((int)PIX_WALL_ARROW_GRASS_DARK, (int)at(grid, 2, 2), "up dark grass should pick dark arrow slit");
+    ASSERT_EQ((int)PIX_WALL_ARROW_GRASS_DARK, (int)at(grid, 2, 2)) << "up dark grass should pick dark arrow slit";
 
     at(grid, 2, 2) = PIX_WALL_ARROW_GRASS;
     at(grid, 2, 1) = PIX_PAVEMENT1;
     (void)s.smooth(2, 2);
-    TEST_ASSERT_EQ((int)PIX_WALL4, (int)at(grid, 2, 2), "up pavement should pick stone slit");
+    ASSERT_EQ((int)PIX_WALL4, (int)at(grid, 2, 2)) << "up pavement should pick stone slit";
 
     at(grid, 2, 2) = PIX_WALL_ARROW_GRASS;
     at(grid, 2, 1) = PIX_FLOOR1;
     (void)s.smooth(2, 2);
-    TEST_ASSERT_EQ((int)PIX_WALL_ARROW_FLOOR, (int)at(grid, 2, 2), "up floor should pick floor slit");
+    ASSERT_EQ((int)PIX_WALL_ARROW_FLOOR, (int)at(grid, 2, 2)) << "up floor should pick floor slit";
 }
-REGISTER_TEST(test_smooth_wall_arrow_slit_branches);
 
-void test_smooth_carpet_light_and_cobble_switches()
+
+TEST(SmoothCoverage, smooth_carpet_light_and_cobble_switches)
 {
     for (int seed = 0; seed < 4; seed++)
     {
@@ -109,24 +109,23 @@ void test_smooth_carpet_light_and_cobble_switches()
         at(grid, 2, 2) = PIX_CARPET_M2;
         set_same_neighbors(grid, 2, 2, PIX_CARPET_M2, PIX_GRASS1, TO_AROUND);
         (void)s.smooth(2, 2);
-        TEST_ASSERT_EQ((int)PIX_CARPET_M, (int)at(grid, 2, 2), "carpet center should map to M when fully surrounded");
+        ASSERT_EQ((int)PIX_CARPET_M, (int)at(grid, 2, 2)) << "carpet center should map to M when fully surrounded";
 
         at(grid, 2, 2) = PIX_GRASS_LIGHT_1;
         set_same_neighbors(grid, 2, 2, PIX_GRASS_LIGHT_1, PIX_GRASS1, TO_DOWN | TO_LEFT);
         (void)s.smooth(2, 2);
-        TEST_ASSERT_EQ((int)PIX_GRASS_LIGHT_RIGHT_TOP, (int)at(grid, 2, 2), "light grass branch should map to right_top");
+        ASSERT_EQ((int)PIX_GRASS_LIGHT_RIGHT_TOP, (int)at(grid, 2, 2)) << "light grass branch should map to right_top";
 
         at(grid, 2, 2) = PIX_COBBLE_1;
         set_same_neighbors(grid, 2, 2, PIX_COBBLE_1, PIX_GRASS1, TO_AROUND);
         (void)s.smooth(2, 2);
         int v = (int)at(grid, 2, 2);
-        TEST_ASSERT(v == PIX_COBBLE_1 || v == PIX_COBBLE_2 || v == PIX_COBBLE_3 || v == PIX_COBBLE_4,
-                    "cobble branch should choose a cobble variant");
+        ASSERT_TRUE(v == PIX_COBBLE_1 || v == PIX_COBBLE_2 || v == PIX_COBBLE_3 || v == PIX_COBBLE_4) << "cobble branch should choose a cobble variant";
     }
 }
-REGISTER_TEST(test_smooth_carpet_light_and_cobble_switches);
 
-void test_smooth_water_tree_dirt_and_dark_dirt_edges()
+
+TEST(SmoothCoverage, smooth_water_tree_dirt_and_dark_dirt_edges)
 {
     FixedRandom rng0(0);
     GameContext c;
@@ -140,26 +139,26 @@ void test_smooth_water_tree_dirt_and_dark_dirt_edges()
     at(grid, 2, 2) = PIX_WATER1;
     set_same_neighbors(grid, 2, 2, PIX_WATER1, PIX_GRASS1, TO_UP | TO_RIGHT);
     (void)s.smooth(2, 2);
-    TEST_ASSERT_EQ((int)PIX_WATERGRASS_LL, (int)at(grid, 2, 2), "water upper-right should pick LL shoreline");
+    ASSERT_EQ((int)PIX_WATERGRASS_LL, (int)at(grid, 2, 2)) << "water upper-right should pick LL shoreline";
 
     at(grid, 2, 2) = PIX_TREE_M1;
     set_same_neighbors(grid, 2, 2, PIX_TREE_M1, PIX_GRASS1, TO_DOWN | TO_RIGHT | TO_UP);
     (void)s.smooth(2, 2);
-    TEST_ASSERT_EQ((int)PIX_TREE_ML, (int)at(grid, 2, 2), "trees left-middle branch should pick ML");
+    ASSERT_EQ((int)PIX_TREE_ML, (int)at(grid, 2, 2)) << "trees left-middle branch should pick ML";
 
     at(grid, 2, 2) = PIX_DIRT_1;
     set_same_neighbors(grid, 2, 2, PIX_DIRT_1, PIX_GRASS1, TO_LEFT | TO_DOWN);
     (void)s.smooth(2, 2);
-    TEST_ASSERT_EQ((int)PIX_DIRTGRASS_LL1, (int)at(grid, 2, 2), "dirt top-right edge should map to LL1");
+    ASSERT_EQ((int)PIX_DIRTGRASS_LL1, (int)at(grid, 2, 2)) << "dirt top-right edge should map to LL1";
 
     at(grid, 2, 2) = PIX_DIRT_DARK_1;
     set_same_neighbors(grid, 2, 2, PIX_DIRT_DARK_1, PIX_GRASS1, TO_RIGHT | TO_UP);
     (void)s.smooth(2, 2);
-    TEST_ASSERT_EQ((int)PIX_DIRTGRASS_DARK_UR1, (int)at(grid, 2, 2), "dark dirt bottom-left edge should map to UR1");
+    ASSERT_EQ((int)PIX_DIRTGRASS_DARK_UR1, (int)at(grid, 2, 2)) << "dark dirt bottom-left edge should map to UR1";
 }
-REGISTER_TEST(test_smooth_water_tree_dirt_and_dark_dirt_edges);
 
-void test_smooth_round11_water_diagonals_and_tree_to_around_edges()
+
+TEST(SmoothCoverage, smooth_round11_water_diagonals_and_tree_to_around_edges)
 {
     FixedRandom rng0(0);
     GameContext c;
@@ -176,36 +175,36 @@ void test_smooth_round11_water_diagonals_and_tree_to_around_edges()
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_LEFT);
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_WATERGRASS_LR, (int)at(grid, cx, cy), "water up+left should map LR");
+    ASSERT_EQ((int)PIX_WATERGRASS_LR, (int)at(grid, cx, cy)) << "water up+left should map LR";
 
     at(grid, cx, cy) = PIX_WATER1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN | TO_RIGHT);
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)at(grid, cx, cy), "water down+right should map UL");
+    ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)at(grid, cx, cy)) << "water down+right should map UL";
 
     at(grid, cx, cy) = PIX_WATER1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN | TO_LEFT);
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_WATERGRASS_UR, (int)at(grid, cx, cy), "water down+left should map UR");
+    ASSERT_EQ((int)PIX_WATERGRASS_UR, (int)at(grid, cx, cy)) << "water down+left should map UR";
 
     // Trees around==TO_AROUND with diagonal edge checks (smooth.cpp:715-720).
     at(grid, cx, cy) = PIX_TREE_M1;
     set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_AROUND);
     set_diagonals(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, PIX_TREE_M1, PIX_TREE_M1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_TREE_MR, (int)at(grid, cx, cy), "trees missing upper-right should map MR");
+    ASSERT_EQ((int)PIX_TREE_MR, (int)at(grid, cx, cy)) << "trees missing upper-right should map MR";
 
     at(grid, cx, cy) = PIX_TREE_M1;
     set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_AROUND);
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_TREE_ML, (int)at(grid, cx, cy), "trees missing upper-left should map ML");
+    ASSERT_EQ((int)PIX_TREE_ML, (int)at(grid, cx, cy)) << "trees missing upper-left should map ML";
 }
-REGISTER_TEST(test_smooth_round11_water_diagonals_and_tree_to_around_edges);
 
-void test_smooth_round12_water_single_edge_and_tree_center_paths()
+
+TEST(SmoothCoverage, smooth_round12_water_single_edge_and_tree_center_paths)
 {
     FixedRandom rng0(0);
     GameContext c;
@@ -221,43 +220,39 @@ void test_smooth_round12_water_single_edge_and_tree_center_paths()
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP);
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LL || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LR,
-                "water up-only branch should map to one top shoreline variant");
+    ASSERT_TRUE((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LL || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LR) << "water up-only branch should map to one top shoreline variant";
 
     at(grid, cx, cy) = PIX_WATER1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN);
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UL || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UR,
-                "water down-only branch should map to one bottom shoreline variant");
+    ASSERT_TRUE((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UL || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UR) << "water down-only branch should map to one bottom shoreline variant";
 
     at(grid, cx, cy) = PIX_WATER1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_LEFT);
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UR || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LR,
-                "water left-only branch should map to one left shoreline variant");
+    ASSERT_TRUE((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UR || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LR) << "water left-only branch should map to one left shoreline variant";
 
     at(grid, cx, cy) = PIX_WATER1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_RIGHT);
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UL || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LL,
-                "water right-only branch should map to one right shoreline variant");
+    ASSERT_TRUE((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UL || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LL) << "water right-only branch should map to one right shoreline variant";
 
     at(grid, cx, cy) = PIX_WATER2;
     set_same_neighbors(grid, cx, cy, PIX_WATER2, PIX_GRASS1, 0);
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_WATER2, (int)at(grid, cx, cy), "water default branch should keep existing tile");
+    ASSERT_EQ((int)PIX_WATER2, (int)at(grid, cx, cy)) << "water default branch should keep existing tile";
 
     at(grid, cx, cy) = PIX_TREE_M1;
     set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_AROUND);
     set_diagonals(grid, cx, cy, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_TREE_M1, (int)at(grid, cx, cy), "trees around path with full diagonals should keep center variant");
+    ASSERT_EQ((int)PIX_TREE_M1, (int)at(grid, cx, cy)) << "trees around path with full diagonals should keep center variant";
 }
-REGISTER_TEST(test_smooth_round12_water_single_edge_and_tree_center_paths);
+
 
 static void set_diagonals(PixieData& g, int cx, int cy, unsigned char ul, unsigned char ur, unsigned char dl, unsigned char dr)
 {
@@ -267,7 +262,7 @@ static void set_diagonals(PixieData& g, int cx, int cy, unsigned char ul, unsign
     at(g, cx + 1, cy + 1) = dr;
 }
 
-void test_smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_branches()
+TEST(SmoothCoverage, smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_branches)
 {
     PixieData grid = make_grid(9, 9, PIX_GRASS1);
     smoother s;
@@ -558,14 +553,14 @@ void test_smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_branches()
         (void)s.smooth(cx, cy);
     }
     s.reset();
-    TEST_ASSERT_EQ(0, (int)s.smooth(), "smooth() without target should return 0");
+    ASSERT_EQ(0, (int)s.smooth()) << "smooth() without target should return 0";
     ExposedSmoother ex;
     ex.set_x_y(cx, cy, PIX_WATER1);
-    TEST_ASSERT(true, "deep smooth branch scenarios executed");
+    ASSERT_TRUE(true) << "deep smooth branch scenarios executed";
 }
-REGISTER_TEST(test_smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_branches);
 
-void test_smooth_round13_dark_grass_targeted_338_448_branches()
+
+TEST(SmoothCoverage, smooth_round13_dark_grass_targeted_338_448_branches)
 {
     FixedRandom rng0(0);
     GameContext c;
@@ -584,8 +579,7 @@ void test_smooth_round13_dark_grass_targeted_338_448_branches()
     at(grid, cx + 1, cy) = PIX_WATER1;
     at(grid, cx, cy - 1) = PIX_WATER1;
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, cx, cy),
-                   "dark grass down-only with non-grass right/up should map to B1");
+    ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, cx, cy)) << "dark grass down-only with non-grass right/up should map to B1";
 
     // around == (TO_RIGHT | TO_UP) with left/down non-grass should choose B1 (425-431).
     at(grid, cx, cy) = PIX_GRASS_DARK_1;
@@ -593,8 +587,7 @@ void test_smooth_round13_dark_grass_targeted_338_448_branches()
     at(grid, cx - 1, cy) = PIX_WATER1;
     at(grid, cx, cy + 1) = PIX_WATER1;
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, cx, cy),
-                   "dark grass up-right with non-grass left/down should map to B1");
+    ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, cx, cy)) << "dark grass up-right with non-grass left/down should map to B1";
 
     // around == (TO_RIGHT) with left non-grass should choose B1 (432-438).
     at(grid, cx, cy) = PIX_GRASS_DARK_1;
@@ -602,27 +595,24 @@ void test_smooth_round13_dark_grass_targeted_338_448_branches()
     at(grid, cx - 1, cy) = PIX_WATER1;
     at(grid, cx, cy - 1) = PIX_WATER1;
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, cx, cy),
-                   "dark grass right-only with non-grass left should map to B1");
+    ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, cx, cy)) << "dark grass right-only with non-grass left should map to B1";
 
     // around == TO_UP with down == TYPE_GRASS should choose UR (439-445).
     at(grid, cx, cy) = PIX_GRASS_DARK_1;
     set_same_neighbors(grid, cx, cy, PIX_GRASS_DARK_1, PIX_GRASS1, TO_UP);
     at(grid, cx, cy + 1) = PIX_GRASS1;
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)at(grid, cx, cy),
-                   "dark grass up-only with grass below should map to UR");
+    ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)at(grid, cx, cy)) << "dark grass up-only with grass below should map to UR";
 
     // around == 0 default branch should choose DARK_1 (446-447).
     at(grid, cx, cy) = PIX_GRASS_DARK_1;
     set_same_neighbors(grid, cx, cy, PIX_GRASS_DARK_1, PIX_GRASS1, 0);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_1, (int)at(grid, cx, cy),
-                   "dark grass default should map to DARK_1");
+    ASSERT_EQ((int)PIX_GRASS_DARK_1, (int)at(grid, cx, cy)) << "dark grass default should map to DARK_1";
 }
-REGISTER_TEST(test_smooth_round13_dark_grass_targeted_338_448_branches);
 
-void test_smooth_round14_wall_case11_and_case15_branch_matrix()
+
+TEST(SmoothCoverage, smooth_round14_wall_case11_and_case15_branch_matrix)
 {
     PixieData grid = make_grid(7, 7, PIX_GRASS1);
     smoother s;
@@ -639,8 +629,7 @@ void test_smooth_round14_wall_case11_and_case15_branch_matrix()
         at(grid, cx, cy) = PIX_H_WALL1;
         set_same_neighbors(grid, cx, cy, PIX_H_WALL1, PIX_GRASS1, TO_UP | TO_LEFT | TO_RIGHT);
         (void)s.smooth(cx, cy);
-        TEST_ASSERT_EQ((int)PIX_WALLSIDE_CRACK_C1, (int)at(grid, cx, cy),
-                       "wall case 11 should choose crack variant when rng hits 0");
+        ASSERT_EQ((int)PIX_WALLSIDE_CRACK_C1, (int)at(grid, cx, cy)) << "wall case 11 should choose crack variant when rng hits 0";
     }
 
     // case 15 branch where below and lower-left are walls => PIX_WALL3 (620-624).
@@ -655,8 +644,7 @@ void test_smooth_round14_wall_case11_and_case15_branch_matrix()
         GlobalContextGuard guard(&c);
         (void)s.smooth(cx, cy);
     }
-    TEST_ASSERT_EQ((int)PIX_WALL3, (int)at(grid, cx, cy),
-                   "wall case 15 should choose WALL3 when below and lower-left are walls");
+    ASSERT_EQ((int)PIX_WALL3, (int)at(grid, cx, cy)) << "wall case 15 should choose WALL3 when below and lower-left are walls";
 
     // case 15 branch where below is not wall and lower-left is wall => H_WALL1 (627-631).
     at(grid, cx, cy) = PIX_H_WALL1;
@@ -670,12 +658,11 @@ void test_smooth_round14_wall_case11_and_case15_branch_matrix()
         GlobalContextGuard guard(&c);
         (void)s.smooth(cx, cy);
     }
-    TEST_ASSERT_EQ((int)PIX_H_WALL1, (int)at(grid, cx, cy),
-                   "wall case 15 should choose H_WALL1 when below is open and lower-left is wall");
+    ASSERT_EQ((int)PIX_H_WALL1, (int)at(grid, cx, cy)) << "wall case 15 should choose H_WALL1 when below is open and lower-left is wall";
 }
-REGISTER_TEST(test_smooth_round14_wall_case11_and_case15_branch_matrix);
 
-void test_smooth_round6_query_genre_and_water_tree_edges()
+
+TEST(SmoothCoverage, smooth_round6_query_genre_and_water_tree_edges)
 {
     FixedRandom rng0(0);
     GameContext c;
@@ -688,11 +675,11 @@ void test_smooth_round6_query_genre_and_water_tree_edges()
 
     // query_x_y / query_genre_x_y front guards and genre mapping.
     s.reset();
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 0), "query_x_y should return fallback when target missing");
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 0)) << "query_x_y should return fallback when target missing";
     s.set_target(grid);
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(-1, 0), "query_x_y should reject negative x");
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 99), "query_x_y should reject out-of-range y");
-    TEST_ASSERT_EQ((int)TYPE_GRASS, (int)s.query_genre_x_y(0, 0), "grass tile should map to TYPE_GRASS");
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(-1, 0)) << "query_x_y should reject negative x";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 99)) << "query_x_y should reject out-of-range y";
+    ASSERT_EQ((int)TYPE_GRASS, (int)s.query_genre_x_y(0, 0)) << "grass tile should map to TYPE_GRASS";
 
     const int cx = 3;
     const int cy = 3;
@@ -701,43 +688,43 @@ void test_smooth_round6_query_genre_and_water_tree_edges()
     at(grid, cx, cy) = PIX_WATER1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_RIGHT);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_WATERGRASS_LL, (int)at(grid, cx, cy), "water around up|right should map to LL");
+    ASSERT_EQ((int)PIX_WATERGRASS_LL, (int)at(grid, cx, cy)) << "water around up|right should map to LL";
 
     at(grid, cx, cy) = PIX_WATER1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_LEFT);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_WATERGRASS_LR, (int)at(grid, cx, cy), "water around up|left should map to LR");
+    ASSERT_EQ((int)PIX_WATERGRASS_LR, (int)at(grid, cx, cy)) << "water around up|left should map to LR";
 
     at(grid, cx, cy) = PIX_WATER1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN | TO_RIGHT);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)at(grid, cx, cy), "water around down|right should map to UL");
+    ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)at(grid, cx, cy)) << "water around down|right should map to UL";
 
     at(grid, cx, cy) = PIX_WATER1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN | TO_LEFT);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_WATERGRASS_UR, (int)at(grid, cx, cy), "water around down|left should map to UR");
+    ASSERT_EQ((int)PIX_WATERGRASS_UR, (int)at(grid, cx, cy)) << "water around down|left should map to UR";
 
     at(grid, cx, cy) = PIX_WATER1;
     set_same_neighbors(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, 0);
     const int old = (int)at(grid, cx, cy);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ(old, (int)at(grid, cx, cy), "water default branch should keep existing tile");
+    ASSERT_EQ(old, (int)at(grid, cx, cy)) << "water default branch should keep existing tile";
 
     // Tree edge-only branches.
     at(grid, cx, cy) = PIX_TREE_M1;
     set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_RIGHT);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_TREE_B1, (int)at(grid, cx, cy), "tree around right-only should map to B1");
+    ASSERT_EQ((int)PIX_TREE_B1, (int)at(grid, cx, cy)) << "tree around right-only should map to B1";
 
     at(grid, cx, cy) = PIX_TREE_M1;
     set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_UP);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_TREE_B1, (int)at(grid, cx, cy), "tree around up-only should map to B1");
+    ASSERT_EQ((int)PIX_TREE_B1, (int)at(grid, cx, cy)) << "tree around up-only should map to B1";
 }
-REGISTER_TEST(test_smooth_round6_query_genre_and_water_tree_edges);
 
-void test_smooth_round6_dark_grass_and_water_single_edge_switches()
+
+TEST(SmoothCoverage, smooth_round6_dark_grass_and_water_single_edge_switches)
 {
     PixieData grid = make_grid(7, 7, PIX_GRASS1);
     smoother s;
@@ -797,11 +784,11 @@ void test_smooth_round6_dark_grass_and_water_single_edge_switches()
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_TREE_M1, PIX_GRASS1, PIX_TREE_M1);
     (void)s.smooth(cx, cy);
 
-    TEST_ASSERT(true, "dark-grass/water/tree switch branches executed");
+    ASSERT_TRUE(true) << "dark-grass/water/tree switch branches executed";
 }
-REGISTER_TEST(test_smooth_round6_dark_grass_and_water_single_edge_switches);
 
-void test_smooth_round7a_grass_dark_wall_and_water_specific_branches()
+
+TEST(SmoothCoverage, smooth_round7a_grass_dark_wall_and_water_specific_branches)
 {
     const int cx = 3;
     const int cy = 3;
@@ -814,25 +801,25 @@ void test_smooth_round7a_grass_dark_wall_and_water_specific_branches()
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_LEFT | TO_DOWN);
     set_diagonals(grid, cx, cy, PIX_WATER1, PIX_GRASS1, PIX_WATER1, PIX_WATER1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_GRASSWATER_LL, (int)at(grid, cx, cy), "grass-water LL branch");
+    ASSERT_EQ((int)PIX_GRASSWATER_LL, (int)at(grid, cx, cy)) << "grass-water LL branch";
 
     at(grid, cx, cy) = PIX_GRASS1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_RIGHT);
     set_diagonals(grid, cx, cy, PIX_WATER1, PIX_WATER1, PIX_GRASS1, PIX_WATER1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_GRASSWATER_UR, (int)at(grid, cx, cy), "grass-water UR branch");
+    ASSERT_EQ((int)PIX_GRASSWATER_UR, (int)at(grid, cx, cy)) << "grass-water UR branch";
 
     at(grid, cx, cy) = PIX_GRASS1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_LEFT);
     set_diagonals(grid, cx, cy, PIX_WATER1, PIX_WATER1, PIX_WATER1, PIX_GRASS1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_GRASSWATER_UL, (int)at(grid, cx, cy), "grass-water UL branch");
+    ASSERT_EQ((int)PIX_GRASSWATER_UL, (int)at(grid, cx, cy)) << "grass-water UL branch";
 
     at(grid, cx, cy) = PIX_GRASS1;
     set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_RIGHT | TO_DOWN);
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_WATER1, PIX_WATER1, PIX_WATER1);
     (void)s.smooth(cx, cy);
-    TEST_ASSERT_EQ((int)PIX_GRASSWATER_LR, (int)at(grid, cx, cy), "grass-water LR branch");
+    ASSERT_EQ((int)PIX_GRASSWATER_LR, (int)at(grid, cx, cy)) << "grass-water LR branch";
 
     // TYPE_GRASS_DARK around==(TO_UP|TO_DOWN|TO_LEFT) rng(2) branch.
     for (int seed = 0; seed < 2; seed++)
@@ -881,17 +868,17 @@ void test_smooth_round7a_grass_dark_wall_and_water_specific_branches()
         (void)s.smooth(cx, cy);
     }
 }
-REGISTER_TEST(test_smooth_round7a_grass_dark_wall_and_water_specific_branches);
 
-void test_smooth_round7a_query_guards_and_tree_branches()
+
+TEST(SmoothCoverage, smooth_round7a_query_guards_and_tree_branches)
 {
     smoother s;
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 0), "query_x_y guard with no grid");
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 0)) << "query_x_y guard with no grid";
 
     PixieData grid = make_grid(5, 5, PIX_GRASS1);
     s.set_target(grid);
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(-1, 0), "query_x_y negative guard");
-    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(99, 0), "query_x_y maxx guard");
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(-1, 0)) << "query_x_y negative guard";
+    ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(99, 0)) << "query_x_y maxx guard";
 
     const int cx = 2;
     const int cy = 2;
@@ -912,4 +899,4 @@ void test_smooth_round7a_query_guards_and_tree_branches()
     set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_RIGHT | TO_UP);
     (void)s.smooth(cx, cy);
 }
-REGISTER_TEST(test_smooth_round7a_query_guards_and_tree_branches);
+

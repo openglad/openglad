@@ -10,7 +10,7 @@
 extern "C" void __gcov_dump();
 #endif
 
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include "test_framework.h"
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>

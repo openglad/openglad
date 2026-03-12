@@ -23,34 +23,34 @@ static std::unique_ptr<walker> make_guy(char family, unsigned char team = 0, sho
 // walker::death - various family-specific death behaviors
 // ---------------------------------------------------------------------------
 
-void test_walker_death_soldier()
+TEST(WalkerDeath, soldier)
 {
     auto w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_soldier);
 
-void test_walker_death_mage()
+
+TEST(WalkerDeath, mage)
 {
     auto w = make_guy(FAMILY_MAGE, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_mage);
 
-void test_walker_death_skeleton()
+
+TEST(WalkerDeath, skeleton)
 {
     auto w = make_guy(FAMILY_SKELETON, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_skeleton);
 
-void test_walker_death_fire_elemental2()
+
+TEST(WalkerDeath, fire_elemental2)
 {
     auto w = make_guy(FAMILY_FIREELEMENTAL, 0);
     if (!w) return;
@@ -58,18 +58,18 @@ void test_walker_death_fire_elemental2()
     w->death();
     // Fire elemental death should create an explosion
 }
-REGISTER_TEST(test_walker_death_fire_elemental2);
 
-void test_walker_death_small_slime()
+
+TEST(WalkerDeath, small_slime)
 {
     auto w = make_guy(FAMILY_SMALL_SLIME, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_small_slime);
 
-void test_walker_death_medium_slime()
+
+TEST(WalkerDeath, medium_slime)
 {
     auto w = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Living, FAMILY_MEDIUM_SLIME);
     if (!w) return;
@@ -77,9 +77,9 @@ void test_walker_death_medium_slime()
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_medium_slime);
 
-void test_walker_death_large_slime()
+
+TEST(WalkerDeath, large_slime)
 {
     auto w = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Living, FAMILY_SLIME);
     if (!w) return;
@@ -87,119 +87,119 @@ void test_walker_death_large_slime()
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_large_slime);
 
-void test_walker_death_ghost()
+
+TEST(WalkerDeath, ghost)
 {
     auto w = make_guy(FAMILY_GHOST, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_ghost);
 
-void test_walker_death_faerie()
+
+TEST(WalkerDeath, faerie)
 {
     auto w = make_guy(FAMILY_FAERIE, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_faerie);
 
-void test_walker_death_myguy_present()
+
+TEST(WalkerDeath, myguy_present)
 {
     auto w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
-    TEST_ASSERT(w->myguy != nullptr, "should have myguy from guy::create_walker_owned");
+    ASSERT_TRUE(w->myguy != nullptr) << "should have myguy from guy::create_walker_owned";
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_myguy_present);
 
-void test_walker_death_orc()
+
+TEST(WalkerDeath, orc)
 {
     auto w = make_guy(FAMILY_ORC, 1);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_orc);
 
-void test_walker_death_barbarian()
+
+TEST(WalkerDeath, barbarian)
 {
     auto w = make_guy(FAMILY_BARBARIAN, 1);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_barbarian);
 
-void test_walker_death_archer()
+
+TEST(WalkerDeath, archer)
 {
     auto w = make_guy(FAMILY_ARCHER, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_archer);
 
-void test_walker_death_cleric()
+
+TEST(WalkerDeath, cleric)
 {
     auto w = make_guy(FAMILY_CLERIC, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_cleric);
 
-void test_walker_death_druid()
+
+TEST(WalkerDeath, druid)
 {
     auto w = make_guy(FAMILY_DRUID, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_druid);
 
-void test_walker_death_thief()
+
+TEST(WalkerDeath, thief)
 {
     auto w = make_guy(FAMILY_THIEF, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_thief);
 
-void test_walker_death_elf()
+
+TEST(WalkerDeath, elf)
 {
     auto w = make_guy(FAMILY_ELF, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
 }
-REGISTER_TEST(test_walker_death_elf);
+
 
 // ---------------------------------------------------------------------------
 // walker::death double-call protection
 // ---------------------------------------------------------------------------
 
-void test_walker_death_double_call()
+TEST(WalkerDeath, double_call)
 {
     auto w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     w->dead = 1;
     w->death();
     bool result = w->death();
-    TEST_ASSERT(!result, "second death call returns false");
+    ASSERT_TRUE(!result) << "second death call returns false";
 }
-REGISTER_TEST(test_walker_death_double_call);
+
 
 // ---------------------------------------------------------------------------
 // walker::compute_outline
 // ---------------------------------------------------------------------------
 
-void test_walker_compute_outline_invulnerable()
+TEST(WalkerDeath, walker_compute_outline_invulnerable)
 {
     auto w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -211,9 +211,9 @@ void test_walker_compute_outline_invulnerable()
     w->compute_outline(vs ? vs->control : nullptr);
 
 }
-REGISTER_TEST(test_walker_compute_outline_invulnerable);
 
-void test_walker_compute_outline_flying()
+
+TEST(WalkerDeath, walker_compute_outline_flying)
 {
     auto w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -225,9 +225,9 @@ void test_walker_compute_outline_flying()
     w->compute_outline(vs ? vs->control : nullptr);
 
 }
-REGISTER_TEST(test_walker_compute_outline_flying);
 
-void test_walker_compute_outline_invisible()
+
+TEST(WalkerDeath, walker_compute_outline_invisible)
 {
     auto w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -239,9 +239,9 @@ void test_walker_compute_outline_invisible()
     w->compute_outline(vs ? vs->control : nullptr);
 
 }
-REGISTER_TEST(test_walker_compute_outline_invisible);
 
-void test_walker_compute_outline_no_status()
+
+TEST(WalkerDeath, walker_compute_outline_no_status)
 {
     auto w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -253,4 +253,4 @@ void test_walker_compute_outline_no_status()
     w->compute_outline(vs ? vs->control : nullptr);
 
 }
-REGISTER_TEST(test_walker_compute_outline_no_status);
+

@@ -40,7 +40,7 @@ int mem_read_handler(void* data, unsigned char* buffer, std::size_t size, std::s
 
 } // namespace
 
-void test_og_file_read_write_seek_and_pixie_paths()
+TEST(IoPlatformCoverage, og_file_read_write_seek_and_pixie_paths)
 {
     namespace fs = std::filesystem;
     const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
@@ -52,33 +52,32 @@ void test_og_file_read_write_seek_and_pixie_paths()
     fs::create_directories(tmp_dir, ec);
 
     auto out = og::io::og_open_write(bin_path.string().c_str());
-    TEST_ASSERT(out != nullptr, "og_open_write should create file");
+    ASSERT_TRUE(out != nullptr) << "og_open_write should create file";
     if (!out)
         return;
 
     const unsigned char payload[] = {1, 2, 3, 4, 5};
-    TEST_ASSERT(og::io::og_write_exact(*out, payload, 1, sizeof(payload)), "write payload");
-    TEST_ASSERT_EQ(5, static_cast<int>(out->tell()), "tell after write");
-    TEST_ASSERT_EQ(-1, static_cast<int>(out->seek(0, 99)), "invalid whence should fail");
-    TEST_ASSERT_EQ(0, static_cast<int>(out->seek(0, 0)), "seek set should work");
-    TEST_ASSERT_EQ(0, static_cast<int>(out->write(payload, 0, 1)), "size=0 write should return 0");
+    ASSERT_TRUE(og::io::og_write_exact(*out, payload, 1, sizeof(payload))) << "write payload";
+    ASSERT_EQ(5, static_cast<int>(out->tell())) << "tell after write";
+    ASSERT_EQ(-1, static_cast<int>(out->seek(0, 99))) << "invalid whence should fail";
+    ASSERT_EQ(0, static_cast<int>(out->seek(0, 0))) << "seek set should work";
+    ASSERT_EQ(0, static_cast<int>(out->write(payload, 0, 1))) << "size=0 write should return 0";
     out.reset();
 
     auto in = og::io::og_open_read(bin_path.string().c_str(), true);
-    TEST_ASSERT(in != nullptr, "og_open_read should open existing file");
+    ASSERT_TRUE(in != nullptr) << "og_open_read should open existing file";
     if (!in)
         return;
 
     unsigned char got[5] = {};
-    TEST_ASSERT_EQ(0, static_cast<int>(in->read(got, 0, 1)), "size=0 read should return 0");
-    TEST_ASSERT(og::io::og_read_exact(*in, got, 1, sizeof(got)), "read payload");
-    TEST_ASSERT(std::memcmp(payload, got, sizeof(payload)) == 0, "roundtrip payload");
-    TEST_ASSERT(og::io::og_open_read("temp/io_platform_cov/does_not_exist.bin") == nullptr,
-                "missing file should return null");
+    ASSERT_EQ(0, static_cast<int>(in->read(got, 0, 1))) << "size=0 read should return 0";
+    ASSERT_TRUE(og::io::og_read_exact(*in, got, 1, sizeof(got))) << "read payload";
+    ASSERT_TRUE(std::memcmp(payload, got, sizeof(payload)) == 0) << "roundtrip payload";
+    ASSERT_TRUE(og::io::og_open_read("temp/io_platform_cov/does_not_exist.bin") == nullptr) << "missing file should return null";
 
     {
         std::FILE* f = std::fopen(pix_ok.string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create valid pix");
+        ASSERT_TRUE(f != nullptr) << "create valid pix";
         if (!f)
             return;
         const unsigned char header[] = {2, 2, 1}; // frames=2, w=2, h=1 => 4-byte payload
@@ -89,14 +88,14 @@ void test_og_file_read_write_seek_and_pixie_paths()
     }
 
     PixieData ok = read_pixie_file(pix_ok.string().c_str());
-    TEST_ASSERT_EQ(2, static_cast<int>(ok.frames), "pix frames parsed");
-    TEST_ASSERT_EQ(2, static_cast<int>(ok.w), "pix width parsed");
-    TEST_ASSERT_EQ(1, static_cast<int>(ok.h), "pix height parsed");
-    TEST_ASSERT(ok.data != nullptr, "pix payload present");
+    ASSERT_EQ(2, static_cast<int>(ok.frames)) << "pix frames parsed";
+    ASSERT_EQ(2, static_cast<int>(ok.w)) << "pix width parsed";
+    ASSERT_EQ(1, static_cast<int>(ok.h)) << "pix height parsed";
+    ASSERT_TRUE(ok.data != nullptr) << "pix payload present";
 
     {
         std::FILE* f = std::fopen(pix_bad.string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create truncated pix");
+        ASSERT_TRUE(f != nullptr) << "create truncated pix";
         if (!f)
             return;
         const unsigned char header[] = {1, 3, 1}; // expects 3 payload bytes
@@ -107,11 +106,11 @@ void test_og_file_read_write_seek_and_pixie_paths()
     }
 
     PixieData bad = read_pixie_file(pix_bad.string().c_str());
-    TEST_ASSERT(bad.data == nullptr, "truncated pix should fail payload read");
+    ASSERT_TRUE(bad.data == nullptr) << "truncated pix should fail payload read";
 }
-REGISTER_TEST(test_og_file_read_write_seek_and_pixie_paths);
 
-void test_resources_filesystem_api_mount_read_write_exists()
+
+TEST(IoPlatformCoverage, resources_filesystem_api_mount_read_write_exists)
 {
     namespace fs = std::filesystem;
     const fs::path base = fs::path("temp") / "resources_fs_api";
@@ -121,7 +120,7 @@ void test_resources_filesystem_api_mount_read_write_exists()
     const fs::path mounted_input = base / "mounted_input.bin";
     {
         std::FILE* f = std::fopen(mounted_input.string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create mounted_input.bin");
+        ASSERT_TRUE(f != nullptr) << "create mounted_input.bin";
         if (!f)
             return;
         const unsigned char payload[] = {1, 3, 5, 7};
@@ -129,38 +128,29 @@ void test_resources_filesystem_api_mount_read_write_exists()
         std::fclose(f);
     }
 
-    TEST_ASSERT(og::resources::mount(base.string().c_str(), nullptr, 1),
-                "filesystem mount should succeed");
-    TEST_ASSERT(og::resources::exists("mounted_input.bin"),
-                "filesystem exists should see mounted file");
+    ASSERT_TRUE(og::resources::mount(base.string().c_str(), nullptr, 1)) << "filesystem mount should succeed";
+    ASSERT_TRUE(og::resources::exists("mounted_input.bin")) << "filesystem exists should see mounted file";
 
-    TEST_ASSERT(og::resources::set_write_dir(base.string()),
-                "filesystem set_write_dir should allow temp writes");
+    ASSERT_TRUE(og::resources::set_write_dir(base.string())) << "filesystem set_write_dir should allow temp writes";
     const unsigned char write_payload[] = {9, 8, 7, 6};
-    TEST_ASSERT(og::resources::write_file("write_out.bin", write_payload,
-                                          sizeof(write_payload)),
-                "filesystem write_file should succeed");
-    TEST_ASSERT(og::resources::exists("write_out.bin"),
-                "filesystem exists should see written file");
+    ASSERT_TRUE(og::resources::write_file("write_out.bin", write_payload,
+                                          sizeof(write_payload))) << "filesystem write_file should succeed";
+    ASSERT_TRUE(og::resources::exists("write_out.bin")) << "filesystem exists should see written file";
 
     const auto written_bytes = og::resources::read_file("write_out.bin");
-    TEST_ASSERT(written_bytes.size() == sizeof(write_payload),
-                "filesystem read_file should read written bytes");
+    ASSERT_TRUE(written_bytes.size() == sizeof(write_payload)) << "filesystem read_file should read written bytes";
     if (written_bytes.size() == sizeof(write_payload))
     {
-        TEST_ASSERT(written_bytes[0] == 9 && written_bytes[1] == 8 &&
-                    written_bytes[2] == 7 && written_bytes[3] == 6,
-                    "written payload should round-trip");
+        ASSERT_TRUE(written_bytes[0] == 9 && written_bytes[1] == 8 &&
+                    written_bytes[2] == 7 && written_bytes[3] == 6) << "written payload should round-trip";
     }
 
-    TEST_ASSERT(og::resources::unmount(base.string().c_str()),
-                "filesystem unmount should succeed");
-    TEST_ASSERT(og::resources::set_write_dir(get_user_path()),
-                "filesystem write dir should restore to user path");
+    ASSERT_TRUE(og::resources::unmount(base.string().c_str())) << "filesystem unmount should succeed";
+    ASSERT_TRUE(og::resources::set_write_dir(get_user_path())) << "filesystem write dir should restore to user path";
 }
-REGISTER_TEST(test_resources_filesystem_api_mount_read_write_exists);
 
-void test_yaml_stream_emitter_and_parser_paths()
+
+TEST(IoPlatformCoverage, yaml_stream_emitter_and_parser_paths)
 {
     const std::string yaml_text =
         "root:\n"
@@ -187,26 +177,26 @@ void test_yaml_stream_emitter_and_parser_paths()
     } while (r == og::io::YamlParseResult::Ok);
 
     parser.close_input();
-    TEST_ASSERT(r == og::io::YamlParseResult::Done, "parse should complete successfully");
-    TEST_ASSERT(saw_pair, "parser should see pair events");
-    TEST_ASSERT(saw_scalar, "parser should see scalar events");
-    TEST_ASSERT(saw_begin_mapping, "parser should see mapping events");
+    ASSERT_TRUE(r == og::io::YamlParseResult::Done) << "parse should complete successfully";
+    ASSERT_TRUE(saw_pair) << "parser should see pair events";
+    ASSERT_TRUE(saw_scalar) << "parser should see scalar events";
+    ASSERT_TRUE(saw_begin_mapping) << "parser should see mapping events";
 }
-REGISTER_TEST(test_yaml_stream_emitter_and_parser_paths);
 
-void test_yaml_stream_sequence_emit_and_parse_error_path()
+
+TEST(IoPlatformCoverage, yaml_stream_sequence_emit_and_parse_error_path)
 {
     // Exercise emitter sequence APIs and parser error mapping.
     auto out = og::io::og_open_write("temp/io_platform_cov_yaml_seq.yaml");
-    TEST_ASSERT(out != nullptr, "yaml output file should open");
+    ASSERT_TRUE(out != nullptr) << "yaml output file should open";
     if (!out)
         return;
 
     og::io::YamlEmitter emitter;
-    TEST_ASSERT(emitter.set_output(ogfile_write_handler, out.get()), "yaml emitter set_output should succeed");
-    TEST_ASSERT(emitter.emit_begin_sequence(), "emit_begin_sequence should succeed");
-    TEST_ASSERT(emitter.emit_scalar("entry"), "emit_scalar in sequence should succeed");
-    TEST_ASSERT(emitter.emit_end_sequence(), "emit_end_sequence should succeed");
+    ASSERT_TRUE(emitter.set_output(ogfile_write_handler, out.get())) << "yaml emitter set_output should succeed";
+    ASSERT_TRUE(emitter.emit_begin_sequence()) << "emit_begin_sequence should succeed";
+    ASSERT_TRUE(emitter.emit_scalar("entry")) << "emit_scalar in sequence should succeed";
+    ASSERT_TRUE(emitter.emit_end_sequence()) << "emit_end_sequence should succeed";
     emitter.close_output();
     out.reset();
 
@@ -222,11 +212,11 @@ void test_yaml_stream_sequence_emit_and_parse_error_path()
         guard++;
     }
     parser.close_input();
-    TEST_ASSERT(guard > 0, "parser should process at least one malformed-yaml step");
+    ASSERT_TRUE(guard > 0) << "parser should process at least one malformed-yaml step";
 }
-REGISTER_TEST(test_yaml_stream_sequence_emit_and_parse_error_path);
 
-void test_yaml_stream_alias_and_sequence_event_paths()
+
+TEST(IoPlatformCoverage, yaml_stream_alias_and_sequence_event_paths)
 {
     const std::string yaml_text =
         "a: &anchor 1\n"
@@ -253,13 +243,13 @@ void test_yaml_stream_alias_and_sequence_event_paths()
     } while (r == og::io::YamlParseResult::Ok);
 
     parser.close_input();
-    TEST_ASSERT(r == og::io::YamlParseResult::Done, "alias/sequence parse should complete");
-    TEST_ASSERT(saw_alias, "parser should emit alias events");
-    TEST_ASSERT(saw_begin_sequence && saw_end_sequence, "parser should emit sequence begin/end events");
+    ASSERT_TRUE(r == og::io::YamlParseResult::Done) << "alias/sequence parse should complete";
+    ASSERT_TRUE(saw_alias) << "parser should emit alias events";
+    ASSERT_TRUE(saw_begin_sequence && saw_end_sequence) << "parser should emit sequence begin/end events";
 }
-REGISTER_TEST(test_yaml_stream_alias_and_sequence_event_paths);
 
-void test_yaml_stream_empty_input_and_read_failure_paths()
+
+TEST(IoPlatformCoverage, yaml_stream_empty_input_and_read_failure_paths)
 {
     MemReadCtx empty_reader{"", 0};
     og::io::YamlParser parser;
@@ -271,9 +261,8 @@ void test_yaml_stream_empty_input_and_read_failure_paths()
         empty_r = parser.parse_next();
         empty_steps++;
     }
-    TEST_ASSERT(empty_steps > 0, "empty input should produce at least one parser step");
-    TEST_ASSERT(empty_r == og::io::YamlParseResult::Done || empty_r == og::io::YamlParseResult::Error,
-                "empty input should eventually terminate parse");
+    ASSERT_TRUE(empty_steps > 0) << "empty input should produce at least one parser step";
+    ASSERT_TRUE(empty_r == og::io::YamlParseResult::Done || empty_r == og::io::YamlParseResult::Error) << "empty input should eventually terminate parse";
     parser.close_input();
 
     struct FailReadCtx {
@@ -292,16 +281,15 @@ void test_yaml_stream_empty_input_and_read_failure_paths()
         fail_r = fail_parser.parse_next();
         fail_steps++;
     }
-    TEST_ASSERT(fail_steps > 0, "read failure stream should produce at least one parser step");
-    TEST_ASSERT(fail_r == og::io::YamlParseResult::Error ||
+    ASSERT_TRUE(fail_steps > 0) << "read failure stream should produce at least one parser step";
+    ASSERT_TRUE(fail_r == og::io::YamlParseResult::Error ||
                 fail_r == og::io::YamlParseResult::Done ||
-                fail_steps == 16,
-                "read failure should either terminate or remain bounded by guard");
+                fail_steps == 16) << "read failure should either terminate or remain bounded by guard";
     fail_parser.close_input();
 }
-REGISTER_TEST(test_yaml_stream_empty_input_and_read_failure_paths);
 
-void test_zip_api_roundtrip_and_error_paths()
+
+TEST(IoPlatformCoverage, zip_api_roundtrip_and_error_paths)
 {
     namespace fs = std::filesystem;
     const fs::path base = fs::path("temp") / "io_platform_cov_zip_in";
@@ -319,7 +307,7 @@ void test_zip_api_roundtrip_and_error_paths()
 
     {
         std::FILE* f = std::fopen((base / "sub" / "payload.txt").string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create zip input payload");
+        ASSERT_TRUE(f != nullptr) << "create zip input payload";
         if (!f)
             return;
         const char* text = "zip payload";
@@ -329,53 +317,38 @@ void test_zip_api_roundtrip_and_error_paths()
 
     const ArchiveIoError zip_missing_parent_err =
         og::io::zip_contents_with_error(base.string(), missing_parent_zip.string());
-    TEST_ASSERT(
-        zip_missing_parent_err == ArchiveIoError::OpenArchiveFailed ||
-        zip_missing_parent_err == ArchiveIoError::CloseArchiveFailed,
-        "zip with missing parent should fail");
+    ASSERT_TRUE(zip_missing_parent_err == ArchiveIoError::OpenArchiveFailed ||
+        zip_missing_parent_err == ArchiveIoError::CloseArchiveFailed) << "zip with missing parent should fail";
 
-    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
-                   static_cast<int>(og::io::zip_contents_with_error(base.string(), archive.string())),
-                   "zip should succeed");
-    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenArchiveFailed),
-                   static_cast<int>(og::io::unzip_into_with_error("temp/io_platform_cov_missing.zip", out.string())),
-                   "unzip missing archive should fail");
-    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
-                   static_cast<int>(og::io::unzip_into_with_error(archive.string(), out.string())),
-                   "unzip should succeed");
+    ASSERT_EQ(static_cast<int>(ArchiveIoError::None), static_cast<int>(og::io::zip_contents_with_error(base.string(), archive.string()))) << "zip should succeed";
+    ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenArchiveFailed), static_cast<int>(og::io::unzip_into_with_error("temp/io_platform_cov_missing.zip", out.string()))) << "unzip missing archive should fail";
+    ASSERT_EQ(static_cast<int>(ArchiveIoError::None), static_cast<int>(og::io::unzip_into_with_error(archive.string(), out.string()))) << "unzip should succeed";
 
     const fs::path extracted = out / "sub" / "payload.txt";
-    TEST_ASSERT(fs::exists(extracted, ec), "extracted payload should exist");
-    TEST_ASSERT(fs::exists(out / "emptydir", ec), "empty directory should be preserved");
+    ASSERT_TRUE(fs::exists(extracted, ec)) << "extracted payload should exist";
+    ASSERT_TRUE(fs::exists(out / "emptydir", ec)) << "empty directory should be preserved";
 }
-REGISTER_TEST(test_zip_api_roundtrip_and_error_paths);
 
-void test_platform_io_campaign_error_codes()
+
+TEST(IoPlatformCoverage, platform_io_campaign_error_codes)
 {
     const std::string prev = get_mounted_campaign();
     set_mounted_campaign_for_testing("");
 
-    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::EmptyId),
-                   static_cast<int>(mount_campaign_package_with_error("")),
-                   "empty campaign id should return EmptyId");
-    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::EmptyId),
-                   static_cast<int>(remount_campaign_package_with_error()),
-                   "remount with no mounted campaign should return EmptyId");
+    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::EmptyId), static_cast<int>(mount_campaign_package_with_error(""))) << "empty campaign id should return EmptyId";
+    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::EmptyId), static_cast<int>(remount_campaign_package_with_error())) << "remount with no mounted campaign should return EmptyId";
 
     std::map<std::string, int> current_levels;
     const CampaignLoadResult r = load_campaign_with_error("definitely_missing_campaign", current_levels, 7);
-    TEST_ASSERT_EQ(static_cast<int>(CampaignLoadError::MountFailed),
-                   static_cast<int>(r.error),
-                   "load_campaign_with_error should report mount failure");
-    TEST_ASSERT_EQ(7, r.current_level, "current level should preserve input first_level");
-    TEST_ASSERT_EQ(-2, load_campaign("definitely_missing_campaign", current_levels, 7),
-                   "load_campaign should map mount failure to -2");
+    ASSERT_EQ(static_cast<int>(CampaignLoadError::MountFailed), static_cast<int>(r.error)) << "load_campaign_with_error should report mount failure";
+    ASSERT_EQ(7, r.current_level) << "current level should preserve input first_level";
+    ASSERT_EQ(-2, load_campaign("definitely_missing_campaign", current_levels, 7)) << "load_campaign should map mount failure to -2";
 
     set_mounted_campaign_for_testing(prev);
 }
-REGISTER_TEST(test_platform_io_campaign_error_codes);
 
-void test_platform_io_batch3_mount_switch_and_listing_filters()
+
+TEST(IoPlatformCoverage, platform_io_batch3_mount_switch_and_listing_filters)
 {
     namespace fs = std::filesystem;
     const std::string prev = get_mounted_campaign();
@@ -388,60 +361,51 @@ void test_platform_io_batch3_mount_switch_and_listing_filters()
 
     // Hit prev==id short-circuit and prev!=id unmount-failure branch.
     set_mounted_campaign_for_testing("same.id");
-    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
-                   static_cast<int>(mount_campaign_package_with_error("same.id")),
-                   "mount should short-circuit when requested id is already mounted");
+    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None), static_cast<int>(mount_campaign_package_with_error("same.id"))) << "mount should short-circuit when requested id is already mounted";
     set_mounted_campaign_for_testing("definitely.not.a.campaign");
-    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::UnmountFailed),
-                   static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator")),
-                   "mount should report unmount failure when previous mounted id is invalid");
+    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::UnmountFailed), static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator"))) << "mount should report unmount failure when previous mounted id is invalid";
 
     // list_campaigns should filter non-.glad files.
     {
         std::FILE* f = std::fopen((campaigns_dir / "batch3_filter_marker.glad").string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create .glad marker");
+        ASSERT_TRUE(f != nullptr) << "create .glad marker";
         if (f) std::fclose(f);
     }
     {
         std::FILE* f = std::fopen((campaigns_dir / "batch3_filter_marker.txt").string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create non-glad marker");
+        ASSERT_TRUE(f != nullptr) << "create non-glad marker";
         if (f) std::fclose(f);
     }
     const std::list<std::string> campaigns = list_campaigns();
-    TEST_ASSERT(std::find(campaigns.begin(), campaigns.end(), "batch3_filter_marker") != campaigns.end(),
-                "list_campaigns should keep .glad ids");
-    TEST_ASSERT(std::find(campaigns.begin(), campaigns.end(), "batch3_filter_marker.txt") == campaigns.end(),
-                "list_campaigns should filter non-.glad names");
+    ASSERT_TRUE(std::find(campaigns.begin(), campaigns.end(), "batch3_filter_marker") != campaigns.end()) << "list_campaigns should keep .glad ids";
+    ASSERT_TRUE(std::find(campaigns.begin(), campaigns.end(), "batch3_filter_marker.txt") == campaigns.end()) << "list_campaigns should filter non-.glad names";
 
     // list_levels/list_levels_v should filter malformed entries and keep strict positive scen ids.
     {
         std::FILE* f = std::fopen((scen_dir / "batch3_note.txt").string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create non-fss level marker");
+        ASSERT_TRUE(f != nullptr) << "create non-fss level marker";
         if (f) std::fclose(f);
     }
     {
         std::FILE* f = std::fopen((scen_dir / "foo.fss").string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create non-scen fss marker");
+        ASSERT_TRUE(f != nullptr) << "create non-scen fss marker";
         if (f) std::fclose(f);
     }
     {
         std::FILE* f = std::fopen((scen_dir / "scen0.fss").string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create zero-id scen marker");
+        ASSERT_TRUE(f != nullptr) << "create zero-id scen marker";
         if (f) std::fclose(f);
     }
     {
         std::FILE* f = std::fopen((scen_dir / "scen987.fss").string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create valid scen marker");
+        ASSERT_TRUE(f != nullptr) << "create valid scen marker";
         if (f) std::fclose(f);
     }
     const std::list<int> levels = list_levels();
     const std::vector<int> levels_v = list_levels_v();
-    TEST_ASSERT(std::find(levels.begin(), levels.end(), 987) != levels.end(),
-                "list_levels should include strict positive scen id");
-    TEST_ASSERT(std::find(levels.begin(), levels.end(), 0) == levels.end(),
-                "list_levels should reject scen0");
-    TEST_ASSERT(std::find(levels_v.begin(), levels_v.end(), 987) != levels_v.end(),
-                "list_levels_v should include strict positive scen id");
+    ASSERT_TRUE(std::find(levels.begin(), levels.end(), 987) != levels.end()) << "list_levels should include strict positive scen id";
+    ASSERT_TRUE(std::find(levels.begin(), levels.end(), 0) == levels.end()) << "list_levels should reject scen0";
+    ASSERT_TRUE(std::find(levels_v.begin(), levels_v.end(), 987) != levels_v.end()) << "list_levels_v should include strict positive scen id";
 
     // delete_level early return path when no mounted campaign.
     set_mounted_campaign_for_testing("");
@@ -455,31 +419,27 @@ void test_platform_io_batch3_mount_switch_and_listing_filters()
     std::remove((scen_dir / "scen987.fss").string().c_str());
     set_mounted_campaign_for_testing(prev);
 }
-REGISTER_TEST(test_platform_io_batch3_mount_switch_and_listing_filters);
 
-void test_platform_io_remount_allows_files_still_open_path()
+
+TEST(IoPlatformCoverage, platform_io_remount_allows_files_still_open_path)
 {
     const std::string prev = get_mounted_campaign();
 
-    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
-                   static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator")),
-                   "mount default campaign should succeed");
+    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None), static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator"))) << "mount default campaign should succeed";
 
     PHYSFS_File* held = PHYSFS_openRead("campaign.yaml");
-    TEST_ASSERT(held != nullptr, "campaign.yaml should open to hold a live PhysFS handle");
+    ASSERT_TRUE(held != nullptr) << "campaign.yaml should open to hold a live PhysFS handle";
     if (held)
     {
-        TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
-                       static_cast<int>(remount_campaign_package_with_error()),
-                       "remount should gracefully no-op when files are still open");
+        ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None), static_cast<int>(remount_campaign_package_with_error())) << "remount should gracefully no-op when files are still open";
         PHYSFS_close(held);
     }
 
     set_mounted_campaign_for_testing(prev);
 }
-REGISTER_TEST(test_platform_io_remount_allows_files_still_open_path);
 
-void test_og_file_batch3_physfs_seek_and_path_overloads()
+
+TEST(IoPlatformCoverage, og_file_batch3_physfs_seek_and_path_overloads)
 {
     namespace fs = std::filesystem;
     const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
@@ -489,49 +449,49 @@ void test_og_file_batch3_physfs_seek_and_path_overloads()
 
     // Exercise path+file open-write overload and stdio-backed seek/tell path.
     auto out = og::io::og_open_write((tmp_dir.string() + "/").c_str(), "overload.bin");
-    TEST_ASSERT(out != nullptr, "og_open_write(path,file) should create file");
+    ASSERT_TRUE(out != nullptr) << "og_open_write(path,file) should create file";
     if (out)
     {
         const unsigned char bytes[] = {9, 8, 7};
-        TEST_ASSERT(og::io::og_write_exact(*out, bytes, 1, sizeof(bytes)), "overload write payload");
-        TEST_ASSERT_EQ(3, static_cast<int>(out->tell()), "stdio tell should advance after write");
-        TEST_ASSERT_EQ(3, static_cast<int>(out->seek(0, 2)), "stdio seek end should return file size");
+        ASSERT_TRUE(og::io::og_write_exact(*out, bytes, 1, sizeof(bytes))) << "overload write payload";
+        ASSERT_EQ(3, static_cast<int>(out->tell())) << "stdio tell should advance after write";
+        ASSERT_EQ(3, static_cast<int>(out->seek(0, 2))) << "stdio seek end should return file size";
     }
     out.reset();
 
     // Exercise path+file read overload.
     auto in_overload = og::io::og_open_read((tmp_dir.string() + "/").c_str(), "overload.bin");
-    TEST_ASSERT(in_overload != nullptr, "og_open_read(path,file) should open written file");
+    ASSERT_TRUE(in_overload != nullptr) << "og_open_read(path,file) should open written file";
     if (in_overload)
     {
-        TEST_ASSERT_EQ(1, static_cast<int>(in_overload->seek(1, 0)), "stdio seek set should work");
-        TEST_ASSERT_EQ(1, static_cast<int>(in_overload->tell()), "stdio tell should track seek");
+        ASSERT_EQ(1, static_cast<int>(in_overload->seek(1, 0))) << "stdio seek set should work";
+        ASSERT_EQ(1, static_cast<int>(in_overload->tell())) << "stdio tell should track seek";
     }
 
     // PhysFS-backed read path and seek whence variants.
     auto phys = og::io::og_open_read("cfg/openglad.yaml", true);
-    TEST_ASSERT(phys != nullptr, "PhysFS read for cfg/openglad.yaml should succeed");
+    ASSERT_TRUE(phys != nullptr) << "PhysFS read for cfg/openglad.yaml should succeed";
     if (phys)
     {
         unsigned char ch = 0;
-        TEST_ASSERT_EQ(1, (int)phys->read(&ch, 1, 1), "physfs read should return one byte");
+        ASSERT_EQ(1, (int)phys->read(&ch, 1, 1)) << "physfs read should return one byte";
         const std::int64_t start = phys->seek(0, 0);
-        TEST_ASSERT(start >= 0, "physfs seek set should succeed");
+        ASSERT_TRUE(start >= 0) << "physfs seek set should succeed";
         const std::int64_t cur = phys->seek(1, 1);
-        TEST_ASSERT(cur >= 1, "physfs seek cur should advance");
+        ASSERT_TRUE(cur >= 1) << "physfs seek cur should advance";
         const std::int64_t end = phys->seek(0, 2);
-        TEST_ASSERT(end >= cur, "physfs seek end should be >= current position");
-        TEST_ASSERT_EQ(-1, static_cast<int>(phys->seek(0, 99)), "physfs invalid whence should fail");
+        ASSERT_TRUE(end >= cur) << "physfs seek end should be >= current position";
+        ASSERT_EQ(-1, static_cast<int>(phys->seek(0, 99))) << "physfs invalid whence should fail";
     }
 
     PixieData missing = read_pixie_file("does_not_exist_batch3.pix");
-    TEST_ASSERT(missing.data == nullptr, "missing pix file should return empty PixieData");
+    ASSERT_TRUE(missing.data == nullptr) << "missing pix file should return empty PixieData";
 
     std::remove(overload_file.string().c_str());
 }
-REGISTER_TEST(test_og_file_batch3_physfs_seek_and_path_overloads);
 
-void test_zip_api_batch3_output_open_failure_and_empty_input_dir()
+
+TEST(IoPlatformCoverage, zip_api_batch3_output_open_failure_and_empty_input_dir)
 {
     namespace fs = std::filesystem;
     const fs::path base = fs::path("temp") / "io_platform_cov_zip_batch3";
@@ -547,7 +507,7 @@ void test_zip_api_batch3_output_open_failure_and_empty_input_dir()
     fs::create_directories(in_one, ec);
     {
         std::FILE* f = std::fopen((in_one / "p.txt").string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create zip payload");
+        ASSERT_TRUE(f != nullptr) << "create zip payload";
         if (f)
         {
             const char* txt = "payload";
@@ -556,28 +516,22 @@ void test_zip_api_batch3_output_open_failure_and_empty_input_dir()
         }
     }
 
-    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
-                   static_cast<int>(og::io::zip_contents_with_error(in_empty.string(), archive_empty.string())),
-                   "zipping an empty existing directory should still succeed");
-    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
-                   static_cast<int>(og::io::zip_contents_with_error(in_one.string(), archive_one.string())),
-                   "zipping a normal directory should succeed");
+    ASSERT_EQ(static_cast<int>(ArchiveIoError::None), static_cast<int>(og::io::zip_contents_with_error(in_empty.string(), archive_empty.string()))) << "zipping an empty existing directory should still succeed";
+    ASSERT_EQ(static_cast<int>(ArchiveIoError::None), static_cast<int>(og::io::zip_contents_with_error(in_one.string(), archive_one.string()))) << "zipping a normal directory should succeed";
 
     {
         std::FILE* f = std::fopen(out_blocker.string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create out blocker file");
+        ASSERT_TRUE(f != nullptr) << "create out blocker file";
         if (f) std::fclose(f);
     }
-    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenOutputFailed),
-                   static_cast<int>(og::io::unzip_into_with_error(archive_one.string(), out_blocker.string())),
-                   "unzip should fail with OpenOutputFailed when outdirectory is a file");
+    ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenOutputFailed), static_cast<int>(og::io::unzip_into_with_error(archive_one.string(), out_blocker.string()))) << "unzip should fail with OpenOutputFailed when outdirectory is a file";
 
     std::remove(out_blocker.string().c_str());
     fs::remove_all(base, ec);
 }
-REGISTER_TEST(test_zip_api_batch3_output_open_failure_and_empty_input_dir);
 
-void test_platform_io_delete_level_nonempty_campaign_path()
+
+TEST(IoPlatformCoverage, platform_io_delete_level_nonempty_campaign_path)
 {
     namespace fs = std::filesystem;
     const std::string user = get_user_path();
@@ -595,18 +549,16 @@ void test_platform_io_delete_level_nonempty_campaign_path()
 
     {
         std::FILE* f = std::fopen((temp_scen / "scen321.fss").string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create scen file");
+        ASSERT_TRUE(f != nullptr) << "create scen file";
         if (f) std::fclose(f);
     }
     {
         std::FILE* f = std::fopen((temp_pix / "scen0321.pix").string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create pix file");
+        ASSERT_TRUE(f != nullptr) << "create pix file";
         if (f) std::fclose(f);
     }
 
-    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
-                   static_cast<int>(og::io::zip_contents_with_error(temp_root.string(), archive.string())),
-                   "seed campaign archive should be created");
+    ASSERT_EQ(static_cast<int>(ArchiveIoError::None), static_cast<int>(og::io::zip_contents_with_error(temp_root.string(), archive.string()))) << "seed campaign archive should be created";
 
     const std::string prev = get_mounted_campaign();
     set_mounted_campaign_for_testing(id);
@@ -616,9 +568,9 @@ void test_platform_io_delete_level_nonempty_campaign_path()
     cleanup_unpacked_campaign();
     fs::remove(archive, ec);
 }
-REGISTER_TEST(test_platform_io_delete_level_nonempty_campaign_path);
 
-void test_og_file_open_read_user_and_asset_fallbacks()
+
+TEST(IoPlatformCoverage, og_file_open_read_user_and_asset_fallbacks)
 {
     namespace fs = std::filesystem;
     const fs::path user_rel = fs::path("batch5_user_read.bin");
@@ -629,7 +581,7 @@ void test_og_file_open_read_user_and_asset_fallbacks()
 
     {
         std::FILE* f = std::fopen(user_abs.string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create user fallback file");
+        ASSERT_TRUE(f != nullptr) << "create user fallback file";
         if (f) {
             const unsigned char b = 17;
             std::fwrite(&b, 1, 1, f);
@@ -637,77 +589,75 @@ void test_og_file_open_read_user_and_asset_fallbacks()
         }
     }
     auto user_in = og::io::og_open_read(user_rel.string().c_str(), true);
-    TEST_ASSERT(user_in != nullptr, "og_open_read should find file in user path fallback");
+    ASSERT_TRUE(user_in != nullptr) << "og_open_read should find file in user path fallback";
     fs::remove(user_abs, ec);
 }
-REGISTER_TEST(test_og_file_open_read_user_and_asset_fallbacks);
 
-void test_og_file_physfs_backed_write_and_read_roundtrip()
+
+TEST(IoPlatformCoverage, og_file_physfs_backed_write_and_read_roundtrip)
 {
     const char* write_dir = PHYSFS_getWriteDir();
-    TEST_ASSERT(write_dir != nullptr, "PHYSFS write dir should be initialized for runtime tests");
+    ASSERT_TRUE(write_dir != nullptr) << "PHYSFS write dir should be initialized for runtime tests";
     if (!write_dir)
         return;
 
     const std::string vdir = "batch7_physfs_only_dir";
     const std::string vpath = vdir + "/rw.bin";
-    TEST_ASSERT(PHYSFS_mkdir(vdir.c_str()) != 0, "PHYSFS_mkdir should create virtual directory");
+    ASSERT_TRUE(PHYSFS_mkdir(vdir.c_str()) != 0) << "PHYSFS_mkdir should create virtual directory";
 
     auto out = og::io::og_open_write(vpath.c_str());
-    TEST_ASSERT(out != nullptr, "og_open_write should use PhysFS-backed file for virtual path");
+    ASSERT_TRUE(out != nullptr) << "og_open_write should use PhysFS-backed file for virtual path";
     if (!out)
         return;
 
     const unsigned char payload[] = {10, 20, 30, 40};
-    TEST_ASSERT(og::io::og_write_exact(*out, payload, 1, sizeof(payload)), "physfs-backed write should succeed");
-    TEST_ASSERT(out->tell() >= 4, "physfs-backed tell should report advanced position");
-    TEST_ASSERT(out->seek(0, 0) >= 0, "physfs-backed seek set should succeed");
+    ASSERT_TRUE(og::io::og_write_exact(*out, payload, 1, sizeof(payload))) << "physfs-backed write should succeed";
+    ASSERT_TRUE(out->tell() >= 4) << "physfs-backed tell should report advanced position";
+    ASSERT_TRUE(out->seek(0, 0) >= 0) << "physfs-backed seek set should succeed";
     out.reset();
 
     auto in = og::io::og_open_read(vpath.c_str(), true);
-    TEST_ASSERT(in != nullptr, "og_open_read should find newly written PhysFS file");
+    ASSERT_TRUE(in != nullptr) << "og_open_read should find newly written PhysFS file";
     if (in)
     {
         unsigned char got[4] = {};
-        TEST_ASSERT(og::io::og_read_exact(*in, got, 1, sizeof(got)), "physfs-backed read should succeed");
-        TEST_ASSERT(std::memcmp(got, payload, sizeof(payload)) == 0, "physfs-backed roundtrip should match");
-        TEST_ASSERT(in->tell() >= 4, "physfs-backed read tell should advance");
-        TEST_ASSERT(in->seek(0, 2) >= 0, "physfs-backed seek end should succeed");
+        ASSERT_TRUE(og::io::og_read_exact(*in, got, 1, sizeof(got))) << "physfs-backed read should succeed";
+        ASSERT_TRUE(std::memcmp(got, payload, sizeof(payload)) == 0) << "physfs-backed roundtrip should match";
+        ASSERT_TRUE(in->tell() >= 4) << "physfs-backed read tell should advance";
+        ASSERT_TRUE(in->seek(0, 2) >= 0) << "physfs-backed seek end should succeed";
     }
 
     (void)PHYSFS_delete(vpath.c_str());
     (void)std::remove((std::string(write_dir) + "/" + vpath).c_str());
 }
-REGISTER_TEST(test_og_file_physfs_backed_write_and_read_roundtrip);
 
-void test_pixie_data_move_constructor_resets_source()
+
+TEST(IoPlatformCoverage, pixie_data_move_constructor_resets_source)
 {
     PixieData src(2, 3, 1, new unsigned char[6]{1, 2, 3, 4, 5, 6});
-    TEST_ASSERT(src.valid(), "source pixie should start valid");
+    ASSERT_TRUE(src.valid()) << "source pixie should start valid";
 
     PixieData moved(std::move(src));
-    TEST_ASSERT(moved.valid(), "moved pixie should retain data");
-    TEST_ASSERT_EQ(0, (int)src.frames, "move ctor should clear source frames");
-    TEST_ASSERT_EQ(0, (int)src.w, "move ctor should clear source width");
-    TEST_ASSERT_EQ(0, (int)src.h, "move ctor should clear source height");
+    ASSERT_TRUE(moved.valid()) << "moved pixie should retain data";
+    ASSERT_EQ(0, (int)src.frames) << "move ctor should clear source frames";
+    ASSERT_EQ(0, (int)src.w) << "move ctor should clear source width";
+    ASSERT_EQ(0, (int)src.h) << "move ctor should clear source height";
 }
-REGISTER_TEST(test_pixie_data_move_constructor_resets_source);
 
-void test_physfs_api_wrapper_error_and_list_paths()
+
+TEST(IoPlatformCoverage, physfs_api_wrapper_error_and_list_paths)
 {
     // Hit wrapper calls without mutating shared runtime mount/write state.
     const std::list<std::string> root_files = og::io::physfs_enumerate_files_sorted("");
-    TEST_ASSERT(!root_files.empty(), "physfs_enumerate_files_sorted should list mounted root entries");
+    ASSERT_TRUE(!root_files.empty()) << "physfs_enumerate_files_sorted should list mounted root entries";
 
-    TEST_ASSERT(!og::io::physfs_mount("definitely_missing_physfs_path", nullptr, 1),
-                "physfs_mount should fail for a missing path");
-    TEST_ASSERT(!og::io::physfs_unmount("definitely_missing_physfs_path"),
-                "physfs_unmount should fail for an unmounted path");
-    TEST_ASSERT(!og::io::physfs_last_error().empty(), "physfs_last_error wrapper should return error text");
+    ASSERT_TRUE(!og::io::physfs_mount("definitely_missing_physfs_path", nullptr, 1)) << "physfs_mount should fail for a missing path";
+    ASSERT_TRUE(!og::io::physfs_unmount("definitely_missing_physfs_path")) << "physfs_unmount should fail for an unmounted path";
+    ASSERT_TRUE(!og::io::physfs_last_error().empty()) << "physfs_last_error wrapper should return error text";
 }
-REGISTER_TEST(test_physfs_api_wrapper_error_and_list_paths);
 
-void test_zip_api_missing_input_dir_exists_guard_path()
+
+TEST(IoPlatformCoverage, zip_api_missing_input_dir_exists_guard_path)
 {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -717,13 +667,12 @@ void test_zip_api_missing_input_dir_exists_guard_path()
     fs::remove(archive, ec);
 
     const ArchiveIoError r = og::io::zip_contents_with_error(missing.string(), archive.string());
-    TEST_ASSERT(r == ArchiveIoError::None || r == ArchiveIoError::AddEntryFailed,
-                "zipping a missing input dir should take empty-enumeration guard path");
+    ASSERT_TRUE(r == ArchiveIoError::None || r == ArchiveIoError::AddEntryFailed) << "zipping a missing input dir should take empty-enumeration guard path";
     fs::remove(archive, ec);
 }
-REGISTER_TEST(test_zip_api_missing_input_dir_exists_guard_path);
 
-void test_zip_api_unreadable_and_non_regular_entries_report_add_failure()
+
+TEST(IoPlatformCoverage, zip_api_unreadable_and_non_regular_entries_report_add_failure)
 {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -739,7 +688,7 @@ void test_zip_api_unreadable_and_non_regular_entries_report_add_failure()
 
     {
         std::FILE* f = std::fopen(normal.string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create normal file");
+        ASSERT_TRUE(f != nullptr) << "create normal file";
         if (f)
         {
             const char* txt = "ok";
@@ -749,7 +698,7 @@ void test_zip_api_unreadable_and_non_regular_entries_report_add_failure()
     }
     {
         std::FILE* f = std::fopen(unreadable.string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create unreadable file");
+        ASSERT_TRUE(f != nullptr) << "create unreadable file";
         if (f)
         {
             const char* txt = "nope";
@@ -763,16 +712,15 @@ void test_zip_api_unreadable_and_non_regular_entries_report_add_failure()
     (void)::mkfifo(fifo_path.string().c_str(), 0600);
 
     const ArchiveIoError r = og::io::zip_contents_with_error(base.string(), archive.string());
-    TEST_ASSERT(r == ArchiveIoError::AddEntryFailed || r == ArchiveIoError::CloseArchiveFailed ||
-                    r == ArchiveIoError::None,
-                "zip should report add/close failure (or succeed if platform permits unreadable reopen)");
+    ASSERT_TRUE(r == ArchiveIoError::AddEntryFailed || r == ArchiveIoError::CloseArchiveFailed ||
+                    r == ArchiveIoError::None) << "zip should report add/close failure (or succeed if platform permits unreadable reopen)";
 
     (void)::chmod(unreadable.string().c_str(), 0600);
     fs::remove_all(base, ec);
 }
-REGISTER_TEST(test_zip_api_unreadable_and_non_regular_entries_report_add_failure);
 
-void test_zip_api_batch9_permission_denied_walk_and_corrupt_unzip_paths()
+
+TEST(IoPlatformCoverage, zip_api_batch9_permission_denied_walk_and_corrupt_unzip_paths)
 {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -787,7 +735,7 @@ void test_zip_api_batch9_permission_denied_walk_and_corrupt_unzip_paths()
     fs::create_directories(blocked_child, ec);
     {
         std::FILE* f = std::fopen((blocked_child / "p.txt").string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create blocked child payload");
+        ASSERT_TRUE(f != nullptr) << "create blocked child payload";
         if (f) {
             const char* txt = "payload";
             std::fwrite(txt, 1, std::strlen(txt), f);
@@ -798,14 +746,13 @@ void test_zip_api_batch9_permission_denied_walk_and_corrupt_unzip_paths()
     // Try to trigger recursive iterator increment error path under permission restrictions.
     (void)::chmod(blocked.string().c_str(), 0);
     const ArchiveIoError walk_r = og::io::zip_contents_with_error(base.string(), archive.string());
-    TEST_ASSERT(walk_r == ArchiveIoError::None || walk_r == ArchiveIoError::AddEntryFailed,
-                "permission-denied walk should take guarded recursive-iterator path");
+    ASSERT_TRUE(walk_r == ArchiveIoError::None || walk_r == ArchiveIoError::AddEntryFailed) << "permission-denied walk should take guarded recursive-iterator path";
     (void)::chmod(blocked.string().c_str(), 0700);
 
     // Corrupt archive bytes should fail open/read in unzip path.
     {
         std::FILE* f = std::fopen(corrupt.string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create corrupt zip bytes");
+        ASSERT_TRUE(f != nullptr) << "create corrupt zip bytes";
         if (f) {
             const unsigned char junk[] = {0x50, 0x4B, 0x01, 0x02, 0x00, 0x00};
             std::fwrite(junk, 1, sizeof(junk), f);
@@ -813,15 +760,14 @@ void test_zip_api_batch9_permission_denied_walk_and_corrupt_unzip_paths()
         }
     }
     const ArchiveIoError unzip_r = og::io::unzip_into_with_error(corrupt.string(), out.string());
-    TEST_ASSERT(unzip_r == ArchiveIoError::OpenArchiveFailed || unzip_r == ArchiveIoError::OpenEntryFailed ||
-                    unzip_r == ArchiveIoError::ReadEntryFailed,
-                "corrupt archive should fail through guarded unzip error paths");
+    ASSERT_TRUE(unzip_r == ArchiveIoError::OpenArchiveFailed || unzip_r == ArchiveIoError::OpenEntryFailed ||
+                    unzip_r == ArchiveIoError::ReadEntryFailed) << "corrupt archive should fail through guarded unzip error paths";
 
     fs::remove_all(base, ec);
 }
-REGISTER_TEST(test_zip_api_batch9_permission_denied_walk_and_corrupt_unzip_paths);
 
-void test_platform_io_restore_defaults_and_load_campaign_unmount_error_path()
+
+TEST(IoPlatformCoverage, platform_io_restore_defaults_and_load_campaign_unmount_error_path)
 {
     namespace fs = std::filesystem;
     const std::string user = get_user_path();
@@ -844,13 +790,12 @@ void test_platform_io_restore_defaults_and_load_campaign_unmount_error_path()
     const std::string prev = get_mounted_campaign();
     set_mounted_campaign_for_testing("definitely.not.a.campaign");
     std::map<std::string, int> current_levels;
-    TEST_ASSERT_EQ(-3, load_campaign("org.openglad.gladiator", current_levels, 9),
-                   "load_campaign should map unmount failure to -3");
+    ASSERT_EQ(-3, load_campaign("org.openglad.gladiator", current_levels, 9)) << "load_campaign should map unmount failure to -3";
     set_mounted_campaign_for_testing(prev);
 }
-REGISTER_TEST(test_platform_io_restore_defaults_and_load_campaign_unmount_error_path);
 
-void test_read_pixie_file_truncated_header_path()
+
+TEST(IoPlatformCoverage, read_pixie_file_truncated_header_path)
 {
     namespace fs = std::filesystem;
     const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
@@ -860,7 +805,7 @@ void test_read_pixie_file_truncated_header_path()
 
     {
         std::FILE* f = std::fopen(pix_header_bad.string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create truncated-header pix");
+        ASSERT_TRUE(f != nullptr) << "create truncated-header pix";
         if (!f)
             return;
         const unsigned char partial_header[] = {1, 2}; // missing h byte
@@ -869,37 +814,36 @@ void test_read_pixie_file_truncated_header_path()
     }
 
     PixieData bad_header = read_pixie_file(pix_header_bad.string().c_str());
-    TEST_ASSERT(bad_header.data == nullptr, "truncated pix header should fail");
+    ASSERT_TRUE(bad_header.data == nullptr) << "truncated pix header should fail";
     fs::remove(pix_header_bad, ec);
 }
-REGISTER_TEST(test_read_pixie_file_truncated_header_path);
 
-void test_platform_io_bool_wrappers_and_small_helpers()
+
+TEST(IoPlatformCoverage, platform_io_bool_wrappers_and_small_helpers)
 {
     namespace fs = std::filesystem;
     const std::string prev = get_mounted_campaign();
 
-    TEST_ASSERT(mount_campaign_package_with_error("") != CampaignPackageIoError::None, "mount_campaign_package should fail for empty id");
-    TEST_ASSERT(unmount_campaign_package_with_error("") == CampaignPackageIoError::None, "unmount_campaign_package should succeed for empty id");
+    ASSERT_TRUE(mount_campaign_package_with_error("") != CampaignPackageIoError::None) << "mount_campaign_package should fail for empty id";
+    ASSERT_TRUE(unmount_campaign_package_with_error("") == CampaignPackageIoError::None) << "unmount_campaign_package should succeed for empty id";
     set_mounted_campaign_for_testing("");
-    TEST_ASSERT(remount_campaign_package_with_error() != CampaignPackageIoError::None, "remount_campaign_package should fail when nothing is mounted");
+    ASSERT_TRUE(remount_campaign_package_with_error() != CampaignPackageIoError::None) << "remount_campaign_package should fail when nothing is mounted";
 
     const std::list<std::string> exploded = explode("a,b,", ',');
-    TEST_ASSERT_EQ(3, (int)exploded.size(), "explode should include trailing empty segment");
+    ASSERT_EQ(3, (int)exploded.size()) << "explode should include trailing empty segment";
 
     const fs::path nested = fs::path("temp") / "io_platform_cov" / "wrapper_dir" / "a" / "b";
-    TEST_ASSERT(create_dir(nested.string()), "create_dir should create nested directories");
+    ASSERT_TRUE(create_dir(nested.string())) << "create_dir should create nested directories";
 
     const fs::path missing_zip = fs::path("temp") / "io_platform_cov" / "missing_bool_wrapper.zip";
-    TEST_ASSERT(unzip_into_with_error(missing_zip.string(), (nested / "out").string()) != ArchiveIoError::None,
-                "unzip_into should return error for missing archive");
+    ASSERT_TRUE(unzip_into_with_error(missing_zip.string(), (nested / "out").string()) != ArchiveIoError::None) << "unzip_into should return error for missing archive";
     (void)zip_contents_with_error((nested / "missing_input").string(), (nested / "out.zip").string());
 
     set_mounted_campaign_for_testing(prev);
 }
-REGISTER_TEST(test_platform_io_bool_wrappers_and_small_helpers);
 
-void test_og_file_round6_physfs_zero_size_and_stdio_seek_failure_paths()
+
+TEST(IoPlatformCoverage, og_file_round6_physfs_zero_size_and_stdio_seek_failure_paths)
 {
     namespace fs = std::filesystem;
     const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
@@ -908,26 +852,26 @@ void test_og_file_round6_physfs_zero_size_and_stdio_seek_failure_paths()
 
     // PhysFS-backed zero-size read/write paths.
     const char* write_dir = PHYSFS_getWriteDir();
-    TEST_ASSERT(write_dir != nullptr, "PHYSFS write dir should exist");
+    ASSERT_TRUE(write_dir != nullptr) << "PHYSFS write dir should exist";
     if (write_dir)
     {
         const std::string vdir = "batch9_physfs_zero";
         const std::string vpath = vdir + "/rw.bin";
-        TEST_ASSERT(PHYSFS_mkdir(vdir.c_str()) != 0, "create virtual dir for zero-size path");
+        ASSERT_TRUE(PHYSFS_mkdir(vdir.c_str()) != 0) << "create virtual dir for zero-size path";
         auto out = og::io::og_open_write(vpath.c_str());
-        TEST_ASSERT(out != nullptr, "open physfs output");
+        ASSERT_TRUE(out != nullptr) << "open physfs output";
         if (out)
         {
             const unsigned char b = 1;
-            TEST_ASSERT_EQ(0, (int)out->write(&b, 0, 1), "physfs write size=0 should return 0");
+            ASSERT_EQ(0, (int)out->write(&b, 0, 1)) << "physfs write size=0 should return 0";
             out.reset();
         }
         auto in = og::io::og_open_read(vpath.c_str(), true);
-        TEST_ASSERT(in != nullptr, "open physfs input");
+        ASSERT_TRUE(in != nullptr) << "open physfs input";
         if (in)
         {
             unsigned char b = 0;
-            TEST_ASSERT_EQ(0, (int)in->read(&b, 0, 1), "physfs read size=0 should return 0");
+            ASSERT_EQ(0, (int)in->read(&b, 0, 1)) << "physfs read size=0 should return 0";
         }
         (void)PHYSFS_delete(vpath.c_str());
         (void)std::remove((std::string(write_dir) + "/" + vpath).c_str());
@@ -937,7 +881,7 @@ void test_og_file_round6_physfs_zero_size_and_stdio_seek_failure_paths()
     const fs::path seek_file = tmp_dir / "seek_fail.bin";
     {
         std::FILE* f = std::fopen(seek_file.string().c_str(), "wb");
-        TEST_ASSERT(f != nullptr, "create stdio seek-fail file");
+        ASSERT_TRUE(f != nullptr) << "create stdio seek-fail file";
         if (f)
         {
             const unsigned char bytes[] = {1, 2, 3};
@@ -946,13 +890,13 @@ void test_og_file_round6_physfs_zero_size_and_stdio_seek_failure_paths()
         }
     }
     auto in_stdio = og::io::og_open_read((tmp_dir.string() + "/").c_str(), "seek_fail.bin");
-    TEST_ASSERT(in_stdio != nullptr, "open stdio seek-fail file");
+    ASSERT_TRUE(in_stdio != nullptr) << "open stdio seek-fail file";
     if (in_stdio)
-        TEST_ASSERT_EQ(-1, (int)in_stdio->seek(-1, 0), "stdio seek should fail for negative SET offset");
+        ASSERT_EQ(-1, (int)in_stdio->seek(-1, 0)) << "stdio seek should fail for negative SET offset";
 }
-REGISTER_TEST(test_og_file_round6_physfs_zero_size_and_stdio_seek_failure_paths);
 
-void test_og_file_round8_seek_cur_end_and_open_write_failure_paths()
+
+TEST(IoPlatformCoverage, og_file_round8_seek_cur_end_and_open_write_failure_paths)
 {
     namespace fs = std::filesystem;
     const fs::path tmp_dir = fs::path("temp") / "io_platform_cov" / "round8_seek";
@@ -962,29 +906,29 @@ void test_og_file_round8_seek_cur_end_and_open_write_failure_paths()
     const fs::path data_path = tmp_dir / "seek_modes.bin";
     {
         auto out = og::io::og_open_write(data_path.string().c_str());
-        TEST_ASSERT(out != nullptr, "open write for seek mode file");
+        ASSERT_TRUE(out != nullptr) << "open write for seek mode file";
         if (!out)
             return;
         const unsigned char bytes[] = {10, 20, 30, 40, 50};
-        TEST_ASSERT(og::io::og_write_exact(*out, bytes, 1, sizeof(bytes)), "write seek mode payload");
+        ASSERT_TRUE(og::io::og_write_exact(*out, bytes, 1, sizeof(bytes))) << "write seek mode payload";
     }
 
     auto in = og::io::og_open_read((tmp_dir.string() + "/").c_str(), "seek_modes.bin");
-    TEST_ASSERT(in != nullptr, "open stdio-backed input for seek mode checks");
+    ASSERT_TRUE(in != nullptr) << "open stdio-backed input for seek mode checks";
     if (in)
     {
-        TEST_ASSERT_EQ(2, (int)in->seek(2, 0), "SEEK_SET should position at offset 2");
-        TEST_ASSERT_EQ(3, (int)in->seek(1, 1), "SEEK_CUR should advance by 1");
-        TEST_ASSERT_EQ(4, (int)in->seek(-1, 2), "SEEK_END with -1 should position at last byte");
-        TEST_ASSERT_EQ(4, (int)in->tell(), "tell should match final offset");
+        ASSERT_EQ(2, (int)in->seek(2, 0)) << "SEEK_SET should position at offset 2";
+        ASSERT_EQ(3, (int)in->seek(1, 1)) << "SEEK_CUR should advance by 1";
+        ASSERT_EQ(4, (int)in->seek(-1, 2)) << "SEEK_END with -1 should position at last byte";
+        ASSERT_EQ(4, (int)in->tell()) << "tell should match final offset";
     }
 
     auto missing_parent_out = og::io::og_open_write((tmp_dir / "missing" / "nested" / "nope.bin").string().c_str());
-    TEST_ASSERT(missing_parent_out == nullptr, "open_write should fail for missing parent directory");
+    ASSERT_TRUE(missing_parent_out == nullptr) << "open_write should fail for missing parent directory";
 }
-REGISTER_TEST(test_og_file_round8_seek_cur_end_and_open_write_failure_paths);
 
-void test_zip_platform_round8_open_archive_and_mount_error_paths()
+
+TEST(IoPlatformCoverage, zip_platform_round8_open_archive_and_mount_error_paths)
 {
     namespace fs = std::filesystem;
     const fs::path tmp_dir = fs::path("temp") / "io_platform_cov" / "round8_zip";
@@ -994,19 +938,16 @@ void test_zip_platform_round8_open_archive_and_mount_error_paths()
 
     // Force open failure deterministically by using a directory path as archive output.
     const ArchiveIoError zip_err = zip_contents_with_error(tmp_dir.string(), tmp_dir.string());
-    TEST_ASSERT_EQ((int)ArchiveIoError::OpenArchiveFailed, (int)zip_err,
-                   "zip_contents_with_error should report OpenArchiveFailed for directory output path");
+    ASSERT_EQ((int)ArchiveIoError::OpenArchiveFailed, (int)zip_err) << "zip_contents_with_error should report OpenArchiveFailed for directory output path";
 
     const ArchiveIoError unzip_err = unzip_into_with_error((tmp_dir / "does_not_exist.zip").string(),
                                                            (tmp_dir / "out").string());
-    TEST_ASSERT_EQ((int)ArchiveIoError::OpenArchiveFailed, (int)unzip_err,
-                   "unzip_into_with_error should report OpenArchiveFailed for missing archive");
+    ASSERT_EQ((int)ArchiveIoError::OpenArchiveFailed, (int)unzip_err) << "unzip_into_with_error should report OpenArchiveFailed for missing archive";
 
     const std::string prev = get_mounted_campaign();
     set_mounted_campaign_for_testing("");
     std::map<std::string, int> current_levels;
-    TEST_ASSERT_EQ(-2, load_campaign("definitely.not.a.campaign", current_levels, 5),
-                   "load_campaign should map mount failure to -2");
+    ASSERT_EQ(-2, load_campaign("definitely.not.a.campaign", current_levels, 5)) << "load_campaign should map mount failure to -2";
     set_mounted_campaign_for_testing(prev);
 }
-REGISTER_TEST(test_zip_platform_round8_open_archive_and_mount_error_paths);
+

@@ -42,7 +42,7 @@ static void set_tile(int tx, int ty, unsigned char tile)
 }
 } // namespace
 
-void test_stats_right_walk_turn_right_adds_walk_command_all_enddirs()
+TEST(StatsRightWalkDirectWalk, stats_right_walk_turn_right_adds_walk_command_all_enddirs)
 {
     set_all_tiles(PIX_GRASS1);
 
@@ -63,7 +63,7 @@ void test_stats_right_walk_turn_right_adds_walk_command_all_enddirs()
     w.lasty = 0.0f;
 
     statistics* st = w.stats();
-    TEST_ASSERT(st != nullptr, "stats exists");
+    ASSERT_TRUE(st != nullptr) << "stats exists";
     if (!st)
         return;
 
@@ -74,12 +74,12 @@ void test_stats_right_walk_turn_right_adds_walk_command_all_enddirs()
         w.enddir = static_cast<char>((desired + 6) % 8); // desired-2 mod 8
         (void)st->right_walk();
 
-        TEST_ASSERT(!st->commands.empty(), "right_walk should add a command when right_back_blocked");
+        ASSERT_TRUE(!st->commands.empty()) << "right_walk should add a command when right_back_blocked";
         if (st->commands.empty())
             continue;
 
         const command& c = st->commands.front();
-        TEST_ASSERT_EQ(COMMAND_WALK, static_cast<int>(c.commandtype), "right_walk should enqueue COMMAND_WALK");
+        ASSERT_EQ(COMMAND_WALK, static_cast<int>(c.commandtype)) << "right_walk should enqueue COMMAND_WALK";
 
         int ex = 0;
         int ey = 0;
@@ -95,13 +95,13 @@ void test_stats_right_walk_turn_right_adds_walk_command_all_enddirs()
             case FACE_UP_LEFT: ex = -1; ey = -1; break;
             default: ex = 0; ey = 0; break;
         }
-        TEST_ASSERT_EQ(ex, static_cast<int>(c.com1), "right_walk xdelta matches enddir");
-        TEST_ASSERT_EQ(ey, static_cast<int>(c.com2), "right_walk ydelta matches enddir");
+        ASSERT_EQ(ex, static_cast<int>(c.com1)) << "right_walk xdelta matches enddir";
+        ASSERT_EQ(ey, static_cast<int>(c.com2)) << "right_walk ydelta matches enddir";
     }
 }
-REGISTER_TEST(test_stats_right_walk_turn_right_adds_walk_command_all_enddirs);
 
-void test_stats_direct_walk_grid_passability_branches()
+
+TEST(StatsRightWalkDirectWalk, stats_direct_walk_grid_passability_branches)
 {
     // Create a minimal, deterministic grid layout around the controller.
     set_all_tiles(PIX_GRASS1);
@@ -115,7 +115,7 @@ void test_stats_direct_walk_grid_passability_branches()
     w.foe = &foe;
 
     statistics* st = w.stats();
-    TEST_ASSERT(st != nullptr, "stats exists");
+    ASSERT_TRUE(st != nullptr) << "stats exists";
     if (!st)
         return;
 
@@ -125,28 +125,28 @@ void test_stats_direct_walk_grid_passability_branches()
     set_tile(1, 0, PIX_H_WALL1); // (x+1,y)
     set_tile(0, 1, PIX_H_WALL1); // (x,y+1)
     foe.setxy(w.xpos + 200, w.ypos + 200);
-    TEST_ASSERT_EQ(0, static_cast<int>(st->direct_walk()), "direct_walk should fail when all direct tiles blocked");
+    ASSERT_EQ(0, static_cast<int>(st->direct_walk())) << "direct_walk should fail when all direct tiles blocked";
 
     // B) Diagonal blocked, x blocked, y ok, but ydelta==0 -> return 0 via (!ydelta) branch.
     set_all_tiles(PIX_GRASS1);
     set_tile(1, 0, PIX_H_WALL1); // (x+1,y) blocks diagonal (y=0) and x
     foe.setxy(static_cast<Sint32>(w.xpos) + 200, static_cast<Sint32>(w.ypos)); // ydelta==0
-    TEST_ASSERT_EQ(0, static_cast<int>(st->direct_walk()), "direct_walk should fail when ydelta==0 and x blocked");
+    ASSERT_EQ(0, static_cast<int>(st->direct_walk())) << "direct_walk should fail when ydelta==0 and x blocked";
 
     // C) Diagonal blocked, x ok, but xdelta==0 -> return 0 via (!xdelta) branch.
     set_all_tiles(PIX_GRASS1);
     set_tile(0, 1, PIX_H_WALL1); // (x,y+1) blocks diagonal when xdelta==0
     foe.setxy(static_cast<Sint32>(w.xpos), static_cast<Sint32>(w.ypos) + 200); // xdelta==0
-    TEST_ASSERT_EQ(0, static_cast<int>(st->direct_walk()), "direct_walk should fail when xdelta==0 and diagonal blocked");
+    ASSERT_EQ(0, static_cast<int>(st->direct_walk())) << "direct_walk should fail when xdelta==0 and diagonal blocked";
 
     // D) Diagonal ok but xdelta==ydelta==0 -> return 0 via (!xdelta && !ydelta) branch.
     set_all_tiles(PIX_GRASS1);
     foe.setxy(static_cast<Sint32>(w.xpos), static_cast<Sint32>(w.ypos));
-    TEST_ASSERT_EQ(0, static_cast<int>(st->direct_walk()), "direct_walk should return 0 when foe at same position");
+    ASSERT_EQ(0, static_cast<int>(st->direct_walk())) << "direct_walk should return 0 when foe at same position";
 }
-REGISTER_TEST(test_stats_direct_walk_grid_passability_branches);
 
-void test_stats_right_walk_forward_normalization_and_forward_blocked_turn_branch()
+
+TEST(StatsRightWalkDirectWalk, stats_right_walk_forward_normalization_and_forward_blocked_turn_branch)
 {
     set_all_tiles(PIX_GRASS1);
 
@@ -159,7 +159,7 @@ void test_stats_right_walk_forward_normalization_and_forward_blocked_turn_branch
     w.foe = nullptr; // keep direct_walk path deterministic when reached
 
     statistics* st = w.stats();
-    TEST_ASSERT(st != nullptr, "stats exists");
+    ASSERT_TRUE(st != nullptr) << "stats exists";
     if (!st)
         return;
 
@@ -171,19 +171,19 @@ void test_stats_right_walk_forward_normalization_and_forward_blocked_turn_branch
 
     w.lastx = 10.0f;
     w.lasty = 1.0f;
-    TEST_ASSERT(st->right_walk(), "right_walk should take forward branch when right side is blocked");
+    ASSERT_TRUE(st->right_walk()) << "right_walk should take forward branch when right side is blocked";
 
     w.lastx = 1.0f;
     w.lasty = 10.0f;
-    TEST_ASSERT(st->right_walk(), "right_walk should normalize steep-y forward branch");
+    ASSERT_TRUE(st->right_walk()) << "right_walk should normalize steep-y forward branch";
 
     // Force explicit forward_blocked branch: block forward tile too.
     set_tile(0, 0, PIX_H_WALL1);
-    TEST_ASSERT(st->right_walk(), "right_walk should still succeed via turn-left when forward is blocked");
+    ASSERT_TRUE(st->right_walk()) << "right_walk should still succeed via turn-left when forward is blocked";
 }
-REGISTER_TEST(test_stats_right_walk_forward_normalization_and_forward_blocked_turn_branch);
 
-void test_stats_blocked_direction_switch_tables_all_cases_round6()
+
+TEST(StatsRightWalkDirectWalk, stats_blocked_direction_switch_tables_all_cases_round6)
 {
     set_all_tiles(PIX_GRASS1);
 
@@ -193,7 +193,7 @@ void test_stats_blocked_direction_switch_tables_all_cases_round6()
     w.setxy(GRID_SIZE * 4, GRID_SIZE * 4);
 
     statistics* st = w.stats();
-    TEST_ASSERT(st != nullptr, "stats exists");
+    ASSERT_TRUE(st != nullptr) << "stats exists";
     if (!st)
         return;
 
@@ -210,6 +210,6 @@ void test_stats_blocked_direction_switch_tables_all_cases_round6()
         (void)st->right_back_blocked();
         (void)st->forward_blocked();
     }
-    TEST_ASSERT(true, "blocked-direction switch tables executed");
+    ASSERT_TRUE(true) << "blocked-direction switch tables executed";
 }
-REGISTER_TEST(test_stats_blocked_direction_switch_tables_all_cases_round6);
+

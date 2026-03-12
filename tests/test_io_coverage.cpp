@@ -29,7 +29,7 @@ int mem_read_handler(void* data, unsigned char* buffer, std::size_t size, std::s
 
 } // namespace
 
-void test_io_yaml_parser_reports_error_on_invalid_stream()
+TEST(IoCoverage, io_yaml_parser_reports_error_on_invalid_stream)
 {
     MemReadCtx reader{"root: [1, 2\n", 0};
     og::io::YamlParser parser;
@@ -43,17 +43,17 @@ void test_io_yaml_parser_reports_error_on_invalid_stream()
         iterations++;
     }
 
-    TEST_ASSERT(iterations > 0, "parser should consume at least one event");
+    ASSERT_TRUE(iterations > 0) << "parser should consume at least one event";
     parser.close_input();
 }
-REGISTER_TEST(test_io_yaml_parser_reports_error_on_invalid_stream);
 
-void test_io_platform_helpers_explode_and_archive_bool_wrappers()
+
+TEST(IoCoverage, io_platform_helpers_explode_and_archive_bool_wrappers)
 {
     std::list<std::string> parts = explode("a::b::", ':');
-    TEST_ASSERT(!parts.empty(), "explode should return at least one token");
+    ASSERT_TRUE(!parts.empty()) << "explode should return at least one token";
 
     const bool unzip_ok = unzip_into_with_error("temp/no_such_archive.zip", "temp/no_such_archive_out") == ArchiveIoError::None;
-    TEST_ASSERT(!unzip_ok, "unzip should return error for missing archive");
+    ASSERT_TRUE(!unzip_ok) << "unzip should return error for missing archive";
 }
-REGISTER_TEST(test_io_platform_helpers_explode_and_archive_bool_wrappers);
+

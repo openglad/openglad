@@ -3,7 +3,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/pixien.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
@@ -106,7 +106,7 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
-void test_level_progress_menu() {
+TEST(LevelProgress, menu) {
     trace_clear();
 
     // Set up save data so "CONTINUE GAME" has something to load
@@ -118,7 +118,7 @@ void test_level_progress_menu() {
     // Start the event injector thread
     EventSequence seq = { false, false };
     SDL_Thread* thread = SDL_CreateThread(event_injector_thread, "test_injector", &seq);
-    TEST_ASSERT(thread != nullptr, "failed to create event injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create event injector thread";
 
     // Limit picker_mainmenu_loop to 1 iteration (this test only needs one pass)
     g_picker_mainmenu_calls = 0;
@@ -135,9 +135,9 @@ void test_level_progress_menu() {
     g_picker_max_mainmenu_calls = 0;  // reset for other tests
 
     // If we got here without crashing, the regression test passed
-    TEST_ASSERT(seq.finished, "event injector thread should have completed");
+    ASSERT_TRUE(seq.finished) << "event injector thread should have completed";
 
     // Verify the progress menu was actually entered by checking traces
-    TEST_ASSERT(trace_contains("menu", "init_buttons"), "menu buttons should have been initialized");
+    ASSERT_TRUE(trace_contains("menu", "init_buttons")) << "menu buttons should have been initialized";
 }
-REGISTER_TEST(test_level_progress_menu);
+

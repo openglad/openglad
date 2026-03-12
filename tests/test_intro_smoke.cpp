@@ -24,7 +24,7 @@ static void push_any_keypress()
     SDL_PushEvent(&e);
 }
 
-void test_intro_main_aborts_on_keypress()
+TEST(IntroSmoke, intro_main_aborts_on_keypress)
 {
     // intro_main's show() steps abort when query_key_press_event() is true.
     // Push a key so the intro exits quickly but still executes real code paths.
@@ -37,4 +37,4 @@ void test_intro_main_aborts_on_keypress()
     clear_keyboard();
     intro_main(0, nullptr);
 }
-REGISTER_TEST(test_intro_main_aborts_on_keypress);
+

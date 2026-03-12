@@ -16,147 +16,147 @@ int MAX(int a, int b);
 // upgrade_to_level - exercises the big family switch (lines 323-456)
 // ---------------------------------------------------------------------------
 
-void test_guy_upgrade_soldier()
+TEST(GuyExtended, guy_upgrade_soldier)
 {
     guy g(FAMILY_SOLDIER);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.strength > get_family_descriptor(FAMILY_SOLDIER)->base_stats[0], "soldier str should increase");
-    TEST_ASSERT(g.level == 5, "level should be 5");
-    TEST_ASSERT(g.exp > 0, "exp should be set when set_xp=true");
+    ASSERT_TRUE(g.strength > get_family_descriptor(FAMILY_SOLDIER)->base_stats[0]) << "soldier str should increase";
+    ASSERT_TRUE(g.level == 5) << "level should be 5";
+    ASSERT_TRUE(g.exp > 0) << "exp should be set when set_xp=true";
 }
-REGISTER_TEST(test_guy_upgrade_soldier);
 
-void test_guy_upgrade_elf()
+
+TEST(GuyExtended, guy_upgrade_elf)
 {
     guy g(FAMILY_ELF);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.dexterity > get_family_descriptor(FAMILY_ELF)->base_stats[1], "elf dex should increase significantly");
+    ASSERT_TRUE(g.dexterity > get_family_descriptor(FAMILY_ELF)->base_stats[1]) << "elf dex should increase significantly";
 }
-REGISTER_TEST(test_guy_upgrade_elf);
 
-void test_guy_upgrade_archer()
+
+TEST(GuyExtended, guy_upgrade_archer)
 {
     guy g(FAMILY_ARCHER);
     g.upgrade_to_level(5, false);
-    TEST_ASSERT(g.dexterity > get_family_descriptor(FAMILY_ARCHER)->base_stats[1], "archer dex should increase");
-    TEST_ASSERT_EQ(0, (int)g.exp, "exp should be 0 when set_xp=false");
+    ASSERT_TRUE(g.dexterity > get_family_descriptor(FAMILY_ARCHER)->base_stats[1]) << "archer dex should increase";
+    ASSERT_EQ(0, (int)g.exp) << "exp should be 0 when set_xp=false";
 }
-REGISTER_TEST(test_guy_upgrade_archer);
 
-void test_guy_upgrade_mage()
+
+TEST(GuyExtended, guy_upgrade_mage)
 {
     guy g(FAMILY_MAGE);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.intelligence > get_family_descriptor(FAMILY_MAGE)->base_stats[3], "mage int should increase most");
+    ASSERT_TRUE(g.intelligence > get_family_descriptor(FAMILY_MAGE)->base_stats[3]) << "mage int should increase most";
 }
-REGISTER_TEST(test_guy_upgrade_mage);
 
-void test_guy_upgrade_skeleton()
+
+TEST(GuyExtended, guy_upgrade_skeleton)
 {
     guy g(FAMILY_SKELETON);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.dexterity > get_family_descriptor(FAMILY_SKELETON)->base_stats[1], "skeleton dex should increase");
+    ASSERT_TRUE(g.dexterity > get_family_descriptor(FAMILY_SKELETON)->base_stats[1]) << "skeleton dex should increase";
 }
-REGISTER_TEST(test_guy_upgrade_skeleton);
 
-void test_guy_upgrade_cleric()
+
+TEST(GuyExtended, guy_upgrade_cleric)
 {
     guy g(FAMILY_CLERIC);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.level == 5, "cleric level should be 5");
+    ASSERT_TRUE(g.level == 5) << "cleric level should be 5";
 }
-REGISTER_TEST(test_guy_upgrade_cleric);
 
-void test_guy_upgrade_fireelemental()
+
+TEST(GuyExtended, guy_upgrade_fireelemental)
 {
     guy g(FAMILY_FIREELEMENTAL);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.strength > get_family_descriptor(FAMILY_FIREELEMENTAL)->base_stats[0], "fire elem str should increase");
+    ASSERT_TRUE(g.strength > get_family_descriptor(FAMILY_FIREELEMENTAL)->base_stats[0]) << "fire elem str should increase";
 }
-REGISTER_TEST(test_guy_upgrade_fireelemental);
 
-void test_guy_upgrade_faerie()
+
+TEST(GuyExtended, guy_upgrade_faerie)
 {
     guy g(FAMILY_FAERIE);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.dexterity > get_family_descriptor(FAMILY_FAERIE)->base_stats[1], "faerie dex should increase");
+    ASSERT_TRUE(g.dexterity > get_family_descriptor(FAMILY_FAERIE)->base_stats[1]) << "faerie dex should increase";
 }
-REGISTER_TEST(test_guy_upgrade_faerie);
 
-void test_guy_upgrade_slime()
+
+TEST(GuyExtended, guy_upgrade_slime)
 {
     guy g(FAMILY_SMALL_SLIME);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.level == 5, "slime level should be 5");
+    ASSERT_TRUE(g.level == 5) << "slime level should be 5";
 }
-REGISTER_TEST(test_guy_upgrade_slime);
 
-void test_guy_upgrade_thief()
+
+TEST(GuyExtended, guy_upgrade_thief)
 {
     guy g(FAMILY_THIEF);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.dexterity > get_family_descriptor(FAMILY_THIEF)->base_stats[1], "thief dex should increase");
+    ASSERT_TRUE(g.dexterity > get_family_descriptor(FAMILY_THIEF)->base_stats[1]) << "thief dex should increase";
 }
-REGISTER_TEST(test_guy_upgrade_thief);
 
-void test_guy_upgrade_ghost()
+
+TEST(GuyExtended, guy_upgrade_ghost)
 {
     guy g(FAMILY_GHOST);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.level == 5, "ghost level should be 5");
+    ASSERT_TRUE(g.level == 5) << "ghost level should be 5";
 }
-REGISTER_TEST(test_guy_upgrade_ghost);
 
-void test_guy_upgrade_druid()
+
+TEST(GuyExtended, guy_upgrade_druid)
 {
     guy g(FAMILY_DRUID);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.intelligence > get_family_descriptor(FAMILY_DRUID)->base_stats[3], "druid int should increase");
+    ASSERT_TRUE(g.intelligence > get_family_descriptor(FAMILY_DRUID)->base_stats[3]) << "druid int should increase";
 }
-REGISTER_TEST(test_guy_upgrade_druid);
 
-void test_guy_upgrade_orc()
+
+TEST(GuyExtended, guy_upgrade_orc)
 {
     guy g(FAMILY_ORC);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.strength > get_family_descriptor(FAMILY_ORC)->base_stats[0], "orc str should increase");
+    ASSERT_TRUE(g.strength > get_family_descriptor(FAMILY_ORC)->base_stats[0]) << "orc str should increase";
 }
-REGISTER_TEST(test_guy_upgrade_orc);
 
-void test_guy_upgrade_barbarian()
+
+TEST(GuyExtended, guy_upgrade_barbarian)
 {
     guy g(FAMILY_BARBARIAN);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.strength > get_family_descriptor(FAMILY_BARBARIAN)->base_stats[0], "barbarian str should increase");
+    ASSERT_TRUE(g.strength > get_family_descriptor(FAMILY_BARBARIAN)->base_stats[0]) << "barbarian str should increase";
 }
-REGISTER_TEST(test_guy_upgrade_barbarian);
 
-void test_guy_upgrade_archmage()
+
+TEST(GuyExtended, guy_upgrade_archmage)
 {
     guy g(FAMILY_ARCHMAGE);
     g.upgrade_to_level(5, true);
-    TEST_ASSERT(g.intelligence > get_family_descriptor(FAMILY_ARCHMAGE)->base_stats[3], "archmage int should increase");
+    ASSERT_TRUE(g.intelligence > get_family_descriptor(FAMILY_ARCHMAGE)->base_stats[3]) << "archmage int should increase";
 }
-REGISTER_TEST(test_guy_upgrade_archmage);
+
 
 // ---------------------------------------------------------------------------
 // update_derived_stats (lines 492-571) - exercises HP/MP/speed/armor calc
 // ---------------------------------------------------------------------------
 
-void test_guy_update_derived_stats_soldier()
+TEST(GuyExtended, guy_update_derived_stats_soldier)
 {
     guy g(FAMILY_SOLDIER);
     g.upgrade_to_level(3, true);
     auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
-    TEST_ASSERT(w != nullptr, "create_walker should succeed");
-    TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP should be positive");
-    TEST_ASSERT(w->stats()->max_magicpoints >= 0, "MP should be non-negative");
-    TEST_ASSERT(w->stats()->heal_per_round >= 0, "heal_per_round should be non-negative");
-    TEST_ASSERT(w->stats()->magic_per_round >= 0, "magic_per_round should be non-negative");
+    ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
+    ASSERT_TRUE(w->stats()->max_hitpoints > 0) << "HP should be positive";
+    ASSERT_TRUE(w->stats()->max_magicpoints >= 0) << "MP should be non-negative";
+    ASSERT_TRUE(w->stats()->heal_per_round >= 0) << "heal_per_round should be non-negative";
+    ASSERT_TRUE(w->stats()->magic_per_round >= 0) << "magic_per_round should be non-negative";
 }
-REGISTER_TEST(test_guy_update_derived_stats_soldier);
 
-void test_guy_update_derived_stats_all_families()
+
+TEST(GuyExtended, guy_update_derived_stats_all_families)
 {
     short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
@@ -167,17 +167,17 @@ void test_guy_update_derived_stats_all_families()
         g.upgrade_to_level(3, true);
         auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
         if (w) {
-            TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP should be positive for all families");
+            ASSERT_TRUE(w->stats()->max_hitpoints > 0) << "HP should be positive for all families";
         }
     }
 }
-REGISTER_TEST(test_guy_update_derived_stats_all_families);
+
 
 // ---------------------------------------------------------------------------
 // query_heart_value (lines 134-179)
 // ---------------------------------------------------------------------------
 
-void test_guy_query_heart_value_all_families()
+TEST(GuyExtended, guy_query_heart_value_all_families)
 {
     short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
@@ -186,26 +186,26 @@ void test_guy_query_heart_value_all_families()
     for (int i = 0; i < 14; i++) {
         guy g(families[i]);
         Sint32 val = g.query_heart_value();
-        TEST_ASSERT(val > 0, "heart value should be positive for base stats");
+        ASSERT_TRUE(val > 0) << "heart value should be positive for base stats";
     }
 }
-REGISTER_TEST(test_guy_query_heart_value_all_families);
 
-void test_guy_query_heart_value_upgraded()
+
+TEST(GuyExtended, guy_query_heart_value_upgraded)
 {
     guy g(FAMILY_SOLDIER);
     Sint32 base_val = g.query_heart_value();
     g.upgrade_to_level(5, true);
     Sint32 upgraded_val = g.query_heart_value();
-    TEST_ASSERT(upgraded_val > base_val, "upgraded guy should be worth more");
+    ASSERT_TRUE(upgraded_val > base_val) << "upgraded guy should be worth more";
 }
-REGISTER_TEST(test_guy_query_heart_value_upgraded);
+
 
 // ---------------------------------------------------------------------------
 // create_walker and create_and_add_walker
 // ---------------------------------------------------------------------------
 
-void test_guy_create_walker_various()
+TEST(GuyExtended, guy_create_walker_various)
 {
     short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC };
@@ -213,18 +213,18 @@ void test_guy_create_walker_various()
         guy g(families[i]);
         g.upgrade_to_level(2, true);
         auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
-        TEST_ASSERT(w != nullptr, "create_walker should succeed");
-        TEST_ASSERT(w->myguy != nullptr, "walker should have myguy set");
-        TEST_ASSERT(w->stats()->level == 2, "walker level should match guy level");
+        ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
+        ASSERT_TRUE(w->myguy != nullptr) << "walker should have myguy set";
+        ASSERT_TRUE(w->stats()->level == 2) << "walker level should match guy level";
     }
 }
-REGISTER_TEST(test_guy_create_walker_various);
+
 
 // ---------------------------------------------------------------------------
 // Copy constructor
 // ---------------------------------------------------------------------------
 
-void test_guy_copy_constructor_all_fields()
+TEST(GuyExtended, guy_copy_constructor_all_fields)
 {
     guy original(FAMILY_MAGE);
     original.upgrade_to_level(5, true);
@@ -237,54 +237,54 @@ void test_guy_copy_constructor_all_fields()
     original.scen_kills = 5;
 
     guy copy(original);
-    TEST_ASSERT_EQ((int)original.family, (int)copy.family, "family should match");
-    TEST_ASSERT_EQ((int)original.strength, (int)copy.strength, "strength should match");
-    TEST_ASSERT_EQ((int)original.intelligence, (int)copy.intelligence, "intelligence should match");
-    TEST_ASSERT_EQ((int)original.dexterity, (int)copy.dexterity, "dexterity should match");
-    TEST_ASSERT_EQ((int)original.constitution, (int)copy.constitution, "constitution should match");
-    TEST_ASSERT_EQ((int)original.armor, (int)copy.armor, "armor should match");
-    TEST_ASSERT_EQ((int)original.level, (int)copy.level, "level should match");
-    TEST_ASSERT_EQ((int)original.kills, (int)copy.kills, "kills should match");
-    TEST_ASSERT_EQ((int)original.total_damage, (int)copy.total_damage, "total_damage should match");
+    ASSERT_EQ((int)original.family, (int)copy.family) << "family should match";
+    ASSERT_EQ((int)original.strength, (int)copy.strength) << "strength should match";
+    ASSERT_EQ((int)original.intelligence, (int)copy.intelligence) << "intelligence should match";
+    ASSERT_EQ((int)original.dexterity, (int)copy.dexterity) << "dexterity should match";
+    ASSERT_EQ((int)original.constitution, (int)copy.constitution) << "constitution should match";
+    ASSERT_EQ((int)original.armor, (int)copy.armor) << "armor should match";
+    ASSERT_EQ((int)original.level, (int)copy.level) << "level should match";
+    ASSERT_EQ((int)original.kills, (int)copy.kills) << "kills should match";
+    ASSERT_EQ((int)original.total_damage, (int)copy.total_damage) << "total_damage should match";
 }
-REGISTER_TEST(test_guy_copy_constructor_all_fields);
+
 
 // ---------------------------------------------------------------------------
 // Derived stat bonus functions
 // ---------------------------------------------------------------------------
 
-void test_guy_derived_bonus_scaling()
+TEST(GuyExtended, guy_derived_bonus_scaling)
 {
     guy g(FAMILY_SOLDIER);
     float hp1 = g.get_hp_bonus();
     g.constitution += 10;
     float hp2 = g.get_hp_bonus();
-    TEST_ASSERT(hp2 > hp1, "more constitution should give more HP bonus");
+    ASSERT_TRUE(hp2 > hp1) << "more constitution should give more HP bonus";
 
     guy g2(FAMILY_MAGE);
     float mp1 = g2.get_mp_bonus();
     g2.intelligence += 10;
     float mp2 = g2.get_mp_bonus();
-    TEST_ASSERT(mp2 > mp1, "more intelligence should give more MP bonus");
+    ASSERT_TRUE(mp2 > mp1) << "more intelligence should give more MP bonus";
 }
-REGISTER_TEST(test_guy_derived_bonus_scaling);
 
-void test_guy_unknown_family_fallback_and_zero_heart_value()
+
+TEST(GuyExtended, guy_unknown_family_fallback_and_zero_heart_value)
 {
     guy unknown(127);
-    TEST_ASSERT_EQ(12, (int)unknown.strength, "unknown family should use fallback STR");
-    TEST_ASSERT_EQ(6, (int)unknown.dexterity, "unknown family should use fallback DEX");
-    TEST_ASSERT_EQ(12, (int)unknown.constitution, "unknown family should use fallback CON");
-    TEST_ASSERT_EQ(8, (int)unknown.intelligence, "unknown family should use fallback INT");
-    TEST_ASSERT_EQ(6, (int)unknown.armor, "unknown family should use fallback armor");
-    TEST_ASSERT_EQ(1, (int)unknown.level, "unknown family should use fallback level");
+    ASSERT_EQ(12, (int)unknown.strength) << "unknown family should use fallback STR";
+    ASSERT_EQ(6, (int)unknown.dexterity) << "unknown family should use fallback DEX";
+    ASSERT_EQ(12, (int)unknown.constitution) << "unknown family should use fallback CON";
+    ASSERT_EQ(8, (int)unknown.intelligence) << "unknown family should use fallback INT";
+    ASSERT_EQ(6, (int)unknown.armor) << "unknown family should use fallback armor";
+    ASSERT_EQ(1, (int)unknown.level) << "unknown family should use fallback level";
 
     unknown.family = 127;
-    TEST_ASSERT_EQ(0, (int)unknown.query_heart_value(), "unknown family should have zero heart value");
+    ASSERT_EQ(0, (int)unknown.query_heart_value()) << "unknown family should have zero heart value";
 }
-REGISTER_TEST(test_guy_unknown_family_fallback_and_zero_heart_value);
 
-void test_guy_update_derived_stats_clamps_speed_and_regen_delays()
+
+TEST(GuyExtended, guy_update_derived_stats_clamps_speed_and_regen_delays)
 {
     guy g(FAMILY_SOLDIER);
     g.dexterity = 3000;
@@ -294,34 +294,33 @@ void test_guy_update_derived_stats_clamps_speed_and_regen_delays()
     g.level = 1;
 
     auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
-    TEST_ASSERT(w != nullptr, "walker should be created");
+    ASSERT_TRUE(w != nullptr) << "walker should be created";
     if (!w)
         return;
 
-    TEST_ASSERT(w->stepsize <= 12.0f, "stepsize should clamp to 12");
-    TEST_ASSERT(w->fire_frequency >= 1.0f, "fire_frequency should clamp to minimum 1");
-    TEST_ASSERT(w->stats()->heal_per_round > 0, "high stats should increase heal_per_round");
-    TEST_ASSERT(w->stats()->magic_per_round > 0, "high stats should increase magic_per_round");
-    TEST_ASSERT(w->stats()->max_heal_delay >= 2, "max_heal_delay should respect minimum clamp");
-    TEST_ASSERT(w->stats()->max_magic_delay >= 2, "max_magic_delay should respect minimum clamp");
+    ASSERT_TRUE(w->stepsize <= 12.0f) << "stepsize should clamp to 12";
+    ASSERT_TRUE(w->fire_frequency >= 1.0f) << "fire_frequency should clamp to minimum 1";
+    ASSERT_TRUE(w->stats()->heal_per_round > 0) << "high stats should increase heal_per_round";
+    ASSERT_TRUE(w->stats()->magic_per_round > 0) << "high stats should increase magic_per_round";
+    ASSERT_TRUE(w->stats()->max_heal_delay >= 2) << "max_heal_delay should respect minimum clamp";
+    ASSERT_TRUE(w->stats()->max_magic_delay >= 2) << "max_magic_delay should respect minimum clamp";
 }
-REGISTER_TEST(test_guy_update_derived_stats_clamps_speed_and_regen_delays);
 
-void test_guy_batch5_max_helper_and_more_unknown_family_paths()
+
+TEST(GuyExtended, guy_batch5_max_helper_and_more_unknown_family_paths)
 {
-    TEST_ASSERT_EQ(5, MAX(3, 5), "MAX should return second operand when first is lower");
-    TEST_ASSERT_EQ(7, MAX(7, 2), "MAX should return first operand when first is higher");
+    ASSERT_EQ(5, MAX(3, 5)) << "MAX should return second operand when first is lower";
+    ASSERT_EQ(7, MAX(7, 2)) << "MAX should return first operand when first is higher";
 
     guy unknown_neg(-999);
-    TEST_ASSERT_STR_EQ("BEAST", unknown_neg.name.c_str(), "negative unknown family should use fallback name");
-    TEST_ASSERT_EQ(1, (int)unknown_neg.level, "negative unknown family should use fallback level");
+    ASSERT_STREQ("BEAST", unknown_neg.name.c_str()) << "negative unknown family should use fallback name";
+    ASSERT_EQ(1, (int)unknown_neg.level) << "negative unknown family should use fallback level";
     unknown_neg.family = static_cast<char>(-127);
-    TEST_ASSERT_EQ(0, (int)unknown_neg.query_heart_value(),
-                   "unknown negative family should report zero heart value");
+    ASSERT_EQ(0, (int)unknown_neg.query_heart_value()) << "unknown negative family should report zero heart value";
 }
-REGISTER_TEST(test_guy_batch5_max_helper_and_more_unknown_family_paths);
 
-void test_guy_round10_query_heart_value_clamps_negative_stat_deltas_to_base_cost()
+
+TEST(GuyExtended, guy_round10_query_heart_value_clamps_negative_stat_deltas_to_base_cost)
 {
     guy g(FAMILY_SOLDIER);
     const Sint32 base = g.query_heart_value();
@@ -334,7 +333,6 @@ void test_guy_round10_query_heart_value_clamps_negative_stat_deltas_to_base_cost
     g.armor = static_cast<short>(g.armor - 5);
 
     const Sint32 lowered = g.query_heart_value();
-    TEST_ASSERT_EQ(base, lowered,
-                   "query_heart_value should clamp negative stat deltas and keep base hiring cost only");
+    ASSERT_EQ(base, lowered) << "query_heart_value should clamp negative stat deltas and keep base hiring cost only";
 }
-REGISTER_TEST(test_guy_round10_query_heart_value_clamps_negative_stat_deltas_to_base_cost);
+

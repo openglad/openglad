@@ -2,7 +2,7 @@
 #include <array>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include "test_framework.h"
@@ -152,7 +152,7 @@ static int options_injector(void* data)
     return 0;
 }
 
-void test_options_menu() {
+TEST(OptionsMenu, options_menu) {
     trace_clear();
 
     // Need save data for continue_game
@@ -163,7 +163,7 @@ void test_options_menu() {
 
     OptionsState state = { false, false, false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(options_injector, "options_test", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;  // options REDRAW is handled within same mainmenu() call
@@ -176,11 +176,11 @@ void test_options_menu() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.started, "injector thread should have started");
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.saw_options, "should have entered the options menu");
-    TEST_ASSERT(state.entered_controls, "should have entered controls submenu");
-    TEST_ASSERT(state.exited_controls, "should have exited via controls_back");
-    TEST_ASSERT(state.used_options_back, "should have exited options via options_back");
+    ASSERT_TRUE(state.started) << "injector thread should have started";
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_options) << "should have entered the options menu";
+    ASSERT_TRUE(state.entered_controls) << "should have entered controls submenu";
+    ASSERT_TRUE(state.exited_controls) << "should have exited via controls_back";
+    ASSERT_TRUE(state.used_options_back) << "should have exited options via options_back";
 }
-REGISTER_TEST(test_options_menu);
+

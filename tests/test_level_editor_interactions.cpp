@@ -236,14 +236,14 @@ static int editor_injector_thread(void* data)
     return 0;
 }
 
-void test_level_editor_runs_and_handles_basic_input()
+TEST(LevelEditorInteractions, level_editor_runs_and_handles_basic_input)
 {
     // Ensure the editor loop runs for a short period.
     og::runtime::current_session->myscreen_->world().end = 0;
 
     EditorThreadState st{false, false};
     SDL_Thread* thread = SDL_CreateThread(editor_injector_thread, "editor_injector", &st);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     // This blocks until myscreen->end is set by the injector.
     (void)level_editor();
@@ -254,10 +254,10 @@ void test_level_editor_runs_and_handles_basic_input()
     // Reset end flag for subsequent tests.
     og::runtime::current_session->myscreen_->world().end = 0;
 
-    TEST_ASSERT(st.started, "injector thread should have started");
-    TEST_ASSERT(st.finished, "injector thread should have finished");
+    ASSERT_TRUE(st.started) << "injector thread should have started";
+    ASSERT_TRUE(st.finished) << "injector thread should have finished";
 }
-REGISTER_TEST(test_level_editor_runs_and_handles_basic_input);
+
 
 namespace
 {
@@ -335,13 +335,13 @@ static int editor_edit_smoke_injector(void* data)
 }
 } // namespace
 
-void test_level_editor_edits_terrain_and_places_objects_smoke()
+TEST(LevelEditorInteractions, level_editor_edits_terrain_and_places_objects_smoke)
 {
     og::runtime::current_session->myscreen_->world().end = 0;
 
     EditorThreadState st{false, false};
     SDL_Thread* thread = SDL_CreateThread(editor_edit_smoke_injector, "editor_edit_smoke", &st);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     (void)level_editor();
 
@@ -350,7 +350,7 @@ void test_level_editor_edits_terrain_and_places_objects_smoke()
 
     og::runtime::current_session->myscreen_->world().end = 0;
 
-    TEST_ASSERT(st.started, "injector thread should have started");
-    TEST_ASSERT(st.finished, "injector thread should have finished");
+    ASSERT_TRUE(st.started) << "injector thread should have started";
+    ASSERT_TRUE(st.finished) << "injector thread should have finished";
 }
-REGISTER_TEST(test_level_editor_edits_terrain_and_places_objects_smoke);
+

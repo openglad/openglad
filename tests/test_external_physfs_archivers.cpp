@@ -177,21 +177,21 @@ static std::vector<uint8_t> make_mvl_one_file(const char* name13, const std::str
     return out;
 }
 
-void test_external_physfs_qpak_wad_hog_mount_and_read()
+TEST(ExternalPhysfsArchivers, external_physfs_qpak_wad_hog_mount_and_read)
 {
-    TEST_ASSERT(PHYSFS_isInit(), "PHYSFS should be initialized");
+    ASSERT_TRUE(PHYSFS_isInit()) << "PHYSFS should be initialized";
 
     // --- QPAK ---
 #if PHYSFS_SUPPORTS_QPAK
     {
         std::vector<uint8_t> pak = make_qpak_one_file("hello.txt", "PAK\n");
         std::string path;
-        TEST_ASSERT(write_temp_file_bytes(pak, "_arch.pak", &path), "write qpak temp file");
-        TEST_ASSERT(PHYSFS_mount(path.c_str(), nullptr, 1), "PHYSFS_mount qpak");
+        ASSERT_TRUE(write_temp_file_bytes(pak, "_arch.pak", &path)) << "write qpak temp file";
+        ASSERT_TRUE(PHYSFS_mount(path.c_str(), nullptr, 1)) << "PHYSFS_mount qpak";
         std::string got;
-        TEST_ASSERT(read_physfs_file_all("hello.txt", &got), "read file from qpak");
-        TEST_ASSERT(got == "PAK\n", "qpak file contents");
-        TEST_ASSERT(PHYSFS_unmount(path.c_str()), "unmount qpak");
+        ASSERT_TRUE(read_physfs_file_all("hello.txt", &got)) << "read file from qpak";
+        ASSERT_TRUE(got == "PAK\n") << "qpak file contents";
+        ASSERT_TRUE(PHYSFS_unmount(path.c_str())) << "unmount qpak";
     }
 #endif
 
@@ -200,13 +200,13 @@ void test_external_physfs_qpak_wad_hog_mount_and_read()
     {
         std::vector<uint8_t> wad = make_wad_one_lump("HELLO", "WAD!");
         std::string path;
-        TEST_ASSERT(write_temp_file_bytes(wad, "_arch.wad", &path), "write wad temp file");
-        TEST_ASSERT(PHYSFS_mount(path.c_str(), nullptr, 1), "PHYSFS_mount wad");
+        ASSERT_TRUE(write_temp_file_bytes(wad, "_arch.wad", &path)) << "write wad temp file";
+        ASSERT_TRUE(PHYSFS_mount(path.c_str(), nullptr, 1)) << "PHYSFS_mount wad";
         std::string got;
         // WAD is case-insensitive in PhysFS; use uppercase lump name.
-        TEST_ASSERT(read_physfs_file_all("HELLO", &got), "read lump from wad");
-        TEST_ASSERT(got == "WAD!", "wad lump contents");
-        TEST_ASSERT(PHYSFS_unmount(path.c_str()), "unmount wad");
+        ASSERT_TRUE(read_physfs_file_all("HELLO", &got)) << "read lump from wad";
+        ASSERT_TRUE(got == "WAD!") << "wad lump contents";
+        ASSERT_TRUE(PHYSFS_unmount(path.c_str())) << "unmount wad";
     }
 #endif
 
@@ -215,32 +215,32 @@ void test_external_physfs_qpak_wad_hog_mount_and_read()
     {
         std::vector<uint8_t> hog = make_hog_one_file("HELLO.TXT", "HOG");
         std::string path;
-        TEST_ASSERT(write_temp_file_bytes(hog, "_arch.hog", &path), "write hog temp file");
-        TEST_ASSERT(PHYSFS_mount(path.c_str(), nullptr, 1), "PHYSFS_mount hog");
+        ASSERT_TRUE(write_temp_file_bytes(hog, "_arch.hog", &path)) << "write hog temp file";
+        ASSERT_TRUE(PHYSFS_mount(path.c_str(), nullptr, 1)) << "PHYSFS_mount hog";
         std::string got;
-        TEST_ASSERT(read_physfs_file_all("HELLO.TXT", &got), "read file from hog");
-        TEST_ASSERT(got == "HOG", "hog file contents");
-        TEST_ASSERT(PHYSFS_unmount(path.c_str()), "unmount hog");
+        ASSERT_TRUE(read_physfs_file_all("HELLO.TXT", &got)) << "read file from hog";
+        ASSERT_TRUE(got == "HOG") << "hog file contents";
+        ASSERT_TRUE(PHYSFS_unmount(path.c_str())) << "unmount hog";
     }
 #endif
 }
-REGISTER_TEST(test_external_physfs_qpak_wad_hog_mount_and_read);
 
-void test_external_physfs_grp_mvl_mount_and_read()
+
+TEST(ExternalPhysfsArchivers, external_physfs_grp_mvl_mount_and_read)
 {
-    TEST_ASSERT(PHYSFS_isInit(), "PHYSFS should be initialized");
+    ASSERT_TRUE(PHYSFS_isInit()) << "PHYSFS should be initialized";
 
     // --- GRP ---
 #if PHYSFS_SUPPORTS_GRP
     {
         std::vector<uint8_t> grp = make_grp_one_file("HELLO.TXT", "GRP!");
         std::string path;
-        TEST_ASSERT(write_temp_file_bytes(grp, "_arch.grp", &path), "write grp temp file");
-        TEST_ASSERT(PHYSFS_mount(path.c_str(), nullptr, 1), "PHYSFS_mount grp");
+        ASSERT_TRUE(write_temp_file_bytes(grp, "_arch.grp", &path)) << "write grp temp file";
+        ASSERT_TRUE(PHYSFS_mount(path.c_str(), nullptr, 1)) << "PHYSFS_mount grp";
         std::string got;
-        TEST_ASSERT(read_physfs_file_all("HELLO.TXT", &got), "read file from grp");
-        TEST_ASSERT(got == "GRP!", "grp file contents");
-        TEST_ASSERT(PHYSFS_unmount(path.c_str()), "unmount grp");
+        ASSERT_TRUE(read_physfs_file_all("HELLO.TXT", &got)) << "read file from grp";
+        ASSERT_TRUE(got == "GRP!") << "grp file contents";
+        ASSERT_TRUE(PHYSFS_unmount(path.c_str())) << "unmount grp";
     }
 #endif
 
@@ -249,13 +249,13 @@ void test_external_physfs_grp_mvl_mount_and_read()
     {
         std::vector<uint8_t> mvl = make_mvl_one_file("INTRO.HNM", "MVL");
         std::string path;
-        TEST_ASSERT(write_temp_file_bytes(mvl, "_arch.mvl", &path), "write mvl temp file");
-        TEST_ASSERT(PHYSFS_mount(path.c_str(), nullptr, 1), "PHYSFS_mount mvl");
+        ASSERT_TRUE(write_temp_file_bytes(mvl, "_arch.mvl", &path)) << "write mvl temp file";
+        ASSERT_TRUE(PHYSFS_mount(path.c_str(), nullptr, 1)) << "PHYSFS_mount mvl";
         std::string got;
-        TEST_ASSERT(read_physfs_file_all("INTRO.HNM", &got), "read file from mvl");
-        TEST_ASSERT(got == "MVL", "mvl file contents");
-        TEST_ASSERT(PHYSFS_unmount(path.c_str()), "unmount mvl");
+        ASSERT_TRUE(read_physfs_file_all("INTRO.HNM", &got)) << "read file from mvl";
+        ASSERT_TRUE(got == "MVL") << "mvl file contents";
+        ASSERT_TRUE(PHYSFS_unmount(path.c_str())) << "unmount mvl";
     }
 #endif
 }
-REGISTER_TEST(test_external_physfs_grp_mvl_mount_and_read);
+

@@ -5,7 +5,7 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
-void test_video_putdata_putdata_alpha_and_get_pixel_smoke()
+TEST(VideoBuffers, video_putdata_putdata_alpha_and_get_pixel_smoke)
 {
     og::runtime::current_session->myscreen_->clearbuffer();
 
@@ -22,14 +22,14 @@ void test_video_putdata_putdata_alpha_and_get_pixel_smoke()
 
     int idx = -1;
     int found = og::runtime::current_session->myscreen_->get_pixel(0, 0, &idx);
-    TEST_ASSERT(found >= 0 && found <= 255, "get_pixel(x,y) should return a palette index-ish value");
+    ASSERT_TRUE(found >= 0 && found <= 255) << "get_pixel(x,y) should return a palette index-ish value";
 
     int found2 = og::runtime::current_session->myscreen_->get_pixel(0);
-    TEST_ASSERT(found2 >= 0 && found2 <= 255, "get_pixel(offset) should return a palette index-ish value");
+    ASSERT_TRUE(found2 >= 0 && found2 <= 255) << "get_pixel(offset) should return a palette index-ish value";
 }
-REGISTER_TEST(test_video_putdata_putdata_alpha_and_get_pixel_smoke);
 
-void test_video_draw_rect_and_alpha_lines_smoke()
+
+TEST(VideoBuffers, video_draw_rect_and_alpha_lines_smoke)
 {
     og::runtime::current_session->myscreen_->clearbuffer();
     og::runtime::current_session->myscreen_->draw_rect_filled(0, 0, 20, 20, 100, 128);
@@ -37,4 +37,4 @@ void test_video_draw_rect_and_alpha_lines_smoke()
     og::runtime::current_session->myscreen_->ver_line(10, 40, 20, 88);
     og::runtime::current_session->myscreen_->swap();
 }
-REGISTER_TEST(test_video_draw_rect_and_alpha_lines_smoke);
+

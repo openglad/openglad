@@ -2,7 +2,7 @@
 #include <array>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include "test_framework.h"
@@ -84,7 +84,7 @@ static int go_no_team_injector(void* data)
     return 0;
 }
 
-void test_go_without_team() {
+TEST(GoNoTeam, go_without_team) {
     trace_clear();
 
     // Set up save with NO team members
@@ -97,7 +97,7 @@ void test_go_without_team() {
 
     GoNoTeamState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(go_no_team_injector, "go_no_team", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -110,10 +110,10 @@ void test_go_without_team() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.saw_popup, "should have seen 'NEED A TEAM!' popup");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_popup) << "should have seen 'NEED A TEAM!' popup";
 }
-REGISTER_TEST(test_go_without_team);
+
 
 
 // Test: Clicking TRAIN TEAM with no team should show popup, not crash.
@@ -161,7 +161,7 @@ static int train_no_team_injector(void* data)
     return 0;
 }
 
-void test_train_without_team() {
+TEST(GoNoTeam, train_without_team) {
     trace_clear();
 
     og::runtime::current_session->myscreen_->save_data.reset();
@@ -173,7 +173,7 @@ void test_train_without_team() {
 
     TrainNoTeamState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(train_no_team_injector, "train_no_team", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -186,7 +186,7 @@ void test_train_without_team() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.saw_popup, "should have seen 'NEED A TEAM!' popup");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_popup) << "should have seen 'NEED A TEAM!' popup";
 }
-REGISTER_TEST(test_train_without_team);
+
