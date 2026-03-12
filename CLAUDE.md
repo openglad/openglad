@@ -158,15 +158,14 @@ New integration test source files must be added to `ALL_INTEGRATION_TEST_SOURCES
 
 ```cpp
 #include <openglad/interface/screen.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include "test_framework.h"
 
-void test_my_thing() {
+TEST(MyThing, basic) {
     trace_clear();
-    TEST_ASSERT(condition, "message on failure");
-    TEST_ASSERT_EQ(expected, actual, "message");
+    ASSERT_TRUE(condition) << "message on failure";
+    ASSERT_EQ(expected, actual) << "message";
 }
-REGISTER_TEST(test_my_thing);
 ```
 
 **Headless unit tests** (no SDL, use `tests/unit/unit.h`):
@@ -174,8 +173,8 @@ REGISTER_TEST(test_my_thing);
 ```cpp
 #include "unit.h"
 
-OG_UNIT_TEST(test_pure_logic) {
-    OG_ASSERT(1 + 1 == 2);
+TEST(PureLogic, arithmetic) {
+    ASSERT_TRUE(1 + 1 == 2);
 }
 ```
 
@@ -186,7 +185,7 @@ Game code writes `TRACE("category", "message %d", val)` (no-op in production bui
 ```cpp
 trace_clear();
 // ... trigger game behavior ...
-TEST_ASSERT(trace_contains("category", "substring"), "expected trace");
+ASSERT_TRUE(trace_contains("category", "substring")) << "expected trace";
 ```
 
 ### Testing Menu UI / Interactive Flows
@@ -204,7 +203,7 @@ static int my_injector_thread(void* data) {
     return 0;
 }
 
-void test_my_menu_flow() {
+TEST(MenuFlow, main_menu_flow) {
     SDL_Thread* thread = SDL_CreateThread(my_injector_thread, "injector", nullptr);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -213,7 +212,6 @@ void test_my_menu_flow() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 }
-REGISTER_TEST(test_my_menu_flow);
 ```
 
 **Key rules for menu tests:**

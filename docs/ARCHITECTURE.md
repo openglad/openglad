@@ -630,14 +630,14 @@ Key flags: `-sUSE_SDL=2`, `-sUSE_SDL_MIXER=2`, `-sASYNCIFY`, `-sALLOW_MEMORY_GRO
 ### Test Frameworks
 
 **Integration tests** (`tests/test_framework.h`):
-- Self-registering via `REGISTER_TEST(func)` macro
-- Assertions: `TEST_ASSERT(cond, msg)`, `TEST_ASSERT_EQ(expected, actual, msg)`
-- Optional fixtures: `REGISTER_TEST_WITH_FIXTURE(func, setup, teardown)`
+- Self-registering via `TEST(Suite, Name)` and `TEST_F(Fixture, Name)`
+- Assertions: `ASSERT_TRUE(cond)`, `ASSERT_EQ(expected, actual)`, `ASSERT_STREQ(expected, actual)`
+- Optional fixtures use `SetUp()` / `TearDown()` on the fixture class
 - Binary-local filtering: `./build/ci-test/og_test_picker --list-tests` or `./build/ci-test/og_test_view --filter redraw`
 - Trace system: `TRACE("category", "message")` for behavioral verification
 
 **Unit tests** (`tests/unit/unit.h`):
-- Lightweight `OG_UNIT_TEST(name)` macro, `OG_ASSERT(cond)`
+- Lightweight `TEST(Suite, Name)` registration with `ASSERT_TRUE(cond)` mapped to `OG_ASSERT(cond)`
 - No SDL initialization; pure logic only
 
 ### UI/Menu Testing Pattern
@@ -652,7 +652,7 @@ static int injector_thread(void* data) {
     return 0;
 }
 
-void test_menu_flow() {
+TEST(MenuFlow, picker_main_unwinds) {
     SDL_Thread* t = SDL_CreateThread(injector_thread, "inj", nullptr);
     g_picker_max_mainmenu_calls = 1;  // Limit loop iterations
     picker_main(0, NULL);             // Blocks until menus unwind
@@ -660,7 +660,6 @@ void test_menu_flow() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 }
-REGISTER_TEST(test_menu_flow);
 ```
 
 ### CI Pipeline
