@@ -4,7 +4,7 @@
 
 #include "zlib.h"
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 TEST(ExternalZlibApiEdges, external_zlib_deflate_advanced_api_paths)
 {

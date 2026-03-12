@@ -11,7 +11,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/platform/game_context.h>

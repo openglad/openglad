@@ -3,7 +3,7 @@
 
 #include <yaml.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 static yaml_char_t* y(const char* s)
 {

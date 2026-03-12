@@ -9,7 +9,7 @@
 #include <openglad/core/terrain_types.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <memory>
 #include <cstdlib>
 

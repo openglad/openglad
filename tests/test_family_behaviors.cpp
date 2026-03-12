@@ -18,7 +18,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/irandom.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <cmath>
 #include <algorithm>
 

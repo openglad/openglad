@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
 
       - name: Configure (ci-test preset)
         run: cmake --preset ci-test
@@ -43,7 +43,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
 
       - name: Configure (dev-release preset)
         run: cmake --preset dev-release
@@ -64,7 +64,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
 
       - name: Configure (ci-asan preset)
         run: cmake --preset ci-asan

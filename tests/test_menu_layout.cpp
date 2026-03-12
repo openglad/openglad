@@ -1,7 +1,8 @@
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include "../src/interface/ui/picker_sdl_defs.h"
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 // Screen dimensions for the game
 static constexpr int SCREEN_W = 320;

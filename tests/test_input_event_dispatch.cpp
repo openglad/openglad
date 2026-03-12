@@ -1,5 +1,6 @@
 #include <openglad/interface/input.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 TEST(InputEventDispatch, input_handle_events_dispatches_various_event_types)
 {

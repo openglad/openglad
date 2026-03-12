@@ -1,10 +1,27 @@
 #include <openglad/core/test_trace.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/interface/screen.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
+namespace {
+
+bool prepare_default_save_load_state()
+{
+    restore_default_campaigns();
+    restore_default_settings();
+#ifdef TESTING
+    set_mounted_campaign_for_testing("");
+#endif
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    return mount_campaign_package_with_error("org.openglad.gladiator") == CampaignPackageIoError::None;
+}
+
+} // namespace
+
 TEST(SaveLoad, roundtrip) {
+    ASSERT_TRUE(prepare_default_save_load_state()) << "default campaign should be restored and mounted before save/load roundtrip";
     // Set up known values
     og::runtime::current_session->myscreen_->save_data.scen_num = 3;
     og::runtime::current_session->myscreen_->save_data.totalcash = 12345;
@@ -46,6 +63,7 @@ TEST(SaveLoad, load_saved_game_with_error_null_screen)
 
 TEST(SaveLoad, load_saved_game_with_error_reports_fallback_level)
 {
+    ASSERT_TRUE(prepare_default_save_load_state()) << "default campaign should be restored and mounted before fallback-level save/load";
     const short old_scen = og::runtime::current_session->myscreen_->save_data.scen_num;
     const int old_level_id = og::runtime::current_session->myscreen_->world().id;
 
@@ -61,4 +79,3 @@ TEST(SaveLoad, load_saved_game_with_error_reports_fallback_level)
     og::runtime::current_session->myscreen_->save_data.scen_num = old_scen;
     og::runtime::current_session->myscreen_->world().id = old_level_id;
 }
-

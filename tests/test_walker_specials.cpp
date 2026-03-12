@@ -6,7 +6,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -116,12 +116,12 @@ public:
     }
 };
 
-class WalkerSpecials {
+class WalkerSpecials : public ::testing::Test {
 public:
-    void SetUp()
+    void SetUp() override
     {}
 
-    void TearDown()
+    void TearDown() override
     {
         teardown_walker_special_test();
     }

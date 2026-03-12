@@ -1,6 +1,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 
 #include <list>

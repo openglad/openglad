@@ -7,7 +7,7 @@
 #include <openglad/resources/io.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <openglad/resources/og_file.h>
 
@@ -684,20 +684,20 @@ TEST(LevelDataOps, level_data_resize_grid_removes_offmap)
 }
 
 
-class LevelDataOps {
+class LevelDataOpsFixture : public ::testing::Test {
 public:
-    void SetUp()
+    void SetUp() override
     {
         setup_editor_campaign_fixture();
     }
 
-    void TearDown()
+    void TearDown() override
     {
         teardown_editor_campaign_fixture();
     }
 };
 
-TEST_F(LevelDataOps, campaign_editor_save_load_and_remount_with_fixture)
+TEST_F(LevelDataOpsFixture, campaign_editor_save_load_and_remount_with_fixture)
 {
     CampaignData src("org.openglad.gladiator");
     ASSERT_EQ(static_cast<int>(CampaignData::IoError::None), static_cast<int>(src.load_with_error())) << "source campaign load_with_error should succeed";
@@ -746,4 +746,3 @@ TEST(LevelDataOps, level_data_find_foe_helpers_return_null_without_valid_targets
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-

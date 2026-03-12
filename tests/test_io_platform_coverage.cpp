@@ -7,7 +7,7 @@
 #include <openglad/resources/zip_api.h>
 #include <openglad/resources/io_common.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cstdio>

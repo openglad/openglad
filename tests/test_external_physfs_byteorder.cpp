@@ -5,7 +5,7 @@
 
 #include <physfs.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 TEST(ExternalPhysfsByteorder, external_physfs_swap_endian_helpers_roundtrip)
 {

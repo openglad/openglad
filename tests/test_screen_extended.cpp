@@ -4,7 +4,8 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 #include <cstring>
 #include <filesystem>
@@ -357,20 +358,20 @@ void teardown_scen_title_fixture()
 }
 } // namespace
 
-class ScreenExtended {
+class ScreenExtendedFixture : public ::testing::Test {
 public:
-    void SetUp()
+    void SetUp() override
     {
         setup_scen_title_fixture();
     }
 
-    void TearDown()
+    void TearDown() override
     {
         teardown_scen_title_fixture();
     }
 };
 
-TEST_F(ScreenExtended, screen_get_scen_title_with_error_typed_paths)
+TEST_F(ScreenExtendedFixture, screen_get_scen_title_with_error_typed_paths)
 {
     std::string title;
     screen::ScenarioTitleError err = og::runtime::current_session->myscreen_->get_scen_title_with_error("typed_title_valid", title);
@@ -389,4 +390,3 @@ TEST_F(ScreenExtended, screen_get_scen_title_with_error_typed_paths)
     err = og::runtime::current_session->myscreen_->get_scen_title_with_error("typed_title_missing_file", title);
     ASSERT_EQ(static_cast<int>(screen::ScenarioTitleError::OpenReadFailed), static_cast<int>(err)) << "missing file should return OpenReadFailed";
 }
-

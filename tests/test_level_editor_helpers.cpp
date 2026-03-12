@@ -4,7 +4,7 @@
 #include <openglad/legacy/pixdefs.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <string>
 #include <set>

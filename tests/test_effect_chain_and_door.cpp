@@ -4,7 +4,7 @@
 #include <openglad/interface/guy_create.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <unordered_set>
 #include <vector>

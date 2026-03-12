@@ -1,5 +1,6 @@
 #include <openglad/resources/io.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 #include <cstdint>
 #include <cstdio>

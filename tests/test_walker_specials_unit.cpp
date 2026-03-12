@@ -11,7 +11,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #include "test_gameplay_context_scope.h"
 
 namespace {

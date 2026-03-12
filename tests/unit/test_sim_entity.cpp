@@ -8,7 +8,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/statistics.h>
-#include "unit.h"
+#include <gtest/gtest.h>
 
 TEST(SimEntity, default_construction)
 {

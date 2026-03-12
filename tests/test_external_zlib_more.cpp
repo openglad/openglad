@@ -4,7 +4,7 @@
 
 #include "zlib.h"
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 static bool deflate_all(const std::string& payload,
                         int level,

@@ -5,7 +5,7 @@
 
 #include <yaml.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 static bool emit_document_built_via_api(std::string* out_yaml)
 {

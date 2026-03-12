@@ -1,6 +1,6 @@
 #include <openglad/gameplay/effect.h>
 #include <openglad/interface/render/view.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 // ---------------------------------------------------------------------------
 // orbit_offset tests

@@ -1,6 +1,6 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/platform/game_context.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <cstdint>
 
 static std::uint32_t rng_return(std::uint32_t x)

@@ -8,7 +8,7 @@
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/io.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <cstdint>
 #include <cstdlib>
@@ -458,10 +458,10 @@ TEST(LevelDataCoverage, level_data_round8_query_grid_treeb1_and_arrow_slit_varia
     weapon->setxy(0, 0);
 
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_WALL_ARROW_GRASS;
-    FixedRandom rng_pass(0);
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 0;
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon)) << "arrow-slit passability should pass when rng returns 0";
 
-    FixedRandom rng_block(1);
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 3;
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon)) << "arrow-slit passability should block when rng returns non-zero";
 
     // Unknown tile type default should block.
@@ -584,11 +584,11 @@ TEST(LevelDataCoverage, level_data_round5_query_grid_passable_contiguous_block_p
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_WALL4;
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living)) << "wall4 should block living immediately";
 
-    FixedRandom rng_block(1);
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 3;
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon)) << "wall4 projectile should block when rng returns non-zero";
 
     owner->setxy(8, 0); // triggers dist < GRID_SIZE adjustment branch
-    FixedRandom rng_pass(0);
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 0;
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon)) << "wall4 projectile should pass and fall through with rng zero";
 
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_WATER1;
@@ -725,19 +725,6 @@ TEST(LevelDataCoverage, level_data_round7a_title_reader_and_error_wrappers)
     ASSERT_TRUE(err == LevelRuntimeData::IoError::None || err == LevelRuntimeData::IoError::OpenWriteFailed) << "save_with_error wrapper should return a concrete io error";
 }
 
-
-namespace {
-class ConstRandom final : public IRandom {
-public:
-    explicit ConstRandom(std::uint32_t value) : value_(value) {}
-    std::uint32_t next(std::uint32_t max_exclusive) override {
-        if (max_exclusive == 0) return 0;
-        return value_ % max_exclusive;
-    }
-private:
-    std::uint32_t value_;
-};
-}
 
 TEST(LevelDataCoverage, level_data_round6_version6plus_and_title_read_paths)
 {
@@ -1021,8 +1008,6 @@ TEST(LevelDataCoverage, level_data_round6_find_near_foe_boundary_fallback_path)
     actor->setxy(GRID_SIZE * 3, og::runtime::current_session->myscreen_->world().pixmaxy - 1);
     foe->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
 
-    ConstRandom rng_zero(0);
-
     // Near-search spiral should hit the y-boundary and fall back to find_far_foe().
     walker* picked = og::runtime::current_session->myscreen_->world().find_near_foe(actor);
     ASSERT_TRUE(picked == foe) << "find_near_foe should boundary-fallback to far foe selection";
@@ -1072,7 +1057,7 @@ TEST(LevelDataCoverage, level_data_round7_wall_arrow_distance_axis_and_rng_paths
     // Y-axis distance branch (abs(dy) >= abs(dx)); rng non-zero => fail.
     owner->setxy(5, 200);
     weapon->setxy(0, 0);
-    ConstRandom rng_block(1);
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 1;
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon)) << "wall-arrow projectile should fail when rng returns non-zero";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -1176,7 +1161,7 @@ TEST(LevelDataCoverage, level_data_round13_grid_passability_tree_wall_water_and_
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_WALL4;
     og::runtime::current_session->myscreen_->world().rng_.state_ = 0;
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon)) << "wall-arrow projectile should pass when rng returns zero";
-    ConstRandom rng_block(1);
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 1;
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon)) << "wall-arrow projectile should block when rng returns non-zero";
 
     // Water passability branch for flying vs non-flying living walkers (2046-2078).
@@ -1448,4 +1433,3 @@ TEST(LevelDataCoverage, level_data_round17_grid_resize_campaign_wrappers_and_del
     ASSERT_TRUE(g_clear_stale_called) << "delete_objects should invoke clear_stale_view_controls hook";
     ASSERT_TRUE(hooked_level.world().myobmap->walker_to_pos.empty()) << "delete_objects should clear stale obmap indices";
 }
-

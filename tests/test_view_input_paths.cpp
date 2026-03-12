@@ -7,7 +7,8 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_context.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 #include <list>
 #include <memory>

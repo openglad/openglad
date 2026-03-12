@@ -15,7 +15,8 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/game_world.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 short new_score_panel(screen* s, short do_it);

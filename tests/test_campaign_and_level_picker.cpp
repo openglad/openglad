@@ -7,7 +7,8 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
 #include <openglad/resources/io.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 
 #include <map>

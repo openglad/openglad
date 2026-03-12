@@ -4,7 +4,7 @@
 
 #include "zlib.h"
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 TEST(ExternalZlib, compress2_uncompress_roundtrip)
 {

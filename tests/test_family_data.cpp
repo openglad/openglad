@@ -1,5 +1,5 @@
 #include <openglad/core/test_trace.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/gameplay/walker.h>
@@ -82,18 +82,18 @@ static void teardown_family_walker() {
     if (og::runtime::current_session->myscreen_) og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
-class FamilyData {
+class FamilyDataFixture : public ::testing::Test {
 public:
-    void SetUp()
+    void SetUp() override
     {}
 
-    void TearDown()
+    void TearDown() override
     {
         teardown_family_walker();
     }
 };
 
-TEST_F(FamilyData, walker_init_matches_registry)
+TEST_F(FamilyDataFixture, walker_init_matches_registry)
 {
     init_family_registry();
     for (int fam = 0; fam < NUM_FAMILIES; fam++)
@@ -179,4 +179,3 @@ TEST(FamilyData, bit_flags_match_walker_init)
         ASSERT_TRUE(has_flag == c.expected) << msg;
     }
 }
-

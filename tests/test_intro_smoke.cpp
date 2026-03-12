@@ -1,4 +1,4 @@
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <openglad/interface/input.h>
 #include <SDL.h>
 #include <cstring>

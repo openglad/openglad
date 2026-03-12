@@ -42,7 +42,7 @@ cmake --build --preset dev-debug
 ### Dependencies (Debian/Ubuntu)
 
 ```bash
-sudo apt-get install cmake ninja-build libsdl2-dev libsdl2-mixer-dev
+sudo apt-get install cmake ninja-build libsdl2-dev libsdl2-mixer-dev libgtest-dev
 ```
 
 ### Web Build
@@ -142,6 +142,13 @@ cmake --build --preset ci-test
 ctest --preset ci-test
 ```
 
+GoogleTest is a system dependency for native test builds:
+
+```bash
+sudo apt-get install libgtest-dev   # Debian/Ubuntu
+brew install googletest             # macOS
+```
+
 ### Test Binaries
 
 | Binary | Description |
@@ -150,16 +157,24 @@ ctest --preset ci-test
 | `og_test_*` | Twenty SDL integration group binaries (1496 tests total) |
 | `openglad_text` | Headless text client exercised via CTest script entries |
 
-New integration test source files must be added to `ALL_INTEGRATION_TEST_SOURCES` and assigned to an `og_add_test_group(...)` call in `CMakeLists.txt`. New headless unit tests should be assigned to an `og_add_unit_group(...)` call.
+Integration groups use `tests/integration_main.cpp`. Headless unit groups use `tests/unit/unit_main.cpp`.
+
+New integration test source files must be added to `ALL_INTEGRATION_TEST_SOURCES` and assigned to `og_add_test_group(...)` in `CMakeLists.txt`. New headless unit tests should be assigned to `og_add_unit_group(...)`.
 
 ### Writing Tests
 
-**Integration tests** (require SDL, use `test_framework.h`):
+All native tests use real GoogleTest:
+- `TEST(Suite, name)` and `TEST_F(Fixture, name)` for cases and fixtures
+- Standard assertions like `ASSERT_TRUE`, `ASSERT_EQ`, `ASSERT_STREQ`, `EXPECT_*`
+- Binary-local selection via `--gtest_filter='Suite.*'`
+- Order-dependence checks via `--gtest_shuffle`
+
+**Integration tests** (require SDL):
 
 ```cpp
+#include <gtest/gtest.h>
 #include <openglad/interface/screen.h>
 #include <openglad/core/test_trace.h>
-#include "test_framework.h"
 
 TEST(MyThing, basic) {
     trace_clear();
@@ -168,10 +183,10 @@ TEST(MyThing, basic) {
 }
 ```
 
-**Headless unit tests** (no SDL, use `tests/unit/unit.h`):
+**Headless unit tests** (no SDL):
 
 ```cpp
-#include "unit.h"
+#include <gtest/gtest.h>
 
 TEST(PureLogic, arithmetic) {
     ASSERT_TRUE(1 + 1 == 2);
@@ -227,7 +242,7 @@ The test build compiles game sources with `-DTESTING`. Use this for:
 - `TRACE(...)` calls to instrument code (no-op in production)
 - Test-only globals like `g_picker_max_mainmenu_calls`
 - Making `exit(0)` calls safe (`quit()` is a no-op under TESTING)
-- `main()` in `glad.cpp` is excluded (tests use `test_main.cpp`)
+- `main()` in `glad.cpp` is excluded (tests use `tests/integration_main.cpp`)
 
 ## Adding New Code
 

@@ -2,7 +2,7 @@
 #include <openglad/legacy/pixdefs.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/platform/game_context.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <cstdint>
 

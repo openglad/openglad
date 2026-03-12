@@ -11,7 +11,7 @@
 #include <openglad/legacy/base.h>
 #include <memory>
 #include <string>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #include <openglad/gameplay/living.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>

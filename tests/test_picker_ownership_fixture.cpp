@@ -2,7 +2,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <memory>
 
@@ -34,14 +34,14 @@ void teardown_picker_ownership_fixture()
 }
 } // namespace
 
-class PickerOwnershipFixture {
+class PickerOwnershipFixture : public ::testing::Test {
 public:
-    void SetUp()
+    void SetUp() override
     {
         setup_picker_ownership_fixture();
     }
 
-    void TearDown()
+    void TearDown() override
     {
         teardown_picker_ownership_fixture();
     }
@@ -63,4 +63,3 @@ TEST_F(PickerOwnershipFixture, picker_cycle_team_guy_ownership_copy_and_alias)
     ASSERT_EQ(original_strength, (int)working.strength) << "working copy should have same strength as original";
     ASSERT_EQ(original_strength, (int)original.strength) << "original should match team list slot";
 }
-

@@ -4,7 +4,8 @@
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/render/view.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include <cstring>
 #include <memory>
 

@@ -7,7 +7,7 @@
 
 #include <physfs.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 static void append_u32le(std::vector<uint8_t>& out, uint32_t v)
 {

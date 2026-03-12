@@ -6,7 +6,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/sim_event_log.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <memory>
 

@@ -15,7 +15,7 @@ extern "C" {
 }
 #endif
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 static std::string tmp_zip_path()
 {

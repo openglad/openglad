@@ -1,5 +1,5 @@
 #include "SDL.h"
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <openglad/interface/screen.h>
 

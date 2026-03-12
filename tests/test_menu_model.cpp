@@ -1,5 +1,5 @@
 #include <openglad/interface/ui/menu_model.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 TEST(MenuModel, main_definition_and_lookup)
 {

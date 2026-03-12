@@ -1,5 +1,5 @@
 #include <openglad/core/test_trace.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 TEST(TraceBuffer, basic_paths)
 {

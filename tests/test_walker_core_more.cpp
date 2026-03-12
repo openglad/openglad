@@ -9,7 +9,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <memory>
 #include <vector>
@@ -1146,7 +1146,7 @@ TEST(WalkerCoreMore, walker_round16_act_random_no_foe_far_search_fallback_path)
     if (!actor)
         return;
 
-    SequenceRandom rng({1}); // rng(4)!=0 => ACT_RANDOM else branch
+    og::runtime::current_session->myscreen_->world().rng_.state_ = 1; // rng(4)!=0 => ACT_RANDOM else branch
     actor->set_act_type(ACT_RANDOM);
     actor->ani_type = ANI_WALK;
     actor->foe = nullptr;
@@ -1289,4 +1289,3 @@ TEST(WalkerCoreMore, walker_round19_move_myguy_fire_callback_and_act_random_no_f
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-

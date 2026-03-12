@@ -1,14 +1,17 @@
+#include <gtest/gtest.h>
+
 #include <unistd.h>
-#include <cstring>
+
+#include <cstdio>
 #include <filesystem>
-#include "unit.h"
+
 #include <openglad/core/util.h>
-#include <openglad/resources/filesystem.h>
-#include <openglad/resources/save_data.h>
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/platform/game_session.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/platform/game_session.h>
+#include <openglad/resources/filesystem.h>
+#include <openglad/resources/save_data.h>
 
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);
@@ -52,30 +55,71 @@ bool init_unit_filesystem(const std::filesystem::path& test_config_dir, const ch
     return true;
 }
 
-} // namespace
-
-int main(int argc, char* argv[])
+class HeadlessSessionListener final : public ::testing::EmptyTestEventListener
 {
-    bool list_tests = false;
-    for (int i = 1; i < argc; ++i)
+public:
+    HeadlessSessionListener(og::runtime::GameSession& session,
+                            GameWorld& fallback_world,
+                            SaveData& fallback_save,
+                            og::sim::SimEventLog& fallback_events)
+        : session_(session),
+          fallback_world_(fallback_world),
+          fallback_save_(fallback_save),
+          fallback_events_(fallback_events)
     {
-        if (std::strcmp(argv[i], "--list-tests") == 0)
+    }
+
+    void OnTestStart(const ::testing::TestInfo&) override
+    {
+        if (!gameplay_context_intact())
         {
-            list_tests = true;
-            continue;
+            ADD_FAILURE() << "gameplay context corrupted before test";
+            restore_context();
+        }
+    }
+
+    void OnTestEnd(const ::testing::TestInfo&) override
+    {
+        if (!gameplay_context_intact())
+        {
+            ADD_FAILURE() << "gameplay context corrupted by test";
+            restore_context();
         }
 
-        std::fprintf(stderr, "error: unknown option: %s\n", argv[i]);
-        return 2;
+        fallback_world_.delete_objects();
+        restore_context();
     }
 
-    if (list_tests)
+private:
+    bool gameplay_context_intact() const
     {
-        for (const auto& tc : og::unit::registry())
-            std::fprintf(stdout, "%s\n", tc.name);
-        std::fflush(stdout);
-        return 0;
+        return og::runtime::current_session == &session_ &&
+               current_game == &session_.game_ &&
+               session_.game_.world == &fallback_world_ &&
+               session_.game_.save == &fallback_save_ &&
+               session_.game_.sim_events == &fallback_events_;
     }
+
+    void restore_context()
+    {
+        og::runtime::current_session = &session_;
+        current_game = &session_.game_;
+        session_.game_.world = &fallback_world_;
+        session_.game_.save = &fallback_save_;
+        session_.game_.sim_events = &fallback_events_;
+    }
+
+    og::runtime::GameSession& session_;
+    GameWorld& fallback_world_;
+    SaveData& fallback_save_;
+    og::sim::SimEventLog& fallback_events_;
+};
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+    ::testing::InitGoogleTest(&argc, argv);
 
     const auto test_config_dir = std::filesystem::temp_directory_path() /
         ("openglad_test_" + std::to_string(getpid()));
@@ -106,51 +150,19 @@ int main(int argc, char* argv[])
     session.game_.sim_events = &fallback_events;
     current_game = &session.game_;
 
-    auto gameplay_context_intact = [&]() {
-        return current_game == &session.game_ &&
-               session.game_.world == &fallback_world &&
-               session.game_.save == &fallback_save &&
-               session.game_.sim_events == &fallback_events;
-    };
-
     init_all_registries();
+    ::testing::TestEventListeners& listeners =
+        ::testing::UnitTest::GetInstance()->listeners();
+    listeners.Append(new HeadlessSessionListener(
+        session, fallback_world, fallback_save, fallback_events));
 
-    int passed = 0;
-    int failed = 0;
-    for (const auto& tc : og::unit::registry())
-    {
-        if (!gameplay_context_intact())
-        {
-            ++failed;
-            std::fprintf(stderr, "[  FAILED  ] %s (gameplay context corrupted before test)\n", tc.name);
-            break;
-        }
+    const int result = RUN_ALL_TESTS();
 
-        std::fprintf(stderr, "[ RUN      ] %s\n", tc.name);
-        try {
-            tc.fn();
-            ++passed;
-            std::fprintf(stderr, "[       OK ] %s\n", tc.name);
-        } catch (...) {
-            ++failed;
-            std::fprintf(stderr, "[  FAILED  ] %s (threw)\n", tc.name);
-        }
-
-        if (!gameplay_context_intact())
-        {
-            ++failed;
-            std::fprintf(stderr, "[  FAILED  ] %s (corrupted gameplay context)\n", tc.name);
-            break;
-        }
-    }
-
-    std::fprintf(stderr, "\n=== Unit Results: %d passed, %d failed, %d total ===\n\n",
-                 passed, failed, passed + failed);
     (void)og::resources::deinit();
 #ifdef ENABLE_COVERAGE
     __gcov_dump();
 #endif
     std::error_code ec;
     std::filesystem::remove_all(test_config_dir, ec);
-    return failed == 0 ? 0 : 1;
+    return result;
 }

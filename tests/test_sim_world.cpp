@@ -12,7 +12,7 @@
 #include <memory>
 #include "test_game_world_fixture.h"
 #include "test_gameplay_context_scope.h"
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 
 #ifdef TESTING
 namespace og::sim {

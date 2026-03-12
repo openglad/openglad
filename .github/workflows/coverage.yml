@@ -35,7 +35,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
 
       - name: Install coverage tools
         run: python3 -m pip install gcovr

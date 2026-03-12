@@ -1,5 +1,5 @@
 #include <openglad/interface/ui/results_screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 TEST(ResultsScreenInternalHelper, exercises_core_paths)
 {

@@ -1,5 +1,6 @@
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 #include <memory>
 #include <vector>

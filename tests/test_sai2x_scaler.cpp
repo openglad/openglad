@@ -1,5 +1,6 @@
 #include <openglad/platform/sai2x.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 #include <cstdio>
 #include <cstring>

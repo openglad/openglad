@@ -13,7 +13,7 @@ TMPOERR=$(mktemp)
 TMPHOME=$(mktemp -d)
 trap 'rm -f "$TMPOUT" "$TMPOERR"; rm -rf "$TMPHOME"' EXIT
 
-printf 'input 0 left\nquit\n' | timeout "$TEXT_TIMEOUT" "$TEXT_BIN" --protocol --level 1 --seed 42 > "$TMPOUT" 2>/dev/null
+printf 'input 0 left\nquit\n' | HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" --protocol --level 1 --seed 42 > "$TMPOUT" 2>/dev/null
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "FAIL: openglad_text unsupported-path run exited with code $rc" >&2

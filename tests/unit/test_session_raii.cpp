@@ -11,7 +11,7 @@
 #include <set>
 #include <vector>
 
-#include "unit.h"
+#include <gtest/gtest.h>
 
 TEST(SessionRaii, game_session_headless_restores_legacy_globals)
 {

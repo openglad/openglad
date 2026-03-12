@@ -5,7 +5,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/guy_create.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <memory>
 

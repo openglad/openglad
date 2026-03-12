@@ -1,5 +1,6 @@
 #include <openglad/interface/input.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 extern void wait_for_key(int somekey);
 extern void resetJoystick(int player_num);
 

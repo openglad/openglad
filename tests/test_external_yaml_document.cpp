@@ -3,7 +3,7 @@
 
 #include <yaml.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 static bool load_yaml_documents(const std::string& input, int* out_docs)
 {

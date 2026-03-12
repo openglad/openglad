@@ -4,7 +4,7 @@
 
 #include <yaml.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 static bool scan_yaml_tokens(const std::string& input, int* out_tokens)
 {

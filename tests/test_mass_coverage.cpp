@@ -8,7 +8,8 @@
 #include <openglad/legacy/colors.h>
 #include <openglad/resources/gparser.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 #include <array>
 #include <cstddef>

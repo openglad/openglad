@@ -1,4 +1,4 @@
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 // picker_dialogs.cpp symbols
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);

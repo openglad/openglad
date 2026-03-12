@@ -1,7 +1,7 @@
 #include <array>
 
 #include <openglad/interface/render/pal32.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 TEST(Palette, set_and_query_reg)
 {

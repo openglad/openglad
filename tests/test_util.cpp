@@ -1,7 +1,7 @@
 #include <cstring>
 #include <string>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/base.h>  // g_game_speed_factor macro, set_game_speed()
 

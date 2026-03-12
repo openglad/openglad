@@ -4,7 +4,7 @@
  * These tests exercise InputAction, PlayerInput, and InputState without
  * any SDL dependency — the whole point of the abstraction.
  */
-#include "unit.h"
+#include <gtest/gtest.h>
 #include <openglad/interface/input_action.h>
 #include <openglad/platform/game_context.h>
 #include <cstring>

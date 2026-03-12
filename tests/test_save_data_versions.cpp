@@ -10,7 +10,8 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 static void rw_write(SDL_RWops* out, const void* data, size_t len)
 {

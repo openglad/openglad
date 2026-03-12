@@ -7,7 +7,7 @@
 #include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
 #include <memory>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #include <openglad/platform/game_context.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>

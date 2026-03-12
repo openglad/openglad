@@ -3,13 +3,29 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/core/test_trace.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/gameplay/guy.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_saved_game(const char *filename, screen *scr);
+
+namespace {
+
+bool prepare_default_level_load()
+{
+    restore_default_campaigns();
+    restore_default_settings();
+#ifdef TESTING
+    set_mounted_campaign_for_testing("");
+#endif
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    return mount_campaign_package_with_error("org.openglad.gladiator") == CampaignPackageIoError::None;
+}
+
+} // namespace
 
 // Test: Load levels 1-10, covering both version 9 and version 6 scenario formats.
 //
@@ -18,6 +34,7 @@ short load_saved_game(const char *filename, screen *scr);
 // buffer). This test verifies the fix works.
 
 TEST(LoadLevels, load_multiple_levels) {
+    ASSERT_TRUE(prepare_default_level_load()) << "default campaign should be restored and mounted before load test";
     for (int level = 1; level <= 10; level++) {
         trace_clear();
 
@@ -41,6 +58,7 @@ TEST(LoadLevels, load_multiple_levels) {
 
 // Test: Level data integrity -- verify that loaded level has sensible data
 TEST(LoadLevels, level_data_integrity) {
+    ASSERT_TRUE(prepare_default_level_load()) << "default campaign should be restored and mounted before integrity test";
     trace_clear();
 
     og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(1);
@@ -65,6 +83,7 @@ TEST(LoadLevels, level_data_integrity) {
 
 // Test: Loading a nonexistent level falls back to level 1
 TEST(LoadLevels, level_fallback) {
+    ASSERT_TRUE(prepare_default_level_load()) << "default campaign should be restored and mounted before fallback test";
     trace_clear();
 
     og::runtime::current_session->myscreen_->save_data.scen_num = 9999;  // This level shouldn't exist
@@ -83,6 +102,7 @@ TEST(LoadLevels, level_fallback) {
 // Regression: saved multiplayer teams must map to views by saved team ids,
 // not by view index.
 TEST(LoadLevels, load_saved_game_maps_views_to_saved_team_ids) {
+    ASSERT_TRUE(prepare_default_level_load()) << "default campaign should be restored and mounted before team mapping test";
     trace_clear();
 
     og::runtime::current_session->myscreen_->save_data.reset();
@@ -115,4 +135,3 @@ TEST(LoadLevels, load_saved_game_maps_views_to_saved_team_ids) {
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-

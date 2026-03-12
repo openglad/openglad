@@ -8,7 +8,7 @@
 
 #include <physfs.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 static bool write_temp_file_bytes(const std::vector<uint8_t>& bytes,
                                   const char* suffix,
@@ -89,7 +89,7 @@ TEST(ExternalPhysfsZip, external_physfs_mount_zip_and_read_deflated_files)
     std::string zip_path;
     ASSERT_TRUE(write_temp_file_bytes(bytes, "_ziptest.zip", &zip_path)) << "write zip temp file";
 
-    // PhysFS is initialized by io_init() in tests/test_main.cpp; here we just
+    // PhysFS is initialized by io_init() in tests/integration_main.cpp; here we just
     // exercise mounting and reading via the zip archiver + inflate paths.
     ASSERT_TRUE(PHYSFS_isInit()) << "PHYSFS should be initialized";
 
@@ -110,4 +110,3 @@ TEST(ExternalPhysfsZip, external_physfs_mount_zip_and_read_deflated_files)
 
     ASSERT_TRUE(PHYSFS_unmount(zip_path.c_str())) << "PHYSFS_unmount zip archive";
 }
-

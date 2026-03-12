@@ -4,7 +4,7 @@
 
 #include <physfs.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 TEST(ExternalPhysfsUnicode, external_physfs_utf8_to_ucs_and_back_basic)
 {

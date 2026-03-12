@@ -3,7 +3,7 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif

@@ -7,7 +7,7 @@
 
 #include <physfs.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 namespace
 {

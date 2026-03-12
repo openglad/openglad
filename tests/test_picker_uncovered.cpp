@@ -3,7 +3,8 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/picker_common.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 
 #include <string>

@@ -1,5 +1,6 @@
 #include <openglad/resources/io.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 #include <filesystem>
 #include <string>
@@ -63,14 +64,14 @@ bool read_version(const std::filesystem::path& file, unsigned char* out)
 }
 } // namespace
 
-class IoNewFileFixture {
+class IoNewFileFixture : public ::testing::Test {
 public:
-    void SetUp()
+    void SetUp() override
     {
         setup_new_file_fixture();
     }
 
-    void TearDown()
+    void TearDown() override
     {
         teardown_new_file_fixture();
     }

@@ -4,7 +4,8 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/resources/gparser.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 #include <cstring>
 

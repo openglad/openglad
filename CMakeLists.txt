@@ -1025,6 +1025,8 @@ if(NOT EMSCRIPTEN)
     )
 
     if(BUILD_TESTING)
+        find_package(GTest REQUIRED)
+
         set(ALL_INTEGRATION_TEST_SOURCES
             ${CMAKE_SOURCE_DIR}/tests/test_trace_buffer.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_startup.cpp
@@ -1193,8 +1195,7 @@ if(NOT EMSCRIPTEN)
             endforeach()
 
             add_executable(${NAME}
-                ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
-                ${CMAKE_SOURCE_DIR}/tests/test_framework.cpp
+                ${CMAKE_SOURCE_DIR}/tests/integration_main.cpp
                 ${selected}
             )
             configure_openglad_library(${NAME})
@@ -1204,7 +1205,7 @@ if(NOT EMSCRIPTEN)
                 ${CMAKE_SOURCE_DIR}/tests
                 ${OG_THIRD_PARTY_INCLUDE_DIRS}
             )
-            target_link_libraries(${NAME} PRIVATE og_game_test)
+            target_link_libraries(${NAME} PRIVATE og_game_test GTest::gtest)
             configure_openglad_runtime_target(${NAME})
             add_runtime_assets_dependency(${NAME})
 
@@ -1237,7 +1238,7 @@ if(NOT EMSCRIPTEN)
             configure_openglad_sdl_target(${NAME})
             target_compile_definitions(${NAME} PRIVATE TESTING)
             target_include_directories(${NAME} PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-            target_link_libraries(${NAME} PRIVATE og_game)
+            target_link_libraries(${NAME} PRIVATE og_game GTest::gtest)
             configure_openglad_runtime_target(${NAME})
 
             if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

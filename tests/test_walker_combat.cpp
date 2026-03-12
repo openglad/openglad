@@ -10,7 +10,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/combat_math.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <memory>
 #include <vector>
 

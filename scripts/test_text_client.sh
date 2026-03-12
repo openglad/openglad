@@ -21,11 +21,12 @@ if [ ! -x "$TEXT_BIN" ]; then
 fi
 
 TMPOUT=$(mktemp)
-trap 'rm -f "$TMPOUT"' EXIT
+TMPHOME=$(mktemp -d)
+trap 'rm -f "$TMPOUT"; rm -rf "$TMPHOME"' EXIT
 
 # Keep the script-level timeout below CTest's 60s test timeout so sanitizer
 # runs still have headroom under parallel load without masking real hangs.
-printf 'tick 1000\nstate\nquit\n' | timeout "$TEXT_TIMEOUT" "$TEXT_BIN" --protocol --level 1 --seed 42 > "$TMPOUT" 2>/dev/null
+printf 'tick 1000\nstate\nquit\n' | HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" --protocol --level 1 --seed 42 > "$TMPOUT" 2>/dev/null
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "FAIL: openglad_text exited with code $rc" >&2

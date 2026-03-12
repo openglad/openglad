@@ -10,7 +10,7 @@
 #include <vector>
 
 // Mutex to synchronize access to allbuttons[] between injector threads
-// and the main thread during menu transitions. Defined in test_framework.cpp.
+// and the main thread during menu transitions. Defined in integration_main.cpp.
 std::mutex& get_allbuttons_mutex();
 
 struct AllButtonsLock final

@@ -1,5 +1,5 @@
 #include <openglad/resources/gparser.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <cstring>
 #include <cstdio>

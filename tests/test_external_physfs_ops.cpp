@@ -5,7 +5,7 @@
 
 #include <physfs.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 TEST(ExternalPhysfsOps, external_physfs_write_read_stat_and_delete)
 {
