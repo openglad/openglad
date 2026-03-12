@@ -11,6 +11,7 @@
 #include "test_framework.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <format>
@@ -74,6 +75,15 @@ static bool write_bytes(const std::filesystem::path& p, const std::vector<unsign
     size_t n = fwrite(bytes.data(), 1, bytes.size(), f);
     fclose(f);
     return n == bytes.size();
+}
+
+static std::filesystem::path scenario_dir()
+{
+    if (const char* config_dir = std::getenv("OPENGLAD_CONFIG_DIR")) {
+        if (config_dir[0] != '\0')
+            return std::filesystem::path(config_dir) / "scen";
+    }
+    return std::filesystem::path("scen");
 }
 
 static walker* add_living(unsigned char family = FAMILY_SOLDIER)
@@ -151,23 +161,24 @@ REGISTER_TEST(test_level_data_range_helpers_and_null_paths);
 void test_level_data_load_error_codes_and_scenario_title_paths()
 {
     namespace fs = std::filesystem;
-    fs::create_directories("scen");
+    const fs::path scen_dir = scenario_dir();
+    fs::create_directories(scen_dir);
 
     const int id_parse = 9301;
     const int id_bad = 9302;
     const int id_ver = 9303;
     const int id_title = 9304;
 
-    TEST_ASSERT(write_bytes(fs::path("scen") / std::format("scen{}.fss", id_parse), {'F', 'S', 'S'}), "write parse-fail scenario");
-    TEST_ASSERT(write_bytes(fs::path("scen") / std::format("scen{}.fss", id_bad), {'B', 'A', 'D', 6}), "write invalid-header scenario");
-    TEST_ASSERT(write_bytes(fs::path("scen") / std::format("scen{}.fss", id_ver), {'F', 'S', 'S', 1}), "write unsupported-version scenario");
+    TEST_ASSERT(write_bytes(scen_dir / std::format("scen{}.fss", id_parse), {'F', 'S', 'S'}), "write parse-fail scenario");
+    TEST_ASSERT(write_bytes(scen_dir / std::format("scen{}.fss", id_bad), {'B', 'A', 'D', 6}), "write invalid-header scenario");
+    TEST_ASSERT(write_bytes(scen_dir / std::format("scen{}.fss", id_ver), {'F', 'S', 'S', 1}), "write unsupported-version scenario");
 
     std::vector<unsigned char> titled = {'F', 'S', 'S', 6};
     const char grid[8] = {'g','r','i','d',0,0,0,0};
     titled.insert(titled.end(), grid, grid + 8);
     const char title[30] = "Coverage Title";
     titled.insert(titled.end(), title, title + 30);
-    TEST_ASSERT(write_bytes(fs::path("scen") / std::format("scen{}.fss", id_title), titled), "write title scenario");
+    TEST_ASSERT(write_bytes(scen_dir / std::format("scen{}.fss", id_title), titled), "write title scenario");
 
     LevelRuntimeData parse_fail(id_parse);
     TEST_ASSERT_EQ((int)LevelRuntimeData::IoError::ParseFailed, (int)parse_fail.load_with_error(), "truncated file should parse-fail");
@@ -724,18 +735,19 @@ REGISTER_TEST(test_level_data_round7a_constructor_overloads_and_remove_paths);
 void test_level_data_round7a_title_reader_and_error_wrappers()
 {
     namespace fs = std::filesystem;
-    fs::create_directories("scen");
+    const fs::path scen_dir = scenario_dir();
+    fs::create_directories(scen_dir);
 
     // Header ok, version ok, but truncated before grid/title reads.
     const int id_short = 9401;
-    TEST_ASSERT(write_bytes(fs::path("scen") / std::format("scen{}.fss", id_short), {'F', 'S', 'S', 6}),
+    TEST_ASSERT(write_bytes(scen_dir / std::format("scen{}.fss", id_short), {'F', 'S', 'S', 6}),
                 "write short title file");
     TEST_ASSERT(get_scenario_title(std::format("scen{}", id_short).c_str()) == "none",
                 "title reader should fail on short grid/title payload");
 
     // Header ok but version too old.
     const int id_old = 9402;
-    TEST_ASSERT(write_bytes(fs::path("scen") / std::format("scen{}.fss", id_old), {'F', 'S', 'S', 5}),
+    TEST_ASSERT(write_bytes(scen_dir / std::format("scen{}.fss", id_old), {'F', 'S', 'S', 5}),
                 "write old-version title file");
     TEST_ASSERT(get_scenario_title(std::format("scen{}", id_old).c_str()) == "none",
                 "title reader should reject versions < 6");
@@ -797,13 +809,14 @@ void test_level_data_round6_version6plus_and_title_read_paths()
     }
 
     namespace fs = std::filesystem;
-    fs::create_directories("scen");
+    const fs::path scen_dir = scenario_dir();
+    fs::create_directories(scen_dir);
     const int id_ver_read_fail = 9401;
     const int id_grid_read_fail = 9402;
     const int id_title_read_fail = 9403;
-    const auto p1 = fs::path("scen") / std::format("scen{}.fss", id_ver_read_fail);
-    const auto p2 = fs::path("scen") / std::format("scen{}.fss", id_grid_read_fail);
-    const auto p3 = fs::path("scen") / std::format("scen{}.fss", id_title_read_fail);
+    const auto p1 = scen_dir / std::format("scen{}.fss", id_ver_read_fail);
+    const auto p2 = scen_dir / std::format("scen{}.fss", id_grid_read_fail);
+    const auto p3 = scen_dir / std::format("scen{}.fss", id_title_read_fail);
     TEST_ASSERT(write_bytes(p1, {'F', 'S', 'S'}), "write version-read-fail title file");
     TEST_ASSERT(write_bytes(p2, {'F', 'S', 'S', 6}), "write grid-read-fail title file");
 

@@ -24,15 +24,9 @@ COV_DIR="$PROJECT_ROOT/coverage"
 rm -rf "$COV_DIR"
 mkdir -p "$COV_DIR"
 
-echo "Cleaning up leftover test campaigns (prevents hangs on malformed fixtures)..."
-# Some tests create campaigns under ~/.openglad/campaigns (e.g. org.openglad.test.*).
-# If a prior run was interrupted, malformed fixture campaigns can persist and cause
-# picker flows to hang. Remove them before running the suite under coverage.
-rm -f "$HOME/.openglad/campaigns/org.openglad.test."*.glad 2>/dev/null || true
-
 echo "Building coverage-instrumented test binaries..."
 cmake --preset ci-coverage
-cmake --build --preset ci-coverage --target openglad_test og_data_tests og_runtime_tests
+cmake --build --preset ci-coverage -j"$(nproc)"
 
 echo ""
 echo "Zeroing counters..."
@@ -44,10 +38,7 @@ lcov --quiet --directory "$BUILD_DIR" --zerocounters || true
 
 echo ""
 echo "Running tests (writes *.gcda)..."
-# Run from project root so assets resolve as in normal test runs.
-timeout 300 "$BUILD_DIR/openglad_test"
-timeout 300 "$BUILD_DIR/og_data_tests"
-timeout 300 "$BUILD_DIR/og_runtime_tests"
+ctest --test-dir "$BUILD_DIR" --parallel "$(nproc)" --output-on-failure --timeout 180
 
 echo ""
 echo "Capturing coverage..."

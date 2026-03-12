@@ -3,7 +3,11 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#if defined(OPENGLAD_HEADLESS_TEXT)
+class pixieN {};
+#else
 #include <openglad/interface/render/pixien.h>
+#endif
 #include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 

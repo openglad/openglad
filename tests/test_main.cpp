@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <cstdlib>
+#include <filesystem>
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -73,6 +74,12 @@ int main(int argc, char* argv[]) {
         _exit(0);
     }
 
+    // Config isolation: give each test process its own writable config area.
+    const auto test_config_dir = std::filesystem::temp_directory_path() /
+        ("openglad_test_" + std::to_string(getpid()));
+    std::filesystem::create_directories(test_config_dir);
+    setenv("OPENGLAD_CONFIG_DIR", test_config_dir.c_str(), 1);
+
     // Ensure the test process is terminated when its parent (usually CTest)
     // exits, and exit promptly on interrupt/terminate signals.
 #ifdef __linux__
@@ -130,5 +137,7 @@ int main(int argc, char* argv[]) {
 #ifdef ENABLE_COVERAGE
     __gcov_dump();
 #endif
+    std::error_code ec;
+    std::filesystem::remove_all(test_config_dir, ec);
     _exit(g_tests_failed > 0 ? 1 : 0);
 }

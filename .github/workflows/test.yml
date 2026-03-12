@@ -24,14 +24,11 @@ jobs:
       - name: Configure (ci-test preset)
         run: cmake --preset ci-test
 
-      - name: Build module test binaries
-        run: cmake --build --preset ci-test --target og_unit_tests og_data_tests og_runtime_tests -j"$(nproc)"
+      - name: Build all test binaries
+        run: cmake --build --preset ci-test -j"$(nproc)"
 
-      - name: Run module test binaries
-        run: |
-          ./build/ci-test/og_unit_tests
-          ./build/ci-test/og_data_tests
-          ./build/ci-test/og_runtime_tests
+      - name: Run tests (parallel)
+        run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 180
 
   build:
     name: Native Build
@@ -72,38 +69,8 @@ jobs:
       - name: Configure (ci-asan preset)
         run: cmake --preset ci-asan
 
-      - name: Build sanitizer test binaries
-        run: cmake --build --preset ci-asan --target og_unit_tests og_data_tests og_runtime_tests -j"$(nproc)"
+      - name: Build all test binaries
+        run: cmake --build --preset ci-asan -j"$(nproc)"
 
-      - name: Run sanitizer tests
-        env:
-          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
-          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: |
-          ./build/ci-asan/og_unit_tests
-          ./build/ci-asan/og_data_tests
-          ./build/ci-asan/og_runtime_tests
-
-  baseline-metrics:
-    name: Baseline Metrics
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Apply third-party build fixes
-        run: git apply third_party/build-fixes.patch
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build
-
-      - name: Collect baseline metrics
-        run: ./scripts/collect_baseline_metrics.sh
-
-      - name: Upload baseline metrics artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: baseline-metrics
-          path: build/baseline-metrics/metrics/baseline_metrics.txt
+      - name: Run tests (parallel)
+        run: ctest --test-dir build/ci-asan --parallel $(nproc) --output-on-failure --timeout 180
