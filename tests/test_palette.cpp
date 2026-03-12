@@ -73,4 +73,9 @@ TEST(Palette, cycle_basic)
     ASSERT_EQ(4, b) << "cycle_palette should rotate entry 1 from entry 2 (b)";
 }
 
+TEST(Palette, save_palette_is_stubbed_out)
+{
+    std::array<unsigned char, 768> pal{};
+    ASSERT_EQ(0, save_palette(pal)) << "save_palette should remain a no-op in SDL-free tests";
+}
 

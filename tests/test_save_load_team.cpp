@@ -10,6 +10,7 @@
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
+#include <functional>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
@@ -33,6 +34,31 @@ static void cleanup_picker_state()
     pks().main_columns_data.free();
     pks().main_title_logo_pix.reset();
     pks().main_title_logo_data.free();
+}
+
+static bool interact_match(
+    const std::string& id,
+    const std::function<bool(const Interactable&)>& predicate)
+{
+    const auto interactables = get_interactables();
+    for (const auto& item : interactables) {
+        if (item.id == id && !item.hidden && predicate(item)) {
+            const int game_x = item.x + item.width / 2;
+            const int game_y = item.y + item.height / 2;
+            const int win_x = static_cast<int>(static_cast<float>(game_x)
+                * (og::runtime::current_session->viewport_w_ / 320.0f)
+                + og::runtime::current_session->viewport_offset_x_);
+            const int win_y = static_cast<int>(static_cast<float>(game_y)
+                * (og::runtime::current_session->viewport_h_ / 200.0f)
+                + og::runtime::current_session->viewport_offset_y_);
+            fprintf(stderr, "  [interact] clicking matched '%s' at game(%d,%d) win(%d,%d)\n",
+                    id.c_str(), game_x, game_y, win_x, win_y);
+            inject_click(win_x, win_y);
+            return true;
+        }
+    }
+    fprintf(stderr, "  [interact] WARNING: matched '%s' not found\n", id.c_str());
+    return false;
 }
 
 // Test: Save a team to a slot, start a new game (resetting team), then load
@@ -150,15 +176,32 @@ static int load_menu_injector(void* data)
         SDL_Delay(500);
 
         fprintf(stderr, "  [test] clicking back from load menu\n");
-        interact("back");
+        interact_match("back", [](const Interactable& item) { return item.y >= 170; });
     }
 
     // Back in team menu
-    SDL_Delay(2000);
-    wait_for_interactable("back", 10000);
+    SDL_Delay(500);
+    wait_for_interactable("load_team", 10000);
     SDL_Delay(500);
     fprintf(stderr, "  [test] clicking back from team menu\n");
-    interact("back");
+    interact_match("back", [](const Interactable& item) { return item.y < 170; });
+
+    const Uint32 deadline = SDL_GetTicks() + 8000;
+    while (SDL_GetTicks() < deadline)
+    {
+        if (wait_for_interactable("continue_game", 150))
+            break;
+
+        inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(50);
+
+        if (wait_for_interactable("back", 150))
+        {
+            fprintf(stderr, "  [test] retry clicking back\n");
+            interact_match("back", [](const Interactable& item) { return item.y < 170; });
+            SDL_Delay(150);
+        }
+    }
 
     state->finished = true;
     return 0;
@@ -191,4 +234,3 @@ TEST(SaveLoadTeam, load_team_menu) {
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_load_menu) << "should have seen the load team menu";
 }
-

@@ -236,6 +236,179 @@ TEST(InputKeybinds, native_input_decode_event_ignores_malformed_scancode_payload
 }
 
 
+TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
+{
+    SDL_Event e{};
+    og::input_native::EventData out{};
+
+    e.type = SDL_TEXTINPUT;
+    SDL_strlcpy(e.text.text, "abc", sizeof(e.text.text));
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept text input";
+    ASSERT_EQ((int)og::input_native::EventType::TextInput, (int)out.type) << "text input type should decode";
+    ASSERT_STREQ("abc", out.text) << "text payload should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_MOUSEWHEEL;
+    e.wheel.y = -3;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept mouse wheel";
+    ASSERT_EQ((int)og::input_native::EventType::MouseWheel, (int)out.type) << "mouse wheel type should decode";
+    ASSERT_EQ(-3, out.wheel_y) << "mouse wheel delta should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_MOUSEMOTION;
+    e.motion.x = 12;
+    e.motion.y = 34;
+    e.motion.xrel = -5;
+    e.motion.yrel = 6;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept mouse motion";
+    ASSERT_EQ((int)og::input_native::EventType::MouseMotion, (int)out.type) << "mouse motion type should decode";
+    ASSERT_EQ(12, out.motion_x) << "mouse motion x should decode";
+    ASSERT_EQ(34, out.motion_y) << "mouse motion y should decode";
+    ASSERT_EQ(-5, out.motion_dx) << "mouse motion dx should decode";
+    ASSERT_EQ(6, out.motion_dy) << "mouse motion dy should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_MOUSEBUTTONDOWN;
+    e.button.button = SDL_BUTTON_LEFT;
+    e.button.x = 44;
+    e.button.y = 55;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept mouse button events";
+    ASSERT_EQ((int)og::input_native::EventType::MouseButtonDown, (int)out.type) << "mouse button type should decode";
+    ASSERT_EQ((int)SDL_BUTTON_LEFT, out.button) << "mouse button should decode";
+    ASSERT_EQ(44, out.button_x) << "mouse button x should decode";
+    ASSERT_EQ(55, out.button_y) << "mouse button y should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_FINGERDOWN;
+    e.tfinger.x = 0.25f;
+    e.tfinger.y = 0.5f;
+    e.tfinger.dx = 0.1f;
+    e.tfinger.dy = -0.2f;
+    e.tfinger.fingerId = 77;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept finger events";
+    ASSERT_EQ((int)og::input_native::EventType::FingerDown, (int)out.type) << "finger type should decode";
+    ASSERT_FLOAT_EQ(0.25f, out.finger_x) << "finger x should decode";
+    ASSERT_FLOAT_EQ(0.5f, out.finger_y) << "finger y should decode";
+    ASSERT_FLOAT_EQ(0.1f, out.finger_dx) << "finger dx should decode";
+    ASSERT_FLOAT_EQ(-0.2f, out.finger_dy) << "finger dy should decode";
+    ASSERT_EQ(77, out.finger_id) << "finger id should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_JOYAXISMOTION;
+    e.jaxis.which = 2;
+    e.jaxis.axis = 1;
+    e.jaxis.value = 12000;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept joystick axis events";
+    ASSERT_EQ((int)og::input_native::EventType::JoyAxisMotion, (int)out.type) << "joy axis type should decode";
+    ASSERT_EQ(2, out.joy_axis_which) << "joy axis joystick should decode";
+    ASSERT_EQ(1, out.joy_axis_axis) << "joy axis index should decode";
+    ASSERT_EQ(12000, out.joy_axis_value) << "joy axis value should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_JOYBUTTONDOWN;
+    e.jbutton.which = 3;
+    e.jbutton.button = 4;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept joystick button events";
+    ASSERT_EQ((int)og::input_native::EventType::JoyButtonDown, (int)out.type) << "joy button type should decode";
+    ASSERT_EQ(3, out.joy_button_which) << "joy button joystick should decode";
+    ASSERT_EQ(4, out.joy_button_button) << "joy button index should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_JOYHATMOTION;
+    e.jhat.which = 5;
+    e.jhat.hat = 1;
+    e.jhat.value = SDL_HAT_RIGHT;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept joystick hat events";
+    ASSERT_EQ((int)og::input_native::EventType::JoyHatMotion, (int)out.type) << "joy hat type should decode";
+    ASSERT_EQ(5, out.joy_hat_which) << "joy hat joystick should decode";
+    ASSERT_EQ(1, out.joy_hat_hat) << "joy hat index should decode";
+    ASSERT_EQ((int)SDL_HAT_RIGHT, out.joy_hat_value) << "joy hat value should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_WINDOWEVENT;
+    e.window.event = SDL_WINDOWEVENT_RESIZED;
+    e.window.data1 = 640;
+    e.window.data2 = 400;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window events";
+    ASSERT_EQ((int)og::input_native::EventType::Window, (int)out.type) << "window type should decode";
+    ASSERT_EQ((int)og::input_native::WindowEventType::Resized, (int)out.window_event) << "window resize should decode";
+    ASSERT_EQ(640, out.window_data1) << "window data1 should decode";
+    ASSERT_EQ(400, out.window_data2) << "window data2 should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_WINDOWEVENT;
+    e.window.event = SDL_WINDOWEVENT_CLOSE;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window close";
+    ASSERT_EQ((int)og::input_native::WindowEventType::Close, (int)out.window_event) << "window close should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_WINDOWEVENT;
+    e.window.event = 0x7f;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept unknown window events";
+    ASSERT_EQ((int)og::input_native::WindowEventType::Unknown, (int)out.window_event) << "unknown window event should map to Unknown";
+
+    e = SDL_Event{};
+    e.type = SDL_USEREVENT;
+    e.user.code = 42;
+    e.user.data1 = reinterpret_cast<void*>(static_cast<std::intptr_t>(1234));
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept user events";
+    ASSERT_EQ(42, out.user_code) << "user event code should decode";
+    ASSERT_EQ(1234, out.user_data1) << "user event payload should decode";
+
+    e = SDL_Event{};
+    e.type = 0x7fffffff;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept unknown raw event types";
+    ASSERT_EQ((int)og::input_native::EventType::Unknown, (int)out.type) << "unknown raw event should map to Unknown";
+}
+
+
+TEST(InputKeybinds, native_input_push_helpers_and_wrappers_smoke)
+{
+    while (og::input_native::poll_event() != nullptr) {}
+
+    const std::uint32_t ticks_before = og::input_native::ticks_ms();
+    ASSERT_TRUE(og::input_native::keyboard_state() != nullptr) << "keyboard_state should return SDL state buffer";
+    ASSERT_TRUE(og::input_native::scancode_from_key(SDLK_q) >= 0) << "scancode lookup should succeed";
+    ASSERT_TRUE(og::input_native::key_name(SDLK_q) != nullptr) << "key_name should return a string";
+    ASSERT_TRUE(og::input_native::num_joysticks() >= 0) << "num_joysticks should be non-negative";
+    ASSERT_EQ(nullptr, og::input_native::joystick_open(-1)) << "opening an invalid joystick should fail cleanly";
+
+    const bool joy_before = og::input_native::joystick_subsystem_initialized();
+    og::input_native::joystick_init_subsystem();
+    ASSERT_TRUE(og::input_native::joystick_subsystem_initialized()) << "joystick_init_subsystem should enable the subsystem";
+    og::input_native::joystick_set_event_state(true);
+
+    og::input_native::show_cursor(true);
+    og::input_native::show_cursor(false);
+    og::input_native::start_text_input();
+    og::input_native::stop_text_input();
+    og::input_native::sleep_ms(1);
+    ASSERT_TRUE(og::input_native::ticks_ms() >= ticks_before) << "ticks_ms should advance monotonically";
+
+    og::input_native::push_key_event(true, SDLK_q);
+    const void* key_event = og::input_native::wait_event();
+    ASSERT_TRUE(key_event != nullptr) << "wait_event should return the queued key event";
+    og::input_native::EventData out{};
+    ASSERT_TRUE(og::input_native::decode_event(key_event, out)) << "queued key event should decode";
+    ASSERT_EQ((int)og::input_native::EventType::KeyDown, (int)out.type) << "queued key event should remain keydown";
+
+    og::input_native::push_mouse_button_event(true, SDL_BUTTON_LEFT, 12, 34);
+    const void* mouse_event = og::input_native::wait_event();
+    ASSERT_TRUE(mouse_event != nullptr) << "wait_event should return the queued mouse event";
+    ASSERT_TRUE(og::input_native::decode_event(mouse_event, out)) << "queued mouse event should decode";
+    ASSERT_EQ((int)og::input_native::EventType::MouseButtonDown, (int)out.type) << "queued mouse event should remain mouse button down";
+
+    og::input_native::push_touch_event(og::input_native::EventType::FingerDown, 0.25f, 0.5f, 0.1f, -0.2f, 77);
+    const void* touch_event = og::input_native::wait_event();
+    ASSERT_TRUE(touch_event != nullptr) << "wait_event should return the queued touch event";
+    ASSERT_TRUE(og::input_native::decode_event(touch_event, out)) << "queued touch event should decode";
+    ASSERT_EQ((int)og::input_native::EventType::FingerDown, (int)out.type) << "queued touch event should remain finger down";
+
+    if (!joy_before)
+        og::input_native::joystick_quit_subsystem();
+}
+
+
 TEST(InputKeybinds, input_state_from_sdl_respects_four_direction_mode)
 {
     disablePlayerJoystick(0);
@@ -304,6 +477,35 @@ TEST(InputKeybinds, input_control_settings_cfg_roundtrip)
     ASSERT_EQ(static_cast<int>(SDLK_z), og::runtime::current_session->player_keys_[0][KEY_YELL]) << "keybind should reload from config";
 
     og::runtime::current_session->player_keys_[0][KEY_YELL] = old_yell;
+}
+
+
+TEST(InputKeybinds, input_control_settings_cfg_invalid_values_fall_back_to_defaults)
+{
+    FullControlSnapshotGuard guard;
+    cfg_store config;
+    config.load_settings();
+
+    reset_default_player_controls();
+    const int default_mode = get_player_control_mode(0);
+    const int default_legacy = get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_UP);
+    const int default_mode4 = get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_FIRE);
+    const int default_mode8 = get_player_key_binding_for_mode(
+        0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_SPECIAL);
+
+    config.apply_setting("controls", "player1_mode", "invalid");
+    config.apply_setting("controls", "player1_key0", "invalid");
+    config.apply_setting("controls", "player1_mode4_key4", "invalid");
+    config.apply_setting("controls", "player1_mode8_key5", "invalid");
+
+    load_player_control_settings_from_cfg(config);
+
+    ASSERT_EQ(default_mode, get_player_control_mode(0)) << "invalid control mode should fall back to default";
+    ASSERT_EQ(default_legacy, get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_UP)) << "invalid legacy key should fall back to default";
+    ASSERT_EQ(default_mode4, get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_FIRE)) << "invalid 4-direction key should fall back to default";
+    ASSERT_EQ(default_mode8, get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_SPECIAL)) << "invalid 8-direction key should fall back to default";
 }
 
 
@@ -452,4 +654,3 @@ TEST(InputKeybinds, four_direction_defaults_unchanged_wasd)
     ASSERT_EQ(static_cast<int>(SDLK_s), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_DOWN)) << "P1 4-dir Down should be S";
     ASSERT_EQ(static_cast<int>(SDLK_d), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_RIGHT)) << "P1 4-dir Right should be D";
 }
-

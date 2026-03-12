@@ -1,10 +1,15 @@
 #include <openglad/interface/screen.h>
+#include <openglad/interface/level_render.h>
+#include <openglad/interface/render/pixie.h>
+#include <openglad/interface/render/pixien.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/obmap_debug_draw.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/button.h>
+#include <openglad/resources/pixie_data.h>
 #include <openglad/resources/yaml_stream.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/resources/gparser.h>
 
@@ -63,6 +68,19 @@ std::array<unsigned char, 64> sample_pixels(unsigned char base = 32)
     for (size_t i = 0; i < p.size(); i++)
         p[i] = static_cast<unsigned char>(base + (i % 8));
     return p;
+}
+
+PixieData make_test_pixie_data(unsigned char frames = 1,
+                               unsigned char w = 2,
+                               unsigned char h = 2,
+                               unsigned char base = 32)
+{
+    const std::size_t pixel_count =
+        static_cast<std::size_t>(frames) * static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+    auto* raw = new unsigned char[pixel_count];
+    for (std::size_t i = 0; i < pixel_count; i++)
+        raw[i] = static_cast<unsigned char>(base + (i % 8));
+    return PixieData(frames, w, h, raw);
 }
 
 struct ReadBuf {
@@ -225,6 +243,17 @@ TEST(MassCoverage, screen_first_of) {
 }
 
 TEST(MassCoverage, screen_draw_panels) { og::runtime::current_session->myscreen_->draw_panels(1); }
+TEST(MassCoverage, screen_draw_panels_multiview_border_path) {
+    screen* s = og::runtime::current_session->myscreen_;
+    s->ready_for_battle(2);
+    ASSERT_TRUE(s->viewob[0] != nullptr && s->viewob[1] != nullptr) << "two views should exist";
+    if (s->viewob[0] && s->viewob[1]) {
+        s->viewob[0]->resize(PREF_VIEW_PANELS);
+        s->viewob[1]->resize(PREF_VIEW_1);
+        s->draw_panels(2);
+    }
+    s->reset(1);
+}
 TEST(MassCoverage, screen_find_nearest_blood) { (void)og::runtime::current_session->myscreen_->world().find_nearest_blood(nullptr); }
 
 TEST(MassCoverage, screen_find_in_range) {
@@ -270,9 +299,137 @@ TEST(MassCoverage, screen_find_foe_weapons_in_range) {
 }
 
 TEST(MassCoverage, screen_damage_tile) { (void)og::runtime::current_session->myscreen_->damage_tile(0, 0); }
+TEST(MassCoverage, screen_damage_tile_grass_branch) {
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    ASSERT_TRUE(world.grid.data != nullptr) << "grid should be allocated";
+    if (world.grid.data == nullptr)
+        return;
+    world.grid.data[0] = PIX_GRASS1;
+    ASSERT_EQ(PIX_GRASS1_DAMAGED,
+              static_cast<unsigned char>(og::runtime::current_session->myscreen_->damage_tile(0, 0)))
+        << "grass tile should convert to damaged grass";
+}
 TEST(MassCoverage, screen_do_notify) { og::runtime::current_session->myscreen_->do_notify("mass-notify", nullptr); }
 TEST(MassCoverage, screen_report_mem) { og::runtime::current_session->myscreen_->report_mem(); }
 TEST(MassCoverage, find_follow_leader) { (void)find_follow_leader(); }
+TEST(MassCoverage, find_follow_leader_prefers_active_multiview_control) {
+    reset_level_state();
+
+    screen* s = og::runtime::current_session->myscreen_;
+    s->ready_for_battle(2);
+    ASSERT_TRUE(s->viewob[0] != nullptr && s->viewob[1] != nullptr) << "two views should exist";
+
+    walker* left = add_living(0);
+    walker* right = add_living(1, FAMILY_ORC);
+    ASSERT_TRUE(left != nullptr && right != nullptr) << "test leaders should exist";
+    if (left && right && s->viewob[0] && s->viewob[1]) {
+        left->yo_delay = 0;
+        right->yo_delay = 4;
+        s->viewob[0]->control = left;
+        s->viewob[1]->control = right;
+        ASSERT_EQ(right, find_follow_leader()) << "second active view should be selected";
+
+        left->yo_delay = 6;
+        right->yo_delay = 0;
+        ASSERT_EQ(left, find_follow_leader()) << "first active view should be selected";
+
+        left->yo_delay = 0;
+        right->yo_delay = 0;
+        ASSERT_EQ(nullptr, find_follow_leader()) << "no delayed view should return null";
+
+        s->viewob[0]->control = nullptr;
+        s->viewob[1]->control = nullptr;
+    }
+
+    s->reset(1);
+    reset_level_state();
+}
+
+TEST(MassCoverage, pixie_render_paths) {
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr) << "viewscreen should exist";
+    if (!vs)
+        return;
+
+    PixieData data = make_test_pixie_data(1, 3, 2, 40);
+    pixie p(data);
+
+    ASSERT_EQ(3, static_cast<int>(p.sizex)) << "pixie width should be copied from data";
+    ASSERT_EQ(2, static_cast<int>(p.sizey)) << "pixie height should be copied from data";
+    ASSERT_TRUE(p.setxy(10, 12)) << "setxy should succeed";
+    ASSERT_TRUE(p.move(3, -2)) << "move should succeed";
+    ASSERT_EQ(13, static_cast<int>(p.xpos)) << "move should update x";
+    ASSERT_EQ(10, static_cast<int>(p.ypos)) << "move should update y";
+
+    ASSERT_TRUE(p.draw(vs)) << "draw(view) should succeed";
+    ASSERT_TRUE(p.draw(24, 28, vs)) << "draw(x, y, view) should succeed";
+    ASSERT_TRUE(p.drawMix(vs)) << "drawMix(view) should succeed";
+    ASSERT_TRUE(p.drawMix(26, 30, vs)) << "drawMix(x, y, view) should succeed";
+    ASSERT_TRUE(p.put_screen(0, 0)) << "put_screen should succeed";
+
+    p.setxy(static_cast<short>(vs->topx + 1), static_cast<short>(vs->topy + 1));
+    ASSERT_TRUE(p.on_screen(vs)) << "pixie should be visible when inside the view";
+    ASSERT_TRUE(p.on_screen()) << "pixie should be visible in at least one active view";
+
+    p.setxy(static_cast<short>(vs->topx - p.sizex - 2), static_cast<short>(vs->topy));
+    ASSERT_TRUE(!p.on_screen(vs)) << "pixie left of the view should be hidden";
+
+    p.setxy(static_cast<short>(vs->topx + vs->xview + 2), static_cast<short>(vs->topy));
+    ASSERT_TRUE(!p.on_screen(vs)) << "pixie right of the view should be hidden";
+
+    p.setxy(static_cast<short>(vs->topx), static_cast<short>(vs->topy - p.sizey - 2));
+    ASSERT_TRUE(!p.on_screen(vs)) << "pixie above the view should be hidden";
+
+    p.setxy(static_cast<short>(vs->topx), static_cast<short>(vs->topy + vs->yview + 2));
+    ASSERT_TRUE(!p.on_screen(vs)) << "pixie below the view should be hidden";
+
+    p.set_accel(1);
+    if (p.accel) {
+        ASSERT_TRUE(p.draw(30, 32, vs)) << "accelerated draw should still succeed";
+        p.init_sdl_surface();
+    }
+    p.set_accel(0);
+    ASSERT_EQ(0, p.accel) << "set_accel(0) should disable acceleration";
+}
+
+TEST(MassCoverage, pixien_and_level_render_paths) {
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr) << "viewscreen should exist";
+    if (!vs)
+        return;
+
+    PixieData animated = make_test_pixie_data(3, 2, 1, 60);
+    pixieN frames(animated, 1);
+    ASSERT_EQ(3, static_cast<int>(frames.frames)) << "frame count should be preserved";
+    ASSERT_TRUE(frames.set_frame(1)) << "valid frame selection should succeed";
+    ASSERT_EQ(1, static_cast<int>(frames.frame)) << "frame selection should update current frame";
+    ASSERT_TRUE(!frames.set_frame(-1)) << "negative frame selection should fail";
+    ASSERT_TRUE(!frames.set_frame(3)) << "out-of-range frame selection should fail";
+    ASSERT_TRUE(frames.next_frame()) << "next_frame should advance and wrap";
+
+    PixieData replacement = make_test_pixie_data(2, 1, 2, 70);
+    frames.set_data(replacement);
+    ASSERT_EQ(2, static_cast<int>(frames.frames)) << "set_data should replace frame count";
+    ASSERT_EQ(0, static_cast<int>(frames.frame)) << "set_data should reset current frame";
+    frames.set_accel(0);
+
+    std::array<PixieData, PIX_MAX> tiles{};
+    for (int i = 0; i < PIX_MAX; i++)
+        tiles[static_cast<std::size_t>(i)] = make_test_pixie_data(1, 1, 1, static_cast<unsigned char>(i));
+
+    auto render = create_sdl_level_render(tiles.data());
+    ASSERT_TRUE(render != nullptr) << "SDL level renderer should be created";
+    if (!render)
+        return;
+
+    render->draw_tile(0, 0, 0, vs);
+    render->draw_tile(PIX_WATER1, 4, 4, vs);
+    render->draw_tile(-1, 0, 0, vs);
+    render->draw_tile(PIX_MAX, 0, 0, vs);
+    render->reset_tiles(tiles.data());
+    render->draw_tile(0, 0, 0, vs);
+}
 
 // viewscreen.cpp uncovered
 TEST(MassCoverage, viewscreen_clear) { og::runtime::current_session->myscreen_->viewob[0]->clear(); }
@@ -468,6 +625,23 @@ TEST(MassCoverage, obmap_debug_draw) {
     walker* w = add_living(0);
     if (w)
         map.add(w, 100, 100);
+    obmap_debug_draw(map, og::runtime::current_session->myscreen_);
+    reset_level_state();
+}
+
+TEST(MassCoverage, obmap_debug_draw_expands_bounding_boxes_all_directions) {
+    reset_level_state();
+
+    obmap map;
+    walker* w = add_living(1, FAMILY_ARCHER);
+    ASSERT_TRUE(w != nullptr) << "walker should be created";
+    if (!w)
+        return;
+
+    map.pos_to_walker[{obmap::hash(96), obmap::hash(96)}].push_back(w);
+    map.pos_to_walker[{obmap::hash(128), obmap::hash(128)}].push_back(w);
+    map.walker_to_pos[w] = {{4, 4}, {2, 4}, {2, 1}, {7, 1}, {7, 6}};
+
     obmap_debug_draw(map, og::runtime::current_session->myscreen_);
     reset_level_state();
 }

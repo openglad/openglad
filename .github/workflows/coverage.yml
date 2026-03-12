@@ -52,17 +52,13 @@ jobs:
       - name: Generate HTML coverage report
         run: |
           mkdir -p build/ci-coverage/coverage
-          # Phase 10 moved SDL/UI implementation out of src/sdl_client and
-          # src/ui into interface/platform component directories.
+          # Phase 4 now measures the full production codebase except fuzz
+          # targets, which remain excluded because they are standalone fuzz
+          # entrypoints rather than shipped game code.
           python3 -m gcovr \
             --root . \
             --filter src/ \
             --exclude 'src/fuzz/' \
-            --exclude 'src/interface/' \
-            --exclude 'src/platform/sdl/' \
-            --exclude 'src/sdl_client/' \
-            --exclude 'src/ui/' \
-            --exclude 'src/test_trace.cpp' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --html-details \
             --output build/ci-coverage/coverage/coverage.html \
@@ -75,17 +71,13 @@ jobs:
           FUNCTION_THRESHOLD=90
 
           set +e
-          # Phase 10 moved SDL/UI implementation out of src/sdl_client and
-          # src/ui into interface/platform component directories.
+          # Phase 4 now measures the full production codebase except fuzz
+          # targets, which remain excluded because they are standalone fuzz
+          # entrypoints rather than shipped game code.
           python3 -m gcovr \
             --root . \
             --filter src/ \
             --exclude 'src/fuzz/' \
-            --exclude 'src/interface/' \
-            --exclude 'src/platform/sdl/' \
-            --exclude 'src/sdl_client/' \
-            --exclude 'src/ui/' \
-            --exclude 'src/test_trace.cpp' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --txt \
             --output build/ci-coverage/coverage/coverage-summary.txt \

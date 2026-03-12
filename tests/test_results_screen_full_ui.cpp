@@ -14,6 +14,9 @@
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
+
 namespace
 {
 struct ResultsThreadState
@@ -48,6 +51,44 @@ static int results_ui_injector(void* data)
 
     // Failsafe in case click misses.
     SDL_Delay(500);
+    og::runtime::current_session->myscreen_->world().end = 1;
+
+    st->finished = true;
+    return 0;
+}
+
+static int results_ui_scroll_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
+    st->started = true;
+
+    SDL_Delay(140);
+    inject_click(225, 26, 10); // TROOPS
+    SDL_Delay(40);
+
+    for (int i = 0; i < 12; ++i)
+    {
+        SDL_Event wheel{};
+        wheel.type = SDL_MOUSEWHEEL;
+        wheel.wheel.y = -1;
+        SDL_PushEvent(&wheel);
+        SDL_Delay(15);
+    }
+
+    for (int i = 0; i < 4; ++i)
+    {
+        SDL_Event wheel{};
+        wheel.type = SDL_MOUSEWHEEL;
+        wheel.wheel.y = 1;
+        SDL_PushEvent(&wheel);
+        SDL_Delay(15);
+    }
+
+    SDL_Delay(80);
+    inject_click(132, 171, 10); // OK
+
+    SDL_Delay(400);
     og::runtime::current_session->myscreen_->world().end = 1;
 
     st->finished = true;
@@ -147,3 +188,84 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
     ASSERT_TRUE(!retry) << "OK path should not request retry";
 }
 
+
+TEST(ResultsScreenFullUi, troop_scroll_paths_cover_bonus_losses_and_specials)
+{
+    const char saved_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 0;
+
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.current_levels.clear();
+    og::runtime::current_session->myscreen_->save_data.m_score[0] = 300;
+    og::runtime::current_session->myscreen_->save_data.m_score[1] = 75;
+    og::runtime::current_session->myscreen_->world().time_bonus_limit = 500;
+    og::runtime::current_session->myscreen_->world().par_value = 3;
+    og::runtime::current_session->myscreen_->framecount = 10;
+    og::runtime::current_session->myscreen_->special_name[FAMILY_MAGE][2] = "Arcane Burst";
+
+    std::map<int, guy*> before;
+    std::map<int, walker*> after;
+    std::vector<std::unique_ptr<guy>> before_storage;
+    before_storage.reserve(6);
+
+    for (int i = 0; i < 8; ++i)
+    {
+        auto* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, (i % 2 == 0) ? FAMILY_MAGE : FAMILY_SOLDIER);
+        ASSERT_TRUE(w != nullptr) << "expected walker for scrolling results test";
+        if (!w)
+            return;
+        w->set_owned_myguy(std::make_unique<guy>((i % 2 == 0) ? FAMILY_MAGE : FAMILY_SOLDIER));
+        w->myguy->name = std::string("Troop") + std::to_string(i);
+        w->myguy->family = (i % 2 == 0) ? FAMILY_MAGE : FAMILY_SOLDIER;
+        w->myguy->scen_kills = static_cast<short>(i + 1);
+        w->myguy->scen_damage = static_cast<float>(10 + i);
+        w->myguy->scen_damage_taken = static_cast<float>(i);
+        w->myguy->scen_min_hp = (i == 2) ? 0 : 2;
+        w->stats()->max_hitpoints = 10;
+        w->stats()->hitpoints = (i == 2) ? 0 : 7;
+
+        if (i < 6)
+        {
+            auto before_guy = std::make_unique<guy>((i % 2 == 0) ? FAMILY_MAGE : FAMILY_SOLDIER);
+            before_guy->name = std::string("Troop") + std::to_string(i);
+            before_guy->family = (i % 2 == 0) ? FAMILY_MAGE : FAMILY_SOLDIER;
+            before_guy->level = (i == 0) ? 3 : ((i == 1) ? 5 : 2);
+            before_guy->exp = calculate_exp(before_guy->level) + 5;
+            before[i + 1] = before_guy.get();
+            before_storage.push_back(std::move(before_guy));
+        }
+
+        if (i == 0)
+        {
+            w->myguy->exp = calculate_exp(4) + 20; // level up + gained special
+        }
+        else if (i == 1)
+        {
+            w->myguy->exp = calculate_exp(3); // level down
+        }
+        else
+        {
+            w->myguy->exp = calculate_exp(2) + 15; // steady progress
+        }
+
+        after[i + 1] = w;
+    }
+
+    results_screen_testing_set_force_full(true);
+
+    ResultsThreadState st{};
+    SDL_Thread* thread = SDL_CreateThread(results_ui_scroll_injector, "results_ui_scroll_injector", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create scroll injector thread";
+
+    const bool retry = results_screen(0, 2, before, after);
+
+    int rc = 0;
+    SDL_WaitThread(thread, &rc);
+
+    results_screen_testing_set_force_full(false);
+    og::runtime::current_session->myscreen_->world().end = saved_end;
+
+    ASSERT_TRUE(st.started && st.finished) << "scroll injector should run";
+    ASSERT_TRUE(!retry) << "scrolling and OK should not request retry";
+}
