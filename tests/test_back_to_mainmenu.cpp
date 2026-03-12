@@ -53,7 +53,7 @@ static int back_test_injector(void* data)
     // mainmenu() calls init_buttons() then fadeblack(1) which takes ~500ms
     // and eats SDL events during the fade.
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
     state->times_saw_mainmenu++;
 
     fprintf(stderr, "  [test] Iteration 1: clicking continue_game\n");
@@ -62,7 +62,7 @@ static int back_test_injector(void* data)
     // Wait for create_team_menu to init (fadeblack + level load)
     SDL_Delay(500);
     wait_for_interactable("go", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] Iteration 1: clicking back\n");
     interact("back");
@@ -74,14 +74,14 @@ static int back_test_injector(void* data)
     SDL_Delay(500);
     if (wait_for_interactable("continue_game", 10000)) {
         state->times_saw_mainmenu++;
-        SDL_Delay(1500);
+        SDL_Delay(750);
 
         fprintf(stderr, "  [test] Iteration 2: clicking continue_game\n");
         interact("continue_game");
 
         SDL_Delay(500);
         wait_for_interactable("go", 10000);
-        SDL_Delay(1500);
+        SDL_Delay(750);
 
         fprintf(stderr, "  [test] Iteration 2: clicking back\n");
         interact("back");

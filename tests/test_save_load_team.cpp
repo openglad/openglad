@@ -157,14 +157,14 @@ static int load_menu_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
     SDL_Delay(500);
     wait_for_interactable("load_team", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking load_team\n");
     interact("load_team");

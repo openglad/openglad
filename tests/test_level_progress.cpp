@@ -48,7 +48,7 @@ static int event_injector_thread(void* data)
     // and eats SDL events during the fade. We wait for the button to exist
     // then add extra delay so the fade finishes and the event loop is ready.
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Step 1: Click "CONTINUE GAME"
     fprintf(stderr, "  [test] Step 1: clicking continue_game\n");
@@ -58,7 +58,7 @@ static int event_injector_thread(void* data)
     // create_team_menu calls fadeblack(0), level_data.load(), fadeblack(1).
     SDL_Delay(500);
     wait_for_interactable("progress", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Step 2: Click "PROGRESS"
     fprintf(stderr, "  [test] Step 2: clicking progress\n");

@@ -60,7 +60,7 @@ static int hire_injector(void* data)
 
     // Wait for main menu
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
@@ -103,7 +103,7 @@ static int hire_injector(void* data)
     // Back to main menu
     SDL_Delay(500);
     wait_for_interactable("view_team", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
     fprintf(stderr, "  [test] clicking back from team menu\n");
     interact("back");
 

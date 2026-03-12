@@ -57,14 +57,14 @@ static int go_no_team_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
     SDL_Delay(500);
     wait_for_interactable("go", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Click GO with no team
     fprintf(stderr, "  [test] clicking go (with empty team)\n");
@@ -77,7 +77,7 @@ static int go_no_team_injector(void* data)
 
     // Should be back in team menu (popup already dismissed)
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
     fprintf(stderr, "  [test] clicking back from team menu\n");
     interact("back");
 
@@ -134,14 +134,14 @@ static int train_no_team_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
     SDL_Delay(500);
     wait_for_interactable("train_team", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Click TRAIN with no team
     fprintf(stderr, "  [test] clicking train_team (with empty team)\n");
@@ -154,7 +154,7 @@ static int train_no_team_injector(void* data)
 
     // Should be back in team menu (popup already dismissed)
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
     fprintf(stderr, "  [test] clicking back from team menu\n");
     interact("back");
 

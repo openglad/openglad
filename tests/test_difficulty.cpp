@@ -58,7 +58,7 @@ static int difficulty_injector(void* data)
     state->started = true;
 
     wait_for_interactable("difficulty", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Toggle difficulty a few times
     fprintf(stderr, "  [test] clicking difficulty (toggle 1)\n");
@@ -101,7 +101,7 @@ static int difficulty_injector(void* data)
     interact("continue_game");
     SDL_Delay(500);
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
     interact("back");
 
     state->finished = true;

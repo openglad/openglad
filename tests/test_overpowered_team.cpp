@@ -75,7 +75,7 @@ static int op_injector(void* data)
 
     // -- Main Menu --
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
@@ -89,7 +89,7 @@ static int op_injector(void* data)
     // so the hire menu opens right away.
     SDL_Delay(500);
     wait_for_interactable("hire_me", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // -- Hire Menu: hire one of each type --
     // The hire menu starts showing allowable_guys[0] (SOLDIER).
@@ -170,7 +170,7 @@ static int op_injector(void* data)
 
     // Now we're truly back in create_team_menu with fresh buttons
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Restore state
     set_game_speed(state->original_speed);

@@ -85,7 +85,7 @@ static int fairy_injector(void* data)
 
     // -- Main Menu --
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
@@ -98,7 +98,7 @@ static int fairy_injector(void* data)
     // popup_dialog("HIRE TROOPS") returns immediately under TESTING
     SDL_Delay(500);
     wait_for_interactable("hire_me", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // -- Hire Menu: cycle to FAERIE and hire --
     // Starts at allowable_guys[0] (SOLDIER). Click NEXT 12 times for FAERIE.
@@ -162,7 +162,7 @@ static int fairy_injector(void* data)
 
     // Now we're truly back in create_team_menu with fresh buttons
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Exit team menu -> main menu -> picker exits
     fprintf(stderr, "  [test] clicking back from team menu\n");

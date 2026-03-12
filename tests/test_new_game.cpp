@@ -62,7 +62,7 @@ static int new_game_injector(void* data)
 
     // Wait for main menu
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
@@ -90,7 +90,7 @@ static int new_game_injector(void* data)
     SDL_Delay(500);
     if (wait_for_interactable("view_team", 10000)) {
         state->saw_team_menu = true;
-        SDL_Delay(1500);
+        SDL_Delay(750);
 
         // Click BACK to return to main menu
         fprintf(stderr, "  [test] clicking back from team menu\n");

@@ -57,7 +57,7 @@ static int mainmenu_button_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Check which buttons exist on the main menu
     state->has_options = has_interactable("options");
@@ -71,7 +71,7 @@ static int mainmenu_button_injector(void* data)
 
     SDL_Delay(500);
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking back\n");
     interact("back");
