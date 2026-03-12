@@ -13,6 +13,7 @@ set -euo pipefail
 # Find the openglad_text binary next to this script's build dir,
 # or accept it as an argument / environment variable.
 TEXT_BIN="${1:-${OPENGLAD_TEXT:-./openglad_text}}"
+TEXT_TIMEOUT="${OPENGLAD_TEXT_TIMEOUT:-55}"
 
 if [ ! -x "$TEXT_BIN" ]; then
     echo "FAIL: Cannot find executable: $TEXT_BIN" >&2
@@ -22,8 +23,9 @@ fi
 TMPOUT=$(mktemp)
 trap 'rm -f "$TMPOUT"' EXIT
 
-# Run 1000 ticks, dump state, then quit.  Timeout after 30 seconds.
-printf 'tick 1000\nstate\nquit\n' | timeout 30 "$TEXT_BIN" --protocol --level 1 --seed 42 > "$TMPOUT" 2>/dev/null
+# Keep the script-level timeout below CTest's 60s test timeout so sanitizer
+# runs still have headroom under parallel load without masking real hangs.
+printf 'tick 1000\nstate\nquit\n' | timeout "$TEXT_TIMEOUT" "$TEXT_BIN" --protocol --level 1 --seed 42 > "$TMPOUT" 2>/dev/null
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "FAIL: openglad_text exited with code $rc" >&2

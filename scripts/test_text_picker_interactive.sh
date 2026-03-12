@@ -2,6 +2,7 @@
 set -euo pipefail
 
 TEXT_BIN="${1:-${OPENGLAD_TEXT:-./openglad_text}}"
+TEXT_TIMEOUT="${OPENGLAD_TEXT_TIMEOUT:-55}"
 if [ ! -x "$TEXT_BIN" ]; then
     echo "FAIL: Cannot find executable: $TEXT_BIN" >&2
     exit 1
@@ -28,7 +29,7 @@ quit
 11
 INP
 
-HOME="$TMPHOME" timeout 30 "$TEXT_BIN" < "$TMPIN" > "$TMPOUT" 2>/dev/null
+HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" < "$TMPIN" > "$TMPOUT" 2>/dev/null
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "FAIL: openglad_text interactive run exited with code $rc" >&2
