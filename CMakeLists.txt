@@ -1522,6 +1522,18 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
         )
 
+        if(ENABLE_COVERAGE)
+            # Coverage-instrumented UI-heavy binaries can time out on 4-core CI
+            # runners when CTest schedules them all at once.
+            set_tests_properties(
+                og_test_game_core
+                og_test_view
+                og_test_picker
+                og_test_menu_ui
+                PROPERTIES PROCESSORS 3
+            )
+        endif()
+
         add_test(NAME openglad_text_sim
             COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_client.sh $<TARGET_FILE:openglad_text>
         )
