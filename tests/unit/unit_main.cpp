@@ -3,8 +3,8 @@
 #include <filesystem>
 #include "unit.h"
 #include <openglad/core/util.h>
+#include <openglad/resources/filesystem.h>
 #include <openglad/resources/save_data.h>
-#include <openglad/resources/io_common.h>
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/platform/game_session.h>
@@ -13,6 +13,46 @@
 #ifdef ENABLE_COVERAGE
 extern "C" void __gcov_dump(void);
 #endif
+
+namespace {
+
+bool init_unit_filesystem(const std::filesystem::path& test_config_dir, const char* argv0)
+{
+    std::error_code ec;
+    std::filesystem::create_directories(test_config_dir / "campaigns", ec);
+    std::filesystem::create_directories(test_config_dir / "save", ec);
+    std::filesystem::create_directories(test_config_dir / "cfg", ec);
+
+    const char* physfs_argv0 =
+        (argv0 != nullptr && argv0[0] != '\0') ? argv0 : "og_unit_tests";
+    if (!og::resources::init(physfs_argv0))
+    {
+        std::fprintf(stderr, "error: PhysFS init failed: %s\n",
+                     og::resources::filesystem_last_error().c_str());
+        return false;
+    }
+
+    const std::string user_path = test_config_dir.string();
+    if (!og::resources::set_write_dir(user_path))
+    {
+        std::fprintf(stderr, "error: PhysFS set write dir failed: %s\n",
+                     og::resources::filesystem_last_error().c_str());
+        og::resources::deinit();
+        return false;
+    }
+
+    if (!og::resources::mount(user_path.c_str(), nullptr, 1))
+    {
+        std::fprintf(stderr, "error: PhysFS mount failed: %s\n",
+                     og::resources::filesystem_last_error().c_str());
+        og::resources::deinit();
+        return false;
+    }
+
+    return true;
+}
+
+} // namespace
 
 int main(int argc, char* argv[])
 {
@@ -43,7 +83,12 @@ int main(int argc, char* argv[])
     setenv("OPENGLAD_CONFIG_DIR", test_config_dir.c_str(), 1);
 
     init_logging();
-    io_init(argc, argv);
+    if (!init_unit_filesystem(test_config_dir, argc > 0 ? argv[0] : nullptr))
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(test_config_dir, ec);
+        return 1;
+    }
 
     // Entity code (living/walker) dereferences current_session->current_difficulty_.
     // Provide a zero-initialized session so set_difficulty() doesn't segfault.
@@ -101,7 +146,7 @@ int main(int argc, char* argv[])
 
     std::fprintf(stderr, "\n=== Unit Results: %d passed, %d failed, %d total ===\n\n",
                  passed, failed, passed + failed);
-    io_exit();
+    (void)og::resources::deinit();
 #ifdef ENABLE_COVERAGE
     __gcov_dump();
 #endif

@@ -1020,6 +1020,10 @@ static Sint32 create_slot_menu(button* buttons, int num_buttons, const char* tit
 {
 	Sint32 retvalue=0;
 	text& menutext = og::runtime::current_session->myscreen_->text_normal;
+    auto return_to_parent = []() {
+        clear_allbuttons();
+        return MENU_REDRAW;
+    };
 
 	// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 	int highlighted_button = 10;
@@ -1033,14 +1037,14 @@ static Sint32 create_slot_menu(button* buttons, int num_buttons, const char* tit
 			retvalue = og::runtime::current_session->localbuttons_->leftclick();
 			if(retvalue == MENU_REDRAW)
             {
-                return MENU_REDRAW;
+                return return_to_parent();
             }
         }
 
         handle_menu_nav(buttons, highlighted_button, retvalue);
         if(retvalue == MENU_REDRAW)
         {
-            return MENU_REDRAW;
+            return return_to_parent();
         }
 
         // Reset buttons
@@ -1074,11 +1078,11 @@ static Sint32 create_slot_menu(button* buttons, int num_buttons, const char* tit
                            og::runtime::current_session->allbuttons_[10]->yend, 0, 0, 1);
 
         draw_highlight(buttons[highlighted_button]);
-        og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
+		og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
         og::input_native::sleep_ms(10);
 	}
 
-	return MENU_REDRAW;
+	return return_to_parent();
 }
 
 Sint32 create_load_menu(Sint32 /*arg1*/)
