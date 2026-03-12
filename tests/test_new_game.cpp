@@ -2,11 +2,12 @@
 #include <array>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -61,7 +62,7 @@ static int new_game_injector(void* data)
 
     // Wait for main menu
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
@@ -89,7 +90,7 @@ static int new_game_injector(void* data)
     SDL_Delay(500);
     if (wait_for_interactable("view_team", 10000)) {
         state->saw_team_menu = true;
-        SDL_Delay(1500);
+        SDL_Delay(750);
 
         // Click BACK to return to main menu
         fprintf(stderr, "  [test] clicking back from team menu\n");
@@ -100,7 +101,7 @@ static int new_game_injector(void* data)
     return 0;
 }
 
-void test_begin_new_game() {
+TEST(NewGame, begin_new_game) {
     trace_clear();
 
     // Pre-populate save data so we can verify it gets reset
@@ -121,7 +122,7 @@ void test_begin_new_game() {
 
     NewGameState state = { false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(new_game_injector, "new_game_test", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -134,13 +135,12 @@ void test_begin_new_game() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.saw_hire_menu, "should have seen the hire menu after new game");
-    TEST_ASSERT(state.saw_team_menu, "should have returned to team menu from hire");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_hire_menu) << "should have seen the hire menu after new game";
+    ASSERT_TRUE(state.saw_team_menu) << "should have returned to team menu from hire";
 
     // beginmenu calls save_data.reset(), so cash should be the default (starting cash)
     // rather than our 99999
-    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.totalcash != 99999,
-        "totalcash should have been reset by new game");
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.totalcash != 99999) << "totalcash should have been reset by new game";
 }
-REGISTER_TEST(test_begin_new_game);
+

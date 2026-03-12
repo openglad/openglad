@@ -42,7 +42,7 @@ cmake --build --preset dev-debug
 ### Dependencies (Debian/Ubuntu)
 
 ```bash
-sudo apt-get install cmake ninja-build libsdl2-dev libsdl2-mixer-dev
+sudo apt-get install cmake ninja-build libsdl2-dev libsdl2-mixer-dev libgtest-dev
 ```
 
 ### Web Build
@@ -142,41 +142,54 @@ cmake --build --preset ci-test
 ctest --preset ci-test
 ```
 
+GoogleTest is a system dependency for native test builds:
+
+```bash
+sudo apt-get install libgtest-dev   # Debian/Ubuntu
+brew install googletest             # macOS
+```
+
 ### Test Binaries
 
 | Binary | Description |
 |--------|-------------|
-| `og_unit_tests` | Headless unit tests — no SDL init |
-| `openglad_test` | Full integration suite (~894 tests) |
-| `og_data_tests` | Data/IO module tests |
-| `og_runtime_tests` | Runtime module tests |
+| `og_unit_*` | Four headless unit group binaries (291 tests total) |
+| `og_test_*` | Twenty SDL integration group binaries (1496 tests total) |
+| `openglad_text` | Headless text client exercised via CTest script entries |
 
-New test source files must be added to the appropriate list in `CMakeLists.txt` (see `TEST_SOURCES`, `DATA_TEST_SOURCES`, `RUNTIME_TEST_SOURCES`).
+Integration groups use `tests/integration_main.cpp`. Headless unit groups use `tests/unit/unit_main.cpp`.
+
+New integration test source files must be added to `ALL_INTEGRATION_TEST_SOURCES` and assigned to `og_add_test_group(...)` in `CMakeLists.txt`. New headless unit tests should be assigned to `og_add_unit_group(...)`.
 
 ### Writing Tests
 
-**Integration tests** (require SDL, use `test_framework.h`):
+All native tests use real GoogleTest:
+- `TEST(Suite, name)` and `TEST_F(Fixture, name)` for cases and fixtures
+- Standard assertions like `ASSERT_TRUE`, `ASSERT_EQ`, `ASSERT_STREQ`, `EXPECT_*`
+- Binary-local selection via `--gtest_filter='Suite.*'`
+- Order-dependence checks via `--gtest_shuffle`
+
+**Integration tests** (require SDL):
 
 ```cpp
+#include <gtest/gtest.h>
 #include <openglad/interface/screen.h>
-#include <openglad/legacy/test_trace.h>
-#include "test_framework.h"
+#include <openglad/core/test_trace.h>
 
-void test_my_thing() {
+TEST(MyThing, basic) {
     trace_clear();
-    TEST_ASSERT(condition, "message on failure");
-    TEST_ASSERT_EQ(expected, actual, "message");
+    ASSERT_TRUE(condition) << "message on failure";
+    ASSERT_EQ(expected, actual) << "message";
 }
-REGISTER_TEST(test_my_thing);
 ```
 
-**Headless unit tests** (no SDL, use `tests/unit/unit.h`):
+**Headless unit tests** (no SDL):
 
 ```cpp
-#include "unit.h"
+#include <gtest/gtest.h>
 
-OG_UNIT_TEST(test_pure_logic) {
-    OG_ASSERT(1 + 1 == 2);
+TEST(PureLogic, arithmetic) {
+    ASSERT_TRUE(1 + 1 == 2);
 }
 ```
 
@@ -187,7 +200,7 @@ Game code writes `TRACE("category", "message %d", val)` (no-op in production bui
 ```cpp
 trace_clear();
 // ... trigger game behavior ...
-TEST_ASSERT(trace_contains("category", "substring"), "expected trace");
+ASSERT_TRUE(trace_contains("category", "substring")) << "expected trace";
 ```
 
 ### Testing Menu UI / Interactive Flows
@@ -200,12 +213,12 @@ Menu functions block in event loops. Tests use an injector thread:
 
 static int my_injector_thread(void* data) {
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);  // Wait for fadeblack animation
+    SDL_Delay(750);  // Wait for fadeblack animation
     interact("continue_game");
     return 0;
 }
 
-void test_my_menu_flow() {
+TEST(MenuFlow, main_menu_flow) {
     SDL_Thread* thread = SDL_CreateThread(my_injector_thread, "injector", nullptr);
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -214,13 +227,12 @@ void test_my_menu_flow() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 }
-REGISTER_TEST(test_my_menu_flow);
 ```
 
 **Key rules for menu tests:**
 - Use `interact("button_id")` to click buttons — don't compute raw coordinates
 - Use `wait_for_interactable("id", timeout_ms)` before clicking
-- Always `SDL_Delay(1500)` after `wait_for_interactable` — `fadeblack()` eats events
+- Always `SDL_Delay(750)` after `wait_for_interactable` — `fadeblack()` eats events
 - Set `g_picker_max_mainmenu_calls` to limit loop iterations
 - Call `cleanup_picker_state()` after the test
 
@@ -230,7 +242,7 @@ The test build compiles game sources with `-DTESTING`. Use this for:
 - `TRACE(...)` calls to instrument code (no-op in production)
 - Test-only globals like `g_picker_max_mainmenu_calls`
 - Making `exit(0)` calls safe (`quit()` is a no-op under TESTING)
-- `main()` in `glad.cpp` is excluded (tests use `test_main.cpp`)
+- `main()` in `glad.cpp` is excluded (tests use `tests/integration_main.cpp`)
 
 ## Adding New Code
 

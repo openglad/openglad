@@ -9,12 +9,14 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <openglad/core/util.h>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_saved_game(const char* filename, screen* scr);
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
 
 
 struct EventScript {
@@ -38,14 +40,14 @@ static int scripted_poll_adapter(SDL_Event* out)
     return scripted_poll(g_script, out);
 }
 
-void test_game_frame_toggles_debug_hotkeys()
+TEST(GameLoop, game_frame_toggles_debug_hotkeys)
 {
     // Load a minimal scenario so screen::act() is safe to call.
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
     og::runtime::current_session->myscreen_->save_data.save("test_game_loop_save");
     short load_result = load_saved_game("test_game_loop_save", og::runtime::current_session->myscreen_);
-    TEST_ASSERT(load_result != 0, "load_saved_game should succeed for scenario 1");
+    ASSERT_TRUE(load_result != 0) << "load_saved_game should succeed for scenario 1";
 
     // Ensure no frame delays.
     float old_speed = og::runtime::current_session->g_game_speed_factor_;
@@ -72,17 +74,17 @@ void test_game_frame_toggles_debug_hotkeys()
 
     (void)game_frame(*og::runtime::current_session->myscreen_, st, deps);
 
-    TEST_ASSERT(og::runtime::current_session->debug_draw_paths_, "F11 should toggle debug_draw_paths");
-    TEST_ASSERT(og::runtime::current_session->debug_draw_obmap_, "F12 should toggle debug_draw_obmap");
+    ASSERT_TRUE(og::runtime::current_session->debug_draw_paths_) << "F11 should toggle debug_draw_paths";
+    ASSERT_TRUE(og::runtime::current_session->debug_draw_obmap_) << "F12 should toggle debug_draw_obmap";
 
     // Cleanup.
     g_script = nullptr;
     set_game_speed(old_speed);
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_TEST(test_game_frame_toggles_debug_hotkeys);
 
-void test_game_frame_with_result_done_when_end_is_set()
+
+TEST(GameLoop, game_frame_with_result_done_when_end_is_set)
 {
     GameLoopFrameState st;
     GameLoopDeps deps;
@@ -93,15 +95,14 @@ void test_game_frame_with_result_done_when_end_is_set()
     og::runtime::current_session->myscreen_->world().end = 1;
 
     const GameFrameResult result = game_frame_with_result(*og::runtime::current_session->myscreen_, st, deps);
-    TEST_ASSERT_EQ(static_cast<int>(GameFrameResult::Done), static_cast<int>(result),
-        "game_frame_with_result should report Done when screen end is set");
-    TEST_ASSERT(st.done, "state.done should be set when end is set");
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Done), static_cast<int>(result)) << "game_frame_with_result should report Done when screen end is set";
+    ASSERT_TRUE(st.done) << "state.done should be set when end is set";
 
     og::runtime::current_session->myscreen_->world().end = old_end;
 }
-REGISTER_TEST(test_game_frame_with_result_done_when_end_is_set);
 
-void test_game_frame_bool_wrapper_matches_typed_result()
+
+TEST(GameLoop, game_frame_bool_wrapper_matches_typed_result)
 {
     GameLoopFrameState st;
     GameLoopDeps deps;
@@ -115,12 +116,11 @@ void test_game_frame_bool_wrapper_matches_typed_result()
     st.done = false;
     const bool wrapped = game_frame(*og::runtime::current_session->myscreen_, st, deps);
 
-    TEST_ASSERT_EQ(static_cast<int>(typed != GameFrameResult::Continue), static_cast<int>(wrapped),
-        "bool wrapper should map Continue/non-Continue exactly");
+    ASSERT_EQ(static_cast<int>(typed != GameFrameResult::Continue), static_cast<int>(wrapped)) << "bool wrapper should map Continue/non-Continue exactly";
 
     og::runtime::current_session->myscreen_->world().end = old_end;
 }
-REGISTER_TEST(test_game_frame_bool_wrapper_matches_typed_result);
+
 
 // ---------------------------------------------------------------------------
 // Regression test: options_menu via game_frame_with_result call chain.
@@ -136,19 +136,19 @@ REGISTER_TEST(test_game_frame_bool_wrapper_matches_typed_result);
 // let it exit.
 // ---------------------------------------------------------------------------
 
-void test_game_frame_options_menu_via_key_prefs_completes()
+TEST(GameLoop, game_frame_options_menu_via_key_prefs_completes)
 {
     // Load a minimal scenario so screen::act() is safe.
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
     og::runtime::current_session->myscreen_->save_data.save("test_game_loop_optmenu_save");
     short load_result = load_saved_game("test_game_loop_optmenu_save", og::runtime::current_session->myscreen_);
-    TEST_ASSERT(load_result != 0, "load_saved_game should succeed");
+    ASSERT_TRUE(load_result != 0) << "load_saved_game should succeed";
 
     // Ensure a player-controlled walker exists so options_menu() doesn't
     // early-return via its missing-control guard.
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(vs != nullptr, "viewob[0] should exist");
+    ASSERT_TRUE(vs != nullptr) << "viewob[0] should exist";
     if (!vs)
         return;
 
@@ -156,7 +156,7 @@ void test_game_frame_options_menu_via_key_prefs_completes()
     if (!vs->control)
     {
         walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-        TEST_ASSERT(w != nullptr, "control walker created");
+        ASSERT_TRUE(w != nullptr) << "control walker created";
         if (!w)
             return;
         w->team_num = 0;
@@ -212,4 +212,79 @@ void test_game_frame_options_menu_via_key_prefs_completes()
     vs->control = saved_control;
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_TEST(test_game_frame_options_menu_via_key_prefs_completes);
+
+
+TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_confirmed)
+{
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.save("test_game_loop_abort_yes");
+    short load_result = load_saved_game("test_game_loop_abort_yes", og::runtime::current_session->myscreen_);
+    ASSERT_TRUE(load_result != 0) << "load_saved_game should succeed for abort test";
+
+    EventScript script;
+    SDL_Event e{};
+    e.type = SDL_KEYDOWN;
+    e.key.keysym.sym = SDLK_ESCAPE;
+    script.events.push_back(e);
+    g_script = &script;
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+
+    og::runtime::current_session->myscreen_->redrawme = 0;
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = true;
+    deps.poll_event = scripted_poll_adapter;
+
+    const GameFrameResult result = game_frame_with_result(*og::runtime::current_session->myscreen_, st, deps);
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::AbortedMission), static_cast<int>(result)) << "confirmed abort should return AbortedMission";
+    ASSERT_TRUE(st.done) << "confirmed abort should mark frame state done";
+    ASSERT_EQ(1, og::runtime::current_session->myscreen_->redrawme) << "abort prompt path should request redraw";
+
+    picker_testing_yes_or_no_queue_clear();
+    g_script = nullptr;
+    og::runtime::current_session->myscreen_->world().delete_objects();
+}
+
+
+TEST(GameLoop, game_frame_escape_abort_decline_continues_game)
+{
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.save("test_game_loop_abort_no");
+    short load_result = load_saved_game("test_game_loop_abort_no", og::runtime::current_session->myscreen_);
+    ASSERT_TRUE(load_result != 0) << "load_saved_game should succeed for abort-decline test";
+
+    EventScript script;
+    SDL_Event e{};
+    e.type = SDL_KEYDOWN;
+    e.key.keysym.sym = SDLK_ESCAPE;
+    script.events.push_back(e);
+    g_script = &script;
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(false);
+
+    og::runtime::current_session->myscreen_->redrawme = 0;
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = true;
+    deps.poll_event = scripted_poll_adapter;
+
+    const GameFrameResult result = game_frame_with_result(*og::runtime::current_session->myscreen_, st, deps);
+
+    ASSERT_EQ(static_cast<int>(GameFrameResult::Continue), static_cast<int>(result)) << "declined abort should keep the game running";
+    ASSERT_TRUE(!st.done) << "declined abort should leave frame state active";
+    ASSERT_EQ(1, og::runtime::current_session->myscreen_->redrawme) << "declined abort should still request redraw";
+
+    picker_testing_yes_or_no_queue_clear();
+    g_script = nullptr;
+    og::runtime::current_session->myscreen_->world().delete_objects();
+}

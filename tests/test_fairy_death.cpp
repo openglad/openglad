@@ -4,8 +4,9 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/gameplay/guy.h>
-#include <openglad/legacy/test_trace.h>
-#include "test_framework.h"
+#include <openglad/core/test_trace.h>
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -84,7 +85,7 @@ static int fairy_injector(void* data)
 
     // -- Main Menu --
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
@@ -97,7 +98,7 @@ static int fairy_injector(void* data)
     // popup_dialog("HIRE TROOPS") returns immediately under TESTING
     SDL_Delay(500);
     wait_for_interactable("hire_me", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // -- Hire Menu: cycle to FAERIE and hire --
     // Starts at allowable_guys[0] (SOLDIER). Click NEXT 12 times for FAERIE.
@@ -161,7 +162,7 @@ static int fairy_injector(void* data)
 
     // Now we're truly back in create_team_menu with fresh buttons
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Exit team menu -> main menu -> picker exits
     fprintf(stderr, "  [test] clicking back from team menu\n");
@@ -171,7 +172,7 @@ static int fairy_injector(void* data)
     return 0;
 }
 
-void test_fairy_death() {
+TEST(FairyDeath, fairy_death) {
     trace_clear();
 
     // Some integration tests leave the picker globals set, which changes the
@@ -190,7 +191,7 @@ void test_fairy_death() {
 
     FairyState state = { false, false, og::runtime::current_session->g_game_speed_factor_ };
     SDL_Thread* thread = SDL_CreateThread(fairy_injector, "fairy_injector", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -204,12 +205,11 @@ void test_fairy_death() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
 
     // We lost — level 4 should NOT be marked completed
-    TEST_ASSERT(!og::runtime::current_session->myscreen_->save_data.is_level_completed(4),
-                "level 4 should NOT be completed (fairy should have died)");
+    ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_data.is_level_completed(4)) << "level 4 should NOT be completed (fairy should have died)";
 
     fprintf(stderr, "  [test] Fairy died as expected via UI hire flow\n");
 }
-REGISTER_TEST(test_fairy_death);
+

@@ -9,7 +9,7 @@
 #include <openglad/legacy/base.h>
 #include <memory>
 #include <string>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
@@ -68,29 +68,29 @@ walker* add_to_list(LevelFixture& fx, std::list<std::unique_ptr<walker>>& ls,
 
 } // namespace
 
-OG_UNIT_TEST(test_level_data_grid_and_description_paths)
+TEST(LevelDataUnit, level_data_grid_and_description_paths)
 {
     LevelFixture fx;
     fx.level.resize_grid(2, 2); // invalid no-op
-    OG_ASSERT(fx.level.world().grid.w == 40);
-    OG_ASSERT(fx.level.world().grid.h == 60);
+    ASSERT_TRUE(fx.level.world().grid.w == 40);
+    ASSERT_TRUE(fx.level.world().grid.h == 60);
 
     fx.level.resize_grid(50, 50);
-    OG_ASSERT(fx.level.world().grid.w == 50);
-    OG_ASSERT(fx.level.world().grid.h == 50);
+    ASSERT_TRUE(fx.level.world().grid.w == 50);
+    ASSERT_TRUE(fx.level.world().grid.h == 50);
 
     fx.level.description.clear();
     fx.level.description.push_back("line-1");
-    OG_ASSERT(fx.level.get_description_line(0) == "line-1");
-    OG_ASSERT(fx.level.get_description_line(3).empty());
+    ASSERT_TRUE(fx.level.get_description_line(0) == "line-1");
+    ASSERT_TRUE(fx.level.get_description_line(3).empty());
 
     fx.level.set_draw_pos(3, 4);
     fx.level.add_draw_pos(2, -1);
-    OG_ASSERT(fx.level.level_visuals().topx == 5);
-    OG_ASSERT(fx.level.level_visuals().topy == 3);
+    ASSERT_TRUE(fx.level.level_visuals().topx == 5);
+    ASSERT_TRUE(fx.level.level_visuals().topy == 3);
 }
 
-OG_UNIT_TEST(test_level_data_passable_and_range_queries)
+TEST(LevelDataUnit, level_data_passable_and_range_queries)
 {
     LevelFixture fx;
     walker* self = add_to_list(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
@@ -98,57 +98,57 @@ OG_UNIT_TEST(test_level_data_passable_and_range_queries)
     walker* player = add_to_list(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 96, 64);
     walker* weapon = add_to_list(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_KNIFE, 1, 72, 64);
     walker* stain = add_to_list(fx, fx.level.world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 70, 64);
-    OG_ASSERT(self && foe && player && weapon && stain);
+    ASSERT_TRUE(self && foe && player && weapon && stain);
 
     player->user = 0;
     self->stats()->set_bit_flags(BIT_ETHEREAL, 1);
-    OG_ASSERT(fx.level.query_grid_passable(10, 10, self));
+    ASSERT_TRUE(fx.level.query_grid_passable(10, 10, self));
     self->stats()->set_bit_flags(BIT_ETHEREAL, 0);
-    OG_ASSERT(!fx.level.query_grid_passable(-1, 10, self));
+    ASSERT_TRUE(!fx.level.query_grid_passable(-1, 10, self));
 
     const int tile = 4 + 4 * fx.level.world().grid.w;
     fx.level.world().grid.data[tile] = PIX_H_WALL1;
     self->setxy(4 * GRID_SIZE, 4 * GRID_SIZE);
-    OG_ASSERT(!fx.level.query_grid_passable(self->xpos, self->ypos, self));
+    ASSERT_TRUE(!fx.level.query_grid_passable(self->xpos, self->ypos, self));
 
     self->dead = 1;
-    OG_ASSERT(fx.level.query_object_passable(self->xpos, self->ypos, self));
+    ASSERT_TRUE(fx.level.query_object_passable(self->xpos, self->ypos, self));
     self->dead = 0;
     (void)fx.level.query_passable(self->xpos, self->ypos, self);
 
-    OG_ASSERT(fx.level.find_near_foe(self) != nullptr);
-    OG_ASSERT(fx.level.find_far_foe(self) != nullptr);
-    OG_ASSERT(fx.level.find_nearest_blood(self) == stain);
-    OG_ASSERT(fx.level.find_nearest_player(self) == player);
+    ASSERT_TRUE(fx.level.find_near_foe(self) != nullptr);
+    ASSERT_TRUE(fx.level.find_far_foe(self) != nullptr);
+    ASSERT_TRUE(fx.level.find_nearest_blood(self) == stain);
+    ASSERT_TRUE(fx.level.find_nearest_player(self) == player);
 
     std::int32_t count = 0;
     (void)fx.level.find_in_range(fx.level.world().oblist, 200, &count, self);
-    OG_ASSERT(count >= 2);
+    ASSERT_TRUE(count >= 2);
     (void)fx.level.find_foes_in_range(fx.level.world().oblist, 200, &count, self);
-    OG_ASSERT(count >= 1);
+    ASSERT_TRUE(count >= 1);
     (void)fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &count, self);
     (void)fx.level.find_friends_in_range(fx.level.world().oblist, 200, &count, self);
 }
 
-OG_UNIT_TEST(test_level_data_remove_and_remaining_foes_paths)
+TEST(LevelDataUnit, level_data_remove_and_remaining_foes_paths)
 {
     LevelFixture fx;
     walker* self = add_to_list(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     walker* foe = add_to_list(fx, fx.level.world().oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
-    OG_ASSERT(self && foe);
+    ASSERT_TRUE(self && foe);
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
 
     const short foes_before = remaining_foes(fx.level, self);
-    OG_ASSERT(foes_before >= 1);
+    ASSERT_TRUE(foes_before >= 1);
 
-    OG_ASSERT(fx.level.remove_ob(foe) == 1);
+    ASSERT_TRUE(fx.level.remove_ob(foe) == 1);
     const short foes_after = remaining_foes(fx.level, self);
-    OG_ASSERT(foes_after <= foes_before);
+    ASSERT_TRUE(foes_after <= foes_before);
 
     fx.level.delete_objects();
-    OG_ASSERT(fx.level.world().oblist.empty());
-    OG_ASSERT(fx.level.world().fxlist.empty());
-    OG_ASSERT(fx.level.world().weaplist.empty());
+    ASSERT_TRUE(fx.level.world().oblist.empty());
+    ASSERT_TRUE(fx.level.world().fxlist.empty());
+    ASSERT_TRUE(fx.level.world().weaplist.empty());
 }
 } // namespace detail_level_data_coverage_push
 
@@ -196,19 +196,19 @@ walker* add_to(LevelR11Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
 
 } // namespace
 
-OG_UNIT_TEST(test_level_data_r11_basic_construction_remove_and_helpers)
+TEST(LevelDataUnit, level_data_r11_basic_construction_remove_and_helpers)
 {
     LevelR11Fixture fx;
 
     // get_description_line out of range and in range
     fx.level.description.clear();
     fx.level.description.push_back("a");
-    OG_ASSERT(fx.level.get_description_line(0) == "a");
-    OG_ASSERT(fx.level.get_description_line(9).empty());
+    ASSERT_TRUE(fx.level.get_description_line(0) == "a");
+    ASSERT_TRUE(fx.level.get_description_line(9).empty());
 
     // remove_ob miss path
     walker dummy;
-    OG_ASSERT(fx.level.remove_ob(&dummy) == 0);
+    ASSERT_TRUE(fx.level.remove_ob(&dummy) == 0);
 
     // null guards for searches
     std::int32_t hm = 0;
@@ -216,31 +216,31 @@ OG_UNIT_TEST(test_level_data_r11_basic_construction_remove_and_helpers)
     auto none2 = fx.level.find_foes_in_range(fx.level.world().oblist, 10, &hm, nullptr);
     auto none3 = fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 10, &hm, nullptr);
     auto none4 = fx.level.find_friends_in_range(fx.level.world().oblist, 10, &hm, nullptr);
-    OG_ASSERT(none1.empty() && none2.empty() && none3.empty() && none4.empty());
+    ASSERT_TRUE(none1.empty() && none2.empty() && none3.empty() && none4.empty());
 
-    OG_ASSERT(fx.level.find_near_foe(nullptr) == nullptr);
-    OG_ASSERT(fx.level.find_far_foe(nullptr) == nullptr);
-    OG_ASSERT(fx.level.find_nearest_blood(nullptr) == nullptr);
-    OG_ASSERT(fx.level.find_nearest_player(nullptr) == nullptr);
+    ASSERT_TRUE(fx.level.find_near_foe(nullptr) == nullptr);
+    ASSERT_TRUE(fx.level.find_far_foe(nullptr) == nullptr);
+    ASSERT_TRUE(fx.level.find_nearest_blood(nullptr) == nullptr);
+    ASSERT_TRUE(fx.level.find_nearest_player(nullptr) == nullptr);
 }
 
-OG_UNIT_TEST(test_level_data_r11_query_grid_passable_terrain_branches)
+TEST(LevelDataUnit, level_data_r11_query_grid_passable_terrain_branches)
 {
     LevelR11Fixture fx;
     walker* ob = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
-    OG_ASSERT(ob != nullptr);
+    ASSERT_TRUE(ob != nullptr);
 
     // grid invalid branch
     fx.level.delete_grid();
-    OG_ASSERT(!fx.level.query_grid_passable(10, 10, ob));
+    ASSERT_TRUE(!fx.level.query_grid_passable(10, 10, ob));
     fx.level.create_new_grid();
 
     // out-of-bounds branch
-    OG_ASSERT(!fx.level.query_grid_passable(-1, 0, ob));
+    ASSERT_TRUE(!fx.level.query_grid_passable(-1, 0, ob));
 
     // ethereal branch
     ob->stats()->set_bit_flags(BIT_ETHEREAL, 1);
-    OG_ASSERT(fx.level.query_grid_passable(64, 64, ob));
+    ASSERT_TRUE(fx.level.query_grid_passable(64, 64, ob));
     ob->stats()->set_bit_flags(BIT_ETHEREAL, 0);
 
     const int gx = 4;
@@ -249,27 +249,27 @@ OG_UNIT_TEST(test_level_data_r11_query_grid_passable_terrain_branches)
 
     // tree branch blocked/unblocked by forestwalk/flying
     fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_TREE_M1;
-    OG_ASSERT(!fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
+    ASSERT_TRUE(!fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
     ob->stats()->set_bit_flags(BIT_FORESTWALK, 1);
-    OG_ASSERT(fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
+    ASSERT_TRUE(fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
     ob->stats()->set_bit_flags(BIT_FORESTWALK, 0);
 
     // tree_b branch with weapon
     walker* weap = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 1, ob->xpos, ob->ypos);
     fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_TREE_B1;
-    OG_ASSERT(fx.level.query_grid_passable(weap->xpos, weap->ypos, weap));
+    ASSERT_TRUE(fx.level.query_grid_passable(weap->xpos, weap->ypos, weap));
 
     // hard wall path
     fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_H_WALL1;
-    OG_ASSERT(!fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
+    ASSERT_TRUE(!fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
 
     // arrow wall + weapon owner branch
     fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_WALL4;
     weap->owner = ob;
-    OG_ASSERT(!fx.level.query_grid_passable(weap->xpos, weap->ypos, weap) || fx.level.query_grid_passable(weap->xpos, weap->ypos, weap));
+    ASSERT_TRUE(!fx.level.query_grid_passable(weap->xpos, weap->ypos, weap) || fx.level.query_grid_passable(weap->xpos, weap->ypos, weap));
 }
 
-OG_UNIT_TEST(test_level_data_r11_object_passability_and_search_sets)
+TEST(LevelDataUnit, level_data_r11_object_passability_and_search_sets)
 {
     LevelR11Fixture fx;
     walker* self = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
@@ -277,7 +277,7 @@ OG_UNIT_TEST(test_level_data_r11_object_passability_and_search_sets)
     walker* ally = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 96, 64);
     walker* weapon = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 1, 70, 64);
     walker* stain = add_to(fx, fx.level.world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
-    OG_ASSERT(self && foe && ally && weapon && stain);
+    ASSERT_TRUE(self && foe && ally && weapon && stain);
 
     ally->user = 0;
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
@@ -285,28 +285,28 @@ OG_UNIT_TEST(test_level_data_r11_object_passability_and_search_sets)
 
     // query_object_passable dead-ob fast path
     self->dead = 1;
-    OG_ASSERT(fx.level.query_object_passable(self->xpos, self->ypos, self));
+    ASSERT_TRUE(fx.level.query_object_passable(self->xpos, self->ypos, self));
     self->dead = 0;
 
     (void)fx.level.query_passable(self->xpos, self->ypos, self);
 
-    OG_ASSERT(fx.level.find_near_foe(self) != nullptr);
-    OG_ASSERT(fx.level.find_far_foe(self) != nullptr);
-    OG_ASSERT(fx.level.find_nearest_blood(self) == stain);
-    OG_ASSERT(fx.level.find_nearest_player(self) == ally);
+    ASSERT_TRUE(fx.level.find_near_foe(self) != nullptr);
+    ASSERT_TRUE(fx.level.find_far_foe(self) != nullptr);
+    ASSERT_TRUE(fx.level.find_nearest_blood(self) == stain);
+    ASSERT_TRUE(fx.level.find_nearest_player(self) == ally);
 
     std::int32_t c = 0;
     auto inr = fx.level.find_in_range(fx.level.world().oblist, 200, &c, self);
-    OG_ASSERT(c >= 1 && !inr.empty());
+    ASSERT_TRUE(c >= 1 && !inr.empty());
     auto foes = fx.level.find_foes_in_range(fx.level.world().oblist, 200, &c, self);
-    OG_ASSERT(c >= 1 && !foes.empty());
+    ASSERT_TRUE(c >= 1 && !foes.empty());
     (void)fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &c, self);
     auto friends = fx.level.find_friends_in_range(fx.level.world().oblist, 200, &c, self);
-    OG_ASSERT(!friends.empty());
+    ASSERT_TRUE(!friends.empty());
 
     // helper functions
     (void)get_scenario_title("nonexistent_file");
-    OG_ASSERT(remaining_foes(fx.level, self) >= 0);
+    ASSERT_TRUE(remaining_foes(fx.level, self) >= 0);
 }
 } // namespace detail_level_data_r11
 
@@ -433,7 +433,7 @@ walker* add_to(LevelR12Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
 
 } // namespace
 
-OG_UNIT_TEST(test_level_data_r12_load_title_dispatch_and_save_grid_paths)
+TEST(LevelDataUnit, level_data_r12_load_title_dispatch_and_save_grid_paths)
 {
     std::filesystem::create_directories("scen");
     std::filesystem::create_directories("temp/pix");
@@ -450,41 +450,41 @@ OG_UNIT_TEST(test_level_data_r12_load_title_dispatch_and_save_grid_paths)
     ScopedFileRemover cleanup;
     cleanup.files = {parse_path, bad_path, version_path, title_path};
 
-    OG_ASSERT(write_bytes(parse_path, {'F', 'S', 'S'}));
-    OG_ASSERT(write_bytes(bad_path, {'B', 'A', 'D', 6}));
-    OG_ASSERT(write_bytes(version_path, {'F', 'S', 'S', 1}));
+    ASSERT_TRUE(write_bytes(parse_path, {'F', 'S', 'S'}));
+    ASSERT_TRUE(write_bytes(bad_path, {'B', 'A', 'D', 6}));
+    ASSERT_TRUE(write_bytes(version_path, {'F', 'S', 'S', 1}));
 
     std::vector<unsigned char> titled = {'F', 'S', 'S', 6};
     const char grid[8] = {'g','r','i','d',0,0,0,0};
     titled.insert(titled.end(), grid, grid + 8);
     const char title[30] = "Coverage R12";
     titled.insert(titled.end(), title, title + 30);
-    OG_ASSERT(write_bytes(title_path, titled));
+    ASSERT_TRUE(write_bytes(title_path, titled));
 
     LevelRuntimeData parse_fail(id_parse, true);
-    OG_ASSERT(parse_fail.load_with_error() == LevelRuntimeData::IoError::ParseFailed);
+    ASSERT_TRUE(parse_fail.load_with_error() == LevelRuntimeData::IoError::ParseFailed);
     LevelRuntimeData bad_header(id_bad, true);
-    OG_ASSERT(bad_header.load_with_error() == LevelRuntimeData::IoError::InvalidHeader);
+    ASSERT_TRUE(bad_header.load_with_error() == LevelRuntimeData::IoError::InvalidHeader);
     LevelRuntimeData unsupported(id_ver, true);
-    OG_ASSERT(unsupported.load_with_error() == LevelRuntimeData::IoError::UnsupportedVersion);
+    ASSERT_TRUE(unsupported.load_with_error() == LevelRuntimeData::IoError::UnsupportedVersion);
 
-    OG_ASSERT(get_scenario_title(nullptr) == "none");
-    OG_ASSERT(get_scenario_title("does_not_exist") == "none");
-    OG_ASSERT(get_scenario_title("scen9412") == "none");
-    OG_ASSERT(get_scenario_title("scen9414") == "Coverage R12");
+    ASSERT_TRUE(get_scenario_title(nullptr) == "none");
+    ASSERT_TRUE(get_scenario_title("does_not_exist") == "none");
+    ASSERT_TRUE(get_scenario_title("scen9412") == "none");
+    ASSERT_TRUE(get_scenario_title("scen9414") == "Coverage R12");
 
     unsigned char dummy = 0;
     MemoryOgFile mem(&dummy, 0);
     LevelRuntimeData data(1, true);
-    OG_ASSERT(load_scenario_version(mem, nullptr, 6) == 0);
-    OG_ASSERT(load_scenario_version(mem, &data, 42) == 0);
+    ASSERT_TRUE(load_scenario_version(mem, nullptr, 6) == 0);
+    ASSERT_TRUE(load_scenario_version(mem, &data, 42) == 0);
 
     PixieData pix(1, 1, 1, new unsigned char[1]{7});
-    OG_ASSERT(save_grid_file("coverage_r12_ok", pix));
-    OG_ASSERT(!save_grid_file("nested/coverage_r12_fail", pix));
+    ASSERT_TRUE(save_grid_file("coverage_r12_ok", pix));
+    ASSERT_TRUE(!save_grid_file("nested/coverage_r12_fail", pix));
 }
 
-OG_UNIT_TEST(test_level_data_r12_save_null_entries_and_query_passable_branches)
+TEST(LevelDataUnit, level_data_r12_save_null_entries_and_query_passable_branches)
 {
     LevelR12Fixture fx;
     std::filesystem::create_directories("temp/scen");
@@ -495,17 +495,17 @@ OG_UNIT_TEST(test_level_data_r12_save_null_entries_and_query_passable_branches)
     fx.level.world().title = "r12";
 
     fx.level.world().fxlist.push_back(std::unique_ptr<walker>{});
-    OG_ASSERT(!fx.level.save());
+    ASSERT_TRUE(!fx.level.save());
     fx.level.delete_objects();
 
     fx.level.world().weaplist.push_back(std::unique_ptr<walker>{});
-    OG_ASSERT(!fx.level.save());
+    ASSERT_TRUE(!fx.level.save());
     fx.level.delete_objects();
 
     walker* living = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 0, 0);
     walker* owner = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     walker* weapon = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 0, 0);
-    OG_ASSERT(living && owner && weapon);
+    ASSERT_TRUE(living && owner && weapon);
     living->sizex = 1;
     living->sizey = 1;
     weapon->sizex = 1;
@@ -520,40 +520,40 @@ OG_UNIT_TEST(test_level_data_r12_save_null_entries_and_query_passable_branches)
     fx.level.world().grid.data = std::make_unique<unsigned char[]>(1);
 
     fx.level.world().grid.data[0] = PIX_TREE_M1;
-    OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
+    ASSERT_TRUE(!fx.level.query_grid_passable(0, 0, living));
     living->stats()->set_bit_flags(BIT_FORESTWALK, 1);
-    OG_ASSERT(fx.level.query_grid_passable(0, 0, living));
+    ASSERT_TRUE(fx.level.query_grid_passable(0, 0, living));
     living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     living->stats()->set_bit_flags(BIT_FLYING, 1);
-    OG_ASSERT(fx.level.query_grid_passable(0, 0, living));
+    ASSERT_TRUE(fx.level.query_grid_passable(0, 0, living));
 
     living->stats()->set_bit_flags(BIT_FLYING, 0);
     fx.level.world().grid.data[0] = PIX_TREE_B1;
-    OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
-    OG_ASSERT(fx.level.query_grid_passable(0, 0, weapon));
+    ASSERT_TRUE(!fx.level.query_grid_passable(0, 0, living));
+    ASSERT_TRUE(fx.level.query_grid_passable(0, 0, weapon));
 
     fx.level.world().grid.data[0] = PIX_WALL4;
-    OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
+    ASSERT_TRUE(!fx.level.query_grid_passable(0, 0, living));
     weapon->setxy(200, 0);
     owner->setxy(0, 0);
     fx.level.world().rng_.state_ = 1;
-    OG_ASSERT(!fx.level.query_grid_passable(0, 0, weapon));
+    ASSERT_TRUE(!fx.level.query_grid_passable(0, 0, weapon));
 
     fx.level.world().grid.data[0] = PIX_WATER1;
-    OG_ASSERT(fx.level.query_grid_passable(0, 0, weapon));
-    OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
+    ASSERT_TRUE(fx.level.query_grid_passable(0, 0, weapon));
+    ASSERT_TRUE(!fx.level.query_grid_passable(0, 0, living));
     living->flight_left = 1;
-    OG_ASSERT(fx.level.query_grid_passable(0, 0, living));
+    ASSERT_TRUE(fx.level.query_grid_passable(0, 0, living));
 
     living->flight_left = 0;
     fx.level.world().grid.data[0] = 255;
-    OG_ASSERT(!fx.level.query_grid_passable(0, 0, living));
+    ASSERT_TRUE(!fx.level.query_grid_passable(0, 0, living));
 
     living->dead = 1;
-    OG_ASSERT(fx.level.query_object_passable(0, 0, living));
+    ASSERT_TRUE(fx.level.query_object_passable(0, 0, living));
 }
 
-OG_UNIT_TEST(test_level_data_r12_find_helpers_null_and_ranges)
+TEST(LevelDataUnit, level_data_r12_find_helpers_null_and_ranges)
 {
     LevelR12Fixture fx;
 
@@ -562,50 +562,50 @@ OG_UNIT_TEST(test_level_data_r12_find_helpers_null_and_ranges)
     walker* ally = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_ARCHER, 0, 96, 64);
     walker* enemy_weapon = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 70, 64);
     walker* blood = add_to(fx, fx.level.world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
-    OG_ASSERT(self && foe && ally && enemy_weapon && blood);
+    ASSERT_TRUE(self && foe && ally && enemy_weapon && blood);
 
     ally->user = 0;
 
     std::int32_t howmany = 0;
-    OG_ASSERT(fx.level.find_in_range(fx.level.world().oblist, 50, &howmany, nullptr).empty());
-    OG_ASSERT(fx.level.find_foes_in_range(fx.level.world().oblist, 50, &howmany, nullptr).empty());
-    OG_ASSERT(fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 50, &howmany, nullptr).empty());
-    OG_ASSERT(fx.level.find_friends_in_range(fx.level.world().oblist, 50, &howmany, nullptr).empty());
+    ASSERT_TRUE(fx.level.find_in_range(fx.level.world().oblist, 50, &howmany, nullptr).empty());
+    ASSERT_TRUE(fx.level.find_foes_in_range(fx.level.world().oblist, 50, &howmany, nullptr).empty());
+    ASSERT_TRUE(fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 50, &howmany, nullptr).empty());
+    ASSERT_TRUE(fx.level.find_friends_in_range(fx.level.world().oblist, 50, &howmany, nullptr).empty());
 
-    OG_ASSERT(fx.level.find_nearest_blood(nullptr) == nullptr);
-    OG_ASSERT(fx.level.find_nearest_player(nullptr) == nullptr);
+    ASSERT_TRUE(fx.level.find_nearest_blood(nullptr) == nullptr);
+    ASSERT_TRUE(fx.level.find_nearest_player(nullptr) == nullptr);
 
-    OG_ASSERT(fx.level.find_near_foe(self) != nullptr);
-    OG_ASSERT(fx.level.find_far_foe(self) != nullptr);
-    OG_ASSERT(fx.level.find_nearest_blood(self) == blood);
-    OG_ASSERT(fx.level.find_nearest_player(self) == ally);
+    ASSERT_TRUE(fx.level.find_near_foe(self) != nullptr);
+    ASSERT_TRUE(fx.level.find_far_foe(self) != nullptr);
+    ASSERT_TRUE(fx.level.find_nearest_blood(self) == blood);
+    ASSERT_TRUE(fx.level.find_nearest_player(self) == ally);
 
     auto inr = fx.level.find_in_range(fx.level.world().oblist, 200, &howmany, self);
-    OG_ASSERT(!inr.empty() && howmany >= 1);
+    ASSERT_TRUE(!inr.empty() && howmany >= 1);
     auto foes = fx.level.find_foes_in_range(fx.level.world().oblist, 200, &howmany, self);
-    OG_ASSERT(!foes.empty());
+    ASSERT_TRUE(!foes.empty());
     auto foe_weapons = fx.level.find_foe_weapons_in_range(fx.level.world().weaplist, 200, &howmany, self);
-    OG_ASSERT(!foe_weapons.empty());
+    ASSERT_TRUE(!foe_weapons.empty());
     auto friends = fx.level.find_friends_in_range(fx.level.world().oblist, 200, &howmany, self);
-    OG_ASSERT(!friends.empty());
+    ASSERT_TRUE(!friends.empty());
 }
 
-OG_UNIT_TEST(test_level_data_r12_remove_ob_paths_and_zip_api_paths)
+TEST(LevelDataUnit, level_data_r12_remove_ob_paths_and_zip_api_paths)
 {
     LevelR12Fixture fx;
     walker* living = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 40, 40);
     walker* weap = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 44, 40);
     walker* fxob = add_to(fx, fx.level.world().fxlist, Order::FX, FAMILY_EXPLOSION, 0, 48, 40);
-    OG_ASSERT(living && weap && fxob);
+    ASSERT_TRUE(living && weap && fxob);
 
     const std::int32_t before = fx.level.numobs;
-    OG_ASSERT(fx.level.remove_ob(weap) == 1);
-    OG_ASSERT(fx.level.remove_ob(fxob) == 1);
-    OG_ASSERT(fx.level.remove_ob(living) == 1);
-    OG_ASSERT(fx.level.numobs == before - 1);
-    OG_ASSERT(fx.level.remove_ob(nullptr) == 0);
+    ASSERT_TRUE(fx.level.remove_ob(weap) == 1);
+    ASSERT_TRUE(fx.level.remove_ob(fxob) == 1);
+    ASSERT_TRUE(fx.level.remove_ob(living) == 1);
+    ASSERT_TRUE(fx.level.numobs == before - 1);
+    ASSERT_TRUE(fx.level.remove_ob(nullptr) == 0);
 
-    OG_ASSERT(og::io::unzip_into_with_error("temp/r12_zip/not_there.zip", "temp/r12_zip/out2") == ArchiveIoError::OpenArchiveFailed);
+    ASSERT_TRUE(og::io::unzip_into_with_error("temp/r12_zip/not_there.zip", "temp/r12_zip/out2") == ArchiveIoError::OpenArchiveFailed);
     (void)og::io::zip_contents_with_error("temp/r12_zip/in", "temp/r12_zip/missing_parent/archive.zip");
 }
 } // namespace detail_level_data_r12
@@ -737,15 +737,15 @@ std::vector<unsigned char> make_payload_v9(const std::string& grid8, const std::
 
 } // namespace
 
-OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_success_matrix)
+TEST(LevelDataUnit, level_data_r14_lines_705_770_786_912_1069_1206_load_versions_success_matrix)
 {
     // v2, grid without .pix extension path.
     {
         std::vector<unsigned char> bytes = make_payload_v2("grid");
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(1, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 2) == 1);
-        OG_ASSERT(data.grid_file == "grid");
+        ASSERT_TRUE(load_scenario_version(mem, &data, 2) == 1);
+        ASSERT_TRUE(data.grid_file == "grid");
     }
 
     // v3, grid with .pix extension path + long line width skip/discard path.
@@ -753,9 +753,9 @@ OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_s
         std::vector<unsigned char> bytes = make_payload_v3("ab.pix", 95);
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(2, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 3) == 1);
-        OG_ASSERT(data.grid_file == "ab.pix");
-        OG_ASSERT(!data.description.empty());
+        ASSERT_TRUE(load_scenario_version(mem, &data, 3) == 1);
+        ASSERT_TRUE(data.grid_file == "ab.pix");
+        ASSERT_TRUE(!data.description.empty());
     }
 
     // v5 scenario type path.
@@ -763,8 +763,8 @@ OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_s
         std::vector<unsigned char> bytes = make_payload_v5("gr5", static_cast<char>(7));
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(3, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 5) == 1);
-        OG_ASSERT(data.world().type == 7);
+        ASSERT_TRUE(load_scenario_version(mem, &data, 5) == 1);
+        ASSERT_TRUE(data.world().type == 7);
     }
 
     // v9 title/par/time-limit + long line width skip path.
@@ -774,15 +774,15 @@ OG_UNIT_TEST(test_level_data_r14_lines_705_770_786_912_1069_1206_load_versions_s
                                                            110);
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(4, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 9) == 1);
-        OG_ASSERT(data.world().title == "R14 Title");
-        OG_ASSERT(data.world().par_value == 77);
-        OG_ASSERT(data.world().time_bonus_limit == 1234);
-        OG_ASSERT(data.world().type == 5);
+        ASSERT_TRUE(load_scenario_version(mem, &data, 9) == 1);
+        ASSERT_TRUE(data.world().title == "R14 Title");
+        ASSERT_TRUE(data.world().par_value == 77);
+        ASSERT_TRUE(data.world().time_bonus_limit == 1234);
+        ASSERT_TRUE(data.world().type == 5);
     }
 }
 
-OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader_failures_and_bounds)
+TEST(LevelDataUnit, level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader_failures_and_bounds)
 {
     // Truncated v2 after grid field.
     {
@@ -790,7 +790,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         append_fixed_string(bytes, "grid", 8);
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(11, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 2) == 0);
+        ASSERT_TRUE(load_scenario_version(mem, &data, 2) == 0);
     }
 
     // Invalid object count v2.
@@ -801,7 +801,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         append_pod(bytes, bad_listsize);
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(12, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 2) == 0);
+        ASSERT_TRUE(load_scenario_version(mem, &data, 2) == 0);
     }
 
     // Truncated v3 while reading text lines.
@@ -817,7 +817,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         bytes.push_back('x');
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(13, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 3) == 0);
+        ASSERT_TRUE(load_scenario_version(mem, &data, 3) == 0);
     }
 
     // Truncated v5 before scenario type read.
@@ -826,7 +826,7 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         append_fixed_string(bytes, "grid", 8);
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(14, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 5) == 0);
+        ASSERT_TRUE(load_scenario_version(mem, &data, 5) == 0);
     }
 
     // Invalid object count v8.
@@ -842,20 +842,20 @@ OG_UNIT_TEST(test_level_data_r14_lines_725_733_735_746_873_1018_1112_1315_loader
         append_pod(bytes, bad_listsize);
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(15, true);
-        OG_ASSERT(load_scenario_version(mem, &data, 8) == 0);
+        ASSERT_TRUE(load_scenario_version(mem, &data, 8) == 0);
     }
 }
 
-OG_UNIT_TEST(test_level_data_r14_lines_95_99_353_371_378_campaign_description_accessors)
+TEST(LevelDataUnit, level_data_r14_lines_95_99_353_371_378_campaign_description_accessors)
 {
     CampaignData c("r14_campaign");
-    OG_ASSERT(c.getDescriptionLine(0) == "No description.");
-    OG_ASSERT(c.get_description_line(0) == "No description.");
-    OG_ASSERT(c.get_description_line(5).empty());
+    ASSERT_TRUE(c.getDescriptionLine(0) == "No description.");
+    ASSERT_TRUE(c.get_description_line(0) == "No description.");
+    ASSERT_TRUE(c.get_description_line(5).empty());
 
     // Out-of-range from load/save wrappers should remain deterministic without I/O setup.
-    OG_ASSERT(c.load_with_error() == c.last_io_error());
-    OG_ASSERT(c.save_with_error() == c.last_io_error());
+    ASSERT_TRUE(c.load_with_error() == c.last_io_error());
+    ASSERT_TRUE(c.save_with_error() == c.last_io_error());
 }
 } // namespace detail_level_data_r14
 
@@ -873,7 +873,7 @@ std::unique_ptr<LevelRender> make_render(PixieData[])
 
 } // namespace
 
-OG_UNIT_TEST(test_level_data_r15_campaign_wrappers_and_description_iteration)
+TEST(LevelDataUnit, level_data_r15_campaign_wrappers_and_description_iteration)
 {
     CampaignData c("missing_campaign_r15");
     c.description.clear();
@@ -881,17 +881,17 @@ OG_UNIT_TEST(test_level_data_r15_campaign_wrappers_and_description_iteration)
     c.description.push_back("line1");
     c.description.push_back("line2");
 
-    OG_ASSERT(c.get_description_line(2) == "line2");
-    OG_ASSERT(c.getDescriptionLine(1) == "line1");
-    OG_ASSERT(c.get_description_line(-1).empty());
-    OG_ASSERT(c.get_description_line(9).empty());
+    ASSERT_TRUE(c.get_description_line(2) == "line2");
+    ASSERT_TRUE(c.getDescriptionLine(1) == "line1");
+    ASSERT_TRUE(c.get_description_line(-1).empty());
+    ASSERT_TRUE(c.get_description_line(9).empty());
 
     (void)c.load_with_error();
     (void)c.save_with_error();
     (void)c.save_as_with_error("missing_campaign_r15_copy");
 }
 
-OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
+TEST(LevelDataUnit, level_data_r15_ctor_hooks_add_paths_and_clear)
 {
     g_render_calls = 0;
 
@@ -900,7 +900,7 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
 
     LevelRuntimeData level_non_headless(9415, &hooks);
     LevelRuntimeData level_headless(9416, true, &hooks);
-    OG_ASSERT(g_render_calls >= 1);
+    ASSERT_TRUE(g_render_calls >= 1);
 
     SaveData save;
     std::int32_t freeze = 0;
@@ -911,8 +911,8 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     walker* living = level_non_headless.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* fxob = level_non_headless.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     walker* weap = level_non_headless.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
-    OG_ASSERT(living && fxob && weap);
-    OG_ASSERT(level_non_headless.numobs >= 1);
+    ASSERT_TRUE(living && fxob && weap);
+    ASSERT_TRUE(level_non_headless.numobs >= 1);
 
     level_non_headless.world().title = "Mutated";
     level_non_headless.world().type = 7;
@@ -922,18 +922,18 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
     level_non_headless.level_visuals().topy = 55;
     level_non_headless.clear();
 
-    OG_ASSERT(level_non_headless.world().title == "New Level");
-    OG_ASSERT(level_non_headless.world().type == 0);
-    OG_ASSERT(level_non_headless.world().par_value == 1);
-    OG_ASSERT(level_non_headless.world().time_bonus_limit == 4000);
-    OG_ASSERT(level_non_headless.level_visuals().topx == 0);
-    OG_ASSERT(level_non_headless.level_visuals().topy == 0);
+    ASSERT_TRUE(level_non_headless.world().title == "New Level");
+    ASSERT_TRUE(level_non_headless.world().type == 0);
+    ASSERT_TRUE(level_non_headless.world().par_value == 1);
+    ASSERT_TRUE(level_non_headless.world().time_bonus_limit == 4000);
+    ASSERT_TRUE(level_non_headless.level_visuals().topx == 0);
+    ASSERT_TRUE(level_non_headless.level_visuals().topy == 0);
 
     // Exercise delegating constructor overloads.
     LevelRuntimeData plain_ctor(9417);
     LevelRuntimeData hooks_ctor(9418, &hooks);
-    OG_ASSERT(plain_ctor.world().id == 9417);
-    OG_ASSERT(hooks_ctor.world().id == 9418);
+    ASSERT_TRUE(plain_ctor.world().id == 9417);
+    ASSERT_TRUE(hooks_ctor.world().id == 9418);
 
     (void)level_headless;
 }
@@ -941,7 +941,7 @@ OG_UNIT_TEST(test_level_data_r15_ctor_hooks_add_paths_and_clear)
 
 // --- From test_level_data_r16.cpp ---
 namespace detail_level_data_r16 {
-OG_UNIT_TEST(test_level_data_r16_external_world_teardown_detaches_level)
+TEST(LevelDataUnit, level_data_r16_external_world_teardown_detaches_level)
 {
     LevelRuntimeData level(9510, true);
     SaveData save;
@@ -954,22 +954,22 @@ OG_UNIT_TEST(test_level_data_r16_external_world_teardown_detaches_level)
     {
         GameWorld external_world;
         level.attach_world(&external_world);
-        OG_ASSERT(&level.world() == &external_world);
-        OG_ASSERT(static_cast<bool>(external_world.entity_factory));
+        ASSERT_TRUE(&level.world() == &external_world);
+        ASSERT_TRUE(static_cast<bool>(external_world.entity_factory));
 
         walker* spawned = level.add_ob(Order::Living, FAMILY_SOLDIER);
-        OG_ASSERT(spawned != nullptr);
-        OG_ASSERT(level.numobs == 1);
-        OG_ASSERT(level.world().oblist.size() == 1);
+        ASSERT_TRUE(spawned != nullptr);
+        ASSERT_TRUE(level.numobs == 1);
+        ASSERT_TRUE(level.world().oblist.size() == 1);
     }
 
-    OG_ASSERT(static_cast<bool>(level.world().entity_factory));
-    OG_ASSERT(level.numobs == 1);
-    OG_ASSERT(level.world().oblist.size() == 1);
+    ASSERT_TRUE(static_cast<bool>(level.world().entity_factory));
+    ASSERT_TRUE(level.numobs == 1);
+    ASSERT_TRUE(level.world().oblist.size() == 1);
 
     walker* spawned2 = level.add_ob(Order::Living, FAMILY_ARCHER);
-    OG_ASSERT(spawned2 != nullptr);
-    OG_ASSERT(level.numobs == 2);
-    OG_ASSERT(level.world().oblist.size() == 2);
+    ASSERT_TRUE(spawned2 != nullptr);
+    ASSERT_TRUE(level.numobs == 2);
+    ASSERT_TRUE(level.world().oblist.size() == 2);
 }
 } // namespace detail_level_data_r16

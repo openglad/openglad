@@ -5,7 +5,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <array>
 #include <chrono>
@@ -53,13 +53,13 @@ static void press_release_after(KeystateOverride& ks, SDL_Scancode sc, int press
     ks.fake[sc] = 0;
 }
 
-void test_viewscreen_options_menu_exercises_key_paths()
+TEST(ViewMenuDriven, viewscreen_options_menu_exercises_key_paths)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(v != nullptr, "viewob[0] should exist");
+    ASSERT_TRUE(v != nullptr) << "viewob[0] should exist";
 
     auto control = create_controlled_living(FAMILY_SOLDIER);
-    TEST_ASSERT(control != nullptr, "create_controlled_living should succeed");
+    ASSERT_TRUE(control != nullptr) << "create_controlled_living should succeed";
     walker* controlp = control.get();
     v->control = controlp;
 
@@ -89,7 +89,7 @@ void test_viewscreen_options_menu_exercises_key_paths()
     driver.join();
 
     // Drive set_key_prefs and view_key_bindings paths directly.
-    TEST_ASSERT_EQ(1, (int)v->set_key_prefs(), "set_key_prefs should succeed in testing mode");
+    ASSERT_EQ(1, (int)v->set_key_prefs()) << "set_key_prefs should succeed in testing mode";
 
     int saved_up = og::runtime::current_session->player_keys_[v->mynum][KEY_UP];
     int saved_fire = og::runtime::current_session->player_keys_[v->mynum][KEY_FIRE];
@@ -123,4 +123,4 @@ void test_viewscreen_options_menu_exercises_key_paths()
 
     v->control = nullptr;
 }
-REGISTER_TEST(test_viewscreen_options_menu_exercises_key_paths);
+

@@ -2,7 +2,8 @@
 #include <openglad/interface/button.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 #include <array>
 #include <memory>
@@ -119,7 +120,7 @@ static int injector_thread_exit_detail_menu(void* data)
 }
 } // namespace
 
-void test_picker_detail_menu_back_exercises_many_family_descriptions()
+TEST(PickerDetailMenuDriven, picker_detail_menu_back_exercises_many_family_descriptions)
 {
     PickerStateGuard guard;
     TeamSlotGuard slot_guard(0);
@@ -135,7 +136,7 @@ void test_picker_detail_menu_back_exercises_many_family_descriptions()
     KeyStateGuard ks;
     InjectorArgs args{&ks, false};
     SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_exit", &args);
-    TEST_ASSERT(th != nullptr, "injector thread started");
+    ASSERT_TRUE(th != nullptr) << "injector thread started";
 
     Sint32 r = create_detail_menu(og::runtime::current_session->myscreen_->save_data.team_list[0].get());
     int code = 0;
@@ -143,11 +144,11 @@ void test_picker_detail_menu_back_exercises_many_family_descriptions()
         SDL_WaitThread(th, &code);
 
     // create_detail_menu exits back to the edit menu and always returns REDRAW.
-    TEST_ASSERT_EQ(2, (int)r, "detail menu should return REDRAW on back");
+    ASSERT_EQ(2, (int)r) << "detail menu should return REDRAW on back";
 }
-REGISTER_TEST(test_picker_detail_menu_back_exercises_many_family_descriptions);
 
-void test_picker_detail_menu_promote_mage_to_archmage_branch()
+
+TEST(PickerDetailMenuDriven, picker_detail_menu_promote_mage_to_archmage_branch)
 {
     PickerStateGuard guard;
     TeamSlotGuard slot_guard(0);
@@ -163,18 +164,18 @@ void test_picker_detail_menu_promote_mage_to_archmage_branch()
     KeyStateGuard ks;
     InjectorArgs args{&ks, true};
     SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_promote_mage", &args);
-    TEST_ASSERT(th != nullptr, "injector thread started");
+    ASSERT_TRUE(th != nullptr) << "injector thread started";
 
     Sint32 r = create_detail_menu(og::runtime::current_session->myscreen_->save_data.team_list[0].get());
     int code = 0;
     if (th)
         SDL_WaitThread(th, &code);
 
-    TEST_ASSERT_EQ(2, (int)r, "mage promote should request redraw");
+    ASSERT_EQ(2, (int)r) << "mage promote should request redraw";
 }
-REGISTER_TEST(test_picker_detail_menu_promote_mage_to_archmage_branch);
 
-void test_picker_detail_menu_promote_orc_to_captain_branch()
+
+TEST(PickerDetailMenuDriven, picker_detail_menu_promote_orc_to_captain_branch)
 {
     PickerStateGuard guard;
     TeamSlotGuard slot_guard(0);
@@ -190,20 +191,20 @@ void test_picker_detail_menu_promote_orc_to_captain_branch()
     KeyStateGuard ks;
     InjectorArgs args{&ks, true};
     SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_promote_orc", &args);
-    TEST_ASSERT(th != nullptr, "injector thread started");
+    ASSERT_TRUE(th != nullptr) << "injector thread started";
 
     Sint32 r = create_detail_menu(og::runtime::current_session->myscreen_->save_data.team_list[0].get());
     int code = 0;
     if (th)
         SDL_WaitThread(th, &code);
 
-    TEST_ASSERT_EQ(2, (int)r, "orc promote should request redraw");
+    ASSERT_EQ(2, (int)r) << "orc promote should request redraw";
 }
-REGISTER_TEST(test_picker_detail_menu_promote_orc_to_captain_branch);
 
-void test_picker_family_name_copy_includes_archmage()
+
+TEST(PickerDetailMenuDriven, picker_family_name_copy_includes_archmage)
 {
     const char* a = family_name_copy(FAMILY_ARCHMAGE);
-    TEST_ASSERT(a != nullptr, "family_name_copy should return a string");
+    ASSERT_TRUE(a != nullptr) << "family_name_copy should return a string";
 }
-REGISTER_TEST(test_picker_family_name_copy_includes_archmage);
+

@@ -4,8 +4,9 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/gameplay/guy.h>
-#include <openglad/legacy/test_trace.h>
-#include "test_framework.h"
+#include <openglad/core/test_trace.h>
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -74,7 +75,7 @@ static int op_injector(void* data)
 
     // -- Main Menu --
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
@@ -88,7 +89,7 @@ static int op_injector(void* data)
     // so the hire menu opens right away.
     SDL_Delay(500);
     wait_for_interactable("hire_me", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // -- Hire Menu: hire one of each type --
     // The hire menu starts showing allowable_guys[0] (SOLDIER).
@@ -169,7 +170,7 @@ static int op_injector(void* data)
 
     // Now we're truly back in create_team_menu with fresh buttons
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Restore state
     set_game_speed(state->original_speed);
@@ -183,7 +184,7 @@ static int op_injector(void* data)
     return 0;
 }
 
-void test_overpowered_team() {
+TEST(OverpoweredTeam, overpowered_team) {
     trace_clear();
 
     // Start with empty team
@@ -194,7 +195,7 @@ void test_overpowered_team() {
 
     OpState state = { false, false, og::runtime::current_session->g_game_speed_factor_, 0 };
     SDL_Thread* thread = SDL_CreateThread(op_injector, "op_injector", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -208,13 +209,11 @@ void test_overpowered_team() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.num_hired >= 5,
-                "should have hired at least 5 characters via UI");
-    TEST_ASSERT(og::runtime::current_session->myscreen_->save_data.is_level_completed(1),
-                "level 1 should be marked completed (team should have won)");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.num_hired >= 5) << "should have hired at least 5 characters via UI";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.is_level_completed(1)) << "level 1 should be marked completed (team should have won)";
 
     fprintf(stderr, "  [test] Team of %d won level 1 via UI hire flow\n",
             state.num_hired);
 }
-REGISTER_TEST(test_overpowered_team);
+

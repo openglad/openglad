@@ -1,6 +1,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 
 #include <unistd.h>
@@ -76,7 +77,7 @@ static int help_injector_thread(void* data)
     return 0;
 }
 
-void test_help_show_general_help_smoke_exits_on_escape()
+TEST(HelpSmoke, help_show_general_help_smoke_exits_on_escape)
 {
     ViewportGuard guard;
     // Force 1:1 event coords to simplify tab click injection.
@@ -88,14 +89,14 @@ void test_help_show_general_help_smoke_exits_on_escape()
     og::runtime::current_session->viewport_h_ = 200;
 
     SDL_Thread* thread = SDL_CreateThread(help_injector_thread, "help_injector", nullptr);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     (void)show_general_help();
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
 }
-REGISTER_TEST(test_help_show_general_help_smoke_exits_on_escape);
+
 
 static int intro_injector_thread(void* data)
 {
@@ -108,16 +109,16 @@ static int intro_injector_thread(void* data)
     return 0;
 }
 
-void test_help_read_campaign_intro_smoke_exits_on_input()
+TEST(HelpSmoke, help_read_campaign_intro_smoke_exits_on_input)
 {
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
 
     SDL_Thread* thread = SDL_CreateThread(intro_injector_thread, "intro_injector", nullptr);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     (void)read_campaign_intro(og::runtime::current_session->myscreen_);
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
 }
-REGISTER_TEST(test_help_read_campaign_intro_smoke_exits_on_input);
+

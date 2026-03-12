@@ -8,7 +8,7 @@
 #include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
 #include <memory>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
@@ -58,73 +58,73 @@ walker* add_living(WalkerFixture& fx, char family, unsigned char team)
 
 } // namespace
 
-OG_UNIT_TEST(test_walker_reset_compute_outline_and_act_paths)
+TEST(WalkerUnit, walker_reset_compute_outline_and_act_paths)
 {
     WalkerFixture fx;
     walker* w = add_living(fx, FAMILY_SOLDIER, 0);
-    OG_ASSERT(w != nullptr);
+    ASSERT_TRUE(w != nullptr);
 
     w->invisibility_left = 1;
     w->compute_outline(nullptr);
-    OG_ASSERT(w->outline == w->query_team_color());
+    ASSERT_TRUE(w->outline == w->query_team_color());
 
     w->outline = OUTLINE_NAMED;
     w->invisibility_left = 0;
     w->invulnerable_left = 1;
     w->compute_outline(nullptr);
-    OG_ASSERT(w->outline == OUTLINE_INVULNERABLE);
+    ASSERT_TRUE(w->outline == OUTLINE_INVULNERABLE);
 
     w->set_act_type(ACT_DIE);
     w->dead = 0;
-    OG_ASSERT(w->act());
-    OG_ASSERT(w->dead == 1);
+    ASSERT_TRUE(w->act());
+    ASSERT_TRUE(w->dead == 1);
 
     w->dead = 0;
     w->set_act_type(127);
-    OG_ASSERT(!w->act());
+    ASSERT_TRUE(!w->act());
 
-    OG_ASSERT(w->reset());
+    ASSERT_TRUE(w->reset());
 }
 
-OG_UNIT_TEST(test_walker_friendliness_and_distance_paths)
+TEST(WalkerUnit, walker_friendliness_and_distance_paths)
 {
     WalkerFixture fx;
     walker* a = add_living(fx, FAMILY_SOLDIER, 0);
     walker* b = add_living(fx, FAMILY_ORC, 1);
-    OG_ASSERT(a && b);
+    ASSERT_TRUE(a && b);
 
     a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     b->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
     a->setxy(64, 64);
     b->setxy(96, 64);
 
-    OG_ASSERT(a->distance_to_ob(b) > 0);
-    OG_ASSERT(a->distance_to_ob_center(b) >= 0);
-    OG_ASSERT(!a->is_friendly(b));
-    OG_ASSERT(a->is_friendly_to_team(0));
+    ASSERT_TRUE(a->distance_to_ob(b) > 0);
+    ASSERT_TRUE(a->distance_to_ob_center(b) >= 0);
+    ASSERT_TRUE(!a->is_friendly(b));
+    ASSERT_TRUE(a->is_friendly_to_team(0));
 
     fx.level.world().allied_mode = 1;
-    OG_ASSERT(a->is_friendly(b));
+    ASSERT_TRUE(a->is_friendly(b));
 }
 
-OG_UNIT_TEST(test_walker_death_save_all_and_misc_paths)
+TEST(WalkerUnit, walker_death_save_all_and_misc_paths)
 {
     WalkerFixture fx;
     walker* w = add_living(fx, FAMILY_SKELETON, 0); // no bloodspot branch
-    OG_ASSERT(w != nullptr);
+    ASSERT_TRUE(w != nullptr);
     w->stats()->name = "Named";
     w->dead = 1;
     fx.level.world().type = static_cast<char>(SCEN_TYPE_SAVE_ALL);
 
-    OG_ASSERT(w->death());
-    OG_ASSERT(fx.events.size() >= 1);
+    ASSERT_TRUE(w->death());
+    ASSERT_TRUE(fx.events.size() >= 1);
 
     walker misc;
     misc.set_order_family(Order::Generator, FAMILY_TENT);
-    OG_ASSERT(misc.fire_check(1, 0));
+    ASSERT_TRUE(misc.fire_check(1, 0));
     (void)misc.eat_me(nullptr);
-    OG_ASSERT(misc.do_summon(0, 0) == nullptr);
-    OG_ASSERT(!misc.check_special());
+    ASSERT_TRUE(misc.do_summon(0, 0) == nullptr);
+    ASSERT_TRUE(!misc.check_special());
 }
 } // namespace detail_walker_coverage_push
 
@@ -205,29 +205,29 @@ void assign_wide_ani(walker* w)
 
 } // namespace
 
-OG_UNIT_TEST(test_walker_r11_myguy_move_and_init_fire_paths)
+TEST(WalkerUnit, walker_r11_myguy_move_and_init_fire_paths)
 {
     WalkerR11Fixture fx;
     walker* a = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     walker* b = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 96, 64);
-    OG_ASSERT(a && b);
+    ASSERT_TRUE(a && b);
 
     a->move_myguy_to(nullptr);
 
     a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     a->move_myguy_to(b);
-    OG_ASSERT(a->myguy == nullptr);
-    OG_ASSERT(b->myguy != nullptr);
+    ASSERT_TRUE(a->myguy == nullptr);
+    ASSERT_TRUE(b->myguy != nullptr);
 
     a->set_myguy_view(b->myguy);
     a->move_myguy_to(b);
-    OG_ASSERT(a->myguy == nullptr);
+    ASSERT_TRUE(a->myguy == nullptr);
 
     // init_fire: control-turn guard branch
     a->curdir = FACE_LEFT;
     a->enddir = FACE_LEFT;
     a->set_act_type(ACT_CONTROL);
-    OG_ASSERT(!a->init_fire(1, 0));
+    ASSERT_TRUE(!a->init_fire(1, 0));
 
     // busy branch (don't require return value here; ACT_CONTROL turn handling can vary with facing state)
     a->set_act_type(ACT_RANDOM);
@@ -238,15 +238,15 @@ OG_UNIT_TEST(test_walker_r11_myguy_move_and_init_fire_paths)
     a->busy = 0;
     a->ani_type = ANI_WALK;
     assign_basic_ani(a);
-    OG_ASSERT(a->init_fire(0, 1));
+    ASSERT_TRUE(a->init_fire(0, 1));
 }
 
-OG_UNIT_TEST(test_walker_r11_fire_check_create_weapon_and_angles)
+TEST(WalkerUnit, walker_r11_fire_check_create_weapon_and_angles)
 {
     WalkerR11Fixture fx;
     walker* shooter = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 80, 80);
     walker* foe = add_ob(fx, Order::Living, FAMILY_ORC, 1, 92, 80);
-    OG_ASSERT(shooter && foe);
+    ASSERT_TRUE(shooter && foe);
 
     shooter->stats()->magicpoints = 100.0f;
     shooter->stats()->weapon_cost = 1;
@@ -256,17 +256,17 @@ OG_UNIT_TEST(test_walker_r11_fire_check_create_weapon_and_angles)
 
     // no foe path
     shooter->foe = nullptr;
-    OG_ASSERT(!shooter->fire_check(1, 0));
+    ASSERT_TRUE(!shooter->fire_check(1, 0));
 
     // bit no ranged path
     shooter->foe = foe;
     shooter->stats()->set_bit_flags(BIT_NO_RANGED, 1);
-    OG_ASSERT(!shooter->fire_check(1, 0));
+    ASSERT_TRUE(!shooter->fire_check(1, 0));
     shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
 
     // targetdir mismatch path
     shooter->curdir = FACE_LEFT;
-    OG_ASSERT(!shooter->fire_check(1, 0));
+    ASSERT_TRUE(!shooter->fire_check(1, 0));
 
     // likely success/failure traversal through ray loop
     shooter->curdir = FACE_RIGHT;
@@ -277,7 +277,7 @@ OG_UNIT_TEST(test_walker_r11_fire_check_create_weapon_and_angles)
     gen->default_weapon = FAMILY_SOLDIER;
     gen->stats()->level = 3;
     walker* spawned = gen->create_weapon();
-    OG_ASSERT(spawned != nullptr);
+    ASSERT_TRUE(spawned != nullptr);
 
     // set_weapon_heading switch traversal for all facings
     walker* weapon = add_ob(fx, Order::Weapon, FAMILY_KNIFE, 0, 70, 70);
@@ -299,16 +299,16 @@ OG_UNIT_TEST(test_walker_r11_fire_check_create_weapon_and_angles)
     (void)shooter->get_current_angle();
 }
 
-OG_UNIT_TEST(test_walker_r11_act_animate_and_misc_paths)
+TEST(WalkerUnit, walker_r11_act_animate_and_misc_paths)
 {
     WalkerR11Fixture fx;
     walker* w = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     walker* foe = add_ob(fx, Order::Living, FAMILY_ORC, 1, 96, 64);
-    OG_ASSERT(w && foe);
+    ASSERT_TRUE(w && foe);
 
     // animate guards
     w->ani = nullptr;
-    OG_ASSERT(!w->animate());
+    ASSERT_TRUE(!w->animate());
 
     assign_basic_ani(w);
     w->ani_type = ANI_ATTACK;
@@ -323,13 +323,13 @@ OG_UNIT_TEST(test_walker_r11_act_animate_and_misc_paths)
 
     // query/restore helpers
     w->old_act_type = ACT_GUARD;
-    OG_ASSERT(w->old_act_type == ACT_GUARD);
+    ASSERT_TRUE(w->old_act_type == ACT_GUARD);
     w->set_act_type(ACT_CONTROL);
-    OG_ASSERT(w->act_type == ACT_CONTROL);
+    ASSERT_TRUE(w->act_type == ACT_CONTROL);
     (void)w->restore_act_type();
 
     // collide, spaces, center, set_difficulty, friendliness and owner-chain paths
-    OG_ASSERT(w->collide(foe));
+    ASSERT_TRUE(w->collide(foe));
     (void)w->spaces_clear();
     w->center_on(foe);
 
@@ -342,10 +342,10 @@ OG_UNIT_TEST(test_walker_r11_act_animate_and_misc_paths)
     walker* owned = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 100, 100);
     owned->owner = w;
     w->owner = w; // self-loop guard branch
-    OG_ASSERT(!w->is_friendly(nullptr));
+    ASSERT_TRUE(!w->is_friendly(nullptr));
     (void)w->is_friendly(owned);
     w->dead = 1;
-    OG_ASSERT(!w->is_friendly_to_team(0));
+    ASSERT_TRUE(!w->is_friendly_to_team(0));
 
     w->dead = 0;
     w->owner = nullptr;
@@ -354,17 +354,17 @@ OG_UNIT_TEST(test_walker_r11_act_animate_and_misc_paths)
     (void)w->is_friendly_to_team(0);
 
     // do_summon/check_special fallback and eat_me logging path
-    OG_ASSERT(w->do_summon(1, 1) == nullptr);
-    OG_ASSERT(!w->check_special());
+    ASSERT_TRUE(w->do_summon(1, 1) == nullptr);
+    ASSERT_TRUE(!w->check_special());
     (void)w->eat_me(foe);
 }
 
-OG_UNIT_TEST(test_walker_r11_fire_query_next_to_and_outline_branches)
+TEST(WalkerUnit, walker_r11_fire_query_next_to_and_outline_branches)
 {
     WalkerR11Fixture fx;
     walker* shooter = add_ob(fx, Order::Living, FAMILY_MAGE, 0, 64, 64);
     walker* foe = add_ob(fx, Order::Living, FAMILY_ORC, 1, 82, 64);
-    OG_ASSERT(shooter && foe);
+    ASSERT_TRUE(shooter && foe);
 
     shooter->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     shooter->stats()->magicpoints = 200.0f;
@@ -377,12 +377,12 @@ OG_UNIT_TEST(test_walker_r11_fire_query_next_to_and_outline_branches)
 
     cfg.apply_setting("effects", "attack_lunge", "on");
     walker* melee = shooter->fire();
-    OG_ASSERT(melee == nullptr);
-    OG_ASSERT(shooter->attack_lunge >= 0.0f);
+    ASSERT_TRUE(melee == nullptr);
+    ASSERT_TRUE(shooter->attack_lunge >= 0.0f);
 
     shooter->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     walker* blocked = shooter->fire();
-    OG_ASSERT(blocked == nullptr);
+    ASSERT_TRUE(blocked == nullptr);
     shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
 
     // Force ranged path by moving foe away and tracing all facings.
@@ -396,18 +396,18 @@ OG_UNIT_TEST(test_walker_r11_fire_query_next_to_and_outline_branches)
         shooter->lastx = static_cast<float>(d[0]);
         shooter->lasty = static_cast<float>(d[1]);
         walker* w = shooter->fire();
-        OG_ASSERT(w != nullptr);
+        ASSERT_TRUE(w != nullptr);
     }
 
     shooter->lastx = 1.0f;
     shooter->lasty = 1.0f;
-    OG_ASSERT(shooter->query_next_to() == 0 || shooter->query_next_to() == 1);
+    ASSERT_TRUE(shooter->query_next_to() == 0 || shooter->query_next_to() == 1);
     shooter->lastx = -1.0f;
     shooter->lasty = -1.0f;
-    OG_ASSERT(shooter->query_next_to() == 0 || shooter->query_next_to() == 1);
+    ASSERT_TRUE(shooter->query_next_to() == 0 || shooter->query_next_to() == 1);
 
     walker* viewer = add_ob(fx, Order::Living, FAMILY_SOLDIER, 1, 60, 64);
-    OG_ASSERT(viewer != nullptr);
+    ASSERT_TRUE(viewer != nullptr);
     shooter->outline = OUTLINE_INVULNERABLE;
     shooter->flight_left = 1;
     shooter->invisibility_left = 1;
@@ -431,23 +431,23 @@ OG_UNIT_TEST(test_walker_r11_fire_query_next_to_and_outline_branches)
     shooter->user = 0;
     viewer->team_num = shooter->team_num;
     shooter->compute_outline(viewer);
-    OG_ASSERT(shooter->outline == shooter->query_team_color() || shooter->outline == 0);
+    ASSERT_TRUE(shooter->outline == shooter->query_team_color() || shooter->outline == 0);
 
-    OG_ASSERT(float_eq(1.0f, 1.0f));
-    OG_ASSERT(float_eq(1.0000001f, 1.0f));
+    ASSERT_TRUE(float_eq(1.0f, 1.0f));
+    ASSERT_TRUE(float_eq(1.0000001f, 1.0f));
 }
 
-OG_UNIT_TEST(test_walker_r11_act_and_animate_extra_cases)
+TEST(WalkerUnit, walker_r11_act_and_animate_extra_cases)
 {
     WalkerR11Fixture fx;
     walker* w = add_ob(fx, Order::Living, FAMILY_MAGE, 0, 64, 64);
     walker* foe = add_ob(fx, Order::Living, FAMILY_ORC, 1, 72, 64);
-    OG_ASSERT(w && foe);
+    ASSERT_TRUE(w && foe);
 
     assign_wide_ani(w);
     w->ani_type = ANI_WALK;
     w->set_act_type(ACT_CONTROL);
-    OG_ASSERT(w->act());
+    ASSERT_TRUE(w->act());
 
     w->set_act_type(ACT_GENERATE);
     w->stats()->level = 50;
@@ -480,7 +480,7 @@ OG_UNIT_TEST(test_walker_r11_act_and_animate_extra_cases)
     w->ani_type = ANI_TELE_OUT;
     w->cycle = 8;
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    OG_ASSERT(!w->animate() || w->ani_type == ANI_WALK);
+    ASSERT_TRUE(!w->animate() || w->ani_type == ANI_WALK);
 }
 } // namespace detail_walker_r11
 
@@ -542,12 +542,12 @@ void assign_wide_ani(walker* w)
 
 } // namespace
 
-OG_UNIT_TEST(test_walker_r14_lines_518_557_563_602_607_outline_and_act_counters)
+TEST(WalkerUnit, walker_r14_lines_518_557_563_602_607_outline_and_act_counters)
 {
     WalkerR14Fixture fx;
     walker* w = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 96, 96);
     walker* view = add_ob(fx, Order::Living, FAMILY_ORC, 1, 120, 96);
-    OG_ASSERT(w && view);
+    ASSERT_TRUE(w && view);
 
     w->stats()->set_bit_flags(BIT_NAMED, 1);
     w->outline = OUTLINE_INVULNERABLE;
@@ -562,25 +562,25 @@ OG_UNIT_TEST(test_walker_r14_lines_518_557_563_602_607_outline_and_act_counters)
     w->compute_outline(view);
 
     w->stats()->frozen_delay = 1;
-    OG_ASSERT(w->act());
+    ASSERT_TRUE(w->act());
 
     w->busy = 1;
     (void)w->act();
-    OG_ASSERT(w->busy <= 1);
+    ASSERT_TRUE(w->busy <= 1);
 }
 
-OG_UNIT_TEST(test_walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_complete_paths)
+TEST(WalkerUnit, walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_complete_paths)
 {
     WalkerR14Fixture fx;
     walker* w = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 96, 96);
-    OG_ASSERT(w != nullptr);
+    ASSERT_TRUE(w != nullptr);
 
     assign_wide_ani(w);
 
     w->ani_type = ANI_SKEL_GROW;
     w->cycle = 4;
     w->curdir = FACE_RIGHT;
-    OG_ASSERT(w->animate() || !w->animate());
+    ASSERT_TRUE(w->animate() || !w->animate());
 
     w->ani_type = ANI_TELE_OUT;
     w->cycle = 4;
@@ -589,7 +589,7 @@ OG_UNIT_TEST(test_walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_comp
 
     w->ani_type = ANI_WALK;
     w->set_act_type(ACT_FIRE);
-    OG_ASSERT(w->act());
+    ASSERT_TRUE(w->act());
 
     w->set_act_type(ACT_GUARD);
     (void)w->act();
@@ -626,12 +626,12 @@ struct WalkerR15Fixture {
 
 } // namespace
 
-OG_UNIT_TEST(test_walker_r15_generator_fire_and_heading_branches)
+TEST(WalkerUnit, walker_r15_generator_fire_and_heading_branches)
 {
     WalkerR15Fixture fx;
 
     walker* gen_tower = fx.level.add_ob(Order::Generator, FAMILY_TOWER);
-    OG_ASSERT(gen_tower != nullptr);
+    ASSERT_TRUE(gen_tower != nullptr);
     gen_tower->setxy(64, 64);
     gen_tower->sizex = 16;
     gen_tower->sizey = 16;
@@ -642,30 +642,30 @@ OG_UNIT_TEST(test_walker_r15_generator_fire_and_heading_branches)
     gen_tower->lasty = 0.0f;
 
     walker* fired = gen_tower->fire();
-    OG_ASSERT(fired != nullptr);
-    OG_ASSERT(fired->ani_type == ANI_TELE_IN);
-    OG_ASSERT(fired->owner == nullptr);
+    ASSERT_TRUE(fired != nullptr);
+    ASSERT_TRUE(fired->ani_type == ANI_TELE_IN);
+    ASSERT_TRUE(fired->owner == nullptr);
 
     walker* weapon = fx.level.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
-    OG_ASSERT(weapon != nullptr);
+    ASSERT_TRUE(weapon != nullptr);
     gen_tower->lastx = -1.0f;
     gen_tower->lasty = 0.0f;
     gen_tower->set_weapon_heading(weapon);
-    OG_ASSERT(weapon->lastx <= 0.0f);
+    ASSERT_TRUE(weapon->lastx <= 0.0f);
 
     gen_tower->lastx = 0.0f;
     gen_tower->lasty = 1.0f;
     gen_tower->set_weapon_heading(weapon);
-    OG_ASSERT(weapon->lasty >= 0.0f);
+    ASSERT_TRUE(weapon->lasty >= 0.0f);
 }
 
-OG_UNIT_TEST(test_walker_r15_compute_outline_and_next_frame_and_generate_paths)
+TEST(WalkerUnit, walker_r15_compute_outline_and_next_frame_and_generate_paths)
 {
     WalkerR15Fixture fx;
 
     walker* a = fx.level.add_ob(Order::Living, FAMILY_CLERIC);
     walker* viewer = fx.level.add_ob(Order::Living, FAMILY_SOLDIER);
-    OG_ASSERT(a && viewer);
+    ASSERT_TRUE(a && viewer);
     a->team_num = 1;
     viewer->team_num = 0;
     a->stats()->set_bit_flags(BIT_NAMED, 1);
@@ -675,32 +675,32 @@ OG_UNIT_TEST(test_walker_r15_compute_outline_and_next_frame_and_generate_paths)
     a->flight_left = 0;
     a->invisibility_left = 0;
     a->compute_outline(viewer);
-    OG_ASSERT(a->outline == OUTLINE_NAMED || a->outline == OUTLINE_INVULNERABLE);
+    ASSERT_TRUE(a->outline == OUTLINE_NAMED || a->outline == OUTLINE_INVULNERABLE);
 
     a->outline = OUTLINE_FLYING;
     a->flight_left = 1;
     a->compute_outline(viewer);
-    OG_ASSERT(a->outline == OUTLINE_FLYING || a->outline == OUTLINE_NAMED);
+    ASSERT_TRUE(a->outline == OUTLINE_FLYING || a->outline == OUTLINE_NAMED);
 
     a->outline = static_cast<short>(a->query_team_color());
     a->invulnerable_left = 1;
     a->flight_left = 0;
     a->compute_outline(viewer);
-    OG_ASSERT(a->outline == OUTLINE_INVULNERABLE || a->outline == OUTLINE_NAMED);
+    ASSERT_TRUE(a->outline == OUTLINE_INVULNERABLE || a->outline == OUTLINE_NAMED);
 
     walker* gen_tent = fx.level.add_ob(Order::Generator, FAMILY_TENT);
-    OG_ASSERT(gen_tent != nullptr);
+    ASSERT_TRUE(gen_tent != nullptr);
     gen_tent->stats()->level = 200;
     gen_tent->stats()->hitpoints = 10.0f;
     gen_tent->stats()->max_hitpoints = 10.0f;
     gen_tent->lineofsight = 3;
     gen_tent->set_act_type(ACT_GENERATE);
     (void)gen_tent->act();
-    OG_ASSERT(gen_tent->stats()->hitpoints <= gen_tent->stats()->max_hitpoints);
+    ASSERT_TRUE(gen_tent->stats()->hitpoints <= gen_tent->stats()->max_hitpoints);
 
     // next_frame path using real animation data loaded by loader.
     walker* living = fx.level.add_ob(Order::Living, FAMILY_SOLDIER);
-    OG_ASSERT(living != nullptr);
+    ASSERT_TRUE(living != nullptr);
     (void)living->next_frame();
 }
 } // namespace detail_walker_r15

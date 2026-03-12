@@ -5,7 +5,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <memory>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -23,32 +23,32 @@ static std::unique_ptr<walker> make_walker(char family)
 // viewscreen draw operations
 // ---------------------------------------------------------------------------
 
-void test_view_redraw_smoke()
+TEST(ViewDraw, view_redraw_smoke)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
     vs->redraw();
 }
-REGISTER_TEST(test_view_redraw_smoke);
 
-void test_view_display_text()
+
+TEST(ViewDraw, view_display_text)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
     vs->set_display_text("Test message", 30);
 }
-REGISTER_TEST(test_view_display_text);
 
-void test_view_set_display_text_twice()
+
+TEST(ViewDraw, view_set_display_text_twice)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
     vs->set_display_text("First", 30);
     vs->set_display_text("Second", 20);
 }
-REGISTER_TEST(test_view_set_display_text_twice);
 
-void test_view_resize()
+
+TEST(ViewDraw, view_resize)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -60,13 +60,13 @@ void test_view_resize()
     // Restore
     vs->resize(PREF_VIEW_FULL);
 }
-REGISTER_TEST(test_view_resize);
+
 
 // ---------------------------------------------------------------------------
 // viewscreen with controlled walker
 // ---------------------------------------------------------------------------
 
-void test_view_with_control()
+TEST(ViewDraw, view_with_control)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -80,9 +80,9 @@ void test_view_with_control()
     vs->control = nullptr;
 
 }
-REGISTER_TEST(test_view_with_control);
 
-void test_view_draw_with_entities()
+
+TEST(ViewDraw, with_entities)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -101,7 +101,7 @@ void test_view_draw_with_entities()
     // Remove without deleting (unique_ptr will handle it)
     og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
-REGISTER_TEST(test_view_draw_with_entities);
+
 
 // ---------------------------------------------------------------------------
 // compute_hp_color and compute_mp_color
@@ -110,41 +110,41 @@ REGISTER_TEST(test_view_draw_with_entities);
 unsigned char compute_hp_color(float hp, float maxhp);
 unsigned char compute_mp_color(float mp, float maxmp);
 
-void test_view_compute_hp_color_ranges()
+TEST(ViewDraw, view_compute_hp_color_ranges)
 {
     unsigned char c;
     c = compute_hp_color(100, 100);
-    TEST_ASSERT(c > 0, "full HP should have a color");
+    ASSERT_TRUE(c > 0) << "full HP should have a color";
     c = compute_hp_color(75, 100);
-    TEST_ASSERT(c > 0, "75% HP should have a color");
+    ASSERT_TRUE(c > 0) << "75% HP should have a color";
     c = compute_hp_color(50, 100);
-    TEST_ASSERT(c > 0, "50% HP should have a color");
+    ASSERT_TRUE(c > 0) << "50% HP should have a color";
     c = compute_hp_color(25, 100);
-    TEST_ASSERT(c > 0, "25% HP should have a color");
+    ASSERT_TRUE(c > 0) << "25% HP should have a color";
     c = compute_hp_color(0, 100);
     (void)c;
 }
-REGISTER_TEST(test_view_compute_hp_color_ranges);
 
-void test_view_compute_mp_color_ranges()
+
+TEST(ViewDraw, view_compute_mp_color_ranges)
 {
     unsigned char c;
     c = compute_mp_color(100, 100);
-    TEST_ASSERT(c > 0, "full MP should have a color");
+    ASSERT_TRUE(c > 0) << "full MP should have a color";
     c = compute_mp_color(75, 100);
-    TEST_ASSERT(c > 0, "75% MP should have a color");
+    ASSERT_TRUE(c > 0) << "75% MP should have a color";
     c = compute_mp_color(50, 100);
-    TEST_ASSERT(c > 0, "50% MP should have a color");
+    ASSERT_TRUE(c > 0) << "50% MP should have a color";
     c = compute_mp_color(25, 100);
-    TEST_ASSERT(c > 0, "25% MP should have a color");
+    ASSERT_TRUE(c > 0) << "25% MP should have a color";
 }
-REGISTER_TEST(test_view_compute_mp_color_ranges);
+
 
 // ---------------------------------------------------------------------------
 // viewscreen speed changes
 // ---------------------------------------------------------------------------
 
-void test_view_change_speed()
+TEST(ViewDraw, view_change_speed)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -152,4 +152,4 @@ void test_view_change_speed()
     vs->change_speed(4);
     vs->change_speed(1);
 }
-REGISTER_TEST(test_view_change_speed);
+

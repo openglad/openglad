@@ -14,7 +14,6 @@
 #include <openglad/interface/button.h> // complete type for unique_ptr<vbutton> destructor
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/interface/ui/level_editor_state.h>
-#include <openglad/interface/render/pixien.h>  // complete type for PickerState's unique_ptr<pixieN>
 #include <openglad/interface/screen.h> // screen class
 #include <openglad/interface/sound.h> // soundob complete type for play_sound
 #include <openglad/platform/video_sdl.h>

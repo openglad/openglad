@@ -1,4 +1,4 @@
-#include "unit.h"
+#include <gtest/gtest.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
@@ -10,7 +10,7 @@
 
 // --- calculate_hire_cost ---
 
-OG_UNIT_TEST(test_calculate_hire_cost_base)
+TEST(PickerCommon, calculate_hire_cost_base)
 {
     init_family_registry();
     // A fresh recruit with base stats should cost exactly the hiring_cost
@@ -18,16 +18,16 @@ OG_UNIT_TEST(test_calculate_hire_cost_base)
     std::uint32_t cost = og::ui::calculate_hire_cost(recruit);
     auto* fd = get_family_descriptor(FAMILY_SOLDIER);
     // Base cost + level 1 XP (calculate_exp(1) == 0)
-    OG_ASSERT(cost == static_cast<std::uint32_t>(fd->hiring_cost));
+    ASSERT_TRUE(cost == static_cast<std::uint32_t>(fd->hiring_cost));
 
     // Check another family
     guy elf(FAMILY_ELF);
     cost = og::ui::calculate_hire_cost(elf);
     fd = get_family_descriptor(FAMILY_ELF);
-    OG_ASSERT(cost == static_cast<std::uint32_t>(fd->hiring_cost));
+    ASSERT_TRUE(cost == static_cast<std::uint32_t>(fd->hiring_cost));
 }
 
-OG_UNIT_TEST(test_calculate_hire_cost_with_stats)
+TEST(PickerCommon, calculate_hire_cost_with_stats)
 {
     init_family_registry();
     auto* fd = get_family_descriptor(FAMILY_SOLDIER);
@@ -38,17 +38,17 @@ OG_UNIT_TEST(test_calculate_hire_cost_with_stats)
     // Bump strength above base — cost should increase
     recruit.strength = static_cast<short>(fd->base_stats[0] + 5);
     std::uint32_t upgraded_cost = og::ui::calculate_hire_cost(recruit);
-    OG_ASSERT(upgraded_cost > base_cost);
+    ASSERT_TRUE(upgraded_cost > base_cost);
 
     // Bump more — cost should increase further
     recruit.strength = static_cast<short>(fd->base_stats[0] + 10);
     std::uint32_t more_cost = og::ui::calculate_hire_cost(recruit);
-    OG_ASSERT(more_cost > upgraded_cost);
+    ASSERT_TRUE(more_cost > upgraded_cost);
 }
 
 // --- calculate_train_cost ---
 
-OG_UNIT_TEST(test_calculate_train_cost_delta)
+TEST(PickerCommon, calculate_train_cost_delta)
 {
     init_family_registry();
     guy original(FAMILY_SOLDIER);
@@ -56,16 +56,16 @@ OG_UNIT_TEST(test_calculate_train_cost_delta)
 
     // No changes — zero cost
     std::uint32_t cost = og::ui::calculate_train_cost(trained, original);
-    OG_ASSERT(cost == 0);
+    ASSERT_TRUE(cost == 0);
 
     // Increase strength — positive cost
     auto* fd = get_family_descriptor(FAMILY_SOLDIER);
     trained.strength = static_cast<short>(original.strength + 5);
     cost = og::ui::calculate_train_cost(trained, original);
-    OG_ASSERT(cost > 0);
+    ASSERT_TRUE(cost > 0);
 }
 
-OG_UNIT_TEST(test_calculate_train_cost_no_downgrade)
+TEST(PickerCommon, calculate_train_cost_no_downgrade)
 {
     init_family_registry();
     guy original(FAMILY_SOLDIER);
@@ -74,17 +74,17 @@ OG_UNIT_TEST(test_calculate_train_cost_no_downgrade)
     // Decrease strength below original — cost should be 0 (effective clamps to original)
     trained.strength = static_cast<short>(original.strength - 3);
     std::uint32_t cost = og::ui::calculate_train_cost(trained, original);
-    OG_ASSERT(cost == 0);
+    ASSERT_TRUE(cost == 0);
 }
 
 // --- count_family_members ---
 
-OG_UNIT_TEST(test_count_family_members)
+TEST(PickerCommon, count_family_members)
 {
     SaveData save;
     save.team_size = 0;
 
-    OG_ASSERT(og::ui::count_family_members(FAMILY_SOLDIER, save) == 0);
+    ASSERT_TRUE(og::ui::count_family_members(FAMILY_SOLDIER, save) == 0);
 
     // Add two soldiers and a mage
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -92,14 +92,14 @@ OG_UNIT_TEST(test_count_family_members)
     save.team_list[2] = std::make_unique<guy>(FAMILY_MAGE);
     save.team_size = 3;
 
-    OG_ASSERT(og::ui::count_family_members(FAMILY_SOLDIER, save) == 2);
-    OG_ASSERT(og::ui::count_family_members(FAMILY_MAGE, save) == 1);
-    OG_ASSERT(og::ui::count_family_members(FAMILY_ARCHER, save) == 0);
+    ASSERT_TRUE(og::ui::count_family_members(FAMILY_SOLDIER, save) == 2);
+    ASSERT_TRUE(og::ui::count_family_members(FAMILY_MAGE, save) == 1);
+    ASSERT_TRUE(og::ui::count_family_members(FAMILY_ARCHER, save) == 0);
 }
 
 // --- add_recruit_to_team ---
 
-OG_UNIT_TEST(test_add_recruit_to_team)
+TEST(PickerCommon, add_recruit_to_team)
 {
     SaveData save;
     save.team_size = 0;
@@ -108,33 +108,33 @@ OG_UNIT_TEST(test_add_recruit_to_team)
     recruit->name = "TestGuy";
     int slot = og::ui::add_recruit_to_team(save, std::move(recruit), 0);
 
-    OG_ASSERT(slot == 0);
-    OG_ASSERT(save.team_size == 1);
-    OG_ASSERT(save.team_list[0] != nullptr);
-    OG_ASSERT(save.team_list[0]->name == "TestGuy");
-    OG_ASSERT(save.team_list[0]->teamnum == 0);
+    ASSERT_TRUE(slot == 0);
+    ASSERT_TRUE(save.team_size == 1);
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    ASSERT_TRUE(save.team_list[0]->name == "TestGuy");
+    ASSERT_TRUE(save.team_list[0]->teamnum == 0);
 
     // Add another
     auto recruit2 = std::make_unique<guy>(FAMILY_MAGE);
     recruit2->name = "Wizard";
     int slot2 = og::ui::add_recruit_to_team(save, std::move(recruit2), 1);
 
-    OG_ASSERT(slot2 == 1);
-    OG_ASSERT(save.team_size == 2);
-    OG_ASSERT(save.team_list[1]->teamnum == 1);
+    ASSERT_TRUE(slot2 == 1);
+    ASSERT_TRUE(save.team_size == 2);
+    ASSERT_TRUE(save.team_list[1]->teamnum == 1);
 
     // Test filling gaps: remove slot 0, add should fill it
     save.team_list[0].reset();
     save.team_size = 1; // only slot 1 occupied
     auto recruit3 = std::make_unique<guy>(FAMILY_ARCHER);
     int slot3 = og::ui::add_recruit_to_team(save, std::move(recruit3), 0);
-    OG_ASSERT(slot3 == 0);
-    OG_ASSERT(save.team_size == 2);
+    ASSERT_TRUE(slot3 == 0);
+    ASSERT_TRUE(save.team_size == 2);
 }
 
 // --- create_recruit ---
 
-OG_UNIT_TEST(test_create_recruit_unique_name)
+TEST(PickerCommon, create_recruit_unique_name)
 {
     init_family_registry();
     SaveData save;
@@ -142,17 +142,17 @@ OG_UNIT_TEST(test_create_recruit_unique_name)
 
     std::srand(42);
     auto recruit1 = og::ui::create_recruit(FAMILY_SOLDIER, 0, save);
-    OG_ASSERT(recruit1 != nullptr);
-    OG_ASSERT(!recruit1->name.empty());
-    OG_ASSERT(recruit1->family == FAMILY_SOLDIER);
-    OG_ASSERT(recruit1->teamnum == 0);
+    ASSERT_TRUE(recruit1 != nullptr);
+    ASSERT_TRUE(!recruit1->name.empty());
+    ASSERT_TRUE(recruit1->family == FAMILY_SOLDIER);
+    ASSERT_TRUE(recruit1->teamnum == 0);
 
     // Add it to team, then create another — name should differ
     std::string first_name = recruit1->name;
     og::ui::add_recruit_to_team(save, std::move(recruit1), 0);
 
     auto recruit2 = og::ui::create_recruit(FAMILY_SOLDIER, 0, save);
-    OG_ASSERT(recruit2 != nullptr);
+    ASSERT_TRUE(recruit2 != nullptr);
     // If same random name comes up, get_unique_name should append a number or retry
     // Either way, it should not match an existing team member
     bool name_is_unique = true;
@@ -162,12 +162,12 @@ OG_UNIT_TEST(test_create_recruit_unique_name)
             break;
         }
     }
-    OG_ASSERT(name_is_unique);
+    ASSERT_TRUE(name_is_unique);
 }
 
 // --- reset_for_new_game ---
 
-OG_UNIT_TEST(test_reset_for_new_game)
+TEST(PickerCommon, reset_for_new_game)
 {
     SaveData save;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -177,78 +177,78 @@ OG_UNIT_TEST(test_reset_for_new_game)
 
     og::ui::reset_for_new_game(save);
 
-    OG_ASSERT(save.team_size == 0);
+    ASSERT_TRUE(save.team_size == 0);
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        OG_ASSERT(save.team_list[i] == nullptr);
+        ASSERT_TRUE(save.team_list[i] == nullptr);
     }
 }
 
 // --- family_display_name ---
 
-OG_UNIT_TEST(test_family_display_name)
+TEST(PickerCommon, family_display_name)
 {
     init_family_registry();
-    OG_ASSERT(std::strcmp(og::ui::family_display_name(FAMILY_SOLDIER), "SOLDIER") == 0);
-    OG_ASSERT(std::strcmp(og::ui::family_display_name(FAMILY_BIG_ORC), "ORC CAPTAIN") == 0);
-    OG_ASSERT(std::strcmp(og::ui::family_display_name(255), "BEAST") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::family_display_name(FAMILY_SOLDIER), "SOLDIER") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::family_display_name(FAMILY_BIG_ORC), "ORC CAPTAIN") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::family_display_name(255), "BEAST") == 0);
 }
 
 // --- family_short_name ---
 
-OG_UNIT_TEST(test_family_short_name)
+TEST(PickerCommon, family_short_name)
 {
-    OG_ASSERT(std::strcmp(og::ui::family_short_name(FAMILY_SOLDIER), "SOLDIER") == 0);
-    OG_ASSERT(std::strcmp(og::ui::family_short_name(FAMILY_BIG_ORC), "ORC CAP.") == 0);
-    OG_ASSERT(std::strcmp(og::ui::family_short_name(FAMILY_BARBARIAN), "BARBAR.") == 0);
-    OG_ASSERT(std::strcmp(og::ui::family_short_name(FAMILY_FIREELEMENTAL), "ELEMENT.") == 0);
-    OG_ASSERT(std::strcmp(og::ui::family_short_name(99), "BEAST") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::family_short_name(FAMILY_SOLDIER), "SOLDIER") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::family_short_name(FAMILY_BIG_ORC), "ORC CAP.") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::family_short_name(FAMILY_BARBARIAN), "BARBAR.") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::family_short_name(FAMILY_FIREELEMENTAL), "ELEMENT.") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::family_short_name(99), "BEAST") == 0);
 }
 
 // --- family_hiring_base_cost ---
 
-OG_UNIT_TEST(test_family_hiring_base_cost)
+TEST(PickerCommon, family_hiring_base_cost)
 {
     init_family_registry();
-    OG_ASSERT(og::ui::family_hiring_base_cost(FAMILY_SOLDIER) == 250);
-    OG_ASSERT(og::ui::family_hiring_base_cost(FAMILY_ELF) == 150);
-    OG_ASSERT(og::ui::family_hiring_base_cost(FAMILY_MAGE) == 450);
-    OG_ASSERT(og::ui::family_hiring_base_cost(999) == 0);
+    ASSERT_TRUE(og::ui::family_hiring_base_cost(FAMILY_SOLDIER) == 250);
+    ASSERT_TRUE(og::ui::family_hiring_base_cost(FAMILY_ELF) == 150);
+    ASSERT_TRUE(og::ui::family_hiring_base_cost(FAMILY_MAGE) == 450);
+    ASSERT_TRUE(og::ui::family_hiring_base_cost(999) == 0);
 }
 
 // --- kAllowableGuys ---
 
-OG_UNIT_TEST(test_allowable_guys_constants)
+TEST(PickerCommon, allowable_guys_constants)
 {
-    OG_ASSERT(og::ui::kAllowableGuys.size() == 14);
-    OG_ASSERT(og::ui::kAllowableGuys[0] == FAMILY_SOLDIER);
-    OG_ASSERT(og::ui::kAllowableGuys[1] == FAMILY_BARBARIAN);
-    OG_ASSERT(og::ui::kAllowableGuys[13] == FAMILY_GHOST);
+    ASSERT_TRUE(og::ui::kAllowableGuys.size() == 14);
+    ASSERT_TRUE(og::ui::kAllowableGuys[0] == FAMILY_SOLDIER);
+    ASSERT_TRUE(og::ui::kAllowableGuys[1] == FAMILY_BARBARIAN);
+    ASSERT_TRUE(og::ui::kAllowableGuys[13] == FAMILY_GHOST);
 }
 
 // --- kDifficultyNames ---
 
-OG_UNIT_TEST(test_difficulty_names)
+TEST(PickerCommon, difficulty_names)
 {
-    OG_ASSERT(std::strcmp(og::ui::kDifficultyNames[0], "Skirmish") == 0);
-    OG_ASSERT(std::strcmp(og::ui::kDifficultyNames[1], "Battle") == 0);
-    OG_ASSERT(std::strcmp(og::ui::kDifficultyNames[2], "Slaughter") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::kDifficultyNames[0], "Skirmish") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::kDifficultyNames[1], "Battle") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::kDifficultyNames[2], "Slaughter") == 0);
 }
 
 // --- get_random_name ---
 
-OG_UNIT_TEST(test_get_random_name_all_families)
+TEST(PickerCommon, get_random_name_all_families)
 {
     std::srand(42);
     for (int fam : og::ui::kAllowableGuys) {
         const char* name = og::ui::get_random_name(static_cast<unsigned char>(fam));
-        OG_ASSERT(name != nullptr);
-        OG_ASSERT(std::strlen(name) > 0);
+        ASSERT_TRUE(name != nullptr);
+        ASSERT_TRUE(std::strlen(name) > 0);
     }
 }
 
 // --- statscopy ---
 
-OG_UNIT_TEST(test_statscopy)
+TEST(PickerCommon, statscopy)
 {
     init_family_registry();
     guy src(FAMILY_MAGE);
@@ -266,22 +266,22 @@ OG_UNIT_TEST(test_statscopy)
     guy dst(FAMILY_SOLDIER);
     og::ui::statscopy(&dst, &src);
 
-    OG_ASSERT(dst.family == FAMILY_MAGE);
-    OG_ASSERT(dst.name == "Gandalf");
-    OG_ASSERT(dst.strength == 10);
-    OG_ASSERT(dst.dexterity == 20);
-    OG_ASSERT(dst.constitution == 30);
-    OG_ASSERT(dst.intelligence == 40);
-    OG_ASSERT(dst.armor == 5);
-    OG_ASSERT(dst.level == 3);
-    OG_ASSERT(dst.exp == 999);
-    OG_ASSERT(dst.kills == 7);
-    OG_ASSERT(dst.teamnum == 2);
+    ASSERT_TRUE(dst.family == FAMILY_MAGE);
+    ASSERT_TRUE(dst.name == "Gandalf");
+    ASSERT_TRUE(dst.strength == 10);
+    ASSERT_TRUE(dst.dexterity == 20);
+    ASSERT_TRUE(dst.constitution == 30);
+    ASSERT_TRUE(dst.intelligence == 40);
+    ASSERT_TRUE(dst.armor == 5);
+    ASSERT_TRUE(dst.level == 3);
+    ASSERT_TRUE(dst.exp == 999);
+    ASSERT_TRUE(dst.kills == 7);
+    ASSERT_TRUE(dst.teamnum == 2);
 }
 
 // --- HireSession ---
 
-OG_UNIT_TEST(test_hire_session_cycle)
+TEST(PickerCommon, hire_session_cycle)
 {
     init_family_registry();
     SaveData save;
@@ -291,30 +291,30 @@ OG_UNIT_TEST(test_hire_session_cycle)
     og::ui::HireSession session(save, 0);
 
     // Should start at index 0 (SOLDIER)
-    OG_ASSERT(session.family_index() == 0);
-    OG_ASSERT(session.current_recruit() != nullptr);
-    OG_ASSERT(session.current_recruit()->family == FAMILY_SOLDIER);
+    ASSERT_TRUE(session.family_index() == 0);
+    ASSERT_TRUE(session.current_recruit() != nullptr);
+    ASSERT_TRUE(session.current_recruit()->family == FAMILY_SOLDIER);
 
     // Cycle forward through all 14 families
     for (int i = 1; i < 14; i++) {
         session.next_family();
-        OG_ASSERT(session.family_index() == i);
-        OG_ASSERT(session.current_recruit() != nullptr);
-        OG_ASSERT(session.current_recruit()->family == og::ui::kAllowableGuys[i]);
+        ASSERT_TRUE(session.family_index() == i);
+        ASSERT_TRUE(session.current_recruit() != nullptr);
+        ASSERT_TRUE(session.current_recruit()->family == og::ui::kAllowableGuys[i]);
     }
 
     // Wraps back to 0
     session.next_family();
-    OG_ASSERT(session.family_index() == 0);
-    OG_ASSERT(session.current_recruit()->family == FAMILY_SOLDIER);
+    ASSERT_TRUE(session.family_index() == 0);
+    ASSERT_TRUE(session.current_recruit()->family == FAMILY_SOLDIER);
 
     // Cycle backward wraps to 13 (GHOST)
     session.prev_family();
-    OG_ASSERT(session.family_index() == 13);
-    OG_ASSERT(session.current_recruit()->family == FAMILY_GHOST);
+    ASSERT_TRUE(session.family_index() == 13);
+    ASSERT_TRUE(session.current_recruit()->family == FAMILY_GHOST);
 }
 
-OG_UNIT_TEST(test_hire_session_hire)
+TEST(PickerCommon, hire_session_hire)
 {
     init_family_registry();
     SaveData save;
@@ -323,22 +323,22 @@ OG_UNIT_TEST(test_hire_session_hire)
 
     og::ui::HireSession session(save, 0);
     std::uint32_t cost = session.current_cost();
-    OG_ASSERT(cost > 0);
+    ASSERT_TRUE(cost > 0);
 
     std::uint32_t gold_before = save.m_totalcash[0];
     int slot = session.hire();
-    OG_ASSERT(slot == 0);
-    OG_ASSERT(save.team_size == 1);
-    OG_ASSERT(save.team_list[0] != nullptr);
-    OG_ASSERT(save.team_list[0]->family == FAMILY_SOLDIER);
-    OG_ASSERT(save.m_totalcash[0] == gold_before - cost);
+    ASSERT_TRUE(slot == 0);
+    ASSERT_TRUE(save.team_size == 1);
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    ASSERT_TRUE(save.team_list[0]->family == FAMILY_SOLDIER);
+    ASSERT_TRUE(save.m_totalcash[0] == gold_before - cost);
 
     // After hiring, session auto-creates next recruit with same family
-    OG_ASSERT(session.current_recruit() != nullptr);
-    OG_ASSERT(session.current_recruit()->family == FAMILY_SOLDIER);
+    ASSERT_TRUE(session.current_recruit() != nullptr);
+    ASSERT_TRUE(session.current_recruit()->family == FAMILY_SOLDIER);
 }
 
-OG_UNIT_TEST(test_hire_session_rename_hired)
+TEST(PickerCommon, hire_session_rename_hired)
 {
     init_family_registry();
     SaveData save;
@@ -347,13 +347,13 @@ OG_UNIT_TEST(test_hire_session_rename_hired)
 
     og::ui::HireSession session(save, 0);
     int slot = session.hire();
-    OG_ASSERT(slot >= 0);
+    ASSERT_TRUE(slot >= 0);
 
     session.rename_hired(slot, "CustomName");
-    OG_ASSERT(save.team_list[slot]->name == "CustomName");
+    ASSERT_TRUE(save.team_list[slot]->name == "CustomName");
 }
 
-OG_UNIT_TEST(test_hire_session_team_full)
+TEST(PickerCommon, hire_session_team_full)
 {
     init_family_registry();
     SaveData save;
@@ -367,11 +367,11 @@ OG_UNIT_TEST(test_hire_session_team_full)
     }
 
     og::ui::HireSession session(save, 0);
-    OG_ASSERT(session.team_full());
-    OG_ASSERT(session.hire() == -1);
+    ASSERT_TRUE(session.team_full());
+    ASSERT_TRUE(session.hire() == -1);
 }
 
-OG_UNIT_TEST(test_hire_session_not_enough_gold)
+TEST(PickerCommon, hire_session_not_enough_gold)
 {
     init_family_registry();
     SaveData save;
@@ -379,13 +379,13 @@ OG_UNIT_TEST(test_hire_session_not_enough_gold)
     save.m_totalcash[0] = 0; // no gold
 
     og::ui::HireSession session(save, 0);
-    OG_ASSERT(session.hire() == -1);
-    OG_ASSERT(save.team_size == 0);
+    ASSERT_TRUE(session.hire() == -1);
+    ASSERT_TRUE(save.team_size == 0);
 }
 
 // --- TrainSession ---
 
-OG_UNIT_TEST(test_train_session_cycle)
+TEST(PickerCommon, train_session_cycle)
 {
     init_family_registry();
     SaveData save;
@@ -402,39 +402,39 @@ OG_UNIT_TEST(test_train_session_cycle)
     save.m_totalcash[0] = 50000;
 
     og::ui::TrainSession session(save);
-    OG_ASSERT(!session.empty());
-    OG_ASSERT(session.current_slot() == 0);
-    OG_ASSERT(session.working_copy().name == "Alpha");
+    ASSERT_TRUE(!session.empty());
+    ASSERT_TRUE(session.current_slot() == 0);
+    ASSERT_TRUE(session.working_copy().name == "Alpha");
 
     session.next_member();
-    OG_ASSERT(session.current_slot() == 2);
-    OG_ASSERT(session.working_copy().name == "Beta");
+    ASSERT_TRUE(session.current_slot() == 2);
+    ASSERT_TRUE(session.working_copy().name == "Beta");
 
     session.next_member();
-    OG_ASSERT(session.current_slot() == 5);
-    OG_ASSERT(session.working_copy().name == "Gamma");
+    ASSERT_TRUE(session.current_slot() == 5);
+    ASSERT_TRUE(session.working_copy().name == "Gamma");
 
     // Wraps back to first
     session.next_member();
-    OG_ASSERT(session.current_slot() == 0);
-    OG_ASSERT(session.working_copy().name == "Alpha");
+    ASSERT_TRUE(session.current_slot() == 0);
+    ASSERT_TRUE(session.working_copy().name == "Alpha");
 
     // Backward wraps to last
     session.prev_member();
-    OG_ASSERT(session.current_slot() == 5);
-    OG_ASSERT(session.working_copy().name == "Gamma");
+    ASSERT_TRUE(session.current_slot() == 5);
+    ASSERT_TRUE(session.working_copy().name == "Gamma");
 }
 
-OG_UNIT_TEST(test_train_session_empty)
+TEST(PickerCommon, train_session_empty)
 {
     SaveData save;
     save.team_size = 0;
 
     og::ui::TrainSession session(save);
-    OG_ASSERT(session.empty());
+    ASSERT_TRUE(session.empty());
 }
 
-OG_UNIT_TEST(test_train_session_increase_decrease)
+TEST(PickerCommon, train_session_increase_decrease)
 {
     init_family_registry();
     SaveData save;
@@ -446,20 +446,20 @@ OG_UNIT_TEST(test_train_session_increase_decrease)
     short orig_str = session.original().strength;
 
     session.increase_stat(og::ui::TrainSession::Stat::Strength, 3);
-    OG_ASSERT(session.working_copy().strength == orig_str + 3);
-    OG_ASSERT(session.current_cost() > 0);
+    ASSERT_TRUE(session.working_copy().strength == orig_str + 3);
+    ASSERT_TRUE(session.current_cost() > 0);
 
     // Decrease back to original — cost should be 0
     session.decrease_stat(og::ui::TrainSession::Stat::Strength, 3);
-    OG_ASSERT(session.working_copy().strength == orig_str);
-    OG_ASSERT(session.current_cost() == 0);
+    ASSERT_TRUE(session.working_copy().strength == orig_str);
+    ASSERT_TRUE(session.current_cost() == 0);
 
     // Decrease below original — clamped to original
     session.decrease_stat(og::ui::TrainSession::Stat::Strength, 5);
-    OG_ASSERT(session.working_copy().strength == orig_str);
+    ASSERT_TRUE(session.working_copy().strength == orig_str);
 }
 
-OG_UNIT_TEST(test_train_session_level_locks_stats)
+TEST(PickerCommon, train_session_level_locks_stats)
 {
     init_family_registry();
     SaveData save;
@@ -471,15 +471,15 @@ OG_UNIT_TEST(test_train_session_level_locks_stats)
 
     // Increase level
     session.increase_stat(og::ui::TrainSession::Stat::Level, 1);
-    OG_ASSERT(session.level_increased());
+    ASSERT_TRUE(session.level_increased());
 
     // Now stats should be locked — increase should be no-op
     short str_before = session.working_copy().strength;
     session.increase_stat(og::ui::TrainSession::Stat::Strength, 1);
-    OG_ASSERT(session.working_copy().strength == str_before);
+    ASSERT_TRUE(session.working_copy().strength == str_before);
 }
 
-OG_UNIT_TEST(test_train_session_stats_lock_level)
+TEST(PickerCommon, train_session_stats_lock_level)
 {
     init_family_registry();
     SaveData save;
@@ -491,15 +491,15 @@ OG_UNIT_TEST(test_train_session_stats_lock_level)
 
     // Increase a stat
     session.increase_stat(og::ui::TrainSession::Stat::Strength, 1);
-    OG_ASSERT(session.stats_increased());
+    ASSERT_TRUE(session.stats_increased());
 
     // Now level should be locked — increase should be no-op
     short level_before = session.working_copy().level;
     session.increase_stat(og::ui::TrainSession::Stat::Level, 1);
-    OG_ASSERT(session.working_copy().level == level_before);
+    ASSERT_TRUE(session.working_copy().level == level_before);
 }
 
-OG_UNIT_TEST(test_train_session_accept)
+TEST(PickerCommon, train_session_accept)
 {
     init_family_registry();
     SaveData save;
@@ -512,16 +512,16 @@ OG_UNIT_TEST(test_train_session_accept)
 
     session.increase_stat(og::ui::TrainSession::Stat::Strength, 5);
     std::uint32_t cost = session.current_cost();
-    OG_ASSERT(cost > 0);
+    ASSERT_TRUE(cost > 0);
 
     std::uint32_t gold_before = save.m_totalcash[0];
-    OG_ASSERT(session.accept());
-    OG_ASSERT(save.m_totalcash[0] == gold_before - cost);
+    ASSERT_TRUE(session.accept());
+    ASSERT_TRUE(save.m_totalcash[0] == gold_before - cost);
     // Original team member should now have updated stats
-    OG_ASSERT(save.team_list[0]->strength == orig_str + 5);
+    ASSERT_TRUE(save.team_list[0]->strength == orig_str + 5);
 }
 
-OG_UNIT_TEST(test_train_session_accept_cant_afford)
+TEST(PickerCommon, train_session_accept_cant_afford)
 {
     init_family_registry();
     SaveData save;
@@ -533,12 +533,12 @@ OG_UNIT_TEST(test_train_session_accept_cant_afford)
     short orig_str = session.original().strength;
 
     session.increase_stat(og::ui::TrainSession::Stat::Strength, 10);
-    OG_ASSERT(!session.accept()); // can't afford
+    ASSERT_TRUE(!session.accept()); // can't afford
     // Original should be unchanged
-    OG_ASSERT(save.team_list[0]->strength == orig_str);
+    ASSERT_TRUE(save.team_list[0]->strength == orig_str);
 }
 
-OG_UNIT_TEST(test_train_session_accept_force)
+TEST(PickerCommon, train_session_accept_force)
 {
     init_family_registry();
     SaveData save;
@@ -550,118 +550,118 @@ OG_UNIT_TEST(test_train_session_accept_force)
     short orig_str = session.original().strength;
 
     session.increase_stat(og::ui::TrainSession::Stat::Strength, 5);
-    OG_ASSERT(session.accept(true)); // force=true bypasses cost
-    OG_ASSERT(save.team_list[0]->strength == orig_str + 5);
-    OG_ASSERT(save.m_totalcash[0] == 0); // gold unchanged
+    ASSERT_TRUE(session.accept(true)); // force=true bypasses cost
+    ASSERT_TRUE(save.team_list[0]->strength == orig_str + 5);
+    ASSERT_TRUE(save.m_totalcash[0] == 0); // gold unchanged
 }
 
 // --- compute_derived_stats ---
 
-OG_UNIT_TEST(test_compute_derived_stats)
+TEST(PickerCommon, compute_derived_stats)
 {
     init_family_registry();
     guy g(FAMILY_SOLDIER);
 
     auto ds = og::ui::compute_derived_stats(g, 100.0f, 20.0f, 5.0f, 8.0f);
     // HP = ceil(100 + hp_bonus), MP = ceil(mp_bonus)
-    OG_ASSERT(ds.hp >= 100.0f);
-    OG_ASSERT(ds.mp >= 0.0f);
-    OG_ASSERT(ds.atk >= 20.0f);
-    OG_ASSERT(ds.def >= 0.0f);
-    OG_ASSERT(ds.spd >= 5.0f);
-    OG_ASSERT(ds.atk_spd > 0.0f);
+    ASSERT_TRUE(ds.hp >= 100.0f);
+    ASSERT_TRUE(ds.mp >= 0.0f);
+    ASSERT_TRUE(ds.atk >= 20.0f);
+    ASSERT_TRUE(ds.def >= 0.0f);
+    ASSERT_TRUE(ds.spd >= 5.0f);
+    ASSERT_TRUE(ds.atk_spd > 0.0f);
 }
 
-OG_UNIT_TEST(test_compute_derived_stats_min_fire_freq)
+TEST(PickerCommon, compute_derived_stats_min_fire_freq)
 {
     init_family_registry();
     guy g(FAMILY_SOLDIER);
     // base_fire_freq of 0 should be clamped to 1 to avoid div-by-zero
     auto ds = og::ui::compute_derived_stats(g, 50.0f, 10.0f, 3.0f, 0.0f);
-    OG_ASSERT(ds.atk_spd > 0.0f);
-    OG_ASSERT(ds.atk_spd <= 10.0f);
+    ASSERT_TRUE(ds.atk_spd > 0.0f);
+    ASSERT_TRUE(ds.atk_spd <= 10.0f);
 }
 
 // --- cycle_difficulty ---
 
-OG_UNIT_TEST(test_cycle_difficulty)
+TEST(PickerCommon, cycle_difficulty)
 {
-    OG_ASSERT(og::ui::cycle_difficulty(0) == 1);
-    OG_ASSERT(og::ui::cycle_difficulty(1) == 2);
-    OG_ASSERT(og::ui::cycle_difficulty(2) == 0); // wraps
+    ASSERT_TRUE(og::ui::cycle_difficulty(0) == 1);
+    ASSERT_TRUE(og::ui::cycle_difficulty(1) == 2);
+    ASSERT_TRUE(og::ui::cycle_difficulty(2) == 0); // wraps
 }
 
 // --- toggle_allied_mode / is_allied_mode ---
 
-OG_UNIT_TEST(test_toggle_allied_mode)
+TEST(PickerCommon, toggle_allied_mode)
 {
     SaveData save;
     // SaveData constructor sets allied_mode = 1
     bool initial = og::ui::is_allied_mode(save);
 
     og::ui::toggle_allied_mode(save);
-    OG_ASSERT(og::ui::is_allied_mode(save) != initial);
+    ASSERT_TRUE(og::ui::is_allied_mode(save) != initial);
 
     og::ui::toggle_allied_mode(save);
-    OG_ASSERT(og::ui::is_allied_mode(save) == initial);
+    ASSERT_TRUE(og::ui::is_allied_mode(save) == initial);
 }
 
 // --- set_player_count ---
 
-OG_UNIT_TEST(test_set_player_count)
+TEST(PickerCommon, set_player_count)
 {
     SaveData save;
     og::ui::set_player_count(save, 3);
-    OG_ASSERT(save.numplayers == 3);
+    ASSERT_TRUE(save.numplayers == 3);
 
     og::ui::set_player_count(save, 1);
-    OG_ASSERT(save.numplayers == 1);
+    ASSERT_TRUE(save.numplayers == 1);
 }
 
 // --- set_player_count with 0 (spectator mode) ---
 
-OG_UNIT_TEST(test_set_player_count_zero)
+TEST(PickerCommon, set_player_count_zero)
 {
     SaveData save;
     // Start at a normal count
     og::ui::set_player_count(save, 2);
-    OG_ASSERT(save.numplayers == 2);
+    ASSERT_TRUE(save.numplayers == 2);
 
     // Set to 0 (spectator)
     og::ui::set_player_count(save, 0);
-    OG_ASSERT(save.numplayers == 0);
+    ASSERT_TRUE(save.numplayers == 0);
 
     // Round-trip: set back to a normal count
     og::ui::set_player_count(save, 4);
-    OG_ASSERT(save.numplayers == 4);
+    ASSERT_TRUE(save.numplayers == 4);
 
     // And back to 0
     og::ui::set_player_count(save, 0);
-    OG_ASSERT(save.numplayers == 0);
+    ASSERT_TRUE(save.numplayers == 0);
 }
 
 // --- is_spectator_mode ---
 
-OG_UNIT_TEST(test_is_spectator_mode)
+TEST(PickerCommon, is_spectator_mode)
 {
     SaveData save;
 
     // Default numplayers is 1
-    OG_ASSERT(!og::ui::is_spectator_mode(save));
+    ASSERT_TRUE(!og::ui::is_spectator_mode(save));
 
     og::ui::set_player_count(save, 0);
-    OG_ASSERT(og::ui::is_spectator_mode(save));
+    ASSERT_TRUE(og::ui::is_spectator_mode(save));
 
     og::ui::set_player_count(save, 1);
-    OG_ASSERT(!og::ui::is_spectator_mode(save));
+    ASSERT_TRUE(!og::ui::is_spectator_mode(save));
 
     og::ui::set_player_count(save, 4);
-    OG_ASSERT(!og::ui::is_spectator_mode(save));
+    ASSERT_TRUE(!og::ui::is_spectator_mode(save));
 }
 
 // --- ensure_team_populated ---
 
-OG_UNIT_TEST(test_ensure_team_populated_empty_families)
+TEST(PickerCommon, ensure_team_populated_empty_families)
 {
     init_family_registry();
     SaveData save;
@@ -669,12 +669,12 @@ OG_UNIT_TEST(test_ensure_team_populated_empty_families)
 
     // Empty families list -> should add a FAMILY_SOLDIER
     og::ui::ensure_team_populated(save);
-    OG_ASSERT(save.team_size == 1);
-    OG_ASSERT(save.team_list[0] != nullptr);
-    OG_ASSERT(save.team_list[0]->family == FAMILY_SOLDIER);
+    ASSERT_TRUE(save.team_size == 1);
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    ASSERT_TRUE(save.team_list[0]->family == FAMILY_SOLDIER);
 }
 
-OG_UNIT_TEST(test_ensure_team_populated_with_families)
+TEST(PickerCommon, ensure_team_populated_with_families)
 {
     init_family_registry();
     SaveData save;
@@ -682,12 +682,12 @@ OG_UNIT_TEST(test_ensure_team_populated_with_families)
 
     std::vector<int> families = {FAMILY_MAGE, FAMILY_ARCHER};
     og::ui::ensure_team_populated(save, families);
-    OG_ASSERT(save.team_size == 2);
-    OG_ASSERT(save.team_list[0]->family == FAMILY_MAGE);
-    OG_ASSERT(save.team_list[1]->family == FAMILY_ARCHER);
+    ASSERT_TRUE(save.team_size == 2);
+    ASSERT_TRUE(save.team_list[0]->family == FAMILY_MAGE);
+    ASSERT_TRUE(save.team_list[1]->family == FAMILY_ARCHER);
 }
 
-OG_UNIT_TEST(test_ensure_team_populated_noop_if_has_members)
+TEST(PickerCommon, ensure_team_populated_noop_if_has_members)
 {
     init_family_registry();
     SaveData save;
@@ -696,13 +696,13 @@ OG_UNIT_TEST(test_ensure_team_populated_noop_if_has_members)
 
     // Should be a no-op since team already has members
     og::ui::ensure_team_populated(save, {FAMILY_MAGE});
-    OG_ASSERT(save.team_size == 1);
-    OG_ASSERT(save.team_list[0]->family == FAMILY_ELF);
+    ASSERT_TRUE(save.team_size == 1);
+    ASSERT_TRUE(save.team_list[0]->family == FAMILY_ELF);
 }
 
 // --- for_each_team_member ---
 
-OG_UNIT_TEST(test_for_each_team_member)
+TEST(PickerCommon, for_each_team_member)
 {
     SaveData save;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -716,17 +716,17 @@ OG_UNIT_TEST(test_for_each_team_member)
     og::ui::for_each_team_member(save, [&](int slot, const guy& member) {
         count++;
         slots.push_back(slot);
-        if (slot == 0) OG_ASSERT(member.name == "Alpha");
-        if (slot == 2) OG_ASSERT(member.name == "Beta");
+        if (slot == 0) ASSERT_TRUE(member.name == "Alpha");
+        if (slot == 2) ASSERT_TRUE(member.name == "Beta");
     });
 
-    OG_ASSERT(count == 2);
-    OG_ASSERT(slots.size() == 2);
-    OG_ASSERT(slots[0] == 0);
-    OG_ASSERT(slots[1] == 2);
+    ASSERT_TRUE(count == 2);
+    ASSERT_TRUE(slots.size() == 2);
+    ASSERT_TRUE(slots[0] == 0);
+    ASSERT_TRUE(slots[1] == 2);
 }
 
-OG_UNIT_TEST(test_for_each_team_member_empty)
+TEST(PickerCommon, for_each_team_member_empty)
 {
     SaveData save;
     save.team_size = 0;
@@ -735,40 +735,40 @@ OG_UNIT_TEST(test_for_each_team_member_empty)
     og::ui::for_each_team_member(save, [&](int, const guy&) {
         count++;
     });
-    OG_ASSERT(count == 0);
+    ASSERT_TRUE(count == 0);
 }
 
 // --- format_difficulty_label ---
 
-OG_UNIT_TEST(test_format_difficulty_label)
+TEST(PickerCommon, format_difficulty_label)
 {
-    OG_ASSERT(og::ui::format_difficulty_label(0) == "Difficulty: Skirmish");
-    OG_ASSERT(og::ui::format_difficulty_label(1) == "Difficulty: Battle");
-    OG_ASSERT(og::ui::format_difficulty_label(2) == "Difficulty: Slaughter");
+    ASSERT_TRUE(og::ui::format_difficulty_label(0) == "Difficulty: Skirmish");
+    ASSERT_TRUE(og::ui::format_difficulty_label(1) == "Difficulty: Battle");
+    ASSERT_TRUE(og::ui::format_difficulty_label(2) == "Difficulty: Slaughter");
 }
 
 // --- format_allied_mode_label ---
 
-OG_UNIT_TEST(test_format_allied_mode_label)
+TEST(PickerCommon, format_allied_mode_label)
 {
     SaveData save;
     save.allied_mode = 0;
-    OG_ASSERT(og::ui::format_allied_mode_label(save) == "PVP: Enemy");
+    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "PVP: Enemy");
 
     save.allied_mode = 1;
-    OG_ASSERT(og::ui::format_allied_mode_label(save) == "PVP: Ally");
+    ASSERT_TRUE(og::ui::format_allied_mode_label(save) == "PVP: Ally");
 }
 
 // --- collect_team_families ---
 
-OG_UNIT_TEST(test_collect_team_families)
+TEST(PickerCommon, collect_team_families)
 {
     SaveData save;
     save.team_size = 0;
 
     // Empty team -> empty vector
     std::vector<int> families = og::ui::collect_team_families(save);
-    OG_ASSERT(families.empty());
+    ASSERT_TRUE(families.empty());
 
     // Add some team members
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
@@ -777,15 +777,15 @@ OG_UNIT_TEST(test_collect_team_families)
     save.team_size = 3;
 
     families = og::ui::collect_team_families(save);
-    OG_ASSERT(families.size() == 3);
-    OG_ASSERT(families[0] == FAMILY_SOLDIER);
-    OG_ASSERT(families[1] == FAMILY_MAGE);
-    OG_ASSERT(families[2] == FAMILY_ARCHER);
+    ASSERT_TRUE(families.size() == 3);
+    ASSERT_TRUE(families[0] == FAMILY_SOLDIER);
+    ASSERT_TRUE(families[1] == FAMILY_MAGE);
+    ASSERT_TRUE(families[2] == FAMILY_ARCHER);
 }
 
 // --- initialize_starting_team ---
 
-OG_UNIT_TEST(test_initialize_starting_team_empty)
+TEST(PickerCommon, initialize_starting_team_empty)
 {
     init_family_registry();
     SaveData save;
@@ -795,13 +795,13 @@ OG_UNIT_TEST(test_initialize_starting_team_empty)
 
     // Should set gold and populate
     og::ui::initialize_starting_team(save);
-    OG_ASSERT(save.team_size >= 1);
-    OG_ASSERT(save.m_totalcash[0] == og::ui::kNewGameStartingGold);
-    OG_ASSERT(save.totalcash == og::ui::kNewGameStartingGold);
-    OG_ASSERT(save.team_list[0]->family == FAMILY_SOLDIER);
+    ASSERT_TRUE(save.team_size >= 1);
+    ASSERT_TRUE(save.m_totalcash[0] == og::ui::kNewGameStartingGold);
+    ASSERT_TRUE(save.totalcash == og::ui::kNewGameStartingGold);
+    ASSERT_TRUE(save.team_list[0]->family == FAMILY_SOLDIER);
 }
 
-OG_UNIT_TEST(test_initialize_starting_team_noop_if_populated)
+TEST(PickerCommon, initialize_starting_team_noop_if_populated)
 {
     init_family_registry();
     SaveData save;
@@ -811,41 +811,41 @@ OG_UNIT_TEST(test_initialize_starting_team_noop_if_populated)
 
     // Should be no-op
     og::ui::initialize_starting_team(save, {FAMILY_MAGE});
-    OG_ASSERT(save.team_size == 1);
-    OG_ASSERT(save.team_list[0]->family == FAMILY_ELF);
-    OG_ASSERT(save.m_totalcash[0] == 100); // unchanged
+    ASSERT_TRUE(save.team_size == 1);
+    ASSERT_TRUE(save.team_list[0]->family == FAMILY_ELF);
+    ASSERT_TRUE(save.m_totalcash[0] == 100); // unchanged
 }
 
-OG_UNIT_TEST(test_initialize_starting_team_with_families)
+TEST(PickerCommon, initialize_starting_team_with_families)
 {
     init_family_registry();
     SaveData save;
     save.team_size = 0;
 
     og::ui::initialize_starting_team(save, {FAMILY_MAGE, FAMILY_ARCHER});
-    OG_ASSERT(save.team_size == 2);
-    OG_ASSERT(save.team_list[0]->family == FAMILY_MAGE);
-    OG_ASSERT(save.team_list[1]->family == FAMILY_ARCHER);
-    OG_ASSERT(save.m_totalcash[0] == og::ui::kNewGameStartingGold);
+    ASSERT_TRUE(save.team_size == 2);
+    ASSERT_TRUE(save.team_list[0]->family == FAMILY_MAGE);
+    ASSERT_TRUE(save.team_list[1]->family == FAMILY_ARCHER);
+    ASSERT_TRUE(save.m_totalcash[0] == og::ui::kNewGameStartingGold);
 }
 
 // --- save_error_string ---
 
-OG_UNIT_TEST(test_save_error_string)
+TEST(PickerCommon, save_error_string)
 {
-    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::None), "none") == 0);
-    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::OpenReadFailed), "open_read_failed") == 0);
-    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::OpenWriteFailed), "open_write_failed") == 0);
-    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::ReadFailed), "read_failed") == 0);
-    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::WriteFailed), "write_failed") == 0);
-    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::InvalidHeader), "invalid_header") == 0);
-    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::UnsupportedVersion), "unsupported_version") == 0);
-    OG_ASSERT(std::strcmp(og::ui::save_error_string(SaveDataIoError::CampaignLoadFailed), "campaign_load_failed") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::None), "none") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::OpenReadFailed), "open_read_failed") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::OpenWriteFailed), "open_write_failed") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::ReadFailed), "read_failed") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::WriteFailed), "write_failed") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::InvalidHeader), "invalid_header") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::UnsupportedVersion), "unsupported_version") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::CampaignLoadFailed), "campaign_load_failed") == 0);
 }
 
 // --- reset_for_new_game sets gold ---
 
-OG_UNIT_TEST(test_reset_for_new_game_sets_gold)
+TEST(PickerCommon, reset_for_new_game_sets_gold)
 {
     SaveData save;
     save.totalcash = 0;
@@ -854,7 +854,7 @@ OG_UNIT_TEST(test_reset_for_new_game_sets_gold)
     og::ui::reset_for_new_game(save);
 
     // m_totalcash is set by SaveData::reset() to 5000
-    OG_ASSERT(save.m_totalcash[0] == 5000);
+    ASSERT_TRUE(save.m_totalcash[0] == 5000);
     // totalcash is now also set by reset_for_new_game
-    OG_ASSERT(save.totalcash == og::ui::kNewGameStartingGold);
+    ASSERT_TRUE(save.totalcash == og::ui::kNewGameStartingGold);
 }

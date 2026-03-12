@@ -3,8 +3,9 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/pixien.h>
-#include <openglad/legacy/test_trace.h>
-#include "test_framework.h"
+#include <openglad/core/test_trace.h>
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -57,7 +58,7 @@ static int difficulty_injector(void* data)
     state->started = true;
 
     wait_for_interactable("difficulty", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Toggle difficulty a few times
     fprintf(stderr, "  [test] clicking difficulty (toggle 1)\n");
@@ -100,14 +101,14 @@ static int difficulty_injector(void* data)
     interact("continue_game");
     SDL_Delay(500);
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
     interact("back");
 
     state->finished = true;
     return 0;
 }
 
-void test_difficulty_toggle() {
+TEST(Difficulty, toggle) {
     trace_clear();
 
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
@@ -117,7 +118,7 @@ void test_difficulty_toggle() {
 
     DifficultyState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(difficulty_injector, "difficulty_test", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -130,7 +131,7 @@ void test_difficulty_toggle() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.clicked_difficulty, "should have toggled difficulty");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.clicked_difficulty) << "should have toggled difficulty";
 }
-REGISTER_TEST(test_difficulty_toggle);
+

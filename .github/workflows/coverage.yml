@@ -35,39 +35,34 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
 
       - name: Install coverage tools
         run: python3 -m pip install gcovr
 
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-coverage
+
       - name: Configure (ci-coverage preset)
-        run: cmake --preset ci-coverage
+        run: cmake --preset ci-coverage -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
-      - name: Build coverage test binaries
-        run: cmake --build --preset ci-coverage --target og_unit_tests og_data_tests og_runtime_tests -j"$(nproc)"
+      - name: Build all test binaries
+        run: cmake --build --preset ci-coverage -j"$(nproc)"
 
-      - name: Run coverage test binaries
-        run: |
-          rm -f "$HOME/.openglad/campaigns/org.openglad.test."*.glad 2>/dev/null || true
-          rm -f scen/scen93*.fss scen/scen94*.fss 2>/dev/null || true
-          timeout 300 ./build/ci-coverage/og_unit_tests
-          timeout 600 ./build/ci-coverage/og_data_tests
-          timeout 600 ./build/ci-coverage/og_runtime_tests
+      - name: Run tests (parallel)
+        run: ctest --test-dir build/ci-coverage --parallel $(nproc) --output-on-failure --timeout 180
 
       - name: Generate HTML coverage report
         run: |
           mkdir -p build/ci-coverage/coverage
-          # Phase 10 moved SDL/UI implementation out of src/sdl_client and
-          # src/ui into interface/platform component directories.
+          # Phase 4 now measures the full production codebase except fuzz
+          # targets, which remain excluded because they are standalone fuzz
+          # entrypoints rather than shipped game code.
           python3 -m gcovr \
             --root . \
             --filter src/ \
             --exclude 'src/fuzz/' \
-            --exclude 'src/interface/' \
-            --exclude 'src/platform/sdl/' \
-            --exclude 'src/sdl_client/' \
-            --exclude 'src/ui/' \
-            --exclude 'src/test_trace.cpp' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --html-details \
             --output build/ci-coverage/coverage/coverage.html \
@@ -80,17 +75,13 @@ jobs:
           FUNCTION_THRESHOLD=90
 
           set +e
-          # Phase 10 moved SDL/UI implementation out of src/sdl_client and
-          # src/ui into interface/platform component directories.
+          # Phase 4 now measures the full production codebase except fuzz
+          # targets, which remain excluded because they are standalone fuzz
+          # entrypoints rather than shipped game code.
           python3 -m gcovr \
             --root . \
             --filter src/ \
             --exclude 'src/fuzz/' \
-            --exclude 'src/interface/' \
-            --exclude 'src/platform/sdl/' \
-            --exclude 'src/sdl_client/' \
-            --exclude 'src/ui/' \
-            --exclude 'src/test_trace.cpp' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --txt \
             --output build/ci-coverage/coverage/coverage-summary.txt \

@@ -1024,52 +1024,27 @@ if(NOT EMSCRIPTEN)
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/OpenGlad
     )
 
-    # --- openglad_test ---
     if(BUILD_TESTING)
-        # --- Headless unit tests (no SDL/video init) ---
-        set(OG_UNIT_TEST_SOURCES
-            ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_picker_common.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_druid.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_orc.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_family_thief.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_gparser_unit.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_unit.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_living_unit.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_save_data_unit.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_smooth_unit.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_unit.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_unit.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_unit.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials_unit.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_coverage_misc.cpp
-        )
+        find_package(GTest REQUIRED)
 
-        add_executable(og_unit_tests
-            ${OG_UNIT_TEST_SOURCES}
+        # Incremental coverage builds can retain gcov artifacts for the deleted
+        # pre-GTest runners. Purge those stale files so gcovr does not fail on
+        # missing sources after the Phase 3 framework swap.
+        file(GLOB_RECURSE OG_STALE_LEGACY_TEST_ARTIFACTS
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_framework.cpp.gcda"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_framework.cpp.gcno"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_framework.cpp.o"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_framework.cpp.o.d"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_main.cpp.gcda"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_main.cpp.gcno"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_main.cpp.o"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_main.cpp.o.d"
         )
-        configure_openglad_library(og_unit_tests)
-        configure_openglad_sdl_target(og_unit_tests)
-        target_compile_definitions(og_unit_tests PRIVATE TESTING)
-        target_link_libraries(og_unit_tests PRIVATE og_game)
-        configure_openglad_runtime_target(og_unit_tests)
-        add_test(NAME og_unit_tests COMMAND og_unit_tests)
+        if(OG_STALE_LEGACY_TEST_ARTIFACTS)
+            file(REMOVE ${OG_STALE_LEGACY_TEST_ARTIFACTS})
+        endif()
 
-        set(TEST_SOURCES
-            ${CMAKE_SOURCE_DIR}/tests/test_framework.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
+        set(ALL_INTEGRATION_TEST_SOURCES
             ${CMAKE_SOURCE_DIR}/tests/test_trace_buffer.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_startup.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_combat_math.cpp
@@ -1109,43 +1084,43 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_view_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_options_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_effect_helpers.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_effect_chain_and_door.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_effect_weapon_interactions.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_game_context.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_helpers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_chain_and_door.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_weapon_interactions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_game_context.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_guy_calcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_funcs.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_screen_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_screen_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_video_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_living_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_guy_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_combat.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_stats_commands.cpp
-		            ${CMAKE_SOURCE_DIR}/tests/test_stats_right_walk_direct_walk.cpp
-		            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_more.cpp
-		            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_teleport.cpp
-		            ${CMAKE_SOURCE_DIR}/tests/test_view_draw.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_video_draw.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_living_combat.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_commands.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_right_walk_direct_walk.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_teleport.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_draw.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_video_draw.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_living_combat.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gloader_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_screen_extended.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_view_resize.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_view_redraw.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_smooth_ops.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_smooth_more_branches.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_radar_more.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_treasure_eat.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_weap_behavior.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_effect_act.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_resize.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_redraw.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_ops.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_more_branches.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_radar_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_treasure_eat.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_weap_behavior.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_act.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_text_render.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_text_input_and_width.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_death.cpp
@@ -1165,13 +1140,13 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_timed_dialog.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_costs.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_video_buffers.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_video_pixel_ops.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_video_modes_more.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_archivers.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_interactions.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_input_more.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_help_parsing.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_video_buffers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_video_pixel_ops.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_video_modes_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_archivers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_interactions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_input_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_help_parsing.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_glad_hud.cpp
@@ -1182,12 +1157,12 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_ops.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_zlib_more.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
-		            ${CMAKE_SOURCE_DIR}/tests/test_view_get_keypress_and_edge_cases.cpp
-		            ${CMAKE_SOURCE_DIR}/tests/test_view_input_prefs_and_redraw.cpp
-		            ${CMAKE_SOURCE_DIR}/tests/test_picker_menu_nav.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_document.cpp
-	            ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_api_builder.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_get_keypress_and_edge_cases.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_input_prefs_and_redraw.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_menu_nav.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_document.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_api_builder.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_unicode.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_byteorder.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_input_joystick.cpp
@@ -1213,132 +1188,98 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_picker_dialogs_real.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_entity_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_platform_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_mass_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_menu_model.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
         )
 
-        # Helper: select test source files from TEST_SOURCES by basename.
-        # Eliminates duplicate full-path entries across test target lists.
-        function(og_test_subset outvar)
-            cmake_parse_arguments(ARG "" "" "FILES;EXTRA" ${ARGN})
-            set(result)
-            foreach(src IN LISTS TEST_SOURCES)
+        function(og_add_test_group NAME)
+            cmake_parse_arguments(ARG "" "" "FILES" ${ARGN})
+
+            set(selected)
+            foreach(src IN LISTS ALL_INTEGRATION_TEST_SOURCES)
                 cmake_path(GET src FILENAME fname)
                 if(fname IN_LIST ARG_FILES)
-                    list(APPEND result "${src}")
+                    list(APPEND selected "${src}")
                 endif()
             endforeach()
-            list(APPEND result ${ARG_EXTRA})
-            set(${outvar} "${result}" PARENT_SCOPE)
+
+            add_executable(${NAME}
+                ${CMAKE_SOURCE_DIR}/tests/integration_main.cpp
+                ${selected}
+            )
+            configure_openglad_library(${NAME})
+            configure_openglad_sdl_target(${NAME})
+            target_compile_definitions(${NAME} PRIVATE TESTING)
+            target_include_directories(${NAME} PRIVATE
+                ${CMAKE_SOURCE_DIR}/tests
+                ${OG_THIRD_PARTY_INCLUDE_DIRS}
+            )
+            target_link_libraries(${NAME} PRIVATE og_game_test GTest::gtest)
+            configure_openglad_runtime_target(${NAME})
+            add_runtime_assets_dependency(${NAME})
+
+            if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+                target_compile_options(${NAME} PRIVATE -O1 -g)
+                target_compile_definitions(${NAME} PRIVATE ENABLE_COVERAGE)
+            endif()
+
+            add_test(NAME ${NAME} COMMAND ${NAME})
+            set_tests_properties(${NAME} PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                TIMEOUT 180
+                LABELS "integration"
+            )
+            if(ENABLE_SANITIZERS)
+                set_tests_properties(${NAME} PROPERTIES ENVIRONMENT
+                    "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1"
+                )
+            endif()
         endfunction()
 
-        # Module-level test binaries (kept in addition to the full integration suite).
-        # These allow faster targeted iteration without removing broad end-to-end coverage.
+        function(og_add_unit_group NAME)
+            cmake_parse_arguments(ARG "" "" "FILES" ${ARGN})
 
-        # DATA_TEST_SOURCES: pure subset of TEST_SOURCES (data/IO-focused tests).
-        og_test_subset(DATA_TEST_SOURCES FILES
-            test_framework.cpp
-            test_main.cpp
-            test_campaign_and_level_picker.cpp
-            test_gparser_funcs.cpp
-            test_io_filesystem.cpp
-            test_io_funcs.cpp
-            test_io_new_file_fixture.cpp
-            test_io_zip_unzip.cpp
-            test_level_data_load_versions.cpp
-            test_level_data_ops.cpp
-            test_save_data_versions.cpp
-            test_save_load.cpp
-            test_util.cpp
+            add_executable(${NAME}
+                ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
+                ${ARG_FILES}
+            )
+            configure_openglad_library(${NAME})
+            configure_openglad_sdl_target(${NAME})
+            target_compile_definitions(${NAME} PRIVATE TESTING)
+            target_include_directories(${NAME} PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+            target_link_libraries(${NAME} PRIVATE og_game GTest::gtest)
+            configure_openglad_runtime_target(${NAME})
+
+            if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+                target_compile_options(${NAME} PRIVATE -O1 -g)
+                target_compile_definitions(${NAME} PRIVATE ENABLE_COVERAGE)
+            endif()
+
+            add_test(NAME ${NAME} COMMAND ${NAME})
+            set_tests_properties(${NAME} PROPERTIES
+                TIMEOUT 180
+                LABELS "unit"
+            )
+            if(ENABLE_SANITIZERS)
+                set_tests_properties(${NAME} PROPERTIES ENVIRONMENT
+                    "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1"
+                )
+            endif()
+        endfunction()
+
+        add_library(og_game_test STATIC
+            ${GAME_SOURCES_NO_MAIN}
+            ${SRC_DIR}/platform/sdl/glad.cpp
+            ${SRC_DIR}/test_trace.cpp
         )
-
-        # RUNTIME_TEST_SOURCES: subset of TEST_SOURCES plus coverage-only files.
-        # The FILES list selects from the master TEST_SOURCES; EXTRA lists files
-        # unique to this target (not in the master integration suite).
-        og_test_subset(RUNTIME_TEST_SOURCES
-            FILES
-                test_framework.cpp
-                test_main.cpp
-                test_campaign_and_level_picker.cpp
-                test_effect_act.cpp
-                test_effect_chain_and_door.cpp
-                test_effect_extended.cpp
-                test_effect_helpers.cpp
-                test_effect_more_paths.cpp
-                test_effect_weapon_interactions.cpp
-                test_family_behaviors.cpp
-                test_family_data.cpp
-                test_game_loop.cpp
-                test_gparser_funcs.cpp
-                test_input.cpp
-                test_input_joystick.cpp
-                test_input_keybinds.cpp
-                test_input_more.cpp
-                test_io_filesystem.cpp
-                test_io_funcs.cpp
-                test_io_new_file_fixture.cpp
-                test_io_zip_unzip.cpp
-                test_level_data_error_paths.cpp
-                test_level_data_load_versions.cpp
-                test_level_data_ops.cpp
-                test_level_editor_helpers.cpp
-                test_level_editor_interactions.cpp
-                test_level_editor_prompt_block.cpp
-                test_level_editor_smoke.cpp
-                test_living_combat.cpp
-                test_living_funcs.cpp
-                test_menu_layout.cpp
-                test_picker_detail_menu_driven.cpp
-                test_picker_dialogs_real.cpp
-                test_picker_menu_nav.cpp
-                test_picker_ownership_fixture.cpp
-                test_picker_state_machine.cpp
-                test_picker_uncovered.cpp
-                test_results_screen_branches.cpp
-                test_results_screen_full_ui.cpp
-                test_results_screen_internal_helper.cpp
-                test_save_data_versions.cpp
-                test_save_load.cpp
-                test_smooth_matrix.cpp
-                test_stats.cpp
-                test_stats_commands.cpp
-                test_stats_extended.cpp
-                test_stats_hit_response_more.cpp
-                test_stats_hit_response_teleport.cpp
-                test_stats_more_paths.cpp
-                test_stats_navigation.cpp
-                test_stats_right_walk_direct_walk.cpp
-                test_treasure_eat.cpp
-                test_view_draw.cpp
-                test_view_funcs.cpp
-                test_view_get_keypress_and_edge_cases.cpp
-                test_view_input_more_paths.cpp
-                test_view_input_paths.cpp
-                test_view_input_prefs_and_redraw.cpp
-                test_view_input_smoke.cpp
-                test_view_redraw.cpp
-                test_view_resize.cpp
-                test_walker_combat.cpp
-                test_walker_core_more.cpp
-                test_walker_death.cpp
-                test_walker_extended.cpp
-                test_walker_more.cpp
-                test_walker_movement.cpp
-                test_walker_pathing.cpp
-                test_walker_specials.cpp
-                test_weap_behavior.cpp
-            EXTRA
-                ${CMAKE_SOURCE_DIR}/tests/test_entity_coverage.cpp
-                ${CMAKE_SOURCE_DIR}/tests/test_io_coverage.cpp
-                ${CMAKE_SOURCE_DIR}/tests/test_io_platform_coverage.cpp
-                ${CMAKE_SOURCE_DIR}/tests/test_level_data_coverage.cpp
-                ${CMAKE_SOURCE_DIR}/tests/test_mass_coverage.cpp
-                ${CMAKE_SOURCE_DIR}/tests/test_menu_model.cpp
-                ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
-                ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
-                ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage.cpp
-                ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
-        )
-
-        add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
         configure_openglad_library(og_game_test)
         configure_openglad_sdl_target(og_game_test)
         target_include_directories(og_game_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
@@ -1346,74 +1287,274 @@ if(NOT EMSCRIPTEN)
         target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
         add_dependencies(og_game_test check_vendor_leaks)
 
-        add_executable(openglad_test
-            ${SRC_DIR}/platform/sdl/glad.cpp
-            ${TEST_SOURCES}
-        )
-        configure_openglad_library(openglad_test)
-        configure_openglad_sdl_target(openglad_test)
-        target_compile_definitions(openglad_test PRIVATE TESTING)
-        target_include_directories(openglad_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-        # External API smoke tests include vendored headers directly.
-        target_include_directories(openglad_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
-        target_link_libraries(openglad_test PRIVATE og_game_test)
-        configure_openglad_runtime_target(openglad_test)
-        add_runtime_assets_dependency(openglad_test)
-
-        add_executable(og_data_tests
-            ${SRC_DIR}/platform/sdl/glad.cpp
-            ${DATA_TEST_SOURCES}
-        )
-        configure_openglad_library(og_data_tests)
-        configure_openglad_sdl_target(og_data_tests)
-        target_compile_definitions(og_data_tests PRIVATE TESTING)
-        target_include_directories(og_data_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-        target_include_directories(og_data_tests PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
-        target_link_libraries(og_data_tests PRIVATE og_game_test)
-        configure_openglad_runtime_target(og_data_tests)
-        add_runtime_assets_dependency(og_data_tests)
-
-        add_executable(og_runtime_tests
-            ${SRC_DIR}/platform/sdl/glad.cpp
-            ${RUNTIME_TEST_SOURCES}
-        )
-        configure_openglad_library(og_runtime_tests)
-        configure_openglad_sdl_target(og_runtime_tests)
-        target_compile_definitions(og_runtime_tests PRIVATE TESTING)
-        target_include_directories(og_runtime_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-        target_include_directories(og_runtime_tests PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
-        target_link_libraries(og_runtime_tests PRIVATE og_game_test)
-        configure_openglad_runtime_target(og_runtime_tests)
-        add_runtime_assets_dependency(og_runtime_tests)
-
         enable_testing()
-        add_test(NAME openglad_test COMMAND openglad_test)
-        # Optional filtered runs for faster targeted iteration.
-        # openglad_test supports: ./openglad_test [filter_substring]
-        add_test(NAME openglad_test_menu COMMAND openglad_test menu)
-        add_test(NAME openglad_test_picker COMMAND openglad_test picker)
-        add_test(NAME og_data_tests COMMAND og_data_tests)
-        add_test(NAME og_runtime_tests COMMAND og_runtime_tests)
-        set_tests_properties(openglad_test PROPERTIES
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            TIMEOUT 300
+
+        og_add_test_group(og_test_walker_combat FILES
+            test_walker_combat.cpp
+            test_walker_death.cpp
         )
-        set_tests_properties(openglad_test_menu PROPERTIES
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            TIMEOUT 300
+
+        og_add_test_group(og_test_walker_move FILES
+            test_walker_movement.cpp
+            test_walker_pathing.cpp
         )
-	        set_tests_properties(openglad_test_picker PROPERTIES
-	            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-	            TIMEOUT 20
-	        )
-        set_tests_properties(og_data_tests PROPERTIES
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            TIMEOUT 300
+
+        og_add_test_group(og_test_walker_core FILES
+            test_walker_specials.cpp
+            test_walker_core_more.cpp
+            test_walker_extended.cpp
+            test_walker_more.cpp
         )
-        set_tests_properties(og_runtime_tests PROPERTIES
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            TIMEOUT 300
+
+        og_add_test_group(og_test_families FILES
+            test_family_behaviors.cpp
+            test_family_data.cpp
         )
+
+        og_add_test_group(og_test_effects FILES
+            test_effect_act.cpp
+            test_effect_chain_and_door.cpp
+            test_effect_death_more.cpp
+            test_effect_extended.cpp
+            test_effect_helpers.cpp
+            test_effect_more_paths.cpp
+            test_effect_weapon_interactions.cpp
+        )
+
+        og_add_test_group(og_test_living FILES
+            test_living_combat.cpp
+            test_living_funcs.cpp
+            test_weap_behavior.cpp
+            test_treasure_eat.cpp
+            test_entity_coverage.cpp
+        )
+
+        og_add_test_group(og_test_stats FILES
+            test_stats.cpp
+            test_stats_commands.cpp
+            test_stats_extended.cpp
+            test_stats_hit_response_more.cpp
+            test_stats_hit_response_teleport.cpp
+            test_stats_more_paths.cpp
+            test_stats_navigation.cpp
+            test_stats_right_walk_direct_walk.cpp
+            test_stats_coverage.cpp
+        )
+
+        og_add_test_group(og_test_guy FILES
+            test_guy.cpp
+            test_guy_calcs.cpp
+            test_guy_extended.cpp
+        )
+
+        og_add_test_group(og_test_game_core FILES
+            test_combat_math.cpp
+            test_game_context.cpp
+            test_startup.cpp
+            test_trace_buffer.cpp
+            test_palette.cpp
+            test_loader_and_walker.cpp
+            test_gloader_funcs.cpp
+            test_game_loop.cpp
+            test_game_launch.cpp
+            test_go_no_team.cpp
+            test_fairy_death.cpp
+            test_overpowered_team.cpp
+        )
+
+        og_add_test_group(og_test_screen FILES
+            test_screen_extended.cpp
+            test_screen_funcs.cpp
+            test_runtime_coverage_paths.cpp
+        )
+
+        og_add_test_group(og_test_view FILES
+            test_view_draw.cpp
+            test_view_redraw.cpp
+            test_view_funcs.cpp
+            test_view_lifecycle.cpp
+            test_view_resize.cpp
+            test_view_team_list.cpp
+            test_radar_more.cpp
+            test_glad_hud.cpp
+            test_sai2x_scaler.cpp
+            test_view_input_paths.cpp
+            test_view_input_more_paths.cpp
+            test_view_input_smoke.cpp
+            test_view_input_prefs_and_redraw.cpp
+            test_view_get_keypress_and_edge_cases.cpp
+            test_view_menu_driven.cpp
+            test_view_options_menu_driven.cpp
+            test_view_team.cpp
+        )
+
+        og_add_test_group(og_test_rendering FILES
+            test_video_buffers.cpp
+            test_video_draw.cpp
+            test_video_extended.cpp
+            test_video_extra.cpp
+            test_video_fade.cpp
+            test_video_modes_more.cpp
+            test_video_pixel_ops.cpp
+            test_video_primitives.cpp
+            test_text_render.cpp
+            test_text_rendering.cpp
+            test_text_input_and_width.cpp
+            test_text_input_ex_value.cpp
+        )
+
+        og_add_test_group(og_test_picker FILES
+            test_picker_accessible_levels.cpp
+            test_picker_costs.cpp
+            test_picker_detail_menu_driven.cpp
+            test_picker_dialogs_real.cpp
+            test_picker_funcs.cpp
+            test_picker_menu_nav.cpp
+            test_picker_ownership_fixture.cpp
+            test_picker_state_machine.cpp
+            test_picker_timed_dialog.cpp
+            test_picker_uncovered.cpp
+            test_menu_model.cpp
+        )
+
+        og_add_test_group(og_test_menu_ui FILES
+            test_back_to_mainmenu.cpp
+            test_menu.cpp
+            test_menu_layout.cpp
+            test_new_game.cpp
+            test_hire_team.cpp
+            test_train_team.cpp
+            test_save_menu.cpp
+            test_save_load_team.cpp
+            test_options_menu.cpp
+            test_difficulty.cpp
+            test_help.cpp
+            test_help_parsing.cpp
+            test_help_smoke.cpp
+            test_results_screen_branches.cpp
+            test_results_screen_full_ui.cpp
+            test_results_screen_internal_helper.cpp
+            test_intro_smoke.cpp
+            test_campaign_and_level_picker.cpp
+            test_level_progress.cpp
+        )
+
+        og_add_test_group(og_test_input FILES
+            test_input.cpp
+            test_input_event_dispatch.cpp
+            test_input_joystick.cpp
+            test_input_keybinds.cpp
+            test_input_more.cpp
+            test_sim_input_handler.cpp
+        )
+
+        og_add_test_group(og_test_level FILES
+            test_level_data_error_paths.cpp
+            test_level_data_load_versions.cpp
+            test_level_data_ops.cpp
+            test_level_editor_helpers.cpp
+            test_level_editor_interactions.cpp
+            test_level_editor_prompt_block.cpp
+            test_level_editor_smoke.cpp
+            test_level_data_coverage.cpp
+        )
+
+        og_add_test_group(og_test_io FILES
+            test_io_filesystem.cpp
+            test_io_funcs.cpp
+            test_io_new_file_fixture.cpp
+            test_io_zip_unzip.cpp
+            test_gparser_funcs.cpp
+            test_util.cpp
+            test_save_data_versions.cpp
+            test_save_load.cpp
+            test_load_levels.cpp
+            test_io_coverage.cpp
+            test_io_platform_coverage.cpp
+        )
+
+        og_add_test_group(og_test_smooth FILES
+            test_smooth_matrix.cpp
+            test_smooth_more_branches.cpp
+            test_smooth_ops.cpp
+            test_smoother.cpp
+            test_smooth_coverage.cpp
+        )
+
+        og_add_test_group(og_test_external FILES
+            test_external_libzip.cpp
+            test_external_physfs_api_edges.cpp
+            test_external_physfs_archivers.cpp
+            test_external_physfs_byteorder.cpp
+            test_external_physfs_ops.cpp
+            test_external_physfs_unicode.cpp
+            test_external_physfs_zip.cpp
+            test_external_yaml.cpp
+            test_external_yaml_api_builder.cpp
+            test_external_yaml_document.cpp
+            test_external_yaml_more.cpp
+            test_external_zlib.cpp
+            test_external_zlib_api_edges.cpp
+            test_external_zlib_more.cpp
+        )
+
+        og_add_test_group(og_test_mass_coverage FILES
+            test_mass_coverage.cpp
+        )
+
+        og_add_unit_group(og_unit_sim FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
+        )
+
+        og_add_unit_group(og_unit_families FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_druid.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_orc.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_thief.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_picker_common.cpp
+        )
+
+        og_add_unit_group(og_unit_entity FILES
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_living_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_coverage_misc.cpp
+        )
+
+        og_add_unit_group(og_unit_data FILES
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_save_data_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_gparser_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
+        )
+
+        if(ENABLE_COVERAGE)
+            # Coverage-instrumented UI-heavy binaries can time out on 4-core CI
+            # runners when CTest schedules them all at once.
+            set_tests_properties(
+                og_test_game_core
+                og_test_view
+                og_test_picker
+                og_test_menu_ui
+                PROPERTIES PROCESSORS 3
+            )
+            # Menu UI coverage still runs substantially slower on GitHub's
+            # 4-core runners than it does locally, so keep its per-test budget
+            # higher without loosening the default timeout for the full suite.
+            set_tests_properties(og_test_menu_ui PROPERTIES TIMEOUT 300)
+        endif()
 
         add_test(NAME openglad_text_sim
             COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_client.sh $<TARGET_FILE:openglad_text>
@@ -1448,28 +1589,6 @@ if(NOT EMSCRIPTEN)
             TIMEOUT 300
             SKIP_RETURN_CODE 77
         )
-
-        if(ENABLE_COVERAGE)
-            if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-                # Coverage builds can be extremely slow at -O0; -O1 is usually
-                # a good compromise while still producing accurate line coverage.
-                target_compile_options(og_game_test PRIVATE -O1 -g --coverage)
-                target_compile_options(og_unit_tests PRIVATE -O1 -g --coverage)
-                target_compile_options(openglad_test PRIVATE -O1 -g --coverage)
-                target_compile_options(og_data_tests PRIVATE -O1 -g --coverage)
-                target_compile_options(og_runtime_tests PRIVATE -O1 -g --coverage)
-                target_link_options(og_unit_tests PRIVATE --coverage)
-                target_link_options(openglad_test PRIVATE --coverage)
-                target_link_options(og_data_tests PRIVATE --coverage)
-                target_link_options(og_runtime_tests PRIVATE --coverage)
-                target_compile_definitions(og_unit_tests PRIVATE ENABLE_COVERAGE)
-                target_compile_definitions(openglad_test PRIVATE ENABLE_COVERAGE)
-                target_compile_definitions(og_data_tests PRIVATE ENABLE_COVERAGE)
-                target_compile_definitions(og_runtime_tests PRIVATE ENABLE_COVERAGE)
-            else()
-                message(WARNING "ENABLE_COVERAGE is ON but compiler is not GCC/Clang; ignoring coverage flags")
-            endif()
-        endif()
     endif()
 endif()
 

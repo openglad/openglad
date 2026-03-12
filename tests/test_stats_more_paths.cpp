@@ -7,7 +7,7 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/irandom.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <memory>
 #include <vector>
@@ -27,12 +27,12 @@ static std::unique_ptr<walker> make_walker(char family)
 }
 } // namespace
 
-void test_stats_do_command_follow_branches()
+TEST(StatsMorePaths, stats_do_command_follow_branches)
 {
     // Create a leader via viewob[0]->control and a follower that will receive COMMAND_FOLLOW.
     auto leader = make_walker(FAMILY_SOLDIER);
     auto follower = make_walker(FAMILY_ELF);
-    TEST_ASSERT(leader && follower, "walkers created");
+    ASSERT_TRUE(leader && follower) << "walkers created";
     if (!(leader && follower))
         return;
 
@@ -57,14 +57,14 @@ void test_stats_do_command_follow_branches()
 
     og::runtime::current_session->myscreen_->viewob[0]->control = nullptr;
 }
-REGISTER_TEST(test_stats_do_command_follow_branches);
 
-void test_stats_do_command_follow_early_exit_when_foe_present()
+
+TEST(StatsMorePaths, stats_do_command_follow_early_exit_when_foe_present)
 {
     auto leader = make_walker(FAMILY_SOLDIER);
     auto follower = make_walker(FAMILY_ELF);
     auto foe = make_walker(FAMILY_ORC);
-    TEST_ASSERT(leader && follower && foe, "walkers created");
+    ASSERT_TRUE(leader && follower && foe) << "walkers created";
     if (!(leader && follower && foe))
         return;
 
@@ -77,26 +77,26 @@ void test_stats_do_command_follow_early_exit_when_foe_present()
 
     og::runtime::current_session->myscreen_->viewob[0]->control = nullptr;
 }
-REGISTER_TEST(test_stats_do_command_follow_early_exit_when_foe_present);
 
-void test_stats_do_command_fire_nonliving_logs_and_returns()
+
+TEST(StatsMorePaths, stats_do_command_fire_nonliving_logs_and_returns)
 {
     // Cover COMMAND_FIRE branch for non-living order.
     walker* weapon = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_ARROW);
-    TEST_ASSERT(weapon != nullptr, "weapon created");
+    ASSERT_TRUE(weapon != nullptr) << "weapon created";
     if (!weapon)
         return;
 
     weapon->stats()->force_command(COMMAND_FIRE, 1, 1, 0);
     (void)weapon->stats()->do_command();
 }
-REGISTER_TEST(test_stats_do_command_fire_nonliving_logs_and_returns);
 
-void test_stats_hit_response_triggers_yell_for_help_for_low_hp()
+
+TEST(StatsMorePaths, stats_hit_response_triggers_yell_for_help_for_low_hp)
 {
     auto target = make_walker(FAMILY_SOLDIER);
     auto attacker = make_walker(FAMILY_ORC);
-    TEST_ASSERT(target && attacker, "walkers created");
+    ASSERT_TRUE(target && attacker) << "walkers created";
     if (!(target && attacker))
         return;
 
@@ -108,9 +108,9 @@ void test_stats_hit_response_triggers_yell_for_help_for_low_hp()
     attacker->setxy(static_cast<Sint32>(target->xpos) + 5, static_cast<Sint32>(target->ypos));
     target->stats()->hit_response(attacker.get());
 }
-REGISTER_TEST(test_stats_hit_response_triggers_yell_for_help_for_low_hp);
 
-void test_stats_right_walk_exercises_direction_switch_when_direct_walk_fails()
+
+TEST(StatsMorePaths, stats_right_walk_exercises_direction_switch_when_direct_walk_fails)
 {
     // Exercise the large direction switch in statistics::right_walk() by ensuring:
     // - right/forward/right-back checks are false (open grid)
@@ -118,7 +118,7 @@ void test_stats_right_walk_exercises_direction_switch_when_direct_walk_fails()
     og::runtime::current_session->myscreen_->world().create_new_grid();
 
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -133,30 +133,30 @@ void test_stats_right_walk_exercises_direction_switch_when_direct_walk_fails()
         (void)w->stats()->right_walk();
     }
 }
-REGISTER_TEST(test_stats_right_walk_exercises_direction_switch_when_direct_walk_fails);
 
-void test_stats_constructor_null_controller_and_command_die_shortcuts()
+
+TEST(StatsMorePaths, stats_constructor_null_controller_and_command_die_shortcuts)
 {
     statistics s(nullptr);
-    TEST_ASSERT(s.controller == nullptr, "null-controller ctor should keep controller null");
-    TEST_ASSERT_EQ((int)Order::Living, (int)s.old_order, "null-controller ctor should set fallback old_order");
-    TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)s.old_family, "null-controller ctor should set fallback old_family");
+    ASSERT_TRUE(s.controller == nullptr) << "null-controller ctor should keep controller null";
+    ASSERT_EQ((int)Order::Living, (int)s.old_order) << "null-controller ctor should set fallback old_order";
+    ASSERT_EQ((int)FAMILY_SOLDIER, (int)s.old_family) << "null-controller ctor should set fallback old_family";
 
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
     w->stats()->delete_me = 0;
     w->stats()->add_command(COMMAND_DIE, 1, 0, 0);
-    TEST_ASSERT(w->stats()->delete_me == 1, "COMMAND_DIE add_command should mark delete_me");
+    ASSERT_TRUE(w->stats()->delete_me == 1) << "COMMAND_DIE add_command should mark delete_me";
 }
-REGISTER_TEST(test_stats_constructor_null_controller_and_command_die_shortcuts);
 
-void test_stats_do_command_set_reset_weapon_and_search_without_foe()
+
+TEST(StatsMorePaths, stats_do_command_set_reset_weapon_and_search_without_foe)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -166,23 +166,23 @@ void test_stats_do_command_set_reset_weapon_and_search_without_foe()
 
     w->stats()->force_command(COMMAND_SET_WEAPON, 1, FAMILY_BOMB, 0);
     (void)w->stats()->do_command();
-    TEST_ASSERT_EQ((int)FAMILY_BOMB, (int)w->current_weapon, "COMMAND_SET_WEAPON should set current weapon");
+    ASSERT_EQ((int)FAMILY_BOMB, (int)w->current_weapon) << "COMMAND_SET_WEAPON should set current weapon";
 
     w->stats()->force_command(COMMAND_RESET_WEAPON, 1, 0, 0);
     (void)w->stats()->do_command();
-    TEST_ASSERT_EQ((int)w->default_weapon, (int)w->current_weapon, "COMMAND_RESET_WEAPON should restore default");
+    ASSERT_EQ((int)w->default_weapon, (int)w->current_weapon) << "COMMAND_RESET_WEAPON should restore default";
 
     w->foe = nullptr;
     w->stats()->force_command(COMMAND_SEARCH, 1, 0, 0);
     (void)w->stats()->do_command();
-    TEST_ASSERT(!w->stats()->has_commands(), "COMMAND_SEARCH with no foe should clear command");
+    ASSERT_TRUE(!w->stats()->has_commands()) << "COMMAND_SEARCH with no foe should clear command";
 }
-REGISTER_TEST(test_stats_do_command_set_reset_weapon_and_search_without_foe);
 
-void test_stats_blocked_helpers_default_dir_branches()
+
+TEST(StatsMorePaths, stats_blocked_helpers_default_dir_branches)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -195,12 +195,12 @@ void test_stats_blocked_helpers_default_dir_branches()
     (void)w->stats()->right_back_blocked();
     (void)w->stats()->forward_blocked();
 }
-REGISTER_TEST(test_stats_blocked_helpers_default_dir_branches);
 
-void test_stats_forward_and_side_blocked_invalid_direction_defaults()
+
+TEST(StatsMorePaths, stats_forward_and_side_blocked_invalid_direction_defaults)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -209,45 +209,45 @@ void test_stats_forward_and_side_blocked_invalid_direction_defaults()
     w->curdir = static_cast<char>(127);
     w->enddir = static_cast<char>(127);
 
-    TEST_ASSERT(!w->stats()->forward_blocked(), "invalid curdir should fall back to no forward block");
-    TEST_ASSERT(!w->stats()->right_forward_blocked(), "invalid curdir should fall back to no right-forward block");
-    TEST_ASSERT(!w->stats()->right_back_blocked(), "invalid curdir should fall back to no right-back block");
-    TEST_ASSERT(w->stats()->right_walk(), "invalid direction fallback in right_walk should still return true");
+    ASSERT_TRUE(!w->stats()->forward_blocked()) << "invalid curdir should fall back to no forward block";
+    ASSERT_TRUE(!w->stats()->right_forward_blocked()) << "invalid curdir should fall back to no right-forward block";
+    ASSERT_TRUE(!w->stats()->right_back_blocked()) << "invalid curdir should fall back to no right-back block";
+    ASSERT_TRUE(w->stats()->right_walk()) << "invalid direction fallback in right_walk should still return true";
 }
-REGISTER_TEST(test_stats_forward_and_side_blocked_invalid_direction_defaults);
 
-void test_stats_add_and_force_command_walk_clamp_and_zero_fallback()
+
+TEST(StatsMorePaths, stats_add_and_force_command_walk_clamp_and_zero_fallback)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
     w->stats()->commands.clear();
     w->stats()->add_command(COMMAND_WALK, 2, 7, -9);
-    TEST_ASSERT(!w->stats()->commands.empty(), "add_command should enqueue walk command");
+    ASSERT_TRUE(!w->stats()->commands.empty()) << "add_command should enqueue walk command";
     if (!w->stats()->commands.empty())
     {
         const command& c = w->stats()->commands.back();
-        TEST_ASSERT_EQ(1, (int)c.com1, "add_command should clamp walk com1 to +1");
-        TEST_ASSERT_EQ(-1, (int)c.com2, "add_command should clamp walk com2 to -1");
+        ASSERT_EQ(1, (int)c.com1) << "add_command should clamp walk com1 to +1";
+        ASSERT_EQ(-1, (int)c.com2) << "add_command should clamp walk com2 to -1";
     }
 
     w->stats()->force_command(COMMAND_WALK, 1, 0, 0);
-    TEST_ASSERT(!w->stats()->commands.empty(), "force_command should prepend command");
+    ASSERT_TRUE(!w->stats()->commands.empty()) << "force_command should prepend command";
     if (!w->stats()->commands.empty())
     {
         const command& c = w->stats()->commands.front();
-        TEST_ASSERT_EQ(1, (int)c.com1, "force_command should convert zero walk x to 1");
-        TEST_ASSERT_EQ(1, (int)c.com2, "force_command should convert zero walk y to 1");
+        ASSERT_EQ(1, (int)c.com1) << "force_command should convert zero walk x to 1";
+        ASSERT_EQ(1, (int)c.com2) << "force_command should convert zero walk y to 1";
     }
 }
-REGISTER_TEST(test_stats_add_and_force_command_walk_clamp_and_zero_fallback);
 
-void test_stats_do_command_die_and_multido_paths()
+
+TEST(StatsMorePaths, stats_do_command_die_and_multido_paths)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -256,7 +256,7 @@ void test_stats_do_command_die_and_multido_paths()
     local_stats_die.commands.clear();
     local_stats_die.force_command(COMMAND_DIE, 1, 0, 0);
     (void)local_stats_die.do_command();
-    TEST_ASSERT(local_stats_die.delete_me == 1, "COMMAND_DIE do_command should mark delete_me");
+    ASSERT_TRUE(local_stats_die.delete_me == 1) << "COMMAND_DIE do_command should mark delete_me";
 
     // COMMAND_MULTIDO case branch with com1=0 avoids recursive self-entry while still
     // executing the switch branch and post-switch command decrement path.
@@ -264,22 +264,22 @@ void test_stats_do_command_die_and_multido_paths()
     local_stats_multi.commands.clear();
     local_stats_multi.force_command(COMMAND_MULTIDO, 1, 0, 0);
     (void)local_stats_multi.do_command();
-    TEST_ASSERT(!local_stats_multi.has_commands(), "COMMAND_MULTIDO with zero iterations should finish command");
+    ASSERT_TRUE(!local_stats_multi.has_commands()) << "COMMAND_MULTIDO with zero iterations should finish command";
 }
-REGISTER_TEST(test_stats_do_command_die_and_multido_paths);
 
-void test_stats_set_command_die_and_hit_response_early_returns()
+
+TEST(StatsMorePaths, stats_set_command_die_and_hit_response_early_returns)
 {
     auto target = make_walker(FAMILY_SOLDIER);
     auto attacker = make_walker(FAMILY_ORC);
-    TEST_ASSERT(target && attacker, "walkers created");
+    ASSERT_TRUE(target && attacker) << "walkers created";
     if (!(target && attacker))
         return;
 
     // set_command(COMMAND_DIE) logging branch.
     target->stats()->commands.clear();
     target->stats()->set_command(COMMAND_DIE, 1, 0, 0);
-    TEST_ASSERT(!target->stats()->commands.empty(), "set_command COMMAND_DIE should still enqueue a command");
+    ASSERT_TRUE(!target->stats()->commands.empty()) << "set_command COMMAND_DIE should still enqueue a command";
 
     // hit_response early return: null attacker.
     target->stats()->hit_response(nullptr);
@@ -304,13 +304,13 @@ void test_stats_set_command_die_and_hit_response_early_returns()
     target->stats()->hit_response(attacker.get());
     target->set_order_family(Order::Living, FAMILY_SOLDIER);
 }
-REGISTER_TEST(test_stats_set_command_die_and_hit_response_early_returns);
 
-void test_stats_walk_to_foe_short_circuit_and_path_branches()
+
+TEST(StatsMorePaths, stats_walk_to_foe_short_circuit_and_path_branches)
 {
     auto actor = make_walker(FAMILY_SOLDIER);
     auto foe = make_walker(FAMILY_ORC);
-    TEST_ASSERT(actor && foe, "walkers created");
+    ASSERT_TRUE(actor && foe) << "walkers created";
     if (!(actor && foe))
         return;
 
@@ -328,33 +328,33 @@ void test_stats_walk_to_foe_short_circuit_and_path_branches()
 
     // Nearby foe path: should short-circuit into attack command logic.
     bool ok = actor->stats()->walk_to_foe();
-    TEST_ASSERT(ok, "walk_to_foe should succeed for nearby foe");
+    ASSERT_TRUE(ok) << "walk_to_foe should succeed for nearby foe";
 
     // Nearby but dead foe: find_foes_in_range should fail and zero command count branch should run.
     actor->stats()->force_command(COMMAND_WALK, 5, 1, 0);
     foe->dead = 1;
     actor->path_check_counter = 0;
     ok = actor->stats()->walk_to_foe();
-    TEST_ASSERT(ok, "walk_to_foe should still run with dead remembered foe");
+    ASSERT_TRUE(ok) << "walk_to_foe should still run with dead remembered foe";
 
     // Distant foe path: executes find_path_to_foe() branch.
     foe->dead = 0;
     foe->setxy(static_cast<std::int32_t>(actor->xpos + 600), static_cast<std::int32_t>(actor->ypos));
     actor->path_check_counter = 0;
     ok = actor->stats()->walk_to_foe();
-    TEST_ASSERT(ok, "walk_to_foe should run distant-path branch");
+    ASSERT_TRUE(ok) << "walk_to_foe should run distant-path branch";
 
     ctx().rng = prev_rng;
 }
-REGISTER_TEST(test_stats_walk_to_foe_short_circuit_and_path_branches);
 
-void test_stats_right_walk_round7_right_back_and_forward_direction_maps()
+
+TEST(StatsMorePaths, stats_right_walk_round7_right_back_and_forward_direction_maps)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     walker* actor = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
-    TEST_ASSERT(actor != nullptr, "actor created");
+    ASSERT_TRUE(actor != nullptr) << "actor created";
     if (!actor)
         return;
 
@@ -366,7 +366,7 @@ void test_stats_right_walk_round7_right_back_and_forward_direction_maps()
 
     // Force only right_back_blocked() to be true for FACE_UP.
     walker* blocker = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    TEST_ASSERT(blocker != nullptr, "blocker created");
+    ASSERT_TRUE(blocker != nullptr) << "blocker created";
     if (!blocker)
         return;
     blocker->team_num = 1;
@@ -396,16 +396,15 @@ void test_stats_right_walk_round7_right_back_and_forward_direction_maps()
         const short x_before = actor->xpos;
         const short y_before = actor->ypos;
         const char enddir_before = actor->enddir;
-        TEST_ASSERT(actor->stats()->right_walk(), "right_walk should succeed in right_back_blocked branch");
-        TEST_ASSERT(!actor->stats()->commands.empty() || actor->xpos != x_before || actor->ypos != y_before
-                        || actor->enddir != enddir_before,
-                    "right_walk should queue, move, or update heading");
+        ASSERT_TRUE(actor->stats()->right_walk()) << "right_walk should succeed in right_back_blocked branch";
+        ASSERT_TRUE(!actor->stats()->commands.empty() || actor->xpos != x_before || actor->ypos != y_before
+                        || actor->enddir != enddir_before) << "right_walk should queue, move, or update heading";
         if (!actor->stats()->commands.empty())
         {
             const command& c = actor->stats()->commands.back();
-            TEST_ASSERT_EQ((int)COMMAND_WALK, (int)c.commandtype, "queued command should be COMMAND_WALK");
-            TEST_ASSERT_EQ(e.dx, (int)c.com1, "mapped walk x should match direction");
-            TEST_ASSERT_EQ(e.dy, (int)c.com2, "mapped walk y should match direction");
+            ASSERT_EQ((int)COMMAND_WALK, (int)c.commandtype) << "queued command should be COMMAND_WALK";
+            ASSERT_EQ(e.dx, (int)c.com1) << "mapped walk x should match direction";
+            ASSERT_EQ(e.dy, (int)c.com2) << "mapped walk y should match direction";
         }
     }
 
@@ -415,18 +414,18 @@ void test_stats_right_walk_round7_right_back_and_forward_direction_maps()
     actor->curdir = FACE_UP;
     actor->enddir = FACE_UP;
     const short y_before = actor->ypos;
-    TEST_ASSERT(actor->stats()->right_walk(), "right_walk direct-walk fallback should return true");
-    TEST_ASSERT(actor->ypos <= y_before, "FACE_UP fallback should walk in negative y direction");
+    ASSERT_TRUE(actor->stats()->right_walk()) << "right_walk direct-walk fallback should return true";
+    ASSERT_TRUE(actor->ypos <= y_before) << "FACE_UP fallback should walk in negative y direction";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_TEST(test_stats_right_walk_round7_right_back_and_forward_direction_maps);
 
-void test_stats_right_walk_round8_negative_enddir_default_switch_path()
+
+TEST(StatsMorePaths, stats_right_walk_round8_negative_enddir_default_switch_path)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     auto actor = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(actor != nullptr, "actor created");
+    ASSERT_TRUE(actor != nullptr) << "actor created";
     if (!actor)
         return;
 
@@ -438,11 +437,11 @@ void test_stats_right_walk_round8_negative_enddir_default_switch_path()
     actor->enddir = static_cast<char>(-127);
     actor->stats()->commands.clear();
 
-    TEST_ASSERT(actor->stats()->right_walk(), "right_walk should return true for negative-enddir fallback path");
+    ASSERT_TRUE(actor->stats()->right_walk()) << "right_walk should return true for negative-enddir fallback path";
 }
-REGISTER_TEST(test_stats_right_walk_round8_negative_enddir_default_switch_path);
 
-void test_stats_round11_follow_force_walk_and_right_walk_distance_branches()
+
+TEST(StatsMorePaths, stats_round11_follow_force_walk_and_right_walk_distance_branches)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -450,19 +449,19 @@ void test_stats_round11_follow_force_walk_and_right_walk_distance_branches()
     auto leader = make_walker(FAMILY_SOLDIER);
     auto follower = make_walker(FAMILY_ELF);
     auto foe = make_walker(FAMILY_ORC);
-    TEST_ASSERT(leader && follower && foe, "fixtures created");
+    ASSERT_TRUE(leader && follower && foe) << "fixtures created";
     if (!(leader && follower && foe))
         return;
 
     // force_command WALK clamp path (stats.cpp:152-163).
     follower->stats()->commands.clear();
     follower->stats()->force_command(COMMAND_WALK, 3, 9, -9);
-    TEST_ASSERT(!follower->stats()->commands.empty(), "force_command should enqueue walk");
+    ASSERT_TRUE(!follower->stats()->commands.empty()) << "force_command should enqueue walk";
     if (!follower->stats()->commands.empty())
     {
         const command& c = follower->stats()->commands.front();
-        TEST_ASSERT_EQ(1, (int)c.com1, "force_command should clamp com1 to +1");
-        TEST_ASSERT_EQ(-1, (int)c.com2, "force_command should clamp com2 to -1");
+        ASSERT_EQ(1, (int)c.com1) << "force_command should clamp com1 to +1";
+        ASSERT_EQ(-1, (int)c.com2) << "force_command should clamp com2 to -1";
     }
 
     // COMMAND_FOLLOW no-leader-found branch (stats.cpp:285-287).
@@ -471,7 +470,7 @@ void test_stats_round11_follow_force_walk_and_right_walk_distance_branches()
     follower->leader = nullptr;
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)follower->stats()->do_command();
-    TEST_ASSERT(follower->leader == nullptr, "follow without leader should stay leaderless");
+    ASSERT_TRUE(follower->leader == nullptr) << "follow without leader should stay leaderless";
 
     // COMMAND_FOLLOW axis-normalization branch (stats.cpp:303-310).
     og::runtime::current_session->myscreen_->viewob[0]->control = leader.get();
@@ -481,8 +480,7 @@ void test_stats_round11_follow_force_walk_and_right_walk_distance_branches()
     const short before_y = follower->ypos;
     follower->stats()->force_command(COMMAND_FOLLOW, 2, 0, 0);
     (void)follower->stats()->do_command();
-    TEST_ASSERT(follower->ypos == before_y || std::abs((int)follower->ypos - (int)before_y) <= 1,
-                "follow axis-normalization should heavily favor x-axis movement");
+    ASSERT_TRUE(follower->ypos == before_y || std::abs((int)follower->ypos - (int)before_y) <= 1) << "follow axis-normalization should heavily favor x-axis movement";
 
     // COMMAND_RIGHT_WALK distance gate branches (stats.cpp:360-368).
     follower->foe = foe.get();
@@ -496,9 +494,9 @@ void test_stats_round11_follow_force_walk_and_right_walk_distance_branches()
 
     og::runtime::current_session->myscreen_->viewob[0]->control = nullptr;
 }
-REGISTER_TEST(test_stats_round11_follow_force_walk_and_right_walk_distance_branches);
 
-void test_stats_round12_add_command_walk_clamps_and_follow_shortcuts()
+
+TEST(StatsMorePaths, stats_round12_add_command_walk_clamps_and_follow_shortcuts)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -506,7 +504,7 @@ void test_stats_round12_add_command_walk_clamps_and_follow_shortcuts()
     auto follower = make_walker(FAMILY_ELF);
     auto foe = make_walker(FAMILY_ORC);
     auto leader = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(follower && foe && leader, "fixtures created");
+    ASSERT_TRUE(follower && foe && leader) << "fixtures created";
     if (!(follower && foe && leader))
         return;
 
@@ -514,21 +512,21 @@ void test_stats_round12_add_command_walk_clamps_and_follow_shortcuts()
 
     // add_command(COMMAND_WALK) clamp/default branches (stats.cpp:128-140).
     follower->stats()->add_command(COMMAND_WALK, 2, 0, 0);
-    TEST_ASSERT(!follower->stats()->commands.empty(), "add_command walk should enqueue");
+    ASSERT_TRUE(!follower->stats()->commands.empty()) << "add_command walk should enqueue";
     if (!follower->stats()->commands.empty())
     {
         const command& c = follower->stats()->commands.back();
-        TEST_ASSERT_EQ(1, (int)c.com1, "zero walk x should default to +1");
-        TEST_ASSERT_EQ(1, (int)c.com2, "zero walk y should default to +1");
+        ASSERT_EQ(1, (int)c.com1) << "zero walk x should default to +1";
+        ASSERT_EQ(1, (int)c.com2) << "zero walk y should default to +1";
     }
 
     follower->stats()->add_command(COMMAND_WALK, 2, 7, -7);
-    TEST_ASSERT(!follower->stats()->commands.empty(), "second walk command enqueued");
+    ASSERT_TRUE(!follower->stats()->commands.empty()) << "second walk command enqueued";
     if (!follower->stats()->commands.empty())
     {
         const command& c = follower->stats()->commands.back();
-        TEST_ASSERT_EQ(1, (int)c.com1, "walk x should clamp high value to +1");
-        TEST_ASSERT_EQ(-1, (int)c.com2, "walk y should clamp low value to -1");
+        ASSERT_EQ(1, (int)c.com1) << "walk x should clamp high value to +1";
+        ASSERT_EQ(-1, (int)c.com2) << "walk y should clamp low value to -1";
     }
 
     // COMMAND_FOLLOW early exit when foe exists (stats.cpp:273-278).
@@ -536,7 +534,7 @@ void test_stats_round12_add_command_walk_clamps_and_follow_shortcuts()
     follower->leader = leader.get();
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)follower->stats()->do_command();
-    TEST_ASSERT(follower->leader == nullptr, "follow should clear leader when foe is present");
+    ASSERT_TRUE(follower->leader == nullptr) << "follow should clear leader when foe is present";
 
     // COMMAND_FOLLOW close-distance branch (stats.cpp:295-300).
     follower->foe = nullptr;
@@ -544,18 +542,18 @@ void test_stats_round12_add_command_walk_clamps_and_follow_shortcuts()
     leader->setxy(static_cast<Sint32>(follower->xpos) + 10, static_cast<Sint32>(follower->ypos) + 10);
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)follower->stats()->do_command();
-    TEST_ASSERT(follower->leader == nullptr, "follow should drop leader when already close");
+    ASSERT_TRUE(follower->leader == nullptr) << "follow should drop leader when already close";
 }
-REGISTER_TEST(test_stats_round12_add_command_walk_clamps_and_follow_shortcuts);
 
-void test_stats_round13_die_and_non_living_fire_command_branches()
+
+TEST(StatsMorePaths, stats_round13_die_and_non_living_fire_command_branches)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto living = make_walker(FAMILY_SOLDIER);
     walker* weapon = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_ARROW);
-    TEST_ASSERT(living && weapon, "fixtures created");
+    ASSERT_TRUE(living && weapon) << "fixtures created";
     if (!(living && weapon))
         return;
 
@@ -564,24 +562,23 @@ void test_stats_round13_die_and_non_living_fire_command_branches()
     living->stats()->delete_me = 0;
     living->stats()->force_command(COMMAND_DIE, 1, 0, 0);
     (void)living->stats()->do_command();
-    TEST_ASSERT_EQ(1, (int)living->stats()->delete_me, "COMMAND_DIE should set delete_me when count is low");
+    ASSERT_EQ(1, (int)living->stats()->delete_me) << "COMMAND_DIE should set delete_me when count is low";
 
     // COMMAND_FIRE on non-living controller path (stats.cpp:253-257).
     weapon->stats()->force_command(COMMAND_FIRE, 1, 1, 0);
     const short fire_result = weapon->stats()->do_command();
-    TEST_ASSERT(fire_result == 0 || fire_result == 1,
-                "COMMAND_FIRE on non-living should execute guarded branch without crashing");
+    ASSERT_TRUE(fire_result == 0 || fire_result == 1) << "COMMAND_FIRE on non-living should execute guarded branch without crashing";
 }
-REGISTER_TEST(test_stats_round13_die_and_non_living_fire_command_branches);
 
-void test_stats_round14_quickfire_multido_rush_and_walk_to_foe_firstfoe_fallback()
+
+TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_firstfoe_fallback)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
 
     auto actor = make_walker(FAMILY_SOLDIER);
     auto foe = make_walker(FAMILY_ORC);
-    TEST_ASSERT(actor && foe, "fixtures created");
+    ASSERT_TRUE(actor && foe) << "fixtures created";
     if (!(actor && foe))
         return;
 
@@ -594,7 +591,7 @@ void test_stats_round14_quickfire_multido_rush_and_walk_to_foe_firstfoe_fallback
 
     // COMMAND_RUSH with collide_ob target.
     walker* rush_target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    TEST_ASSERT(rush_target != nullptr, "rush target created");
+    ASSERT_TRUE(rush_target != nullptr) << "rush target created";
     if (rush_target)
     {
         actor->collide_ob = rush_target;
@@ -624,7 +621,7 @@ void test_stats_round14_quickfire_multido_rush_and_walk_to_foe_firstfoe_fallback
     foe->invisibility_left = 64; // allows near-foe scan to skip via rng
     SeqRandom rng({1, 1, 1, 1, 1});
     const bool walked = actor->stats()->walk_to_foe();
-    TEST_ASSERT(walked, "walk_to_foe should still succeed when using firstfoe fallback path");
-    TEST_ASSERT(actor->foe != nullptr, "walk_to_foe should restore foe from firstfoe fallback");
+    ASSERT_TRUE(walked) << "walk_to_foe should still succeed when using firstfoe fallback path";
+    ASSERT_TRUE(actor->foe != nullptr) << "walk_to_foe should restore foe from firstfoe fallback";
 }
-REGISTER_TEST(test_stats_round14_quickfire_multido_rush_and_walk_to_foe_firstfoe_fallback);
+

@@ -2,7 +2,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <memory>
 
@@ -34,24 +34,32 @@ void teardown_picker_ownership_fixture()
 }
 } // namespace
 
-void test_picker_cycle_team_guy_ownership_copy_and_alias()
+class PickerOwnershipFixture : public ::testing::Test {
+public:
+    void SetUp() override
+    {
+        setup_picker_ownership_fixture();
+    }
+
+    void TearDown() override
+    {
+        teardown_picker_ownership_fixture();
+    }
+};
+
+TEST_F(PickerOwnershipFixture, picker_cycle_team_guy_ownership_copy_and_alias)
 {
     const int original_strength = og::runtime::current_session->myscreen_->save_data.team_list[0]->strength;
 
     // Create a TrainSession to cycle through team members
     og::ui::TrainSession session(og::runtime::current_session->myscreen_->save_data);
-    TEST_ASSERT(!session.empty(), "session should not be empty");
+    ASSERT_TRUE(!session.empty()) << "session should not be empty";
 
     // working_copy() should be a distinct copy from original()
     const guy& working = session.working_copy();
     const guy& original = session.original();
 
-    TEST_ASSERT(&working != &original,
-        "working copy should be distinct from original");
-    TEST_ASSERT_EQ(original_strength, (int)working.strength,
-        "working copy should have same strength as original");
-    TEST_ASSERT_EQ(original_strength, (int)original.strength,
-        "original should match team list slot");
+    ASSERT_TRUE(&working != &original) << "working copy should be distinct from original";
+    ASSERT_EQ(original_strength, (int)working.strength) << "working copy should have same strength as original";
+    ASSERT_EQ(original_strength, (int)original.strength) << "original should match team list slot";
 }
-REGISTER_TEST_WITH_FIXTURE(test_picker_cycle_team_guy_ownership_copy_and_alias,
-    setup_picker_ownership_fixture, teardown_picker_ownership_fixture);

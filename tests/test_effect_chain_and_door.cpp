@@ -4,7 +4,7 @@
 #include <openglad/interface/guy_create.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <unordered_set>
 #include <vector>
@@ -50,9 +50,9 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team)
     return guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
 }
 
-void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx()
+TEST(EffectChainAndDoor, effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx)
 {
-    TEST_ASSERT(og::runtime::current_session->myscreen_ != nullptr, "myscreen exists");
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ != nullptr) << "myscreen exists";
     if (!og::runtime::current_session->myscreen_)
         return;
 
@@ -75,7 +75,7 @@ void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_doo
     auto leader_up = make_living(FAMILY_ORC, /*team*/ 1);
     auto foe2_up = make_living(FAMILY_ORC, /*team*/ 1);
     auto foe3_up = make_living(FAMILY_ORC, /*team*/ 1);
-    TEST_ASSERT(owner_up && leader_up && foe2_up && foe3_up, "livings created");
+    ASSERT_TRUE(owner_up && leader_up && foe2_up && foe3_up) << "livings created";
     if (!(owner_up && leader_up && foe2_up && foe3_up)) {
         ctx().rng = prev_rng;
         return;
@@ -96,7 +96,7 @@ void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_doo
     level.world().oblist.push_back(std::move(foe3_up));
 
     walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
-    TEST_ASSERT(chain != nullptr, "chain created");
+    ASSERT_TRUE(chain != nullptr) << "chain created";
     if (chain) {
         chain->team_num = 0;
         chain->owner = owner;
@@ -111,7 +111,7 @@ void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_doo
     // FAMILY_DOOR_OPEN: should spawn a FX copy and then die.
     // -----------------------------------------------------------------------
     walker* door_open = level.add_fx_ob(Order::FX, FAMILY_DOOR_OPEN);
-    TEST_ASSERT(door_open != nullptr, "door_open created");
+    ASSERT_TRUE(door_open != nullptr) << "door_open created";
     if (door_open) {
         door_open->ani_type = ANI_WALK;
         door_open->curdir = FACE_DOWN;
@@ -123,11 +123,11 @@ void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_doo
     ctx().rng = prev_rng;
     remove_new_leveldata_objects(level, ob_before, fx_before, weap_before);
 }
-REGISTER_TEST(test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx);
 
-void test_effect_chain_early_exit_and_movement_branches()
+
+TEST(EffectChainAndDoor, effect_chain_early_exit_and_movement_branches)
 {
-    TEST_ASSERT(og::runtime::current_session->myscreen_ != nullptr, "myscreen exists");
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ != nullptr) << "myscreen exists";
     if (!og::runtime::current_session->myscreen_)
         return;
 
@@ -135,20 +135,20 @@ void test_effect_chain_early_exit_and_movement_branches()
 
     // Missing leader should kill the chain immediately.
     walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
-    TEST_ASSERT(chain != nullptr, "chain created");
+    ASSERT_TRUE(chain != nullptr) << "chain created";
     if (chain) {
         chain->owner = nullptr;
         chain->leader = nullptr;
         chain->lineofsight = 0;
         chain->dead = 0;
         (void)chain->act();
-        TEST_ASSERT(chain->dead == 1, "chain without leader/owner should die");
+        ASSERT_TRUE(chain->dead == 1) << "chain without leader/owner should die";
     }
 
     // Non-hit movement path: chain should move toward leader and consume LOS.
     walker* owner = level.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* leader = level.add_ob(Order::Living, FAMILY_ORC);
-    TEST_ASSERT(owner != nullptr && leader != nullptr, "owner and leader created");
+    ASSERT_TRUE(owner != nullptr && leader != nullptr) << "owner and leader created";
     if (!(owner && leader))
         return;
 
@@ -156,7 +156,7 @@ void test_effect_chain_early_exit_and_movement_branches()
     leader->setxy(260, 180);
 
     walker* moving_chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
-    TEST_ASSERT(moving_chain != nullptr, "moving chain created");
+    ASSERT_TRUE(moving_chain != nullptr) << "moving chain created";
     if (!moving_chain)
         return;
 
@@ -167,17 +167,16 @@ void test_effect_chain_early_exit_and_movement_branches()
     const short x_before = moving_chain->xpos;
     const short y_before = moving_chain->ypos;
     (void)moving_chain->act();
-    TEST_ASSERT(moving_chain->lineofsight == 4, "movement path should decrement lineofsight");
-    TEST_ASSERT(moving_chain->xpos != x_before || moving_chain->ypos != y_before,
-                "movement path should move toward leader");
+    ASSERT_TRUE(moving_chain->lineofsight == 4) << "movement path should decrement lineofsight";
+    ASSERT_TRUE(moving_chain->xpos != x_before || moving_chain->ypos != y_before) << "movement path should move toward leader";
 
     level.delete_objects();
 }
-REGISTER_TEST(test_effect_chain_early_exit_and_movement_branches);
 
-void test_effect_chain_movement_axis_delta_branches()
+
+TEST(EffectChainAndDoor, effect_chain_movement_axis_delta_branches)
 {
-    TEST_ASSERT(og::runtime::current_session->myscreen_ != nullptr, "myscreen exists");
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ != nullptr) << "myscreen exists";
     if (!og::runtime::current_session->myscreen_)
         return;
 
@@ -187,7 +186,7 @@ void test_effect_chain_movement_axis_delta_branches()
     walker* owner = level.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* leader = level.add_ob(Order::Living, FAMILY_ORC);
     walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
-    TEST_ASSERT(owner && leader && chain, "owner/leader/chain created");
+    ASSERT_TRUE(owner && leader && chain) << "owner/leader/chain created";
     if (!(owner && leader && chain))
         return;
 
@@ -212,7 +211,7 @@ void test_effect_chain_movement_axis_delta_branches()
     leader->setxy(chain->xpos, chain->ypos);
     (void)chain->act();
 
-    TEST_ASSERT(chain->lineofsight < 20, "movement branch should consume lineofsight across acts");
+    ASSERT_TRUE(chain->lineofsight < 20) << "movement branch should consume lineofsight across acts";
     level.delete_objects();
 }
-REGISTER_TEST(test_effect_chain_movement_axis_delta_branches);
+

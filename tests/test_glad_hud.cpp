@@ -6,7 +6,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <memory>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -72,7 +72,7 @@ static std::unique_ptr<walker> make_living(unsigned char family, unsigned char t
     return w;
 }
 
-void test_glad_remaining_counts()
+TEST(GladHud, glad_remaining_counts)
 {
     // Isolate the oblist so prior game state doesn't affect counts.
     struct ObListSwap {
@@ -91,7 +91,7 @@ void test_glad_remaining_counts()
     auto ally = make_living(FAMILY_ELF, 0);
     auto foe1 = make_living(FAMILY_ORC, 1);
     auto foe2 = make_living(FAMILY_ORC, 2);
-    TEST_ASSERT(control && ally && foe1 && foe2, "walkers should be created");
+    ASSERT_TRUE(control && ally && foe1 && foe2) << "walkers should be created";
 
     walker* controlp = control.get();
     walker* allyp = ally.get();
@@ -103,19 +103,19 @@ void test_glad_remaining_counts()
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(foe1));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(foe2));
 
-    TEST_ASSERT_EQ(2, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp), "should count non-friendly living foes");
-    TEST_ASSERT_EQ(2, (int)remaining_team(og::runtime::current_session->myscreen_, 0), "should count living on team 0 (including control)");
+    ASSERT_EQ(2, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp)) << "should count non-friendly living foes";
+    ASSERT_EQ(2, (int)remaining_team(og::runtime::current_session->myscreen_, 0)) << "should count living on team 0 (including control)";
 
     foe2p->dead = 1;
-    TEST_ASSERT_EQ(1, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp), "dead foes should not be counted");
+    ASSERT_EQ(1, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp)) << "dead foes should not be counted";
     og::runtime::current_session->myscreen_->world().oblist.clear();
 }
-REGISTER_TEST(test_glad_remaining_counts);
 
-void test_glad_draw_gems_and_value_bars_smoke()
+
+TEST(GladHud, glad_draw_gems_and_value_bars_smoke)
 {
     auto control = make_player(0);
-    TEST_ASSERT(control != nullptr, "control should be created");
+    ASSERT_TRUE(control != nullptr) << "control should be created";
     walker* controlp = control.get();
 
     // Attach control to view so draw_radar_gems can find it.
@@ -160,12 +160,12 @@ void test_glad_draw_gems_and_value_bars_smoke()
 
     v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_runtime_data(), old_control) ? old_control : nullptr;
 }
-REGISTER_TEST(test_glad_draw_gems_and_value_bars_smoke);
 
-void test_glad_score_panel_and_new_score_panel_modes()
+
+TEST(GladHud, glad_score_panel_and_new_score_panel_modes)
 {
     auto control = make_player(0);
-    TEST_ASSERT(control != nullptr, "control should be created");
+    ASSERT_TRUE(control != nullptr) << "control should be created";
     walker* controlp = control.get();
     controlp->user = 0;
     controlp->team_num = 0;
@@ -178,7 +178,7 @@ void test_glad_score_panel_and_new_score_panel_modes()
     controlp->stats()->special_cost[static_cast<unsigned char>(controlp->current_special)] = 10;
 
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(v != nullptr, "view should exist");
+    ASSERT_TRUE(v != nullptr) << "view should exist";
     walker* old_control = v->control;
     v->control = controlp;
 
@@ -189,11 +189,11 @@ void test_glad_score_panel_and_new_score_panel_modes()
 
     // Exercise all life display variants in new_score_panel.
     v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
-    TEST_ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1), "new_score_panel text mode");
+    ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1)) << "new_score_panel text mode";
     v->prefs[PREF_LIFE] = PREF_LIFE_BARS;
-    TEST_ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1), "new_score_panel bars mode");
+    ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1)) << "new_score_panel bars mode";
     v->prefs[PREF_LIFE] = PREF_LIFE_BOTH;
-    TEST_ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1), "new_score_panel both mode");
+    ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1)) << "new_score_panel both mode";
 
     // Toggle shifter special-name branch and low-mp branch.
     controlp->shifter_down = 1;
@@ -202,9 +202,9 @@ void test_glad_score_panel_and_new_score_panel_modes()
     controlp->shifter_down = 0;
 
     // Wrapper functions.
-    TEST_ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_), "score_panel wrapper");
-    TEST_ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_, 1), "score_panel overload");
+    ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_)) << "score_panel wrapper";
+    ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_, 1)) << "score_panel overload";
 
     v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_runtime_data(), old_control) ? old_control : nullptr;
 }
-REGISTER_TEST(test_glad_score_panel_and_new_score_panel_modes);
+

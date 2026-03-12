@@ -4,7 +4,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <unordered_set>
 #include <vector>
@@ -53,9 +53,9 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team)
     return w;
 }
 
-void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enemies()
+TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enemies)
 {
-    TEST_ASSERT(og::runtime::current_session->myscreen_ != nullptr, "myscreen exists");
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ != nullptr) << "myscreen exists";
     if (!og::runtime::current_session->myscreen_)
         return;
 
@@ -66,7 +66,7 @@ void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enem
 
     // Owner (team 1) for the effects.
     auto owner = make_living(FAMILY_SOLDIER, 1);
-    TEST_ASSERT(owner != nullptr, "owner created");
+    ASSERT_TRUE(owner != nullptr) << "owner created";
     if (!owner)
         return;
     walker* owner_raw = owner.get();
@@ -75,7 +75,7 @@ void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enem
 
     // A friendly weapon placed in oblist (screen::find_foe_weapons_in_range iterates oblist).
     auto weap = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
-    TEST_ASSERT(weap != nullptr, "weapon created");
+    ASSERT_TRUE(weap != nullptr) << "weapon created";
     if (!weap) {
         remove_new_objects(level, ob_before, fx_before, weap_before);
         return;
@@ -87,7 +87,7 @@ void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enem
 
     // An enemy living within range for find_foes_in_range.
     walker* enemy = level.add_ob(Order::Living, FAMILY_ORC);
-    TEST_ASSERT(enemy != nullptr, "enemy created");
+    ASSERT_TRUE(enemy != nullptr) << "enemy created";
     if (enemy) {
         enemy->team_num = 2;
         enemy->damage = 1.0f;
@@ -96,7 +96,7 @@ void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enem
 
     // MAGIC_SHIELD: should absorb friendly weapons and attack enemies.
     walker* shield = level.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
-    TEST_ASSERT(shield != nullptr, "shield created");
+    ASSERT_TRUE(shield != nullptr) << "shield created";
     if (shield) {
         shield->owner = owner_raw;
         shield->team_num = 1;
@@ -108,7 +108,7 @@ void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enem
 
     // BOOMERANG: same idea, with its own weapon/enemy loops.
     walker* boomerang = level.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
-    TEST_ASSERT(boomerang != nullptr, "boomerang created");
+    ASSERT_TRUE(boomerang != nullptr) << "boomerang created";
     if (boomerang) {
         boomerang->owner = owner_raw;
         boomerang->team_num = 1;
@@ -121,4 +121,4 @@ void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enem
 
     remove_new_objects(level, ob_before, fx_before, weap_before);
 }
-REGISTER_TEST(test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enemies);
+

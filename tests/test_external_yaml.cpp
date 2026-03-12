@@ -3,7 +3,7 @@
 
 #include <yaml.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 static yaml_char_t* y(const char* s)
 {
@@ -176,7 +176,7 @@ static bool emit_yaml_document_with_variety(std::string* out_yaml)
     return true;
 }
 
-void test_external_yaml_parse_scalars_sequences_mappings()
+TEST(ExternalYaml, parse_scalars_sequences_mappings)
 {
     const std::string input =
         "a: 1\n"
@@ -185,8 +185,8 @@ void test_external_yaml_parse_scalars_sequences_mappings()
         "  - x\n"
         "  - y\n";
     int events = 0;
-    TEST_ASSERT(parse_yaml_events(input, &events), "parser should succeed");
-    TEST_ASSERT(events > 0, "parser should produce events");
+    ASSERT_TRUE(parse_yaml_events(input, &events)) << "parser should succeed";
+    ASSERT_TRUE(events > 0) << "parser should produce events";
 
     const std::vector<std::string> corpus = {
         // Explicit complex key, nested flow/block mixes.
@@ -225,29 +225,29 @@ void test_external_yaml_parse_scalars_sequences_mappings()
 
     for (const auto& doc : corpus) {
         int n = 0;
-        TEST_ASSERT(parse_yaml_events(doc, &n), "parser corpus document should succeed");
-        TEST_ASSERT(n > 0 || doc.empty(), "parser corpus should produce events for non-empty docs");
+        ASSERT_TRUE(parse_yaml_events(doc, &n)) << "parser corpus document should succeed";
+        ASSERT_TRUE(n > 0 || doc.empty()) << "parser corpus should produce events for non-empty docs";
     }
 }
-REGISTER_TEST(test_external_yaml_parse_scalars_sequences_mappings);
 
-void test_external_yaml_parse_anchors_aliases_tags()
+
+TEST(ExternalYaml, parse_anchors_aliases_tags)
 {
     const std::string input =
         "defaults: &def {n: 1, s: \"str\"}\n"
         "use: *def\n"
         "tagged: !!str hello\n";
     int events = 0;
-    TEST_ASSERT(parse_yaml_events(input, &events), "parser should handle anchors/aliases/tags");
-    TEST_ASSERT(events > 0, "parser should produce events");
+    ASSERT_TRUE(parse_yaml_events(input, &events)) << "parser should handle anchors/aliases/tags";
+    ASSERT_TRUE(events > 0) << "parser should produce events";
 }
-REGISTER_TEST(test_external_yaml_parse_anchors_aliases_tags);
 
-void test_external_yaml_parse_error_path()
+
+TEST(ExternalYaml, parse_error_path)
 {
     const std::string input = "a: [1, 2\n"; // missing closing bracket
     int events = 0;
-    TEST_ASSERT(!parse_yaml_events(input, &events), "invalid yaml should fail parse");
+    ASSERT_TRUE(!parse_yaml_events(input, &events)) << "invalid yaml should fail parse";
 
     const std::vector<std::string> bad = {
         "a:\n\t- tab-indented\n",                // illegal tab indentation
@@ -261,17 +261,17 @@ void test_external_yaml_parse_error_path()
         (void)parse_yaml_events(doc, &n);
     }
 }
-REGISTER_TEST(test_external_yaml_parse_error_path);
 
-void test_external_yaml_emit_and_reparse()
+
+TEST(ExternalYaml, emit_and_reparse)
 {
     std::string out;
-    TEST_ASSERT(emit_yaml_document_with_variety(&out), "emitter should succeed");
-    TEST_ASSERT(!out.empty(), "emitter should produce output");
+    ASSERT_TRUE(emit_yaml_document_with_variety(&out)) << "emitter should succeed";
+    ASSERT_TRUE(!out.empty()) << "emitter should produce output";
 
     // Re-parse emitted content to exercise both sides.
     int events = 0;
-    TEST_ASSERT(parse_yaml_events(out, &events), "re-parse emitted yaml should succeed");
-    TEST_ASSERT(events > 0, "re-parse should produce events");
+    ASSERT_TRUE(parse_yaml_events(out, &events)) << "re-parse emitted yaml should succeed";
+    ASSERT_TRUE(events > 0) << "re-parse should produce events";
 }
-REGISTER_TEST(test_external_yaml_emit_and_reparse);
+

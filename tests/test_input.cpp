@@ -2,12 +2,13 @@
 
 #include <openglad/interface/input.h>
 #include <openglad/platform/game_session.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 
 extern unsigned char convert_to_ascii(int scancode);
 
-void test_input_handle_key_event_sets_continue_on_escape()
+TEST(Input, handle_key_event_sets_continue_on_escape)
 {
     clear_keyboard();
 
@@ -18,16 +19,16 @@ void test_input_handle_key_event_sets_continue_on_escape()
 
     handle_key_event(e);
 
-    TEST_ASSERT_EQ((int)SDLK_ESCAPE, (int)query_key(), "query_key should return SDLK_ESCAPE after keydown");
-    TEST_ASSERT(query_input_continue(), "Escape should set input_continue");
-    TEST_ASSERT_EQ(1, (int)query_key_press_event(), "key_press_event should be set after keydown");
+    ASSERT_EQ((int)SDLK_ESCAPE, (int)query_key()) << "query_key should return SDLK_ESCAPE after keydown";
+    ASSERT_TRUE(query_input_continue()) << "Escape should set input_continue";
+    ASSERT_EQ(1, (int)query_key_press_event()) << "key_press_event should be set after keydown";
 
     clear_key_press_event();
-    TEST_ASSERT_EQ(0, (int)query_key_press_event(), "clear_key_press_event should reset flag");
+    ASSERT_EQ(0, (int)query_key_press_event()) << "clear_key_press_event should reset flag";
 }
-REGISTER_TEST(test_input_handle_key_event_sets_continue_on_escape);
 
-void test_input_handle_text_event_sets_raw_text()
+
+TEST(Input, handle_text_event_sets_raw_text)
 {
     clear_keyboard();
 
@@ -39,16 +40,16 @@ void test_input_handle_text_event_sets_raw_text()
     handle_text_event(e);
 
     const char* s = query_text_input();
-    TEST_ASSERT(s != nullptr, "query_text_input should return non-null after text input");
-    TEST_ASSERT_STR_EQ("abc", s, "query_text_input should match injected text");
-    TEST_ASSERT_EQ(1, (int)query_text_input_event(), "text_input_event should be set");
+    ASSERT_TRUE(s != nullptr) << "query_text_input should return non-null after text input";
+    ASSERT_STREQ("abc", s) << "query_text_input should match injected text";
+    ASSERT_EQ(1, (int)query_text_input_event()) << "text_input_event should be set";
 
     clear_text_input_event();
-    TEST_ASSERT(query_text_input() == nullptr, "clear_text_input_event should clear raw text");
+    ASSERT_TRUE(query_text_input() == nullptr) << "clear_text_input_event should clear raw text";
 }
-REGISTER_TEST(test_input_handle_text_event_sets_raw_text);
 
-void test_input_handle_mouse_motion_scales_to_game_coords()
+
+TEST(Input, handle_mouse_motion_scales_to_game_coords)
 {
     // Configure a simple 2x scale window (640x400) that maps to 320x200.
     og::runtime::current_session->viewport_offset_x_ = 0.0f;
@@ -63,12 +64,12 @@ void test_input_handle_mouse_motion_scales_to_game_coords()
 
     handle_mouse_event(e);
 
-    TEST_ASSERT_EQ(160, (int)mouse_state.x, "mouse x should be scaled to 320-wide game coords");
-    TEST_ASSERT_EQ(100, (int)mouse_state.y, "mouse y should be scaled to 200-tall game coords");
+    ASSERT_EQ(160, (int)mouse_state.x) << "mouse x should be scaled to 320-wide game coords";
+    ASSERT_EQ(100, (int)mouse_state.y) << "mouse y should be scaled to 200-tall game coords";
 }
-REGISTER_TEST(test_input_handle_mouse_motion_scales_to_game_coords);
 
-void test_input_overscan_clamps_and_updates_viewport()
+
+TEST(Input, overscan_clamps_and_updates_viewport)
 {
     // Save original viewport state so we don't poison later tests.
     const float saved_window_w = og::runtime::current_session->window_w_;
@@ -91,19 +92,19 @@ void test_input_overscan_clamps_and_updates_viewport()
     e.window.data2 = (int)og::runtime::current_session->window_h_;
     handle_window_event(e);
 
-    TEST_ASSERT(og::runtime::current_session->overscan_percentage_ == 0.0f, "overscan should clamp at 0.0");
-    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->viewport_offset_x_, "offset x should be 0 at 0% overscan");
-    TEST_ASSERT_EQ(0, (int)og::runtime::current_session->viewport_offset_y_, "offset y should be 0 at 0% overscan");
-    TEST_ASSERT_EQ((int)og::runtime::current_session->window_w_, (int)og::runtime::current_session->viewport_w_, "viewport_w should match window_w at 0% overscan");
-    TEST_ASSERT_EQ((int)og::runtime::current_session->window_h_, (int)og::runtime::current_session->viewport_h_, "viewport_h should match window_h at 0% overscan");
+    ASSERT_TRUE(og::runtime::current_session->overscan_percentage_ == 0.0f) << "overscan should clamp at 0.0";
+    ASSERT_EQ(0, (int)og::runtime::current_session->viewport_offset_x_) << "offset x should be 0 at 0% overscan";
+    ASSERT_EQ(0, (int)og::runtime::current_session->viewport_offset_y_) << "offset y should be 0 at 0% overscan";
+    ASSERT_EQ((int)og::runtime::current_session->window_w_, (int)og::runtime::current_session->viewport_w_) << "viewport_w should match window_w at 0% overscan";
+    ASSERT_EQ((int)og::runtime::current_session->window_h_, (int)og::runtime::current_session->viewport_h_) << "viewport_h should match window_h at 0% overscan";
 
     og::runtime::current_session->overscan_percentage_ = 1.0f;
     handle_window_event(e);
-    TEST_ASSERT(og::runtime::current_session->overscan_percentage_ == 0.25f, "overscan should clamp at 0.25");
-    TEST_ASSERT(og::runtime::current_session->viewport_offset_x_ > 0.0f, "offset x should be >0 with overscan");
-    TEST_ASSERT(og::runtime::current_session->viewport_offset_y_ > 0.0f, "offset y should be >0 with overscan");
-    TEST_ASSERT(og::runtime::current_session->viewport_w_ < og::runtime::current_session->window_w_, "viewport_w should shrink with overscan");
-    TEST_ASSERT(og::runtime::current_session->viewport_h_ < og::runtime::current_session->window_h_, "viewport_h should shrink with overscan");
+    ASSERT_TRUE(og::runtime::current_session->overscan_percentage_ == 0.25f) << "overscan should clamp at 0.25";
+    ASSERT_TRUE(og::runtime::current_session->viewport_offset_x_ > 0.0f) << "offset x should be >0 with overscan";
+    ASSERT_TRUE(og::runtime::current_session->viewport_offset_y_ > 0.0f) << "offset y should be >0 with overscan";
+    ASSERT_TRUE(og::runtime::current_session->viewport_w_ < og::runtime::current_session->window_w_) << "viewport_w should shrink with overscan";
+    ASSERT_TRUE(og::runtime::current_session->viewport_h_ < og::runtime::current_session->window_h_) << "viewport_h should shrink with overscan";
 
     // Restore viewport state.
     og::runtime::current_session->window_w_ = saved_window_w;
@@ -114,49 +115,49 @@ void test_input_overscan_clamps_and_updates_viewport()
     og::runtime::current_session->viewport_w_ = saved_vp_w;
     og::runtime::current_session->viewport_h_ = saved_vp_h;
 }
-REGISTER_TEST(test_input_overscan_clamps_and_updates_viewport);
 
-void test_input_key_queries_and_ascii_conversion()
+
+TEST(Input, key_queries_and_ascii_conversion)
 {
     SDL_Event e{};
     e.type = SDL_KEYDOWN;
     e.key.keysym.sym = SDLK_a;
-    TEST_ASSERT(query_key_event(SDLK_a, e), "query_key_event should match keydown sym");
-    TEST_ASSERT(!query_key_event(SDLK_b, e), "query_key_event should not match other keys");
+    ASSERT_TRUE(query_key_event(SDLK_a, e)) << "query_key_event should match keydown sym";
+    ASSERT_TRUE(!query_key_event(SDLK_b, e)) << "query_key_event should not match other keys";
 
-    TEST_ASSERT(isAnyPlayerKey(SDLK_w), "isAnyPlayerKey should find player 0 default move key");
-    TEST_ASSERT(isPlayerKey(0, SDLK_w), "isPlayerKey should be true for player 0 move key");
-    TEST_ASSERT(!isPlayerKey(1, SDLK_w), "isPlayerKey should be false for other players' keys");
+    ASSERT_TRUE(isAnyPlayerKey(SDLK_w)) << "isAnyPlayerKey should find player 0 default move key";
+    ASSERT_TRUE(isPlayerKey(0, SDLK_w)) << "isPlayerKey should be true for player 0 move key";
+    ASSERT_TRUE(!isPlayerKey(1, SDLK_w)) << "isPlayerKey should be false for other players' keys";
 
-    TEST_ASSERT_EQ('A', (int)convert_to_ascii(SDLK_a), "convert_to_ascii(SDLK_a) should return 'A'");
-    TEST_ASSERT_EQ('Z', (int)convert_to_ascii(SDLK_z), "convert_to_ascii(SDLK_z) should return 'Z'");
-    TEST_ASSERT_EQ('0', (int)convert_to_ascii(SDLK_0), "convert_to_ascii(SDLK_0) should return '0'");
-    TEST_ASSERT_EQ(255, (int)convert_to_ascii(SDLK_UNKNOWN), "convert_to_ascii(unknown) should return 255 sentinel");
+    ASSERT_EQ('A', (int)convert_to_ascii(SDLK_a)) << "convert_to_ascii(SDLK_a) should return 'A'";
+    ASSERT_EQ('Z', (int)convert_to_ascii(SDLK_z)) << "convert_to_ascii(SDLK_z) should return 'Z'";
+    ASSERT_EQ('0', (int)convert_to_ascii(SDLK_0)) << "convert_to_ascii(SDLK_0) should return '0'";
+    ASSERT_EQ(255, (int)convert_to_ascii(SDLK_UNKNOWN)) << "convert_to_ascii(unknown) should return 255 sentinel";
 
     for (int i = 0; i < 26; ++i)
     {
         const int key = SDLK_a + i;
         const int expected = 'A' + i;
-        TEST_ASSERT_EQ(expected, (int)convert_to_ascii(key), "alphabet key should map to uppercase ASCII");
+        ASSERT_EQ(expected, (int)convert_to_ascii(key)) << "alphabet key should map to uppercase ASCII";
     }
 
-    TEST_ASSERT_EQ('1', (int)convert_to_ascii(SDLK_1), "digit key 1");
-    TEST_ASSERT_EQ('2', (int)convert_to_ascii(SDLK_2), "digit key 2");
-    TEST_ASSERT_EQ('3', (int)convert_to_ascii(SDLK_3), "digit key 3");
-    TEST_ASSERT_EQ('4', (int)convert_to_ascii(SDLK_4), "digit key 4");
-    TEST_ASSERT_EQ('5', (int)convert_to_ascii(SDLK_5), "digit key 5");
-    TEST_ASSERT_EQ('6', (int)convert_to_ascii(SDLK_6), "digit key 6");
-    TEST_ASSERT_EQ('7', (int)convert_to_ascii(SDLK_7), "digit key 7");
-    TEST_ASSERT_EQ('8', (int)convert_to_ascii(SDLK_8), "digit key 8");
-    TEST_ASSERT_EQ('9', (int)convert_to_ascii(SDLK_9), "digit key 9");
-    TEST_ASSERT_EQ('0', (int)convert_to_ascii(SDLK_0), "digit key 0");
+    ASSERT_EQ('1', (int)convert_to_ascii(SDLK_1)) << "digit key 1";
+    ASSERT_EQ('2', (int)convert_to_ascii(SDLK_2)) << "digit key 2";
+    ASSERT_EQ('3', (int)convert_to_ascii(SDLK_3)) << "digit key 3";
+    ASSERT_EQ('4', (int)convert_to_ascii(SDLK_4)) << "digit key 4";
+    ASSERT_EQ('5', (int)convert_to_ascii(SDLK_5)) << "digit key 5";
+    ASSERT_EQ('6', (int)convert_to_ascii(SDLK_6)) << "digit key 6";
+    ASSERT_EQ('7', (int)convert_to_ascii(SDLK_7)) << "digit key 7";
+    ASSERT_EQ('8', (int)convert_to_ascii(SDLK_8)) << "digit key 8";
+    ASSERT_EQ('9', (int)convert_to_ascii(SDLK_9)) << "digit key 9";
+    ASSERT_EQ('0', (int)convert_to_ascii(SDLK_0)) << "digit key 0";
 
-    TEST_ASSERT_EQ(32, (int)convert_to_ascii(SDLK_SPACE), "space");
-    TEST_ASSERT_EQ(13, (int)convert_to_ascii(SDLK_RETURN), "return");
-    TEST_ASSERT_EQ(27, (int)convert_to_ascii(SDLK_ESCAPE), "escape");
-    TEST_ASSERT_EQ('.', (int)convert_to_ascii(SDLK_PERIOD), "period");
-    TEST_ASSERT_EQ(',', (int)convert_to_ascii(SDLK_COMMA), "comma");
-    TEST_ASSERT_EQ('\'', (int)convert_to_ascii(SDLK_QUOTE), "quote");
-    TEST_ASSERT_EQ('`', (int)convert_to_ascii(SDLK_BACKQUOTE), "backquote");
+    ASSERT_EQ(32, (int)convert_to_ascii(SDLK_SPACE)) << "space";
+    ASSERT_EQ(13, (int)convert_to_ascii(SDLK_RETURN)) << "return";
+    ASSERT_EQ(27, (int)convert_to_ascii(SDLK_ESCAPE)) << "escape";
+    ASSERT_EQ('.', (int)convert_to_ascii(SDLK_PERIOD)) << "period";
+    ASSERT_EQ(',', (int)convert_to_ascii(SDLK_COMMA)) << "comma";
+    ASSERT_EQ('\'', (int)convert_to_ascii(SDLK_QUOTE)) << "quote";
+    ASSERT_EQ('`', (int)convert_to_ascii(SDLK_BACKQUOTE)) << "backquote";
 }
-REGISTER_TEST(test_input_key_queries_and_ascii_conversion);
+

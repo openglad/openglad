@@ -2,10 +2,11 @@
 #include <array>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -56,14 +57,14 @@ static int go_no_team_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
     SDL_Delay(500);
     wait_for_interactable("go", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Click GO with no team
     fprintf(stderr, "  [test] clicking go (with empty team)\n");
@@ -76,7 +77,7 @@ static int go_no_team_injector(void* data)
 
     // Should be back in team menu (popup already dismissed)
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
     fprintf(stderr, "  [test] clicking back from team menu\n");
     interact("back");
 
@@ -84,7 +85,7 @@ static int go_no_team_injector(void* data)
     return 0;
 }
 
-void test_go_without_team() {
+TEST(GoNoTeam, go_without_team) {
     trace_clear();
 
     // Set up save with NO team members
@@ -97,7 +98,7 @@ void test_go_without_team() {
 
     GoNoTeamState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(go_no_team_injector, "go_no_team", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -110,10 +111,10 @@ void test_go_without_team() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.saw_popup, "should have seen 'NEED A TEAM!' popup");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_popup) << "should have seen 'NEED A TEAM!' popup";
 }
-REGISTER_TEST(test_go_without_team);
+
 
 
 // Test: Clicking TRAIN TEAM with no team should show popup, not crash.
@@ -133,14 +134,14 @@ static int train_no_team_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
     SDL_Delay(500);
     wait_for_interactable("train_team", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Click TRAIN with no team
     fprintf(stderr, "  [test] clicking train_team (with empty team)\n");
@@ -153,7 +154,7 @@ static int train_no_team_injector(void* data)
 
     // Should be back in team menu (popup already dismissed)
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
     fprintf(stderr, "  [test] clicking back from team menu\n");
     interact("back");
 
@@ -161,7 +162,7 @@ static int train_no_team_injector(void* data)
     return 0;
 }
 
-void test_train_without_team() {
+TEST(GoNoTeam, train_without_team) {
     trace_clear();
 
     og::runtime::current_session->myscreen_->save_data.reset();
@@ -173,7 +174,7 @@ void test_train_without_team() {
 
     TrainNoTeamState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(train_no_team_injector, "train_no_team", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -186,7 +187,7 @@ void test_train_without_team() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.saw_popup, "should have seen 'NEED A TEAM!' popup");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_popup) << "should have seen 'NEED A TEAM!' popup";
 }
-REGISTER_TEST(test_train_without_team);
+

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 TEXT_BIN="${1:-${OPENGLAD_TEXT:-./openglad_text}}"
+TEXT_TIMEOUT="${OPENGLAD_TEXT_TIMEOUT:-55}"
 if [ ! -x "$TEXT_BIN" ]; then
     echo "FAIL: Cannot find executable: $TEXT_BIN" >&2
     exit 1
@@ -12,7 +13,7 @@ TMPOERR=$(mktemp)
 TMPHOME=$(mktemp -d)
 trap 'rm -f "$TMPOUT" "$TMPOERR"; rm -rf "$TMPHOME"' EXIT
 
-printf 'input 0 left\nquit\n' | timeout 30 "$TEXT_BIN" --protocol --level 1 --seed 42 > "$TMPOUT" 2>/dev/null
+printf 'input 0 left\nquit\n' | HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" --protocol --level 1 --seed 42 > "$TMPOUT" 2>/dev/null
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "FAIL: openglad_text unsupported-path run exited with code $rc" >&2
@@ -46,7 +47,7 @@ if quit_msg.get('status') != 'ok':
 print('PASS: unsupported protocol command emits expected error')
 PY
 
-HOME="$TMPHOME" timeout 30 "$TEXT_BIN" --probe-unsupported-warnings > /dev/null 2> "$TMPOERR"
+HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" --probe-unsupported-warnings > /dev/null 2> "$TMPOERR"
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "FAIL: openglad_text warning probe run exited with code $rc" >&2

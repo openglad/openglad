@@ -3,14 +3,14 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
-void test_viewscreen_view_team_renders_entries_for_my_team()
+TEST(ViewTeamList, viewscreen_view_team_renders_entries_for_my_team)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(vs != nullptr, "viewscreen exists");
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
     if (!vs)
         return;
 
@@ -21,7 +21,7 @@ void test_viewscreen_view_team_renders_entries_for_my_team()
     walker* w0 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     walker* w1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ELF);
     walker* w_other = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    TEST_ASSERT(w0 && w1 && w_other, "walkers created");
+    ASSERT_TRUE(w0 && w1 && w_other) << "walkers created";
     if (!(w0 && w1 && w_other))
         return;
 
@@ -50,4 +50,4 @@ void test_viewscreen_view_team_renders_entries_for_my_team()
 
     vs->control = nullptr;
 }
-REGISTER_TEST(test_viewscreen_view_team_renders_entries_for_my_team);
+

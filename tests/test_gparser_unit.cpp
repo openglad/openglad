@@ -4,23 +4,23 @@
 #include <unistd.h>
 #include <string>
 #include <vector>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 
-OG_UNIT_TEST(test_gparser_apply_get_and_is_on_paths)
+TEST(GparserUnit, gparser_apply_get_and_is_on_paths)
 {
     cfg_store local_cfg;
     local_cfg.apply_setting("sound", "sound", "on");
     local_cfg.apply_setting("graphics", "fullscreen", "off");
 
-    OG_ASSERT(local_cfg.get_setting("sound", "sound") == "on");
-    OG_ASSERT(local_cfg.get_setting("graphics", "fullscreen") == "off");
-    OG_ASSERT(local_cfg.get_setting("graphics", "missing_key").empty());
-    OG_ASSERT(local_cfg.get_setting("missing_cat", "missing_key").empty());
-    OG_ASSERT(local_cfg.is_on("sound", "sound"));
-    OG_ASSERT(!local_cfg.is_on("graphics", "fullscreen"));
+    ASSERT_TRUE(local_cfg.get_setting("sound", "sound") == "on");
+    ASSERT_TRUE(local_cfg.get_setting("graphics", "fullscreen") == "off");
+    ASSERT_TRUE(local_cfg.get_setting("graphics", "missing_key").empty());
+    ASSERT_TRUE(local_cfg.get_setting("missing_cat", "missing_key").empty());
+    ASSERT_TRUE(local_cfg.is_on("sound", "sound"));
+    ASSERT_TRUE(!local_cfg.is_on("graphics", "fullscreen"));
 }
 
-OG_UNIT_TEST(test_gparser_commandline_switches_and_unknown_arg)
+TEST(GparserUnit, gparser_commandline_switches_and_unknown_arg)
 {
     cfg_store local_cfg;
 
@@ -44,12 +44,12 @@ OG_UNIT_TEST(test_gparser_commandline_switches_and_unknown_arg)
     char** argv = argv_buf.data();
     local_cfg.commandline(argc, argv);
 
-    OG_ASSERT(local_cfg.get_setting("sound", "sound") == "off");
-    OG_ASSERT(local_cfg.get_setting("graphics", "render") == "sai");
-    OG_ASSERT(local_cfg.get_setting("graphics", "fullscreen") == "on");
+    ASSERT_TRUE(local_cfg.get_setting("sound", "sound") == "off");
+    ASSERT_TRUE(local_cfg.get_setting("graphics", "render") == "sai");
+    ASSERT_TRUE(local_cfg.get_setting("graphics", "fullscreen") == "on");
 }
 
-OG_UNIT_TEST(test_gparser_commandline_help_and_version_exit_paths)
+TEST(GparserUnit, gparser_commandline_help_and_version_exit_paths)
 {
     auto run_child = [](const char* flag) -> int {
         pid_t pid = fork();
@@ -72,10 +72,10 @@ OG_UNIT_TEST(test_gparser_commandline_help_and_version_exit_paths)
     };
 
     const int help_status = run_child("-h");
-    OG_ASSERT(WIFEXITED(help_status));
-    OG_ASSERT(WEXITSTATUS(help_status) == 0);
+    ASSERT_TRUE(WIFEXITED(help_status));
+    ASSERT_TRUE(WEXITSTATUS(help_status) == 0);
 
     const int version_status = run_child("-v");
-    OG_ASSERT(WIFEXITED(version_status));
-    OG_ASSERT(WEXITSTATUS(version_status) == 0);
+    ASSERT_TRUE(WIFEXITED(version_status));
+    ASSERT_TRUE(WEXITSTATUS(version_status) == 0);
 }

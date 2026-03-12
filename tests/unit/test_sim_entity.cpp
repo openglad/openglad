@@ -8,20 +8,20 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/statistics.h>
-#include "unit.h"
+#include <gtest/gtest.h>
 
-OG_UNIT_TEST(test_sim_entity_default_construction)
+TEST(SimEntity, default_construction)
 {
     og::sim::SimEntity e;
-    OG_ASSERT(e.xpos == 0);
-    OG_ASSERT(e.ypos == 0);
-    OG_ASSERT(e.dead == 0);
-    OG_ASSERT(e.user == -1);
-    OG_ASSERT(e.team_num == 0);
-    OG_ASSERT(e.real_team_num == 255);
+    ASSERT_TRUE(e.xpos == 0);
+    ASSERT_TRUE(e.ypos == 0);
+    ASSERT_TRUE(e.dead == 0);
+    ASSERT_TRUE(e.user == -1);
+    ASSERT_TRUE(e.team_num == 0);
+    ASSERT_TRUE(e.real_team_num == 255);
 }
 
-OG_UNIT_TEST(test_sim_entity_set_position)
+TEST(SimEntity, set_position)
 {
     og::sim::SimEntity e;
     e.xpos = 100;
@@ -29,24 +29,24 @@ OG_UNIT_TEST(test_sim_entity_set_position)
     e.sizex = 16;
     e.sizey = 16;
 
-    OG_ASSERT(e.xpos == 100);
-    OG_ASSERT(e.ypos == 200);
-    OG_ASSERT(e.sizex == 16);
-    OG_ASSERT(e.sizey == 16);
+    ASSERT_TRUE(e.xpos == 100);
+    ASSERT_TRUE(e.ypos == 200);
+    ASSERT_TRUE(e.sizex == 16);
+    ASSERT_TRUE(e.sizey == 16);
 }
 
-OG_UNIT_TEST(test_sim_entity_team_and_identity)
+TEST(SimEntity, team_and_identity)
 {
     og::sim::SimEntity e;
     e.team_num = 1;
     e.real_team_num = 255;
     e.user = 0;      // Player 0
 
-    OG_ASSERT(e.team_num == 1);
-    OG_ASSERT(e.user == 0);
+    ASSERT_TRUE(e.team_num == 1);
+    ASSERT_TRUE(e.user == 0);
 }
 
-OG_UNIT_TEST(test_sim_entity_state_flags)
+TEST(SimEntity, state_flags)
 {
     og::sim::SimEntity e;
     e.invulnerable_left = 30;
@@ -55,17 +55,17 @@ OG_UNIT_TEST(test_sim_entity_state_flags)
     e.bonus_rounds = 2;
     e.dead = 0;
 
-    OG_ASSERT(e.invulnerable_left == 30);
-    OG_ASSERT(e.flight_left == 15);
-    OG_ASSERT(e.invisibility_left == 0);
-    OG_ASSERT(e.bonus_rounds == 2);
-    OG_ASSERT(!e.dead);
+    ASSERT_TRUE(e.invulnerable_left == 30);
+    ASSERT_TRUE(e.flight_left == 15);
+    ASSERT_TRUE(e.invisibility_left == 0);
+    ASSERT_TRUE(e.bonus_rounds == 2);
+    ASSERT_TRUE(!e.dead);
 
     e.dead = 1;
-    OG_ASSERT(e.dead);
+    ASSERT_TRUE(e.dead);
 }
 
-OG_UNIT_TEST(test_sim_entity_event_log_binding)
+TEST(SimEntity, event_log_binding)
 {
     GameWorld world(7);
     GameplayContext game_ctx;
@@ -77,13 +77,13 @@ OG_UNIT_TEST(test_sim_entity_event_log_binding)
     GameplayContext* prev = current_game;
     current_game = &game_ctx;
 
-    OG_ASSERT(current_game != nullptr);
-    OG_ASSERT(current_game->world == &world);
-    OG_ASSERT(current_game->sim_events == &log);
+    ASSERT_TRUE(current_game != nullptr);
+    ASSERT_TRUE(current_game->world == &world);
+    ASSERT_TRUE(current_game->sim_events == &log);
 
     current_game->sim_events->push(og::sim::EventKind::PlaySound, 42);
-    OG_ASSERT(current_game->sim_events->size() == 1);
-    OG_ASSERT(current_game->sim_events->events()[0].a == 42);
+    ASSERT_TRUE(current_game->sim_events->size() == 1);
+    ASSERT_TRUE(current_game->sim_events->events()[0].a == 42);
 
     current_game = prev;
 }
@@ -93,56 +93,56 @@ OG_UNIT_TEST(test_sim_entity_event_log_binding)
 // Verify walker can be created without SDL, without pixieN rendering data.
 // ---------------------------------------------------------------------------
 
-OG_UNIT_TEST(test_walker_headless_construction)
+TEST(SimEntity, walker_headless_construction)
 {
     walker w;  // No PixieData — headless mode
 
-    OG_ASSERT(w.xpos == 0);
-    OG_ASSERT(w.ypos == 0);
-    OG_ASSERT(w.dead == 0);
-    OG_ASSERT(w.user == -1);
-    OG_ASSERT(!w.has_render());
-    OG_ASSERT(w.bmp_data() == nullptr);
-    OG_ASSERT(w.render_component() == nullptr);
+    ASSERT_TRUE(w.xpos == 0);
+    ASSERT_TRUE(w.ypos == 0);
+    ASSERT_TRUE(w.dead == 0);
+    ASSERT_TRUE(w.user == -1);
+    ASSERT_TRUE(!w.has_render());
+    ASSERT_TRUE(w.bmp_data() == nullptr);
+    ASSERT_TRUE(w.render_component() == nullptr);
 }
 
-OG_UNIT_TEST(test_walker_headless_position_and_movement)
+TEST(SimEntity, walker_headless_position_and_movement)
 {
     walker w;
     w.setxy(100, 200);
-    OG_ASSERT(w.xpos == 100);
-    OG_ASSERT(w.ypos == 200);
+    ASSERT_TRUE(w.xpos == 100);
+    ASSERT_TRUE(w.ypos == 200);
 
     w.setxy(50, 75);
-    OG_ASSERT(w.xpos == 50);
-    OG_ASSERT(w.ypos == 75);
+    ASSERT_TRUE(w.xpos == 50);
+    ASSERT_TRUE(w.ypos == 75);
 }
 
-OG_UNIT_TEST(test_walker_headless_with_rng)
+TEST(SimEntity, walker_headless_with_rng)
 {
     GameWorld world(42);
     std::uint32_t val = world.rng_.next(100);
-    OG_ASSERT(val < 100);
+    ASSERT_TRUE(val < 100);
 }
 
-OG_UNIT_TEST(test_walker_headless_stats)
+TEST(SimEntity, walker_headless_stats)
 {
     walker w;
     statistics* st = w.stats();
-    OG_ASSERT(st != nullptr);
+    ASSERT_TRUE(st != nullptr);
     st->hitpoints = 50;
     st->max_hitpoints = 100;
-    OG_ASSERT(st->hitpoints == 50);
-    OG_ASSERT(st->max_hitpoints == 100);
+    ASSERT_TRUE(st->hitpoints == 50);
+    ASSERT_TRUE(st->max_hitpoints == 100);
 }
 
-OG_UNIT_TEST(test_walker_headless_frame_tracking)
+TEST(SimEntity, walker_headless_frame_tracking)
 {
     walker w;
-    OG_ASSERT(w.frame == 0);
+    ASSERT_TRUE(w.frame == 0);
 
     // set_frame validates against frames count; headless walker has 0 frames
     short result = w.set_frame(2);
-    OG_ASSERT(result == 0);           // Should fail — no frames allocated
-    OG_ASSERT(w.frame == 0);  // Frame unchanged
+    ASSERT_TRUE(result == 0);           // Should fail — no frames allocated
+    ASSERT_TRUE(w.frame == 0);  // Frame unchanged
 }

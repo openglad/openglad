@@ -19,7 +19,7 @@
 #include <openglad/interface/guy_create.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/legacy/base.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/ui/campaign_picker.h>

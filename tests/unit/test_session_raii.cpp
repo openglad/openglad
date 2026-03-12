@@ -11,9 +11,9 @@
 #include <set>
 #include <vector>
 
-#include "unit.h"
+#include <gtest/gtest.h>
 
-OG_UNIT_TEST(test_game_session_headless_restores_legacy_globals)
+TEST(SessionRaii, game_session_headless_restores_legacy_globals)
 {
     screen* prev_screen = og::runtime::current_session->myscreen_;
     options* prev_prefs = og::runtime::current_session->theprefs_;
@@ -26,16 +26,16 @@ OG_UNIT_TEST(test_game_session_headless_restores_legacy_globals)
 
         og::runtime::GameSession session(session_cfg);
 
-        OG_ASSERT(og::runtime::current_session->myscreen_ == nullptr);
-        OG_ASSERT(og::runtime::current_session->theprefs_ == nullptr);
-        OG_ASSERT(session.ctx_.rng != nullptr);
+        ASSERT_TRUE(og::runtime::current_session->myscreen_ == nullptr);
+        ASSERT_TRUE(og::runtime::current_session->theprefs_ == nullptr);
+        ASSERT_TRUE(session.ctx_.rng != nullptr);
     }
 
-    OG_ASSERT(og::runtime::current_session->myscreen_ == prev_screen);
-    OG_ASSERT(og::runtime::current_session->theprefs_ == prev_prefs);
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ == prev_screen);
+    ASSERT_TRUE(og::runtime::current_session->theprefs_ == prev_prefs);
 }
 
-OG_UNIT_TEST(test_game_session_teardown_restores_thread_inheritance_context)
+TEST(SessionRaii, game_session_teardown_restores_thread_inheritance_context)
 {
     og::runtime::SessionState* baseline_session = og::runtime::current_session;
     GameplayContext* baseline_game = current_game;
@@ -52,38 +52,38 @@ OG_UNIT_TEST(test_game_session_teardown_restores_thread_inheritance_context)
 
         og::runtime::GameSession session(session_cfg);
 
-        OG_ASSERT(og::runtime::current_session == &session);
-        OG_ASSERT(current_game == &session.game_);
-        OG_ASSERT(og::runtime::primary_session.load(std::memory_order_acquire) == &session);
-        OG_ASSERT(og::runtime::primary_game.load(std::memory_order_acquire) == &session.game_);
+        ASSERT_TRUE(og::runtime::current_session == &session);
+        ASSERT_TRUE(current_game == &session.game_);
+        ASSERT_TRUE(og::runtime::primary_session.load(std::memory_order_acquire) == &session);
+        ASSERT_TRUE(og::runtime::primary_game.load(std::memory_order_acquire) == &session.game_);
 
         og::runtime::current_session = nullptr;
         current_game = nullptr;
         og::runtime::ensure_thread_session();
         og::runtime::ensure_thread_game();
-        OG_ASSERT(og::runtime::current_session == &session);
-        OG_ASSERT(current_game == &session.game_);
+        ASSERT_TRUE(og::runtime::current_session == &session);
+        ASSERT_TRUE(current_game == &session.game_);
     }
 
-    OG_ASSERT(og::runtime::current_session == baseline_session);
-    OG_ASSERT(current_game == baseline_game);
-    OG_ASSERT(og::runtime::primary_session.load(std::memory_order_acquire) ==
+    ASSERT_TRUE(og::runtime::current_session == baseline_session);
+    ASSERT_TRUE(current_game == baseline_game);
+    ASSERT_TRUE(og::runtime::primary_session.load(std::memory_order_acquire) ==
               baseline_primary_session);
-    OG_ASSERT(og::runtime::primary_game.load(std::memory_order_acquire) ==
+    ASSERT_TRUE(og::runtime::primary_game.load(std::memory_order_acquire) ==
               baseline_primary_game);
 
     og::runtime::current_session = nullptr;
     current_game = nullptr;
     og::runtime::ensure_thread_session();
     og::runtime::ensure_thread_game();
-    OG_ASSERT(og::runtime::current_session == baseline_primary_session);
-    OG_ASSERT(current_game == baseline_primary_game);
+    ASSERT_TRUE(og::runtime::current_session == baseline_primary_session);
+    ASSERT_TRUE(current_game == baseline_primary_game);
 
     og::runtime::current_session = baseline_session;
     current_game = baseline_game;
 }
 
-OG_UNIT_TEST(test_game_session_seeded_rng_is_deterministic)
+TEST(SessionRaii, game_session_seeded_rng_is_deterministic)
 {
     og::runtime::GameSession::Config session_cfg;
     session_cfg.allocate_screen = false;
@@ -103,12 +103,12 @@ OG_UNIT_TEST(test_game_session_seeded_rng_is_deterministic)
     const Uint32 b1 = session2.ctx_.rng->next(1000);
     const Uint32 b2 = session2.ctx_.rng->next(1000);
 
-    OG_ASSERT(a0 == b0);
-    OG_ASSERT(a1 == b1);
-    OG_ASSERT(a2 == b2);
+    ASSERT_TRUE(a0 == b0);
+    ASSERT_TRUE(a1 == b1);
+    ASSERT_TRUE(a2 == b2);
 }
 
-OG_UNIT_TEST(test_game_session_repeated_create_destroy)
+TEST(SessionRaii, game_session_repeated_create_destroy)
 {
     // Verify sessions can be created and destroyed repeatedly without leaking
     // or corrupting global state. (Headless: skip screen/prefs which need SDL/PhysFS.)
@@ -125,19 +125,19 @@ OG_UNIT_TEST(test_game_session_repeated_create_destroy)
         session_cfg.rng_seed = static_cast<Uint32>(i);
         og::runtime::GameSession session(session_cfg);
 
-        OG_ASSERT(og::runtime::current_session->myscreen_ == nullptr);
-        OG_ASSERT(og::runtime::current_session->theprefs_ == nullptr);
-        OG_ASSERT(session.ctx_.rng != nullptr);
+        ASSERT_TRUE(og::runtime::current_session->myscreen_ == nullptr);
+        ASSERT_TRUE(og::runtime::current_session->theprefs_ == nullptr);
+        ASSERT_TRUE(session.ctx_.rng != nullptr);
         // Verify RNG works within session
         session.ctx_.rng->next(100);
     }
 
     // After all sessions destroyed, globals should be restored
-    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen);
-    OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ == baseline_screen);
+    ASSERT_TRUE(og::runtime::current_session->theprefs_ == baseline_prefs);
 }
 
-OG_UNIT_TEST(test_game_session_cfg_accessible)
+TEST(SessionRaii, game_session_cfg_accessible)
 {
     // Verify the global cfg_store is always accessible (no session indirection needed).
     // cfg is a global object declared in gparser.h.
@@ -148,7 +148,7 @@ OG_UNIT_TEST(test_game_session_cfg_accessible)
 // SessionScope isolation tests
 // ---------------------------------------------------------------------------
 
-OG_UNIT_TEST(test_session_scope_activates_and_restores_globals)
+TEST(SessionRaii, session_scope_activates_and_restores_globals)
 {
     screen* baseline_screen = og::runtime::current_session->myscreen_;
     options* baseline_prefs = og::runtime::current_session->theprefs_;
@@ -162,23 +162,23 @@ OG_UNIT_TEST(test_session_scope_activates_and_restores_globals)
     og::runtime::GameSession session(session_cfg);
 
     // Before activation: globals should still be baseline
-    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen);
-    OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ == baseline_screen);
+    ASSERT_TRUE(og::runtime::current_session->theprefs_ == baseline_prefs);
 
     {
         auto scope = session.activate();
         // During activation: myscreen should be session's screen (nullptr since no alloc)
-        OG_ASSERT(og::runtime::current_session->myscreen_ == session.screen_ptr());
+        ASSERT_TRUE(og::runtime::current_session->myscreen_ == session.screen_ptr());
         // theprefs is nullptr (session has no allocated prefs), same as baseline
-        OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
+        ASSERT_TRUE(og::runtime::current_session->theprefs_ == baseline_prefs);
     }
 
     // After scope destruction: globals should be restored
-    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen);
-    OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ == baseline_screen);
+    ASSERT_TRUE(og::runtime::current_session->theprefs_ == baseline_prefs);
 }
 
-OG_UNIT_TEST(test_session_scope_context_isolation)
+TEST(SessionRaii, session_scope_context_isolation)
 {
     og::runtime::GameSession::Config cfg1;
     cfg1.allocate_screen = false;
@@ -214,10 +214,10 @@ OG_UNIT_TEST(test_session_scope_context_isolation)
 
     // Different seeds should (almost certainly) produce different values
     // This is probabilistic but seed 42 vs 99 on first call should differ.
-    OG_ASSERT(s1_val != s2_val);
+    ASSERT_TRUE(s1_val != s2_val);
 }
 
-OG_UNIT_TEST(test_multiple_sessions_coexist_headless)
+TEST(SessionRaii, multiple_sessions_coexist_headless)
 {
     // Create multiple sessions simultaneously without conflicts
     screen* baseline_screen = og::runtime::current_session->myscreen_;
@@ -252,17 +252,17 @@ OG_UNIT_TEST(test_multiple_sessions_coexist_headless)
             break;
         }
     }
-    OG_ASSERT(!all_same);
+    ASSERT_TRUE(!all_same);
 
     // Destroy all sessions
     sessions.clear();
 
     // Globals should be unchanged
-    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen);
-    OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ == baseline_screen);
+    ASSERT_TRUE(og::runtime::current_session->theprefs_ == baseline_prefs);
 }
 
-OG_UNIT_TEST(test_session_scope_nested_activation)
+TEST(SessionRaii, session_scope_nested_activation)
 {
     // Test nested SessionScope: inner scope should restore to outer session.
     og::runtime::GameSession::Config cfg1;
@@ -289,23 +289,23 @@ OG_UNIT_TEST(test_session_scope_nested_activation)
         auto scope1 = session1.activate();
         // session1's context should be active
         IRandom* rng1 = ctx().rng;
-        OG_ASSERT(rng1 == session1.ctx_.rng);
+        ASSERT_TRUE(rng1 == session1.ctx_.rng);
 
         {
             auto scope2 = session2.activate();
             // session2's context should now be active
             IRandom* rng2 = ctx().rng;
-            OG_ASSERT(rng2 == session2.ctx_.rng);
-            OG_ASSERT(rng2 != rng1);
+            ASSERT_TRUE(rng2 == session2.ctx_.rng);
+            ASSERT_TRUE(rng2 != rng1);
         }
         // After inner scope: session1 should be active again
-        OG_ASSERT(ctx().rng == rng1);
+        ASSERT_TRUE(ctx().rng == rng1);
     }
     // After outer scope: baseline restored
-    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline);
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ == baseline);
 }
 
-OG_UNIT_TEST(test_session_frame_state_independence)
+TEST(SessionRaii, session_frame_state_independence)
 {
     og::runtime::GameSession::Config session_cfg;
     session_cfg.allocate_screen = false;
@@ -323,17 +323,17 @@ OG_UNIT_TEST(test_session_frame_state_independence)
     session2.frame_state_.currentcycle = 7;
 
     // Verify they're independent
-    OG_ASSERT(session1.frame_state_.done == true);
-    OG_ASSERT(session1.frame_state_.currentcycle == 42);
-    OG_ASSERT(session2.frame_state_.done == false);
-    OG_ASSERT(session2.frame_state_.currentcycle == 7);
+    ASSERT_TRUE(session1.frame_state_.done == true);
+    ASSERT_TRUE(session1.frame_state_.currentcycle == 42);
+    ASSERT_TRUE(session2.frame_state_.done == false);
+    ASSERT_TRUE(session2.frame_state_.currentcycle == 7);
 }
 
 // ---------------------------------------------------------------------------
 // Multi-session demo verification tests
 // ---------------------------------------------------------------------------
 
-OG_UNIT_TEST(test_twelve_sessions_coexist)
+TEST(SessionRaii, twelve_sessions_coexist)
 {
     // Verify that 12 GameSession instances can be created concurrently
     // with independent state (matches the openglad_demo configuration).
@@ -355,10 +355,10 @@ OG_UNIT_TEST(test_twelve_sessions_coexist)
     }
 
     // All 12 sessions exist simultaneously
-    OG_ASSERT(sessions.size() == N);
+    ASSERT_TRUE(sessions.size() == N);
     for (int i = 0; i < N; i++) {
-        OG_ASSERT(sessions[static_cast<size_t>(i)] != nullptr);
-        OG_ASSERT(sessions[static_cast<size_t>(i)]->ctx_.rng != nullptr);
+        ASSERT_TRUE(sessions[static_cast<size_t>(i)] != nullptr);
+        ASSERT_TRUE(sessions[static_cast<size_t>(i)]->ctx_.rng != nullptr);
     }
 
     // Each session has independent RNG state
@@ -371,7 +371,7 @@ OG_UNIT_TEST(test_twelve_sessions_coexist)
     // Count unique values - with 12 different seeds, we should get
     // at least 2 distinct values (overwhelmingly likely to get 12).
     std::set<Uint32> unique_values(values.begin(), values.end());
-    OG_ASSERT(unique_values.size() >= 2);
+    ASSERT_TRUE(unique_values.size() >= 2);
 
     // Each session has independent frame state
     for (int i = 0; i < N; i++) {
@@ -379,16 +379,16 @@ OG_UNIT_TEST(test_twelve_sessions_coexist)
             static_cast<short>(i);
     }
     for (int i = 0; i < N; i++) {
-        OG_ASSERT(sessions[static_cast<size_t>(i)]->frame_state_.currentcycle ==
+        ASSERT_TRUE(sessions[static_cast<size_t>(i)]->frame_state_.currentcycle ==
                   static_cast<short>(i));
     }
 
     sessions.clear();
-    OG_ASSERT(og::runtime::current_session->myscreen_ == baseline_screen);
-    OG_ASSERT(og::runtime::current_session->theprefs_ == baseline_prefs);
+    ASSERT_TRUE(og::runtime::current_session->myscreen_ == baseline_screen);
+    ASSERT_TRUE(og::runtime::current_session->theprefs_ == baseline_prefs);
 }
 
-OG_UNIT_TEST(test_session_state_modification_isolation)
+TEST(SessionRaii, session_state_modification_isolation)
 {
     // Modify state in one session, verify others are unaffected.
     og::runtime::GameSession::Config session_cfg;
@@ -425,14 +425,14 @@ OG_UNIT_TEST(test_session_state_modification_isolation)
         auto scope = session_b_fresh.activate();
         b_fresh_val = ctx().rng->next(1000);
     }
-    OG_ASSERT(b_val == b_fresh_val);
+    ASSERT_TRUE(b_val == b_fresh_val);
 
     // Session A's frame state changes don't affect B
     session_a.frame_state_.done = true;
-    OG_ASSERT(session_b.frame_state_.done == false);
+    ASSERT_TRUE(session_b.frame_state_.done == false);
 }
 
-OG_UNIT_TEST(test_demo_grid_layout_non_overlapping)
+TEST(SessionRaii, demo_grid_layout_non_overlapping)
 {
     // Verify the 4x3 grid layout produces 12 non-overlapping sub-regions.
     constexpr int COLS = 4;
@@ -450,7 +450,7 @@ OG_UNIT_TEST(test_demo_grid_layout_non_overlapping)
         rects.push_back({col * W, row * H, W, H});
     }
 
-    OG_ASSERT(rects.size() == 12);
+    ASSERT_TRUE(rects.size() == 12);
 
     // Verify no two rects overlap
     for (size_t i = 0; i < rects.size(); i++) {
@@ -459,7 +459,7 @@ OG_UNIT_TEST(test_demo_grid_layout_non_overlapping)
             const auto& b = rects[j];
             bool overlaps = (a.x < b.x + b.w) && (a.x + a.w > b.x) &&
                             (a.y < b.y + b.h) && (a.y + a.h > b.y);
-            OG_ASSERT(!overlaps);
+            ASSERT_TRUE(!overlaps);
         }
     }
 
@@ -468,18 +468,18 @@ OG_UNIT_TEST(test_demo_grid_layout_non_overlapping)
     for (const auto& r : rects) {
         total_area += r.w * r.h;
     }
-    OG_ASSERT(total_area == COLS * W * ROWS * H);
+    ASSERT_TRUE(total_area == COLS * W * ROWS * H);
 
     // Verify bounds
     for (const auto& r : rects) {
-        OG_ASSERT(r.x >= 0);
-        OG_ASSERT(r.y >= 0);
-        OG_ASSERT(r.x + r.w <= COLS * W);
-        OG_ASSERT(r.y + r.h <= ROWS * H);
+        ASSERT_TRUE(r.x >= 0);
+        ASSERT_TRUE(r.y >= 0);
+        ASSERT_TRUE(r.x + r.w <= COLS * W);
+        ASSERT_TRUE(r.y + r.h <= ROWS * H);
     }
 }
 
-OG_UNIT_TEST(test_demo_scenario_diversity)
+TEST(SessionRaii, demo_scenario_diversity)
 {
     // Replicate the demo's scenario selection logic and verify that
     // 12 sessions are assigned diverse (not all identical) scenario IDs.
@@ -502,15 +502,15 @@ OG_UNIT_TEST(test_demo_scenario_diversity)
         chosen.push_back(pool[static_cast<size_t>(i) % pool.size()]);
 
     // All 12 should be assigned
-    OG_ASSERT(chosen.size() == NUM_SESSIONS);
+    ASSERT_TRUE(chosen.size() == NUM_SESSIONS);
 
     // With 20 scenarios shuffled and 12 picked, we must have at least 2 distinct
     std::set<int> unique_ids(chosen.begin(), chosen.end());
-    OG_ASSERT(unique_ids.size() >= 2);
+    ASSERT_TRUE(unique_ids.size() >= 2);
 
     // In fact, all 12 should be distinct since pool (20) > NUM_SESSIONS (12)
-    OG_ASSERT(unique_ids.size() == static_cast<size_t>(NUM_SESSIONS));
+    ASSERT_TRUE(unique_ids.size() == static_cast<size_t>(NUM_SESSIONS));
 
     // Verify pool is large enough to always give unique assignments
-    OG_ASSERT(SCENARIO_POOL.size() >= static_cast<size_t>(NUM_SESSIONS));
+    ASSERT_TRUE(SCENARIO_POOL.size() >= static_cast<size_t>(NUM_SESSIONS));
 }

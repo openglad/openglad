@@ -11,7 +11,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/platform/game_context.h>
@@ -60,21 +60,21 @@ living* add_living(LivingFixture& fx, char family, unsigned char team)
 
 } // namespace
 
-OG_UNIT_TEST(test_living_r11_act_owner_dead_and_action_follow)
+TEST(LivingUnit, living_r11_act_owner_dead_and_action_follow)
 {
     LivingFixture fx;
     living* self = add_living(fx, FAMILY_SOLDIER, 0);
     living* owner = add_living(fx, FAMILY_SOLDIER, 0);
-    OG_ASSERT(self != nullptr && owner != nullptr);
+    ASSERT_TRUE(self != nullptr && owner != nullptr);
 
     self->dead = 1;
-    OG_ASSERT(!self->act());
+    ASSERT_TRUE(!self->act());
     self->dead = 0;
 
     self->owner = owner;
     self->lifetime = 5;
     owner->dead = 1;
-    OG_ASSERT(!self->act());
+    ASSERT_TRUE(!self->act());
 
     // ACTION_FOLLOW path in do_action
     self->dead = 0;
@@ -85,65 +85,65 @@ OG_UNIT_TEST(test_living_r11_act_owner_dead_and_action_follow)
     owner->dead = 0;
     owner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     owner->team_num = 0;
-    OG_ASSERT(self->do_action() == 1 || self->do_action() == 0);
+    ASSERT_TRUE(self->do_action() == 1 || self->do_action() == 0);
 }
 
-OG_UNIT_TEST(test_living_r11_facing_thresholds)
+TEST(LivingUnit, living_r11_facing_thresholds)
 {
     living l;
-    OG_ASSERT(l.facing(0, 1) == FACE_DOWN);
-    OG_ASSERT(l.facing(0, -1) == FACE_UP);
+    ASSERT_TRUE(l.facing(0, 1) == FACE_DOWN);
+    ASSERT_TRUE(l.facing(0, -1) == FACE_UP);
 
     // x > 0 branch thresholds
-    OG_ASSERT(l.facing(1, 3) == FACE_DOWN);
-    OG_ASSERT(l.facing(2, 1) == FACE_DOWN_RIGHT);
-    OG_ASSERT(l.facing(3, 0) == FACE_RIGHT);
-    OG_ASSERT(l.facing(2, -1) == FACE_UP_RIGHT);
-    OG_ASSERT(l.facing(1, -3) == FACE_UP);
+    ASSERT_TRUE(l.facing(1, 3) == FACE_DOWN);
+    ASSERT_TRUE(l.facing(2, 1) == FACE_DOWN_RIGHT);
+    ASSERT_TRUE(l.facing(3, 0) == FACE_RIGHT);
+    ASSERT_TRUE(l.facing(2, -1) == FACE_UP_RIGHT);
+    ASSERT_TRUE(l.facing(1, -3) == FACE_UP);
 
     // x < 0 branch thresholds
-    OG_ASSERT(l.facing(-1, -3) == FACE_UP);
-    OG_ASSERT(l.facing(-2, -1) == FACE_UP_LEFT);
-    OG_ASSERT(l.facing(-3, 0) == FACE_LEFT);
-    OG_ASSERT(l.facing(-2, 1) == FACE_DOWN_LEFT);
-    OG_ASSERT(l.facing(-1, 3) == FACE_DOWN);
+    ASSERT_TRUE(l.facing(-1, -3) == FACE_UP);
+    ASSERT_TRUE(l.facing(-2, -1) == FACE_UP_LEFT);
+    ASSERT_TRUE(l.facing(-3, 0) == FACE_LEFT);
+    ASSERT_TRUE(l.facing(-2, 1) == FACE_DOWN_LEFT);
+    ASSERT_TRUE(l.facing(-1, 3) == FACE_DOWN);
 }
 
-OG_UNIT_TEST(test_living_r11_collide_and_act_type_switches)
+TEST(LivingUnit, living_r11_collide_and_act_type_switches)
 {
     LivingFixture fx;
     living* self = add_living(fx, FAMILY_SOLDIER, 0);
     living* foe = add_living(fx, FAMILY_ORC, 1);
-    OG_ASSERT(self != nullptr && foe != nullptr);
+    ASSERT_TRUE(self != nullptr && foe != nullptr);
 
     // collide() auto-attackable path
     self->collide(foe);
 
     self->set_act_type(ACT_CONTROL);
-    OG_ASSERT(self->act());
+    ASSERT_TRUE(self->act());
 
     self->set_act_type(ACT_DIE);
-    OG_ASSERT(self->act());
-    OG_ASSERT(self->dead == 1 || self->dead == 0);
+    ASSERT_TRUE(self->act());
+    ASSERT_TRUE(self->dead == 1 || self->dead == 0);
 }
 
-OG_UNIT_TEST(test_living_r11_summon_difficulty_checkspecial_and_walk_paths)
+TEST(LivingUnit, living_r11_summon_difficulty_checkspecial_and_walk_paths)
 {
     LivingFixture fx;
     living* self = add_living(fx, FAMILY_SOLDIER, 0);
     living* foe = add_living(fx, FAMILY_ORC, 1);
-    OG_ASSERT(self && foe);
+    ASSERT_TRUE(self && foe);
 
     // do_summon path.
     walker* summoned = self->do_summon(FAMILY_SKELETON, 25);
-    OG_ASSERT(summoned != nullptr);
-    OG_ASSERT(summoned->owner == self);
-    OG_ASSERT(summoned->lifetime == 25);
+    ASSERT_TRUE(summoned != nullptr);
+    ASSERT_TRUE(summoned->owner == self);
+    ASSERT_TRUE(summoned->lifetime == 25);
 
     // Default set_difficulty fallback path on unknown family id.
     self->set_order_family(Order::Living, static_cast<char>(127));
     self->set_difficulty(2);
-    OG_ASSERT(self->stats()->max_hitpoints >= self->stats()->hitpoints);
+    ASSERT_TRUE(self->stats()->max_hitpoints >= self->stats()->hitpoints);
     self->set_order_family(Order::Living, FAMILY_SOLDIER);
 
     // check_special path when not enough magic resets special to 1.
@@ -151,14 +151,14 @@ OG_UNIT_TEST(test_living_r11_summon_difficulty_checkspecial_and_walk_paths)
     self->stats()->special_cost[4] = 200;
     self->stats()->magicpoints = 0;
     (void)self->check_special();
-    OG_ASSERT(self->current_special == 1);
+    ASSERT_TRUE(self->current_special == 1);
 
     // living::walk bounds fail + direction-turn path.
     self->setxy(0, 0);
     self->curdir = FACE_LEFT;
-    OG_ASSERT(!self->walk(-1.0f, 0.0f));
+    ASSERT_TRUE(!self->walk(-1.0f, 0.0f));
     self->curdir = FACE_UP;
-    OG_ASSERT(self->walk(1.0f, 0.0f));
+    ASSERT_TRUE(self->walk(1.0f, 0.0f));
 
     // ACT_RANDOM path with foe present/no fire then search.
     self->foe = foe;
@@ -232,17 +232,17 @@ void assign_basic_ani(walker* w)
 
 } // namespace
 
-OG_UNIT_TEST(test_living_r14_lines_65_73_89_95_138_175_owner_lifetime_and_counters)
+TEST(LivingUnit, living_r14_lines_65_73_89_95_138_175_owner_lifetime_and_counters)
 {
     LivingR14Fixture fx;
     living* self = add_living(fx, FAMILY_SOLDIER, 0, 96, 96);
     living* owner = add_living(fx, FAMILY_SOLDIER, 0, 120, 96);
     living* foe = add_living(fx, FAMILY_ORC, 1, 128, 96);
-    OG_ASSERT(self && owner && foe);
+    ASSERT_TRUE(self && owner && foe);
 
     self->bonus_rounds = 1;
     self->set_act_type(ACT_CONTROL);
-    OG_ASSERT(self->act());
+    ASSERT_TRUE(self->act());
 
     self->foe = foe;
     foe->dead = 1;
@@ -255,26 +255,26 @@ OG_UNIT_TEST(test_living_r14_lines_65_73_89_95_138_175_owner_lifetime_and_counte
     self->charm_left = (2);
     self->real_team_num = 1;
     self->set_act_type(ACT_CONTROL);
-    OG_ASSERT(self->act());
+    ASSERT_TRUE(self->act());
 
     self->owner = owner;
     self->lifetime = 2;
     owner->dead = 1;
-    OG_ASSERT(!self->act());
+    ASSERT_TRUE(!self->act());
 
     self->dead = 0;
     owner->dead = 0;
     self->owner = owner;
     self->lifetime = 1;
-    OG_ASSERT(!self->act() || self->dead == 1);
+    ASSERT_TRUE(!self->act() || self->dead == 1);
 }
 
-OG_UNIT_TEST(test_living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_303_308)
+TEST(LivingUnit, living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_303_308)
 {
     LivingR14Fixture fx;
     living* self = add_living(fx, FAMILY_SOLDIER, 0, 0, 0);
     living* ally = add_living(fx, FAMILY_SOLDIER, 0, 16, 0);
-    OG_ASSERT(self && ally);
+    ASSERT_TRUE(self && ally);
 
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     self->myguy->dexterity = 10;
@@ -301,11 +301,11 @@ OG_UNIT_TEST(test_living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_3
     self->flight_left = 0;
     self->ani_type = ANI_WALK;
     self->set_act_type(ACT_CONTROL);
-    OG_ASSERT(self->act() || self->dead == 1);
+    ASSERT_TRUE(self->act() || self->dead == 1);
 
     self->dead = 0;
     self->stats()->frozen_delay = 1;
-    OG_ASSERT(self->act());
+    ASSERT_TRUE(self->act());
 
     self->dead = 0;
     self->busy = 1;
@@ -314,7 +314,7 @@ OG_UNIT_TEST(test_living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_3
     self->user = -1;
     self->set_act_type(ACT_GUARD);
     self->stats()->force_command(COMMAND_WALK, 1, 1, 0);
-    OG_ASSERT(self->act());
+    ASSERT_TRUE(self->act());
 
     self->action = 0;
     self->skip_exit = 0;
@@ -327,26 +327,26 @@ OG_UNIT_TEST(test_living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_3
     self->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     self->set_act_type(ACT_DIE);
     (void)self->act();
-    OG_ASSERT(self->dead == 1);
+    ASSERT_TRUE(self->dead == 1);
 }
 
-OG_UNIT_TEST(test_living_r14_lines_371_375_380_419_433_440_shove_walk_and_animate_fallback)
+TEST(LivingUnit, living_r14_lines_371_375_380_419_433_440_shove_walk_and_animate_fallback)
 {
     LivingR14Fixture fx;
     living* self = add_living(fx, FAMILY_SOLDIER, 0, 64, 64);
     living* ally = add_living(fx, FAMILY_SOLDIER, 0, 80, 64);
-    OG_ASSERT(self && ally);
+    ASSERT_TRUE(self && ally);
 
     assign_basic_ani(self);
     assign_basic_ani(ally);
 
     ally->set_act_type(ACT_GUARD);
-    OG_ASSERT(self->shove(ally, 1, 0) == 0 || self->shove(ally, 1, 0) == 1);
+    ASSERT_TRUE(self->shove(ally, 1, 0) == 0 || self->shove(ally, 1, 0) == 1);
 
     self->curdir = FACE_LEFT;
     self->setxy(0, 0);
     self->stats()->set_bit_flags(BIT_ANIMATE, 1);
-    OG_ASSERT(!self->walk(-1.0f, 0.0f));
+    ASSERT_TRUE(!self->walk(-1.0f, 0.0f));
 
     self->curdir = FACE_RIGHT;
     self->setxy(10, 10);

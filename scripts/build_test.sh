@@ -1,11 +1,7 @@
 #!/bin/bash
 #
-# Build script for test binary.
+# Build script for test binaries.
 # Thin wrapper around CMake's ci-test preset.
-#
-# Outputs openglad_test binary to the project root
-# for backward compatibility.
-#
 
 set -e
 
@@ -14,22 +10,19 @@ source "$SCRIPT_DIR/build_common.sh"
 
 require_sdl2
 
-echo "Building test binary..."
+echo "Building test binaries..."
 echo "Using SDL2: $(pkg-config --modversion sdl2)"
 
 # ----------------------------------------------------------------------------
 # Build with CMake preset
 # ----------------------------------------------------------------------------
 cmake --preset ci-test
-cmake --build --preset ci-test --target openglad_test
+cmake --build --preset ci-test -j"$(nproc)"
 
 BUILD_DIR="$PROJECT_ROOT/build/ci-test"
 
-# Copy binary to project root for backward compatibility
-cp "$BUILD_DIR/openglad_test" "$PROJECT_ROOT/openglad_test"
-
 echo ""
 echo "Build complete!"
-ls -lh "$PROJECT_ROOT/openglad_test"
+find "$BUILD_DIR" -maxdepth 1 -type f \( -name 'og_test_*' -o -name 'og_unit_*' \) -printf "%f\n" | sort
 echo ""
-echo "Run with: ./openglad_test"
+echo "Run all tests with: ctest --test-dir $BUILD_DIR --parallel \$(nproc) --output-on-failure --timeout 180"

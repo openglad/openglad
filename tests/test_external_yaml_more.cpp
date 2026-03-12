@@ -4,7 +4,7 @@
 
 #include <yaml.h>
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 static bool scan_yaml_tokens(const std::string& input, int* out_tokens)
 {
@@ -117,7 +117,7 @@ fail:
     return false;
 }
 
-void test_external_yaml_scanner_tokens_variety()
+TEST(ExternalYamlMore, external_yaml_scanner_tokens_variety)
 {
     const std::string input =
         "%YAML 1.2\n"
@@ -141,8 +141,8 @@ void test_external_yaml_scanner_tokens_variety()
         "...\n";
 
     int tokens = 0;
-    TEST_ASSERT(scan_yaml_tokens(input, &tokens), "scanner should succeed for valid yaml");
-    TEST_ASSERT(tokens > 0, "scanner should produce tokens");
+    ASSERT_TRUE(scan_yaml_tokens(input, &tokens)) << "scanner should succeed for valid yaml";
+    ASSERT_TRUE(tokens > 0) << "scanner should produce tokens";
 
     const std::vector<std::string> corpus = {
         // Explicit keys, nested collections, anchors.
@@ -170,17 +170,17 @@ void test_external_yaml_scanner_tokens_variety()
 
     for (const auto& doc : corpus) {
         int n = 0;
-        TEST_ASSERT(scan_yaml_tokens(doc, &n), "scanner corpus document should succeed");
-        TEST_ASSERT(n > 0, "scanner corpus should produce tokens");
+        ASSERT_TRUE(scan_yaml_tokens(doc, &n)) << "scanner corpus document should succeed";
+        ASSERT_TRUE(n > 0) << "scanner corpus should produce tokens";
     }
 }
-REGISTER_TEST(test_external_yaml_scanner_tokens_variety);
 
-void test_external_yaml_scanner_error_unclosed_quote()
+
+TEST(ExternalYamlMore, external_yaml_scanner_error_unclosed_quote)
 {
     const std::string input = "a: \"unterminated\n";
     int tokens = 0;
-    TEST_ASSERT(!scan_yaml_tokens(input, &tokens), "scanner should fail on unterminated quote");
+    ASSERT_TRUE(!scan_yaml_tokens(input, &tokens)) << "scanner should fail on unterminated quote";
 
     const std::vector<std::string> bad = {
         "a:\n\t- badtab\n",          // illegal tab indentation
@@ -193,17 +193,17 @@ void test_external_yaml_scanner_error_unclosed_quote()
         (void)scan_yaml_tokens(doc, &n);
     }
 }
-REGISTER_TEST(test_external_yaml_scanner_error_unclosed_quote);
 
-void test_external_yaml_emitter_options_and_output()
+
+TEST(ExternalYamlMore, external_yaml_emitter_options_and_output)
 {
     std::string out;
-    TEST_ASSERT(emit_yaml_with_options(&out), "emitter should succeed with options");
-    TEST_ASSERT(!out.empty(), "emitter should write output");
+    ASSERT_TRUE(emit_yaml_with_options(&out)) << "emitter should succeed with options";
+    ASSERT_TRUE(!out.empty()) << "emitter should write output";
 
     // Basic sanity: output should still be scannable.
     int tokens = 0;
-    TEST_ASSERT(scan_yaml_tokens(out, &tokens), "emitted yaml should be scannable");
-    TEST_ASSERT(tokens > 0, "emitted yaml should produce tokens");
+    ASSERT_TRUE(scan_yaml_tokens(out, &tokens)) << "emitted yaml should be scannable";
+    ASSERT_TRUE(tokens > 0) << "emitted yaml should produce tokens";
 }
-REGISTER_TEST(test_external_yaml_emitter_options_and_output);
+

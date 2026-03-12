@@ -1,5 +1,5 @@
-#include <openglad/legacy/test_trace.h>
-#include "test_framework.h"
+#include <openglad/core/test_trace.h>
+#include <gtest/gtest.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/gameplay/walker.h>
@@ -14,7 +14,7 @@
 const char* get_family_string(Sint32 family);
 
 // Verify guy constructor produces same stats as registry base_stats
-void test_family_data_guy_constructor_matches_registry()
+TEST(FamilyData, guy_constructor_matches_registry)
 {
     init_family_registry();
     for (int fam = 0; fam <= FAMILY_ARCHMAGE; fam++)
@@ -24,23 +24,23 @@ void test_family_data_guy_constructor_matches_registry()
         char msg[128];
 
         std::snprintf(msg, sizeof(msg), "family %d STR mismatch", fam);
-        TEST_ASSERT_EQ(d->base_stats[0], static_cast<Sint32>(g.strength), msg);
+        ASSERT_EQ(d->base_stats[0], static_cast<Sint32>(g.strength)) << msg;
         std::snprintf(msg, sizeof(msg), "family %d DEX mismatch", fam);
-        TEST_ASSERT_EQ(d->base_stats[1], static_cast<Sint32>(g.dexterity), msg);
+        ASSERT_EQ(d->base_stats[1], static_cast<Sint32>(g.dexterity)) << msg;
         std::snprintf(msg, sizeof(msg), "family %d CON mismatch", fam);
-        TEST_ASSERT_EQ(d->base_stats[2], static_cast<Sint32>(g.constitution), msg);
+        ASSERT_EQ(d->base_stats[2], static_cast<Sint32>(g.constitution)) << msg;
         std::snprintf(msg, sizeof(msg), "family %d INT mismatch", fam);
-        TEST_ASSERT_EQ(d->base_stats[3], static_cast<Sint32>(g.intelligence), msg);
+        ASSERT_EQ(d->base_stats[3], static_cast<Sint32>(g.intelligence)) << msg;
         std::snprintf(msg, sizeof(msg), "family %d ARMOR mismatch", fam);
-        TEST_ASSERT_EQ(d->base_stats[4], static_cast<Sint32>(g.armor), msg);
+        ASSERT_EQ(d->base_stats[4], static_cast<Sint32>(g.armor)) << msg;
         std::snprintf(msg, sizeof(msg), "family %d LVL mismatch", fam);
-        TEST_ASSERT_EQ(d->base_stats[5], static_cast<Sint32>(g.level), msg);
+        ASSERT_EQ(d->base_stats[5], static_cast<Sint32>(g.level)) << msg;
     }
 }
-REGISTER_TEST(test_family_data_guy_constructor_matches_registry);
+
 
 // Verify family names from get_family_string match registry names
-void test_family_data_names_match_get_family_string()
+TEST(FamilyData, names_match_get_family_string)
 {
     init_family_registry();
     // These families have explicit names in get_family_string
@@ -71,18 +71,29 @@ void test_family_data_names_match_get_family_string()
         char msg[128];
         std::snprintf(msg, sizeof(msg), "family %d name: registry='%s' vs get_family_string='%s'",
                       check.fam, d->name, gfs);
-        TEST_ASSERT_STR_EQ(check.expected, d->name, msg);
-        TEST_ASSERT_STR_EQ(check.expected, gfs, msg);
+        ASSERT_STREQ(check.expected, d->name) << msg;
+        ASSERT_STREQ(check.expected, gfs) << msg;
     }
 }
-REGISTER_TEST(test_family_data_names_match_get_family_string);
+
 
 // Verify walker init matches registry for special_cost, weapon_cost, default_weapon
 static void teardown_family_walker() {
     if (og::runtime::current_session->myscreen_) og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
-void test_family_data_walker_init_matches_registry()
+class FamilyDataFixture : public ::testing::Test {
+public:
+    void SetUp() override
+    {}
+
+    void TearDown() override
+    {
+        teardown_family_walker();
+    }
+};
+
+TEST_F(FamilyDataFixture, walker_init_matches_registry)
 {
     init_family_registry();
     for (int fam = 0; fam < NUM_FAMILIES; fam++)
@@ -96,23 +107,23 @@ void test_family_data_walker_init_matches_registry()
         char msg[128];
 
         std::snprintf(msg, sizeof(msg), "family %d default_weapon mismatch", fam);
-        TEST_ASSERT_EQ(d->default_weapon, static_cast<int>(w->default_weapon), msg);
+        ASSERT_EQ(d->default_weapon, static_cast<int>(w->default_weapon)) << msg;
 
         for (int s = 0; s < NUM_SPECIALS; s++)
         {
             std::snprintf(msg, sizeof(msg), "family %d special_cost[%d] mismatch", fam, s);
-            TEST_ASSERT_EQ(d->special_cost[s], w->stats()->special_cost[s], msg);
+            ASSERT_EQ(d->special_cost[s], w->stats()->special_cost[s]) << msg;
         }
 
         std::snprintf(msg, sizeof(msg), "family %d weapon_cost mismatch", fam);
-        TEST_ASSERT_EQ(d->weapon_cost, w->stats()->weapon_cost, msg);
+        ASSERT_EQ(d->weapon_cost, w->stats()->weapon_cost) << msg;
     }
     if (og::runtime::current_session->myscreen_) og::runtime::current_session->myscreen_->world().delete_objects();
 }
-REGISTER_TEST_WITH_FIXTURE(test_family_data_walker_init_matches_registry, nullptr, teardown_family_walker);
+
 
 // Verify special_name strings on screen match registry
-void test_family_data_special_names_match_screen()
+TEST(FamilyData, special_names_match_screen)
 {
     init_family_registry();
     if (!og::runtime::current_session->myscreen_) return;
@@ -125,18 +136,18 @@ void test_family_data_special_names_match_screen()
             char msg[128];
             std::snprintf(msg, sizeof(msg), "family %d special_name[%d] mismatch: '%s' vs '%s'",
                           fam, s, d->special_names[s], og::runtime::current_session->myscreen_->special_name[fam][s].c_str());
-            TEST_ASSERT_STR_EQ(d->special_names[s], og::runtime::current_session->myscreen_->special_name[fam][s].c_str(), msg);
+            ASSERT_STREQ(d->special_names[s], og::runtime::current_session->myscreen_->special_name[fam][s].c_str()) << msg;
 
             std::snprintf(msg, sizeof(msg), "family %d alternate_name[%d] mismatch: '%s' vs '%s'",
                           fam, s, d->alternate_names[s], og::runtime::current_session->myscreen_->alternate_name[fam][s].c_str());
-            TEST_ASSERT_STR_EQ(d->alternate_names[s], og::runtime::current_session->myscreen_->alternate_name[fam][s].c_str(), msg);
+            ASSERT_STREQ(d->alternate_names[s], og::runtime::current_session->myscreen_->alternate_name[fam][s].c_str()) << msg;
         }
     }
 }
-REGISTER_TEST(test_family_data_special_names_match_screen);
+
 
 // Verify bit flags match for all families that set them during walker init
-void test_family_data_bit_flags_match_walker_init()
+TEST(FamilyData, bit_flags_match_walker_init)
 {
     init_family_registry();
 
@@ -165,7 +176,6 @@ void test_family_data_bit_flags_match_walker_init()
         bool has_flag = (d->init_bit_flags & c.flag) != 0;
         char msg[128];
         std::snprintf(msg, sizeof(msg), "family %d flag 0x%x expected %s", c.fam, c.flag, c.expected ? "set" : "clear");
-        TEST_ASSERT(has_flag == c.expected, msg);
+        ASSERT_TRUE(has_flag == c.expected) << msg;
     }
 }
-REGISTER_TEST(test_family_data_bit_flags_match_walker_init);

@@ -4,7 +4,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/irandom.h>
 #include <openglad/core/constants.h>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/gparser.h>
@@ -21,13 +21,13 @@ const FamilyDescriptor& describe_family_thief();
 
 namespace detail_family_thief_coverage_push {
 
-OG_UNIT_TEST(test_family_thief_descriptor_shape_and_level_up)
+TEST(FamilyThief, descriptor_shape_and_level_up)
 {
     const FamilyDescriptor& desc = describe_family_thief();
-    OG_ASSERT(desc.family_id == FAMILY_THIEF);
-    OG_ASSERT(desc.do_special != nullptr);
-    OG_ASSERT(desc.check_special_ai != nullptr);
-    OG_ASSERT(desc.level_up != nullptr);
+    ASSERT_TRUE(desc.family_id == FAMILY_THIEF);
+    ASSERT_TRUE(desc.do_special != nullptr);
+    ASSERT_TRUE(desc.check_special_ai != nullptr);
+    ASSERT_TRUE(desc.level_up != nullptr);
 
     guy g(FAMILY_THIEF);
     const short old_str = g.strength;
@@ -37,14 +37,14 @@ OG_UNIT_TEST(test_family_thief_descriptor_shape_and_level_up)
     const short old_armor = g.armor;
 
     desc.level_up(&g, 2);
-    OG_ASSERT(g.strength > old_str);
-    OG_ASSERT(g.dexterity > old_dex);
-    OG_ASSERT(g.constitution > old_con);
-    OG_ASSERT(g.intelligence > old_int);
-    OG_ASSERT(g.armor > old_armor);
+    ASSERT_TRUE(g.strength > old_str);
+    ASSERT_TRUE(g.dexterity > old_dex);
+    ASSERT_TRUE(g.constitution > old_con);
+    ASSERT_TRUE(g.intelligence > old_int);
+    ASSERT_TRUE(g.armor > old_armor);
 }
 
-OG_UNIT_TEST(test_family_thief_check_special_ai_foe_distance_paths)
+TEST(FamilyThief, check_special_ai_foe_distance_paths)
 {
     const FamilyDescriptor& desc = describe_family_thief();
     living self;
@@ -54,16 +54,16 @@ OG_UNIT_TEST(test_family_thief_check_special_ai_foe_distance_paths)
 
     self.setxy(0, 0);
     foe.setxy(60, 0); // >35 and <130 => false
-    OG_ASSERT(!desc.check_special_ai(&self));
+    ASSERT_TRUE(!desc.check_special_ai(&self));
 
     foe.setxy(10, 0); // <=35 => true
-    OG_ASSERT(desc.check_special_ai(&self));
+    ASSERT_TRUE(desc.check_special_ai(&self));
 
     self.current_special = 2; // default branch => true
-    OG_ASSERT(desc.check_special_ai(&self));
+    ASSERT_TRUE(desc.check_special_ai(&self));
 }
 
-OG_UNIT_TEST(test_family_thief_do_special_busy_and_cloak_paths)
+TEST(FamilyThief, do_special_busy_and_cloak_paths)
 {
     const FamilyDescriptor& desc = describe_family_thief();
     living self;
@@ -72,16 +72,16 @@ OG_UNIT_TEST(test_family_thief_do_special_busy_and_cloak_paths)
 
     self.current_special = 2; // cloak
     self.invisibility_left = 0;
-    OG_ASSERT(desc.do_special(&self));
-    OG_ASSERT(self.invisibility_left > 0);
+    ASSERT_TRUE(desc.do_special(&self));
+    ASSERT_TRUE(self.invisibility_left > 0);
 
     self.current_special = 3; // taunt/charm
     self.busy = 1;
-    OG_ASSERT(!desc.do_special(&self));
+    ASSERT_TRUE(!desc.do_special(&self));
 
     self.current_special = 4; // poison cloud/default
     self.busy = 1;
-    OG_ASSERT(!desc.do_special(&self));
+    ASSERT_TRUE(!desc.do_special(&self));
 }
 } // namespace detail_family_thief_coverage_push
 
@@ -124,7 +124,7 @@ living* add_living(ThiefR12Fixture& fx, unsigned char team, char family = FAMILY
 
 } // namespace
 
-OG_UNIT_TEST(test_family_thief_r12_check_ai_and_special_paths)
+TEST(FamilyThief, r12_check_ai_and_special_paths)
 {
     const FamilyDescriptor& desc = describe_family_thief();
     ThiefR12Fixture fx;
@@ -133,46 +133,46 @@ OG_UNIT_TEST(test_family_thief_r12_check_ai_and_special_paths)
     living* foe1 = add_living(fx, 1, FAMILY_ORC);
     living* foe2 = add_living(fx, 1, FAMILY_ORC);
     living* foe3 = add_living(fx, 1, FAMILY_ORC);
-    OG_ASSERT(thief && foe1 && foe2 && foe3);
+    ASSERT_TRUE(thief && foe1 && foe2 && foe3);
 
     thief->current_special = 1;
     thief->foe = nullptr;
     foe1->setxy(200, 200);
     foe2->setxy(210, 200);
     foe3->setxy(220, 200);
-    OG_ASSERT(!desc.check_special_ai(thief));
+    ASSERT_TRUE(!desc.check_special_ai(thief));
 
     foe1->setxy(90, 80);
     foe2->setxy(94, 80);
     foe3->setxy(98, 80);
-    OG_ASSERT(desc.check_special_ai(thief));
+    ASSERT_TRUE(desc.check_special_ai(thief));
 
     thief->current_special = 3;
     thief->shifter_down = 0;
-    OG_ASSERT(desc.check_special_ai(thief));
+    ASSERT_TRUE(desc.check_special_ai(thief));
     thief->shifter_down = 1;
-    OG_ASSERT(desc.check_special_ai(thief));
+    ASSERT_TRUE(desc.check_special_ai(thief));
 
     thief->current_special = 1;
     thief->user = -1;
     thief->stats()->level = 4;
-    OG_ASSERT(desc.do_special(thief));
+    ASSERT_TRUE(desc.do_special(thief));
 
     thief->current_special = 3;
     thief->shifter_down = 0;
     thief->busy = 0;
     thief->stats()->name = "Bandit";
-    OG_ASSERT(desc.do_special(thief));
+    ASSERT_TRUE(desc.do_special(thief));
 
     thief->current_special = 3;
     thief->shifter_down = 1;
     thief->busy = 0;
     thief->foe = foe1;
     foe1->real_team_num = 255;
-    OG_ASSERT(desc.do_special(thief));
+    ASSERT_TRUE(desc.do_special(thief));
 
     thief->current_special = 4;
     thief->busy = 0;
-    OG_ASSERT(desc.do_special(thief));
+    ASSERT_TRUE(desc.do_special(thief));
 }
 } // namespace detail_family_thief_r12

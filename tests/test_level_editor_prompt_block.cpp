@@ -1,6 +1,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 
 #include <list>
@@ -106,7 +107,7 @@ int prompt_block_editing_injector(void* data)
 }
 } // namespace
 
-void test_level_editor_prompt_for_string_block_escape_cancel()
+TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_escape_cancel)
 {
     (void)og::runtime::current_session->myscreen_;
 
@@ -120,21 +121,21 @@ void test_level_editor_prompt_for_string_block_escape_cancel()
     KeyStateGuard keyguard;
     PromptBlockInjectData inject_data{&st, &keyguard, false, false};
     SDL_Thread* thread = SDL_CreateThread(prompt_block_escape_injector, "prompt_block_escape_injector", &inject_data);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     bool accepted = prompt_for_string_block("Edit multi-line text", edited);
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
 
-    TEST_ASSERT(st.started, "injector should have started");
-    TEST_ASSERT(st.finished, "injector should have finished");
-    TEST_ASSERT(accepted, "ESC should exit prompt_for_string_block");
-    TEST_ASSERT(edited == original, "ESC exit should preserve original text");
+    ASSERT_TRUE(st.started) << "injector should have started";
+    ASSERT_TRUE(st.finished) << "injector should have finished";
+    ASSERT_TRUE(accepted) << "ESC should exit prompt_for_string_block";
+    ASSERT_TRUE(edited == original) << "ESC exit should preserve original text";
 }
-REGISTER_TEST(test_level_editor_prompt_for_string_block_escape_cancel);
 
-void test_level_editor_prompt_for_string_block_done_button()
+
+TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_done_button)
 {
     std::list<std::string> original{"keep me"};
     std::list<std::string> edited = original;
@@ -143,21 +144,21 @@ void test_level_editor_prompt_for_string_block_done_button()
     KeyStateGuard keyguard;
     PromptBlockInjectData inject_data{&st, &keyguard, false, true};
     SDL_Thread* thread = SDL_CreateThread(prompt_block_escape_injector, "prompt_block_done_injector", &inject_data);
-    TEST_ASSERT(thread != nullptr, "failed to create done injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create done injector thread";
 
     bool accepted = prompt_for_string_block("Done prompt", edited);
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
 
-    TEST_ASSERT(st.started, "injector should have started");
-    TEST_ASSERT(st.finished, "injector should have finished");
-    TEST_ASSERT(accepted, "DONE button should return true");
-    TEST_ASSERT(edited == original, "done without edits should preserve content");
+    ASSERT_TRUE(st.started) << "injector should have started";
+    ASSERT_TRUE(st.finished) << "injector should have finished";
+    ASSERT_TRUE(accepted) << "DONE button should return true";
+    ASSERT_TRUE(edited == original) << "done without edits should preserve content";
 }
-REGISTER_TEST(test_level_editor_prompt_for_string_block_done_button);
 
-void test_level_editor_prompt_for_string_block_editing_keys_and_text()
+
+TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_editing_keys_and_text)
 {
     std::list<std::string> edited{"abc", "xyz"};
 
@@ -165,16 +166,16 @@ void test_level_editor_prompt_for_string_block_editing_keys_and_text()
     KeyStateGuard keyguard;
     PromptBlockInjectData inject_data{&st, &keyguard, false, false};
     SDL_Thread* thread = SDL_CreateThread(prompt_block_editing_injector, "prompt_block_editing_injector", &inject_data);
-    TEST_ASSERT(thread != nullptr, "failed to create editing injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create editing injector thread";
 
     bool accepted = prompt_for_string_block("Edit text", edited);
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
 
-    TEST_ASSERT(st.started, "injector should have started");
-    TEST_ASSERT(st.finished, "injector should have finished");
-    TEST_ASSERT(accepted, "DONE button should accept after editing keys/text");
-    TEST_ASSERT(!edited.empty(), "edited block should remain non-empty");
+    ASSERT_TRUE(st.started) << "injector should have started";
+    ASSERT_TRUE(st.finished) << "injector should have finished";
+    ASSERT_TRUE(accepted) << "DONE button should accept after editing keys/text";
+    ASSERT_TRUE(!edited.empty()) << "edited block should remain non-empty";
 }
-REGISTER_TEST(test_level_editor_prompt_for_string_block_editing_keys_and_text);
+

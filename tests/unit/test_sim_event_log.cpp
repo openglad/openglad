@@ -1,58 +1,58 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/interface/platform_bridge.h>
 
-#include "unit.h"
+#include <gtest/gtest.h>
 
 #include <string>
 
-OG_UNIT_TEST(test_sim_event_log_push_and_clear)
+TEST(SimEventLog, push_and_clear)
 {
     og::sim::SimEventLog log;
-    OG_ASSERT(log.empty());
-    OG_ASSERT(log.size() == 0);
+    ASSERT_TRUE(log.empty());
+    ASSERT_TRUE(log.size() == 0);
 
     log.current_tick_ = 1;
     log.push(og::sim::EventKind::SetPalette, 1, 0);
-    OG_ASSERT(!log.empty());
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(!log.empty());
+    ASSERT_TRUE(log.size() == 1);
 
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.tick == 1);
-    OG_ASSERT(ev.kind == og::sim::EventKind::SetPalette);
-    OG_ASSERT(ev.a == 1);
-    OG_ASSERT(ev.b == 0);
+    ASSERT_TRUE(ev.tick == 1);
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::SetPalette);
+    ASSERT_TRUE(ev.a == 1);
+    ASSERT_TRUE(ev.b == 0);
 
     log.clear();
-    OG_ASSERT(log.empty());
+    ASSERT_TRUE(log.empty());
 }
 
-OG_UNIT_TEST(test_sim_event_log_push_sound)
+TEST(SimEventLog, push_sound)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 5;
     log.push_sound(42);
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::PlaySound);
-    OG_ASSERT(ev.a == 42);
-    OG_ASSERT(ev.tick == 5);
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::PlaySound);
+    ASSERT_TRUE(ev.a == 42);
+    ASSERT_TRUE(ev.tick == 5);
 }
 
-OG_UNIT_TEST(test_sim_event_log_push_notification)
+TEST(SimEventLog, push_notification)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 10;
     log.push_notification("Hello, world!");
 
-    OG_ASSERT(log.size() == 1);
+    ASSERT_TRUE(log.size() == 1);
     const auto& ev = log.events()[0];
-    OG_ASSERT(ev.kind == og::sim::EventKind::Notification);
-    OG_ASSERT(ev.text == "Hello, world!");
-    OG_ASSERT(ev.tick == 10);
+    ASSERT_TRUE(ev.kind == og::sim::EventKind::Notification);
+    ASSERT_TRUE(ev.text == "Hello, world!");
+    ASSERT_TRUE(ev.tick == 10);
 }
 
-OG_UNIT_TEST(test_sim_event_log_drain)
+TEST(SimEventLog, drain)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 1;
@@ -60,33 +60,33 @@ OG_UNIT_TEST(test_sim_event_log_drain)
     log.push_sound(2);
     log.push_sound(3);
 
-    OG_ASSERT(log.size() == 3);
+    ASSERT_TRUE(log.size() == 3);
 
     auto drained = log.drain();
-    OG_ASSERT(drained.size() == 3);
-    OG_ASSERT(log.empty());
-    OG_ASSERT(drained[0].a == 1);
-    OG_ASSERT(drained[1].a == 2);
-    OG_ASSERT(drained[2].a == 3);
+    ASSERT_TRUE(drained.size() == 3);
+    ASSERT_TRUE(log.empty());
+    ASSERT_TRUE(drained[0].a == 1);
+    ASSERT_TRUE(drained[1].a == 2);
+    ASSERT_TRUE(drained[2].a == 3);
 }
 
-OG_UNIT_TEST(test_sim_event_log_tick_tracking)
+TEST(SimEventLog, tick_tracking)
 {
     og::sim::SimEventLog log;
-    OG_ASSERT(log.current_tick_ == 0);
+    ASSERT_TRUE(log.current_tick_ == 0);
 
     log.current_tick_ = 42;
-    OG_ASSERT(log.current_tick_ == 42);
+    ASSERT_TRUE(log.current_tick_ == 42);
 
     log.push(og::sim::EventKind::SetPalette, 1, 0);
-    OG_ASSERT(log.events()[0].tick == 42);
+    ASSERT_TRUE(log.events()[0].tick == 42);
 
     log.current_tick_ = 43;
     log.push(og::sim::EventKind::RequestRedraw, 0, 0);
-    OG_ASSERT(log.events()[1].tick == 43);
+    ASSERT_TRUE(log.events()[1].tick == 43);
 }
 
-OG_UNIT_TEST(test_sim_event_log_multiple_event_types)
+TEST(SimEventLog, multiple_event_types)
 {
     og::sim::SimEventLog log;
     log.current_tick_ = 1;
@@ -96,14 +96,14 @@ OG_UNIT_TEST(test_sim_event_log_multiple_event_types)
     log.push(og::sim::EventKind::SetPalette, 1, 0);
     log.push(og::sim::EventKind::RequestRedraw, 0, 0);
 
-    OG_ASSERT(log.size() == 4);
-    OG_ASSERT(log.events()[0].kind == og::sim::EventKind::PlaySound);
-    OG_ASSERT(log.events()[1].kind == og::sim::EventKind::Notification);
-    OG_ASSERT(log.events()[2].kind == og::sim::EventKind::SetPalette);
-    OG_ASSERT(log.events()[3].kind == og::sim::EventKind::RequestRedraw);
+    ASSERT_TRUE(log.size() == 4);
+    ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::PlaySound);
+    ASSERT_TRUE(log.events()[1].kind == og::sim::EventKind::Notification);
+    ASSERT_TRUE(log.events()[2].kind == og::sim::EventKind::SetPalette);
+    ASSERT_TRUE(log.events()[3].kind == og::sim::EventKind::RequestRedraw);
 }
 
-OG_UNIT_TEST(test_platform_bridge_set_and_invoke_callbacks)
+TEST(SimEventLog, platform_bridge_set_and_invoke_callbacks)
 {
     int present_calls = 0;
     int played_sound = -1;
@@ -130,15 +130,15 @@ OG_UNIT_TEST(test_platform_bridge_set_and_invoke_callbacks)
     active.play_sound(42);
     active.play_music("song.ogg");
     active.stop_music();
-    OG_ASSERT(active.create_surface(320, 200) == nullptr);
+    ASSERT_TRUE(active.create_surface(320, 200) == nullptr);
 
-    OG_ASSERT(present_calls == 1);
-    OG_ASSERT(played_sound == 42);
-    OG_ASSERT(music_file != nullptr);
-    OG_ASSERT(std::string(music_file) == "song.ogg");
-    OG_ASSERT(stop_calls == 1);
-    OG_ASSERT(create_w == 320);
-    OG_ASSERT(create_h == 200);
+    ASSERT_TRUE(present_calls == 1);
+    ASSERT_TRUE(played_sound == 42);
+    ASSERT_TRUE(music_file != nullptr);
+    ASSERT_TRUE(std::string(music_file) == "song.ogg");
+    ASSERT_TRUE(stop_calls == 1);
+    ASSERT_TRUE(create_w == 320);
+    ASSERT_TRUE(create_h == 200);
 
     set_platform_bridge({});
 }

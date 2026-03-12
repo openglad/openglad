@@ -1,12 +1,12 @@
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Implemented in src/level_editor.cpp
 Sint32 level_editor();
 
-void test_level_editor_smoke_end_flag_exits_quickly()
+TEST(LevelEditorSmoke, end_flag_exits_quickly)
 {
     // level_editor() has its own event loop, but it exits if myscreen->end is set.
     const char old_end = og::runtime::current_session->myscreen_->world().end;
@@ -17,4 +17,4 @@ void test_level_editor_smoke_end_flag_exits_quickly()
 
     og::runtime::current_session->myscreen_->world().end = old_end;
 }
-REGISTER_TEST(test_level_editor_smoke_end_flag_exits_quickly);
+

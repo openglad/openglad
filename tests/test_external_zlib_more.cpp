@@ -4,7 +4,7 @@
 
 #include "zlib.h"
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 static bool deflate_all(const std::string& payload,
                         int level,
@@ -73,21 +73,19 @@ static bool inflate_all(const std::vector<unsigned char>& compressed,
     return true;
 }
 
-void test_external_zlib_raw_deflate_inflate_roundtrip()
+TEST(ExternalZlibMore, external_zlib_raw_deflate_inflate_roundtrip)
 {
     const std::string payload(4096, 'B');
     // raw deflate stream (negative windowBits).
     std::vector<unsigned char> comp;
-    TEST_ASSERT(deflate_all(payload, Z_BEST_SPEED, -MAX_WBITS, 8, Z_DEFAULT_STRATEGY, Z_FINISH, &comp),
-                "raw deflate should succeed");
+    ASSERT_TRUE(deflate_all(payload, Z_BEST_SPEED, -MAX_WBITS, 8, Z_DEFAULT_STRATEGY, Z_FINISH, &comp)) << "raw deflate should succeed";
     std::string out;
-    TEST_ASSERT(inflate_all(comp, payload.size(), -MAX_WBITS, &out),
-                "raw inflate should succeed");
-    TEST_ASSERT(out == payload, "raw deflate/inflate roundtrip");
+    ASSERT_TRUE(inflate_all(comp, payload.size(), -MAX_WBITS, &out)) << "raw inflate should succeed";
+    ASSERT_TRUE(out == payload) << "raw deflate/inflate roundtrip";
 }
-REGISTER_TEST(test_external_zlib_raw_deflate_inflate_roundtrip);
 
-void test_external_zlib_gzip_wrapper_deflate_inflate_roundtrip()
+
+TEST(ExternalZlibMore, external_zlib_gzip_wrapper_deflate_inflate_roundtrip)
 {
     const std::string payload =
         "gzip wrapper test payload\n"
@@ -95,23 +93,21 @@ void test_external_zlib_gzip_wrapper_deflate_inflate_roundtrip()
         "gzip wrapper test payload\n";
     // gzip stream (MAX_WBITS + 16).
     std::vector<unsigned char> comp;
-    TEST_ASSERT(deflate_all(payload, Z_DEFAULT_COMPRESSION, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY, Z_FINISH, &comp),
-                "gzip deflate should succeed");
+    ASSERT_TRUE(deflate_all(payload, Z_DEFAULT_COMPRESSION, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY, Z_FINISH, &comp)) << "gzip deflate should succeed";
     std::string out;
-    TEST_ASSERT(inflate_all(comp, payload.size(), MAX_WBITS + 16, &out),
-                "gzip inflate should succeed");
-    TEST_ASSERT(out == payload, "gzip wrapper deflate/inflate roundtrip");
+    ASSERT_TRUE(inflate_all(comp, payload.size(), MAX_WBITS + 16, &out)) << "gzip inflate should succeed";
+    ASSERT_TRUE(out == payload) << "gzip wrapper deflate/inflate roundtrip";
 }
-REGISTER_TEST(test_external_zlib_gzip_wrapper_deflate_inflate_roundtrip);
 
-void test_external_zlib_streaming_small_buffers_and_resets()
+
+TEST(ExternalZlibMore, external_zlib_streaming_small_buffers_and_resets)
 {
     const std::string payload(16384, 'C');
 
     z_stream zs;
     memset(&zs, 0, sizeof(zs));
     int rc = deflateInit(&zs, Z_DEFAULT_COMPRESSION);
-    TEST_ASSERT(rc == Z_OK, "deflateInit");
+    ASSERT_TRUE(rc == Z_OK) << "deflateInit";
 
     std::vector<unsigned char> compressed;
     compressed.resize(4096);
@@ -131,17 +127,17 @@ void test_external_zlib_streaming_small_buffers_and_resets()
         produced_total = compressed.size() - zs.avail_out;
         if (rc == Z_STREAM_END)
             break;
-        TEST_ASSERT(rc == Z_OK, "deflate should continue with small buffers");
+        ASSERT_TRUE(rc == Z_OK) << "deflate should continue with small buffers";
     }
 
     compressed.resize(produced_total);
-    TEST_ASSERT(deflateReset(&zs) == Z_OK, "deflateReset");
+    ASSERT_TRUE(deflateReset(&zs) == Z_OK) << "deflateReset";
     deflateEnd(&zs);
 
     z_stream is;
     memset(&is, 0, sizeof(is));
     rc = inflateInit(&is);
-    TEST_ASSERT(rc == Z_OK, "inflateInit");
+    ASSERT_TRUE(rc == Z_OK) << "inflateInit";
 
     std::string out;
     out.resize(payload.size());
@@ -164,16 +160,16 @@ void test_external_zlib_streaming_small_buffers_and_resets()
 
         if (rc == Z_STREAM_END)
             break;
-        TEST_ASSERT(rc == Z_OK, "inflate should continue with small buffers");
+        ASSERT_TRUE(rc == Z_OK) << "inflate should continue with small buffers";
     }
 
-    TEST_ASSERT(out == payload, "inflate streaming output should match");
-    TEST_ASSERT(inflateReset(&is) == Z_OK, "inflateReset");
+    ASSERT_TRUE(out == payload) << "inflate streaming output should match";
+    ASSERT_TRUE(inflateReset(&is) == Z_OK) << "inflateReset";
     inflateEnd(&is);
 }
-REGISTER_TEST(test_external_zlib_streaming_small_buffers_and_resets);
 
-void test_external_zlib_dictionary_roundtrip()
+
+TEST(ExternalZlibMore, external_zlib_dictionary_roundtrip)
 {
     const std::string dict = "common-prefix-dict";
     const std::string payload = dict + std::string(2048, 'D');
@@ -181,9 +177,8 @@ void test_external_zlib_dictionary_roundtrip()
     z_stream zs;
     memset(&zs, 0, sizeof(zs));
     int rc = deflateInit(&zs, Z_BEST_COMPRESSION);
-    TEST_ASSERT(rc == Z_OK, "deflateInit");
-    TEST_ASSERT(deflateSetDictionary(&zs, (const Bytef*)dict.data(), (uInt)dict.size()) == Z_OK,
-                "deflateSetDictionary");
+    ASSERT_TRUE(rc == Z_OK) << "deflateInit";
+    ASSERT_TRUE(deflateSetDictionary(&zs, (const Bytef*)dict.data(), (uInt)dict.size()) == Z_OK) << "deflateSetDictionary";
 
     std::vector<unsigned char> compressed;
     compressed.resize(compressBound((uLong)payload.size()));
@@ -192,7 +187,7 @@ void test_external_zlib_dictionary_roundtrip()
     zs.next_out = compressed.data();
     zs.avail_out = (uInt)compressed.size();
     rc = deflate(&zs, Z_FINISH);
-    TEST_ASSERT(rc == Z_STREAM_END, "deflate should end");
+    ASSERT_TRUE(rc == Z_STREAM_END) << "deflate should end";
     const size_t used = compressed.size() - zs.avail_out;
     deflateEnd(&zs);
     compressed.resize(used);
@@ -200,7 +195,7 @@ void test_external_zlib_dictionary_roundtrip()
     z_stream is;
     memset(&is, 0, sizeof(is));
     rc = inflateInit(&is);
-    TEST_ASSERT(rc == Z_OK, "inflateInit");
+    ASSERT_TRUE(rc == Z_OK) << "inflateInit";
 
     std::string out;
     out.resize(payload.size());
@@ -212,13 +207,12 @@ void test_external_zlib_dictionary_roundtrip()
     rc = inflate(&is, Z_FINISH);
     if (rc == Z_NEED_DICT)
     {
-        TEST_ASSERT(inflateSetDictionary(&is, (const Bytef*)dict.data(), (uInt)dict.size()) == Z_OK,
-                    "inflateSetDictionary");
+        ASSERT_TRUE(inflateSetDictionary(&is, (const Bytef*)dict.data(), (uInt)dict.size()) == Z_OK) << "inflateSetDictionary";
         rc = inflate(&is, Z_FINISH);
     }
-    TEST_ASSERT(rc == Z_STREAM_END, "inflate should end with dictionary");
+    ASSERT_TRUE(rc == Z_STREAM_END) << "inflate should end with dictionary";
     inflateEnd(&is);
 
-    TEST_ASSERT(out == payload, "dictionary roundtrip payload should match");
+    ASSERT_TRUE(out == payload) << "dictionary roundtrip payload should match";
 }
-REGISTER_TEST(test_external_zlib_dictionary_roundtrip);
+

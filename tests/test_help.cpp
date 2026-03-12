@@ -2,10 +2,11 @@
 #include <array>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -56,7 +57,7 @@ static int mainmenu_button_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     // Check which buttons exist on the main menu
     state->has_options = has_interactable("options");
@@ -70,7 +71,7 @@ static int mainmenu_button_injector(void* data)
 
     SDL_Delay(500);
     wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking back\n");
     interact("back");
@@ -79,7 +80,7 @@ static int mainmenu_button_injector(void* data)
     return 0;
 }
 
-void test_mainmenu_buttons_exist() {
+TEST(Help, mainmenu_buttons_exist) {
     trace_clear();
 
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
@@ -89,7 +90,7 @@ void test_mainmenu_buttons_exist() {
 
     MainMenuButtonState state = { false, false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(mainmenu_button_injector, "btn_test", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
@@ -102,9 +103,9 @@ void test_mainmenu_buttons_exist() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.has_options, "options button should exist on main menu");
-    TEST_ASSERT(state.has_difficulty, "difficulty button should exist on main menu");
-    TEST_ASSERT(state.has_quit_or_help, "quit or help button should exist on main menu");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.has_options) << "options button should exist on main menu";
+    ASSERT_TRUE(state.has_difficulty) << "difficulty button should exist on main menu";
+    ASSERT_TRUE(state.has_quit_or_help) << "quit or help button should exist on main menu";
 }
-REGISTER_TEST(test_mainmenu_buttons_exist);
+

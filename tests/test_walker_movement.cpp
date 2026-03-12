@@ -7,7 +7,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <deque>
 #include <vector>
 
@@ -27,7 +27,7 @@ static walker* make_guy(char family, unsigned char team = 0)
 // walker::facing - comprehensive direction testing
 // ---------------------------------------------------------------------------
 
-void test_walker_facing_all_16_vectors()
+TEST(WalkerMovement, walker_facing_all_16_vectors)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -41,50 +41,50 @@ void test_walker_facing_all_16_vectors()
     };
     for (auto& d : dirs) {
         short dir = w->facing(d.x, d.y);
-        TEST_ASSERT(dir >= 0 && dir < 8, "facing should be 0-7");
+        ASSERT_TRUE(dir >= 0 && dir < 8) << "facing should be 0-7";
     }
 }
-REGISTER_TEST(test_walker_facing_all_16_vectors);
 
-void test_walker_facing_zero()
+
+TEST(WalkerMovement, walker_facing_zero)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     short dir = w->facing(0, 0);
     (void)dir; // behavior for (0,0) may vary
 }
-REGISTER_TEST(test_walker_facing_zero);
 
-void test_walker_facing_threshold_boundaries_round6()
+
+TEST(WalkerMovement, walker_facing_threshold_boundaries_round6)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
 
     // x == 0 branch
-    TEST_ASSERT_EQ(FACE_DOWN, (int)w->facing(0, 1), "facing(0,+) should be FACE_DOWN");
-    TEST_ASSERT_EQ(FACE_UP, (int)w->facing(0, 0), "facing(0,0) should be FACE_UP");
+    ASSERT_EQ(FACE_DOWN, (int)w->facing(0, 1)) << "facing(0,+) should be FACE_DOWN";
+    ASSERT_EQ(FACE_UP, (int)w->facing(0, 0)) << "facing(0,0) should be FACE_UP";
 
     // x > 0 slope buckets
-    TEST_ASSERT_EQ(FACE_DOWN, (int)w->facing(1, 3), "positive x with steep positive slope");
-    TEST_ASSERT_EQ(FACE_DOWN_RIGHT, (int)w->facing(1, 1), "positive x with medium positive slope");
-    TEST_ASSERT_EQ(FACE_RIGHT, (int)w->facing(1, 0), "positive x with flat slope");
-    TEST_ASSERT_EQ(FACE_UP_RIGHT, (int)w->facing(1, -1), "positive x with medium negative slope");
-    TEST_ASSERT_EQ(FACE_UP, (int)w->facing(1, -3), "positive x with steep negative slope");
+    ASSERT_EQ(FACE_DOWN, (int)w->facing(1, 3)) << "positive x with steep positive slope";
+    ASSERT_EQ(FACE_DOWN_RIGHT, (int)w->facing(1, 1)) << "positive x with medium positive slope";
+    ASSERT_EQ(FACE_RIGHT, (int)w->facing(1, 0)) << "positive x with flat slope";
+    ASSERT_EQ(FACE_UP_RIGHT, (int)w->facing(1, -1)) << "positive x with medium negative slope";
+    ASSERT_EQ(FACE_UP, (int)w->facing(1, -3)) << "positive x with steep negative slope";
 
     // x < 0 slope buckets
-    TEST_ASSERT_EQ(FACE_UP, (int)w->facing(-1, -3), "negative x with steep positive slope");
-    TEST_ASSERT_EQ(FACE_UP_LEFT, (int)w->facing(-1, -1), "negative x with medium positive slope");
-    TEST_ASSERT_EQ(FACE_LEFT, (int)w->facing(-1, 0), "negative x with flat slope");
-    TEST_ASSERT_EQ(FACE_DOWN_LEFT, (int)w->facing(-1, 1), "negative x with medium negative slope");
-    TEST_ASSERT_EQ(FACE_DOWN, (int)w->facing(-1, 3), "negative x with steep negative slope");
+    ASSERT_EQ(FACE_UP, (int)w->facing(-1, -3)) << "negative x with steep positive slope";
+    ASSERT_EQ(FACE_UP_LEFT, (int)w->facing(-1, -1)) << "negative x with medium positive slope";
+    ASSERT_EQ(FACE_LEFT, (int)w->facing(-1, 0)) << "negative x with flat slope";
+    ASSERT_EQ(FACE_DOWN_LEFT, (int)w->facing(-1, 1)) << "negative x with medium negative slope";
+    ASSERT_EQ(FACE_DOWN, (int)w->facing(-1, 3)) << "negative x with steep negative slope";
 }
-REGISTER_TEST(test_walker_facing_threshold_boundaries_round6);
+
 
 // ---------------------------------------------------------------------------
 // walker::turn - exercises the turning logic
 // ---------------------------------------------------------------------------
 
-void test_walker_turn_to_all_targets()
+TEST(WalkerMovement, walker_turn_to_all_targets)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -94,9 +94,9 @@ void test_walker_turn_to_all_targets()
         w->turn(target);
     }
 }
-REGISTER_TEST(test_walker_turn_to_all_targets);
 
-void test_walker_turn_from_all_starts()
+
+TEST(WalkerMovement, walker_turn_from_all_starts)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -106,13 +106,13 @@ void test_walker_turn_from_all_starts()
         w->turn(0);
     }
 }
-REGISTER_TEST(test_walker_turn_from_all_starts);
+
 
 // ---------------------------------------------------------------------------
 // walker::walkstep - movement logic
 // ---------------------------------------------------------------------------
 
-void test_walker_walkstep_cardinals()
+TEST(WalkerMovement, walker_walkstep_cardinals)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -124,9 +124,9 @@ void test_walker_walkstep_cardinals()
     w->walkstep(0, -1);
 
 }
-REGISTER_TEST(test_walker_walkstep_cardinals);
 
-void test_walker_walkstep_diagonals()
+
+TEST(WalkerMovement, walker_walkstep_diagonals)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -138,9 +138,9 @@ void test_walker_walkstep_diagonals()
     w->walkstep(-1, -1);
 
 }
-REGISTER_TEST(test_walker_walkstep_diagonals);
 
-void test_walker_walkstep_zero()
+
+TEST(WalkerMovement, walker_walkstep_zero)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -161,13 +161,13 @@ void test_walker_walkstep_zero()
     (void)w->walkstep(-1, 1);
 
 }
-REGISTER_TEST(test_walker_walkstep_zero);
 
-void test_walker_walkstep_user_slide_cardinal_break_path_round5()
+
+TEST(WalkerMovement, walker_walkstep_user_slide_cardinal_break_path_round5)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -177,15 +177,15 @@ void test_walker_walkstep_user_slide_cardinal_break_path_round5()
     w->curdir = FACE_LEFT;
 
     const bool moved = w->walkstep(-1, 0);
-    TEST_ASSERT(!moved, "blocked cardinal user movement should keep slide dx/dy at zero and fail");
+    ASSERT_TRUE(!moved) << "blocked cardinal user movement should keep slide dx/dy at zero and fail";
 }
-REGISTER_TEST(test_walker_walkstep_user_slide_cardinal_break_path_round5);
 
-void test_walker_walkstep_user_slide_diagonal_switch_cases_round6()
+
+TEST(WalkerMovement, walker_walkstep_user_slide_diagonal_switch_cases_round6)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -199,13 +199,13 @@ void test_walker_walkstep_user_slide_diagonal_switch_cases_round6()
     (void)w->walkstep(-1, 1);   // FACE_DOWN_LEFT
     (void)w->walkstep(-1, -1);  // FACE_UP_LEFT
 }
-REGISTER_TEST(test_walker_walkstep_user_slide_diagonal_switch_cases_round6);
+
 
 // ---------------------------------------------------------------------------
 // walker::draw and walker::draw_tile via viewscreen
 // ---------------------------------------------------------------------------
 
-void test_walker_draw_basic()
+TEST(WalkerMovement, walker_draw_basic)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -216,9 +216,9 @@ void test_walker_draw_basic()
         draw_walker(*w, vs);
     }
 }
-REGISTER_TEST(test_walker_draw_basic);
 
-void test_walker_draw_tile_basic()
+
+TEST(WalkerMovement, walker_draw_tile_basic)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -249,9 +249,9 @@ void test_walker_draw_tile_basic()
         delete control;
     }
 }
-REGISTER_TEST(test_walker_draw_tile_basic);
 
-void test_walker_draw_with_flight()
+
+TEST(WalkerMovement, walker_draw_with_flight)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -263,9 +263,9 @@ void test_walker_draw_with_flight()
         draw_walker(*w, vs);
     }
 }
-REGISTER_TEST(test_walker_draw_with_flight);
 
-void test_walker_draw_with_invisibility()
+
+TEST(WalkerMovement, walker_draw_with_invisibility)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -290,9 +290,9 @@ void test_walker_draw_with_invisibility()
         delete control;
     }
 }
-REGISTER_TEST(test_walker_draw_with_invisibility);
 
-void test_walker_draw_with_invulnerability()
+
+TEST(WalkerMovement, walker_draw_with_invulnerability)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -304,12 +304,12 @@ void test_walker_draw_with_invulnerability()
         draw_walker(*w, vs);
     }
 }
-REGISTER_TEST(test_walker_draw_with_invulnerability);
 
-void test_walker_movement_stationary_family_walk_and_turn_branches()
+
+TEST(WalkerMovement, stationary_family_walk_and_turn_branches)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -317,27 +317,27 @@ void test_walker_movement_stationary_family_walk_and_turn_branches()
     w->set_order_family(Order::Living, FAMILY_TOWER1);
 
     // walkstep stationary short-circuit branch.
-    TEST_ASSERT(w->walkstep(1, 0), "stationary walkstep should succeed without moving");
-    TEST_ASSERT_EQ(1, (int)w->lastx, "stationary walkstep should store unit x input");
-    TEST_ASSERT_EQ(0, (int)w->lasty, "stationary walkstep should store unit y input");
+    ASSERT_TRUE(w->walkstep(1, 0)) << "stationary walkstep should succeed without moving";
+    ASSERT_EQ(1, (int)w->lastx) << "stationary walkstep should store unit x input";
+    ASSERT_EQ(0, (int)w->lasty) << "stationary walkstep should store unit y input";
 
     // walk() stationary branch.
-    TEST_ASSERT(w->walk(1, 1), "stationary walk should succeed");
+    ASSERT_TRUE(w->walk(1, 1)) << "stationary walk should succeed";
 
     // turn() stationary branch should not overwrite facing vector.
     w->lastx = 7;
     w->lasty = -3;
     (void)w->turn(FACE_LEFT);
-    TEST_ASSERT_EQ(7, (int)w->lastx, "stationary turn should preserve lastx");
-    TEST_ASSERT_EQ(-3, (int)w->lasty, "stationary turn should preserve lasty");
+    ASSERT_EQ(7, (int)w->lastx) << "stationary turn should preserve lastx";
+    ASSERT_EQ(-3, (int)w->lasty) << "stationary turn should preserve lasty";
 }
-REGISTER_TEST(test_walker_movement_stationary_family_walk_and_turn_branches);
 
-void test_walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs()
+
+TEST(WalkerMovement, walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -348,39 +348,39 @@ void test_walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs()
     w->setxy(32, 0);
     w->curdir = FACE_DOWN;
     (void)w->walkstep(1, -1);
-    TEST_ASSERT(true, "user slide horizontal branch executed");
+    ASSERT_TRUE(true) << "user slide horizontal branch executed";
 
     // Vertical-only slide: left blocked at left edge, up passable.
     w->setxy(0, 32);
     w->curdir = FACE_RIGHT;
     (void)w->walkstep(-1, -1);
-    TEST_ASSERT(true, "user slide vertical branch executed");
+    ASSERT_TRUE(true) << "user slide vertical branch executed";
 }
-REGISTER_TEST(test_walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs);
+
 
 // ---------------------------------------------------------------------------
 // walker::animate - different animation types
 // ---------------------------------------------------------------------------
 
-void test_walker_animate_walk()
+TEST(WalkerMovement, walker_animate_walk)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     w->ani_type = ANI_WALK;
     w->animate();
 }
-REGISTER_TEST(test_walker_animate_walk);
 
-void test_walker_animate_attack()
+
+TEST(WalkerMovement, walker_animate_attack)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     w->ani_type = ANI_ATTACK;
     w->animate();
 }
-REGISTER_TEST(test_walker_animate_attack);
 
-void test_walker_animate_all_families()
+
+TEST(WalkerMovement, walker_animate_all_families)
 {
     char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
@@ -393,13 +393,13 @@ void test_walker_animate_all_families()
         w->animate();
     }
 }
-REGISTER_TEST(test_walker_animate_all_families);
 
-void test_walker_movement_round9_user_cardinal_slide_break_and_offmap_guards()
+
+TEST(WalkerMovement, round9_user_cardinal_slide_break_and_offmap_guards)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -408,23 +408,23 @@ void test_walker_movement_round9_user_cardinal_slide_break_and_offmap_guards()
     w->stepsize = 1.0f;
     w->setxy(0, 16);
     w->curdir = FACE_LEFT;
-    TEST_ASSERT(!w->walkstep(-1, 0), "blocked cardinal user slide should fail");
+    ASSERT_TRUE(!w->walkstep(-1, 0)) << "blocked cardinal user slide should fail";
 
     // walk(0,0) early-return path.
-    TEST_ASSERT(w->walk(0, 0), "walk(0,0) should return success");
+    ASSERT_TRUE(w->walk(0, 0)) << "walk(0,0) should return success";
 
     // Off-map guard in walk().
     w->setxy(0, 0);
     w->curdir = FACE_LEFT;
-    TEST_ASSERT(!w->walk(-1, 0), "walk should fail when target is off map");
+    ASSERT_TRUE(!w->walk(-1, 0)) << "walk should fail when target is off map";
 }
-REGISTER_TEST(test_walker_movement_round9_user_cardinal_slide_break_and_offmap_guards);
 
-void test_walker_movement_round9_blocked_animate_angle_and_turn_default_paths()
+
+TEST(WalkerMovement, round9_blocked_animate_angle_and_turn_default_paths)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -434,29 +434,29 @@ void test_walker_movement_round9_blocked_animate_angle_and_turn_default_paths()
     w->curdir = FACE_RIGHT;
     // Moving from (1,1) one tile right targets tile (2,1).
     og::runtime::current_session->myscreen_->world().grid.data[1 * og::runtime::current_session->myscreen_->world().grid.w + 2] = PIX_TREE_M1;
-    TEST_ASSERT(!w->walk(1, 0), "blocked movement should fail while still executing animate-on-block path");
+    ASSERT_TRUE(!w->walk(1, 0)) << "blocked movement should fail while still executing animate-on-block path";
 
     // get_current_angle switch branches.
     w->curdir = FACE_UP;
-    TEST_ASSERT(w->get_current_angle() < 0.0f, "FACE_UP angle should be negative");
+    ASSERT_TRUE(w->get_current_angle() < 0.0f) << "FACE_UP angle should be negative";
     w->curdir = 99;
-    TEST_ASSERT_EQ(0, (int)w->get_current_angle(), "invalid direction should use default angle");
+    ASSERT_EQ(0, (int)w->get_current_angle()) << "invalid direction should use default angle";
 
     // Invalid curdir is clamped before turning; one step toward FACE_UP from clamped
     // FACE_UP results in FACE_UP_LEFT.
     w->stepsize = 2.0f;
     w->curdir = static_cast<char>(-120);
     (void)w->turn(FACE_UP);
-    TEST_ASSERT_EQ(-2, (int)w->lastx, "invalid turn direction should clamp and turn safely");
-    TEST_ASSERT_EQ(-2, (int)w->lasty, "invalid turn direction should default lasty to -stepsize");
+    ASSERT_EQ(-2, (int)w->lastx) << "invalid turn direction should clamp and turn safely";
+    ASSERT_EQ(-2, (int)w->lasty) << "invalid turn direction should default lasty to -stepsize";
 }
-REGISTER_TEST(test_walker_movement_round9_blocked_animate_angle_and_turn_default_paths);
+
 
 // ---------------------------------------------------------------------------
 // walker::create_weapon
 // ---------------------------------------------------------------------------
 
-void test_walker_create_weapon_soldier()
+TEST(WalkerMovement, walker_create_weapon_soldier)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
@@ -470,9 +470,9 @@ void test_walker_create_weapon_soldier()
     }
 
 }
-REGISTER_TEST(test_walker_create_weapon_soldier);
 
-void test_walker_create_weapon_archer()
+
+TEST(WalkerMovement, walker_create_weapon_archer)
 {
     walker* w = make_guy(FAMILY_ARCHER, 0);
     if (!w) return;
@@ -486,9 +486,9 @@ void test_walker_create_weapon_archer()
     }
 
 }
-REGISTER_TEST(test_walker_create_weapon_archer);
 
-void test_walker_create_weapon_mage()
+
+TEST(WalkerMovement, walker_create_weapon_mage)
 {
     walker* w = make_guy(FAMILY_MAGE, 0);
     if (!w) return;
@@ -502,13 +502,13 @@ void test_walker_create_weapon_mage()
     }
 
 }
-REGISTER_TEST(test_walker_create_weapon_mage);
 
-void test_walker_movement_round6_blocked_animate_and_default_angle_turn()
+
+TEST(WalkerMovement, round6_blocked_animate_and_default_angle_turn)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
@@ -521,43 +521,43 @@ void test_walker_movement_round6_blocked_animate_and_default_angle_turn()
     w->curdir = FACE_LEFT;
     w->stats()->set_bit_flags(BIT_ANIMATE, 1);
     (void)w->walk(-1, 0);
-    TEST_ASSERT(true, "animated off-map walk path executed");
+    ASSERT_TRUE(true) << "animated off-map walk path executed";
 
     // get_current_angle default branch.
     w->curdir = static_cast<char>(99);
-    TEST_ASSERT_EQ(0, (int)w->get_current_angle(), "invalid direction should map to angle 0");
+    ASSERT_EQ(0, (int)w->get_current_angle()) << "invalid direction should map to angle 0";
 
     // turn default branch in lastx/lasty fallback.
     w->curdir = static_cast<char>(99);
     (void)w->turn(FACE_UP);
-    TEST_ASSERT(true, "turn should tolerate invalid current direction");
+    ASSERT_TRUE(true) << "turn should tolerate invalid current direction";
 }
-REGISTER_TEST(test_walker_movement_round6_blocked_animate_and_default_angle_turn);
+
 
 // ---------------------------------------------------------------------------
 // walker on_screen
 // ---------------------------------------------------------------------------
 
-void test_walker_on_screen()
+TEST(WalkerMovement, walker_on_screen)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     w->setxy(100, 100);
     // on_screen() is a render-layer method on pixie, not walker.
     // Verify walker position is set correctly instead.
-    TEST_ASSERT(w->xpos == 100, "xpos set");
-    TEST_ASSERT(w->ypos == 100, "ypos set");
+    ASSERT_TRUE(w->xpos == 100) << "xpos set";
+    ASSERT_TRUE(w->ypos == 100) << "ypos set";
 }
-REGISTER_TEST(test_walker_on_screen);
 
-void test_walker_draw_tile_phantom_and_forestwalk_paths()
+
+TEST(WalkerMovement, walker_draw_tile_phantom_and_forestwalk_paths)
 {
     walker* w = make_guy(FAMILY_ELF, 0);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->setxy(96, 96);
 
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(vs != nullptr, "viewscreen exists");
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
     if (vs) {
         walker* old_control = vs->control;
         walker* control = make_guy(FAMILY_SOLDIER, 0);
@@ -587,13 +587,13 @@ void test_walker_draw_tile_phantom_and_forestwalk_paths()
     }
 
 }
-REGISTER_TEST(test_walker_draw_tile_phantom_and_forestwalk_paths);
 
-void test_walker_movement_deep_branch_coverage_smoke()
+
+TEST(WalkerMovement, deep_branch_coverage_smoke)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker should be created");
+    ASSERT_TRUE(w != nullptr) << "walker should be created";
     if (!w)
         return;
 
@@ -608,16 +608,16 @@ void test_walker_movement_deep_branch_coverage_smoke()
     const short f7 = w->facing(-3, 0);
     const short f8 = w->facing(-2, -1);
     const short f9 = w->facing(-1, -3);
-    TEST_ASSERT(f0 >= 0 && f0 < 8, "facing value should be valid");
-    TEST_ASSERT(f1 >= 0 && f1 < 8, "facing value should be valid");
-    TEST_ASSERT(f2 >= 0 && f2 < 8, "facing value should be valid");
-    TEST_ASSERT(f3 >= 0 && f3 < 8, "facing value should be valid");
-    TEST_ASSERT(f4 >= 0 && f4 < 8, "facing value should be valid");
-    TEST_ASSERT(f5 >= 0 && f5 < 8, "facing value should be valid");
-    TEST_ASSERT(f6 >= 0 && f6 < 8, "facing value should be valid");
-    TEST_ASSERT(f7 >= 0 && f7 < 8, "facing value should be valid");
-    TEST_ASSERT(f8 >= 0 && f8 < 8, "facing value should be valid");
-    TEST_ASSERT(f9 >= 0 && f9 < 8, "facing value should be valid");
+    ASSERT_TRUE(f0 >= 0 && f0 < 8) << "facing value should be valid";
+    ASSERT_TRUE(f1 >= 0 && f1 < 8) << "facing value should be valid";
+    ASSERT_TRUE(f2 >= 0 && f2 < 8) << "facing value should be valid";
+    ASSERT_TRUE(f3 >= 0 && f3 < 8) << "facing value should be valid";
+    ASSERT_TRUE(f4 >= 0 && f4 < 8) << "facing value should be valid";
+    ASSERT_TRUE(f5 >= 0 && f5 < 8) << "facing value should be valid";
+    ASSERT_TRUE(f6 >= 0 && f6 < 8) << "facing value should be valid";
+    ASSERT_TRUE(f7 >= 0 && f7 < 8) << "facing value should be valid";
+    ASSERT_TRUE(f8 >= 0 && f8 < 8) << "facing value should be valid";
+    ASSERT_TRUE(f9 >= 0 && f9 < 8) << "facing value should be valid";
 
     // NPC blocked walkstep fallback switch paths.
     w->user = -1;
@@ -659,15 +659,15 @@ void test_walker_movement_deep_branch_coverage_smoke()
     w->curdir = 99;
     (void)w->turn(FACE_UP);
 
-    TEST_ASSERT(true, "walker movement deep branches executed");
+    ASSERT_TRUE(true) << "walker movement deep branches executed";
 }
-REGISTER_TEST(test_walker_movement_deep_branch_coverage_smoke);
 
-void test_walker_movement_round6_npc_blocked_switch_and_user_slide_subpaths()
+
+TEST(WalkerMovement, round6_npc_blocked_switch_and_user_slide_subpaths)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker should be created");
+    ASSERT_TRUE(w != nullptr) << "walker should be created";
     if (!w)
         return;
 
@@ -709,9 +709,9 @@ void test_walker_movement_round6_npc_blocked_switch_and_user_slide_subpaths()
     w->setxy(0, GRID_SIZE * 3);
     (void)w->walkstep(-1, -1);
 
-    TEST_ASSERT(true, "blocked npc and user-slide subpaths executed");
+    ASSERT_TRUE(true) << "blocked npc and user-slide subpaths executed";
 }
-REGISTER_TEST(test_walker_movement_round6_npc_blocked_switch_and_user_slide_subpaths);
+
 
 namespace {
 class ScriptedWalkWalker : public walker {
@@ -761,7 +761,7 @@ static PixieData one_px_for_scripted()
 }
 } // namespace
 
-void test_walker_movement_round6_scripted_walkstep_switch_coverage()
+TEST(WalkerMovement, round6_scripted_walkstep_switch_coverage)
 {
     PixieData px = one_px_for_scripted();
     ScriptedWalkWalker w(px);
@@ -770,38 +770,38 @@ void test_walker_movement_round6_scripted_walkstep_switch_coverage()
     // NPC fallback switch: first two attempts fail, case body executes.
     w.user = -1;
     w.set_walk_results({false, false, true});
-    TEST_ASSERT(w.walkstep(0, -1), "FACE_UP npc fallback should return ret1");
+    ASSERT_TRUE(w.walkstep(0, -1)) << "FACE_UP npc fallback should return ret1";
 
     w.set_walk_results({false, false, true});
-    TEST_ASSERT(w.walkstep(1, 0), "FACE_RIGHT npc fallback should return ret1");
+    ASSERT_TRUE(w.walkstep(1, 0)) << "FACE_RIGHT npc fallback should return ret1";
 
     w.set_walk_results({false, false, true});
-    TEST_ASSERT(w.walkstep(0, 1), "FACE_DOWN npc fallback should return ret1");
+    ASSERT_TRUE(w.walkstep(0, 1)) << "FACE_DOWN npc fallback should return ret1";
 
     w.set_walk_results({false, false, true});
-    TEST_ASSERT(w.walkstep(-1, 0), "FACE_LEFT npc fallback should return ret1");
+    ASSERT_TRUE(w.walkstep(-1, 0)) << "FACE_LEFT npc fallback should return ret1";
 
     // Diagonal NPC fallbacks (ret1/ret2 dual-call path).
     w.set_walk_results({false, false, false, true});
-    TEST_ASSERT(w.walkstep(1, -1), "FACE_UP_RIGHT npc fallback should return ret2");
+    ASSERT_TRUE(w.walkstep(1, -1)) << "FACE_UP_RIGHT npc fallback should return ret2";
 
     w.set_walk_results({false, false, true, false});
-    TEST_ASSERT(w.walkstep(1, 1), "FACE_DOWN_RIGHT npc fallback should return ret1");
+    ASSERT_TRUE(w.walkstep(1, 1)) << "FACE_DOWN_RIGHT npc fallback should return ret1";
 
     w.set_walk_results({false, false, false, true});
-    TEST_ASSERT(w.walkstep(-1, 1), "FACE_DOWN_LEFT npc fallback should return ret2");
+    ASSERT_TRUE(w.walkstep(-1, 1)) << "FACE_DOWN_LEFT npc fallback should return ret2";
 
     w.set_walk_results({false, false, true, false});
-    TEST_ASSERT(w.walkstep(-1, -1), "FACE_UP_LEFT npc fallback should return ret1");
+    ASSERT_TRUE(w.walkstep(-1, -1)) << "FACE_UP_LEFT npc fallback should return ret1";
 
     // User slide switch cardinal branch (dx/dy stays zero and returns false).
     w.user = 0;
     w.set_walk_results({false, false});
-    TEST_ASSERT(!w.walkstep(0, -1), "user cardinal blocked path should return false");
+    ASSERT_TRUE(!w.walkstep(0, -1)) << "user cardinal blocked path should return false";
 }
-REGISTER_TEST(test_walker_movement_round6_scripted_walkstep_switch_coverage);
 
-void test_walker_movement_round8_user_slide_switch_default_branch()
+
+TEST(WalkerMovement, round8_user_slide_switch_default_branch)
 {
     PixieData px = one_px_for_scripted();
     ScriptedWalkWalker w(px);
@@ -811,39 +811,39 @@ void test_walker_movement_round8_user_slide_switch_default_branch()
     // User-slide cardinal branch: switch hits the cardinal break path.
     w.set_forced_facing(FACE_UP);
     w.set_walk_results({false, false});
-    TEST_ASSERT(!w.walkstep(0, -1), "blocked user cardinal slide should return false");
+    ASSERT_TRUE(!w.walkstep(0, -1)) << "blocked user cardinal slide should return false";
 
     // Force impossible facing value to hit user-slide switch default fallback.
     w.set_forced_facing(99);
     w.set_walk_results({false, false});
-    TEST_ASSERT(!w.walkstep(0, -1), "invalid facing should hit user-slide default branch and return false");
+    ASSERT_TRUE(!w.walkstep(0, -1)) << "invalid facing should hit user-slide default branch and return false";
 }
-REGISTER_TEST(test_walker_movement_round8_user_slide_switch_default_branch);
 
-void test_walker_get_current_angle_all_direction_cases()
+
+TEST(WalkerMovement, walker_get_current_angle_all_direction_cases)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
-    TEST_ASSERT(w != nullptr, "walker should be created");
+    ASSERT_TRUE(w != nullptr) << "walker should be created";
     if (!w)
         return;
 
     w->curdir = FACE_UP;
-    TEST_ASSERT(w->get_current_angle() < -1.0f, "FACE_UP should be near -pi/2");
+    ASSERT_TRUE(w->get_current_angle() < -1.0f) << "FACE_UP should be near -pi/2";
     w->curdir = FACE_UP_RIGHT;
-    TEST_ASSERT(w->get_current_angle() < 0.0f, "FACE_UP_RIGHT should be negative");
+    ASSERT_TRUE(w->get_current_angle() < 0.0f) << "FACE_UP_RIGHT should be negative";
     w->curdir = FACE_RIGHT;
-    TEST_ASSERT_EQ(0, (int)w->get_current_angle(), "FACE_RIGHT should be zero angle");
+    ASSERT_EQ(0, (int)w->get_current_angle()) << "FACE_RIGHT should be zero angle";
     w->curdir = FACE_DOWN_RIGHT;
-    TEST_ASSERT(w->get_current_angle() > 0.0f, "FACE_DOWN_RIGHT should be positive");
+    ASSERT_TRUE(w->get_current_angle() > 0.0f) << "FACE_DOWN_RIGHT should be positive";
     w->curdir = FACE_DOWN;
-    TEST_ASSERT(w->get_current_angle() > 1.0f, "FACE_DOWN should be near +pi/2");
+    ASSERT_TRUE(w->get_current_angle() > 1.0f) << "FACE_DOWN should be near +pi/2";
     w->curdir = FACE_DOWN_LEFT;
-    TEST_ASSERT(w->get_current_angle() > 2.0f, "FACE_DOWN_LEFT should be in third quadrant");
+    ASSERT_TRUE(w->get_current_angle() > 2.0f) << "FACE_DOWN_LEFT should be in third quadrant";
     w->curdir = FACE_LEFT;
-    TEST_ASSERT(w->get_current_angle() > 3.0f, "FACE_LEFT should be near pi");
+    ASSERT_TRUE(w->get_current_angle() > 3.0f) << "FACE_LEFT should be near pi";
     w->curdir = FACE_UP_LEFT;
-    TEST_ASSERT(w->get_current_angle() > 3.5f, "FACE_UP_LEFT should be near 5*pi/4");
+    ASSERT_TRUE(w->get_current_angle() > 3.5f) << "FACE_UP_LEFT should be near 5*pi/4";
     w->curdir = static_cast<char>(99);
-    TEST_ASSERT_EQ(0, (int)w->get_current_angle(), "invalid direction should use default 0.0 angle");
+    ASSERT_EQ(0, (int)w->get_current_angle()) << "invalid direction should use default 0.0 angle";
 }
-REGISTER_TEST(test_walker_get_current_angle_all_direction_cases);
+

@@ -2,10 +2,11 @@
 #include <array>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -52,7 +53,7 @@ static int back_test_injector(void* data)
     // mainmenu() calls init_buttons() then fadeblack(1) which takes ~500ms
     // and eats SDL events during the fade.
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
     state->times_saw_mainmenu++;
 
     fprintf(stderr, "  [test] Iteration 1: clicking continue_game\n");
@@ -61,7 +62,7 @@ static int back_test_injector(void* data)
     // Wait for create_team_menu to init (fadeblack + level load)
     SDL_Delay(500);
     wait_for_interactable("go", 10000);
-    SDL_Delay(1500);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] Iteration 1: clicking back\n");
     interact("back");
@@ -73,14 +74,14 @@ static int back_test_injector(void* data)
     SDL_Delay(500);
     if (wait_for_interactable("continue_game", 10000)) {
         state->times_saw_mainmenu++;
-        SDL_Delay(1500);
+        SDL_Delay(750);
 
         fprintf(stderr, "  [test] Iteration 2: clicking continue_game\n");
         interact("continue_game");
 
         SDL_Delay(500);
         wait_for_interactable("go", 10000);
-        SDL_Delay(1500);
+        SDL_Delay(750);
 
         fprintf(stderr, "  [test] Iteration 2: clicking back\n");
         interact("back");
@@ -104,7 +105,7 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
-void test_continue_then_back_returns_to_mainmenu() {
+TEST(BackToMainmenu, continue_then_back_returns_to_mainmenu) {
     trace_clear();
 
     // Set up save data so CONTINUE GAME has something to load
@@ -116,7 +117,7 @@ void test_continue_then_back_returns_to_mainmenu() {
     // Start the event injector thread
     BackTestState state = { false, false, 0 };
     SDL_Thread* thread = SDL_CreateThread(back_test_injector, "back_test", &state);
-    TEST_ASSERT(thread != nullptr, "failed to create event injector thread");
+    ASSERT_TRUE(thread != nullptr) << "failed to create event injector thread";
 
     // Allow 2 mainmenu iterations then exit the loop
     g_picker_mainmenu_calls = 0;
@@ -132,12 +133,11 @@ void test_continue_then_back_returns_to_mainmenu() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    TEST_ASSERT(state.finished, "injector thread should have completed");
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
 
     // The real assertion: the injector saw the main menu appear TWICE.
     // Before the fix (no loop): mainmenu only appeared once -> FAIL
     // After the fix (loop): mainmenu appeared twice -> PASS
-    TEST_ASSERT(state.times_saw_mainmenu >= 2,
-        "main menu should reappear after Continue->Back (not exit the program)");
+    ASSERT_TRUE(state.times_saw_mainmenu >= 2) << "main menu should reappear after Continue->Back (not exit the program)";
 }
-REGISTER_TEST(test_continue_then_back_returns_to_mainmenu);
+

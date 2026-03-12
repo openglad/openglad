@@ -126,16 +126,18 @@ The CMake build produces these targets:
 |--------|-------------|
 | `openglad` | The game binary |
 | `openscen` | The level editor (compiled with `-DOPENSCEN`) |
-| `og_unit_tests` | Headless unit tests (no SDL required) |
-| `openglad_test` | Full integration test suite |
-| `og_data_tests` | Data/IO module test subset |
-| `og_runtime_tests` | Runtime module test subset |
+| `og_unit_*` | Four headless unit test binaries (291 tests total) |
+| `og_test_*` | Twenty SDL integration test binaries (1496 tests total) |
+| `openglad_text` | Headless text client used by script-based CTest entries |
 
 ### Build Specific Targets
 
 ```bash
 cmake --build --preset dev-debug --target openglad
-cmake --build --preset ci-test --target og_unit_tests og_data_tests og_runtime_tests
+cmake --build --preset ci-test -j"$(nproc)"
+ctest --test-dir build/ci-test --parallel "$(nproc)" --output-on-failure --timeout 180
+ctest --test-dir build/ci-test -L unit
+ctest --test-dir build/ci-test -R og_test_walker
 ```
 
 ---
@@ -161,7 +163,7 @@ Shell scripts in `scripts/` provide quick-build shortcuts:
 | Script | Description |
 |--------|-------------|
 | `scripts/build_native.sh` | Quick native release build |
-| `scripts/build_test.sh` | Build test binary |
+| `scripts/build_test.sh` | Build all grouped test binaries |
 | `scripts/build_web.sh` | Emscripten/WASM build |
 | `scripts/build_coverage.sh` | Coverage report generation |
 

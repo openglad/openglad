@@ -13,7 +13,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #include "test_gameplay_context_scope.h"
 
 const FamilyDescriptor& describe_family_orc();
@@ -75,11 +75,11 @@ walker* add_stain(OrcR15Fixture& fx, short x, short y, unsigned char team, char 
 
 } // namespace
 
-OG_UNIT_TEST(test_family_big_orc_r15_level_up_and_orc_descriptor_hooks)
+TEST(FamilyOrc, family_big_orc_r15_level_up_and_orc_descriptor_hooks)
 {
     const FamilyDescriptor& big_orc = describe_family_big_orc();
-    OG_ASSERT(big_orc.family_id == FAMILY_BIG_ORC);
-    OG_ASSERT(big_orc.level_up != nullptr);
+    ASSERT_TRUE(big_orc.family_id == FAMILY_BIG_ORC);
+    ASSERT_TRUE(big_orc.level_up != nullptr);
 
     guy captain(FAMILY_BIG_ORC);
     const short old_str = captain.strength;
@@ -88,19 +88,19 @@ OG_UNIT_TEST(test_family_big_orc_r15_level_up_and_orc_descriptor_hooks)
     const short old_int = captain.intelligence;
     const short old_arm = captain.armor;
     big_orc.level_up(&captain, 2);
-    OG_ASSERT(captain.strength > old_str);
-    OG_ASSERT(captain.dexterity > old_dex);
-    OG_ASSERT(captain.constitution > old_con);
-    OG_ASSERT(captain.intelligence > old_int);
-    OG_ASSERT(captain.armor > old_arm);
+    ASSERT_TRUE(captain.strength > old_str);
+    ASSERT_TRUE(captain.dexterity > old_dex);
+    ASSERT_TRUE(captain.constitution > old_con);
+    ASSERT_TRUE(captain.intelligence > old_int);
+    ASSERT_TRUE(captain.armor > old_arm);
 
     const FamilyDescriptor& orc = describe_family_orc();
-    OG_ASSERT(orc.family_id == FAMILY_ORC);
-    OG_ASSERT(orc.do_special != nullptr);
-    OG_ASSERT(orc.check_special_ai != nullptr);
-    OG_ASSERT(orc.set_difficulty != nullptr);
-    OG_ASSERT(orc.level_up != nullptr);
-    OG_ASSERT(orc.promotion_new_level != nullptr);
+    ASSERT_TRUE(orc.family_id == FAMILY_ORC);
+    ASSERT_TRUE(orc.do_special != nullptr);
+    ASSERT_TRUE(orc.check_special_ai != nullptr);
+    ASSERT_TRUE(orc.set_difficulty != nullptr);
+    ASSERT_TRUE(orc.level_up != nullptr);
+    ASSERT_TRUE(orc.promotion_new_level != nullptr);
 
     living w;
     w.damage = 0.0f;
@@ -109,26 +109,26 @@ OG_UNIT_TEST(test_family_big_orc_r15_level_up_and_orc_descriptor_hooks)
     const float old_damage = w.damage;
     const float old_armor = w.stats()->armor;
     orc.set_difficulty(&w, 2);
-    OG_ASSERT(w.stats()->max_hitpoints > old_hp);
-    OG_ASSERT(w.stats()->max_magicpoints > old_mp);
-    OG_ASSERT(w.damage >= old_damage);
-    OG_ASSERT(w.stats()->armor >= old_armor);
+    ASSERT_TRUE(w.stats()->max_hitpoints > old_hp);
+    ASSERT_TRUE(w.stats()->max_magicpoints > old_mp);
+    ASSERT_TRUE(w.damage >= old_damage);
+    ASSERT_TRUE(w.stats()->armor >= old_armor);
 
     guy grunt(FAMILY_ORC);
     const short grunt_old_str = grunt.strength;
     orc.level_up(&grunt, 1);
-    OG_ASSERT(grunt.strength > grunt_old_str);
-    OG_ASSERT(orc.promotion_new_level(5) == 1);
+    ASSERT_TRUE(grunt.strength > grunt_old_str);
+    ASSERT_TRUE(orc.promotion_new_level(5) == 1);
 }
 
-OG_UNIT_TEST(test_family_orc_r15_special_howl_and_eat_paths)
+TEST(FamilyOrc, r15_special_howl_and_eat_paths)
 {
     const FamilyDescriptor& orc = describe_family_orc();
     {
         OrcR15Fixture fx;
         living* self = add_living(fx, 1, FAMILY_ORC, 96, 96);
         living* foe = add_living(fx, 0, FAMILY_SOLDIER, 112, 96);
-        OG_ASSERT(self && foe);
+        ASSERT_TRUE(self && foe);
 
         foe->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
         foe->myguy->constitution = 18;
@@ -136,16 +136,16 @@ OG_UNIT_TEST(test_family_orc_r15_special_howl_and_eat_paths)
         self->stats()->level = 6;
         self->busy = 0;
         self->current_special = 1; // howl/freeze
-        OG_ASSERT(orc.do_special(self));
-        OG_ASSERT(self->busy > 0);
-        OG_ASSERT(foe->stats()->frozen_delay >= 0);
-        OG_ASSERT(fx.events.size() > 0);
+        ASSERT_TRUE(orc.do_special(self));
+        ASSERT_TRUE(self->busy > 0);
+        ASSERT_TRUE(foe->stats()->frozen_delay >= 0);
+        ASSERT_TRUE(fx.events.size() > 0);
     }
 
     {
         OrcR15Fixture fx;
         living* self = add_living(fx, 1, FAMILY_ORC, 96, 96);
-        OG_ASSERT(self != nullptr);
+        ASSERT_TRUE(self != nullptr);
         self->current_special = 2; // eat corpse
         self->stats()->max_hitpoints = 200.0f;
         self->stats()->hitpoints = 30.0f;
@@ -154,38 +154,38 @@ OG_UNIT_TEST(test_family_orc_r15_special_howl_and_eat_paths)
         cfg.apply_setting("effects", "heal_numbers", "on");
 
         walker* stain = add_stain(fx, 96, 96, 0, FAMILY_SOLDIER, 4);
-        OG_ASSERT(stain != nullptr);
-        OG_ASSERT(orc.do_special(self));
-        OG_ASSERT(stain->dead == 1);
-        OG_ASSERT(self->stats()->hitpoints <= self->stats()->max_hitpoints);
+        ASSERT_TRUE(stain != nullptr);
+        ASSERT_TRUE(orc.do_special(self));
+        ASSERT_TRUE(stain->dead == 1);
+        ASSERT_TRUE(self->stats()->hitpoints <= self->stats()->max_hitpoints);
     }
 }
 
-OG_UNIT_TEST(test_family_orc_r15_check_ai_and_guard_failures)
+TEST(FamilyOrc, r15_check_ai_and_guard_failures)
 {
     const FamilyDescriptor& orc = describe_family_orc();
     OrcR15Fixture fx;
 
     living* self = add_living(fx, 1, FAMILY_ORC, 50, 50);
-    OG_ASSERT(self != nullptr);
+    ASSERT_TRUE(self != nullptr);
 
     self->foe = nullptr;
-    OG_ASSERT(!orc.check_special_ai(self));
+    ASSERT_TRUE(!orc.check_special_ai(self));
 
     living* near_foe = add_living(fx, 0, FAMILY_SOLDIER, 60, 50);
-    OG_ASSERT(near_foe != nullptr);
-    OG_ASSERT(orc.check_special_ai(self));
+    ASSERT_TRUE(near_foe != nullptr);
+    ASSERT_TRUE(orc.check_special_ai(self));
 
     near_foe->setxy(800, 800);
     self->foe = near_foe;
-    OG_ASSERT(!orc.check_special_ai(self));
+    ASSERT_TRUE(!orc.check_special_ai(self));
 
     self->current_special = 1;
     self->busy = 1;
-    OG_ASSERT(!orc.do_special(self));
+    ASSERT_TRUE(!orc.do_special(self));
 
     self->current_special = 2;
     self->busy = 0;
     self->stats()->hitpoints = self->stats()->max_hitpoints;
-    OG_ASSERT(!orc.do_special(self));
+    ASSERT_TRUE(!orc.do_special(self));
 }

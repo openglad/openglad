@@ -1,6 +1,6 @@
 #include <openglad/legacy/base.h>
 #include <openglad/resources/og_file.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <cstring>
 
@@ -32,26 +32,25 @@ private:
     std::size_t pos_;
 };
 
-void test_help_read_one_line_stops_on_newline_and_sets_eof()
+TEST(HelpParsing, help_read_one_line_stops_on_newline_and_sets_eof)
 {
     const char* text = "abc\ndef";
     MemOgFile file(text, strlen(text));
 
     og::runtime::current_session->help_end_of_file_ = 0;
     std::string l1 = read_one_line(file, HELP_WIDTH);
-    TEST_ASSERT_STR_EQ("abc", l1.c_str(), "first line should be 'abc'");
+    ASSERT_STREQ("abc", l1.c_str()) << "first line should be 'abc'";
 
     std::string l2 = read_one_line(file, HELP_WIDTH);
-    TEST_ASSERT_STR_EQ("def", l2.c_str(), "second line should be 'def'");
+    ASSERT_STREQ("def", l2.c_str()) << "second line should be 'def'";
 
     // Reading again should hit EOF and set end_of_file.
     (void)read_one_line(file, HELP_WIDTH);
-    TEST_ASSERT(og::runtime::current_session->help_end_of_file_ == 1,
-                "help_end_of_file_ should be set after EOF");
+    ASSERT_TRUE(og::runtime::current_session->help_end_of_file_ == 1) << "help_end_of_file_ should be set after EOF";
 }
-REGISTER_TEST(test_help_read_one_line_stops_on_newline_and_sets_eof);
 
-void test_help_fill_help_array_reads_multiple_lines()
+
+TEST(HelpParsing, help_fill_help_array_reads_multiple_lines)
 {
     const char* text = "line1\nline2\nline3\n";
     MemOgFile file(text, strlen(text));
@@ -61,8 +60,8 @@ void test_help_fill_help_array_reads_multiple_lines()
     og::runtime::current_session->help_end_of_file_ = 0;
 
     short n = fill_help_array(arr, file);
-    TEST_ASSERT(n >= 2, "fill_help_array should read at least 2 lines");
-    TEST_ASSERT_STR_EQ("line1", arr[0], "line 0 should match");
-    TEST_ASSERT_STR_EQ("line2", arr[1], "line 1 should match");
+    ASSERT_TRUE(n >= 2) << "fill_help_array should read at least 2 lines";
+    ASSERT_STREQ("line1", arr[0]) << "line 0 should match";
+    ASSERT_STREQ("line2", arr[1]) << "line 1 should match";
 }
-REGISTER_TEST(test_help_fill_help_array_reads_multiple_lines);
+

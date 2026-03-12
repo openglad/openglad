@@ -4,7 +4,8 @@
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/render/view.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 #include <cstring>
 #include <memory>
 
@@ -36,13 +37,13 @@ static SDL_Event make_keydown(SDL_Keycode k)
     return e;
 }
 
-void test_viewscreen_input_f3_f4_smoke()
+TEST(ViewInputSmoke, viewscreen_input_f3_f4_smoke)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(v != nullptr, "viewob[0] should exist");
+    ASSERT_TRUE(v != nullptr) << "viewob[0] should exist";
 
     auto control = create_living_on_team(0);
-    TEST_ASSERT(control != nullptr, "control walker should be created");
+    ASSERT_TRUE(control != nullptr) << "control walker should be created";
     walker* controlp = control.get();
     v->control = controlp;
     v->mynum = 0;
@@ -58,15 +59,15 @@ void test_viewscreen_input_f3_f4_smoke()
 
     v->control = nullptr;
 }
-REGISTER_TEST(test_viewscreen_input_f3_f4_smoke);
 
-void test_viewscreen_input_consumes_bonus_rounds()
+
+TEST(ViewInputSmoke, viewscreen_input_consumes_bonus_rounds)
 {
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
-    TEST_ASSERT(v != nullptr, "viewob[0] should exist");
+    ASSERT_TRUE(v != nullptr) << "viewob[0] should exist";
 
     auto control = create_living_on_team(0);
-    TEST_ASSERT(control != nullptr, "control walker should be created");
+    ASSERT_TRUE(control != nullptr) << "control walker should be created";
     walker* controlp = control.get();
     v->control = controlp;
     v->mynum = 0;
@@ -78,8 +79,8 @@ void test_viewscreen_input_consumes_bonus_rounds()
     controlp->lasty = 0.0f;
     InputState empty_input = {};
     v->process_input(empty_input);
-    TEST_ASSERT_EQ(0, (int)controlp->bonus_rounds, "bonus rounds should decrement");
+    ASSERT_EQ(0, (int)controlp->bonus_rounds) << "bonus rounds should decrement";
 
     v->control = nullptr;
 }
-REGISTER_TEST(test_viewscreen_input_consumes_bonus_rounds);
+

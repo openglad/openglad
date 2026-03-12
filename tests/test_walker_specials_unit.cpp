@@ -11,7 +11,7 @@
 #include <catch2/catch_test_macros.hpp>
 #endif
 #include <memory>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #include "test_gameplay_context_scope.h"
 
 namespace {
@@ -62,50 +62,50 @@ walker* add_marker(SpecialsFixture& fx, walker* owner, int x, int y, int life)
 
 } // namespace
 
-OG_UNIT_TEST(test_walker_specials_r11_special_and_teleport_paths)
+TEST(WalkerSpecialsUnit, walker_specials_r11_special_and_teleport_paths)
 {
     SpecialsFixture fx;
     living* w = add_living(fx, FAMILY_CLERIC, 0);
-    OG_ASSERT(w != nullptr);
+    ASSERT_TRUE(w != nullptr);
 
     w->dead = 1;
-    OG_ASSERT(!w->special());
+    ASSERT_TRUE(!w->special());
     w->dead = 0;
 
     walker* weapon = fx.level.add_ob(Order::Weapon, FAMILY_ARROW);
-    OG_ASSERT(weapon != nullptr);
+    ASSERT_TRUE(weapon != nullptr);
     if (weapon) {
         weapon->dead = 0;
-        OG_ASSERT(!weapon->special());
+        ASSERT_TRUE(!weapon->special());
     }
 
     // marker teleport success with marker expiry (lines 86-90)
     w->setxy(20, 20);
     walker* marker = add_marker(fx, w, 140, 140, 1);
-    OG_ASSERT(marker != nullptr);
-    OG_ASSERT(w->teleport());
-    OG_ASSERT(marker->dead == 1);
+    ASSERT_TRUE(marker != nullptr);
+    ASSERT_TRUE(w->teleport());
+    ASSERT_TRUE(marker->dead == 1);
 
     // no marker path: random passable placement
-    OG_ASSERT(w->teleport());
+    ASSERT_TRUE(w->teleport());
 
     // ranged teleport success path
     (void)w->teleport_ranged(40);
 }
 
-OG_UNIT_TEST(test_walker_specials_r11_turn_undead_paths)
+TEST(WalkerSpecialsUnit, walker_specials_r11_turn_undead_paths)
 {
     SpecialsFixture fx;
     living* cleric = add_living(fx, FAMILY_CLERIC, 0);
-    OG_ASSERT(cleric != nullptr);
+    ASSERT_TRUE(cleric != nullptr);
 
     // No targets branch -> -1
-    OG_ASSERT(cleric->turn_undead(40, 5) == -1);
+    ASSERT_TRUE(cleric->turn_undead(40, 5) == -1);
 
     // Undead target in range triggers kill path.
     living* skeleton = add_living(fx, FAMILY_SKELETON, 1);
     skeleton->setxy(100, 96);
     skeleton->stats()->level = 1;
     const std::int32_t killed = cleric->turn_undead(40, 5);
-    OG_ASSERT(killed >= 0);
+    ASSERT_TRUE(killed >= 0);
 }

@@ -4,20 +4,20 @@
 
 #include "zlib.h"
 
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
-void test_external_zlib_deflate_advanced_api_paths()
+TEST(ExternalZlibApiEdges, external_zlib_deflate_advanced_api_paths)
 {
     const std::string payload(4096, 'Z');
 
     z_stream zs;
     memset(&zs, 0, sizeof(zs));
     int rc = deflateInit2(&zs, Z_DEFAULT_COMPRESSION, Z_DEFLATED, MAX_WBITS, 8, Z_DEFAULT_STRATEGY);
-    TEST_ASSERT(rc == Z_OK, "deflateInit2 should succeed");
+    ASSERT_TRUE(rc == Z_OK) << "deflateInit2 should succeed";
 
-    TEST_ASSERT(deflateTune(&zs, 4, 4, 16, 16) == Z_OK, "deflateTune should succeed");
-    TEST_ASSERT(deflateParams(&zs, Z_BEST_SPEED, Z_FILTERED) == Z_OK, "deflateParams should succeed");
-    TEST_ASSERT(deflateBound(&zs, (uLong)payload.size()) > 0, "deflateBound should return upper bound");
+    ASSERT_TRUE(deflateTune(&zs, 4, 4, 16, 16) == Z_OK) << "deflateTune should succeed";
+    ASSERT_TRUE(deflateParams(&zs, Z_BEST_SPEED, Z_FILTERED) == Z_OK) << "deflateParams should succeed";
+    ASSERT_TRUE(deflateBound(&zs, (uLong)payload.size()) > 0) << "deflateBound should return upper bound";
 
     std::vector<unsigned char> out(compressBound((uLong)payload.size()));
     zs.next_in = (Bytef*)payload.data();
@@ -26,41 +26,41 @@ void test_external_zlib_deflate_advanced_api_paths()
     zs.avail_out = (uInt)out.size();
 
     rc = deflate(&zs, Z_NO_FLUSH);
-    TEST_ASSERT(rc == Z_OK, "deflate Z_NO_FLUSH should continue");
+    ASSERT_TRUE(rc == Z_OK) << "deflate Z_NO_FLUSH should continue";
 
     rc = deflate(&zs, Z_FINISH);
-    TEST_ASSERT(rc == Z_STREAM_END, "deflate Z_FINISH should end");
-    TEST_ASSERT(deflateEnd(&zs) == Z_OK, "deflateEnd should succeed");
+    ASSERT_TRUE(rc == Z_STREAM_END) << "deflate Z_FINISH should end";
+    ASSERT_TRUE(deflateEnd(&zs) == Z_OK) << "deflateEnd should succeed";
 
     // deflateCopy path on a clean initialized stream.
     z_stream src_copy;
     memset(&src_copy, 0, sizeof(src_copy));
     rc = deflateInit(&src_copy, Z_DEFAULT_COMPRESSION);
-    TEST_ASSERT(rc == Z_OK, "deflateInit for copy source");
+    ASSERT_TRUE(rc == Z_OK) << "deflateInit for copy source";
     z_stream dst_copy;
     memset(&dst_copy, 0, sizeof(dst_copy));
-    TEST_ASSERT(deflateCopy(&dst_copy, &src_copy) == Z_OK, "deflateCopy should succeed");
-    TEST_ASSERT(deflateEnd(&dst_copy) == Z_OK, "deflateEnd(copy) should succeed");
-    TEST_ASSERT(deflateEnd(&src_copy) == Z_OK, "deflateEnd(source copy stream) should succeed");
+    ASSERT_TRUE(deflateCopy(&dst_copy, &src_copy) == Z_OK) << "deflateCopy should succeed";
+    ASSERT_TRUE(deflateEnd(&dst_copy) == Z_OK) << "deflateEnd(copy) should succeed";
+    ASSERT_TRUE(deflateEnd(&src_copy) == Z_OK) << "deflateEnd(source copy stream) should succeed";
 
     // deflatePrime path (raw deflate stream).
     z_stream raw;
     memset(&raw, 0, sizeof(raw));
     rc = deflateInit2(&raw, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS, 8, Z_DEFAULT_STRATEGY);
-    TEST_ASSERT(rc == Z_OK, "raw deflateInit2 should succeed");
-    TEST_ASSERT(deflatePrime(&raw, 3, 0x5) == Z_OK, "deflatePrime should accept small bit prefix");
+    ASSERT_TRUE(rc == Z_OK) << "raw deflateInit2 should succeed";
+    ASSERT_TRUE(deflatePrime(&raw, 3, 0x5) == Z_OK) << "deflatePrime should accept small bit prefix";
     (void)deflateEnd(&raw);
 }
-REGISTER_TEST(test_external_zlib_deflate_advanced_api_paths);
 
-void test_external_zlib_inflate_header_copy_prime_and_invalid_init()
+
+TEST(ExternalZlibApiEdges, external_zlib_inflate_header_copy_prime_and_invalid_init)
 {
     const std::string payload = "gzip header coverage payload\n";
 
     z_stream zs;
     memset(&zs, 0, sizeof(zs));
     int rc = deflateInit2(&zs, Z_DEFAULT_COMPRESSION, Z_DEFLATED, MAX_WBITS + 16, 8, Z_DEFAULT_STRATEGY);
-    TEST_ASSERT(rc == Z_OK, "gzip deflateInit2 should succeed");
+    ASSERT_TRUE(rc == Z_OK) << "gzip deflateInit2 should succeed";
 
     std::vector<unsigned char> comp(512);
     zs.next_in = (Bytef*)payload.data();
@@ -68,15 +68,15 @@ void test_external_zlib_inflate_header_copy_prime_and_invalid_init()
     zs.next_out = comp.data();
     zs.avail_out = (uInt)comp.size();
     rc = deflate(&zs, Z_FINISH);
-    TEST_ASSERT(rc == Z_STREAM_END, "gzip deflate finish");
+    ASSERT_TRUE(rc == Z_STREAM_END) << "gzip deflate finish";
     const size_t comp_size = comp.size() - zs.avail_out;
-    TEST_ASSERT(deflateEnd(&zs) == Z_OK, "deflateEnd should succeed");
+    ASSERT_TRUE(deflateEnd(&zs) == Z_OK) << "deflateEnd should succeed";
     comp.resize(comp_size);
 
     z_stream is;
     memset(&is, 0, sizeof(is));
     rc = inflateInit2(&is, MAX_WBITS + 16);
-    TEST_ASSERT(rc == Z_OK, "inflateInit2(gzip) should succeed");
+    ASSERT_TRUE(rc == Z_OK) << "inflateInit2(gzip) should succeed";
 
     gz_header hdr;
     memset(&hdr, 0, sizeof(hdr));
@@ -89,12 +89,12 @@ void test_external_zlib_inflate_header_copy_prime_and_invalid_init()
     hdr.name_max = sizeof(name);
     hdr.comment = comment;
     hdr.comm_max = sizeof(comment);
-    TEST_ASSERT(inflateGetHeader(&is, &hdr) == Z_OK, "inflateGetHeader should succeed");
+    ASSERT_TRUE(inflateGetHeader(&is, &hdr) == Z_OK) << "inflateGetHeader should succeed";
 
     z_stream copy;
     memset(&copy, 0, sizeof(copy));
-    TEST_ASSERT(inflateCopy(&copy, &is) == Z_OK, "inflateCopy should succeed");
-    TEST_ASSERT(inflateEnd(&copy) == Z_OK, "inflateEnd(copy) should succeed");
+    ASSERT_TRUE(inflateCopy(&copy, &is) == Z_OK) << "inflateCopy should succeed";
+    ASSERT_TRUE(inflateEnd(&copy) == Z_OK) << "inflateEnd(copy) should succeed";
 
     std::string out(payload.size(), '\0');
     is.next_in = comp.data();
@@ -102,29 +102,27 @@ void test_external_zlib_inflate_header_copy_prime_and_invalid_init()
     is.next_out = (Bytef*)out.data();
     is.avail_out = (uInt)out.size();
     rc = inflate(&is, Z_FINISH);
-    TEST_ASSERT(rc == Z_STREAM_END, "inflate should finish gzip stream");
-    TEST_ASSERT(out == payload, "inflated payload should match");
+    ASSERT_TRUE(rc == Z_STREAM_END) << "inflate should finish gzip stream";
+    ASSERT_TRUE(out == payload) << "inflated payload should match";
     const int sync_point = inflateSyncPoint(&is);
-    TEST_ASSERT(sync_point == 0 || sync_point == 1, "inflateSyncPoint should return boolean-like result");
-    TEST_ASSERT(inflateEnd(&is) == Z_OK, "inflateEnd should succeed");
+    ASSERT_TRUE(sync_point == 0 || sync_point == 1) << "inflateSyncPoint should return boolean-like result";
+    ASSERT_TRUE(inflateEnd(&is) == Z_OK) << "inflateEnd should succeed";
 
     z_stream raw;
     memset(&raw, 0, sizeof(raw));
     rc = inflateInit2(&raw, -MAX_WBITS);
-    TEST_ASSERT(rc == Z_OK, "inflateInit2(raw) should succeed");
-    TEST_ASSERT(inflatePrime(&raw, 2, 0x3) == Z_OK, "inflatePrime should accept pending bits");
-    TEST_ASSERT(inflateEnd(&raw) == Z_OK, "inflateEnd(raw) should succeed");
+    ASSERT_TRUE(rc == Z_OK) << "inflateInit2(raw) should succeed";
+    ASSERT_TRUE(inflatePrime(&raw, 2, 0x3) == Z_OK) << "inflatePrime should accept pending bits";
+    ASSERT_TRUE(inflateEnd(&raw) == Z_OK) << "inflateEnd(raw) should succeed";
 
     z_stream bad;
     memset(&bad, 0, sizeof(bad));
-    TEST_ASSERT(deflateInit2(&bad, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 100, 8, Z_DEFAULT_STRATEGY) == Z_STREAM_ERROR,
-                "invalid deflate windowBits should fail");
-    TEST_ASSERT(inflateInit2(&bad, 100) == Z_STREAM_ERROR,
-                "invalid inflate windowBits should fail");
+    ASSERT_TRUE(deflateInit2(&bad, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 100, 8, Z_DEFAULT_STRATEGY) == Z_STREAM_ERROR) << "invalid deflate windowBits should fail";
+    ASSERT_TRUE(inflateInit2(&bad, 100) == Z_STREAM_ERROR) << "invalid inflate windowBits should fail";
 }
-REGISTER_TEST(test_external_zlib_inflate_header_copy_prime_and_invalid_init);
 
-void test_external_zlib_inflate_sync_on_corrupted_stream()
+
+TEST(ExternalZlibApiEdges, external_zlib_inflate_sync_on_corrupted_stream)
 {
     const std::string payload =
         "sync-path-data-1\n"
@@ -134,7 +132,7 @@ void test_external_zlib_inflate_sync_on_corrupted_stream()
     z_stream zs;
     memset(&zs, 0, sizeof(zs));
     int rc = deflateInit(&zs, Z_DEFAULT_COMPRESSION);
-    TEST_ASSERT(rc == Z_OK, "deflateInit should succeed");
+    ASSERT_TRUE(rc == Z_OK) << "deflateInit should succeed";
 
     std::vector<unsigned char> comp(1024);
     zs.next_in = (Bytef*)payload.data();
@@ -143,11 +141,11 @@ void test_external_zlib_inflate_sync_on_corrupted_stream()
     zs.avail_out = (uInt)comp.size();
 
     rc = deflate(&zs, Z_FULL_FLUSH);  // create a sync point
-    TEST_ASSERT(rc == Z_OK, "deflate full flush should succeed");
+    ASSERT_TRUE(rc == Z_OK) << "deflate full flush should succeed";
     rc = deflate(&zs, Z_FINISH);
-    TEST_ASSERT(rc == Z_STREAM_END, "deflate finish should succeed");
+    ASSERT_TRUE(rc == Z_STREAM_END) << "deflate finish should succeed";
     const size_t used = comp.size() - zs.avail_out;
-    TEST_ASSERT(deflateEnd(&zs) == Z_OK, "deflateEnd should succeed");
+    ASSERT_TRUE(deflateEnd(&zs) == Z_OK) << "deflateEnd should succeed";
     comp.resize(used);
 
     // Corrupt prefix to force an error, then try to recover with inflateSync.
@@ -157,7 +155,7 @@ void test_external_zlib_inflate_sync_on_corrupted_stream()
     z_stream is;
     memset(&is, 0, sizeof(is));
     rc = inflateInit(&is);
-    TEST_ASSERT(rc == Z_OK, "inflateInit should succeed");
+    ASSERT_TRUE(rc == Z_OK) << "inflateInit should succeed";
 
     std::vector<unsigned char> out(payload.size());
     is.next_in = comp.data();
@@ -166,14 +164,13 @@ void test_external_zlib_inflate_sync_on_corrupted_stream()
     is.avail_out = (uInt)out.size();
 
     rc = inflate(&is, Z_NO_FLUSH);
-    TEST_ASSERT(rc == Z_DATA_ERROR || rc == Z_BUF_ERROR, "corrupted stream should error before sync");
+    ASSERT_TRUE(rc == Z_DATA_ERROR || rc == Z_BUF_ERROR) << "corrupted stream should error before sync";
 
     int sync_rc = inflateSync(&is);
-    TEST_ASSERT(sync_rc == Z_OK || sync_rc == Z_DATA_ERROR || sync_rc == Z_BUF_ERROR,
-                "inflateSync should execute recovery path");
+    ASSERT_TRUE(sync_rc == Z_OK || sync_rc == Z_DATA_ERROR || sync_rc == Z_BUF_ERROR) << "inflateSync should execute recovery path";
     const int sp = inflateSyncPoint(&is);
-    TEST_ASSERT(sp == 0 || sp == 1 || sp == Z_STREAM_ERROR, "inflateSyncPoint should execute after sync attempt");
+    ASSERT_TRUE(sp == 0 || sp == 1 || sp == Z_STREAM_ERROR) << "inflateSyncPoint should execute after sync attempt";
 
     (void)inflateEnd(&is);
 }
-REGISTER_TEST(test_external_zlib_inflate_sync_on_corrupted_stream);
+

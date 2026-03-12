@@ -5,7 +5,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 #include <memory>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -25,126 +25,126 @@ static std::unique_ptr<walker> make_walker(char family)
 // Each COMMAND_* case is a different branch
 // ---------------------------------------------------------------------------
 
-void test_stats_do_command_walk()
+TEST(StatsCommands, stats_do_command_walk)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->stats()->force_command(COMMAND_WALK, 5, 1, 0);
-    TEST_ASSERT(w->stats()->has_commands(), "should have commands");
+    ASSERT_TRUE(w->stats()->has_commands()) << "should have commands";
     short result = w->stats()->do_command();
     (void)result;
 }
-REGISTER_TEST(test_stats_do_command_walk);
 
-void test_stats_do_command_fire()
+
+TEST(StatsCommands, stats_do_command_fire)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->stats()->force_command(COMMAND_FIRE, 1, 1, 0);
     short result = w->stats()->do_command();
     (void)result;
 }
-REGISTER_TEST(test_stats_do_command_fire);
 
-void test_stats_do_command_random_walk()
+
+TEST(StatsCommands, stats_do_command_random_walk)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->stats()->force_command(COMMAND_RANDOM_WALK, 5, 0, 0);
     short result = w->stats()->do_command();
     (void)result;
 }
-REGISTER_TEST(test_stats_do_command_random_walk);
 
-void test_stats_do_command_search()
+
+TEST(StatsCommands, stats_do_command_search)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->stats()->force_command(COMMAND_SEARCH, 10, 0, 0);
     short result = w->stats()->do_command();
     (void)result;
 }
-REGISTER_TEST(test_stats_do_command_search);
 
-void test_stats_do_command_set_weapon()
+
+TEST(StatsCommands, stats_do_command_set_weapon)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->stats()->force_command(COMMAND_SET_WEAPON, 1, FAMILY_KNIFE, 0);
     short result = w->stats()->do_command();
     (void)result;
 }
-REGISTER_TEST(test_stats_do_command_set_weapon);
 
-void test_stats_do_command_reset_weapon()
+
+TEST(StatsCommands, stats_do_command_reset_weapon)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->stats()->force_command(COMMAND_RESET_WEAPON, 1, 0, 0);
     short result = w->stats()->do_command();
     (void)result;
 }
-REGISTER_TEST(test_stats_do_command_reset_weapon);
 
-void test_stats_do_command_rush()
+
+TEST(StatsCommands, stats_do_command_rush)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->stats()->force_command(COMMAND_RUSH, 3, 1, 0);
     short result = w->stats()->do_command();
     (void)result;
 }
-REGISTER_TEST(test_stats_do_command_rush);
 
-void test_stats_do_command_quick_fire()
+
+TEST(StatsCommands, stats_do_command_quick_fire)
 {
     auto w = make_walker(FAMILY_ARCHER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->stats()->force_command(COMMAND_QUICK_FIRE, 1, 1, 0);
     short result = w->stats()->do_command();
     (void)result;
 }
-REGISTER_TEST(test_stats_do_command_quick_fire);
 
-void test_stats_do_command_attack()
+
+TEST(StatsCommands, stats_do_command_attack)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->stats()->force_command(COMMAND_ATTACK, 5, 1, 0);
     short result = w->stats()->do_command();
     (void)result;
 }
-REGISTER_TEST(test_stats_do_command_attack);
 
-void test_stats_do_command_right_walk()
+
+TEST(StatsCommands, stats_do_command_right_walk)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->stats()->force_command(COMMAND_RIGHT_WALK, 5, 1, 0);
     short result = w->stats()->do_command();
     (void)result;
 }
-REGISTER_TEST(test_stats_do_command_right_walk);
 
-void test_stats_do_command_die_sets_delete_me()
+
+TEST(StatsCommands, stats_do_command_die_sets_delete_me)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->dead = 1; // avoid log spam; COMMAND_DIE expects a dead controller
     w->stats()->delete_me = 0;
     w->stats()->force_command(COMMAND_DIE, 1, 0, 0);
     (void)w->stats()->do_command();
-    TEST_ASSERT(w->stats()->delete_me == 1, "COMMAND_DIE should set delete_me when count < 2");
+    ASSERT_TRUE(w->stats()->delete_me == 1) << "COMMAND_DIE should set delete_me when count < 2";
 }
-REGISTER_TEST(test_stats_do_command_die_sets_delete_me);
+
 
 // COMMAND_SPECIAL doesn't exist as a constant - specials are called directly
 
@@ -153,10 +153,10 @@ REGISTER_TEST(test_stats_do_command_die_sets_delete_me);
 // These exercise 8 big direction switch cases each
 // ---------------------------------------------------------------------------
 
-void test_stats_forward_blocked_all_dirs()
+TEST(StatsCommands, stats_forward_blocked_all_dirs)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
 
     for (int dir = 0; dir < 8; dir++) {
         w->curdir = static_cast<char>(dir);
@@ -164,12 +164,12 @@ void test_stats_forward_blocked_all_dirs()
         (void)result;
     }
 }
-REGISTER_TEST(test_stats_forward_blocked_all_dirs);
 
-void test_stats_right_blocked_all_dirs()
+
+TEST(StatsCommands, stats_right_blocked_all_dirs)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
 
     for (int dir = 0; dir < 8; dir++) {
         w->curdir = static_cast<char>(dir);
@@ -177,12 +177,12 @@ void test_stats_right_blocked_all_dirs()
         (void)result;
     }
 }
-REGISTER_TEST(test_stats_right_blocked_all_dirs);
 
-void test_stats_right_forward_blocked_all_dirs()
+
+TEST(StatsCommands, stats_right_forward_blocked_all_dirs)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
 
     for (int dir = 0; dir < 8; dir++) {
         w->curdir = static_cast<char>(dir);
@@ -190,12 +190,12 @@ void test_stats_right_forward_blocked_all_dirs()
         (void)result;
     }
 }
-REGISTER_TEST(test_stats_right_forward_blocked_all_dirs);
 
-void test_stats_right_back_blocked_all_dirs()
+
+TEST(StatsCommands, stats_right_back_blocked_all_dirs)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
 
     for (int dir = 0; dir < 8; dir++) {
         w->curdir = static_cast<char>(dir);
@@ -203,13 +203,13 @@ void test_stats_right_back_blocked_all_dirs()
         (void)result;
     }
 }
-REGISTER_TEST(test_stats_right_back_blocked_all_dirs);
+
 
 // ---------------------------------------------------------------------------
 // hit_response for different families (line ~305+)
 // ---------------------------------------------------------------------------
 
-void test_stats_hit_response_all_families()
+TEST(StatsCommands, stats_hit_response_all_families)
 {
     char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
@@ -227,16 +227,16 @@ void test_stats_hit_response_all_families()
         }
     }
 }
-REGISTER_TEST(test_stats_hit_response_all_families);
+
 
 // ---------------------------------------------------------------------------
 // try_command and command management
 // ---------------------------------------------------------------------------
 
-void test_stats_try_command_when_full()
+TEST(StatsCommands, stats_try_command_when_full)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
 
     // Fill up commands
     for (int i = 0; i < 20; i++) {
@@ -247,87 +247,87 @@ void test_stats_try_command_when_full()
     (void)result;
 
 }
-REGISTER_TEST(test_stats_try_command_when_full);
 
-void test_stats_clear_command()
+
+TEST(StatsCommands, stats_clear_command)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
 
     w->stats()->add_command(COMMAND_WALK, 5, 1, 0);
-    TEST_ASSERT(w->stats()->has_commands(), "should have commands");
+    ASSERT_TRUE(w->stats()->has_commands()) << "should have commands";
 
     w->stats()->clear_command();
-    TEST_ASSERT(!w->stats()->has_commands(), "should be empty after clear");
+    ASSERT_TRUE(!w->stats()->has_commands()) << "should be empty after clear";
 
 }
-REGISTER_TEST(test_stats_clear_command);
 
-void test_stats_force_command_clamping()
+
+TEST(StatsCommands, stats_force_command_clamping)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
 
     w->stats()->add_command(COMMAND_WALK, 5, 1, 0);
     w->stats()->force_command(COMMAND_FIRE, 1, 0, 1);
     // force_command should replace existing commands
 
 }
-REGISTER_TEST(test_stats_force_command_clamping);
+
 
 // ---------------------------------------------------------------------------
 // right_walk and direct_walk (command helpers)
 // ---------------------------------------------------------------------------
 
-void test_stats_right_walk_smoke()
+TEST(StatsCommands, stats_right_walk_smoke)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->curdir = FACE_RIGHT;
     w->stats()->right_walk();
 }
-REGISTER_TEST(test_stats_right_walk_smoke);
 
-void test_stats_direct_walk_smoke()
+
+TEST(StatsCommands, stats_direct_walk_smoke)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->foe = nullptr;
     w->stats()->direct_walk();
 }
-REGISTER_TEST(test_stats_direct_walk_smoke);
 
-void test_stats_walk_to_foe_no_foe()
+
+TEST(StatsCommands, stats_walk_to_foe_no_foe)
 {
     auto w = make_walker(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "walker created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
     w->foe = nullptr;
     w->stats()->walk_to_foe();
 }
-REGISTER_TEST(test_stats_walk_to_foe_no_foe);
 
-void test_stats_walk_to_foe_with_foe()
+
+TEST(StatsCommands, stats_walk_to_foe_with_foe)
 {
     auto w = make_walker(FAMILY_SOLDIER);
     auto enemy = make_walker(FAMILY_ORC);
-    TEST_ASSERT(w != nullptr, "walker created");
-    TEST_ASSERT(enemy != nullptr, "enemy created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    ASSERT_TRUE(enemy != nullptr) << "enemy created";
     w->team_num = 0;
     enemy->team_num = 1;
     enemy->setxy(120, 100);
     w->foe = enemy.get();
     w->stats()->walk_to_foe();
 }
-REGISTER_TEST(test_stats_walk_to_foe_with_foe);
 
-void test_stats_yell_for_help_smoke()
+
+TEST(StatsCommands, stats_yell_for_help_smoke)
 {
     auto w = make_walker(FAMILY_SOLDIER);
     auto enemy = make_walker(FAMILY_ORC);
-    TEST_ASSERT(w != nullptr, "walker created");
-    TEST_ASSERT(enemy != nullptr, "enemy created");
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    ASSERT_TRUE(enemy != nullptr) << "enemy created";
     enemy->team_num = 1;
     enemy->setxy(120, 100);
     w->stats()->yell_for_help(enemy.get());
 }
-REGISTER_TEST(test_stats_yell_for_help_smoke);
+

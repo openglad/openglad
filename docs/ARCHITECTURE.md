@@ -546,13 +546,9 @@ ctest --preset ci-test         # Run tests
 - `openglad_demo` — Multi-session demo (N concurrent AI-controlled games in a grid)
 - `openglad_text` — Headless text-mode client (no SDL)
 
-**Test executables (10 CTest entries):**
-- `og_unit_tests` — Headless unit tests (~152 cases, no SDL/video init)
-- `openglad_test` — Full integration test suite (~1331 cases)
-- `openglad_test_menu` — Menu-specific integration tests (filtered subset)
-- `openglad_test_picker` — Picker-specific integration tests (filtered subset)
-- `og_data_tests` — Data/IO module tests
-- `og_runtime_tests` — Runtime module tests
+**Test executables (28 CTest entries):**
+- `og_unit_sim`, `og_unit_families`, `og_unit_entity`, `og_unit_data` — Four headless unit binaries (291 tests total)
+- `og_test_walker_combat` through `og_test_mass_coverage` — Twenty SDL integration group binaries (1496 tests total)
 - `openglad_text_sim` — Text client simulation tests
 - `openglad_text_picker_interactive` — Text client picker tests
 - `openglad_text_unsupported` — Text client unsupported-operation tests
@@ -594,10 +590,9 @@ Shell scripts in `scripts/` provide convenience wrappers:
 | Script | Purpose |
 |--------|---------|
 | `build_native.sh` | Quick native build via CMake dev-release preset |
-| `build_test.sh` | Build test binary via CMake |
+| `build_test.sh` | Build all grouped test binaries via CMake |
 | `build_web.sh` | Emscripten/WASM build to `dist/` |
 | `build_coverage.sh` | Coverage instrumentation with lcov report |
-| `collect_baseline_metrics.sh` | Performance/size tracking for CI |
 
 ### Web Build
 
@@ -620,32 +615,32 @@ Key flags: `-sUSE_SDL=2`, `-sUSE_SDL_MIXER=2`, `-sASYNCIFY`, `-sALLOW_MEMORY_GRO
 
 ```
 ┌─────────────────────────────────────────┐
-│         End-to-End / Smoke Tests        │  Full game flows, menu navigation
-│       (openglad_test, ~1331 cases)      │  Requires SDL (offscreen driver)
+│       SDL Integration Test Groups       │  Full game flows split across
+│      (og_test_*, 1496 total cases)      │  20 binaries, runs via CTest
 ├─────────────────────────────────────────┤
-│         Module Integration Tests        │  Data/IO, runtime subsystems
-│   (og_data_tests, og_runtime_tests)     │  Requires SDL (offscreen driver)
-├─────────────────────────────────────────┤
-│         Text Client Tests              │  Headless simulation, picker
-│   (openglad_text_sim, etc.)            │  No display required
+│         Text Client Tests               │  Headless simulation, picker
+│     (openglad_text_*, 3 CTest entries)  │  No display required
 ├─────────────────────────────────────────┤
 │           Headless Unit Tests           │  Pure logic, no SDL init
-│        (og_unit_tests, ~152 cases)      │  GameSession RAII, sim determinism,
+│        (og_unit_*, 291 total cases)     │  GameSession RAII, sim determinism,
 │                                         │  session isolation, spectator mode
 └─────────────────────────────────────────┘
 ```
 
 ### Test Frameworks
 
-**Integration tests** (`tests/test_framework.h`):
-- Self-registering via `REGISTER_TEST(func)` macro
-- Assertions: `TEST_ASSERT(cond, msg)`, `TEST_ASSERT_EQ(expected, actual, msg)`
-- Optional fixtures: `REGISTER_TEST_WITH_FIXTURE(func, setup, teardown)`
-- Substring filtering: `./openglad_test picker` runs only picker-related tests
+All native test binaries use real GoogleTest (`<gtest/gtest.h>`).
+
+**Integration tests** (`tests/integration_main.cpp`):
+- SDL-backed GoogleTest binaries grouped under `og_test_*`
+- Standard `TEST(Suite, Name)` and `TEST_F(Fixture, Name)` cases with `ASSERT_*` / `EXPECT_*`
+- Binary-local listing/filtering via `--gtest_list_tests`, `--gtest_filter`, and `--gtest_shuffle`
+- Per-test world cleanup handled by a GoogleTest event listener after each case
 - Trace system: `TRACE("category", "message")` for behavioral verification
 
-**Unit tests** (`tests/unit/unit.h`):
-- Lightweight `OG_UNIT_TEST(name)` macro, `OG_ASSERT(cond)`
+**Unit tests** (`tests/unit/unit_main.cpp`):
+- Headless GoogleTest binaries grouped under `og_unit_*`
+- Shared headless `GameSession` plus fallback world/save/event context restored by a listener
 - No SDL initialization; pure logic only
 
 ### UI/Menu Testing Pattern
@@ -660,7 +655,7 @@ static int injector_thread(void* data) {
     return 0;
 }
 
-void test_menu_flow() {
+TEST(MenuFlow, picker_main_unwinds) {
     SDL_Thread* t = SDL_CreateThread(injector_thread, "inj", nullptr);
     g_picker_max_mainmenu_calls = 1;  // Limit loop iterations
     picker_main(0, NULL);             // Blocks until menus unwind
@@ -668,17 +663,15 @@ void test_menu_flow() {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 }
-REGISTER_TEST(test_menu_flow);
 ```
 
 ### CI Pipeline
 
 The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 
-1. **test** — Build and run `og_unit_tests`, `og_data_tests`, `og_runtime_tests`
+1. **test** — Build all test binaries and run `ctest --parallel`
 2. **build** — Native release build (`openglad`, `openscen`)
 3. **asan** — ASan + UBSan build and test
-4. **baseline-metrics** — Build time, test time, binary size tracking
 
 ---
 
@@ -711,5 +704,5 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `CMakeLists.txt` | Build system — component targets, test binaries, install rules |
 | `CMakePresets.json` | Build presets for dev, CI, and web |
 | `docs/architecture-rules.md` | Enforced component dependency rules |
-| `tests/test_main.cpp` | Integration test runner entry point |
+| `tests/integration_main.cpp` | Integration test runner entry point |
 | `tests/unit/unit_main.cpp` | Unit test runner entry point |

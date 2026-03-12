@@ -1,5 +1,5 @@
 #include "SDL.h"
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <openglad/interface/screen.h>
 
@@ -35,11 +35,11 @@ static SurfacePtr make_surface_8bpp(int w, int h)
 }
 } // namespace
 
-void test_video_putpixel_and_blend_pixel_all_bpp_cases_smoke()
+TEST(VideoPixelOps, video_putpixel_and_blend_pixel_all_bpp_cases_smoke)
 {
     // 8bpp (palette-indexed) case.
     SurfacePtr s8 = make_surface_8bpp(8, 8);
-    TEST_ASSERT(s8 != nullptr, "8bpp surface created");
+    ASSERT_TRUE(s8 != nullptr) << "8bpp surface created";
     if (s8 && s8->format && s8->format->palette) {
         std::array<SDL_Color, 256> colors{};
         for (int i = 0; i < 256; i++) {
@@ -55,7 +55,7 @@ void test_video_putpixel_and_blend_pixel_all_bpp_cases_smoke()
 
     // 16bpp case.
     SurfacePtr s16 = make_surface_with_format(8, 8, SDL_PIXELFORMAT_RGB565);
-    TEST_ASSERT(s16 != nullptr, "16bpp surface created");
+    ASSERT_TRUE(s16 != nullptr) << "16bpp surface created";
     if (s16) {
         Uint32 c = SDL_MapRGB(s16->format, 10, 20, 30);
         putpixel(s16.get(), 2, 2, c);
@@ -64,7 +64,7 @@ void test_video_putpixel_and_blend_pixel_all_bpp_cases_smoke()
 
     // 24bpp case.
     SurfacePtr s24 = make_surface_with_format(8, 8, SDL_PIXELFORMAT_RGB24);
-    TEST_ASSERT(s24 != nullptr, "24bpp surface created");
+    ASSERT_TRUE(s24 != nullptr) << "24bpp surface created";
     if (s24) {
         Uint32 c = SDL_MapRGB(s24->format, 1, 2, 3);
         putpixel(s24.get(), 3, 3, c);
@@ -73,16 +73,16 @@ void test_video_putpixel_and_blend_pixel_all_bpp_cases_smoke()
 
     // 32bpp case.
     SurfacePtr s32 = make_surface_with_format(8, 8, SDL_PIXELFORMAT_ARGB8888);
-    TEST_ASSERT(s32 != nullptr, "32bpp surface created");
+    ASSERT_TRUE(s32 != nullptr) << "32bpp surface created";
     if (s32) {
         Uint32 c = SDL_MapRGBA(s32->format, 1, 2, 3, 255);
         putpixel(s32.get(), 4, 4, c);
         blend_pixel(s32.get(), 4, 4, SDL_MapRGBA(s32->format, 200, 210, 220, 255), 180);
     }
 }
-REGISTER_TEST(test_video_putpixel_and_blend_pixel_all_bpp_cases_smoke);
 
-void test_video_putblack_uses_overridden_videoptr_buffer()
+
+TEST(VideoPixelOps, video_putblack_uses_overridden_videoptr_buffer)
 {
     // Legacy putblack writes to `videoptr`. In the original DOS codebase this
     // was linear VGA memory. Override it in tests to ensure it remains safe.
@@ -97,9 +97,9 @@ void test_video_putblack_uses_overridden_videoptr_buffer()
 
     og::runtime::current_session->videoptr_ = saved;
 }
-REGISTER_TEST(test_video_putblack_uses_overridden_videoptr_buffer);
 
-void test_video_darken_and_fastbox_negative_inputs_smoke()
+
+TEST(VideoPixelOps, video_darken_and_fastbox_negative_inputs_smoke)
 {
     og::runtime::current_session->myscreen_->darken_screen();
 
@@ -109,4 +109,4 @@ void test_video_darken_and_fastbox_negative_inputs_smoke()
     og::runtime::current_session->myscreen_->fastbox(0, 0, -10, 10, 1, 1);
     og::runtime::current_session->myscreen_->fastbox(0, 0, 10, -10, 1, 1);
 }
-REGISTER_TEST(test_video_darken_and_fastbox_negative_inputs_smoke);
+

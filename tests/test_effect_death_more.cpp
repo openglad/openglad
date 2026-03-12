@@ -2,18 +2,18 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
-void test_effect_death_ghost_scare_forces_walk_commands_on_foes()
+TEST(EffectDeathMore, effect_death_ghost_scare_forces_walk_commands_on_foes)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
 
     walker* ghost = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_GHOST);
     walker* foe1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     walker* foe2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
-    TEST_ASSERT(ghost && foe1 && foe2, "walkers created");
+    ASSERT_TRUE(ghost && foe1 && foe2) << "walkers created";
     if (!(ghost && foe1 && foe2))
         return;
 
@@ -28,7 +28,7 @@ void test_effect_death_ghost_scare_forces_walk_commands_on_foes()
 
     // Spawn the scare FX and trigger death() directly.
     walker* scare = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_GHOST_SCARE);
-    TEST_ASSERT(scare != nullptr, "scare effect created");
+    ASSERT_TRUE(scare != nullptr) << "scare effect created";
     if (!scare)
         return;
     scare->owner = ghost;
@@ -38,14 +38,14 @@ void test_effect_death_ghost_scare_forces_walk_commands_on_foes()
     // Should push COMMAND_WALK commands onto nearby foes.
     (void)scare->death();
 }
-REGISTER_TEST(test_effect_death_ghost_scare_forces_walk_commands_on_foes);
 
-void test_effect_death_bomb_spawns_explosion_with_owner_and_damage()
+
+TEST(EffectDeathMore, effect_death_bomb_spawns_explosion_with_owner_and_damage)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
 
     walker* owner = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_THIEF);
-    TEST_ASSERT(owner != nullptr, "owner created");
+    ASSERT_TRUE(owner != nullptr) << "owner created";
     if (!owner)
         return;
 
@@ -53,7 +53,7 @@ void test_effect_death_bomb_spawns_explosion_with_owner_and_damage()
     owner->setxy(GRID_SIZE * 8, GRID_SIZE * 8);
 
     walker* bomb = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_BOMB);
-    TEST_ASSERT(bomb != nullptr, "bomb created");
+    ASSERT_TRUE(bomb != nullptr) << "bomb created";
     if (!bomb)
         return;
     bomb->owner = owner;
@@ -62,4 +62,4 @@ void test_effect_death_bomb_spawns_explosion_with_owner_and_damage()
 
     (void)bomb->death();
 }
-REGISTER_TEST(test_effect_death_bomb_spawns_explosion_with_owner_and_damage);
+

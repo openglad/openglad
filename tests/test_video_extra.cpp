@@ -1,4 +1,4 @@
-#include "test_framework.h"
+#include <gtest/gtest.h>
 
 #include <openglad/interface/screen.h>
 
@@ -11,249 +11,249 @@
 // video::pointb variants
 // ---------------------------------------------------------------------------
 
-void test_video_pointb_basic()
+TEST(VideoExtra, video_pointb_basic)
 {
     og::runtime::current_session->myscreen_->pointb(50, 50, 100);
 }
-REGISTER_TEST(test_video_pointb_basic);
 
-void test_video_pointb_alpha()
+
+TEST(VideoExtra, video_pointb_alpha)
 {
     og::runtime::current_session->myscreen_->pointb(60, 50, 100, 128);
 }
-REGISTER_TEST(test_video_pointb_alpha);
 
-void test_video_pointb_rgb()
+
+TEST(VideoExtra, video_pointb_rgb)
 {
     og::runtime::current_session->myscreen_->pointb(70, 50, 200, 100, 50);
 }
-REGISTER_TEST(test_video_pointb_rgb);
 
-void test_video_pointb_offset()
+
+TEST(VideoExtra, video_pointb_offset)
 {
     og::runtime::current_session->myscreen_->pointb(50 + 50*320, (unsigned char)150);
 }
-REGISTER_TEST(test_video_pointb_offset);
+
 
 // ---------------------------------------------------------------------------
 // video::hor_line / ver_line
 // ---------------------------------------------------------------------------
 
-void test_video_hor_line()
+TEST(VideoExtra, video_hor_line)
 {
     og::runtime::current_session->myscreen_->hor_line(10, 10, 50, 100);
 }
-REGISTER_TEST(test_video_hor_line);
 
-void test_video_hor_line_to_buffer()
+
+TEST(VideoExtra, video_hor_line_to_buffer)
 {
     og::runtime::current_session->myscreen_->hor_line(10, 20, 50, 100, 1);
 }
-REGISTER_TEST(test_video_hor_line_to_buffer);
 
-void test_video_hor_line_alpha()
+
+TEST(VideoExtra, video_hor_line_alpha)
 {
     og::runtime::current_session->myscreen_->hor_line_alpha(10, 30, 50, 100, 128);
 }
-REGISTER_TEST(test_video_hor_line_alpha);
 
-void test_video_ver_line()
+
+TEST(VideoExtra, video_ver_line)
 {
     og::runtime::current_session->myscreen_->ver_line(10, 10, 50, 100);
 }
-REGISTER_TEST(test_video_ver_line);
 
-void test_video_ver_line_to_buffer()
+
+TEST(VideoExtra, video_ver_line_to_buffer)
 {
     og::runtime::current_session->myscreen_->ver_line(10, 10, 50, 100, 1);
 }
-REGISTER_TEST(test_video_ver_line_to_buffer);
+
 
 // ---------------------------------------------------------------------------
 // video::putdata variants
 // ---------------------------------------------------------------------------
 
-void test_video_putdata_span()
+TEST(VideoExtra, video_putdata_span)
 {
     unsigned char testbmp[16*16];
     memset(testbmp, 50, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 256);
     og::runtime::current_session->myscreen_->putdata(50, 50, 16, 16, span);
 }
-REGISTER_TEST(test_video_putdata_span);
 
-void test_video_putdata_alpha()
+
+TEST(VideoExtra, video_putdata_alpha)
 {
     unsigned char testbmp[16*16];
     memset(testbmp, 80, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 256);
     og::runtime::current_session->myscreen_->putdata_alpha(70, 50, 16, 16, span, 128);
 }
-REGISTER_TEST(test_video_putdata_alpha);
 
-void test_video_putdatatext()
+
+TEST(VideoExtra, video_putdatatext)
 {
     unsigned char testbmp[8*8];
     memset(testbmp, 60, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 64);
     og::runtime::current_session->myscreen_->putdatatext(90, 50, 8, 8, span);
 }
-REGISTER_TEST(test_video_putdatatext);
 
-void test_video_putdata_color()
+
+TEST(VideoExtra, video_putdata_color)
 {
     unsigned char testbmp[16*16];
     memset(testbmp, 248, sizeof(testbmp)); // > 247 triggers team color
     auto span = std::span<const unsigned char>(testbmp, 256);
     og::runtime::current_session->myscreen_->putdata(50, 70, 16, 16, span, (unsigned char)100);
 }
-REGISTER_TEST(test_video_putdata_color);
 
-void test_video_putdatatext_color()
+
+TEST(VideoExtra, video_putdatatext_color)
 {
     unsigned char testbmp[8*8];
     memset(testbmp, 248, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 64);
     og::runtime::current_session->myscreen_->putdatatext(70, 70, 8, 8, span, (unsigned char)100);
 }
-REGISTER_TEST(test_video_putdatatext_color);
+
 
 // ---------------------------------------------------------------------------
 // video::fastbox_outline
 // ---------------------------------------------------------------------------
 
-void test_video_fastbox_outline()
+TEST(VideoExtra, video_fastbox_outline)
 {
     og::runtime::current_session->myscreen_->fastbox_outline(10, 10, 40, 30, 100);
 }
-REGISTER_TEST(test_video_fastbox_outline);
+
 
 // ---------------------------------------------------------------------------
 // video::point (screen buffer version)
 // ---------------------------------------------------------------------------
 
-void test_video_point()
+TEST(VideoExtra, video_point)
 {
     og::runtime::current_session->myscreen_->point(50, 50, 100);
 }
-REGISTER_TEST(test_video_point);
+
 
 // ---------------------------------------------------------------------------
 // video::putbuffer / putbuffer_alpha
 // ---------------------------------------------------------------------------
 
-void test_video_putbuffer()
+TEST(VideoExtra, video_putbuffer)
 {
     unsigned char testbmp[16*16];
     memset(testbmp, 100, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 256);
     og::runtime::current_session->myscreen_->putbuffer(50, 50, 16, 16, 0, 0, 319, 199, span);
 }
-REGISTER_TEST(test_video_putbuffer);
 
-void test_video_putbuffer_alpha()
+
+TEST(VideoExtra, video_putbuffer_alpha)
 {
     unsigned char testbmp[16*16];
     memset(testbmp, 100, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 256);
     og::runtime::current_session->myscreen_->putbuffer_alpha(50, 50, 16, 16, 0, 0, 319, 199, span, 128);
 }
-REGISTER_TEST(test_video_putbuffer_alpha);
+
 
 // ---------------------------------------------------------------------------
 // video::draw_rect_filled (more alpha values)
 // ---------------------------------------------------------------------------
 
-void test_video_draw_rect_filled_quarter()
+TEST(VideoExtra, video_draw_rect_filled_quarter)
 {
     og::runtime::current_session->myscreen_->draw_rect_filled(10, 10, 30, 20, 150, 64);
 }
-REGISTER_TEST(test_video_draw_rect_filled_quarter);
 
-void test_video_draw_rect_filled_3quarter()
+
+TEST(VideoExtra, video_draw_rect_filled_3quarter)
 {
     og::runtime::current_session->myscreen_->draw_rect_filled(50, 10, 30, 20, 200, 192);
 }
-REGISTER_TEST(test_video_draw_rect_filled_3quarter);
+
 
 // ---------------------------------------------------------------------------
 // video::walkputbuffer clipping edge cases
 // ---------------------------------------------------------------------------
 
-void test_video_walkputbuffer_clipped_left()
+TEST(VideoExtra, video_walkputbuffer_clipped_left)
 {
     unsigned char testbmp[16*16];
     memset(testbmp, 100, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 256);
     og::runtime::current_session->myscreen_->walkputbuffer(-8, 50, 16, 16, 0, 0, 319, 199, span, 40);
 }
-REGISTER_TEST(test_video_walkputbuffer_clipped_left);
 
-void test_video_walkputbuffer_clipped_right()
+
+TEST(VideoExtra, video_walkputbuffer_clipped_right)
 {
     unsigned char testbmp[16*16];
     memset(testbmp, 100, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 256);
     og::runtime::current_session->myscreen_->walkputbuffer(310, 50, 16, 16, 0, 0, 319, 199, span, 40);
 }
-REGISTER_TEST(test_video_walkputbuffer_clipped_right);
 
-void test_video_walkputbuffer_clipped_top()
+
+TEST(VideoExtra, video_walkputbuffer_clipped_top)
 {
     unsigned char testbmp[16*16];
     memset(testbmp, 100, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 256);
     og::runtime::current_session->myscreen_->walkputbuffer(50, -8, 16, 16, 0, 0, 319, 199, span, 40);
 }
-REGISTER_TEST(test_video_walkputbuffer_clipped_top);
 
-void test_video_walkputbuffer_clipped_bottom()
+
+TEST(VideoExtra, video_walkputbuffer_clipped_bottom)
 {
     unsigned char testbmp[16*16];
     memset(testbmp, 100, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 256);
     og::runtime::current_session->myscreen_->walkputbuffer(50, 192, 16, 16, 0, 0, 319, 199, span, 40);
 }
-REGISTER_TEST(test_video_walkputbuffer_clipped_bottom);
+
 
 // ---------------------------------------------------------------------------
 // video::walkputbuffertext
 // ---------------------------------------------------------------------------
 
-void test_video_walkputbuffertext()
+TEST(VideoExtra, video_walkputbuffertext)
 {
     unsigned char testbmp[16*16];
     memset(testbmp, 100, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 256);
     og::runtime::current_session->myscreen_->walkputbuffertext(50, 50, 16, 16, 0, 0, 319, 199, span, 40);
 }
-REGISTER_TEST(test_video_walkputbuffertext);
 
-void test_video_walkputbuffertext_alpha()
+
+TEST(VideoExtra, video_walkputbuffertext_alpha)
 {
     unsigned char testbmp[16*16];
     memset(testbmp, 100, sizeof(testbmp));
     auto span = std::span<const unsigned char>(testbmp, 256);
     og::runtime::current_session->myscreen_->walkputbuffertext_alpha(50, 50, 16, 16, 0, 0, 319, 199, span, 40, 128);
 }
-REGISTER_TEST(test_video_walkputbuffertext_alpha);
+
 
 // ---------------------------------------------------------------------------
 // video::clearbuffer with rect
 // ---------------------------------------------------------------------------
 
-void test_video_clearbuffer_rect()
+TEST(VideoExtra, video_clearbuffer_rect)
 {
     og::runtime::current_session->myscreen_->clearbuffer(10, 10, 100, 100);
 }
-REGISTER_TEST(test_video_clearbuffer_rect);
+
 
 // ---------------------------------------------------------------------------
 // video::draw_text_bar (already tested but exercise more)
 // ---------------------------------------------------------------------------
 
-void test_video_draw_text_bar_wide()
+TEST(VideoExtra, video_draw_text_bar_wide)
 {
     og::runtime::current_session->myscreen_->draw_text_bar(0, 0, 320, 10);
 }
-REGISTER_TEST(test_video_draw_text_bar_wide);
+

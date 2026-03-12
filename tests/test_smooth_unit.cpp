@@ -3,7 +3,7 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
-#include "unit/unit.h"
+#include <gtest/gtest.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
 #endif
@@ -54,27 +54,27 @@ unsigned char center_value(const PixieData& pd)
 
 } // namespace
 
-OG_UNIT_TEST(test_smooth_query_and_genre_basics)
+TEST(SmoothUnit, smooth_query_and_genre_basics)
 {
     smoother s;
-    OG_ASSERT(s.query_x_y(0, 0) == PIX_GRASS1);
-    OG_ASSERT(s.query_x_y(-1, 0) == PIX_GRASS1);
-    OG_ASSERT(s.query_genre_x_y(0, 0) == TYPE_GRASS);
+    ASSERT_TRUE(s.query_x_y(0, 0) == PIX_GRASS1);
+    ASSERT_TRUE(s.query_x_y(-1, 0) == PIX_GRASS1);
+    ASSERT_TRUE(s.query_genre_x_y(0, 0) == TYPE_GRASS);
 
     PixieData pd = make_grid(PIX_CARPET_M);
     s.set_target(pd);
-    OG_ASSERT(s.query_x_y(2, 2) == PIX_CARPET_M);
-    OG_ASSERT(s.query_x_y(99, 99) == PIX_GRASS1);
-    OG_ASSERT(s.query_genre_x_y(2, 2) == TYPE_CARPET);
+    ASSERT_TRUE(s.query_x_y(2, 2) == PIX_CARPET_M);
+    ASSERT_TRUE(s.query_x_y(99, 99) == PIX_GRASS1);
+    ASSERT_TRUE(s.query_genre_x_y(2, 2) == TYPE_CARPET);
 
     pd.data[2 + 2 * pd.w] = 255;
-    OG_ASSERT(s.query_genre_x_y(2, 2) == TYPE_UNKNOWN);
+    ASSERT_TRUE(s.query_genre_x_y(2, 2) == TYPE_UNKNOWN);
 
     s.reset();
-    OG_ASSERT(s.smooth() == 0);
+    ASSERT_TRUE(s.smooth() == 0);
 }
 
-OG_UNIT_TEST(test_smooth_branch_matrix_on_center_tile)
+TEST(SmoothUnit, smooth_branch_matrix_on_center_tile)
 {
     FixedRandom rng(0);
     GameContext gc;
@@ -90,12 +90,12 @@ OG_UNIT_TEST(test_smooth_branch_matrix_on_center_tile)
                       PIX_WATER1, PIX_GRASS1, PIX_WATER1, PIX_WATER1);
         s.set_target(pd);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_GRASSWATER_LL);
+        ASSERT_TRUE(center_value(pd) == PIX_GRASSWATER_LL);
 
         set_neighbors(pd, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1,
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_GRASS1);
+        ASSERT_TRUE(center_value(pd) == PIX_GRASS1);
     }
 
     // Dark grass branches including rubble path and side-edge selection.
@@ -105,12 +105,12 @@ OG_UNIT_TEST(test_smooth_branch_matrix_on_center_tile)
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.set_target(pd);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_GRASS_RUBBLE);
+        ASSERT_TRUE(center_value(pd) == PIX_GRASS_RUBBLE);
 
         set_neighbors(pd, PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS1, PIX_WALL2, PIX_WALL2,
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_GRASS_DARK_R1);
+        ASSERT_TRUE(center_value(pd) == PIX_GRASS_DARK_R1);
     }
 
     // Carpet around=0 and around=15 preserving M/M2.
@@ -120,13 +120,13 @@ OG_UNIT_TEST(test_smooth_branch_matrix_on_center_tile)
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.set_target(pd);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_CARPET_SMALL_TINY);
+        ASSERT_TRUE(center_value(pd) == PIX_CARPET_SMALL_TINY);
 
         set_neighbors(pd, PIX_CARPET_M2, PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M,
                       PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M);
         s.smooth(2, 2);
         const unsigned char carpet_center = center_value(pd);
-        OG_ASSERT(carpet_center == PIX_CARPET_M || carpet_center == PIX_CARPET_M2);
+        ASSERT_TRUE(carpet_center == PIX_CARPET_M || carpet_center == PIX_CARPET_M2);
     }
 
     // Wall arrow-slit variants.
@@ -136,17 +136,17 @@ OG_UNIT_TEST(test_smooth_branch_matrix_on_center_tile)
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.set_target(pd);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_WALL_ARROW_GRASS);
+        ASSERT_TRUE(center_value(pd) == PIX_WALL_ARROW_GRASS);
 
         set_neighbors(pd, PIX_WALL_ARROW_GRASS, PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1,
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_WALL_ARROW_GRASS_DARK);
+        ASSERT_TRUE(center_value(pd) == PIX_WALL_ARROW_GRASS_DARK);
 
         set_neighbors(pd, PIX_WALL_ARROW_GRASS, PIX_FLOOR1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1,
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_WALL_ARROW_FLOOR);
+        ASSERT_TRUE(center_value(pd) == PIX_WALL_ARROW_FLOOR);
     }
 
     // Water, trees, dirt, dark dirt, cobble, and unknown default.
@@ -156,32 +156,32 @@ OG_UNIT_TEST(test_smooth_branch_matrix_on_center_tile)
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.set_target(pd);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_WATERGRASS_LL);
+        ASSERT_TRUE(center_value(pd) == PIX_WATERGRASS_LL);
 
         set_neighbors(pd, PIX_TREE_B1, PIX_TREE_B1, PIX_GRASS1, PIX_TREE_B1, PIX_GRASS1,
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_TREE_MT);
+        ASSERT_TRUE(center_value(pd) == PIX_TREE_MT);
 
         set_neighbors(pd, PIX_DIRT_1, PIX_GRASS1, PIX_GRASS1, PIX_DIRT_1, PIX_DIRT_1,
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_DIRTGRASS_LL1);
+        ASSERT_TRUE(center_value(pd) == PIX_DIRTGRASS_LL1);
 
         set_neighbors(pd, PIX_DIRT_DARK_1, PIX_DIRT_DARK_1, PIX_DIRT_DARK_1, PIX_GRASS1, PIX_GRASS1,
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_DIRTGRASS_DARK_UR1);
+        ASSERT_TRUE(center_value(pd) == PIX_DIRTGRASS_DARK_UR1);
 
         set_neighbors(pd, PIX_COBBLE_4, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1,
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == PIX_COBBLE_1);
+        ASSERT_TRUE(center_value(pd) == PIX_COBBLE_1);
 
         set_neighbors(pd, 255, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1,
                       PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
         s.smooth(2, 2);
-        OG_ASSERT(center_value(pd) == 255);
+        ASSERT_TRUE(center_value(pd) == 255);
     }
 
     pop_test_context();
@@ -238,24 +238,24 @@ void set_neighbors(PixieData& pd,
 
 } // namespace
 
-OG_UNIT_TEST(test_smooth_r11_query_edges_and_setter_guards)
+TEST(SmoothUnit, smooth_r11_query_edges_and_setter_guards)
 {
     smoother s;
-    OG_ASSERT(s.query_x_y(-2, 0) == PIX_GRASS1);
-    OG_ASSERT(s.query_x_y(0, -2) == PIX_GRASS1);
+    ASSERT_TRUE(s.query_x_y(-2, 0) == PIX_GRASS1);
+    ASSERT_TRUE(s.query_x_y(0, -2) == PIX_GRASS1);
 
     PixieData pd = make_grid(PIX_GRASS1);
     s.set_target(pd);
-    OG_ASSERT(s.query_x_y(100, 100) == PIX_GRASS1);
+    ASSERT_TRUE(s.query_x_y(100, 100) == PIX_GRASS1);
 
     s.smooth(0, 0);
-    OG_ASSERT(s.query_x_y(0, 0) >= 0);
+    ASSERT_TRUE(s.query_x_y(0, 0) >= 0);
 
     s.reset();
-    OG_ASSERT(s.smooth() == 0);
+    ASSERT_TRUE(s.smooth() == 0);
 }
 
-OG_UNIT_TEST(test_smooth_r11_dark_grass_and_wall_and_water_branches)
+TEST(SmoothUnit, smooth_r11_dark_grass_and_wall_and_water_branches)
 {
     FixedRandom rng0(0);
     GameContext gc;
@@ -271,122 +271,122 @@ OG_UNIT_TEST(test_smooth_r11_dark_grass_and_wall_and_water_branches)
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS_DARK_1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     // dark grass top-right fallback hits line 348
     set_neighbors(pd, PIX_GRASS_DARK_1,
                   PIX_GRASS1, PIX_WATER1, PIX_GRASS1, PIX_GRASS_DARK_1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     // around=(TO_DOWN|TO_UP) -> R1/R2 block lines 406+ ; rng 0 => R1
     set_neighbors(pd, PIX_GRASS_DARK_1,
                   PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS_DARK_1, PIX_GRASS1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     // around==TO_DOWN with right grass -> LL line 421
     set_neighbors(pd, PIX_GRASS_DARK_1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS_DARK_1, PIX_GRASS1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     // around==TO_RIGHT with left grass -> UR line 435
     set_neighbors(pd, PIX_GRASS_DARK_1,
                   PIX_GRASS1, PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     // around==TO_UP with down not grass -> B1 line 444
     set_neighbors(pd, PIX_GRASS_DARK_1,
                   PIX_GRASS_DARK_1, PIX_GRASS1, PIX_WATER1, PIX_GRASS1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     // carpet around=15 preserve center pixel (line 499)
     set_neighbors(pd, PIX_CARPET_M2,
                   PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M,
                   PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M, PIX_CARPET_M);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     // wall non-arrow around 1 and 11 with crack path line 607
     set_neighbors(pd, PIX_WALL2,
                   PIX_WALL2, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     set_neighbors(pd, PIX_WALL2,
                   PIX_WALL2, PIX_WALL2, PIX_GRASS1, PIX_WALL2,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     // water corner mappings lines 664-670 and single-side switches 680,690,700
     set_neighbors(pd, PIX_WATER1,
                   PIX_WATER1, PIX_WATER1, PIX_GRASS1, PIX_GRASS1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     set_neighbors(pd, PIX_WATER1,
                   PIX_WATER1, PIX_GRASS1, PIX_GRASS1, PIX_WATER1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     set_neighbors(pd, PIX_WATER1,
                   PIX_GRASS1, PIX_WATER1, PIX_WATER1, PIX_GRASS1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     set_neighbors(pd, PIX_WATER1,
                   PIX_GRASS1, PIX_GRASS1, PIX_WATER1, PIX_WATER1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     // trees + dirt + dark dirt edges in targeted lines
     set_neighbors(pd, PIX_TREE_B1,
                   PIX_TREE_B1, PIX_TREE_B1, PIX_TREE_B1, PIX_TREE_B1,
                   PIX_TREE_B1, PIX_GRASS1, PIX_TREE_B1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     set_neighbors(pd, PIX_TREE_B1,
                   PIX_TREE_B1, PIX_TREE_B1, PIX_TREE_B1, PIX_TREE_B1,
                   PIX_GRASS1, PIX_TREE_B1, PIX_GRASS1, PIX_TREE_B1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     set_neighbors(pd, PIX_DIRT_1,
                   PIX_GRASS1, PIX_GRASS1, PIX_DIRT_1, PIX_DIRT_1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     set_neighbors(pd, PIX_DIRT_DARK_1,
                   PIX_GRASS1, PIX_GRASS1, PIX_DIRT_DARK_1, PIX_DIRT_DARK_1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     // unknown path retains original tile via query_x_y default
     set_neighbors(pd, 250,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1,
                   PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
-    OG_ASSERT(s.query_x_y(3, 3) >= 0);
+    ASSERT_TRUE(s.query_x_y(3, 3) >= 0);
 
     // smooth() full-map return true and set_x_y guard line 903
-    OG_ASSERT(s.smooth() == 1);
+    ASSERT_TRUE(s.smooth() == 1);
 
     pop_test_context();
 }
@@ -446,7 +446,7 @@ void set_neighbors_mask(PixieData& pd, unsigned char center, unsigned char same_
 
 } // namespace
 
-OG_UNIT_TEST(test_smooth_r12_light_wall_tree_dirt_darkdirt_coverage)
+TEST(SmoothUnit, smooth_r12_light_wall_tree_dirt_darkdirt_coverage)
 {
     FixedRandom rng(0);
     GameContext gc;
@@ -503,11 +503,11 @@ OG_UNIT_TEST(test_smooth_r12_light_wall_tree_dirt_darkdirt_coverage)
     set_neighbors(pd, 254, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
     s.smooth(3, 3);
 
-    OG_ASSERT(s.smooth() == 1);
+    ASSERT_TRUE(s.smooth() == 1);
     pop_test_context();
 }
 
-OG_UNIT_TEST(test_smooth_r12_rng_and_masked_switch_coverage)
+TEST(SmoothUnit, smooth_r12_rng_and_masked_switch_coverage)
 {
     SeqRandom rng;
     GameContext gc;
@@ -606,7 +606,7 @@ void set_neighbors_mask(PixieData& pd, int cx, int cy, unsigned char center,
 
 } // namespace
 
-OG_UNIT_TEST(test_smooth_r14_lines_437_447_499_572_604_614_wall_arrow_water_and_unknown_paths)
+TEST(SmoothUnit, smooth_r14_lines_437_447_499_572_604_614_wall_arrow_water_and_unknown_paths)
 {
     SeqRandom rng;
     GameContext gc;
@@ -656,7 +656,7 @@ OG_UNIT_TEST(test_smooth_r14_lines_437_447_499_572_604_614_wall_arrow_water_and_
     pop_test_context();
 }
 
-OG_UNIT_TEST(test_smooth_r14_lines_670_700_722_736_770_830_851_tree_dirt_darkdirt_mask_matrix)
+TEST(SmoothUnit, smooth_r14_lines_670_700_722_736_770_830_851_tree_dirt_darkdirt_mask_matrix)
 {
     SeqRandom rng;
     GameContext gc;
@@ -694,7 +694,7 @@ OG_UNIT_TEST(test_smooth_r14_lines_670_700_722_736_770_830_851_tree_dirt_darkdir
     pop_test_context();
 }
 
-OG_UNIT_TEST(test_smooth_r14_lines_903_full_smooth_reset_paths)
+TEST(SmoothUnit, smooth_r14_lines_903_full_smooth_reset_paths)
 {
     SeqRandom rng;
     GameContext gc;
@@ -704,13 +704,13 @@ OG_UNIT_TEST(test_smooth_r14_lines_903_full_smooth_reset_paths)
     smoother s;
 
     // !mygrid guards.
-    OG_ASSERT(s.smooth() == 0);
+    ASSERT_TRUE(s.smooth() == 0);
     PixieData pd = make_grid(PIX_COBBLE_1, 3, 3);
     s.set_target(pd);
-    OG_ASSERT(s.smooth() == 1);
+    ASSERT_TRUE(s.smooth() == 1);
 
     s.reset();
-    OG_ASSERT(s.smooth() == 0);
+    ASSERT_TRUE(s.smooth() == 0);
 
     pop_test_context();
 }

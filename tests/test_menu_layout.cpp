@@ -1,7 +1,8 @@
 #include <openglad/interface/button.h>
-#include <openglad/legacy/test_trace.h>
+#include <openglad/core/test_trace.h>
 #include "../src/interface/ui/picker_sdl_defs.h"
-#include "test_framework.h"
+#include <gtest/gtest.h>
+#include <SDL.h>
 
 // Screen dimensions for the game
 static constexpr int SCREEN_W = 320;
@@ -71,7 +72,7 @@ static void check_no_overlaps(button* buttons, int count, const char* menu_name)
                     menu_name,
                     i, buttons[i].id.c_str(), buttons[i].x, buttons[i].y, buttons[i].sizex, buttons[i].sizey,
                     j, buttons[j].id.c_str(), buttons[j].x, buttons[j].y, buttons[j].sizex, buttons[j].sizey);
-                TEST_ASSERT(false, "buttons overlap in menu layout");
+                ASSERT_TRUE(false) << "buttons overlap in menu layout";
             }
         }
     }
@@ -86,7 +87,7 @@ static void check_bounds(button* buttons, int count, const char* menu_name)
             fprintf(stderr, "  OUT OF BOUNDS in %s: [%d] '%s' (%d,%d %dx%d)\n",
                 menu_name,
                 i, buttons[i].id.c_str(), buttons[i].x, buttons[i].y, buttons[i].sizex, buttons[i].sizey);
-            TEST_ASSERT(false, "button out of screen bounds");
+            ASSERT_TRUE(false) << "button out of screen bounds";
         }
     }
 }
@@ -102,7 +103,7 @@ static void check_nav_in_range(button* buttons, int count, const char* menu_name
             {
                 fprintf(stderr, "  NAV ERROR in %s: [%d] '%s' nav.up=%d out of range [0,%d)\n",
                     menu_name, i, buttons[i].id.c_str(), n.up, count);
-                TEST_ASSERT(false, "nav.up out of range");
+                ASSERT_TRUE(false) << "nav.up out of range";
             }
         }
         if (n.down >= 0)
@@ -111,7 +112,7 @@ static void check_nav_in_range(button* buttons, int count, const char* menu_name
             {
                 fprintf(stderr, "  NAV ERROR in %s: [%d] '%s' nav.down=%d out of range [0,%d)\n",
                     menu_name, i, buttons[i].id.c_str(), n.down, count);
-                TEST_ASSERT(false, "nav.down out of range");
+                ASSERT_TRUE(false) << "nav.down out of range";
             }
         }
         if (n.left >= 0)
@@ -120,7 +121,7 @@ static void check_nav_in_range(button* buttons, int count, const char* menu_name
             {
                 fprintf(stderr, "  NAV ERROR in %s: [%d] '%s' nav.left=%d out of range [0,%d)\n",
                     menu_name, i, buttons[i].id.c_str(), n.left, count);
-                TEST_ASSERT(false, "nav.left out of range");
+                ASSERT_TRUE(false) << "nav.left out of range";
             }
         }
         if (n.right >= 0)
@@ -129,47 +130,47 @@ static void check_nav_in_range(button* buttons, int count, const char* menu_name
             {
                 fprintf(stderr, "  NAV ERROR in %s: [%d] '%s' nav.right=%d out of range [0,%d)\n",
                     menu_name, i, buttons[i].id.c_str(), n.right, count);
-                TEST_ASSERT(false, "nav.right out of range");
+                ASSERT_TRUE(false) << "nav.right out of range";
             }
         }
     }
 }
 
-void test_main_options_buttons_no_overlap()
+TEST(MenuLayout, main_options_buttons_no_overlap)
 {
     button* buttons = picker_main_options_buttons();
     const int count = picker_main_options_button_count();
     check_no_overlaps(buttons, count, "main_options");
     check_bounds(buttons, count, "main_options");
 }
-REGISTER_TEST(test_main_options_buttons_no_overlap);
 
-void test_control_options_buttons_no_overlap()
+
+TEST(MenuLayout, control_options_buttons_no_overlap)
 {
     button* buttons = picker_control_options_buttons();
     const int count = picker_control_options_button_count();
     check_no_overlaps(buttons, count, "control_options");
     check_bounds(buttons, count, "control_options");
 }
-REGISTER_TEST(test_control_options_buttons_no_overlap);
 
-void test_main_options_nav_indices_in_range()
+
+TEST(MenuLayout, main_options_nav_indices_in_range)
 {
     button* buttons = picker_main_options_buttons();
     const int count = picker_main_options_button_count();
     check_nav_in_range(buttons, count, "main_options");
 }
-REGISTER_TEST(test_main_options_nav_indices_in_range);
 
-void test_control_options_nav_indices_in_range()
+
+TEST(MenuLayout, control_options_nav_indices_in_range)
 {
     button* buttons = picker_control_options_buttons();
     const int count = picker_control_options_button_count();
     check_nav_in_range(buttons, count, "control_options");
 }
-REGISTER_TEST(test_control_options_nav_indices_in_range);
 
-void test_controls_summary_switches_between_four_and_eight_direction_formats()
+
+TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_formats)
 {
     PlayerControlSnapshotGuard guard(0);
 
@@ -186,22 +187,14 @@ void test_controls_summary_switches_between_four_and_eight_direction_formats()
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
     const std::string summary_four = build_player_control_summary(0);
-    TEST_ASSERT(summary_four.find("D:WASD") != std::string::npos,
-        "4-direction summary should include compact direction order");
-    TEST_ASSERT(summary_four.find("Y:Q") != std::string::npos,
-        "4-direction summary should include yell label");
-    TEST_ASSERT(summary_four.find("F:1") != std::string::npos,
-        "4-direction summary should include fire key");
-    TEST_ASSERT(summary_four.find("S:2") != std::string::npos,
-        "4-direction summary should include special key");
-    TEST_ASSERT(summary_four.find("SS:=") != std::string::npos,
-        "4-direction summary should include special switch key");
-    TEST_ASSERT(summary_four.find("SW:`") != std::string::npos,
-        "4-direction summary should display backtick character for switch key");
-    TEST_ASSERT(summary_four.find("Sh:F8") != std::string::npos,
-        "4-direction summary should include shifter key");
-    TEST_ASSERT(summary_four.find("Dir:") == std::string::npos,
-        "4-direction summary should not include diagonal keys");
+    ASSERT_TRUE(summary_four.find("D:WASD") != std::string::npos) << "4-direction summary should include compact direction order";
+    ASSERT_TRUE(summary_four.find("Y:Q") != std::string::npos) << "4-direction summary should include yell label";
+    ASSERT_TRUE(summary_four.find("F:1") != std::string::npos) << "4-direction summary should include fire key";
+    ASSERT_TRUE(summary_four.find("S:2") != std::string::npos) << "4-direction summary should include special key";
+    ASSERT_TRUE(summary_four.find("SS:=") != std::string::npos) << "4-direction summary should include special switch key";
+    ASSERT_TRUE(summary_four.find("SW:`") != std::string::npos) << "4-direction summary should display backtick character for switch key";
+    ASSERT_TRUE(summary_four.find("Sh:F8") != std::string::npos) << "4-direction summary should include shifter key";
+    ASSERT_TRUE(summary_four.find("Dir:") == std::string::npos) << "4-direction summary should not include diagonal keys";
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
     set_player_key_binding(0, KEY_UP_RIGHT, SDLK_e);
@@ -210,14 +203,12 @@ void test_controls_summary_switches_between_four_and_eight_direction_formats()
     set_player_key_binding(0, KEY_UP_LEFT, SDLK_q);
 
     const std::string summary_eight = build_player_control_summary(0);
-    TEST_ASSERT(summary_eight.find("D:WEDCXZAQ") != std::string::npos,
-        "8-direction summary should include compact clockwise direction order");
-    TEST_ASSERT(summary_eight.find("Y:") != std::string::npos,
-        "8-direction summary should include yell label");
+    ASSERT_TRUE(summary_eight.find("D:WEDCXZAQ") != std::string::npos) << "8-direction summary should include compact clockwise direction order";
+    ASSERT_TRUE(summary_eight.find("Y:") != std::string::npos) << "8-direction summary should include yell label";
 }
-REGISTER_TEST(test_controls_summary_switches_between_four_and_eight_direction_formats);
 
-void test_eight_direction_summary_clockwise_order()
+
+TEST(MenuLayout, eight_direction_summary_clockwise_order)
 {
     PlayerControlSnapshotGuard guard(0);
 
@@ -238,24 +229,17 @@ void test_eight_direction_summary_clockwise_order()
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
     const std::string summary = build_player_control_summary(0);
-    TEST_ASSERT(summary.find("D:WEDCXZAQ") != std::string::npos,
-        "8-direction summary should list keys clockwise from Up");
-    TEST_ASSERT(summary.find("Y:S") != std::string::npos,
-        "8-direction summary should include yell key");
-    TEST_ASSERT(summary.find("F:1") != std::string::npos,
-        "8-direction summary should include fire key");
-    TEST_ASSERT(summary.find("S:2") != std::string::npos,
-        "8-direction summary should include special key");
-    TEST_ASSERT(summary.find("SS:=") != std::string::npos,
-        "8-direction summary should include special switch key");
-    TEST_ASSERT(summary.find("SW:3") != std::string::npos,
-        "8-direction summary should include switch key");
-    TEST_ASSERT(summary.find("Sh:F8") != std::string::npos,
-        "8-direction summary should include shifter key");
+    ASSERT_TRUE(summary.find("D:WEDCXZAQ") != std::string::npos) << "8-direction summary should list keys clockwise from Up";
+    ASSERT_TRUE(summary.find("Y:S") != std::string::npos) << "8-direction summary should include yell key";
+    ASSERT_TRUE(summary.find("F:1") != std::string::npos) << "8-direction summary should include fire key";
+    ASSERT_TRUE(summary.find("S:2") != std::string::npos) << "8-direction summary should include special key";
+    ASSERT_TRUE(summary.find("SS:=") != std::string::npos) << "8-direction summary should include special switch key";
+    ASSERT_TRUE(summary.find("SW:3") != std::string::npos) << "8-direction summary should include switch key";
+    ASSERT_TRUE(summary.find("Sh:F8") != std::string::npos) << "8-direction summary should include shifter key";
 }
-REGISTER_TEST(test_eight_direction_summary_clockwise_order);
 
-void test_controls_summary_remap_mode_uses_two_lines()
+
+TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
 {
     PlayerControlSnapshotGuard guard(0);
 
@@ -272,11 +256,8 @@ void test_controls_summary_remap_mode_uses_two_lines()
     set_player_key_binding(0, KEY_SHIFTER, SDLK_LSHIFT);
 
     const std::array<std::string, 2> remap_summary = build_player_control_summary_lines(0, true);
-    TEST_ASSERT(remap_summary[0].find("Dir:W/A/S/D") != std::string::npos,
-        "remap summary first line should contain directional keys");
-    TEST_ASSERT(remap_summary[1].find("Y:E") != std::string::npos,
-        "remap summary second line should contain action keys");
-    TEST_ASSERT(remap_summary[1].find("SW:`") != std::string::npos,
-        "remap summary second line should display backtick character");
+    ASSERT_TRUE(remap_summary[0].find("Dir:W/A/S/D") != std::string::npos) << "remap summary first line should contain directional keys";
+    ASSERT_TRUE(remap_summary[1].find("Y:E") != std::string::npos) << "remap summary second line should contain action keys";
+    ASSERT_TRUE(remap_summary[1].find("SW:`") != std::string::npos) << "remap summary second line should display backtick character";
 }
-REGISTER_TEST(test_controls_summary_remap_mode_uses_two_lines);
+
