@@ -31,10 +31,12 @@ struct Registrar {
         #suite "." #name, &suite##_##name); \
     static void suite##_##name()
 
-#define ASSERT_TRUE(cond) \
+#define OG_ASSERT(cond) \
     do { \
         if (!(cond)) { \
             std::fprintf(stderr, "ASSERT FAILED: %s (%s:%d)\n", #cond, __FILE__, __LINE__); \
             std::abort(); \
         } \
     } while (0)
+
+#define ASSERT_TRUE(cond) OG_ASSERT(cond)
