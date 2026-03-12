@@ -1,0 +1,17 @@
+{
+  "completed_at": null,
+  "phases": {
+    "phase-1-split-binaries": {
+      "attempt": 1,
+      "baseline_sha": "59a6fdd88d410b97dffdec49cf6612c5bb330978",
+      "completed_at": null,
+      "failure_contexts": [],
+      "input_tokens": 0,
+      "logs": [],
+      "output_tokens": 0,
+      "started_at": 1773303745.307146,
+      "status": "running"
+    }
+  },
+  "started_at": 1773303745.3016784
+}
