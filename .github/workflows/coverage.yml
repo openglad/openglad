@@ -40,8 +40,12 @@ jobs:
       - name: Install coverage tools
         run: python3 -m pip install gcovr
 
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-coverage
+
       - name: Configure (ci-coverage preset)
-        run: cmake --preset ci-coverage
+        run: cmake --preset ci-coverage -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build all test binaries
         run: cmake --build --preset ci-coverage -j"$(nproc)"

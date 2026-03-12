@@ -21,8 +21,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
 
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-test
+
       - name: Configure (ci-test preset)
-        run: cmake --preset ci-test
+        run: cmake --preset ci-test -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build all test binaries
         run: cmake --build --preset ci-test -j"$(nproc)"
@@ -45,8 +49,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
 
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: native-build
+
       - name: Configure (dev-release preset)
-        run: cmake --preset dev-release
+        run: cmake --preset dev-release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build native binaries
         run: cmake --build --preset dev-release --target openglad openscen -j"$(nproc)"
@@ -66,8 +74,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
 
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-asan
+
       - name: Configure (ci-asan preset)
-        run: cmake --preset ci-asan
+        run: cmake --preset ci-asan -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build all test binaries
         run: cmake --build --preset ci-asan -j"$(nproc)"
