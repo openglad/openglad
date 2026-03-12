@@ -1027,6 +1027,23 @@ if(NOT EMSCRIPTEN)
     if(BUILD_TESTING)
         find_package(GTest REQUIRED)
 
+        # Incremental coverage builds can retain gcov artifacts for the deleted
+        # pre-GTest runners. Purge those stale files so gcovr does not fail on
+        # missing sources after the Phase 3 framework swap.
+        file(GLOB_RECURSE OG_STALE_LEGACY_TEST_ARTIFACTS
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_framework.cpp.gcda"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_framework.cpp.gcno"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_framework.cpp.o"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_framework.cpp.o.d"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_main.cpp.gcda"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_main.cpp.gcno"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_main.cpp.o"
+            "${CMAKE_BINARY_DIR}/CMakeFiles/*/tests/test_main.cpp.o.d"
+        )
+        if(OG_STALE_LEGACY_TEST_ARTIFACTS)
+            file(REMOVE ${OG_STALE_LEGACY_TEST_ARTIFACTS})
+        endif()
+
         set(ALL_INTEGRATION_TEST_SOURCES
             ${CMAKE_SOURCE_DIR}/tests/test_trace_buffer.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_startup.cpp
