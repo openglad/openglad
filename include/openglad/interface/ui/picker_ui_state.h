@@ -5,7 +5,6 @@
 
 #include <array>
 #include <cstdint>
-#include <memory>
 #include <vector>
 #include <openglad/interface/button.h>
 #include <openglad/resources/pixie_data.h>
@@ -18,14 +17,62 @@ class HireSession;
 class TrainSession;
 } // namespace og::ui
 
+class PickerPixieHandle {
+public:
+    using DestroyFn = void (*)(pixieN*);
+
+    PickerPixieHandle() = default;
+    ~PickerPixieHandle() { reset(); }
+
+    PickerPixieHandle(const PickerPixieHandle&) = delete;
+    PickerPixieHandle& operator=(const PickerPixieHandle&) = delete;
+
+    PickerPixieHandle(PickerPixieHandle&& other) noexcept
+        : ptr_(other.ptr_)
+        , destroy_(other.destroy_)
+    {
+        other.ptr_ = nullptr;
+        other.destroy_ = nullptr;
+    }
+
+    PickerPixieHandle& operator=(PickerPixieHandle&& other) noexcept
+    {
+        if (this != &other) {
+            reset();
+            ptr_ = other.ptr_;
+            destroy_ = other.destroy_;
+            other.ptr_ = nullptr;
+            other.destroy_ = nullptr;
+        }
+        return *this;
+    }
+
+    pixieN* get() const { return ptr_; }
+    pixieN* operator->() const { return ptr_; }
+    explicit operator bool() const { return ptr_ != nullptr; }
+
+    void reset(pixieN* ptr = nullptr, DestroyFn destroy = nullptr)
+    {
+        if (ptr_ && destroy_) {
+            destroy_(ptr_);
+        }
+        ptr_ = ptr;
+        destroy_ = destroy;
+    }
+
+private:
+    pixieN* ptr_ = nullptr;
+    DestroyFn destroy_ = nullptr;
+};
+
 struct PickerState {
     // Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
     PixieData backpics[5]{};
-    std::array<std::unique_ptr<pixieN>, 5> backdrops{};
+    std::array<PickerPixieHandle, 5> backdrops{};
     PixieData main_title_logo_data{};
     PixieData main_columns_data{};
-    std::unique_ptr<pixieN> main_title_logo_pix;
-    std::unique_ptr<pixieN> main_columns_pix;
+    PickerPixieHandle main_title_logo_pix;
+    PickerPixieHandle main_columns_pix;
 
     // Team build state
     guy* old_guy = nullptr;

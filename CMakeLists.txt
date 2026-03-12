@@ -949,7 +949,6 @@ if(NOT EMSCRIPTEN)
     )
     target_compile_definitions(openglad_text PRIVATE
         ${COMMON_DEFINITIONS}
-        OPENGLAD_HEADLESS_TEXT
     )
     target_link_libraries(openglad_text PRIVATE
         project_warnings

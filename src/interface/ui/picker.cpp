@@ -93,6 +93,20 @@ const char* family_name_copy(short family);
 
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
+namespace {
+void destroy_picker_pixie(pixieN* pixie)
+{
+    delete pixie;
+}
+
+PickerPixieHandle make_picker_pixie(const PixieData& data)
+{
+    PickerPixieHandle handle;
+    handle.reset(new pixieN(data), destroy_picker_pixie);
+    return handle;
+}
+} // namespace
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 // Flag to signal that game should start (for state machine)
@@ -181,13 +195,13 @@ static void picker_initialize_shared_menu_state()
     pks().backpics[2] = read_pixie_file("mainll.pix");
     pks().backpics[3] = read_pixie_file("mainlr.pix");
 
-    pks().backdrops[0] = std::make_unique<pixieN>(pks().backpics[0]);
+    pks().backdrops[0] = make_picker_pixie(pks().backpics[0]);
     pks().backdrops[0]->setxy(0, 0);
-    pks().backdrops[1] = std::make_unique<pixieN>(pks().backpics[1]);
+    pks().backdrops[1] = make_picker_pixie(pks().backpics[1]);
     pks().backdrops[1]->setxy(160, 0);
-    pks().backdrops[2] = std::make_unique<pixieN>(pks().backpics[2]);
+    pks().backdrops[2] = make_picker_pixie(pks().backpics[2]);
     pks().backdrops[2]->setxy(0, 100);
-    pks().backdrops[3] = std::make_unique<pixieN>(pks().backpics[3]);
+    pks().backdrops[3] = make_picker_pixie(pks().backpics[3]);
     pks().backdrops[3]->setxy(160, 100);
 
     og::runtime::current_session->myscreen_->viewob[0]->resize(PREF_VIEW_FULL);
@@ -195,11 +209,11 @@ static void picker_initialize_shared_menu_state()
 
     //main_title_logo_data = read_pixie_file("glad.pix");
     pks().main_title_logo_data = read_pixie_file("title.pix"); // marbled gladiator title
-    pks().main_title_logo_pix = std::make_unique<pixieN>(pks().main_title_logo_data);
+    pks().main_title_logo_pix = make_picker_pixie(pks().main_title_logo_data);
 
     //main_columns_data = read_pixie_file("mage.pix");
     pks().main_columns_data = read_pixie_file("columns.pix");
-    pks().main_columns_pix = std::make_unique<pixieN>(pks().main_columns_data);
+    pks().main_columns_pix = make_picker_pixie(pks().main_columns_data);
 
     // Get the mouse, timer, & keyboard ..
     grab_mouse();
