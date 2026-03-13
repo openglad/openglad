@@ -137,6 +137,7 @@ Add a **comparison-based validation test** that runs alongside the dirty-bit pat
 
 ```cpp
 // tests/test_dirty_tracking_safety.cpp
+// (add to ALL_INTEGRATION_TEST_SOURCES and assign to an og_add_test_group() in CMakeLists.txt)
 // For each tick in a combat scenario:
 // 1. Capture snapshot using dirty bits (the real path)
 // 2. Capture a second "reference" snapshot by brute-force comparing all fields

@@ -2,7 +2,7 @@
 
 > **See also:** [Phase 14 (GameServer/GameClient)](phase-14-server-client.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
-Extract the internals of `screen::act()` into three new methods, leaving `screen::act()` as a thin wrapper that calls them in sequence. **All ~894 existing tests pass unchanged** — this is a behavior-identical refactor.
+Extract the internals of `screen::act()` into three new methods, leaving `screen::act()` as a thin wrapper that calls them in sequence. **All ~1787 existing tests pass unchanged** — this is a behavior-identical refactor.
 
 **`screen::act()` refactoring:** The current `screen::act()` does: `world_.tick()` -> dispatch events (8 early return paths identified: lines 903, 955, 1017, 1031, 1036, 1043, 1066, 1068). Split into three methods:
   - `screen::tick_world()` — calls `world_.tick()`, drains SimEventLog into a `SimEventBatch` + `GameFlowEventBatch`. Returns the two batches. Used by GameServer in Phase 16.
@@ -26,4 +26,4 @@ bool screen::act() {
 
 All existing tests and the game loop call `screen::act()` exactly as before. The sub-methods are new public API that Phase 16 will use.
 
-**Verify:** All existing ~894 tests pass with zero changes. Game plays identically. The sub-methods are individually callable (tested via new unit tests).
+**Verify:** All existing ~1787 tests pass with zero changes. Game plays identically. The sub-methods are individually callable (tested via new unit tests).

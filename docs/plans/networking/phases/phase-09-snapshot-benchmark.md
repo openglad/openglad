@@ -10,7 +10,7 @@ Before committing to the serialization format, measure actual snapshot sizes on 
   2. Calls `capture_snapshot()` (from Phase 6)
   3. Reports: entity count per list, raw `EntitySnapshot` size (bytes), total `WorldSnapshot` size, zlib-compressed size
   4. Runs 10 more ticks, captures again, computes a delta, reports delta size before/after zlib
-- Can be a unit test or a standalone benchmark (e.g., `tests/unit/test_snapshot_size.cpp`)
+- Can be a unit test or a standalone benchmark (e.g., `tests/unit/test_snapshot_size.cpp` — assign to an `og_add_unit_group()` in `CMakeLists.txt`)
 - **Use a worst-case combat scenario** (4-player chaotic combat with many projectiles, explosions, and entity spawns) — not a quiet level. The bandwidth budget must hold under peak load.
 
 **Expected results:**

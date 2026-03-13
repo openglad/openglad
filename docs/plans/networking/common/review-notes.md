@@ -25,7 +25,7 @@ The following claims in this plan have been verified against the actual codebase
 - `walker::~walker()` lives in `src/interface/walker_render_bridge.cpp:97-116`, calls `obmap::remove()` but does NOT call `death()` — safe during snapshot application (Phase 7)
 - Dead player entities (`myguy != nullptr`) stay in oblist, not moved to dead_list (`game_world.cpp:1019-1027`) (Phase 5)
 - `GameLoopFrameState` accumulator fields are `#ifdef __EMSCRIPTEN__` guarded (Phase 11)
-- `openglad_text` SDL-free precedent at CMakeLists.txt:938 (Phase 27)
+- `openglad_text` SDL-free precedent at `CMakeLists.txt:938` (Phase 27)
 - `GameSession::Config` supports `allocate_screen = false` for headless (Phase 27)
 - `src/platform/emscripten/` does not exist yet (Phase 26)
 - `regen_delay_` is protected on walker, accessed directly from `living.cpp:139,142`, `walker.cpp:253`, `walker_combat.cpp:169` (Phase 6)
@@ -36,7 +36,7 @@ The following claims in this plan have been verified against the actual codebase
 - `screen::act()` calls `world_.tick()` first (line 905), then dispatches events (lines 920-978) (Phase 15)
 - `screen::act()` has 8 early return paths: lines 903, 955, 1017, 1031, 1036, 1043, 1066, 1068 (Phase 15)
 - `game_frame_with_result()` does exactly 1 tick (`s.act()` at line 67) + 1 render (`s.redraw()` at line 81) per call (Phase 11)
-- CMake: `OG_PLATFORM_SOURCES` has exactly 4 files, `OG_SIM_SOURCES` has 2 files, `og_ext_zlib` target exists at line 746, vendored lib pattern at lines 742-776, Emscripten `-sASYNCIFY` at lines 1527-1566 (Phases 11, 23, 26)
+- CMake: `OG_PLATFORM_SOURCES` has exactly 4 files, `OG_SIM_SOURCES` has 2 files, `og_ext_zlib` target exists at line 746, vendored lib pattern at lines 742-776, Emscripten `-sASYNCIFY` at lines 1652-1668 (Phases 11, 23, 26)
 - `InputState` structure: `PlayerInput` with `held[16]` + `pressed[16]`, `InputState` with `players[4]` + `quit_requested` (Phase 4)
 - `guy.h` has 22 data fields at lines 47-73 (Phase 5)
 - `SimRandom` LCG at `game_world.h:32-44` with public `state_` (Phase 5)
@@ -50,7 +50,7 @@ The following claims in this plan have been verified against the actual codebase
 - Entity factory callbacks at `game_world.h:148-150` with exact signatures (Phase 7)
 - `GameLoopDeps` struct at `game_loop.h:22-34` has `enable_render`, `enable_event_poll`, `enable_frame_timing` (Phase 11)
 - `time_delay()` at `util.cpp:132-152` converts delay ticks at 13.6ms each to microseconds, sleeps then spin-waits (Phase 11)
-- Test infrastructure: 145 integration tests (TEST_SOURCES), 28 unit tests (OG_UNIT_TEST_SOURCES), 13 data tests, 71+ runtime tests
+- Test infrastructure: ~1496 integration tests across 20 `og_add_test_group()` groups (`ALL_INTEGRATION_TEST_SOURCES`), ~291 unit tests across 4 `og_add_unit_group()` groups, all using GoogleTest
 - `current_game` thread-local has 332 occurrences across 39 gameplay files (Phase 7)
 - `GameplayContext` holds `world`, `save`, `sim_events`, `config`, `rng_override_ref`, `pathfinding` (Phase 7)
 - `GameSession` owns `world_owner_`, `prefs_owner_`, `screen_owner_` (Phase 7)
@@ -209,9 +209,9 @@ The following decisions were made via discussion and are reflected in inline edi
 2. **Phase 15 split into three sub-phases (15/16/17).** Isolates the three risks:
    - 15: Pure refactor — split `screen::act()` into sub-methods, keep wrapper. All tests pass unchanged.
    - 16: Wire up GameServer/GameClient alongside old path. Both paths work.
-   - 17: Migrate tests to server/client path, delete wrapper. No fallback.
+   - 17: Migrate game-loop tests to server/client path, delete wrapper. No fallback.
 
-3. **Integration tests migrate to server/client path (Phase 17).** All ~145 integration tests that call `game_frame()` are updated to use `NetworkTestFixture`. Tests exercise the real networking code path as a side effect.
+3. **Integration tests migrate to server/client path (Phase 17).** Integration tests that call `game_frame()` or `screen::act()` are updated to use `NetworkTestFixture`. Tests exercise the real networking code path as a side effect.
 
 4. **InProcessTransport is zero-copy.** Passes `shared_ptr<WorldSnapshot>` and `shared_ptr<InputState>` directly — no serialize/deserialize round-trip for local play. Serialization path exercised by unit tests and networked play only.
 
@@ -294,7 +294,7 @@ The following findings come from a fifth independent code review against the act
 - **treasure_family_navigation.cpp:** Lines 71-75 (RequestExitConfirmation normal exit), 88-90 (WithdrawToLevel), 91-95 (RequestExitConfirmation withdraw variant). All confirmed.
 - **walker destructor at walker_render_bridge.cpp:97-118:** Confirmed: nulls pointers (lines 99-102), removes from obmap (lines 105-112), resets smart pointers (lines 114-117). Does NOT call `death()`.
 - **transform_to() at walker.cpp:1234-1289:** Confirmed changes order/family in-place via `configure_existing_entity()` at line 1260. Removes from obmap before resize, re-adds via `setxy()`.
-- **GameLoopFrameState at game_loop_state.h:14-17:** `#ifdef __EMSCRIPTEN__` guards on `last_frame_time` and `accumulated_time` confirmed.
+- **GameLoopFrameState at `game_loop_state.h:14-17`:** `#ifdef __EMSCRIPTEN__` guards on `last_frame_time` and `accumulated_time` confirmed.
 - **guy.h fields at lines 47-73:** Exactly 22 data fields confirmed. Mutable gameplay fields: exp, kills, level_kills, total_damage, total_hits, total_shots, scen_damage, scen_kills, scen_damage_taken, scen_min_hp, scen_shots, scen_hits, level.
 - **picker.cpp buttons at lines 425-465:** Emscripten path (lines 425-444) replaces "QUIT" with "HELP". Native path (lines 447-465) has "QUIT". Both paths confirmed ready for "Host Game" / "Join Game" button additions.
 - **picker.cpp Emscripten lifecycle at lines 1642-1703:** `picker_check_start_requested()` (1642), `picker_init()` (1649), `picker_frame()` (1663), `picker_cleanup_for_game()` (1676), `picker_reinit_after_game()` (1683). All confirmed.
