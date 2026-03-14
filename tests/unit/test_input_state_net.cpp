@@ -3,7 +3,10 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <initializer_list>
+#include <optional>
+#include <span>
 
 namespace {
 
@@ -92,6 +95,63 @@ TEST(InputStateNet, roundtrip_preserves_state_and_movement_helpers)
                 << "move_y mismatch for player " << player;
         }
     }
+}
+
+TEST(InputStateNet, serialize_emits_expected_wire_format)
+{
+    InputState input{};
+    set_flags(input.players[0].held, {InputAction::MoveUp, InputAction::Cheat});
+    set_flags(input.players[0].pressed, {InputAction::MoveUp, InputAction::Cheat});
+
+    set_flags(input.players[1].held, {InputAction::MoveUpRight, InputAction::Fire, InputAction::SwitchChar});
+    set_flags(input.players[1].pressed, {InputAction::MoveRight, InputAction::SwitchSpecial});
+
+    set_flags(input.players[2].held, {InputAction::MoveUpLeft});
+    set_flags(input.players[2].pressed, {InputAction::MoveDownRight, InputAction::Yell});
+
+    set_flags(input.players[3].held, {InputAction::MoveDownLeft, InputAction::Shift});
+    set_flags(input.players[3].pressed, {InputAction::MoveLeft, InputAction::OpenPrefs});
+
+    input.quit_requested = true;
+
+    constexpr std::array<std::uint8_t, og::sim::kSerializedInputStateSize> expected = {
+        0x03,
+        0x01, 0x80, 0x01, 0x80,
+        0x02, 0x05, 0x04, 0x08,
+        0x80, 0x00, 0x08, 0x10,
+        0x20, 0x20, 0x40, 0x40,
+    };
+
+    const auto bytes = og::sim::serialize_input(input);
+    ASSERT_EQ(bytes, expected);
+}
+
+TEST(InputStateNet, deserialize_reads_expected_wire_format)
+{
+    constexpr std::array<std::uint8_t, og::sim::kSerializedInputStateSize> bytes = {
+        0x02,
+        0x24, 0x00, 0x40, 0x02,
+        0x00, 0x41, 0x10, 0x00,
+        0x08, 0x88, 0x00, 0x20,
+        0x10, 0x10, 0x01, 0x01,
+    };
+
+    InputState expected{};
+    set_flags(expected.players[0].held, {InputAction::MoveRight, InputAction::MoveDownLeft});
+    set_flags(expected.players[0].pressed, {InputAction::MoveLeft, InputAction::Special});
+
+    set_flags(expected.players[1].held, {InputAction::Fire, InputAction::OpenPrefs});
+    set_flags(expected.players[1].pressed, {InputAction::MoveDown});
+
+    set_flags(expected.players[2].held, {InputAction::MoveDownRight, InputAction::SwitchSpecial, InputAction::Cheat});
+    set_flags(expected.players[2].pressed, {InputAction::Shift});
+
+    set_flags(expected.players[3].held, {InputAction::MoveDown, InputAction::Yell});
+    set_flags(expected.players[3].pressed, {InputAction::MoveUp, InputAction::Fire});
+
+    const std::optional<InputState> decoded = og::sim::deserialize_input(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    expect_input_state_eq(expected, *decoded);
 }
 
 TEST(InputStateNet, deserialize_rejects_wrong_size_and_version)
