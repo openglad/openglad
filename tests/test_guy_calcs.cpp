@@ -245,7 +245,7 @@ TEST(GuyCalcs, guy_query_heart_value_with_stats)
     guy g(FAMILY_SOLDIER);
     g.strength = 20;  // 8 above base of 12
     Sint32 val = g.query_heart_value();
-    ASSERT_EQ(526, (int)val) << "soldier strength delta should follow the legacy stat cost curve";
+    ASSERT_EQ(531, (int)val) << "soldier strength delta should follow the legacy stat cost curve";
 }
 
 

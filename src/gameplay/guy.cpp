@@ -148,16 +148,27 @@ std::uint64_t fixed_to_uint64(const UInt128& value)
     return (value.hi << 16) | (value.lo >> kStatCostFixedShift);
 }
 
-std::int32_t raise_stat_cost_curve(std::int32_t value)
+UInt128 raise_stat_cost_curve(std::int32_t value)
 {
     if (value <= 0)
-        return 0;
+        return make_u128(0);
 
     // Legacy cost curve is value^1.85. Compute it with deterministic
     // fixed-point math so life-gem values no longer depend on libm exponentiation.
     const std::uint64_t root = twentieth_root_fixed(static_cast<std::uint32_t>(value));
+    return pow_fixed(root, 37);
+}
+
+std::int32_t stat_cost_curve_contribution(std::int32_t value, std::int32_t stat_cost)
+{
+    if (value <= 0 || stat_cost <= 0)
+        return 0;
+
+    const UInt128 scaled_cost = multiply_fixed(
+        raise_stat_cost_curve(value),
+        static_cast<std::uint64_t>(stat_cost) * kStatCostFixedOne);
     return static_cast<std::int32_t>(std::min<std::uint64_t>(
-        fixed_to_uint64(pow_fixed(root, 37)),
+        fixed_to_uint64(scaled_cost),
         static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max())));
 }
 
@@ -285,27 +296,27 @@ std::int32_t guy::query_heart_value() // how much are we worth?
 	// Get strength cost ..
 	temp = strength - normal.strength;
 	temp = MAX(temp,0);
-	cost += raise_stat_cost_curve(temp) * static_cast<std::int32_t>(fd->stat_costs[0]);
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[0]));
 
 	// Get dexterity cost ..
 	temp = dexterity - normal.dexterity;
 	temp = MAX(temp,0);
-	cost += raise_stat_cost_curve(temp) * static_cast<std::int32_t>(fd->stat_costs[1]);
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[1]));
 
 	// Get constitution cost ..
 	temp = constitution - normal.constitution;
 	temp = MAX(temp,0);
-	cost += raise_stat_cost_curve(temp) * static_cast<std::int32_t>(fd->stat_costs[2]);
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[2]));
 
 	// Get intelligence cost ..
 	temp = intelligence - normal.intelligence;
 	temp = MAX(temp,0);
-	cost += raise_stat_cost_curve(temp) * static_cast<std::int32_t>(fd->stat_costs[3]);
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[3]));
 
 	// Get armor cost ..
 	temp = armor - normal.armor;
 	temp = MAX(temp,0);
-	cost += raise_stat_cost_curve(temp) * static_cast<std::int32_t>(fd->stat_costs[4]);
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[4]));
 
 	// Add in the base cost value for the guy ..
 	cost += fd->hiring_cost;
