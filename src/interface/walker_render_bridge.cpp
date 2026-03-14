@@ -101,7 +101,7 @@ walker::~walker()
 	set_foe(nullptr);
 	set_leader(nullptr);
 	set_owner(nullptr);
-	collide_ob = nullptr;
+	set_collide_ob(nullptr);
 	dead = 1;
 
 	// Walkers can outlive a particular GameWorld::myobmap instance in tests

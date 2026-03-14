@@ -109,7 +109,7 @@ bool living::act()
 	}  // end of summoned monster stuff
 
 
-	collide_ob = nullptr; // always start with no collison..
+	set_collide_ob(nullptr); // always start with no collison..
 
 	/*
 	  if (ignore)
@@ -438,11 +438,11 @@ bool living::walk(float x, float y)
 		}
 		else //Invalid move?
 		{
-			if (collide_ob && !collide_ob->dead)
+			if (collide_ob() && !collide_ob()->dead)
 			{
-				if (collide_ob->query_order() == Order::Living && is_friendly(collide_ob) )
+				if (collide_ob()->query_order() == Order::Living && is_friendly(collide_ob()) )
 				{
-					shove(collide_ob, x, y);
+					shove(collide_ob(), x, y);
 				}
 			}  // end hit some object
 			if (stats_->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
@@ -486,7 +486,7 @@ bool walkerIsAutoAttackable(walker* ob)
 
 bool living::collide(walker  *ob)
 {
-	collide_ob = ob;
+	set_collide_ob(ob);
 	//return 1; // debug
 	if ( ob && walkerIsAutoAttackable(ob) && (is_friendly(ob) == 0)
 	        && !ob->dead && !dead)

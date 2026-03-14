@@ -1367,7 +1367,7 @@ void GameWorld::tick()
             ob->set_leader(nullptr);
         if (ob->owner() && ob->owner()->dead)
             ob->set_owner(nullptr);
-        if (ob->collide_ob && ob->collide_ob->dead)
+        if (ob->collide_ob() && ob->collide_ob()->dead)
             ob->set_collide_ob(nullptr);
         if (statistics* stats = ob->stats();
             stats != nullptr && stats->controller && stats->controller->dead)

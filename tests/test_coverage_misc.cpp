@@ -1279,9 +1279,9 @@ TEST(CoverageMisc, coverage_r20_walker_act_random_no_foe_and_chase_paths)
     SequenceRandom rng_chase{0, 1, 1};
     self->set_foe(foe);
     self->lineofsight = 1;
-    self->collide_ob = reinterpret_cast<walker*>(0x1);
+    self->set_collide_ob(reinterpret_cast<walker*>(0x1));
     (void)self->act();
-    ASSERT_TRUE(self->collide_ob == nullptr);
+    ASSERT_TRUE(self->collide_ob() == nullptr);
 }
 
 TEST(CoverageMisc, coverage_r20_walker_movement_stationary_walkstep_walk_turn)

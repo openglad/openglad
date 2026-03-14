@@ -62,7 +62,7 @@ bool weap::act()
 	if (!owner())
 		set_owner(this); //to fix cases where our parent died!
 
-	collide_ob = nullptr; // always start with no collision..
+	set_collide_ob(nullptr); // always start with no collision..
 
 	// Complete previous animations (like firing)
 	if (ani_type != ANI_WALK)

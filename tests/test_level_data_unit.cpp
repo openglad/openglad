@@ -179,11 +179,11 @@ TEST(LevelDataUnit, level_data_tick_clears_fx_cross_references_and_controller_id
 
     EXPECT_EQ(nullptr, fx_holder->foe());
     EXPECT_EQ(0u, fx_holder->foe_id);
-    EXPECT_EQ(nullptr, fx_holder->leader);
+    EXPECT_EQ(nullptr, fx_holder->leader());
     EXPECT_EQ(0u, fx_holder->leader_id);
     EXPECT_EQ(nullptr, fx_holder->owner());
     EXPECT_EQ(0u, fx_holder->owner_id);
-    EXPECT_EQ(nullptr, fx_holder->collide_ob);
+    EXPECT_EQ(nullptr, fx_holder->collide_ob());
     EXPECT_EQ(0u, fx_holder->collide_ob_id);
     EXPECT_EQ(nullptr, fx_holder->stats()->controller);
     EXPECT_EQ(0u, fx_holder->stats()->controller_id);

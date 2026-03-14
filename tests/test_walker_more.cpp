@@ -367,7 +367,7 @@ TEST(WalkerMore, walker_round6_act_fire_collision_attack_path)
     weapon->lastx = -1;
     weapon->lasty = 0;
     weapon->setxy(0, GRID_SIZE * 4); // force walk() failure on next step
-    weapon->collide_ob = target.get();
+    weapon->set_collide_ob(target.get());
     weapon->stats()->set_bit_flags(BIT_IMMORTAL, 1); // keep weapon alive after collision branch
 
     const float hp_before = target->stats()->hitpoints;

@@ -327,8 +327,8 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                     }
                 }
                 else
-                    // if (ob->collide_ob) //let's just assume its safe
-                    ob->collide_ob = nullptr;
+                    // if (ob->collide_ob()) //let's just assume its safe
+                    ob->set_collide_ob(nullptr);
             }
         }
 	}

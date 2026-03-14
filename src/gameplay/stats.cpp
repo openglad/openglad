@@ -363,9 +363,9 @@ short statistics::do_command()
 				controller->walkstep(com1, com2);
 				controller->walkstep(com1, com2);
 				controller->walkstep(com1, com2);
-				if (controller->collide_ob) // We hit someone
+				if (controller->collide_ob()) // We hit someone
 				{
-					target = controller->collide_ob;
+					target = controller->collide_ob();
 					controller->attack(target);
 					target->stats()->clear_command();
 					// A violent shove... we can't call shove since we

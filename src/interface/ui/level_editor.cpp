@@ -2541,10 +2541,10 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     newob->setxy(windowx, windowy);
                     if (some_hit(windowx, windowy, newob, level.get()))
                     {
-                        std::string name = newob->collide_ob->stats()->name;
+                        std::string name = newob->collide_ob()->stats()->name;
                         if(prompt_for_string("Rename", name))
                         {
-                            newob->collide_ob->stats()->name = name;
+                            newob->collide_ob()->stats()->name = name;
                             eds().levelchanged = 1;
                         }
                     }
@@ -2560,7 +2560,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         if (some_hit(windowx, windowy, newob, level.get()))
                         {
                             // Clicked on a guy
-                            walker* w = newob->collide_ob;
+                            walker* w = newob->collide_ob();
                             if(og::runtime::current_session->keystates_[KEYSTATE_LCTRL] || og::runtime::current_session->keystates_[KEYSTATE_RCTRL])
                             {
                                 // Select/deselect another guy
@@ -2621,7 +2621,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         newob->team_num = static_cast<unsigned char>(object_brush.team);
                         newob->stats()->level = object_brush.level;
                         newob->dead = 0; // just in case
-                        newob->collide_ob = nullptr;
+                        newob->set_collide_ob(nullptr);
                         // Is there already something there?
                         if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, level.get()))
                         {
@@ -2752,7 +2752,7 @@ walker* LevelEditorData::get_object(int x, int y)
     newob->setxy(x, y);
     if (some_hit(x, y, newob, level.get()))
     {
-        result = newob->collide_ob;
+        result = newob->collide_ob();
     }
     level->remove_ob(newob);
     return result;
@@ -3726,7 +3726,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
 			                  w->xpos, w->ypos,
 			                  w->sizex, w->sizey) )
         {
-            ob->collide_ob = w;
+            ob->set_collide_ob(w);
             return w;
         }
 	}
@@ -3739,7 +3739,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
 			                  w->xpos, w->ypos,
 			                  w->sizex, w->sizey) )
         {
-            ob->collide_ob = w;
+            ob->set_collide_ob(w);
             return w;
         }
 	}
@@ -3752,11 +3752,11 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
 			                  w->xpos, w->ypos,
 			                  w->sizex, w->sizey) )
         {
-            ob->collide_ob = w;
+            ob->set_collide_ob(w);
             return w;
         }
 	}
 
-	ob->collide_ob = nullptr;
+	ob->set_collide_ob(nullptr);
 	return nullptr;
 }

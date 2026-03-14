@@ -246,7 +246,7 @@ TEST(LivingUnit, living_r14_lines_65_73_89_95_138_175_owner_lifetime_and_counter
 
     self->set_foe(foe);
     foe->dead = 1;
-    self->leader = owner;
+    self->set_leader(owner);
     owner->dead = 0;
     self->view_all = 2;
     self->invulnerable_left = 2;
@@ -350,7 +350,7 @@ TEST(LivingUnit, living_r14_lines_371_375_380_419_433_440_shove_walk_and_animate
 
     self->curdir = FACE_RIGHT;
     self->setxy(10, 10);
-    self->collide_ob = ally;
+    self->set_collide_ob(ally);
     self->stats()->set_bit_flags(BIT_ANIMATE, 1);
     (void)self->walk(1.0f, 0.0f);
 }

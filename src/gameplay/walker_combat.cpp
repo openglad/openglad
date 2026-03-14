@@ -380,7 +380,7 @@ bool walker::attack(walker  *target)
         target->dead = 1;
         target->death(); // any special effect upon death ..
     }
-    collide_ob = nullptr;
+    set_collide_ob(nullptr);
 
     return 1;
 }

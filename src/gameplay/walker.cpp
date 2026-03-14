@@ -122,7 +122,7 @@ void walker_init_common(walker* w, IRandom& rng)
 	w->enddir = FACE_DOWN;
 	w->lastx = 0;
 	w->lasty = 0;
-	w->collide_ob = nullptr;
+	w->set_collide_ob(nullptr);
 	w->collide_ob_id = 0;
 	w->cycle = 0;
 	w->ani = nullptr;
@@ -246,7 +246,7 @@ void walker::set_owner(walker* target)
 
 void walker::set_collide_ob(walker* target)
 {
-	collide_ob = target;
+	collide_ob_ = target;
 	collide_ob_id = (target != nullptr) ? target->entity_id() : 0;
 	mark_dirty(og::dirty::BIT_COLLIDE_OB_ID);
 }
@@ -256,7 +256,7 @@ void walker::sync_ids_from_pointers()
 	foe_id = (foe_ != nullptr) ? foe_->entity_id() : 0;
 	leader_id = (leader_ != nullptr) ? leader_->entity_id() : 0;
 	owner_id = (owner_ != nullptr) ? owner_->entity_id() : 0;
-	collide_ob_id = (collide_ob != nullptr) ? collide_ob->entity_id() : 0;
+	collide_ob_id = (collide_ob_ != nullptr) ? collide_ob_->entity_id() : 0;
 
 	if (stats_ != nullptr)
 		stats_->controller_id = (stats_->controller != nullptr)
@@ -466,9 +466,9 @@ walker  * walker::fire()
 	if (!current_game->world->query_passable(weapon->xpos, weapon->ypos, weapon))
 	{
 		// *** Melee combat ***
-		if (weapon->collide_ob && !weapon->collide_ob->dead)
+		if (weapon->collide_ob() && !weapon->collide_ob()->dead)
 		{
-			if (attack(weapon->collide_ob))
+			if (attack(weapon->collide_ob()))
 			{
 				og::sim::emit_sound(current_game->sim_events, SOUND_CLANG);
 
@@ -483,7 +483,7 @@ walker  * walker::fire()
 				{
 					const auto* fd = get_family_descriptor(family);
 					if (fd && fd->on_melee_hit)
-						fd->on_melee_hit(this, weapon->collide_ob);
+						fd->on_melee_hit(this, weapon->collide_ob());
 				}
 			}
 			if (myguy)
@@ -692,7 +692,7 @@ bool walker::act()
 	if (owner() && owner()->dead)
 		set_owner(nullptr);
 
-	collide_ob = nullptr; // always start with no collison..
+	set_collide_ob(nullptr); // always start with no collison..
 
 	// Complete previous animations (like firing)
 	if (ani_type != ANI_WALK)
@@ -825,7 +825,7 @@ short walker::restore_act_type()
 
 bool walker::collide(walker  *ob)
 {
-	collide_ob = ob;
+	set_collide_ob(ob);
 	return 1;
 }
 
@@ -1046,7 +1046,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	if (!weapon)
 		return 0;
 	set_weapon_heading(weapon); // set lastx, lasty based on our facing...
-	weapon->collide_ob = nullptr;
+	weapon->set_collide_ob(nullptr);
 	// Based on facing, we alter the weapon's proposed
 	//   size so the collision check is fooled into checking
 	//   a std::int32_t strip equal to the lineofsight times the size
@@ -1153,9 +1153,9 @@ walker::act_fire()
 	else if (!walk() || stats_->query_bit_flags(BIT_NO_COLLIDE))
 	{
 		// Hit the collide_ob;
-		if (collide_ob && !collide_ob->dead)
+		if (collide_ob() && !collide_ob()->dead)
 		{
-			attack(collide_ob);
+			attack(collide_ob());
 		}
 		if (!stats_->query_bit_flags(BIT_IMMORTAL))
 		{
@@ -1245,7 +1245,7 @@ walker::act_random()
 		}
 
 	// If blocked
-	collide_ob = nullptr;
+	set_collide_ob(nullptr);
 
 	// We can slide now, so always just walkstep, NOT using
 	// stepsize ..

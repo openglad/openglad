@@ -78,6 +78,7 @@ class walker : public og::sim::SimEntity
 		void set_owner(walker* target);
 		walker* owner() const { return owner_; }
 		void set_collide_ob(walker* target);
+		walker* collide_ob() const { return collide_ob_; }
 		void sync_ids_from_pointers();
 		bool reset(void);
 			short move(short x, short y);
@@ -191,9 +192,8 @@ class walker : public og::sim::SimEntity
 		char ignore;                   // for non-colliding objects
 		unsigned short current_weapon;
 		std::int32_t lifetime;               // how much life summoned guys have ..
-			float speed_bonus;             // Additional stepsize while speed potions are active
+		float speed_bonus;             // Additional stepsize while speed potions are active
 			std::int32_t speed_bonus_left;        // Cycles remaining for speed bonus
-		walker* collide_ob;
 		std::uint32_t collide_ob_id = 0;
 		unsigned short default_weapon;
 		signed char curdir;            // Current direction facing
@@ -233,6 +233,7 @@ class walker : public og::sim::SimEntity
 		walker* foe_ = nullptr;
 		walker* leader_ = nullptr;
 		walker* owner_ = nullptr;
+		walker* collide_ob_ = nullptr;
 };
 
 // Returns the best display name for an entity: myguy name if available,

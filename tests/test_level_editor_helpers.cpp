@@ -155,7 +155,7 @@ TEST(LevelEditorHelpers, level_editor_some_hit_checks_all_lists)
 
     walker* hit = some_hit(10, 10, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
     ASSERT_TRUE(hit == target1p) << "some_hit should find hit in oblist";
-    ASSERT_TRUE(probep->collide_ob == target1p) << "collide_ob should be set";
+    ASSERT_TRUE(probep->collide_ob() == target1p) << "collide_ob should be set";
 
     og::runtime::current_session->myscreen_->world().oblist.clear();
 
@@ -182,7 +182,7 @@ TEST(LevelEditorHelpers, level_editor_some_hit_checks_all_lists)
     // no hit
     hit = some_hit(1000, 1000, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
     ASSERT_TRUE(hit == nullptr) << "some_hit should return null when no overlap";
-    ASSERT_TRUE(probep->collide_ob == nullptr) << "collide_ob should be cleared on miss";
+    ASSERT_TRUE(probep->collide_ob() == nullptr) << "collide_ob should be cleared on miss";
 }
 
 

@@ -360,7 +360,7 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
     rock->setxy(64, 64);
     rock->lastx = GRID_SIZE;
     rock->lasty = GRID_SIZE;
-    rock->collide_ob = nullptr;
+    rock->set_collide_ob(nullptr);
     rock->lineofsight = 1;
 
     // Guard: do_bounce disabled.

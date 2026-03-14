@@ -638,7 +638,7 @@ TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_firstf
     ASSERT_TRUE(rush_target != nullptr) << "rush target created";
     if (rush_target)
     {
-        actor->collide_ob = rush_target;
+        actor->set_collide_ob(rush_target);
         actor->stats()->force_command(COMMAND_RUSH, 1, 1, 0);
         (void)actor->stats()->do_command();
     }

@@ -73,7 +73,7 @@ bool effect::act()
 	if (owner() && owner()->dead)
 		set_owner(nullptr);
 
-	collide_ob = nullptr; // always start with no collision..
+	set_collide_ob(nullptr); // always start with no collision..
 
 	// Per-family action dispatch
 	const auto* efd = get_effect_family_descriptor(family);

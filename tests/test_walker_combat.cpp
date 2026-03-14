@@ -340,7 +340,7 @@ TEST(WalkerCombat, walker_act_with_commands)
                 proj->dead = 0;
                 proj->setxy(120, 120);
                 proj->lineofsight = 2;
-                proj->collide_ob = target;
+                proj->set_collide_ob(target);
                 proj->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
                 proj->stats()->set_bit_flags(BIT_IMMORTAL, 0);
                 (void)proj->act();
@@ -348,7 +348,7 @@ TEST(WalkerCombat, walker_act_with_commands)
                 proj->dead = 0;
                 proj->setxy(120, 120);
                 proj->lineofsight = 2;
-                proj->collide_ob = target;
+                proj->set_collide_ob(target);
                 proj->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
                 proj->stats()->set_bit_flags(BIT_IMMORTAL, 1);
                 (void)proj->act();
