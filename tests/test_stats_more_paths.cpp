@@ -1,4 +1,6 @@
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/gameplay/walker.h>
@@ -7,6 +9,7 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/irandom.h>
+#include <openglad/resources/level_data_hooks.h>
 #include <gtest/gtest.h>
 
 #include <memory>
@@ -16,6 +19,29 @@
 
 namespace
 {
+class ScopedGameplayWorld
+{
+public:
+    explicit ScopedGameplayWorld(GameWorld& world)
+        : previous_(current_game)
+    {
+        context_.world = &world;
+        current_game = &context_;
+    }
+
+    ~ScopedGameplayWorld()
+    {
+        current_game = previous_;
+    }
+
+    ScopedGameplayWorld(const ScopedGameplayWorld&) = delete;
+    ScopedGameplayWorld& operator=(const ScopedGameplayWorld&) = delete;
+
+private:
+    GameplayContext context_{};
+    GameplayContext* previous_ = nullptr;
+};
+
 static std::unique_ptr<walker> make_walker(char family)
 {
     guy g(family);
@@ -308,9 +334,17 @@ TEST(StatsMorePaths, stats_set_command_die_and_hit_response_early_returns)
 
 TEST(StatsMorePaths, stats_walk_to_foe_short_circuit_and_path_branches)
 {
-    auto actor = make_walker(FAMILY_SOLDIER);
-    auto foe = make_walker(FAMILY_ORC);
-    ASSERT_TRUE(actor && foe) << "walkers created";
+    GameWorld world(0u);
+    sdl_level_data_hooks().wire_world_entity_services(&world, nullptr);
+    world.clear();
+    world.create_new_grid();
+    ASSERT_TRUE(world.myobmap != nullptr) << "pathfinding requires an obmap";
+
+    ScopedGameplayWorld gameplay_world(world);
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(actor != nullptr && foe != nullptr) << "walkers created";
     if (!(actor && foe))
         return;
 
@@ -318,7 +352,7 @@ TEST(StatsMorePaths, stats_walk_to_foe_short_circuit_and_path_branches)
     foe->team_num = 1;
     actor->setxy(GRID_SIZE * 8, GRID_SIZE * 8);
     foe->setxy(static_cast<std::int32_t>(actor->xpos + 16), static_cast<std::int32_t>(actor->ypos));
-    actor->foe = foe.get();
+    actor->foe = foe;
     actor->path_check_counter = 0;
     actor->stats()->clear_command();
 
@@ -339,10 +373,20 @@ TEST(StatsMorePaths, stats_walk_to_foe_short_circuit_and_path_branches)
 
     // Distant foe path: executes find_path_to_foe() branch.
     foe->dead = 0;
-    foe->setxy(static_cast<std::int32_t>(actor->xpos + 600), static_cast<std::int32_t>(actor->ypos));
+    actor->sizex = actor->sizey = GRID_SIZE - 1;
+    foe->sizex = foe->sizey = GRID_SIZE - 1;
+    ASSERT_TRUE(actor->setxy(32, 32));
+    ASSERT_TRUE(foe->setxy(128, 128));
     actor->path_check_counter = 0;
     ok = actor->stats()->walk_to_foe();
     ASSERT_TRUE(ok) << "walk_to_foe should run distant-path branch";
+    ASSERT_FALSE(actor->path_to_foe.empty()) << "walk_to_foe should retain a remaining route after the first follow step";
+    EXPECT_EQ(GET_STATE_X(actor->path_to_foe.front()), 48);
+    EXPECT_EQ(GET_STATE_Y(actor->path_to_foe.front()), 48);
+    EXPECT_EQ(GET_STATE_X(actor->path_to_foe.back()), 128);
+    EXPECT_EQ(GET_STATE_Y(actor->path_to_foe.back()), 128);
+    EXPECT_GT(actor->xpos, 32);
+    EXPECT_GT(actor->ypos, 32);
 
     ctx().rng = prev_rng;
 }
@@ -624,4 +668,3 @@ TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_firstf
     ASSERT_TRUE(walked) << "walk_to_foe should still succeed when using firstfoe fallback path";
     ASSERT_TRUE(actor->foe != nullptr) << "walk_to_foe should restore foe from firstfoe fallback";
 }
-
