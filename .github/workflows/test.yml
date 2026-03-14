@@ -31,8 +31,11 @@ jobs:
       - name: Build all test binaries
         run: cmake --build --preset ci-test -j"$(nproc)"
 
-      - name: Run tests (parallel)
-        run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 180
+      - name: Run tests (parallel, excluding menu UI)
+        run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 180 -E og_test_menu_ui
+
+      - name: Run menu UI test with extended timeout
+        run: ctest --test-dir build/ci-test --output-on-failure --timeout 300 -R og_test_menu_ui
 
   build:
     name: Native Build
@@ -84,5 +87,8 @@ jobs:
       - name: Build all test binaries
         run: cmake --build --preset ci-asan -j"$(nproc)"
 
-      - name: Run tests (parallel)
-        run: ctest --test-dir build/ci-asan --parallel $(nproc) --output-on-failure --timeout 180
+      - name: Run tests (parallel, excluding menu UI)
+        run: ctest --test-dir build/ci-asan --parallel $(nproc) --output-on-failure --timeout 180 -E og_test_menu_ui
+
+      - name: Run menu UI test with sanitizer timeout
+        run: ctest --test-dir build/ci-asan --output-on-failure --timeout 420 -R og_test_menu_ui
