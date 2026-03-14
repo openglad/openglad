@@ -216,6 +216,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/cheat_handler.cpp
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
     ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
+    ${SRC_DIR}/gameplay/input_state_net.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -231,6 +232,7 @@ set(OG_CORE_SOURCES
 set(OG_SIM_SOURCES
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
+    ${SRC_DIR}/gameplay/input_state_net.cpp
 )
 
 set(OG_DATA_SOURCES
@@ -1519,6 +1521,7 @@ if(NOT EMSCRIPTEN)
 
         og_add_unit_group(og_unit_sim FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_input_state_net.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
