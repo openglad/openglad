@@ -51,6 +51,7 @@ public:
     short bonus_rounds = 0;
 
     // Identity
+    std::uint32_t entity_id_ = 0;
     Order order = Order::Living;
     char  family = 0;
 

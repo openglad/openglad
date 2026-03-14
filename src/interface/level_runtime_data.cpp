@@ -229,6 +229,7 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.fxlist.splice(dst.fxlist.end(), loaded_world.fxlist);
     dst.weaplist.splice(dst.weaplist.end(), loaded_world.weaplist);
     dst.dead_list.splice(dst.dead_list.end(), loaded_world.dead_list);
+    dst.transfer_entity_tracking_from(loaded_world);
     dst.living_count = loaded_world.living_count;
     dst.grid = std::move(loaded_world.grid);
     dst.pixmaxx = loaded_world.pixmaxx;
@@ -655,6 +656,7 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         next_world->fxlist.splice(next_world->fxlist.end(), old_world->fxlist);
         next_world->weaplist.splice(next_world->weaplist.end(), old_world->weaplist);
         next_world->dead_list.splice(next_world->dead_list.end(), old_world->dead_list);
+        next_world->transfer_entity_tracking_from(*old_world);
         next_world->living_count = old_world->living_count;
         next_world->grid = std::move(old_world->grid);
         next_world->pixmaxx = old_world->pixmaxx;
