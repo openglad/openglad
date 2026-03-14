@@ -89,7 +89,7 @@ public:
                       std::vector<micropather::StateCost>* adjacent) override
     {
         if (!owner_ || !owner_->active_walker ||
-            owner_->active_walker->foe == nullptr ||
+            owner_->active_walker->foe() == nullptr ||
             current_game == nullptr || current_game->world == nullptr ||
             current_game->world->myobmap == nullptr)
         {
@@ -132,10 +132,10 @@ public:
                     cost.cost = (i == 0 || j == 0) ? 1.0f : kDiagonalStepCost;
                 }
 
-                const int dx1 = adj_x - ALIGN_TO_GRID(owner_->active_walker->foe->xpos);
-                const int dy1 = adj_y - ALIGN_TO_GRID(owner_->active_walker->foe->ypos);
-                const int dx2 = owner_->active_walker->xpos - ALIGN_TO_GRID(owner_->active_walker->foe->xpos);
-                const int dy2 = owner_->active_walker->ypos - ALIGN_TO_GRID(owner_->active_walker->foe->ypos);
+                const int dx1 = adj_x - ALIGN_TO_GRID(owner_->active_walker->foe()->xpos);
+                const int dy1 = adj_y - ALIGN_TO_GRID(owner_->active_walker->foe()->ypos);
+                const int dx2 = owner_->active_walker->xpos - ALIGN_TO_GRID(owner_->active_walker->foe()->xpos);
+                const int dy2 = owner_->active_walker->ypos - ALIGN_TO_GRID(owner_->active_walker->foe()->ypos);
                 const int cross = dx1 * dy2 - dx2 * dy1;
                 cost.cost += static_cast<float>(std::abs(cross)) * 0.01f;
 
@@ -181,7 +181,7 @@ void GameplayPathfindingState::solve_for(walker* owner,
     path_out.clear();
     total_cost = 0.0f;
 
-    if (!impl_ || owner == nullptr || owner->foe == nullptr)
+    if (!impl_ || owner == nullptr || owner->foe() == nullptr)
         return;
 
     impl_->owner.active_walker = owner;

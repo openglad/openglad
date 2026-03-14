@@ -81,10 +81,10 @@ static void archmage_hit_response(statistics* stats, walker* foe)
     }
     else
     {
-        if (controller->foe != foe)
+        if (controller->foe() != foe)
         {
-            controller->foe = foe;
-            foe->foe = controller;
+            controller->set_foe(foe);
+            foe->set_foe(controller);
             stats->last_distance = stats->current_distance = 15000;
         }
         std::int32_t howmany = 0;
@@ -397,7 +397,7 @@ static bool archmage_do_special(walker* self)
                             newob->stats()->max_hitpoints = 1;
                             newob->stats()->hitpoints = 0;
                             newob->stats()->armor = 0;
-                            newob->foe = self->foe;
+                            newob->set_foe(self->foe());
                             newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                             newob->stats()->name = "Phantom";
                         }
@@ -445,7 +445,7 @@ static bool archmage_do_special(walker* self)
                         {
                             ob->real_team_num = ob->team_num;
                             ob->team_num = self->team_num;
-                            ob->foe = nullptr;
+                            ob->set_foe(nullptr);
                             ob->charm_left = (static_cast<short>(compute_charm_duration(generic, current_game->world->rng_)));
                         }
                         didheal++;

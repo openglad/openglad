@@ -35,7 +35,7 @@ TEST(StatsHitResponseMore, statistics_hit_response_archer_runs_away_and_queues_w
     archer->setxy(100, 100);
     foe->setxy(120, 100); // within < 64 distance
     archer->stats()->clear_command();
-    archer->foe = nullptr;
+    archer->set_foe(nullptr);
 
     archer->stats()->hit_response(foe);
     ASSERT_TRUE(archer->stats()->has_commands()) << "archer hit_response should queue a walk away command";

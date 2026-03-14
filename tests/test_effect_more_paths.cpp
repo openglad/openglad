@@ -259,7 +259,7 @@ TEST(EffectMorePaths, effect_death_explosion_shoves_nearby_targets)
         // subsequent attack triggers statistics::hit_response(), which may
         // clear commands when the attacker is a "new" foe. Pre-seed the foe
         // relationship so the shove command remains queued deterministically.
-        target->foe = owner.get();
+        target->set_foe(owner.get());
     }
 
     explosion->dead = 1;

@@ -28,9 +28,9 @@ static bool thief_check_special_ai(living* self)
 {
     if (self->current_special == 1) // drop bomb
     {
-        if (self->foe)
+        if (self->foe())
         {
-            std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
+            std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe()));
             if (distance < 130 && distance > 35)
                 return false;
         }
@@ -100,7 +100,7 @@ static bool thief_do_special(walker* self)
                 for_each_foe_in_range(self, 80 + 4 * self->stats()->level, [self](walker* ob) {
                     if (current_game->world->rng_.next(self->stats()->level) >= current_game->world->rng_.next(ob->stats()->level))
                     {
-                        ob->foe = self;
+                        ob->set_foe(self);
                         ob->leader = self;
                         if (ob->act_type != ACT_CONTROL)
                             ob->stats()->force_command(COMMAND_FOLLOW, 10 + current_game->world->rng_.next(self->stats()->level), 0, 0);
@@ -133,7 +133,7 @@ static bool thief_do_special(walker* self)
                             std::int32_t generic = self->stats()->level - ob->stats()->level;
                             if (generic < 0 || (!current_game->world->rng_.next(20)))
                             {
-                                ob->foe = self;
+                                ob->set_foe(self);
                                 ob->attack(self);
                                 generic2 = 1;
                             }
@@ -141,10 +141,10 @@ static bool thief_do_special(walker* self)
                             {
                                 ob->real_team_num = ob->team_num;
                                 ob->team_num = self->team_num;
-                                if (self->foe == ob)
-                                    ob->foe = nullptr;
+                                if (self->foe() == ob)
+                                    ob->set_foe(nullptr);
                                 else
-                                    ob->foe = self->foe;
+                                    ob->set_foe(self->foe());
                                 ob->charm_left = (static_cast<short>(75 + generic * 25));
                                 generic2 = 0;
                             }

@@ -259,7 +259,7 @@ TEST(WeapBehavior, weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofs
         return;
 
     dead_living->dead = 1;
-    w->foe = dead_living.get();
+    w->set_foe(dead_living.get());
     w->leader = dead_living.get();
     w->owner = dead_living.get();
     w->setxy(0, 0);
@@ -268,7 +268,7 @@ TEST(WeapBehavior, weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofs
     w->set_act_type(ACT_RANDOM);
 
     (void)w->act();
-    ASSERT_TRUE(w->foe == nullptr && w->leader == nullptr) << "dead foe/leader should be cleared";
+    ASSERT_TRUE(w->foe() == nullptr && w->leader == nullptr) << "dead foe/leader should be cleared";
     ASSERT_TRUE(w->owner == w) << "dead owner should be cleared then default to self";
     ASSERT_EQ(4, (int)w->lineofsight) << "trees tile should decrement lineofsight";
 

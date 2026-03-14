@@ -410,15 +410,15 @@ void apply_difficulty_scaling(living* self, std::uint32_t level, const Difficult
 
 bool check_special_ai_distance(living* self, std::uint32_t threshold)
 {
-    if (self->foe)
+    if (self->foe())
     {
-        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
+        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe()));
         return (distance < threshold);
     }
-    self->foe = current_game->world->find_near_foe(self);
-    if (!self->foe)
+    self->set_foe(current_game->world->find_near_foe(self));
+    if (!self->foe())
         return false;
-    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
+    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe()));
     return (distance < threshold);
 }
 

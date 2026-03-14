@@ -128,7 +128,7 @@ void walker_init_common(walker* w, IRandom& rng)
 	w->ani = nullptr;
 	w->ani_type = 0;
 	w->busy = 0;
-	w->foe = nullptr;
+	w->set_foe(nullptr);
 	w->foe_id = 0;
 	w->leader = nullptr;
 	w->leader_id = 0;
@@ -225,7 +225,7 @@ void walker::move_myguy_to(walker* target)
 
 void walker::set_foe(walker* target)
 {
-	foe = target;
+	foe_ = target;
 	foe_id = (target != nullptr) ? target->entity_id() : 0;
 	mark_dirty(og::dirty::BIT_FOE_ID);
 }
@@ -253,7 +253,7 @@ void walker::set_collide_ob(walker* target)
 
 void walker::sync_ids_from_pointers()
 {
-	foe_id = (foe != nullptr) ? foe->entity_id() : 0;
+	foe_id = (foe_ != nullptr) ? foe_->entity_id() : 0;
 	leader_id = (leader != nullptr) ? leader->entity_id() : 0;
 	owner_id = (owner != nullptr) ? owner->entity_id() : 0;
 	collide_ob_id = (collide_ob != nullptr) ? collide_ob->entity_id() : 0;
@@ -685,8 +685,8 @@ bool walker::act()
 	short temp;
 
 	// Make sure everyone we're pointing to is valid
-	if (foe && foe->dead)
-		foe = nullptr;
+	if (foe() && foe()->dead)
+		set_foe(nullptr);
 	if (leader && leader->dead)
 		leader = nullptr;
 	if (owner && owner->dead)
@@ -789,11 +789,11 @@ bool walker::act()
 				}
 				else    //3 of 4 times
 				{
-					if (!foe)
+					if (!foe())
 					{
-						foe = current_game->world->find_far_foe(this);
+						set_foe(current_game->world->find_far_foe(this));
 					}
-					if (foe)
+					if (foe())
 						//stats_->try_command(COMMAND_SEARCH, 60, 0, 0);
 						stats_->try_command(COMMAND_SEARCH, 500, 0, 0);
 					return 1;
@@ -1051,7 +1051,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	//   size so the collision check is fooled into checking
 	//   a std::int32_t strip equal to the lineofsight times the size
 	//   of the weapon.
-	if (!foe)     // nobody to fire at?
+	if (!foe())     // nobody to fire at?
 	{
 		//Log("fire check, no foe.\n");
 		//this does happen! but it appears harmless
@@ -1070,7 +1070,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 		return 0;
 	}
 
-	distance = distance_to_ob(foe);
+	distance = distance_to_ob(foe());
 	if (distance > static_cast<std::int32_t>( static_cast<std::int32_t>(weapon->stepsize) * static_cast<std::int32_t>(weapon->lineofsight)) )
 	{
 		weapon->dead = 1;
@@ -1176,10 +1176,10 @@ walker::act_guard()
 	//                       fire_check(lasty, lastx) ||
 	//                       fire_check(-lasty, -lastx) ||
 	//                       fire_check(-lastx, -lasty))
-	foe = current_game->world->find_near_foe(this);
-	if (foe)
+	set_foe(current_game->world->find_near_foe(this));
+	if (foe())
 	{
-		curdir = static_cast<char>(facing(foe->xpos - xpos, foe->ypos-ypos));
+		curdir = static_cast<char>(facing(foe()->xpos - xpos, foe()->ypos-ypos));
 		stats_->try_command(COMMAND_FIRE,current_game->world->rng_.next(30));
 		return 1;
 	}
@@ -1197,13 +1197,13 @@ walker::act_random()
 	//if (current_game->world->rng_.next(sizex/GRID_SIZE)) return 0;
 
 	// Find our foe
-	if (!current_game->world->rng_.next(70) || (!foe))
-		foe = current_game->world->find_far_foe(this);
-	if (!foe)
+	if (!current_game->world->rng_.next(70) || (!foe()))
+		set_foe(current_game->world->find_far_foe(this));
+	if (!foe())
 		return stats_->try_command(COMMAND_RANDOM_WALK,20);
 
-	xdist = foe->xpos - xpos;
-	ydist = foe->ypos - ypos;
+	xdist = foe()->xpos - xpos;
+	ydist = foe()->ypos - ypos;
 
 	// If foe is in firing range, turn and fire
 	if (abs(xdist) < lineofsight*GRID_SIZE &&
@@ -1225,7 +1225,7 @@ walker::act_random()
 	newx = 0;
 	newy = 0;
 
-	if (foe)
+	if (foe())
 	{
 			newx = xdist;    // total horizontal distance..
 			if (newx)                      // If it's not 0, then get

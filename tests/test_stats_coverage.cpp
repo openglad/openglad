@@ -214,10 +214,10 @@ TEST(StatsCoverage, stats_round7a_follow_and_die_do_command_paths)
     {
         foe->team_num = 1;
         foe->setxy(96, 64);
-        actor->foe = foe;
+        actor->set_foe(foe);
         actor->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
         (void)actor->stats()->do_command();
-        actor->foe = nullptr;
+        actor->set_foe(nullptr);
     }
 
     // COMMAND_DIE in do_command with commandcount < 2.

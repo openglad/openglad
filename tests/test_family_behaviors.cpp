@@ -411,7 +411,7 @@ TEST(FamilyBehaviors, check_special_soldier_range)
     // Enemy at distance 50 (within 20-75)
     walker* enemy = add_living_to_level(FAMILY_ORC, 1, 150, 100);
     ASSERT_TRUE(enemy != nullptr) << "enemy created";
-    soldier->foe = enemy;
+    soldier->set_foe(enemy);
     soldier->stats()->magicpoints = 1000; // ensure enough MP
     soldier->current_special = 1;
     bool result = soldier->check_special();
@@ -440,7 +440,7 @@ TEST(FamilyBehaviors, check_special_ranged_families)
         ASSERT_TRUE(w != nullptr) << "walker created";
         walker* enemy = add_living_to_level(FAMILY_SOLDIER, 1, 200, 100);
         ASSERT_TRUE(enemy != nullptr) << "enemy created";
-        w->foe = enemy;
+        w->set_foe(enemy);
         w->stats()->magicpoints = 1000;
         w->current_special = 1;
 
@@ -545,7 +545,7 @@ TEST(FamilyBehaviors, check_special_insufficient_mp)
     ASSERT_TRUE(soldier != nullptr) << "soldier created";
     walker* enemy = add_living_to_level(FAMILY_ORC, 1, 140, 100);
     ASSERT_TRUE(enemy != nullptr) << "enemy created";
-    soldier->foe = enemy;
+    soldier->set_foe(enemy);
 
     // Set high special with insufficient MP
     soldier->current_special = 3;
@@ -569,11 +569,11 @@ TEST(FamilyBehaviors, hit_response_acquires_foe)
     walker* attacker = add_living_to_level(FAMILY_ORC, 1, 120, 100);
     ASSERT_TRUE(attacker != nullptr) << "attacker created";
 
-    defender->foe = nullptr;
+    defender->set_foe(nullptr);
     defender->stats()->hitpoints = defender->stats()->max_hitpoints;
     defender->stats()->hit_response(attacker);
 
-    ASSERT_TRUE(defender->foe == attacker) << "default hit_response should set foe to attacker";
+    ASSERT_TRUE(defender->foe() == attacker) << "default hit_response should set foe to attacker";
 }
 
 
@@ -587,12 +587,12 @@ TEST(FamilyBehaviors, hit_response_archer_flees)
     walker* attacker = add_living_to_level(FAMILY_ORC, 1, 120, 100);
     ASSERT_TRUE(attacker != nullptr) << "attacker created";
 
-    archer->foe = nullptr;
+    archer->set_foe(nullptr);
     archer->stats()->hitpoints = archer->stats()->max_hitpoints;
     archer->stats()->hit_response(attacker);
 
     // Archer should set foe and potentially force a walk command
-    ASSERT_TRUE(archer->foe == attacker) << "archer hit_response should set foe to attacker";
+    ASSERT_TRUE(archer->foe() == attacker) << "archer hit_response should set foe to attacker";
 }
 
 
@@ -606,11 +606,11 @@ TEST(FamilyBehaviors, hit_response_skip_player_control)
     walker* attacker = add_living_to_level(FAMILY_ORC, 1, 120, 100);
     ASSERT_TRUE(attacker != nullptr) << "attacker created";
 
-    player->foe = nullptr;
+    player->set_foe(nullptr);
     player->stats()->hit_response(attacker);
 
     // Should be skipped entirely — foe unchanged
-    ASSERT_TRUE(player->foe == nullptr) << "hit_response should not modify player-controlled walker";
+    ASSERT_TRUE(player->foe() == nullptr) << "hit_response should not modify player-controlled walker";
 }
 
 
@@ -626,11 +626,11 @@ TEST(FamilyBehaviors, hit_response_mage_full_hp_no_teleport)
 
     mage->stats()->hitpoints = mage->stats()->max_hitpoints; // full HP
     mage->stats()->magicpoints = 1000;
-    mage->foe = nullptr;
+    mage->set_foe(nullptr);
     mage->stats()->hit_response(attacker);
 
     // At full HP, mage should just acquire foe (not teleport)
-    ASSERT_TRUE(mage->foe == attacker) << "mage at full HP should acquire foe";
+    ASSERT_TRUE(mage->foe() == attacker) << "mage at full HP should acquire foe";
 }
 
 
@@ -651,12 +651,12 @@ TEST(FamilyBehaviors, hit_response_weapon_owner_resolved)
     arrow->team_num = 1;
     arrow->setxy(110, 100);
 
-    defender->foe = nullptr;
+    defender->set_foe(nullptr);
     defender->stats()->hitpoints = defender->stats()->max_hitpoints;
     defender->stats()->hit_response(arrow);
 
     // Foe should be the shooter (weapon owner), not the arrow
-    ASSERT_TRUE(defender->foe == shooter) << "hit_response should resolve weapon owner as foe";
+    ASSERT_TRUE(defender->foe() == shooter) << "hit_response should resolve weapon owner as foe";
 }
 
 
@@ -1171,7 +1171,7 @@ TEST(FamilyBehaviors, archmage_hit_response_threshold_and_retarget_branches)
     arch->stats()->level = 9;
     arch->stats()->max_hitpoints = 100;
     arch->stats()->hitpoints = 10;
-    arch->foe = nullptr;
+    arch->set_foe(nullptr);
     arch->busy = 10;
     arch->shifter_down = 1;
     og::runtime::current_session->myscreen_->world().rng_.state_ = 1;
@@ -1182,14 +1182,14 @@ TEST(FamilyBehaviors, archmage_hit_response_threshold_and_retarget_branches)
 
     // Exercise the retargeting/foe-assignment branch in the non-threshold path.
     arch->stats()->hitpoints = 90;
-    arch->foe = nullptr;
-    foe->foe = nullptr;
+    arch->set_foe(nullptr);
+    foe->set_foe(nullptr);
     arch->stats()->last_distance = 1;
     arch->stats()->current_distance = 2;
     fd->hit_response(arch->stats(), foe);
 
-    ASSERT_TRUE(arch->foe == foe) << "non-threshold branch should retarget controller to attacker";
-    ASSERT_TRUE(foe->foe == arch) << "non-threshold branch should set attacker foe back to controller";
+    ASSERT_TRUE(arch->foe() == foe) << "non-threshold branch should retarget controller to attacker";
+    ASSERT_TRUE(foe->foe() == arch) << "non-threshold branch should set attacker foe back to controller";
     ASSERT_EQ(15000, (int)arch->stats()->last_distance) << "retarget should reset last_distance";
     ASSERT_EQ(15000, (int)arch->stats()->current_distance) << "retarget should reset current_distance";
 }
@@ -1673,7 +1673,7 @@ TEST(FamilyBehaviors, thief_batch3_check_special_ai_matrix)
     thief->current_special = 1;
     walker* foe = add_living_to_level(FAMILY_ORC, 1, 150, 100);
     ASSERT_TRUE(foe != nullptr) << "foe created";
-    thief->foe = foe;
+    thief->set_foe(foe);
     ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(thief))) << "drop bomb AI should fail at medium range";
 
     // special 1 with close foe should pass.
@@ -1686,7 +1686,7 @@ TEST(FamilyBehaviors, thief_batch3_check_special_ai_matrix)
     thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
     ASSERT_TRUE(thief != nullptr) << "thief recreated for foe-count branch";
     thief->current_special = 1;
-    thief->foe = nullptr;
+    thief->set_foe(nullptr);
     walker* e1 = add_living_to_level(FAMILY_ORC, 1, 130, 100);
     walker* e2 = add_living_to_level(FAMILY_ORC, 1, 140, 100);
     ASSERT_TRUE(e1 && e2) << "two nearby foes created";
@@ -1770,7 +1770,7 @@ TEST(FamilyBehaviors, thief_batch3_special_taunt_charm_and_poison_paths)
     thief->busy = 0;
     ASSERT_TRUE(fd->do_special(thief)) << "charm should run when target is in range";
     ASSERT_TRUE(thief->busy >= 10) << "charm should add busy time";
-    ASSERT_TRUE(foe->foe == thief) << "failed charm path should make foe attack thief";
+    ASSERT_TRUE(foe->foe() == thief) << "failed charm path should make foe attack thief";
 
     // poison cloud guards and success path.
     thief->current_special = 4;
@@ -1902,13 +1902,13 @@ TEST(FamilyBehaviors, orc_batch3_special_and_ai_branches)
     // check_special_ai with preset foe in/out of range.
     walker* foe = add_living_to_level(FAMILY_SOLDIER, 1, 150, 100);
     ASSERT_TRUE(foe != nullptr) << "foe for AI checks created";
-    orc->foe = foe;
+    orc->set_foe(foe);
     ASSERT_TRUE(fd->check_special_ai(static_cast<living*>(orc))) << "orc AI should pass when foe is in range";
     foe->setxy(260, 100);
     ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(orc))) << "orc AI should fail when foe is out of range";
 
     // check_special_ai with no foe should query nearest foe.
-    orc->foe = nullptr;
+    orc->set_foe(nullptr);
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
     orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
@@ -1965,12 +1965,12 @@ TEST(FamilyBehaviors, soldier_batch3_special_ai_and_fire_callback_paths)
     ASSERT_TRUE(fd->do_special(soldier)) << "disarm should succeed when foe is nearby and blocked";
 
     // check_special_ai direct branches.
-    soldier->foe = foe;
+    soldier->set_foe(foe);
     foe->setxy(40, 100);
     ASSERT_TRUE(fd->check_special_ai(static_cast<living*>(soldier))) << "soldier AI should pass in 20-75 range";
     foe->setxy(200, 100);
     ASSERT_TRUE(!fd->check_special_ai(static_cast<living*>(soldier))) << "soldier AI should fail when foe too far";
-    soldier->foe = nullptr;
+    soldier->set_foe(nullptr);
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world().create_new_grid();
     soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
@@ -2065,7 +2065,7 @@ TEST(FamilyBehaviors, family_batch4_soldier_orc_thief_edge_callbacks)
     if (soldier) {
         soldier->current_special = 99;
         ASSERT_TRUE(sold_fd->do_special(soldier)) << "unknown soldier special should fall through and succeed";
-        soldier->foe = nullptr;
+        soldier->set_foe(nullptr);
         ASSERT_TRUE(!sold_fd->check_special_ai(static_cast<living*>(soldier))) << "soldier AI should fail with no nearby foe";
     }
 
@@ -2073,7 +2073,7 @@ TEST(FamilyBehaviors, family_batch4_soldier_orc_thief_edge_callbacks)
     walker* orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
     ASSERT_TRUE(orc != nullptr) << "orc created";
     if (orc) {
-        orc->foe = nullptr;
+        orc->set_foe(nullptr);
         ASSERT_TRUE(!orc_fd->check_special_ai(static_cast<living*>(orc))) << "orc AI should fail with no nearby foe";
 
         orc->current_special = 2;
@@ -2105,7 +2105,7 @@ TEST(FamilyBehaviors, family_batch4_soldier_orc_thief_edge_callbacks)
         thief->busy = 0;
         thief->stats()->level = 9;
         foe->stats()->level = 1;
-        thief->foe = foe;
+        thief->set_foe(foe);
         ASSERT_TRUE(thief_fd->do_special(thief)) << "charm should succeed with favorable deterministic RNG";
         ASSERT_TRUE(foe->team_num == thief->team_num) << "successful charm should switch foe team";
     }
@@ -2269,7 +2269,7 @@ TEST(FamilyBehaviors, family_batch6_soldier_orc_mage_callback_edge_branches)
         ASSERT_TRUE(!soldier_fd->do_special(soldier)) << "charge should fail when forward is blocked";
 
         // check_special_ai no-foe + no-near-foe path
-        soldier->foe = nullptr;
+        soldier->set_foe(nullptr);
         ASSERT_TRUE(!soldier_fd->check_special_ai(static_cast<living*>(soldier))) << "soldier AI should fail when no foe can be found";
     }
 
@@ -2419,11 +2419,11 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
     if (!thief)
         return;
     thief->current_special = 1;
-    thief->foe = add_living_to_level(FAMILY_SOLDIER, 1, 200, 100);
-    ASSERT_TRUE(thief->foe != nullptr) << "thief foe created";
-    if (thief->foe)
+    thief->set_foe(add_living_to_level(FAMILY_SOLDIER, 1, 200, 100));
+    ASSERT_TRUE(thief->foe() != nullptr) << "thief foe created";
+    if (thief->foe())
         ASSERT_TRUE(!thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief bomb AI should reject when foe distance is in drop-bomb window";
-    thief->foe = nullptr;
+    thief->set_foe(nullptr);
     ASSERT_TRUE(!thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief bomb AI should reject when too few foes are nearby";
     thief->current_special = 5;
     ASSERT_TRUE(thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief AI default branch should allow special";
@@ -2579,7 +2579,7 @@ TEST(FamilyBehaviors, family_round8_mage_thief_soldier_callback_edge_paths)
     if (thief && foe)
     {
         thief->current_special = 1;
-        thief->foe = foe;
+        thief->set_foe(foe);
         ASSERT_TRUE(!thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief bomb AI should reject medium-range foe distance";
     }
 
@@ -2631,13 +2631,13 @@ TEST(FamilyBehaviors, family_round10_orc_ghost_archer_slime_elf_edge_callbacks)
     ASSERT_TRUE(ghost != nullptr) << "ghost created";
     if (!ghost)
         return;
-    ghost->foe = nullptr;
+    ghost->set_foe(nullptr);
     ASSERT_TRUE(!ghost_fd->check_special_ai(static_cast<living*>(ghost))) << "ghost check_special_ai should fail without nearby foes";
     walker* ghost_foe = add_living_to_level(FAMILY_ORC, 1, 130, 100);
     ASSERT_TRUE(ghost_foe != nullptr) << "ghost foe created";
     if (ghost_foe)
     {
-        ghost->foe = ghost_foe;
+        ghost->set_foe(ghost_foe);
         ASSERT_TRUE(ghost_fd->check_special_ai(static_cast<living*>(ghost))) << "ghost check_special_ai should pass with close foe";
     }
 
@@ -2649,7 +2649,7 @@ TEST(FamilyBehaviors, family_round10_orc_ghost_archer_slime_elf_edge_callbacks)
     {
         archer->stats()->clear_command();
         archer_fd->hit_response(archer->stats(), archer_foe);
-        ASSERT_TRUE(archer->foe == archer_foe) << "archer hit_response should assign foe";
+        ASSERT_TRUE(archer->foe() == archer_foe) << "archer hit_response should assign foe";
         ASSERT_TRUE(archer->stats()->has_commands()) << "archer hit_response should enqueue retreat command at close range";
     }
 
@@ -2810,7 +2810,7 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
     soldier->current_special = 4;
     ASSERT_TRUE(!soldier_fd->do_special(soldier)) << "soldier disarm should fail when busy";
     soldier->busy = 0;
-    soldier->foe = add_living_to_level(FAMILY_ORC, 1, static_cast<short>(soldier->xpos + 10), soldier->ypos);
+    soldier->set_foe(add_living_to_level(FAMILY_ORC, 1, static_cast<short>(soldier->xpos + 10), soldier->ypos));
     ASSERT_TRUE(!soldier_fd->check_special_ai(static_cast<living*>(soldier))) << "soldier special ai should fail for too-close foe distance";
 
     // Thief AI/special guards.
@@ -2820,7 +2820,7 @@ TEST(FamilyBehaviors, family_round12_cleric_druid_soldier_thief_guard_and_ai_edg
     if (!(thief && thief_foe))
         return;
     thief->current_special = 1;
-    thief->foe = thief_foe;
+    thief->set_foe(thief_foe);
     ASSERT_TRUE(!thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief bomb ai should reject medium-range foe distances";
     thief->current_special = 3;
     thief->shifter_down = 0;

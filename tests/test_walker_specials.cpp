@@ -449,7 +449,7 @@ TEST_F(WalkerSpecials, mage_energy_wave)
     if (actor && enemy) {
         actor->setxy(100, 100);
         enemy->setxy(108, 100);
-        actor->foe = enemy;
+        actor->set_foe(enemy);
         actor->ani_type = ANI_WALK;
         actor->busy = 0;
         actor->stats()->clear_command();
@@ -1439,7 +1439,7 @@ TEST_F(WalkerSpecials, walker_turn_undead_attack_kill_branch_and_act_guard_rando
     ASSERT_TRUE(randomer != nullptr) << "randomer created";
     if (randomer) {
         randomer->setxy(160, 160);
-        randomer->foe = nullptr;
+        randomer->set_foe(nullptr);
         randomer->set_act_type(ACT_RANDOM);
         randomer->stats()->clear_command();
         // act(): rng(4)==0 and rng(20)==1 => act_random() path

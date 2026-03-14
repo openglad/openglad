@@ -268,7 +268,7 @@ bool walker::attack(walker  *target)
     //in the case of our weapon hit something
     if (order != Order::Living && owner)
     {
-        owner->foe = target;
+        owner->set_foe(target);
         target->stats()->hit_response(owner);
     }
     else  //melee combat, set target to hit_response to us

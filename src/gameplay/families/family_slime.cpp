@@ -34,7 +34,7 @@ static bool slime_on_death(walker* self)
     newob->team_num = self->team_num;
     newob->stats()->level = self->stats()->level;
     newob->set_difficulty(self->stats()->level);
-    newob->foe = self->foe;
+    newob->set_foe(self->foe());
     newob->leader = self->leader;
     if (self->stats()->name.size())
         self->stats()->name = newob->stats()->name;
@@ -54,7 +54,7 @@ static bool medium_slime_on_death(walker* self)
     newob->team_num = self->team_num;
     newob->stats()->level = self->stats()->level;
     newob->set_difficulty(self->stats()->level);
-    newob->foe = self->foe;
+    newob->set_foe(self->foe());
     newob->leader = self->leader;
     if (self->stats()->name.size())
         self->stats()->name = newob->stats()->name;
@@ -102,7 +102,7 @@ static bool slime_on_ani_complete(walker* self)
     }
 
     newob->team_num = self->team_num;
-    newob->foe = self->foe;
+    newob->set_foe(self->foe());
     newob->leader = self->leader;
     return true;
 }

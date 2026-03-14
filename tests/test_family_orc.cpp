@@ -169,7 +169,7 @@ TEST(FamilyOrc, r15_check_ai_and_guard_failures)
     living* self = add_living(fx, 1, FAMILY_ORC, 50, 50);
     ASSERT_TRUE(self != nullptr);
 
-    self->foe = nullptr;
+    self->set_foe(nullptr);
     ASSERT_TRUE(!orc.check_special_ai(self));
 
     living* near_foe = add_living(fx, 0, FAMILY_SOLDIER, 60, 50);
@@ -177,7 +177,7 @@ TEST(FamilyOrc, r15_check_ai_and_guard_failures)
     ASSERT_TRUE(orc.check_special_ai(self));
 
     near_foe->setxy(800, 800);
-    self->foe = near_foe;
+    self->set_foe(near_foe);
     ASSERT_TRUE(!orc.check_special_ai(self));
 
     self->current_special = 1;

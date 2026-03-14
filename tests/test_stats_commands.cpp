@@ -292,7 +292,7 @@ TEST(StatsCommands, stats_direct_walk_smoke)
 {
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "walker created";
-    w->foe = nullptr;
+    w->set_foe(nullptr);
     w->stats()->direct_walk();
 }
 
@@ -301,7 +301,7 @@ TEST(StatsCommands, stats_walk_to_foe_no_foe)
 {
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "walker created";
-    w->foe = nullptr;
+    w->set_foe(nullptr);
     w->stats()->walk_to_foe();
 }
 
@@ -315,7 +315,7 @@ TEST(StatsCommands, stats_walk_to_foe_with_foe)
     w->team_num = 0;
     enemy->team_num = 1;
     enemy->setxy(120, 100);
-    w->foe = enemy.get();
+    w->set_foe(enemy.get());
     w->stats()->walk_to_foe();
 }
 

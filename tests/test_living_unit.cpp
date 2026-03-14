@@ -81,7 +81,7 @@ TEST(LivingUnit, living_r11_act_owner_dead_and_action_follow)
     self->owner = nullptr;
     self->lifetime = 0;
     self->action = ACTION_FOLLOW;
-    self->foe = nullptr;
+    self->set_foe(nullptr);
     owner->dead = 0;
     owner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     owner->team_num = 0;
@@ -161,7 +161,7 @@ TEST(LivingUnit, living_r11_summon_difficulty_checkspecial_and_walk_paths)
     ASSERT_TRUE(self->walk(1.0f, 0.0f));
 
     // ACT_RANDOM path with foe present/no fire then search.
-    self->foe = foe;
+    self->set_foe(foe);
     self->lineofsight = 1;
     self->set_act_type(ACT_RANDOM);
     (void)self->act();
@@ -244,7 +244,7 @@ TEST(LivingUnit, living_r14_lines_65_73_89_95_138_175_owner_lifetime_and_counter
     self->set_act_type(ACT_CONTROL);
     ASSERT_TRUE(self->act());
 
-    self->foe = foe;
+    self->set_foe(foe);
     foe->dead = 1;
     self->leader = owner;
     owner->dead = 0;

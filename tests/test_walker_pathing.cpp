@@ -67,7 +67,7 @@ TEST(WalkerPathing, walker_pathfinding_follow_and_draw_path_smoke)
     ASSERT_TRUE(a != nullptr) << "attacker should be created";
     ASSERT_TRUE(b != nullptr) << "target should be created";
 
-    a->foe = b;
+    a->set_foe(b);
     b->setxy(96, 32);
 
     a->find_path_to_foe();
@@ -133,7 +133,7 @@ TEST(WalkerPathing, direct_solver_returns_expected_route_and_cost)
     foe->sizex = foe->sizey = GRID_SIZE - 1;
     ASSERT_TRUE(actor->setxy(32, 32));
     ASSERT_TRUE(foe->setxy(64, 64));
-    actor->foe = foe;
+    actor->set_foe(foe);
     ASSERT_TRUE(world.myobmap->remove(actor));
     ASSERT_TRUE(world.myobmap->remove(foe));
     EXPECT_TRUE(world.myobmap->obmap_get_list(48, 48).empty());

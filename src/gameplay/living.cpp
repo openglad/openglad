@@ -78,10 +78,10 @@ bool living::act()
 		return 0;
 
 	// Make sure everyone we're pointing to is valid
-	if (foe && (foe->dead || (current_game->world->rng_.next(foe->invisibility_left/20) > 0) ) )
-		foe = nullptr;
-	if (is_friendly(foe))
-		foe = nullptr;
+	if (foe() && (foe()->dead || (current_game->world->rng_.next(foe()->invisibility_left/20) > 0) ) )
+		set_foe(nullptr);
+	if (is_friendly(foe()))
+		set_foe(nullptr);
 	if (leader && leader->dead)
 		leader = nullptr;
 	if (owner && owner->dead)
@@ -342,11 +342,11 @@ bool living::act()
 					act_random();
 				else // 4 of 5 times
 				{
-					if (!foe)
+					if (!foe())
 					{
-						foe = current_game->world->find_near_foe(this);
+						set_foe(current_game->world->find_near_foe(this));
 					}
-					if (foe) // && current_game->world->rng_.next(2) )
+					if (foe()) // && current_game->world->rng_.next(2) )
 					{
 						curdir = enddir = static_cast<char>((enddir/2) * 2);
 						//stats_->try_command(COMMAND_SEARCH, 40, 0, 0);
@@ -355,7 +355,7 @@ bool living::act()
 					//else if (foe)
 					//  stats_->try_command(COMMAND_RIGHT_WALK,40,0,0);
 					else if (!current_game->world->rng_.next(2))
-						foe = current_game->world->find_far_foe(this);
+						set_foe(current_game->world->find_far_foe(this));
 					else
 						stats_->try_command(COMMAND_RANDOM_WALK,20);
 
@@ -655,13 +655,13 @@ bool living::act_random()
 	short xdist, ydist;
 
 	// Find our foe
-	if (!current_game->world->rng_.next(80) || (!foe))
-		foe = current_game->world->find_near_foe(this);
-	if (!foe)
+	if (!current_game->world->rng_.next(80) || (!foe()))
+		set_foe(current_game->world->find_near_foe(this));
+	if (!foe())
 		return stats_->try_command(COMMAND_RANDOM_WALK,40);
 
-	xdist = static_cast<short>(foe->xpos - xpos);
-	ydist = static_cast<short>(foe->ypos - ypos);
+	xdist = static_cast<short>(foe()->xpos - xpos);
+	ydist = static_cast<short>(foe()->ypos - ypos);
 
 	// If foe is in firing range, turn and fire
 	if (abs(xdist) < lineofsight*GRID_SIZE &&
@@ -693,14 +693,14 @@ bool living::do_action()
 	switch (action)
 	{
 		case ACTION_FOLLOW: // follow our leader, attack his targets ..
-			if (foe)
+			if (foe())
 				return 0;       // continue as normal
 			leader = current_game->world->find_nearest_player(this);
 			if (!leader)
 				return 0;       // continue as normal ... shouldn't happen
-			if (leader->foe)
+			if (leader->foe())
 			{
-				foe = leader->foe;
+				set_foe(leader->foe());
 				return 0;       // continue from this point ..
 			}
 			// Else follow our leader

@@ -112,7 +112,7 @@ TEST(StatsRightWalkDirectWalk, stats_direct_walk_grid_passability_branches)
 
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
-    w.foe = &foe;
+    w.set_foe(&foe);
 
     statistics* st = w.stats();
     ASSERT_TRUE(st != nullptr) << "stats exists";
@@ -156,7 +156,7 @@ TEST(StatsRightWalkDirectWalk, stats_right_walk_forward_normalization_and_forwar
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
     w.curdir = FACE_UP;
     w.enddir = FACE_UP;
-    w.foe = nullptr; // keep direct_walk path deterministic when reached
+    w.set_foe(nullptr); // keep direct_walk path deterministic when reached
 
     statistics* st = w.stats();
     ASSERT_TRUE(st != nullptr) << "stats exists";

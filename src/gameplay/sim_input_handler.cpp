@@ -236,7 +236,7 @@ SimInputResult sim_process_player_input(
                 (!w->leader))
             {
                 w->leader = control;
-                w->foe = nullptr;
+                w->set_foe(nullptr);
                 w->stats()->force_command(COMMAND_FOLLOW, 100, 0, 0);
             }
         }
@@ -259,7 +259,7 @@ SimInputResult sim_process_player_input(
                     if (w && (w->team_num == control->team_num) && w->is_friendly(control))
                     {
                         w->leader = control;
-                        w->foe = nullptr;
+                        w->set_foe(nullptr);
                         w->action = ACTION_FOLLOW;
                     }
                 }

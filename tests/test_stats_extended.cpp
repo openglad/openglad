@@ -122,7 +122,7 @@ TEST(StatsExtended, statistics_do_command_attack)
     ASSERT_TRUE(foe != nullptr) << "create foe should succeed";
     foe->team_num = 1;
     foe->setxy(60, 50);
-    w->foe = foe.get();
+    w->set_foe(foe.get());
     w->team_num = 0;
 
     w->stats()->commands.clear();

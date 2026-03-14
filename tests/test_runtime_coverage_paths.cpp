@@ -681,7 +681,7 @@ TEST(RuntimeCoveragePaths, sim_world_tick_branches_for_end_freeze_and_cleanup)
     clear_level_lists();
     walker* owner = add_living(0);
     walker* dead_foe = add_living(1);
-    owner->foe = dead_foe;
+    owner->set_foe(dead_foe);
     owner->leader = dead_foe;
     owner->owner = dead_foe;
     owner->collide_ob = dead_foe;
@@ -698,7 +698,7 @@ TEST(RuntimeCoveragePaths, sim_world_tick_branches_for_end_freeze_and_cleanup)
     world.end = 0;
     events.clear();
     world.tick();
-    ASSERT_TRUE(owner->foe == nullptr) << "dead foe pointer should be cleared";
+    ASSERT_TRUE(owner->foe() == nullptr) << "dead foe pointer should be cleared";
     ASSERT_TRUE(owner->leader == nullptr) << "dead leader pointer should be cleared";
     clear_level_lists();
 }
@@ -771,7 +771,7 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
     if (!(owner && dead_ref))
         return;
     dead_ref->dead = 1;
-    owner->foe = dead_ref;
+    owner->set_foe(dead_ref);
     owner->leader = dead_ref;
     owner->owner = dead_ref;
     owner->collide_ob = dead_ref;
@@ -781,7 +781,7 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
     walker* dead_weap = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(weap_owner && dead_fx && dead_weap) << "weapon/fx walkers created";
     if (weap_owner) {
-        weap_owner->foe = dead_ref;
+        weap_owner->set_foe(dead_ref);
         weap_owner->leader = dead_ref;
         weap_owner->owner = dead_ref;
         weap_owner->collide_ob = dead_ref;
@@ -795,9 +795,9 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
     world.end = 0;
     events.clear();
     world.tick();
-    ASSERT_TRUE(owner->foe == nullptr) << "oblist dead foe pointer should be cleared";
+    ASSERT_TRUE(owner->foe() == nullptr) << "oblist dead foe pointer should be cleared";
     ASSERT_TRUE(owner->leader == nullptr) << "oblist dead leader pointer should be cleared";
-    ASSERT_TRUE(weap_owner == nullptr || weap_owner->foe == nullptr) << "weaplist dead foe pointer should be cleared";
+    ASSERT_TRUE(weap_owner == nullptr || weap_owner->foe() == nullptr) << "weaplist dead foe pointer should be cleared";
 
     clear_level_lists();
 }
@@ -928,7 +928,7 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     hostile->set_act_type(ACT_CONTROL);
 
     // Force find_far_foe path by clearing references.
-    ally->foe = nullptr;
+    ally->set_foe(nullptr);
     ally->leader = nullptr;
 
     // Dead linked object used for pointer cleanup.
@@ -939,7 +939,7 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     dead_link->dead = 1;
     ally->owner = dead_link;
     ally->collide_ob = dead_link;
-    hostile->foe = dead_link;
+    hostile->set_foe(dead_link);
     hostile->leader = dead_link;
     hostile->owner = dead_link;
     hostile->collide_ob = dead_link;
@@ -950,7 +950,7 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     ASSERT_TRUE(weap_owner && dead_fx && dead_weap) << "weapon/fx created";
     if (!(weap_owner && dead_fx && dead_weap))
         return;
-    weap_owner->foe = dead_link;
+    weap_owner->set_foe(dead_link);
     weap_owner->leader = dead_link;
     weap_owner->owner = dead_link;
     weap_owner->collide_ob = dead_link;
@@ -969,7 +969,7 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     world.end = 0;
     world.tick();
     ASSERT_TRUE(ally->owner == nullptr && ally->collide_ob == nullptr) << "dead links should be cleared on oblist entities";
-    ASSERT_TRUE(hostile->foe == nullptr && hostile->leader == nullptr) << "all dead references should be cleared";
+    ASSERT_TRUE(hostile->foe() == nullptr && hostile->leader == nullptr) << "all dead references should be cleared";
     (void)weap_owner;
 
     clear_level_lists();
@@ -1027,7 +1027,7 @@ TEST(RuntimeCoveragePaths, sim_world_assigns_far_foe_when_no_target_and_hostiles
         return;
 
     ally->set_act_type(ACT_CONTROL);
-    ally->foe = nullptr;
+    ally->set_foe(nullptr);
     ally->leader = nullptr;
     foe_near->setxy(140, 100);
     foe_far->setxy(300, 100);
@@ -1036,8 +1036,8 @@ TEST(RuntimeCoveragePaths, sim_world_assigns_far_foe_when_no_target_and_hostiles
     world.end = 0;
     world.tick();
     ASSERT_EQ(0, (int)world.level_done) << "hostile living should keep level unfinished";
-    ASSERT_TRUE(ally->foe != nullptr) << "sim world should assign a far foe when none is set";
-    ASSERT_TRUE(ally->foe == foe_near) << "nearest hostile should be selected as far foe";
+    ASSERT_TRUE(ally->foe() != nullptr) << "sim world should assign a far foe when none is set";
+    ASSERT_TRUE(ally->foe() == foe_near) << "nearest hostile should be selected as far foe";
 }
 
 

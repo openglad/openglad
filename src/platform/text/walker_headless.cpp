@@ -66,7 +66,7 @@ void walker::set_direct_frame(short whichframe)
 walker::~walker()
 {
 	owning_world_ = nullptr;
-	foe = nullptr;
+	set_foe(nullptr);
 	leader = nullptr;
 	owner = nullptr;
 	collide_ob = nullptr;

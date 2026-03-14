@@ -72,6 +72,7 @@ class walker : public og::sim::SimEntity
 		void clear_myguy();
 		void move_myguy_to(walker* target);
 		void set_foe(walker* target);
+		walker* foe() const { return foe_; }
 		void set_leader(walker* target);
 		void set_owner(walker* target);
 		void set_collide_ob(walker* target);
@@ -169,7 +170,6 @@ class walker : public og::sim::SimEntity
 		// Public data members (fields NOT in SimEntity base)
 		short skip_exit;               // cycles after failed exit choice
 		guy  *myguy;                   // Non-owning view of character data; ownership, when present, lives in owned_myguy_
-		walker *foe;
 		std::uint32_t foe_id = 0;
 		walker *leader;
 		std::uint32_t leader_id = 0;
@@ -228,6 +228,9 @@ class walker : public og::sim::SimEntity
 		std::unique_ptr<statistics> stats_;
 		std::unique_ptr<guy> owned_myguy_;
 		std::unique_ptr<og::gameplay::IRenderComponent> render_;  // Optional render component (null for headless)
+
+	private:
+		walker* foe_ = nullptr;
 };
 
 // Returns the best display name for an entity: myguy name if available,

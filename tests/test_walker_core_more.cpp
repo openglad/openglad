@@ -191,7 +191,7 @@ TEST(WalkerCoreMore, walker_act_guard_and_random_branch_paths)
         GlobalContextGuard guard(&c);
 
         actor->set_act_type(ACT_GUARD);
-        actor->foe = nullptr;
+        actor->set_foe(nullptr);
         const bool acted = actor->act();
         ASSERT_TRUE(!acted) << "ACT_GUARD with no nearby foe should return false";
     }
@@ -204,7 +204,7 @@ TEST(WalkerCoreMore, walker_act_guard_and_random_branch_paths)
 
         actor->stats()->clear_command();
         actor->set_act_type(ACT_RANDOM);
-        actor->foe = nullptr;
+        actor->set_foe(nullptr);
         (void)actor->act();
         // ACT_RANDOM no-foe branch may pick either random-walk or distant-foe search based on RNG.
         (void)actor->stats()->has_commands();
@@ -219,7 +219,7 @@ TEST(WalkerCoreMore, walker_act_guard_and_random_branch_paths)
     }
     actor->team_num = 1;
     actor->lineofsight = 50;
-    actor->foe = foe;
+    actor->set_foe(foe);
 
     {
         SequenceRandom rng_seq({0, 1, 1, 5});
@@ -231,7 +231,7 @@ TEST(WalkerCoreMore, walker_act_guard_and_random_branch_paths)
         actor->set_act_type(ACT_RANDOM);
         (void)actor->act();
 
-        ASSERT_TRUE(actor->foe == foe) << "ACT_RANDOM visible-foe branch should keep the selected foe";
+        ASSERT_TRUE(actor->foe() == foe) << "ACT_RANDOM visible-foe branch should keep the selected foe";
     }
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -285,7 +285,7 @@ TEST(WalkerCoreMore, walker_act_guard_else_and_act_random_turn_walk_paths)
     foe->setxy(128, 96);
 
     // No nearby foe case: hit act_guard() else return path.
-    actor->foe = nullptr;
+    actor->set_foe(nullptr);
     og::runtime::current_session->myscreen_->world().delete_objects();
     actor->set_act_type(ACT_GUARD);
     ASSERT_TRUE(!actor->act()) << "ACT_GUARD should return false when no foe is found";
@@ -301,7 +301,7 @@ TEST(WalkerCoreMore, walker_act_guard_else_and_act_random_turn_walk_paths)
 
     actor->setxy(96, 96);
     foe->setxy(128, 96);
-    actor->foe = foe.get();
+    actor->set_foe(foe.get());
     actor->lineofsight = 30;
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1); // forces fire_check() false branch
 
@@ -422,7 +422,7 @@ TEST(WalkerCoreMore, walker_round5_act_switch_random_and_fire_branches)
     foe->setxy(128, 96);
 
     // ACT_GUARD no-foe path: break from switch then return 0.
-    actor->foe = nullptr;
+    actor->set_foe(nullptr);
     actor->set_act_type(ACT_GUARD);
     ASSERT_TRUE(!actor->act()) << "ACT_GUARD should return false when no nearby foe exists";
 
@@ -437,7 +437,7 @@ TEST(WalkerCoreMore, walker_round5_act_switch_random_and_fire_branches)
     SequenceRandom rng_walk_branch({0, 0, 5, 1, 2});
     actor->stats()->clear_command();
     actor->ani_type = ANI_WALK;
-    actor->foe = nullptr;
+    actor->set_foe(nullptr);
     actor->set_act_type(ACT_RANDOM);
     ASSERT_TRUE(actor->act()) << "ACT_RANDOM walk-command branch should return true";
 
@@ -445,7 +445,7 @@ TEST(WalkerCoreMore, walker_round5_act_switch_random_and_fire_branches)
     SequenceRandom rng_search_branch({3, 0});
     actor->stats()->clear_command();
     actor->ani_type = ANI_WALK;
-    actor->foe = nullptr;
+    actor->set_foe(nullptr);
     actor->set_act_type(ACT_RANDOM);
     (void)actor->act();
 
@@ -484,7 +484,7 @@ TEST(WalkerCoreMore, walker_round5_act_random_contiguous_block_paths)
     actor->ani_type = ANI_WALK;
 
     SequenceRandom rng_no_foe({0, 1, 0});
-    actor->foe = nullptr;
+    actor->set_foe(nullptr);
     actor->stats()->clear_command();
     actor->ani_type = ANI_WALK;
     actor->set_act_type(ACT_RANDOM);
@@ -502,7 +502,7 @@ TEST(WalkerCoreMore, walker_round5_act_random_contiguous_block_paths)
     actor->setxy(96, 96);
     actor->ani_type = ANI_WALK;
     actor->lineofsight = 20;
-    actor->foe = foe;
+    actor->set_foe(foe);
 
     foe->team_num = 2;
     foe->setxy(112, 96);
@@ -574,13 +574,13 @@ TEST(WalkerCoreMore, walker_round6_init_fire_animate_and_misc_guards)
         w->ani_type = ANI_WALK;
         w->set_act_type(ACT_CONTROL);
 
-        w->foe = dead_target;
+        w->set_foe(dead_target);
         w->leader = nullptr;
         w->owner = nullptr;
         (void)w->act();
-        ASSERT_TRUE(w->foe == nullptr) << "act should clear dead foe pointer";
+        ASSERT_TRUE(w->foe() == nullptr) << "act should clear dead foe pointer";
 
-        w->foe = nullptr;
+        w->set_foe(nullptr);
         w->leader = dead_target;
         w->owner = nullptr;
         w->ani_type = ANI_WALK;
@@ -627,10 +627,10 @@ TEST(WalkerCoreMore, walker_round6_fire_and_friendliness_paths)
     ASSERT_TRUE(actor->fire_check(1, 0)) << "fire_check should always succeed for generators";
     actor->set_order_family(Order::Living, FAMILY_SOLDIER);
 
-    actor->foe = nullptr;
+    actor->set_foe(nullptr);
     ASSERT_TRUE(!actor->fire_check(1, 0)) << "fire_check should fail when no foe is selected";
 
-    actor->foe = target;
+    actor->set_foe(target);
     target->setxy(actor->xpos + 4, actor->ypos + 40);
     actor->curdir = FACE_RIGHT;
     ASSERT_TRUE(!actor->fire_check(0, 1)) << "fire_check should fail on targetdir mismatch";
@@ -685,7 +685,7 @@ TEST(WalkerCoreMore, walker_round6_guard_and_random_direct_branches)
     (void)actor->act();
 
     // act_random() blocked-ranged path via act(): fire_check false -> turn branch.
-    actor->foe = foe;
+    actor->set_foe(foe);
     actor->curdir = FACE_UP;
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     SequenceRandom blocked_rng({1, 0, 0});
@@ -694,7 +694,7 @@ TEST(WalkerCoreMore, walker_round6_guard_and_random_direct_branches)
     ASSERT_TRUE(actor->act()) << "ACT_RANDOM should still act when ranged attack is blocked";
 
     // act_random() in-range firing path via act(): fire_check true -> init_fire + COMMAND_FIRE.
-    actor->foe = foe;
+    actor->set_foe(foe);
     actor->curdir = FACE_RIGHT;
     actor->enddir = FACE_RIGHT;
     actor->ani_type = ANI_WALK;
@@ -864,7 +864,7 @@ TEST(WalkerCoreMore, walker_round7b_base_act_guard_random_and_death_paths)
         return;
     foe->team_num = 2;
     foe->setxy(112, 96);
-    actor->foe = foe;
+    actor->set_foe(foe);
     actor->lineofsight = 40;
     actor->set_act_type(ACT_RANDOM);
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
@@ -872,7 +872,7 @@ TEST(WalkerCoreMore, walker_round7b_base_act_guard_random_and_death_paths)
     (void)actor->act();
 
     // Base walker::act_random() blocked-ranged path -> turn + walkstep.
-    actor->foe = foe;
+    actor->set_foe(foe);
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     SequenceRandom rng_turn_walk({5});
     ASSERT_TRUE(actor->act()) << "base ACT_RANDOM should still act when ranged attack is blocked";
@@ -1042,7 +1042,7 @@ TEST(WalkerCoreMore, walker_round13_act_command_short_circuit_and_switch_paths_6
 
     // ACT_GUARD with no available foe should break and return false.
     actor->dead = 0;
-    actor->foe = foe;
+    actor->set_foe(foe);
     foe->dead = 1;
     actor->set_act_type(ACT_GUARD);
     ASSERT_TRUE(!actor->act()) << "ACT_GUARD with dead/no foe should return false";
@@ -1149,12 +1149,12 @@ TEST(WalkerCoreMore, walker_round16_act_random_no_foe_far_search_fallback_path)
     og::runtime::current_session->myscreen_->world().rng_.state_ = 1; // rng(4)!=0 => ACT_RANDOM else branch
     actor->set_act_type(ACT_RANDOM);
     actor->ani_type = ANI_WALK;
-    actor->foe = nullptr;
+    actor->set_foe(nullptr);
     actor->stats()->clear_command();
 
     // With no foes in the level, find_far_foe should return nullptr and no search command is queued.
     ASSERT_TRUE(actor->act()) << "ACT_RANDOM no-foe fallback should still return true";
-    ASSERT_TRUE(actor->foe == nullptr) << "ACT_RANDOM should keep foe null when far-foe search finds nothing";
+    ASSERT_TRUE(actor->foe() == nullptr) << "ACT_RANDOM should keep foe null when far-foe search finds nothing";
 }
 
 
@@ -1190,7 +1190,7 @@ TEST(WalkerCoreMore, walker_round17_query_next_to_and_fire_check_early_branches)
         ASSERT_TRUE(gen->fire_check(1, 0)) << "generator fire_check should short-circuit true";
 
     // fire_check no-foe early return path (walker.cpp:955-959).
-    actor->foe = nullptr;
+    actor->set_foe(nullptr);
     actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     actor->stats()->magicpoints = 9999.0f;
     ASSERT_TRUE(!actor->fire_check(1, 0)) << "fire_check should fail when actor has no foe";
@@ -1201,7 +1201,7 @@ TEST(WalkerCoreMore, walker_round17_query_next_to_and_fire_check_early_branches)
     if (foe)
     {
         foe->setxy(static_cast<short>(actor->xpos + 40), actor->ypos);
-        actor->foe = foe;
+        actor->set_foe(foe);
         actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
         ASSERT_TRUE(!actor->fire_check(1, 0)) << "fire_check should fail when BIT_NO_RANGED is set";
     }
@@ -1280,7 +1280,7 @@ TEST(WalkerCoreMore, walker_round19_move_myguy_fire_callback_and_act_random_no_f
     og::runtime::current_session->myscreen_->world().remove_ob(target2);
     ASSERT_TRUE(current_game != nullptr && current_game->world != nullptr) << "current_game world context must be active";
     current_game->world->rng_.state_ = 0;
-    source->foe = nullptr;
+    source->set_foe(nullptr);
     source->stats()->clear_command();
     source->set_act_type(ACT_RANDOM);
     source->ani_type = ANI_WALK;

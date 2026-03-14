@@ -259,7 +259,7 @@ TEST(WalkerMore, walker_init_fire_and_fire_check_gate_branches)
 
     w->setxy(80, 80);
     foe->setxy(96, 80);
-    w->foe = foe.get();
+    w->set_foe(foe.get());
 
     // init_fire: control walker must not turn/fire when facing differs.
     w->curdir = FACE_LEFT;
@@ -276,9 +276,9 @@ TEST(WalkerMore, walker_init_fire_and_fire_check_gate_branches)
     w->busy = 0;
 
     // fire_check: no foe.
-    w->foe = nullptr;
+    w->set_foe(nullptr);
     ASSERT_TRUE(!w->fire_check(1, 0)) << "fire_check should fail without foe";
-    w->foe = foe.get();
+    w->set_foe(foe.get());
 
     // fire_check: no-ranged bit.
     w->stats()->set_bit_flags(BIT_NO_RANGED, 1);

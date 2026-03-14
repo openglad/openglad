@@ -96,7 +96,7 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
     og::runtime::current_session->myscreen_->viewob[0]->control = view0_control.get();
     og::runtime::current_session->myscreen_->numviews = 1;
 
-    w->foe = nullptr;
+    w->set_foe(nullptr);
     w->leader = nullptr;
     w->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)w->stats()->do_command();
@@ -114,7 +114,7 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
             og::runtime::current_session->myscreen_->viewob[1]->control->yo_delay = 0;
             og::runtime::current_session->myscreen_->numviews = 2;
 
-            w->foe = nullptr;
+            w->set_foe(nullptr);
             w->leader = nullptr;
             w->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
             (void)w->stats()->do_command();

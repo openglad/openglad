@@ -291,14 +291,14 @@ TEST(WalkerCombat, walker_act_with_commands)
     (void)w->act(); // default act_type path
 
     w->set_act_type(ACT_GUARD);
-    w->foe = nullptr;
+    w->set_foe(nullptr);
     (void)w->act();
 
     walker* foe = make_guy(FAMILY_ORC, 2);
     ASSERT_TRUE(foe != nullptr) << "foe created";
     if (foe) {
         foe->setxy(w->xpos + 8, w->ypos + 8);
-        w->foe = foe;
+        w->set_foe(foe);
         (void)w->act();
     }
 
@@ -370,7 +370,7 @@ TEST(WalkerCombat, walker_act_with_commands)
 
             base_foe->team_num = 3;
             base_foe->setxy(136, 132);
-            base_rand->foe = base_foe;
+            base_rand->set_foe(base_foe);
 
             GameContext base_ctx;
 
@@ -382,7 +382,7 @@ TEST(WalkerCombat, walker_act_with_commands)
             (void)base_rand->act();
 
             // act(): rng(4)!=0 -> SEARCH command path.
-            base_rand->foe = nullptr;
+            base_rand->set_foe(nullptr);
             SequenceRandomCombat base_rng2({1, 1, 1});
             base_ctx.rng = &base_rng2;
             push_test_context(&base_ctx);
@@ -400,7 +400,7 @@ TEST(WalkerCombat, walker_act_with_commands)
     if (randomer && random_foe) {
         randomer->setxy(80, 80);
         random_foe->setxy(86, 80);
-        randomer->foe = random_foe;
+        randomer->set_foe(random_foe);
         randomer->lineofsight = 40;
         randomer->set_act_type(ACT_RANDOM);
         randomer->stats()->clear_command();
@@ -414,7 +414,7 @@ TEST(WalkerCombat, walker_act_with_commands)
         (void)randomer->act();
 
         // act_random() branch where no foe is found and command is set.
-        randomer->foe = nullptr;
+        randomer->set_foe(nullptr);
         SequenceRandomCombat nofoe_rng({0, 1, 0, 1, 1, 1});
         random_ctx.rng = &nofoe_rng;
         push_test_context(&random_ctx);
@@ -562,7 +562,7 @@ TEST(WalkerCombat, walker_fire_check_blocks_on_intermediate_step)
     shooter->enddir = FACE_RIGHT;
     shooter->team_num = 0;
     foe->team_num = 1;
-    shooter->foe = foe;
+    shooter->set_foe(foe);
     shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
     shooter->stats()->magicpoints = 9999.0f;
     shooter->stats()->weapon_cost = 0.0f;
@@ -792,7 +792,7 @@ TEST(WalkerCombat, walker_act_random_generator_paths)
     (void)genp->act();
 
     // Trigger 3-of-4 search branch with foe lookup.
-    genp->foe = nullptr;
+    genp->set_foe(nullptr);
     SequenceRandomCombat rng2({1, 0, 0, 0});
     ctx.rng = &rng2;
     push_test_context(&ctx);

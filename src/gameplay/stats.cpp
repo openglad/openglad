@@ -297,7 +297,7 @@ short statistics::do_command()
 				delete_me = 1;
 			break;
 		case COMMAND_FOLLOW:   // follow the leader
-			if (controller->foe) // if we have foe, don't follow this round
+			if (controller->foe()) // if we have foe, don't follow this round
 			{
 				commands.front().commandcount = 0;
 				controller->leader = nullptr;
@@ -382,7 +382,7 @@ short statistics::do_command()
 			controller->current_weapon = controller->default_weapon;
 			break;
 		case COMMAND_SEARCH: // use right-hand rule to find foe
-			if (controller->foe && !controller->foe->dead)
+			if (controller->foe() && !controller->foe()->dead)
 				walk_to_foe();
 			else // stop trying to walk to this foe
             {
@@ -390,9 +390,9 @@ short statistics::do_command()
             }
 			break;
 		case COMMAND_RIGHT_WALK: // right-hand-walk ONLY
-			if (controller->foe)
+			if (controller->foe())
 			{
-				distance = controller->distance_to_ob(controller->foe);
+				distance = controller->distance_to_ob(controller->foe());
 				if (distance > 120 && distance < 240)
 					right_walk();
 				else
@@ -401,15 +401,15 @@ short statistics::do_command()
 			}
 			break;
 		case COMMAND_ATTACK: // attack a nearby, set foe
-			if (!controller->foe || controller->foe->dead)
+			if (!controller->foe() || controller->foe()->dead)
 			{
 				commands.front().commandcount = 0;
 				result = 1;
 				break;
 			}
 			// Try to walk toward foe, and/or attack ..
-			deltax = static_cast<short>(controller->foe->xpos - controller->xpos);
-			deltay = static_cast<short>(controller->foe->ypos - controller->ypos);
+			deltax = static_cast<short>(controller->foe()->xpos - controller->xpos);
+			deltay = static_cast<short>(controller->foe()->ypos - controller->ypos);
 				if (abs(deltax) > abs(3*deltay))
 					deltay = 0;
 				if (abs(deltay) > abs(3*deltax))
@@ -506,13 +506,13 @@ void statistics::hit_response(walker  *who)
 	{
 		yell_for_help(foe);
 	} // end of yell for help
-	if (controller->foe != foe) // we're attacked by a new enemy
+	if (controller->foe() != foe) // we're attacked by a new enemy
 	{
 		// Clear old commands ..
 		clear_command();
 		// Attack our attacker
-		controller->foe = foe;
-		foe->foe = controller;
+		controller->set_foe(foe);
+		foe->set_foe(controller);
 		last_distance = current_distance = 32000;
 	}
 
@@ -531,9 +531,9 @@ void statistics::yell_for_help(walker *foe)
 	for(auto* w : helplist)
 	{
 		w->leader = controller;
-		if (foe != w->foe)
+		if (foe != w->foe())
 			w->stats()->last_distance = w->stats()->current_distance = 32000;
-		w->foe = foe;
+		w->set_foe(foe);
 		//if (w->act_type != ACT_CONTROL)
 		//  w->stats()->force_command(COMMAND_FOLLOW, 80, 0, 0);
 	}
@@ -875,7 +875,7 @@ bool statistics::right_walk()
 
 bool statistics::direct_walk()
 {
-	walker * foe = controller->foe;
+	walker * foe = controller->foe();
 	float xdest, ydest;
 	float xdelta, ydelta;
 	float xdeltastep, ydeltastep;
@@ -975,7 +975,7 @@ bool statistics::direct_walk()
 
 bool statistics::walk_to_foe()
 {
-    walker* foe = controller->foe;
+    walker* foe = controller->foe();
 	float xdest, ydest;
 	float xdelta, ydelta;
 	Uint32 tempdistance = 9999999L;
@@ -1014,9 +1014,9 @@ bool statistics::walk_to_foe()
 				controller->turn(controller->facing(xdelta, ydelta));
 				controller->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ rng(25)), 1, 1);
 				current_game->world->find_near_foe(controller);
-				if (!controller->foe && firstfoe)
+				if (!controller->foe() && firstfoe)
 				{
-					controller->foe = firstfoe;
+					controller->set_foe(firstfoe);
 					last_distance = controller->distance_to_ob(foe);
 				}
 				controller->init_fire();

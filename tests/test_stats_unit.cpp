@@ -81,14 +81,14 @@ TEST(StatsUnit, stats_follow_attack_and_block_queries)
     walker* foe = add_living(fx, 1);
     ASSERT_TRUE(w != nullptr);
     ASSERT_TRUE(foe != nullptr);
-    w->foe = foe;
+    w->set_foe(foe);
     foe->setxy(96, 64);
 
     w->stats()->force_command(COMMAND_ATTACK, 2, 0, 0);
     (void)w->stats()->do_command();
 
     w->leader = foe;
-    w->foe = nullptr;
+    w->set_foe(nullptr);
     w->stats()->force_command(COMMAND_FOLLOW, 2, 0, 0);
     (void)w->stats()->do_command();
 
@@ -109,7 +109,7 @@ TEST(StatsUnit, stats_walk_helpers_and_hit_response_paths)
     walker* foe = add_living(fx, 1);
     ASSERT_TRUE(w != nullptr);
     ASSERT_TRUE(foe != nullptr);
-    w->foe = foe;
+    w->set_foe(foe);
     foe->setxy(112, 64);
 
     (void)w->stats()->direct_walk();
@@ -171,7 +171,7 @@ int deterministic_path_check_counter_roll(std::uint32_t seed)
 
     actor->setxy(96, 96);
     foe->setxy(112, 96);
-    actor->foe = foe;
+    actor->set_foe(foe);
     actor->path_check_counter = 0;
     fx.level.world().rng_.state_ = seed;
     (void)actor->stats()->walk_to_foe();
@@ -249,7 +249,7 @@ TEST(StatsUnit, stats_r11_right_walk_branch_matrix)
     {
         w->curdir = static_cast<char>(dir);
         w->enddir = static_cast<char>(dir);
-        w->foe = nullptr;
+        w->set_foe(nullptr);
         ASSERT_TRUE(w->stats()->right_walk());
     }
 }
@@ -262,11 +262,11 @@ TEST(StatsUnit, stats_r11_direct_walk_and_walk_to_foe_tail_branches)
     ASSERT_TRUE(w != nullptr && foe != nullptr);
 
     // direct_walk no foe early return line 861
-    w->foe = nullptr;
+    w->set_foe(nullptr);
     ASSERT_TRUE(!w->stats()->direct_walk());
 
     // walk_to_foe short-circuit with near foe and no nearby foes list => commandcount zero path
-    w->foe = foe;
+    w->set_foe(foe);
     foe->dead = 1;
     w->stats()->force_command(COMMAND_WALK, 5, 1, 0);
     w->path_check_counter = 0;
@@ -354,7 +354,7 @@ TEST(StatsUnit, stats_r12_command_and_hit_response_branches)
     self->stats()->force_command(COMMAND_FIRE, 1, 1, 0);
     (void)self->stats()->do_command();
 
-    self->foe = foe;
+    self->set_foe(foe);
     foe->setxy(97, 96);
     self->stats()->force_command(COMMAND_RIGHT_WALK, 2, 0, 0);
     (void)self->stats()->do_command();
@@ -405,12 +405,12 @@ TEST(StatsUnit, stats_r12_extra_command_switch_and_null_controller_paths)
     ASSERT_TRUE(self->stats()->delete_me == 1);
 
     // COMMAND_FOLLOW branch with foe already set.
-    self->foe = foe;
+    self->set_foe(foe);
     self->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)self->stats()->do_command();
 
     // COMMAND_FOLLOW branch with no leader found (headless returns null).
-    self->foe = nullptr;
+    self->set_foe(nullptr);
     self->leader = nullptr;
     self->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)self->stats()->do_command();
@@ -524,21 +524,21 @@ TEST(StatsUnit, stats_r14_lines_249_255_301_313_319_344_command_switches)
     self->set_order_family(Order::Living, FAMILY_SOLDIER);
 
     self->leader = lead;
-    self->foe = nullptr;
+    self->set_foe(nullptr);
     self->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)self->stats()->do_command();
 
-    self->foe = foe;
+    self->set_foe(foe);
     self->lastx = 1.0f;
     self->lasty = 0.0f;
     self->stats()->force_command(COMMAND_QUICK_FIRE, 1, 1, 0);
     (void)self->stats()->do_command();
 
-    self->foe = foe;
+    self->set_foe(foe);
     self->stats()->force_command(COMMAND_ATTACK, 1, 0, 0);
     (void)self->stats()->do_command();
 
-    self->foe = nullptr;
+    self->set_foe(nullptr);
     self->stats()->force_command(COMMAND_SEARCH, 1, 0, 0);
     (void)self->stats()->do_command();
 }
@@ -571,7 +571,7 @@ TEST(StatsUnit, stats_r14_lines_440_453_468_502_520_591_708_729_750_755_898_dire
     self->stats()->forward_blocked();
     self->stats()->right_walk();
 
-    self->foe = foe;
+    self->set_foe(foe);
     self->setxy(0, 0);
     foe->setxy(0, 0);
     ASSERT_TRUE(!self->stats()->direct_walk());

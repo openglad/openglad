@@ -192,11 +192,11 @@ TEST(CoverageMisc, coverage_r17_family_mage_specials_and_reactions)
     ASSERT_TRUE(foe != nullptr);
     self->stats()->hitpoints = self->stats()->max_hitpoints;
     self->stats()->level = 5;
-    self->foe = nullptr;
-    foe->foe = nullptr;
+    self->set_foe(nullptr);
+    foe->set_foe(nullptr);
     mage->hit_response(self->stats(), foe);
-    ASSERT_TRUE(self->foe == foe);
-    ASSERT_TRUE(foe->foe == self);
+    ASSERT_TRUE(self->foe() == foe);
+    ASSERT_TRUE(foe->foe() == self);
 
     add_living(fx, FAMILY_ORC, 1, 100, 64);
     add_living(fx, FAMILY_ORC, 1, 104, 64);
@@ -264,7 +264,7 @@ TEST(CoverageMisc, coverage_r17_walker_movement_and_act_cleanup)
     dead_leader->dead = 1;
     dead_owner->dead = 1;
 
-    actor->foe = dead_foe;
+    actor->set_foe(dead_foe);
     actor->leader = dead_leader;
     actor->owner = dead_owner;
     actor->ani_type = ANI_WALK;
@@ -788,7 +788,7 @@ TEST(CoverageMisc, coverage_r18_walker_act_decay_cleanup_and_guard_branches)
     walker* owner = add_living(fx, 64, 80);
     ASSERT_TRUE(self && foe && leader && owner);
 
-    self->foe = foe;
+    self->set_foe(foe);
     self->leader = leader;
     self->owner = owner;
     foe->dead = 1;
@@ -799,7 +799,7 @@ TEST(CoverageMisc, coverage_r18_walker_act_decay_cleanup_and_guard_branches)
     self->hit_recoil = 0.2f;
     self->set_act_type(ACT_CONTROL);
     ASSERT_TRUE(self->act());
-    ASSERT_TRUE(self->foe == nullptr);
+    ASSERT_TRUE(self->foe() == nullptr);
     ASSERT_TRUE(self->leader == nullptr);
     ASSERT_TRUE(self->owner == nullptr);
     ASSERT_TRUE(self->attack_lunge == 0.0f);
@@ -1096,13 +1096,13 @@ TEST(CoverageMisc, coverage_r19_walker_act_random_paths)
     ASSERT_TRUE(self && foe);
 
     self->lineofsight = 1;
-    self->foe = nullptr;
+    self->set_foe(nullptr);
     self->set_act_type(ACT_RANDOM);
     SeqRandom rng_find_and_move{0, 1, 0};
     (void)self->act();
 
     foe->dead = 1;
-    self->foe = nullptr;
+    self->set_foe(nullptr);
     SeqRandom rng_find_none{0, 1, 0};
     (void)self->act();
 }
@@ -1268,7 +1268,7 @@ TEST(CoverageMisc, coverage_r20_walker_act_random_no_foe_and_chase_paths)
     ASSERT_TRUE(self != nullptr);
 
     SequenceRandom rng_no_foe{0, 1, 1};
-    self->foe = nullptr;
+    self->set_foe(nullptr);
     self->lineofsight = 1;
     self->set_act_type(ACT_RANDOM);
     (void)self->act();
@@ -1277,7 +1277,7 @@ TEST(CoverageMisc, coverage_r20_walker_act_random_no_foe_and_chase_paths)
     ASSERT_TRUE(foe != nullptr);
     self->stats()->clear_command();
     SequenceRandom rng_chase{0, 1, 1};
-    self->foe = foe;
+    self->set_foe(foe);
     self->lineofsight = 1;
     self->collide_ob = reinterpret_cast<walker*>(0x1);
     (void)self->act();
@@ -1695,13 +1695,13 @@ TEST(CoverageMisc, final_r16_family_difficulty_levelup_and_ai_checks)
     add_living(fx2, FAMILY_ORC, 1, 104, 64);
     ASSERT_TRUE(mage->check_special_ai(caster));
 
-    caster->foe = add_living(fx2, FAMILY_ORC, 1, 114, 64);
+    caster->set_foe(add_living(fx2, FAMILY_ORC, 1, 114, 64));
     ASSERT_TRUE(soldier->check_special_ai(caster));
-    caster->foe->setxy(66, 64);
+    caster->foe()->setxy(66, 64);
     ASSERT_TRUE(!soldier->check_special_ai(caster));
 
     caster->current_special = 1;
-    caster->foe = nullptr;
+    caster->set_foe(nullptr);
     ASSERT_TRUE(thief->check_special_ai(caster));
 
     caster->current_special = 3;

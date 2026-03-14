@@ -324,11 +324,11 @@ TEST(WalkerUnit, walker_r11_fire_check_create_weapon_and_angles)
     shooter->lasty = 0;
 
     // no foe path
-    shooter->foe = nullptr;
+    shooter->set_foe(nullptr);
     ASSERT_TRUE(!shooter->fire_check(1, 0));
 
     // bit no ranged path
-    shooter->foe = foe;
+    shooter->set_foe(foe);
     shooter->stats()->set_bit_flags(BIT_NO_RANGED, 1);
     ASSERT_TRUE(!shooter->fire_check(1, 0));
     shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
@@ -387,7 +387,7 @@ TEST(WalkerUnit, walker_r11_act_animate_and_misc_paths)
     w->stats()->weapon_cost = 1;
     w->lastx = 1;
     w->lasty = 0;
-    w->foe = foe;
+    w->set_foe(foe);
     (void)w->animate();
 
     // query/restore helpers
@@ -525,7 +525,7 @@ TEST(WalkerUnit, walker_r11_act_and_animate_extra_cases)
     (void)w->act();
 
     w->set_act_type(ACT_RANDOM);
-    w->foe = foe;
+    w->set_foe(foe);
     (void)w->act();
 
     w->stats()->frozen_delay = 2;

@@ -443,7 +443,7 @@ TEST(FamilyCleric, family_soldier_and_treasure_r12_paths)
     ASSERT_TRUE(!soldier.do_special(self));
     self->busy = 0;
 
-    self->foe = enemy;
+    self->set_foe(enemy);
     ASSERT_TRUE(soldier.check_special_ai(self) || !soldier.check_special_ai(self));
 
     walker* weap = fx.level.add_ob(Order::Weapon, FAMILY_KNIFE);

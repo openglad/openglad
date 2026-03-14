@@ -177,7 +177,7 @@ TEST(LevelDataUnit, level_data_tick_clears_fx_cross_references_and_controller_id
 
     world.tick();
 
-    EXPECT_EQ(nullptr, fx_holder->foe);
+    EXPECT_EQ(nullptr, fx_holder->foe());
     EXPECT_EQ(0u, fx_holder->foe_id);
     EXPECT_EQ(nullptr, fx_holder->leader);
     EXPECT_EQ(0u, fx_holder->leader_id);

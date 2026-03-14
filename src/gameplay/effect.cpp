@@ -66,8 +66,8 @@ void orbit_offset(int drawcycle, float &xd, float &yd)
 bool effect::act()
 {
 	// Make sure everyone we're pointing to is valid
-	if (foe && foe->dead)
-		foe = nullptr;
+	if (foe() && foe()->dead)
+		set_foe(nullptr);
 	if (leader && leader->dead)
 		leader = nullptr;
 	if (owner && owner->dead)

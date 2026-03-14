@@ -27,7 +27,7 @@
 
 void walker::find_path_to_foe()
 {
-    if (foe == nullptr || current_game == nullptr)
+    if (foe() == nullptr || current_game == nullptr)
         return;
 
     GameplayPathfindingState* pathing = ensure_pathfinding_state(*current_game);
@@ -36,7 +36,7 @@ void walker::find_path_to_foe()
 
     float total_cost = 0.0f;
     const MicroPatherState start_state = MAKE_STATE(xpos, ypos);
-    const MicroPatherState end_state = MAKE_STATE(foe->xpos, foe->ypos);
+    const MicroPatherState end_state = MAKE_STATE(foe()->xpos, foe()->ypos);
 
     pathing->solve_for(this, start_state, end_state, path_to_foe, total_cost);
 }

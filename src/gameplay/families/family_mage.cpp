@@ -63,10 +63,10 @@ static void mage_hit_response(statistics* stats, walker* foe)
     }
     else
     {
-        if (controller->foe != foe)
+        if (controller->foe() != foe)
         {
-            controller->foe = foe;
-            foe->foe = controller;
+            controller->set_foe(foe);
+            foe->set_foe(controller);
             stats->last_distance = stats->current_distance = 15000;
         }
     }

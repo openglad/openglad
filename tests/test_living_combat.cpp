@@ -348,16 +348,16 @@ TEST(LivingCombat, living_walk_and_do_action_edge_branches)
     ASSERT_TRUE(!a) << "do_action should return false when action=0";
 
     w->action = ACTION_FOLLOW;
-    w->foe = w.get();
+    w->set_foe(w.get());
     a = static_cast<living*>(w.get())->do_action();
     ASSERT_TRUE(!a) << "ACTION_FOLLOW with existing foe should return false";
 
-    w->foe = nullptr;
+    w->set_foe(nullptr);
     w->leader = w.get();
-    w->leader->foe = w.get();
+    w->leader->set_foe(w.get());
     a = static_cast<living*>(w.get())->do_action();
     ASSERT_TRUE(!a) << "ACTION_FOLLOW should copy leader foe then return false";
-    ASSERT_TRUE(w->foe == w.get()) << "foe should be copied from leader";
+    ASSERT_TRUE(w->foe() == w.get()) << "foe should be copied from leader";
 }
 
 
@@ -413,7 +413,7 @@ TEST(LivingCombat, living_do_action_follow_leader_null_and_command_paths)
 
     living* lv = static_cast<living*>(w.get());
     lv->action = ACTION_FOLLOW;
-    lv->foe = nullptr;
+    lv->set_foe(nullptr);
     lv->leader = nullptr;
 
     bool r = lv->do_action();
@@ -426,7 +426,7 @@ TEST(LivingCombat, living_do_action_follow_leader_null_and_command_paths)
     leader->team_num = lv->team_num;
     leader->user = 0;
     leader->setxy(static_cast<short>(lv->xpos + 8), lv->ypos);
-    leader->foe = nullptr;
+    leader->set_foe(nullptr);
 
     r = lv->do_action();
     ASSERT_TRUE(r) << "ACTION_FOLLOW with leader and no foe should return true";
@@ -603,7 +603,7 @@ TEST(LivingCombat, living_act_invisibility_skip_exit_and_action_command_paths)
     w->skip_exit = 2;
     w->action = ACTION_FOLLOW;
     w->user = -1;
-    w->foe = nullptr;
+    w->set_foe(nullptr);
     w->leader = nullptr;
     bool r = w->act();
     (void)r;
@@ -658,7 +658,7 @@ TEST(LivingCombat, living_round7_act_random_and_do_action_targeted_branches)
     actor->setxy(100, 100);
     foe->setxy(120, 100);
     actor->lineofsight = 40;
-    actor->foe = foe.get();
+    actor->set_foe(foe.get());
     GameWorld& world = og::runtime::current_session->myscreen_->world();
 
     // living::act_random fire_check true path through act() dispatch.
@@ -758,7 +758,7 @@ TEST(LivingCombat, living_round10_facing_and_action_follow_branch_matrix)
     if (foe)
     {
         actor->action = ACTION_FOLLOW;
-        actor->foe = foe.get();
+        actor->set_foe(foe.get());
         ASSERT_TRUE(!lv->do_action()) << "ACTION_FOLLOW should return false when actor already has a foe";
     }
 
@@ -771,11 +771,11 @@ TEST(LivingCombat, living_round10_facing_and_action_follow_branch_matrix)
         return;
     lv = static_cast<living*>(actor.get());
     actor->action = ACTION_FOLLOW;
-    actor->foe = nullptr;
+    actor->set_foe(nullptr);
     actor->team_num = 1; // no team-1 players in level
     ASSERT_TRUE(!lv->do_action()) << "ACTION_FOLLOW should return false when no nearest player is found";
 
-    // do_action ACTION_FOLLOW with leader->foe copies foe and returns false.
+    // do_action ACTION_FOLLOW with leader->foe() copies foe and returns false.
     walker* leader = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     walker* leader_foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     ASSERT_TRUE(leader && leader_foe) << "leader and leader foe created";
@@ -784,17 +784,17 @@ TEST(LivingCombat, living_round10_facing_and_action_follow_branch_matrix)
         actor->team_num = 2;
         leader->team_num = 0;
         leader_foe->team_num = 1;
-        leader->foe = leader_foe;
+        leader->set_foe(leader_foe);
         leader->setxy(actor->xpos + 8, actor->ypos + 8);
         ASSERT_TRUE(!lv->do_action()) << "ACTION_FOLLOW should return false after adopting leader foe";
-        ASSERT_TRUE(actor->foe == nullptr || actor->foe == leader_foe) << "ACTION_FOLLOW with leader foe should remain stable";
+        ASSERT_TRUE(actor->foe() == nullptr || actor->foe() == leader_foe) << "ACTION_FOLLOW with leader foe should remain stable";
     }
 
     // do_action ACTION_FOLLOW with leader and no foe enqueues follow command.
     if (leader)
     {
-        actor->foe = nullptr;
-        leader->foe = nullptr;
+        actor->set_foe(nullptr);
+        leader->set_foe(nullptr);
         const bool follow_res = lv->do_action();
         ASSERT_TRUE(follow_res || !follow_res) << "ACTION_FOLLOW with leader and no foe should execute without crashing";
     }

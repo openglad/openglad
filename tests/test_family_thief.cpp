@@ -50,7 +50,7 @@ TEST(FamilyThief, check_special_ai_foe_distance_paths)
     living self;
     living foe;
     self.current_special = 1;
-    self.foe = &foe;
+    self.set_foe(&foe);
 
     self.setxy(0, 0);
     foe.setxy(60, 0); // >35 and <130 => false
@@ -136,7 +136,7 @@ TEST(FamilyThief, r12_check_ai_and_special_paths)
     ASSERT_TRUE(thief && foe1 && foe2 && foe3);
 
     thief->current_special = 1;
-    thief->foe = nullptr;
+    thief->set_foe(nullptr);
     foe1->setxy(200, 200);
     foe2->setxy(210, 200);
     foe3->setxy(220, 200);
@@ -167,7 +167,7 @@ TEST(FamilyThief, r12_check_ai_and_special_paths)
     thief->current_special = 3;
     thief->shifter_down = 1;
     thief->busy = 0;
-    thief->foe = foe1;
+    thief->set_foe(foe1);
     foe1->real_team_num = 255;
     ASSERT_TRUE(desc.do_special(thief));
 

@@ -112,17 +112,17 @@ static bool soldier_do_special(walker* self)
 
 static bool soldier_check_special_ai(living* self)
 {
-    if (self->foe)
+    if (self->foe())
     {
-        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
+        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe()));
         if (distance < 75 && distance > 20)
             return true;
         return false;
     }
-    self->foe = current_game->world->find_near_foe(self);
-    if (!self->foe)
+    self->set_foe(current_game->world->find_near_foe(self));
+    if (!self->foe())
         return false;
-    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
+    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe()));
     if (distance < 75 && distance > 20)
         return true;
     return false;
