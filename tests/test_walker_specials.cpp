@@ -83,6 +83,10 @@ struct VelocitySample
 
 static std::vector<VelocitySample> run_elf_barrage(std::uint32_t seed, char special)
 {
+    // Level loading creates walkers and consumes simulation RNG, so make sure
+    // the map exists before seeding the barrage under test.
+    ensure_level_loaded();
+
     auto& world = og::runtime::current_session->myscreen_->world();
     world.delete_objects();
     world.rng_.state_ = seed;
