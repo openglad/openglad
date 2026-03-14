@@ -8,6 +8,7 @@
 #include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
 #include <openglad/platform/game_context.h>
+#include <openglad/interface/session_state.h>
 #include <memory>
 #include <gtest/gtest.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
@@ -55,6 +56,31 @@ public:
 
 private:
     GameplayContext* previous_ = nullptr;
+};
+
+class ScopedGameplayActiveOverride
+{
+public:
+    explicit ScopedGameplayActiveOverride(bool active)
+        : session_(og::runtime::current_session)
+        , previous_(session_ ? session_->gameplay_active_ : false)
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = active;
+    }
+
+    ~ScopedGameplayActiveOverride()
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = previous_;
+    }
+
+    ScopedGameplayActiveOverride(const ScopedGameplayActiveOverride&) = delete;
+    ScopedGameplayActiveOverride& operator=(const ScopedGameplayActiveOverride&) = delete;
+
+private:
+    og::runtime::SessionState* session_ = nullptr;
+    bool previous_ = false;
 };
 
 } // namespace
@@ -658,6 +684,7 @@ struct WalkerR15Fixture {
     og::sim::SimEventLog events;
     MaxRandom rng;
     ScopedGameplayContext gameplay;
+    ScopedGameplayActiveOverride gameplay_active{true};
 
     WalkerR15Fixture()
         : gameplay(level, save, events, cfg)
@@ -786,5 +813,49 @@ TEST(WalkerUnit, walker_r15_path_check_counter_uses_session_rng_without_gameplay
 
     ASSERT_TRUE(w.reset());
     ASSERT_EQ(11, w.path_check_counter);
+}
+
+TEST(WalkerUnit, walker_r15_preview_construction_uses_session_rng_without_advancing_world_rng)
+{
+    ASSERT_TRUE(og::runtime::current_session != nullptr);
+    ASSERT_TRUE(current_game == &og::runtime::current_session->game_);
+    ASSERT_TRUE(og::runtime::current_session->game_.world != nullptr);
+
+    FixedRandom rng{6};
+    ScopedGameplayActiveOverride gameplay_inactive(false);
+
+    IRandom* prev_rng = ctx().rng;
+    ctx().rng = &rng;
+
+    GameWorld& screen_world = *og::runtime::current_session->game_.world;
+    screen_world.rng_.state_ = 123u;
+    const std::uint32_t before_state = screen_world.rng_.state_;
+
+    walker preview;
+    EXPECT_EQ(11, preview.path_check_counter);
+    EXPECT_EQ(before_state, screen_world.rng_.state_);
+
+    ctx().rng = prev_rng;
+}
+
+TEST(WalkerUnit, walker_r15_active_gameplay_construction_uses_world_rng)
+{
+    ASSERT_TRUE(og::runtime::current_session != nullptr);
+    ASSERT_TRUE(current_game == &og::runtime::current_session->game_);
+
+    FixedRandom rng{6};
+    ScopedGameplayActiveOverride gameplay_active(true);
+
+    IRandom* prev_rng = ctx().rng;
+    ctx().rng = &rng;
+
+    GameWorld& screen_world = *og::runtime::current_session->game_.world;
+    screen_world.rng_.state_ = 123u;
+
+    walker live;
+    EXPECT_EQ(10, live.path_check_counter);
+    EXPECT_NE(123u, screen_world.rng_.state_);
+
+    ctx().rng = prev_rng;
 }
 } // namespace detail_walker_r15

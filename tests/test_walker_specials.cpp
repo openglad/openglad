@@ -5,6 +5,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 #include <vector>
@@ -81,11 +82,37 @@ struct VelocitySample
     float y = 0.0f;
 };
 
+class ScopedGameplayActiveOverride
+{
+public:
+    explicit ScopedGameplayActiveOverride(bool active)
+        : session_(og::runtime::current_session)
+        , previous_(session_ ? session_->gameplay_active_ : false)
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = active;
+    }
+
+    ~ScopedGameplayActiveOverride()
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = previous_;
+    }
+
+    ScopedGameplayActiveOverride(const ScopedGameplayActiveOverride&) = delete;
+    ScopedGameplayActiveOverride& operator=(const ScopedGameplayActiveOverride&) = delete;
+
+private:
+    og::runtime::SessionState* session_ = nullptr;
+    bool previous_ = false;
+};
+
 static std::vector<VelocitySample> run_elf_barrage(std::uint32_t seed, char special)
 {
     // Level loading creates walkers and consumes simulation RNG, so make sure
     // the map exists before seeding the barrage under test.
     ensure_level_loaded();
+    ScopedGameplayActiveOverride gameplay_active(true);
 
     auto& world = og::runtime::current_session->myscreen_->world();
     world.delete_objects();

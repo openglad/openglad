@@ -212,3 +212,17 @@ void set_gameplay_rng_override(IRandom** rng_ref)
     if (current_game)
         current_game->rng_override_ref = rng_ref;
 }
+
+bool gameplay_world_rng_active()
+{
+    return current_game == nullptr
+        || current_game->gameplay_active_ref == nullptr
+        || *current_game->gameplay_active_ref;
+}
+
+IRandom* gameplay_session_rng()
+{
+    return (current_game != nullptr && current_game->session_rng_ref != nullptr)
+        ? *current_game->session_rng_ref
+        : nullptr;
+}

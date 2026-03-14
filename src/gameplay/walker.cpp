@@ -94,6 +94,13 @@ IRandom& walker_rng()
     if (IRandom* override_rng = gameplay_rng_override())
         return *override_rng;
 
+    if (gameplay_world_rng_active() &&
+        current_game != nullptr && current_game->world != nullptr)
+        return current_game->world->rng_;
+
+    if (IRandom* session_rng = gameplay_session_rng())
+        return *session_rng;
+
     if (current_game != nullptr && current_game->world != nullptr)
         return current_game->world->rng_;
 

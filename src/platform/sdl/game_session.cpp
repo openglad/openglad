@@ -98,6 +98,8 @@ GameSession::GameSession(const Config& session_cfg)
     game_.sim_events = ctx_.sim_events.get();
     game_.config = &cfg;
     game_.world = &world_owner_;
+    game_.session_rng_ref = &ctx_.rng;
+    game_.gameplay_active_ref = &gameplay_active_;
 
     // Set prefs before creating the screen; viewscreen construction reads it.
     theprefs_ = prefs_owner_.get();

@@ -43,6 +43,8 @@ struct GameplayContext
     og::sim::SimEventLog* sim_events = nullptr;
     cfg_store* config = nullptr;
     IRandom** rng_override_ref = nullptr;
+    IRandom** session_rng_ref = nullptr;
+    bool* gameplay_active_ref = nullptr;
     std::unique_ptr<GameplayPathfindingState> pathfinding;
 };
 
@@ -54,3 +56,8 @@ GameplayPathfindingState* ensure_pathfinding_state(GameplayContext& context);
 // installed GameplayContext (primarily legacy/test paths).
 IRandom* gameplay_rng_override();
 void set_gameplay_rng_override(IRandom** rng_ref);
+
+// Session-backed constructors should only consume world RNG while gameplay is
+// actively running. UI previews must fall back to the session RNG instead.
+bool gameplay_world_rng_active();
+IRandom* gameplay_session_rng();
