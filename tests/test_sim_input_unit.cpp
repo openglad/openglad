@@ -295,7 +295,7 @@ TEST(SimInputUnit, sim_input_r11_switch_special_yell_and_action_default)
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(result.play_sound == SOUND_YO);
     ASSERT_TRUE(control->yo_delay == 30);
-    ASSERT_TRUE(ally->leader == control);
+    ASSERT_TRUE(ally->leader() == control);
 
     // Shift+Yell default case in switch(control->action)
     input.clear();

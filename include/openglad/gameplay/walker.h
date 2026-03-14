@@ -74,6 +74,7 @@ class walker : public og::sim::SimEntity
 		void set_foe(walker* target);
 		walker* foe() const { return foe_; }
 		void set_leader(walker* target);
+		walker* leader() const { return leader_; }
 		void set_owner(walker* target);
 		walker* owner() const { return owner_; }
 		void set_collide_ob(walker* target);
@@ -172,7 +173,6 @@ class walker : public og::sim::SimEntity
 		short skip_exit;               // cycles after failed exit choice
 		guy  *myguy;                   // Non-owning view of character data; ownership, when present, lives in owned_myguy_
 		std::uint32_t foe_id = 0;
-		walker *leader;
 		std::uint32_t leader_id = 0;
 		std::uint32_t owner_id = 0;
 		std::uint32_t keys;                   // used to open doors
@@ -231,6 +231,7 @@ class walker : public og::sim::SimEntity
 
 	private:
 		walker* foe_ = nullptr;
+		walker* leader_ = nullptr;
 		walker* owner_ = nullptr;
 };
 

@@ -54,8 +54,8 @@ bool weap::act()
 	// Make sure everyone we're pointing to is valid
 	if (foe() && foe()->dead)
 		set_foe(nullptr);
-	if (leader && leader->dead)
-		leader = nullptr;
+	if (leader() && leader()->dead)
+		set_leader(nullptr);
 	if (owner() && owner()->dead)
 		set_owner(nullptr);
 

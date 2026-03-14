@@ -376,7 +376,7 @@ TEST(RuntimeCoveragePaths, treasure_exit_and_teleporter_navigation_paths)
     mover->skip_exit = 0;
     tele_1->eat_me(mover);
     ASSERT_TRUE(mover->skip_exit >= 20) << "teleport should increase skip_exit cooldown";
-    ASSERT_TRUE(tele_1->leader == tele_2) << "teleport should select the linked target";
+    ASSERT_TRUE(tele_1->leader() == tele_2) << "teleport should select the linked target";
 
     // Teleporter close-range debounce path.
     mover->setxy(100, 100);
@@ -506,7 +506,7 @@ TEST(RuntimeCoveragePaths, treasure_batch3_teleporter_leader_and_blocked_destina
 
     tele_src->setxy(100, 100);
     tele_dst->setxy(160, 160);
-    tele_src->leader = tele_dst; // Force the "use leader" branch.
+    tele_src->set_leader(tele_dst); // Force the "use leader" branch.
     mover->setxy(100, 100);
     mover->skip_exit = 0;
 
@@ -516,7 +516,7 @@ TEST(RuntimeCoveragePaths, treasure_batch3_teleporter_leader_and_blocked_destina
     ASSERT_TRUE(tele_src->eat_me(mover)) << "teleporter eat should still return true when destination blocked";
     ASSERT_EQ(100, (int)mover->xpos) << "blocked destination should recenter mover to source X";
     ASSERT_EQ(100, (int)mover->ypos) << "blocked destination should recenter mover to source Y";
-    ASSERT_TRUE(tele_src->leader == tele_dst) << "leader-based destination should remain set";
+    ASSERT_TRUE(tele_src->leader() == tele_dst) << "leader-based destination should remain set";
 
     clear_level_lists();
 }
@@ -682,7 +682,7 @@ TEST(RuntimeCoveragePaths, sim_world_tick_branches_for_end_freeze_and_cleanup)
     walker* owner = add_living(0);
     walker* dead_foe = add_living(1);
     owner->set_foe(dead_foe);
-    owner->leader = dead_foe;
+    owner->set_leader(dead_foe);
     owner->set_owner(dead_foe);
     owner->collide_ob = dead_foe;
     dead_foe->dead = 1;
@@ -699,7 +699,7 @@ TEST(RuntimeCoveragePaths, sim_world_tick_branches_for_end_freeze_and_cleanup)
     events.clear();
     world.tick();
     ASSERT_TRUE(owner->foe() == nullptr) << "dead foe pointer should be cleared";
-    ASSERT_TRUE(owner->leader == nullptr) << "dead leader pointer should be cleared";
+    ASSERT_TRUE(owner->leader() == nullptr) << "dead leader pointer should be cleared";
     clear_level_lists();
 }
 
@@ -772,7 +772,7 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
         return;
     dead_ref->dead = 1;
     owner->set_foe(dead_ref);
-    owner->leader = dead_ref;
+    owner->set_leader(dead_ref);
     owner->set_owner(dead_ref);
     owner->collide_ob = dead_ref;
 
@@ -782,7 +782,7 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
     ASSERT_TRUE(weap_owner && dead_fx && dead_weap) << "weapon/fx walkers created";
     if (weap_owner) {
         weap_owner->set_foe(dead_ref);
-        weap_owner->leader = dead_ref;
+        weap_owner->set_leader(dead_ref);
         weap_owner->set_owner(dead_ref);
         weap_owner->collide_ob = dead_ref;
     }
@@ -796,7 +796,7 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
     events.clear();
     world.tick();
     ASSERT_TRUE(owner->foe() == nullptr) << "oblist dead foe pointer should be cleared";
-    ASSERT_TRUE(owner->leader == nullptr) << "oblist dead leader pointer should be cleared";
+    ASSERT_TRUE(owner->leader() == nullptr) << "oblist dead leader pointer should be cleared";
     ASSERT_TRUE(weap_owner == nullptr || weap_owner->foe() == nullptr) << "weaplist dead foe pointer should be cleared";
 
     clear_level_lists();
@@ -929,7 +929,7 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
 
     // Force find_far_foe path by clearing references.
     ally->set_foe(nullptr);
-    ally->leader = nullptr;
+    ally->set_leader(nullptr);
 
     // Dead linked object used for pointer cleanup.
     walker* dead_link = add_living(2);
@@ -940,7 +940,7 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     ally->set_owner(dead_link);
     ally->collide_ob = dead_link;
     hostile->set_foe(dead_link);
-    hostile->leader = dead_link;
+    hostile->set_leader(dead_link);
     hostile->set_owner(dead_link);
     hostile->collide_ob = dead_link;
 
@@ -951,7 +951,7 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     if (!(weap_owner && dead_fx && dead_weap))
         return;
     weap_owner->set_foe(dead_link);
-    weap_owner->leader = dead_link;
+    weap_owner->set_leader(dead_link);
     weap_owner->set_owner(dead_link);
     weap_owner->collide_ob = dead_link;
     dead_fx->dead = 1;
@@ -969,7 +969,7 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     world.end = 0;
     world.tick();
     ASSERT_TRUE(ally->owner() == nullptr && ally->collide_ob == nullptr) << "dead links should be cleared on oblist entities";
-    ASSERT_TRUE(hostile->foe() == nullptr && hostile->leader == nullptr) << "all dead references should be cleared";
+    ASSERT_TRUE(hostile->foe() == nullptr && hostile->leader() == nullptr) << "all dead references should be cleared";
     (void)weap_owner;
 
     clear_level_lists();
@@ -1028,7 +1028,7 @@ TEST(RuntimeCoveragePaths, sim_world_assigns_far_foe_when_no_target_and_hostiles
 
     ally->set_act_type(ACT_CONTROL);
     ally->set_foe(nullptr);
-    ally->leader = nullptr;
+    ally->set_leader(nullptr);
     foe_near->setxy(140, 100);
     foe_far->setxy(300, 100);
 

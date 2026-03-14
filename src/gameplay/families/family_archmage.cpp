@@ -268,7 +268,7 @@ static bool archmage_do_special(walker* self)
                         if (generic > dist)
                         {
                             generic = dist;
-                            newob->leader = w;
+                            newob->set_leader(w);
                         }
                     }
                 }

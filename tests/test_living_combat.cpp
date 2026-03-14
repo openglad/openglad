@@ -353,8 +353,8 @@ TEST(LivingCombat, living_walk_and_do_action_edge_branches)
     ASSERT_TRUE(!a) << "ACTION_FOLLOW with existing foe should return false";
 
     w->set_foe(nullptr);
-    w->leader = w.get();
-    w->leader->set_foe(w.get());
+    w->set_leader(w.get());
+    w->leader()->set_foe(w.get());
     a = static_cast<living*>(w.get())->do_action();
     ASSERT_TRUE(!a) << "ACTION_FOLLOW should copy leader foe then return false";
     ASSERT_TRUE(w->foe() == w.get()) << "foe should be copied from leader";
@@ -414,7 +414,7 @@ TEST(LivingCombat, living_do_action_follow_leader_null_and_command_paths)
     living* lv = static_cast<living*>(w.get());
     lv->action = ACTION_FOLLOW;
     lv->set_foe(nullptr);
-    lv->leader = nullptr;
+    lv->set_leader(nullptr);
 
     bool r = lv->do_action();
     ASSERT_TRUE(!r) << "ACTION_FOLLOW without leader should return false";
@@ -604,7 +604,7 @@ TEST(LivingCombat, living_act_invisibility_skip_exit_and_action_command_paths)
     w->action = ACTION_FOLLOW;
     w->user = -1;
     w->set_foe(nullptr);
-    w->leader = nullptr;
+    w->set_leader(nullptr);
     bool r = w->act();
     (void)r;
     ASSERT_EQ(1, (int)w->invisibility_left) << "invisibility should decrement when active";

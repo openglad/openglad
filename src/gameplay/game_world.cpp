@@ -1267,7 +1267,7 @@ void GameWorld::tick()
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                         ob->query_order() == Order::Living)
                         level_done = 0;
-                    if (ob->foe() == nullptr && ob->leader == nullptr)
+                    if (ob->foe() == nullptr && ob->leader() == nullptr)
                         ob->set_foe(find_far_foe(ob));
                 }
             }
@@ -1363,7 +1363,7 @@ void GameWorld::tick()
 
         if (ob->foe() && ob->foe()->dead)
             ob->set_foe(nullptr);
-        if (ob->leader && ob->leader->dead)
+        if (ob->leader() && ob->leader()->dead)
             ob->set_leader(nullptr);
         if (ob->owner() && ob->owner()->dead)
             ob->set_owner(nullptr);

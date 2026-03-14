@@ -100,7 +100,7 @@ TEST(EffectChainAndDoor, effect_chain_hits_leader_spawns_explosion_and_secondary
     if (chain) {
         chain->team_num = 0;
         chain->set_owner(owner);
-        chain->leader = leader;
+        chain->set_leader(leader);
         chain->lineofsight = 5;
         chain->damage = 100.0f; // generic = damage * 0.5f => 50 (> 20)
         chain->setxy(leader->xpos, leader->ypos); // guarantee hits() with leader
@@ -138,7 +138,7 @@ TEST(EffectChainAndDoor, effect_chain_early_exit_and_movement_branches)
     ASSERT_TRUE(chain != nullptr) << "chain created";
     if (chain) {
         chain->set_owner(nullptr);
-        chain->leader = nullptr;
+        chain->set_leader(nullptr);
         chain->lineofsight = 0;
         chain->dead = 0;
         (void)chain->act();
@@ -161,7 +161,7 @@ TEST(EffectChainAndDoor, effect_chain_early_exit_and_movement_branches)
         return;
 
     moving_chain->set_owner(owner);
-    moving_chain->leader = leader;
+    moving_chain->set_leader(leader);
     moving_chain->lineofsight = 5;
     moving_chain->setxy(40, 40);
     const short x_before = moving_chain->xpos;
@@ -191,7 +191,7 @@ TEST(EffectChainAndDoor, effect_chain_movement_axis_delta_branches)
         return;
 
     chain->set_owner(owner);
-    chain->leader = leader;
+    chain->set_leader(leader);
     chain->lineofsight = 20;
     chain->setxy(200, 200);
 

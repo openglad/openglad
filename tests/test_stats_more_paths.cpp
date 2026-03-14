@@ -66,7 +66,7 @@ TEST(StatsMorePaths, stats_do_command_follow_branches)
     follower->team_num = 0;
 
     og::runtime::current_session->myscreen_->viewob[0]->control = leader.get();
-    follower->leader = nullptr;
+    follower->set_leader(nullptr);
     follower->set_foe(nullptr);
 
     // Ensure leader is far enough to exercise walkstep and normalization.
@@ -77,7 +77,7 @@ TEST(StatsMorePaths, stats_do_command_follow_branches)
 
     // If we're close, leader should be cleared (distance < 60 path).
     leader->setxy(static_cast<Sint32>(follower->xpos) + 10, static_cast<Sint32>(follower->ypos));
-    follower->leader = leader.get();
+    follower->set_leader(leader.get());
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)follower->stats()->do_command();
 
@@ -96,7 +96,7 @@ TEST(StatsMorePaths, stats_do_command_follow_early_exit_when_foe_present)
 
     og::runtime::current_session->myscreen_->viewob[0]->control = leader.get();
     follower->set_foe(foe.get());
-    follower->leader = leader.get();
+    follower->set_leader(leader.get());
 
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)follower->stats()->do_command(); // should clear leader + finish command
@@ -511,15 +511,15 @@ TEST(StatsMorePaths, stats_round11_follow_force_walk_and_right_walk_distance_bra
     // COMMAND_FOLLOW no-leader-found branch (stats.cpp:285-287).
     og::runtime::current_session->myscreen_->viewob[0]->control = nullptr;
     follower->set_foe(nullptr);
-    follower->leader = nullptr;
+    follower->set_leader(nullptr);
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)follower->stats()->do_command();
-    ASSERT_TRUE(follower->leader == nullptr) << "follow without leader should stay leaderless";
+    ASSERT_TRUE(follower->leader() == nullptr) << "follow without leader should stay leaderless";
 
     // COMMAND_FOLLOW axis-normalization branch (stats.cpp:303-310).
     og::runtime::current_session->myscreen_->viewob[0]->control = leader.get();
     leader->setxy(static_cast<Sint32>(follower->xpos) + 300, static_cast<Sint32>(follower->ypos) + 40);
-    follower->leader = nullptr;
+    follower->set_leader(nullptr);
     follower->set_foe(nullptr);
     const short before_y = follower->ypos;
     follower->stats()->force_command(COMMAND_FOLLOW, 2, 0, 0);
@@ -575,18 +575,18 @@ TEST(StatsMorePaths, stats_round12_add_command_walk_clamps_and_follow_shortcuts)
 
     // COMMAND_FOLLOW early exit when foe exists (stats.cpp:273-278).
     follower->set_foe(foe.get());
-    follower->leader = leader.get();
+    follower->set_leader(leader.get());
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)follower->stats()->do_command();
-    ASSERT_TRUE(follower->leader == nullptr) << "follow should clear leader when foe is present";
+    ASSERT_TRUE(follower->leader() == nullptr) << "follow should clear leader when foe is present";
 
     // COMMAND_FOLLOW close-distance branch (stats.cpp:295-300).
     follower->set_foe(nullptr);
-    follower->leader = leader.get();
+    follower->set_leader(leader.get());
     leader->setxy(static_cast<Sint32>(follower->xpos) + 10, static_cast<Sint32>(follower->ypos) + 10);
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)follower->stats()->do_command();
-    ASSERT_TRUE(follower->leader == nullptr) << "follow should drop leader when already close";
+    ASSERT_TRUE(follower->leader() == nullptr) << "follow should drop leader when already close";
 }
 
 

@@ -82,8 +82,8 @@ bool living::act()
 		set_foe(nullptr);
 	if (is_friendly(foe()))
 		set_foe(nullptr);
-	if (leader && leader->dead)
-		leader = nullptr;
+	if (leader() && leader()->dead)
+		set_leader(nullptr);
 	if (owner() && owner()->dead)
 	{
 		//owner = nullptr;
@@ -695,12 +695,12 @@ bool living::do_action()
 		case ACTION_FOLLOW: // follow our leader, attack his targets ..
 			if (foe())
 				return 0;       // continue as normal
-			leader = current_game->world->find_nearest_player(this);
-			if (!leader)
+			set_leader(current_game->world->find_nearest_player(this));
+			if (!leader())
 				return 0;       // continue as normal ... shouldn't happen
-			if (leader->foe())
+			if (leader()->foe())
 			{
-				set_foe(leader->foe());
+				set_foe(leader()->foe());
 				return 0;       // continue from this point ..
 			}
 			// Else follow our leader

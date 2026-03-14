@@ -213,7 +213,7 @@ TEST(SimInputHandler, sim_input_yell_sets_follow_and_notification)
     walker* ally = ally_up.get();
     control->set_act_type(ACT_CONTROL);
     control->yo_delay = 0;
-    ally->leader = nullptr;
+    ally->set_leader(nullptr);
     ally->action = 0;
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
@@ -234,7 +234,7 @@ TEST(SimInputHandler, sim_input_yell_sets_follow_and_notification)
     ASSERT_EQ(SOUND_YO, result.play_sound) << "plain yell should request yo sound";
     ASSERT_TRUE(result.notify_text == "Yo!") << "plain yell should emit Yo notification";
     ASSERT_TRUE(result.notify_source == control) << "notification source should be control";
-    ASSERT_TRUE(ally->leader == control) << "plain yell should assign nearby ally leader";
+    ASSERT_TRUE(ally->leader() == control) << "plain yell should assign nearby ally leader";
     ASSERT_EQ(30, control->yo_delay) << "plain yell should set yell cooldown";
 
     teardown();

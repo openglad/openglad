@@ -265,7 +265,7 @@ TEST(CoverageMisc, coverage_r17_walker_movement_and_act_cleanup)
     dead_owner->dead = 1;
 
     actor->set_foe(dead_foe);
-    actor->leader = dead_leader;
+    actor->set_leader(dead_leader);
     actor->set_owner(dead_owner);
     actor->ani_type = ANI_WALK;
     actor->attack_lunge = 0.2f;
@@ -789,7 +789,7 @@ TEST(CoverageMisc, coverage_r18_walker_act_decay_cleanup_and_guard_branches)
     ASSERT_TRUE(self && foe && leader && owner);
 
     self->set_foe(foe);
-    self->leader = leader;
+    self->set_leader(leader);
     self->set_owner(owner);
     foe->dead = 1;
     leader->dead = 1;
@@ -800,7 +800,7 @@ TEST(CoverageMisc, coverage_r18_walker_act_decay_cleanup_and_guard_branches)
     self->set_act_type(ACT_CONTROL);
     ASSERT_TRUE(self->act());
     ASSERT_TRUE(self->foe() == nullptr);
-    ASSERT_TRUE(self->leader == nullptr);
+    ASSERT_TRUE(self->leader() == nullptr);
     ASSERT_TRUE(self->owner() == nullptr);
     ASSERT_TRUE(self->attack_lunge == 0.0f);
     ASSERT_TRUE(self->hit_recoil == 0.0f);
@@ -1762,7 +1762,7 @@ TEST(CoverageMisc, final_r16_sim_input_switch_special_and_yell)
     control_living->set_act_type(ACT_CONTROL);
     control_living->user = 0;
     follower->set_act_type(ACT_GUARD);
-    follower->leader = nullptr;
+    follower->set_leader(nullptr);
 
     std::string special_names[NUM_FAMILIES][6];
     for (int i = 0; i < NUM_FAMILIES; ++i)
@@ -1787,7 +1787,7 @@ TEST(CoverageMisc, final_r16_sim_input_switch_special_and_yell)
     ASSERT_TRUE(s1.play_sound == SOUND_YO);
     ASSERT_TRUE(s1.notify_text == "Yo!");
     ASSERT_TRUE(control_living->yo_delay == 30);
-    ASSERT_TRUE(follower->leader == control_living);
+    ASSERT_TRUE(follower->leader() == control_living);
 }
 
 TEST(CoverageMisc, final_r16_smooth_targeted_grass_and_dark_variants)

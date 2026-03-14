@@ -130,7 +130,7 @@ void walker_init_common(walker* w, IRandom& rng)
 	w->busy = 0;
 	w->set_foe(nullptr);
 	w->foe_id = 0;
-	w->leader = nullptr;
+	w->set_leader(nullptr);
 	w->leader_id = 0;
 	w->set_owner(nullptr);
 	w->owner_id = 0;
@@ -232,7 +232,7 @@ void walker::set_foe(walker* target)
 
 void walker::set_leader(walker* target)
 {
-	leader = target;
+	leader_ = target;
 	leader_id = (target != nullptr) ? target->entity_id() : 0;
 	mark_dirty(og::dirty::BIT_LEADER_ID);
 }
@@ -254,7 +254,7 @@ void walker::set_collide_ob(walker* target)
 void walker::sync_ids_from_pointers()
 {
 	foe_id = (foe_ != nullptr) ? foe_->entity_id() : 0;
-	leader_id = (leader != nullptr) ? leader->entity_id() : 0;
+	leader_id = (leader_ != nullptr) ? leader_->entity_id() : 0;
 	owner_id = (owner_ != nullptr) ? owner_->entity_id() : 0;
 	collide_ob_id = (collide_ob != nullptr) ? collide_ob->entity_id() : 0;
 
@@ -687,8 +687,8 @@ bool walker::act()
 	// Make sure everyone we're pointing to is valid
 	if (foe() && foe()->dead)
 		set_foe(nullptr);
-	if (leader && leader->dead)
-		leader = nullptr;
+	if (leader() && leader()->dead)
+		set_leader(nullptr);
 	if (owner() && owner()->dead)
 		set_owner(nullptr);
 

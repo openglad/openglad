@@ -226,7 +226,7 @@ TEST_F(GameWorldEntityIdsFixture, cross_reference_setters_keep_pointer_and_id_fi
 
     EXPECT_EQ(foe, actor->foe());
     EXPECT_EQ(foe->entity_id(), actor->foe_id);
-    EXPECT_EQ(leader, actor->leader);
+    EXPECT_EQ(leader, actor->leader());
     EXPECT_EQ(leader->entity_id(), actor->leader_id);
     EXPECT_EQ(owner, actor->owner());
     EXPECT_EQ(owner->entity_id(), actor->owner_id);
@@ -332,7 +332,7 @@ TEST_F(GameWorldEntityIdsFixture, sync_ids_from_pointers_populates_parallel_id_f
     ASSERT_NE(nullptr, controller);
 
     actor->set_foe(foe);
-    actor->leader = leader;
+    actor->set_leader(leader);
     actor->set_owner(owner);
     actor->collide_ob = collide;
     actor->foe_id = 0;

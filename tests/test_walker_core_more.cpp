@@ -575,17 +575,17 @@ TEST(WalkerCoreMore, walker_round6_init_fire_animate_and_misc_guards)
         w->set_act_type(ACT_CONTROL);
 
         w->set_foe(dead_target);
-        w->leader = nullptr;
+        w->set_leader(nullptr);
         w->set_owner(nullptr);
         (void)w->act();
         ASSERT_TRUE(w->foe() == nullptr) << "act should clear dead foe pointer";
 
         w->set_foe(nullptr);
-        w->leader = dead_target;
+        w->set_leader(dead_target);
         w->set_owner(nullptr);
         w->ani_type = ANI_WALK;
         (void)w->act();
-        ASSERT_TRUE(w->leader == nullptr) << "act should clear dead leader pointer";
+        ASSERT_TRUE(w->leader() == nullptr) << "act should clear dead leader pointer";
 
         ASSERT_TRUE(w->attack_lunge == 0.0f && w->hit_recoil == 0.0f) << "act should clamp lunge/recoil to zero";
     }

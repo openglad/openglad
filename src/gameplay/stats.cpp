@@ -131,7 +131,7 @@ void statistics::clear_command()
 		controller->team_num = controller->real_team_num;
 		controller->real_team_num = 255;
 	}
-	controller->leader = nullptr;
+	controller->set_leader(nullptr);
 }
 
 void statistics::add_command(Sint32 whatcommand, Sint32 iterations,
@@ -300,14 +300,14 @@ short statistics::do_command()
 			if (controller->foe()) // if we have foe, don't follow this round
 			{
 				commands.front().commandcount = 0;
-				controller->leader = nullptr;
+				controller->set_leader(nullptr);
 				result = 0;
 				break;
 			}
-			if (!controller->leader)
+			if (!controller->leader())
 			{
-				controller->leader = find_follow_leader();
-				if (!controller->leader)
+				controller->set_leader(find_follow_leader());
+				if (!controller->leader())
 				{
 					commands.front().commandcount = 0;
 					result = 0;
@@ -316,17 +316,17 @@ short statistics::do_command()
 			}
 			
 			// Do we have a leader now?
-			if(controller->leader)
+			if(controller->leader())
 			{
-				distance = controller->distance_to_ob(controller->leader);
+				distance = controller->distance_to_ob(controller->leader());
 				if (distance < 60)
 				{
-					controller->leader = nullptr;
+					controller->set_leader(nullptr);
 					result = 1;  // don't get too close
 					break;
 				}
-				newx = static_cast<short>(controller->leader->xpos - controller->xpos); // total horizontal distance..
-				newy = static_cast<short>(controller->leader->ypos - controller->ypos);
+				newx = static_cast<short>(controller->leader()->xpos - controller->xpos); // total horizontal distance..
+				newy = static_cast<short>(controller->leader()->ypos - controller->ypos);
 				if (abs(newx) > abs(3*newy))
 					newy = 0;
 				if (abs(newy) > abs(3*newx))
@@ -340,7 +340,7 @@ short statistics::do_command()
 			controller->walkstep(newx, newy);
 			if (commands.front().commandcount < 2)
             {
-				controller->leader = nullptr;
+				controller->set_leader(nullptr);
             }
 			break;
 		case COMMAND_QUICK_FIRE:
@@ -530,7 +530,7 @@ void statistics::yell_for_help(walker *foe)
 	               current_game->world->oblist, 160, &howmany, controller);
 	for(auto* w : helplist)
 	{
-		w->leader = controller;
+		w->set_leader(controller);
 		if (foe != w->foe())
 			w->stats()->last_distance = w->stats()->current_distance = 32000;
 		w->set_foe(foe);

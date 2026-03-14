@@ -233,9 +233,9 @@ SimInputResult sim_process_player_input(
             if (w && (w->query_order() == Order::Living) &&
                 (w->act_type != ACT_CONTROL) &&
                 (w->team_num == control->team_num) &&
-                (!w->leader))
+                (!w->leader()))
             {
-                w->leader = control;
+                w->set_leader(control);
                 w->set_foe(nullptr);
                 w->stats()->force_command(COMMAND_FOLLOW, 100, 0, 0);
             }
@@ -258,7 +258,7 @@ SimInputResult sim_process_player_input(
                     walker* w = uptr.get();
                     if (w && (w->team_num == control->team_num) && w->is_friendly(control))
                     {
-                        w->leader = control;
+                        w->set_leader(control);
                         w->set_foe(nullptr);
                         w->action = ACTION_FOLLOW;
                     }

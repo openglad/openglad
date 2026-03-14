@@ -112,13 +112,13 @@ static bool teleporter_on_eat(treasure* self, walker* eater)
     // If we're close enough, teleport ..
     eater->skip_exit = eater->skip_exit + 20;
     walker* target;
-    if (!self->leader)
+    if (!self->leader())
         target = self->find_teleport_target();
     else
-        target = self->leader;
+        target = self->leader();
     if (!target)
         return true;
-    self->leader = target;
+    self->set_leader(target);
     eater->center_on(target);
     if (!current_game->world->query_passable(eater->xpos, eater->ypos, eater))
     {

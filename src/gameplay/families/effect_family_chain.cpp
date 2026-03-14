@@ -18,7 +18,7 @@ short hits(short x,  short y,  short xsize,  short ysize,
 
 static bool chain_on_act(effect* self)
 {
-    if (!self->leader || self->lineofsight<1 || !self->owner())
+    if (!self->leader() || self->lineofsight<1 || !self->owner())
     {
         self->dead = 1;
         self->death();
@@ -26,7 +26,7 @@ static bool chain_on_act(effect* self)
     }
     // Are we at our leader? If so, attack him :)
     if (hits(self->xpos, self->ypos, self->sizex, self->sizey,
-             self->leader->xpos, self->leader->ypos, self->leader->sizex, self->leader->sizey))
+             self->leader()->xpos, self->leader()->ypos, self->leader()->sizex, self->leader()->sizey))
     {
         walker* newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION);
         if (!newob)
@@ -41,7 +41,7 @@ static bool chain_on_act(effect* self)
         newob->damage = self->damage;
         newob->ani_type = ANI_EXPLODE;
         newob->center_on(self);
-        self->leader->skip_exit = self->leader->skip_exit + 3;
+        self->leader()->skip_exit = self->leader()->skip_exit + 3;
         og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
         // Now make new objects to seek out foes ..
         float generic = self->damage * 0.5f;
@@ -59,13 +59,13 @@ static bool chain_on_act(effect* self)
             for(auto* w : foelist)
             {
                 if (numfoes <= 0) break;
-                if (w != self->leader && w->skip_exit<1)
+                if (w != self->leader() && w->skip_exit<1)
                 {
                     newob = current_game->world->add_ob(Order::FX, FAMILY_CHAIN);
                     if (!newob)
                         return true;
                     newob->set_owner(self->owner());
-                    newob->leader = w;
+                    newob->set_leader(w);
                     newob->stats()->level = self->stats()->level;
                     newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                     newob->damage = generic;
@@ -82,37 +82,37 @@ static bool chain_on_act(effect* self)
     }
     // Move toward our leader ..
     self->lineofsight--;
-    std::int32_t distance = self->distance_to_ob_center(self->leader);
+    std::int32_t distance = self->distance_to_ob_center(self->leader());
     if (static_cast<float>(distance) > self->stepsize*2)
     {
         float xd = 0, yd = 0;
-        if (self->leader->xpos > self->xpos)
+        if (self->leader()->xpos > self->xpos)
         {
-            if ( (self->leader->xpos - self->xpos) > self->stepsize )
+            if ( (self->leader()->xpos - self->xpos) > self->stepsize )
                 xd = self->stepsize;
             else
-                xd = self->leader->xpos - self->xpos;
+                xd = self->leader()->xpos - self->xpos;
         }
-        else if (self->leader->xpos < self->xpos)
+        else if (self->leader()->xpos < self->xpos)
         {
-            if ( (self->xpos - self->leader->xpos) > self->stepsize )
+            if ( (self->xpos - self->leader()->xpos) > self->stepsize )
                 xd = -self->stepsize;
             else
-                xd = self->leader->xpos - self->xpos;
+                xd = self->leader()->xpos - self->xpos;
         }
-        if (self->leader->ypos > self->ypos)
+        if (self->leader()->ypos > self->ypos)
         {
-            if ( (self->leader->ypos - self->ypos) > self->stepsize )
+            if ( (self->leader()->ypos - self->ypos) > self->stepsize )
                 yd = self->stepsize;
             else
-                yd = self->leader->ypos - self->ypos;
+                yd = self->leader()->ypos - self->ypos;
         }
-        else if (self->leader->ypos < self->ypos)
+        else if (self->leader()->ypos < self->ypos)
         {
-            if ( (self->ypos - self->leader->ypos) > self->stepsize )
+            if ( (self->ypos - self->leader()->ypos) > self->stepsize )
                 yd = -self->stepsize;
             else
-                yd = self->leader->ypos - self->ypos;
+                yd = self->leader()->ypos - self->ypos;
         }
         self->curdir = static_cast<signed char>(self->facing(xd, yd));
         self->set_frame(self->ani[self->curdir][0]);
@@ -120,7 +120,7 @@ static bool chain_on_act(effect* self)
     }
     else
     {
-        self->center_on(self->leader);
+        self->center_on(self->leader());
     }
     return true; // skip default animate/die
 }

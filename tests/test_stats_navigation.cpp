@@ -97,12 +97,12 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
     og::runtime::current_session->myscreen_->numviews = 1;
 
     w->set_foe(nullptr);
-    w->leader = nullptr;
+    w->set_leader(nullptr);
     w->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)w->stats()->do_command();
 
     // Accept either outcome; the code may clear leader when already too close.
-    ASSERT_TRUE((w->leader == nullptr) || (w->leader == og::runtime::current_session->myscreen_->viewob[0]->control)) << "single-view follow should be stable";
+    ASSERT_TRUE((w->leader() == nullptr) || (w->leader() == og::runtime::current_session->myscreen_->viewob[0]->control)) << "single-view follow should be stable";
 
     // Optionally cover the 2-view branch where neither view has yo_delay.
     if (og::runtime::current_session->myscreen_->viewob[1]) {
@@ -115,10 +115,10 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
             og::runtime::current_session->myscreen_->numviews = 2;
 
             w->set_foe(nullptr);
-            w->leader = nullptr;
+            w->set_leader(nullptr);
             w->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
             (void)w->stats()->do_command();
-            ASSERT_TRUE(w->leader == nullptr) << "two-view follow with no yo_delay should not pick a leader";
+            ASSERT_TRUE(w->leader() == nullptr) << "two-view follow with no yo_delay should not pick a leader";
         }
     }
 }

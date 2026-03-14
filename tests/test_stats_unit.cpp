@@ -87,7 +87,7 @@ TEST(StatsUnit, stats_follow_attack_and_block_queries)
     w->stats()->force_command(COMMAND_ATTACK, 2, 0, 0);
     (void)w->stats()->do_command();
 
-    w->leader = foe;
+    w->set_leader(foe);
     w->set_foe(nullptr);
     w->stats()->force_command(COMMAND_FOLLOW, 2, 0, 0);
     (void)w->stats()->do_command();
@@ -186,14 +186,14 @@ TEST(StatsUnit, stats_r11_clear_command_and_blocked_direction_defaults)
     walker* w = add_living(fx, 0);
     ASSERT_TRUE(w != nullptr);
 
-    w->leader = reinterpret_cast<walker*>(0x1);
+    w->set_leader(reinterpret_cast<walker*>(0x1));
     w->team_num = 1;
     w->real_team_num = 0;
     w->stats()->force_command(COMMAND_WALK, 1, 1, 0);
     w->stats()->clear_command();
     ASSERT_TRUE(w->team_num == 0);
     ASSERT_TRUE(w->real_team_num == 255);
-    ASSERT_TRUE(w->leader == nullptr);
+    ASSERT_TRUE(w->leader() == nullptr);
 
     w->curdir = 127;
     ASSERT_TRUE(!w->stats()->right_forward_blocked());
@@ -411,7 +411,7 @@ TEST(StatsUnit, stats_r12_extra_command_switch_and_null_controller_paths)
 
     // COMMAND_FOLLOW branch with no leader found (headless returns null).
     self->set_foe(nullptr);
-    self->leader = nullptr;
+    self->set_leader(nullptr);
     self->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)self->stats()->do_command();
 
@@ -523,7 +523,7 @@ TEST(StatsUnit, stats_r14_lines_249_255_301_313_319_344_command_switches)
     (void)self->stats()->do_command();
     self->set_order_family(Order::Living, FAMILY_SOLDIER);
 
-    self->leader = lead;
+    self->set_leader(lead);
     self->set_foe(nullptr);
     self->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)self->stats()->do_command();

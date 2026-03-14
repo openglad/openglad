@@ -214,7 +214,7 @@ TEST(EffectMorePaths, effect_chain_lightning_hits_leader_and_spawns_explosion)
         return;
 
     chain->set_owner(caster.get());
-    chain->leader = leader;
+    chain->set_leader(leader);
     chain->team_num = caster->team_num;
     chain->damage = 50.0f;
     chain->lineofsight = 2;
@@ -392,7 +392,7 @@ TEST(EffectMorePaths, effect_batch3_chain_snap_to_leader_and_effect_death_guard)
     if (!chain)
         return;
     chain->set_owner(owner.get());
-    chain->leader = leader;
+    chain->set_leader(leader);
     chain->lineofsight = 10;
     leader->setxy(120, 120);
     chain->setxy(121, 121);
@@ -426,7 +426,7 @@ TEST(EffectMorePaths, effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan
     ASSERT_TRUE(orphan_chain != nullptr && any_leader != nullptr) << "orphan chain/leader created";
     if (orphan_chain && any_leader)
     {
-        orphan_chain->leader = any_leader;
+        orphan_chain->set_leader(any_leader);
         orphan_chain->lineofsight = 4;
         orphan_chain->setxy(100, 100);
         any_leader->setxy(100, 100);
@@ -453,7 +453,7 @@ TEST(EffectMorePaths, effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan
     foe->setxy(124, 120);
 
     chain->set_owner(owner);
-    chain->leader = leader;
+    chain->set_leader(leader);
     chain->team_num = owner->team_num;
     chain->damage = 70.0f; // generic=35, so branch generic>20 can run
     chain->lineofsight = 3;
@@ -481,7 +481,7 @@ TEST(EffectMorePaths, effect_batch4_chain_movement_negative_delta_branch)
     leader->team_num = 2;
     leader->setxy(60, 60);
     chain->set_owner(owner);
-    chain->leader = leader;
+    chain->set_leader(leader);
     chain->team_num = 1;
     chain->lineofsight = 8;
     chain->stepsize = 4.0f;
@@ -510,7 +510,7 @@ TEST(EffectMorePaths, effect_batch6_chain_small_delta_else_branches)
     owner->team_num = 1;
     leader->team_num = 2;
     chain->set_owner(owner);
-    chain->leader = leader;
+    chain->set_leader(leader);
     chain->team_num = 1;
     chain->lineofsight = 8;
     chain->stepsize = 10.0f;

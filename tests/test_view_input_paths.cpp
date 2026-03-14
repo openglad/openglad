@@ -146,7 +146,7 @@ TEST(ViewInputPaths, view_input_yell_and_shift_yell_team_actions)
 
     controlp->set_act_type(ACT_CONTROL);
     controlp->user = 0;
-    allyp->leader = nullptr;
+    allyp->set_leader(nullptr);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally));
@@ -157,7 +157,7 @@ TEST(ViewInputPaths, view_input_yell_and_shift_yell_team_actions)
     yell_input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     yell_input.players[0].held[static_cast<int>(InputAction::Yell)] = true;
     v->process_input(yell_input);
-    ASSERT_TRUE(allyp->leader == controlp) << "plain yell should assign control as leader";
+    ASSERT_TRUE(allyp->leader() == controlp) << "plain yell should assign control as leader";
     ASSERT_TRUE(controlp->yo_delay == 30) << "plain yell should set yo_delay";
 
     // Shift+YELL toggles team defense mode.
