@@ -24,9 +24,8 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
-#include <cmath>
 #include <cstring>
-#define RAISE 1.85  // please also change in picker.cpp
+#include <limits>
 
 // Zardus: PORT, exception doesn't compile (dos thing?): int matherr(struct exception *);
 
@@ -35,6 +34,57 @@ const char* get_family_string(std::int32_t family);
 
 namespace
 {
+using FixedPoint = __uint128_t;
+
+constexpr unsigned kStatCostFixedShift = 48;
+constexpr std::uint64_t kStatCostFixedOne = 1ull << kStatCostFixedShift;
+
+FixedPoint multiply_fixed(FixedPoint lhs, std::uint64_t rhs)
+{
+    return (lhs * rhs) >> kStatCostFixedShift;
+}
+
+FixedPoint pow_fixed(std::uint64_t base, int exponent)
+{
+    FixedPoint result = static_cast<FixedPoint>(kStatCostFixedOne);
+    for (int i = 0; i < exponent; ++i)
+        result = multiply_fixed(result, base);
+    return result;
+}
+
+std::uint64_t twentieth_root_fixed(std::uint32_t value)
+{
+    if (value == 0)
+        return 0;
+
+    std::uint64_t low = 0;
+    std::uint64_t high = 3ull * kStatCostFixedOne;
+    const FixedPoint target = static_cast<FixedPoint>(value) * kStatCostFixedOne;
+    while (low + 1 < high)
+    {
+        const std::uint64_t mid = low + (high - low) / 2;
+        if (pow_fixed(mid, 20) <= target)
+            low = mid;
+        else
+            high = mid;
+    }
+    return low;
+}
+
+std::int32_t raise_stat_cost_curve(std::int32_t value)
+{
+    if (value <= 0)
+        return 0;
+
+    // Legacy cost curve is value^1.85. Compute it with deterministic
+    // fixed-point math so life-gem values no longer depend on libm exponentiation.
+    const std::uint64_t root = twentieth_root_fixed(static_cast<std::uint32_t>(value));
+    const FixedPoint raised = pow_fixed(root, 37) >> kStatCostFixedShift;
+    return static_cast<std::int32_t>(std::min<FixedPoint>(
+        raised,
+        static_cast<FixedPoint>(std::numeric_limits<std::int32_t>::max())));
+}
+
 int next_guy_id()
 {
     if (current_game != nullptr && current_game->world != nullptr)
@@ -159,27 +209,27 @@ std::int32_t guy::query_heart_value() // how much are we worth?
 	// Get strength cost ..
 	temp = strength - normal.strength;
 	temp = MAX(temp,0);
-	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[0]));
+	cost += raise_stat_cost_curve(temp) * static_cast<std::int32_t>(fd->stat_costs[0]);
 
 	// Get dexterity cost ..
 	temp = dexterity - normal.dexterity;
 	temp = MAX(temp,0);
-	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[1]));
+	cost += raise_stat_cost_curve(temp) * static_cast<std::int32_t>(fd->stat_costs[1]);
 
 	// Get constitution cost ..
 	temp = constitution - normal.constitution;
 	temp = MAX(temp,0);
-	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[2]));
+	cost += raise_stat_cost_curve(temp) * static_cast<std::int32_t>(fd->stat_costs[2]);
 
 	// Get intelligence cost ..
 	temp = intelligence - normal.intelligence;
 	temp = MAX(temp,0);
-	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[3]));
+	cost += raise_stat_cost_curve(temp) * static_cast<std::int32_t>(fd->stat_costs[3]);
 
 	// Get armor cost ..
 	temp = armor - normal.armor;
 	temp = MAX(temp,0);
-	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[4]));
+	cost += raise_stat_cost_curve(temp) * static_cast<std::int32_t>(fd->stat_costs[4]);
 
 	// Add in the base cost value for the guy ..
 	cost += fd->hiring_cost;
