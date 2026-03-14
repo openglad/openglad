@@ -140,12 +140,28 @@ std::uint64_t twentieth_root_fixed(std::uint32_t value)
     return low;
 }
 
-std::uint64_t fixed_to_uint64(const UInt128& value)
+std::uint64_t multiply_u64_shift_48(std::uint64_t lhs, std::uint64_t rhs)
 {
-    if (value.hi > (std::numeric_limits<std::uint64_t>::max() >> 16))
-        return std::numeric_limits<std::uint64_t>::max();
+    const auto lhs_limbs = to_u16_limbs(lhs);
+    const auto rhs_limbs = to_u16_limbs(rhs);
 
-    return (value.hi << 16) | (value.lo >> kStatCostFixedShift);
+    std::array<std::uint64_t, 9> product{};
+    for (std::size_t i = 0; i < lhs_limbs.size(); ++i)
+    {
+        for (std::size_t j = 0; j < rhs_limbs.size(); ++j)
+            product[i + j] += static_cast<std::uint64_t>(lhs_limbs[i]) * rhs_limbs[j];
+    }
+
+    for (std::size_t i = 0; i + 1 < product.size(); ++i)
+    {
+        product[i + 1] += product[i] >> 16;
+        product[i] &= kUInt16Mask;
+    }
+
+    return (static_cast<std::uint64_t>(product[3]))
+        | (static_cast<std::uint64_t>(product[4]) << 16)
+        | (static_cast<std::uint64_t>(product[5]) << 32)
+        | (static_cast<std::uint64_t>(product[6]) << 48);
 }
 
 UInt128 raise_stat_cost_curve(std::int32_t value)
@@ -164,11 +180,12 @@ std::int32_t stat_cost_curve_contribution(std::int32_t value, std::int32_t stat_
     if (value <= 0 || stat_cost <= 0)
         return 0;
 
-    const UInt128 scaled_cost = multiply_fixed(
-        raise_stat_cost_curve(value),
-        static_cast<std::uint64_t>(stat_cost) * kStatCostFixedOne);
+    const UInt128 curve = raise_stat_cost_curve(value);
+    const std::uint64_t cost = static_cast<std::uint64_t>(stat_cost);
+    const std::uint64_t contribution =
+        (curve.hi * cost << 16) + multiply_u64_shift_48(curve.lo, cost);
     return static_cast<std::int32_t>(std::min<std::uint64_t>(
-        fixed_to_uint64(scaled_cost),
+        contribution,
         static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max())));
 }
 
