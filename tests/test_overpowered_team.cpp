@@ -24,6 +24,12 @@ extern int g_picker_max_mainmenu_calls;
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
+namespace {
+constexpr Uint32 kUiSettleMs = 150;
+constexpr Uint32 kMenuTransitionMs = 250;
+constexpr Uint32 kCycleStepMs = 100;
+}
+
 
 #ifdef TESTING
 extern bool g_test_remove_exits;
@@ -75,21 +81,21 @@ static int op_injector(void* data)
 
     // -- Main Menu --
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
 
     // Dismiss campaign intro screen (blocks until Escape)
-    SDL_Delay(1000);
+    SDL_Delay(kMenuTransitionMs);
     fprintf(stderr, "  [test] dismissing campaign intro\n");
     inject_key_press(SDLK_ESCAPE);
 
     // popup_dialog("HIRE TROOPS") returns immediately under TESTING,
     // so the hire menu opens right away.
-    SDL_Delay(500);
+    SDL_Delay(kUiSettleMs);
     wait_for_interactable("hire_me", 10000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
 
     // -- Hire Menu: hire one of each type --
     // The hire menu starts showing allowable_guys[0] (SOLDIER).
@@ -98,11 +104,11 @@ static int op_injector(void* data)
     fprintf(stderr, "  [test] hiring characters through UI...\n");
     for (int i = 0; i < NUM_HIRE_TYPES; i++) {
         interact("hire_me");
-        SDL_Delay(200);
+        SDL_Delay(kCycleStepMs);
 
         if (i < NUM_HIRE_TYPES - 1) {
             interact("next");
-            SDL_Delay(200);
+            SDL_Delay(kCycleStepMs);
         }
     }
 
@@ -110,9 +116,9 @@ static int op_injector(void* data)
     interact("back");
 
     // -- Team Menu: cheat stats then GO --
-    SDL_Delay(500);
+    SDL_Delay(kUiSettleMs);
     wait_for_interactable("go", 10000);
-    SDL_Delay(500);
+    SDL_Delay(kUiSettleMs);
 
     // Programmatically crank every stat to ludicrous levels
     state->num_hired = og::runtime::current_session->myscreen_->save_data.team_size;
@@ -170,7 +176,7 @@ static int op_injector(void* data)
 
     // Now we're truly back in create_team_menu with fresh buttons
     wait_for_interactable("back", 10000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
 
     // Restore state
     set_game_speed(state->original_speed);
@@ -216,4 +222,3 @@ TEST(OverpoweredTeam, overpowered_team) {
     fprintf(stderr, "  [test] Team of %d won level 1 via UI hire flow\n",
             state.num_hired);
 }
-

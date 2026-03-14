@@ -20,6 +20,11 @@ extern int g_picker_max_mainmenu_calls;
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
+namespace {
+constexpr Uint32 kUiSettleMs = 150;
+constexpr Uint32 kTraceSettleMs = 100;
+}
+
 
 static void cleanup_picker_state()
 {
@@ -57,14 +62,14 @@ static int go_no_team_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
 
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
-    SDL_Delay(500);
+    SDL_Delay(kUiSettleMs);
     wait_for_interactable("go", 10000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
 
     // Click GO with no team
     fprintf(stderr, "  [test] clicking go (with empty team)\n");
@@ -72,12 +77,12 @@ static int go_no_team_injector(void* data)
 
     // popup_dialog returns immediately under TESTING, so just wait a moment
     // for the trace to be written, then verify it was called
-    SDL_Delay(500);
+    SDL_Delay(kTraceSettleMs);
     state->saw_popup = trace_contains("popup", "NEED A TEAM");
 
     // Should be back in team menu (popup already dismissed)
     wait_for_interactable("back", 10000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
     fprintf(stderr, "  [test] clicking back from team menu\n");
     interact("back");
 
@@ -134,14 +139,14 @@ static int train_no_team_injector(void* data)
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
 
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
-    SDL_Delay(500);
+    SDL_Delay(kUiSettleMs);
     wait_for_interactable("train_team", 10000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
 
     // Click TRAIN with no team
     fprintf(stderr, "  [test] clicking train_team (with empty team)\n");
@@ -149,12 +154,12 @@ static int train_no_team_injector(void* data)
 
     // popup_dialog returns immediately under TESTING, so just wait a moment
     // for the trace to be written, then verify it was called
-    SDL_Delay(500);
+    SDL_Delay(kTraceSettleMs);
     state->saw_popup = trace_contains("popup", "NEED A TEAM");
 
     // Should be back in team menu (popup already dismissed)
     wait_for_interactable("back", 10000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
     fprintf(stderr, "  [test] clicking back from team menu\n");
     interact("back");
 
@@ -190,4 +195,3 @@ TEST(GoNoTeam, train_without_team) {
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_popup) << "should have seen 'NEED A TEAM!' popup";
 }
-

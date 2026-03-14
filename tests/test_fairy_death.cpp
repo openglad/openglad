@@ -29,6 +29,12 @@ extern std::atomic<int> g_test_game_epoch;
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
+namespace {
+constexpr Uint32 kUiSettleMs = 150;
+constexpr Uint32 kMenuTransitionMs = 250;
+constexpr Uint32 kCycleStepMs = 100;
+}
+
 // Picker globals that can leak across integration tests and affect menu start state
 
 // FAERIE is at index 12 in allowable_guys[]
@@ -85,40 +91,40 @@ static int fairy_injector(void* data)
 
     // -- Main Menu --
     wait_for_interactable("begin_new_game", 5000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
 
     fprintf(stderr, "  [test] clicking begin_new_game\n");
     interact("begin_new_game");
 
     // Dismiss campaign intro screen (blocks until Escape)
-    SDL_Delay(1000);
+    SDL_Delay(kMenuTransitionMs);
     fprintf(stderr, "  [test] dismissing campaign intro\n");
     inject_key_press(SDLK_ESCAPE);
 
     // popup_dialog("HIRE TROOPS") returns immediately under TESTING
-    SDL_Delay(500);
+    SDL_Delay(kUiSettleMs);
     wait_for_interactable("hire_me", 10000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
 
     // -- Hire Menu: cycle to FAERIE and hire --
     // Starts at allowable_guys[0] (SOLDIER). Click NEXT 12 times for FAERIE.
     fprintf(stderr, "  [test] cycling to fairy (NEXT x%d)\n", FAERIE_INDEX);
     for (int i = 0; i < FAERIE_INDEX; i++) {
         interact("next");
-        SDL_Delay(200);
+        SDL_Delay(kCycleStepMs);
     }
 
     fprintf(stderr, "  [test] hiring fairy\n");
     interact("hire_me");
-    SDL_Delay(300);
+    SDL_Delay(kCycleStepMs);
 
     fprintf(stderr, "  [test] clicking back from hire menu\n");
     interact("back");
 
     // -- Team Menu: GO at max speed --
-    SDL_Delay(500);
+    SDL_Delay(kUiSettleMs);
     wait_for_interactable("go", 10000);
-    SDL_Delay(500);
+    SDL_Delay(kUiSettleMs);
 
     og::runtime::current_session->myscreen_->save_data.scen_num = 4;
     set_game_speed(0.0f);
@@ -162,7 +168,7 @@ static int fairy_injector(void* data)
 
     // Now we're truly back in create_team_menu with fresh buttons
     wait_for_interactable("back", 10000);
-    SDL_Delay(750);
+    SDL_Delay(kUiSettleMs);
 
     // Exit team menu -> main menu -> picker exits
     fprintf(stderr, "  [test] clicking back from team menu\n");
@@ -212,4 +218,3 @@ TEST(FairyDeath, fairy_death) {
 
     fprintf(stderr, "  [test] Fairy died as expected via UI hire flow\n");
 }
-
