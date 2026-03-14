@@ -20,6 +20,7 @@
 #pragma once
 
 #include <cstdint>
+#include <openglad/core/irandom.h>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/core/terrain_types.h>
 
@@ -30,6 +31,7 @@ class smoother
 		smoother();
 
         void reset();
+        void set_rng(IRandom* rng);
 		void set_target(const PixieData& data);     // set our target grid to smooth ..
 		std::int32_t smooth();                        // smooths entire target grid
 		std::int32_t smooth(std::int32_t x, std::int32_t y);          // smooth at x, y; returns changed or not
@@ -37,9 +39,11 @@ class smoother
 		std::int32_t query_genre_x_y(std::int32_t x, std::int32_t y); // returns target genre, ie TYPE_GRASS
 
     protected:
+        std::uint32_t next_random(std::uint32_t max_exclusive) const;
 		std::int32_t surrounds(std::int32_t x, std::int32_t y, std::int32_t whatgenre); // returns 0-15 of 4 surroundings
 		void set_x_y(std::int32_t x, std::int32_t y, std::int32_t whatvalue);  // sets grid location to whatvalue
 
 		unsigned char  *mygrid; // our grid to change
 		std::int32_t maxx, maxy;   // dimensions of our grid ..
+        IRandom* rng_;
 };

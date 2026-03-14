@@ -77,6 +77,7 @@ std::int32_t g_test_level_tick_limit_override = 0;
 GameWorld::GameWorld(std::uint32_t seed)
     : rng_(seed)
 {
+    mysmoother.set_rng(&rng_);
 }
 
 GameWorld::~GameWorld()

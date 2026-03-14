@@ -26,17 +26,6 @@
 using Uint32 = std::uint32_t;
 using Sint32 = std::int32_t;
 
-static inline Uint32 rng(Uint32 max_exclusive) {
-    if (max_exclusive == 0)
-        return 0;
-    if (IRandom* override_rng = gameplay_rng_override())
-        return override_rng->next(max_exclusive);
-    // smooth() runs under the session-installed gameplay context; tests can
-    // still override the RNG via gameplay_rng_override().
-    assert(current_game != nullptr && current_game->world != nullptr);
-    return current_game->world->rng_.next(max_exclusive);
-}
-
 // Lookup table: PIX_* value → terrain genre TYPE_*
 static constexpr auto make_pix_to_genre() {
 	std::array<Sint32, PIX_MAX> table{};
@@ -233,7 +222,7 @@ static constexpr Sint32 dirt_dark_by_surround[] = {
 };
 
 smoother::smoother()
-    : mygrid(nullptr), maxx(0), maxy(0)
+    : mygrid(nullptr), maxx(0), maxy(0), rng_(nullptr)
 {}
 
 void smoother::reset()
@@ -243,11 +232,26 @@ void smoother::reset()
     maxy = 0;
 }
 
+void smoother::set_rng(IRandom* rng)
+{
+    rng_ = rng;
+}
+
 void smoother::set_target(const PixieData& data)
 {
 	mygrid = data.data.get();
 	maxx = data.w;
 	maxy = data.h;
+}
+
+Uint32 smoother::next_random(Uint32 max_exclusive) const
+{
+    if (max_exclusive == 0)
+        return 0;
+    if (IRandom* override_rng = gameplay_rng_override())
+        return override_rng->next(max_exclusive);
+    assert(rng_ != nullptr);
+    return rng_->next(max_exclusive);
 }
 
 Sint32 smoother::query_x_y(Sint32 x, Sint32 y)
@@ -329,18 +333,18 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			         downleft == TYPE_WATER && right == TYPE_WATER && down == TYPE_WATER)
 				newvalue = PIX_GRASSWATER_LR;
 			else
-				newvalue = grass_variants[rng(4)];
+				newvalue = grass_variants[next_random(4)];
 			break;
 		case TYPE_GRASS_DARK:  // Shadowed grass
 			if (around == TO_AROUND ) // all around
 			{
-				newvalue = grass_dark_variants[rng(4)];
+				newvalue = grass_dark_variants[next_random(4)];
 			}
 			else if ( (left == TYPE_TREES || left == TYPE_WALL)
 			          && (down == TYPE_TREES || down == TYPE_WALL)
 			          && (upright != TYPE_TREES && upright != TYPE_WALL) ) // act as right edge
 			{
-				newvalue = grass_dark_right[rng(2)];
+				newvalue = grass_dark_right[next_random(2)];
 				break;
 			}
 			else if (   (upleft == TYPE_TREES || upleft == TYPE_WALL)
@@ -353,12 +357,12 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 					case TYPE_TREES:
 					case TYPE_DIRT:
 					case TYPE_COBBLE:
-						newvalue = grass_dark_bottom[rng(2)];
-						if (!rng(20)) // then place a bit o' rubble
+						newvalue = grass_dark_bottom[next_random(2)];
+						if (!next_random(20)) // then place a bit o' rubble
 							newvalue = PIX_GRASS_RUBBLE;
 						break;
 					default:
-						newvalue = grass_dark_variants[rng(4)];
+						newvalue = grass_dark_variants[next_random(4)];
 						break;
 				} // end case-check of what's below us
 			}  // end of first bottom-middle case
@@ -369,7 +373,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			{} // do nothing
 			else if (around == (TO_UP | TO_DOWN | TO_LEFT)) // right middle
 			{
-				newvalue = grass_dark_right[rng(2)];
+				newvalue = grass_dark_right[next_random(2)];
 			}
 			else if (around == (TO_LEFT | TO_DOWN)) // top right
 			{
@@ -380,14 +384,14 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			}
 			else if (around == (TO_LEFT | TO_RIGHT | TO_UP)) // bottom middle
 			{
-				newvalue = grass_dark_bottom[rng(2)];
-				if (!rng(20)) // then place a bit o' rubble
+				newvalue = grass_dark_bottom[next_random(2)];
+				if (!next_random(20)) // then place a bit o' rubble
 					newvalue = PIX_GRASS_RUBBLE;
 			}
 			else if (around == (TO_LEFT | TO_RIGHT)) // middle, thin
 			{
-				newvalue = grass_dark_bottom[rng(2)];
-				if (!rng(20)) // then place a bit o' rubble
+				newvalue = grass_dark_bottom[next_random(2)];
+				if (!next_random(20)) // then place a bit o' rubble
 					newvalue = PIX_GRASS_RUBBLE;
 			}
 			else if (around == (TO_LEFT | TO_UP)) // bottom right
@@ -402,11 +406,11 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			else if ( (around == (TO_DOWN | TO_RIGHT | TO_UP) ) || // left middle
 			          (around == (TO_DOWN | TO_RIGHT) ) ) // top left
 			{
-				newvalue = grass_dark_variants[rng(4)];
+				newvalue = grass_dark_variants[next_random(4)];
 			}
 			else if (around == (TO_DOWN | TO_UP)) // center vertical
 			{
-				newvalue = grass_dark_right[rng(2)];
+				newvalue = grass_dark_right[next_random(2)];
 			}
 			else if (around == TO_DOWN) // top, alone
 			{
@@ -493,7 +497,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						newvalue = PIX_WALLSIDE_R;
 						break;
 					case 11: // we're the middle base of a wall
-						if (rng(10) == 0)
+						if (next_random(10) == 0)
 							newvalue = PIX_WALLSIDE_CRACK_C1;
 						else
 							newvalue = PIX_WALLSIDE1;
@@ -537,7 +541,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			        ||(around == (TO_UP | TO_DOWN | TO_LEFT))
 			        ||(around == (TO_UP | TO_DOWN | TO_RIGHT))
 			   )
-				newvalue = water_variants[rng(3)];
+				newvalue = water_variants[next_random(3)];
 			else if (around == (TO_UP | TO_RIGHT) )
 				newvalue = PIX_WATERGRASS_LL;
 			else if (around == (TO_UP | TO_LEFT) )
@@ -547,13 +551,13 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			else if (around == (TO_DOWN | TO_LEFT) )
 				newvalue = PIX_WATERGRASS_UR;
 			else if (around == (TO_UP) )
-				newvalue = watergrass_up[rng(2)];
+				newvalue = watergrass_up[next_random(2)];
 			else if (around == (TO_DOWN) )
-				newvalue = watergrass_down[rng(2)];
+				newvalue = watergrass_down[next_random(2)];
 			else if (around == (TO_LEFT) )
-				newvalue = watergrass_left[rng(2)];
+				newvalue = watergrass_left[next_random(2)];
 			else if (around == (TO_RIGHT) )
-				newvalue = watergrass_right[rng(2)];
+				newvalue = watergrass_right[next_random(2)];
 			else  // Water default:
 				newvalue = query_x_y(x, y);
 			break;
@@ -606,7 +610,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			newvalue = dirt_dark_by_surround[around];
 			break; // end of dark dirt cases
 		case TYPE_COBBLE: // cobblestone
-			newvalue = cobble_variants[rng(4)];
+			newvalue = cobble_variants[next_random(4)];
 			break;
 		case TYPE_UNKNOWN:  // don't change these ..
 		default:
