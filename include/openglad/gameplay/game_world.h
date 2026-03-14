@@ -15,6 +15,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/smooth.h>
@@ -231,6 +232,7 @@ private:
     std::function<void()> detach_callback_;
     std::uint32_t next_entity_id_ = 1;
     bool entity_tracking_dirty_ = false;
+    std::vector<std::uint32_t> removed_entity_ids_;
     // Main-thread only. Future networking I/O must queue work onto the game loop
     // thread before reading or mutating GameWorld state. The cache is derived
     // from the active entity lists and repaired internally by GameWorld.

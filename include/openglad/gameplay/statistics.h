@@ -62,6 +62,7 @@ class statistics
 	public:
 		statistics(walker  *);
 		~statistics();
+		void set_controller(walker* value);
 		short  try_command(std::int32_t whatcommand, std::int32_t iterations, std::int32_t info1, std::int32_t info2);
 		short  try_command(std::int32_t whatcommand, std::int32_t iterations);
 		void set_command(std::int32_t whatcommand, std::int32_t iterations);
@@ -111,7 +112,11 @@ class statistics
 		unsigned short special_cost[NUM_SPECIALS];  // cost of our special ability
 		short weapon_cost;                          // cost of our weapon
 		walker  * controller;
+		std::uint32_t controller_id = 0;
 		std::list<command> commands;
+
+	private:
+		walker* owner_ = nullptr;
 };
 
 class command

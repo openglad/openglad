@@ -151,6 +151,42 @@ TEST(LevelDataUnit, level_data_remove_and_remaining_foes_paths)
     ASSERT_TRUE(fx.level.world().fxlist.empty());
     ASSERT_TRUE(fx.level.world().weaplist.empty());
 }
+
+TEST(LevelDataUnit, level_data_tick_clears_fx_cross_references_and_controller_ids)
+{
+    LevelFixture fx;
+    GameWorld& world = fx.level.world();
+    world.my_team = 0;
+
+    walker* live_enemy = add_to_list(fx, world.oblist, Order::Living, FAMILY_ORC, 1, 160, 160);
+    walker* dead_target = add_to_list(fx, world.oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
+    walker* fx_holder = add_to_list(fx, world.fxlist, Order::FX, FAMILY_FLASH, 0, 64, 64);
+    ASSERT_TRUE(live_enemy && dead_target && fx_holder);
+    if (!(live_enemy && dead_target && fx_holder))
+        return;
+
+    fx_holder->set_foe(dead_target);
+    fx_holder->set_leader(dead_target);
+    fx_holder->set_owner(dead_target);
+    fx_holder->set_collide_ob(dead_target);
+    fx_holder->stats()->set_controller(dead_target);
+
+    dead_target->dead = 1;
+    dead_target->myguy = nullptr;
+
+    world.tick();
+
+    EXPECT_EQ(nullptr, fx_holder->foe);
+    EXPECT_EQ(0u, fx_holder->foe_id);
+    EXPECT_EQ(nullptr, fx_holder->leader);
+    EXPECT_EQ(0u, fx_holder->leader_id);
+    EXPECT_EQ(nullptr, fx_holder->owner);
+    EXPECT_EQ(0u, fx_holder->owner_id);
+    EXPECT_EQ(nullptr, fx_holder->collide_ob);
+    EXPECT_EQ(0u, fx_holder->collide_ob_id);
+    EXPECT_EQ(nullptr, fx_holder->stats()->controller);
+    EXPECT_EQ(0u, fx_holder->stats()->controller_id);
+}
 } // namespace detail_level_data_coverage_push
 
 // --- From test_level_data_r11.cpp ---

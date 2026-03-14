@@ -57,6 +57,20 @@ public:
     char  family = 0;
 
     [[nodiscard]] std::uint32_t entity_id() const noexcept { return entity_id_; }
+    void mark_dirty(std::uint8_t bit) noexcept
+    {
+        dirty_mask_[bit / 64] |= (1ULL << (bit % 64));
+    }
+    void mark_all_dirty() noexcept
+    {
+        dirty_mask_[0] = ~0ULL;
+        dirty_mask_[1] = ~0ULL;
+    }
+    void clear_dirty() noexcept
+    {
+        dirty_mask_[0] = 0;
+        dirty_mask_[1] = 0;
+    }
 
     // Animation frame state (sim-relevant; actual pixel data is in render component)
     short frame = 0;
@@ -69,6 +83,7 @@ protected:
     std::uint32_t entity_id_ = 0;
     short frames = 0;
     GameWorld* owning_world_ = nullptr;
+    std::uint64_t dirty_mask_[2] = {};
 
     friend class ::GameWorld;
 };

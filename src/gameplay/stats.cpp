@@ -20,6 +20,7 @@
 
 #include <openglad/gameplay/statistics.h>      // for bit flags, etc.
 #include <openglad/core/util.h>
+#include <openglad/gameplay/dirty_field_bits.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -50,10 +51,16 @@ statistics::statistics(walker  * someguy)
 	short i;
 
 	if (someguy)
+	{
 		controller = someguy;
+		owner_ = someguy;
+		controller_id = someguy->entity_id();
+	}
 	else
 	{
 		controller = nullptr;
+		owner_ = nullptr;
+		controller_id = 0;
 		Log("made a stats with no controller!\n");
 	}
 	hitpoints = max_hitpoints = 10;
@@ -93,7 +100,24 @@ statistics::statistics(walker  * someguy)
 statistics::~statistics()
 {
 	controller = nullptr;
+	controller_id = 0;
+	owner_ = nullptr;
 	delete_me = 1;
+}
+
+void statistics::set_controller(walker* value)
+{
+	walker* dirty_owner = owner_;
+	if (dirty_owner == nullptr)
+		dirty_owner = controller ? controller : value;
+
+	controller = value;
+	controller_id = (value != nullptr) ? value->entity_id() : 0;
+
+	if (owner_ == nullptr)
+		owner_ = dirty_owner;
+	if (dirty_owner != nullptr)
+		dirty_owner->mark_dirty(og::dirty::BIT_CONTROLLER_ID);
 }
 
 void statistics::clear_command()

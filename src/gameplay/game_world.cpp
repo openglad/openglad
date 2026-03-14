@@ -257,7 +257,10 @@ void GameWorld::EntityList::prepare_insert(walker* entity)
         return;
 
     if (participates_in_id_index_)
+    {
         owner_->assign_entity_id(*entity);
+        entity->mark_all_dirty();
+    }
     entity->owning_world_ = owner_;
 }
 
@@ -333,9 +336,15 @@ void GameWorld::remove_from_id_index(const walker* entity)
     if (entity == nullptr || entity->entity_id_ == 0)
         return;
 
+    if (entity_tracking_dirty_)
+        rebuild_id_index();
+
     const auto it = id_index_.find(entity->entity_id_);
     if (it != id_index_.end() && it->second == entity)
+    {
+        removed_entity_ids_.push_back(entity->entity_id_);
         id_index_.erase(it);
+    }
 }
 
 void GameWorld::invalidate_entity_tracking()
@@ -433,6 +442,7 @@ walker* GameWorld::add_to_list(Order order, std::int32_t family,
     auto& entries = target_list.raw_mutable();
     walker* raw = w.get();
     assign_entity_id(*raw);
+    raw->mark_all_dirty();
     if (atstart)
         entries.push_front(std::move(w));
     else
@@ -1101,6 +1111,7 @@ void GameWorld::delete_objects()
     fxlist.raw_mutable().clear();
     weaplist.raw_mutable().clear();
     dead_list.raw_mutable().clear();
+    removed_entity_ids_.clear();
     id_index_.clear();
     entity_tracking_dirty_ = false;
     next_entity_id_ = 1;
@@ -1326,31 +1337,31 @@ void GameWorld::tick()
     }
 
     // --- Cleanup stale pointers ---
-    for (auto& uptr : oblist)
-    {
-        walker* ob = uptr.get();
+    auto clear_stale_cross_refs = [](walker* ob) {
+        if (ob == nullptr)
+            return;
+
         if (ob->foe && ob->foe->dead)
-            ob->foe = nullptr;
+            ob->set_foe(nullptr);
         if (ob->leader && ob->leader->dead)
-            ob->leader = nullptr;
+            ob->set_leader(nullptr);
         if (ob->owner && ob->owner->dead)
-            ob->owner = nullptr;
+            ob->set_owner(nullptr);
         if (ob->collide_ob && ob->collide_ob->dead)
-            ob->collide_ob = nullptr;
-    }
+            ob->set_collide_ob(nullptr);
+        if (statistics* stats = ob->stats();
+            stats != nullptr && stats->controller && stats->controller->dead)
+            stats->set_controller(nullptr);
+    };
+
+    for (auto& uptr : oblist)
+        clear_stale_cross_refs(uptr.get());
+
+    for (auto& uptr : fxlist)
+        clear_stale_cross_refs(uptr.get());
 
     for (auto& uptr : weaplist)
-    {
-        walker* ob = uptr.get();
-        if (ob->foe && ob->foe->dead)
-            ob->foe = nullptr;
-        if (ob->leader && ob->leader->dead)
-            ob->leader = nullptr;
-        if (ob->owner && ob->owner->dead)
-            ob->owner = nullptr;
-        if (ob->collide_ob && ob->collide_ob->dead)
-            ob->collide_ob = nullptr;
-    }
+        clear_stale_cross_refs(uptr.get());
 
     // --- Remove dead entities ---
     // Note: viewscreen control pointer cleanup is handled by the caller

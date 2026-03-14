@@ -22,6 +22,7 @@
 
 #include <cstdint>
 #include <openglad/core/combat_math.h>
+#include <openglad/gameplay/dirty_field_bits.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -122,13 +123,17 @@ void walker_init_common(walker* w, IRandom& rng)
 	w->lastx = 0;
 	w->lasty = 0;
 	w->collide_ob = nullptr;
+	w->collide_ob_id = 0;
 	w->cycle = 0;
 	w->ani = nullptr;
 	w->ani_type = 0;
 	w->busy = 0;
 	w->foe = nullptr;
+	w->foe_id = 0;
 	w->leader = nullptr;
+	w->leader_id = 0;
 	w->owner = nullptr;
+	w->owner_id = 0;
 	w->myguy = nullptr;
 	w->shifter_down = 0;
 	w->view_all = 0;
@@ -216,6 +221,47 @@ void walker::move_myguy_to(walker* target)
 		target->set_myguy_view(myguy);
 
 	myguy = nullptr;
+}
+
+void walker::set_foe(walker* target)
+{
+	foe = target;
+	foe_id = (target != nullptr) ? target->entity_id() : 0;
+	mark_dirty(og::dirty::BIT_FOE_ID);
+}
+
+void walker::set_leader(walker* target)
+{
+	leader = target;
+	leader_id = (target != nullptr) ? target->entity_id() : 0;
+	mark_dirty(og::dirty::BIT_LEADER_ID);
+}
+
+void walker::set_owner(walker* target)
+{
+	owner = target;
+	owner_id = (target != nullptr) ? target->entity_id() : 0;
+	mark_dirty(og::dirty::BIT_OWNER_ID);
+}
+
+void walker::set_collide_ob(walker* target)
+{
+	collide_ob = target;
+	collide_ob_id = (target != nullptr) ? target->entity_id() : 0;
+	mark_dirty(og::dirty::BIT_COLLIDE_OB_ID);
+}
+
+void walker::sync_ids_from_pointers()
+{
+	foe_id = (foe != nullptr) ? foe->entity_id() : 0;
+	leader_id = (leader != nullptr) ? leader->entity_id() : 0;
+	owner_id = (owner != nullptr) ? owner->entity_id() : 0;
+	collide_ob_id = (collide_ob != nullptr) ? collide_ob->entity_id() : 0;
+
+	if (stats_ != nullptr)
+		stats_->controller_id = (stats_->controller != nullptr)
+		    ? stats_->controller->entity_id()
+		    : 0;
 }
 
 bool

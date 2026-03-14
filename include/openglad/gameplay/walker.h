@@ -71,6 +71,11 @@ class walker : public og::sim::SimEntity
 		void set_owned_myguy(std::unique_ptr<guy> owned_guy);
 		void clear_myguy();
 		void move_myguy_to(walker* target);
+		void set_foe(walker* target);
+		void set_leader(walker* target);
+		void set_owner(walker* target);
+		void set_collide_ob(walker* target);
+		void sync_ids_from_pointers();
 		bool reset(void);
 			short move(short x, short y);
 			void worldmove(float x, float y);
@@ -165,8 +170,11 @@ class walker : public og::sim::SimEntity
 		short skip_exit;               // cycles after failed exit choice
 		guy  *myguy;                   // Non-owning view of character data; ownership, when present, lives in owned_myguy_
 		walker *foe;
+		std::uint32_t foe_id = 0;
 		walker *leader;
+		std::uint32_t leader_id = 0;
 		walker *owner;                 // for weapons
+		std::uint32_t owner_id = 0;
 		std::uint32_t keys;                   // used to open doors
 		short view_all;                // used for seeing treasures, etc. on radar
 		short weapons_left;            // for fighter's blades
@@ -186,6 +194,7 @@ class walker : public og::sim::SimEntity
 			float speed_bonus;             // Additional stepsize while speed potions are active
 			std::int32_t speed_bonus_left;        // Cycles remaining for speed bonus
 		walker* collide_ob;
+		std::uint32_t collide_ob_id = 0;
 		unsigned short default_weapon;
 		signed char curdir;            // Current direction facing
 		const signed char * const * ani;

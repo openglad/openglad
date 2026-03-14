@@ -150,3 +150,81 @@ TEST_F(GameWorldEntityIdsFixture, direct_public_splice_between_worlds_rebuilds_l
     EXPECT_EQ(nullptr, world.find_by_id(living_id));
     EXPECT_EQ(living, next_world.find_by_id(living_id));
 }
+
+TEST_F(GameWorldEntityIdsFixture, cross_reference_setters_keep_pointer_and_id_fields_in_sync)
+{
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* leader = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* owner = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* collide = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* controller = world.add_ob(Order::Living, FAMILY_ORC);
+
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(nullptr, foe);
+    ASSERT_NE(nullptr, leader);
+    ASSERT_NE(nullptr, owner);
+    ASSERT_NE(nullptr, collide);
+    ASSERT_NE(nullptr, controller);
+
+    actor->set_foe(foe);
+    actor->set_leader(leader);
+    actor->set_owner(owner);
+    actor->set_collide_ob(collide);
+    actor->stats()->set_controller(controller);
+
+    EXPECT_EQ(foe, actor->foe);
+    EXPECT_EQ(foe->entity_id(), actor->foe_id);
+    EXPECT_EQ(leader, actor->leader);
+    EXPECT_EQ(leader->entity_id(), actor->leader_id);
+    EXPECT_EQ(owner, actor->owner);
+    EXPECT_EQ(owner->entity_id(), actor->owner_id);
+    EXPECT_EQ(collide, actor->collide_ob);
+    EXPECT_EQ(collide->entity_id(), actor->collide_ob_id);
+    EXPECT_EQ(controller, actor->stats()->controller);
+    EXPECT_EQ(controller->entity_id(), actor->stats()->controller_id);
+
+    actor->set_foe(nullptr);
+    actor->stats()->set_controller(nullptr);
+
+    EXPECT_EQ(nullptr, actor->foe);
+    EXPECT_EQ(0u, actor->foe_id);
+    EXPECT_EQ(nullptr, actor->stats()->controller);
+    EXPECT_EQ(0u, actor->stats()->controller_id);
+}
+
+TEST_F(GameWorldEntityIdsFixture, sync_ids_from_pointers_populates_parallel_id_fields)
+{
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* leader = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* owner = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* collide = world.add_ob(Order::Living, FAMILY_ORC);
+    walker* controller = world.add_ob(Order::Living, FAMILY_ORC);
+
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(nullptr, foe);
+    ASSERT_NE(nullptr, leader);
+    ASSERT_NE(nullptr, owner);
+    ASSERT_NE(nullptr, collide);
+    ASSERT_NE(nullptr, controller);
+
+    actor->foe = foe;
+    actor->leader = leader;
+    actor->owner = owner;
+    actor->collide_ob = collide;
+    actor->foe_id = 0;
+    actor->leader_id = 0;
+    actor->owner_id = 0;
+    actor->collide_ob_id = 0;
+    actor->stats()->controller = controller;
+    actor->stats()->controller_id = 0;
+
+    actor->sync_ids_from_pointers();
+
+    EXPECT_EQ(foe->entity_id(), actor->foe_id);
+    EXPECT_EQ(leader->entity_id(), actor->leader_id);
+    EXPECT_EQ(owner->entity_id(), actor->owner_id);
+    EXPECT_EQ(collide->entity_id(), actor->collide_ob_id);
+    EXPECT_EQ(controller->entity_id(), actor->stats()->controller_id);
+}
