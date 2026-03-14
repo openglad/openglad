@@ -7,12 +7,43 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_file_io.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_saved_game(const char *filename, screen *scr);
 
 namespace {
+
+class ScopedGameplayRngOverride
+{
+public:
+    explicit ScopedGameplayRngOverride(IRandom* next)
+        : next_(next)
+        , previous_(gameplay_rng_override())
+        , restore_(previous_)
+    {
+        set_gameplay_rng_override(&next_);
+    }
+
+    ~ScopedGameplayRngOverride()
+    {
+        if (previous_ != nullptr)
+            set_gameplay_rng_override(&restore_);
+        else
+            set_gameplay_rng_override(nullptr);
+    }
+
+    ScopedGameplayRngOverride(const ScopedGameplayRngOverride&) = delete;
+    ScopedGameplayRngOverride& operator=(const ScopedGameplayRngOverride&) = delete;
+
+private:
+    IRandom* next_ = nullptr;
+    IRandom* previous_ = nullptr;
+    IRandom* restore_ = nullptr;
+};
 
 bool prepare_default_level_load()
 {
@@ -96,6 +127,37 @@ TEST(LoadLevels, level_fallback) {
     ASSERT_EQ(1, og::runtime::current_session->myscreen_->world().id) << "nonexistent level should fall back to level 1";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
+}
+
+TEST(LoadLevels, load_advances_world_rng_state)
+{
+    ASSERT_TRUE(prepare_default_level_load()) << "default campaign should be restored and mounted before rng load test";
+
+    constexpr std::uint32_t seed = 123u;
+    LevelRuntimeData level(1, &sdl_level_data_hooks());
+    level.world().rng_.state_ = seed;
+
+    GameWorld expected_world(seed);
+    expected_world.id = 1;
+    sdl_level_data_hooks().wire_world_entity_services(&expected_world, &level);
+
+    og::data::LevelFileMetadata metadata;
+    og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
+    {
+        ScopedGameplayRngOverride rng_override(&expected_world.rng_);
+        ASSERT_TRUE(og::data::load_level("scen1.fss", expected_world, metadata, &io_error))
+            << "scratch scenario load should succeed";
+    }
+
+    const std::uint32_t expected_state = expected_world.rng_.state_;
+    ASSERT_NE(seed, expected_state) << "scenario load should consume RNG during walker construction";
+
+    ASSERT_TRUE(level.load()) << "level load should succeed";
+    ASSERT_EQ(expected_state, level.world().rng_.state_)
+        << "world RNG state after load should match the live load-time draws";
+
+    level.world().delete_objects();
+    expected_world.delete_objects();
 }
 
 

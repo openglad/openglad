@@ -169,6 +169,30 @@ private:
     bool restored_ = false;
 };
 
+class ScopedLoadWorldRngOverride
+{
+public:
+    explicit ScopedLoadWorldRngOverride(IRandom* rng)
+        : rng_(rng)
+    {
+        if (rng_ == nullptr || gameplay_rng_override() != nullptr)
+            return;
+
+        set_gameplay_rng_override(&rng_);
+        installed_ = true;
+    }
+
+    ~ScopedLoadWorldRngOverride()
+    {
+        if (installed_)
+            set_gameplay_rng_override(nullptr);
+    }
+
+private:
+    IRandom* rng_ = nullptr;
+    bool installed_ = false;
+};
+
 void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world)
 {
     if (level == nullptr)
@@ -818,6 +842,7 @@ bool LevelRuntimeData::load()
     loaded_metadata.description = description;
 
     ScopedCurrentGameWorldBinding world_binding;
+    ScopedLoadWorldRngOverride load_rng_binding(&world().rng_);
     GameWorld loaded_world(world().rng_.state_);
     loaded_world.id = world().id;
     wire_world_entity_services(&loaded_world, this, hooks_);
