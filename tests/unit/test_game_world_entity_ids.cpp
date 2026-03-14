@@ -3,6 +3,7 @@
 #include <openglad/core/order.h>
 #include <openglad/legacy/base.h>
 
+#include <algorithm>
 #include <gtest/gtest.h>
 
 namespace {
@@ -75,7 +76,39 @@ TEST_F(GameWorldEntityIdsFixture, remove_ob_erases_entities_from_id_index)
     EXPECT_EQ(nullptr, world.find_by_id(living_id));
 }
 
-TEST_F(GameWorldEntityIdsFixture, transferring_entity_tracking_preserves_lookup_and_next_id)
+TEST_F(GameWorldEntityIdsFixture, direct_public_insert_rebuilds_id_index_on_lookup)
+{
+    auto external = std::make_unique<walker>();
+    external->order = Order::Living;
+    external->family = FAMILY_SOLDIER;
+    external->sizex = 16;
+    external->sizey = 16;
+    external->entity_id_ = 500;
+    walker* raw = external.get();
+
+    world.oblist.push_back(std::move(external));
+
+    EXPECT_EQ(raw, world.find_by_id(500));
+}
+
+TEST_F(GameWorldEntityIdsFixture, direct_public_erase_cleans_id_index_via_destructor)
+{
+    walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, living);
+    const std::uint32_t living_id = living->entity_id_;
+
+    const auto it = std::find_if(world.oblist.begin(), world.oblist.end(),
+                                 [living](const auto& entry) {
+                                     return entry.get() == living;
+                                 });
+    ASSERT_NE(world.oblist.end(), it);
+
+    world.oblist.erase(it);
+
+    EXPECT_EQ(nullptr, world.find_by_id(living_id));
+}
+
+TEST_F(GameWorldEntityIdsFixture, moving_entities_between_worlds_preserves_lookup_and_next_id)
 {
     walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
     walker* fx = world.add_fx_ob(Order::FX, FAMILY_FLASH);
@@ -89,10 +122,7 @@ TEST_F(GameWorldEntityIdsFixture, transferring_entity_tracking_preserves_lookup_
 
     GameWorld next_world(456);
     next_world.entity_factory = world.entity_factory;
-    next_world.oblist.splice(next_world.oblist.end(), world.oblist);
-    next_world.fxlist.splice(next_world.fxlist.end(), world.fxlist);
-    next_world.weaplist.splice(next_world.weaplist.end(), world.weaplist);
-    next_world.transfer_entity_tracking_from(world);
+    next_world.move_entities_from(world);
 
     EXPECT_EQ(nullptr, world.find_by_id(living->entity_id_));
     EXPECT_EQ(nullptr, world.find_by_id(fx->entity_id_));
@@ -105,4 +135,18 @@ TEST_F(GameWorldEntityIdsFixture, transferring_entity_tracking_preserves_lookup_
     walker* fresh = next_world.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_NE(nullptr, fresh);
     EXPECT_GT(fresh->entity_id_, max_existing_id);
+}
+
+TEST_F(GameWorldEntityIdsFixture, direct_public_splice_between_worlds_rebuilds_lookup_state)
+{
+    walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, living);
+    const std::uint32_t living_id = living->entity_id_;
+
+    GameWorld next_world(456);
+    next_world.entity_factory = world.entity_factory;
+    next_world.oblist.splice(next_world.oblist.end(), world.oblist);
+
+    EXPECT_EQ(nullptr, world.find_by_id(living_id));
+    EXPECT_EQ(living, next_world.find_by_id(living_id));
 }

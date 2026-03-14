@@ -19,6 +19,8 @@
 #include <openglad/core/order.h>
 #include <cstdint>
 
+class GameWorld;
+
 namespace og::sim {
 class SimEntity
 {
@@ -64,6 +66,9 @@ protected:
     float worldy_ = -1.0f;
 
     short frames = 0;
+    GameWorld* owning_world_ = nullptr;
+
+    friend class ::GameWorld;
 };
 
 } // namespace og::sim

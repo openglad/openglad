@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <list>
@@ -90,10 +91,10 @@ public:
     short remove_ob(walker* ob);
     walker* find_by_id(std::uint32_t entity_id);
     const walker* find_by_id(std::uint32_t entity_id) const;
+    void move_entities_from(GameWorld& source);
     const PixieData* configure_existing_entity(walker& entity, Order order, std::int32_t family);
     void set_entity_derived_stats(walker* entity, Order order, std::int32_t family);
     void set_detach_callback(std::function<void()> callback);
-    void transfer_entity_tracking_from(GameWorld& source);
 
     bool query_passable(float x, float y, walker* ob);
     bool query_object_passable(float x, float y, walker* ob);
@@ -154,18 +155,28 @@ public:
     std::function<void(walker*, Order, std::int32_t)> entity_derived_stats;
 
 private:
+    friend class walker;
+
     walker* add_to_list(Order order, std::int32_t family,
                         std::list<std::unique_ptr<walker>>& target_list,
                         bool count_living, bool atstart);
+    void attach_entity_to_world(walker& entity);
     std::uint32_t assign_entity_id(walker& entity);
     void index_entity(walker& entity);
     void remove_from_id_index(const walker* entity);
+    bool active_list_sizes_match_tracking() const;
+    void sync_active_list_sizes();
+    void rebuild_id_index();
 
     std::uint32_t level_tick_count_ = 0;
     int last_level_id_ = -1;
     std::function<void()> detach_callback_;
     std::uint32_t next_entity_id_ = 1;
+    std::size_t tracked_oblist_size_ = 0;
+    std::size_t tracked_fxlist_size_ = 0;
+    std::size_t tracked_weaplist_size_ = 0;
     // Main-thread only. Future networking I/O must queue work onto the game loop
-    // thread before reading or mutating GameWorld state.
+    // thread before reading or mutating GameWorld state. The cache is derived
+    // from the active entity lists and repaired internally by GameWorld.
     std::unordered_map<std::uint32_t, walker*> id_index_;
 };
