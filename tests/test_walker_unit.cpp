@@ -715,6 +715,7 @@ TEST(WalkerUnit, walker_r15_path_check_counter_init_and_reset_are_seed_determini
     fx.level.world().rng_.state_ = 123u;
     walker second;
     const int second_initial = second.path_check_counter;
+    ASSERT_EQ(10, first_initial);
     ASSERT_EQ(first_initial, second_initial);
 
     fx.level.world().rng_.state_ = 321u;
@@ -724,6 +725,8 @@ TEST(WalkerUnit, walker_r15_path_check_counter_init_and_reset_are_seed_determini
     fx.level.world().rng_.state_ = 321u;
     ASSERT_TRUE(second.reset());
     const int second_reset = second.path_check_counter;
+    ASSERT_EQ(9, first_reset);
     ASSERT_EQ(first_reset, second_reset);
+    ASSERT_NE(first_initial, first_reset);
 }
 } // namespace detail_walker_r15

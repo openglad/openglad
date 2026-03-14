@@ -288,9 +288,12 @@ TEST(StatsUnit, stats_r11_path_check_counter_roll_is_seed_deterministic)
 {
     const int first = deterministic_path_check_counter_roll(1u);
     const int second = deterministic_path_check_counter_roll(1u);
+    const int third = deterministic_path_check_counter_roll(2u);
 
-    ASSERT_TRUE(first >= 5 && first <= 14);
+    ASSERT_EQ(11, first);
     ASSERT_EQ(first, second);
+    ASSERT_EQ(12, third);
+    ASSERT_NE(first, third);
 }
 } // namespace detail_stats_r11
 

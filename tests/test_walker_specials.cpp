@@ -1339,14 +1339,34 @@ TEST_F(WalkerSpecials, elf_rock_barrage_level4_deterministic_spread)
 {
     const auto first = run_elf_barrage(123u, 4);
     const auto second = run_elf_barrage(123u, 4);
+    const auto third = run_elf_barrage(124u, 4);
 
     ASSERT_EQ(first.size(), 4u);
     ASSERT_EQ(first.size(), second.size());
+    ASSERT_EQ(first.size(), third.size());
     for (std::size_t i = 0; i < first.size(); ++i)
     {
         EXPECT_FLOAT_EQ(first[i].x, second[i].x);
         EXPECT_FLOAT_EQ(first[i].y, second[i].y);
     }
+
+    EXPECT_NEAR(7.2965625f, first[0].x, 0.0001f);
+    EXPECT_NEAR(0.0f, first[0].y, 0.0001f);
+    EXPECT_NEAR(7.89046875f, first[1].x, 0.0001f);
+    EXPECT_NEAR(-0.98f, first[1].y, 0.0001f);
+    EXPECT_NEAR(5.68453125f, first[2].x, 0.0001f);
+    EXPECT_NEAR(-0.868f, first[2].y, 0.0001f);
+    EXPECT_NEAR(6.8440625f, first[3].x, 0.0001f);
+    EXPECT_NEAR(-0.816f, first[3].y, 0.0001f);
+
+    EXPECT_NEAR(5.68453125f, third[0].x, 0.0001f);
+    EXPECT_NEAR(1.696f, third[0].y, 0.0001f);
+    EXPECT_NEAR(7.8621875f, third[1].x, 0.0001f);
+    EXPECT_NEAR(0.0f, third[1].y, 0.0001f);
+    EXPECT_NEAR(7.32484375f, third[2].x, 0.0001f);
+    EXPECT_NEAR(-1.06f, third[2].y, 0.0001f);
+    EXPECT_NEAR(6.70265625f, third[3].x, 0.0001f);
+    EXPECT_NEAR(0.964f, third[3].y, 0.0001f);
 }
 
 
