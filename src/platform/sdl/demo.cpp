@@ -262,15 +262,30 @@ int main(int argc, char* argv[])
 
         cfg.load_settings();
 
+        int max_frames = 0;
+        if (const char* max_frames_env = std::getenv("OPENGLAD_DEMO_MAX_FRAMES")) {
+            max_frames = std::max(0, std::atoi(max_frames_env));
+        }
+
         // Detect native display resolution for fullscreen grid layout
         SDL_Init(SDL_INIT_VIDEO);
         SDL_DisplayMode dm;
+        int display_w = 0;
+        int display_h = 0;
         if (SDL_GetDesktopDisplayMode(0, &dm) != 0) {
-            LogError("SDL_GetDesktopDisplayMode failed: {}\n", SDL_GetError());
-            return 1;
+            if (max_frames > 0) {
+                display_w = CELL_W;
+                display_h = CELL_H;
+                LogWarn("SDL_GetDesktopDisplayMode failed in smoke mode: {}. Using {}x{} fallback.\n",
+                        SDL_GetError(), display_w, display_h);
+            } else {
+                LogError("SDL_GetDesktopDisplayMode failed: {}\n", SDL_GetError());
+                return 1;
+            }
+        } else {
+            display_w = dm.w;
+            display_h = dm.h;
         }
-        const int display_w = dm.w;
-        const int display_h = dm.h;
         const int grid_cols = display_w / CELL_W;
         const int grid_rows = display_h / CELL_H;
         const int num_sessions = grid_cols * grid_rows;
@@ -371,6 +386,7 @@ int main(int argc, char* argv[])
         constexpr std::chrono::microseconds FRAME_PERIOD{TIMER_WAIT_TICKS * 13600};
 
         bool running = true;
+        int frames_run = 0;
         while (running) {
             auto frame_start = std::chrono::steady_clock::now();
 
@@ -460,6 +476,13 @@ int main(int argc, char* argv[])
             auto remaining = FRAME_PERIOD - elapsed;
             if (remaining > std::chrono::microseconds(1000)) {
                 std::this_thread::sleep_for(remaining);
+            }
+
+            if (max_frames > 0) {
+                frames_run++;
+                if (frames_run >= max_frames) {
+                    running = false;
+                }
             }
         }
 
