@@ -14,6 +14,8 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+#include <array>
+#include <cassert>
 #include <cstdint>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
@@ -34,19 +36,86 @@ const char* get_family_string(std::int32_t family);
 
 namespace
 {
-using FixedPoint = __uint128_t;
+struct UInt128
+{
+    std::uint64_t hi = 0;
+    std::uint64_t lo = 0;
+};
 
 constexpr unsigned kStatCostFixedShift = 48;
 constexpr std::uint64_t kStatCostFixedOne = 1ull << kStatCostFixedShift;
+constexpr std::uint64_t kUInt16Mask = 0xFFFFu;
 
-FixedPoint multiply_fixed(FixedPoint lhs, std::uint64_t rhs)
+UInt128 make_u128(std::uint64_t value)
 {
-    return (lhs * rhs) >> kStatCostFixedShift;
+    return {0, value};
 }
 
-FixedPoint pow_fixed(std::uint64_t base, int exponent)
+bool operator<=(const UInt128& lhs, const UInt128& rhs)
 {
-    FixedPoint result = static_cast<FixedPoint>(kStatCostFixedOne);
+    return lhs.hi < rhs.hi || (lhs.hi == rhs.hi && lhs.lo <= rhs.lo);
+}
+
+std::array<std::uint16_t, 8> to_u16_limbs(const UInt128& value)
+{
+    return {
+        static_cast<std::uint16_t>(value.lo & kUInt16Mask),
+        static_cast<std::uint16_t>((value.lo >> 16) & kUInt16Mask),
+        static_cast<std::uint16_t>((value.lo >> 32) & kUInt16Mask),
+        static_cast<std::uint16_t>((value.lo >> 48) & kUInt16Mask),
+        static_cast<std::uint16_t>(value.hi & kUInt16Mask),
+        static_cast<std::uint16_t>((value.hi >> 16) & kUInt16Mask),
+        static_cast<std::uint16_t>((value.hi >> 32) & kUInt16Mask),
+        static_cast<std::uint16_t>((value.hi >> 48) & kUInt16Mask),
+    };
+}
+
+std::array<std::uint16_t, 4> to_u16_limbs(std::uint64_t value)
+{
+    return {
+        static_cast<std::uint16_t>(value & kUInt16Mask),
+        static_cast<std::uint16_t>((value >> 16) & kUInt16Mask),
+        static_cast<std::uint16_t>((value >> 32) & kUInt16Mask),
+        static_cast<std::uint16_t>((value >> 48) & kUInt16Mask),
+    };
+}
+
+UInt128 multiply_fixed(const UInt128& lhs, std::uint64_t rhs)
+{
+    const auto lhs_limbs = to_u16_limbs(lhs);
+    const auto rhs_limbs = to_u16_limbs(rhs);
+
+    std::array<std::uint64_t, 13> product{};
+    for (std::size_t i = 0; i < lhs_limbs.size(); ++i)
+    {
+        for (std::size_t j = 0; j < rhs_limbs.size(); ++j)
+            product[i + j] += static_cast<std::uint64_t>(lhs_limbs[i]) * rhs_limbs[j];
+    }
+
+    for (std::size_t i = 0; i + 1 < product.size(); ++i)
+    {
+        product[i + 1] += product[i] >> 16;
+        product[i] &= kUInt16Mask;
+    }
+
+    assert(product[11] == 0);
+    assert(product[12] == 0);
+
+    return {
+        (static_cast<std::uint64_t>(product[7]))
+            | (static_cast<std::uint64_t>(product[8]) << 16)
+            | (static_cast<std::uint64_t>(product[9]) << 32)
+            | (static_cast<std::uint64_t>(product[10]) << 48),
+        (static_cast<std::uint64_t>(product[3]))
+            | (static_cast<std::uint64_t>(product[4]) << 16)
+            | (static_cast<std::uint64_t>(product[5]) << 32)
+            | (static_cast<std::uint64_t>(product[6]) << 48),
+    };
+}
+
+UInt128 pow_fixed(std::uint64_t base, int exponent)
+{
+    UInt128 result = make_u128(kStatCostFixedOne);
     for (int i = 0; i < exponent; ++i)
         result = multiply_fixed(result, base);
     return result;
@@ -59,7 +128,7 @@ std::uint64_t twentieth_root_fixed(std::uint32_t value)
 
     std::uint64_t low = 0;
     std::uint64_t high = 3ull * kStatCostFixedOne;
-    const FixedPoint target = static_cast<FixedPoint>(value) * kStatCostFixedOne;
+    const UInt128 target = make_u128(static_cast<std::uint64_t>(value) * kStatCostFixedOne);
     while (low + 1 < high)
     {
         const std::uint64_t mid = low + (high - low) / 2;
@@ -71,6 +140,14 @@ std::uint64_t twentieth_root_fixed(std::uint32_t value)
     return low;
 }
 
+std::uint64_t fixed_to_uint64(const UInt128& value)
+{
+    if (value.hi > (std::numeric_limits<std::uint64_t>::max() >> 16))
+        return std::numeric_limits<std::uint64_t>::max();
+
+    return (value.hi << 16) | (value.lo >> kStatCostFixedShift);
+}
+
 std::int32_t raise_stat_cost_curve(std::int32_t value)
 {
     if (value <= 0)
@@ -79,10 +156,9 @@ std::int32_t raise_stat_cost_curve(std::int32_t value)
     // Legacy cost curve is value^1.85. Compute it with deterministic
     // fixed-point math so life-gem values no longer depend on libm exponentiation.
     const std::uint64_t root = twentieth_root_fixed(static_cast<std::uint32_t>(value));
-    const FixedPoint raised = pow_fixed(root, 37) >> kStatCostFixedShift;
-    return static_cast<std::int32_t>(std::min<FixedPoint>(
-        raised,
-        static_cast<FixedPoint>(std::numeric_limits<std::int32_t>::max())));
+    return static_cast<std::int32_t>(std::min<std::uint64_t>(
+        fixed_to_uint64(pow_fixed(root, 37)),
+        static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max())));
 }
 
 int next_guy_id()

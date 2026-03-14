@@ -245,7 +245,16 @@ TEST(GuyCalcs, guy_query_heart_value_with_stats)
     guy g(FAMILY_SOLDIER);
     g.strength = 20;  // 8 above base of 12
     Sint32 val = g.query_heart_value();
-    ASSERT_TRUE(val > 250) << "soldier with increased strength should cost more than base";
+    ASSERT_EQ(526, (int)val) << "soldier strength delta should follow the legacy stat cost curve";
+}
+
+
+TEST(GuyCalcs, guy_query_heart_value_large_delta_matches_legacy_curve)
+{
+    guy g(FAMILY_SOLDIER);
+    g.strength = static_cast<short>(g.strength + 3000);
+    const Sint32 val = g.query_heart_value();
+    ASSERT_EQ(16249210, (int)val) << "large stat deltas should keep the deterministic legacy curve";
 }
 
 
@@ -328,4 +337,3 @@ TEST(GuyCalcs, guy_upgrade_level_10)
     // STR gain: 8 * 9 levels * 1.0 = 72 + base 12 = 84
     ASSERT_TRUE(g.strength > 50) << "soldier STR at level 10 should be > 50";
 }
-
