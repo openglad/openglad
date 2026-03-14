@@ -266,8 +266,13 @@ void GameWorld::EntityList::prepare_insert(walker* entity)
 
 void GameWorld::EntityList::prepare_remove(walker* entity)
 {
-    if (entity != nullptr)
-        entity->owning_world_ = nullptr;
+    if (entity == nullptr)
+        return;
+
+    if (owner_ != nullptr && participates_in_id_index_ && entity->entity_id() != 0)
+        owner_->removed_entity_ids_.push_back(entity->entity_id());
+
+    entity->owning_world_ = nullptr;
 }
 
 void GameWorld::EntityList::prepare_insert(Storage& entities)
@@ -1107,11 +1112,10 @@ void GameWorld::resize_grid(int width, int height)
 
 void GameWorld::delete_objects()
 {
-    oblist.raw_mutable().clear();
-    fxlist.raw_mutable().clear();
-    weaplist.raw_mutable().clear();
-    dead_list.raw_mutable().clear();
-    removed_entity_ids_.clear();
+    oblist.clear();
+    fxlist.clear();
+    weaplist.clear();
+    dead_list.clear();
     id_index_.clear();
     entity_tracking_dirty_ = false;
     next_entity_id_ = 1;
