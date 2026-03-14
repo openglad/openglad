@@ -1103,6 +1103,7 @@ void GameWorld::delete_objects()
     dead_list.raw_mutable().clear();
     id_index_.clear();
     entity_tracking_dirty_ = false;
+    next_entity_id_ = 1;
     living_count = 0;
 
     if (!myobmap)

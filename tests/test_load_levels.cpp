@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <memory>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
@@ -158,6 +159,48 @@ TEST(LoadLevels, load_advances_world_rng_state)
 
     level.world().delete_objects();
     expected_world.delete_objects();
+}
+
+TEST(LoadLevels, load_resets_future_entity_ids_to_loaded_world_state)
+{
+    ASSERT_TRUE(prepare_default_level_load()) << "default campaign should be restored and mounted before entity id load test";
+
+    LevelRuntimeData level(1, &sdl_level_data_hooks());
+
+    for (int i = 0; i < 256; ++i)
+    {
+        walker* seeded = level.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, seeded) << "seed entity should be created";
+    }
+    level.world().delete_objects();
+
+    ASSERT_TRUE(level.load()) << "level load should succeed";
+
+    auto max_entity_id = [&level]() -> std::uint32_t {
+        std::uint32_t max_id = 0;
+        const auto update = [&max_id](const auto& list) {
+            for (const auto& entry : list)
+            {
+                if (entry)
+                    max_id = std::max(max_id, entry->entity_id());
+            }
+        };
+
+        update(level.world().oblist);
+        update(level.world().fxlist);
+        update(level.world().weaplist);
+        return max_id;
+    };
+
+    const std::uint32_t loaded_max_id = max_entity_id();
+    ASSERT_GT(loaded_max_id, 0u) << "loaded level should assign entity ids";
+
+    walker* fresh = level.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fresh) << "post-load entity should be created";
+    ASSERT_EQ(loaded_max_id + 1, fresh->entity_id())
+        << "future ids after load should continue from the loaded world, not discarded pre-load history";
+
+    level.world().delete_objects();
 }
 
 
