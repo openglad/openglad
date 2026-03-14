@@ -112,10 +112,6 @@ class statistics
 		short weapon_cost;                          // cost of our weapon
 		walker  * controller;
 		std::list<command> commands;
-	private:
-		//       short com1, com2;        // parameters to command
-		std::int32_t walkrounds; //number of rounds we've spent rightwalking
-
 };
 
 class command

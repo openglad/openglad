@@ -86,10 +86,24 @@ std::uint32_t query_difficulty_percent()
     const int difficulty = current_game->world->difficulty;
     return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
 }
+
+IRandom& walker_rng()
+{
+    if (current_game != nullptr && current_game->world != nullptr)
+        return current_game->world->rng_;
+
+    static og::sim::SimRandom fallback_rng{0};
+    return fallback_rng;
+}
+
+int next_path_check_counter(IRandom& rng)
+{
+    return 5 + static_cast<int>(rng.next(10));
+}
 } // namespace
 
 // Common initialization shared by both constructors
-void walker_init_common(walker* w)
+void walker_init_common(walker* w, IRandom& rng)
 {
 	w->curdir = FACE_DOWN;
 	w->enddir = FACE_DOWN;
@@ -118,7 +132,7 @@ void walker_init_common(walker* w)
 	w->skip_exit = 0;
 	w->weapons_left = 1;
 	w->current_special = 0;
-	w->path_check_counter = 5 + rand()%10;
+	w->path_check_counter = next_path_check_counter(rng);
 	w->hurt_flash = false;
 	w->attack_lunge = 0.0f;
 	w->hit_recoil = 0.0f;
@@ -135,7 +149,7 @@ walker::walker(const PixieData& data)
 	stats_ = std::make_unique<statistics>(this);
 	myself_ = this;
 
-	walker_init_common(this);
+	walker_init_common(this, walker_rng());
 
 	act_type = ACT_RANDOM;
 	set_frame(0);
@@ -148,7 +162,7 @@ walker::walker()
 	stats_ = std::make_unique<statistics>(this);
 	myself_ = this;
 
-	walker_init_common(this);
+	walker_init_common(this, walker_rng());
 
 	act_type = ACT_RANDOM;
 }
@@ -249,7 +263,7 @@ walker::reset(void)
 	//  xpos = ypos = -1; //this to correct a problem with these not being alloced?
 
 	//  weapons_left = 1; // default, used for fighters
-	path_check_counter = 5 + rand()%10;
+	path_check_counter = next_path_check_counter(walker_rng());
     regen_delay_ = 0;
 
 	if (stats_)

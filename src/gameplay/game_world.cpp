@@ -17,7 +17,6 @@
 #include <openglad/core/pixdefs.h>
 
 #include <algorithm>
-#include <cstdlib>
 #include <format>
 #include <utility>
 
@@ -689,7 +688,7 @@ void GameWorld::create_new_grid()
     grid.data = std::make_unique<unsigned char[]>(size);
     for (int i = 0; i < size; i++)
     {
-        switch (rand() % 4)
+        switch (rng_.next(4))
         {
             case 0: grid.data[i] = PIX_GRASS1; break;
             case 1: grid.data[i] = PIX_GRASS2; break;
@@ -710,8 +709,8 @@ void GameWorld::resize_grid(int width, int height)
         return;
     }
 
-    auto random_grass_tile = []() -> unsigned char {
-        switch (rand() % 4)
+    auto random_grass_tile = [this]() -> unsigned char {
+        switch (rng_.next(4))
         {
             case 0: return PIX_GRASS1;
             case 1: return PIX_GRASS2;

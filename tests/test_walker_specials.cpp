@@ -75,6 +75,47 @@ static int count_family_all_lists(char family)
     return count_family_in_oblist(family) + count_family_in_fxlist(family);
 }
 
+struct VelocitySample
+{
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
+static std::vector<VelocitySample> run_elf_barrage(std::uint32_t seed, char special)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.delete_objects();
+    world.rng_.state_ = seed;
+
+    walker* elf = make_special_guy(FAMILY_ELF, 1, 6);
+    if (elf == nullptr)
+        return {};
+
+    elf->setxy(100, 100);
+    elf->lastx = elf->stepsize;
+    elf->lasty = 0.0f;
+    elf->busy = 0.0f;
+    elf->current_special = special;
+    elf->stats()->magicpoints = 2000.0f;
+    elf->stats()->max_magicpoints = 2000.0f;
+
+    const std::size_t weapon_count_before = world.weaplist.size();
+    (void)elf->special();
+
+    std::vector<VelocitySample> result;
+    std::size_t index = 0;
+    for (auto& uptr : world.weaplist)
+    {
+        if (index++ < weapon_count_before || uptr == nullptr)
+            continue;
+        result.push_back({uptr->lastx, uptr->lasty});
+    }
+
+    delete elf;
+    world.delete_objects();
+    return result;
+}
+
 static walker* find_first_alive_ob_by_family(char family)
 {
     for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
@@ -1294,30 +1335,18 @@ TEST_F(WalkerSpecials, cleric_resurrect_friendly_and_enemy_stains)
 }
 
 
-TEST_F(WalkerSpecials, elf_rock_barrage_level4_smoke)
+TEST_F(WalkerSpecials, elf_rock_barrage_level4_deterministic_spread)
 {
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    const auto first = run_elf_barrage(123u, 4);
+    const auto second = run_elf_barrage(123u, 4);
 
-    // Deterministic rand()-based perturbation inside elf special.
-    srand(123);
-
-    walker* elf = make_special_guy(FAMILY_ELF, 1, 6);
-    ASSERT_TRUE(elf != nullptr) << "elf created";
-    if (!elf)
-        return;
-
-    elf->setxy(100, 100);
-    elf->lastx = elf->stepsize;
-    elf->lasty = 0;
-    elf->busy = 0;
-    elf->current_special = 4;
-    elf->stats()->magicpoints = 2000;
-    elf->stats()->max_magicpoints = 2000;
-
-    (void)elf->special();
-
-    delete elf;
-    og::runtime::current_session->myscreen_->world().delete_objects();
+    ASSERT_EQ(first.size(), 4u);
+    ASSERT_EQ(first.size(), second.size());
+    for (std::size_t i = 0; i < first.size(); ++i)
+    {
+        EXPECT_FLOAT_EQ(first[i].x, second[i].x);
+        EXPECT_FLOAT_EQ(first[i].y, second[i].y);
+    }
 }
 
 

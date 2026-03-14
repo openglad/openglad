@@ -727,10 +727,6 @@ bool statistics::right_walk()
 {
 	float xdelta, ydelta;
 
-	//  if (walkrounds > 60)
-	//    if (direct_walk()) return -1;
-	//  walkrounds++;
-
 	if (right_blocked() || right_forward_blocked() )
 	{
 		if (!forward_blocked())  // walk forward
@@ -908,7 +904,6 @@ bool statistics::direct_walk()
 		{
 			if (!current_game->world->query_grid_passable(controlx+0,controly+ydeltastep,controller) )
 			{
-				walkrounds = 0;
 				return 0;
 
 				//we cannot get there by ANY of the straight line moves which
@@ -918,7 +913,6 @@ bool statistics::direct_walk()
 			{
 				if (!ydelta)
 				{
-					walkrounds = 0;
 					return 0;
 				}
                                 controller->walkstep(0.0f, ydelta);
@@ -930,7 +924,6 @@ bool statistics::direct_walk()
 		{
 			if (!xdelta)
 			{
-				walkrounds = 0;
 				return 0;
 			}
                         controller->walkstep(xdelta, 0.0f);
@@ -943,7 +936,6 @@ bool statistics::direct_walk()
 	{
 		if (!xdelta && !ydelta)
 		{
-			walkrounds = 0;
 			return 0;
 		}
 		controller->walkstep(xdelta, ydelta);
@@ -976,7 +968,7 @@ bool statistics::walk_to_foe()
 	// processing time
 	if(controller->path_check_counter <= 0)
 	{
-	    controller->path_check_counter = 5 + rand()%10;
+	    controller->path_check_counter = 5 + static_cast<int>(rng(10));
 	    controller->path_to_foe.clear();
 	    
 		xdest = foe->xpos;

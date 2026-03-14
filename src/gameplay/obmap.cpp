@@ -19,10 +19,10 @@
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/key_mask.h>
 #include <openglad/core/util.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include <cmath>
 #include <algorithm>
 #include <format>
 #include <openglad/gameplay/sim_emit.h>
@@ -294,7 +294,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                               && (w->family == FAMILY_DOOR) )
                     {
                         // Can we unlock this door?
-                        if (ob->keys & static_cast<std::int32_t>(pow(static_cast<double>(2), w->stats()->level)))
+                        if (ob->keys & key_level_mask(w->stats()->level))
                         {
                             // Open the door ..
                             w->dead = 1;

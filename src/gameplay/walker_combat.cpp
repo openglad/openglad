@@ -114,7 +114,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
                 newob->team_num = team_num;
                 newob->stats()->level = 1;
                 newob->damage = 0;
-                newob->ani_type = static_cast<char>(1 + rand()%3);
+                newob->ani_type = static_cast<char>(1 + current_game->world->rng_.next(3));
                 if(attacker == this)
                 {
                     newob->center_on(target);

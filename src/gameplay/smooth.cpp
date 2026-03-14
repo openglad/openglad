@@ -20,8 +20,8 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/core/pixdefs.h>
 #include <array>
+#include <cassert>
 #include <cstdint>
-#include <cstdlib>
 
 using Uint32 = std::uint32_t;
 using Sint32 = std::int32_t;
@@ -31,9 +31,10 @@ static inline Uint32 rng(Uint32 max_exclusive) {
         return 0;
     if (IRandom* override_rng = gameplay_rng_override())
         return override_rng->next(max_exclusive);
-    if (current_game != nullptr && current_game->world != nullptr)
-        return current_game->world->rng_.next(max_exclusive);
-    return static_cast<Uint32>(std::rand()) % max_exclusive;
+    // smooth() runs under the session-installed gameplay context; tests can
+    // still override the RNG via gameplay_rng_override().
+    assert(current_game != nullptr && current_game->world != nullptr);
+    return current_game->world->rng_.next(max_exclusive);
 }
 
 // Lookup table: PIX_* value → terrain genre TYPE_*

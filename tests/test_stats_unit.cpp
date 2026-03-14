@@ -161,6 +161,23 @@ walker* add_living(StatsFixture& fx, unsigned char team)
     return out;
 }
 
+int deterministic_path_check_counter_roll(std::uint32_t seed)
+{
+    StatsFixture fx;
+    walker* actor = add_living(fx, 0);
+    walker* foe = add_living(fx, 1);
+    if (actor == nullptr || foe == nullptr)
+        return 0;
+
+    actor->setxy(96, 96);
+    foe->setxy(112, 96);
+    actor->foe = foe;
+    actor->path_check_counter = 0;
+    fx.level.world().rng_.state_ = seed;
+    (void)actor->stats()->walk_to_foe();
+    return actor->path_check_counter;
+}
+
 } // namespace
 
 TEST(StatsUnit, stats_r11_clear_command_and_blocked_direction_defaults)
@@ -265,6 +282,15 @@ TEST(StatsUnit, stats_r11_direct_walk_and_walk_to_foe_tail_branches)
     fx.level.world().rng_.state_ = 1;
     ASSERT_TRUE(w->stats()->walk_to_foe());
     ASSERT_TRUE(w->stats()->commands.empty() || w->stats()->commands.front().commandcount >= 0);
+}
+
+TEST(StatsUnit, stats_r11_path_check_counter_roll_is_seed_deterministic)
+{
+    const int first = deterministic_path_check_counter_roll(1u);
+    const int second = deterministic_path_check_counter_roll(1u);
+
+    ASSERT_TRUE(first >= 5 && first <= 14);
+    ASSERT_EQ(first, second);
 }
 } // namespace detail_stats_r11
 

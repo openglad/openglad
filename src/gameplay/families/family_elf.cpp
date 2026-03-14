@@ -14,14 +14,30 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
 
-#include <cstdlib>
-
 #define BASE_GUY_HP 30
+
+namespace
+{
+IRandom& elf_rng()
+{
+    if (current_game != nullptr && current_game->world != nullptr)
+        return current_game->world->rng_;
+
+    static og::sim::SimRandom fallback_rng{0};
+    return fallback_rng;
+}
+
+float next_spread_multiplier(IRandom& rng)
+{
+    return 0.8f + 0.4f * static_cast<float>(rng.next(101)) / 100.0f;
+}
+}
 
 static bool elf_do_special(walker* self)
 {
     weap* fireob;
     std::int32_t i;
+    IRandom& rng = elf_rng();
 
     switch (self->current_special)
     {
@@ -30,13 +46,13 @@ static bool elf_do_special(walker* self)
             fireob = static_cast<weap*>(self->fire());
             if (!fireob)
                 return false;
-            fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
-            fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+            fireob->lastx *= next_spread_multiplier(rng);
+            fireob->lasty *= next_spread_multiplier(rng);
             fireob = static_cast<weap*>(self->fire());
             if (!fireob)
                 return false;
-            fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
-            fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+            fireob->lastx *= next_spread_multiplier(rng);
+            fireob->lasty *= next_spread_multiplier(rng);
             break;
         case 2: // more rocks, and bouncing
             self->stats()->magicpoints += 3.0f * static_cast<float>(self->stats()->weapon_cost);
@@ -48,8 +64,8 @@ static bool elf_do_special(walker* self)
                 fireob->lineofsight *= 3;
                 fireob->lineofsight /= 2;
                 fireob->do_bounce = 1;
-                fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
-                fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+                fireob->lastx *= next_spread_multiplier(rng);
+                fireob->lasty *= next_spread_multiplier(rng);
             }
             break;
         case 3:
@@ -61,8 +77,8 @@ static bool elf_do_special(walker* self)
                     return false;
                 fireob->lineofsight *= 2;
                 fireob->do_bounce = 1;
-                fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
-                fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+                fireob->lastx *= next_spread_multiplier(rng);
+                fireob->lasty *= next_spread_multiplier(rng);
             }
             break;
         case 4:
@@ -76,8 +92,8 @@ static bool elf_do_special(walker* self)
                 fireob->lineofsight *= 5;
                 fireob->lineofsight /= 2;
                 fireob->do_bounce = 1;
-                fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
-                fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+                fireob->lastx *= next_spread_multiplier(rng);
+                fireob->lasty *= next_spread_multiplier(rng);
             }
             break;
     }

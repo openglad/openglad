@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <cstdint>
+#include <openglad/gameplay/key_mask.h>
 #include <openglad/gameplay/treasure_family_descriptor.h>
 #include <openglad/gameplay/treasure.h>
 #include <openglad/core/constants.h>
@@ -15,7 +16,6 @@
 #include <openglad/gameplay/sim_emit.h>
 #include <format>
 #include <string>
-#include <cmath>
 #include <algorithm>
 
 static bool is_valid_score_team(unsigned char team_num)
@@ -73,9 +73,10 @@ static bool life_gem_on_eat(treasure* self, walker* eater)
 
 static bool key_on_eat(treasure* self, walker* eater)
 {
-    if (!(eater->keys & static_cast<std::int32_t>(pow(static_cast<double>(2), self->stats()->level)))) // just got it?
+    const std::int32_t key_mask = key_level_mask(self->stats()->level);
+    if (!(eater->keys & key_mask)) // just got it?
     {
-        eater->keys = eater->keys | static_cast<std::int32_t>(pow(static_cast<double>(2), self->stats()->level)); // ie, 2, 4, 8, 16...
+        eater->keys |= key_mask; // ie, 2, 4, 8, 16...
         std::string message;
         if (eater->myguy)
             message = std::format("{} picks up key {}", eater->myguy->name,
