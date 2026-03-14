@@ -160,6 +160,7 @@ struct GameplayPathfindingState::Impl
 };
 
 thread_local GameplayContext* current_game = nullptr;
+thread_local IRandom** g_rng_override_ref = nullptr;
 
 GameplayPathfindingState::GameplayPathfindingState()
     : impl_(std::make_unique<Impl>())
@@ -197,6 +198,9 @@ GameplayPathfindingState* ensure_pathfinding_state(GameplayContext& context)
 
 IRandom* gameplay_rng_override()
 {
+    if (g_rng_override_ref != nullptr)
+        return *g_rng_override_ref;
+
     return (current_game && current_game->rng_override_ref)
         ? *current_game->rng_override_ref
         : nullptr;
@@ -204,6 +208,7 @@ IRandom* gameplay_rng_override()
 
 void set_gameplay_rng_override(IRandom** rng_ref)
 {
+    g_rng_override_ref = rng_ref;
     if (current_game)
         current_game->rng_override_ref = rng_ref;
 }

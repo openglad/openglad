@@ -30,10 +30,24 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/core/sound_ids.h>
+#include <cassert>
+#include <cstdlib>
 #include <cmath>
 #include <format>
 
-// namespace removed: RNG wrappers replaced with current_game->world->rng_.
+namespace {
+IRandom& combat_rng()
+{
+    if (IRandom* override_rng = gameplay_rng_override())
+        return *override_rng;
+
+    if (current_game != nullptr && current_game->world != nullptr)
+        return current_game->world->rng_;
+
+    assert(false && "combat math requires an injected RNG");
+    std::abort();
+}
+} // namespace
 
 // Thin adapter: delegates to combat_math pure functions
 short exp_from_action(ExpAction action, walker* w, walker* target, short value)
@@ -41,14 +55,10 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value)
     if (w == nullptr || w->stats() == nullptr)
         return 0;
 
-    static og::sim::SimRandom fallback_rng{0};
-    IRandom& rng = (current_game != nullptr && current_game->world != nullptr)
-        ? static_cast<IRandom&>(current_game->world->rng_)
-        : static_cast<IRandom&>(fallback_rng);
     const std::int32_t target_level =
         (target != nullptr && target->stats() != nullptr) ? target->stats()->level : 0;
 
-    return compute_xp_from_action(action, w->stats()->level, target_level, value, rng);
+    return compute_xp_from_action(action, w->stats()->level, target_level, value, combat_rng());
 }
 
 float get_base_damage(walker* w)
@@ -56,11 +66,7 @@ float get_base_damage(walker* w)
     if (w == nullptr)
         return 0.0f;
 
-    static og::sim::SimRandom fallback_rng{0};
-    IRandom& rng = (current_game != nullptr && current_game->world != nullptr)
-        ? static_cast<IRandom&>(current_game->world->rng_)
-        : static_cast<IRandom&>(fallback_rng);
-    return compute_base_damage(w->damage, rng);
+    return compute_base_damage(w->damage, combat_rng());
 }
 
 float get_damage_reduction(walker* w, float damage, walker* target)

@@ -7,6 +7,7 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/irandom.h>
 #include <openglad/legacy/base.h>
+#include <openglad/platform/game_context.h>
 #include <memory>
 #include <gtest/gtest.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
@@ -15,6 +16,48 @@
 #include <array>
 #include <openglad/core/constants.h>
 #include "test_gameplay_context_scope.h"
+
+namespace {
+
+class ScopedTestContextOverride
+{
+public:
+    explicit ScopedTestContextOverride(GameContext& context)
+    {
+        push_test_context(&context);
+    }
+
+    ~ScopedTestContextOverride()
+    {
+        pop_test_context();
+    }
+
+    ScopedTestContextOverride(const ScopedTestContextOverride&) = delete;
+    ScopedTestContextOverride& operator=(const ScopedTestContextOverride&) = delete;
+};
+
+class ScopedCurrentGameOverride
+{
+public:
+    explicit ScopedCurrentGameOverride(GameplayContext* replacement)
+        : previous_(current_game)
+    {
+        current_game = replacement;
+    }
+
+    ~ScopedCurrentGameOverride()
+    {
+        current_game = previous_;
+    }
+
+    ScopedCurrentGameOverride(const ScopedCurrentGameOverride&) = delete;
+    ScopedCurrentGameOverride& operator=(const ScopedCurrentGameOverride&) = delete;
+
+private:
+    GameplayContext* previous_ = nullptr;
+};
+
+} // namespace
 
 // --- From test_walker_coverage_push.cpp ---
 namespace detail_walker_coverage_push {
@@ -728,5 +771,20 @@ TEST(WalkerUnit, walker_r15_path_check_counter_init_and_reset_are_seed_determini
     ASSERT_EQ(9, first_reset);
     ASSERT_EQ(first_reset, second_reset);
     ASSERT_NE(first_initial, first_reset);
+}
+
+TEST(WalkerUnit, walker_r15_path_check_counter_uses_session_rng_without_gameplay_context)
+{
+    FixedRandom rng{6};
+    GameContext test_ctx;
+    test_ctx.rng = &rng;
+    ScopedTestContextOverride test_context(test_ctx);
+    ScopedCurrentGameOverride clear_gameplay(nullptr);
+
+    walker w;
+    ASSERT_EQ(11, w.path_check_counter);
+
+    ASSERT_TRUE(w.reset());
+    ASSERT_EQ(11, w.path_check_counter);
 }
 } // namespace detail_walker_r15

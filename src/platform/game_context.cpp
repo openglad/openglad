@@ -78,5 +78,5 @@ void pop_test_context()
     active.rng = session.test_context_rng_snapshot_;
     active.input = session.test_context_input_snapshot_;
     session.test_context_active_ = false;
-    set_gameplay_rng_override(active.rng ? &active.rng : nullptr);
+    set_gameplay_rng_override(nullptr);
 }

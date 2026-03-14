@@ -6,6 +6,8 @@
  * (at your option) any later version.
  */
 #include <cstdint>
+#include <cassert>
+#include <cstdlib>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
@@ -20,11 +22,14 @@ namespace
 {
 IRandom& elf_rng()
 {
+    if (IRandom* override_rng = gameplay_rng_override())
+        return *override_rng;
+
     if (current_game != nullptr && current_game->world != nullptr)
         return current_game->world->rng_;
 
-    static og::sim::SimRandom fallback_rng{0};
-    return fallback_rng;
+    assert(false && "elf special requires an injected RNG");
+    std::abort();
 }
 
 float next_spread_multiplier(IRandom& rng)

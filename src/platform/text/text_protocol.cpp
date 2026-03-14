@@ -131,21 +131,9 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     // Set up sim infrastructure
     og::sim::SimEventLog events;
 
-    // Set up a seeded RNG for entities
-    class TextRandom : public IRandom {
-        og::sim::SimRandom rng_;
-    public:
-        explicit TextRandom(std::uint32_t seed) : rng_(seed) {}
-        std::uint32_t next(std::uint32_t max_exclusive) override {
-            return rng_.next(max_exclusive);
-        }
-    };
-    TextRandom entity_rng(args.seed);
-
     // Configure the active session context for this protocol run.
     GameContext& text_ctx = ctx();
     IRandom* prev_rng = text_ctx.rng;
-    text_ctx.rng = &entity_rng;
 
     // Create level data and load (headless — no tile graphics)
     LevelRuntimeData level(args.level, true, &headless_level_data_hooks());
@@ -153,16 +141,19 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     world.rng_.state_ = args.seed;
     world.tick_count_ = 0;
     world.reset_level_progress();
+    text_ctx.rng = &world.rng_;
+    set_gameplay_rng_override(&text_ctx.rng);
     SaveData save;
     save.current_campaign = args.campaign;
     save.scen_num = static_cast<short>(args.level);
     save.numplayers = 1;
 
-    level.set_sim_context(&save, &world.enemy_freeze, &events, &entity_rng, &cfg);
+    level.set_sim_context(&save, &world.enemy_freeze, &events, &world.rng_, &cfg);
 
     if (!level.load()) {
         std::fprintf(stderr, "Failed to load level %d\n", args.level);
         text_ctx.rng = prev_rng;
+        set_gameplay_rng_override(nullptr);
         return 1;
     }
 
@@ -240,6 +231,7 @@ int run_text_protocol_session(const TextProtocolArgs& args)
 
     current_game = prev_game;
     text_ctx.rng = prev_rng;
+    set_gameplay_rng_override(nullptr);
     return 0;
 }
 

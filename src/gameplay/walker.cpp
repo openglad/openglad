@@ -39,6 +39,8 @@
 #include <openglad/core/sound_ids.h>
 // pixieN include not needed here; render bridge is in walker_render_bridge.cpp
 #include <algorithm>
+#include <cassert>
+#include <cstdlib>
 #include <format>
 #include <limits>
 #include <span>
@@ -89,11 +91,14 @@ std::uint32_t query_difficulty_percent()
 
 IRandom& walker_rng()
 {
+    if (IRandom* override_rng = gameplay_rng_override())
+        return *override_rng;
+
     if (current_game != nullptr && current_game->world != nullptr)
         return current_game->world->rng_;
 
-    static og::sim::SimRandom fallback_rng{0};
-    return fallback_rng;
+    assert(false && "walker construction requires an injected RNG");
+    std::abort();
 }
 
 int next_path_check_counter(IRandom& rng)

@@ -240,7 +240,9 @@ void set_neighbors(PixieData& pd,
 
 TEST(SmoothUnit, smooth_r11_query_edges_and_setter_guards)
 {
+    FixedRandom rng0(0);
     smoother s;
+    s.set_rng(&rng0);
     ASSERT_TRUE(s.query_x_y(-2, 0) == PIX_GRASS1);
     ASSERT_TRUE(s.query_x_y(0, -2) == PIX_GRASS1);
 
@@ -715,4 +717,3 @@ TEST(SmoothUnit, smooth_r14_lines_903_full_smooth_reset_paths)
     pop_test_context();
 }
 } // namespace detail_smooth_r14
-
