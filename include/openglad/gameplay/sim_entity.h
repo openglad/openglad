@@ -16,6 +16,7 @@
 // This class can be instantiated headlessly (no SDL, no PixieData) for
 // deterministic testing and replay.
 
+#include <cstddef>
 #include <openglad/core/order.h>
 #include <cstdint>
 
@@ -70,6 +71,14 @@ public:
     {
         dirty_mask_[0] = 0;
         dirty_mask_[1] = 0;
+    }
+    [[nodiscard]] bool is_dirty(std::uint8_t bit) const noexcept
+    {
+        return (dirty_mask_[bit / 64] & (1ULL << (bit % 64))) != 0;
+    }
+    [[nodiscard]] std::uint64_t dirty_mask_word(std::size_t index) const noexcept
+    {
+        return (index < 2) ? dirty_mask_[index] : 0;
     }
 
     // Animation frame state (sim-relevant; actual pixel data is in render component)

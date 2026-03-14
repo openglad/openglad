@@ -1,4 +1,5 @@
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/dirty_field_bits.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/order.h>
 #include <openglad/legacy/base.h>
@@ -151,6 +152,20 @@ TEST_F(GameWorldEntityIdsFixture, direct_public_splice_between_worlds_rebuilds_l
     EXPECT_EQ(living, next_world.find_by_id(living_id));
 }
 
+TEST_F(GameWorldEntityIdsFixture, new_entities_start_fully_dirty_and_clear_dirty_resets_mask)
+{
+    walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, living);
+
+    EXPECT_EQ(~0ULL, living->dirty_mask_word(0));
+    EXPECT_EQ(~0ULL, living->dirty_mask_word(1));
+
+    living->clear_dirty();
+
+    EXPECT_EQ(0ULL, living->dirty_mask_word(0));
+    EXPECT_EQ(0ULL, living->dirty_mask_word(1));
+}
+
 TEST_F(GameWorldEntityIdsFixture, cross_reference_setters_keep_pointer_and_id_fields_in_sync)
 {
     walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
@@ -167,11 +182,25 @@ TEST_F(GameWorldEntityIdsFixture, cross_reference_setters_keep_pointer_and_id_fi
     ASSERT_NE(nullptr, collide);
     ASSERT_NE(nullptr, controller);
 
+    actor->clear_dirty();
     actor->set_foe(foe);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_FOE_ID));
+
+    actor->clear_dirty();
     actor->set_leader(leader);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_LEADER_ID));
+
+    actor->clear_dirty();
     actor->set_owner(owner);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_OWNER_ID));
+
+    actor->clear_dirty();
     actor->set_collide_ob(collide);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_COLLIDE_OB_ID));
+
+    actor->clear_dirty();
     actor->stats()->set_controller(controller);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_CONTROLLER_ID));
 
     EXPECT_EQ(foe, actor->foe);
     EXPECT_EQ(foe->entity_id(), actor->foe_id);
@@ -191,6 +220,20 @@ TEST_F(GameWorldEntityIdsFixture, cross_reference_setters_keep_pointer_and_id_fi
     EXPECT_EQ(0u, actor->foe_id);
     EXPECT_EQ(nullptr, actor->stats()->controller);
     EXPECT_EQ(0u, actor->stats()->controller_id);
+}
+
+TEST_F(GameWorldEntityIdsFixture, removing_entities_tracks_removed_entity_ids)
+{
+    walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, living);
+    const std::uint32_t living_id = living->entity_id();
+
+    ASSERT_TRUE(world.removed_entity_ids().empty());
+    ASSERT_EQ(1, world.remove_ob(living));
+
+    ASSERT_EQ(1u, world.removed_entity_ids().size());
+    EXPECT_EQ(living_id, world.removed_entity_ids().back());
+    EXPECT_EQ(nullptr, world.find_by_id(living_id));
 }
 
 TEST_F(GameWorldEntityIdsFixture, sync_ids_from_pointers_populates_parallel_id_fields)

@@ -153,6 +153,7 @@ public:
     short remove_ob(walker* ob);
     walker* find_by_id(std::uint32_t entity_id);
     const walker* find_by_id(std::uint32_t entity_id) const;
+    const std::vector<std::uint32_t>& removed_entity_ids() const noexcept { return removed_entity_ids_; }
     void move_entities_from(GameWorld& source);
     const PixieData* configure_existing_entity(walker& entity, Order order, std::int32_t family);
     void set_entity_derived_stats(walker* entity, Order order, std::int32_t family);
