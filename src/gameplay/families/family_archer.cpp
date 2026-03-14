@@ -77,7 +77,7 @@ static bool archer_check_special_ai(living* self)
 
 static void archer_hit_response(statistics* stats, walker* foe)
 {
-    walker* controller = stats->controller;
+    walker* controller = stats->controller();
     if (!controller->foe() || controller->foe() != foe)
     {
         controller->set_foe(foe);

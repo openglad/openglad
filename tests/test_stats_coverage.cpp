@@ -10,7 +10,7 @@
 TEST(StatsCoverage, stats_constructor_null_controller_defaults_and_no_command_guard)
 {
     statistics s(nullptr);
-    ASSERT_TRUE(s.controller == nullptr) << "constructor should preserve null controller";
+    ASSERT_TRUE(s.controller() == nullptr) << "constructor should preserve null controller";
     ASSERT_EQ((int)Order::Living, (int)s.old_order) << "null-controller constructor should default old_order";
     ASSERT_EQ((int)FAMILY_SOLDIER, (int)s.old_family) << "null-controller constructor should default family";
     ASSERT_EQ(0, (int)s.do_command()) << "do_command should early-return when controller is null";

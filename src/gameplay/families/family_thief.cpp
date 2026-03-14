@@ -101,7 +101,7 @@ static bool thief_do_special(walker* self)
                     if (current_game->world->rng_.next(self->stats()->level) >= current_game->world->rng_.next(ob->stats()->level))
                     {
                         ob->set_foe(self);
-                        ob->leader = self;
+                        ob->set_leader(self);
                         if (ob->act_type != ACT_CONTROL)
                             ob->stats()->force_command(COMMAND_FOLLOW, 10 + current_game->world->rng_.next(self->stats()->level), 0, 0);
                     }

@@ -67,6 +67,24 @@ void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
     // Defensive cycle/depth break. Any deeper chain is suspicious in practice.
     current->set_owner(nullptr);
 }
+
+void refresh_self_reference_ids(walker& entity)
+{
+    if (entity.foe() == &entity)
+        entity.set_foe(&entity);
+    if (entity.leader() == &entity)
+        entity.set_leader(&entity);
+    if (entity.owner() == &entity)
+        entity.set_owner(&entity);
+    if (entity.collide_ob() == &entity)
+        entity.set_collide_ob(&entity);
+
+    if (statistics* stats = entity.stats();
+        stats != nullptr && stats->controller() == &entity)
+    {
+        stats->set_controller(&entity);
+    }
+}
 }
 
 namespace og::sim {
@@ -259,7 +277,7 @@ void GameWorld::EntityList::prepare_insert(walker* entity)
     if (participates_in_id_index_)
     {
         owner_->assign_entity_id(*entity);
-        entity->sync_ids_from_pointers();
+        refresh_self_reference_ids(*entity);
         entity->mark_all_dirty();
     }
     entity->owning_world_ = owner_;
@@ -461,7 +479,7 @@ walker* GameWorld::add_to_list(Order order, std::int32_t family,
     auto& entries = target_list.raw_mutable();
     walker* raw = w.get();
     assign_entity_id(*raw);
-    raw->sync_ids_from_pointers();
+    refresh_self_reference_ids(*raw);
     raw->mark_all_dirty();
     if (atstart)
         entries.push_front(std::move(w));
@@ -1370,7 +1388,7 @@ void GameWorld::tick()
         if (ob->collide_ob() && ob->collide_ob()->dead)
             ob->set_collide_ob(nullptr);
         if (statistics* stats = ob->stats();
-            stats != nullptr && stats->controller && stats->controller->dead)
+            stats != nullptr && stats->controller() && stats->controller()->dead)
             stats->set_controller(nullptr);
     };
 

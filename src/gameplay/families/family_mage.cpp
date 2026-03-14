@@ -40,7 +40,7 @@ static bool mage_check_special_ai(living* self)
 
 static void mage_hit_response(statistics* stats, walker* foe)
 {
-    walker* controller = stats->controller;
+    walker* controller = stats->controller();
     float threshold;
     if (controller->myguy)
         threshold = (3.0f * stats->max_hitpoints) / 5.0f;

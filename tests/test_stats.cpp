@@ -58,14 +58,16 @@ TEST(Stats, statistics_add_command_walk_clamps_direction)
 TEST(Stats, statistics_clear_command_restores_weapon_and_team)
 {
     auto w = create_living(FAMILY_SOLDIER);
+    auto leader = create_living(FAMILY_ORC);
     ASSERT_TRUE(w != nullptr) << "create_walker(soldier) should succeed";
+    ASSERT_TRUE(leader != nullptr) << "create_walker(orc) should succeed";
 
     // Simulate being charmed / weapon-swapped.
     w->default_weapon = FAMILY_KNIFE;
     w->current_weapon = FAMILY_ARROW;
     w->team_num = 2;
     w->real_team_num = 0;
-    w->set_leader(reinterpret_cast<walker*>(0x1)); // only checked for nullptr
+    w->set_leader(leader.get());
 
     w->stats()->clear_command();
 
@@ -75,4 +77,3 @@ TEST(Stats, statistics_clear_command_restores_weapon_and_team)
     ASSERT_TRUE(w->leader() == nullptr) << "clear_command should clear leader";
 
 }
-

@@ -12,7 +12,7 @@
 
 static bool rock_on_death(weap* self)
 {
-    if (!self->do_bounce || !self->lineofsight || self->collide_ob) // died of natural causes
+    if (!self->do_bounce || !self->lineofsight || self->collide_ob()) // died of natural causes
         return false;
     self->dead = 0; // first, un-dead us so we can collide ..
     // Did we hit a barrier?

@@ -58,7 +58,7 @@ static bool knife_back_on_act(effect* self)
         newob->setworldxy(self->worldx(), self->worldy());
         if (!current_game->world->query_object_passable(self->xpos+xd, self->ypos+yd, newob))
         {
-            newob->attack(newob->collide_ob);
+            newob->attack(newob->collide_ob());
             self->damage /= 4.0f;
         }
         newob->dead = 1;

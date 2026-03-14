@@ -184,9 +184,11 @@ TEST(StatsUnit, stats_r11_clear_command_and_blocked_direction_defaults)
 {
     StatsFixture fx;
     walker* w = add_living(fx, 0);
+    walker* leader = add_living(fx, 0);
     ASSERT_TRUE(w != nullptr);
+    ASSERT_TRUE(leader != nullptr);
 
-    w->set_leader(reinterpret_cast<walker*>(0x1));
+    w->set_leader(leader);
     w->team_num = 1;
     w->real_team_num = 0;
     w->stats()->force_command(COMMAND_WALK, 1, 1, 0);

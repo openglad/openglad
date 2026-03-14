@@ -56,7 +56,7 @@ static void archmage_on_act_living(living* self)
 
 static void archmage_hit_response(statistics* stats, walker* foe)
 {
-    walker* controller = stats->controller;
+    walker* controller = stats->controller();
     controller->busy = 0; // yes, this is a cheat
 
     std::int32_t possible_specials[NUM_SPECIALS];

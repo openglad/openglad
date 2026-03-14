@@ -185,7 +185,7 @@ TEST(LevelDataUnit, level_data_tick_clears_fx_cross_references_and_controller_id
     EXPECT_EQ(0u, fx_holder->owner_id);
     EXPECT_EQ(nullptr, fx_holder->collide_ob());
     EXPECT_EQ(0u, fx_holder->collide_ob_id);
-    EXPECT_EQ(nullptr, fx_holder->stats()->controller);
+    EXPECT_EQ(nullptr, fx_holder->stats()->controller());
     EXPECT_EQ(0u, fx_holder->stats()->controller_id);
     EXPECT_NE(world.removed_entity_ids().end(),
               std::find(world.removed_entity_ids().begin(),

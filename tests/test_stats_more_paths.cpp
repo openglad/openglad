@@ -164,7 +164,7 @@ TEST(StatsMorePaths, stats_right_walk_exercises_direction_switch_when_direct_wal
 TEST(StatsMorePaths, stats_constructor_null_controller_and_command_die_shortcuts)
 {
     statistics s(nullptr);
-    ASSERT_TRUE(s.controller == nullptr) << "null-controller ctor should keep controller null";
+    ASSERT_TRUE(s.controller() == nullptr) << "null-controller ctor should keep controller null";
     ASSERT_EQ((int)Order::Living, (int)s.old_order) << "null-controller ctor should set fallback old_order";
     ASSERT_EQ((int)FAMILY_SOLDIER, (int)s.old_family) << "null-controller ctor should set fallback old_family";
 

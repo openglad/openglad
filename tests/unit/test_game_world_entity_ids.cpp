@@ -232,7 +232,7 @@ TEST_F(GameWorldEntityIdsFixture, cross_reference_setters_keep_pointer_and_id_fi
     EXPECT_EQ(owner->entity_id(), actor->owner_id);
     EXPECT_EQ(collide, actor->collide_ob());
     EXPECT_EQ(collide->entity_id(), actor->collide_ob_id);
-    EXPECT_EQ(controller, actor->stats()->controller);
+    EXPECT_EQ(controller, actor->stats()->controller());
     EXPECT_EQ(controller->entity_id(), actor->stats()->controller_id);
 
     actor->set_foe(nullptr);
@@ -240,7 +240,7 @@ TEST_F(GameWorldEntityIdsFixture, cross_reference_setters_keep_pointer_and_id_fi
 
     EXPECT_EQ(nullptr, actor->foe());
     EXPECT_EQ(0u, actor->foe_id);
-    EXPECT_EQ(nullptr, actor->stats()->controller);
+    EXPECT_EQ(nullptr, actor->stats()->controller());
     EXPECT_EQ(0u, actor->stats()->controller_id);
 }
 
@@ -313,42 +313,6 @@ TEST_F(GameWorldEntityIdsFixture, public_entity_list_removals_track_removed_enti
               std::find(world.removed_entity_ids().begin(),
                         world.removed_entity_ids().end(),
                         clear_id));
-}
-
-TEST_F(GameWorldEntityIdsFixture, sync_ids_from_pointers_populates_parallel_id_fields)
-{
-    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
-    walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
-    walker* leader = world.add_ob(Order::Living, FAMILY_ORC);
-    walker* owner = world.add_ob(Order::Living, FAMILY_ORC);
-    walker* collide = world.add_ob(Order::Living, FAMILY_ORC);
-    walker* controller = world.add_ob(Order::Living, FAMILY_ORC);
-
-    ASSERT_NE(nullptr, actor);
-    ASSERT_NE(nullptr, foe);
-    ASSERT_NE(nullptr, leader);
-    ASSERT_NE(nullptr, owner);
-    ASSERT_NE(nullptr, collide);
-    ASSERT_NE(nullptr, controller);
-
-    actor->set_foe(foe);
-    actor->set_leader(leader);
-    actor->set_owner(owner);
-    actor->set_collide_ob(collide);
-    actor->foe_id = 0;
-    actor->leader_id = 0;
-    actor->owner_id = 0;
-    actor->collide_ob_id = 0;
-    actor->stats()->controller = controller;
-    actor->stats()->controller_id = 0;
-
-    actor->sync_ids_from_pointers();
-
-    EXPECT_EQ(foe->entity_id(), actor->foe_id);
-    EXPECT_EQ(leader->entity_id(), actor->leader_id);
-    EXPECT_EQ(owner->entity_id(), actor->owner_id);
-    EXPECT_EQ(collide->entity_id(), actor->collide_ob_id);
-    EXPECT_EQ(controller->entity_id(), actor->stats()->controller_id);
 }
 
 TEST_F(GameWorldEntityIdsFixture, delete_objects_tracks_removed_entity_ids_for_all_live_lists)

@@ -251,19 +251,6 @@ void walker::set_collide_ob(walker* target)
 	mark_dirty(og::dirty::BIT_COLLIDE_OB_ID);
 }
 
-void walker::sync_ids_from_pointers()
-{
-	foe_id = (foe_ != nullptr) ? foe_->entity_id() : 0;
-	leader_id = (leader_ != nullptr) ? leader_->entity_id() : 0;
-	owner_id = (owner_ != nullptr) ? owner_->entity_id() : 0;
-	collide_ob_id = (collide_ob_ != nullptr) ? collide_ob_->entity_id() : 0;
-
-	if (stats_ != nullptr)
-		stats_->controller_id = (stats_->controller != nullptr)
-		    ? stats_->controller->entity_id()
-		    : 0;
-}
-
 bool
 walker::reset(void)
 {
