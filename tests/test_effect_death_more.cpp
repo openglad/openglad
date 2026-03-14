@@ -31,7 +31,7 @@ TEST(EffectDeathMore, effect_death_ghost_scare_forces_walk_commands_on_foes)
     ASSERT_TRUE(scare != nullptr) << "scare effect created";
     if (!scare)
         return;
-    scare->owner = ghost;
+    scare->set_owner(ghost);
     scare->setxy(ghost->xpos, ghost->ypos);
     scare->dead = 1;
 
@@ -56,7 +56,7 @@ TEST(EffectDeathMore, effect_death_bomb_spawns_explosion_with_owner_and_damage)
     ASSERT_TRUE(bomb != nullptr) << "bomb created";
     if (!bomb)
         return;
-    bomb->owner = owner;
+    bomb->set_owner(owner);
     bomb->damage = 12.0f;
     bomb->dead = 1;
 

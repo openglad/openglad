@@ -53,19 +53,19 @@ void sanitize_owner_chain_link(const GameWorld& world, walker* entity)
     walker* current = entity;
     for (int depth = 0; depth < kMaxOwnerDepth; ++depth)
     {
-        walker* owner = current->owner;
+        walker* owner = current->owner();
         if (owner == nullptr || owner == current)
             return;
         if (!is_tracked_entity(world, owner))
         {
-            current->owner = nullptr;
+            current->set_owner(nullptr);
             return;
         }
         current = owner;
     }
 
     // Defensive cycle/depth break. Any deeper chain is suspicious in practice.
-    current->owner = nullptr;
+    current->set_owner(nullptr);
 }
 }
 
@@ -673,10 +673,10 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                     if (ob->query_order() == Order::Living)
                         return false;
 
-                    if (std::abs(ob->xpos - ob->owner->xpos) >
-                        std::abs(ob->ypos - ob->owner->ypos))
+                    if (std::abs(ob->xpos - ob->owner()->xpos) >
+                        std::abs(ob->ypos - ob->owner()->ypos))
                     {
-                        std::int32_t dist = std::abs(ob->xpos - ob->owner->xpos);
+                        std::int32_t dist = std::abs(ob->xpos - ob->owner()->xpos);
                         dist -= (GRID_SIZE / 2);
                         if (dist < GRID_SIZE)
                             dist += GRID_SIZE;
@@ -685,7 +685,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                     }
                     else
                     {
-                        std::int32_t dist = std::abs(ob->ypos - ob->owner->ypos);
+                        std::int32_t dist = std::abs(ob->ypos - ob->owner()->ypos);
                         dist -= (GRID_SIZE / 2);
                         if (dist < GRID_SIZE)
                             dist += GRID_SIZE;
@@ -1365,7 +1365,7 @@ void GameWorld::tick()
             ob->set_foe(nullptr);
         if (ob->leader && ob->leader->dead)
             ob->set_leader(nullptr);
-        if (ob->owner && ob->owner->dead)
+        if (ob->owner() && ob->owner()->dead)
             ob->set_owner(nullptr);
         if (ob->collide_ob && ob->collide_ob->dead)
             ob->set_collide_ob(nullptr);

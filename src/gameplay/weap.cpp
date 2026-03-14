@@ -56,11 +56,11 @@ bool weap::act()
 		set_foe(nullptr);
 	if (leader && leader->dead)
 		leader = nullptr;
-	if (owner && owner->dead)
-		owner = nullptr;
+	if (owner() && owner()->dead)
+		set_owner(nullptr);
 
-	if (!owner)
-		owner = this; //to fix cases where our parent died!
+	if (!owner())
+		set_owner(this); //to fix cases where our parent died!
 
 	collide_ob = nullptr; // always start with no collision..
 

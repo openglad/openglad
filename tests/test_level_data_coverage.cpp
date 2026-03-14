@@ -404,7 +404,7 @@ TEST(LevelDataCoverage, level_data_wall4_projectile_passability_distance_and_rng
     owner->sizex = 1;
     owner->sizey = 1;
 
-    projectile->owner = owner;
+    projectile->set_owner(owner);
     projectile->setxy(0, 0);
     projectile->sizex = 1;
     projectile->sizey = 1;
@@ -453,7 +453,7 @@ TEST(LevelDataCoverage, level_data_round8_query_grid_treeb1_and_arrow_slit_varia
     ASSERT_TRUE(owner != nullptr) << "owner should be created";
     if (!owner)
         return;
-    weapon->owner = owner;
+    weapon->set_owner(owner);
     owner->setxy(48, 0);
     weapon->setxy(0, 0);
 
@@ -553,7 +553,7 @@ TEST(LevelDataCoverage, level_data_round5_query_grid_passable_contiguous_block_p
     weapon->setxy(0, 0);
     weapon->sizex = 1;
     weapon->sizey = 1;
-    weapon->owner = owner;
+    weapon->set_owner(owner);
 
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_GRASS1;
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living)) << "ground tile should pass";
@@ -820,7 +820,7 @@ TEST(LevelDataCoverage, level_data_round6_passable_wall4_and_water_weapon_paths)
         return;
 
     owner->setxy(96, 0);
-    weapon->owner = owner;
+    weapon->set_owner(owner);
     weapon->setxy(0, 0);
     weapon->sizex = 1;
     weapon->sizey = 1;
@@ -872,7 +872,7 @@ TEST(LevelDataCoverage, level_data_round6_wrapper_and_passability_edges)
         return;
 
     owner->setxy(0, 96);
-    weapon->owner = owner;
+    weapon->set_owner(owner);
     weapon->setxy(0, 0);
     weapon->sizex = 1;
     weapon->sizey = 1;
@@ -1040,7 +1040,7 @@ TEST(LevelDataCoverage, level_data_round7_wall_arrow_distance_axis_and_rng_paths
     owner->sizey = 1;
     weapon->sizex = 1;
     weapon->sizey = 1;
-    weapon->owner = owner;
+    weapon->set_owner(owner);
 
     // Living walkers should fail immediately on wall-arrow tiles.
     living->setxy(0, 0);
@@ -1127,7 +1127,7 @@ TEST(LevelDataCoverage, level_data_round13_grid_passability_tree_wall_water_and_
     living->setxy(0, 0);
     weapon->setxy(0, 0);
     owner->setxy(96, 0);
-    weapon->owner = owner;
+    weapon->set_owner(owner);
     living->sizex = weapon->sizex = 1;
     living->sizey = weapon->sizey = 1;
 

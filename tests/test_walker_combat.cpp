@@ -168,7 +168,7 @@ TEST(WalkerCombat, walker_attack_slime_magic_bonus)
     walker* sprinkle = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_SPRINKLE);
     ASSERT_TRUE(sprinkle != nullptr) << "sprinkle weapon created";
     if (sprinkle) {
-        sprinkle->owner = attacker;
+        sprinkle->set_owner(attacker);
         sprinkle->team_num = attacker->team_num;
         sprinkle->damage = 50;
         slime->dead = 0;
@@ -845,7 +845,7 @@ TEST(WalkerCombat, walker_attack_weapon_owner_chain_and_nonliving_target)
     ASSERT_TRUE(weapon != nullptr) << "weapon created";
     if (weapon) {
         owner->user = 0;
-        weapon->owner = owner;
+        weapon->set_owner(owner);
         weapon->team_num = owner->team_num;
         weapon->damage = 1.0f;
         weapon->stats()->hitpoints = 50;
@@ -892,7 +892,7 @@ TEST(WalkerCombat, batch5_heal_and_hit_effect_variants)
     ASSERT_TRUE(projectile != nullptr) << "projectile created";
     if (projectile)
     {
-        projectile->owner = healer;
+        projectile->set_owner(healer);
         projectile->team_num = healer->team_num;
         projectile->setxy(108, 100);
         projectile->do_hit_effects(healer, target, 6);
@@ -938,7 +938,7 @@ TEST(WalkerCombat, batch6_attack_branches_enemy_and_weapon_paths)
     enemy->stats()->hitpoints = 3;
     enemy->stats()->max_hitpoints = 3;
     enemy->stats()->name = "NamedEnemy";
-    enemy->owner = nullptr;
+    enemy->set_owner(nullptr);
     enemy->lifetime = 0;
     enemy->setxy(attacker->xpos + 10, attacker->ypos + 6);
     ASSERT_TRUE(attacker->attack(enemy)) << "enemy kill branch should execute";
@@ -951,7 +951,7 @@ TEST(WalkerCombat, batch6_attack_branches_enemy_and_weapon_paths)
     if (owner && fx_target && weapon)
     {
         owner->user = 0;
-        weapon->owner = owner;
+        weapon->set_owner(owner);
         weapon->team_num = owner->team_num;
         weapon->damage = 10.0f;
         weapon->stats()->hitpoints = 1;
@@ -990,17 +990,17 @@ TEST(WalkerCombat, batch6_attack_friendly_team_death_messages_and_clamps)
     {
         t_dispelled->stats()->hitpoints = 1;
         t_dispelled->stats()->name = "Summon";
-        t_dispelled->owner = attacker; // dispelled branch
+        t_dispelled->set_owner(attacker); // dispelled branch
         (void)attacker->attack(t_dispelled);
 
         t_named->stats()->hitpoints = 1;
-        t_named->owner = nullptr;
+        t_named->set_owner(nullptr);
         t_named->lifetime = 0;
         t_named->stats()->name = "AllyName"; // named death branch
         (void)attacker->attack(t_named);
 
         t_myguy_name->stats()->hitpoints = 1;
-        t_myguy_name->owner = nullptr;
+        t_myguy_name->set_owner(nullptr);
         t_myguy_name->lifetime = 0;
         t_myguy_name->stats()->name.clear();
         if (t_myguy_name->myguy)
@@ -1046,7 +1046,7 @@ TEST(WalkerCombat, attack_rewards_single_credit_weapon_hit)
     }
 
     SequenceRandomCombat fixed_rng({0});
-    weapon->owner = owner;
+    weapon->set_owner(owner);
     weapon->team_num = owner->team_num;
     weapon->damage = 16.0f;
     owner->team_num = 0;

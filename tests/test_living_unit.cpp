@@ -71,14 +71,14 @@ TEST(LivingUnit, living_r11_act_owner_dead_and_action_follow)
     ASSERT_TRUE(!self->act());
     self->dead = 0;
 
-    self->owner = owner;
+    self->set_owner(owner);
     self->lifetime = 5;
     owner->dead = 1;
     ASSERT_TRUE(!self->act());
 
     // ACTION_FOLLOW path in do_action
     self->dead = 0;
-    self->owner = nullptr;
+    self->set_owner(nullptr);
     self->lifetime = 0;
     self->action = ACTION_FOLLOW;
     self->set_foe(nullptr);
@@ -137,7 +137,7 @@ TEST(LivingUnit, living_r11_summon_difficulty_checkspecial_and_walk_paths)
     // do_summon path.
     walker* summoned = self->do_summon(FAMILY_SKELETON, 25);
     ASSERT_TRUE(summoned != nullptr);
-    ASSERT_TRUE(summoned->owner == self);
+    ASSERT_TRUE(summoned->owner() == self);
     ASSERT_TRUE(summoned->lifetime == 25);
 
     // Default set_difficulty fallback path on unknown family id.
@@ -257,14 +257,14 @@ TEST(LivingUnit, living_r14_lines_65_73_89_95_138_175_owner_lifetime_and_counter
     self->set_act_type(ACT_CONTROL);
     ASSERT_TRUE(self->act());
 
-    self->owner = owner;
+    self->set_owner(owner);
     self->lifetime = 2;
     owner->dead = 1;
     ASSERT_TRUE(!self->act());
 
     self->dead = 0;
     owner->dead = 0;
-    self->owner = owner;
+    self->set_owner(owner);
     self->lifetime = 1;
     ASSERT_TRUE(!self->act() || self->dead == 1);
 }

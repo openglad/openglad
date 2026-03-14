@@ -121,7 +121,7 @@ TEST(WalkerCoreMore, walker_generator_fire_sets_weapon_lifetime_or_owner_paths)
         if (weapon)
         {
             ASSERT_EQ(ANI_TELE_IN, (int)weapon->ani_type) << "tower spawn should set tele-in animation";
-            ASSERT_TRUE(weapon->owner == nullptr) << "tower spawn should clear owner";
+            ASSERT_TRUE(weapon->owner() == nullptr) << "tower spawn should clear owner";
         }
     }
 
@@ -140,7 +140,7 @@ TEST(WalkerCoreMore, walker_generator_fire_sets_weapon_lifetime_or_owner_paths)
         if (weapon)
         {
             ASSERT_TRUE(weapon->lifetime >= 800) << "tent spawn should assign lifetime";
-            ASSERT_TRUE(weapon->owner == gen_tent) << "tent spawn should keep owner";
+            ASSERT_TRUE(weapon->owner() == gen_tent) << "tent spawn should keep owner";
         }
     }
 
@@ -576,13 +576,13 @@ TEST(WalkerCoreMore, walker_round6_init_fire_animate_and_misc_guards)
 
         w->set_foe(dead_target);
         w->leader = nullptr;
-        w->owner = nullptr;
+        w->set_owner(nullptr);
         (void)w->act();
         ASSERT_TRUE(w->foe() == nullptr) << "act should clear dead foe pointer";
 
         w->set_foe(nullptr);
         w->leader = dead_target;
-        w->owner = nullptr;
+        w->set_owner(nullptr);
         w->ani_type = ANI_WALK;
         (void)w->act();
         ASSERT_TRUE(w->leader == nullptr) << "act should clear dead leader pointer";
@@ -773,8 +773,8 @@ TEST(WalkerCoreMore, walker_round7a_compute_outline_and_friendliness_edge_paths)
     {
         owner->team_num = 0;
         owner->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
-        subject->owner = owner;
-        viewer->owner = nullptr;
+        subject->set_owner(owner);
+        viewer->set_owner(nullptr);
         viewer->team_num = 0;
         viewer->clear_myguy();
         ASSERT_TRUE(subject->is_friendly(viewer) != 0) << "allied mode has_myguy==2 branch should allow red-team friendliness";
@@ -938,11 +938,11 @@ TEST(WalkerCoreMore, walker_round11_friendliness_owner_chain_and_difficulty_path
     world.allied_mode = 1;
 
     // Owner-chain traversal: actor -> actor_owner -> actor_root -> self.
-    actor_owner->owner = actor_root;
-    actor_root->owner = actor_root;
-    actor->owner = actor_owner;
-    target->owner = target_owner;
-    target_owner->owner = target_owner;
+    actor_owner->set_owner(actor_root);
+    actor_root->set_owner(actor_root);
+    actor->set_owner(actor_owner);
+    target->set_owner(target_owner);
+    target_owner->set_owner(target_owner);
 
     actor->dead = 0;
     target->dead = 0;

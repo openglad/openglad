@@ -132,7 +132,7 @@ void walker_init_common(walker* w, IRandom& rng)
 	w->foe_id = 0;
 	w->leader = nullptr;
 	w->leader_id = 0;
-	w->owner = nullptr;
+	w->set_owner(nullptr);
 	w->owner_id = 0;
 	w->myguy = nullptr;
 	w->shifter_down = 0;
@@ -239,7 +239,7 @@ void walker::set_leader(walker* target)
 
 void walker::set_owner(walker* target)
 {
-	owner = target;
+	owner_ = target;
 	owner_id = (target != nullptr) ? target->entity_id() : 0;
 	mark_dirty(og::dirty::BIT_OWNER_ID);
 }
@@ -255,7 +255,7 @@ void walker::sync_ids_from_pointers()
 {
 	foe_id = (foe_ != nullptr) ? foe_->entity_id() : 0;
 	leader_id = (leader != nullptr) ? leader->entity_id() : 0;
-	owner_id = (owner != nullptr) ? owner->entity_id() : 0;
+	owner_id = (owner_ != nullptr) ? owner_->entity_id() : 0;
 	collide_ob_id = (collide_ob != nullptr) ? collide_ob->entity_id() : 0;
 
 	if (stats_ != nullptr)
@@ -536,7 +536,7 @@ walker  * walker::fire()
 				weapon->stats()->level = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level))) + 1;
 				weapon->set_difficulty(static_cast<std::uint32_t>(weapon->stats()->level));
 				if (gfd->clear_owner)
-					weapon->owner = nullptr;
+					weapon->set_owner(nullptr);
 			}
 		}
 		// Living-family weapon modifications handled by on_fire_weapon above
@@ -689,8 +689,8 @@ bool walker::act()
 		set_foe(nullptr);
 	if (leader && leader->dead)
 		leader = nullptr;
-	if (owner && owner->dead)
-		owner = nullptr;
+	if (owner() && owner()->dead)
+		set_owner(nullptr);
 
 	collide_ob = nullptr; // always start with no collison..
 
@@ -955,7 +955,7 @@ walker  *walker::create_weapon()
 	{
 		weapon = current_game->world->add_ob(Order::Living, static_cast<char>(default_weapon));
 		weapon->team_num = team_num;
-		weapon->owner = this;
+		weapon->set_owner(this);
 		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
 		return weapon;
 	}
@@ -964,7 +964,7 @@ walker  *walker::create_weapon()
 
 	weapon = current_game->world->add_ob(Order::Weapon, static_cast<char>(weapon_type));
 	weapon->team_num = team_num;
-	weapon->owner = this;
+	weapon->set_owner(this);
 	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
 	weapon->damage = (weapon->damage * (static_cast<float>(stats_->level) + 3.0f)) / 4.0f;
 	if (myguy)
@@ -1600,13 +1600,13 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) )
-		headguy = headguy->owner;
+	while (headguy->owner() && (headguy->owner()->dead == 0) && (headguy->owner() != headguy) )
+		headguy = headguy->owner();
 	headus = headguy;
 	// Now our target ..
 	headguy = target;
-	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) )
-		headguy = headguy->owner;
+	while (headguy->owner() && (headguy->owner()->dead == 0) && (headguy->owner() != headguy) )
+		headguy = headguy->owner();
 	headtarget = headguy;
 
 	// First, get our allied setting from screen ..
@@ -1664,8 +1664,8 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) )
-		headguy = headguy->owner;
+	while (headguy->owner() && (headguy->owner()->dead == 0) && (headguy->owner() != headguy) )
+		headguy = headguy->owner();
 	headus = headguy;
 	
 	// First, get our allied setting from screen ..

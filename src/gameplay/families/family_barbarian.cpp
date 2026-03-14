@@ -29,7 +29,7 @@ static bool barbarian_do_special(walker* self)
         return false;
     walker* alive = current_game->world->add_ob(Order::Weapon, FAMILY_BOULDER);
     alive->center_on(newob);
-    alive->owner = self;
+    alive->set_owner(self);
     alive->stats()->level = self->stats()->level;
     alive->lastx = newob->lastx;
     alive->lasty = newob->lasty;

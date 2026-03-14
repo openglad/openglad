@@ -81,7 +81,7 @@ bool walker::teleport()
 		if (ob &&
 		        ob->query_order() == Order::FX &&
 		        ob->family == FAMILY_MARKER &&
-		        ob->owner == this &&
+		        ob->owner() == this &&
 		        !ob->dead
 		   )
 		{

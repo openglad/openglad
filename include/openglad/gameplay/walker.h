@@ -75,6 +75,7 @@ class walker : public og::sim::SimEntity
 		walker* foe() const { return foe_; }
 		void set_leader(walker* target);
 		void set_owner(walker* target);
+		walker* owner() const { return owner_; }
 		void set_collide_ob(walker* target);
 		void sync_ids_from_pointers();
 		bool reset(void);
@@ -173,7 +174,6 @@ class walker : public og::sim::SimEntity
 		std::uint32_t foe_id = 0;
 		walker *leader;
 		std::uint32_t leader_id = 0;
-		walker *owner;                 // for weapons
 		std::uint32_t owner_id = 0;
 		std::uint32_t keys;                   // used to open doors
 		short view_all;                // used for seeing treasures, etc. on radar
@@ -231,6 +231,7 @@ class walker : public og::sim::SimEntity
 
 	private:
 		walker* foe_ = nullptr;
+		walker* owner_ = nullptr;
 };
 
 // Returns the best display name for an entity: myguy name if available,

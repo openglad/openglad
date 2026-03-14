@@ -138,7 +138,7 @@ TEST(EffectAct, magic_shield)
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner.get();
+    fx->set_owner(owner.get());
     fx->lifetime = 100;
     fx->stats()->hitpoints = 100;
     fx->act();
@@ -152,7 +152,7 @@ TEST(EffectAct, magic_shield_no_owner)
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = nullptr;
+    fx->set_owner(nullptr);
     fx->act();
     // Should die since no owner
     ASSERT_TRUE(fx->dead == 1) << "shield without owner dies";
@@ -168,7 +168,7 @@ TEST(EffectAct, boomerang)
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_BOOMERANG);
     if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner.get();
+    fx->set_owner(owner.get());
     fx->lifetime = 100;
     fx->stats()->hitpoints = 100;
     fx->drawcycle = 10;
@@ -183,7 +183,7 @@ TEST(EffectAct, boomerang_expired)
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_BOOMERANG);
     if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = nullptr;
+    fx->set_owner(nullptr);
     fx->drawcycle = 254;
     fx->act();
     ASSERT_TRUE(fx->dead == 1) << "expired boomerang dies";
@@ -199,7 +199,7 @@ TEST(EffectAct, cloud)
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CLOUD);
     if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner.get();
+    fx->set_owner(owner.get());
     fx->team_num = 0;
     fx->lifetime = 50;
     fx->stats()->hitpoints = 50;
@@ -214,7 +214,7 @@ TEST(EffectAct, cloud_expired)
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CLOUD);
     if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = fx;
+    fx->set_owner(fx);
     fx->lifetime = 0;
     fx->act();
     ASSERT_TRUE(fx->dead == 1) << "expired cloud dies";
@@ -230,7 +230,7 @@ TEST(EffectAct, ghost_scare)
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
     if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner.get();
+    fx->set_owner(owner.get());
     fx->act();
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
@@ -274,7 +274,7 @@ TEST(EffectAct, effect_death_explosion)
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner.get();
+    fx->set_owner(owner.get());
     fx->team_num = 0;
     fx->stats()->level = 5;
     fx->dead = 1;
@@ -292,7 +292,7 @@ TEST(EffectAct, effect_death_ghost_scare)
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
     if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner.get();
+    fx->set_owner(owner.get());
     fx->dead = 1;
     fx->death();
 

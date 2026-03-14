@@ -76,7 +76,7 @@ static bool thief_do_special(walker* self)
             newob->damage = static_cast<float>(self->stats()->level + 1) * 15.0f;
             newob->setxy(self->xpos + self->sizex/2 - newob->sizex/2,
                          self->ypos + self->sizey/2 - newob->sizey/2);
-            newob->owner = self;
+            newob->set_owner(self);
             // Run away if we're AI
             {
                 if (self->user == -1)

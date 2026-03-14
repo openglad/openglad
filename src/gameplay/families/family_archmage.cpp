@@ -167,7 +167,7 @@ static bool archmage_do_special(walker* self)
                     if (ob &&
                             ob->query_order() == Order::FX &&
                             ob->family == FAMILY_MARKER &&
-                            ob->owner == self &&
+                            ob->owner() == self &&
                             !ob->dead)
                     {
                         ob->dead = 1;
@@ -306,7 +306,7 @@ static bool archmage_do_special(walker* self)
                             newob->stats()->level = (self->stats()->level + 1) / 2;
                             newob->set_difficulty(static_cast<std::uint32_t>(newob->stats()->level));
                             newob->team_num = self->team_num;
-                            newob->owner = self;
+                            newob->set_owner(self);
                             newob->lifetime = 200 + 60 * self->stats()->level;
                         }
                     }
@@ -392,7 +392,7 @@ static bool archmage_do_special(walker* self)
                             newob->stats()->level = (self->stats()->level + 2) / 3;
                             newob->set_difficulty(static_cast<std::uint32_t>(newob->stats()->level));
                             newob->team_num = self->team_num;
-                            newob->owner = self;
+                            newob->set_owner(self);
                             newob->lifetime = 100 + 20 * self->stats()->level;
                             newob->stats()->max_hitpoints = 1;
                             newob->stats()->hitpoints = 0;

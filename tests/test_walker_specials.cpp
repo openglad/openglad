@@ -282,7 +282,7 @@ TEST_F(WalkerSpecials, mage_teleport)
     walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
     ASSERT_TRUE(marker != nullptr) << "teleport marker created";
     if (marker) {
-        marker->owner = w;
+        marker->set_owner(w);
         marker->dead = 0;
         marker->lifetime = 1;
         // Place marker somewhere passable and sufficiently far away; do not
@@ -318,7 +318,7 @@ TEST_F(WalkerSpecials, mage_teleport)
     marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
     ASSERT_TRUE(marker != nullptr) << "near marker created";
     if (marker) {
-        marker->owner = w;
+        marker->set_owner(w);
         marker->dead = 0;
         marker->lifetime = 5;
         marker->setxy(w->xpos + 4, w->ypos + 4);
@@ -992,7 +992,7 @@ TEST_F(WalkerSpecials, mage_marker_remove_and_freeze_enemy_branch)
     walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
     ASSERT_TRUE(marker != nullptr) << "marker created";
     if (marker) {
-        marker->owner = mage;
+        marker->set_owner(mage);
         marker->dead = 0;
         marker->setxy(mage->xpos + 8, mage->ypos + 8);
     }
@@ -1089,7 +1089,7 @@ TEST_F(WalkerSpecials, archmage_low_int_marker_chain_and_summon_true)
     walker* marker = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_MARKER);
     ASSERT_TRUE(marker != nullptr) << "arch marker created";
     if (marker) {
-        marker->owner = arch;
+        marker->set_owner(arch);
         marker->dead = 0;
         marker->setxy(arch->xpos + 8, arch->ypos + 8);
     }
@@ -1191,7 +1191,7 @@ TEST_F(WalkerSpecials, druid_circle_existing_protection_branch)
     walker* existing = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
     ASSERT_TRUE(existing != nullptr) << "existing protection created";
     if (existing) {
-        existing->owner = ally;
+        existing->set_owner(ally);
         existing->team_num = ally->team_num;
         existing->setxy(ally->xpos, ally->ypos);
     }
@@ -1554,7 +1554,7 @@ TEST_F(WalkerSpecials, success_returns_true_and_spends_mp)
         return;
     }
 
-    marker->owner = w;
+    marker->set_owner(w);
     marker->dead = 0;
     marker->lifetime = 1;
 

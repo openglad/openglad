@@ -68,7 +68,7 @@ walker::~walker()
 	owning_world_ = nullptr;
 	set_foe(nullptr);
 	leader = nullptr;
-	owner = nullptr;
+	set_owner(nullptr);
 	collide_ob = nullptr;
 	dead = 1;
 

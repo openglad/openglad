@@ -94,12 +94,12 @@ TEST(SimWorld, r15_normal_tick_cleanup_and_dead_entity_removal)
 
     ally->set_foe(dead_ob);
     ally->leader = dead_ob;
-    ally->owner = dead_ob;
+    ally->set_owner(dead_ob);
     ally->collide_ob = dead_ob;
 
     live_weap->set_foe(dead_ob);
     live_weap->leader = dead_ob;
-    live_weap->owner = dead_ob;
+    live_weap->set_owner(dead_ob);
     live_weap->collide_ob = dead_ob;
 
     fx.level.numobs = 3;
@@ -112,11 +112,11 @@ TEST(SimWorld, r15_normal_tick_cleanup_and_dead_entity_removal)
     ASSERT_TRUE(live_weap->acts > 0);
     ASSERT_TRUE(ally->foe() == nullptr);
     ASSERT_TRUE(ally->leader == nullptr);
-    ASSERT_TRUE(ally->owner == nullptr);
+    ASSERT_TRUE(ally->owner() == nullptr);
     ASSERT_TRUE(ally->collide_ob == nullptr);
     ASSERT_TRUE(live_weap->foe() == nullptr);
     ASSERT_TRUE(live_weap->leader == nullptr);
-    ASSERT_TRUE(live_weap->owner == nullptr);
+    ASSERT_TRUE(live_weap->owner() == nullptr);
     ASSERT_TRUE(live_weap->collide_ob == nullptr);
     ASSERT_TRUE(!fx.level.world().dead_list.empty());
     ASSERT_TRUE(fx.level.world().weaplist.size() == 1);

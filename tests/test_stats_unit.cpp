@@ -559,7 +559,7 @@ TEST(StatsUnit, stats_r14_lines_440_453_468_502_520_591_708_729_750_755_898_dire
     self->stats()->hit_response(foe);
     self->set_act_type(ACT_RANDOM);
 
-    proj->owner = owner;
+    proj->set_owner(owner);
     self->stats()->max_hitpoints = 100.0f;
     self->stats()->hitpoints = 1.0f;
     self->yo_delay = 0;

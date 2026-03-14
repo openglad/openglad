@@ -100,7 +100,7 @@ walker::~walker()
 
 	set_foe(nullptr);
 	leader = nullptr;
-	owner = nullptr;
+	set_owner(nullptr);
 	collide_ob = nullptr;
 	dead = 1;
 

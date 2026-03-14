@@ -114,7 +114,7 @@ static bool mage_do_special(walker* self)
                     if (ob &&
                             ob->query_order() == Order::FX &&
                             ob->family == FAMILY_MARKER &&
-                            ob->owner == self &&
+                            ob->owner() == self &&
                             !ob->dead)
                     {
                         ob->dead = 1;
@@ -220,7 +220,7 @@ static bool mage_do_special(walker* self)
                 return false;
             alive = current_game->world->add_ob(Order::Weapon, FAMILY_WAVE);
             alive->center_on(newob);
-            alive->owner = self;
+            alive->set_owner(self);
             alive->stats()->level = self->stats()->level;
             alive->lastx = newob->lastx;
             alive->lasty = newob->lasty;

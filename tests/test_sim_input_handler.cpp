@@ -999,11 +999,11 @@ TEST(SimInputHandler, sim_input_switch_char_skips_ineligible_candidates_then_sel
     good_up->stats()->hitpoints = 77.0f;
 
     // Keep every candidate friendly so team/user/real-team checks determine eligibility.
-    control->owner = control;
-    enemy_up->owner = control;
-    charmed_up->owner = control;
-    taken_up->owner = control;
-    good_up->owner = control;
+    control->set_owner(control);
+    enemy_up->set_owner(control);
+    charmed_up->set_owner(control);
+    taken_up->set_owner(control);
+    good_up->set_owner(control);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(nonliving));

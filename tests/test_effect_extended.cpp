@@ -144,7 +144,7 @@ TEST(EffectExtended, effect_ctor_defaults_and_owner_pointer_cleanup_in_act)
     walker owner;
     fx.set_foe(&foe);
     fx.leader = &leader;
-    fx.owner = &owner;
+    fx.set_owner(&owner);
     foe.dead = 1;
     leader.dead = 1;
     owner.dead = 1;
@@ -152,6 +152,6 @@ TEST(EffectExtended, effect_ctor_defaults_and_owner_pointer_cleanup_in_act)
     (void)fx.act();
     ASSERT_TRUE(fx.foe() == nullptr) << "effect act should clear dead foe pointer";
     ASSERT_TRUE(fx.leader == nullptr) << "effect act should clear dead leader pointer";
-    ASSERT_TRUE(fx.owner == nullptr) << "effect act should clear dead owner pointer";
+    ASSERT_TRUE(fx.owner() == nullptr) << "effect act should clear dead owner pointer";
 }
 

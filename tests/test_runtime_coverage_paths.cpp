@@ -683,7 +683,7 @@ TEST(RuntimeCoveragePaths, sim_world_tick_branches_for_end_freeze_and_cleanup)
     walker* dead_foe = add_living(1);
     owner->set_foe(dead_foe);
     owner->leader = dead_foe;
-    owner->owner = dead_foe;
+    owner->set_owner(dead_foe);
     owner->collide_ob = dead_foe;
     dead_foe->dead = 1;
     dead_foe->myguy = nullptr;
@@ -773,7 +773,7 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
     dead_ref->dead = 1;
     owner->set_foe(dead_ref);
     owner->leader = dead_ref;
-    owner->owner = dead_ref;
+    owner->set_owner(dead_ref);
     owner->collide_ob = dead_ref;
 
     walker* weap_owner = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
@@ -783,7 +783,7 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
     if (weap_owner) {
         weap_owner->set_foe(dead_ref);
         weap_owner->leader = dead_ref;
-        weap_owner->owner = dead_ref;
+        weap_owner->set_owner(dead_ref);
         weap_owner->collide_ob = dead_ref;
     }
     if (dead_fx)
@@ -937,11 +937,11 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     if (!dead_link)
         return;
     dead_link->dead = 1;
-    ally->owner = dead_link;
+    ally->set_owner(dead_link);
     ally->collide_ob = dead_link;
     hostile->set_foe(dead_link);
     hostile->leader = dead_link;
-    hostile->owner = dead_link;
+    hostile->set_owner(dead_link);
     hostile->collide_ob = dead_link;
 
     walker* weap_owner = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
@@ -952,7 +952,7 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
         return;
     weap_owner->set_foe(dead_link);
     weap_owner->leader = dead_link;
-    weap_owner->owner = dead_link;
+    weap_owner->set_owner(dead_link);
     weap_owner->collide_ob = dead_link;
     dead_fx->dead = 1;
     dead_weap->dead = 1;
@@ -968,7 +968,7 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     world.enemy_freeze = 0;
     world.end = 0;
     world.tick();
-    ASSERT_TRUE(ally->owner == nullptr && ally->collide_ob == nullptr) << "dead links should be cleared on oblist entities";
+    ASSERT_TRUE(ally->owner() == nullptr && ally->collide_ob == nullptr) << "dead links should be cleared on oblist entities";
     ASSERT_TRUE(hostile->foe() == nullptr && hostile->leader == nullptr) << "all dead references should be cleared";
     (void)weap_owner;
 

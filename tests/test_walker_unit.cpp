@@ -409,15 +409,15 @@ TEST(WalkerUnit, walker_r11_act_animate_and_misc_paths)
     w->set_difficulty(2);
 
     walker* owned = add_ob(fx, Order::Living, FAMILY_SOLDIER, 0, 100, 100);
-    owned->owner = w;
-    w->owner = w; // self-loop guard branch
+    owned->set_owner(w);
+    w->set_owner(w); // self-loop guard branch
     ASSERT_TRUE(!w->is_friendly(nullptr));
     (void)w->is_friendly(owned);
     w->dead = 1;
     ASSERT_TRUE(!w->is_friendly_to_team(0));
 
     w->dead = 0;
-    w->owner = nullptr;
+    w->set_owner(nullptr);
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     fx.level.world().allied_mode = 1;
     (void)w->is_friendly_to_team(0);
@@ -714,7 +714,7 @@ TEST(WalkerUnit, walker_r15_generator_fire_and_heading_branches)
     walker* fired = gen_tower->fire();
     ASSERT_TRUE(fired != nullptr);
     ASSERT_TRUE(fired->ani_type == ANI_TELE_IN);
-    ASSERT_TRUE(fired->owner == nullptr);
+    ASSERT_TRUE(fired->owner() == nullptr);
 
     walker* weapon = fx.level.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(weapon != nullptr);

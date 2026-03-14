@@ -20,7 +20,7 @@ static walker* make_weapon(char family)
     walker* w = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, family);
     if (w) {
         w->setxy(100, 100);
-        w->owner = w;
+        w->set_owner(w);
     }
     return w;
 }
@@ -117,7 +117,7 @@ TEST(WeapBehavior, weap_death_knife_soldier_owner)
 
     walker* knife = make_weapon(FAMILY_KNIFE);
     if (!knife) return;
-    knife->owner = owner.get();
+    knife->set_owner(owner.get());
     knife->dead = 1;
     knife->death();
     // Should create a KNIFE_BACK effect
@@ -133,7 +133,7 @@ TEST(WeapBehavior, weap_death_knife_non_soldier)
 
     walker* knife = make_weapon(FAMILY_KNIFE);
     if (!knife) return;
-    knife->owner = owner.get();
+    knife->set_owner(owner.get());
     knife->dead = 1;
     knife->death();
     // Should NOT create a KNIFE_BACK since owner is not soldier
@@ -149,7 +149,7 @@ TEST(WeapBehavior, weap_death_fire_arrow_exploding)
 	    
 	    walker* arrow = make_weapon(FAMILY_FIRE_ARROW);
 	    if (!arrow) return;
-	    arrow->owner = owner.get();
+	    arrow->set_owner(owner.get());
 	    arrow->skip_exit = 1; // means it's supposed to explode
 	    arrow->dead = 1;
 	    arrow->death();
@@ -261,7 +261,7 @@ TEST(WeapBehavior, weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofs
     dead_living->dead = 1;
     w->set_foe(dead_living.get());
     w->leader = dead_living.get();
-    w->owner = dead_living.get();
+    w->set_owner(dead_living.get());
     w->setxy(0, 0);
     w->lineofsight = 5;
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_TREE_M1;
@@ -269,7 +269,7 @@ TEST(WeapBehavior, weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofs
 
     (void)w->act();
     ASSERT_TRUE(w->foe() == nullptr && w->leader == nullptr) << "dead foe/leader should be cleared";
-    ASSERT_TRUE(w->owner == w) << "dead owner should be cleared then default to self";
+    ASSERT_TRUE(w->owner() == w) << "dead owner should be cleared then default to self";
     ASSERT_EQ(4, (int)w->lineofsight) << "trees tile should decrement lineofsight";
 
     og::runtime::current_session->myscreen_->world().remove_ob(w);
@@ -455,7 +455,7 @@ TEST(WeapBehavior, weapon_family_animate_callbacks_and_sprinkle_hit_paths)
     ASSERT_EQ(0, (int)tree_w->cycle) << "tree animate should reset cycle at -1 sentinel";
 
     // CIRCLE_PROTECTION callback: no owner/invalid owner path.
-    circle_w->owner = nullptr;
+    circle_w->set_owner(nullptr);
     circle_w->dead = 0;
     ASSERT_TRUE(circle_w->animate()) << "circle animate should still return via death handling";
     ASSERT_EQ(1, (int)circle_w->dead) << "circle animate should mark dead when owner is missing";
@@ -463,7 +463,7 @@ TEST(WeapBehavior, weapon_family_animate_callbacks_and_sprinkle_hit_paths)
     // CIRCLE_PROTECTION callback: valid owner centers on owner.
     circle_w->dead = 0;
     circle_w->death_called = 0;
-    circle_w->owner = owner.get();
+    circle_w->set_owner(owner.get());
     owner->dead = 0;
     circle_w->stats()->hitpoints = 5;
     owner->setxy(180, 188);

@@ -75,7 +75,7 @@ TEST(EffectMorePaths, effect_magic_shield_hits_weapon_and_enemy_paths)
     if (!shield)
         return;
 
-    shield->owner = owner.get();
+    shield->set_owner(owner.get());
     shield->team_num = owner->team_num;
     shield->stats()->hitpoints = 50;
     shield->lifetime = 5;
@@ -125,7 +125,7 @@ TEST(EffectMorePaths, effect_boomerang_hits_weapon_and_enemy_paths)
     if (!fx)
         return;
 
-    fx->owner = owner.get();
+    fx->set_owner(owner.get());
     fx->team_num = owner->team_num;
     fx->stats()->hitpoints = 50;
     fx->lifetime = 5;
@@ -174,7 +174,7 @@ TEST(EffectMorePaths, effect_cloud_hits_collision_branch_and_walk_command_path)
     if (!cloud)
         return;
 
-    cloud->owner = owner.get();
+    cloud->set_owner(owner.get());
     cloud->team_num = 1;
     cloud->lifetime = 15;
     cloud->setxy(100, 100);
@@ -213,7 +213,7 @@ TEST(EffectMorePaths, effect_chain_lightning_hits_leader_and_spawns_explosion)
     if (!chain)
         return;
 
-    chain->owner = caster.get();
+    chain->set_owner(caster.get());
     chain->leader = leader;
     chain->team_num = caster->team_num;
     chain->damage = 50.0f;
@@ -244,7 +244,7 @@ TEST(EffectMorePaths, effect_death_explosion_shoves_nearby_targets)
     if (!explosion)
         return;
 
-    explosion->owner = owner.get();
+    explosion->set_owner(owner.get());
     explosion->skip_exit = 0;
     explosion->setxy(100, 100);
     explosion->damage = 40.0f;
@@ -281,7 +281,7 @@ TEST(EffectMorePaths, effect_batch3_explosion_owner_fallback_and_empty_target_li
     if (!explosion)
         return;
 
-    explosion->owner = nullptr; // force owner=self path in explosion_on_death()
+    explosion->set_owner(nullptr); // force owner=self path in explosion_on_death()
     explosion->skip_exit = 1;   // range gets zeroed then clamped to 16
     explosion->dead = 1;
     (void)explosion->death();   // no targets nearby: howmany<1 branch
@@ -305,7 +305,7 @@ TEST(EffectMorePaths, effect_batch3_bomb_owner_dead_fallback_path)
     if (!bomb)
         return;
 
-    bomb->owner = dead_owner; // bomb_on_death should replace this with self
+    bomb->set_owner(dead_owner); // bomb_on_death should replace this with self
     bomb->damage = 15.0f;
     bomb->dead = 1;
     (void)bomb->death();
@@ -333,7 +333,7 @@ TEST(EffectMorePaths, effect_batch3_shield_and_boomerang_collision_loops)
     ASSERT_TRUE(shield != nullptr) << "shield created";
     if (!shield)
         return;
-    shield->owner = owner.get();
+    shield->set_owner(owner.get());
     shield->team_num = owner->team_num;
     shield->setxy(100, 100);
     shield->stats()->hitpoints = 1.0f;
@@ -362,7 +362,7 @@ TEST(EffectMorePaths, effect_batch3_shield_and_boomerang_collision_loops)
     walker* boomerang = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_BOOMERANG);
     ASSERT_TRUE(boomerang != nullptr) << "boomerang created";
     if (boomerang) {
-        boomerang->owner = owner.get();
+        boomerang->set_owner(owner.get());
         boomerang->team_num = owner->team_num;
         boomerang->setxy(100, 100);
         boomerang->drawcycle = 10;
@@ -391,7 +391,7 @@ TEST(EffectMorePaths, effect_batch3_chain_snap_to_leader_and_effect_death_guard)
     ASSERT_TRUE(chain != nullptr) << "chain created";
     if (!chain)
         return;
-    chain->owner = owner.get();
+    chain->set_owner(owner.get());
     chain->leader = leader;
     chain->lineofsight = 10;
     leader->setxy(120, 120);
@@ -452,7 +452,7 @@ TEST(EffectMorePaths, effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan
     leader->setxy(120, 120);
     foe->setxy(124, 120);
 
-    chain->owner = owner;
+    chain->set_owner(owner);
     chain->leader = leader;
     chain->team_num = owner->team_num;
     chain->damage = 70.0f; // generic=35, so branch generic>20 can run
@@ -480,7 +480,7 @@ TEST(EffectMorePaths, effect_batch4_chain_movement_negative_delta_branch)
     owner->team_num = 1;
     leader->team_num = 2;
     leader->setxy(60, 60);
-    chain->owner = owner;
+    chain->set_owner(owner);
     chain->leader = leader;
     chain->team_num = 1;
     chain->lineofsight = 8;
@@ -509,7 +509,7 @@ TEST(EffectMorePaths, effect_batch6_chain_small_delta_else_branches)
 
     owner->team_num = 1;
     leader->team_num = 2;
-    chain->owner = owner;
+    chain->set_owner(owner);
     chain->leader = leader;
     chain->team_num = 1;
     chain->lineofsight = 8;

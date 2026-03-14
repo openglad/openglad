@@ -16,13 +16,13 @@ std::int32_t compute_explosion_range(std::int32_t level, short skip_exit);
 
 static bool bomb_on_death(effect* self)
 {
-    if (!self->owner || self->owner->dead)
-        self->owner = self;
+    if (!self->owner() || self->owner()->dead)
+        self->set_owner(self);
     og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
     walker* newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
-    newob->owner = self->owner;
+    newob->set_owner(self->owner());
     newob->stats()->hitpoints = 0;
-    newob->stats()->level = self->owner->stats()->level;
+    newob->stats()->level = self->owner()->stats()->level;
     newob->ani_type = ANI_EXPLODE;
     newob->center_on(self);
     newob->damage = self->damage;
@@ -31,9 +31,9 @@ static bool bomb_on_death(effect* self)
 
 static bool explosion_on_death(effect* self)
 {
-    if (!self->owner || self->owner->dead)
-        self->owner = self;
-    std::int32_t generic = compute_explosion_range(self->owner->stats()->level, self->skip_exit);
+    if (!self->owner() || self->owner()->dead)
+        self->set_owner(self);
+    std::int32_t generic = compute_explosion_range(self->owner()->stats()->level, self->skip_exit);
     std::int32_t howmany = 0;
     auto foelist = current_game->world->find_in_range(current_game->world->oblist, 15+generic,
         &howmany, self);
@@ -50,7 +50,7 @@ static bool explosion_on_death(effect* self)
         if (w && !w->dead &&
                 (w->query_order() != Order::Treasure) &&
                 (w->query_order() != Order::FX) &&
-                (!self->skip_exit || w != self->owner)
+                (!self->skip_exit || w != self->owner())
            )
         {
             std::int32_t xdelta = w->xpos - self->xpos;
@@ -59,18 +59,18 @@ static bool explosion_on_death(effect* self)
             std::int32_t ydelta = w->ypos - self->ypos;
             if (ydelta)
                 ydelta = ydelta/abs(ydelta);
-            generic = 2+self->owner->stats()->level/15;
+            generic = 2+self->owner()->stats()->level/15;
             if (generic > 8)
                 generic = 8;
             w->stats()->force_command(COMMAND_WALK,generic,
                 static_cast<short>(xdelta),static_cast<short>(ydelta));
-            if (w == self->owner)
+            if (w == self->owner())
             {
                 self->damage /= 4.0f;
                 self->attack(w);
                 self->damage *= 4.0f;
             }
-            else if (!self->owner->dead && self->owner->is_friendly(w))
+            else if (!self->owner()->dead && self->owner()->is_friendly(w))
             {
                 self->damage /= 2.0f;
                 self->attack(w);

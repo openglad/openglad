@@ -114,7 +114,7 @@ TEST(LivingCombat, living_act_owner_dead_kills_summon)
         return;
 
     // Summoned living with an owner that is dead should die immediately.
-    summoned->owner = owner.get();
+    summoned->set_owner(owner.get());
     owner->dead = 1;
     summoned->dead = 0;
 
@@ -133,7 +133,7 @@ TEST(LivingCombat, living_act_lifetime_expires_without_owner)
 
     // When lifetime is set and owner is missing, it should die.
     summoned->lifetime = 1;
-    summoned->owner = nullptr;
+    summoned->set_owner(nullptr);
     summoned->dead = 0;
 
     bool r = summoned->act();
@@ -150,7 +150,7 @@ TEST(LivingCombat, living_act_fire_elemental_drain_heals_self_with_owner_resourc
     if (!(owner && summoned))
         return;
 
-    summoned->owner = owner.get();
+    summoned->set_owner(owner.get());
     summoned->lifetime = 5;
     summoned->dead = 0;
 
@@ -274,7 +274,7 @@ TEST(LivingCombat, living_act_lifetime_expiry_with_owner)
     if (!(owner && summoned))
         return;
 
-    summoned->owner = owner.get();
+    summoned->set_owner(owner.get());
     summoned->lifetime = 1;
     summoned->dead = 0;
     bool r = summoned->act();
@@ -383,7 +383,7 @@ TEST(LivingCombat, living_facing_threshold_edges_and_summon_and_autoattackable)
     ASSERT_TRUE(summoned != nullptr) << "do_summon should create a living walker";
     if (!summoned)
         return;
-    ASSERT_TRUE(summoned->owner == w.get()) << "summoned owner should be summoner";
+    ASSERT_TRUE(summoned->owner() == w.get()) << "summoned owner should be summoner";
     ASSERT_EQ(123, (int)summoned->lifetime) << "summoned lifetime should match input";
 
     walker* fx = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_BLOOD);

@@ -103,7 +103,7 @@ static bool druid_do_special(walker* self)
                             for (auto& uptr : current_game->world->oblist)
                             {
                                 walker* ob = uptr.get();
-                                if (ob && ob->owner == newob
+                                if (ob && ob->owner() == newob
                                         && ob->query_order() == Order::Weapon
                                         && ob->family == FAMILY_CIRCLE_PROTECTION)
                                 {

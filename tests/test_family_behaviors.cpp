@@ -647,7 +647,7 @@ TEST(FamilyBehaviors, hit_response_weapon_owner_resolved)
     // Create a weapon and set its owner
     walker* arrow = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_ARROW);
     ASSERT_TRUE(arrow != nullptr) << "arrow created";
-    arrow->owner = shooter;
+    arrow->set_owner(shooter);
     arrow->team_num = 1;
     arrow->setxy(110, 100);
 
@@ -954,7 +954,7 @@ TEST(FamilyBehaviors, fire_elemental_summoned_drain)
     // Create a fire elemental as summoned creature
     auto fe = make_living(FAMILY_FIREELEMENTAL);
     ASSERT_TRUE(fe != nullptr) << "make fire elemental";
-    fe->owner = owner.get();
+    fe->set_owner(owner.get());
     fe->lifetime = 100;
     fe->team_num = owner->team_num;
     // Hurt the elemental so drain triggers
@@ -1426,7 +1426,7 @@ TEST(FamilyBehaviors, cleric_mystic_mace_success_path_direct)
     {
         walker* w = uptr.get();
         if (w && w->query_order() == Order::FX && w->family == FAMILY_MAGIC_SHIELD &&
-            w->owner == cleric)
+            w->owner() == cleric)
         {
             found_shield = true;
             break;
@@ -1435,7 +1435,7 @@ TEST(FamilyBehaviors, cleric_mystic_mace_success_path_direct)
     for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist)
     {
         walker* w = uptr.get();
-        if (w && w->family == FAMILY_MAGIC_SHIELD && w->owner == cleric)
+        if (w && w->family == FAMILY_MAGIC_SHIELD && w->owner() == cleric)
         {
             found_shield = true;
             break;
@@ -1576,7 +1576,7 @@ TEST(FamilyBehaviors, cleric_raise_skeleton_and_ghost_from_blood)
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
-            w->family == FAMILY_SKELETON && w->owner == cleric)
+            w->family == FAMILY_SKELETON && w->owner() == cleric)
         {
             found_skeleton = true;
             break;
@@ -1597,7 +1597,7 @@ TEST(FamilyBehaviors, cleric_raise_skeleton_and_ghost_from_blood)
     {
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
-            w->family == FAMILY_GHOST && w->owner == cleric)
+            w->family == FAMILY_GHOST && w->owner() == cleric)
         {
             found_ghost = true;
             break;
@@ -1649,7 +1649,7 @@ TEST(FamilyBehaviors, cleric_resurrect_friendly_and_enemy_blood)
         walker* w = uptr.get();
         if (w && w != cleric && w->query_order() == Order::Living &&
             w->family == FAMILY_GHOST && w->team_num == cleric->team_num &&
-            w->owner == cleric)
+            w->owner() == cleric)
         {
             found_enemy_ghost = true;
             break;
@@ -2036,7 +2036,7 @@ TEST(FamilyBehaviors, family_batch4_druid_refresh_oblist_and_failure_branches)
     walker* existing = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
     ASSERT_TRUE(existing != nullptr) << "existing protection object created";
     if (existing) {
-        existing->owner = ally1;
+        existing->set_owner(ally1);
         existing->stats()->hitpoints = 5;
     }
     druid->current_special = 4;
@@ -2521,7 +2521,7 @@ TEST(FamilyBehaviors, druid_round6_protection_existing_circle_and_blocked_faerie
     ASSERT_TRUE(existing != nullptr) << "existing protection circle created";
     if (!existing)
         return;
-    existing->owner = ally;
+    existing->set_owner(ally);
     existing->team_num = ally->team_num;
     existing->stats()->hitpoints = 10.0f;
 
@@ -2728,7 +2728,7 @@ TEST(FamilyBehaviors, family_round11_mage_and_druid_targeted_special_clusters)
     ASSERT_TRUE(circle != nullptr) << "existing protection circle created";
     if (!circle)
         return;
-    circle->owner = ally;
+    circle->set_owner(ally);
     circle->stats()->hitpoints = 10.0f;
     druid->current_special = 4;
     druid->busy = 0;

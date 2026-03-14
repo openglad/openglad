@@ -317,8 +317,8 @@ TEST(WalkerMore, walker_round6_friendliness_null_dead_owner_chain_and_allied_mod
     b->dead = 0;
 
     // Owner-chain traversal branches.
-    a->owner = owner_a.get();
-    b->owner = owner_b.get();
+    a->set_owner(owner_a.get());
+    b->set_owner(owner_b.get());
     owner_a->team_num = 0;
     owner_b->team_num = 1;
 

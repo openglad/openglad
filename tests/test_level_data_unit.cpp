@@ -181,7 +181,7 @@ TEST(LevelDataUnit, level_data_tick_clears_fx_cross_references_and_controller_id
     EXPECT_EQ(0u, fx_holder->foe_id);
     EXPECT_EQ(nullptr, fx_holder->leader);
     EXPECT_EQ(0u, fx_holder->leader_id);
-    EXPECT_EQ(nullptr, fx_holder->owner);
+    EXPECT_EQ(nullptr, fx_holder->owner());
     EXPECT_EQ(0u, fx_holder->owner_id);
     EXPECT_EQ(nullptr, fx_holder->collide_ob);
     EXPECT_EQ(0u, fx_holder->collide_ob_id);
@@ -308,7 +308,7 @@ TEST(LevelDataUnit, level_data_r11_query_grid_passable_terrain_branches)
 
     // arrow wall + weapon owner branch
     fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_WALL4;
-    weap->owner = ob;
+    weap->set_owner(ob);
     ASSERT_TRUE(!fx.level.query_grid_passable(weap->xpos, weap->ypos, weap) || fx.level.query_grid_passable(weap->xpos, weap->ypos, weap));
 }
 
@@ -554,7 +554,7 @@ TEST(LevelDataUnit, level_data_r12_save_null_entries_and_query_passable_branches
     living->sizey = 1;
     weapon->sizex = 1;
     weapon->sizey = 1;
-    weapon->owner = owner;
+    weapon->set_owner(owner);
 
     fx.level.world().grid.frames = 1;
     fx.level.world().grid.w = 1;

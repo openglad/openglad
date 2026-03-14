@@ -857,7 +857,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 		if (w && !w->dead
 		        && w->query_order() == Order::Living
 		        && w->team_num == teamnum
-		        && (!w->stats()->name.empty() || w->myguy)) //&& w->owner == nullptr)
+		        && (!w->stats()->name.empty() || w->myguy)) //&& w->owner() == nullptr)
 		{
 		    ls.push_back(w);
 		}

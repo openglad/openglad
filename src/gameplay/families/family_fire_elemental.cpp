@@ -38,20 +38,20 @@ static void fire_elemental_level_up(guy* self, std::int32_t level_diff)
 static void fire_elemental_on_act_living(living* self)
 {
     // Summoned fire elemental drains owner HP/MP to heal itself
-    if (self->lifetime && self->owner && !self->owner->dead)
+    if (self->lifetime && self->owner() && !self->owner()->dead)
     {
         if (self->stats()->hitpoints < self->stats()->max_hitpoints)
         {
             std::int32_t temp = 0;
-            if (self->owner->stats()->hitpoints >= (self->owner->stats()->max_hitpoints / 3))
+            if (self->owner()->stats()->hitpoints >= (self->owner()->stats()->max_hitpoints / 3))
             {
                 temp = 1;
-                self->owner->stats()->hitpoints--;
+                self->owner()->stats()->hitpoints--;
             }
-            if (temp && (self->owner->stats()->magicpoints >= 3))
+            if (temp && (self->owner()->stats()->magicpoints >= 3))
             {
                 temp += 1;
-                self->owner->stats()->magicpoints -= 3;
+                self->owner()->stats()->magicpoints -= 3;
             }
             if (temp == 2)
                 self->stats()->hitpoints++;

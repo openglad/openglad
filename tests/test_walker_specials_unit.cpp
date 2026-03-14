@@ -53,7 +53,7 @@ living* add_living(SpecialsFixture& fx, char family, unsigned char team)
 walker* add_marker(SpecialsFixture& fx, walker* owner, int x, int y, int life)
 {
     walker* m = fx.level.add_ob(Order::FX, FAMILY_MARKER);
-    m->owner = owner;
+    m->set_owner(owner);
     m->dead = 0;
     m->setxy(x, y);
     m->lifetime = life;

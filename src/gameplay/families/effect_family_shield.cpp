@@ -17,14 +17,14 @@ static bool magic_shield_on_act(effect* self)
     float xd, yd;
     std::int32_t temp = 0;
 
-    if (!self->owner || self->owner->dead)
+    if (!self->owner() || self->owner()->dead)
     {
         self->dead = 1;
         self->death();
         return true;
     }
     orbit_offset(self->drawcycle, xd, yd);
-    self->center_on(self->owner);
+    self->center_on(self->owner());
     self->setworldxy(self->worldx()+xd, self->worldy()+yd);
 
     auto foelist = current_game->world->find_foe_weapons_in_range(
@@ -58,7 +58,7 @@ static bool boomerang_on_act(effect* self)
     float xd, yd;
     std::int32_t temp = 0;
 
-    if (!self->owner || self->owner->dead || self->drawcycle > 253)
+    if (!self->owner() || self->owner()->dead || self->drawcycle > 253)
     {
         self->dead = 1;
         self->death();
@@ -69,7 +69,7 @@ static bool boomerang_on_act(effect* self)
     xd /= 48;
     yd *= (self->drawcycle+4);
     yd /= 48;
-    self->center_on(self->owner);
+    self->center_on(self->owner());
     self->setworldxy(self->worldx()+xd, self->worldy()+yd);
 
     auto foelist = current_game->world->find_foe_weapons_in_range(

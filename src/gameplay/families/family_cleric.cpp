@@ -197,7 +197,7 @@ static bool cleric_do_special(walker* self)
                         alive->stats()->level = current_game->world->rng_.next(self->stats()->level) + 1;
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level));
                         alive->setxy(newob->xpos, newob->ypos);
-                        alive->owner = self;
+                        alive->set_owner(self);
                         newob->dead = 1;
                         if (self->myguy)
                             self->myguy->exp += exp_from_action(ExpAction::RaiseSkeleton, self, alive, 0);
@@ -251,7 +251,7 @@ static bool cleric_do_special(walker* self)
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level));
                         alive->team_num = self->team_num;
                         alive->setxy(newob->xpos, newob->ypos);
-                        alive->owner = self;
+                        alive->set_owner(self);
                         newob->dead = 1;
                         if (self->myguy)
                             self->myguy->exp += exp_from_action(ExpAction::RaiseGhost, self, alive, 0);
@@ -299,7 +299,7 @@ static bool cleric_do_special(walker* self)
                         alive->team_num = self->team_num;
                         alive->stats()->level = current_game->world->rng_.next(self->stats()->level) + 1;
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level));
-                        alive->owner = self;
+                        alive->set_owner(self);
                     }
                     alive->setxy(newob->xpos, newob->ypos);
                     newob->dead = 1;

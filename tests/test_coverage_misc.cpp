@@ -174,7 +174,7 @@ TEST(CoverageMisc, coverage_r17_family_mage_specials_and_reactions)
     self->myguy->intelligence = 90;
     walker* marker = add_fx(fx, FAMILY_MARKER, 66, 64);
     ASSERT_TRUE(marker != nullptr);
-    marker->owner = self;
+    marker->set_owner(self);
     marker->dead = 0;
     self->busy = 0;
     self->current_special = 1;
@@ -228,7 +228,7 @@ TEST(CoverageMisc, coverage_r17_family_druid_protection_tree_and_faerie)
 
     walker* existing = fx.level.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
     ASSERT_TRUE(existing != nullptr);
-    existing->owner = ally2;
+    existing->set_owner(ally2);
     existing->team_num = ally2->team_num;
     existing->setxy(ally2->xpos, ally2->ypos);
 
@@ -266,7 +266,7 @@ TEST(CoverageMisc, coverage_r17_walker_movement_and_act_cleanup)
 
     actor->set_foe(dead_foe);
     actor->leader = dead_leader;
-    actor->owner = dead_owner;
+    actor->set_owner(dead_owner);
     actor->ani_type = ANI_WALK;
     actor->attack_lunge = 0.2f;
     actor->hit_recoil = 0.3f;
@@ -790,7 +790,7 @@ TEST(CoverageMisc, coverage_r18_walker_act_decay_cleanup_and_guard_branches)
 
     self->set_foe(foe);
     self->leader = leader;
-    self->owner = owner;
+    self->set_owner(owner);
     foe->dead = 1;
     leader->dead = 1;
     owner->dead = 1;
@@ -801,7 +801,7 @@ TEST(CoverageMisc, coverage_r18_walker_act_decay_cleanup_and_guard_branches)
     ASSERT_TRUE(self->act());
     ASSERT_TRUE(self->foe() == nullptr);
     ASSERT_TRUE(self->leader == nullptr);
-    ASSERT_TRUE(self->owner == nullptr);
+    ASSERT_TRUE(self->owner() == nullptr);
     ASSERT_TRUE(self->attack_lunge == 0.0f);
     ASSERT_TRUE(self->hit_recoil == 0.0f);
 
@@ -1735,7 +1735,7 @@ TEST(CoverageMisc, final_r16_walker_specials_teleport_and_turn_undead)
     fx.level.create_new_grid();
 
     walker* marker = add_fx(fx, FAMILY_MARKER, 200, 200);
-    marker->owner = self;
+    marker->set_owner(self);
     marker->lifetime = 1;
     ASSERT_TRUE(self->teleport());
     ASSERT_TRUE(marker->lifetime <= 1);

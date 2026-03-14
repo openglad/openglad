@@ -116,7 +116,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
             walker* newob = current_game->world->add_ob(Order::FX, FAMILY_HIT);
             if (newob)
             {
-                newob->owner = target;
+                newob->set_owner(target);
                 newob->team_num = team_num;
                 newob->stats()->level = 1;
                 newob->damage = 0;
@@ -211,15 +211,15 @@ bool walker::attack(walker  *target)
             target->invulnerable_left != 0 )
         return 0;
 
-    if (order != Order::Living && owner)
-        attacker = owner;
+    if (order != Order::Living && owner())
+        attacker = owner();
     else
         attacker = this;
 
     // who's the top on our chain (ie, weapon->summoned->mage)
     headguy = this;
-    while (headguy->owner && (headguy->owner != headguy) )
-        headguy = headguy->owner;
+    while (headguy->owner() && (headguy->owner() != headguy) )
+        headguy = headguy->owner();
 
     if (headguy->myguy && headguy->user == 0 && order == Order::Weapon)
         tom++;
@@ -266,10 +266,10 @@ bool walker::attack(walker  *target)
 
     // Set our target to fighting our owner
     //in the case of our weapon hit something
-    if (order != Order::Living && owner)
+    if (order != Order::Living && owner())
     {
-        owner->set_foe(target);
-        target->stats()->hit_response(owner);
+        owner()->set_foe(target);
+        target->stats()->hit_response(owner());
     }
     else  //melee combat, set target to hit_response to us
     {
@@ -289,7 +289,7 @@ bool walker::attack(walker  *target)
         //special effects
         const auto* wfd = get_weapon_family_descriptor(family);
         if (wfd && wfd->on_hit_target)
-            wfd->on_hit_target(this, target, owner);
+            wfd->on_hit_target(this, target, owner());
 
     }
 
@@ -331,7 +331,7 @@ bool walker::attack(walker  *target)
                                               + static_cast<std::uint32_t>(10 * target->stats()->level));
                     // If named, alert us of the enemy's death
                     if (target->stats()->name.size() && !(target->lifetime)
-                            && (!target->owner) ) // do we have an NPC name?
+                            && (!target->owner()) ) // do we have an NPC name?
                     {
                         message = std::format("ENEMY DEATH: {} DIED!", target->stats()->name);
                         og::sim::emit_notification(current_game->sim_events, message);
@@ -345,7 +345,7 @@ bool walker::attack(walker  *target)
                 else
                 {
                     // Alert us of the death
-                    if ( (target->owner || target->lifetime) // summoned?
+                    if ( (target->owner() || target->lifetime) // summoned?
                             && (target->stats()->name.size() ) ) // and have name
                         message = std::format("{} Dispelled!", target->stats()->name);
                     else if (target->stats()->name.size()) // do we have an NPC name?

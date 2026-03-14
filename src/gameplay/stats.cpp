@@ -482,8 +482,8 @@ void statistics::hit_response(walker  *who)
 
 	// Set quick-reference values ..
 	myfamily = controller->family;
-	if (who->query_order() == Order::Weapon && who->owner)
-		foe = who->owner;
+	if (who->query_order() == Order::Weapon && who->owner())
+		foe = who->owner();
 	else
 		foe = who;
 

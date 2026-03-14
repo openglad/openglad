@@ -98,7 +98,7 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
     walker* shield = level.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     ASSERT_TRUE(shield != nullptr) << "shield created";
     if (shield) {
-        shield->owner = owner_raw;
+        shield->set_owner(owner_raw);
         shield->team_num = 1;
         shield->stats()->hitpoints = 1; // low so the absorbed weapon can kill it
         shield->lifetime = 1;
@@ -110,7 +110,7 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
     walker* boomerang = level.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
     ASSERT_TRUE(boomerang != nullptr) << "boomerang created";
     if (boomerang) {
-        boomerang->owner = owner_raw;
+        boomerang->set_owner(owner_raw);
         boomerang->team_num = 1;
         boomerang->stats()->hitpoints = 5;
         boomerang->lifetime = 2;

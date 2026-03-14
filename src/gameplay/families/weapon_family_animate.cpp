@@ -33,12 +33,12 @@ static bool tree_blood_on_animate(weap* self)
 
 static bool circle_protection_on_animate(weap* self)
 {
-    if (!self->owner || self->owner->dead || self->stats()->hitpoints <= 0)
+    if (!self->owner() || self->owner()->dead || self->stats()->hitpoints <= 0)
     {
         self->dead = 1;
         return false; // let default death handling proceed
     }
-    self->center_on(self->owner);
+    self->center_on(self->owner());
     return true;
 }
 

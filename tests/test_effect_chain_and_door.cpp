@@ -99,7 +99,7 @@ TEST(EffectChainAndDoor, effect_chain_hits_leader_spawns_explosion_and_secondary
     ASSERT_TRUE(chain != nullptr) << "chain created";
     if (chain) {
         chain->team_num = 0;
-        chain->owner = owner;
+        chain->set_owner(owner);
         chain->leader = leader;
         chain->lineofsight = 5;
         chain->damage = 100.0f; // generic = damage * 0.5f => 50 (> 20)
@@ -137,7 +137,7 @@ TEST(EffectChainAndDoor, effect_chain_early_exit_and_movement_branches)
     walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
     ASSERT_TRUE(chain != nullptr) << "chain created";
     if (chain) {
-        chain->owner = nullptr;
+        chain->set_owner(nullptr);
         chain->leader = nullptr;
         chain->lineofsight = 0;
         chain->dead = 0;
@@ -160,7 +160,7 @@ TEST(EffectChainAndDoor, effect_chain_early_exit_and_movement_branches)
     if (!moving_chain)
         return;
 
-    moving_chain->owner = owner;
+    moving_chain->set_owner(owner);
     moving_chain->leader = leader;
     moving_chain->lineofsight = 5;
     moving_chain->setxy(40, 40);
@@ -190,7 +190,7 @@ TEST(EffectChainAndDoor, effect_chain_movement_axis_delta_branches)
     if (!(owner && leader && chain))
         return;
 
-    chain->owner = owner;
+    chain->set_owner(owner);
     chain->leader = leader;
     chain->lineofsight = 20;
     chain->setxy(200, 200);

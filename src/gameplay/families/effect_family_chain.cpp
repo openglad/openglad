@@ -18,7 +18,7 @@ short hits(short x,  short y,  short xsize,  short ysize,
 
 static bool chain_on_act(effect* self)
 {
-    if (!self->leader || self->lineofsight<1 || !self->owner)
+    if (!self->leader || self->lineofsight<1 || !self->owner())
     {
         self->dead = 1;
         self->death();
@@ -35,7 +35,7 @@ static bool chain_on_act(effect* self)
             self->death();
             return true;
         }
-        newob->owner = self->owner;
+        newob->set_owner(self->owner());
         newob->team_num = self->team_num;
         newob->stats()->level = self->stats()->level;
         newob->damage = self->damage;
@@ -47,15 +47,15 @@ static bool chain_on_act(effect* self)
         float generic = self->damage * 0.5f;
         std::int32_t temp = 0;
         std::list<walker*> foelist;
-        if (self->owner->myguy)
+        if (self->owner()->myguy)
             foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
-                240+(self->owner->myguy->intelligence/2), &temp, self);
+                240+(self->owner()->myguy->intelligence/2), &temp, self);
         else
             foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
                 240+self->stats()->level*5, &temp, self);
         if (temp && generic>20)
         {
-            std::int32_t numfoes = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(self->owner->stats()->level))) + 1;
+            std::int32_t numfoes = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(self->owner()->stats()->level))) + 1;
             for(auto* w : foelist)
             {
                 if (numfoes <= 0) break;
@@ -64,7 +64,7 @@ static bool chain_on_act(effect* self)
                     newob = current_game->world->add_ob(Order::FX, FAMILY_CHAIN);
                     if (!newob)
                         return true;
-                    newob->owner = self->owner;
+                    newob->set_owner(self->owner());
                     newob->leader = w;
                     newob->stats()->level = self->stats()->level;
                     newob->stats()->set_bit_flags(BIT_MAGICAL, 1);

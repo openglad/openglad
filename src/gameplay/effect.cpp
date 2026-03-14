@@ -70,8 +70,8 @@ bool effect::act()
 		set_foe(nullptr);
 	if (leader && leader->dead)
 		leader = nullptr;
-	if (owner && owner->dead)
-		owner = nullptr;
+	if (owner() && owner()->dead)
+		set_owner(nullptr);
 
 	collide_ob = nullptr; // always start with no collision..
 

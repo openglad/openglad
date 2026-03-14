@@ -18,7 +18,7 @@ inline walker* summon_entity(walker* summoner, Order order, std::int32_t family)
 {
     walker* ob = current_game->world->add_ob(order, family);
     if (!ob) return nullptr;
-    ob->owner = summoner;
+    ob->set_owner(summoner);
     ob->team_num = summoner->team_num;
     ob->center_on(summoner);
     ob->stats()->level = summoner->stats()->level;

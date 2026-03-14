@@ -84,7 +84,7 @@ bool living::act()
 		set_foe(nullptr);
 	if (leader && leader->dead)
 		leader = nullptr;
-	if (owner && owner->dead)
+	if (owner() && owner()->dead)
 	{
 		//owner = nullptr;
 		// A living who had an owner who is now dead, dies as well
@@ -95,7 +95,7 @@ bool living::act()
 
 	if (lifetime)
 	{
-		if (!owner || owner->dead) // our owner gone?
+		if (!owner() || owner()->dead) // our owner gone?
 		{
 			dead = 1;
 			death();
@@ -499,7 +499,7 @@ walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 	walker  *newob;
 
 	newob = current_game->world->add_ob(Order::Living, whatfamily);
-	newob->owner = this;
+	newob->set_owner(this);
 		newob->lifetime = summon_lifetime;
 	newob->transform_to(Order::Living, whatfamily);
 	//  Log("\n\nSummoned %d, life %d\n", whatfamily, lifetime);
