@@ -91,7 +91,7 @@ TEST_F(GameWorldEntityIdsFixture, direct_public_insert_rebuilds_id_index_on_look
     EXPECT_EQ(raw, world.find_by_id(500));
 }
 
-TEST_F(GameWorldEntityIdsFixture, direct_public_erase_cleans_id_index_via_destructor)
+TEST_F(GameWorldEntityIdsFixture, direct_public_erase_rebuilds_lookup_state)
 {
     walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, living);

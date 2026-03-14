@@ -96,11 +96,7 @@ void walker::set_direct_frame(short whichframe)
 
 walker::~walker()
 {
-	if (owning_world_ != nullptr)
-	{
-		owning_world_->remove_from_id_index(this);
-		owning_world_ = nullptr;
-	}
+	owning_world_ = nullptr;
 
 	foe = nullptr;
 	leader = nullptr;

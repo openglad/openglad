@@ -155,8 +155,6 @@ public:
     std::function<void(walker*, Order, std::int32_t)> entity_derived_stats;
 
 private:
-    friend class walker;
-
     walker* add_to_list(Order order, std::int32_t family,
                         std::list<std::unique_ptr<walker>>& target_list,
                         bool count_living, bool atstart);
