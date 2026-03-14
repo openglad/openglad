@@ -671,6 +671,7 @@ function(configure_openglad_runtime_target target)
         target_compile_options(${target} PRIVATE
             -sUSE_SDL=2
             -sUSE_SDL_MIXER=2
+            "SHELL:-sSDL2_MIXER_FORMATS=[\"wav\"]"
             -Wno-constant-conversion
             -Wno-parentheses-equality
             -Wno-pointer-bool-conversion
@@ -678,6 +679,7 @@ function(configure_openglad_runtime_target target)
         target_link_options(${target} PRIVATE
             -sUSE_SDL=2
             -sUSE_SDL_MIXER=2
+            "SHELL:-sSDL2_MIXER_FORMATS=[\"wav\"]"
         )
     else()
         # Native builds link SDL/system deps via og_runtime_deps, typically pulled
@@ -1669,7 +1671,6 @@ endif()
     target_compile_definitions(play PRIVATE __ASYNCIFY__)
 
     target_link_options(play PRIVATE
-        "SHELL:-sSDL2_MIXER_FORMATS=[\"wav\",\"ogg\"]"
         -sALLOW_MEMORY_GROWTH=1
         -sINITIAL_MEMORY=67108864
         -sASYNCIFY
