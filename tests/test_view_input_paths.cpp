@@ -20,7 +20,7 @@ namespace
 struct TeamListSwap
 {
     std::list<std::unique_ptr<walker>> saved_ob;
-    TeamListSwap() { saved_ob.splice(saved_ob.end(), og::runtime::current_session->myscreen_->world().oblist); }
+    TeamListSwap() { og::runtime::current_session->myscreen_->world().oblist.splice_into(saved_ob); }
     ~TeamListSwap() { og::runtime::current_session->myscreen_->world().oblist.splice(og::runtime::current_session->myscreen_->world().oblist.end(), saved_ob); }
 };
 
@@ -280,4 +280,3 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     ks.set(SDLK_c, false);
     ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;
 }
-

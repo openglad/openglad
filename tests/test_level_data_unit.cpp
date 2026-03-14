@@ -47,7 +47,8 @@ struct LevelFixture {
     }
 };
 
-walker* add_to_list(LevelFixture& fx, std::list<std::unique_ptr<walker>>& ls,
+template <typename WalkerList>
+walker* add_to_list(LevelFixture& fx, WalkerList& ls,
                     Order o, char family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
@@ -174,7 +175,8 @@ struct LevelR11Fixture {
     }
 };
 
-walker* add_to(LevelR11Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
+template <typename WalkerList>
+walker* add_to(LevelR11Fixture& fx, WalkerList& ls,
                Order o, char family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
@@ -411,7 +413,8 @@ struct LevelR12Fixture {
     }
 };
 
-walker* add_to(LevelR12Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
+template <typename WalkerList>
+walker* add_to(LevelR12Fixture& fx, WalkerList& ls,
                Order o, char family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();

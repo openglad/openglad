@@ -65,7 +65,7 @@ TEST(ViewLifecycle, viewscreen_find_next_control_priorities)
         std::list<std::unique_ptr<walker>> saved;
         ObListSwap()
         {
-            saved.splice(saved.end(), og::runtime::current_session->myscreen_->world().oblist);
+            og::runtime::current_session->myscreen_->world().oblist.splice_into(saved);
         }
         ~ObListSwap()
         {
@@ -107,4 +107,3 @@ TEST(ViewLifecycle, viewscreen_find_next_control_priorities)
     // Cleanup - remove just our inserted walkers.
     og::runtime::current_session->myscreen_->world().oblist.clear();
 }
-

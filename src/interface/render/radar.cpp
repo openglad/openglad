@@ -220,7 +220,7 @@ short radar::draw(LevelRuntimeData* data)
 	// Now determine what objects are visible on the radar ..
 	while (listtype <= 1)
 	{
-			std::list<std::unique_ptr<walker>>* ls;
+			const GameWorld::EntityList* ls;
 			if (listtype == 0) // do oblist, standard
 			{
 				ls = &data->world().oblist;

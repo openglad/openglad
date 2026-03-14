@@ -69,7 +69,7 @@ public:
     
     void reset();
     
-    void update_guys(std::list<std::unique_ptr<walker>>& oblist);  // Copy team from the guys in an oblist
+    void update_guys(const std::list<std::unique_ptr<walker>>& oblist);  // Copy team from the guys in an oblist
     bool load(const std::string& filename);
     bool save(const std::string& filename);
     [[nodiscard]] SaveDataIoError load_with_error(const std::string& filename);

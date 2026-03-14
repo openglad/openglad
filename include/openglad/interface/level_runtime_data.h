@@ -237,10 +237,10 @@ public:
     walker* find_far_foe(walker* ob);
     walker* find_nearest_blood(walker* who);
     walker* find_nearest_player(walker* ob);
-    std::list<walker*> find_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
-    std::list<walker*> find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
-    std::list<walker*> find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
-    std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
+    std::list<walker*> find_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
+    std::list<walker*> find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
+    std::list<walker*> find_foe_weapons_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
+    std::list<walker*> find_friends_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
 
     void create_new_grid();
     void resize_grid(int width, int height);

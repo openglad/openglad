@@ -112,9 +112,9 @@ struct ListsSwap {
     std::list<std::unique_ptr<walker>> saved_ob, saved_fx, saved_weap;
     ListsSwap()
     {
-        saved_ob.splice(saved_ob.end(), og::runtime::current_session->myscreen_->world().oblist);
-        saved_fx.splice(saved_fx.end(), og::runtime::current_session->myscreen_->world().fxlist);
-        saved_weap.splice(saved_weap.end(), og::runtime::current_session->myscreen_->world().weaplist);
+        og::runtime::current_session->myscreen_->world().oblist.splice_into(saved_ob);
+        og::runtime::current_session->myscreen_->world().fxlist.splice_into(saved_fx);
+        og::runtime::current_session->myscreen_->world().weaplist.splice_into(saved_weap);
     }
     ~ListsSwap()
     {
@@ -256,4 +256,3 @@ TEST(LevelEditorHelpers, level_editor_create_new_campaign_and_detect_exists)
 
     delete_campaign(id);
 }
-

@@ -80,7 +80,7 @@ TEST(GladHud, glad_remaining_counts)
         std::list<std::unique_ptr<walker>> saved;
         ObListSwap()
         {
-            saved.splice(saved.end(), og::runtime::current_session->myscreen_->world().oblist);
+            og::runtime::current_session->myscreen_->world().oblist.splice_into(saved);
         }
         ~ObListSwap()
         {
@@ -214,13 +214,13 @@ TEST(GladHud, RedrawmeFlickerNoUnpaintedPresent)
     auto control = make_player(0);
     ASSERT_TRUE(control != nullptr);
     walker* controlp = control.get();
-    controlp->user = 0;
-    controlp->team_num = 0;
-    controlp->dead = 0;
-    controlp->stats()->hitpoints = 50;
-    controlp->stats()->max_hitpoints = 100;
-    controlp->stats()->magicpoints = 30;
-    controlp->stats()->max_magicpoints = 80;
+    controlp->set_user(0);
+    controlp->set_team_num(0);
+    controlp->set_dead(0);
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
 
     screen* s = og::runtime::current_session->myscreen_;
     viewscreen* v = s->viewob[0].get();
@@ -253,4 +253,3 @@ TEST(GladHud, RedrawmeFlickerNoUnpaintedPresent)
         ? old_control : nullptr;
     s->redrawme = 0;
 }
-

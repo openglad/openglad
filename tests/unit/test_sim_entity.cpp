@@ -15,7 +15,7 @@ TEST(SimEntity, default_construction)
     og::sim::SimEntity e;
     ASSERT_TRUE(e.xpos == 0);
     ASSERT_TRUE(e.ypos == 0);
-    ASSERT_TRUE(e.entity_id_ == 0);
+    ASSERT_TRUE(e.entity_id() == 0);
     ASSERT_TRUE(e.dead == 0);
     ASSERT_TRUE(e.user == -1);
     ASSERT_TRUE(e.team_num == 0);

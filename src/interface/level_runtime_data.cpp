@@ -995,24 +995,24 @@ walker* LevelRuntimeData::find_nearest_player(walker *ob)
     return world().find_nearest_player(ob);
 }
 
-std::list<walker*> LevelRuntimeData::find_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
+std::list<walker*> LevelRuntimeData::find_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
 {
     return world().find_in_range(somelist, range, howmany, ob);
 }
 
-std::list<walker*> LevelRuntimeData::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
+std::list<walker*> LevelRuntimeData::find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
 {
     return world().find_foes_in_range(somelist, range, howmany, ob);
 }
 
-std::list<walker*> LevelRuntimeData::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
-                                      std::int32_t* howmany, walker* ob)
+std::list<walker*> LevelRuntimeData::find_foe_weapons_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
+                                                               std::int32_t* howmany, walker* ob)
 {
     return world().find_foe_weapons_in_range(somelist, range, howmany, ob);
 }
 
-std::list<walker*> LevelRuntimeData::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
-                                      std::int32_t* howmany, walker* ob)
+std::list<walker*> LevelRuntimeData::find_friends_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
+                                                           std::int32_t* howmany, walker* ob)
 {
     return world().find_friends_in_range(somelist, range, howmany, ob);
 }

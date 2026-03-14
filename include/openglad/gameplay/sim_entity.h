@@ -53,9 +53,10 @@ public:
     short bonus_rounds = 0;
 
     // Identity
-    std::uint32_t entity_id_ = 0;
     Order order = Order::Living;
     char  family = 0;
+
+    [[nodiscard]] std::uint32_t entity_id() const noexcept { return entity_id_; }
 
     // Animation frame state (sim-relevant; actual pixel data is in render component)
     short frame = 0;
@@ -65,6 +66,7 @@ protected:
     float worldx_ = -1.0f;
     float worldy_ = -1.0f;
 
+    std::uint32_t entity_id_ = 0;
     short frames = 0;
     GameWorld* owning_world_ = nullptr;
 

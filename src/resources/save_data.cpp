@@ -476,7 +476,7 @@ bool SaveData::load(const std::string& filename)
 
 std::int32_t calculate_level(std::uint32_t temp_exp);
 
-void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
+void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
 {
     // Delete our old guys
 	for(int i = 0; i < team_size; i++)

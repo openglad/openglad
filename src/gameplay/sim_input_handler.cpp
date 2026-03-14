@@ -72,7 +72,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
 }
 
 walker* sim_cycle_next_character(
-    std::list<std::unique_ptr<walker>>& oblist,
+    const std::list<std::unique_ptr<walker>>& oblist,
     walker* current,
     bool reverse,
     const std::function<bool(const walker*)>& pred)

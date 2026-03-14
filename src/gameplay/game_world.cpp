@@ -75,7 +75,11 @@ std::int32_t g_test_level_tick_limit_override = 0;
 } // namespace og::sim
 
 GameWorld::GameWorld(std::uint32_t seed)
-    : rng_(seed)
+    : oblist(this, true),
+      fxlist(this, true),
+      weaplist(this, true),
+      dead_list(this, false),
+      rng_(seed)
 {
     mysmoother.set_rng(&rng_);
 }
@@ -84,6 +88,201 @@ GameWorld::~GameWorld()
 {
     if (detach_callback_)
         detach_callback_();
+}
+
+GameWorld::EntityList::EntityList(GameWorld* owner, bool participates_in_id_index)
+    : owner_(owner),
+      participates_in_id_index_(participates_in_id_index)
+{
+}
+
+GameWorld::EntityList::const_iterator GameWorld::EntityList::begin() const noexcept
+{
+    return entities_.begin();
+}
+
+GameWorld::EntityList::const_iterator GameWorld::EntityList::end() const noexcept
+{
+    return entities_.end();
+}
+
+GameWorld::EntityList::const_iterator GameWorld::EntityList::cbegin() const noexcept
+{
+    return entities_.cbegin();
+}
+
+GameWorld::EntityList::const_iterator GameWorld::EntityList::cend() const noexcept
+{
+    return entities_.cend();
+}
+
+GameWorld::EntityList::const_reverse_iterator GameWorld::EntityList::rbegin() const noexcept
+{
+    return entities_.rbegin();
+}
+
+GameWorld::EntityList::const_reverse_iterator GameWorld::EntityList::rend() const noexcept
+{
+    return entities_.rend();
+}
+
+GameWorld::EntityList::const_reverse_iterator GameWorld::EntityList::crbegin() const noexcept
+{
+    return entities_.crbegin();
+}
+
+GameWorld::EntityList::const_reverse_iterator GameWorld::EntityList::crend() const noexcept
+{
+    return entities_.crend();
+}
+
+GameWorld::EntityList::operator const Storage&() const noexcept
+{
+    return entities_;
+}
+
+bool GameWorld::EntityList::empty() const noexcept
+{
+    return entities_.empty();
+}
+
+GameWorld::EntityList::size_type GameWorld::EntityList::size() const noexcept
+{
+    return entities_.size();
+}
+
+const GameWorld::EntityList::value_type& GameWorld::EntityList::front() const
+{
+    return entities_.front();
+}
+
+const GameWorld::EntityList::value_type& GameWorld::EntityList::back() const
+{
+    return entities_.back();
+}
+
+void GameWorld::EntityList::push_back(value_type entity)
+{
+    prepare_insert(entity.get());
+    entities_.push_back(std::move(entity));
+    invalidate_owner();
+}
+
+void GameWorld::EntityList::push_front(value_type entity)
+{
+    prepare_insert(entity.get());
+    entities_.push_front(std::move(entity));
+    invalidate_owner();
+}
+
+void GameWorld::EntityList::pop_back()
+{
+    if (entities_.empty())
+        return;
+
+    prepare_remove(entities_.back().get());
+    entities_.pop_back();
+    invalidate_owner();
+}
+
+void GameWorld::EntityList::pop_front()
+{
+    if (entities_.empty())
+        return;
+
+    prepare_remove(entities_.front().get());
+    entities_.pop_front();
+    invalidate_owner();
+}
+
+GameWorld::EntityList::const_iterator GameWorld::EntityList::erase(const_iterator position)
+{
+    prepare_remove(position->get());
+    const auto next = entities_.erase(position);
+    invalidate_owner();
+    return next;
+}
+
+void GameWorld::EntityList::clear()
+{
+    prepare_remove(entities_);
+    entities_.clear();
+    invalidate_owner();
+}
+
+void GameWorld::EntityList::splice(const_iterator position, EntityList& other)
+{
+    if (this == &other || other.entities_.empty())
+        return;
+
+    prepare_insert(other.entities_);
+    entities_.splice(position, other.entities_);
+    other.invalidate_owner();
+    invalidate_owner();
+}
+
+void GameWorld::EntityList::splice(const_iterator position, Storage& other)
+{
+    if (other.empty())
+        return;
+
+    prepare_insert(other);
+    entities_.splice(position, other);
+    invalidate_owner();
+}
+
+void GameWorld::EntityList::splice_into(Storage& destination)
+{
+    if (entities_.empty())
+        return;
+
+    prepare_remove(entities_);
+    destination.splice(destination.end(), entities_);
+    invalidate_owner();
+}
+
+GameWorld::EntityList::Storage& GameWorld::EntityList::raw_mutable() noexcept
+{
+    return entities_;
+}
+
+const GameWorld::EntityList::Storage& GameWorld::EntityList::raw() const noexcept
+{
+    return entities_;
+}
+
+void GameWorld::EntityList::prepare_insert(walker* entity)
+{
+    if (owner_ == nullptr || entity == nullptr)
+        return;
+
+    if (participates_in_id_index_)
+        owner_->assign_entity_id(*entity);
+    entity->owning_world_ = owner_;
+}
+
+void GameWorld::EntityList::prepare_remove(walker* entity)
+{
+    if (entity != nullptr)
+        entity->owning_world_ = nullptr;
+}
+
+void GameWorld::EntityList::prepare_insert(Storage& entities)
+{
+    for (auto& uptr : entities)
+        prepare_insert(uptr.get());
+}
+
+void GameWorld::EntityList::prepare_remove(Storage& entities)
+{
+    for (auto& uptr : entities)
+        prepare_remove(uptr.get());
+}
+
+void GameWorld::EntityList::invalidate_owner()
+{
+    if (owner_ != nullptr)
+        owner_->invalidate_entity_tracking();
 }
 
 const PixieData* GameWorld::configure_existing_entity(walker& entity, Order order, std::int32_t family)
@@ -139,18 +338,10 @@ void GameWorld::remove_from_id_index(const walker* entity)
         id_index_.erase(it);
 }
 
-bool GameWorld::active_list_sizes_match_tracking() const
+void GameWorld::invalidate_entity_tracking()
 {
-    return tracked_oblist_size_ == oblist.size()
-        && tracked_fxlist_size_ == fxlist.size()
-        && tracked_weaplist_size_ == weaplist.size();
-}
-
-void GameWorld::sync_active_list_sizes()
-{
-    tracked_oblist_size_ = oblist.size();
-    tracked_fxlist_size_ = fxlist.size();
-    tracked_weaplist_size_ = weaplist.size();
+    id_index_.clear();
+    entity_tracking_dirty_ = true;
 }
 
 void GameWorld::rebuild_id_index()
@@ -178,7 +369,7 @@ void GameWorld::rebuild_id_index()
     reindex_list(fxlist, true);
     reindex_list(weaplist, true);
     reindex_list(dead_list, false);
-    sync_active_list_sizes();
+    entity_tracking_dirty_ = false;
 }
 
 walker* GameWorld::find_by_id(std::uint32_t entity_id)
@@ -192,7 +383,7 @@ const walker* GameWorld::find_by_id(std::uint32_t entity_id) const
         return nullptr;
 
     auto* mutable_world = const_cast<GameWorld*>(this);
-    if (!active_list_sizes_match_tracking())
+    if (entity_tracking_dirty_)
         mutable_world->rebuild_id_index();
 
     auto it = id_index_.find(entity_id);
@@ -221,12 +412,12 @@ void GameWorld::move_entities_from(GameWorld& source)
     next_entity_id_ = std::max(next_entity_id_, source.next_entity_id_);
     source.next_entity_id_ = 1;
     source.id_index_.clear();
-    source.sync_active_list_sizes();
+    source.entity_tracking_dirty_ = false;
     rebuild_id_index();
 }
 
 walker* GameWorld::add_to_list(Order order, std::int32_t family,
-                               std::list<std::unique_ptr<walker>>& target_list,
+                               EntityList& target_list,
                                bool count_living, bool atstart)
 {
     if (!entity_factory)
@@ -239,14 +430,14 @@ walker* GameWorld::add_to_list(Order order, std::int32_t family,
     if (count_living)
         living_count++;
 
+    auto& entries = target_list.raw_mutable();
     walker* raw = w.get();
     assign_entity_id(*raw);
     if (atstart)
-        target_list.push_front(std::move(w));
+        entries.push_front(std::move(w));
     else
-        target_list.push_back(std::move(w));
+        entries.push_back(std::move(w));
     index_entity(*raw);
-    sync_active_list_sizes();
     return raw;
 }
 
@@ -272,32 +463,32 @@ short GameWorld::remove_ob(walker* ob)
 {
     auto pred = [ob](const std::unique_ptr<walker>& p) { return p.get() == ob; };
 
-    auto e = std::find_if(weaplist.begin(), weaplist.end(), pred);
-    if (e != weaplist.end())
+    auto& weapons = weaplist.raw_mutable();
+    auto e = std::find_if(weapons.begin(), weapons.end(), pred);
+    if (e != weapons.end())
     {
         remove_from_id_index(e->get());
-        weaplist.erase(e);
-        sync_active_list_sizes();
+        weapons.erase(e);
         return 1;
     }
 
-    auto f = std::find_if(fxlist.begin(), fxlist.end(), pred);
-    if (f != fxlist.end())
+    auto& effects = fxlist.raw_mutable();
+    auto f = std::find_if(effects.begin(), effects.end(), pred);
+    if (f != effects.end())
     {
         remove_from_id_index(f->get());
-        fxlist.erase(f);
-        sync_active_list_sizes();
+        effects.erase(f);
         return 1;
     }
 
-    auto g = std::find_if(oblist.begin(), oblist.end(), pred);
-    if (g != oblist.end())
+    auto& objects = oblist.raw_mutable();
+    auto g = std::find_if(objects.begin(), objects.end(), pred);
+    if (g != objects.end())
     {
         if (ob && ob->query_order() == Order::Living && living_count > 0)
             living_count--;
         remove_from_id_index(g->get());
-        oblist.erase(g);
-        sync_active_list_sizes();
+        objects.erase(g);
         return 1;
     }
 
@@ -690,7 +881,7 @@ walker* GameWorld::find_nearest_player(walker* ob)
     return returnob;
 }
 
-std::list<walker*> GameWorld::find_in_range(std::list<std::unique_ptr<walker>>& somelist,
+std::list<walker*> GameWorld::find_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                             std::int32_t range, std::int32_t* howmany,
                                             walker* ob)
 {
@@ -714,7 +905,7 @@ std::list<walker*> GameWorld::find_in_range(std::list<std::unique_ptr<walker>>& 
     return result;
 }
 
-std::list<walker*> GameWorld::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist,
+std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                                  std::int32_t range, std::int32_t* howmany,
                                                  walker* ob)
 {
@@ -742,7 +933,7 @@ std::list<walker*> GameWorld::find_foes_in_range(std::list<std::unique_ptr<walke
     return result;
 }
 
-std::list<walker*> GameWorld::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist,
+std::list<walker*> GameWorld::find_foe_weapons_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                                         std::int32_t range, std::int32_t* howmany,
                                                         walker* ob)
 {
@@ -769,7 +960,7 @@ std::list<walker*> GameWorld::find_foe_weapons_in_range(std::list<std::unique_pt
     return result;
 }
 
-std::list<walker*> GameWorld::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist,
+std::list<walker*> GameWorld::find_friends_in_range(const std::list<std::unique_ptr<walker>>& somelist,
                                                     std::int32_t range, std::int32_t* howmany,
                                                     walker* ob)
 {
@@ -884,36 +1075,35 @@ void GameWorld::resize_grid(int width, int height)
                                  y > ob->ypos || ob->ypos >= y + h);
     };
 
-    std::erase_if(oblist, [this, &off_map](const auto& uptr) {
+    std::erase_if(oblist.raw_mutable(), [this, &off_map](const auto& uptr) {
         const bool erase = off_map(uptr);
         if (erase)
             remove_from_id_index(uptr.get());
         return erase;
     });
-    std::erase_if(fxlist, [this, &off_map](const auto& uptr) {
+    std::erase_if(fxlist.raw_mutable(), [this, &off_map](const auto& uptr) {
         const bool erase = off_map(uptr);
         if (erase)
             remove_from_id_index(uptr.get());
         return erase;
     });
-    std::erase_if(weaplist, [this, &off_map](const auto& uptr) {
+    std::erase_if(weaplist.raw_mutable(), [this, &off_map](const auto& uptr) {
         const bool erase = off_map(uptr);
         if (erase)
             remove_from_id_index(uptr.get());
         return erase;
     });
-    sync_active_list_sizes();
 }
 
 void GameWorld::delete_objects()
 {
-    oblist.clear();
-    fxlist.clear();
-    weaplist.clear();
-    dead_list.clear();
+    oblist.raw_mutable().clear();
+    fxlist.raw_mutable().clear();
+    weaplist.raw_mutable().clear();
+    dead_list.raw_mutable().clear();
     id_index_.clear();
+    entity_tracking_dirty_ = false;
     living_count = 0;
-    sync_active_list_sizes();
 
     if (!myobmap)
     {
@@ -1164,24 +1354,26 @@ void GameWorld::tick()
     // --- Remove dead entities ---
     // Note: viewscreen control pointer cleanup is handled by the caller
     // (screen::act) since viewscreens are a rendering concern.
-    for (auto e = oblist.begin(); e != oblist.end();)
+    auto& objects = oblist.raw_mutable();
+    auto& dead = dead_list.raw_mutable();
+    for (auto e = objects.begin(); e != objects.end();)
     {
         walker* ob = e->get();
         if (ob && ob->dead && ob->myguy == nullptr)
         {
             remove_from_id_index(ob);
-            dead_list.push_back(std::move(*e));
+            dead.push_back(std::move(*e));
 
             if (ob->query_order() == Order::Living)
                 living_count--;
 
-            e = oblist.erase(e);
+            e = objects.erase(e);
             continue;
         }
         e++;
     }
 
-    std::erase_if(fxlist, [this](const auto& uptr) {
+    std::erase_if(fxlist.raw_mutable(), [this](const auto& uptr) {
         walker* ob = uptr.get();
         if (!(ob && ob->dead))
             return false;
@@ -1189,12 +1381,11 @@ void GameWorld::tick()
         return true;
     });
 
-    std::erase_if(weaplist, [this](const auto& uptr) {
+    std::erase_if(weaplist.raw_mutable(), [this](const auto& uptr) {
         walker* ob = uptr.get();
         if (!(ob && ob->dead))
             return false;
         remove_from_id_index(ob);
         return true;
     });
-    sync_active_list_sizes();
 }

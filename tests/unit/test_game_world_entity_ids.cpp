@@ -38,16 +38,16 @@ TEST_F(GameWorldEntityIdsFixture, assigns_unique_non_zero_ids_and_finds_entities
     ASSERT_NE(nullptr, fx);
     ASSERT_NE(nullptr, weapon);
 
-    EXPECT_NE(0u, living->entity_id_);
-    EXPECT_NE(0u, fx->entity_id_);
-    EXPECT_NE(0u, weapon->entity_id_);
-    EXPECT_NE(living->entity_id_, fx->entity_id_);
-    EXPECT_NE(living->entity_id_, weapon->entity_id_);
-    EXPECT_NE(fx->entity_id_, weapon->entity_id_);
+    EXPECT_NE(0u, living->entity_id());
+    EXPECT_NE(0u, fx->entity_id());
+    EXPECT_NE(0u, weapon->entity_id());
+    EXPECT_NE(living->entity_id(), fx->entity_id());
+    EXPECT_NE(living->entity_id(), weapon->entity_id());
+    EXPECT_NE(fx->entity_id(), weapon->entity_id());
 
-    EXPECT_EQ(living, world.find_by_id(living->entity_id_));
-    EXPECT_EQ(fx, world.find_by_id(fx->entity_id_));
-    EXPECT_EQ(weapon, world.find_by_id(weapon->entity_id_));
+    EXPECT_EQ(living, world.find_by_id(living->entity_id()));
+    EXPECT_EQ(fx, world.find_by_id(fx->entity_id()));
+    EXPECT_EQ(weapon, world.find_by_id(weapon->entity_id()));
     EXPECT_EQ(nullptr, world.find_by_id(0));
     EXPECT_EQ(nullptr, world.find_by_id(999999));
 }
@@ -62,9 +62,9 @@ TEST_F(GameWorldEntityIdsFixture, remove_ob_erases_entities_from_id_index)
     ASSERT_NE(nullptr, fx);
     ASSERT_NE(nullptr, weapon);
 
-    const std::uint32_t living_id = living->entity_id_;
-    const std::uint32_t fx_id = fx->entity_id_;
-    const std::uint32_t weapon_id = weapon->entity_id_;
+    const std::uint32_t living_id = living->entity_id();
+    const std::uint32_t fx_id = fx->entity_id();
+    const std::uint32_t weapon_id = weapon->entity_id();
 
     ASSERT_EQ(1, world.remove_ob(weapon));
     EXPECT_EQ(nullptr, world.find_by_id(weapon_id));
@@ -76,26 +76,26 @@ TEST_F(GameWorldEntityIdsFixture, remove_ob_erases_entities_from_id_index)
     EXPECT_EQ(nullptr, world.find_by_id(living_id));
 }
 
-TEST_F(GameWorldEntityIdsFixture, direct_public_insert_rebuilds_id_index_on_lookup)
+TEST_F(GameWorldEntityIdsFixture, direct_public_insert_assigns_id_and_rebuilds_id_index_on_lookup)
 {
     auto external = std::make_unique<walker>();
     external->order = Order::Living;
     external->family = FAMILY_SOLDIER;
     external->sizex = 16;
     external->sizey = 16;
-    external->entity_id_ = 500;
     walker* raw = external.get();
 
     world.oblist.push_back(std::move(external));
 
-    EXPECT_EQ(raw, world.find_by_id(500));
+    EXPECT_NE(0u, raw->entity_id());
+    EXPECT_EQ(raw, world.find_by_id(raw->entity_id()));
 }
 
 TEST_F(GameWorldEntityIdsFixture, direct_public_erase_rebuilds_lookup_state)
 {
     walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, living);
-    const std::uint32_t living_id = living->entity_id_;
+    const std::uint32_t living_id = living->entity_id();
 
     const auto it = std::find_if(world.oblist.begin(), world.oblist.end(),
                                  [living](const auto& entry) {
@@ -118,30 +118,30 @@ TEST_F(GameWorldEntityIdsFixture, moving_entities_between_worlds_preserves_looku
     ASSERT_NE(nullptr, fx);
     ASSERT_NE(nullptr, weapon);
 
-    const std::uint32_t max_existing_id = weapon->entity_id_;
+    const std::uint32_t max_existing_id = weapon->entity_id();
 
     GameWorld next_world(456);
     next_world.entity_factory = world.entity_factory;
     next_world.move_entities_from(world);
 
-    EXPECT_EQ(nullptr, world.find_by_id(living->entity_id_));
-    EXPECT_EQ(nullptr, world.find_by_id(fx->entity_id_));
-    EXPECT_EQ(nullptr, world.find_by_id(weapon->entity_id_));
+    EXPECT_EQ(nullptr, world.find_by_id(living->entity_id()));
+    EXPECT_EQ(nullptr, world.find_by_id(fx->entity_id()));
+    EXPECT_EQ(nullptr, world.find_by_id(weapon->entity_id()));
 
-    EXPECT_EQ(living, next_world.find_by_id(living->entity_id_));
-    EXPECT_EQ(fx, next_world.find_by_id(fx->entity_id_));
-    EXPECT_EQ(weapon, next_world.find_by_id(weapon->entity_id_));
+    EXPECT_EQ(living, next_world.find_by_id(living->entity_id()));
+    EXPECT_EQ(fx, next_world.find_by_id(fx->entity_id()));
+    EXPECT_EQ(weapon, next_world.find_by_id(weapon->entity_id()));
 
     walker* fresh = next_world.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_NE(nullptr, fresh);
-    EXPECT_GT(fresh->entity_id_, max_existing_id);
+    EXPECT_GT(fresh->entity_id(), max_existing_id);
 }
 
 TEST_F(GameWorldEntityIdsFixture, direct_public_splice_between_worlds_rebuilds_lookup_state)
 {
     walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, living);
-    const std::uint32_t living_id = living->entity_id_;
+    const std::uint32_t living_id = living->entity_id();
 
     GameWorld next_world(456);
     next_world.entity_factory = world.entity_factory;

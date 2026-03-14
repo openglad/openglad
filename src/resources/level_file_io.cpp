@@ -478,7 +478,7 @@ bool write_scenario_payload(og::io::OgFile& outfile,
         return false;
 
     size_t remaining_objects = serialized_objects;
-    auto write_object_list = [&](std::list<std::unique_ptr<walker>>& list,
+    auto write_object_list = [&](const std::list<std::unique_ptr<walker>>& list,
                                  const char* null_label) -> bool {
         for (auto& uptr : list)
         {
