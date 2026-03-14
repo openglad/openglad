@@ -141,6 +141,8 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
                              (static_cast<float>(ypos) + static_cast<float>(sizey) * 0.5f);
             const float dx = (static_cast<float>(target->xpos) + static_cast<float>(target->sizex) * 0.5f) -
                              (static_cast<float>(xpos) + static_cast<float>(sizex) * 0.5f);
+            // Audited for Phase 0: this only drives recoil presentation, and
+            // the server snapshots the resulting angle to clients.
             target->hit_recoil_angle = atan2f(dy, dx);
         }
     }

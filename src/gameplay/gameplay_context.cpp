@@ -15,12 +15,52 @@
 
 #include "micropather.h"
 
-#include <cmath>
+#include <cstdlib>
 
 namespace
 {
 #define MAKE_STATE(x, y) reinterpret_cast<void*>(static_cast<intptr_t>(((y) / GRID_SIZE) * MAP_WIDTH + ((x) / GRID_SIZE)))
 #define ALIGN_TO_GRID(x) ((x) / GRID_SIZE * GRID_SIZE)
+
+constexpr float kDiagonalStepCost = 1.41421354f;
+constexpr float kSqrtFixedScaleInv = 1.0f / 65536.0f;
+
+std::uint64_t integer_root_u64(std::uint64_t value)
+{
+    std::uint64_t result = 0;
+    std::uint64_t bit = std::uint64_t{1} << 62;
+
+    while (bit > value)
+        bit >>= 2;
+
+    while (bit != 0)
+    {
+        if (value >= result + bit)
+        {
+            value -= result + bit;
+            result = (result >> 1) + bit;
+        }
+        else
+        {
+            result >>= 1;
+        }
+        bit >>= 2;
+    }
+
+    return result;
+}
+
+float deterministic_path_distance(std::int32_t dx, std::int32_t dy)
+{
+    // Path costs feed simulation path selection, so avoid runtime libm calls.
+    const std::int64_t dx64 = dx;
+    const std::int64_t dy64 = dy;
+    const std::uint64_t squared_distance = static_cast<std::uint64_t>(
+        dx64 * dx64 + dy64 * dy64);
+    const std::uint64_t fixed_distance =
+        integer_root_u64(squared_distance << 32);
+    return static_cast<float>(fixed_distance) * kSqrtFixedScaleInv;
+}
 
 class PathingMap final : public micropather::Graph
 {
@@ -42,9 +82,7 @@ public:
         const int x2 = GET_STATE_X(state_end);
         const int y2 = GET_STATE_Y(state_end);
 
-        const float dx = static_cast<float>(x2 - x1);
-        const float dy = static_cast<float>(y2 - y1);
-        return sqrtf(dx * dx + dy * dy);
+        return deterministic_path_distance(x2 - x1, y2 - y1);
     }
 
     void AdjacentCost(void* state,
@@ -75,7 +113,9 @@ public:
                 cost.state = MAKE_STATE(adj_x, adj_y);
                 cost.cost = 0;
 
-                if (!current_game->world->query_grid_passable(adj_x, adj_y,
+                if (!current_game->world->query_grid_passable(
+                        static_cast<float>(adj_x),
+                        static_cast<float>(adj_y),
                                                               owner_->active_walker))
                 {
                     continue;
@@ -89,15 +129,15 @@ public:
                 }
                 else
                 {
-                    cost.cost = sqrtf(static_cast<float>(i * i + j * j));
+                    cost.cost = (i == 0 || j == 0) ? 1.0f : kDiagonalStepCost;
                 }
 
                 const int dx1 = adj_x - ALIGN_TO_GRID(owner_->active_walker->foe->xpos);
                 const int dy1 = adj_y - ALIGN_TO_GRID(owner_->active_walker->foe->ypos);
                 const int dx2 = owner_->active_walker->xpos - ALIGN_TO_GRID(owner_->active_walker->foe->xpos);
                 const int dy2 = owner_->active_walker->ypos - ALIGN_TO_GRID(owner_->active_walker->foe->ypos);
-                const float cross = static_cast<float>(dx1 * dy2 - dx2 * dy1);
-                cost.cost += fabsf(cross) * 0.01f;
+                const int cross = dx1 * dy2 - dx2 * dy1;
+                cost.cost += static_cast<float>(std::abs(cross)) * 0.01f;
 
                 adjacent->push_back(cost);
             }
