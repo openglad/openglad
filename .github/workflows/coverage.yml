@@ -67,6 +67,7 @@ jobs:
             --filter src/ \
             --exclude 'src/fuzz/' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
+            --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
             --html-details \
             --output build/ci-coverage/coverage/coverage.html \
             build/ci-coverage
@@ -86,6 +87,7 @@ jobs:
             --filter src/ \
             --exclude 'src/fuzz/' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
+            --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
             --txt \
             --output build/ci-coverage/coverage/coverage-summary.txt \
             --json-summary build/ci-coverage/coverage/coverage-summary.json \

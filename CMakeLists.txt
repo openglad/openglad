@@ -1583,18 +1583,20 @@ if(NOT EMSCRIPTEN)
             TIMEOUT 60
         )
 
-        add_test(NAME openglad_demo_smoke
-            COMMAND ${CMAKE_COMMAND} -E env
-                SDL_VIDEODRIVER=dummy
-                SDL_AUDIODRIVER=dummy
-                SDL_RENDER_DRIVER=software
-                OPENGLAD_DEMO_MAX_FRAMES=1
-                $<TARGET_FILE:openglad_demo>
-        )
-        set_tests_properties(openglad_demo_smoke PROPERTIES
-            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-            TIMEOUT 120
-        )
+        if(ENABLE_COVERAGE)
+            add_test(NAME openglad_demo_smoke
+                COMMAND ${CMAKE_COMMAND} -E env
+                    SDL_VIDEODRIVER=dummy
+                    SDL_AUDIODRIVER=dummy
+                    SDL_RENDER_DRIVER=software
+                    OPENGLAD_DEMO_MAX_FRAMES=1
+                    $<TARGET_FILE:openglad_demo>
+            )
+            set_tests_properties(openglad_demo_smoke PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+                TIMEOUT 120
+            )
+        endif()
 
         add_test(NAME openglad_text_picker_interactive
             COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_picker_interactive.sh $<TARGET_FILE:openglad_text>
