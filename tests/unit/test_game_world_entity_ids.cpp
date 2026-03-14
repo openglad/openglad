@@ -42,6 +42,8 @@ TEST_F(GameWorldEntityIdsFixture, assigns_unique_non_zero_ids_and_finds_entities
     EXPECT_NE(0u, living->entity_id());
     EXPECT_NE(0u, fx->entity_id());
     EXPECT_NE(0u, weapon->entity_id());
+    ASSERT_NE(nullptr, living->stats());
+    EXPECT_EQ(living->entity_id(), living->stats()->controller_id);
     EXPECT_NE(living->entity_id(), fx->entity_id());
     EXPECT_NE(living->entity_id(), weapon->entity_id());
     EXPECT_NE(fx->entity_id(), weapon->entity_id());
@@ -89,6 +91,8 @@ TEST_F(GameWorldEntityIdsFixture, direct_public_insert_assigns_id_and_rebuilds_i
     world.oblist.push_back(std::move(external));
 
     EXPECT_NE(0u, raw->entity_id());
+    ASSERT_NE(nullptr, raw->stats());
+    EXPECT_EQ(raw->entity_id(), raw->stats()->controller_id);
     EXPECT_EQ(raw, world.find_by_id(raw->entity_id()));
 }
 
@@ -136,6 +140,24 @@ TEST_F(GameWorldEntityIdsFixture, moving_entities_between_worlds_preserves_looku
     walker* fresh = next_world.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_NE(nullptr, fresh);
     EXPECT_GT(fresh->entity_id(), max_existing_id);
+}
+
+TEST_F(GameWorldEntityIdsFixture, moving_entities_between_worlds_clears_source_removed_id_log)
+{
+    walker* removed = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* remaining = world.add_fx_ob(Order::FX, FAMILY_FLASH);
+    ASSERT_NE(nullptr, removed);
+    ASSERT_NE(nullptr, remaining);
+
+    ASSERT_EQ(1, world.remove_ob(removed));
+    ASSERT_FALSE(world.removed_entity_ids().empty());
+
+    GameWorld next_world(456);
+    next_world.entity_factory = world.entity_factory;
+    next_world.move_entities_from(world);
+
+    EXPECT_TRUE(world.removed_entity_ids().empty());
+    EXPECT_EQ(remaining, next_world.find_by_id(remaining->entity_id()));
 }
 
 TEST_F(GameWorldEntityIdsFixture, direct_public_splice_between_worlds_rebuilds_lookup_state)
@@ -234,6 +256,25 @@ TEST_F(GameWorldEntityIdsFixture, removing_entities_tracks_removed_entity_ids)
     ASSERT_EQ(1u, world.removed_entity_ids().size());
     EXPECT_EQ(living_id, world.removed_entity_ids().back());
     EXPECT_EQ(nullptr, world.find_by_id(living_id));
+}
+
+TEST_F(GameWorldEntityIdsFixture, take_removed_entity_ids_drains_log)
+{
+    walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* fx = world.add_fx_ob(Order::FX, FAMILY_FLASH);
+    ASSERT_NE(nullptr, living);
+    ASSERT_NE(nullptr, fx);
+
+    const std::uint32_t living_id = living->entity_id();
+    const std::uint32_t fx_id = fx->entity_id();
+
+    ASSERT_EQ(1, world.remove_ob(living));
+    ASSERT_EQ(1, world.remove_ob(fx));
+
+    std::vector<std::uint32_t> removed = world.take_removed_entity_ids();
+    EXPECT_NE(removed.end(), std::find(removed.begin(), removed.end(), living_id));
+    EXPECT_NE(removed.end(), std::find(removed.begin(), removed.end(), fx_id));
+    EXPECT_TRUE(world.removed_entity_ids().empty());
 }
 
 TEST_F(GameWorldEntityIdsFixture, public_entity_list_removals_track_removed_entity_ids)
@@ -338,4 +379,17 @@ TEST_F(GameWorldEntityIdsFixture, delete_objects_tracks_removed_entity_ids_for_a
               std::find(world.removed_entity_ids().begin(),
                         world.removed_entity_ids().end(),
                         weapon_id));
+}
+
+TEST_F(GameWorldEntityIdsFixture, clear_resets_removed_entity_id_log_for_new_world_lifecycle)
+{
+    walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, living);
+
+    ASSERT_EQ(1, world.remove_ob(living));
+    ASSERT_FALSE(world.removed_entity_ids().empty());
+
+    world.clear();
+
+    EXPECT_TRUE(world.removed_entity_ids().empty());
 }

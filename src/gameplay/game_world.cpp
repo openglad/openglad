@@ -259,6 +259,7 @@ void GameWorld::EntityList::prepare_insert(walker* entity)
     if (participates_in_id_index_)
     {
         owner_->assign_entity_id(*entity);
+        entity->sync_ids_from_pointers();
         entity->mark_all_dirty();
     }
     entity->owning_world_ = owner_;
@@ -310,6 +311,18 @@ void GameWorld::set_entity_derived_stats(walker* entity, Order order, std::int32
 void GameWorld::set_detach_callback(std::function<void()> callback)
 {
     detach_callback_ = std::move(callback);
+}
+
+std::vector<std::uint32_t> GameWorld::take_removed_entity_ids()
+{
+    auto removed = std::move(removed_entity_ids_);
+    removed_entity_ids_.clear();
+    return removed;
+}
+
+void GameWorld::clear_removed_entity_ids() noexcept
+{
+    removed_entity_ids_.clear();
 }
 
 void GameWorld::attach_entity_to_world(walker& entity)
@@ -425,6 +438,7 @@ void GameWorld::move_entities_from(GameWorld& source)
 
     next_entity_id_ = std::max(next_entity_id_, source.next_entity_id_);
     source.next_entity_id_ = 1;
+    source.clear_removed_entity_ids();
     source.id_index_.clear();
     source.entity_tracking_dirty_ = false;
     rebuild_id_index();
@@ -447,6 +461,7 @@ walker* GameWorld::add_to_list(Order order, std::int32_t family,
     auto& entries = target_list.raw_mutable();
     walker* raw = w.get();
     assign_entity_id(*raw);
+    raw->sync_ids_from_pointers();
     raw->mark_all_dirty();
     if (atstart)
         entries.push_front(std::move(w));
@@ -1138,6 +1153,7 @@ void GameWorld::delete_objects()
 void GameWorld::clear()
 {
     delete_objects();
+    clear_removed_entity_ids();
     delete_grid();
     next_entity_id_ = 1;
 
