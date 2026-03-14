@@ -50,11 +50,11 @@ jobs:
       - name: Build all test binaries
         run: cmake --build --preset ci-coverage -j"$(nproc)"
 
-      - name: Run tests (parallel, excluding menu UI)
-        run: ctest --test-dir build/ci-coverage --parallel $(nproc) --output-on-failure --timeout 180 -E og_test_menu_ui
-
       - name: Run menu UI test with coverage timeout
         run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 420 -R og_test_menu_ui
+
+      - name: Run tests (parallel, excluding menu UI)
+        run: ctest --test-dir build/ci-coverage --parallel $(nproc) --output-on-failure --timeout 180 -E og_test_menu_ui
 
       - name: Generate HTML coverage report
         run: |

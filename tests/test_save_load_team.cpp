@@ -179,28 +179,30 @@ static int load_menu_injector(void* data)
         interact_match("back", [](const Interactable& item) { return item.y >= 170; });
     }
 
-    // Back in team menu
-    SDL_Delay(500);
-    wait_for_interactable("load_team", 10000);
-    SDL_Delay(500);
-    fprintf(stderr, "  [test] clicking back from team menu\n");
-    interact_match("back", [](const Interactable& item) { return item.y < 170; });
-
-    const Uint32 deadline = SDL_GetTicks() + 8000;
+    const Uint32 deadline = SDL_GetTicks() + 10000;
     while (SDL_GetTicks() < deadline)
     {
         if (wait_for_interactable("continue_game", 150))
             break;
 
-        inject_key_press(SDLK_ESCAPE, 10);
-        SDL_Delay(50);
+        if (wait_for_interactable("load_team", 150))
+        {
+            fprintf(stderr, "  [test] clicking back from team menu\n");
+            interact_match("back", [](const Interactable& item) { return item.y < 170; });
+            SDL_Delay(150);
+            continue;
+        }
 
         if (wait_for_interactable("back", 150))
         {
-            fprintf(stderr, "  [test] retry clicking back\n");
-            interact_match("back", [](const Interactable& item) { return item.y < 170; });
+            fprintf(stderr, "  [test] retry clicking back from load menu\n");
+            interact_match("back", [](const Interactable& item) { return item.y >= 170; });
             SDL_Delay(150);
+            continue;
         }
+
+        inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(50);
     }
 
     state->finished = true;
