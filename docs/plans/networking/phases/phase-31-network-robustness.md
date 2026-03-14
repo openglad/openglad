@@ -1,6 +1,6 @@
-# Phase 30: Network Robustness
+# Phase 31: Network Robustness
 
-> **See also:** [Phase 14 (GameServer/GameClient)](phase-14-server-client.md) | [Phase 12 (Hello handshake)](phase-12-transport-interface.md) | [Context](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Phase 15 (GameServer/GameClient)](phase-15-server-client.md) | [Phase 13 (Hello handshake)](phase-13-transport-interface.md) | [Context](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Polish for real-world conditions.
 
@@ -8,8 +8,8 @@ Polish for real-world conditions.
 - Connection timeout / reconnection with exponential backoff (IXWebSocket has built-in auto-reconnect support)
 - Graceful disconnect (dropped player -> AI control via existing NPC AI in `walker::act()`)
 - Error handling for malformed messages (validate protocol version, bounds-check lengths)
-- Heartbeat messages (already in `NetMessageType` enum from Phase 12)
-- Note: basic visual interpolation is handled in Phase 18. Phase 30 may add more advanced interpolation (cubic, extrapolation) if needed.
+- Heartbeat messages (already in `NetMessageType` enum from Phase 13)
+- Note: basic visual interpolation is handled in Phase 19. Phase 31 may add more advanced interpolation (cubic, extrapolation) if needed.
 - **Reconnection burst budget:** If multiple clients disconnect and reconnect simultaneously (e.g., network blip), the server sends N full keyframes in one tick. With 4 clients, that's ~32-64KB burst (4 x 8-16KB compressed keyframe). Still well within residential internet burst capacity, but the server should stagger keyframe sends across the next few ticks if >2 clients request keyframes simultaneously, to avoid a single-tick bandwidth spike.
 
 ## Reconnection Protocol
@@ -17,7 +17,7 @@ Polish for real-world conditions.
 When a player disconnects mid-game, the server:
 1. Starts a `DISCONNECT_TIMEOUT_MS` (10 second) grace period. During this window, the player's last `held[]` input is repeated (movement continues) but `pressed[]` is cleared (no one-shot actions).
 2. After the grace period expires without reconnection, the player's entity transitions to AI control (`act_type = ACT_RANDOM`). Other players see the entity start making autonomous decisions.
-3. The server retains the player's **session token** (assigned during `Hello` handshake — see Phase 12), global player index, and controlled entity ID in a `DisconnectedPlayer` struct.
+3. The server retains the player's **session token** (assigned during `Hello` handshake — see Phase 13), global player index, and controlled entity ID in a `DisconnectedPlayer` struct.
 
 When a client connects and sends a `Hello` with a non-zero session token:
 1. Server checks the token against `DisconnectedPlayer` entries.

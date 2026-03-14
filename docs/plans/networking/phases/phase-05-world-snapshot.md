@@ -82,8 +82,8 @@ Each walker can reference a `guy*` (player character data from `SaveData::team_l
 - Vectors of `EntitySnapshot`: one vector each for oblist, fxlist, weaplist (skip dead_list — dead entities don't affect simulation). Note: source data is `std::list<std::unique_ptr<walker>>` (linked lists), but snapshot uses vectors for compact serialization.
 - **Dead player entities in oblist:** Dead entities with `myguy != nullptr` (player characters) are NOT moved to `dead_list` during `GameWorld::tick()` (see `game_world.cpp:1019-1027` — only entities with `myguy == nullptr` are moved). These dead player entities remain in `oblist` for respawn/scoring purposes and MUST be included in the oblist snapshot vector.
 - `current_palette_id` (uint8_t) — 0 = normal palette, 1 = blue/freeze palette. Included in world-level state so that clients always converge to the correct palette on every keyframe, eliminating the SetPalette desync risk entirely. 1 byte per snapshot — negligible cost for guaranteed correctness.
-- `pending_exit_prompt` — server-side exit prompt state (see Phase 14). Serialized so clients know whether the sim is paused for a prompt.
-- `paused` (bool) — whether the game is paused by a player. `pause_player_index` (uint8_t) — which player paused. Clients display "PAUSED by [name]" overlay when set. See Phase 14 pause protocol.
+- `pending_exit_prompt` — server-side exit prompt state (see Phase 15). Serialized so clients know whether the sim is paused for a prompt.
+- `paused` (bool) — whether the game is paused by a player. `pause_player_index` (uint8_t) — which player paused. Clients display "PAUSED by [name]" overlay when set. See Phase 15 pause protocol.
 
 **Note:** Level metadata (`id`, `title`, `type`, `par_value`, `time_bonus_limit`, `difficulty`, `pixmaxx`, `pixmaxy`, `mysmoother`) and team config (`my_team`, `allied_mode`, `current_scenario`, `completed_levels`) are constant during a level. These are sent once at level start via `InitialSetup`, not included in per-tick snapshots. `completed_levels` (`std::set<int>` at `game_world.h:147`) is campaign progression state — the server updates it between levels and includes the updated set in each `InitialSetup` message.
 
@@ -115,11 +115,11 @@ SimEventLog events fall into two categories with different reliability requireme
 **Tier 2 — Game-flow events (reliable delivery):**
 - `EndGame` — triggers `sync_save_data_from_world()` + `endgame()` UI sequence (`screen.cpp:951-955`)
 - `SetEnd` — defined in `EventKind` enum but **has zero push sites in gameplay code**; appears to be vestigial. Kept in enum for forward compatibility but not expected to fire. If needed in the future, add push sites at that time.
-- `RequestExitConfirmation` — triggers server-side sim pause + broadcast prompt (see Phase 14)
+- `RequestExitConfirmation` — triggers server-side sim pause + broadcast prompt (see Phase 15)
 - `WithdrawToLevel` — triggers level withdrawal transition (`screen.cpp:966-968`)
 - `ScoreChange` — triggers score UI refresh (`screen.cpp:970-973`; score data itself is already in snapshot via `m_score[4]`)
 
-Game-flow events carry **side effects beyond state** — they trigger UI sequences, blocking prompts, and save data syncs that aren't captured by snapshot flags alone. These are sent in a separate **`GameFlowEventBatch`** message with reliable, ordered delivery (TCP/WebSocket guarantees this; for in-process transport it's automatic). The client dispatches game-flow events through a dedicated `screen::dispatch_game_flow_events()` method (see [Phase 15](phase-15-split-screen-act.md) for the `screen::act()` split).
+Game-flow events carry **side effects beyond state** — they trigger UI sequences, blocking prompts, and save data syncs that aren't captured by snapshot flags alone. These are sent in a separate **`GameFlowEventBatch`** message with reliable, ordered delivery (TCP/WebSocket guarantees this; for in-process transport it's automatic). The client dispatches game-flow events through a dedicated `screen::dispatch_game_flow_events()` method (see [Phase 16](phase-16-split-screen-act.md) for the `screen::act()` split).
 
 All game-flow-critical **state** (level completion, player death, game end) MUST also be derivable from `WorldSnapshot` flags (`level_done`, `game_ended`, `dead`, etc.) as a consistency guarantee. The events trigger the UI transitions; the snapshot flags are the source of truth. If a client reconnects and missed events, the snapshot flags let it recover to the correct state (though it may miss the transition animation).
 
@@ -141,7 +141,7 @@ All game-flow-critical **state** (level completion, player death, game end) MUST
 
 ## Delta Compression Support
 
-**For delta compression ([Phase 8](phase-08-serialization-delta.md)):** `EntitySnapshot` includes a `uint64_t dirty_mask[2]` bitmask (128 bits). With 19 SimEntity fields + 44 walker fields + 22 stats fields + 1 weap field = **86 serializable fields**, a single `uint64_t` (64 bits) is insufficient. Two `uint64_t` fields provide 128 bits — comfortable headroom for the current 86 fields plus future additions. When sending deltas, only fields whose corresponding bit is set are included in the wire format. Full keyframes set all bits. This bitmask is part of the struct definition from the start, even though delta serialization is implemented in Phase 8.
+**For delta compression ([Phase 9](phase-09-serialization-delta.md)):** `EntitySnapshot` includes a `uint64_t dirty_mask[2]` bitmask (128 bits). With 19 SimEntity fields + 44 walker fields + 22 stats fields + 1 weap field = **86 serializable fields**, a single `uint64_t` (64 bits) is insufficient. Two `uint64_t` fields provide 128 bits — comfortable headroom for the current 86 fields plus future additions. When sending deltas, only fields whose corresponding bit is set are included in the wire format. Full keyframes set all bits. This bitmask is part of the struct definition from the start, even though delta serialization is implemented in Phase 9.
 
 ## Constexpr Field Table
 
@@ -174,13 +174,13 @@ static_assert(std::is_trivially_copyable_v<EntitySnapshot>,
               "EntitySnapshot must be trivially copyable for memcpy-based serialization");
 ```
 
-**`trivially_copyable` guard:** The `reinterpret_cast<uint8_t*>` serialization (Phase 8) requires `EntitySnapshot` to be trivially copyable. If anyone adds a `std::string`, `std::vector`, or other non-trivial member, the serialization silently breaks (reads garbage or crashes). The `static_assert` catches this at compile time. `EntitySnapshot` should contain only scalar types and fixed-size arrays.
+**`trivially_copyable` guard:** The `reinterpret_cast<uint8_t*>` serialization (Phase 9) requires `EntitySnapshot` to be trivially copyable. If anyone adds a `std::string`, `std::vector`, or other non-trivial member, the serialization silently breaks (reads garbage or crashes). The `static_assert` catches this at compile time. `EntitySnapshot` should contain only scalar types and fixed-size arrays.
 
 The `bit_index` values in `SNAP_FIELDS` reference the same constants defined in `dirty_field_bits.h` (Phase 2). This ensures the field table and the `mark_dirty()` calls use identical bit assignments.
 
-This table drives generic loops for capture, apply, and serialization. (`compute_delta()` is eliminated — see Phase 8.) Adding a field means adding one entry to `SNAP_FIELDS`, one constant to `dirty_field_bits.h`, instrumenting mutation sites with `mark_dirty()`, and updating both static asserts. Fields with special handling (e.g., `do_bounce` needing a `weap*` downcast, `regen_delay_` needing an accessor) are excluded from the generic table and handled manually alongside it.
+This table drives generic loops for capture, apply, and serialization. (`compute_delta()` is eliminated — see Phase 8.) Adding a field means adding one entry to `SNAP_FIELDS`, one constant to `dirty_field_bits.h`, adding a getter/setter pair that calls `mark_dirty()` (Phase 8), and updating both static asserts. Fields with special handling (e.g., `do_bounce` needing a `weap*` downcast, `regen_delay_` needing an accessor) are excluded from the generic table and handled manually alongside it.
 
-The same table also drives manual binary serialization (Phase 8) — a generic `serialize_fields(buf, snap, dirty_mask)` loop writes each set field as raw bytes in field-table order. No external serialization library needed.
+The same table also drives manual binary serialization (Phase 9) — a generic `serialize_fields(buf, snap, dirty_mask)` loop writes each set field as raw bytes in field-table order. No external serialization library needed.
 
 Compared to X-macros (the original plan), `constexpr` field descriptors are:
 - Debuggable (real data in a real array, visible in debuggers)

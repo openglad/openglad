@@ -124,7 +124,7 @@ This is O(N) in total entities. For ~200 entities at 12 ticks/sec, this is negli
 
 ## Entity Allocation Churn
 
-Projectiles spawn and die constantly. At 12 ticks/sec with 4 players + NPCs firing, expect 20-50 entity creates/destroys per second. Modern allocators handle this volume fine. **Deferred optimization:** if profiling (Phase 9 benchmark or later playtesting) shows allocation is a bottleneck, add a simple free list of recycled walker allocations (per-subclass: `weap` pool for projectiles, `effect` pool for FX). The pool would be a `std::vector<std::unique_ptr<walker>>` on GameWorld — pop to reuse, push on "death" instead of deleting. Do NOT build this upfront.
+Projectiles spawn and die constantly. At 12 ticks/sec with 4 players + NPCs firing, expect 20-50 entity creates/destroys per second. Modern allocators handle this volume fine. **Deferred optimization:** if profiling (Phase 10 benchmark or later playtesting) shows allocation is a bottleneck, add a simple free list of recycled walker allocations (per-subclass: `weap` pool for projectiles, `effect` pool for FX). The pool would be a `std::vector<std::unique_ptr<walker>>` on GameWorld — pop to reuse, push on "death" instead of deleting. Do NOT build this upfront.
 
 ## `dead_list` and obmap Invariant
 

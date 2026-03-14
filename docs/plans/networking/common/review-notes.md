@@ -24,19 +24,19 @@ The following claims in this plan have been verified against the actual codebase
 - `slime_on_death` creates smaller slime entities AND transfers `myguy` ownership (Phase 7)
 - `walker::~walker()` lives in `src/interface/walker_render_bridge.cpp:97-116`, calls `obmap::remove()` but does NOT call `death()` — safe during snapshot application (Phase 7)
 - Dead player entities (`myguy != nullptr`) stay in oblist, not moved to dead_list (`game_world.cpp:1019-1027`) (Phase 5)
-- `GameLoopFrameState` accumulator fields are `#ifdef __EMSCRIPTEN__` guarded (Phase 11)
-- `openglad_text` SDL-free precedent at `CMakeLists.txt:938` (Phase 27)
-- `GameSession::Config` supports `allocate_screen = false` for headless (Phase 27)
-- `src/platform/emscripten/` does not exist yet (Phase 26)
+- `GameLoopFrameState` accumulator fields are `#ifdef __EMSCRIPTEN__` guarded (Phase 12)
+- `openglad_text` SDL-free precedent at `CMakeLists.txt:938` (Phase 28)
+- `GameSession::Config` supports `allocate_screen = false` for headless (Phase 28)
+- `src/platform/emscripten/` does not exist yet (Phase 27)
 - `regen_delay_` is protected on walker, accessed directly from `living.cpp:139,142`, `walker.cpp:253`, `walker_combat.cpp:169` (Phase 6)
 - `level_tick_count_` is private on GameWorld at line 157 (Phase 5/6)
 - `OG_GAMEPLAY_COMPONENT_SOURCES` aggregates `OG_SIM_SOURCES` + `OG_ENTITIES_SOURCES` + other gameplay files at CMakeLists.txt:377 (Module Placement)
 - Only `weap` has extra data fields (`do_bounce` at `weap.h:44`); `living`, `treasure`, `effect` are behavior-only (Phase 5)
 - `damage_tile()` at `screen.cpp:1258-1286` directly mutates `world_.grid.data[]` — only grass tiles (PIX_GRASS1-4 -> PIX_GRASS1_DAMAGED) (Phase 5/6)
-- `screen::act()` calls `world_.tick()` first (line 905), then dispatches events (lines 920-978) (Phase 15)
-- `screen::act()` has 8 early return paths: lines 903, 955, 1017, 1031, 1036, 1043, 1066, 1068 (Phase 15)
-- `game_frame_with_result()` does exactly 1 tick (`s.act()` at line 67) + 1 render (`s.redraw()` at line 81) per call (Phase 11)
-- CMake: `OG_PLATFORM_SOURCES` has exactly 4 files, `OG_SIM_SOURCES` has 2 files, `og_ext_zlib` target exists at line 746, vendored lib pattern at lines 742-776, Emscripten `-sASYNCIFY` at lines 1652-1668 (Phases 11, 23, 26)
+- `screen::act()` calls `world_.tick()` first (line 905), then dispatches events (lines 920-978) (Phase 16)
+- `screen::act()` has 8 early return paths: lines 903, 955, 1017, 1031, 1036, 1043, 1066, 1068 (Phase 16)
+- `game_frame_with_result()` does exactly 1 tick (`s.act()` at line 67) + 1 render (`s.redraw()` at line 81) per call (Phase 12)
+- CMake: `OG_PLATFORM_SOURCES` has exactly 4 files, `OG_SIM_SOURCES` has 2 files, `og_ext_zlib` target exists at line 746, vendored lib pattern at lines 742-776, Emscripten `-sASYNCIFY` at lines 1652-1668 (Phases 12, 23, 26)
 - `InputState` structure: `PlayerInput` with `held[16]` + `pressed[16]`, `InputState` with `players[4]` + `quit_requested` (Phase 4)
 - `guy.h` has 22 data fields at lines 47-73 (Phase 5)
 - `SimRandom` LCG at `game_world.h:32-44` with public `state_` (Phase 5)
@@ -46,36 +46,36 @@ The following claims in this plan have been verified against the actual codebase
 - `SetEnd` event has zero push sites in gameplay code (Phase 5)
 - Cosmetic event sites: ~61 total (23 PlaySound + 35 Notification + 2 SetPalette + 1 RequestRedraw) with exact file:line locations (Phase 5)
 - Game-flow event sites: 6 total (1 EndGame + 2 ScoreChange + 2 RequestExitConfirmation + 1 WithdrawToLevel) with exact file:line locations (Phase 5)
-- `completed_levels` is `std::set<int>` at `game_world.h:147` — campaign progression, belongs in InitialSetup (Phase 5/14)
+- `completed_levels` is `std::set<int>` at `game_world.h:147` — campaign progression, belongs in InitialSetup (Phase 5/15)
 - Entity factory callbacks at `game_world.h:148-150` with exact signatures (Phase 7)
-- `GameLoopDeps` struct at `game_loop.h:22-34` has `enable_render`, `enable_event_poll`, `enable_frame_timing` (Phase 11)
-- `time_delay()` at `util.cpp:132-152` converts delay ticks at 13.6ms each to microseconds, sleeps then spin-waits (Phase 11)
+- `GameLoopDeps` struct at `game_loop.h:22-34` has `enable_render`, `enable_event_poll`, `enable_frame_timing` (Phase 12)
+- `time_delay()` at `util.cpp:132-152` converts delay ticks at 13.6ms each to microseconds, sleeps then spin-waits (Phase 12)
 - Test infrastructure: ~1496 integration tests across 20 `og_add_test_group()` groups (`ALL_INTEGRATION_TEST_SOURCES`), ~291 unit tests across 4 `og_add_unit_group()` groups, all using GoogleTest
 - `current_game` thread-local has 332 occurrences across 39 gameplay files (Phase 7)
 - `GameplayContext` holds `world`, `save`, `sim_events`, `config`, `rng_override_ref`, `pathfinding` (Phase 7)
 - `GameSession` owns `world_owner_`, `prefs_owner_`, `screen_owner_` (Phase 7)
 - `transform_to()` (`walker.cpp:1234`) changes `order`/`family` in-place without changing C++ subclass — only changes family within the same Order in practice (slimes: Living->Living, waves: Weapon->Weapon) (Phase 6/7)
-- `exit_on_eat()` (`treasure_family_navigation.cpp:36-98`) emits `RequestExitConfirmation` when player walks onto exit tile — blocking `yes_or_no_prompt()` in current `screen::act()` at line 994 (Phase 14)
-- Emscripten accumulator pattern in `emscripten_frame_wrapper()` (`glad.cpp:133-223`): accumulates browser frame deltas, gates logic at target frame time, clamps anti-spiral (Phase 11)
+- `exit_on_eat()` (`treasure_family_navigation.cpp:36-98`) emits `RequestExitConfirmation` when player walks onto exit tile — blocking `yes_or_no_prompt()` in current `screen::act()` at line 994 (Phase 15)
+- Emscripten accumulator pattern in `emscripten_frame_wrapper()` (`glad.cpp:133-223`): accumulates browser frame deltas, gates logic at target frame time, clamps anti-spiral (Phase 12)
 
 **Corrections applied during review:**
 - SimEntity serializable field count: 19 (18 original + entity_id_), not 20 as originally stated — `frames` is skipped. Total serializable: **86 fields**, not 87 (Phase 5)
-- DamageTile (`screen::damage_tile()` at `src/interface/screen.cpp:1258-1286`) mutates `world_.grid.data[]` — was miscategorized as Tier 1 cosmetic, moved to simulation layer (Phase 6/14)
+- DamageTile (`screen::damage_tile()` at `src/interface/screen.cpp:1258-1286`) mutates `world_.grid.data[]` — was miscategorized as Tier 1 cosmetic, moved to simulation layer (Phase 6/15)
 - Cosmetic event sites: **~61 total** (23 PlaySound + 35 Notification + 2 SetPalette + 1 RequestRedraw) — plan originally stated ~26, which was itself a correction from an original overstate of 50+ (the 50+ estimate was actually closer to correct). Bandwidth estimate updated accordingly: ~10-30KB/sec during active combat (Phase 5)
 - Walker serializable field count: 44 (not 45 as originally stated) — total 86 fields (Phase 5)
 - `statistics::controller` assignment count: ~3 (stats.cpp:53,56,95), not ~2 as originally stated. Other grep hits are local variable declarations (Phase 3)
 - `fxlist` stale-pointer cleanup is missing from `GameWorld::tick()` — second pre-existing bug alongside the `controller` bug (Phase 2)
 - Death callback chain is deeper than originally documented: `effect::death()` and `weap::death()` delegate to family descriptor `on_death` callbacks that create entities (bombs -> explosions, slimes -> smaller slimes with myguy transfer). Snapshot application bypasses death entirely rather than suppressing it (Phase 7)
 - `walker::~walker()` is separate from `death()` — destructor path is safe for snapshot application (clears pointers, removes from obmap, resets render/stats — no entity creation, no events, no RNG) (Phase 7)
-- `screen::act()` EndGame early return (line 951-955) calls `events.clear()` — server must capture ALL events before the early return (Phase 14)
-- `RequestExitConfirmation` is a blocking UI prompt that can't run on a headless server — replaced with freeze-and-ask protocol: server pauses sim, broadcasts prompt, any player can respond, timeout auto-declines (Phase 14)
-- `completed_levels` (std::set<int>) is campaign progression, belongs in InitialSetup not per-tick snapshots. Must be updated in each `InitialSetup` during level transitions (Phase 5/14)
+- `screen::act()` EndGame early return (line 951-955) calls `events.clear()` — server must capture ALL events before the early return (Phase 15)
+- `RequestExitConfirmation` is a blocking UI prompt that can't run on a headless server — replaced with freeze-and-ask protocol: server pauses sim, broadcasts prompt, any player can respond, timeout auto-declines (Phase 15)
+- `completed_levels` (std::set<int>) is campaign progression, belongs in InitialSetup not per-tick snapshots. Must be updated in each `InitialSetup` during level transitions (Phase 5/15)
 - `smooth.cpp:36` has a `std::rand()` fallback in `rng()` — additional migration target (Phase 0)
 - `game_world.cpp:692,714` use `rand()` for grid generation — additional migration targets (Phase 0)
 - `SetEnd` event: defined in `EventKind` enum but has zero push sites in `src/gameplay/` — appears vestigial (Phase 5)
 - `current_game` thread-local is a critical implicit dependency: ~332 occurrences across 39 files, `GameWorld::tick()` silently returns if null, obmap collision code dereferences it directly. `GameplayContextGuard` RAII added to catch context-switch bugs (Phase 7)
 - `guy` fields mutate during gameplay (exp, kills, scen_damage, etc.) — must be included in snapshots for player-controlled entities (Phase 5/6)
-- `screen::act()` has 8 early return paths (not "5+" as originally noted): lines 903, 955, 1017, 1031, 1036, 1043, 1066, 1068 (Phase 15)
+- `screen::act()` has 8 early return paths (not "5+" as originally noted): lines 903, 955, 1017, 1031, 1036, 1043, 1066, 1068 (Phase 16)
 - `viewscreen::control` cleanup (screen.cpp:909-913) is distinct from `statistics::controller` — different pointers, different cleanup locations (Phase 2)
 
 ---
@@ -105,7 +105,7 @@ The following observations come from an independent review of the plan against t
 - `statistics::controller` is NOT cleaned in that same loop — confirmed the second bug is real
 - Dead player entity condition at line 1022: `ob && ob->dead && ob->myguy == nullptr` — entities with `myguy` stay in oblist, confirmed
 - `fxlist` dead entity cleanup at lines 1035-1038 uses `std::erase_if` (just erases, doesn't move to dead_list) — different from oblist's `dead_list.push_back()` pattern
-- Level editor (`level_editor.cpp:2995-3526`) has its own event loop, never calls `screen::act()`, `game_frame()`, or `world_.tick()`. Zero `#ifdef OPENSCEN` guards exist in the codebase. Editor shares `og_game` link target but diverges at the event loop level. Deleting `screen::act()` (Phase 15) does NOT break the editor.
+- Level editor (`level_editor.cpp:2995-3526`) has its own event loop, never calls `screen::act()`, `game_frame()`, or `world_.tick()`. Zero `#ifdef OPENSCEN` guards exist in the codebase. Editor shares `og_game` link target but diverges at the event loop level. Deleting `screen::act()` (Phase 16) does NOT break the editor.
 - `obmap::add()` at `obmap.h:35` — confirmed defensive (checks `walker_to_pos` for existing entry, removes first if present). The obmap update strategy in Phase 7 is correct.
 - `GameWorld::entity_factory`, `entity_configurator`, `entity_derived_stats` are `std::function` callbacks at `game_world.h:148-150` — confirmed they are set by the platform layer and available on both SDL and headless clients
 - `SimEventLog` is owned by `GameContext` (`ctx().sim_events`), not by `GameWorld` — the suppression flag correctly belongs on `SimEventLog` itself (Phase 7 augmentation)
@@ -119,7 +119,7 @@ The following observations come from an independent review of the plan against t
 
 3. **`statistics::walkrounds`:** ~~Claimed as dead code~~ — **resolved: deleted in Phase 0** (dead code cleanup).
 
-4. **Allocation churn under heavy combat (Phase 7/9):** The plan correctly defers pooling optimization. The Phase 9 benchmark should include a worst-case scenario (4-player chaotic combat with many projectiles) and measure per-frame allocation count alongside snapshot sizes. If >50 allocations/tick, consider the free-list pool at that point.
+4. **Allocation churn under heavy combat (Phase 7/10):** The plan correctly defers pooling optimization. The Phase 10 benchmark should include a worst-case scenario (4-player chaotic combat with many projectiles) and measure per-frame allocation count alongside snapshot sizes. If >50 allocations/tick, consider the free-list pool at that point.
 
 5. **`guy_id_counter` in WorldSnapshot (Phase 5):** Included for "server and client must agree." Since only the server creates entities, the client never uses this counter directly. It's harmless to include (1 field, 4 bytes) and useful for server state restore, but it's not strictly necessary for client correctness.
 
@@ -156,23 +156,23 @@ Spot-checked against actual source:
 
 4. **`sync_ids_from_pointers()` entity_id check** — When reading `entity_id_` from a cross-reference pointer, treat `entity_id_ == 0` as stale (entity never assigned an ID). Complements the Phase 2 dead-entity cleanup.
 
-5. **Phase 11 complexity reframed** — From "almost free / ~10 lines" to medium refactor. The Emscripten accumulator lives in a different function (`emscripten_frame_wrapper()`) from the native loop (`game_frame_with_result()`). Restructuring the native loop is real work: accumulator loop, input polling semantics change, spiral-of-death cap (max 4 ticks per call), FPS cap removal.
+5. **Phase 12 complexity reframed** — From "almost free / ~10 lines" to medium refactor. The Emscripten accumulator lives in a different function (`emscripten_frame_wrapper()`) from the native loop (`game_frame_with_result()`). Restructuring the native loop is real work: accumulator loop, input polling semantics change, spiral-of-death cap (max 4 ticks per call), FPS cap removal.
 
 6. **Input jitter `MAX_LATE_PRESS_TICKS = 2` cap** — Late `pressed[]` inputs older than 2 ticks are discarded, not delivered. Prevents 500ms-late special attacks from firing into empty space.
 
-7. **Phase 15 git tag** — `pre-networking-switchover` tag before the big delete, for bisect reference without maintaining dead code.
+7. **Phase 16 git tag** — `pre-networking-switchover` tag before the big delete, for bisect reference without maintaining dead code.
 
-8. **Phase 31 cost math corrected** — Actual relay message count: ~9 relayed messages/tick × 12 ticks/sec = ~108 messages/sec = ~9.3M/day for one continuous 24-hour 4-player session. Free tier supports ~15 minutes. Paid tier ($5/mo) supports roughly one continuous session.
+8. **Phase 32 cost math corrected** — Actual relay message count: ~9 relayed messages/tick × 12 ticks/sec = ~108 messages/sec = ~9.3M/day for one continuous 24-hour 4-player session. Free tier supports ~15 minutes. Paid tier ($5/mo) supports roughly one continuous session.
 
 ### Additional Risks and Notes
 
-6. **`obmap` cost during `apply_snapshot()`:** The plan says obmap updates are "O(N) in total entities" and "negligible." More precisely, `obmap` uses `std::map<pair<short,short>, list<walker*>>` — each `add()` is O(log K) where K = occupied grid cells, and the defensive remove-then-add means 2 tree operations per moved entity. At ~200 entities and 12 ticks/sec this is fine (~2400 tree ops/sec). But if entity count or tick rate increases, obmap becomes the bottleneck before serialization does. Monitor in the Phase 9 benchmark.
+6. **`obmap` cost during `apply_snapshot()`:** The plan says obmap updates are "O(N) in total entities" and "negligible." More precisely, `obmap` uses `std::map<pair<short,short>, list<walker*>>` — each `add()` is O(log K) where K = occupied grid cells, and the defensive remove-then-add means 2 tree operations per moved entity. At ~200 entities and 12 ticks/sec this is fine (~2400 tree ops/sec). But if entity count or tick rate increases, obmap becomes the bottleneck before serialization does. Monitor in the Phase 10 benchmark.
 
-7. **Emscripten WebSocket is callback-based and non-blocking:** The `EmscriptenWebSocketTransport` (Phase 26) cannot block-wait for messages — `poll()` must return empty if no messages have arrived. The in-process execution order (Phase 15, lines 838-856) assumes synchronous send/receive. In the browser, the client's input send and the server's snapshot receive happen within the same `requestAnimationFrame` callback, so there's inherently 1-frame latency between send and receive. At default speed (83ms tick interval >> 16ms frame time at 60fps), this is invisible — but should be documented.
+7. **Emscripten WebSocket is callback-based and non-blocking:** The `EmscriptenWebSocketTransport` (Phase 27) cannot block-wait for messages — `poll()` must return empty if no messages have arrived. The in-process execution order (Phase 16, lines 838-856) assumes synchronous send/receive. In the browser, the client's input send and the server's snapshot receive happen within the same `requestAnimationFrame` callback, so there's inherently 1-frame latency between send and receive. At default speed (83ms tick interval >> 16ms frame time at 60fps), this is invisible — but should be documented.
 
-8. **Networking test fixture:** ~~The plan has per-phase "Verify" sections but no dedicated test infrastructure phase.~~ — **resolved: `NetworkTestFixture` added to Phase 13** alongside InProcessTransport.
+8. **Networking test fixture:** ~~The plan has per-phase "Verify" sections but no dedicated test infrastructure phase.~~ — **resolved: `NetworkTestFixture` added to Phase 14** alongside InProcessTransport.
 
-9. **`float` serialization across platforms:** `worldx_`/`worldy_` serialized as IEEE 754 floats is correct for x86/wasm. Unlikely edge case: NaN canonicalization differs across platforms. If any float field ever becomes NaN, `memcpy`-based serialization may produce different bytes on different platforms, causing spurious divergence detection. Not a blocker (what float in this game would be NaN?), but the Phase 8 endianness helpers should handle floats explicitly.
+9. **`float` serialization across platforms:** `worldx_`/`worldy_` serialized as IEEE 754 floats is correct for x86/wasm. Unlikely edge case: NaN canonicalization differs across platforms. If any float field ever becomes NaN, `memcpy`-based serialization may produce different bytes on different platforms, causing spurious divergence detection. Not a blocker (what float in this game would be NaN?), but the Phase 9 endianness helpers should handle floats explicitly.
 
 10. **Phase 7 entity list reordering (step 13):** ~~May be unnecessary~~ — **decision: keep it.** It's O(N) via `list::splice`, makes round-trip identity tests simpler (capture → apply → capture = bitwise equal), and is needed if client-side prediction is ever added.
 
@@ -196,9 +196,9 @@ All claims re-verified against source. Additional findings:
 - **`atan2f` in `walker_combat.cpp:144`** — sets `hit_recoil_angle` and `attack_lunge_angle`. These are serialized fields, but since the server computes them and clients receive via snapshot, cross-platform `atan2f` divergence is not a problem for the snapshot model. Only matters if client-side prediction is added later.
 - **`walker::~walker()` at `walker_render_bridge.cpp:97-118`** — re-confirmed: sets `dead = 1` (flag, not function call), removes from obmap, resets `stats_`/`render_`/`owned_myguy_` smart pointers. Does NOT call `death()`. Safe for snapshot entity removal.
 - **`transform_to()` at `walker.cpp:1234-1289`** — re-confirmed: removes from obmap before changing `sizex`/`sizey`, uses `entity_configurator()` to reconfigure, re-adds via `setxy()`. No `death()` call, no entity creation. Snapshot application handles this correctly (step 6: detect order/family change, call `entity_configurator()` before overwriting fields).
-- **`game_frame_with_result()` input timing** — confirmed: input poll at line 135 is AFTER `s.act()` at line 67. Phase 11's accumulator reorder (poll before tick loop) is an intentional 1-frame latency reduction.
+- **`game_frame_with_result()` input timing** — confirmed: input poll at line 135 is AFTER `s.act()` at line 67. Phase 12's accumulator reorder (poll before tick loop) is an intentional 1-frame latency reduction.
 - **`GameWorld::entity_factory`/`entity_configurator`/`entity_derived_stats`** — confirmed `std::function` callbacks at `game_world.h:148-150`. Set by platform layer in both SDL and headless builds. GameServer in `og_gameplay` can use them via callbacks without platform dependencies.
-- **`emscripten_frame_wrapper()` at `glad.cpp:133-223`** — confirmed: accumulator pattern, clamps anti-spiral at `target_frame_time * 2`, subtracts one frame's worth per iteration. Phase 11's native accumulator should match this pattern.
+- **`emscripten_frame_wrapper()` at `glad.cpp:133-223`** — confirmed: accumulator pattern, clamps anti-spiral at `target_frame_time * 2`, subtracts one frame's worth per iteration. Phase 12's native accumulator should match this pattern.
 
 ### Design Decisions Made (Discussion-Driven)
 
@@ -206,12 +206,12 @@ The following decisions were made via discussion and are reflected in inline edi
 
 1. **Phase 3 promoted to mandatory (post-Phase 2).** The ~477 compiler errors are mechanical and worth doing early. Eliminates `sync_ids_from_pointers()` UB risk before any snapshot code is written. Every subsequent phase benefits from enforced setter usage.
 
-2. **Phase 15 split into three sub-phases (15/16/17).** Isolates the three risks:
+2. **Phase 16 split into three sub-phases (16/17/18).** Isolates the three risks:
    - 15: Pure refactor — split `screen::act()` into sub-methods, keep wrapper. All tests pass unchanged.
    - 16: Wire up GameServer/GameClient alongside old path. Both paths work.
    - 17: Migrate game-loop tests to server/client path, delete wrapper. No fallback.
 
-3. **Integration tests migrate to server/client path (Phase 17).** Integration tests that call `game_frame()` or `screen::act()` are updated to use `NetworkTestFixture`. Tests exercise the real networking code path as a side effect.
+3. **Integration tests migrate to server/client path (Phase 18).** Integration tests that call `game_frame()` or `screen::act()` are updated to use `NetworkTestFixture`. Tests exercise the real networking code path as a side effect.
 
 4. **InProcessTransport is zero-copy.** Passes `shared_ptr<WorldSnapshot>` and `shared_ptr<InputState>` directly — no serialize/deserialize round-trip for local play. Serialization path exercised by unit tests and networked play only.
 
@@ -221,7 +221,7 @@ The following decisions were made via discussion and are reflected in inline edi
 
 7. **`SimEventLogSuppressGuard` RAII type.** Manages the event suppression flag during `apply_snapshot()`. Destructor clears the flag even on early return/exception.
 
-8. **Phase 10: Input replay system.** Records initial RNG seed + per-tick InputState. Invaluable for debugging desync in later phases. Also enables reproducible benchmarks for Phase 9.
+8. **Phase 11: Input replay system.** Records initial RNG seed + per-tick InputState. Invaluable for debugging desync in later phases. Also enables reproducible benchmarks for Phase 10.
 
 9. **Phase 0 expanded.** Now includes: `pow(2.0, level)` → bit shift fix, `cmath` audit in `src/gameplay/`, `statistics::walkrounds` deletion.
 
@@ -235,7 +235,7 @@ The following decisions were made via discussion and are reflected in inline edi
 |--------|--------|-------|
 | Codebase claim accuracy | 9.5/10 | All line numbers, field counts, grep counts re-verified correct |
 | Architectural soundness | 9.5/10 | Callback-based GameServer, zero-copy InProcessTransport, RAII guards |
-| Phase ordering | 10/10 | Phase 3 promotion + Phase 15 three-way split reduces risk |
+| Phase ordering | 10/10 | Phase 3 promotion + Phase 16 three-way split reduces risk |
 | Risk identification | 9/10 | `pow()` determinism fix, `atan2f` documented, input timing change noted |
 | Completeness | 9.5/10 | Camera tracking, test migration, replay system, dead code cleanup all addressed |
 | Bandwidth analysis | 8.5/10 | Unchanged — realistic estimates, grid variability noted |
@@ -259,7 +259,8 @@ The following findings come from a fifth independent code review against the act
 - **Phase 3:** Narrowed to cross-reference pointer privatization only (~477 compiler errors). Dirty tracking instrumentation deferred to Phase 8 (see Sixth-Pass below).
 - **Phase 5:** Field table references bit index constants from Phase 2. References to `compute_delta()` removed.
 - **Phase 6:** `capture_snapshot()` copies `dirty_mask_[2]` from entities, clears entity dirty bits. Drains `removed_entity_ids_`.
-- **Phase 8:** `compute_delta()` eliminated. Gains the ~200-400 site dirty tracking instrumentation (deferred from Phase 3 — see Sixth-Pass below). Server maintains `PerClientState` with accumulated dirty masks per entity. `apply_delta()`, `serialize_delta()`, `deserialize_delta()` remain. CI safety-net test validates dirty-bit deltas against brute-force comparison.
+- **Phase 8:** Gains the dirty tracking setter refactor: all 86 serializable fields made private with getter/setter pairs that call `mark_dirty()`. CI safety-net test validates dirty-bit correctness against brute-force comparison.
+- **Phase 9:** `compute_delta()` eliminated. Server maintains `PerClientState` with accumulated dirty masks per entity. `apply_delta()`, `serialize_delta()`, `deserialize_delta()` remain.
 
 **Advantages:**
 - Eliminates O(N × 86) comparison loop per tick
@@ -271,17 +272,17 @@ The following findings come from a fifth independent code review against the act
 
 ### Additional Inline Edits Applied
 
-1. **Phase 1: Thread safety invariant** — `id_index_` and all GameWorld state is main-thread-only. When WebSocket I/O threads arrive (Phase 24), all interaction flows through the message queue. Explicit documentation added.
+1. **Phase 1: Thread safety invariant** — `id_index_` and all GameWorld state is main-thread-only. When WebSocket I/O threads arrive (Phase 25), all interaction flows through the message queue. Explicit documentation added.
 
 2. **Phase 6: Grid dirty cap** — `MAX_GRID_DIRTY_TILES = 64`. If exceeded (chain lightning, large explosions), fall back to full grid send. Prevents pathological delta payload spikes.
 
-3. **Phase 14: Level transition event cleanup** — `SimEventLog::clear()` after `read_scenario()`, before first tick of new level. Entity creation during level loading pushes meaningless events that no client is ready to receive.
+3. **Phase 15: Level transition event cleanup** — `SimEventLog::clear()` after `read_scenario()`, before first tick of new level. Entity creation during level loading pushes meaningless events that no client is ready to receive.
 
-4. **Phase 24: Thread safety enforcement** — Explicit prohibitions on GameWorld access from I/O threads. Connection/disconnection events queued to game thread. `ci-tsan` CMake preset added for ThreadSanitizer CI builds. Stress test with 4 concurrent WebSocket clients under TSan.
+4. **Phase 25: Thread safety enforcement** — Explicit prohibitions on GameWorld access from I/O threads. Connection/disconnection events queued to game thread. `ci-tsan` CMake preset added for ThreadSanitizer CI builds. Stress test with 4 concurrent WebSocket clients under TSan.
 
-5. **Phase 28: Direct LAN connections** — "Join Game" UI supports both direct IP:port entry (for LAN) and relay room codes (for NAT traversal). Two tabs/modes. Transport layer (`ITransport`) is identical once connected.
+5. **Phase 29: Direct LAN connections** — "Join Game" UI supports both direct IP:port entry (for LAN) and relay room codes (for NAT traversal). Two tabs/modes. Transport layer (`ITransport`) is identical once connected.
 
-6. **Phase 31: Relay graceful degradation** — Documented recovery path for relay message drops (KeyframeRequest), WebSocket disconnections (auto-reconnect), and sustained failures (disconnect timeout → AI control). Added relay cost awareness UI warning for high game speed. Added relay packet-loss simulation test.
+6. **Phase 32: Relay graceful degradation** — Documented recovery path for relay message drops (KeyframeRequest), WebSocket disconnections (auto-reconnect), and sustained failures (disconnect timeout → AI control). Added relay cost awareness UI warning for high game speed. Added relay packet-loss simulation test.
 
 ### Additional Codebase Facts Verified (Fifth Pass)
 
@@ -304,9 +305,9 @@ The following findings come from a fifth independent code review against the act
 
 1. **`special_cost[NUM_SPECIALS]` single-dirty-bit decision (Phase 5):** Using 1 dirty bit for a 6-element array (12 bytes) is correct at current scale. If `NUM_SPECIALS` ever grows significantly (modding support), per-element tracking may become worthwhile. Add a comment in the field table.
 
-2. **Phase 11 spiral-of-death cap:** The "max 4 ticks per call" constant should be a named constant (`inline constexpr int MAX_TICKS_PER_FRAME = 4` in `net_constants.h`), not a magic number. At default speed (83ms/tick), 4 ticks = 332ms frame time threshold. Document this.
+2. **Phase 12 spiral-of-death cap:** The "max 4 ticks per call" constant should be a named constant (`inline constexpr int MAX_TICKS_PER_FRAME = 4` in `net_constants.h`), not a magic number. At default speed (83ms/tick), 4 ticks = 332ms frame time threshold. Document this.
 
-3. **`float` NaN canonicalization (Phase 8):** `worldx_`/`worldy_` serialized as IEEE 754 floats. NaN bit patterns differ across platforms. No gameplay float should ever be NaN, but the endianness helpers should canonicalize NaN to a fixed bit pattern as a safety measure (~2 lines of code).
+3. **`float` NaN canonicalization (Phase 9):** `worldx_`/`worldy_` serialized as IEEE 754 floats. NaN bit patterns differ across platforms. No gameplay float should ever be NaN, but the endianness helpers should canonicalize NaN to a fixed bit pattern as a safety measure (~2 lines of code).
 
 ### Updated Risk Assessment
 
@@ -319,7 +320,7 @@ The following findings come from a fifth independent code review against the act
 | Completeness | 10/10 | Direct LAN connections, dirty tracking CI safety net, TSan CI preset, all gaps closed |
 | Bandwidth analysis | 9/10 | Grid dirty cap addresses worst-case; relay cost warning covers speed scaling |
 
-**Bottom line:** Plan is production-quality with all identified gaps addressed. The setter-based dirty tracking redesign simplifies Phase 8 significantly. Thread safety is now explicitly enforced with tests rather than assumed. Ready to execute.
+**Bottom line:** Plan is production-quality with all identified gaps addressed. The setter-based dirty tracking redesign (Phase 8) provides compile-time enforcement via private fields and setters. Thread safety is now explicitly enforced with tests rather than assumed. Ready to execute.
 
 ---
 
@@ -329,21 +330,21 @@ The following findings come from an independent feasibility review of the full p
 
 ### Design Changes Applied (Inline Edits Above)
 
-1. **Dirty tracking instrumentation moved from Phase 3 to Phase 8.** Phase 3 was combining two massive independent tasks: pointer privatization (~477 sites) and dirty instrumentation (~200-400 sites). These have no dependency on each other — dirty tracking isn't consumed until Phase 8's delta compression. Moving the instrumentation to Phase 8 means:
+1. **Dirty tracking instrumentation moved from Phase 3 to Phase 8.** Phase 3 was combining two massive independent tasks: pointer privatization (~477 sites) and dirty instrumentation (~200-400 sites). These have no dependency on each other — dirty tracking isn't consumed until Phase 9's delta compression. Moving the instrumentation to Phase 8 (as a setter refactor with compile-time enforcement) means:
    - Phase 3 is focused on one concern (pointer privatization), reducing risk
    - The instrumentation and its CI safety-net validation test land in the same phase — no window where dirty tracking bugs are latent
    - Phases 4-7 are built on proven infrastructure (entity IDs, snapshots, capture/apply) without depending on unvalidated dirty bits
    - Keyframe captures in Phases 6-7 set all bits (all fields dirty), so the absence of per-field `mark_dirty()` calls has zero effect until delta compression
 
-2. **`ValidatingInProcessTransport` added to Phase 13.** InProcessTransport's zero-copy mode bypasses serialization, creating an 11-phase coverage gap (Phases 13-23) where serialization bugs hide. The validating variant serializes and deserializes every message in CI builds, turning every integration test into a serialization round-trip test. Zero production performance impact.
+2. **`ValidatingInProcessTransport` added to Phase 14.** InProcessTransport's zero-copy mode bypasses serialization, creating an 11-phase coverage gap (Phases 14-24) where serialization bugs hide. The validating variant serializes and deserializes every message in CI builds, turning every integration test into a serialization round-trip test. Zero production performance impact.
 
-3. **Player reconnection protocol added to Phase 30.** Disconnected players' entities transition to AI control. If the same player reconnects (identified by session token from Hello handshake), the server hands the entity back via `ControlChange`. New players cannot join mid-game — only reconnection of previously-connected players.
+3. **Player reconnection protocol added to Phase 31.** Disconnected players' entities transition to AI control. If the same player reconnects (identified by session token from Hello handshake), the server hands the entity back via `ControlChange`. New players cannot join mid-game — only reconnection of previously-connected players.
 
-4. **Session token added to Phase 12 Hello handshake.** 16-byte random token assigned by server, stored by client. Used for reconnection identification (Phase 30). First-time connections send zero token.
+4. **Session token added to Phase 13 Hello handshake.** 16-byte random token assigned by server, stored by client. Used for reconnection identification (Phase 31). First-time connections send zero token.
 
-5. **Min supported protocol version byte added to Phase 12 Hello handshake.** Reserved for future version-range negotiation. For v1, `min_version == current_version`. Free to include now; avoids a breaking handshake change later.
+5. **Min supported protocol version byte added to Phase 13 Hello handshake.** Reserved for future version-range negotiation. For v1, `min_version == current_version`. Free to include now; avoids a breaking handshake change later.
 
-6. **Relay keyframe broadcast optimization added to Phase 31.** Full keyframes are identical for all clients — send once through the relay's broadcast path instead of N copies. Cuts keyframe relay cost ~3× for a 4-player game. Per-client deltas remain individual. `ITransport::broadcast()` method added alongside `send()`.
+6. **Relay keyframe broadcast optimization added to Phase 32.** Full keyframes are identical for all clients — send once through the relay's broadcast path instead of N copies. Cuts keyframe relay cost ~3× for a 4-player game. Per-client deltas remain individual. `ITransport::broadcast()` method added alongside `send()`.
 
 7. **`pow()` bounds guard added to Phase 0.** `1 << level` is UB for `level >= 32`. Clamp to `[0, 30]` before the shift. In practice `door_level` is tiny (0-5), but defensive clamping costs nothing.
 
@@ -386,4 +387,4 @@ All plan claims re-verified against source via thorough codebase exploration. Sp
 | Completeness | 10/10 | Mid-game join policy, reconnection protocol, serialization coverage gap closed |
 | Bandwidth analysis | 9/10 | Relay broadcast optimization reduces keyframe relay cost ~3× |
 
-**Bottom line:** Plan is production-quality. All design decisions from discussion are reflected inline. The key structural improvement is moving dirty tracking instrumentation to Phase 8, which reduces Phase 3's risk and ensures instrumentation + validation test land together. Ready to execute.
+**Bottom line:** Plan is production-quality. All design decisions from discussion are reflected inline. The key structural improvement is moving dirty tracking instrumentation to Phase 8 (as a setter refactor with compile-time enforcement), which reduces Phase 3's risk and ensures instrumentation + validation test land together. Ready to execute.

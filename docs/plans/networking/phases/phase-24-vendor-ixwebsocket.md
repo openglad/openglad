@@ -1,4 +1,4 @@
-# Phase 23: Vendor IXWebSocket
+# Phase 24: Vendor IXWebSocket
 
 > **See also:** [Context (Module Placement)](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 

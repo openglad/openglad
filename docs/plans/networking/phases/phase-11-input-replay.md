@@ -1,8 +1,8 @@
-# Phase 10: Input Replay System
+# Phase 11: Input Replay System
 
 > **See also:** [Phase 0 (deterministic RNG)](phase-00-migrate-rand.md) | [Phase 4 (InputState serialization)](phase-04-input-serialization.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
-With deterministic RNG (Phase 0), InputState serialization (Phase 4), and snapshot infrastructure (Phases 5-8), the codebase has everything needed for an input replay system. This is invaluable for debugging desync issues during later networking phases — record a game on the server, replay it offline to reproduce divergence.
+With deterministic RNG (Phase 0), InputState serialization (Phase 4), and snapshot infrastructure (Phases 5-9), the codebase has everything needed for an input replay system. This is invaluable for debugging desync issues during later networking phases — record a game on the server, replay it offline to reproduce divergence.
 
 **Changes:**
 - New files: `include/openglad/gameplay/replay.h`, `src/gameplay/replay.cpp`
@@ -20,7 +20,7 @@ With deterministic RNG (Phase 0), InputState serialization (Phase 4), and snapsh
 - Each tick: deserialize the next `InputState` from the replay, feed to `GameWorld::tick()` as if it were live input
 - Verify: if a `WorldSnapshot` was recorded at intervals (optional — every N ticks), compare against current state to detect divergence. Log the first differing field + tick number.
 
-**Integration with Phase 9 benchmark:**
+**Integration with Phase 10 benchmark:**
 The replay system can also be used to create reproducible benchmark scenarios: record a chaotic 4-player combat session, replay it to measure snapshot sizes under identical conditions across code changes.
 
 **Verify:** Record a short game (load level, tick 100 times with scripted input), save replay file, play it back, verify final world state matches. Test with multiple player counts. Verify replay produces identical RNG state at each tick.

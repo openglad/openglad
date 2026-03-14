@@ -1,4 +1,4 @@
-# Phase 11: Decouple Sim Tick from Render Frame
+# Phase 12: Decouple Sim Tick from Render Frame
 
 > **See also:** [Context (Sim Tick Rate)](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 

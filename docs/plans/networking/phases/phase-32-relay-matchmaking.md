@@ -1,6 +1,6 @@
-# Phase 31: Relay Server + Matchmaking (Cloudflare Workers)
+# Phase 32: Relay Server + Matchmaking (Cloudflare Workers)
 
-> **See also:** [Phase 28 (Join Game UI)](phase-28-join-game-ui.md) | [Phase 24 (WebSocket Server)](phase-24-websocket-server.md) | [Context (Bandwidth Budget)](docs/plans/networking/common/context.md) | [Execution Order](docs/plans/networking/common/execution-order.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Phase 29 (Join Game UI)](phase-29-join-game-ui.md) | [Phase 25 (WebSocket Server)](phase-25-websocket-server.md) | [Context (Bandwidth Budget)](docs/plans/networking/common/context.md) | [Execution Order](docs/plans/networking/common/execution-order.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Players behind NAT can't host without port forwarding. A lightweight relay server sidesteps this entirely — both host and joiner connect outbound to the relay, which forwards traffic between them. Deployed on Cloudflare Workers for global edge presence, zero infrastructure management, and free/cheap tier.
 
@@ -187,7 +187,7 @@ export default {
 ## Room Listing / Browser
 
 - `GET /api/rooms` returns a JSON array of active rooms with: code, player count, campaign name, host name, created timestamp
-- The "Join Game" UI (Phase 28) shows a room browser alongside the manual code entry
+- The "Join Game" UI (Phase 29) shows a room browser alongside the manual code entry
 - Rooms with `campaign_hash` filtering: client can filter to rooms matching its local campaign hash, avoiding "campaign version mismatch" errors at connect time
 - Rooms auto-expire from the KV index after 1 hour. The Durable Object `alarm()` cleans up empty rooms after 30 seconds of no connections.
 
@@ -197,12 +197,12 @@ A new `ITransport` implementation that wraps the relay WebSocket connection.
 
 **Changes (native):**
 - New files in `src/platform/sdl/`: `net_transport_relay_ws.h`, `net_transport_relay_ws.cpp`
-- Uses IXWebSocket (same as Phase 24-25) to connect to `wss://relay.openglad.example/api/room/GLAD-XXXX`
+- Uses IXWebSocket (same as Phase 25-26) to connect to `wss://relay.openglad.example/api/room/GLAD-XXXX`
 - Binary messages are unwrapped from the relay envelope and delivered to the game protocol layer as if they came from a direct WebSocket connection
 - The `peer_id` from the relay maps to the `peer_id` in `ITransport` — the game server/client code doesn't know it's going through a relay
 
 **Changes (Emscripten):**
-- Extends the `EmscriptenWebSocketTransport` from Phase 26 with the same relay URL scheme
+- Extends the `EmscriptenWebSocketTransport` from Phase 27 with the same relay URL scheme
 - The browser's native WebSocket connects to the Cloudflare Worker URL
 - Same binary relay protocol — the browser client is indistinguishable from a native client to the relay
 
@@ -213,7 +213,7 @@ A new `ITransport` implementation that wraps the relay WebSocket connection.
 2. Client sends `POST /api/create?campaign=HASH` to relay
 3. Relay creates room, returns room code + WebSocket upgrade
 4. Client displays room code: "GLAD-XKCD — share this code with friends"
-5. Client creates `GameServer` locally (same as Phase 14)
+5. Client creates `GameServer` locally (same as Phase 15)
 6. Client wraps the relay WebSocket in `RelayWebSocketTransport`
 7. Other players connect by entering the room code
 
@@ -280,10 +280,10 @@ The relay is a separate deployable, not part of the C++ build. It has its own `p
 ## Graceful Degradation Under Relay Failures
 
 If the Cloudflare relay drops messages mid-game (rate limit exceeded, transient Worker error, edge PoP failover):
-- **Missed deltas:** Client detects gap (missing `server_tick` sequence) and sends `KeyframeRequest` (Phase 12). Server responds with full keyframe on next tick. Game hiccups for one keyframe interval (~5 seconds) but self-corrects.
-- **Missed input:** Server's input jitter policy (Phase 14) repeats `held[]` state and buffers late `pressed[]` events. The game continues without the missing player's one-shot actions for the dropped ticks.
-- **WebSocket disconnection:** IXWebSocket's built-in auto-reconnect (Phase 25) reconnects with exponential backoff. On reconnect, client sends `ClientReady`, receives a fresh keyframe, and resumes.
-- **Sustained relay failure (>10 seconds):** `DISCONNECT_TIMEOUT_MS` fires, player transitions to AI control (Phase 30). If the relay recovers, the player can rejoin via the same room code.
+- **Missed deltas:** Client detects gap (missing `server_tick` sequence) and sends `KeyframeRequest` (Phase 13). Server responds with full keyframe on next tick. Game hiccups for one keyframe interval (~5 seconds) but self-corrects.
+- **Missed input:** Server's input jitter policy (Phase 15) repeats `held[]` state and buffers late `pressed[]` events. The game continues without the missing player's one-shot actions for the dropped ticks.
+- **WebSocket disconnection:** IXWebSocket's built-in auto-reconnect (Phase 26) reconnects with exponential backoff. On reconnect, client sends `ClientReady`, receives a fresh keyframe, and resumes.
+- **Sustained relay failure (>10 seconds):** `DISCONNECT_TIMEOUT_MS` fires, player transitions to AI control (Phase 31). If the relay recovers, the player can rejoin via the same room code.
 
 This recovery path requires no special relay-aware code — the existing `KeyframeRequest`, input jitter, auto-reconnect, and disconnect timeout mechanisms handle it. The relay is a dumb pipe and the game protocol is already designed for unreliable delivery of cosmetic events and reliable (TCP-ordered) delivery of game-flow events.
 

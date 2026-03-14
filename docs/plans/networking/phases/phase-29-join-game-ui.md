@@ -1,6 +1,6 @@
-# Phase 28: Client "Join Game" UI
+# Phase 29: Client "Join Game" UI
 
-> **See also:** [Phase 24 (WebSocket Server)](phase-24-websocket-server.md) | [Phase 25 (WebSocket Client)](phase-25-websocket-client-native.md) | [Phase 31 (Relay)](phase-31-relay-matchmaking.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Phase 25 (WebSocket Server)](phase-25-websocket-server.md) | [Phase 26 (WebSocket Client)](phase-26-websocket-client-native.md) | [Phase 32 (Relay)](phase-32-relay-matchmaking.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Add "Host Game" / "Join Game" to picker menu with support for both direct connections and relay.
 
@@ -11,11 +11,11 @@ Add "Host Game" / "Join Game" to picker menu with support for both direct connec
 - Creates `WebSocketServerTransport` listening on a configurable port (default 12345)
 - Creates local `InProcessTransport` for the host's own client
 - Displays the host's LAN IP + port for direct connections (e.g., "LAN: 192.168.1.5:12345")
-- Optionally creates a relay room (Phase 31) and displays the room code alongside the LAN address
+- Optionally creates a relay room (Phase 32) and displays the room code alongside the LAN address
 
 **"Join Game" flow — two connection modes:**
 1. **Direct Connect:** Enter IP:port (e.g., `192.168.1.5:12345`). Connect via `WebSocketClientTransport` to `ws://<ip>:<port>`. Best for LAN play — zero relay latency, zero relay cost, works offline.
-2. **Relay Room Code:** Enter room code (e.g., `GLAD-XKCD`). Connect via `RelayWebSocketTransport` (Phase 31) to `wss://relay.openglad.example/api/room/GLAD-XKCD`. Required for players behind NAT without port forwarding.
+2. **Relay Room Code:** Enter room code (e.g., `GLAD-XKCD`). Connect via `RelayWebSocketTransport` (Phase 32) to `wss://relay.openglad.example/api/room/GLAD-XKCD`. Required for players behind NAT without port forwarding.
 
 The UI shows both options (tab or toggle). The transport layer (`ITransport`) is identical once connected — GameServer/GameClient don't know or care whether the connection is direct or relayed.
 

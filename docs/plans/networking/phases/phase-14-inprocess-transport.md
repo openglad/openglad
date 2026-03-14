@@ -1,6 +1,6 @@
-# Phase 13: In-Process Transport
+# Phase 14: In-Process Transport
 
-> **See also:** [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Phase 13 (ITransport)](phase-13-transport-interface.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Direct function call transport for local play — `send()` on one side enqueues to the other's receive buffer.
 
@@ -11,7 +11,7 @@ Direct function call transport for local play — `send()` on one side enqueues 
 
 ## `ValidatingInProcessTransport` (CI mode)
 
-The zero-copy `InProcessTransport` bypasses serialization entirely, which means the serialization path (Phase 8) is only exercised by unit tests until WebSocket transport arrives in Phase 24 — an 11-phase coverage gap. Add a `ValidatingInProcessTransport` variant that **serializes and deserializes every message** (snapshot, delta, input, events) through the Phase 8 binary serialization path, then passes the deserialized copy to the recipient. This turns every integration test into a serialization round-trip test.
+The zero-copy `InProcessTransport` bypasses serialization entirely, which means the serialization path (Phase 9) is only exercised by unit tests until WebSocket transport arrives in Phase 25 — an 11-phase coverage gap. Add a `ValidatingInProcessTransport` variant that **serializes and deserializes every message** (snapshot, delta, input, events) through the Phase 9 binary serialization path, then passes the deserialized copy to the recipient. This turns every integration test into a serialization round-trip test.
 
 - Enabled via a constructor flag or CMake option (e.g., `-DVALIDATE_SERIALIZATION=ON` in CI builds, off by default for local dev performance)
 - Uses the same `ITransport` interface — `GameServer`/`GameClient` don't know they're being validated
@@ -20,7 +20,7 @@ The zero-copy `InProcessTransport` bypasses serialization entirely, which means 
 
 ## `NetworkTestFixture`
 
-Build a reusable `NetworkTestFixture` class alongside `InProcessTransport` — this is the primary way to validate everything from Phase 13 onward:
+Build a reusable `NetworkTestFixture` class alongside `InProcessTransport` — this is the primary way to validate everything from Phase 14 onward:
 - Creates a `GameServer` + N `GameClient`s with `InProcessTransport` (or `ValidatingInProcessTransport` in CI)
 - Loads a level on the server
 - Steps N ticks (server ticks, clients receive snapshots)

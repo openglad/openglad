@@ -20,7 +20,7 @@ Walker has raw pointer cross-references that can't be serialized. Add parallel I
 - `walker_init_common()` at `src/gameplay/walker.cpp:92-126` already initializes all pointers to nullptr — update to also zero IDs
 - Update stale-pointer cleanup in `GameWorld::tick()` (`src/gameplay/game_world.cpp:989-1014`) to also clear ID fields
 
-**Dirty tracking infrastructure (foundation for setter-based delta compression — see [Phase 8](phase-08-serialization-delta.md)):**
+**Dirty tracking infrastructure (foundation for setter-based dirty tracking — see [Phase 8](phase-08-setter-dirty-tracking.md)):**
 
 The delta compression design uses **setter-based dirty tracking** rather than snapshot comparison. Dirty bits are set at the source (field mutation sites in gameplay code) and read during snapshot capture. This eliminates the expensive `compute_delta()` comparison step entirely.
 

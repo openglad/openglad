@@ -1,6 +1,6 @@
-# Phase 20: Lobby Server Logic
+# Phase 21: Lobby Server Logic
 
-> **See also:** [Phase 19 (Lobby Data Model)](phase-19-lobby-data-model.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Phase 20 (Lobby Data Model)](phase-20-lobby-data-model.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 **Changes:**
 - New files: `include/openglad/gameplay/lobby_server.h`, `src/gameplay/lobby_server.cpp`

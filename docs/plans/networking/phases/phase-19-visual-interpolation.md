@@ -1,6 +1,6 @@
-# Phase 18: Client-Side Visual Interpolation
+# Phase 19: Client-Side Visual Interpolation
 
-> **See also:** [Context (Sim Tick Rate)](docs/plans/networking/common/context.md) | [Phase 14 (GameClient)](phase-14-server-client.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Context (Sim Tick Rate)](docs/plans/networking/common/context.md) | [Phase 15 (GameClient)](phase-15-server-client.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 At default speed (~12 sim ticks/sec), entities update position every ~83ms. On a 60fps display, this produces visible teleporting between positions. Linear interpolation between the last two received snapshot positions makes movement smooth at render time.
 

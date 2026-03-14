@@ -1,6 +1,6 @@
-# Phase 26: WebSocket Client Transport (Emscripten)
+# Phase 27: WebSocket Client Transport (Emscripten)
 
-> **See also:** [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Context (Module Placement)](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Phase 13 (ITransport)](phase-13-transport-interface.md) | [Context (Module Placement)](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 `EmscriptenWebSocketTransport : ITransport` using `<emscripten/websocket.h>`.
 

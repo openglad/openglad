@@ -1,21 +1,8 @@
-# Phase 8: Snapshot Serialization + Delta Compression
+# Phase 9: Snapshot Serialization + Delta Compression
 
-> **See also:** [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Phase 2 (dirty tracking)](phase-02-cross-reference-ids.md) | [Context](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Phase 8 (dirty tracking)](phase-08-setter-dirty-tracking.md) | [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Context](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
-Convert WorldSnapshot to/from byte stream for transport, including both full keyframe and delta formats. This phase also completes the dirty tracking instrumentation deferred from Phase 3.
-
-## Dirty Tracking Instrumentation (prerequisite for delta compression)
-
-Before delta compression can work, **all ~200-400 remaining field mutation sites** across `src/gameplay/` must call `mark_dirty()`. The infrastructure (`dirty_mask_[2]`, `mark_dirty()`, bit constants) has existed since Phase 2, and the 5 cross-reference setters already call `mark_dirty()`. This step instruments everything else:
-
-- Position fields (`xpos`, `ypos`, `worldx_`, `worldy_`): already go through `setxy()` / `set_world_pos()` — add `mark_dirty` there (~5-10 call sites)
-- High-churn fields (`hitpoints`, `action`, `frame`, `curdir`, `busy`, `cycle`): add `mark_dirty` at mutation sites in combat code, `act()` methods, animation updates (~100-200 sites)
-- Rarely-changing fields (`team_num`, `family`, `order`, `armor`, `level`): add `mark_dirty` at the few mutation sites (~20-30 sites)
-- **Total: ~200-400 sites.** All mechanical — no design decisions, just adding a one-liner next to existing assignments.
-
-Fields do NOT need to be made private for dirty tracking. The `mark_dirty()` call is added alongside the existing direct assignment. Other fields remain public with `mark_dirty()` as a convention enforced by the CI safety-net test (below in this phase).
-
-The CI safety-net test (see below) is the **hard gate** for this instrumentation — it must pass before any networking code uses dirty-based deltas. Placing both the instrumentation and the test in the same phase ensures no window where bugs are latent.
+Convert WorldSnapshot to/from byte stream for transport, including both full keyframe and delta formats. Dirty tracking instrumentation is completed in [Phase 8](phase-08-setter-dirty-tracking.md) via setter refactor; this phase consumes the dirty bits for serialization and delta compression.
 
 ## Manual Binary Serialization
 
@@ -68,7 +55,7 @@ void deserialize_fields(const uint8_t*& cursor, EntitySnapshot& snap,
 
 ## Delta Compression (Setter-Based Dirty Tracking)
 
-Full keyframes (~40KB) every tick waste bandwidth when most entities don't change between ticks. Delta compression sends only changed fields per entity. Unlike comparison-based delta computation (which diffs two full snapshots), this design uses **setter-based dirty tracking**: dirty bits are set at the source during `GameWorld::tick()` (via `mark_dirty()` calls instrumented in this phase's prerequisite step above) and read during snapshot capture (Phase 6). **There is no `compute_delta()` function.** The delta is built directly from the dirty bits that gameplay code already set.
+Full keyframes (~40KB) every tick waste bandwidth when most entities don't change between ticks. Delta compression sends only changed fields per entity. Unlike comparison-based delta computation (which diffs two full snapshots), this design uses **setter-based dirty tracking** ([Phase 8](phase-08-setter-dirty-tracking.md)): dirty bits are set at the source during `GameWorld::tick()` via setters that call `mark_dirty()`, and read during snapshot capture (Phase 6). **There is no `compute_delta()` function.** The delta is built directly from the dirty bits that gameplay code already set.
 
 **Server-side per-client state:**
 
@@ -129,25 +116,4 @@ uint64_t dirty_mask[2]  (both zero = removed entity sentinel)
 
 **zlib bypass for tiny deltas:** zlib adds ~11 bytes of header overhead. For very small deltas (<64 bytes uncompressed — e.g., only 1-2 entities changed a single field), compression may increase size. Add a flag bit in the message header: if set, payload is uncompressed. `serialize_delta()` compresses, checks if compressed size >= uncompressed size, and sends whichever is smaller.
 
-## CI Safety-Net Test (Critical)
-
-The dirty-tracking design has an inherent correctness risk: if a `mark_dirty()` call is missed at a mutation site, that field silently stops updating on clients. Periodic keyframes mask this (every `KEYFRAME_INTERVAL_TICKS` ~5 seconds), but the field is stale between keyframes.
-
-Add a **comparison-based validation test** that runs alongside the dirty-bit path in CI builds:
-
-```cpp
-// tests/test_dirty_tracking_safety.cpp
-// (add to ALL_INTEGRATION_TEST_SOURCES and assign to an og_add_test_group() in CMakeLists.txt)
-// For each tick in a combat scenario:
-// 1. Capture snapshot using dirty bits (the real path)
-// 2. Capture a second "reference" snapshot by brute-force comparing all fields
-//    against the previous tick's full snapshot
-// 3. Assert the dirty-bit snapshot's mask is a SUPERSET of the reference mask
-//    (extra dirty bits are OK — conservative. Missing bits = bug.)
-```
-
-This test runs a worst-case 4-player combat scenario (many entity spawns, deaths, projectiles, explosions, AI actions, speed changes) for 200+ ticks and validates every single entity's dirty mask against the brute-force reference. If any `mark_dirty()` call was missed during the instrumentation pass (this phase's prerequisite step), this test catches it.
-
-**This test is a hard gate for Phase 8 completion.** It must pass before any networking code uses dirty-based deltas.
-
-**Verify:** Unit test — round-trip full snapshots through bytes. Build delta from accumulated dirty masks, apply delta to client baseline, assert result matches server state. Full pipeline test: capture -> serialize -> deserialize -> apply -> capture -> assert match. Test with: no changes (empty delta), all changes (equivalent to keyframe), entity spawn, entity removal, multi-tick accumulation (client misses 3 ticks, next delta has union of all dirty bits). Verify round-trip through serialization. Verify compression ratio is within expected range (cross-check with Phase 9 benchmark). CI safety-net test passes on worst-case combat scenario.
+**Verify:** Unit test — round-trip full snapshots through bytes. Build delta from accumulated dirty masks, apply delta to client baseline, assert result matches server state. Full pipeline test: capture -> serialize -> deserialize -> apply -> capture -> assert match. Test with: no changes (empty delta), all changes (equivalent to keyframe), entity spawn, entity removal, multi-tick accumulation (client misses 3 ticks, next delta has union of all dirty bits). Verify round-trip through serialization. Verify compression ratio is within expected range (cross-check with Phase 10 benchmark).

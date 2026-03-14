@@ -1,6 +1,6 @@
-# Phase 27: Headless Server Binary
+# Phase 28: Headless Server Binary
 
-> **See also:** [Phase 14 (GameServer)](phase-14-server-client.md) | [Phase 24 (WebSocket Server)](phase-24-websocket-server.md) | [Context (Module Placement)](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Phase 15 (GameServer)](phase-15-server-client.md) | [Phase 25 (WebSocket Server)](phase-25-websocket-server.md) | [Context (Module Placement)](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 New CMake target `openglad_server` — no SDL, no rendering. Follow the `openglad_text` target (`CMakeLists.txt:938`) as a proven SDL-free precedent.
 

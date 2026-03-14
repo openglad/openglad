@@ -1,4 +1,4 @@
-# Phase 12: ITransport Interface + Protocol Framing
+# Phase 13: ITransport Interface + Protocol Framing
 
 > **See also:** [Context & Key Decisions](docs/plans/networking/common/context.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
@@ -24,7 +24,7 @@ Abstract transport for server/client communication.
 On connect, client and server exchange `Hello` messages containing:
 - Protocol version + snapshot format version (mismatch -> disconnect with descriptive error)
 - **Min supported protocol version** (1 byte) — reserved for future version-range negotiation. For v1, `min_version == current_version`. In the future, if protocol v3 is backward-compatible with v2, the server can advertise `min=2, current=3` and clients supporting v2-v3 can negotiate. This byte is free to include now and avoids a breaking handshake change later.
-- **Session token** (16 bytes, random) — assigned by the server during the initial `Hello` response. Stored by the client for reconnection purposes. On reconnect, the client includes its session token in the `Hello` message; the server matches it against disconnected player slots (see [Phase 30](phase-30-network-robustness.md) reconnection protocol). First-time connections send a zero token.
+- **Session token** (16 bytes, random) — assigned by the server during the initial `Hello` response. Stored by the client for reconnection purposes. On reconnect, the client includes its session token in the `Hello` message; the server matches it against disconnected player slots (see [Phase 31](phase-31-network-robustness.md) reconnection protocol). First-time connections send a zero token.
 - **Campaign content hash** — a CRC32 or similar hash of the campaign's level file listing + file sizes. This catches campaign file mismatches at connection time rather than as mysterious missing entities during `read_scenario()`. If the hash doesn't match, disconnect with "campaign version mismatch — ensure all players have the same campaign files."
 
 The `Hello` exchange happens before any other messages.
@@ -39,7 +39,7 @@ Sent client->server when the client detects a gap in the `server_tick` sequence 
 
 ## `ExitPromptBroadcast` / `ExitPromptResponse` Messages
 
-- **`ExitPromptBroadcast`** (server->client): Sent when the server enters `pending_exit_prompt` state (see [Phase 14](phase-14-server-client.md)). Contains the prompt text, destination level, and whether it's a withdraw prompt. All clients display the prompt.
+- **`ExitPromptBroadcast`** (server->client): Sent when the server enters `pending_exit_prompt` state (see [Phase 15](phase-15-server-client.md)). Contains the prompt text, destination level, and whether it's a withdraw prompt. All clients display the prompt.
 - **`ExitPromptResponse`** (client->server): Sent by any client in response to `ExitPromptBroadcast`. Contains accept/decline. First response from any player resolves the prompt.
 
 **Verify:** Compiles. Mockable in tests.

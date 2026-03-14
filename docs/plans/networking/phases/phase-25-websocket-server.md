@@ -1,6 +1,6 @@
-# Phase 24: WebSocket Server Transport
+# Phase 25: WebSocket Server Transport
 
-> **See also:** [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Phase 23 (IXWebSocket)](phase-23-vendor-ixwebsocket.md) | [Phase 1 (thread safety invariant)](phase-01-entity-unique-ids.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Phase 13 (ITransport)](phase-13-transport-interface.md) | [Phase 24 (IXWebSocket)](phase-24-vendor-ixwebsocket.md) | [Phase 1 (thread safety invariant)](phase-01-entity-unique-ids.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 `WebSocketServerTransport : ITransport` using IXWebSocket.
 
@@ -10,7 +10,7 @@
 - Uses `ix::WebSocketServer` — construct with port, set `onClientMessageCallback`, call `listenAndStart()`
 - Incoming messages are pushed to a thread-safe queue (e.g., `std::mutex` + `std::deque<ReceivedMessage>`) by the I/O thread callback
 - `poll()` drains the queue on the game loop thread — no locking during normal operation (try_lock + swap pattern)
-- Same message framing as Phase 12 (protocol version + type + length + payload)
+- Same message framing as Phase 13 (protocol version + type + length + payload)
 
 ## Thread Safety Enforcement (Critical)
 

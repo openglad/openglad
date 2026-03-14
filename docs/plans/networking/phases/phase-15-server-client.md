@@ -1,6 +1,6 @@
-# Phase 14: GameServer and GameClient
+# Phase 15: GameServer and GameClient
 
-> **See also:** [Context & Key Decisions](docs/plans/networking/common/context.md) | [Phase 12 (ITransport)](phase-12-transport-interface.md) | [Phase 13 (InProcessTransport)](phase-13-inprocess-transport.md) | [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Context & Key Decisions](docs/plans/networking/common/context.md) | [Phase 13 (ITransport)](phase-13-transport-interface.md) | [Phase 14 (InProcessTransport)](phase-14-inprocess-transport.md) | [Phase 5 (WorldSnapshot)](phase-05-world-snapshot.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 The core server-authoritative objects. This is the convergence point where everything comes together.
 
@@ -21,7 +21,7 @@ The server does NOT wait for all client inputs before ticking. If a client's inp
 - **`held[]` array (movement, long-held keys):** Repeat the client's last known `held[]` state. Movement direction, held fire button, etc. persist naturally between ticks, so repeating is correct behavior in most cases.
 - **`pressed[]` array (one-shot actions):** Do NOT repeat. Clear all `pressed[]` bits for the missing tick. If the late input arrives before the NEXT tick, deliver the `pressed[]` events on that next tick instead (late delivery). This prevents missed button presses (special attacks, yells, weapon switches) at the cost of 1-tick additional latency for those actions during jitter.
 - **Late delivery cap:** `MAX_LATE_PRESS_TICKS = 2`. If a `pressed[]` input arrives more than 2 ticks late, discard it rather than delivering. At default speed (12 ticks/sec), 2 ticks = ~166ms — still a reasonable window for a button press. Delivering a 6-tick-late special attack (after a 500ms network spike) would cause gameplay weirdness (attacking thin air because the target moved away).
-- The server tracks a `last_received_input_tick` per client. If no input arrives within `DISCONNECT_TIMEOUT_MS` wall-clock time, the client is considered disconnected and transitions to AI control ([Phase 30](phase-30-network-robustness.md)).
+- The server tracks a `last_received_input_tick` per client. If no input arrives within `DISCONNECT_TIMEOUT_MS` wall-clock time, the client is considered disconnected and transitions to AI control ([Phase 31](phase-31-network-robustness.md)).
 - **Speed-change input filtering:** Only the host client's speed-change inputs (`timer_wait` adjustments) are accepted. Non-host clients' speed-change inputs are silently dropped.
 
 ## Exit Prompt — Freeze-and-Ask Protocol
@@ -81,9 +81,9 @@ Add a `snapshot_hash` field (CRC32) to each `WorldSnapshot`. The server computes
 
 When the server completes a level (detected via `next_level` flag in the snapshot), it sends a new `InitialSetup` message with the next level's metadata + guy data + updated `completed_levels` (reusing the existing `InitialSetup` message type — no new message needed). The client receives this, runs `read_scenario()` to load the new level from local campaign files, sends `ClientReady`, and the server resumes sending snapshots for the new level. Between the old level's last snapshot and the new level's first snapshot, the client shows a loading/transition screen.
 
-**Level transition event cleanup:** After `read_scenario()` loads the new level on the server, call `SimEventLog::clear()` before the first tick. Entity creation during level loading may push events (sounds, notifications) that reference the new level's entities — but no client has loaded the new level yet, so these events are meaningless and would cause "unknown entity" warnings on clients. Clear the log so the first tick starts clean. Also clear per-client `PerClientState::accumulated_dirty` (Phase 8) — the new level's entities have no relationship to the old level's dirty state.
+**Level transition event cleanup:** After `read_scenario()` loads the new level on the server, call `SimEventLog::clear()` before the first tick. Entity creation during level loading may push events (sounds, notifications) that reference the new level's entities — but no client has loaded the new level yet, so these events are meaningless and would cause "unknown entity" warnings on clients. Clear the log so the first tick starts clean. Also clear per-client `PerClientState::accumulated_dirty` (Phase 9) — the new level's entities have no relationship to the old level's dirty state.
 
-**Level transition event gap:** Between a level's completion and the client sending `ClientReady` for the new level, the server continues ticking the new level. The server does NOT send deltas/events to a client until it receives `ClientReady` (see Phase 12). This means the client misses the first few ticks of the new level (~3-6 ticks during loading). Tier 1 cosmetic events during this gap are lost (a few startup sounds) — acceptable. Tier 2 game-flow events should not fire in the first few ticks of a fresh level. The first message after `ClientReady` is always a full keyframe, so the client catches up to current state immediately.
+**Level transition event gap:** Between a level's completion and the client sending `ClientReady` for the new level, the server continues ticking the new level. The server does NOT send deltas/events to a client until it receives `ClientReady` (see Phase 13). This means the client misses the first few ticks of the new level (~3-6 ticks during loading). Tier 1 cosmetic events during this gap are lost (a few startup sounds) — acceptable. Tier 2 game-flow events should not fire in the first few ticks of a fresh level. The first message after `ClientReady` is always a full keyframe, so the client catches up to current state immediately.
 
 ## Player-to-Viewscreen Mapping and Camera Tracking
 
@@ -91,7 +91,7 @@ In local play, viewscreens map 1:1 to local players. With networking, a remote c
 
 The server sends a per-client array of **controlled `entity_id`s** in the `InitialSetup` message (alongside `guy` data and level metadata). Each entry maps a global player index to the `entity_id` that player's viewscreen should follow. The client stores this mapping and after each `apply_snapshot()`, sets `viewob[local_view]->control` to the entity with the corresponding `entity_id` (looked up via `id_index_`).
 
-When a controlled entity dies or the player switches characters (via `sim_find_next_control()`), the server sends a **`ControlChange` message** (new message type — add to `NetMessageType` enum in Phase 12) containing the player index and new controlled `entity_id`. The client updates its mapping. This is a small, infrequent message (~8 bytes: player index + entity_id).
+When a controlled entity dies or the player switches characters (via `sim_find_next_control()`), the server sends a **`ControlChange` message** (new message type — add to `NetMessageType` enum in Phase 13) containing the player index and new controlled `entity_id`. The client updates its mapping. This is a small, infrequent message (~8 bytes: player index + entity_id).
 
 ## GameServer Callback Architecture
 

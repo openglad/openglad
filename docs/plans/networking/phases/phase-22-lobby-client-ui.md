@@ -1,6 +1,6 @@
-# Phase 21: Lobby Client UI
+# Phase 22: Lobby Client UI
 
-> **See also:** [Phase 19 (Lobby Data Model)](phase-19-lobby-data-model.md) | [Phase 20 (Lobby Server)](phase-20-lobby-server.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Phase 20 (Lobby Data Model)](phase-20-lobby-data-model.md) | [Phase 21 (Lobby Server)](phase-21-lobby-server.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
 Refactor picker to operate as a lobby client. The current picker flow is: `picker_main()` (`picker.cpp:366-377`) -> `picker_initialize_shared_menu_state()` -> `run_picker()` state machine -> team selection via `IPickerClient` -> sets `g_start_game_requested` flag -> state machine transitions to gameplay.
 
