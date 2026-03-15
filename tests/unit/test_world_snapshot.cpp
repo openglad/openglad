@@ -1961,6 +1961,9 @@ TEST(WorldSnapshot, apply_delta_with_all_fields_dirty_matches_current_world_stat
     source.pending_exit_prompt = true;
     source.paused = true;
     source.pause_player_index = 1;
+    source.my_team = 3;
+    source.allied_mode = 1;
+    source.difficulty = 125;
 
     const og::sim::WorldSnapshot current = og::sim::capture_snapshot(source);
 

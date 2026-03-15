@@ -2286,6 +2286,9 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.timer_wait = delta.timer_wait;
     baseline.living_count = delta.living_count;
     baseline.control_hp = delta.control_hp;
+    baseline.my_team = delta.my_team;
+    baseline.allied_mode = delta.allied_mode;
+    baseline.difficulty = delta.difficulty;
     baseline.withdraw_requested = delta.withdraw_requested;
     baseline.withdraw_level = delta.withdraw_level;
     baseline.guy_id_counter = delta.guy_id_counter;
