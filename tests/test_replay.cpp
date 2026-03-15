@@ -154,17 +154,30 @@ void populate_chaotic_input(InputState& input, int tick, int player_count)
     }
 }
 
-void clear_screen_replay_controls(screen& game_screen, int player_count)
+std::vector<std::uint32_t> capture_view_control_ids(screen& game_screen,
+                                                    int player_count)
 {
+    std::vector<std::uint32_t> control_ids;
+    control_ids.reserve(static_cast<std::size_t>(player_count));
+
     for (int player = 0; player < player_count; ++player)
     {
         if (game_screen.viewob[player] == nullptr)
         {
             ADD_FAILURE() << "missing view for player " << player;
+            control_ids.push_back(0u);
             continue;
         }
-        game_screen.viewob[player]->control = nullptr;
+        if (game_screen.viewob[player]->control == nullptr)
+        {
+            ADD_FAILURE() << "missing control for player " << player;
+            control_ids.push_back(0u);
+            continue;
+        }
+        control_ids.push_back(game_screen.viewob[player]->control->entity_id());
     }
+
+    return control_ids;
 }
 
 void poison_replay_input_debounce(screen& game_screen)
@@ -238,6 +251,8 @@ void run_replay_roundtrip(int player_count)
     ASSERT_EQ(kReplayLevel, live_world.id);
     ASSERT_TRUE(live_world.grid.valid());
     ASSERT_EQ(player_count, game_screen.numviews);
+    const std::vector<std::uint32_t> expected_control_ids =
+        capture_view_control_ids(game_screen, player_count);
 
     og::sim::ReplayRecorder recorder({
         .version = og::sim::kReplayFormatVersion,
@@ -251,8 +266,6 @@ void run_replay_roundtrip(int player_count)
     recorder.record_world_keyframe(0u, live_world);
     const og::sim::WorldSnapshot expected_initial_snapshot =
         recorder.checkpoints().front().snapshot;
-
-    clear_screen_replay_controls(game_screen, player_count);
     std::vector<std::uint32_t> expected_rng_states;
     expected_rng_states.reserve(kReplayTicks);
 
@@ -314,6 +327,8 @@ void run_replay_roundtrip(int player_count)
     ASSERT_EQ(player.header().player_count, static_cast<std::uint8_t>(game_screen.numviews));
     ASSERT_EQ(player.header().timer_wait, replay_world.timer_wait);
     ASSERT_EQ(0, game_screen.save_data.team_size);
+    EXPECT_EQ(expected_control_ids,
+              capture_view_control_ids(game_screen, player_count));
 
     const og::sim::WorldSnapshot actual_initial_snapshot =
         og::sim::peek_keyframe_snapshot(replay_world);

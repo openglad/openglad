@@ -64,11 +64,26 @@ std::vector<short> replay_view_teams(const og::sim::WorldSnapshot& snapshot,
     return teams;
 }
 
+walker* replay_find_bound_control(GameWorld& world, short view_index, short my_team)
+{
+    for (auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        if (w->user() == view_index && (my_team == 0 || w->team_num() == my_team))
+            return w;
+    }
+
+    return nullptr;
+}
+
 void assign_replay_views(screen& game_screen,
                          const og::sim::WorldSnapshot& snapshot)
 {
     const std::vector<short> teams =
         replay_view_teams(snapshot, game_screen.numviews);
+    const bool spectator = og::ui::is_spectator_mode(game_screen.save_data);
     short view_index = 0;
     const short numviews = std::min<short>(
         game_screen.numviews,
@@ -82,7 +97,28 @@ void assign_replay_views(screen& game_screen,
         view->my_team = (view_index < static_cast<short>(teams.size()))
             ? teams[static_cast<std::size_t>(view_index)]
             : 0;
-        view->control = nullptr;
+        view->control = replay_find_bound_control(game_screen.world(),
+                                                  view_index,
+                                                  view->my_team);
+        if (view->control == nullptr)
+            view->control = view->find_next_control();
+
+        if (spectator)
+        {
+            if (view->control != nullptr && view_index == 0)
+                game_screen.world().control_hp = view->control->stats()->hitpoints();
+        }
+        else if (view->control != nullptr)
+        {
+            if (view->control->user() == -1)
+            {
+                view->control->set_user(static_cast<signed char>(view_index));
+                view->control->set_act_type(ACT_CONTROL);
+                view->control->stats()->clear_command();
+            }
+            if (view_index == 0)
+                game_screen.world().control_hp = view->control->stats()->hitpoints();
+        }
         ++view_index;
     }
 }
