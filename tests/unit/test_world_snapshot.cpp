@@ -1010,6 +1010,7 @@ TEST(WorldSnapshot, apply_snapshot_replaces_state_reorders_lists_and_skips_death
     configure_snapshot_test_services(mirror);
 
     og::sim::apply_snapshot(mirror, snapshot);
+    EXPECT_EQ(snapshot.rng_state, mirror.rng_.state_);
 
     reverse_entity_list(mirror.oblist);
     reverse_entity_list(mirror.fxlist);

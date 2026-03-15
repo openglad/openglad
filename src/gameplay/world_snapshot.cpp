@@ -835,7 +835,6 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     SimEventLogSuppressGuard event_guard(*gameplay_context.sim_events);
 
     world.tick_count_ = snapshot.tick_count;
-    world.rng_.state_ = snapshot.rng_state;
     world.set_level_tick_count(snapshot.level_tick_count);
 
     world.level_done = snapshot.level_done;
@@ -913,6 +912,10 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     world.clear_removed_entity_ids();
     world.clear_grid_dirty_tiles();
     clear_entity_dirty_masks(world);
+
+    // walker construction rolls path_check_counter from the world RNG, so
+    // restore the authoritative snapshot state after all apply-side effects.
+    world.rng_.state_ = snapshot.rng_state;
 }
 
 SimEventBatch drain_sim_events(SimEventLog& log)
