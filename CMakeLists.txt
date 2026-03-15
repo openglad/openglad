@@ -1280,6 +1280,7 @@ if(NOT EMSCRIPTEN)
 
             add_test(NAME ${NAME} COMMAND ${NAME})
             set_tests_properties(${NAME} PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 TIMEOUT 180
                 LABELS "unit"
             )
@@ -1526,6 +1527,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
         )
