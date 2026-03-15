@@ -71,6 +71,8 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
 #ifdef TESTING
     picker_testing_mark_frame_advance();
 #endif
+    if (deps.after_act)
+        deps.after_act(s);
 
     if (s.world().end)
     {

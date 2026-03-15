@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <openglad/gameplay/replay.h>
+#include <openglad/interface/replay_runtime.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
@@ -42,6 +43,25 @@ static EventScript* g_script = nullptr;
 static int scripted_poll_adapter(SDL_Event* out)
 {
     return scripted_poll(g_script, out);
+}
+
+static void expect_snapshot_bytes_match(const og::sim::WorldSnapshot& expected,
+                                        const og::sim::WorldSnapshot& actual)
+{
+    const std::vector<std::uint8_t> expected_bytes =
+        og::sim::serialize_snapshot(expected);
+    const std::vector<std::uint8_t> actual_bytes =
+        og::sim::serialize_snapshot(actual);
+    const std::optional<og::sim::ReplayVerificationFailure> divergence =
+        og::sim::find_first_snapshot_difference(actual.tick_count,
+                                                expected,
+                                                actual,
+                                                false);
+    ASSERT_EQ(expected_bytes, actual_bytes)
+        << (divergence.has_value()
+                ? divergence->field + " expected=" + divergence->expected_value +
+                      " actual=" + divergence->actual_value
+                : "snapshot bytes diverged");
 }
 
 TEST(GameLoop, game_frame_toggles_debug_hotkeys)
@@ -125,21 +145,27 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
     glad_init();
     ASSERT_TRUE(og::runtime::current_session->replay_recorder_.has_value());
     EXPECT_EQ(replay_path, og::runtime::current_session->replay_output_path_);
-    EXPECT_EQ(0u, og::runtime::current_session->replay_recorder_->frame_count());
+    ASSERT_EQ(1u, og::runtime::current_session->replay_recorder_->frame_count());
     EXPECT_TRUE(og::runtime::current_session->replay_recorder_->has_initial_snapshot());
+    EXPECT_EQ(1u, og::runtime::current_session->replay_recorder_->frames().front().tick);
 
     GameLoopFrameState st;
     GameLoopDeps deps;
     deps.enable_render = false;
     deps.enable_event_poll = false;
     deps.enable_frame_timing = false;
+    std::optional<og::sim::WorldSnapshot> expected_after_tick_one;
+    deps.after_act = [&expected_after_tick_one](screen& loop_screen) {
+        expected_after_tick_one =
+            og::sim::peek_keyframe_snapshot(loop_screen.world());
+    };
 
     EXPECT_EQ(GameFrameResult::Continue,
               game_frame_with_result(*game_screen, st, deps));
     ASSERT_TRUE(og::runtime::current_session->replay_recorder_.has_value());
-    ASSERT_EQ(1u, og::runtime::current_session->replay_recorder_->frame_count());
-    const auto expected_frame =
-        og::runtime::current_session->replay_recorder_->frames().front();
+    ASSERT_EQ(2u, og::runtime::current_session->replay_recorder_->frame_count());
+    EXPECT_EQ(2u, og::runtime::current_session->replay_recorder_->frames().back().tick);
+    ASSERT_TRUE(expected_after_tick_one.has_value());
 
     game_screen->world().end = 1;
     EXPECT_EQ(GameFrameResult::Done,
@@ -153,10 +179,21 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
     ASSERT_EQ(og::sim::ReplayIoError::None, io_error);
     EXPECT_EQ(game_screen->world().id, player.header().level_id);
     EXPECT_EQ(game_screen->save_data.current_campaign, player.header().campaign_id);
-    ASSERT_EQ(1u, player.frame_count());
-    EXPECT_EQ(expected_frame.tick, player.frames().front().tick);
-    EXPECT_EQ(expected_frame.input.quit_requested,
-              player.frames().front().input.quit_requested);
+    ASSERT_EQ(2u, player.frame_count());
+    EXPECT_EQ(1u, player.frames().front().tick);
+    EXPECT_EQ(og::sim::serialize_input(1u, InputState{}),
+              og::sim::serialize_input(player.frames().front().tick,
+                                       player.frames().front().input));
+
+    ASSERT_TRUE(og::runtime::initialize_replay_screen(*game_screen, player));
+    auto first_frame = player.next_frame();
+    ASSERT_TRUE(first_frame.has_value());
+    EXPECT_EQ(1u, first_frame->tick);
+    EXPECT_EQ(og::sim::serialize_input(1u, InputState{}),
+              og::sim::serialize_input(first_frame->tick, first_frame->input));
+    ASSERT_TRUE(game_screen->act());
+    expect_snapshot_bytes_match(*expected_after_tick_one,
+                                og::sim::peek_keyframe_snapshot(game_screen->world()));
 
     game_screen->world().end = 0;
     game_screen->world().delete_objects();

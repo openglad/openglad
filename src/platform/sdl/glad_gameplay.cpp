@@ -13,6 +13,7 @@
 
 #include <openglad/core/util.h>
 #include <openglad/resources/gparser.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/replay_runtime.h>
@@ -48,6 +49,12 @@ void glad_init()
 
     // Load the default saved-game.
     load_saved_game("save0", current_screen);
+    current_screen->world().tick_count_ = 0;
+    current_screen->world().reset_level_progress();
+    current_screen->world().clear_removed_entity_ids();
+    current_screen->world().clear_grid_dirty_tiles();
+    if (current_game != nullptr && current_game->sim_events != nullptr)
+        current_game->sim_events->clear();
 
 #ifdef TESTING
     if (g_test_remove_exits) {
