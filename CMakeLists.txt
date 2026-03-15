@@ -219,6 +219,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
     ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
     ${SRC_DIR}/gameplay/input_state_net.cpp
+    ${SRC_DIR}/gameplay/replay.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -237,6 +238,7 @@ set(OG_SIM_SOURCES
     ${SRC_DIR}/gameplay/game_server.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/input_state_net.cpp
+    ${SRC_DIR}/gameplay/replay.cpp
 )
 
 set(OG_DATA_SOURCES
@@ -1085,6 +1087,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_menu_layout.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_help.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_load_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_replay.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_snapshot_size_benchmark.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_difficulty.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_guy.cpp
@@ -1502,6 +1505,7 @@ if(NOT EMSCRIPTEN)
         )
 
         og_add_test_group(og_test_snapshot_benchmark FILES
+            test_replay.cpp
             test_snapshot_size_benchmark.cpp
         )
 
@@ -1537,6 +1541,7 @@ if(NOT EMSCRIPTEN)
         og_add_unit_group(og_unit_sim FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_state_net.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_replay.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp

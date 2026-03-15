@@ -117,6 +117,8 @@ const int key4[] = {
                  KEYCODE_F6,                                 // Cheat key
              };
 
+static SimInputDebounce g_viewscreen_debounce[6] = {};
+
 // This is for saving/loading the key preferences
 Sint32 save_key_prefs();
 Sint32 load_key_prefs();
@@ -474,11 +476,14 @@ short viewscreen::continuous_input()
 	return 1;
 }
 
+void reset_viewscreen_input_debounce()
+{
+	for (auto& debounce : g_viewscreen_debounce)
+		debounce = {};
+}
+
 void viewscreen::process_input(const InputState& input_state)
 {
-	// Per-player debounce state (persists across frames)
-	static SimInputDebounce debounce[6] = {};
-
 	const PlayerInput& pi = input_state.players[mynum];
 
 	// --- Spectator mode: only allow switching the camera target ---
@@ -486,10 +491,10 @@ void viewscreen::process_input(const InputState& input_state)
 	{
 		// SwitchChar cycles the camera target (no ACT_CONTROL claim)
 		if (!pi.was_pressed(InputAction::SwitchChar))
-			debounce[mynum].changedchar = 0;
-		else if (!debounce[mynum].changedchar)
+			g_viewscreen_debounce[mynum].changedchar = 0;
+		else if (!g_viewscreen_debounce[mynum].changedchar)
 		{
-			debounce[mynum].changedchar = 1;
+			g_viewscreen_debounce[mynum].changedchar = 1;
 			walker* oldcontrol = control;
 			if (!oldcontrol)
 			{
@@ -529,7 +534,7 @@ void viewscreen::process_input(const InputState& input_state)
 	// Delegate all entity-driving logic to the sim layer
 	SimInputResult result = sim_process_player_input(
 		pi, control, active_screen()->world(),
-		mynum, my_team, debounce[mynum],
+		mynum, my_team, g_viewscreen_debounce[mynum],
 		active_screen()->special_name,
 		ctx().sim_events.get());
 

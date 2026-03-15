@@ -66,6 +66,7 @@ class radar;
 // Pure helper functions for HP/MP color thresholds
 unsigned char compute_hp_color(float hp, float maxhp);
 unsigned char compute_mp_color(float mp, float maxmp);
+void reset_viewscreen_input_debounce();
 
 // This is a child object of all viewscreens
 //  It is used to save and load all prefs
