@@ -196,6 +196,20 @@ struct EntitySnapshotFieldDesc {
     std::uint16_t snap_offset = 0;
 };
 
+constexpr bool entity_snapshot_field_is_manual(std::uint8_t bit_index)
+{
+    return bit_index == og::dirty::BIT_REGEN_DELAY ||
+           bit_index == og::dirty::BIT_DO_BOUNCE;
+}
+
+inline constexpr std::uint8_t kEntitySnapshotManualBits[] = {
+    og::dirty::BIT_REGEN_DELAY,
+    og::dirty::BIT_DO_BOUNCE,
+};
+
+inline constexpr std::size_t kEntitySnapshotManualFieldCount =
+    sizeof(kEntitySnapshotManualBits) / sizeof(kEntitySnapshotManualBits[0]);
+
 inline constexpr EntitySnapshotFieldDesc kEntitySnapshotFields[] = {
     {og::dirty::BIT_ENTITY_ID, sizeof(std::uint32_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, entity_id))},
@@ -313,8 +327,6 @@ inline constexpr EntitySnapshotFieldDesc kEntitySnapshotFields[] = {
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, lineofsight))},
     {og::dirty::BIT_PATH_CHECK_COUNTER, sizeof(std::int32_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, path_check_counter))},
-    {og::dirty::BIT_REGEN_DELAY, sizeof(std::int32_t),
-     static_cast<std::uint16_t>(offsetof(EntitySnapshot, regen_delay))},
     {og::dirty::BIT_FOE_ID, sizeof(std::uint32_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, foe_id))},
     {og::dirty::BIT_LEADER_ID, sizeof(std::uint32_t),
@@ -368,22 +380,24 @@ inline constexpr EntitySnapshotFieldDesc kEntitySnapshotFields[] = {
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, current_distance))},
     {og::dirty::BIT_CONTROLLER_ID, sizeof(std::uint32_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, controller_id))},
-    {og::dirty::BIT_DO_BOUNCE, sizeof(std::int32_t),
-     static_cast<std::uint16_t>(offsetof(EntitySnapshot, do_bounce))},
 };
 
-inline constexpr std::size_t kEntitySnapshotFieldCount =
+inline constexpr std::size_t kEntitySnapshotTableFieldCount =
     sizeof(kEntitySnapshotFields) / sizeof(kEntitySnapshotFields[0]);
+inline constexpr std::size_t kEntitySnapshotTrackedFieldCount =
+    kEntitySnapshotTableFieldCount + kEntitySnapshotManualFieldCount;
 
 constexpr bool entity_snapshot_field_table_is_valid()
 {
-    if (kEntitySnapshotFieldCount != og::dirty::FIELD_COUNT) {
+    if (kEntitySnapshotTrackedFieldCount != og::dirty::FIELD_COUNT) {
         return false;
     }
 
-    for (std::size_t i = 0; i < kEntitySnapshotFieldCount; ++i) {
+    bool seen_bits[og::dirty::FIELD_COUNT] = {};
+
+    for (std::size_t i = 0; i < kEntitySnapshotTableFieldCount; ++i) {
         const EntitySnapshotFieldDesc& field = kEntitySnapshotFields[i];
-        if (field.bit_index != i) {
+        if (entity_snapshot_field_is_manual(field.bit_index)) {
             return false;
         }
         if (field.size == 0) {
@@ -391,6 +405,23 @@ constexpr bool entity_snapshot_field_table_is_valid()
         }
         if (static_cast<std::size_t>(field.snap_offset) + field.size >
             sizeof(EntitySnapshot)) {
+            return false;
+        }
+        if (seen_bits[field.bit_index]) {
+            return false;
+        }
+        seen_bits[field.bit_index] = true;
+    }
+
+    for (std::uint8_t bit = 0; bit < og::dirty::FIELD_COUNT; ++bit) {
+        if (entity_snapshot_field_is_manual(bit)) {
+            if (seen_bits[bit]) {
+                return false;
+            }
+            continue;
+        }
+
+        if (!seen_bits[bit]) {
             return false;
         }
     }
@@ -402,8 +433,8 @@ static_assert(std::is_standard_layout_v<EntitySnapshot>,
               "EntitySnapshot must stay standard-layout for offsetof-based tables");
 static_assert(std::is_trivially_copyable_v<EntitySnapshot>,
               "EntitySnapshot must stay trivially copyable for memcpy-based serialization");
-static_assert(kEntitySnapshotFieldCount == og::dirty::FIELD_COUNT,
-              "EntitySnapshot field count drift -- update world_snapshot.h");
+static_assert(kEntitySnapshotTrackedFieldCount == og::dirty::FIELD_COUNT,
+              "EntitySnapshot tracked field count drift -- update world_snapshot.h");
 static_assert(entity_snapshot_field_table_is_valid(),
               "EntitySnapshot field table drift -- update world_snapshot.h");
 

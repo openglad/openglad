@@ -26,11 +26,15 @@ TEST(WorldSnapshot, entity_snapshot_layout_matches_dirty_field_table)
 {
     static_assert(std::is_standard_layout_v<og::sim::EntitySnapshot>);
     static_assert(std::is_trivially_copyable_v<og::sim::EntitySnapshot>);
+    EXPECT_EQ(84u, og::sim::kEntitySnapshotTableFieldCount);
+    EXPECT_EQ(2u, og::sim::kEntitySnapshotManualFieldCount);
+    EXPECT_EQ(og::dirty::FIELD_COUNT, og::sim::kEntitySnapshotTrackedFieldCount);
 
     std::array<bool, og::dirty::FIELD_COUNT> seen_bits = {};
     for (const og::sim::EntitySnapshotFieldDesc& desc :
          og::sim::kEntitySnapshotFields) {
         ASSERT_LT(desc.bit_index, og::dirty::FIELD_COUNT);
+        EXPECT_FALSE(og::sim::entity_snapshot_field_is_manual(desc.bit_index));
         EXPECT_FALSE(seen_bits[desc.bit_index]);
         seen_bits[desc.bit_index] = true;
         EXPECT_GT(desc.size, 0);
@@ -38,8 +42,13 @@ TEST(WorldSnapshot, entity_snapshot_layout_matches_dirty_field_table)
                   sizeof(og::sim::EntitySnapshot));
     }
 
-    EXPECT_TRUE(std::all_of(seen_bits.begin(), seen_bits.end(),
-                            [](bool seen) { return seen; }));
+    for (std::uint8_t bit = 0; bit < og::dirty::FIELD_COUNT; ++bit) {
+        if (og::sim::entity_snapshot_field_is_manual(bit)) {
+            EXPECT_FALSE(seen_bits[bit]);
+        } else {
+            EXPECT_TRUE(seen_bits[bit]);
+        }
+    }
 
     const auto* entity_id_desc = find_desc(og::dirty::BIT_ENTITY_ID);
     ASSERT_NE(nullptr, entity_id_desc);
@@ -51,11 +60,29 @@ TEST(WorldSnapshot, entity_snapshot_layout_matches_dirty_field_table)
     EXPECT_EQ(offsetof(og::sim::EntitySnapshot, special_cost),
               special_cost_desc->snap_offset);
     EXPECT_EQ(sizeof(std::uint16_t) * NUM_SPECIALS, special_cost_desc->size);
+}
 
-    const auto* bounce_desc = find_desc(og::dirty::BIT_DO_BOUNCE);
-    ASSERT_NE(nullptr, bounce_desc);
-    EXPECT_EQ(offsetof(og::sim::EntitySnapshot, do_bounce),
-              bounce_desc->snap_offset);
+TEST(WorldSnapshot, manual_entity_fields_stay_out_of_the_generic_field_table)
+{
+    const bool regen_delay_in_field_table = std::any_of(
+        std::begin(og::sim::kEntitySnapshotFields),
+        std::end(og::sim::kEntitySnapshotFields),
+        [](const og::sim::EntitySnapshotFieldDesc& desc) {
+            return desc.bit_index == og::dirty::BIT_REGEN_DELAY;
+        });
+    const bool do_bounce_in_field_table = std::any_of(
+        std::begin(og::sim::kEntitySnapshotFields),
+        std::end(og::sim::kEntitySnapshotFields),
+        [](const og::sim::EntitySnapshotFieldDesc& desc) {
+            return desc.bit_index == og::dirty::BIT_DO_BOUNCE;
+        });
+
+    EXPECT_FALSE(regen_delay_in_field_table);
+    EXPECT_FALSE(do_bounce_in_field_table);
+    EXPECT_TRUE(
+        og::sim::entity_snapshot_field_is_manual(og::dirty::BIT_REGEN_DELAY));
+    EXPECT_TRUE(
+        og::sim::entity_snapshot_field_is_manual(og::dirty::BIT_DO_BOUNCE));
 }
 
 TEST(WorldSnapshot, guy_linkage_is_not_dirty_mask_tracked)
