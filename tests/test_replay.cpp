@@ -411,6 +411,11 @@ TEST(Replay, phase11_roundtrip_matches_final_state_for_two_players)
     run_replay_roundtrip(2);
 }
 
+TEST(Replay, phase11_roundtrip_matches_final_state_for_four_players)
+{
+    run_replay_roundtrip(4);
+}
+
 TEST(Replay, initialize_replay_screen_rejects_unsafe_campaign_ids)
 {
     ASSERT_TRUE(prepare_default_level_load())

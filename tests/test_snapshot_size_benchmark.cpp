@@ -4,7 +4,10 @@
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/replay.h>
+#include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/world_snapshot.h>
+#include <openglad/interface/replay_runtime.h>
 #include <openglad/interface/screen.h>
 #include <openglad/resources/io_common.h>
 
@@ -12,7 +15,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -33,6 +38,14 @@ struct PayloadSizeReport {
     std::size_t wire_payload_bytes = 0;
     std::size_t wire_message_bytes = 0;
     bool wire_payload_uncompressed = false;
+};
+
+struct RecordedBenchmarkReplay {
+    std::filesystem::path path;
+    og::sim::WorldSnapshot warmup_snapshot;
+    og::sim::WorldSnapshot warmup_keyframe_snapshot;
+    og::sim::WorldSnapshot final_keyframe_snapshot;
+    std::vector<og::sim::ReplayCheckpoint> checkpoints;
 };
 
 bool prepare_default_level_load()
@@ -163,6 +176,104 @@ void populate_chaotic_input(InputState& input, int tick)
     }
 }
 
+void advance_screen_tick(screen& game_screen, const InputState& input)
+{
+    game_screen.process_input(input);
+    ASSERT_TRUE(game_screen.act()) << "screen.act should continue running";
+    ASSERT_FALSE(game_screen.world().game_ended)
+        << "benchmark scenario should not end during replay capture";
+}
+
+void reset_loaded_world_for_benchmark(GameWorld& world)
+{
+    world.tick_count_ = 0;
+    world.reset_level_progress();
+    world.clear_removed_entity_ids();
+    world.clear_grid_dirty_tiles();
+    if (current_game != nullptr && current_game->sim_events != nullptr)
+        current_game->sim_events->clear();
+}
+
+void assert_snapshot_bytes_match(std::string_view label,
+                                 const og::sim::WorldSnapshot& expected,
+                                 const og::sim::WorldSnapshot& actual)
+{
+    const std::vector<std::uint8_t> expected_bytes =
+        og::sim::serialize_snapshot(expected);
+    const std::vector<std::uint8_t> actual_bytes =
+        og::sim::serialize_snapshot(actual);
+    ASSERT_EQ(expected_bytes.size(), actual_bytes.size())
+        << label << " byte length diverged";
+    ASSERT_TRUE(expected_bytes == actual_bytes) << label << " bytes diverged";
+}
+
+std::filesystem::path benchmark_replay_path()
+{
+    return std::filesystem::temp_directory_path() /
+        "openglad_phase11_snapshot_benchmark.ogr";
+}
+
+std::string format_failure(const og::sim::ReplayVerificationFailure& failure)
+{
+    return "tick=" + std::to_string(failure.tick) + " field=" + failure.field +
+        " expected=" + failure.expected_value + " actual=" +
+        failure.actual_value;
+}
+
+RecordedBenchmarkReplay record_benchmark_replay(screen& game_screen)
+{
+    GameWorld& world = game_screen.world();
+    reset_loaded_world_for_benchmark(world);
+
+    og::sim::ReplayRecorder recorder({
+        .version = og::sim::kReplayFormatVersion,
+        .initial_rng_state = world.rng_.state_,
+        .level_id = world.id,
+        .player_count = static_cast<std::uint8_t>(game_screen.save_data.numplayers),
+        .timer_wait = world.timer_wait,
+        .my_team = game_screen.save_data.my_team,
+        .allied_mode = game_screen.save_data.allied_mode,
+        .difficulty = world.difficulty,
+        .campaign_id = game_screen.save_data.current_campaign,
+    });
+    recorder.record_initial_world(world);
+
+    RecordedBenchmarkReplay replay;
+    InputState input{};
+    for (int tick = 0; tick < (kWarmupTicks + kCatchupDeltaTicks); ++tick)
+    {
+        populate_chaotic_input(input, tick);
+        recorder.record_input(world.tick_count_ + 1u, input);
+        advance_screen_tick(game_screen, input);
+        recorder.record_world_keyframe(world.tick_count_, world);
+
+        if ((tick + 1) == kWarmupTicks)
+        {
+            replay.warmup_snapshot = og::sim::capture_snapshot(world);
+            replay.warmup_keyframe_snapshot =
+                og::sim::capture_keyframe_snapshot(world);
+        }
+        else if ((tick + 1) > kWarmupTicks)
+        {
+            // The benchmark's delta window consumes transient removals/dirty
+            // state each tick via capture_snapshot(); mirror that here so the
+            // recorded replay checkpoints describe the same measurement flow.
+            (void)og::sim::capture_snapshot(world);
+        }
+    }
+    replay.final_keyframe_snapshot = og::sim::peek_keyframe_snapshot(world);
+    replay.checkpoints = recorder.checkpoints();
+
+    replay.path = benchmark_replay_path();
+    std::error_code ec;
+    std::filesystem::remove(replay.path, ec);
+
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    EXPECT_TRUE(recorder.write_file(replay.path, &io_error));
+    EXPECT_EQ(og::sim::ReplayIoError::None, io_error);
+    return replay;
+}
+
 std::vector<std::uint8_t> zlib_compress_for_benchmark(
     const std::vector<std::uint8_t>& payload)
 {
@@ -291,19 +402,55 @@ TEST(SnapshotSizeBenchmark,
     for (int i = 0; i < 4; ++i)
         ASSERT_NE(nullptr, game_screen.viewob[i]);
 
-    InputState input;
+    const RecordedBenchmarkReplay recorded = record_benchmark_replay(game_screen);
+
+    og::sim::ReplayPlayer player;
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    ASSERT_TRUE(player.load_file(recorded.path, &io_error));
+    ASSERT_EQ(og::sim::ReplayIoError::None, io_error);
+    player.set_checkpoints(recorded.checkpoints);
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              unmount_campaign_package_with_error(get_mounted_campaign()));
+    game_screen.save_data.reset();
+    game_screen.save_data.current_campaign = "wrong.campaign";
+    game_screen.save_data.scen_num = -1;
+    ASSERT_TRUE(og::runtime::initialize_replay_screen(game_screen, player))
+        << "benchmark should measure replay-driven world state from .ogr";
+
+    GameWorld& replay_world = game_screen.world();
+    reset_loaded_world_for_benchmark(replay_world);
+    ASSERT_EQ(4, game_screen.numviews);
+    for (int i = 0; i < 4; ++i)
+        ASSERT_NE(nullptr, game_screen.viewob[i]);
+
     for (int tick = 0; tick < kWarmupTicks; ++tick)
     {
-        populate_chaotic_input(input, tick);
-        game_screen.process_input(input);
-        ASSERT_TRUE(game_screen.act()) << "screen.act should continue running";
+        const std::optional<og::sim::InputStateMessage> frame = player.next_frame();
+        ASSERT_TRUE(frame.has_value()) << "benchmark replay should include warmup ticks";
+        ASSERT_EQ(replay_world.tick_count_ + 1u, frame->tick);
+        advance_screen_tick(game_screen, frame->input);
+        if (const std::optional<og::sim::ReplayVerificationFailure> checkpoint_failure =
+                player.verify_world(replay_world, replay_world.tick_count_, false);
+            checkpoint_failure.has_value())
+        {
+            FAIL() << "benchmark warmup divergence: "
+                   << format_failure(*checkpoint_failure);
+        }
     }
 
-    const og::sim::WorldSnapshot live_snapshot = og::sim::capture_snapshot(world);
+    const og::sim::WorldSnapshot live_snapshot =
+        og::sim::capture_snapshot(replay_world);
     // Measure the full snapshot from a same-tick keyframe because the full
     // transport message always serializes keyframe/full-grid state.
     const og::sim::WorldSnapshot keyframe_snapshot =
-        og::sim::capture_keyframe_snapshot(world);
+        og::sim::capture_keyframe_snapshot(replay_world);
+    assert_snapshot_bytes_match("benchmark warmup snapshot",
+                                recorded.warmup_snapshot,
+                                live_snapshot);
+    assert_snapshot_bytes_match("benchmark warmup keyframe",
+                                recorded.warmup_keyframe_snapshot,
+                                keyframe_snapshot);
     const PayloadSizeReport full_sizes =
         measure_full_snapshot_payload(keyframe_snapshot);
 
@@ -320,11 +467,19 @@ TEST(SnapshotSizeBenchmark,
     og::sim::WorldSnapshot final_tick_snapshot;
     for (int tick = 0; tick < kCatchupDeltaTicks; ++tick)
     {
-        populate_chaotic_input(input, kWarmupTicks + tick);
-        game_screen.process_input(input);
-        ASSERT_TRUE(game_screen.act()) << "screen.act should continue during delta window";
+        const std::optional<og::sim::InputStateMessage> frame = player.next_frame();
+        ASSERT_TRUE(frame.has_value()) << "benchmark replay should include catchup ticks";
+        ASSERT_EQ(replay_world.tick_count_ + 1u, frame->tick);
+        advance_screen_tick(game_screen, frame->input);
+        if (const std::optional<og::sim::ReplayVerificationFailure> checkpoint_failure =
+                player.verify_world(replay_world, replay_world.tick_count_, false);
+            checkpoint_failure.has_value())
+        {
+            FAIL() << "benchmark catchup divergence: "
+                   << format_failure(*checkpoint_failure);
+        }
 
-        final_tick_snapshot = og::sim::capture_snapshot(world);
+        final_tick_snapshot = og::sim::capture_snapshot(replay_world);
         if (tick == 0)
         {
             og::sim::accumulate_snapshot_for_client(one_tick_client_state,
@@ -337,6 +492,13 @@ TEST(SnapshotSizeBenchmark,
         og::sim::accumulate_snapshot_for_client(catchup_client_state,
                                                 final_tick_snapshot);
     }
+    EXPECT_FALSE(player.has_next_frame())
+        << "benchmark replay should be fully consumed after warmup and catchup";
+    const og::sim::WorldSnapshot final_keyframe_snapshot =
+        og::sim::peek_keyframe_snapshot(replay_world);
+    assert_snapshot_bytes_match("benchmark final keyframe",
+                                recorded.final_keyframe_snapshot,
+                                final_keyframe_snapshot);
 
     const og::sim::WorldSnapshot catchup_delta_snapshot =
         og::sim::consume_delta_snapshot_for_client(catchup_client_state,
@@ -369,7 +531,7 @@ TEST(SnapshotSizeBenchmark,
         "%d-tick catch-up delta: raw_payload=%zu bytes zlib_payload=%zu bytes (%.1f%% saved) wire_message=%zu bytes%s\n"
         "%d-tick catch-up entities: ob=%zu fx=%zu weap=%zu removed=%zu\n",
         kBenchmarkLevel,
-        world.title.c_str(),
+        replay_world.title.c_str(),
         kWarmupTicks,
         kCatchupDeltaTicks,
         ob_count,
@@ -419,5 +581,7 @@ TEST(SnapshotSizeBenchmark,
     EXPECT_GE(catchup_delta_sizes.raw_payload_bytes,
               one_tick_delta_sizes.raw_payload_bytes);
 
-    world.delete_objects();
+    std::error_code ec;
+    std::filesystem::remove(recorded.path, ec);
+    replay_world.delete_objects();
 }
