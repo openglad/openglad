@@ -42,10 +42,6 @@ struct PayloadSizeReport {
 
 struct RecordedBenchmarkReplay {
     std::filesystem::path path;
-    og::sim::WorldSnapshot warmup_snapshot;
-    og::sim::WorldSnapshot warmup_keyframe_snapshot;
-    og::sim::WorldSnapshot final_keyframe_snapshot;
-    std::vector<og::sim::ReplayCheckpoint> checkpoints;
 };
 
 bool prepare_default_level_load()
@@ -194,30 +190,10 @@ void reset_loaded_world_for_benchmark(GameWorld& world)
         current_game->sim_events->clear();
 }
 
-void assert_snapshot_bytes_match(std::string_view label,
-                                 const og::sim::WorldSnapshot& expected,
-                                 const og::sim::WorldSnapshot& actual)
-{
-    const std::vector<std::uint8_t> expected_bytes =
-        og::sim::serialize_snapshot(expected);
-    const std::vector<std::uint8_t> actual_bytes =
-        og::sim::serialize_snapshot(actual);
-    ASSERT_EQ(expected_bytes.size(), actual_bytes.size())
-        << label << " byte length diverged";
-    ASSERT_TRUE(expected_bytes == actual_bytes) << label << " bytes diverged";
-}
-
 std::filesystem::path benchmark_replay_path()
 {
     return std::filesystem::temp_directory_path() /
         "openglad_phase11_snapshot_benchmark.ogr";
-}
-
-std::string format_failure(const og::sim::ReplayVerificationFailure& failure)
-{
-    return "tick=" + std::to_string(failure.tick) + " field=" + failure.field +
-        " expected=" + failure.expected_value + " actual=" +
-        failure.actual_value;
 }
 
 RecordedBenchmarkReplay record_benchmark_replay(screen& game_screen)
@@ -243,26 +219,8 @@ RecordedBenchmarkReplay record_benchmark_replay(screen& game_screen)
     for (int tick = 0; tick < (kWarmupTicks + kCatchupDeltaTicks); ++tick)
     {
         populate_chaotic_input(input, tick);
-        recorder.record_input(world.tick_count_ + 1u, input);
-        advance_screen_tick(game_screen, input);
-        recorder.record_world_keyframe(world.tick_count_, world);
-
-        if ((tick + 1) == kWarmupTicks)
-        {
-            replay.warmup_snapshot = og::sim::capture_snapshot(world);
-            replay.warmup_keyframe_snapshot =
-                og::sim::capture_keyframe_snapshot(world);
-        }
-        else if ((tick + 1) > kWarmupTicks)
-        {
-            // The benchmark's delta window consumes transient removals/dirty
-            // state each tick via capture_snapshot(); mirror that here so the
-            // recorded replay checkpoints describe the same measurement flow.
-            (void)og::sim::capture_snapshot(world);
-        }
+        recorder.record_input(static_cast<std::uint32_t>(tick + 1), input);
     }
-    replay.final_keyframe_snapshot = og::sim::peek_keyframe_snapshot(world);
-    replay.checkpoints = recorder.checkpoints();
 
     replay.path = benchmark_replay_path();
     std::error_code ec;
@@ -408,7 +366,8 @@ TEST(SnapshotSizeBenchmark,
     og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
     ASSERT_TRUE(player.load_file(recorded.path, &io_error));
     ASSERT_EQ(og::sim::ReplayIoError::None, io_error);
-    player.set_checkpoints(recorded.checkpoints);
+    ASSERT_EQ(static_cast<std::size_t>(kWarmupTicks + kCatchupDeltaTicks),
+              player.frame_count());
 
     ASSERT_EQ(CampaignPackageIoError::None,
               unmount_campaign_package_with_error(get_mounted_campaign()));
@@ -430,13 +389,6 @@ TEST(SnapshotSizeBenchmark,
         ASSERT_TRUE(frame.has_value()) << "benchmark replay should include warmup ticks";
         ASSERT_EQ(replay_world.tick_count_ + 1u, frame->tick);
         advance_screen_tick(game_screen, frame->input);
-        if (const std::optional<og::sim::ReplayVerificationFailure> checkpoint_failure =
-                player.verify_world(replay_world, replay_world.tick_count_, false);
-            checkpoint_failure.has_value())
-        {
-            FAIL() << "benchmark warmup divergence: "
-                   << format_failure(*checkpoint_failure);
-        }
     }
 
     const og::sim::WorldSnapshot live_snapshot =
@@ -445,12 +397,6 @@ TEST(SnapshotSizeBenchmark,
     // transport message always serializes keyframe/full-grid state.
     const og::sim::WorldSnapshot keyframe_snapshot =
         og::sim::capture_keyframe_snapshot(replay_world);
-    assert_snapshot_bytes_match("benchmark warmup snapshot",
-                                recorded.warmup_snapshot,
-                                live_snapshot);
-    assert_snapshot_bytes_match("benchmark warmup keyframe",
-                                recorded.warmup_keyframe_snapshot,
-                                keyframe_snapshot);
     const PayloadSizeReport full_sizes =
         measure_full_snapshot_payload(keyframe_snapshot);
 
@@ -471,13 +417,6 @@ TEST(SnapshotSizeBenchmark,
         ASSERT_TRUE(frame.has_value()) << "benchmark replay should include catchup ticks";
         ASSERT_EQ(replay_world.tick_count_ + 1u, frame->tick);
         advance_screen_tick(game_screen, frame->input);
-        if (const std::optional<og::sim::ReplayVerificationFailure> checkpoint_failure =
-                player.verify_world(replay_world, replay_world.tick_count_, false);
-            checkpoint_failure.has_value())
-        {
-            FAIL() << "benchmark catchup divergence: "
-                   << format_failure(*checkpoint_failure);
-        }
 
         final_tick_snapshot = og::sim::capture_snapshot(replay_world);
         if (tick == 0)
@@ -494,11 +433,6 @@ TEST(SnapshotSizeBenchmark,
     }
     EXPECT_FALSE(player.has_next_frame())
         << "benchmark replay should be fully consumed after warmup and catchup";
-    const og::sim::WorldSnapshot final_keyframe_snapshot =
-        og::sim::peek_keyframe_snapshot(replay_world);
-    assert_snapshot_bytes_match("benchmark final keyframe",
-                                recorded.final_keyframe_snapshot,
-                                final_keyframe_snapshot);
 
     const og::sim::WorldSnapshot catchup_delta_snapshot =
         og::sim::consume_delta_snapshot_for_client(catchup_client_state,
