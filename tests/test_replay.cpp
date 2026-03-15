@@ -233,6 +233,9 @@ void run_replay_roundtrip(int player_count)
         << "default campaign should be restored before replay test";
 
     screen& game_screen = *og::runtime::current_session->myscreen_;
+    const std::int32_t saved_difficulty =
+        og::runtime::current_session->current_difficulty_;
+    og::runtime::current_session->current_difficulty_ = 2;
     configure_replay_team(game_screen.save_data, player_count);
 
     const std::string save_name =
@@ -260,6 +263,9 @@ void run_replay_roundtrip(int player_count)
         .level_id = live_world.id,
         .player_count = static_cast<std::uint8_t>(player_count),
         .timer_wait = live_world.timer_wait,
+        .my_team = game_screen.save_data.my_team,
+        .allied_mode = game_screen.save_data.allied_mode,
+        .difficulty = live_world.difficulty,
         .campaign_id = game_screen.save_data.current_campaign,
     });
     recorder.record_initial_world(live_world);
@@ -303,6 +309,9 @@ void run_replay_roundtrip(int player_count)
     EXPECT_EQ(recorder.header().level_id, player.header().level_id);
     EXPECT_EQ(recorder.header().player_count, player.header().player_count);
     EXPECT_EQ(recorder.header().timer_wait, player.header().timer_wait);
+    EXPECT_EQ(recorder.header().my_team, player.header().my_team);
+    EXPECT_EQ(recorder.header().allied_mode, player.header().allied_mode);
+    EXPECT_EQ(recorder.header().difficulty, player.header().difficulty);
     EXPECT_EQ(recorder.header().campaign_id, player.header().campaign_id);
     ASSERT_EQ(recorder.frame_count(), player.frame_count());
     assert_snapshot_bytes_match("initial snapshot payload",
@@ -316,8 +325,12 @@ void run_replay_roundtrip(int player_count)
     game_screen.save_data.current_campaign = "wrong.campaign";
     game_screen.save_data.scen_num = static_cast<short>(player.header().level_id + 1);
     game_screen.save_data.numplayers = 0;
+    game_screen.save_data.my_team = static_cast<short>(player.header().my_team + 1);
+    game_screen.save_data.allied_mode = static_cast<short>(1 - player.header().allied_mode);
     ASSERT_EQ(0, game_screen.save_data.team_size);
     game_screen.world().rng_.state_ = 0u;
+    game_screen.world().difficulty = 1;
+    og::runtime::current_session->current_difficulty_ = 0;
     ASSERT_TRUE(og::runtime::initialize_replay_screen(game_screen, player))
         << "replay runtime should seed RNG and load the replay world";
 
@@ -326,6 +339,9 @@ void run_replay_roundtrip(int player_count)
     ASSERT_EQ(player.header().level_id, replay_world.id);
     ASSERT_EQ(player.header().player_count, static_cast<std::uint8_t>(game_screen.numviews));
     ASSERT_EQ(player.header().timer_wait, replay_world.timer_wait);
+    ASSERT_EQ(player.header().my_team, game_screen.save_data.my_team);
+    ASSERT_EQ(player.header().allied_mode, game_screen.save_data.allied_mode);
+    ASSERT_EQ(player.header().difficulty, replay_world.difficulty);
     ASSERT_EQ(0, game_screen.save_data.team_size);
     EXPECT_EQ(expected_control_ids,
               capture_view_control_ids(game_screen, player_count));
@@ -380,6 +396,7 @@ void run_replay_roundtrip(int player_count)
 
     replay_world.delete_objects();
     std::filesystem::remove(replay_path, ec);
+    og::runtime::current_session->current_difficulty_ = saved_difficulty;
 }
 
 } // namespace

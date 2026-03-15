@@ -535,6 +535,9 @@ void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
     EXPECT_EQ(expected.timer_wait, actual.timer_wait);
     EXPECT_EQ(expected.living_count, actual.living_count);
     EXPECT_FLOAT_EQ(expected.control_hp, actual.control_hp);
+    EXPECT_EQ(expected.my_team, actual.my_team);
+    EXPECT_EQ(expected.allied_mode, actual.allied_mode);
+    EXPECT_EQ(expected.difficulty, actual.difficulty);
     EXPECT_EQ(expected.withdraw_requested, actual.withdraw_requested);
     EXPECT_EQ(expected.withdraw_level, actual.withdraw_level);
     EXPECT_EQ(expected.guy_id_counter, actual.guy_id_counter);

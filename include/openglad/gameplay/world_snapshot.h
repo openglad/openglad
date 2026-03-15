@@ -29,7 +29,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 2;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 3;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag =
     kTransportPayloadUncompressedFlag;
@@ -191,6 +191,9 @@ struct WorldSnapshot {
     std::int8_t timer_wait = 6;
     std::int32_t living_count = 0;
     float control_hp = 0.0f;
+    std::int16_t my_team = 0;
+    std::int16_t allied_mode = 0;
+    std::int16_t difficulty = 100;
     bool withdraw_requested = false;
     std::int16_t withdraw_level = -1;
     std::int32_t guy_id_counter = 0;

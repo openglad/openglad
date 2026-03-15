@@ -70,6 +70,9 @@ og::sim::WorldSnapshot make_initial_snapshot()
     snapshot.timer_wait = 7;
     snapshot.living_count = 2;
     snapshot.control_hp = 42.5f;
+    snapshot.my_team = 3;
+    snapshot.allied_mode = 1;
+    snapshot.difficulty = 125;
     snapshot.guy_id_counter = 2;
     snapshot.m_score[0] = 11u;
     snapshot.current_palette_id = 4u;
@@ -148,6 +151,9 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
         .level_id = 42,
         .player_count = 2,
         .timer_wait = 7,
+        .my_team = 3,
+        .allied_mode = 1,
+        .difficulty = 125,
         .campaign_id = "org.openglad.gladiator",
     };
     const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
@@ -175,6 +181,9 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
     EXPECT_EQ(header.level_id, player.header().level_id);
     EXPECT_EQ(header.player_count, player.header().player_count);
     EXPECT_EQ(header.timer_wait, player.header().timer_wait);
+    EXPECT_EQ(header.my_team, player.header().my_team);
+    EXPECT_EQ(header.allied_mode, player.header().allied_mode);
+    EXPECT_EQ(header.difficulty, player.header().difficulty);
     EXPECT_EQ(header.campaign_id, player.header().campaign_id);
     expect_snapshot_eq(initial_snapshot, player.initial_snapshot());
     ASSERT_EQ(recorder.frame_count(), player.frame_count());
@@ -196,6 +205,9 @@ TEST(Replay, deserialize_rejects_bad_magic_version_and_truncated_payload)
         .level_id = 2,
         .player_count = 1,
         .timer_wait = 6,
+        .my_team = 1,
+        .allied_mode = 0,
+        .difficulty = 100,
         .campaign_id = "org.openglad.gladiator",
     };
     const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
@@ -237,6 +249,9 @@ TEST(Replay, recorder_write_file_requires_self_contained_bootstrap_data)
         .level_id = 3,
         .player_count = 1,
         .timer_wait = 6,
+        .my_team = 1,
+        .allied_mode = 0,
+        .difficulty = 100,
         .campaign_id = "",
     });
     missing_campaign.set_initial_snapshot(make_initial_snapshot());
@@ -251,6 +266,9 @@ TEST(Replay, recorder_write_file_requires_self_contained_bootstrap_data)
         .level_id = 3,
         .player_count = 1,
         .timer_wait = 6,
+        .my_team = 1,
+        .allied_mode = 0,
+        .difficulty = 100,
         .campaign_id = "org.openglad.gladiator",
     });
 

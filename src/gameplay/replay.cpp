@@ -43,6 +43,20 @@ std::uint32_t read_u32_le(std::span<const std::uint8_t> bytes, std::size_t offse
         | (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
 }
 
+void write_i16_le(std::vector<std::uint8_t>& bytes, std::int16_t value)
+{
+    const std::uint16_t encoded = static_cast<std::uint16_t>(value);
+    bytes.push_back(static_cast<std::uint8_t>(encoded & 0xffu));
+    bytes.push_back(static_cast<std::uint8_t>((encoded >> 8) & 0xffu));
+}
+
+std::int16_t read_i16_le(std::span<const std::uint8_t> bytes, std::size_t offset)
+{
+    return static_cast<std::int16_t>(
+        static_cast<std::uint16_t>(bytes[offset]) |
+        (static_cast<std::uint16_t>(bytes[offset + 1]) << 8));
+}
+
 void write_bytes(std::vector<std::uint8_t>& bytes,
                  std::span<const std::uint8_t> payload)
 {
@@ -297,6 +311,9 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
     OG_REPLAY_COMPARE(timer_wait);
     OG_REPLAY_COMPARE(living_count);
     OG_REPLAY_COMPARE(control_hp);
+    OG_REPLAY_COMPARE(my_team);
+    OG_REPLAY_COMPARE(allied_mode);
+    OG_REPLAY_COMPARE(difficulty);
     OG_REPLAY_COMPARE(withdraw_requested);
     OG_REPLAY_COMPARE(withdraw_level);
     OG_REPLAY_COMPARE(guy_id_counter);
@@ -524,6 +541,10 @@ std::vector<std::uint8_t> serialize_replay(const ReplayHeader& header,
     bytes.push_back(0);
     write_u32_le(bytes, header.initial_rng_state);
     write_u32_le(bytes, static_cast<std::uint32_t>(header.level_id));
+    write_i16_le(bytes, header.my_team);
+    write_i16_le(bytes, header.allied_mode);
+    write_i16_le(bytes, header.difficulty);
+    write_i16_le(bytes, 0);
     write_u32_le(bytes, static_cast<std::uint32_t>(campaign_bytes.size()));
     write_u32_le(bytes, static_cast<std::uint32_t>(initial_snapshot_bytes.size()));
     write_bytes(bytes, campaign_bytes);
@@ -567,8 +588,11 @@ std::optional<ReplayData> deserialize_replay(std::span<const std::uint8_t> bytes
     replay.header.timer_wait = static_cast<std::int8_t>(bytes[6]);
     replay.header.initial_rng_state = read_u32_le(bytes, 8);
     replay.header.level_id = static_cast<std::int32_t>(read_u32_le(bytes, 12));
-    const std::uint32_t campaign_length = read_u32_le(bytes, 16);
-    const std::uint32_t initial_snapshot_length = read_u32_le(bytes, 20);
+    replay.header.my_team = read_i16_le(bytes, 16);
+    replay.header.allied_mode = read_i16_le(bytes, 18);
+    replay.header.difficulty = read_i16_le(bytes, 20);
+    const std::uint32_t campaign_length = read_u32_le(bytes, 24);
+    const std::uint32_t initial_snapshot_length = read_u32_le(bytes, 28);
 
     if (replay.header.player_count > MAX_PLAYERS)
     {

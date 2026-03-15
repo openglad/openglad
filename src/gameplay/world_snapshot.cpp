@@ -591,6 +591,9 @@ void serialize_world_state(std::vector<std::uint8_t>& buffer,
     append_u8(buffer, static_cast<std::uint8_t>(snapshot.timer_wait));
     append_i32(buffer, snapshot.living_count);
     append_f32(buffer, snapshot.control_hp);
+    append_i16(buffer, snapshot.my_team);
+    append_i16(buffer, snapshot.allied_mode);
+    append_i16(buffer, snapshot.difficulty);
     append_bool(buffer, snapshot.withdraw_requested);
     append_i16(buffer, snapshot.withdraw_level);
     append_i32(buffer, snapshot.guy_id_counter);
@@ -617,6 +620,9 @@ void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapsho
     snapshot.timer_wait = static_cast<std::int8_t>(reader.read_u8("world.timer_wait"));
     snapshot.living_count = reader.read_i32("world.living_count");
     snapshot.control_hp = reader.read_f32("world.control_hp");
+    snapshot.my_team = reader.read_i16("world.my_team");
+    snapshot.allied_mode = reader.read_i16("world.allied_mode");
+    snapshot.difficulty = reader.read_i16("world.difficulty");
     snapshot.withdraw_requested = reader.read_bool("world.withdraw_requested");
     snapshot.withdraw_level = reader.read_i16("world.withdraw_level");
     snapshot.guy_id_counter = reader.read_i32("world.guy_id_counter");
@@ -1932,6 +1938,9 @@ og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
     snapshot.timer_wait = world.timer_wait;
     snapshot.living_count = world.living_count;
     snapshot.control_hp = world.control_hp;
+    snapshot.my_team = world.my_team;
+    snapshot.allied_mode = world.allied_mode;
+    snapshot.difficulty = world.difficulty;
     snapshot.withdraw_requested = world.withdraw_requested;
     snapshot.withdraw_level = world.withdraw_level;
     snapshot.guy_id_counter = world.guy_id_counter;
@@ -2188,6 +2197,9 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     world.timer_wait = snapshot.timer_wait;
     world.living_count = snapshot.living_count;
     world.control_hp = snapshot.control_hp;
+    world.my_team = snapshot.my_team;
+    world.allied_mode = snapshot.allied_mode;
+    world.difficulty = snapshot.difficulty;
     world.withdraw_requested = snapshot.withdraw_requested;
     world.withdraw_level = snapshot.withdraw_level;
     world.guy_id_counter = snapshot.guy_id_counter;

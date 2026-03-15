@@ -157,6 +157,8 @@ bool og::runtime::initialize_replay_screen(screen& game_screen,
         static_cast<short>(header.level_id);
     game_screen.save_data.scen_num = static_cast<short>(header.level_id);
     game_screen.save_data.numplayers = header.player_count;
+    game_screen.save_data.my_team = header.my_team;
+    game_screen.save_data.allied_mode = header.allied_mode;
 
     game_screen.numviews = desired_views;
     game_screen.cleanup(desired_views);
@@ -169,9 +171,7 @@ bool og::runtime::initialize_replay_screen(screen& game_screen,
         return false;
 
     game_screen.sync_world_from_save_data();
-    game_screen.world().difficulty =
-        static_cast<short>(og::ui::difficulty_percent(
-            og::runtime::current_session->current_difficulty_));
+    game_screen.world().difficulty = header.difficulty;
     for (auto& uptr : game_screen.world().oblist)
     {
         if (walker* w = uptr.get(); w != nullptr)
@@ -179,6 +179,8 @@ bool og::runtime::initialize_replay_screen(screen& game_screen,
     }
 
     og::sim::apply_snapshot(game_screen.world(), initial_snapshot);
+    game_screen.save_data.my_team = game_screen.world().my_team;
+    game_screen.save_data.allied_mode = game_screen.world().allied_mode;
     assign_replay_views(game_screen, initial_snapshot);
     game_screen.world().timer_wait = header.timer_wait;
     player.reset();
@@ -204,6 +206,9 @@ void og::runtime::begin_replay_recording(screen& game_screen)
         .level_id = game_screen.world().id,
         .player_count = static_cast<std::uint8_t>(game_screen.save_data.numplayers),
         .timer_wait = game_screen.world().timer_wait,
+        .my_team = game_screen.save_data.my_team,
+        .allied_mode = game_screen.save_data.allied_mode,
+        .difficulty = game_screen.world().difficulty,
         .campaign_id = campaign_id,
     });
     og::runtime::current_session->replay_recorder_->record_initial_world(

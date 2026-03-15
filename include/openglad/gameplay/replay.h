@@ -14,8 +14,8 @@ class GameWorld;
 
 namespace og::sim {
 
-inline constexpr std::uint8_t kReplayFormatVersion = 2;
-inline constexpr std::size_t kReplayHeaderSize = 24;
+inline constexpr std::uint8_t kReplayFormatVersion = 3;
+inline constexpr std::size_t kReplayHeaderSize = 32;
 
 enum class ReplayIoError : std::uint8_t {
     None = 0,
@@ -32,6 +32,9 @@ struct ReplayHeader {
     std::int32_t level_id = 0;
     std::uint8_t player_count = 0;
     std::int8_t timer_wait = 0;
+    std::int16_t my_team = 0;
+    std::int16_t allied_mode = 0;
+    std::int16_t difficulty = 100;
     std::string campaign_id;
 };
 
