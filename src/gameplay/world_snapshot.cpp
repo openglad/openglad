@@ -206,10 +206,15 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity, bool keyframe)
 
     capture_entity_stats(entity.stats(), snapshot);
 
-    if (entity.query_order() == Order::Weapon)
-        snapshot.do_bounce = static_cast<const weap*>(&entity)->do_bounce;
+    if (const auto* weapon = dynamic_cast<const weap*>(&entity);
+        weapon != nullptr)
+    {
+        snapshot.do_bounce = weapon->do_bounce;
+    }
     else
+    {
         snapshot.do_bounce = 0;
+    }
 
     entity.clear_dirty();
     return snapshot;

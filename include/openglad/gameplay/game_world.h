@@ -154,6 +154,7 @@ public:
     short remove_ob(walker* ob);
     walker* find_by_id(std::uint32_t entity_id);
     const walker* find_by_id(std::uint32_t entity_id) const;
+    std::uint32_t tracked_entity_id(const walker* entity) const;
     std::uint32_t level_tick_count() const noexcept { return level_tick_count_; }
     void set_level_tick_count(std::uint32_t value) noexcept { level_tick_count_ = value; }
     const std::vector<std::uint32_t>& removed_entity_ids() const noexcept { return removed_entity_ids_; }

@@ -434,6 +434,23 @@ walker* GameWorld::find_by_id(std::uint32_t entity_id)
     return const_cast<walker*>(std::as_const(*this).find_by_id(entity_id));
 }
 
+std::uint32_t GameWorld::tracked_entity_id(const walker* entity) const
+{
+    if (entity == nullptr)
+        return 0;
+
+    auto* mutable_world = const_cast<GameWorld*>(this);
+    if (entity_tracking_dirty_)
+        mutable_world->rebuild_id_index();
+
+    const auto it = std::find_if(
+        id_index_.begin(), id_index_.end(),
+        [entity](const auto& entry) {
+            return entry.second == entity;
+        });
+    return (it == id_index_.end()) ? 0 : it->first;
+}
+
 const walker* GameWorld::find_by_id(std::uint32_t entity_id) const
 {
     if (entity_id == 0)

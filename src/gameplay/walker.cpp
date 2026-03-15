@@ -261,11 +261,29 @@ void walker::sync_ids_from_pointers()
 		std::uint32_t next_id = 0;
 		if (target != nullptr)
 		{
-			next_id = target->entity_id();
-			if (next_id == 0)
+			if (owning_world_ == nullptr)
 			{
 				clear_pointer();
 				return;
+			}
+
+			if (stored_id != 0)
+			{
+				if (owning_world_->find_by_id(stored_id) != target)
+				{
+					clear_pointer();
+					return;
+				}
+				next_id = stored_id;
+			}
+			else
+			{
+				next_id = owning_world_->tracked_entity_id(target);
+				if (next_id == 0)
+				{
+					clear_pointer();
+					return;
+				}
 			}
 		}
 
@@ -289,15 +307,37 @@ void walker::sync_ids_from_pointers()
 		walker* controller = entity_stats->controller();
 		if (controller != nullptr)
 		{
-			const std::uint32_t controller_id = controller->entity_id();
-			if (controller_id == 0)
+			if (owning_world_ == nullptr)
 			{
 				entity_stats->set_controller(nullptr);
 			}
-			else if (entity_stats->controller_id != controller_id)
+			else
 			{
-				entity_stats->controller_id = controller_id;
-				mark_dirty(og::dirty::BIT_CONTROLLER_ID);
+				std::uint32_t controller_id = 0;
+				if (entity_stats->controller_id != 0)
+				{
+					if (owning_world_->find_by_id(entity_stats->controller_id) !=
+					    controller)
+					{
+						entity_stats->set_controller(nullptr);
+					}
+					else
+					{
+						controller_id = entity_stats->controller_id;
+					}
+				}
+				else
+				{
+					controller_id = owning_world_->tracked_entity_id(controller);
+					if (controller_id == 0)
+						entity_stats->set_controller(nullptr);
+				}
+
+				if (entity_stats->controller_id != controller_id)
+				{
+					entity_stats->controller_id = controller_id;
+					mark_dirty(og::dirty::BIT_CONTROLLER_ID);
+				}
 			}
 		}
 		else if (entity_stats->controller_id != 0)

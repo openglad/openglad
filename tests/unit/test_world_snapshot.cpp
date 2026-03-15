@@ -658,6 +658,29 @@ TEST(WorldSnapshot, keyframe_capture_marks_all_fields_and_sends_full_grid)
     EXPECT_EQ(0ULL, actor->dirty_mask_word(1));
 }
 
+TEST(WorldSnapshot, weapon_ordered_base_walker_captures_do_bounce_as_zero)
+{
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    world.entity_factory = [](Order order, std::int32_t family) -> std::unique_ptr<walker> {
+        auto entity = std::make_unique<SnapshotWalker>();
+        entity->order = order;
+        entity->family = static_cast<char>(family);
+        entity->sizex = 16;
+        entity->sizey = 16;
+        return entity;
+    };
+
+    walker* weapon_like = world.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, weapon_like);
+    ASSERT_EQ(Order::Weapon, weapon_like->query_order());
+
+    const og::sim::WorldSnapshot snapshot = og::sim::capture_snapshot(world);
+
+    ASSERT_EQ(1u, snapshot.weaplist.size());
+    EXPECT_EQ(0, snapshot.weaplist.front().do_bounce);
+}
+
 TEST(WorldSnapshot, drain_sim_events_moves_events_out_of_the_log)
 {
     og::sim::SimEventLog log;

@@ -272,6 +272,42 @@ TEST_F(GameWorldEntityIdsFixture, sync_ids_from_pointers_clears_zero_id_cross_re
     EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_CONTROLLER_ID));
 }
 
+TEST_F(GameWorldEntityIdsFixture,
+       sync_ids_from_pointers_clears_removed_cross_references_without_dereference)
+{
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* target = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(nullptr, target);
+
+    actor->set_foe(target);
+    actor->set_leader(target);
+    actor->set_owner(target);
+    actor->set_collide_ob(target);
+    actor->stats()->set_controller(target);
+    actor->clear_dirty();
+
+    ASSERT_EQ(1, world.remove_ob(target));
+
+    actor->sync_ids_from_pointers();
+
+    EXPECT_EQ(nullptr, actor->foe());
+    EXPECT_EQ(nullptr, actor->leader());
+    EXPECT_EQ(nullptr, actor->owner());
+    EXPECT_EQ(nullptr, actor->collide_ob());
+    EXPECT_EQ(nullptr, actor->stats()->controller());
+    EXPECT_EQ(0u, actor->foe_id);
+    EXPECT_EQ(0u, actor->leader_id);
+    EXPECT_EQ(0u, actor->owner_id);
+    EXPECT_EQ(0u, actor->collide_ob_id);
+    EXPECT_EQ(0u, actor->stats()->controller_id);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_FOE_ID));
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_LEADER_ID));
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_OWNER_ID));
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_COLLIDE_OB_ID));
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_CONTROLLER_ID));
+}
+
 TEST_F(GameWorldEntityIdsFixture, removing_entities_tracks_removed_entity_ids)
 {
     walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);
