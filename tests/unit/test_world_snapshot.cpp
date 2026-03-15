@@ -25,6 +25,11 @@ struct SnapshotWalker final : walker
     {
     }
 
+    void set_regen_delay(std::int32_t value)
+    {
+        regen_delay_ = value;
+    }
+
     bool act() override
     {
         return true;
@@ -65,6 +70,157 @@ const og::sim::EntitySnapshot* find_entity_snapshot(
             return snapshot.entity_id == entity_id;
         });
     return it == entities.end() ? nullptr : &*it;
+}
+
+void set_mask_bit(
+    std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>& mask,
+    std::uint8_t bit)
+{
+    mask[bit / 64] |= (1ULL << (bit % 64));
+}
+
+std::uint8_t snapshot_bool(bool value)
+{
+    return value ? 1U : 0U;
+}
+
+void expect_guy_snapshot_matches(const guy& live,
+                                 const og::sim::GuySnapshot& snapshot)
+{
+    EXPECT_EQ(live.id, snapshot.guy_id);
+    EXPECT_EQ(live.name, snapshot.name);
+    EXPECT_EQ(live.family, snapshot.family);
+    EXPECT_EQ(live.strength, snapshot.strength);
+    EXPECT_EQ(live.dexterity, snapshot.dexterity);
+    EXPECT_EQ(live.constitution, snapshot.constitution);
+    EXPECT_EQ(live.intelligence, snapshot.intelligence);
+    EXPECT_EQ(live.armor, snapshot.armor);
+    EXPECT_EQ(live.exp, snapshot.exp);
+    EXPECT_EQ(live.kills, snapshot.kills);
+    EXPECT_EQ(live.level_kills, snapshot.level_kills);
+    EXPECT_EQ(live.total_damage, snapshot.total_damage);
+    EXPECT_EQ(live.total_hits, snapshot.total_hits);
+    EXPECT_EQ(live.total_shots, snapshot.total_shots);
+    EXPECT_EQ(live.teamnum, snapshot.teamnum);
+    EXPECT_FLOAT_EQ(live.scen_damage, snapshot.scen_damage);
+    EXPECT_EQ(live.scen_kills, snapshot.scen_kills);
+    EXPECT_FLOAT_EQ(live.scen_damage_taken, snapshot.scen_damage_taken);
+    EXPECT_FLOAT_EQ(live.scen_min_hp, snapshot.scen_min_hp);
+    EXPECT_EQ(live.scen_shots, snapshot.scen_shots);
+    EXPECT_EQ(live.scen_hits, snapshot.scen_hits);
+    EXPECT_EQ(live.level, snapshot.level);
+}
+
+void expect_entity_snapshot_matches(
+    const walker& live,
+    const og::sim::EntitySnapshot& snapshot,
+    const std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>&
+        expected_dirty_mask)
+{
+    SCOPED_TRACE(::testing::Message() << "entity_id=" << live.entity_id());
+
+    ASSERT_NE(nullptr, live.stats());
+    const statistics* const stats = live.stats();
+
+    EXPECT_EQ(expected_dirty_mask[0], snapshot.dirty_mask[0]);
+    EXPECT_EQ(expected_dirty_mask[1], snapshot.dirty_mask[1]);
+    EXPECT_EQ(live.myguy != nullptr ? live.myguy->id : og::sim::kNoGuyId,
+              snapshot.guy_id);
+
+    EXPECT_EQ(live.entity_id(), snapshot.entity_id);
+    EXPECT_EQ(live.xpos, snapshot.xpos);
+    EXPECT_EQ(live.ypos, snapshot.ypos);
+    EXPECT_EQ(live.sizex, snapshot.sizex);
+    EXPECT_EQ(live.sizey, snapshot.sizey);
+    EXPECT_EQ(live.team_num, snapshot.team_num);
+    EXPECT_EQ(live.real_team_num, snapshot.real_team_num);
+    EXPECT_EQ(live.user, snapshot.user);
+    EXPECT_EQ(live.dead, snapshot.dead);
+    EXPECT_EQ(live.death_called, snapshot.death_called);
+    EXPECT_EQ(live.invulnerable_left, snapshot.invulnerable_left);
+    EXPECT_EQ(live.invisibility_left, snapshot.invisibility_left);
+    EXPECT_EQ(live.flight_left, snapshot.flight_left);
+    EXPECT_EQ(live.bonus_rounds, snapshot.bonus_rounds);
+    EXPECT_EQ(live.order, snapshot.order);
+    EXPECT_EQ(live.family, snapshot.family);
+    EXPECT_EQ(live.frame, snapshot.frame);
+    EXPECT_FLOAT_EQ(live.worldx(), snapshot.worldx);
+    EXPECT_FLOAT_EQ(live.worldy(), snapshot.worldy);
+
+    EXPECT_FLOAT_EQ(live.lastx, snapshot.lastx);
+    EXPECT_FLOAT_EQ(live.lasty, snapshot.lasty);
+    EXPECT_FLOAT_EQ(live.stepsize, snapshot.stepsize);
+    EXPECT_FLOAT_EQ(live.normal_stepsize, snapshot.normal_stepsize);
+    EXPECT_EQ(live.curdir, snapshot.curdir);
+    EXPECT_EQ(live.enddir, snapshot.enddir);
+    EXPECT_FLOAT_EQ(live.damage, snapshot.damage);
+    EXPECT_FLOAT_EQ(live.fire_frequency, snapshot.fire_frequency);
+    EXPECT_FLOAT_EQ(live.busy, snapshot.busy);
+    EXPECT_EQ(live.current_weapon, snapshot.current_weapon);
+    EXPECT_EQ(live.default_weapon, snapshot.default_weapon);
+    EXPECT_FLOAT_EQ(live.attack_lunge, snapshot.attack_lunge);
+    EXPECT_FLOAT_EQ(live.attack_lunge_angle, snapshot.attack_lunge_angle);
+    EXPECT_FLOAT_EQ(live.hit_recoil, snapshot.hit_recoil);
+    EXPECT_FLOAT_EQ(live.hit_recoil_angle, snapshot.hit_recoil_angle);
+    EXPECT_FLOAT_EQ(live.last_hitpoints, snapshot.last_hitpoints);
+    EXPECT_EQ(live.action, snapshot.action);
+    EXPECT_EQ(live.act_type, snapshot.act_type);
+    EXPECT_EQ(live.old_act_type, snapshot.old_act_type);
+    EXPECT_EQ(live.ani_type, snapshot.ani_type);
+    EXPECT_EQ(live.cycle, snapshot.cycle);
+    EXPECT_EQ(live.drawcycle, snapshot.drawcycle);
+    EXPECT_EQ(live.current_special, snapshot.current_special);
+    EXPECT_EQ(live.ignore, snapshot.ignore);
+    EXPECT_EQ(snapshot_bool(live.in_act), snapshot.in_act);
+    EXPECT_EQ(live.shifter_down, snapshot.shifter_down);
+    EXPECT_EQ(live.yo_delay, snapshot.yo_delay);
+    EXPECT_EQ(live.skip_exit, snapshot.skip_exit);
+    EXPECT_EQ(live.outline, snapshot.outline);
+    EXPECT_EQ(snapshot_bool(live.hurt_flash), snapshot.hurt_flash);
+    EXPECT_EQ(live.lifetime, snapshot.lifetime);
+    EXPECT_FLOAT_EQ(live.speed_bonus, snapshot.speed_bonus);
+    EXPECT_EQ(live.speed_bonus_left, snapshot.speed_bonus_left);
+    EXPECT_EQ(live.charm_left, snapshot.charm_left);
+    EXPECT_EQ(live.weapons_left, snapshot.weapons_left);
+    EXPECT_EQ(live.keys, snapshot.keys);
+    EXPECT_EQ(live.view_all, snapshot.view_all);
+    EXPECT_EQ(live.lineofsight, snapshot.lineofsight);
+    EXPECT_EQ(live.path_check_counter, snapshot.path_check_counter);
+    EXPECT_EQ(live.regen_delay(), snapshot.regen_delay);
+    EXPECT_EQ(live.foe_id, snapshot.foe_id);
+    EXPECT_EQ(live.leader_id, snapshot.leader_id);
+    EXPECT_EQ(live.owner_id, snapshot.owner_id);
+    EXPECT_EQ(live.collide_ob_id, snapshot.collide_ob_id);
+
+    EXPECT_FLOAT_EQ(stats->hitpoints, snapshot.hitpoints);
+    EXPECT_FLOAT_EQ(stats->max_hitpoints, snapshot.max_hitpoints);
+    EXPECT_FLOAT_EQ(stats->magicpoints, snapshot.magicpoints);
+    EXPECT_FLOAT_EQ(stats->max_magicpoints, snapshot.max_magicpoints);
+    EXPECT_EQ(stats->max_heal_delay, snapshot.max_heal_delay);
+    EXPECT_EQ(stats->current_heal_delay, snapshot.current_heal_delay);
+    EXPECT_EQ(stats->max_magic_delay, snapshot.max_magic_delay);
+    EXPECT_EQ(stats->current_magic_delay, snapshot.current_magic_delay);
+    EXPECT_FLOAT_EQ(stats->magic_per_round, snapshot.magic_per_round);
+    EXPECT_FLOAT_EQ(stats->heal_per_round, snapshot.heal_per_round);
+    EXPECT_FLOAT_EQ(stats->armor, snapshot.armor);
+    EXPECT_EQ(stats->level, snapshot.level);
+    EXPECT_EQ(stats->bit_flags, snapshot.bit_flags);
+    EXPECT_EQ(stats->delete_me, snapshot.delete_me);
+    EXPECT_EQ(stats->frozen_delay, snapshot.frozen_delay);
+    EXPECT_EQ(stats->weapon_cost, snapshot.weapon_cost);
+    for (int i = 0; i < NUM_SPECIALS; ++i)
+        EXPECT_EQ(stats->special_cost[i], snapshot.special_cost[i]);
+    EXPECT_EQ(stats->old_order, snapshot.old_order);
+    EXPECT_EQ(stats->old_family, snapshot.old_family);
+    EXPECT_EQ(stats->last_distance, snapshot.last_distance);
+    EXPECT_EQ(stats->current_distance, snapshot.current_distance);
+    EXPECT_EQ(stats->controller_id, snapshot.controller_id);
+
+    const std::int32_t expected_do_bounce =
+        live.query_order() == Order::Weapon
+            ? static_cast<const weap&>(live).do_bounce
+            : 0;
+    EXPECT_EQ(expected_do_bounce, snapshot.do_bounce);
 }
 
 } // namespace
@@ -235,6 +391,18 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
 
     actor->setxy(48, 64);
     actor->setworldxy(48.5f, 64.25f);
+    actor->sizex = 18;
+    actor->sizey = 20;
+    actor->team_num = 2;
+    actor->real_team_num = 3;
+    actor->user = 1;
+    actor->dead = 2;
+    actor->death_called = 1;
+    actor->invulnerable_left = 12;
+    actor->invisibility_left = 13;
+    actor->flight_left = 14;
+    actor->bonus_rounds = 15;
+    actor->frame = 6;
     actor->lastx = 1.25f;
     actor->lasty = -0.5f;
     actor->stepsize = 2.5f;
@@ -274,6 +442,7 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
     actor->view_all = 1;
     actor->lineofsight = 33;
     actor->path_check_counter = 44;
+    static_cast<SnapshotWalker*>(actor)->set_regen_delay(73);
 
     actor->stats()->hitpoints = 19.0f;
     actor->stats()->max_hitpoints = 20.0f;
@@ -287,19 +456,28 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
     actor->stats()->heal_per_round = 0.25f;
     actor->stats()->armor = 4.0f;
     actor->stats()->level = 9;
-    actor->stats()->bit_flags = BIT_FORESTWALK;
-    actor->stats()->delete_me = 0;
+    actor->stats()->bit_flags = BIT_FORESTWALK | BIT_MAGICAL;
+    actor->stats()->delete_me = 1;
     actor->stats()->frozen_delay = 2;
     actor->stats()->weapon_cost = 3;
     actor->stats()->special_cost[0] = 11;
     actor->stats()->special_cost[1] = 12;
-    actor->stats()->old_order = Order::Living;
-    actor->stats()->old_family = FAMILY_ARCHER;
+    actor->stats()->special_cost[2] = 13;
+    actor->stats()->special_cost[3] = 14;
+    actor->stats()->special_cost[4] = 15;
+    actor->stats()->special_cost[5] = 16;
+    actor->stats()->old_order = Order::Weapon;
+    actor->stats()->old_family = FAMILY_ARROW;
     actor->stats()->last_distance = 99;
     actor->stats()->current_distance = 88;
 
     auto player_guy = std::make_unique<guy>(FAMILY_SOLDIER);
     player_guy->name = "Aldo";
+    player_guy->strength = 11;
+    player_guy->dexterity = 12;
+    player_guy->constitution = 13;
+    player_guy->intelligence = 14;
+    player_guy->armor = 15;
     player_guy->exp = 1234;
     player_guy->kills = 9;
     player_guy->level_kills = 17;
@@ -327,11 +505,22 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
 
     actor->clear_dirty();
     weapon->clear_dirty();
+    fx_entity->clear_dirty();
     actor->foe_id = 0;
     actor->leader_id = 0;
     actor->owner_id = 0;
     actor->collide_ob_id = 0;
     actor->stats()->controller_id = 0;
+
+    std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>
+        actor_expected_dirty = {};
+    set_mask_bit(actor_expected_dirty, og::dirty::BIT_FOE_ID);
+    set_mask_bit(actor_expected_dirty, og::dirty::BIT_LEADER_ID);
+    set_mask_bit(actor_expected_dirty, og::dirty::BIT_OWNER_ID);
+    set_mask_bit(actor_expected_dirty, og::dirty::BIT_COLLIDE_OB_ID);
+    set_mask_bit(actor_expected_dirty, og::dirty::BIT_CONTROLLER_ID);
+    const std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>
+        clean_expected_dirty = {};
 
     walker* removed = world.add_ob(Order::Living, FAMILY_ORC);
     ASSERT_NE(nullptr, removed);
@@ -391,10 +580,7 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
     EXPECT_EQ(world.fxlist.size(), snapshot.fxlist.size());
     EXPECT_EQ(world.weaplist.size(), snapshot.weaplist.size());
     ASSERT_EQ(1u, snapshot.guy_snapshots.size());
-    EXPECT_EQ(guy_id, snapshot.guy_snapshots.front().guy_id);
-    EXPECT_EQ("Aldo", snapshot.guy_snapshots.front().name);
-    EXPECT_EQ(1234u, snapshot.guy_snapshots.front().exp);
-    EXPECT_FLOAT_EQ(5.5f, snapshot.guy_snapshots.front().scen_damage);
+    expect_guy_snapshot_matches(*actor->myguy, snapshot.guy_snapshots.front());
 
     const og::sim::EntitySnapshot* actor_snapshot =
         find_entity_snapshot(snapshot.oblist, actor->entity_id());
@@ -406,21 +592,18 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
     ASSERT_NE(nullptr, weapon_snapshot);
     ASSERT_NE(nullptr, fx_snapshot);
 
-    EXPECT_EQ(actor->entity_id(), actor_snapshot->entity_id);
     EXPECT_EQ(guy_id, actor_snapshot->guy_id);
     EXPECT_EQ(foe->entity_id(), actor_snapshot->foe_id);
     EXPECT_EQ(leader->entity_id(), actor_snapshot->leader_id);
     EXPECT_EQ(owner->entity_id(), actor_snapshot->owner_id);
     EXPECT_EQ(collide->entity_id(), actor_snapshot->collide_ob_id);
     EXPECT_EQ(controller->entity_id(), actor_snapshot->controller_id);
-    EXPECT_FLOAT_EQ(actor->worldx(), actor_snapshot->worldx);
-    EXPECT_FLOAT_EQ(actor->worldy(), actor_snapshot->worldy);
-    EXPECT_EQ(actor->path_check_counter, actor_snapshot->path_check_counter);
-    EXPECT_EQ(actor->view_all, actor_snapshot->view_all);
-    EXPECT_EQ(actor->stats()->special_cost[1], actor_snapshot->special_cost[1]);
-    EXPECT_EQ(0, actor_snapshot->do_bounce);
-    EXPECT_EQ(7, weapon_snapshot->do_bounce);
-    EXPECT_EQ(0, fx_snapshot->do_bounce);
+
+    expect_entity_snapshot_matches(*actor, *actor_snapshot, actor_expected_dirty);
+    expect_entity_snapshot_matches(*weapon, *weapon_snapshot,
+                                   clean_expected_dirty);
+    expect_entity_snapshot_matches(*fx_entity, *fx_snapshot,
+                                   clean_expected_dirty);
 
     EXPECT_NE(snapshot.removed_entity_ids.end(),
               std::find(snapshot.removed_entity_ids.begin(),
@@ -428,21 +611,12 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
                         removed_id));
     EXPECT_TRUE(world.removed_entity_ids().empty());
 
-    const auto mask_has_bit = [](const og::sim::EntitySnapshot& entity_snapshot,
-                                 std::uint8_t bit) {
-        return (entity_snapshot.dirty_mask[bit / 64] &
-                (1ULL << (bit % 64))) != 0;
-    };
-    EXPECT_TRUE(mask_has_bit(*actor_snapshot, og::dirty::BIT_FOE_ID));
-    EXPECT_TRUE(mask_has_bit(*actor_snapshot, og::dirty::BIT_LEADER_ID));
-    EXPECT_TRUE(mask_has_bit(*actor_snapshot, og::dirty::BIT_OWNER_ID));
-    EXPECT_TRUE(mask_has_bit(*actor_snapshot, og::dirty::BIT_COLLIDE_OB_ID));
-    EXPECT_TRUE(mask_has_bit(*actor_snapshot, og::dirty::BIT_CONTROLLER_ID));
-
     EXPECT_EQ(0ULL, actor->dirty_mask_word(0));
     EXPECT_EQ(0ULL, actor->dirty_mask_word(1));
     EXPECT_EQ(0ULL, weapon->dirty_mask_word(0));
     EXPECT_EQ(0ULL, weapon->dirty_mask_word(1));
+    EXPECT_EQ(0ULL, fx_entity->dirty_mask_word(0));
+    EXPECT_EQ(0ULL, fx_entity->dirty_mask_word(1));
 }
 
 TEST(WorldSnapshot, keyframe_capture_marks_all_fields_and_sends_full_grid)
