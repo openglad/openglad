@@ -1085,6 +1085,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_menu_layout.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_help.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_load_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_snapshot_size_benchmark.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_difficulty.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_guy.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_go_no_team.cpp
@@ -1498,6 +1499,10 @@ if(NOT EMSCRIPTEN)
             test_load_levels.cpp
             test_io_coverage.cpp
             test_io_platform_coverage.cpp
+        )
+
+        og_add_test_group(og_test_snapshot_benchmark FILES
+            test_snapshot_size_benchmark.cpp
         )
 
         og_add_test_group(og_test_smooth FILES
