@@ -342,6 +342,37 @@ TEST(GameLoop, game_frame_with_result_accumulates_input_without_ticking_when_int
     game_screen->world().delete_objects();
 }
 
+TEST(GameLoop, game_frame_with_result_leaves_external_timing_state_untouched)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_external_timing"))
+        << "load_saved_game should succeed for external-timing test";
+
+    GameLoopFrameState st;
+    st.initialized = true;
+    st.last_frame_time = 1234u;
+    st.accumulated_time = 567u;
+
+    int tick_count = 0;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    deps.after_act = [&tick_count](screen&) {
+        ++tick_count;
+    };
+
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(1, tick_count);
+    EXPECT_EQ(1234u, st.last_frame_time);
+    EXPECT_EQ(567u, st.accumulated_time);
+
+    game_screen->world().delete_objects();
+}
+
 TEST(GameLoop, game_frame_with_result_runs_multiple_ticks_when_accumulator_has_multiple_intervals)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;

@@ -193,7 +193,11 @@ static void emscripten_frame_wrapper() {
 					g_frame_state().cycletime = 3;
 					g_state_initialized = true;
 				}
-				game_frame(*current_screen, g_frame_state());
+				{
+					GameLoopDeps emscripten_deps;
+					emscripten_deps.enable_frame_timing = false;
+					game_frame(*current_screen, g_frame_state(), emscripten_deps);
+				}
 				if (g_frame_state().done) {
 					Log("Game done, transitioning back to PICKER\n");
 					og::runtime::current_session->gameplay_active_ = false;

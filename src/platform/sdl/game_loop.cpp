@@ -46,6 +46,7 @@ constexpr std::uint32_t kMaxTicksPerCall = 4;
 
 struct TickSchedule {
     std::uint32_t interval_ms = 0;
+    bool caller_manages_timing = false;
     bool immediate_tick = false;
 };
 
@@ -61,7 +62,13 @@ GameFrameResult finish_done(GameLoopFrameState& st)
 TickSchedule compute_tick_schedule(const screen& s, const GameLoopDeps& deps)
 {
     if (!deps.enable_frame_timing)
-        return {.interval_ms = 0, .immediate_tick = true};
+    {
+        return {
+            .interval_ms = 0,
+            .caller_manages_timing = true,
+            .immediate_tick = true,
+        };
+    }
 
     float interval_ms = deps.fixed_tick_ms > 0
         ? static_cast<float>(deps.fixed_tick_ms)
@@ -72,15 +79,16 @@ TickSchedule compute_tick_schedule(const screen& s, const GameLoopDeps& deps)
         ? og::runtime::current_session->g_game_speed_factor_
         : 1.0f;
     if (speed_factor <= 0.0f || interval_ms <= 0.0f)
-        return {.interval_ms = 0, .immediate_tick = true};
+        return {.interval_ms = 0, .caller_manages_timing = false, .immediate_tick = true};
 
     interval_ms /= speed_factor;
     if (interval_ms <= 0.0f)
-        return {.interval_ms = 0, .immediate_tick = true};
+        return {.interval_ms = 0, .caller_manages_timing = false, .immediate_tick = true};
 
     return {
         .interval_ms = std::max<std::uint32_t>(
             1u, static_cast<std::uint32_t>(std::lround(interval_ms))),
+        .caller_manages_timing = false,
         .immediate_tick = false,
     };
 }
@@ -95,6 +103,9 @@ void reset_frame_timing(GameLoopFrameState& st, std::uint32_t current_time_ms)
 std::uint32_t ticks_to_run_this_call(GameLoopFrameState& st,
                                      const TickSchedule& schedule)
 {
+    if (schedule.caller_manages_timing)
+        return 1;
+
     const std::uint32_t current_time_ms = SDL_GetTicks();
     if (schedule.immediate_tick)
     {
