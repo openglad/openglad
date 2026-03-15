@@ -363,10 +363,10 @@ TEST(SnapshotSizeBenchmark,
         "Ticks: warmup=%d catchup_delta=%d\n"
         "Entities: ob=%zu fx=%zu weap=%zu total=%zu\n"
         "EntitySnapshot raw size: %zu bytes\n"
-        "Full snapshot: raw=%zu bytes zlib=%zu bytes (%.1f%% saved) wire=%zu bytes\n"
-        "1-tick delta: raw=%zu bytes zlib=%zu bytes (%.1f%% saved) wire=%zu bytes%s\n"
+        "Full snapshot: raw_payload=%zu bytes zlib_payload=%zu bytes (%.1f%% saved) wire_message=%zu bytes\n"
+        "1-tick delta: raw_payload=%zu bytes zlib_payload=%zu bytes (%.1f%% saved) wire_message=%zu bytes%s\n"
         "1-tick delta entities: ob=%zu fx=%zu weap=%zu removed=%zu\n"
-        "%d-tick catch-up delta: raw=%zu bytes zlib=%zu bytes (%.1f%% saved) wire=%zu bytes%s\n"
+        "%d-tick catch-up delta: raw_payload=%zu bytes zlib_payload=%zu bytes (%.1f%% saved) wire_message=%zu bytes%s\n"
         "%d-tick catch-up entities: ob=%zu fx=%zu weap=%zu removed=%zu\n",
         kBenchmarkLevel,
         world.title.c_str(),
