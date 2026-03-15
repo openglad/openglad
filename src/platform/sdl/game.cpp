@@ -18,6 +18,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/replay.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/smooth.h>
@@ -284,4 +285,23 @@ short load_saved_game(const char *filename, screen  *screenp)
 		return 0;
 	}
 	return (err == LoadSavedGameError::MissingScreen) ? 0 : 1;
+}
+
+bool og::sim::ReplayPlayer::initialize_screen(screen& game_screen)
+{
+    game_screen.save_data.scen_num = static_cast<short>(data_.header.level_id);
+    game_screen.save_data.numplayers = data_.header.player_count;
+    if (!game_screen.save_data.current_campaign.empty())
+    {
+        game_screen.save_data.current_levels[game_screen.save_data.current_campaign] =
+            static_cast<short>(data_.header.level_id);
+    }
+
+    game_screen.world().rng_.state_ = data_.header.initial_rng_state;
+    if (load_saved_game("replay", &game_screen) == 0)
+        return false;
+
+    game_screen.world().timer_wait = data_.header.timer_wait;
+    reset();
+    return true;
 }

@@ -11,6 +11,7 @@
 #include <vector>
 
 class GameWorld;
+class screen;
 
 namespace og::sim {
 
@@ -111,6 +112,7 @@ public:
                     ReplayIoError* out_error = nullptr);
     bool load_file(const std::filesystem::path& path,
                    ReplayIoError* out_error = nullptr);
+    bool initialize_screen(screen& game_screen);
 
     void reset() noexcept;
     void set_checkpoints(std::vector<ReplayCheckpoint> checkpoints);

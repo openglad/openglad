@@ -194,17 +194,17 @@ std::string format_failure(const og::sim::ReplayVerificationFailure& failure)
                        failure.actual_value);
 }
 
-void assert_snapshot_matches(std::string_view label,
-                             const og::sim::WorldSnapshot& expected,
-                             const og::sim::WorldSnapshot& actual)
+void assert_snapshot_bytes_match(std::string_view label,
+                                 const og::sim::WorldSnapshot& expected,
+                                 const og::sim::WorldSnapshot& actual)
 {
-    const std::optional<og::sim::ReplayVerificationFailure> failure =
-        og::sim::find_first_snapshot_difference(actual.tick_count,
-                                                expected,
-                                                actual,
-                                                false);
-    if (failure.has_value())
-        FAIL() << label << " divergence: " << format_failure(*failure);
+    const std::vector<std::uint8_t> expected_bytes =
+        og::sim::serialize_snapshot(expected);
+    const std::vector<std::uint8_t> actual_bytes =
+        og::sim::serialize_snapshot(actual);
+    ASSERT_EQ(expected_bytes.size(), actual_bytes.size())
+        << label << " byte length diverged";
+    ASSERT_TRUE(expected_bytes == actual_bytes) << label << " bytes diverged";
 }
 
 void run_replay_roundtrip(int player_count)
@@ -283,19 +283,23 @@ void run_replay_roundtrip(int player_count)
     EXPECT_EQ(recorder.header().timer_wait, player.header().timer_wait);
     ASSERT_EQ(recorder.frame_count(), player.frame_count());
 
-    game_screen.world().rng_.state_ = player.header().initial_rng_state;
-    ASSERT_TRUE(load_saved_game(save_name.c_str(), &game_screen) != 0)
-        << "playback replay load should succeed";
+    game_screen.save_data.scen_num = static_cast<short>(player.header().level_id + 1);
+    game_screen.save_data.numplayers = 0;
+    game_screen.world().rng_.state_ = 0u;
+    ASSERT_TRUE(player.initialize_screen(game_screen))
+        << "ReplayPlayer should seed RNG and load the replay world";
 
     GameWorld& replay_world = game_screen.world();
     reset_loaded_world_for_replay(replay_world);
     ASSERT_EQ(player.header().level_id, replay_world.id);
+    ASSERT_EQ(player.header().player_count, static_cast<std::uint8_t>(game_screen.numviews));
+    ASSERT_EQ(player.header().timer_wait, replay_world.timer_wait);
 
     const og::sim::WorldSnapshot actual_initial_snapshot =
         og::sim::peek_keyframe_snapshot(replay_world);
-    assert_snapshot_matches("initial snapshot",
-                            expected_initial_snapshot,
-                            actual_initial_snapshot);
+    assert_snapshot_bytes_match("initial snapshot",
+                                expected_initial_snapshot,
+                                actual_initial_snapshot);
 
     if (const std::optional<og::sim::ReplayVerificationFailure> initial_checkpoint_failure =
             player.verify_world(replay_world, replay_world.tick_count_, false);
@@ -333,9 +337,9 @@ void run_replay_roundtrip(int player_count)
 
     const og::sim::WorldSnapshot actual_final_snapshot =
         og::sim::peek_keyframe_snapshot(replay_world);
-    assert_snapshot_matches("final snapshot",
-                            expected_final_snapshot,
-                            actual_final_snapshot);
+    assert_snapshot_bytes_match("final snapshot",
+                                expected_final_snapshot,
+                                actual_final_snapshot);
 
     replay_world.delete_objects();
     std::filesystem::remove(replay_path, ec);
