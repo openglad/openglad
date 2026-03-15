@@ -677,6 +677,10 @@ screen::~screen()
 
 void screen::initialize_views()
 {
+    // Debounce state is shared across view instances, so fresh gameplay/replay
+    // startup must clear it before creating a new view set.
+    reset_viewscreen_input_debounce();
+
     // Even though it looks okay here, these positions and sizes are overridden by viewscreen::resize() later.
 	if (numviews == 1)
 	{

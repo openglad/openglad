@@ -153,9 +153,8 @@ void populate_chaotic_input(InputState& input, int tick, int player_count)
     }
 }
 
-void reset_screen_replay_state(screen& game_screen, int player_count)
+void clear_screen_replay_controls(screen& game_screen, int player_count)
 {
-    reset_viewscreen_input_debounce();
     for (int player = 0; player < player_count; ++player)
     {
         if (game_screen.viewob[player] == nullptr)
@@ -165,6 +164,13 @@ void reset_screen_replay_state(screen& game_screen, int player_count)
         }
         game_screen.viewob[player]->control = nullptr;
     }
+}
+
+void poison_replay_input_debounce(screen& game_screen)
+{
+    InputState input{};
+    press_action(input.players[0], InputAction::SwitchSpecial);
+    game_screen.process_input(input);
 }
 
 void advance_screen_tick(screen& game_screen, const InputState& input)
@@ -245,7 +251,7 @@ void run_replay_roundtrip(int player_count)
     const og::sim::WorldSnapshot expected_initial_snapshot =
         recorder.checkpoints().front().snapshot;
 
-    reset_screen_replay_state(game_screen, player_count);
+    clear_screen_replay_controls(game_screen, player_count);
     std::vector<std::uint32_t> expected_rng_states;
     expected_rng_states.reserve(kReplayTicks);
 
@@ -291,6 +297,7 @@ void run_replay_roundtrip(int player_count)
 
     ASSERT_EQ(CampaignPackageIoError::None,
               unmount_campaign_package_with_error(get_mounted_campaign()));
+    poison_replay_input_debounce(game_screen);
     game_screen.save_data.reset();
     game_screen.save_data.current_campaign = "wrong.campaign";
     game_screen.save_data.scen_num = static_cast<short>(player.header().level_id + 1);
@@ -324,7 +331,6 @@ void run_replay_roundtrip(int player_count)
                << format_failure(*initial_checkpoint_failure);
     }
 
-    reset_screen_replay_state(game_screen, player_count);
     std::size_t replay_tick_index = 0;
     while (true)
     {
