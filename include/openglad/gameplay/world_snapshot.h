@@ -459,6 +459,7 @@ static_assert(entity_snapshot_field_table_is_valid(),
 // dirty tiles.
 WorldSnapshot capture_snapshot(GameWorld& world);
 WorldSnapshot capture_keyframe_snapshot(GameWorld& world);
+void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot);
 SimEventBatch drain_sim_events(SimEventLog& log);
 
 } // namespace og::sim

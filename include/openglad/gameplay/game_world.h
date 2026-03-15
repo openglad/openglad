@@ -27,6 +27,9 @@ enum class Order : unsigned char;
 
 class obmap;
 class walker;
+class SaveData;
+class cfg_store;
+struct GameplayContext;
 namespace og::sim { class SimEventLog; }
 
 namespace og::sim {
@@ -167,6 +170,10 @@ public:
     const PixieData* configure_existing_entity(walker& entity, Order order, std::int32_t family);
     void set_entity_derived_stats(walker* entity, Order order, std::int32_t family);
     void set_detach_callback(std::function<void()> callback);
+    void set_gameplay_context_bindings(SaveData* save,
+                                       og::sim::SimEventLog* sim_events,
+                                       cfg_store* config) noexcept;
+    bool populate_gameplay_context(GameplayContext& context) const noexcept;
     char damage_tile(short xloc, short yloc);
 
     bool query_passable(float x, float y, walker* ob);
@@ -230,6 +237,7 @@ public:
     std::function<std::unique_ptr<walker>(Order, std::int32_t)> entity_factory;
     std::function<const PixieData*(walker&, Order, std::int32_t)> entity_configurator;
     std::function<void(walker*, Order, std::int32_t)> entity_derived_stats;
+    bool applying_snapshot_ = false;
 
 private:
     walker* add_to_list(Order order, std::int32_t family,
@@ -253,4 +261,7 @@ private:
     // thread before reading or mutating GameWorld state. The cache is derived
     // from the active entity lists and repaired internally by GameWorld.
     std::unordered_map<std::uint32_t, walker*> id_index_;
+    SaveData* gameplay_save_ = nullptr;
+    og::sim::SimEventLog* gameplay_sim_events_ = nullptr;
+    cfg_store* gameplay_config_ = nullptr;
 };

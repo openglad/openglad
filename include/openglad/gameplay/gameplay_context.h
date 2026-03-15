@@ -3,6 +3,7 @@
 #include <openglad/core/irandom.h>
 #include <openglad/gameplay/game_world.h>
 
+#include <cassert>
 #include <memory>
 #include <vector>
 
@@ -49,6 +50,29 @@ struct GameplayContext
 };
 
 extern thread_local GameplayContext* current_game;
+
+class GameplayContextGuard
+{
+public:
+    explicit GameplayContextGuard(GameplayContext* ctx)
+        : prev_(current_game)
+    {
+        assert(current_game == nullptr || (current_game == ctx &&
+               "Re-entrant GameplayContext installation - context switch bug"));
+        current_game = ctx;
+    }
+
+    ~GameplayContextGuard()
+    {
+        current_game = prev_;
+    }
+
+    GameplayContextGuard(const GameplayContextGuard&) = delete;
+    GameplayContextGuard& operator=(const GameplayContextGuard&) = delete;
+
+private:
+    GameplayContext* prev_ = nullptr;
+};
 
 GameplayPathfindingState* ensure_pathfinding_state(GameplayContext& context);
 

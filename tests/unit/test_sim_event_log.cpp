@@ -70,6 +70,26 @@ TEST(SimEventLog, drain)
     ASSERT_TRUE(drained[2].a == 3);
 }
 
+TEST(SimEventLog, suppress_guard_blocks_pushes_and_restores_state)
+{
+    og::sim::SimEventLog log;
+    log.current_tick_ = 12;
+
+    {
+        og::sim::SimEventLogSuppressGuard guard(log);
+        ASSERT_TRUE(log.suppressed());
+        log.push_sound(7);
+        log.push_notification("hidden");
+        log.push(og::sim::EventKind::SetPalette, 1, 0);
+        ASSERT_TRUE(log.empty());
+    }
+
+    ASSERT_TRUE(!log.suppressed());
+    log.push_sound(9);
+    ASSERT_TRUE(log.size() == 1);
+    ASSERT_TRUE(log.events()[0].a == 9);
+}
+
 TEST(SimEventLog, tick_tracking)
 {
     og::sim::SimEventLog log;

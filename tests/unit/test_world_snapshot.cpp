@@ -3,6 +3,7 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/net_constants.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/weap.h>
 #include <openglad/legacy/base.h>
@@ -10,7 +11,10 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <list>
 #include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 
 #include <gtest/gtest.h>
 
@@ -48,6 +52,147 @@ struct SnapshotWeapon final : weap
         return true;
     }
 };
+
+PixieData make_snapshot_pixie(unsigned char frames = 2,
+                              unsigned char w = 16,
+                              unsigned char h = 16,
+                              unsigned char fill = 0)
+{
+    const std::size_t size =
+        static_cast<std::size_t>(frames) * static_cast<std::size_t>(w) *
+        static_cast<std::size_t>(h);
+    auto* raw = new unsigned char[size];
+    std::fill_n(raw, size, fill);
+    return PixieData(frames, w, h, raw);
+}
+
+const signed char kDefaultAnim[] = {0, -1};
+const signed char kSmallSlimeAnim[] = {1, -1};
+const signed char kWeaponAnim[] = {0, 1, -1};
+const signed char* const kDefaultAnimRows[16] = {
+    kDefaultAnim, kDefaultAnim, kDefaultAnim, kDefaultAnim,
+    kDefaultAnim, kDefaultAnim, kDefaultAnim, kDefaultAnim,
+    kDefaultAnim, kDefaultAnim, kDefaultAnim, kDefaultAnim,
+    kDefaultAnim, kDefaultAnim, kDefaultAnim, kDefaultAnim,
+};
+const signed char* const kSmallSlimeAnimRows[16] = {
+    kSmallSlimeAnim, kSmallSlimeAnim, kSmallSlimeAnim, kSmallSlimeAnim,
+    kSmallSlimeAnim, kSmallSlimeAnim, kSmallSlimeAnim, kSmallSlimeAnim,
+    kSmallSlimeAnim, kSmallSlimeAnim, kSmallSlimeAnim, kSmallSlimeAnim,
+    kSmallSlimeAnim, kSmallSlimeAnim, kSmallSlimeAnim, kSmallSlimeAnim,
+};
+const signed char* const kWeaponAnimRows[16] = {
+    kWeaponAnim, kWeaponAnim, kWeaponAnim, kWeaponAnim,
+    kWeaponAnim, kWeaponAnim, kWeaponAnim, kWeaponAnim,
+    kWeaponAnim, kWeaponAnim, kWeaponAnim, kWeaponAnim,
+    kWeaponAnim, kWeaponAnim, kWeaponAnim, kWeaponAnim,
+};
+
+const signed char* const* animation_rows_for_family(std::int32_t family)
+{
+    if (family == FAMILY_SMALL_SLIME)
+        return kSmallSlimeAnimRows;
+    if (family == FAMILY_ARROW || family == FAMILY_KNIFE)
+        return kWeaponAnimRows;
+    return kDefaultAnimRows;
+}
+
+const PixieData& pixie_for_family(std::int32_t family)
+{
+    static PixieData default_pix = make_snapshot_pixie(2, 16, 16, 10);
+    static PixieData small_slime_pix = make_snapshot_pixie(2, 12, 12, 20);
+    static PixieData weapon_pix = make_snapshot_pixie(2, 8, 8, 30);
+
+    if (family == FAMILY_SMALL_SLIME)
+        return small_slime_pix;
+    if (family == FAMILY_ARROW || family == FAMILY_KNIFE)
+        return weapon_pix;
+    return default_pix;
+}
+
+void configure_snapshot_test_entity(walker& entity, Order order, std::int32_t family)
+{
+    const PixieData& pix = pixie_for_family(family);
+    entity.set_order_family(order, static_cast<char>(family));
+    entity.set_data(pix);
+    entity.ani = animation_rows_for_family(family);
+    entity.sizex = pix.w;
+    entity.sizey = pix.h;
+    entity.frame = 0;
+}
+
+void apply_snapshot_test_derived_stats(walker* entity,
+                                       Order order,
+                                       std::int32_t family)
+{
+    if (entity == nullptr || entity->stats() == nullptr)
+        return;
+
+    entity->stepsize = 1.0f + static_cast<float>(family % 3);
+    entity->normal_stepsize = entity->stepsize;
+    entity->lineofsight = 20 + family;
+    entity->damage = 4.0f + static_cast<float>(family);
+    entity->fire_frequency = 0.5f + static_cast<float>(family) / 10.0f;
+    entity->stats()->max_hitpoints = 10.0f + static_cast<float>(family);
+    entity->stats()->hitpoints = entity->stats()->max_hitpoints;
+    entity->stats()->level = static_cast<std::int32_t>(order) + family;
+}
+
+void configure_snapshot_test_services(GameWorld& world)
+{
+    world.entity_factory =
+        [](Order order, std::int32_t family) -> std::unique_ptr<walker> {
+            std::unique_ptr<walker> entity;
+            if (order == Order::Weapon)
+                entity = std::make_unique<SnapshotWeapon>();
+            else
+                entity = std::make_unique<SnapshotWalker>();
+
+            configure_snapshot_test_entity(*entity, order, family);
+            apply_snapshot_test_derived_stats(entity.get(), order, family);
+            return entity;
+        };
+
+    world.entity_configurator =
+        [](walker& entity, Order order, std::int32_t family) -> const PixieData* {
+            configure_snapshot_test_entity(entity, order, family);
+            return &pixie_for_family(family);
+        };
+
+    world.entity_derived_stats =
+        [](walker* entity, Order order, std::int32_t family) {
+            apply_snapshot_test_derived_stats(entity, order, family);
+        };
+}
+
+bool pile_contains(const std::list<walker*>& pile, const walker* target)
+{
+    return std::find(pile.begin(), pile.end(), target) != pile.end();
+}
+
+void reverse_entity_list(GameWorld::EntityList& entities)
+{
+    GameWorld::EntityList::Storage detached;
+    GameWorld::EntityList::Storage reversed;
+    entities.splice_into(detached);
+    while (!detached.empty())
+    {
+        auto it = detached.end();
+        --it;
+        reversed.splice(reversed.end(), detached, it);
+    }
+    entities.splice(entities.end(), reversed);
+}
+
+std::vector<std::uint32_t> snapshot_ids(
+    const std::vector<og::sim::EntitySnapshot>& snapshots)
+{
+    std::vector<std::uint32_t> ids;
+    ids.reserve(snapshots.size());
+    for (const auto& snapshot : snapshots)
+        ids.push_back(snapshot.entity_id);
+    return ids;
+}
 
 const og::sim::EntitySnapshotFieldDesc* find_desc(std::uint8_t bit)
 {
@@ -759,4 +904,246 @@ TEST(WorldSnapshot, grid_dirty_overflow_falls_back_to_full_grid_send)
     EXPECT_EQ(static_cast<std::size_t>(world.grid.w) * world.grid.h,
               snapshot.full_grid_data.size());
     EXPECT_TRUE(world.grid_dirty_tiles().empty());
+}
+
+TEST(WorldSnapshot, apply_snapshot_replaces_state_reorders_lists_and_skips_death_side_effects)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+
+    walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = source.add_ob(Order::Living, FAMILY_ORC);
+    walker* controller = source.add_ob(Order::Living, FAMILY_ELF);
+    walker* slime = source.add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    walker* fx_entity = source.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* weapon = source.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(nullptr, foe);
+    ASSERT_NE(nullptr, controller);
+    ASSERT_NE(nullptr, slime);
+    ASSERT_NE(nullptr, fx_entity);
+    ASSERT_NE(nullptr, weapon);
+
+    actor->setworldxy(48.5f, 64.25f);
+    foe->setworldxy(90.0f, 32.0f);
+    controller->setworldxy(120.0f, 40.0f);
+    slime->setworldxy(150.0f, 80.0f);
+    fx_entity->setworldxy(72.0f, 44.0f);
+    weapon->setworldxy(64.0f, 50.0f);
+
+    actor->team_num = 2;
+    actor->real_team_num = 3;
+    actor->user = 1;
+    actor->frame = 1;
+    actor->path_check_counter = 44;
+    actor->set_regen_delay(73);
+    actor->set_foe(foe);
+    actor->set_leader(slime);
+    actor->set_owner(weapon);
+    actor->set_collide_ob(fx_entity);
+    actor->stats()->set_controller(controller);
+    actor->stats()->commands.emplace_back();
+
+    weapon->set_owner(actor);
+    static_cast<SnapshotWeapon*>(weapon)->do_bounce = 7;
+
+    auto player_guy = std::make_unique<guy>(FAMILY_SOLDIER);
+    player_guy->name = "Aldo";
+    player_guy->strength = 11;
+    player_guy->dexterity = 12;
+    player_guy->constitution = 13;
+    player_guy->intelligence = 14;
+    player_guy->armor = 15;
+    player_guy->exp = 1234;
+    player_guy->kills = 9;
+    player_guy->level_kills = 17;
+    player_guy->total_damage = 42;
+    player_guy->total_hits = 8;
+    player_guy->total_shots = 10;
+    player_guy->teamnum = 2;
+    player_guy->scen_damage = 5.5f;
+    player_guy->scen_kills = 6;
+    player_guy->scen_damage_taken = 2.0f;
+    player_guy->scen_min_hp = 11.0f;
+    player_guy->scen_shots = 7;
+    player_guy->scen_hits = 4;
+    player_guy->level = 3;
+    actor->set_owned_myguy(std::move(player_guy));
+
+    source.tick_count_ = 42;
+    source.rng_.state_ = 777;
+    source.set_level_tick_count(7);
+    source.game_ended = true;
+    source.level_done = 1;
+    source.end = 1;
+    source.retry = true;
+    source.next_level = 8;
+    source.ending = 2;
+    source.enemy_freeze = 3;
+    source.timer_wait = 4;
+    source.control_hp = 15.5f;
+    source.withdraw_requested = true;
+    source.withdraw_level = 9;
+    source.guy_id_counter = 123;
+    source.current_palette_id = 1;
+    source.pending_exit_prompt = true;
+    source.paused = true;
+    source.pause_player_index = 2;
+    source.m_score[0] = 100;
+    source.m_score[1] = 200;
+    source.m_score[2] = 300;
+    source.m_score[3] = 400;
+
+    actor->clear_dirty();
+    foe->clear_dirty();
+    controller->clear_dirty();
+    slime->clear_dirty();
+    fx_entity->clear_dirty();
+    weapon->clear_dirty();
+
+    const og::sim::WorldSnapshot snapshot = og::sim::capture_snapshot(source);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+
+    og::sim::apply_snapshot(mirror, snapshot);
+
+    reverse_entity_list(mirror.oblist);
+    reverse_entity_list(mirror.fxlist);
+    reverse_entity_list(mirror.weaplist);
+
+    walker* mirror_actor = mirror.find_by_id(actor->entity_id());
+    walker* mirror_slime = mirror.find_by_id(slime->entity_id());
+    ASSERT_NE(nullptr, mirror_actor);
+    ASSERT_NE(nullptr, mirror_slime);
+
+    mirror_actor->stats()->commands.emplace_back();
+    mirror_actor->setworldxy(5.0f, 6.0f);
+
+    mirror_slime->set_order_family(Order::Living, FAMILY_SLIME);
+    mirror_slime->ani = animation_rows_for_family(FAMILY_SLIME);
+    mirror_slime->sizex = 16;
+    mirror_slime->sizey = 16;
+
+    walker* doomed_generator = mirror.add_ob(Order::Generator, FAMILY_TENT);
+    ASSERT_NE(nullptr, doomed_generator);
+
+    auto stale_dead = mirror.entity_factory(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, stale_dead);
+    stale_dead->set_snapshot_entity_id(999999);
+    mirror.dead_list.push_back(std::move(stale_dead));
+
+    mirror_fx.events.clear();
+    og::sim::apply_snapshot(mirror, snapshot);
+
+    EXPECT_TRUE(mirror_fx.events.empty());
+    EXPECT_EQ(snapshot.rng_state, mirror.rng_.state_);
+    EXPECT_TRUE(mirror.dead_list.empty());
+
+    mirror_actor = mirror.find_by_id(actor->entity_id());
+    mirror_slime = mirror.find_by_id(slime->entity_id());
+    walker* mirror_weapon = mirror.find_by_id(weapon->entity_id());
+    ASSERT_NE(nullptr, mirror_actor);
+    ASSERT_NE(nullptr, mirror_slime);
+    ASSERT_NE(nullptr, mirror_weapon);
+
+    EXPECT_TRUE(mirror_actor->stats()->commands.empty());
+    EXPECT_EQ(FAMILY_SMALL_SLIME, mirror_slime->family);
+    EXPECT_EQ(kSmallSlimeAnimRows, mirror_slime->ani);
+    EXPECT_EQ(pixie_for_family(FAMILY_SMALL_SLIME).w, mirror_slime->sizex);
+    EXPECT_EQ(pixie_for_family(FAMILY_SMALL_SLIME).h, mirror_slime->sizey);
+    ASSERT_NE(nullptr, mirror.myobmap.get());
+    EXPECT_TRUE(pile_contains(
+        mirror.myobmap->obmap_get_list(mirror_actor->xpos, mirror_actor->ypos),
+        mirror_actor));
+
+    const og::sim::WorldSnapshot actual = og::sim::capture_snapshot(mirror);
+    const std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>
+        clean_expected_dirty = {};
+
+    EXPECT_EQ(source.tick_count_, actual.tick_count);
+    EXPECT_EQ(source.rng_.state_, actual.rng_state);
+    EXPECT_EQ(source.level_tick_count(), actual.level_tick_count);
+    EXPECT_EQ(source.level_done, actual.level_done);
+    EXPECT_EQ(source.game_ended, actual.game_ended);
+    EXPECT_EQ(source.end, actual.end);
+    EXPECT_EQ(source.retry, actual.retry);
+    EXPECT_EQ(source.next_level, actual.next_level);
+    EXPECT_EQ(source.ending, actual.ending);
+    EXPECT_EQ(source.enemy_freeze, actual.enemy_freeze);
+    EXPECT_EQ(source.timer_wait, actual.timer_wait);
+    EXPECT_EQ(source.living_count, actual.living_count);
+    EXPECT_FLOAT_EQ(source.control_hp, actual.control_hp);
+    EXPECT_EQ(source.withdraw_requested, actual.withdraw_requested);
+    EXPECT_EQ(source.withdraw_level, actual.withdraw_level);
+    EXPECT_EQ(source.guy_id_counter, actual.guy_id_counter);
+    EXPECT_EQ(source.current_palette_id, actual.current_palette_id);
+    EXPECT_EQ(source.pending_exit_prompt, actual.pending_exit_prompt);
+    EXPECT_EQ(source.paused, actual.paused);
+    EXPECT_EQ(source.pause_player_index, actual.pause_player_index);
+    EXPECT_EQ(source.m_score[0], actual.m_score[0]);
+    EXPECT_EQ(source.m_score[3], actual.m_score[3]);
+    EXPECT_TRUE(actual.grid_dirty_tiles.empty());
+    EXPECT_TRUE(actual.removed_entity_ids.empty());
+
+    ASSERT_EQ(snapshot.guy_snapshots.size(), actual.guy_snapshots.size());
+    expect_guy_snapshot_matches(*actor->myguy, actual.guy_snapshots.front());
+
+    EXPECT_EQ(snapshot_ids(snapshot.oblist), snapshot_ids(actual.oblist));
+    EXPECT_EQ(snapshot_ids(snapshot.fxlist), snapshot_ids(actual.fxlist));
+    EXPECT_EQ(snapshot_ids(snapshot.weaplist), snapshot_ids(actual.weaplist));
+
+    const og::sim::EntitySnapshot* actor_snapshot =
+        find_entity_snapshot(actual.oblist, actor->entity_id());
+    const og::sim::EntitySnapshot* slime_snapshot =
+        find_entity_snapshot(actual.oblist, slime->entity_id());
+    const og::sim::EntitySnapshot* fx_snapshot =
+        find_entity_snapshot(actual.fxlist, fx_entity->entity_id());
+    const og::sim::EntitySnapshot* weapon_snapshot =
+        find_entity_snapshot(actual.weaplist, weapon->entity_id());
+    ASSERT_NE(nullptr, actor_snapshot);
+    ASSERT_NE(nullptr, slime_snapshot);
+    ASSERT_NE(nullptr, fx_snapshot);
+    ASSERT_NE(nullptr, weapon_snapshot);
+
+    expect_entity_snapshot_matches(*actor, *actor_snapshot, clean_expected_dirty);
+    expect_entity_snapshot_matches(*slime, *slime_snapshot, clean_expected_dirty);
+    expect_entity_snapshot_matches(*fx_entity, *fx_snapshot, clean_expected_dirty);
+    expect_entity_snapshot_matches(*weapon, *weapon_snapshot, clean_expected_dirty);
+}
+
+TEST(WorldSnapshot, apply_snapshot_overwrites_grid_dirty_tiles)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+
+    const short tile_x = 3;
+    const short tile_y = 4;
+    const std::size_t tile_index =
+        static_cast<std::size_t>(tile_y) * source.grid.w + tile_x;
+    source.grid.data[tile_index] = PIX_GRASS1;
+    source.damage_tile(static_cast<short>(tile_x * GRID_SIZE),
+                       static_cast<short>(tile_y * GRID_SIZE));
+
+    const og::sim::WorldSnapshot snapshot = og::sim::capture_snapshot(source);
+    ASSERT_TRUE(snapshot.grid_dirty);
+    ASSERT_FALSE(snapshot.grid_dirty_tiles.empty());
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    mirror.grid.data[tile_index] = PIX_GRASS1;
+
+    og::sim::apply_snapshot(mirror, snapshot);
+
+    EXPECT_EQ(snapshot.grid_dirty_tiles.front().value, mirror.grid.data[tile_index]);
+    const og::sim::WorldSnapshot keyframe = og::sim::capture_keyframe_snapshot(mirror);
+    ASSERT_EQ(static_cast<std::size_t>(mirror.grid.w) * mirror.grid.h,
+              keyframe.full_grid_data.size());
+    EXPECT_EQ(snapshot.grid_dirty_tiles.front().value,
+              keyframe.full_grid_data[tile_index]);
 }

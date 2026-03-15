@@ -80,6 +80,18 @@ public:
     {
         return (index < 2) ? dirty_mask_[index] : 0;
     }
+    void set_snapshot_entity_id(std::uint32_t entity_id) noexcept
+    {
+        entity_id_ = entity_id;
+    }
+    void set_snapshot_position(short xpos_value, short ypos_value,
+                               float worldx_value, float worldy_value) noexcept
+    {
+        xpos = xpos_value;
+        ypos = ypos_value;
+        worldx_ = worldx_value;
+        worldy_ = worldy_value;
+    }
 
     // Animation frame state (sim-relevant; actual pixel data is in render component)
     short frame = 0;

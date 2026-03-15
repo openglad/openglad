@@ -331,6 +331,45 @@ void GameWorld::set_detach_callback(std::function<void()> callback)
     detach_callback_ = std::move(callback);
 }
 
+void GameWorld::set_gameplay_context_bindings(SaveData* save,
+                                              og::sim::SimEventLog* sim_events,
+                                              cfg_store* config) noexcept
+{
+    gameplay_save_ = save;
+    gameplay_sim_events_ = sim_events;
+    gameplay_config_ = config;
+}
+
+bool GameWorld::populate_gameplay_context(GameplayContext& context) const noexcept
+{
+    context = GameplayContext{};
+    context.world = const_cast<GameWorld*>(this);
+    context.save = gameplay_save_;
+    context.sim_events = gameplay_sim_events_;
+    context.config = gameplay_config_;
+
+    if ((context.save == nullptr ||
+         context.sim_events == nullptr ||
+         context.config == nullptr) &&
+        current_game != nullptr &&
+        current_game->world == this)
+    {
+        if (context.save == nullptr)
+            context.save = current_game->save;
+        if (context.sim_events == nullptr)
+            context.sim_events = current_game->sim_events;
+        if (context.config == nullptr)
+            context.config = current_game->config;
+        context.rng_override_ref = current_game->rng_override_ref;
+        context.session_rng_ref = current_game->session_rng_ref;
+        context.gameplay_active_ref = current_game->gameplay_active_ref;
+    }
+
+    return context.world != nullptr &&
+           context.sim_events != nullptr &&
+           context.config != nullptr;
+}
+
 std::vector<std::uint32_t> GameWorld::take_removed_entity_ids()
 {
     auto removed = std::move(removed_entity_ids_);

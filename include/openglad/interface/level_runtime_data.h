@@ -260,8 +260,9 @@ public:
     const LevelVisuals& level_visuals() const { return *static_cast<const LevelVisuals*>(level_visuals_); }
     void attach_world(GameWorld* world);
 
-    // Legacy transitional hook kept for call-site compatibility. Entity-side
-    // SaveData/config pointers were removed in Phase 5, so this is now a no-op.
+    // Legacy transitional hook kept for call-site compatibility. Snapshot
+    // application still needs a per-world gameplay context, so this stores the
+    // world/save/events/config bindings used to rebuild one on demand.
     void set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                          og::sim::SimEventLog* events, IRandom* rng,
                          cfg_store* config);

@@ -49,12 +49,38 @@ public:
     bool empty() const { return events_.empty(); }
 
     std::size_t size() const { return events_.size(); }
+    bool suppressed() const { return suppressed_; }
+    void set_suppressed(bool suppressed) { suppressed_ = suppressed; }
 
     // Current simulation tick (set by the simulation loop each frame).
     std::uint32_t current_tick_ = 0;
 
 private:
     std::vector<Event> events_;
+    bool suppressed_ = false;
+};
+
+class SimEventLogSuppressGuard
+{
+public:
+    explicit SimEventLogSuppressGuard(SimEventLog& log)
+        : log_(log)
+        , prev_(log.suppressed())
+    {
+        log_.set_suppressed(true);
+    }
+
+    ~SimEventLogSuppressGuard()
+    {
+        log_.set_suppressed(prev_);
+    }
+
+    SimEventLogSuppressGuard(const SimEventLogSuppressGuard&) = delete;
+    SimEventLogSuppressGuard& operator=(const SimEventLogSuppressGuard&) = delete;
+
+private:
+    SimEventLog& log_;
+    bool prev_ = false;
 };
 
 } // namespace og::sim

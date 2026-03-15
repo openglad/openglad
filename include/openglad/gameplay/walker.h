@@ -151,6 +151,7 @@ class walker : public og::sim::SimEntity
 		// stats (unique_ptr ownership is protected; getter returns raw pointer)
 		statistics* stats() const { return stats_.get(); }
 		std::int32_t regen_delay() const { return regen_delay_; }
+		void set_regen_delay(std::int32_t value) { regen_delay_ = value; }
 
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
 		class DamageNumber

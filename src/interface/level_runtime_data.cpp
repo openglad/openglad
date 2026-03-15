@@ -49,11 +49,9 @@ void LevelRuntimeData::set_sim_context(SaveData* save, std::int32_t* enemy_freez
                                 og::sim::SimEventLog* events, IRandom* rng,
                                 cfg_store* config)
 {
-    (void)save;
-    (void)config;
     (void)enemy_freeze;
     (void)rng;
-    (void)events;
+    world().set_gameplay_context_bindings(save, events, config);
 }
 
 static EntityFactory make_default_entity_factory()
