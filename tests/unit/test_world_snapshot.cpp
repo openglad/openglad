@@ -1844,6 +1844,76 @@ TEST(WorldSnapshot, deserialize_delta_rejects_bad_headers_and_malformed_payloads
         std::runtime_error);
 }
 
+TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and_counts)
+{
+    std::vector<std::uint8_t> oversized_payload(
+        (4U * 1024U * 1024U) + 1U, 0);
+    oversized_payload[0] = og::sim::kSnapshotFormatVersion;
+    const std::vector<std::uint8_t> oversized_compressed =
+        zlib_compress_for_test(oversized_payload);
+    ASSERT_LT(oversized_compressed.size(),
+              static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()));
+
+    std::vector<std::uint8_t> oversized_snapshot;
+    oversized_snapshot.reserve(8 + oversized_compressed.size());
+    oversized_snapshot.push_back(og::sim::kSnapshotProtocolVersion);
+    oversized_snapshot.push_back(og::sim::kSnapshotMessageType);
+    oversized_snapshot.push_back(
+        static_cast<std::uint8_t>(oversized_compressed.size() & 0xffu));
+    oversized_snapshot.push_back(
+        static_cast<std::uint8_t>((oversized_compressed.size() >> 8) & 0xffu));
+    oversized_snapshot.push_back(0);
+    oversized_snapshot.push_back(0);
+    oversized_snapshot.push_back(0);
+    oversized_snapshot.push_back(0);
+    oversized_snapshot.insert(oversized_snapshot.end(),
+                              oversized_compressed.begin(),
+                              oversized_compressed.end());
+    EXPECT_THROW(
+        (void)og::sim::deserialize_snapshot(oversized_snapshot.data(),
+                                            oversized_snapshot.size()),
+        std::runtime_error);
+
+    og::sim::WorldSnapshot delta;
+    delta.tick_count = 12;
+    const std::vector<std::uint8_t> delta_bytes = og::sim::serialize_delta(delta);
+    const bool payload_is_uncompressed =
+        (delta_bytes[1] & og::sim::kDeltaPayloadUncompressedFlag) != 0;
+    const std::size_t payload_length =
+        static_cast<std::size_t>(delta_bytes[2]) |
+        (static_cast<std::size_t>(delta_bytes[3]) << 8);
+    std::vector<std::uint8_t> raw_payload =
+        payload_is_uncompressed
+            ? std::vector<std::uint8_t>(delta_bytes.begin() + 8, delta_bytes.end())
+            : zlib_decompress_for_test(delta_bytes.data() + 8, payload_length);
+
+    constexpr std::size_t kEntityCountOffset = 76;
+    ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
+    raw_payload[kEntityCountOffset + 0] = 0xffu;
+    raw_payload[kEntityCountOffset + 1] = 0xffu;
+    raw_payload[kEntityCountOffset + 2] = 0xffu;
+    raw_payload[kEntityCountOffset + 3] = 0xffu;
+
+    std::vector<std::uint8_t> bad_count_delta;
+    bad_count_delta.reserve(8 + raw_payload.size());
+    bad_count_delta.push_back(og::sim::kSnapshotProtocolVersion);
+    bad_count_delta.push_back(static_cast<std::uint8_t>(
+        og::sim::kDeltaSnapshotMessageType |
+        og::sim::kDeltaPayloadUncompressedFlag));
+    bad_count_delta.push_back(static_cast<std::uint8_t>(raw_payload.size() & 0xffu));
+    bad_count_delta.push_back(static_cast<std::uint8_t>((raw_payload.size() >> 8) & 0xffu));
+    bad_count_delta.push_back(12);
+    bad_count_delta.push_back(0);
+    bad_count_delta.push_back(0);
+    bad_count_delta.push_back(0);
+    bad_count_delta.insert(bad_count_delta.end(),
+                           raw_payload.begin(), raw_payload.end());
+    EXPECT_THROW(
+        (void)og::sim::deserialize_delta(bad_count_delta.data(),
+                                         bad_count_delta.size()),
+        std::runtime_error);
+}
+
 TEST(WorldSnapshot, apply_delta_with_all_fields_dirty_matches_current_world_state)
 {
     TestGameWorld source_fx;

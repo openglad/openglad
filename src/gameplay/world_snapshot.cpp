@@ -34,6 +34,13 @@ using EntityDirtyMask = og::sim::EntitySnapshotDirtyMask;
 
 constexpr std::size_t kMessageHeaderSize = 8;
 constexpr std::size_t kZlibChunkSize = 4096;
+constexpr std::size_t kMaxDecompressedPayloadBytes = 4U * 1024U * 1024U;
+constexpr std::uint32_t kMaxSnapshotStringBytes = 1024;
+constexpr std::uint32_t kMaxGridCellCount = 255U * 255U;
+constexpr std::uint32_t kMaxGridDirtyTileCount = kMaxGridCellCount;
+constexpr std::uint32_t kMaxGuySnapshotCount = 4096;
+constexpr std::uint32_t kMaxEntitySnapshotCount = 16384;
+constexpr std::uint32_t kMaxRemovedEntityCount = 16384;
 constexpr std::uint8_t kDeltaEntityHasDirtyWord1Flag = 0x01;
 constexpr EntityDirtyMask kAllEntityFieldsDirty = {~0ULL, ~0ULL};
 
@@ -129,6 +136,12 @@ public:
     std::string read_string(const char* field_name)
     {
         const std::uint32_t length = read_u32(field_name);
+        if (length > kMaxSnapshotStringBytes)
+        {
+            throw std::runtime_error(std::string(source_name_) +
+                                     ": " + field_name +
+                                     " exceeds maximum string length");
+        }
         require(length, field_name);
         std::string value;
         value.resize(length);
@@ -177,6 +190,19 @@ private:
     const std::uint8_t* end_ = nullptr;
     const char* source_name_ = nullptr;
 };
+
+std::uint32_t read_bounded_count(ByteReader& reader,
+                                 const char* field_name,
+                                 std::uint32_t max_count,
+                                 const char* context)
+{
+    const std::uint32_t count = reader.read_u32(field_name);
+    if (count > max_count)
+    {
+        throw std::runtime_error(std::string(context) + " exceeds maximum count");
+    }
+    return count;
+}
 
 void append_u8(std::vector<std::uint8_t>& buffer, std::uint8_t value)
 {
@@ -602,10 +628,15 @@ void deserialize_grid_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot
 {
     snapshot.grid_dirty = reader.read_bool("grid.grid_dirty");
     snapshot.grid_full_resend = reader.read_bool("grid.grid_full_resend");
+    const std::uint32_t full_grid_size =
+        read_bounded_count(reader, "grid.full_grid_size",
+                           kMaxGridCellCount, "grid full payload");
     snapshot.full_grid_data =
-        reader.read_bytes(reader.read_u32("grid.full_grid_size"), "grid.full_grid_data");
+        reader.read_bytes(full_grid_size, "grid.full_grid_data");
 
-    const std::uint32_t dirty_tile_count = reader.read_u32("grid.dirty_tile_count");
+    const std::uint32_t dirty_tile_count =
+        read_bounded_count(reader, "grid.dirty_tile_count",
+                           kMaxGridDirtyTileCount, "grid dirty tile count");
     snapshot.grid_dirty_tiles.clear();
     snapshot.grid_dirty_tiles.reserve(dirty_tile_count);
     for (std::uint32_t i = 0; i < dirty_tile_count; ++i)
@@ -634,7 +665,9 @@ void serialize_guy_snapshots(std::vector<std::uint8_t>& buffer,
 void deserialize_guy_snapshots(ByteReader& reader,
                                std::vector<og::sim::GuySnapshot>& snapshots)
 {
-    const std::uint32_t count = reader.read_u32("guy_snapshot_count");
+    const std::uint32_t count =
+        read_bounded_count(reader, "guy_snapshot_count",
+                           kMaxGuySnapshotCount, "guy snapshot count");
     snapshots.clear();
     snapshots.reserve(count);
     for (std::uint32_t i = 0; i < count; ++i)
@@ -713,7 +746,9 @@ void serialize_keyframe_entity_list(std::vector<std::uint8_t>& buffer,
 void deserialize_keyframe_entity_list(ByteReader& reader,
                                       std::vector<og::sim::EntitySnapshot>& entities)
 {
-    const std::uint32_t count = reader.read_u32("entity_count");
+    const std::uint32_t count =
+        read_bounded_count(reader, "entity_count",
+                           kMaxEntitySnapshotCount, "entity count");
     entities.clear();
     entities.reserve(count);
     for (std::uint32_t i = 0; i < count; ++i)
@@ -737,7 +772,9 @@ void deserialize_delta_entity_list(ByteReader& reader,
                                    std::vector<og::sim::EntitySnapshot>& entities,
                                    std::vector<std::uint32_t>* removed_entity_ids = nullptr)
 {
-    const std::uint32_t count = reader.read_u32("delta_entity_count");
+    const std::uint32_t count =
+        read_bounded_count(reader, "delta_entity_count",
+                           kMaxEntitySnapshotCount, "delta entity count");
     entities.clear();
     entities.reserve(count);
     for (std::uint32_t i = 0; i < count; ++i)
@@ -805,6 +842,11 @@ std::vector<std::uint8_t> decompress_zlib_payload(const std::uint8_t* data,
         }
 
         const std::size_t produced = chunk.size() - stream.avail_out;
+        if (output.size() + produced > kMaxDecompressedPayloadBytes)
+        {
+            inflateEnd(&stream);
+            throw std::runtime_error("snapshot decompression: payload exceeds maximum size");
+        }
         output.insert(output.end(), chunk.begin(), chunk.begin() + produced);
     } while (rc != Z_STREAM_END);
 
@@ -855,7 +897,9 @@ og::sim::WorldSnapshot deserialize_snapshot_payload(const std::vector<std::uint8
     deserialize_keyframe_entity_list(reader, snapshot.fxlist);
     deserialize_keyframe_entity_list(reader, snapshot.weaplist);
 
-    const std::uint32_t removed_count = reader.read_u32("snapshot.removed_entity_count");
+    const std::uint32_t removed_count =
+        read_bounded_count(reader, "snapshot.removed_entity_count",
+                           kMaxRemovedEntityCount, "removed entity count");
     snapshot.removed_entity_ids.clear();
     snapshot.removed_entity_ids.reserve(removed_count);
     for (std::uint32_t i = 0; i < removed_count; ++i)
