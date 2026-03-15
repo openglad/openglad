@@ -15,6 +15,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/replay_runtime.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
@@ -69,6 +70,7 @@ void glad_init()
     current_screen->redrawme = 1;
     current_screen->framecount = 0;
     current_screen->timerstart = query_timer_control();
+    og::runtime::begin_replay_recording(*current_screen);
 
     g_frame_state().done = false;
     g_frame_state().currentcycle = 0;

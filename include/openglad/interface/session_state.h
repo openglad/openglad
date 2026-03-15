@@ -4,10 +4,13 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/replay.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/game_loop_state.h>
 
@@ -108,6 +111,10 @@ struct SessionState {
     bool test_context_active_ = false;
     IRandom* test_context_rng_snapshot_ = nullptr;
     InputState test_context_input_snapshot_ = {};
+
+    // Runtime replay recording state.
+    std::optional<og::sim::ReplayRecorder> replay_recorder_ = std::nullopt;
+    std::filesystem::path replay_output_path_;
 
     GameContext ctx_;
     GameplayContext game_;

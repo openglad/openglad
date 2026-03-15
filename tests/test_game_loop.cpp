@@ -1,10 +1,13 @@
 #include "SDL.h"
 #include <array>
+#include <filesystem>
 #include <thread>
 #include <vector>
 
+#include <openglad/gameplay/replay.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/interface/input.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
@@ -15,6 +18,7 @@
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_saved_game(const char* filename, screen* scr);
+void glad_init();
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 
@@ -99,6 +103,64 @@ TEST(GameLoop, game_frame_with_result_done_when_end_is_set)
     ASSERT_TRUE(st.done) << "state.done should be set when end is set";
 
     og::runtime::current_session->myscreen_->world().end = old_end;
+}
+
+TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    const std::filesystem::path replay_path =
+        std::filesystem::path(get_user_path()) / "replays" / "last-replay.ogr";
+    std::error_code ec;
+    std::filesystem::remove(replay_path, ec);
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_session->replay_recorder_.has_value());
+    EXPECT_EQ(replay_path, og::runtime::current_session->replay_output_path_);
+    EXPECT_EQ(0u, og::runtime::current_session->replay_recorder_->frame_count());
+    EXPECT_TRUE(og::runtime::current_session->replay_recorder_->has_initial_snapshot());
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    ASSERT_TRUE(og::runtime::current_session->replay_recorder_.has_value());
+    ASSERT_EQ(1u, og::runtime::current_session->replay_recorder_->frame_count());
+    const auto expected_frame =
+        og::runtime::current_session->replay_recorder_->frames().front();
+
+    game_screen->world().end = 1;
+    EXPECT_EQ(GameFrameResult::Done,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_FALSE(og::runtime::current_session->replay_recorder_.has_value());
+    ASSERT_TRUE(std::filesystem::exists(replay_path));
+
+    og::sim::ReplayPlayer player;
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    ASSERT_TRUE(player.load_file(replay_path, &io_error));
+    ASSERT_EQ(og::sim::ReplayIoError::None, io_error);
+    EXPECT_EQ(game_screen->world().id, player.header().level_id);
+    EXPECT_EQ(game_screen->save_data.current_campaign, player.header().campaign_id);
+    ASSERT_EQ(1u, player.frame_count());
+    EXPECT_EQ(expected_frame.tick, player.frames().front().tick);
+    EXPECT_EQ(expected_frame.input.quit_requested,
+              player.frames().front().input.quit_requested);
+
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+    std::filesystem::remove(replay_path, ec);
 }
 
 

@@ -1,6 +1,7 @@
 #include <openglad/interface/replay_runtime.h>
 
 #include <openglad/gameplay/replay.h>
+#include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
@@ -13,6 +14,8 @@
 
 namespace
 {
+constexpr std::string_view kLatestReplayFilename = "last-replay.ogr";
+
 class ScopedReplayGameplayLoadActivation
 {
 public:
@@ -83,6 +86,13 @@ void assign_replay_views(screen& game_screen,
         ++view_index;
     }
 }
+
+std::filesystem::path replay_output_path()
+{
+    const std::string replay_dir = get_user_path() + "replays/";
+    (void)create_dir(replay_dir);
+    return std::filesystem::path(replay_dir) / kLatestReplayFilename;
+}
 } // namespace
 
 bool og::runtime::initialize_replay_screen(screen& game_screen,
@@ -137,4 +147,64 @@ bool og::runtime::initialize_replay_screen(screen& game_screen,
     game_screen.world().timer_wait = header.timer_wait;
     player.reset();
     return true;
+}
+
+void og::runtime::begin_replay_recording(screen& game_screen)
+{
+    if (og::runtime::current_session == nullptr)
+        return;
+
+    og::runtime::current_session->replay_recorder_.reset();
+    og::runtime::current_session->replay_output_path_.clear();
+
+    const std::string& campaign_id = game_screen.save_data.current_campaign;
+    if (campaign_id.empty())
+        return;
+
+    og::runtime::current_session->replay_output_path_ = replay_output_path();
+    og::runtime::current_session->replay_recorder_.emplace(og::sim::ReplayHeader{
+        .version = og::sim::kReplayFormatVersion,
+        .initial_rng_state = game_screen.world().rng_.state_,
+        .level_id = game_screen.world().id,
+        .player_count = static_cast<std::uint8_t>(game_screen.save_data.numplayers),
+        .timer_wait = game_screen.world().timer_wait,
+        .campaign_id = campaign_id,
+    });
+    og::runtime::current_session->replay_recorder_->record_initial_world(
+        game_screen.world());
+}
+
+void og::runtime::record_replay_input(screen& game_screen, const InputState& input)
+{
+    if (og::runtime::current_session == nullptr ||
+        !og::runtime::current_session->replay_recorder_.has_value())
+    {
+        return;
+    }
+
+    og::runtime::current_session->replay_recorder_->record_input(
+        game_screen.world().tick_count_ + 1u,
+        input);
+}
+
+void og::runtime::finish_replay_recording()
+{
+    if (og::runtime::current_session == nullptr ||
+        !og::runtime::current_session->replay_recorder_.has_value())
+    {
+        return;
+    }
+
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    if (!og::runtime::current_session->replay_output_path_.empty() &&
+        !og::runtime::current_session->replay_recorder_->write_file(
+            og::runtime::current_session->replay_output_path_,
+            &io_error))
+    {
+        LogError("replay_record_write_failed path={} error={}\n",
+                 og::runtime::current_session->replay_output_path_.string(),
+                 static_cast<int>(io_error));
+    }
+
+    og::runtime::current_session->replay_recorder_.reset();
 }

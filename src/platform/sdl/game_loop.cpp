@@ -14,6 +14,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/obmap_debug_draw.h>
+#include <openglad/interface/replay_runtime.h>
 #include <openglad/core/util.h>
 
 #ifdef TESTING
@@ -61,6 +62,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     if (s.world().end)
     {
         st.done = true;
+        og::runtime::finish_replay_recording();
         return GameFrameResult::Done;
     }
 
@@ -73,6 +75,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     if (s.world().end)
     {
         st.done = true;
+        og::runtime::finish_replay_recording();
         return GameFrameResult::Done;
     }
 
@@ -109,6 +112,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                     if (result) // player wants to quit
                     {
                         st.done = true;
+                        og::runtime::finish_replay_recording();
                         results_screen(2, -1); // Should not show an extra popup
                         return GameFrameResult::AbortedMission;
                     }
@@ -133,6 +137,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
 
     // Snapshot current input state for the frame
     ctx().poll_input();
+    og::runtime::record_replay_input(s, ctx().input);
 
     // Process input through semantic InputState (SDL-independent path)
     s.process_input(ctx().input);
@@ -142,6 +147,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     if (s.world().end)
     {
         st.done = true;
+        og::runtime::finish_replay_recording();
         return GameFrameResult::Done;
     }
 
@@ -164,7 +170,13 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     }
 #endif
 
-    return st.done ? GameFrameResult::Done : GameFrameResult::Continue;
+    if (st.done)
+    {
+        og::runtime::finish_replay_recording();
+        return GameFrameResult::Done;
+    }
+
+    return GameFrameResult::Continue;
 }
 
 bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
