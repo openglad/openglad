@@ -943,9 +943,15 @@ bool screen::act()
 				break;
 			case og::sim::EventKind::SetPalette:
 				if (ev.a == 0)
+				{
+					world_.current_palette_id = 0;
 					set_palette(ourpalette);
+				}
 				else
+				{
+					world_.current_palette_id = 1;
 					set_palette(bluepalette);
+				}
 				break;
 			case og::sim::EventKind::RequestRedraw:
 				redrawme = 1;
@@ -955,9 +961,6 @@ bool screen::act()
 				events.clear();
 				return endgame(static_cast<short>(ev.a),
 				               static_cast<short>(static_cast<std::int32_t>(ev.b)));
-			case og::sim::EventKind::DamageTile:
-				damage_tile(static_cast<short>(ev.a), static_cast<short>(ev.b));
-				break;
 			case og::sim::EventKind::SetEnd:
 				world_.end = 1;
 				break;
@@ -1258,32 +1261,7 @@ void screen::draw_panels(short howmany)
 // Uses pixel coordinates
 char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 {
-	short xover, yover;
-	short gridloc;
-
-	xover = static_cast<short>(xloc / GRID_SIZE);
-	yover = static_cast<short>(yloc / GRID_SIZE);
-
-	if (xover < 0 || yover < 0)
-		return 0;
-	if (xover >= world_.grid.w || yover >= world_.grid.h)
-		return 0;
-
-	gridloc = static_cast<short>(yover*world_.grid.w+xover);
-
-	switch (static_cast<unsigned char>(world_.grid.data[gridloc]))
-	{
-		case PIX_GRASS1: // grass
-		case PIX_GRASS2:
-		case PIX_GRASS3:
-		case PIX_GRASS4:
-			world_.grid.data[gridloc] = PIX_GRASS1_DAMAGED;
-			break;
-		default:
-			break;
-	}
-
-	return world_.grid.data[gridloc];
+	return world_.damage_tile(xloc, yloc);
 }
 
 void screen::do_notify(std::string_view message, walker  *who)

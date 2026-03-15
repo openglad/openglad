@@ -79,6 +79,7 @@ class walker : public og::sim::SimEntity
 		walker* owner() const { return owner_; }
 		void set_collide_ob(walker* target);
 		walker* collide_ob() const { return collide_ob_; }
+		void sync_ids_from_pointers();
 		bool reset(void);
 			short move(short x, short y);
 			void worldmove(float x, float y);
@@ -149,6 +150,7 @@ class walker : public og::sim::SimEntity
 
 		// stats (unique_ptr ownership is protected; getter returns raw pointer)
 		statistics* stats() const { return stats_.get(); }
+		std::int32_t regen_delay() const { return regen_delay_; }
 
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
 		class DamageNumber

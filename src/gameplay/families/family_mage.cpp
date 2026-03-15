@@ -195,6 +195,7 @@ static bool mage_do_special(walker* self)
             if (self->team_num == 0 || self->myguy)
             {
                 current_game->world->enemy_freeze += 20 + 11 * self->stats()->level;
+                current_game->world->current_palette_id = 1;
                 og::sim::emit_event(current_game->sim_events, og::sim::EventKind::SetPalette, 1);
             }
             else

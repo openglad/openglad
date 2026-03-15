@@ -343,6 +343,18 @@ void GameWorld::clear_removed_entity_ids() noexcept
     removed_entity_ids_.clear();
 }
 
+std::vector<std::pair<short, short>> GameWorld::take_grid_dirty_tiles()
+{
+    auto dirty_tiles = std::move(grid_dirty_tiles_);
+    grid_dirty_tiles_.clear();
+    return dirty_tiles;
+}
+
+void GameWorld::clear_grid_dirty_tiles() noexcept
+{
+    grid_dirty_tiles_.clear();
+}
+
 void GameWorld::attach_entity_to_world(walker& entity)
 {
     entity.owning_world_ = this;
@@ -1037,6 +1049,7 @@ std::list<walker*> GameWorld::find_friends_in_range(const std::list<std::unique_
 
 void GameWorld::delete_grid()
 {
+    clear_grid_dirty_tiles();
     grid.free();
     pixmaxx = 0;
     pixmaxy = 0;
@@ -1045,6 +1058,7 @@ void GameWorld::delete_grid()
 
 void GameWorld::create_new_grid()
 {
+    clear_grid_dirty_tiles();
     grid.free();
 
     grid.frames = 1;
@@ -1108,6 +1122,7 @@ void GameWorld::resize_grid(int width, int height)
     grid.frames = 1;
     grid.w = static_cast<unsigned char>(width);
     grid.h = static_cast<unsigned char>(height);
+    clear_grid_dirty_tiles();
     pixmaxx = grid.w * GRID_SIZE;
     pixmaxy = grid.h * GRID_SIZE;
 
@@ -1172,6 +1187,7 @@ void GameWorld::clear()
 {
     delete_objects();
     clear_removed_entity_ids();
+    clear_grid_dirty_tiles();
     delete_grid();
     next_entity_id_ = 1;
 
@@ -1198,7 +1214,52 @@ void GameWorld::clear()
     my_team = 0;
     allied_mode = 0;
     current_scenario = 0;
+    current_palette_id = 0;
+    pending_exit_prompt = false;
+    paused = false;
+    pause_player_index = 0xff;
     completed_levels.clear();
+}
+
+char GameWorld::damage_tile(short xloc, short yloc)
+{
+    if (!grid.valid())
+        return 0;
+
+    const short xover = static_cast<short>(xloc / GRID_SIZE);
+    const short yover = static_cast<short>(yloc / GRID_SIZE);
+
+    if (xover < 0 || yover < 0)
+        return 0;
+    if (xover >= grid.w || yover >= grid.h)
+        return 0;
+
+    const int gridloc = yover * grid.w + xover;
+    unsigned char next_value = grid.data[gridloc];
+    switch (static_cast<unsigned char>(grid.data[gridloc]))
+    {
+        case PIX_GRASS1:
+        case PIX_GRASS2:
+        case PIX_GRASS3:
+        case PIX_GRASS4:
+            next_value = PIX_GRASS1_DAMAGED;
+            break;
+        default:
+            break;
+    }
+
+    if (grid.data[gridloc] != next_value)
+    {
+        grid.data[gridloc] = next_value;
+        const std::pair<short, short> coord{xover, yover};
+        if (std::find(grid_dirty_tiles_.begin(), grid_dirty_tiles_.end(), coord) ==
+            grid_dirty_tiles_.end())
+        {
+            grid_dirty_tiles_.push_back(coord);
+        }
+    }
+
+    return static_cast<char>(grid.data[gridloc]);
 }
 
 short GameWorld::remaining_foes(walker* myguy) const
@@ -1263,7 +1324,10 @@ void GameWorld::tick()
     if (enemy_freeze)
         enemy_freeze--;
     if (enemy_freeze == 1)
+    {
+        current_palette_id = 0;
         events.push(og::sim::EventKind::SetPalette, 0, 0);
+    }
 
     // --- Entity act phase ---
     bool printed_time = false;

@@ -38,10 +38,9 @@ static bool explosion_on_death(effect* self)
     auto foelist = current_game->world->find_in_range(current_game->world->oblist, 15+generic,
         &howmany, self);
 
-    // Emit DamageTile event instead of calling screen directly
-    og::sim::emit_event(current_game->sim_events, og::sim::EventKind::DamageTile,
-        static_cast<std::uint32_t>(self->xpos+(self->sizex/2)),
-        static_cast<std::uint32_t>(self->ypos+(self->sizey/2)));
+    current_game->world->damage_tile(
+        static_cast<short>(self->xpos + (self->sizex / 2)),
+        static_cast<short>(self->ypos + (self->sizey / 2)));
     if (howmany < 1)
         return false;
 

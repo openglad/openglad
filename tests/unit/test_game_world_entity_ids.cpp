@@ -244,6 +244,34 @@ TEST_F(GameWorldEntityIdsFixture, cross_reference_setters_keep_pointer_and_id_fi
     EXPECT_EQ(0u, actor->stats()->controller_id);
 }
 
+TEST_F(GameWorldEntityIdsFixture, sync_ids_from_pointers_clears_zero_id_cross_references)
+{
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+
+    auto orphan_owner = std::make_unique<walker>();
+    auto orphan_controller = std::make_unique<walker>();
+    ASSERT_EQ(0u, orphan_owner->entity_id());
+    ASSERT_EQ(0u, orphan_controller->entity_id());
+
+    actor->clear_dirty();
+    actor->set_owner(orphan_owner.get());
+    actor->stats()->set_controller(orphan_controller.get());
+    actor->clear_dirty();
+
+    actor->owner_id = 99;
+    actor->stats()->controller_id = 77;
+
+    actor->sync_ids_from_pointers();
+
+    EXPECT_EQ(nullptr, actor->owner());
+    EXPECT_EQ(0u, actor->owner_id);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_OWNER_ID));
+    EXPECT_EQ(nullptr, actor->stats()->controller());
+    EXPECT_EQ(0u, actor->stats()->controller_id);
+    EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_CONTROLLER_ID));
+}
+
 TEST_F(GameWorldEntityIdsFixture, removing_entities_tracks_removed_entity_ids)
 {
     walker* living = world.add_ob(Order::Living, FAMILY_SOLDIER);

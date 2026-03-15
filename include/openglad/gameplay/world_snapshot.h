@@ -6,6 +6,7 @@
 
 #include <openglad/core/order.h>
 #include <openglad/gameplay/dirty_field_bits.h>
+#include <openglad/gameplay/event.h>
 #include <openglad/gameplay/statistics.h>
 
 #include <cstddef>
@@ -13,6 +14,13 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+
+namespace og::sim {
+
+class SimEventLog;
+}
+
+class GameWorld;
 
 namespace og::sim {
 
@@ -150,6 +158,12 @@ struct GridTileSnapshot {
     std::int16_t x = 0;
     std::int16_t y = 0;
     std::uint8_t value = 0;
+};
+
+struct SimEventBatch {
+    // Phase 6 reuses the producing tick as a monotonic batch sequence.
+    std::uint32_t sequence = 0;
+    std::vector<Event> events;
 };
 
 struct WorldSnapshot {
@@ -439,5 +453,9 @@ static_assert(kEntitySnapshotTrackedFieldCount == og::dirty::FIELD_COUNT,
               "EntitySnapshot tracked field count drift -- update world_snapshot.h");
 static_assert(entity_snapshot_field_table_is_valid(),
               "EntitySnapshot field table drift -- update world_snapshot.h");
+
+WorldSnapshot capture_snapshot(const GameWorld& world);
+WorldSnapshot capture_keyframe_snapshot(const GameWorld& world);
+SimEventBatch drain_sim_events(SimEventLog& log);
 
 } // namespace og::sim

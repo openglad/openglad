@@ -251,6 +251,62 @@ void walker::set_collide_ob(walker* target)
 	mark_dirty(og::dirty::BIT_COLLIDE_OB_ID);
 }
 
+void walker::sync_ids_from_pointers()
+{
+	auto sync_link = [this](walker* target,
+	                        std::uint32_t& stored_id,
+	                        std::uint8_t bit,
+	                        auto clear_pointer) {
+		std::uint32_t next_id = 0;
+		if (target != nullptr)
+		{
+			next_id = target->entity_id();
+			if (next_id == 0)
+			{
+				clear_pointer();
+				return;
+			}
+		}
+
+		if (stored_id != next_id)
+		{
+			stored_id = next_id;
+			mark_dirty(bit);
+		}
+	};
+
+	sync_link(foe_, foe_id, og::dirty::BIT_FOE_ID, [this]() { set_foe(nullptr); });
+	sync_link(leader_, leader_id, og::dirty::BIT_LEADER_ID,
+	          [this]() { set_leader(nullptr); });
+	sync_link(owner_, owner_id, og::dirty::BIT_OWNER_ID,
+	          [this]() { set_owner(nullptr); });
+	sync_link(collide_ob_, collide_ob_id, og::dirty::BIT_COLLIDE_OB_ID,
+	          [this]() { set_collide_ob(nullptr); });
+
+	if (statistics* const entity_stats = stats(); entity_stats != nullptr)
+	{
+		walker* controller = entity_stats->controller();
+		if (controller != nullptr)
+		{
+			const std::uint32_t controller_id = controller->entity_id();
+			if (controller_id == 0)
+			{
+				entity_stats->set_controller(nullptr);
+			}
+			else if (entity_stats->controller_id != controller_id)
+			{
+				entity_stats->controller_id = controller_id;
+				mark_dirty(og::dirty::BIT_CONTROLLER_ID);
+			}
+		}
+		else if (entity_stats->controller_id != 0)
+		{
+			entity_stats->controller_id = 0;
+			mark_dirty(og::dirty::BIT_CONTROLLER_ID);
+		}
+	}
+}
+
 bool
 walker::reset(void)
 {

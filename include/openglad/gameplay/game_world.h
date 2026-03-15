@@ -15,6 +15,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <openglad/gameplay/pixie_data.h>
@@ -153,13 +154,19 @@ public:
     short remove_ob(walker* ob);
     walker* find_by_id(std::uint32_t entity_id);
     const walker* find_by_id(std::uint32_t entity_id) const;
+    std::uint32_t level_tick_count() const noexcept { return level_tick_count_; }
+    void set_level_tick_count(std::uint32_t value) noexcept { level_tick_count_ = value; }
     const std::vector<std::uint32_t>& removed_entity_ids() const noexcept { return removed_entity_ids_; }
     std::vector<std::uint32_t> take_removed_entity_ids();
     void clear_removed_entity_ids() noexcept;
+    const std::vector<std::pair<short, short>>& grid_dirty_tiles() const noexcept { return grid_dirty_tiles_; }
+    std::vector<std::pair<short, short>> take_grid_dirty_tiles();
+    void clear_grid_dirty_tiles() noexcept;
     void move_entities_from(GameWorld& source);
     const PixieData* configure_existing_entity(walker& entity, Order order, std::int32_t family);
     void set_entity_derived_stats(walker* entity, Order order, std::int32_t family);
     void set_detach_callback(std::function<void()> callback);
+    char damage_tile(short xloc, short yloc);
 
     bool query_passable(float x, float y, walker* ob);
     bool query_object_passable(float x, float y, walker* ob);
@@ -214,6 +221,10 @@ public:
     short allied_mode = 0;
     short current_scenario = 0;
     int guy_id_counter = 0;
+    std::uint8_t current_palette_id = 0;
+    bool pending_exit_prompt = false;
+    bool paused = false;
+    std::uint8_t pause_player_index = 0xff;
     std::set<int> completed_levels;
     std::function<std::unique_ptr<walker>(Order, std::int32_t)> entity_factory;
     std::function<const PixieData*(walker&, Order, std::int32_t)> entity_configurator;
@@ -236,6 +247,7 @@ private:
     std::uint32_t next_entity_id_ = 1;
     bool entity_tracking_dirty_ = false;
     std::vector<std::uint32_t> removed_entity_ids_;
+    std::vector<std::pair<short, short>> grid_dirty_tiles_;
     // Main-thread only. Future networking I/O must queue work onto the game loop
     // thread before reading or mutating GameWorld state. The cache is derived
     // from the active entity lists and repaired internally by GameWorld.

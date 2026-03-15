@@ -14,7 +14,6 @@ enum class EventKind : std::uint32_t {
     SetPalette = 11,   // Request palette change: a=0 normal, a=1 blue/freeze
     RequestRedraw = 12,// Force full screen redraw
     EndGame = 13,      // End game: a=ending type, b=next_level (-1 if unset)
-    DamageTile = 14,   // Damage tile at grid position: a=x_pixel, b=y_pixel
     SetEnd = 15,       // Signal level end: screen sets end=1
     RequestExitConfirmation = 16, // Request prompt: a=dest_level, b=1 for withdraw prompt
     WithdrawToLevel = 17, // Request withdraw transition: a=dest_level
