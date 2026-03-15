@@ -37,6 +37,11 @@ constexpr std::size_t kZlibChunkSize = 4096;
 constexpr std::uint8_t kDeltaEntityHasDirtyWord1Flag = 0x01;
 constexpr EntityDirtyMask kAllEntityFieldsDirty = {~0ULL, ~0ULL};
 
+bool entity_delta_is_removal(const og::sim::EntitySnapshot& snapshot) noexcept
+{
+    return snapshot.dirty_mask[0] == 0 && snapshot.dirty_mask[1] == 0;
+}
+
 class ByteReader
 {
 public:
@@ -692,34 +697,6 @@ og::sim::EntitySnapshot deserialize_delta_entity(ByteReader& reader)
     return snapshot;
 }
 
-void serialize_removed_entity(std::vector<std::uint8_t>& buffer, std::uint32_t entity_id)
-{
-    append_u32(buffer, entity_id);
-    append_u8(buffer, 0);
-    append_u64(buffer, 0);
-}
-
-std::uint32_t deserialize_removed_entity(ByteReader& reader)
-{
-    const std::uint32_t entity_id = reader.read_u32("removed_entity.entity_id");
-    const std::uint8_t flags = reader.read_u8("removed_entity.flags");
-    if ((flags & ~kDeltaEntityHasDirtyWord1Flag) != 0)
-    {
-        throw std::runtime_error("delta payload: unknown removed-entity flags");
-    }
-
-    const std::uint64_t dirty0 = reader.read_u64("removed_entity.dirty_mask0");
-    const std::uint64_t dirty1 =
-        ((flags & kDeltaEntityHasDirtyWord1Flag) != 0)
-            ? reader.read_u64("removed_entity.dirty_mask1")
-            : 0ULL;
-    if (dirty0 != 0 || dirty1 != 0)
-    {
-        throw std::runtime_error("delta payload: removed entity sentinel carried dirty fields");
-    }
-    return entity_id;
-}
-
 void serialize_keyframe_entity_list(std::vector<std::uint8_t>& buffer,
                                     const std::vector<og::sim::EntitySnapshot>& entities)
 {
@@ -757,36 +734,19 @@ void serialize_delta_entity_list(std::vector<std::uint8_t>& buffer,
 }
 
 void deserialize_delta_entity_list(ByteReader& reader,
-                                   std::vector<og::sim::EntitySnapshot>& entities)
+                                   std::vector<og::sim::EntitySnapshot>& entities,
+                                   std::vector<std::uint32_t>* removed_entity_ids = nullptr)
 {
     const std::uint32_t count = reader.read_u32("delta_entity_count");
     entities.clear();
     entities.reserve(count);
     for (std::uint32_t i = 0; i < count; ++i)
-        entities.push_back(deserialize_delta_entity(reader));
-}
-
-void serialize_removed_entity_list(std::vector<std::uint8_t>& buffer,
-                                   const std::vector<std::uint32_t>& removed_entity_ids)
-{
-    if (removed_entity_ids.size() > std::numeric_limits<std::uint32_t>::max())
     {
-        throw std::runtime_error("delta serialization: too many removed entities");
+        og::sim::EntitySnapshot entity = deserialize_delta_entity(reader);
+        if (removed_entity_ids != nullptr && entity_delta_is_removal(entity))
+            removed_entity_ids->push_back(entity.entity_id);
+        entities.push_back(std::move(entity));
     }
-
-    append_u32(buffer, static_cast<std::uint32_t>(removed_entity_ids.size()));
-    for (std::uint32_t entity_id : removed_entity_ids)
-        serialize_removed_entity(buffer, entity_id);
-}
-
-void deserialize_removed_entity_list(ByteReader& reader,
-                                     std::vector<std::uint32_t>& removed_entity_ids)
-{
-    const std::uint32_t count = reader.read_u32("removed_entity_count");
-    removed_entity_ids.clear();
-    removed_entity_ids.reserve(count);
-    for (std::uint32_t i = 0; i < count; ++i)
-        removed_entity_ids.push_back(deserialize_removed_entity(reader));
 }
 
 std::vector<std::uint8_t> compress_zlib_payload(const std::vector<std::uint8_t>& payload)
@@ -915,7 +875,6 @@ std::vector<std::uint8_t> serialize_delta_payload(const og::sim::WorldSnapshot& 
     serialize_delta_entity_list(payload, delta.oblist);
     serialize_delta_entity_list(payload, delta.fxlist);
     serialize_delta_entity_list(payload, delta.weaplist);
-    serialize_removed_entity_list(payload, delta.removed_entity_ids);
     return payload;
 }
 
@@ -936,10 +895,10 @@ og::sim::WorldSnapshot deserialize_delta_payload(const std::vector<std::uint8_t>
     deserialize_world_state(reader, delta);
     deserialize_grid_state(reader, delta);
     deserialize_guy_snapshots(reader, delta.guy_snapshots);
-    deserialize_delta_entity_list(reader, delta.oblist);
-    deserialize_delta_entity_list(reader, delta.fxlist);
-    deserialize_delta_entity_list(reader, delta.weaplist);
-    deserialize_removed_entity_list(reader, delta.removed_entity_ids);
+    delta.removed_entity_ids.clear();
+    deserialize_delta_entity_list(reader, delta.oblist, &delta.removed_entity_ids);
+    deserialize_delta_entity_list(reader, delta.fxlist, &delta.removed_entity_ids);
+    deserialize_delta_entity_list(reader, delta.weaplist, &delta.removed_entity_ids);
     reader.finish("delta payload");
     return delta;
 }
@@ -974,20 +933,27 @@ og::sim::EntitySnapshot* find_entity_snapshot_mutable(
     return it == entities.end() ? nullptr : &*it;
 }
 
-void remove_entity_from_all_lists(og::sim::WorldSnapshot& snapshot, std::uint32_t entity_id)
-{
-    (void)erase_entity_snapshot(snapshot.oblist, entity_id);
-    (void)erase_entity_snapshot(snapshot.fxlist, entity_id);
-    (void)erase_entity_snapshot(snapshot.weaplist, entity_id);
-}
-
 void apply_delta_entity_list(std::vector<og::sim::EntitySnapshot>& target,
                              std::vector<og::sim::EntitySnapshot>& list_a,
                              std::vector<og::sim::EntitySnapshot>& list_b,
-                             const std::vector<og::sim::EntitySnapshot>& delta_entities)
+                             const std::vector<og::sim::EntitySnapshot>& delta_entities,
+                             std::vector<std::uint32_t>& removed_entity_ids)
 {
     for (const auto& delta_entity : delta_entities)
     {
+        if (entity_delta_is_removal(delta_entity))
+        {
+            (void)erase_entity_snapshot(target, delta_entity.entity_id);
+            (void)erase_entity_snapshot(list_a, delta_entity.entity_id);
+            (void)erase_entity_snapshot(list_b, delta_entity.entity_id);
+            if (std::find(removed_entity_ids.begin(), removed_entity_ids.end(),
+                          delta_entity.entity_id) == removed_entity_ids.end())
+            {
+                removed_entity_ids.push_back(delta_entity.entity_id);
+            }
+            continue;
+        }
+
         og::sim::EntitySnapshot* baseline_entity =
             find_entity_snapshot_mutable(target, delta_entity.entity_id);
         if (baseline_entity == nullptr)
@@ -2050,17 +2016,15 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.full_grid_data = delta.full_grid_data;
     baseline.grid_dirty_tiles = delta.grid_dirty_tiles;
     baseline.guy_snapshots = delta.guy_snapshots;
-    baseline.removed_entity_ids = delta.removed_entity_ids;
-
-    for (std::uint32_t removed_id : delta.removed_entity_ids)
-        remove_entity_from_all_lists(baseline, removed_id);
+    baseline.removed_entity_ids.clear();
+    baseline.removed_entity_ids.reserve(delta.removed_entity_ids.size());
 
     apply_delta_entity_list(baseline.oblist, baseline.fxlist, baseline.weaplist,
-                            delta.oblist);
+                            delta.oblist, baseline.removed_entity_ids);
     apply_delta_entity_list(baseline.fxlist, baseline.oblist, baseline.weaplist,
-                            delta.fxlist);
+                            delta.fxlist, baseline.removed_entity_ids);
     apply_delta_entity_list(baseline.weaplist, baseline.oblist, baseline.fxlist,
-                            delta.weaplist);
+                            delta.weaplist, baseline.removed_entity_ids);
 }
 
 SimEventBatch drain_sim_events(SimEventLog& log)

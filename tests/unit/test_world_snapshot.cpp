@@ -220,6 +220,11 @@ const og::sim::EntitySnapshot* find_entity_snapshot(
     return it == entities.end() ? nullptr : &*it;
 }
 
+bool is_removed_entity_sentinel(const og::sim::EntitySnapshot& snapshot)
+{
+    return snapshot.dirty_mask[0] == 0 && snapshot.dirty_mask[1] == 0;
+}
+
 void set_mask_bit(
     std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>& mask,
     std::uint8_t bit)
@@ -1637,6 +1642,27 @@ TEST(WorldSnapshot, empty_delta_roundtrip_preserves_world_state_without_entities
     EXPECT_EQ(current.current_palette_id, decoded.current_palette_id);
 }
 
+TEST(WorldSnapshot, serialize_delta_roundtrip_preserves_zero_mask_removal_sentinel)
+{
+    og::sim::WorldSnapshot delta;
+    delta.tick_count = 41;
+    delta.rng_state = 0x1234abcdU;
+
+    og::sim::EntitySnapshot removed;
+    removed.entity_id = 77;
+    removed.guy_id = og::sim::kNoGuyId;
+    delta.oblist.push_back(removed);
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_delta(bytes.data(), bytes.size());
+
+    ASSERT_EQ(1u, decoded.oblist.size());
+    EXPECT_EQ(77u, decoded.oblist.front().entity_id);
+    EXPECT_TRUE(is_removed_entity_sentinel(decoded.oblist.front()));
+    EXPECT_EQ(std::vector<std::uint32_t>({77u}), decoded.removed_entity_ids);
+}
+
 TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_protocol_and_format_version)
 {
     TestGameWorld fx;
@@ -1816,6 +1842,40 @@ TEST(WorldSnapshot, apply_delta_with_all_fields_dirty_matches_current_world_stat
     expect_world_snapshot_eq(source_keyframe, mirror_keyframe);
 }
 
+TEST(WorldSnapshot, apply_delta_removes_entity_from_baseline_on_zero_mask_sentinel)
+{
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    configure_snapshot_test_services(world);
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(nullptr, foe);
+
+    og::sim::WorldSnapshot baseline = og::sim::capture_keyframe_snapshot(world);
+    const std::uint32_t actor_id = actor->entity_id();
+    const std::uint32_t foe_id = foe->entity_id();
+
+    og::sim::WorldSnapshot delta = baseline;
+    delta.tick_count = baseline.tick_count + 1;
+    delta.oblist.clear();
+    delta.fxlist.clear();
+    delta.weaplist.clear();
+    delta.removed_entity_ids.clear();
+
+    og::sim::EntitySnapshot removed;
+    removed.entity_id = foe_id;
+    removed.guy_id = og::sim::kNoGuyId;
+    delta.oblist.push_back(removed);
+
+    og::sim::apply_delta(baseline, delta);
+
+    EXPECT_NE(nullptr, find_entity_snapshot(baseline.oblist, actor_id));
+    EXPECT_EQ(nullptr, find_entity_snapshot(baseline.oblist, foe_id));
+    EXPECT_EQ(std::vector<std::uint32_t>({foe_id}), baseline.removed_entity_ids);
+}
+
 TEST(WorldSnapshot, apply_delta_accumulates_multi_tick_changes_with_spawn_and_removal)
 {
     TestGameWorld source_fx;
@@ -1882,6 +1942,10 @@ TEST(WorldSnapshot, apply_delta_accumulates_multi_tick_changes_with_spawn_and_re
               std::find(decoded.removed_entity_ids.begin(),
                         decoded.removed_entity_ids.end(),
                         removed_foe_id));
+    const og::sim::EntitySnapshot* removed_foe_delta =
+        find_entity_snapshot(decoded.oblist, removed_foe_id);
+    ASSERT_NE(nullptr, removed_foe_delta);
+    EXPECT_TRUE(is_removed_entity_sentinel(*removed_foe_delta));
 
     const og::sim::EntitySnapshot* slime_delta =
         find_entity_snapshot(decoded.oblist, slime_id);

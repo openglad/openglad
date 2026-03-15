@@ -5,6 +5,9 @@
 namespace
 {
 
+using EntityListKind = og::sim::SnapshotEntityListKind;
+using PendingRemovedEntity = og::sim::PendingRemovedEntity;
+
 bool contains_entity_id(const std::vector<std::uint32_t>& ids,
                         std::uint32_t entity_id)
 {
@@ -21,19 +24,37 @@ bool dirty_mask_has_bits(const og::sim::EntitySnapshotDirtyMask& mask) noexcept
     return mask[0] != 0 || mask[1] != 0;
 }
 
-void collect_snapshot_entity_ids(const og::sim::WorldSnapshot& snapshot,
-                                 std::unordered_set<std::uint32_t>& ids)
+bool is_removed_entity_sentinel(const og::sim::EntitySnapshot& entity) noexcept
 {
-    ids.clear();
-    ids.reserve(snapshot.oblist.size() + snapshot.fxlist.size() +
-                snapshot.weaplist.size());
+    return entity.dirty_mask[0] == 0 && entity.dirty_mask[1] == 0;
+}
 
-    for (const auto& entity : snapshot.oblist)
-        ids.insert(entity.entity_id);
-    for (const auto& entity : snapshot.fxlist)
-        ids.insert(entity.entity_id);
-    for (const auto& entity : snapshot.weaplist)
-        ids.insert(entity.entity_id);
+bool contains_removed_entity(const std::vector<PendingRemovedEntity>& removed_entities,
+                             std::uint32_t entity_id)
+{
+    return std::find_if(
+               removed_entities.begin(), removed_entities.end(),
+               [entity_id](const PendingRemovedEntity& removed_entity) {
+                   return removed_entity.entity_id == entity_id;
+               }) != removed_entities.end();
+}
+
+void collect_snapshot_entity_lists(
+    const og::sim::WorldSnapshot& snapshot,
+    std::unordered_map<std::uint32_t, EntityListKind>& entity_lists)
+{
+    entity_lists.clear();
+    entity_lists.reserve(snapshot.oblist.size() + snapshot.fxlist.size() +
+                         snapshot.weaplist.size());
+
+    const auto collect = [&entity_lists](const auto& entities, EntityListKind list_kind) {
+        for (const auto& entity : entities)
+            entity_lists[entity.entity_id] = list_kind;
+    };
+
+    collect(snapshot.oblist, EntityListKind::Ob);
+    collect(snapshot.fxlist, EntityListKind::Fx);
+    collect(snapshot.weaplist, EntityListKind::Weap);
 }
 
 std::vector<og::sim::EntitySnapshot> select_delta_entities(
@@ -69,6 +90,46 @@ std::vector<og::sim::EntitySnapshot> select_delta_entities(
     return selected;
 }
 
+void append_removed_entity_sentinels(
+    std::vector<og::sim::EntitySnapshot>& entities,
+    const std::vector<PendingRemovedEntity>& removed_entities,
+    EntityListKind list_kind)
+{
+    for (const PendingRemovedEntity& removed_entity : removed_entities)
+    {
+        if (removed_entity.list_kind != list_kind)
+            continue;
+
+        og::sim::EntitySnapshot sentinel;
+        sentinel.entity_id = removed_entity.entity_id;
+        sentinel.guy_id = og::sim::kNoGuyId;
+        entities.push_back(sentinel);
+    }
+}
+
+void collect_removed_entity_ids(
+    const std::vector<og::sim::EntitySnapshot>& entities,
+    std::vector<std::uint32_t>& removed_entity_ids)
+{
+    for (const auto& entity : entities)
+    {
+        if (is_removed_entity_sentinel(entity))
+            removed_entity_ids.push_back(entity.entity_id);
+    }
+}
+
+void remember_sent_entity_lists(og::sim::PerClientState& client_state,
+                                const std::vector<og::sim::EntitySnapshot>& entities,
+                                EntityListKind list_kind)
+{
+    for (const auto& entity : entities)
+    {
+        if (is_removed_entity_sentinel(entity))
+            continue;
+        client_state.known_entity_lists[entity.entity_id] = list_kind;
+    }
+}
+
 } // namespace
 
 namespace og::sim {
@@ -78,8 +139,8 @@ void reset_client_snapshot_state(PerClientState& client_state) noexcept
     client_state.last_sent_tick = 0;
     client_state.accumulated_dirty.clear();
     client_state.new_entity_ids.clear();
-    client_state.removed_entity_ids.clear();
-    client_state.known_entity_ids.clear();
+    client_state.removed_entities.clear();
+    client_state.known_entity_lists.clear();
 }
 
 void seed_client_snapshot_baseline(PerClientState& client_state,
@@ -87,17 +148,18 @@ void seed_client_snapshot_baseline(PerClientState& client_state,
 {
     reset_client_snapshot_state(client_state);
     client_state.last_sent_tick = keyframe.tick_count;
-    collect_snapshot_entity_ids(keyframe, client_state.known_entity_ids);
+    collect_snapshot_entity_lists(keyframe, client_state.known_entity_lists);
 }
 
 void accumulate_snapshot_for_client(PerClientState& client_state,
                                     const WorldSnapshot& snapshot)
 {
-    auto accumulate_entities = [&client_state](const auto& entities) {
+    auto accumulate_entities = [&client_state](const auto& entities,
+                                               EntityListKind list_kind) {
         for (const auto& entity : entities)
         {
-            if (client_state.known_entity_ids.find(entity.entity_id) ==
-                client_state.known_entity_ids.end())
+            auto known_it = client_state.known_entity_lists.find(entity.entity_id);
+            if (known_it == client_state.known_entity_lists.end())
             {
                 if (!contains_entity_id(client_state.new_entity_ids,
                                         entity.entity_id))
@@ -107,6 +169,7 @@ void accumulate_snapshot_for_client(PerClientState& client_state,
                 continue;
             }
 
+            known_it->second = list_kind;
             if (contains_entity_id(client_state.new_entity_ids, entity.entity_id))
                 continue;
 
@@ -120,9 +183,9 @@ void accumulate_snapshot_for_client(PerClientState& client_state,
         }
     };
 
-    accumulate_entities(snapshot.oblist);
-    accumulate_entities(snapshot.fxlist);
-    accumulate_entities(snapshot.weaplist);
+    accumulate_entities(snapshot.oblist, EntityListKind::Ob);
+    accumulate_entities(snapshot.fxlist, EntityListKind::Fx);
+    accumulate_entities(snapshot.weaplist, EntityListKind::Weap);
 
     for (std::uint32_t removed_id : snapshot.removed_entity_ids)
     {
@@ -133,11 +196,18 @@ void accumulate_snapshot_for_client(PerClientState& client_state,
             continue;
         }
 
-        if (client_state.known_entity_ids.erase(removed_id) == 0)
+        const auto known_it = client_state.known_entity_lists.find(removed_id);
+        if (known_it == client_state.known_entity_lists.end())
             continue;
 
-        if (!contains_entity_id(client_state.removed_entity_ids, removed_id))
-            client_state.removed_entity_ids.push_back(removed_id);
+        const PendingRemovedEntity removed_entity = {
+            removed_id,
+            known_it->second,
+        };
+        client_state.known_entity_lists.erase(known_it);
+
+        if (!contains_removed_entity(client_state.removed_entities, removed_id))
+            client_state.removed_entities.push_back(removed_entity);
     }
 }
 
@@ -148,15 +218,27 @@ WorldSnapshot consume_delta_snapshot_for_client(PerClientState& client_state,
     delta.oblist = select_delta_entities(snapshot.oblist, client_state);
     delta.fxlist = select_delta_entities(snapshot.fxlist, client_state);
     delta.weaplist = select_delta_entities(snapshot.weaplist, client_state);
-    delta.removed_entity_ids = client_state.removed_entity_ids;
+    append_removed_entity_sentinels(delta.oblist, client_state.removed_entities,
+                                    EntityListKind::Ob);
+    append_removed_entity_sentinels(delta.fxlist, client_state.removed_entities,
+                                    EntityListKind::Fx);
+    append_removed_entity_sentinels(delta.weaplist, client_state.removed_entities,
+                                    EntityListKind::Weap);
 
-    for (std::uint32_t entity_id : client_state.new_entity_ids)
-        client_state.known_entity_ids.insert(entity_id);
+    delta.removed_entity_ids.clear();
+    delta.removed_entity_ids.reserve(client_state.removed_entities.size());
+    collect_removed_entity_ids(delta.oblist, delta.removed_entity_ids);
+    collect_removed_entity_ids(delta.fxlist, delta.removed_entity_ids);
+    collect_removed_entity_ids(delta.weaplist, delta.removed_entity_ids);
+
+    remember_sent_entity_lists(client_state, delta.oblist, EntityListKind::Ob);
+    remember_sent_entity_lists(client_state, delta.fxlist, EntityListKind::Fx);
+    remember_sent_entity_lists(client_state, delta.weaplist, EntityListKind::Weap);
 
     client_state.last_sent_tick = snapshot.tick_count;
     client_state.accumulated_dirty.clear();
     client_state.new_entity_ids.clear();
-    client_state.removed_entity_ids.clear();
+    client_state.removed_entities.clear();
     return delta;
 }
 
