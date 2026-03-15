@@ -97,6 +97,18 @@ TEST(InputStateNet, roundtrip_preserves_state_and_movement_helpers)
     }
 }
 
+TEST(InputStateNet, roundtrip_preserves_transport_tick)
+{
+    const InputState input = make_directional_pattern();
+    const auto bytes = og::sim::serialize_input(0x11223344u, input);
+
+    const std::optional<og::sim::InputStateMessage> decoded =
+        og::sim::deserialize_input_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(0x11223344u, decoded->tick);
+    expect_input_state_eq(input, decoded->input);
+}
+
 TEST(InputStateNet, serialize_emits_expected_wire_format)
 {
     InputState input{};
@@ -115,7 +127,8 @@ TEST(InputStateNet, serialize_emits_expected_wire_format)
     input.quit_requested = true;
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedInputStateSize> expected = {
-        0x03,
+        0x01, 0x03, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x01,
         0x01, 0x80, 0x01, 0x80,
         0x02, 0x05, 0x04, 0x08,
         0x80, 0x00, 0x08, 0x10,
@@ -129,7 +142,8 @@ TEST(InputStateNet, serialize_emits_expected_wire_format)
 TEST(InputStateNet, deserialize_reads_expected_wire_format)
 {
     constexpr std::array<std::uint8_t, og::sim::kSerializedInputStateSize> bytes = {
-        0x02,
+        0x01, 0x03, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00,
         0x24, 0x00, 0x40, 0x02,
         0x00, 0x41, 0x10, 0x00,
         0x08, 0x88, 0x00, 0x20,
@@ -154,7 +168,7 @@ TEST(InputStateNet, deserialize_reads_expected_wire_format)
     expect_input_state_eq(expected, *decoded);
 }
 
-TEST(InputStateNet, deserialize_rejects_wrong_size_and_version)
+TEST(InputStateNet, deserialize_rejects_wrong_size_version_type_and_length)
 {
     InputState input{};
     const auto bytes = og::sim::serialize_input(input);
@@ -165,7 +179,15 @@ TEST(InputStateNet, deserialize_rejects_wrong_size_and_version)
             .has_value());
 
     auto bad_version = bytes;
-    bad_version[0] = static_cast<std::uint8_t>(((og::sim::kInputStateProtocolVersion + 1) << 1)
-        | (bad_version[0] & 0x01u));
+    bad_version[0] = static_cast<std::uint8_t>(og::sim::kInputStateProtocolVersion + 1);
     ASSERT_FALSE(og::sim::deserialize_input(bad_version).has_value());
+
+    auto bad_type = bytes;
+    bad_type[1] = og::sim::kSnapshotMessageType;
+    ASSERT_FALSE(og::sim::deserialize_input(bad_type).has_value());
+
+    auto bad_length = bytes;
+    bad_length[2] = 0;
+    bad_length[3] = 0;
+    ASSERT_FALSE(og::sim::deserialize_input(bad_length).has_value());
 }

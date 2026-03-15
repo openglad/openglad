@@ -32,7 +32,7 @@ using GuyStorage = std::unordered_map<std::int32_t, std::unique_ptr<guy>>;
 using GuyLookup = std::unordered_map<std::int32_t, guy*>;
 using EntityDirtyMask = og::sim::EntitySnapshotDirtyMask;
 
-constexpr std::size_t kMessageHeaderSize = 8;
+constexpr std::size_t kMessageHeaderSize = og::sim::kTransportHeaderSize;
 constexpr std::size_t kZlibChunkSize = 4096;
 constexpr std::size_t kMaxDecompressedPayloadBytes = 4U * 1024U * 1024U;
 constexpr std::uint32_t kMaxSnapshotStringBytes = 1024;
@@ -1813,10 +1813,9 @@ std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot)
 
     std::vector<std::uint8_t> bytes;
     bytes.reserve(kMessageHeaderSize + compressed.size());
-    append_u8(bytes, kSnapshotProtocolVersion);
-    append_u8(bytes, kSnapshotMessageType);
-    append_u16(bytes, static_cast<std::uint16_t>(compressed.size()));
-    append_u32(bytes, snapshot.tick_count);
+    append_transport_header(bytes, kSnapshotMessageType,
+                            static_cast<std::uint16_t>(compressed.size()),
+                            snapshot.tick_count);
     append_bytes(bytes, compressed.data(), compressed.size());
     return bytes;
 }
@@ -1827,42 +1826,34 @@ WorldSnapshot deserialize_snapshot(const std::uint8_t* data, std::size_t size)
     {
         throw std::runtime_error("snapshot message: truncated header");
     }
-    if (data[0] != kSnapshotProtocolVersion)
+    og::sim::TransportEnvelope envelope;
+    if (!decode_transport_envelope(std::span<const std::uint8_t>(data, size),
+                                   envelope))
     {
         throw std::runtime_error(
             "snapshot message: unsupported protocol version " +
             std::to_string(data[0]));
     }
-
-    if (data[1] != kSnapshotMessageType)
+    if (envelope.header_type != kSnapshotMessageType ||
+        envelope.message_type != kSnapshotMessageType)
     {
         throw std::runtime_error(
             "snapshot message: unexpected message type " +
-            std::to_string(data[1]));
+            std::to_string(envelope.message_type));
     }
-
-    const std::uint16_t payload_length =
-        static_cast<std::uint16_t>(data[2]) |
-        (static_cast<std::uint16_t>(data[3]) << 8);
-    if (size != kMessageHeaderSize + payload_length)
+    if (size != kMessageHeaderSize + envelope.payload_length)
     {
         throw std::runtime_error("snapshot message: payload length mismatch");
     }
 
-    const std::uint32_t server_tick =
-        static_cast<std::uint32_t>(data[4]) |
-        (static_cast<std::uint32_t>(data[5]) << 8) |
-        (static_cast<std::uint32_t>(data[6]) << 16) |
-        (static_cast<std::uint32_t>(data[7]) << 24);
-
     const std::vector<std::uint8_t> payload =
-        decompress_zlib_payload(data + kMessageHeaderSize, payload_length);
+        decompress_zlib_payload(data + kMessageHeaderSize, envelope.payload_length);
     WorldSnapshot snapshot = deserialize_snapshot_payload(payload);
-    if (snapshot.tick_count != server_tick)
+    if (snapshot.tick_count != envelope.tick)
     {
         throw std::runtime_error(
             "snapshot message: header/server tick mismatch (" +
-            std::to_string(server_tick) + " vs " +
+            std::to_string(envelope.tick) + " vs " +
             std::to_string(snapshot.tick_count) + ")");
     }
 
@@ -1884,13 +1875,13 @@ std::vector<std::uint8_t> serialize_delta(const WorldSnapshot& delta)
 
     std::vector<std::uint8_t> bytes;
     bytes.reserve(kMessageHeaderSize + wire_payload.size());
-    append_u8(bytes, kSnapshotProtocolVersion);
-    append_u8(bytes,
-              static_cast<std::uint8_t>(
-                  kDeltaSnapshotMessageType |
-                  (use_uncompressed ? kDeltaPayloadUncompressedFlag : 0U)));
-    append_u16(bytes, static_cast<std::uint16_t>(wire_payload.size()));
-    append_u32(bytes, delta.tick_count);
+    append_transport_header(
+        bytes,
+        static_cast<std::uint8_t>(
+            kDeltaSnapshotMessageType |
+            (use_uncompressed ? kDeltaPayloadUncompressedFlag : 0U)),
+        static_cast<std::uint16_t>(wire_payload.size()),
+        delta.tick_count);
     append_bytes(bytes, wire_payload.data(), wire_payload.size());
     return bytes;
 }
@@ -1901,38 +1892,28 @@ WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size)
     {
         throw std::runtime_error("delta message: truncated header");
     }
-    if (data[0] != kSnapshotProtocolVersion)
+    og::sim::TransportEnvelope envelope;
+    if (!decode_transport_envelope(std::span<const std::uint8_t>(data, size),
+                                   envelope))
     {
         throw std::runtime_error(
             "delta message: unsupported protocol version " +
             std::to_string(data[0]));
     }
 
-    const std::uint8_t header_type = data[1];
+    const std::uint8_t header_type = envelope.header_type;
     const bool payload_is_uncompressed =
         (header_type & kDeltaPayloadUncompressedFlag) != 0;
-    const std::uint8_t message_type =
-        static_cast<std::uint8_t>(header_type & ~kDeltaPayloadUncompressedFlag);
-    if (message_type != kDeltaSnapshotMessageType)
+    if (envelope.message_type != kDeltaSnapshotMessageType)
     {
         throw std::runtime_error(
             "delta message: unexpected message type " +
-            std::to_string(message_type));
+            std::to_string(envelope.message_type));
     }
-
-    const std::uint16_t payload_length =
-        static_cast<std::uint16_t>(data[2]) |
-        (static_cast<std::uint16_t>(data[3]) << 8);
-    if (size != kMessageHeaderSize + payload_length)
+    if (size != kMessageHeaderSize + envelope.payload_length)
     {
         throw std::runtime_error("delta message: payload length mismatch");
     }
-
-    const std::uint32_t server_tick =
-        static_cast<std::uint32_t>(data[4]) |
-        (static_cast<std::uint32_t>(data[5]) << 8) |
-        (static_cast<std::uint32_t>(data[6]) << 16) |
-        (static_cast<std::uint32_t>(data[7]) << 24);
 
     std::vector<std::uint8_t> payload;
     if (payload_is_uncompressed)
@@ -1941,15 +1922,16 @@ WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size)
     }
     else
     {
-        payload = decompress_zlib_payload(data + kMessageHeaderSize, payload_length);
+        payload = decompress_zlib_payload(data + kMessageHeaderSize,
+                                          envelope.payload_length);
     }
 
     WorldSnapshot delta = deserialize_delta_payload(payload);
-    if (delta.tick_count != server_tick)
+    if (delta.tick_count != envelope.tick)
     {
         throw std::runtime_error(
             "delta message: header/server tick mismatch (" +
-            std::to_string(server_tick) + " vs " +
+            std::to_string(envelope.tick) + " vs " +
             std::to_string(delta.tick_count) + ")");
     }
 

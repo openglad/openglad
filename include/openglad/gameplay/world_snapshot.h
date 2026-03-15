@@ -7,6 +7,7 @@
 #include <openglad/core/order.h>
 #include <openglad/gameplay/dirty_field_bits.h>
 #include <openglad/gameplay/event.h>
+#include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/statistics.h>
 
 #include <array>
@@ -28,11 +29,10 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotProtocolVersion = 1;
 inline constexpr std::uint8_t kSnapshotFormatVersion = 1;
-inline constexpr std::uint8_t kSnapshotMessageType = 1;
-inline constexpr std::uint8_t kDeltaSnapshotMessageType = 2;
-inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x80;
+inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
+inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag =
+    kTransportPayloadUncompressedFlag;
 
 using EntitySnapshotDirtyMask =
     std::array<std::uint64_t, kEntitySnapshotDirtyMaskWords>;

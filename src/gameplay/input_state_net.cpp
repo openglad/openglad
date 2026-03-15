@@ -5,13 +5,11 @@
 namespace og::sim {
 namespace {
 
-constexpr std::uint8_t kQuitRequestedMask = 0x01;
-constexpr int kVersionShift = 1;
+constexpr std::uint8_t kQuitRequestedTrue = 0x01;
 
 static_assert(MAX_PLAYERS == 4);
 static_assert(NUM_INPUT_KEYS == 16);
 static_assert(kInputActionCount == NUM_INPUT_KEYS);
-static_assert(kInputStateProtocolVersion < (1u << (8 - kVersionShift)));
 
 std::uint32_t pack_player_bits(const PlayerInput& input)
 {
@@ -41,7 +39,7 @@ PlayerInput unpack_player_bits(std::uint32_t bits)
     return input;
 }
 
-void write_u32_le(std::array<std::uint8_t, kSerializedInputStateSize>& bytes,
+void write_u32_le(std::array<std::uint8_t, kSerializedInputMessageSize>& bytes,
                   std::size_t offset,
                   std::uint32_t value)
 {
@@ -61,48 +59,71 @@ std::uint32_t read_u32_le(std::span<const std::uint8_t> bytes, std::size_t offse
 
 } // namespace
 
-std::array<std::uint8_t, kSerializedInputStateSize>
+std::array<std::uint8_t, kSerializedInputMessageSize>
 serialize_input(const InputState& input)
 {
-    std::array<std::uint8_t, kSerializedInputStateSize> bytes{};
-    bytes[0] = static_cast<std::uint8_t>(kInputStateProtocolVersion << kVersionShift);
-    if (input.quit_requested)
-    {
-        bytes[0] |= kQuitRequestedMask;
-    }
+    return serialize_input(0, input);
+}
+
+std::array<std::uint8_t, kSerializedInputMessageSize>
+serialize_input(std::uint32_t tick, const InputState& input)
+{
+    std::array<std::uint8_t, kSerializedInputMessageSize> bytes{};
+    write_transport_header(bytes, kInputStateMessageType,
+                           static_cast<std::uint16_t>(kSerializedInputPayloadSize),
+                           tick);
+    bytes[kTransportHeaderSize] = input.quit_requested ? kQuitRequestedTrue : 0U;
 
     for (int player = 0; player < MAX_PLAYERS; ++player)
     {
-        const std::size_t offset = 1 + (static_cast<std::size_t>(player) * 4);
+        const std::size_t offset =
+            kTransportHeaderSize + 1 + (static_cast<std::size_t>(player) * 4);
         write_u32_le(bytes, offset, pack_player_bits(input.players[player]));
     }
 
     return bytes;
 }
 
-std::optional<InputState> deserialize_input(std::span<const std::uint8_t> bytes)
+std::optional<InputStateMessage> deserialize_input_message(
+    std::span<const std::uint8_t> bytes)
 {
-    if (bytes.size() != kSerializedInputStateSize)
+    if (bytes.size() != kSerializedInputMessageSize)
     {
         return std::nullopt;
     }
 
-    const std::uint8_t header = bytes[0];
-    if ((header >> kVersionShift) != kInputStateProtocolVersion)
+    TransportEnvelope envelope;
+    if (!decode_transport_envelope(bytes, envelope) ||
+        envelope.header_type != kInputStateMessageType ||
+        envelope.message_type != kInputStateMessageType ||
+        envelope.payload_length != kSerializedInputPayloadSize)
     {
         return std::nullopt;
     }
 
-    InputState input{};
-    input.quit_requested = (header & kQuitRequestedMask) != 0;
+    InputStateMessage message;
+    message.tick = envelope.tick;
+    message.input.quit_requested =
+        bytes[kTransportHeaderSize] == kQuitRequestedTrue;
 
     for (int player = 0; player < MAX_PLAYERS; ++player)
     {
-        const std::size_t offset = 1 + (static_cast<std::size_t>(player) * 4);
-        input.players[player] = unpack_player_bits(read_u32_le(bytes, offset));
+        const std::size_t offset =
+            kTransportHeaderSize + 1 + (static_cast<std::size_t>(player) * 4);
+        message.input.players[player] =
+            unpack_player_bits(read_u32_le(bytes, offset));
     }
 
-    return input;
+    return message;
+}
+
+std::optional<InputState> deserialize_input(std::span<const std::uint8_t> bytes)
+{
+    const std::optional<InputStateMessage> message =
+        deserialize_input_message(bytes);
+    if (!message.has_value())
+        return std::nullopt;
+    return message->input;
 }
 
 } // namespace og::sim

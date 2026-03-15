@@ -1,6 +1,7 @@
 #pragma once
 
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/net_transport.h>
 
 #include <array>
 #include <cstddef>
@@ -10,15 +11,31 @@
 
 namespace og::sim {
 
-inline constexpr std::uint8_t kInputStateProtocolVersion = 1;
-inline constexpr std::size_t kSerializedInputStateSize = 17;
+inline constexpr std::uint8_t kInputStateProtocolVersion = kNetworkProtocolVersion;
+inline constexpr std::size_t kSerializedInputPayloadSize = 17;
+inline constexpr std::size_t kSerializedInputMessageSize =
+    kTransportHeaderSize + kSerializedInputPayloadSize;
+inline constexpr std::size_t kSerializedInputStateSize =
+    kSerializedInputMessageSize;
+
+struct InputStateMessage {
+    std::uint32_t tick = 0;
+    InputState input = {};
+};
 
 // Wire format:
-// - byte 0: bits 1-7 protocol version, bit 0 quit_requested
-// - bytes 1-16: four little-endian player bitfields; bits 0-15 map held[],
+// - bytes 0-7: shared transport envelope
+// - byte 8: quit_requested
+// - bytes 9-24: four little-endian player bitfields; bits 0-15 map held[],
 //   bits 16-31 map pressed[].
-std::array<std::uint8_t, kSerializedInputStateSize>
+std::array<std::uint8_t, kSerializedInputMessageSize>
 serialize_input(const InputState& input);
+
+std::array<std::uint8_t, kSerializedInputMessageSize>
+serialize_input(std::uint32_t tick, const InputState& input);
+
+std::optional<InputStateMessage>
+deserialize_input_message(std::span<const std::uint8_t> bytes);
 
 std::optional<InputState> deserialize_input(std::span<const std::uint8_t> bytes);
 
