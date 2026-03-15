@@ -410,3 +410,75 @@ TEST(Replay, phase11_roundtrip_matches_final_state_for_two_players)
 {
     run_replay_roundtrip(2);
 }
+
+TEST(Replay, initialize_replay_screen_rejects_unsafe_campaign_ids)
+{
+    ASSERT_TRUE(prepare_default_level_load())
+        << "default campaign should be restored before replay test";
+
+    screen& game_screen = *og::runtime::current_session->myscreen_;
+    configure_replay_team(game_screen.save_data, 1);
+
+    const std::string save_name = "test_phase11_replay_invalid_campaign";
+    ASSERT_TRUE(game_screen.save_data.save(save_name))
+        << "replay test save should succeed";
+
+    game_screen.world().rng_.state_ = kReplayLoadSeedBase;
+    ASSERT_TRUE(load_saved_game(save_name.c_str(), &game_screen) != 0)
+        << "initial replay load should succeed";
+
+    GameWorld& live_world = game_screen.world();
+    reset_loaded_world_for_replay(live_world);
+
+    const og::sim::WorldSnapshot initial_snapshot =
+        og::sim::peek_keyframe_snapshot(live_world);
+    const std::string mounted_before = get_mounted_campaign();
+    const std::string save_campaign_before = game_screen.save_data.current_campaign;
+    const short level_before = game_screen.save_data.scen_num;
+
+    const std::array<std::string_view, 6> unsafe_ids = {
+        "../escape",
+        "..\\escape",
+        "/tmp/escape",
+        "C:\\temp\\escape",
+        "org/openglad.gladiator",
+        "org.openglad:gladiator",
+    };
+
+    for (const std::string_view unsafe_id : unsafe_ids)
+    {
+        const std::vector<std::uint8_t> bytes = og::sim::serialize_replay(
+            {
+                .version = og::sim::kReplayFormatVersion,
+                .initial_rng_state = live_world.rng_.state_,
+                .level_id = live_world.id,
+                .player_count = 1,
+                .timer_wait = live_world.timer_wait,
+                .my_team = game_screen.save_data.my_team,
+                .allied_mode = game_screen.save_data.allied_mode,
+                .difficulty = live_world.difficulty,
+                .campaign_id = std::string(unsafe_id),
+            },
+            initial_snapshot,
+            {});
+
+        og::sim::ReplayPlayer player;
+        og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+        ASSERT_TRUE(player.load_bytes(bytes, &io_error))
+            << "crafted replay should deserialize before runtime validation";
+        ASSERT_EQ(og::sim::ReplayIoError::None, io_error);
+        ASSERT_EQ(unsafe_id, player.header().campaign_id);
+
+        EXPECT_FALSE(og::runtime::initialize_replay_screen(game_screen, player))
+            << "unsafe campaign id should be rejected: " << unsafe_id;
+        EXPECT_EQ(mounted_before, get_mounted_campaign())
+            << "unsafe campaign id should not change mounted campaign: "
+            << unsafe_id;
+        EXPECT_EQ(save_campaign_before, game_screen.save_data.current_campaign)
+            << "unsafe campaign id should not mutate save selection: "
+            << unsafe_id;
+        EXPECT_EQ(level_before, game_screen.save_data.scen_num)
+            << "unsafe campaign id should not mutate level selection: "
+            << unsafe_id;
+    }
+}

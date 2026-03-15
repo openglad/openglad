@@ -10,6 +10,7 @@
 #include <openglad/resources/io_common.h>
 
 #include <algorithm>
+#include <cctype>
 #include <vector>
 
 namespace
@@ -129,6 +130,19 @@ std::filesystem::path replay_output_path()
     (void)create_dir(replay_dir);
     return std::filesystem::path(replay_dir) / kLatestReplayFilename;
 }
+
+bool is_safe_replay_campaign_id(std::string_view campaign_id)
+{
+    if (campaign_id.empty())
+        return false;
+
+    return std::all_of(campaign_id.begin(),
+                       campaign_id.end(),
+                       [](unsigned char ch) {
+                           return std::isalnum(ch) || ch == '.' || ch == '_' ||
+                               ch == '-';
+                       });
+}
 } // namespace
 
 bool og::runtime::initialize_replay_screen(screen& game_screen,
@@ -137,7 +151,7 @@ bool og::runtime::initialize_replay_screen(screen& game_screen,
     const og::sim::ReplayHeader& header = player.header();
     const og::sim::WorldSnapshot& initial_snapshot = player.initial_snapshot();
 
-    if (header.campaign_id.empty())
+    if (!is_safe_replay_campaign_id(header.campaign_id))
         return false;
 
     if (mount_campaign_package_with_error(header.campaign_id) !=
@@ -196,7 +210,7 @@ void og::runtime::begin_replay_recording(screen& game_screen)
     og::runtime::current_session->replay_output_path_.clear();
 
     const std::string& campaign_id = game_screen.save_data.current_campaign;
-    if (campaign_id.empty())
+    if (!is_safe_replay_campaign_id(campaign_id))
         return;
 
     og::runtime::current_session->replay_output_path_ = replay_output_path();
