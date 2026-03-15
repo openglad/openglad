@@ -227,9 +227,6 @@ void og::runtime::begin_replay_recording(screen& game_screen)
     });
     og::runtime::current_session->replay_recorder_->record_initial_world(
         game_screen.world());
-    og::runtime::current_session->replay_recorder_->record_input(
-        game_screen.world().tick_count_ + 1u,
-        InputState{});
 }
 
 void og::runtime::record_replay_input(screen& game_screen, const InputState& input)

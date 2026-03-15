@@ -79,8 +79,7 @@ void glad_init()
     current_screen->timerstart = query_timer_control();
     og::runtime::begin_replay_recording(*current_screen);
 
-    g_frame_state().done = false;
-    g_frame_state().currentcycle = 0;
+    g_frame_state() = {};
     g_frame_state().cycletime = 3;
 }
 

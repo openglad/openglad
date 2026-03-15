@@ -4,6 +4,7 @@
 #include <thread>
 #include <vector>
 
+#include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/replay.h>
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/platform/game_loop.h>
@@ -145,9 +146,8 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
     glad_init();
     ASSERT_TRUE(og::runtime::current_session->replay_recorder_.has_value());
     EXPECT_EQ(replay_path, og::runtime::current_session->replay_output_path_);
-    ASSERT_EQ(1u, og::runtime::current_session->replay_recorder_->frame_count());
+    ASSERT_EQ(0u, og::runtime::current_session->replay_recorder_->frame_count());
     EXPECT_TRUE(og::runtime::current_session->replay_recorder_->has_initial_snapshot());
-    EXPECT_EQ(1u, og::runtime::current_session->replay_recorder_->frames().front().tick);
 
     GameLoopFrameState st;
     GameLoopDeps deps;
@@ -163,8 +163,8 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
     EXPECT_EQ(GameFrameResult::Continue,
               game_frame_with_result(*game_screen, st, deps));
     ASSERT_TRUE(og::runtime::current_session->replay_recorder_.has_value());
-    ASSERT_EQ(2u, og::runtime::current_session->replay_recorder_->frame_count());
-    EXPECT_EQ(2u, og::runtime::current_session->replay_recorder_->frames().back().tick);
+    ASSERT_EQ(1u, og::runtime::current_session->replay_recorder_->frame_count());
+    EXPECT_EQ(1u, og::runtime::current_session->replay_recorder_->frames().back().tick);
     ASSERT_TRUE(expected_after_tick_one.has_value());
 
     game_screen->world().end = 1;
@@ -179,7 +179,7 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
     ASSERT_EQ(og::sim::ReplayIoError::None, io_error);
     EXPECT_EQ(game_screen->world().id, player.header().level_id);
     EXPECT_EQ(game_screen->save_data.current_campaign, player.header().campaign_id);
-    ASSERT_EQ(2u, player.frame_count());
+    ASSERT_EQ(1u, player.frame_count());
     EXPECT_EQ(1u, player.frames().front().tick);
     EXPECT_EQ(og::sim::serialize_input(1u, InputState{}),
               og::sim::serialize_input(player.frames().front().tick,
@@ -198,6 +198,39 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
     game_screen->world().end = 0;
     game_screen->world().delete_objects();
     std::filesystem::remove(replay_path, ec);
+}
+
+TEST(GameLoop, game_frame_with_result_caps_accumulator_to_four_ticks_per_call)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    game_screen->save_data.save("test_game_loop_tick_cap");
+    short load_result = load_saved_game("test_game_loop_tick_cap", game_screen);
+    ASSERT_TRUE(load_result != 0) << "load_saved_game should succeed for tick-cap test";
+
+    GameLoopFrameState st;
+    st.initialized = true;
+    st.last_frame_time = SDL_GetTicks();
+    st.accumulated_time = og::sim::DEFAULT_SIM_TICK_MS * 6u;
+
+    int tick_count = 0;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.fixed_tick_ms = og::sim::DEFAULT_SIM_TICK_MS;
+    deps.after_act = [&tick_count](screen&) {
+        ++tick_count;
+    };
+
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(4, tick_count);
+    EXPECT_EQ(0u, st.accumulated_time);
+
+    game_screen->world().delete_objects();
 }
 
 

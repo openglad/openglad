@@ -13,6 +13,7 @@
 #pragma once
 
 #include "SDL.h"
+#include <cstdint>
 #include <functional>
 
 #include <openglad/interface/game_loop_state.h>
@@ -25,12 +26,16 @@ struct GameLoopDeps {
     std::function<void(const SDL_Event&)> handle_event;
     std::function<void(screen&)> after_act;
 
+    // When non-zero, pins the sim tick interval in milliseconds
+    // (for example og::sim::DEFAULT_SIM_TICK_MS). When zero, derive the
+    // interval from world.timer_wait for backward compatibility.
+    std::uint32_t fixed_tick_ms = 0;
+
     // Optional: allows tests to bypass expensive rendering even in non-TESTING builds.
     bool enable_render = true;
     bool enable_event_poll = true;
-    // When false, skip the per-frame time_delay() call.  Used by multi-session
-    // demos that run many sessions per display frame and apply their own
-    // frame-rate cap externally.
+    // When false, skip internal accumulator pacing and run at most one sim tick
+    // per call. Used by multi-session demos that apply their own pacing.
     bool enable_frame_timing = true;
 };
 

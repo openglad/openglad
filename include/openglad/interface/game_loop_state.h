@@ -1,5 +1,7 @@
 #pragma once
 
+#include <openglad/gameplay/input_state.h>
+
 #include <cstdint>
 
 // Lightweight frame-state struct used by GameSession.
@@ -10,9 +12,8 @@ struct GameLoopFrameState {
     bool initialized = false;
     short currentcycle = 0;
     short cycletime = 3;
-
-#ifdef __EMSCRIPTEN__
     std::uint32_t last_frame_time = 0;
     std::uint32_t accumulated_time = 0;
-#endif
+    bool has_pending_input = false;
+    InputState pending_input = {};
 };
