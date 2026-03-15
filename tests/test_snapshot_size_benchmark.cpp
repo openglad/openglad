@@ -24,7 +24,7 @@ namespace {
 
 constexpr short kBenchmarkLevel = 30;
 constexpr int kWarmupTicks = 100;
-constexpr int kDeltaTicks = 10;
+constexpr int kCatchupDeltaTicks = 10;
 constexpr std::string_view kBenchmarkSaveName = "test_snapshot_size_benchmark";
 
 struct PayloadSizeReport {
@@ -311,45 +311,67 @@ TEST(SnapshotSizeBenchmark,
     EXPECT_EQ(live_snapshot.fxlist.size(), keyframe_snapshot.fxlist.size());
     EXPECT_EQ(live_snapshot.weaplist.size(), keyframe_snapshot.weaplist.size());
 
-    og::sim::PerClientState client_state;
-    og::sim::seed_client_snapshot_baseline(client_state, keyframe_snapshot);
+    og::sim::PerClientState one_tick_client_state;
+    og::sim::PerClientState catchup_client_state;
+    og::sim::seed_client_snapshot_baseline(one_tick_client_state, keyframe_snapshot);
+    og::sim::seed_client_snapshot_baseline(catchup_client_state, keyframe_snapshot);
 
+    og::sim::WorldSnapshot one_tick_delta_snapshot;
     og::sim::WorldSnapshot final_tick_snapshot;
-    for (int tick = 0; tick < kDeltaTicks; ++tick)
+    for (int tick = 0; tick < kCatchupDeltaTicks; ++tick)
     {
         populate_chaotic_input(input, kWarmupTicks + tick);
         game_screen.process_input(input);
         ASSERT_TRUE(game_screen.act()) << "screen.act should continue during delta window";
 
         final_tick_snapshot = og::sim::capture_snapshot(world);
-        og::sim::accumulate_snapshot_for_client(client_state, final_tick_snapshot);
+        if (tick == 0)
+        {
+            og::sim::accumulate_snapshot_for_client(one_tick_client_state,
+                                                    final_tick_snapshot);
+            one_tick_delta_snapshot =
+                og::sim::consume_delta_snapshot_for_client(one_tick_client_state,
+                                                           final_tick_snapshot);
+        }
+
+        og::sim::accumulate_snapshot_for_client(catchup_client_state,
+                                                final_tick_snapshot);
     }
 
-    const og::sim::WorldSnapshot delta_snapshot =
-        og::sim::consume_delta_snapshot_for_client(client_state, final_tick_snapshot);
-    const PayloadSizeReport delta_sizes = measure_delta_payload(delta_snapshot);
+    const og::sim::WorldSnapshot catchup_delta_snapshot =
+        og::sim::consume_delta_snapshot_for_client(catchup_client_state,
+                                                   final_tick_snapshot);
+    const PayloadSizeReport one_tick_delta_sizes =
+        measure_delta_payload(one_tick_delta_snapshot);
+    const PayloadSizeReport catchup_delta_sizes =
+        measure_delta_payload(catchup_delta_snapshot);
 
     const std::size_t ob_count = live_snapshot.oblist.size();
     const std::size_t fx_count = live_snapshot.fxlist.size();
     const std::size_t weap_count = live_snapshot.weaplist.size();
     const std::size_t total_entities = ob_count + fx_count + weap_count;
-    const std::size_t delta_entity_count =
-        delta_snapshot.oblist.size() + delta_snapshot.fxlist.size() +
-        delta_snapshot.weaplist.size();
+    const std::size_t one_tick_delta_entity_count =
+        one_tick_delta_snapshot.oblist.size() + one_tick_delta_snapshot.fxlist.size() +
+        one_tick_delta_snapshot.weaplist.size();
+    const std::size_t catchup_delta_entity_count =
+        catchup_delta_snapshot.oblist.size() + catchup_delta_snapshot.fxlist.size() +
+        catchup_delta_snapshot.weaplist.size();
 
     std::printf(
         "\nPhase 10 snapshot benchmark\n"
         "Scenario: level %d - %s\n"
-        "Ticks: warmup=%d delta=%d\n"
+        "Ticks: warmup=%d catchup_delta=%d\n"
         "Entities: ob=%zu fx=%zu weap=%zu total=%zu\n"
         "EntitySnapshot raw size: %zu bytes\n"
         "Full snapshot: raw=%zu bytes zlib=%zu bytes (%.1f%% saved) wire=%zu bytes\n"
-        "Delta snapshot: raw=%zu bytes zlib=%zu bytes (%.1f%% saved) wire=%zu bytes%s\n"
-        "Delta entities: ob=%zu fx=%zu weap=%zu removed=%zu\n",
+        "1-tick delta: raw=%zu bytes zlib=%zu bytes (%.1f%% saved) wire=%zu bytes%s\n"
+        "1-tick delta entities: ob=%zu fx=%zu weap=%zu removed=%zu\n"
+        "%d-tick catch-up delta: raw=%zu bytes zlib=%zu bytes (%.1f%% saved) wire=%zu bytes%s\n"
+        "%d-tick catch-up entities: ob=%zu fx=%zu weap=%zu removed=%zu\n",
         kBenchmarkLevel,
         world.title.c_str(),
         kWarmupTicks,
-        kDeltaTicks,
+        kCatchupDeltaTicks,
         ob_count,
         fx_count,
         weap_count,
@@ -360,23 +382,42 @@ TEST(SnapshotSizeBenchmark,
         compression_percent(full_sizes.raw_payload_bytes,
                             full_sizes.zlib_payload_bytes),
         full_sizes.wire_message_bytes,
-        delta_sizes.raw_payload_bytes,
-        delta_sizes.zlib_payload_bytes,
-        compression_percent(delta_sizes.raw_payload_bytes,
-                            delta_sizes.zlib_payload_bytes),
-        delta_sizes.wire_message_bytes,
-        delta_sizes.wire_payload_uncompressed ? " (wire payload left uncompressed)" : "",
-        delta_snapshot.oblist.size(),
-        delta_snapshot.fxlist.size(),
-        delta_snapshot.weaplist.size(),
-        delta_snapshot.removed_entity_ids.size());
+        one_tick_delta_sizes.raw_payload_bytes,
+        one_tick_delta_sizes.zlib_payload_bytes,
+        compression_percent(one_tick_delta_sizes.raw_payload_bytes,
+                            one_tick_delta_sizes.zlib_payload_bytes),
+        one_tick_delta_sizes.wire_message_bytes,
+        one_tick_delta_sizes.wire_payload_uncompressed ? " (wire payload left uncompressed)" : "",
+        one_tick_delta_snapshot.oblist.size(),
+        one_tick_delta_snapshot.fxlist.size(),
+        one_tick_delta_snapshot.weaplist.size(),
+        one_tick_delta_snapshot.removed_entity_ids.size(),
+        kCatchupDeltaTicks,
+        catchup_delta_sizes.raw_payload_bytes,
+        catchup_delta_sizes.zlib_payload_bytes,
+        compression_percent(catchup_delta_sizes.raw_payload_bytes,
+                            catchup_delta_sizes.zlib_payload_bytes),
+        catchup_delta_sizes.wire_message_bytes,
+        catchup_delta_sizes.wire_payload_uncompressed ? " (wire payload left uncompressed)" : "",
+        kCatchupDeltaTicks,
+        catchup_delta_snapshot.oblist.size(),
+        catchup_delta_snapshot.fxlist.size(),
+        catchup_delta_snapshot.weaplist.size(),
+        catchup_delta_snapshot.removed_entity_ids.size());
 
     EXPECT_GE(total_entities, 250u);
     EXPECT_GT(full_sizes.raw_payload_bytes, 0u);
     EXPECT_GT(full_sizes.zlib_payload_bytes, 0u);
-    EXPECT_GT(delta_sizes.raw_payload_bytes, 0u);
-    EXPECT_GT(delta_entity_count + delta_snapshot.removed_entity_ids.size(), 0u);
-    EXPECT_LT(delta_sizes.raw_payload_bytes, full_sizes.raw_payload_bytes);
+    EXPECT_GT(one_tick_delta_sizes.raw_payload_bytes, 0u);
+    EXPECT_GT(catchup_delta_sizes.raw_payload_bytes, 0u);
+    EXPECT_GT(one_tick_delta_entity_count + one_tick_delta_snapshot.removed_entity_ids.size(),
+              0u);
+    EXPECT_GT(catchup_delta_entity_count + catchup_delta_snapshot.removed_entity_ids.size(),
+              0u);
+    EXPECT_LT(one_tick_delta_sizes.raw_payload_bytes, full_sizes.raw_payload_bytes);
+    EXPECT_LT(catchup_delta_sizes.raw_payload_bytes, full_sizes.raw_payload_bytes);
+    EXPECT_GE(catchup_delta_sizes.raw_payload_bytes,
+              one_tick_delta_sizes.raw_payload_bytes);
 
     world.delete_objects();
 }
