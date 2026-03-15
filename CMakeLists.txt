@@ -207,6 +207,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/results_screen.cpp
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
+    ${SRC_DIR}/gameplay/game_server.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
@@ -233,6 +234,7 @@ set(OG_CORE_SOURCES
 set(OG_SIM_SOURCES
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
+    ${SRC_DIR}/gameplay/game_server.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/input_state_net.cpp
 )

@@ -2,6 +2,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -558,92 +559,6 @@ void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
         expect_entity_snapshot_eq(expected.weaplist[i], actual.weaplist[i], compare_dirty_mask);
 
     EXPECT_EQ(expected.removed_entity_ids, actual.removed_entity_ids);
-}
-
-using DirtyMask =
-    std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>;
-using DirtyMaskMap = std::unordered_map<std::uint32_t, DirtyMask>;
-
-bool mask_any(const DirtyMask& mask)
-{
-    return mask[0] != 0 || mask[1] != 0;
-}
-
-void accumulate_entity_masks(const std::vector<og::sim::EntitySnapshot>& entities,
-                             DirtyMaskMap& accumulated)
-{
-    for (const auto& entity : entities)
-    {
-        DirtyMask& mask = accumulated[entity.entity_id];
-        mask[0] |= entity.dirty_mask[0];
-        mask[1] |= entity.dirty_mask[1];
-    }
-}
-
-void accumulate_snapshot_masks(const og::sim::WorldSnapshot& snapshot,
-                               DirtyMaskMap& accumulated)
-{
-    accumulate_entity_masks(snapshot.oblist, accumulated);
-    accumulate_entity_masks(snapshot.fxlist, accumulated);
-    accumulate_entity_masks(snapshot.weaplist, accumulated);
-}
-
-std::unordered_set<std::uint32_t> snapshot_entity_id_set(
-    const og::sim::WorldSnapshot& snapshot)
-{
-    std::unordered_set<std::uint32_t> ids;
-    ids.reserve(snapshot.oblist.size() + snapshot.fxlist.size() +
-                snapshot.weaplist.size());
-    for (const auto& entity : snapshot.oblist)
-        ids.insert(entity.entity_id);
-    for (const auto& entity : snapshot.fxlist)
-        ids.insert(entity.entity_id);
-    for (const auto& entity : snapshot.weaplist)
-        ids.insert(entity.entity_id);
-    return ids;
-}
-
-std::vector<og::sim::EntitySnapshot> select_delta_entities(
-    const std::vector<og::sim::EntitySnapshot>& current,
-    const DirtyMaskMap& accumulated,
-    const std::unordered_set<std::uint32_t>& new_entity_ids)
-{
-    std::vector<og::sim::EntitySnapshot> selected;
-    for (const auto& entity : current)
-    {
-        og::sim::EntitySnapshot candidate = entity;
-        if (new_entity_ids.find(entity.entity_id) != new_entity_ids.end())
-        {
-            candidate.dirty_mask[0] = ~0ULL;
-            candidate.dirty_mask[1] = ~0ULL;
-            selected.push_back(candidate);
-            continue;
-        }
-
-        const auto it = accumulated.find(entity.entity_id);
-        if (it == accumulated.end() || !mask_any(it->second))
-            continue;
-
-        candidate.dirty_mask[0] = it->second[0];
-        candidate.dirty_mask[1] = it->second[1];
-        selected.push_back(candidate);
-    }
-    return selected;
-}
-
-og::sim::WorldSnapshot build_delta_snapshot(
-    const og::sim::WorldSnapshot& current,
-    const DirtyMaskMap& accumulated,
-    const std::unordered_set<std::uint32_t>& new_entity_ids,
-    const std::vector<std::uint32_t>& removed_entity_ids)
-{
-    og::sim::WorldSnapshot delta = current;
-    delta.oblist = select_delta_entities(current.oblist, accumulated, new_entity_ids);
-    delta.fxlist = select_delta_entities(current.fxlist, accumulated, new_entity_ids);
-    delta.weaplist =
-        select_delta_entities(current.weaplist, accumulated, new_entity_ids);
-    delta.removed_entity_ids = removed_entity_ids;
-    return delta;
 }
 
 void fill_world_grid(GameWorld& world, std::uint8_t value)
@@ -1684,6 +1599,162 @@ TEST(WorldSnapshot, serialize_delta_roundtrip_uses_uncompressed_bypass_when_smal
     expect_world_snapshot_eq(delta, decoded);
 }
 
+TEST(WorldSnapshot, empty_delta_roundtrip_preserves_world_state_without_entities)
+{
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    configure_snapshot_test_services(world);
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+
+    og::sim::WorldSnapshot baseline = og::sim::capture_keyframe_snapshot(world);
+    og::sim::PerClientState client_state;
+    og::sim::seed_client_snapshot_baseline(client_state, baseline);
+
+    world.tick_count_ = baseline.tick_count + 1;
+    world.rng_.state_ = 0x55667788u;
+    world.current_palette_id = 1;
+    const og::sim::WorldSnapshot current = og::sim::capture_snapshot(world);
+    og::sim::accumulate_snapshot_for_client(client_state, current);
+
+    const og::sim::WorldSnapshot delta =
+        og::sim::consume_delta_snapshot_for_client(client_state, current);
+    EXPECT_TRUE(delta.oblist.empty());
+    EXPECT_TRUE(delta.fxlist.empty());
+    EXPECT_TRUE(delta.weaplist.empty());
+    EXPECT_TRUE(delta.removed_entity_ids.empty());
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_delta(bytes.data(), bytes.size());
+    EXPECT_TRUE(decoded.oblist.empty());
+    EXPECT_TRUE(decoded.fxlist.empty());
+    EXPECT_TRUE(decoded.weaplist.empty());
+    EXPECT_TRUE(decoded.removed_entity_ids.empty());
+    EXPECT_EQ(current.tick_count, decoded.tick_count);
+    EXPECT_EQ(current.rng_state, decoded.rng_state);
+    EXPECT_EQ(current.current_palette_id, decoded.current_palette_id);
+}
+
+TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_protocol_and_format_version)
+{
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    configure_snapshot_test_services(world);
+    ASSERT_NE(nullptr, world.add_ob(Order::Living, FAMILY_SOLDIER));
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(world);
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
+
+    std::vector<std::uint8_t> bad_protocol = bytes;
+    bad_protocol[0] = static_cast<std::uint8_t>(og::sim::kSnapshotProtocolVersion + 1);
+    try
+    {
+        (void)og::sim::deserialize_snapshot(bad_protocol.data(), bad_protocol.size());
+        FAIL() << "expected protocol mismatch";
+    }
+    catch (const std::runtime_error& error)
+    {
+        EXPECT_NE(std::string(error.what()).find("unsupported protocol version"),
+                  std::string::npos);
+    }
+
+    std::vector<std::uint8_t> payload =
+        zlib_decompress_for_test(bytes.data() + 1, bytes.size() - 1);
+    payload[0] = static_cast<std::uint8_t>(og::sim::kSnapshotFormatVersion + 1);
+    const std::vector<std::uint8_t> corrupted_payload =
+        zlib_compress_for_test(payload);
+
+    std::vector<std::uint8_t> bad_format;
+    bad_format.reserve(1 + corrupted_payload.size());
+    bad_format.push_back(og::sim::kSnapshotProtocolVersion);
+    bad_format.insert(bad_format.end(),
+                      corrupted_payload.begin(), corrupted_payload.end());
+
+    try
+    {
+        (void)og::sim::deserialize_snapshot(bad_format.data(), bad_format.size());
+        FAIL() << "expected snapshot format mismatch";
+    }
+    catch (const std::runtime_error& error)
+    {
+        EXPECT_NE(std::string(error.what()).find("please update"),
+                  std::string::npos);
+    }
+}
+
+TEST(WorldSnapshot, deserialize_delta_rejects_bad_headers_and_malformed_payloads)
+{
+    og::sim::WorldSnapshot delta;
+    delta.tick_count = 12;
+    delta.rng_state = 34;
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
+
+    std::vector<std::uint8_t> bad_protocol = bytes;
+    bad_protocol[0] = static_cast<std::uint8_t>(og::sim::kSnapshotProtocolVersion + 1);
+    EXPECT_THROW(
+        (void)og::sim::deserialize_delta(bad_protocol.data(), bad_protocol.size()),
+        std::runtime_error);
+
+    std::vector<std::uint8_t> bad_type = bytes;
+    bad_type[1] = og::sim::kSnapshotMessageType;
+    EXPECT_THROW(
+        (void)og::sim::deserialize_delta(bad_type.data(), bad_type.size()),
+        std::runtime_error);
+
+    std::vector<std::uint8_t> bad_length = bytes;
+    bad_length[2] = 0;
+    bad_length[3] = 0;
+    EXPECT_THROW(
+        (void)og::sim::deserialize_delta(bad_length.data(), bad_length.size()),
+        std::runtime_error);
+
+    std::vector<std::uint8_t> bad_tick = bytes;
+    bad_tick[4] ^= 0xffu;
+    EXPECT_THROW(
+        (void)og::sim::deserialize_delta(bad_tick.data(), bad_tick.size()),
+        std::runtime_error);
+
+    const bool payload_is_uncompressed =
+        (bytes[1] & og::sim::kDeltaPayloadUncompressedFlag) != 0;
+    const std::size_t payload_length =
+        static_cast<std::size_t>(bytes[2]) |
+        (static_cast<std::size_t>(bytes[3]) << 8);
+    std::vector<std::uint8_t> payload =
+        payload_is_uncompressed
+            ? std::vector<std::uint8_t>(bytes.begin() + 8, bytes.end())
+            : zlib_decompress_for_test(bytes.data() + 8, payload_length);
+    payload[0] = static_cast<std::uint8_t>(og::sim::kSnapshotFormatVersion + 1);
+    const std::vector<std::uint8_t> corrupted_payload = payload_is_uncompressed
+        ? payload
+        : zlib_compress_for_test(payload);
+    std::vector<std::uint8_t> bad_format;
+    bad_format.reserve(8 + corrupted_payload.size());
+    bad_format.push_back(og::sim::kSnapshotProtocolVersion);
+    bad_format.push_back(static_cast<std::uint8_t>(
+        og::sim::kDeltaSnapshotMessageType |
+        (payload_is_uncompressed ? og::sim::kDeltaPayloadUncompressedFlag : 0U)));
+    bad_format.push_back(static_cast<std::uint8_t>(corrupted_payload.size() & 0xffu));
+    bad_format.push_back(static_cast<std::uint8_t>((corrupted_payload.size() >> 8) & 0xffu));
+    bad_format.push_back(12);
+    bad_format.push_back(0);
+    bad_format.push_back(0);
+    bad_format.push_back(0);
+    bad_format.insert(bad_format.end(),
+                      corrupted_payload.begin(), corrupted_payload.end());
+    EXPECT_THROW(
+        (void)og::sim::deserialize_delta(bad_format.data(), bad_format.size()),
+        std::runtime_error);
+
+    std::vector<std::uint8_t> truncated = bytes;
+    truncated.pop_back();
+    EXPECT_THROW(
+        (void)og::sim::deserialize_delta(truncated.data(), truncated.size()),
+        std::runtime_error);
+}
+
 TEST(WorldSnapshot, apply_delta_with_all_fields_dirty_matches_current_world_state)
 {
     TestGameWorld source_fx;
@@ -1720,16 +1791,17 @@ TEST(WorldSnapshot, apply_delta_with_all_fields_dirty_matches_current_world_stat
 
     const og::sim::WorldSnapshot current = og::sim::capture_snapshot(source);
 
-    DirtyMaskMap all_dirty;
+    og::sim::PerClientState client_state;
+    og::sim::seed_client_snapshot_baseline(client_state, client_baseline);
     for (const auto& entity : current.oblist)
-        all_dirty[entity.entity_id] = {~0ULL, ~0ULL};
+        client_state.accumulated_dirty[entity.entity_id] = {~0ULL, ~0ULL};
     for (const auto& entity : current.fxlist)
-        all_dirty[entity.entity_id] = {~0ULL, ~0ULL};
+        client_state.accumulated_dirty[entity.entity_id] = {~0ULL, ~0ULL};
     for (const auto& entity : current.weaplist)
-        all_dirty[entity.entity_id] = {~0ULL, ~0ULL};
+        client_state.accumulated_dirty[entity.entity_id] = {~0ULL, ~0ULL};
 
     const og::sim::WorldSnapshot delta =
-        build_delta_snapshot(current, all_dirty, {}, current.removed_entity_ids);
+        og::sim::consume_delta_snapshot_for_client(client_state, current);
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
         og::sim::deserialize_delta(bytes.data(), bytes.size());
@@ -1769,36 +1841,15 @@ TEST(WorldSnapshot, apply_delta_accumulates_multi_tick_changes_with_spawn_and_re
     configure_snapshot_test_services(mirror);
     og::sim::apply_snapshot(mirror, client_baseline);
 
-    DirtyMaskMap accumulated;
-    std::unordered_set<std::uint32_t> known_ids =
-        snapshot_entity_id_set(client_baseline);
-    std::unordered_set<std::uint32_t> new_entity_ids;
-    std::vector<std::uint32_t> removed_entity_ids;
-
-    auto record_snapshot = [&](const og::sim::WorldSnapshot& snapshot) {
-        accumulate_snapshot_masks(snapshot, accumulated);
-        for (std::uint32_t removed_id : snapshot.removed_entity_ids)
-        {
-            removed_entity_ids.push_back(removed_id);
-            known_ids.erase(removed_id);
-            accumulated.erase(removed_id);
-        }
-
-        const std::unordered_set<std::uint32_t> current_ids =
-            snapshot_entity_id_set(snapshot);
-        for (std::uint32_t entity_id : current_ids)
-        {
-            if (known_ids.insert(entity_id).second)
-                new_entity_ids.insert(entity_id);
-        }
-    };
+    og::sim::PerClientState client_state;
+    og::sim::seed_client_snapshot_baseline(client_state, client_baseline);
 
     actor->setworldxy(96.0f, 112.0f);
     actor->set_busy(1.0f);
     actor->stats()->set_hitpoints(16.0f);
     source.current_palette_id = 1;
     const og::sim::WorldSnapshot tick_one = og::sim::capture_snapshot(source);
-    record_snapshot(tick_one);
+    og::sim::accumulate_snapshot_for_client(client_state, tick_one);
 
     walker* slime = source.add_ob(Order::Living, FAMILY_SMALL_SLIME);
     ASSERT_NE(nullptr, slime);
@@ -1808,7 +1859,7 @@ TEST(WorldSnapshot, apply_delta_accumulates_multi_tick_changes_with_spawn_and_re
     source.m_score[1] = 20;
     const std::uint32_t slime_id = slime->entity_id();
     const og::sim::WorldSnapshot tick_two = og::sim::capture_snapshot(source);
-    record_snapshot(tick_two);
+    og::sim::accumulate_snapshot_for_client(client_state, tick_two);
 
     const std::uint32_t removed_foe_id = foe->entity_id();
     ASSERT_EQ(1, source.remove_ob(foe));
@@ -1819,10 +1870,10 @@ TEST(WorldSnapshot, apply_delta_accumulates_multi_tick_changes_with_spawn_and_re
     source.paused = true;
     source.pause_player_index = 2;
     const og::sim::WorldSnapshot tick_three = og::sim::capture_snapshot(source);
-    record_snapshot(tick_three);
+    og::sim::accumulate_snapshot_for_client(client_state, tick_three);
 
-    const og::sim::WorldSnapshot delta = build_delta_snapshot(
-        tick_three, accumulated, new_entity_ids, removed_entity_ids);
+    const og::sim::WorldSnapshot delta =
+        og::sim::consume_delta_snapshot_for_client(client_state, tick_three);
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
         og::sim::deserialize_delta(bytes.data(), bytes.size());
