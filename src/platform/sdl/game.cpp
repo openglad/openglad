@@ -28,6 +28,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/screen.h>
+#include <openglad/resources/io_common.h>
 #include <algorithm>
 #include <format>
 #include <iterator>
@@ -61,6 +62,50 @@ private:
     og::runtime::SessionState* session_ = nullptr;
     bool previous_ = false;
 };
+
+std::vector<short> replay_view_teams(const og::sim::WorldSnapshot& snapshot,
+                                     short max_views)
+{
+    std::vector<short> teams;
+    teams.reserve(static_cast<std::size_t>(std::max<short>(max_views, 0)));
+
+    for (const auto& guy_snapshot : snapshot.guy_snapshots)
+    {
+        if (guy_snapshot.teamnum == 0)
+            continue;
+        if (std::find(teams.begin(), teams.end(), guy_snapshot.teamnum) != teams.end())
+            continue;
+
+        teams.push_back(guy_snapshot.teamnum);
+        if (static_cast<short>(teams.size()) >= max_views)
+            break;
+    }
+
+    return teams;
+}
+
+void assign_replay_views(screen& game_screen,
+                         const og::sim::WorldSnapshot& snapshot)
+{
+    const std::vector<short> teams =
+        replay_view_teams(snapshot, game_screen.numviews);
+    short view_index = 0;
+    const short numviews = std::min<short>(
+        game_screen.numviews,
+        static_cast<short>(std::size(game_screen.viewob)));
+
+    for (auto& view : game_screen.viewob)
+    {
+        if (!view || view_index >= numviews)
+            break;
+
+        view->my_team = (view_index < static_cast<short>(teams.size()))
+            ? teams[static_cast<std::size_t>(view_index)]
+            : 0;
+        view->control = nullptr;
+        ++view_index;
+    }
+}
 } // namespace
 
 LoadSavedGameError load_saved_game_with_error(const char *filename, screen *screenp)
@@ -289,18 +334,49 @@ short load_saved_game(const char *filename, screen  *screenp)
 
 bool og::sim::ReplayPlayer::initialize_screen(screen& game_screen)
 {
-    game_screen.save_data.scen_num = static_cast<short>(data_.header.level_id);
-    game_screen.save_data.numplayers = data_.header.player_count;
-    if (!game_screen.save_data.current_campaign.empty())
-    {
-        game_screen.save_data.current_levels[game_screen.save_data.current_campaign] =
-            static_cast<short>(data_.header.level_id);
-    }
-
-    game_screen.world().rng_.state_ = data_.header.initial_rng_state;
-    if (load_saved_game("replay", &game_screen) == 0)
+    if (data_.header.campaign_id.empty())
         return false;
 
+    if (mount_campaign_package_with_error(data_.header.campaign_id) !=
+        CampaignPackageIoError::None)
+    {
+        return false;
+    }
+
+    ScopedGameplayLoadActivation gameplay_load_active(og::runtime::current_session);
+    const short desired_views = (data_.header.player_count == 0)
+        ? 1
+        : static_cast<short>(data_.header.player_count);
+
+    game_screen.save_data.reset();
+    game_screen.save_data.current_campaign = data_.header.campaign_id;
+    game_screen.save_data.current_levels[data_.header.campaign_id] =
+        static_cast<short>(data_.header.level_id);
+    game_screen.save_data.scen_num = static_cast<short>(data_.header.level_id);
+    game_screen.save_data.numplayers = data_.header.player_count;
+
+    game_screen.numviews = desired_views;
+    game_screen.cleanup(desired_views);
+    game_screen.initialize_views();
+    game_screen.sync_world_from_save_data();
+
+    game_screen.world().id = data_.header.level_id;
+    game_screen.world().rng_.state_ = data_.header.initial_rng_state;
+    if (!game_screen.load_level())
+        return false;
+
+    game_screen.sync_world_from_save_data();
+    game_screen.world().difficulty =
+        static_cast<short>(og::ui::difficulty_percent(
+            og::runtime::current_session->current_difficulty_));
+    for (auto& uptr : game_screen.world().oblist)
+    {
+        if (walker* w = uptr.get(); w != nullptr)
+            w->set_difficulty(static_cast<Uint32>(w->stats()->level()));
+    }
+
+    og::sim::apply_snapshot(game_screen.world(), data_.initial_snapshot);
+    assign_replay_views(game_screen, data_.initial_snapshot);
     game_screen.world().timer_wait = data_.header.timer_wait;
     reset();
     return true;

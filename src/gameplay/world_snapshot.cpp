@@ -2150,7 +2150,29 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
         installed_context = current_game;
     }
 
-    GameplayContextGuard gameplay_guard(installed_context);
+    // Snapshot application may target a world whose bound event sink differs
+    // from the ambient session context (for example, benchmark/test harnesses
+    // that swap in a dedicated SimEventLog). Install the world-bound context
+    // temporarily instead of assuming the ambient pointer is already exact.
+    struct ScopedSnapshotGameplayContext final
+    {
+        explicit ScopedSnapshotGameplayContext(GameplayContext* context)
+            : previous_(current_game)
+        {
+            current_game = context;
+        }
+
+        ~ScopedSnapshotGameplayContext()
+        {
+            current_game = previous_;
+        }
+
+        ScopedSnapshotGameplayContext(const ScopedSnapshotGameplayContext&) = delete;
+        ScopedSnapshotGameplayContext& operator=(const ScopedSnapshotGameplayContext&) = delete;
+
+        GameplayContext* previous_ = nullptr;
+    } gameplay_guard(installed_context);
+
     SimEventLogSuppressGuard event_guard(*gameplay_context.sim_events);
 
     world.tick_count_ = snapshot.tick_count;

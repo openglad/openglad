@@ -43,6 +43,25 @@ std::uint32_t read_u32_le(std::span<const std::uint8_t> bytes, std::size_t offse
         | (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
 }
 
+void write_bytes(std::vector<std::uint8_t>& bytes,
+                 std::span<const std::uint8_t> payload)
+{
+    bytes.insert(bytes.end(), payload.begin(), payload.end());
+}
+
+bool read_section(std::span<const std::uint8_t> bytes,
+                  std::size_t& offset,
+                  std::uint32_t length,
+                  std::span<const std::uint8_t>& out_section)
+{
+    if (offset > bytes.size() || length > (bytes.size() - offset))
+        return false;
+
+    out_section = bytes.subspan(offset, length);
+    offset += length;
+    return true;
+}
+
 template <typename T>
 std::string value_to_string(const T& value)
 {
@@ -484,10 +503,19 @@ std::vector<std::uint8_t> read_file_bytes(const std::filesystem::path& path,
 } // namespace
 
 std::vector<std::uint8_t> serialize_replay(const ReplayHeader& header,
+                                           const WorldSnapshot& initial_snapshot,
                                            std::span<const InputStateMessage> frames)
 {
+    const std::vector<std::uint8_t> initial_snapshot_bytes =
+        serialize_snapshot(initial_snapshot);
+    const std::span<const std::uint8_t> campaign_bytes(
+        reinterpret_cast<const std::uint8_t*>(header.campaign_id.data()),
+        header.campaign_id.size());
+
     std::vector<std::uint8_t> bytes;
-    bytes.reserve(kReplayHeaderSize + frames.size() * kSerializedInputMessageSize);
+    bytes.reserve(kReplayHeaderSize + campaign_bytes.size() +
+                  initial_snapshot_bytes.size() +
+                  frames.size() * kSerializedInputMessageSize);
 
     bytes.insert(bytes.end(), kReplayMagic.begin(), kReplayMagic.end());
     bytes.push_back(header.version);
@@ -496,11 +524,15 @@ std::vector<std::uint8_t> serialize_replay(const ReplayHeader& header,
     bytes.push_back(0);
     write_u32_le(bytes, header.initial_rng_state);
     write_u32_le(bytes, static_cast<std::uint32_t>(header.level_id));
+    write_u32_le(bytes, static_cast<std::uint32_t>(campaign_bytes.size()));
+    write_u32_le(bytes, static_cast<std::uint32_t>(initial_snapshot_bytes.size()));
+    write_bytes(bytes, campaign_bytes);
+    write_bytes(bytes, initial_snapshot_bytes);
 
     for (const InputStateMessage& frame : frames)
     {
         const auto serialized = serialize_input(frame.tick, frame.input);
-        bytes.insert(bytes.end(), serialized.begin(), serialized.end());
+        write_bytes(bytes, serialized);
     }
 
     return bytes;
@@ -535,6 +567,8 @@ std::optional<ReplayData> deserialize_replay(std::span<const std::uint8_t> bytes
     replay.header.timer_wait = static_cast<std::int8_t>(bytes[6]);
     replay.header.initial_rng_state = read_u32_le(bytes, 8);
     replay.header.level_id = static_cast<std::int32_t>(read_u32_le(bytes, 12));
+    const std::uint32_t campaign_length = read_u32_le(bytes, 16);
+    const std::uint32_t initial_snapshot_length = read_u32_le(bytes, 20);
 
     if (replay.header.player_count > MAX_PLAYERS)
     {
@@ -542,7 +576,41 @@ std::optional<ReplayData> deserialize_replay(std::span<const std::uint8_t> bytes
         return std::nullopt;
     }
 
-    const std::size_t payload_size = bytes.size() - kReplayHeaderSize;
+    std::size_t payload_offset = kReplayHeaderSize;
+    std::span<const std::uint8_t> campaign_bytes;
+    std::span<const std::uint8_t> initial_snapshot_bytes;
+    if (!read_section(bytes, payload_offset, campaign_length, campaign_bytes) ||
+        !read_section(bytes,
+                      payload_offset,
+                      initial_snapshot_length,
+                      initial_snapshot_bytes))
+    {
+        set_error(out_error, ReplayIoError::MalformedData);
+        return std::nullopt;
+    }
+
+    replay.header.campaign_id.assign(
+        reinterpret_cast<const char*>(campaign_bytes.data()),
+        campaign_bytes.size());
+    if (replay.header.campaign_id.empty() || initial_snapshot_bytes.empty())
+    {
+        set_error(out_error, ReplayIoError::MalformedData);
+        return std::nullopt;
+    }
+
+    try
+    {
+        replay.initial_snapshot =
+            deserialize_snapshot(initial_snapshot_bytes.data(),
+                                 initial_snapshot_bytes.size());
+    }
+    catch (const std::runtime_error&)
+    {
+        set_error(out_error, ReplayIoError::MalformedData);
+        return std::nullopt;
+    }
+
+    const std::size_t payload_size = bytes.size() - payload_offset;
     if ((payload_size % kSerializedInputMessageSize) != 0)
     {
         set_error(out_error, ReplayIoError::MalformedData);
@@ -553,7 +621,8 @@ std::optional<ReplayData> deserialize_replay(std::span<const std::uint8_t> bytes
     replay.frames.reserve(frame_count);
     for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index)
     {
-        const std::size_t offset = kReplayHeaderSize + frame_index * kSerializedInputMessageSize;
+        const std::size_t offset =
+            payload_offset + frame_index * kSerializedInputMessageSize;
         const std::span<const std::uint8_t> frame_bytes =
             bytes.subspan(offset, kSerializedInputMessageSize);
         const std::optional<InputStateMessage> frame =
@@ -586,6 +655,8 @@ find_first_snapshot_difference(std::uint32_t tick,
 void ReplayRecorder::clear() noexcept
 {
     header_ = {};
+    initial_snapshot_ = {};
+    has_initial_snapshot_ = false;
     frames_.clear();
     checkpoints_.clear();
 }
@@ -595,10 +666,27 @@ void ReplayRecorder::record_input(std::uint32_t tick, const InputState& input)
     frames_.push_back(InputStateMessage{tick, input});
 }
 
+void ReplayRecorder::set_initial_snapshot(const WorldSnapshot& snapshot)
+{
+    initial_snapshot_ = snapshot;
+    has_initial_snapshot_ = true;
+}
+
+void ReplayRecorder::record_initial_world(GameWorld& world)
+{
+    set_initial_snapshot(peek_keyframe_snapshot(world));
+}
+
 void ReplayRecorder::record_snapshot(std::uint32_t tick,
                                      const WorldSnapshot& snapshot,
                                      ReplayCheckpointKind kind)
 {
+    if (!has_initial_snapshot_ &&
+        tick == 0 &&
+        kind == ReplayCheckpointKind::Keyframe)
+    {
+        set_initial_snapshot(snapshot);
+    }
     checkpoints_.push_back(ReplayCheckpoint{tick, kind, snapshot});
 }
 
@@ -614,12 +702,18 @@ void ReplayRecorder::record_world_keyframe(std::uint32_t tick, GameWorld& world)
 
 std::vector<std::uint8_t> ReplayRecorder::serialize() const
 {
-    return serialize_replay(header_, frames_);
+    return serialize_replay(header_, initial_snapshot_, frames_);
 }
 
 bool ReplayRecorder::write_file(const std::filesystem::path& path,
                                 ReplayIoError* out_error) const
 {
+    if (header_.campaign_id.empty() || !has_initial_snapshot_)
+    {
+        set_error(out_error, ReplayIoError::MalformedData);
+        return false;
+    }
+
     const std::vector<std::uint8_t> bytes = serialize();
     std::ofstream outfile(path, std::ios::binary | std::ios::trunc);
     if (!outfile)

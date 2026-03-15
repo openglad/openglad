@@ -61,6 +61,83 @@ InputState make_dense_input()
     return input;
 }
 
+og::sim::WorldSnapshot make_initial_snapshot()
+{
+    og::sim::WorldSnapshot snapshot;
+    snapshot.tick_count = 3u;
+    snapshot.rng_state = 0xA1B2C3D4u;
+    snapshot.level_tick_count = 9u;
+    snapshot.timer_wait = 7;
+    snapshot.living_count = 2;
+    snapshot.control_hp = 42.5f;
+    snapshot.guy_id_counter = 2;
+    snapshot.m_score[0] = 11u;
+    snapshot.current_palette_id = 4u;
+    snapshot.pending_exit_prompt = true;
+    snapshot.grid_width = 2u;
+    snapshot.grid_height = 2u;
+    snapshot.grid_dirty = true;
+    snapshot.grid_full_resend = true;
+    snapshot.full_grid_data = {1u, 2u, 3u, 4u};
+    snapshot.removed_entity_ids = {77u, 88u};
+
+    snapshot.guy_snapshots.push_back({
+        .guy_id = 1,
+        .name = "Replay Hero",
+        .family = 5,
+        .strength = 12,
+        .dexterity = 10,
+        .constitution = 11,
+        .intelligence = 9,
+        .armor = 3,
+        .exp = 456u,
+        .kills = 7,
+        .level_kills = 2,
+        .total_damage = 90,
+        .total_hits = 14,
+        .total_shots = 20,
+        .teamnum = 3,
+        .scen_damage = 12.0f,
+        .scen_kills = 1,
+        .scen_damage_taken = 5.0f,
+        .scen_min_hp = 30.0f,
+        .scen_shots = 8,
+        .scen_hits = 6,
+        .level = 8,
+    });
+
+    og::sim::EntitySnapshot entity;
+    entity.guy_id = 1;
+    entity.entity_id = 99u;
+    entity.xpos = 17;
+    entity.ypos = 23;
+    entity.team_num = 3u;
+    entity.real_team_num = 3u;
+    entity.user = 0;
+    entity.order = Order::Living;
+    entity.family = 5;
+    entity.frame = 2;
+    entity.worldx = 17.0f;
+    entity.worldy = 23.0f;
+    entity.hitpoints = 30.0f;
+    entity.max_hitpoints = 40.0f;
+    entity.magicpoints = 9.0f;
+    entity.max_magicpoints = 12.0f;
+    entity.level = 8;
+    entity.path_check_counter = 4;
+    entity.regen_delay = 6;
+    snapshot.oblist.push_back(entity);
+
+    return snapshot;
+}
+
+void expect_snapshot_eq(const og::sim::WorldSnapshot& expected,
+                        const og::sim::WorldSnapshot& actual)
+{
+    EXPECT_EQ(og::sim::serialize_snapshot(expected),
+              og::sim::serialize_snapshot(actual));
+}
+
 } // namespace
 
 TEST(Replay, file_roundtrip_preserves_header_and_frames)
@@ -71,9 +148,12 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
         .level_id = 42,
         .player_count = 2,
         .timer_wait = 7,
+        .campaign_id = "org.openglad.gladiator",
     };
+    const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
 
     og::sim::ReplayRecorder recorder(header);
+    recorder.set_initial_snapshot(initial_snapshot);
     recorder.record_input(10u, make_sparse_input());
     recorder.record_input(11u, make_dense_input());
 
@@ -95,6 +175,8 @@ TEST(Replay, file_roundtrip_preserves_header_and_frames)
     EXPECT_EQ(header.level_id, player.header().level_id);
     EXPECT_EQ(header.player_count, player.header().player_count);
     EXPECT_EQ(header.timer_wait, player.header().timer_wait);
+    EXPECT_EQ(header.campaign_id, player.header().campaign_id);
+    expect_snapshot_eq(initial_snapshot, player.initial_snapshot());
     ASSERT_EQ(recorder.frame_count(), player.frame_count());
 
     for (std::size_t i = 0; i < recorder.frames().size(); ++i)
@@ -114,13 +196,15 @@ TEST(Replay, deserialize_rejects_bad_magic_version_and_truncated_payload)
         .level_id = 2,
         .player_count = 1,
         .timer_wait = 6,
+        .campaign_id = "org.openglad.gladiator",
     };
+    const og::sim::WorldSnapshot initial_snapshot = make_initial_snapshot();
     const std::array<og::sim::InputStateMessage, 1> frames = {{
         {7u, make_sparse_input()},
     }};
 
     const std::vector<std::uint8_t> bytes =
-        og::sim::serialize_replay(header, frames);
+        og::sim::serialize_replay(header, initial_snapshot, frames);
 
     og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
 
@@ -137,6 +221,40 @@ TEST(Replay, deserialize_rejects_bad_magic_version_and_truncated_payload)
     auto truncated = bytes;
     truncated.pop_back();
     EXPECT_FALSE(og::sim::deserialize_replay(truncated, &io_error).has_value());
+    EXPECT_EQ(og::sim::ReplayIoError::MalformedData, io_error);
+}
+
+TEST(Replay, recorder_write_file_requires_self_contained_bootstrap_data)
+{
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() / "openglad_test_replay_missing_bootstrap.ogr";
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+
+    og::sim::ReplayRecorder missing_campaign({
+        .version = og::sim::kReplayFormatVersion,
+        .initial_rng_state = 7u,
+        .level_id = 3,
+        .player_count = 1,
+        .timer_wait = 6,
+        .campaign_id = "",
+    });
+    missing_campaign.set_initial_snapshot(make_initial_snapshot());
+
+    og::sim::ReplayIoError io_error = og::sim::ReplayIoError::None;
+    EXPECT_FALSE(missing_campaign.write_file(path, &io_error));
+    EXPECT_EQ(og::sim::ReplayIoError::MalformedData, io_error);
+
+    og::sim::ReplayRecorder missing_snapshot({
+        .version = og::sim::kReplayFormatVersion,
+        .initial_rng_state = 7u,
+        .level_id = 3,
+        .player_count = 1,
+        .timer_wait = 6,
+        .campaign_id = "org.openglad.gladiator",
+    });
+
+    EXPECT_FALSE(missing_snapshot.write_file(path, &io_error));
     EXPECT_EQ(og::sim::ReplayIoError::MalformedData, io_error);
 }
 

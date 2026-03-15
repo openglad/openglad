@@ -238,7 +238,9 @@ void run_replay_roundtrip(int player_count)
         .level_id = live_world.id,
         .player_count = static_cast<std::uint8_t>(player_count),
         .timer_wait = live_world.timer_wait,
+        .campaign_id = game_screen.save_data.current_campaign,
     });
+    recorder.record_initial_world(live_world);
     recorder.record_world_keyframe(0u, live_world);
     const og::sim::WorldSnapshot expected_initial_snapshot =
         recorder.checkpoints().front().snapshot;
@@ -281,10 +283,19 @@ void run_replay_roundtrip(int player_count)
     EXPECT_EQ(recorder.header().level_id, player.header().level_id);
     EXPECT_EQ(recorder.header().player_count, player.header().player_count);
     EXPECT_EQ(recorder.header().timer_wait, player.header().timer_wait);
+    EXPECT_EQ(recorder.header().campaign_id, player.header().campaign_id);
     ASSERT_EQ(recorder.frame_count(), player.frame_count());
+    assert_snapshot_bytes_match("initial snapshot payload",
+                                recorder.initial_snapshot(),
+                                player.initial_snapshot());
 
+    ASSERT_EQ(CampaignPackageIoError::None,
+              unmount_campaign_package_with_error(get_mounted_campaign()));
+    game_screen.save_data.reset();
+    game_screen.save_data.current_campaign = "wrong.campaign";
     game_screen.save_data.scen_num = static_cast<short>(player.header().level_id + 1);
     game_screen.save_data.numplayers = 0;
+    ASSERT_EQ(0, game_screen.save_data.team_size);
     game_screen.world().rng_.state_ = 0u;
     ASSERT_TRUE(player.initialize_screen(game_screen))
         << "ReplayPlayer should seed RNG and load the replay world";
@@ -294,10 +305,14 @@ void run_replay_roundtrip(int player_count)
     ASSERT_EQ(player.header().level_id, replay_world.id);
     ASSERT_EQ(player.header().player_count, static_cast<std::uint8_t>(game_screen.numviews));
     ASSERT_EQ(player.header().timer_wait, replay_world.timer_wait);
+    ASSERT_EQ(0, game_screen.save_data.team_size);
 
     const og::sim::WorldSnapshot actual_initial_snapshot =
         og::sim::peek_keyframe_snapshot(replay_world);
-    assert_snapshot_bytes_match("initial snapshot",
+    assert_snapshot_bytes_match("initial snapshot payload",
+                                player.initial_snapshot(),
+                                actual_initial_snapshot);
+    assert_snapshot_bytes_match("initial checkpoint",
                                 expected_initial_snapshot,
                                 actual_initial_snapshot);
 
