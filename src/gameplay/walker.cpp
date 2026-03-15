@@ -149,6 +149,7 @@ void walker_init_common(walker* w, IRandom& rng)
 	w->skip_exit = 0;
 	w->weapons_left = 1;
 	w->current_special = 0;
+	w->in_act = false;
 	w->path_check_counter = next_path_check_counter(rng);
 	w->hurt_flash = false;
 	w->attack_lunge = 0.0f;
@@ -359,6 +360,7 @@ walker::reset(void)
 	//  invisibility_left = 0;
 	//  outline = 0;
 	//  drawcycle = 0;
+	in_act = false;
 
 	//  skip_exit = 0;
 	//  xpos = ypos = -1; //this to correct a problem with these not being alloced?

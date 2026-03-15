@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <unordered_set>
 #include <utility>
 
@@ -41,6 +42,14 @@ og::sim::GuySnapshot capture_guy_snapshot(const guy& source)
     snapshot.scen_hits = source.scen_hits;
     snapshot.level = source.level;
     return snapshot;
+}
+
+std::uint8_t capture_bool_byte(const bool& value)
+{
+    unsigned char raw = 0;
+    static_assert(sizeof(raw) == sizeof(value));
+    std::memcpy(&raw, &value, sizeof(raw));
+    return raw != 0 ? 1U : 0U;
 }
 
 void capture_world_grid(const GameWorld& world,
@@ -174,12 +183,12 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity, bool keyframe)
     snapshot.drawcycle = entity.drawcycle;
     snapshot.current_special = entity.current_special;
     snapshot.ignore = entity.ignore;
-    snapshot.in_act = entity.in_act ? 1U : 0U;
+    snapshot.in_act = capture_bool_byte(entity.in_act);
     snapshot.shifter_down = entity.shifter_down;
     snapshot.yo_delay = entity.yo_delay;
     snapshot.skip_exit = entity.skip_exit;
     snapshot.outline = entity.outline;
-    snapshot.hurt_flash = entity.hurt_flash ? 1U : 0U;
+    snapshot.hurt_flash = capture_bool_byte(entity.hurt_flash);
     snapshot.lifetime = entity.lifetime;
     snapshot.speed_bonus = entity.speed_bonus;
     snapshot.speed_bonus_left = entity.speed_bonus_left;
