@@ -66,12 +66,20 @@ inline bool decode_transport_envelope(std::span<const std::uint8_t> bytes,
     envelope.header_type = bytes[1];
     envelope.message_type = static_cast<std::uint8_t>(
         bytes[1] & ~kTransportPayloadUncompressedFlag);
-    envelope.payload_length = static_cast<std::uint16_t>(bytes[2]) |
-        (static_cast<std::uint16_t>(bytes[3]) << 8);
-    envelope.tick = static_cast<std::uint32_t>(bytes[4]) |
-        (static_cast<std::uint32_t>(bytes[5]) << 8) |
-        (static_cast<std::uint32_t>(bytes[6]) << 16) |
-        (static_cast<std::uint32_t>(bytes[7]) << 24);
+    const std::uint16_t payload_lo = static_cast<std::uint16_t>(bytes[2]);
+    const std::uint16_t payload_hi =
+        static_cast<std::uint16_t>(static_cast<std::uint16_t>(bytes[3]) << 8);
+    envelope.payload_length =
+        static_cast<std::uint16_t>(payload_lo | payload_hi);
+
+    const std::uint32_t tick_b0 = static_cast<std::uint32_t>(bytes[4]);
+    const std::uint32_t tick_b1 =
+        static_cast<std::uint32_t>(static_cast<std::uint32_t>(bytes[5]) << 8);
+    const std::uint32_t tick_b2 =
+        static_cast<std::uint32_t>(static_cast<std::uint32_t>(bytes[6]) << 16);
+    const std::uint32_t tick_b3 =
+        static_cast<std::uint32_t>(static_cast<std::uint32_t>(bytes[7]) << 24);
+    envelope.tick = tick_b0 | tick_b1 | tick_b2 | tick_b3;
     return true;
 }
 
