@@ -25,6 +25,67 @@ void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 
 
+struct KeyBindingGuard
+{
+    int player;
+    int key_enum;
+    int old_key;
+
+    KeyBindingGuard(int player_, int key_enum_, int new_key)
+        : player(player_)
+        , key_enum(key_enum_)
+        , old_key(og::runtime::current_session->player_keys_[player_][key_enum_])
+    {
+        og::runtime::current_session->player_keys_[player][key_enum] = new_key;
+    }
+
+    ~KeyBindingGuard()
+    {
+        og::runtime::current_session->player_keys_[player][key_enum] = old_key;
+    }
+};
+
+struct SessionKeyStateGuard
+{
+    const Uint8* old_keystates = nullptr;
+    std::array<Uint8, SDL_NUM_SCANCODES> fake_keystates{};
+
+    SessionKeyStateGuard()
+        : old_keystates(og::runtime::current_session->keystates_)
+    {
+        fake_keystates.fill(0);
+        og::runtime::current_session->keystates_ = fake_keystates.data();
+    }
+
+    ~SessionKeyStateGuard()
+    {
+        og::runtime::current_session->keystates_ = old_keystates;
+    }
+
+    void set(SDL_Keycode key, bool pressed)
+    {
+        const SDL_Scancode scancode = SDL_GetScancodeFromKey(key);
+        if (scancode >= 0 && scancode < SDL_NUM_SCANCODES)
+            fake_keystates[static_cast<std::size_t>(scancode)] = pressed ? 1 : 0;
+    }
+};
+
+struct GameSpeedGuard
+{
+    float old_speed = 1.0f;
+
+    explicit GameSpeedGuard(float new_speed)
+        : old_speed(og::runtime::current_session->g_game_speed_factor_)
+    {
+        set_game_speed(new_speed);
+    }
+
+    ~GameSpeedGuard()
+    {
+        set_game_speed(old_speed);
+    }
+};
+
 struct EventScript {
     std::vector<SDL_Event> events;
     size_t idx = 0;
@@ -44,6 +105,18 @@ static EventScript* g_script = nullptr;
 static int scripted_poll_adapter(SDL_Event* out)
 {
     return scripted_poll(g_script, out);
+}
+
+static bool load_minimal_game_loop_scenario(const char* save_name)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    if (game_screen == nullptr)
+        return false;
+
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    game_screen->save_data.save(save_name);
+    return load_saved_game(save_name, game_screen) != 0;
 }
 
 static void expect_snapshot_bytes_match(const og::sim::WorldSnapshot& expected,
@@ -204,12 +277,10 @@ TEST(GameLoop, game_frame_with_result_caps_accumulator_to_four_ticks_per_call)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
 
-    game_screen->save_data.scen_num = 1;
-    game_screen->save_data.numplayers = 1;
-    game_screen->save_data.save("test_game_loop_tick_cap");
-    short load_result = load_saved_game("test_game_loop_tick_cap", game_screen);
-    ASSERT_TRUE(load_result != 0) << "load_saved_game should succeed for tick-cap test";
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_tick_cap"))
+        << "load_saved_game should succeed for tick-cap test";
 
     GameLoopFrameState st;
     st.initialized = true;
@@ -229,6 +300,164 @@ TEST(GameLoop, game_frame_with_result_caps_accumulator_to_four_ticks_per_call)
               game_frame_with_result(*game_screen, st, deps));
     EXPECT_EQ(4, tick_count);
     EXPECT_EQ(0u, st.accumulated_time);
+
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, game_frame_with_result_accumulates_input_without_ticking_when_interval_not_reached)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    disablePlayerJoystick(0);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_zero_tick"))
+        << "load_saved_game should succeed for zero-tick test";
+
+    SessionKeyStateGuard keystates;
+    KeyBindingGuard bind_yell(0, KEY_YELL, SDLK_y);
+    keystates.set(SDLK_y, true);
+    ctx().input = {};
+
+    GameLoopFrameState st;
+    st.initialized = true;
+    st.last_frame_time = SDL_GetTicks();
+    st.accumulated_time = 0;
+
+    int tick_count = 0;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.fixed_tick_ms = 1000;
+    deps.after_act = [&tick_count](screen&) {
+        ++tick_count;
+    };
+
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(0, tick_count);
+    EXPECT_TRUE(st.has_pending_input);
+    EXPECT_TRUE(st.pending_input.players[0].held[KEY_YELL]);
+    EXPECT_TRUE(st.pending_input.players[0].pressed[KEY_YELL]);
+
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, game_frame_with_result_runs_multiple_ticks_when_accumulator_has_multiple_intervals)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_multi_tick"))
+        << "load_saved_game should succeed for multi-tick test";
+
+    GameLoopFrameState st;
+    st.initialized = true;
+    st.last_frame_time = SDL_GetTicks();
+    st.accumulated_time = og::sim::DEFAULT_SIM_TICK_MS * 2u;
+
+    int tick_count = 0;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.fixed_tick_ms = og::sim::DEFAULT_SIM_TICK_MS;
+    deps.after_act = [&tick_count](screen&) {
+        ++tick_count;
+    };
+
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(2, tick_count);
+    EXPECT_LT(st.accumulated_time, og::sim::DEFAULT_SIM_TICK_MS);
+
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, game_frame_with_result_uses_fixed_tick_ms_instead_of_timer_wait_when_requested)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_fixed_tick"))
+        << "load_saved_game should succeed for fixed-tick test";
+
+    const signed char old_timer_wait = game_screen->world().timer_wait;
+    game_screen->world().timer_wait = 10;
+
+    int derived_ticks = 0;
+    GameLoopFrameState derived_st;
+    derived_st.initialized = true;
+    derived_st.last_frame_time = SDL_GetTicks();
+    derived_st.accumulated_time = 100;
+
+    GameLoopDeps derived_deps;
+    derived_deps.enable_render = false;
+    derived_deps.enable_event_poll = false;
+    derived_deps.after_act = [&derived_ticks](screen&) {
+        ++derived_ticks;
+    };
+
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, derived_st, derived_deps));
+    EXPECT_EQ(0, derived_ticks);
+
+    int fixed_ticks = 0;
+    GameLoopFrameState fixed_st;
+    fixed_st.initialized = true;
+    fixed_st.last_frame_time = SDL_GetTicks();
+    fixed_st.accumulated_time = 100;
+
+    GameLoopDeps fixed_deps;
+    fixed_deps.enable_render = false;
+    fixed_deps.enable_event_poll = false;
+    fixed_deps.fixed_tick_ms = og::sim::DEFAULT_SIM_TICK_MS;
+    fixed_deps.after_act = [&fixed_ticks](screen&) {
+        ++fixed_ticks;
+    };
+
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, fixed_st, fixed_deps));
+    EXPECT_EQ(1, fixed_ticks);
+
+    game_screen->world().timer_wait = old_timer_wait;
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, game_frame_with_result_processes_input_before_same_call_act)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    disablePlayerJoystick(0);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_input_timing"))
+        << "load_saved_game should succeed for input-timing test";
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    ASSERT_TRUE(view != nullptr);
+    ASSERT_TRUE(view->control != nullptr);
+
+    SessionKeyStateGuard keystates;
+    KeyBindingGuard bind_yell(0, KEY_YELL, SDLK_y);
+    keystates.set(SDLK_y, true);
+    ctx().input = {};
+    view->control->set_yo_delay(0);
+
+    GameLoopFrameState st;
+    st.initialized = true;
+    st.last_frame_time = SDL_GetTicks();
+    st.accumulated_time = og::sim::DEFAULT_SIM_TICK_MS;
+
+    int yo_delay_after_act = -1;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.fixed_tick_ms = og::sim::DEFAULT_SIM_TICK_MS;
+    deps.after_act = [&yo_delay_after_act, view](screen&) {
+        yo_delay_after_act = view->control ? view->control->yo_delay() : -1;
+    };
+
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(30, yo_delay_after_act);
 
     game_screen->world().delete_objects();
 }
