@@ -197,6 +197,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
     ${SRC_DIR}/interface/session_state.cpp
+    ${SRC_DIR}/interface/replay_runtime.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
     ${SRC_DIR}/interface/ui/level_picker.cpp
     ${SRC_DIR}/interface/ui/level_editor.cpp
@@ -409,6 +410,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/interface/platform_bridge.cpp
     ${SRC_DIR}/interface/guy_create.cpp
+    ${SRC_DIR}/interface/replay_runtime.cpp
     ${SRC_DIR}/interface/session_state.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
     ${SRC_DIR}/interface/walker_render_bridge.cpp

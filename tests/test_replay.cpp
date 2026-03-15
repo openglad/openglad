@@ -5,6 +5,7 @@
 #include <openglad/gameplay/input_action.h>
 #include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/interface/replay_runtime.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/resources/io_common.h>
@@ -304,8 +305,8 @@ void run_replay_roundtrip(int player_count)
     game_screen.save_data.numplayers = 0;
     ASSERT_EQ(0, game_screen.save_data.team_size);
     game_screen.world().rng_.state_ = 0u;
-    ASSERT_TRUE(player.initialize_screen(game_screen))
-        << "ReplayPlayer should seed RNG and load the replay world";
+    ASSERT_TRUE(og::runtime::initialize_replay_screen(game_screen, player))
+        << "replay runtime should seed RNG and load the replay world";
 
     GameWorld& replay_world = game_screen.world();
     reset_loaded_world_for_replay(replay_world);
