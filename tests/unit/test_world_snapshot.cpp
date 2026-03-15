@@ -1116,6 +1116,81 @@ TEST(WorldSnapshot, apply_snapshot_replaces_state_reorders_lists_and_skips_death
     expect_entity_snapshot_matches(*weapon, *weapon_snapshot, clean_expected_dirty);
 }
 
+TEST(WorldSnapshot, apply_snapshot_works_for_attached_external_worlds)
+{
+    og::sim::WorldSnapshot snapshot;
+    std::uint32_t actor_id = 0;
+
+    {
+        TestGameWorld source_fx;
+        GameWorld& source = source_fx.world();
+        configure_snapshot_test_services(source);
+
+        walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, actor);
+        actor->setworldxy(64.0f, 96.0f);
+        actor_id = actor->entity_id();
+        source.rng_.state_ = 4242;
+
+        snapshot = og::sim::capture_snapshot(source);
+    }
+
+    LevelRuntimeData mirror_level(2201, true);
+    SaveData save;
+    std::int32_t freeze = 0;
+    og::sim::SimEventLog events;
+    FixedRandom rng{0};
+    mirror_level.create_new_grid();
+    mirror_level.set_sim_context(&save, &freeze, &events, &rng, &cfg);
+
+    GameWorld external_world;
+    mirror_level.attach_world(&external_world);
+    configure_snapshot_test_services(mirror_level.world());
+
+    GameplayContext* const previous_game = current_game;
+    current_game = nullptr;
+    og::sim::apply_snapshot(mirror_level.world(), snapshot);
+    current_game = previous_game;
+
+    EXPECT_EQ(snapshot.rng_state, mirror_level.world().rng_.state_);
+    EXPECT_NE(nullptr, mirror_level.world().find_by_id(actor_id));
+}
+
+TEST(WorldSnapshot, apply_snapshot_keeps_dead_players_out_of_obmap)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+
+    walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+    actor->setworldxy(80.0f, 112.0f);
+    actor->dead = 1;
+    actor->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+
+    ASSERT_NE(nullptr, source.myobmap.get());
+    source.myobmap->remove(actor);
+    EXPECT_FALSE(pile_contains(
+        source.myobmap->obmap_get_list(actor->xpos, actor->ypos), actor));
+
+    const og::sim::WorldSnapshot snapshot = og::sim::capture_snapshot(source);
+    ASSERT_EQ(1u, snapshot.oblist.size());
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+
+    og::sim::apply_snapshot(mirror, snapshot);
+
+    walker* mirror_actor = mirror.find_by_id(actor->entity_id());
+    ASSERT_NE(nullptr, mirror_actor);
+    EXPECT_TRUE(mirror_actor->dead);
+    ASSERT_NE(nullptr, mirror.myobmap.get());
+    EXPECT_FALSE(pile_contains(
+        mirror.myobmap->obmap_get_list(mirror_actor->xpos, mirror_actor->ypos),
+        mirror_actor));
+}
+
 TEST(WorldSnapshot, apply_snapshot_overwrites_grid_dirty_tiles)
 {
     TestGameWorld source_fx;

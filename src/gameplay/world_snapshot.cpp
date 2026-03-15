@@ -454,7 +454,7 @@ void rebuild_obmap(GameWorld& world)
         {
             if (entry == nullptr)
                 continue;
-            if (!entry->ignore)
+            if (!entry->ignore && !entry->dead)
                 world.myobmap->add(entry.get(), entry->xpos, entry->ypos);
             else
                 world.myobmap->remove(entry.get());

@@ -51,6 +51,9 @@ void LevelRuntimeData::set_sim_context(SaveData* save, std::int32_t* enemy_freez
 {
     (void)enemy_freeze;
     (void)rng;
+    sim_context_save_ = save;
+    sim_context_events_ = events;
+    sim_context_config_ = config;
     world().set_gameplay_context_bindings(save, events, config);
 }
 
@@ -615,6 +618,8 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         {
             old_world->set_detach_callback({});
             wire_world_entity_services(old_world, this, hooks_);
+            old_world->set_gameplay_context_bindings(
+                sim_context_save_, sim_context_events_, sim_context_config_);
             if (old_world != &owned_world_)
                 install_world_detach_callback(old_world, this);
         }
@@ -667,10 +672,13 @@ void LevelRuntimeData::attach_world(GameWorld* world)
             old_world->myobmap = std::make_unique<obmap>();
         old_world->set_detach_callback({});
         clear_world_entity_services(old_world);
+        old_world->set_gameplay_context_bindings(nullptr, nullptr, nullptr);
     }
 
     world_ = next_world;
     wire_world_entity_services(world_, this, hooks_);
+    world_->set_gameplay_context_bindings(
+        sim_context_save_, sim_context_events_, sim_context_config_);
     if (world_ != &owned_world_)
         install_world_detach_callback(world_, this);
     else

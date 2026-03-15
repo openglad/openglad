@@ -271,6 +271,9 @@ private:
     IoError last_io_error_ = IoError::None;
     bool headless_ = false;  // When true, skip render component creation
     const LevelDataHooks* hooks_ = nullptr;
+    SaveData* sim_context_save_ = nullptr;
+    og::sim::SimEventLog* sim_context_events_ = nullptr;
+    cfg_store* sim_context_config_ = nullptr;
     GameWorld owned_world_;
     GameWorld* world_ = nullptr;
     LevelVisuals owned_level_visuals_;
