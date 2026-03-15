@@ -17,6 +17,7 @@
 namespace og::sim {
 
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
+inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
 
 // Fixed-layout entity payload used by capture/apply and byte serialization.
@@ -26,7 +27,8 @@ struct EntitySnapshot {
 
     // Player character linkage is serialized with the entity header but is not
     // dirty-mask tracked. WorldSnapshot::guy_snapshots carries the actual data.
-    std::int32_t guy_id = 0;
+    // Use a negative sentinel because real guy IDs are allocated from 0 upward.
+    std::int32_t guy_id = kNoGuyId;
 
     std::uint32_t entity_id = 0;
     std::int16_t xpos = 0;

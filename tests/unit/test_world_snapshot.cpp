@@ -97,6 +97,16 @@ TEST(WorldSnapshot, guy_linkage_is_not_dirty_mask_tracked)
     EXPECT_FALSE(guy_id_in_field_table);
 }
 
+TEST(WorldSnapshot, guy_linkage_uses_negative_sentinel_for_unlinked_entities)
+{
+    og::sim::EntitySnapshot npc_snapshot;
+    og::sim::GuySnapshot guy_snapshot;
+    guy_snapshot.guy_id = 0;
+
+    EXPECT_EQ(og::sim::kNoGuyId, npc_snapshot.guy_id);
+    EXPECT_NE(guy_snapshot.guy_id, npc_snapshot.guy_id);
+}
+
 TEST(WorldSnapshot, world_snapshot_can_hold_world_and_guy_state)
 {
     og::sim::WorldSnapshot snapshot;
