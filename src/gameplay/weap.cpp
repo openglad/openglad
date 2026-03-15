@@ -34,13 +34,13 @@
 weap::weap(const PixieData& data)
     : walker(data)
 {
-	do_bounce = 0; // don't normally bounce :)
+	set_do_bounce(0); // don't normally bounce :)
 }
 
 weap::weap()
     : walker()
 {
-	do_bounce = 0;
+	set_do_bounce(0);
 }
 
 weap::~weap()
@@ -52,11 +52,11 @@ bool weap::act()
 {
 
 	// Make sure everyone we're pointing to is valid
-	if (foe() && foe()->dead)
+	if (foe() && foe()->dead())
 		set_foe(nullptr);
-	if (leader() && leader()->dead)
+	if (leader() && leader()->dead())
 		set_leader(nullptr);
-	if (owner() && owner()->dead)
+	if (owner() && owner()->dead())
 		set_owner(nullptr);
 
 	if (!owner())
@@ -65,16 +65,16 @@ bool weap::act()
 	set_collide_ob(nullptr); // always start with no collision..
 
 	// Complete previous animations (like firing)
-	if (ani_type != ANI_WALK)
-		return animate();
+		if (ani_type() != ANI_WALK)
+			return animate();
 
 	//  Log("weap %d is ani %d\n", family, ani_type);
 
-	if (current_game->world->mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
-		if (lineofsight)
-			lineofsight--;
+		if (current_game->world->mysmoother.query_genre_x_y(xpos(), ypos()) == TYPE_TREES)
+			if (lineofsight())
+				set_lineofsight(lineofsight() - 1);
 
-	switch (act_type)
+		switch (act_type())
 	{
 			// We are the control character
 		case ACT_CONTROL:
@@ -84,7 +84,7 @@ bool weap::act()
 			}
 		case ACT_SIT: // for things like trees
 			{
-				const auto* wfd = get_weapon_family_descriptor(family);
+				const auto* wfd = get_weapon_family_descriptor(family());
 				if (!wfd || !wfd->skip_sit_notify)
 					og::sim::emit_notification(current_game->sim_events, "Weapon sitting");
 				return 1;
@@ -114,13 +114,13 @@ bool weap::act()
 			}
 		case ACT_DIE:
 			{
-				this->dead = 1;
+				this->set_dead(1);
 				return 1;
 			}
 			// We are randomly walking toward enemy
 		case ACT_RANDOM:
 			{
-				std::string msg = std::format("Weapon {} doing act random?", family);
+				std::string msg = std::format("Weapon {} doing act random?", family());
 				//Log("Weapon doing act_random?\n");
 				og::sim::emit_notification(current_game->sim_events, msg);
 				return 1;
@@ -145,12 +145,12 @@ bool weap::death()
 	// time this function is called, so that we can easily reverse
 	// the decision :)
 
-	if (death_called)  // Make sure we don't get multiple deaths
+	if (death_called())  // Make sure we don't get multiple deaths
 		return 0;
 
-	death_called = 1;
+	set_death_called(1);
 
-	const auto* wfd = get_weapon_family_descriptor(family);
+	const auto* wfd = get_weapon_family_descriptor(family());
 	if (wfd && wfd->on_death)
 		wfd->on_death(this);
 
@@ -169,7 +169,7 @@ bool weap::animate()
 	//       ani_type = 0;
 	//  }
 
-	const auto* wfd = get_weapon_family_descriptor(family);
+	const auto* wfd = get_weapon_family_descriptor(family());
 	if (wfd && wfd->on_animate)
 	{
 		if (!wfd->on_animate(this))
@@ -178,13 +178,13 @@ bool weap::animate()
 	else
 	{
 		// Default animation
-		ani_type = 0;
-		set_frame(ani[curdir][cycle]);
-		cycle++;
-		if (ani[curdir][cycle] == -1)
-		{
-			cycle = 0;
-		}
+			set_ani_type(0);
+			set_frame(ani[curdir()][cycle()]);
+			set_cycle(static_cast<signed char>(cycle() + 1));
+			if (ani[curdir()][cycle()] == -1)
+			{
+				set_cycle(0);
+			}
 	}
 
 	return 1;

@@ -42,7 +42,7 @@ TEST(ScreenExtended, screen_add_ob_living)
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "add_ob should succeed";
     w->setxy(50, 50);
-    w->dead = 1; // mark for cleanup
+    w->set_dead(1); // mark for cleanup
 }
 
 
@@ -50,7 +50,7 @@ TEST(ScreenExtended, screen_add_ob_weapon)
 {
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(w != nullptr) << "add_ob weapon should succeed";
-    w->dead = 1;
+    w->set_dead(1);
 }
 
 
@@ -58,7 +58,7 @@ TEST(ScreenExtended, screen_add_ob_treasure)
 {
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Treasure, FAMILY_STAIN, 1);
     ASSERT_TRUE(w != nullptr) << "add_ob treasure should succeed";
-    w->dead = 1;
+    w->set_dead(1);
 }
 
 
@@ -66,7 +66,7 @@ TEST(ScreenExtended, screen_add_ob_effect)
 {
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_EXPLOSION);
     ASSERT_TRUE(w != nullptr) << "add_ob effect should succeed";
-    w->dead = 1;
+    w->set_dead(1);
 }
 
 
@@ -277,8 +277,8 @@ TEST(ScreenExtended, screen_find_nearest_player_and_draw_panels)
 
     walker* p1p = p1.get();
 
-    p1p->user = 0;
-    p2->user = 1;
+    p1p->set_user(0);
+    p2->set_user(1);
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(p1));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(p2));
 

@@ -90,8 +90,8 @@ TEST(StatsCommands, stats_do_command_rush)
 {
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "walker created";
-    w->lastx = w->stepsize;
-    w->lasty = 0;
+    w->set_lastx(w->stepsize());
+    w->set_lasty(0);
     w->stats()->force_command(COMMAND_RUSH, 3, 1, 0);
     short result = w->stats()->do_command();
     (void)result;
@@ -102,8 +102,8 @@ TEST(StatsCommands, stats_do_command_quick_fire)
 {
     auto w = make_walker(FAMILY_ARCHER);
     ASSERT_TRUE(w != nullptr) << "walker created";
-    w->lastx = w->stepsize;
-    w->lasty = 0;
+    w->set_lastx(w->stepsize());
+    w->set_lasty(0);
     w->stats()->force_command(COMMAND_QUICK_FIRE, 1, 1, 0);
     short result = w->stats()->do_command();
     (void)result;
@@ -114,8 +114,8 @@ TEST(StatsCommands, stats_do_command_attack)
 {
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "walker created";
-    w->lastx = w->stepsize;
-    w->lasty = 0;
+    w->set_lastx(w->stepsize());
+    w->set_lasty(0);
     w->stats()->force_command(COMMAND_ATTACK, 5, 1, 0);
     short result = w->stats()->do_command();
     (void)result;
@@ -126,8 +126,8 @@ TEST(StatsCommands, stats_do_command_right_walk)
 {
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "walker created";
-    w->lastx = w->stepsize;
-    w->lasty = 0;
+    w->set_lastx(w->stepsize());
+    w->set_lasty(0);
     w->stats()->force_command(COMMAND_RIGHT_WALK, 5, 1, 0);
     short result = w->stats()->do_command();
     (void)result;
@@ -138,11 +138,11 @@ TEST(StatsCommands, stats_do_command_die_sets_delete_me)
 {
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "walker created";
-    w->dead = 1; // avoid log spam; COMMAND_DIE expects a dead controller
-    w->stats()->delete_me = 0;
+    w->set_dead(1); // avoid log spam; COMMAND_DIE expects a dead controller
+    w->stats()->set_delete_me(0);
     w->stats()->force_command(COMMAND_DIE, 1, 0, 0);
     (void)w->stats()->do_command();
-    ASSERT_TRUE(w->stats()->delete_me == 1) << "COMMAND_DIE should set delete_me when count < 2";
+    ASSERT_TRUE(w->stats()->delete_me() == 1) << "COMMAND_DIE should set delete_me when count < 2";
 }
 
 
@@ -159,7 +159,7 @@ TEST(StatsCommands, stats_forward_blocked_all_dirs)
     ASSERT_TRUE(w != nullptr) << "walker created";
 
     for (int dir = 0; dir < 8; dir++) {
-        w->curdir = static_cast<char>(dir);
+        w->set_curdir(static_cast<char>(dir));
         short result = w->stats()->forward_blocked();
         (void)result;
     }
@@ -172,7 +172,7 @@ TEST(StatsCommands, stats_right_blocked_all_dirs)
     ASSERT_TRUE(w != nullptr) << "walker created";
 
     for (int dir = 0; dir < 8; dir++) {
-        w->curdir = static_cast<char>(dir);
+        w->set_curdir(static_cast<char>(dir));
         short result = w->stats()->right_blocked();
         (void)result;
     }
@@ -185,7 +185,7 @@ TEST(StatsCommands, stats_right_forward_blocked_all_dirs)
     ASSERT_TRUE(w != nullptr) << "walker created";
 
     for (int dir = 0; dir < 8; dir++) {
-        w->curdir = static_cast<char>(dir);
+        w->set_curdir(static_cast<char>(dir));
         short result = w->stats()->right_forward_blocked();
         (void)result;
     }
@@ -198,7 +198,7 @@ TEST(StatsCommands, stats_right_back_blocked_all_dirs)
     ASSERT_TRUE(w != nullptr) << "walker created";
 
     for (int dir = 0; dir < 8; dir++) {
-        w->curdir = static_cast<char>(dir);
+        w->set_curdir(static_cast<char>(dir));
         short result = w->stats()->right_back_blocked();
         (void)result;
     }
@@ -220,8 +220,8 @@ TEST(StatsCommands, stats_hit_response_all_families)
         auto target = make_walker(families[i]);
         auto attacker = make_walker(FAMILY_SOLDIER);
         if (target && attacker) {
-            attacker->team_num = 1;
-            target->team_num = 0;
+            attacker->set_team_num(1);
+            target->set_team_num(0);
             attacker->setxy(105, 100);
             target->stats()->hit_response(attacker.get());
         }
@@ -283,7 +283,7 @@ TEST(StatsCommands, stats_right_walk_smoke)
 {
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "walker created";
-    w->curdir = FACE_RIGHT;
+    w->set_curdir(FACE_RIGHT);
     w->stats()->right_walk();
 }
 
@@ -312,8 +312,8 @@ TEST(StatsCommands, stats_walk_to_foe_with_foe)
     auto enemy = make_walker(FAMILY_ORC);
     ASSERT_TRUE(w != nullptr) << "walker created";
     ASSERT_TRUE(enemy != nullptr) << "enemy created";
-    w->team_num = 0;
-    enemy->team_num = 1;
+    w->set_team_num(0);
+    enemy->set_team_num(1);
     enemy->setxy(120, 100);
     w->set_foe(enemy.get());
     w->stats()->walk_to_foe();
@@ -326,8 +326,7 @@ TEST(StatsCommands, stats_yell_for_help_smoke)
     auto enemy = make_walker(FAMILY_ORC);
     ASSERT_TRUE(w != nullptr) << "walker created";
     ASSERT_TRUE(enemy != nullptr) << "enemy created";
-    enemy->team_num = 1;
+    enemy->set_team_num(1);
     enemy->setxy(120, 100);
     w->stats()->yell_for_help(enemy.get());
 }
-

@@ -258,13 +258,13 @@ TEST(LoadLevels, capture_snapshot_after_real_level_load_and_live_ticks_matches_w
         find_entity_snapshot(snapshot.oblist, first_entity->entity_id());
     ASSERT_NE(nullptr, first_snapshot);
     EXPECT_EQ(first_entity->entity_id(), first_snapshot->entity_id);
-    EXPECT_EQ(first_entity->xpos, first_snapshot->xpos);
-    EXPECT_EQ(first_entity->ypos, first_snapshot->ypos);
-    EXPECT_EQ(first_entity->order, first_snapshot->order);
-    EXPECT_EQ(first_entity->family, first_snapshot->family);
+    EXPECT_EQ(first_entity->xpos(), first_snapshot->xpos);
+    EXPECT_EQ(first_entity->ypos(), first_snapshot->ypos);
+    EXPECT_EQ(first_entity->order(), first_snapshot->order);
+    EXPECT_EQ(first_entity->family(), first_snapshot->family);
     ASSERT_NE(nullptr, first_entity->stats());
-    EXPECT_EQ(first_entity->stats()->hitpoints, first_snapshot->hitpoints);
-    EXPECT_EQ(first_entity->stats()->level, first_snapshot->level);
+    EXPECT_EQ(first_entity->stats()->hitpoints(), first_snapshot->hitpoints);
+    EXPECT_EQ(first_entity->stats()->level(), first_snapshot->level);
 
     if (first_entity->myguy != nullptr)
     {

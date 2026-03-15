@@ -29,11 +29,11 @@ static bool slime_check_special_ai(living* self)
 
 static bool slime_on_death(walker* self)
 {
-    self->dead = 1;
+    self->set_dead(1);
     walker* newob = current_game->world->add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
-    newob->team_num = self->team_num;
-    newob->stats()->level = self->stats()->level;
-    newob->set_difficulty(self->stats()->level);
+    newob->set_team_num(self->team_num());
+    newob->stats()->set_level(self->stats()->level());
+    newob->set_difficulty(self->stats()->level());
     newob->set_foe(self->foe());
     newob->set_leader(self->leader());
     if (self->stats()->name.size())
@@ -43,17 +43,17 @@ static bool slime_on_death(walker* self)
         self->move_myguy_to(newob);
     }
     newob->center_on(self);
-    self->stats()->hitpoints = self->stats()->max_hitpoints;
+    self->stats()->set_hitpoints(self->stats()->max_hitpoints());
     return true;
 }
 
 static bool medium_slime_on_death(walker* self)
 {
-    self->dead = 1;
+    self->set_dead(1);
     walker* newob = current_game->world->add_ob(Order::Living, FAMILY_SMALL_SLIME);
-    newob->team_num = self->team_num;
-    newob->stats()->level = self->stats()->level;
-    newob->set_difficulty(self->stats()->level);
+    newob->set_team_num(self->team_num());
+    newob->stats()->set_level(self->stats()->level());
+    newob->set_difficulty(self->stats()->level());
     newob->set_foe(self->foe());
     newob->set_leader(self->leader());
     if (self->stats()->name.size())
@@ -63,31 +63,31 @@ static bool medium_slime_on_death(walker* self)
         self->move_myguy_to(newob);
     }
     newob->center_on(self);
-    self->stats()->hitpoints = self->stats()->max_hitpoints;
+    self->stats()->set_hitpoints(self->stats()->max_hitpoints());
     return true;
 }
 
 static bool slime_on_ani_complete(walker* self)
 {
-    if (self->ani_type != ANI_SLIME_SPLIT)
+    if (self->ani_type() != ANI_SLIME_SPLIT)
         return false;
 
-    self->ani_type = ANI_WALK;
-    self->cycle = 0;
+    self->set_ani_type(ANI_WALK);
+    self->set_cycle(0);
     // Shrink (and move) normal guy
     self->transform_to(Order::Living, FAMILY_SMALL_SLIME);
-    self->setxy(self->xpos-10, self->ypos+10);
+    self->setxy(self->xpos()-10, self->ypos()+10);
 
     // Create a new small slime
     walker* newob = current_game->world->add_ob(Order::Living, FAMILY_SMALL_SLIME);
-    newob->setxy(self->xpos+12, self->ypos-12);
+    newob->setxy(self->xpos()+12, self->ypos()-12);
     // Transfer stats/etc. across to new guy
     self->transfer_stats(newob);
-    if (newob->myguy && newob->myguy->exp < static_cast<std::uint32_t>(1000 * self->stats()->level))
+    if (newob->myguy && newob->myguy->exp < static_cast<std::uint32_t>(1000 * self->stats()->level()))
     {
         newob->clear_myguy();
         newob->stats()->name = "SLIME";
-        newob->stats()->level = calculate_level(self->myguy->exp/2);
+        newob->stats()->set_level(calculate_level(self->myguy->exp/2));
     }
     else if (newob->myguy)
     {
@@ -101,7 +101,7 @@ static bool slime_on_ani_complete(walker* self)
         newob->myguy->exp = exp;
     }
 
-    newob->team_num = self->team_num;
+    newob->set_team_num(self->team_num());
     newob->set_foe(self->foe());
     newob->set_leader(self->leader());
     return true;
@@ -109,8 +109,8 @@ static bool slime_on_ani_complete(walker* self)
 
 static bool slime_do_special(walker* self)
 {
-    self->ani_type = ANI_SLIME_SPLIT;
-    self->cycle = 0;
+    self->set_ani_type(ANI_SLIME_SPLIT);
+    self->set_cycle(0);
     return true;
 }
 

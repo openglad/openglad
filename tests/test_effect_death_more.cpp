@@ -17,11 +17,11 @@ TEST(EffectDeathMore, effect_death_ghost_scare_forces_walk_commands_on_foes)
     if (!(ghost && foe1 && foe2))
         return;
 
-    ghost->team_num = 1;
-    foe1->team_num = 2;
-    foe2->team_num = 2;
+    ghost->set_team_num(1);
+    foe1->set_team_num(2);
+    foe2->set_team_num(2);
 
-    ghost->stats()->level = 5;
+    ghost->stats()->set_level(5);
     ghost->setxy(GRID_SIZE * 10, GRID_SIZE * 10);
     foe1->setxy(GRID_SIZE * 11, GRID_SIZE * 10);
     foe2->setxy(GRID_SIZE * 9, GRID_SIZE * 10);
@@ -32,8 +32,8 @@ TEST(EffectDeathMore, effect_death_ghost_scare_forces_walk_commands_on_foes)
     if (!scare)
         return;
     scare->set_owner(ghost);
-    scare->setxy(ghost->xpos, ghost->ypos);
-    scare->dead = 1;
+    scare->setxy(ghost->xpos(), ghost->ypos());
+    scare->set_dead(1);
 
     // Should push COMMAND_WALK commands onto nearby foes.
     (void)scare->death();
@@ -49,7 +49,7 @@ TEST(EffectDeathMore, effect_death_bomb_spawns_explosion_with_owner_and_damage)
     if (!owner)
         return;
 
-    owner->stats()->level = 3;
+    owner->stats()->set_level(3);
     owner->setxy(GRID_SIZE * 8, GRID_SIZE * 8);
 
     walker* bomb = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_BOMB);
@@ -57,8 +57,8 @@ TEST(EffectDeathMore, effect_death_bomb_spawns_explosion_with_owner_and_damage)
     if (!bomb)
         return;
     bomb->set_owner(owner);
-    bomb->damage = 12.0f;
-    bomb->dead = 1;
+    bomb->set_damage(12.0f);
+    bomb->set_dead(1);
 
     (void)bomb->death();
 }

@@ -182,11 +182,11 @@ short radar::draw(LevelRuntimeData* data)
     walker* control = sanitize_radar_control(viewscreenp, *data);
 	if (control)
 	{
-		radarx = static_cast<short>(control->xpos/GRID_SIZE - xview/2);
-		radary = static_cast<short>(control->ypos/GRID_SIZE - yview/2);
-		if (control->view_all > 0)
+		radarx = static_cast<short>(control->xpos()/GRID_SIZE - xview/2);
+		radary = static_cast<short>(control->ypos()/GRID_SIZE - yview/2);
+		if (control->view_all() > 0)
 			can_see = 1;
-		obteam = control->team_num;
+		obteam = control->team_num();
 	}
 	else
 	{
@@ -241,18 +241,18 @@ short radar::draw(LevelRuntimeData* data)
             oborder = ob->query_order();
 			do_show = 0; // don't show, by default
 			if ((oborder == Order::Living || oborder == Order::Weapon
-			            || (oborder == Order::Treasure && (ob->family == FAMILY_LIFE_GEM))
-			            || (oborder == Order::Treasure && (ob->family == FAMILY_EXIT))
+			            || (oborder == Order::Treasure && (ob->family() == FAMILY_LIFE_GEM))
+			            || (oborder == Order::Treasure && (ob->family() == FAMILY_EXIT))
 			            || (oborder == Order::Generator && can_see)
 			           )
-			        && (obteam==ob->team_num || ob->invisibility_left < 1 || can_see)
-			        && on_screen( static_cast<short>((ob->xpos+1)/GRID_SIZE), static_cast<short>((ob->ypos+1)/GRID_SIZE), radarx, radary)
+			        && (obteam==ob->team_num() || ob->invisibility_left() < 1 || can_see)
+			        && on_screen( static_cast<short>((ob->xpos()+1)/GRID_SIZE), static_cast<short>((ob->ypos()+1)/GRID_SIZE), radarx, radary)
 			   )
 				do_show = 1;
 			if (do_show)
 			{
-				tempx = xloc + ((ob->xpos+1)/GRID_SIZE - radarx);
-				tempy = yloc + ((ob->ypos+1)/GRID_SIZE - radary);
+				tempx = xloc + ((ob->xpos()+1)/GRID_SIZE - radarx);
+				tempy = yloc + ((ob->ypos()+1)/GRID_SIZE - radary);
 				if ( (tempx < xloc) || (tempx > (xloc + xview)) )
 				{} //do nothing
 				else if ( (tempy < yloc) || (tempy > (yloc + yview)) )
@@ -316,10 +316,10 @@ short radar::draw(LevelRuntimeData* data)
     for (auto& uptr : data->world().fxlist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead)
+		if (ob && !ob->dead())
 		{
 			oborder  = ob->query_order();
-			obfamily = ob->family;
+			obfamily = ob->family();
 
 			do_show = 0; // don't show, by default
 			if (oborder == Order::Treasure)
@@ -351,14 +351,14 @@ short radar::draw(LevelRuntimeData* data)
 					if (obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER)
 						do_show = static_cast<short>(static_cast<Uint32>(LIGHT_BLUE) + rng(7));
 				}
-				if (!on_screen( static_cast<short>((ob->xpos+1)/GRID_SIZE),
-				                static_cast<short>((ob->ypos+1)/GRID_SIZE),
+				if (!on_screen( static_cast<short>((ob->xpos()+1)/GRID_SIZE),
+				                static_cast<short>((ob->ypos()+1)/GRID_SIZE),
 				                radarx, radary) )
 				do_show = 0;
 			if (do_show)
 			{
-				tempx = xloc + ((ob->xpos+1)/GRID_SIZE - radarx);
-				tempy = yloc + ((ob->ypos+1)/GRID_SIZE - radary);
+				tempx = xloc + ((ob->xpos()+1)/GRID_SIZE - radarx);
+				tempy = yloc + ((ob->ypos()+1)/GRID_SIZE - radary);
 				if ( (tempx < xloc) || (tempx > (xloc + xview)) )
 				{} //do nothing
 				else if ( (tempy < yloc) || (tempy > (yloc + yview)) )

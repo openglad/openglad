@@ -534,11 +534,11 @@ void loader::set_derived_stats(walker* w, Order order, std::int32_t family)
 	if(family < 0 || family >= NUM_FAMILIES)
 		family = 0;
 
-	w->stepsize = stepsizes[PIX(order, family)];
-	w->normal_stepsize = w->stepsize;
-	w->lineofsight = lineofsight[PIX(order, family)];
-	w->damage = damage[PIX(order, family)];
-	w->fire_frequency = fire_frequency[PIX(order, family)];
+	w->set_stepsize(stepsizes[PIX(order, family)]);
+	w->set_normal_stepsize(w->stepsize());
+	w->set_lineofsight(lineofsight[PIX(order, family)]);
+	w->set_damage(damage[PIX(order, family)]);
+	w->set_fire_frequency(fire_frequency[PIX(order, family)]);
 }
 
 std::unique_ptr<walker> loader::create_walker_owned(Order order,
@@ -581,17 +581,17 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 
 	// Keep sim size/frame metadata in sync even if render attachment is disabled.
 	ob->set_data(pix);
-	ob->frame = 0;
+	ob->set_direct_frame(0);
 
-	ob->stats()->hitpoints = hitpoints[PIX(order, family)];
-	ob->stats()->max_hitpoints = hitpoints[PIX(order, family)];
-	ob->stats()->special_cost[0] = 0; // shouldn't be used
-	ob->stats()->weapon_cost = 1; // default value
+	ob->stats()->set_hitpoints(hitpoints[PIX(order, family)]);
+	ob->stats()->set_max_hitpoints(hitpoints[PIX(order, family)]);
+	ob->stats()->set_special_cost(0, 0); // shouldn't be used
+	ob->stats()->set_weapon_cost(1); // default value
 
 	set_walker(ob.get(), order, family);
 
 	if(order == Order::Living && ob->ani)
-        ob->set_frame(ob->ani[ob->curdir][0]);
+        ob->set_frame(ob->ani[ob->curdir()][0]);
 	return ob;
 }
 
@@ -612,7 +612,7 @@ walker  *loader::set_walker(walker *ob,
 	set_derived_stats(ob, order, family);
 
 	for (i=0; i < NUM_SPECIALS; i++)
-		ob->stats()->special_cost[i] = 5000;
+		ob->stats()->set_special_cost(i, 5000);
 
 	// For special settings
 	switch (order)
@@ -623,13 +623,13 @@ walker  *loader::set_walker(walker *ob,
 			if (fd)
 			{
 				for (i = 0; i < NUM_SPECIALS; i++)
-					ob->stats()->special_cost[i] = fd->special_cost[i];
-				ob->stats()->weapon_cost = fd->weapon_cost;
-				ob->default_weapon = static_cast<unsigned short>(fd->default_weapon);
+					ob->stats()->set_special_cost(i, fd->special_cost[i]);
+				ob->stats()->set_weapon_cost(fd->weapon_cost);
+					ob->set_default_weapon(static_cast<unsigned short>(fd->default_weapon));
 				if (fd->init_ani_type != 0)
-					ob->ani_type = fd->init_ani_type;
+					ob->set_ani_type(fd->init_ani_type);
 				if (fd->init_max_magicpoints > 0)
-					ob->stats()->max_magicpoints = fd->init_max_magicpoints;
+					ob->stats()->set_max_magicpoints(fd->init_max_magicpoints);
 				// Set bit flags from descriptor
 				if (fd->init_bit_flags & BIT_ANIMATE)
 					ob->stats()->set_bit_flags(BIT_ANIMATE, 1);
@@ -647,7 +647,7 @@ walker  *loader::set_walker(walker *ob,
 				ob->transform_to(Order::Living, FAMILY_SOLDIER);
 				return ob;
 			}
-			ob->current_weapon = ob->default_weapon;
+			ob->set_current_weapon(ob->default_weapon());
 			break; // end of livings
 		}
 			case Order::Weapon:
@@ -668,9 +668,9 @@ walker  *loader::set_walker(walker *ob,
 					if (wfd->init_bit_flags & BIT_PHANTOM)
 						ob->stats()->set_bit_flags(BIT_PHANTOM, 1);
 					if (wfd->init_lifetime != 0)
-						ob->lifetime = wfd->init_lifetime;
+						ob->set_lifetime(wfd->init_lifetime);
 					if (wfd->init_ani_type != 0)
-						ob->ani_type = wfd->init_ani_type;
+						ob->set_ani_type(wfd->init_ani_type);
 				}
 			}  // end of weapons
 			break;
@@ -680,7 +680,7 @@ walker  *loader::set_walker(walker *ob,
 				if (tfd)
 				{
 					if (tfd->init_ignore)
-						ob->ignore = 1;
+						ob->set_ignore(1);
 					if (tfd->init_frame >= 0)
 						ob->set_direct_frame(tfd->init_frame);
 				}
@@ -689,12 +689,12 @@ walker  *loader::set_walker(walker *ob,
 			case Order::Generator:
 			{
 				const auto* gfd = get_generator_family_descriptor(family);
-				ob->stats()->weapon_cost = 0;
-				ob->default_weapon = static_cast<unsigned short>(gfd ? gfd->default_weapon : FAMILY_SKELETON);
+				ob->stats()->set_weapon_cost(0);
+					ob->set_default_weapon(static_cast<unsigned short>(gfd ? gfd->default_weapon : FAMILY_SKELETON));
 			}
 			break;
 		case Order::FX:
-			ob->ani_type = 0;
+			ob->set_ani_type(0);
 			{
 				const auto* efd = get_effect_family_descriptor(family);
 				if (efd && efd->init_bit_flags)

@@ -20,14 +20,14 @@ static bool archer_do_special(walker* self)
 {
     walker* newob;
 
-    switch (self->current_special)
+    switch (self->current_special())
     {
         case 1: // fire arrows
         {
-            self->curdir = -1;
-            self->lastx = 0;
-            self->lasty = 0;
-            self->stats()->magicpoints += 8.0f * static_cast<float>(self->stats()->weapon_cost);
+            self->set_curdir(-1);
+            self->set_lastx(0);
+            self->set_lasty(0);
+            self->stats()->set_magicpoints(self->stats()->magicpoints() + 8.0f * static_cast<float>(self->stats()->weapon_cost()));
             self->stats()->add_command(COMMAND_SET_WEAPON, 1, FAMILY_FIRE_ARROW, 0);
             self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 0, -1);
             self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 1, -1);
@@ -41,29 +41,29 @@ static bool archer_do_special(walker* self)
             break;
         }
         case 2: // flurry of arrows
-            if (self->busy)
+            if (self->busy())
                 return false;
-            self->stats()->magicpoints += 3.0f * static_cast<float>(self->stats()->weapon_cost);
+            self->stats()->set_magicpoints(self->stats()->magicpoints() + 3.0f * static_cast<float>(self->stats()->weapon_cost()));
             self->fire();
             self->fire();
             self->fire();
-            self->busy += (self->fire_frequency * 2.0f);
+            self->set_busy(self->busy() + (self->fire_frequency() * 2.0f));
             break;
         case 3: // exploding arrows
         case 4:
         default:
         {
-            if (self->busy)
+            if (self->busy())
                 return false;
-            unsigned short old_weapon = self->current_weapon;
-            self->current_weapon = FAMILY_FIRE_ARROW;
+            unsigned short old_weapon = self->current_weapon();
+            self->set_current_weapon(FAMILY_FIRE_ARROW);
             newob = self->fire();
-            self->current_weapon = old_weapon;
+            self->set_current_weapon(old_weapon);
             if (!newob)
                 return false;
-            newob->skip_exit = 5000;
-            newob->stats()->hitpoints = 500;
-            newob->damage *= 2;
+            newob->set_skip_exit(5000);
+            newob->stats()->set_hitpoints(500);
+            newob->set_damage(newob->damage() * 2.0f);
             break;
         }
     }
@@ -82,15 +82,16 @@ static void archer_hit_response(statistics* stats, walker* foe)
     {
         controller->set_foe(foe);
         stats->clear_command();
-        stats->last_distance = stats->current_distance = 15000;
+        stats->set_current_distance(15000);
+        stats->set_last_distance(15000);
     }
     std::int32_t distance = controller->distance_to_ob(foe);
     if (distance < 64)
     {
-        std::int32_t deltax = static_cast<short>(controller->xpos - foe->xpos);
+        std::int32_t deltax = static_cast<short>(controller->xpos() - foe->xpos());
         if (deltax)
             deltax = static_cast<short>(deltax / abs(deltax));
-        std::int32_t deltay = static_cast<short>(controller->ypos - foe->ypos);
+        std::int32_t deltay = static_cast<short>(controller->ypos() - foe->ypos());
         if (deltay)
             deltay = static_cast<short>(deltay / abs(deltay));
         stats->force_command(COMMAND_WALK, 8, deltax, deltay);

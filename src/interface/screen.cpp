@@ -60,9 +60,9 @@ walker* find_follow_leader()
     if (og::runtime::current_session->myscreen_->numviews == 1)
         return og::runtime::current_session->myscreen_->viewob[0]->control;
     // Multi-view: pick whichever view's controller has yo_delay set
-    if (og::runtime::current_session->myscreen_->viewob[0]->control && og::runtime::current_session->myscreen_->viewob[0]->control->yo_delay)
+    if (og::runtime::current_session->myscreen_->viewob[0]->control && og::runtime::current_session->myscreen_->viewob[0]->control->yo_delay())
         return og::runtime::current_session->myscreen_->viewob[0]->control;
-    if (og::runtime::current_session->myscreen_->viewob[1]->control && og::runtime::current_session->myscreen_->viewob[1]->control->yo_delay)
+    if (og::runtime::current_session->myscreen_->viewob[1]->control && og::runtime::current_session->myscreen_->viewob[1]->control->yo_delay())
         return og::runtime::current_session->myscreen_->viewob[1]->control;
     return nullptr;
 }
@@ -910,7 +910,7 @@ bool screen::act()
 	// This is a rendering concern that doesn't belong in the simulation layer.
 	for (int i = 0; i < numviews; i++)
 	{
-		if (viewob[i]->control && viewob[i]->control->dead)
+		if (viewob[i]->control && viewob[i]->control->dead())
 			viewob[i]->control = nullptr;
 	}
 
@@ -1220,12 +1220,12 @@ walker  * screen::first_of(Order whatorder, unsigned char whatfamily,
 	for(auto& uptr : world_.oblist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead)
+		if (ob && !ob->dead())
 		{
 			if (ob->query_order() == whatorder &&
-			        ob->family== whatfamily)
+			        ob->family() == whatfamily)
 			{
-				if (team_num == -1 || team_num == ob->team_num)
+				if (team_num == -1 || team_num == ob->team_num())
 					return ob;
 			}
 		}

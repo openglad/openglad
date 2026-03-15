@@ -51,9 +51,9 @@ static std::unique_ptr<walker> make_player(unsigned char team)
     auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (!w)
         return nullptr;
-    w->team_num = team;
-    w->dead = 0;
-    w->user = 0;
+    w->set_team_num(team);
+    w->set_dead(0);
+    w->set_user(0);
     w->setxy(100, 100);
     return w;
 }
@@ -66,9 +66,9 @@ static std::unique_ptr<walker> make_living(unsigned char family, unsigned char t
     auto w = l->create_walker_owned(Order::Living, family);
     if (!w)
         return nullptr;
-    w->team_num = team;
-    w->dead = 0;
-    w->user = -1;
+    w->set_team_num(team);
+    w->set_dead(0);
+    w->set_user(-1);
     w->setxy(120, 100);
     return w;
 }
@@ -107,7 +107,7 @@ TEST(GladHud, glad_remaining_counts)
     ASSERT_EQ(2, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp)) << "should count non-friendly living foes";
     ASSERT_EQ(2, (int)remaining_team(og::runtime::current_session->myscreen_, 0)) << "should count living on team 0 (including control)";
 
-    foe2p->dead = 1;
+    foe2p->set_dead(1);
     ASSERT_EQ(1, (int)remaining_foes(og::runtime::current_session->myscreen_, controlp)) << "dead foes should not be counted";
     og::runtime::current_session->myscreen_->world().oblist.clear();
 }
@@ -125,33 +125,33 @@ TEST(GladHud, glad_draw_gems_and_value_bars_smoke)
     v->control = controlp;
 
     // draw_radar_gems caches old team; change team to force multiple draws.
-    controlp->team_num = 0;
+    controlp->set_team_num(0);
     draw_radar_gems(og::runtime::current_session->myscreen_);
-    controlp->team_num = 1;
+    controlp->set_team_num(1);
     draw_radar_gems(og::runtime::current_session->myscreen_);
 
     // Direct gem draw.
     draw_gem(10, 10, 32, og::runtime::current_session->myscreen_);
 
     // Exercise value bar thresholds for HP and MP.
-    controlp->stats()->max_hitpoints = 100;
-    controlp->stats()->hitpoints = 100;
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_hitpoints(100);
     draw_value_bar(10, 20, controlp, 0, og::runtime::current_session->myscreen_);
-    controlp->stats()->hitpoints = 20;
+    controlp->stats()->set_hitpoints(20);
     draw_value_bar(10, 28, controlp, 0, og::runtime::current_session->myscreen_);
-    controlp->stats()->hitpoints = 60;
+    controlp->stats()->set_hitpoints(60);
     draw_value_bar(10, 36, controlp, 0, og::runtime::current_session->myscreen_);
-    controlp->stats()->hitpoints = 90;
+    controlp->stats()->set_hitpoints(90);
     draw_value_bar(10, 44, controlp, 0, og::runtime::current_session->myscreen_);
-    controlp->stats()->hitpoints = 120;
+    controlp->stats()->set_hitpoints(120);
     draw_value_bar(10, 52, controlp, 0, og::runtime::current_session->myscreen_);
 
-    controlp->stats()->max_magicpoints = 80;
-    controlp->stats()->magicpoints = 80;
+    controlp->stats()->set_max_magicpoints(80);
+    controlp->stats()->set_magicpoints(80);
     draw_value_bar(10, 60, controlp, 1, og::runtime::current_session->myscreen_);
-    controlp->stats()->magicpoints = 10;
+    controlp->stats()->set_magicpoints(10);
     draw_value_bar(10, 68, controlp, 1, og::runtime::current_session->myscreen_);
-    controlp->stats()->magicpoints = 100;
+    controlp->stats()->set_magicpoints(100);
     draw_value_bar(10, 76, controlp, 1, og::runtime::current_session->myscreen_);
 
     // New percentage-bar-based drawing.
@@ -168,15 +168,15 @@ TEST(GladHud, glad_score_panel_and_new_score_panel_modes)
     auto control = make_player(0);
     ASSERT_TRUE(control != nullptr) << "control should be created";
     walker* controlp = control.get();
-    controlp->user = 0;
-    controlp->team_num = 0;
-    controlp->dead = 0;
-    controlp->stats()->level = 7;
-    controlp->stats()->hitpoints = 55;
-    controlp->stats()->max_hitpoints = 100;
-    controlp->stats()->magicpoints = 33;
-    controlp->stats()->max_magicpoints = 80;
-    controlp->stats()->special_cost[static_cast<unsigned char>(controlp->current_special)] = 10;
+    controlp->set_user(0);
+    controlp->set_team_num(0);
+    controlp->set_dead(0);
+    controlp->stats()->set_level(7);
+    controlp->stats()->set_hitpoints(55);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(33);
+    controlp->stats()->set_max_magicpoints(80);
+    controlp->stats()->set_special_cost(static_cast<unsigned char>(controlp->current_special()), 10);
 
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
     ASSERT_TRUE(v != nullptr) << "view should exist";
@@ -197,10 +197,10 @@ TEST(GladHud, glad_score_panel_and_new_score_panel_modes)
     ASSERT_EQ(1, (int)new_score_panel(og::runtime::current_session->myscreen_, 1)) << "new_score_panel both mode";
 
     // Toggle shifter special-name branch and low-mp branch.
-    controlp->shifter_down = 1;
-    controlp->stats()->magicpoints = 0;
+    controlp->set_shifter_down(1);
+    controlp->stats()->set_magicpoints(0);
     (void)new_score_panel(og::runtime::current_session->myscreen_, 1);
-    controlp->shifter_down = 0;
+    controlp->set_shifter_down(0);
 
     // Wrapper functions.
     ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_)) << "score_panel wrapper";

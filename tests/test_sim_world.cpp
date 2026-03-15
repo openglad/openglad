@@ -39,11 +39,11 @@ TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
     w->set_order_family(order, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = dead ? 1 : 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(dead ? 1 : 0);
     TickWalker* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -54,8 +54,8 @@ TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, char family, unsigned 
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->team_num = team;
-    w->dead = dead ? 1 : 0;
+    w->set_team_num(team);
+    w->set_dead(dead ? 1 : 0);
     TickWalker* out = w.get();
     fx.level.world().weaplist.push_back(std::move(w));
     return out;
@@ -66,8 +66,8 @@ TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->team_num = team;
-    w->dead = dead ? 1 : 0;
+    w->set_team_num(team);
+    w->set_dead(dead ? 1 : 0);
     TickWalker* out = w.get();
     fx.level.world().fxlist.push_back(std::move(w));
     return out;

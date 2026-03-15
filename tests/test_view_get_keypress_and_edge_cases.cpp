@@ -109,10 +109,10 @@ TEST(ViewGetKeypressAndEdgeCases, viewscreen_input_switch_control_not_in_oblist_
     // Create a control walker not present in level_data.oblist.
     PixieData px(1, 1, 1, new unsigned char[1]{0});
     walker orphan(px);
-    orphan.team_num = 0;
-    orphan.real_team_num = 255;
-    orphan.dead = 0;
-    orphan.user = 0;
+    orphan.set_team_num(0);
+    orphan.set_real_team_num(255);
+    orphan.set_dead(0);
+    orphan.set_user(0);
     orphan.set_act_type(ACT_CONTROL);
 
     walker* saved_control = v->control;
@@ -147,7 +147,7 @@ TEST(ViewGetKeypressAndEdgeCases, viewscreen_options_menu_covers_view_size_label
         ASSERT_TRUE(w != nullptr) << "control created";
         if (!w)
             return;
-        w->team_num = 0;
+        w->set_team_num(0);
         v->control = w;
     }
 
@@ -184,4 +184,3 @@ TEST(ViewGetKeypressAndEdgeCases, viewscreen_options_menu_covers_view_size_label
     v->prefs[PREF_VIEW] = saved_view;
     v->resize(saved_view);
 }
-

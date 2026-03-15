@@ -47,13 +47,13 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
-    w->user = user;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
+    w->set_user(user);
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     walker* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
@@ -73,7 +73,7 @@ TEST(SimInputUnit, sim_input_find_next_control_priorities)
     walker* found = sim_find_next_control(fx.level.world(), 0);
     ASSERT_TRUE(found == team_npc);
 
-    team_npc->user = 0;
+    team_npc->set_user(0);
     found = sim_find_next_control(fx.level.world(), 0);
     ASSERT_TRUE(found == player_like);
 }
@@ -93,7 +93,7 @@ TEST(SimInputUnit, sim_input_endgame_and_control_assignment_paths)
     ASSERT_TRUE(result.endgame_type == 1);
 
     walker* w = add_living(fx, 0, -1);
-    w->stats()->hitpoints = 37.0f;
+    w->stats()->set_hitpoints(37.0f);
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(!result.endgame_requested);
@@ -122,35 +122,35 @@ TEST(SimInputUnit, sim_input_switch_special_yell_and_mismatch_paths)
     SimInputResult result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(debounce.changedspec == 1);
-    ASSERT_TRUE(control->current_special == 1);
+    ASSERT_TRUE(control->current_special() == 1);
     ASSERT_TRUE(result.new_control == control);
 
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
-    control->action = 0;
+    control->set_action(0);
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(result.notify_text == "SUMMONING DEFENSE!");
-    ASSERT_TRUE(ally->action == ACTION_FOLLOW);
+    ASSERT_TRUE(ally->action() == ACTION_FOLLOW);
 
-    control->action = ACTION_FOLLOW;
+    control->set_action(ACTION_FOLLOW);
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(result.notify_text == "RELEASING MEN!");
-    ASSERT_TRUE(ally->action == 0);
+    ASSERT_TRUE(ally->action() == 0);
 
-    control->user = 1;
+    control->set_user(1);
     input.clear();
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(result.new_control == control);
 
-    control->user = 0;
-    control->stats()->frozen_delay = 1;
+    control->set_user(0);
+    control->stats()->set_frozen_delay(1);
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    ASSERT_TRUE(control->stats()->frozen_delay == 0);
+    ASSERT_TRUE(control->stats()->frozen_delay() == 0);
 }
 } // namespace detail_sim_input_coverage_push
 
@@ -182,13 +182,13 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
-    w->user = user;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
+    w->set_user(user);
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     walker* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
@@ -221,7 +221,7 @@ TEST(SimInputUnit, sim_input_r11_switch_char_error_and_wrap_paths)
     input.clear();
 
     walker orphan;
-    orphan.user = 0;
+    orphan.set_user(0);
     orphan.set_order_family(Order::Living, FAMILY_SOLDIER);
     walker* control = &orphan;
 
@@ -244,7 +244,7 @@ TEST(SimInputUnit, sim_input_r11_switch_char_error_and_wrap_paths)
     walker* a = add_living(fx, 0, -1);
     walker* b = add_living(fx, 0, -1);
     walker* c = add_living(fx, 0, -1);
-    a->user = 0;
+    a->set_user(0);
     control = a;
 
     input.clear();
@@ -259,9 +259,9 @@ TEST(SimInputUnit, sim_input_r11_switch_char_error_and_wrap_paths)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     control = a;
-    a->user = 0;
-    b->user = -1;
-    c->user = -1;
+    a->set_user(0);
+    b->set_user(-1);
+    c->set_user(-1);
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(control == c || control == b);
@@ -286,7 +286,7 @@ TEST(SimInputUnit, sim_input_r11_switch_special_yell_and_action_default)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     SimInputResult result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    ASSERT_TRUE(control->current_special == 1); // wrap due to NONE
+    ASSERT_TRUE(control->current_special() == 1); // wrap due to NONE
 
     input.clear();
     debounce.changedspec = 0;
@@ -294,17 +294,17 @@ TEST(SimInputUnit, sim_input_r11_switch_special_yell_and_action_default)
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(result.play_sound == SOUND_YO);
-    ASSERT_TRUE(control->yo_delay == 30);
+    ASSERT_TRUE(control->yo_delay() == 30);
     ASSERT_TRUE(ally->leader() == control);
 
-    // Shift+Yell default case in switch(control->action)
+    // Shift+Yell default case in switch(control->action())
     input.clear();
-    control->action = 99;
+    control->set_action(99);
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    ASSERT_TRUE(control->action == 0);
+    ASSERT_TRUE(control->action() == 0);
 }
 
 TEST(SimInputUnit, sim_input_r11_animate_movement_and_bit_animate_paths)
@@ -320,29 +320,29 @@ TEST(SimInputUnit, sim_input_r11_animate_movement_and_bit_animate_paths)
     InputState input;
 
     // ani_type != ANI_WALK branch
-    control->ani_type = ANI_ATTACK;
-    control->cycle = 0;
+    control->set_ani_type(ANI_ATTACK);
+    control->set_cycle(0);
     input.clear();
     SimInputResult result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(result.new_control == control);
 
     // movement branch (walkstep)
-    control->ani_type = ANI_WALK;
+    control->set_ani_type(ANI_WALK);
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
-    const float x_before = control->xpos;
+    const float x_before = control->xpos();
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    ASSERT_TRUE(control->xpos >= x_before);
+    ASSERT_TRUE(control->xpos() >= x_before);
 
     // BIT_ANIMATE idle animation branch + frame reset path
     control->stats()->set_bit_flags(BIT_ANIMATE, 1);
-    control->cycle = 0;
+    control->set_cycle(0);
     input.clear();
     result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
-    ASSERT_TRUE(control->cycle == 0);
+    ASSERT_TRUE(control->cycle() == 0);
 
     // held fire path
     input.clear();

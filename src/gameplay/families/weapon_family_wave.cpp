@@ -13,17 +13,17 @@
 
 static bool wave_on_death(weap* self)
 {
-    self->dead = 0;
+    self->set_dead(0);
     self->transform_to(Order::Weapon, FAMILY_WAVE2);
-    self->stats()->hitpoints = self->stats()->max_hitpoints;
+    self->stats()->set_hitpoints(self->stats()->max_hitpoints());
     return true;
 }
 
 static bool wave2_on_death(weap* self)
 {
-    self->dead = 0;
+    self->set_dead(0);
     self->transform_to(Order::Weapon, FAMILY_WAVE3);
-    self->stats()->hitpoints = self->stats()->max_hitpoints;
+    self->stats()->set_hitpoints(self->stats()->max_hitpoints());
     return true;
 }
 

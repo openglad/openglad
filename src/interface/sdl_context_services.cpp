@@ -126,7 +126,7 @@ void wire_world_with_loader(GameWorld* world, loader* game_loader)
 
     world->entity_configurator = [game_loader](walker& entity, Order order, std::int32_t family) -> const PixieData* {
         game_loader->set_walker(&entity, order, family);
-        return game_loader->graphics_for(entity.query_order(), entity.family);
+        return game_loader->graphics_for(entity.query_order(), entity.family());
     };
 
     world->entity_derived_stats = [game_loader](walker* entity, Order order, std::int32_t family) {

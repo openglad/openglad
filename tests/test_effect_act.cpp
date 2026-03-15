@@ -124,7 +124,7 @@ TEST(EffectAct, explosion)
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     if (!fx) return;
     fx->setxy(100, 100);
-    fx->ani_type = ANI_EXPLODE;
+    fx->set_ani_type(ANI_EXPLODE);
     fx->act();
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
@@ -139,8 +139,8 @@ TEST(EffectAct, magic_shield)
     if (!fx) return;
     fx->setxy(100, 100);
     fx->set_owner(owner.get());
-    fx->lifetime = 100;
-    fx->stats()->hitpoints = 100;
+    fx->set_lifetime(100);
+    fx->stats()->set_hitpoints(100);
     fx->act();
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
@@ -155,7 +155,7 @@ TEST(EffectAct, magic_shield_no_owner)
     fx->set_owner(nullptr);
     fx->act();
     // Should die since no owner
-    ASSERT_TRUE(fx->dead == 1) << "shield without owner dies";
+    ASSERT_TRUE(fx->dead() == 1) << "shield without owner dies";
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
 
@@ -169,9 +169,9 @@ TEST(EffectAct, boomerang)
     if (!fx) return;
     fx->setxy(100, 100);
     fx->set_owner(owner.get());
-    fx->lifetime = 100;
-    fx->stats()->hitpoints = 100;
-    fx->drawcycle = 10;
+    fx->set_lifetime(100);
+    fx->stats()->set_hitpoints(100);
+    fx->set_drawcycle(10);
     fx->act();
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
@@ -184,9 +184,9 @@ TEST(EffectAct, boomerang_expired)
     if (!fx) return;
     fx->setxy(100, 100);
     fx->set_owner(nullptr);
-    fx->drawcycle = 254;
+    fx->set_drawcycle(254);
     fx->act();
-    ASSERT_TRUE(fx->dead == 1) << "expired boomerang dies";
+    ASSERT_TRUE(fx->dead() == 1) << "expired boomerang dies";
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
 
@@ -200,9 +200,9 @@ TEST(EffectAct, cloud)
     if (!fx) return;
     fx->setxy(100, 100);
     fx->set_owner(owner.get());
-    fx->team_num = 0;
-    fx->lifetime = 50;
-    fx->stats()->hitpoints = 50;
+    fx->set_team_num(0);
+    fx->set_lifetime(50);
+    fx->stats()->set_hitpoints(50);
     fx->act();
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
@@ -215,9 +215,9 @@ TEST(EffectAct, cloud_expired)
     if (!fx) return;
     fx->setxy(100, 100);
     fx->set_owner(fx);
-    fx->lifetime = 0;
+    fx->set_lifetime(0);
     fx->act();
-    ASSERT_TRUE(fx->dead == 1) << "expired cloud dies";
+    ASSERT_TRUE(fx->dead() == 1) << "expired cloud dies";
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
 
@@ -246,7 +246,7 @@ TEST(EffectAct, effect_animate_explosion)
     walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     if (!fx) return;
     fx->setxy(100, 100);
-    fx->ani_type = ANI_EXPLODE;
+    fx->set_ani_type(ANI_EXPLODE);
     fx->animate();
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
@@ -275,9 +275,9 @@ TEST(EffectAct, effect_death_explosion)
     if (!fx) return;
     fx->setxy(100, 100);
     fx->set_owner(owner.get());
-    fx->team_num = 0;
-    fx->stats()->level = 5;
-    fx->dead = 1;
+    fx->set_team_num(0);
+    fx->stats()->set_level(5);
+    fx->set_dead(1);
     fx->death();
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
@@ -293,9 +293,8 @@ TEST(EffectAct, effect_death_ghost_scare)
     if (!fx) return;
     fx->setxy(100, 100);
     fx->set_owner(owner.get());
-    fx->dead = 1;
+    fx->set_dead(1);
     fx->death();
 
     og::runtime::current_session->myscreen_->world().remove_ob(fx);
 }
-

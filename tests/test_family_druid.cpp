@@ -23,39 +23,39 @@ TEST(FamilyDruid, descriptor_level_up_and_difficulty)
     ASSERT_TRUE(g.intelligence > old_int);
 
     living self;
-    self.damage = 0.0f;
-    const float old_hp = self.stats()->max_hitpoints;
-    const float old_mp = self.stats()->max_magicpoints;
-    const float old_damage = self.damage;
+    self.set_damage(0.0f);
+    const float old_hp = self.stats()->max_hitpoints();
+    const float old_mp = self.stats()->max_magicpoints();
+    const float old_damage = self.damage();
     desc.set_difficulty(&self, 3);
-    ASSERT_TRUE(self.stats()->max_hitpoints > old_hp);
-    ASSERT_TRUE(self.stats()->max_magicpoints > old_mp);
-    ASSERT_TRUE(self.damage > old_damage);
+    ASSERT_TRUE(self.stats()->max_hitpoints() > old_hp);
+    ASSERT_TRUE(self.stats()->max_magicpoints() > old_mp);
+    ASSERT_TRUE(self.damage() > old_damage);
 }
 
 TEST(FamilyDruid, do_special_reveal_and_busy_paths)
 {
     const FamilyDescriptor& desc = describe_family_druid();
     living self;
-    self.stats()->level = 4;
-    self.fire_frequency = 2.0f;
+    self.stats()->set_level(4);
+    self.set_fire_frequency(2.0f);
 
-    self.current_special = 3; // reveal items
-    self.busy = 0;
-    const short old_view = self.view_all;
+    self.set_current_special(3); // reveal items
+    self.set_busy(0);
+    const short old_view = self.view_all();
     ASSERT_TRUE(desc.do_special(&self));
-    ASSERT_TRUE(self.view_all > old_view);
-    ASSERT_TRUE(self.busy > 0.0f);
+    ASSERT_TRUE(self.view_all() > old_view);
+    ASSERT_TRUE(self.busy() > 0.0f);
 
-    self.current_special = 1; // plant tree
-    self.busy = 1;
+    self.set_current_special(1); // plant tree
+    self.set_busy(1);
     ASSERT_TRUE(!desc.do_special(&self));
 
-    self.current_special = 2; // summon faerie
-    self.busy = 1;
+    self.set_current_special(2); // summon faerie
+    self.set_busy(1);
     ASSERT_TRUE(!desc.do_special(&self));
 
-    self.current_special = 4; // protection/default
-    self.busy = 1;
+    self.set_current_special(4); // protection/default
+    self.set_busy(1);
     ASSERT_TRUE(!desc.do_special(&self));
 }

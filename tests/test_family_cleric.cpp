@@ -34,22 +34,22 @@ TEST(FamilyCleric, descriptor_difficulty_and_customize_weapon)
 
     living self;
     living weapon;
-    self.stats()->level = 3;
-    self.stats()->max_hitpoints = 100.0f;
-    self.stats()->max_magicpoints = 40.0f;
-    self.damage = 12.0f;
-    weapon.lifetime = 10;
+    self.stats()->set_level(3);
+    self.stats()->set_max_hitpoints(100.0f);
+    self.stats()->set_max_magicpoints(40.0f);
+    self.set_damage(12.0f);
+    weapon.set_lifetime(10);
     desc.customize_weapon(&self, &weapon);
-    ASSERT_TRUE(weapon.ani_type == ANI_GLOWGROW);
-    ASSERT_TRUE(weapon.lifetime == 340);
+    ASSERT_TRUE(weapon.ani_type() == ANI_GLOWGROW);
+    ASSERT_TRUE(weapon.lifetime() == 340);
 
-    const float old_hp = self.stats()->max_hitpoints;
-    const float old_mp = self.stats()->max_magicpoints;
-    const float old_damage = self.damage;
+    const float old_hp = self.stats()->max_hitpoints();
+    const float old_mp = self.stats()->max_magicpoints();
+    const float old_damage = self.damage();
     desc.set_difficulty(&self, 2);
-    ASSERT_TRUE(self.stats()->max_hitpoints > old_hp);
-    ASSERT_TRUE(self.stats()->max_magicpoints > old_mp);
-    ASSERT_TRUE(self.damage > old_damage);
+    ASSERT_TRUE(self.stats()->max_hitpoints() > old_hp);
+    ASSERT_TRUE(self.stats()->max_magicpoints() > old_mp);
+    ASSERT_TRUE(self.damage() > old_damage);
 }
 
 TEST(FamilyCleric, check_ai_default_and_do_special_busy_returns)
@@ -57,19 +57,19 @@ TEST(FamilyCleric, check_ai_default_and_do_special_busy_returns)
     const FamilyDescriptor& desc = describe_family_cleric();
     living self;
 
-    self.current_special = 0; // default true branch in check_special_ai
+    self.set_current_special(0); // default true branch in check_special_ai
     ASSERT_TRUE(desc.check_special_ai(&self));
 
-    self.shifter_down = 1;
-    self.busy = 1;
+    self.set_shifter_down(1);
+    self.set_busy(1);
 
-    self.current_special = 1; // mystic mace branch guarded by busy
+    self.set_current_special(1); // mystic mace branch guarded by busy
     ASSERT_TRUE(!desc.do_special(&self));
 
-    self.current_special = 2; // turn undead branch guarded by busy
+    self.set_current_special(2); // turn undead branch guarded by busy
     ASSERT_TRUE(!desc.do_special(&self));
 
-    self.current_special = 3; // turn undead high branch guarded by busy
+    self.set_current_special(3); // turn undead high branch guarded by busy
     ASSERT_TRUE(!desc.do_special(&self));
 }
 } // namespace detail_family_cleric_coverage_push
@@ -102,12 +102,12 @@ living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_C
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     living* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -116,10 +116,10 @@ living* add_living(ClericFixture& fx, unsigned char team, char family = FAMILY_C
 walker* add_stain(ClericFixture& fx, int x, int y, unsigned char team, char old_family)
 {
     walker* stain = fx.level.add_ob(Order::Treasure, FAMILY_STAIN);
-    stain->team_num = team;
+    stain->set_team_num(team);
     stain->setxy(x, y);
-    stain->stats()->old_family = old_family;
-    stain->dead = 0;
+    stain->stats()->set_old_family(old_family);
+    stain->set_dead(0);
     return stain;
 }
 
@@ -132,18 +132,18 @@ TEST(FamilyCleric, r11_check_ai_and_heal_fail_paths)
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
     ASSERT_TRUE(cleric != nullptr);
 
-    cleric->current_special = 1;
-    cleric->stats()->max_magicpoints = 100.0f;
-    cleric->stats()->magicpoints = 10.0f;
+    cleric->set_current_special(1);
+    cleric->stats()->set_max_magicpoints(100.0f);
+    cleric->stats()->set_magicpoints(10.0f);
     ASSERT_TRUE(!desc.check_special_ai(cleric)); // line 63
 
-    cleric->stats()->magicpoints = 60.0f;
+    cleric->stats()->set_magicpoints(60.0f);
     ASSERT_TRUE(desc.check_special_ai(cleric));
-    ASSERT_TRUE(cleric->shifter_down == 1);
+    ASSERT_TRUE(cleric->shifter_down() == 1);
 
-    cleric->shifter_down = 0;
-    cleric->stats()->level = 5;
-    cleric->stats()->magicpoints = 20.0f;
+    cleric->set_shifter_down(0);
+    cleric->stats()->set_level(5);
+    cleric->stats()->set_magicpoints(20.0f);
 
     // only cleric in range => howmany <= 1 path
     ASSERT_TRUE(!desc.do_special(cleric));
@@ -151,7 +151,7 @@ TEST(FamilyCleric, r11_check_ai_and_heal_fail_paths)
     // ally at full HP => didheal remains 0 path
     living* ally = add_living(fx, 0, FAMILY_SOLDIER);
     ally->setxy(90, 80);
-    ally->stats()->hitpoints = ally->stats()->max_hitpoints;
+    ally->stats()->set_hitpoints(ally->stats()->max_hitpoints());
     ASSERT_TRUE(!desc.do_special(cleric));
 }
 
@@ -166,34 +166,34 @@ TEST(FamilyCleric, r11_heal_and_mace_paths)
     cleric->setxy(80, 80);
     ally->setxy(90, 80);
     cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
-    cleric->stats()->level = 6;
-    cleric->stats()->magicpoints = 60.0f;
-    cleric->stats()->max_magicpoints = 120.0f;
-    cleric->current_special = 1;
-    cleric->shifter_down = 0;
-    ally->stats()->max_hitpoints = 100.0f;
-    ally->stats()->hitpoints = 40.0f;
+    cleric->stats()->set_level(6);
+    cleric->stats()->set_magicpoints(60.0f);
+    cleric->stats()->set_max_magicpoints(120.0f);
+    cleric->set_current_special(1);
+    cleric->set_shifter_down(0);
+    ally->stats()->set_max_hitpoints(100.0f);
+    ally->stats()->set_hitpoints(40.0f);
 
-    const float ally_before = ally->stats()->hitpoints;
-    const float mp_before = cleric->stats()->magicpoints;
+    const float ally_before = ally->stats()->hitpoints();
+    const float mp_before = cleric->stats()->magicpoints();
     ASSERT_TRUE(desc.do_special(cleric));
-    ASSERT_TRUE(ally->stats()->hitpoints > ally_before);
-    ASSERT_TRUE(cleric->stats()->magicpoints < mp_before);
+    ASSERT_TRUE(ally->stats()->hitpoints() > ally_before);
+    ASSERT_TRUE(cleric->stats()->magicpoints() < mp_before);
 
     // mystic mace int requirement fail (lines 147-152)
-    cleric->shifter_down = 1;
-    cleric->busy = 0;
+    cleric->set_shifter_down(1);
+    cleric->set_busy(0);
     cleric->myguy->intelligence = 30;
     ASSERT_TRUE(!desc.do_special(cleric));
 
     // mystic mace success path (lines 158-171)
     cleric->myguy->intelligence = 70;
-    cleric->stats()->magicpoints = 80.0f;
-    cleric->stats()->special_cost[1] = 2;
-    const float mp_before_mace = cleric->stats()->magicpoints;
+    cleric->stats()->set_magicpoints(80.0f);
+    cleric->stats()->set_special_cost(1, 2);
+    const float mp_before_mace = cleric->stats()->magicpoints();
     ASSERT_TRUE(desc.do_special(cleric));
-    ASSERT_TRUE(cleric->busy >= 5);
-    ASSERT_TRUE(cleric->stats()->magicpoints < mp_before_mace);
+    ASSERT_TRUE(cleric->busy() >= 5);
+    ASSERT_TRUE(cleric->stats()->magicpoints() < mp_before_mace);
 }
 
 TEST(FamilyCleric, r11_turn_and_raise_paths)
@@ -204,16 +204,16 @@ TEST(FamilyCleric, r11_turn_and_raise_paths)
     ASSERT_TRUE(cleric != nullptr);
     cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
     cleric->myguy->intelligence = 70;
-    cleric->stats()->level = 8;
-    cleric->stats()->magicpoints = 200.0f;
+    cleric->stats()->set_level(8);
+    cleric->stats()->set_magicpoints(200.0f);
 
     // case 2, turn undead with no targets => -1 branch
-    cleric->current_special = 2;
-    cleric->shifter_down = 1;
+    cleric->set_current_special(2);
+    cleric->set_shifter_down(1);
     ASSERT_TRUE(!desc.do_special(cleric));
 
     // case 2 raise skeleton, no blood => false
-    cleric->shifter_down = 0;
+    cleric->set_shifter_down(0);
     ASSERT_TRUE(!desc.do_special(cleric));
 
     // add nearby blood and summon skeleton success path
@@ -222,16 +222,16 @@ TEST(FamilyCleric, r11_turn_and_raise_paths)
     (void)desc.do_special(cleric);
 
     // case 3 raise ghost distance fail + no blood
-    cleric->current_special = 3;
-    cleric->shifter_down = 0;
+    cleric->set_current_special(3);
+    cleric->set_shifter_down(0);
     walker* far_stain = add_stain(fx, 300, 300, 1, FAMILY_SOLDIER);
     ASSERT_TRUE(far_stain != nullptr);
     ASSERT_TRUE(!desc.do_special(cleric));
-    far_stain->dead = 1;
+    far_stain->set_dead(1);
     ASSERT_TRUE(!desc.do_special(cleric));
 
     // case 3 turn undead int fail branch
-    cleric->shifter_down = 1;
+    cleric->set_shifter_down(1);
     cleric->myguy->intelligence = 10;
     ASSERT_TRUE(!desc.do_special(cleric));
 }
@@ -245,9 +245,9 @@ TEST(FamilyCleric, r11_resurrect_friendly_and_hostile_paths)
 
     cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
     cleric->myguy->exp = 10000;
-    cleric->stats()->level = 9;
-    cleric->stats()->magicpoints = 300.0f;
-    cleric->current_special = 4;
+    cleric->stats()->set_level(9);
+    cleric->stats()->set_magicpoints(300.0f);
+    cleric->set_current_special(4);
 
     // no blood => false path
     ASSERT_TRUE(!desc.do_special(cleric));
@@ -292,12 +292,12 @@ living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMIL
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     living* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -306,10 +306,10 @@ living* add_living(ClericR12Fixture& fx, unsigned char team, char family = FAMIL
 walker* add_stain(ClericR12Fixture& fx, int x, int y, unsigned char team, char old_family)
 {
     walker* stain = fx.level.add_ob(Order::Treasure, FAMILY_STAIN);
-    stain->team_num = team;
+    stain->set_team_num(team);
     stain->setxy(x, y);
-    stain->stats()->old_family = old_family;
-    stain->dead = 0;
+    stain->stats()->set_old_family(old_family);
+    stain->set_dead(0);
     return stain;
 }
 
@@ -326,24 +326,24 @@ TEST(FamilyCleric, r12_ghost_raise_and_resurrect_penalty_paths)
     cleric->myguy->name = "R12";
     cleric->myguy->exp = 1;
     cleric->myguy->intelligence = 80;
-    cleric->stats()->level = 10;
-    cleric->stats()->magicpoints = 300.0f;
+    cleric->stats()->set_level(10);
+    cleric->stats()->set_magicpoints(300.0f);
 
     // Case 3: raise ghost success path.
-    cleric->current_special = 3;
-    cleric->shifter_down = 0;
+    cleric->set_current_special(3);
+    cleric->set_shifter_down(0);
     walker* near_stain = add_stain(fx, 84, 80, 1, FAMILY_ORC);
     ASSERT_TRUE(near_stain != nullptr);
     (void)desc.do_special(cleric);
 
     // Case 3: shifter_down turn-undead busy fail.
-    cleric->shifter_down = 1;
-    cleric->busy = 2;
+    cleric->set_shifter_down(1);
+    cleric->set_busy(2);
     ASSERT_TRUE(!desc.do_special(cleric));
-    cleric->busy = 0;
+    cleric->set_busy(0);
 
     // Case 4: friendly resurrect with exp floor path.
-    cleric->current_special = 4;
+    cleric->set_current_special(4);
     walker* friendly_stain = add_stain(fx, 82, 82, 0, FAMILY_SOLDIER);
     ASSERT_TRUE(friendly_stain != nullptr);
     (void)desc.do_special(cleric);
@@ -356,12 +356,12 @@ TEST(FamilyCleric, r12_ghost_raise_and_resurrect_penalty_paths)
     // Case 1 heal branch with heal_numbers on and at least one ally damaged.
     living* ally = add_living(fx, 0, FAMILY_SOLDIER);
     ally->setxy(90, 80);
-    ally->stats()->max_hitpoints = 100.0f;
-    ally->stats()->hitpoints = 50.0f;
-    cleric->current_special = 1;
-    cleric->shifter_down = 0;
-    cleric->stats()->magicpoints = 100.0f;
-    cleric->stats()->max_magicpoints = 100.0f;
+    ally->stats()->set_max_hitpoints(100.0f);
+    ally->stats()->set_hitpoints(50.0f);
+    cleric->set_current_special(1);
+    cleric->set_shifter_down(0);
+    cleric->stats()->set_magicpoints(100.0f);
+    cleric->stats()->set_max_magicpoints(100.0f);
     cfg.apply_setting("effects", "heal_numbers", "on");
     ASSERT_TRUE(desc.do_special(cleric));
 }
@@ -373,13 +373,13 @@ TEST(FamilyCleric, family_mage_r12_descriptor_paths)
 
     living* self = add_living(fx, 0, FAMILY_MAGE);
     ASSERT_TRUE(self != nullptr);
-    self->stats()->level = 8;
-    self->stats()->max_hitpoints = 100.0f;
-    self->stats()->hitpoints = 20.0f;
-    self->stats()->magicpoints = 200.0f;
+    self->stats()->set_level(8);
+    self->stats()->set_max_hitpoints(100.0f);
+    self->stats()->set_hitpoints(20.0f);
+    self->stats()->set_magicpoints(200.0f);
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     self->myguy->intelligence = 90;
-    self->user = 0;
+    self->set_user(0);
 
     // AI branch: no foes in range.
     ASSERT_TRUE(mage.check_special_ai(self));
@@ -390,26 +390,26 @@ TEST(FamilyCleric, family_mage_r12_descriptor_paths)
     mage.hit_response(self->stats(), foe);
 
     // Teleport handler callback branch.
-    self->ani_type = ANI_TELE_OUT;
-    self->cycle = 5;
+    self->set_ani_type(ANI_TELE_OUT);
+    self->set_cycle(5);
     ASSERT_TRUE(mage.handle_teleport(self));
-    ASSERT_TRUE(self->ani_type == ANI_TELE_IN);
+    ASSERT_TRUE(self->ani_type() == ANI_TELE_IN);
 
     // do_special case 1 marker-placement branch.
-    self->current_special = 1;
-    self->shifter_down = 1;
-    self->busy = 0;
-    self->ani_type = ANI_WALK;
+    self->set_current_special(1);
+    self->set_shifter_down(1);
+    self->set_busy(0);
+    self->set_ani_type(ANI_WALK);
     ASSERT_TRUE(mage.do_special(self));
 
     // do_special case 1 teleport-out branch.
-    self->shifter_down = 0;
-    self->ani_type = ANI_WALK;
+    self->set_shifter_down(0);
+    self->set_ani_type(ANI_WALK);
     ASSERT_TRUE(mage.do_special(self));
-    ASSERT_TRUE(self->ani_type == ANI_TELE_OUT);
+    ASSERT_TRUE(self->ani_type() == ANI_TELE_OUT);
 
     // do_special case 5 branch with no targets can fail.
-    self->current_special = 5;
+    self->set_current_special(5);
     (void)mage.do_special(self);
 }
 
@@ -422,10 +422,10 @@ TEST(FamilyCleric, family_soldier_and_treasure_r12_paths)
     s->set_order_family(Order::Living, FAMILY_SOLDIER);
     bind_test_entity_sim_context(fx.level, s.get());
     s->setxy(60, 60);
-    s->team_num = 0;
-    s->stats()->level = 6;
-    s->lastx = 1.0f;
-    s->lasty = 0.0f;
+    s->set_team_num(0);
+    s->stats()->set_level(6);
+    s->set_lastx(1.0f);
+    s->set_lasty(0.0f);
     living* self = s.get();
     fx.level.world().oblist.push_back(std::move(s));
 
@@ -433,30 +433,30 @@ TEST(FamilyCleric, family_soldier_and_treasure_r12_paths)
     enemy->setxy(80, 60);
 
     soldier.on_create(self);
-    ASSERT_TRUE(self->weapons_left >= 1);
+    ASSERT_TRUE(self->weapons_left() >= 1);
 
-    self->current_special = 1;
+    self->set_current_special(1);
     ASSERT_TRUE(soldier.do_special(self));
 
-    self->current_special = 3;
-    self->busy = 1;
+    self->set_current_special(3);
+    self->set_busy(1);
     ASSERT_TRUE(!soldier.do_special(self));
-    self->busy = 0;
+    self->set_busy(0);
 
     self->set_foe(enemy);
     ASSERT_TRUE(soldier.check_special_ai(self) || !soldier.check_special_ai(self));
 
     walker* weap = fx.level.add_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(weap != nullptr);
-    self->weapons_left = 0;
-    const float mp_before = self->stats()->magicpoints;
+    self->set_weapons_left(0);
+    const float mp_before = self->stats()->magicpoints();
     ASSERT_TRUE(!soldier.on_fire_weapon(self, weap));
-    ASSERT_TRUE(weap->dead == 1);
-    ASSERT_TRUE(self->stats()->magicpoints >= mp_before);
+    ASSERT_TRUE(weap->dead() == 1);
+    ASSERT_TRUE(self->stats()->magicpoints() >= mp_before);
 
     // treasure.cpp paths
     treasure lonely;
-    lonely.stats()->level = 2;
+    lonely.stats()->set_level(2);
     ASSERT_TRUE(lonely.find_teleport_target() == nullptr);
     ASSERT_TRUE(lonely.act());
     ASSERT_TRUE(lonely.eat_me(self));
@@ -467,9 +467,9 @@ TEST(FamilyCleric, family_soldier_and_treasure_r12_paths)
     bind_test_entity_sim_context(fx.level, t2.get());
     t1->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
     t2->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    t1->stats()->level = 3;
-    t2->stats()->level = 3;
-    t2->dead = 0;
+    t1->stats()->set_level(3);
+    t2->stats()->set_level(3);
+    t2->set_dead(0);
     treasure* t1_raw = t1.get();
     treasure* t2_raw = t2.get();
     fx.level.world().fxlist.push_back(std::move(t1));
@@ -485,48 +485,48 @@ TEST(FamilyCleric, r12_shoved_ai_and_turn_undead_guard_paths)
     living* cleric = add_living(fx, 0, FAMILY_CLERIC);
     ASSERT_TRUE(cleric != nullptr);
     cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
-    cleric->user = 0;
-    cleric->stats()->level = 6;
-    cleric->stats()->magicpoints = 120.0f;
+    cleric->set_user(0);
+    cleric->stats()->set_level(6);
+    cleric->stats()->set_magicpoints(120.0f);
 
     // on_shoved callback path.
     desc.on_shoved(cleric);
 
     // check_special_ai healing branch with >1 friends nearby.
-    cleric->current_special = 1;
+    cleric->set_current_special(1);
     living* friend1 = add_living(fx, 0, FAMILY_SOLDIER);
     living* friend2 = add_living(fx, 0, FAMILY_ARCHER);
     friend1->setxy(82, 80);
     friend2->setxy(84, 80);
     ASSERT_TRUE(desc.check_special_ai(cleric));
-    ASSERT_TRUE(cleric->shifter_down == 0);
+    ASSERT_TRUE(cleric->shifter_down() == 0);
 
     // check_special_ai mace branch with high MP and not enough heal targets.
     friend2->setxy(300, 300);
     friend1->setxy(300, 300);
-    cleric->stats()->max_magicpoints = 100.0f;
-    cleric->stats()->magicpoints = 80.0f;
+    cleric->stats()->set_max_magicpoints(100.0f);
+    cleric->stats()->set_magicpoints(80.0f);
     ASSERT_TRUE(desc.check_special_ai(cleric));
-    ASSERT_TRUE(cleric->shifter_down == 1);
+    ASSERT_TRUE(cleric->shifter_down() == 1);
 
     // Mystic mace INT guard message path.
-    cleric->current_special = 1;
-    cleric->shifter_down = 1;
-    cleric->busy = 0;
+    cleric->set_current_special(1);
+    cleric->set_shifter_down(1);
+    cleric->set_busy(0);
     cleric->myguy->intelligence = 40;
     ASSERT_TRUE(!desc.do_special(cleric));
 
     // Turn-undead INT guard path for special 2.
-    cleric->current_special = 2;
-    cleric->shifter_down = 1;
-    cleric->busy = 0;
+    cleric->set_current_special(2);
+    cleric->set_shifter_down(1);
+    cleric->set_busy(0);
     cleric->myguy->intelligence = 50;
     ASSERT_TRUE(!desc.do_special(cleric));
 
     // Turn-undead INT guard path for special 3.
-    cleric->current_special = 3;
-    cleric->shifter_down = 1;
-    cleric->busy = 0;
+    cleric->set_current_special(3);
+    cleric->set_shifter_down(1);
+    cleric->set_busy(0);
     cleric->myguy->intelligence = 50;
     ASSERT_TRUE(!desc.do_special(cleric));
 }
@@ -567,12 +567,12 @@ living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMIL
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(80, 80);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     living* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -581,10 +581,10 @@ living* add_living(ClericR14Fixture& fx, unsigned char team, char family = FAMIL
 walker* add_stain(ClericR14Fixture& fx, int x, int y, unsigned char team, char old_family)
 {
     walker* stain = fx.level.add_ob(Order::Treasure, FAMILY_STAIN);
-    stain->team_num = team;
+    stain->set_team_num(team);
     stain->setxy(x, y);
-    stain->stats()->old_family = old_family;
-    stain->dead = 0;
+    stain->stats()->set_old_family(old_family);
+    stain->set_dead(0);
     return stain;
 }
 
@@ -603,24 +603,24 @@ TEST(FamilyCleric, r14_lines_110_132_160_heal_plural_and_mystic_mace_branches)
     cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
     cleric->myguy->name = "R14 Cleric";
     cleric->myguy->intelligence = 90;
-    cleric->stats()->level = 10;
-    cleric->stats()->magicpoints = 200.0f;
+    cleric->stats()->set_level(10);
+    cleric->stats()->set_magicpoints(200.0f);
 
     ally1->setxy(84, 80);
     ally2->setxy(86, 80);
-    ally1->stats()->max_hitpoints = 100.0f;
-    ally2->stats()->max_hitpoints = 100.0f;
-    ally1->stats()->hitpoints = 20.0f;
-    ally2->stats()->hitpoints = 30.0f;
+    ally1->stats()->set_max_hitpoints(100.0f);
+    ally2->stats()->set_max_hitpoints(100.0f);
+    ally1->stats()->set_hitpoints(20.0f);
+    ally2->stats()->set_hitpoints(30.0f);
 
     cfg.apply_setting("effects", "heal_numbers", "on");
-    cleric->current_special = 1;
-    cleric->shifter_down = 0;
+    cleric->set_current_special(1);
+    cleric->set_shifter_down(0);
     ASSERT_TRUE(desc.do_special(cleric));
 
-    cleric->current_special = 1;
-    cleric->shifter_down = 1;
-    cleric->busy = 0;
+    cleric->set_current_special(1);
+    cleric->set_shifter_down(1);
+    cleric->set_busy(0);
     ASSERT_TRUE(desc.do_special(cleric) || !desc.do_special(cleric));
 }
 
@@ -634,22 +634,22 @@ TEST(FamilyCleric, r14_lines_187_189_192_203_206_243_246_turn_undead_and_raise_p
     cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
     cleric->myguy->name = "UndeadTest";
     cleric->myguy->intelligence = 90;
-    cleric->stats()->level = 10;
-    cleric->stats()->magicpoints = 300.0f;
+    cleric->stats()->set_level(10);
+    cleric->stats()->set_magicpoints(300.0f);
 
     walker* stain = add_stain(fx, 84, 80, 1, FAMILY_ORC);
     ASSERT_TRUE(stain != nullptr);
 
-    cleric->current_special = 2;
-    cleric->shifter_down = 0;
+    cleric->set_current_special(2);
+    cleric->set_shifter_down(0);
     (void)desc.do_special(cleric);
 
-    cleric->current_special = 3;
-    cleric->shifter_down = 0;
+    cleric->set_current_special(3);
+    cleric->set_shifter_down(0);
     (void)desc.do_special(cleric);
 
-    cleric->shifter_down = 1;
-    cleric->busy = 0;
+    cleric->set_shifter_down(1);
+    cleric->set_busy(0);
     (void)desc.do_special(cleric);
 }
 
@@ -662,10 +662,10 @@ TEST(FamilyCleric, r14_lines_291_302_304_306_311_325_resurrect_variants)
     ASSERT_TRUE(cleric != nullptr);
     cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
     cleric->myguy->exp = 1;
-    cleric->stats()->level = 10;
-    cleric->stats()->magicpoints = 300.0f;
+    cleric->stats()->set_level(10);
+    cleric->stats()->set_magicpoints(300.0f);
 
-    cleric->current_special = 4;
+    cleric->set_current_special(4);
 
     walker* friendly_stain = add_stain(fx, 82, 82, 0, FAMILY_SOLDIER);
     ASSERT_TRUE(friendly_stain != nullptr);
@@ -715,12 +715,12 @@ living* add_living(ClericR15Fixture& fx, unsigned char team, char family, short 
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     living* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -729,10 +729,10 @@ living* add_living(ClericR15Fixture& fx, unsigned char team, char family, short 
 walker* add_stain(ClericR15Fixture& fx, int x, int y, unsigned char team, char old_family)
 {
     walker* stain = fx.level.add_fx_ob(Order::Treasure, FAMILY_STAIN);
-    stain->team_num = team;
+    stain->set_team_num(team);
     stain->setxy(static_cast<short>(x), static_cast<short>(y));
-    stain->stats()->old_family = old_family;
-    stain->dead = 0;
+    stain->stats()->set_old_family(old_family);
+    stain->set_dead(0);
     return stain;
 }
 
@@ -747,17 +747,17 @@ TEST(FamilyCleric, r15_low_magic_heal_branch_and_mystic_mace_guard)
     living* ally = add_living(fx, 0, FAMILY_SOLDIER, 84, 80);
     ASSERT_TRUE(cleric && ally);
 
-    cleric->stats()->level = 8;
-    cleric->stats()->magicpoints = 1.0f; // force low-magic adjustment branch
-    ally->stats()->max_hitpoints = 100.0f;
-    ally->stats()->hitpoints = 5.0f;
-    cleric->current_special = 1;
-    cleric->shifter_down = 0;
+    cleric->stats()->set_level(8);
+    cleric->stats()->set_magicpoints(1.0f); // force low-magic adjustment branch
+    ally->stats()->set_max_hitpoints(100.0f);
+    ally->stats()->set_hitpoints(5.0f);
+    cleric->set_current_special(1);
+    cleric->set_shifter_down(0);
     (void)desc.do_special(cleric);
 
-    cleric->current_special = 1;
-    cleric->shifter_down = 1;
-    cleric->busy = 1;
+    cleric->set_current_special(1);
+    cleric->set_shifter_down(1);
+    cleric->set_busy(1);
     ASSERT_TRUE(!desc.do_special(cleric));
 }
 
@@ -771,33 +771,33 @@ TEST(FamilyCleric, r15_turn_undead_raise_and_resurrect_branches)
     cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
     cleric->myguy->name = "R15 Cleric";
     cleric->myguy->intelligence = 90;
-    cleric->stats()->level = 10;
-    cleric->stats()->magicpoints = 300.0f;
+    cleric->stats()->set_level(10);
+    cleric->stats()->set_magicpoints(300.0f);
 
     // Turn undead branch with valid undead target.
     living* undead = add_living(fx, 1, FAMILY_SKELETON, 92, 80);
     ASSERT_TRUE(undead != nullptr);
-    cleric->current_special = 2;
-    cleric->shifter_down = 1;
+    cleric->set_current_special(2);
+    cleric->set_shifter_down(1);
     (void)desc.do_special(cleric);
 
     // Raise skeleton and ghost from nearby blood.
     walker* stain1 = add_stain(fx, 84, 80, 1, FAMILY_ORC);
     walker* stain2 = add_stain(fx, 86, 80, 1, FAMILY_ORC);
     ASSERT_TRUE(stain1 && stain2);
-    cleric->current_special = 2;
-    cleric->shifter_down = 0;
+    cleric->set_current_special(2);
+    cleric->set_shifter_down(0);
     (void)desc.do_special(cleric);
-    cleric->current_special = 3;
-    cleric->shifter_down = 0;
+    cleric->set_current_special(3);
+    cleric->set_shifter_down(0);
     (void)desc.do_special(cleric);
 
     // Resurrect both friendly and hostile stains.
     walker* friendly_stain = add_stain(fx, 82, 82, 0, FAMILY_SOLDIER);
     walker* hostile_stain = add_stain(fx, 78, 82, 1, FAMILY_ORC);
     ASSERT_TRUE(friendly_stain && hostile_stain);
-    cleric->current_special = 4;
-    cleric->shifter_down = 0;
+    cleric->set_current_special(4);
+    cleric->set_shifter_down(0);
     (void)desc.do_special(cleric);
     (void)desc.do_special(cleric);
 }

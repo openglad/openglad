@@ -40,11 +40,11 @@ living* add_living(SpecialsFixture& fx, char family, unsigned char team)
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(96, 96);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     living* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -54,9 +54,9 @@ walker* add_marker(SpecialsFixture& fx, walker* owner, int x, int y, int life)
 {
     walker* m = fx.level.add_ob(Order::FX, FAMILY_MARKER);
     m->set_owner(owner);
-    m->dead = 0;
+    m->set_dead(0);
     m->setxy(x, y);
-    m->lifetime = life;
+    m->set_lifetime(life);
     return m;
 }
 
@@ -68,14 +68,14 @@ TEST(WalkerSpecialsUnit, walker_specials_r11_special_and_teleport_paths)
     living* w = add_living(fx, FAMILY_CLERIC, 0);
     ASSERT_TRUE(w != nullptr);
 
-    w->dead = 1;
+    w->set_dead(1);
     ASSERT_TRUE(!w->special());
-    w->dead = 0;
+    w->set_dead(0);
 
     walker* weapon = fx.level.add_ob(Order::Weapon, FAMILY_ARROW);
     ASSERT_TRUE(weapon != nullptr);
     if (weapon) {
-        weapon->dead = 0;
+        weapon->set_dead(0);
         ASSERT_TRUE(!weapon->special());
     }
 
@@ -84,7 +84,7 @@ TEST(WalkerSpecialsUnit, walker_specials_r11_special_and_teleport_paths)
     walker* marker = add_marker(fx, w, 140, 140, 1);
     ASSERT_TRUE(marker != nullptr);
     ASSERT_TRUE(w->teleport());
-    ASSERT_TRUE(marker->dead == 1);
+    ASSERT_TRUE(marker->dead() == 1);
 
     // no marker path: random passable placement
     ASSERT_TRUE(w->teleport());
@@ -105,7 +105,7 @@ TEST(WalkerSpecialsUnit, walker_specials_r11_turn_undead_paths)
     // Undead target in range triggers kill path.
     living* skeleton = add_living(fx, FAMILY_SKELETON, 1);
     skeleton->setxy(100, 96);
-    skeleton->stats()->level = 1;
+    skeleton->stats()->set_level(1);
     const std::int32_t killed = cleric->turn_undead(40, 5);
     ASSERT_TRUE(killed >= 0);
 }

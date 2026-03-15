@@ -49,7 +49,7 @@
 // ************************************************************
 //  WALKER -- graphics routines
 //
-//  WALKER is a PIXIEN with automatic frame changing when
+//  WALKER is a PIXIEN with automatic frame() changing when
 //  the direction it moves is changed.  This allows for
 //  the concept of "facings", though currently no query-able
 //  variable allows for external functions to learn the facing.
@@ -118,43 +118,44 @@ int next_path_check_counter(IRandom& rng)
 // Common initialization shared by both constructors
 void walker_init_common(walker* w, IRandom& rng)
 {
-	w->curdir = FACE_DOWN;
-	w->enddir = FACE_DOWN;
-	w->lastx = 0;
-	w->lasty = 0;
+	w->set_curdir(FACE_DOWN);
+	w->set_enddir(FACE_DOWN);
+	w->set_lastx(0);
+	w->set_lasty(0);
 	w->set_collide_ob(nullptr);
-	w->collide_ob_id = 0;
-	w->cycle = 0;
+	w->set_collide_ob_id(0);
+	w->set_cycle(0);
 	w->ani = nullptr;
-	w->ani_type = 0;
-	w->busy = 0;
+	w->set_ani_type(0);
+	w->set_busy(0);
 	w->set_foe(nullptr);
-	w->foe_id = 0;
+	w->set_foe_id(0);
 	w->set_leader(nullptr);
-	w->leader_id = 0;
+	w->set_leader_id(0);
 	w->set_owner(nullptr);
-	w->owner_id = 0;
+	w->set_owner_id(0);
 	w->myguy = nullptr;
-	w->shifter_down = 0;
-	w->view_all = 0;
-	w->keys = 0;
-	w->action = 0;
-	w->ignore = 0;
-	w->default_weapon = w->current_weapon = FAMILY_KNIFE;
-	w->yo_delay = 0;
-	w->speed_bonus = 0;
-	w->speed_bonus_left = 0;
-	w->outline = 0;
-	w->drawcycle = 0;
-	w->skip_exit = 0;
-	w->weapons_left = 1;
-	w->current_special = 0;
-	w->in_act = false;
-	w->path_check_counter = next_path_check_counter(rng);
-	w->hurt_flash = false;
-	w->attack_lunge = 0.0f;
-	w->hit_recoil = 0.0f;
-	w->last_hitpoints = 0.0f;
+	w->set_shifter_down(0);
+	w->set_view_all(0);
+	w->set_keys(0);
+	w->set_action(0);
+	w->set_ignore(0);
+	w->set_current_weapon(FAMILY_KNIFE);
+	w->set_default_weapon(w->current_weapon());
+	w->set_yo_delay(0);
+	w->set_speed_bonus(0);
+	w->set_speed_bonus_left(0);
+	w->set_outline(0);
+	w->set_drawcycle(0);
+	w->set_skip_exit(0);
+	w->set_weapons_left(1);
+	w->set_current_special(0);
+	w->set_in_act(false);
+	w->set_path_check_counter(next_path_check_counter(rng));
+	w->set_hurt_flash(false);
+	w->set_attack_lunge(0.0f);
+	w->set_hit_recoil(0.0f);
+	w->set_last_hitpoints(0.0f);
 }
 
 walker::walker(const PixieData& data)
@@ -169,7 +170,7 @@ walker::walker(const PixieData& data)
 
 	walker_init_common(this, walker_rng());
 
-	act_type = ACT_RANDOM;
+	set_act_type_state(ACT_RANDOM);
 	set_frame(0);
 }
 
@@ -182,7 +183,7 @@ walker::walker()
 
 	walker_init_common(this, walker_rng());
 
-	act_type = ACT_RANDOM;
+	set_act_type_state(ACT_RANDOM);
 }
 
 // attach_render, set_data, bmp_data, set_frame are in
@@ -190,7 +191,7 @@ walker::walker()
 
 short walker::next_frame()
 {
-	return set_frame(frame++ % frames);
+	return set_frame(static_cast<short>(frame() % frames));
 }
 
 void walker::set_myguy_view(guy* guy_view)
@@ -227,28 +228,28 @@ void walker::move_myguy_to(walker* target)
 void walker::set_foe(walker* target)
 {
 	foe_ = target;
-	foe_id = (target != nullptr) ? target->entity_id() : 0;
+	foe_id_ = (target != nullptr) ? target->entity_id() : 0;
 	mark_dirty(og::dirty::BIT_FOE_ID);
 }
 
 void walker::set_leader(walker* target)
 {
 	leader_ = target;
-	leader_id = (target != nullptr) ? target->entity_id() : 0;
+	leader_id_ = (target != nullptr) ? target->entity_id() : 0;
 	mark_dirty(og::dirty::BIT_LEADER_ID);
 }
 
 void walker::set_owner(walker* target)
 {
 	owner_ = target;
-	owner_id = (target != nullptr) ? target->entity_id() : 0;
+	owner_id_ = (target != nullptr) ? target->entity_id() : 0;
 	mark_dirty(og::dirty::BIT_OWNER_ID);
 }
 
 void walker::set_collide_ob(walker* target)
 {
 	collide_ob_ = target;
-	collide_ob_id = (target != nullptr) ? target->entity_id() : 0;
+	collide_ob_id_ = (target != nullptr) ? target->entity_id() : 0;
 	mark_dirty(og::dirty::BIT_COLLIDE_OB_ID);
 }
 
@@ -294,12 +295,12 @@ void walker::sync_ids_from_pointers()
 		}
 	};
 
-	sync_link(foe_, foe_id, og::dirty::BIT_FOE_ID, [this]() { set_foe(nullptr); });
-	sync_link(leader_, leader_id, og::dirty::BIT_LEADER_ID,
+	sync_link(foe_, foe_id_, og::dirty::BIT_FOE_ID, [this]() { set_foe(nullptr); });
+	sync_link(leader_, leader_id_, og::dirty::BIT_LEADER_ID,
 	          [this]() { set_leader(nullptr); });
-	sync_link(owner_, owner_id, og::dirty::BIT_OWNER_ID,
+	sync_link(owner_, owner_id_, og::dirty::BIT_OWNER_ID,
 	          [this]() { set_owner(nullptr); });
-	sync_link(collide_ob_, collide_ob_id, og::dirty::BIT_COLLIDE_OB_ID,
+	sync_link(collide_ob_, collide_ob_id_, og::dirty::BIT_COLLIDE_OB_ID,
 	          [this]() { set_collide_ob(nullptr); });
 
 	if (statistics* const entity_stats = stats(); entity_stats != nullptr)
@@ -314,16 +315,16 @@ void walker::sync_ids_from_pointers()
 			else
 			{
 				std::uint32_t controller_id = 0;
-				if (entity_stats->controller_id != 0)
+				if (entity_stats->controller_id() != 0)
 				{
-					if (owning_world_->find_by_id(entity_stats->controller_id) !=
+					if (owning_world_->find_by_id(entity_stats->controller_id()) !=
 					    controller)
 					{
 						entity_stats->set_controller(nullptr);
 					}
 					else
 					{
-						controller_id = entity_stats->controller_id;
+						controller_id = entity_stats->controller_id();
 					}
 				}
 				else
@@ -333,16 +334,16 @@ void walker::sync_ids_from_pointers()
 						entity_stats->set_controller(nullptr);
 				}
 
-				if (entity_stats->controller_id != controller_id)
+				if (entity_stats->controller_id() != controller_id)
 				{
-					entity_stats->controller_id = controller_id;
+					entity_stats->set_controller_id(controller_id);
 					mark_dirty(og::dirty::BIT_CONTROLLER_ID);
 				}
 			}
 		}
-		else if (entity_stats->controller_id != 0)
+		else if (entity_stats->controller_id() != 0)
 		{
-			entity_stats->controller_id = 0;
+			entity_stats->set_controller_id(0);
 			mark_dirty(og::dirty::BIT_CONTROLLER_ID);
 		}
 	}
@@ -366,7 +367,7 @@ walker::reset(void)
 
 	//  ani = nullptr;
 
-	// //  team_num = 0;
+	// //  set_team_num(0);
 	// //  ani_type = 0;
 	// //  busy = 0;
 
@@ -376,47 +377,47 @@ walker::reset(void)
 	//  myguy = nullptr;
 	//  myself = this;
 	//  ani = nullptr;
-	dead = 0; // we're alive
+	set_dead(0); // we're alive
 
-	death_called = 0;
+	set_death_called(0);
 
 
-	//  bonus_rounds = 0;
+	//  set_bonus_rounds(0);
 	//  shifter_down = 0; // the player's shifter/alternate is NOT pressed
 	//  view_all = 0;     // by default can't see treasures, etc. on radar
 	//  keys = 0; // no keys
 
 	//  action = 0; // no special action mode
-	ignore = 0; // don't ignore us! Collide with us...
+	set_ignore(0); // don't ignore us! Collide with us...
 	//  default_weapon = current_weapon = FAMILY_KNIFE; // just in case ..
-	//  user = -1; // default user status = no user
+	//  set_user(-1); // default user() status = no user()
 	// Set our stats ..
 	//  set_frame(0);
 
 	//  yo_delay = 0;
 
-	flight_left = 0;
-	//  invulnerable_left = 0;
-	//  invisibility_left = 0;
+	set_flight_left(0);
+	//  set_invulnerable_left(0);
+	//  set_invisibility_left(0);
 	//  outline = 0;
 	//  drawcycle = 0;
-	in_act = false;
+	set_in_act(false);
 
 	//  skip_exit = 0;
-	//  xpos = ypos = -1; //this to correct a problem with these not being alloced?
+	//  xpos() = ypos() = -1; //this to correct a problem with these not being alloced?
 
 	//  weapons_left = 1; // default, used for fighters
-	path_check_counter = next_path_check_counter(walker_rng());
-    regen_delay_ = 0;
+	set_path_check_counter(next_path_check_counter(walker_rng()));
+    set_regen_delay(0);
 
 	if (stats_)
-		stats_->bit_flags = 0;
+		stats_->set_bit_flags(0);
 
-	hurt_flash = false;
-	attack_lunge = 0.0f;
-	hit_recoil = 0.0f;
+	set_hurt_flash(false);
+	set_attack_lunge(0.0f);
+	set_hit_recoil(0.0f);
 
-	last_hitpoints = 0.0f;
+	set_last_hitpoints(0.0f);
 	
 	return 1;
 }
@@ -430,7 +431,7 @@ walker::reset(void)
 // and checks to see if the object is too busy.
 bool walker::init_fire()
 {
-	return init_fire(static_cast<short>(lastx), static_cast<short>(lasty));
+	return init_fire(static_cast<short>(lastx()), static_cast<short>(lasty()));
 }
 
 bool walker::init_fire(short xdir, short ydir)
@@ -439,30 +440,30 @@ bool walker::init_fire(short xdir, short ydir)
 
 	// If a non-player fires in a set direction, turn!
 
-	if (facing(xdir, ydir) != curdir)
+	if (facing(xdir, ydir) != curdir())
 	{
-		enddir = static_cast<char>(facing(xdir, ydir));
+		set_enddir(static_cast<char>(facing(xdir, ydir)));
 	}
-	if (curdir != enddir && query_order() == Order::Living)
+	if (curdir() != enddir() && query_order() == Order::Living)
 	{
-		//if (family==FAMILY_TOWER1)
+		//if (family()==FAMILY_TOWER1)
 		//  enddir = curdir;
-		if (act_type == ACT_CONTROL)
+		if (act_type() == ACT_CONTROL)
 			return 0;
 		else
-			return turn(enddir);
+			return turn(enddir());
 	}
 
-	if (busy > 0)
+	if (busy() > 0.0f)
 		return 0;  // Too busy
 
-	busy += fire_frequency; // This pauses a few rounds
+	set_busy(busy() + fire_frequency()); // This pauses a few rounds
 
 	//  if (ani_type == ANI_WALK && query_order() == Order::Living)
-	if (ani_type == ANI_WALK)  // This should allow generators to animate
+	if (ani_type() == ANI_WALK)  // This should allow generators to animate
 	{
-		ani_type = ANI_ATTACK;
-		cycle = 0;
+		set_ani_type(ANI_ATTACK);
+		set_cycle(0);
 		animate();
 		return 1;
 	}
@@ -482,76 +483,76 @@ walker  * walker::fire()
 	//short xp, yp;
 
 	// Do we have enough spellpoints for our weapon
-	if (stats_->magicpoints < stats_->weapon_cost)
+	if (stats_->magicpoints() < stats_->weapon_cost())
 		return nullptr;
 
 	weapon = create_weapon();
 	if (!weapon)
 		return nullptr;
 
-	stats_->magicpoints -= stats_->weapon_cost;
+	stats_->set_magicpoints(	stats_->magicpoints() - stats_->weapon_cost());
 
 	// Determine how much the thrown weapon can 'waver'
-	waver = static_cast<signed char>((weapon->stepsize)/2); // Absolute amount ..
+	waver = static_cast<signed char>((weapon->stepsize())/2); // Absolute amount ..
 	waver = static_cast<signed char>(current_game->world->rng_.next(waver+1) - waver/2);
 
-	switch(facing(lastx, lasty))
+	switch (facing(lastx(), lasty()))
 	{
 		case FACE_RIGHT:
-			weapon->setxy(xpos+sizex+1,ypos+(sizey - weapon->sizey)/2);
-			weapon->lastx = weapon->stepsize;
-			weapon->lasty = waver;
+			weapon->setxy(xpos()+sizex()+1,ypos()+(sizey() - weapon->sizey())/2);
+			weapon->set_lastx(weapon->stepsize());
+			weapon->set_lasty(waver);
 			break;
 		case FACE_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos+(sizey-weapon->sizey)/2);
-			weapon->lastx = -weapon->stepsize;
-			weapon->lasty = waver;
+			weapon->setxy(xpos() - weapon->sizex()-1, ypos()+(sizey()-weapon->sizey())/2);
+			weapon->set_lastx(-weapon->stepsize());
+			weapon->set_lasty(waver);
 			break;
 		case FACE_DOWN:
-			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos+sizey+1);
-			weapon->lasty = weapon->stepsize;
-			weapon->lastx = waver;
+			weapon->setxy(xpos()+(sizex()-weapon->sizex())/2, ypos()+sizey()+1);
+			weapon->set_lasty(weapon->stepsize());
+			weapon->set_lastx(waver);
 			break;
 		case FACE_UP:
-			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos - weapon->sizey-1);
-			weapon->lasty = - weapon->stepsize;
-			weapon->lastx = waver;
+			weapon->setxy(xpos()+(sizex()-weapon->sizex())/2, ypos() - weapon->sizey()-1);
+			weapon->set_lasty(- weapon->stepsize());
+			weapon->set_lastx(waver);
 			break;
 		case FACE_UP_RIGHT:
-			weapon->setxy(xpos+sizex+1, ypos-weapon->sizey-1);
-			weapon->lastx = weapon->stepsize + waver;
-			weapon->lasty = -weapon->stepsize + waver;
+			weapon->setxy(xpos()+sizex()+1, ypos()-weapon->sizey()-1);
+			weapon->set_lastx(weapon->stepsize() + waver);
+			weapon->set_lasty(-weapon->stepsize() + waver);
 			break;
 		case FACE_UP_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos-weapon->sizey-1);
-			weapon->lastx = -weapon->stepsize - waver;
-			weapon->lasty = -weapon->stepsize + waver;
+			weapon->setxy(xpos() - weapon->sizex()-1, ypos()-weapon->sizey()-1);
+			weapon->set_lastx(-weapon->stepsize() - waver);
+			weapon->set_lasty(-weapon->stepsize() + waver);
 			break;
 		case FACE_DOWN_RIGHT:
-			weapon->setxy(xpos+sizex+1, ypos + sizey+1);
-			weapon->lasty = weapon->stepsize + waver;
-			weapon->lastx = weapon->stepsize - waver;
+			weapon->setxy(xpos()+sizex()+1, ypos() + sizey()+1);
+			weapon->set_lasty(weapon->stepsize() + waver);
+			weapon->set_lastx(weapon->stepsize() - waver);
 			break;
 		case FACE_DOWN_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos+sizey+1);
-			weapon->lasty = weapon->stepsize + waver;
-			weapon->lastx = -weapon->stepsize + waver;
+			weapon->setxy(xpos() - weapon->sizex()-1, ypos()+sizey()+1);
+			weapon->set_lasty(weapon->stepsize() + waver);
+			weapon->set_lastx(-weapon->stepsize() + waver);
 			break;
 	}
 
-	weapon->set_frame(frame);
+	weapon->set_frame(frame());
 	// Make sure our current direction is wrong so first walk
 	// will just be draw (grumble curse)
-	weapon->curdir = static_cast<char>((frame+1)%2);
+	weapon->set_curdir(static_cast<char>((frame()+1)%2));
 
-	//xp = weapon->xpos;
-	//yp = weapon->ypos;
+	//xp = weapon->xpos();
+	//yp = weapon->ypos();
 
 	// Actual combat
-	if (!current_game->world->query_passable(weapon->xpos, weapon->ypos, weapon))
+	if (!current_game->world->query_passable(weapon->xpos(), weapon->ypos(), weapon))
 	{
 		// *** Melee combat ***
-		if (weapon->collide_ob() && !weapon->collide_ob()->dead)
+		if (weapon->collide_ob() && !weapon->collide_ob()->dead())
 		{
 			if (attack(weapon->collide_ob()))
 			{
@@ -559,14 +560,14 @@ walker  * walker::fire()
 
                 if(query_order() == Order::Living)
                 {
-                    attack_lunge = 1.0f;
-                    attack_lunge_angle = get_current_angle();
+	                    set_attack_lunge(1.0f);
+	                    set_attack_lunge_angle(get_current_angle());
                 }
 
 				// Family-specific melee hit callback
-				if (order == Order::Living)
+				if (order() == Order::Living)
 				{
-					const auto* fd = get_family_descriptor(family);
+					const auto* fd = get_family_descriptor(family());
 					if (fd && fd->on_melee_hit)
 						fd->on_melee_hit(this, weapon->collide_ob());
 				}
@@ -577,19 +578,19 @@ walker  * walker::fire()
 				myguy->scen_shots++;
             }
 		}
-		weapon->dead = 1;
+		weapon->set_dead(1);
 		return nullptr;
 	}
 	else if (stats_->query_bit_flags(BIT_NO_RANGED))
 	{
-		weapon->dead = 1;
+		weapon->set_dead(1);
 		return nullptr;
 	}
 	else
 	{
-		if (order == Order::Living)
+		if (order() == Order::Living)
 		{
-			const auto* fd = get_family_descriptor(family);
+			const auto* fd = get_family_descriptor(family());
 			if (fd && fd->on_fire_weapon)
 			{
 				if (!fd->on_fire_weapon(this, weapon))
@@ -606,25 +607,25 @@ walker  * walker::fire()
 
 		// *** Ranged combat ***
 		{
-			const auto* wfd = get_weapon_family_descriptor(weapon->family);
+			const auto* wfd = get_weapon_family_descriptor(weapon->family());
 			og::sim::emit_sound(current_game->sim_events, static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
 		}
-		if (order == Order::Generator)
+		if (order() == Order::Generator)
 		{
-			const auto* gfd = get_generator_family_descriptor(family);
+			const auto* gfd = get_generator_family_descriptor(family());
 			if (gfd)
 			{
 				if (gfd->spawn_ani_type != 0)
-					weapon->ani_type = gfd->spawn_ani_type;
+					weapon->set_ani_type(gfd->spawn_ani_type);
 				if (gfd->has_lifetime)
-					weapon->lifetime = 800 + stats_->level*11;
-				weapon->stats()->level = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level))) + 1;
-				weapon->set_difficulty(static_cast<std::uint32_t>(weapon->stats()->level));
+					weapon->set_lifetime(800 + stats_->level()*11);
+				weapon->stats()->set_level(static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level()))) + 1);
+				weapon->set_difficulty(static_cast<std::uint32_t>(weapon->stats()->level()));
 				if (gfd->clear_owner)
 					weapon->set_owner(nullptr);
 			}
 		}
-		// Living-family weapon modifications handled by on_fire_weapon above
+		// Living-family() weapon modifications handled by on_fire_weapon above
 		return weapon;
 	}
 
@@ -635,50 +636,50 @@ void walker::set_weapon_heading(walker *weapon)
 	signed char waver;
 
 	// Determine how much the thrown weapon can 'waver'
-	waver = static_cast<signed char>((weapon->stepsize)/2); // Absolute amount ..
+	waver = static_cast<signed char>((weapon->stepsize())/2); // Absolute amount ..
 	waver = static_cast<signed char>(current_game->world->rng_.next(waver+1) - waver/2);
 
-	switch(facing(lastx, lasty))  // these are from the 'owner'
+	switch (facing(lastx(), lasty()))  // these are from the 'owner'
 	{
 		case FACE_RIGHT:
-			weapon->setxy(xpos+sizex+1,ypos+(sizey - weapon->sizey)/2);
-			weapon->lastx = weapon->stepsize;
-			weapon->lasty = waver;
+			weapon->setxy(xpos()+sizex()+1,ypos()+(sizey() - weapon->sizey())/2);
+			weapon->set_lastx(weapon->stepsize());
+			weapon->set_lasty(waver);
 			break;
 		case FACE_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos+(sizey-weapon->sizey)/2);
-			weapon->lastx = -weapon->stepsize;
-			weapon->lasty = waver;
+			weapon->setxy(xpos() - weapon->sizex()-1, ypos()+(sizey()-weapon->sizey())/2);
+			weapon->set_lastx(-weapon->stepsize());
+			weapon->set_lasty(waver);
 			break;
 		case FACE_DOWN:
-			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos+sizey+1);
-			weapon->lasty = weapon->stepsize;
-			weapon->lastx = waver;
+			weapon->setxy(xpos()+(sizex()-weapon->sizex())/2, ypos()+sizey()+1);
+			weapon->set_lasty(weapon->stepsize());
+			weapon->set_lastx(waver);
 			break;
 		case FACE_UP:
-			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos - weapon->sizey-1);
-			weapon->lasty = - weapon->stepsize;
-			weapon->lastx = waver;
+			weapon->setxy(xpos()+(sizex()-weapon->sizex())/2, ypos() - weapon->sizey()-1);
+			weapon->set_lasty(- weapon->stepsize());
+			weapon->set_lastx(waver);
 			break;
 		case FACE_UP_RIGHT:
-			weapon->setxy(xpos+sizex+1, ypos-weapon->sizey-1);
-			weapon->lastx = weapon->stepsize + waver;
-			weapon->lasty = -weapon->stepsize + waver;
+			weapon->setxy(xpos()+sizex()+1, ypos()-weapon->sizey()-1);
+			weapon->set_lastx(weapon->stepsize() + waver);
+			weapon->set_lasty(-weapon->stepsize() + waver);
 			break;
 		case FACE_UP_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos-weapon->sizey-1);
-			weapon->lastx = -weapon->stepsize - waver;
-			weapon->lasty = -weapon->stepsize + waver;
+			weapon->setxy(xpos() - weapon->sizex()-1, ypos()-weapon->sizey()-1);
+			weapon->set_lastx(-weapon->stepsize() - waver);
+			weapon->set_lasty(-weapon->stepsize() + waver);
 			break;
 		case FACE_DOWN_RIGHT:
-			weapon->setxy(xpos+sizex+1, ypos + sizey+1);
-			weapon->lasty = weapon->stepsize + waver;
-			weapon->lastx = weapon->stepsize - waver;
+			weapon->setxy(xpos()+sizex()+1, ypos() + sizey()+1);
+			weapon->set_lasty(weapon->stepsize() + waver);
+			weapon->set_lastx(weapon->stepsize() - waver);
 			break;
 		case FACE_DOWN_LEFT:
-			weapon->setxy(xpos - weapon->sizex-1, ypos+sizey+1);
-			weapon->lasty = weapon->stepsize + waver;
-			weapon->lastx = -weapon->stepsize + waver;
+			weapon->setxy(xpos() - weapon->sizex()-1, ypos()+sizey()+1);
+			weapon->set_lasty(weapon->stepsize() + waver);
+			weapon->set_lastx(-weapon->stepsize() + waver);
 			break;
 	}
 
@@ -696,73 +697,75 @@ walker::DamageNumber::DamageNumber(float x_, float y_, float value_, unsigned ch
 
 void walker::compute_outline(const walker* viewer_control)
 {
-	if (stats_->query_bit_flags( BIT_NAMED ) || invisibility_left || flight_left || invulnerable_left)
+	unsigned char next_outline = outline();
+	if (stats_->query_bit_flags( BIT_NAMED ) || invisibility_left() || flight_left() || invulnerable_left())
 	{
-		if (outline == OUTLINE_INVULNERABLE)
+		if (next_outline == OUTLINE_INVULNERABLE)
 		{
-			if      (flight_left)
-				outline = OUTLINE_FLYING;
+			if      (flight_left())
+				next_outline = OUTLINE_FLYING;
 			else if (viewer_control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=viewer_control->team_num))
-					outline = OUTLINE_NAMED;
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num()!=viewer_control->team_num()))
+					next_outline = OUTLINE_NAMED;
 
-			if (outline != OUTLINE_NAMED)
-				if (invisibility_left)
-					outline = query_team_color();
+			if (next_outline != OUTLINE_NAMED)
+				if (invisibility_left())
+					next_outline = query_team_color();
 		}
-		else if (outline == OUTLINE_FLYING)
+		else if (next_outline == OUTLINE_FLYING)
 		{
 			if (viewer_control)
-				if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=viewer_control->team_num))
-					outline = OUTLINE_NAMED;
+				if      (stats_->query_bit_flags (BIT_NAMED) && (team_num()!=viewer_control->team_num()))
+					next_outline = OUTLINE_NAMED;
 
-			if (outline != OUTLINE_NAMED)
+			if (next_outline != OUTLINE_NAMED)
 			{
-				if (invisibility_left)
-					outline = query_team_color();
-				else if (invulnerable_left)
-					outline = OUTLINE_INVULNERABLE;
+				if (invisibility_left())
+					next_outline = query_team_color();
+				else if (invulnerable_left())
+					next_outline = OUTLINE_INVULNERABLE;
 			}
 		}
-		else if (outline == OUTLINE_NAMED)
+		else if (next_outline == OUTLINE_NAMED)
 		{
-			if      (invisibility_left)
-				outline = query_team_color();
-			else if (invulnerable_left)
-				outline = OUTLINE_INVULNERABLE;
-			else if (flight_left)
-				outline = OUTLINE_FLYING;
+			if      (invisibility_left())
+				next_outline = query_team_color();
+			else if (invulnerable_left())
+				next_outline = OUTLINE_INVULNERABLE;
+			else if (flight_left())
+				next_outline = OUTLINE_FLYING;
 		}
-		else if (outline == query_team_color())
+		else if (next_outline == query_team_color())
 		{
-			if      (invulnerable_left)
-				outline = OUTLINE_INVULNERABLE;
-			else if (flight_left)
-				outline = OUTLINE_FLYING;
+			if      (invulnerable_left())
+				next_outline = OUTLINE_INVULNERABLE;
+			else if (flight_left())
+				next_outline = OUTLINE_FLYING;
 			else if (viewer_control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=viewer_control->team_num))
-					outline = OUTLINE_NAMED;
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num()!=viewer_control->team_num()))
+					next_outline = OUTLINE_NAMED;
 		}
 		else
 		{
-			if      (invisibility_left)
-				outline = query_team_color();
-			else if (flight_left)
-				outline = OUTLINE_FLYING;
-			else if (invulnerable_left)
-				outline = OUTLINE_INVULNERABLE;
+			if      (invisibility_left())
+				next_outline = query_team_color();
+			else if (flight_left())
+				next_outline = OUTLINE_FLYING;
+			else if (invulnerable_left())
+				next_outline = OUTLINE_INVULNERABLE;
 			else if (viewer_control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=viewer_control->team_num))
-					outline = OUTLINE_NAMED;
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num()!=viewer_control->team_num()))
+					next_outline = OUTLINE_NAMED;
 		}
 	}
 	else
 	{
-	    outline = 0;
+	    next_outline = 0;
 	}
 
-    if(outline == 0 && user != -1 && viewer_control && this != viewer_control && this->team_num == viewer_control->team_num)
-        outline = query_team_color();
+    if(next_outline == 0 && user() != -1 && viewer_control && this != viewer_control && this->team_num() == viewer_control->team_num())
+        next_outline = query_team_color();
+	set_outline(next_outline);
 }
 
 bool walker::act()
@@ -770,28 +773,28 @@ bool walker::act()
 	short temp;
 
 	// Make sure everyone we're pointing to is valid
-	if (foe() && foe()->dead)
+	if (foe() && foe()->dead())
 		set_foe(nullptr);
-	if (leader() && leader()->dead)
+	if (leader() && leader()->dead())
 		set_leader(nullptr);
-	if (owner() && owner()->dead)
+	if (owner() && owner()->dead())
 		set_owner(nullptr);
 
 	set_collide_ob(nullptr); // always start with no collison..
 
 	// Complete previous animations (like firing)
-	if (ani_type != ANI_WALK)
+	if (ani_type() != ANI_WALK)
 		return animate();
 
 	// Are we frozen?
-	if (stats_->frozen_delay)
+	if (stats_->frozen_delay())
 	{
-		stats_->frozen_delay--;
+		stats_->set_frozen_delay(	stats_->frozen_delay() - 1);
 		return 1;
 	}
 
-	if (busy > 0)
-		busy--; // This allows busy to be our FIRING delay.
+	if (busy() > 0.0f)
+		set_busy(busy() - 1.0f); // This allows busy to be our FIRING delay.
 	// Find new action
 
 	// Turn if you want to
@@ -812,21 +815,23 @@ bool walker::act()
 			return 1;
 	}
 	
-	if(attack_lunge > 0.0f)
+	if(attack_lunge() > 0.0f)
     {
-        attack_lunge -= 0.4f;
-        if(attack_lunge < 0.0f)
-            attack_lunge = 0.0f;
+        float next_lunge = attack_lunge() - 0.4f;
+        if(next_lunge < 0.0f)
+            next_lunge = 0.0f;
+        set_attack_lunge(next_lunge);
     }
-	
-	if(hit_recoil > 0.0f)
+
+	if(hit_recoil() > 0.0f)
     {
-        hit_recoil -= 0.6f;
-        if(hit_recoil < 0.0f)
-            hit_recoil = 0.0f;
+        float next_recoil = hit_recoil() - 0.6f;
+        if(next_recoil < 0.0f)
+            next_recoil = 0.0f;
+        set_hit_recoil(next_recoil);
     }
-	
-	switch (act_type)
+
+	switch (act_type())
 	{
 			// We are the control character
 		case ACT_CONTROL:
@@ -855,7 +860,7 @@ bool walker::act()
 			}
 		case ACT_DIE:
 			{
-				this->dead = 1;
+				this->set_dead(1);
 				return 1;
 			}
 			// We are randomly walking toward enemy
@@ -896,15 +901,15 @@ bool walker::act()
 
 short walker::set_act_type(short num)
 {
-	old_act_type = act_type;
-	act_type = static_cast<char>(num);
+	set_old_act_type(act_type());
+	set_act_type_state(static_cast<char>(num));
 	return num;
 }
 
 short walker::restore_act_type()
 {
-	act_type = old_act_type;
-	return old_act_type;
+	set_act_type_state(old_act_type());
+	return old_act_type();
 }
 
 
@@ -922,23 +927,23 @@ bool walker::animate()
 		return 0;
 
 	// Guard against stale/invalid signed-char indices under sanitizer builds.
-	int dir_index = static_cast<int>(static_cast<unsigned char>(curdir));
+	int dir_index = static_cast<int>(static_cast<unsigned char>(curdir()));
 	if (dir_index < 0 || dir_index >= NUM_FACINGS)
 		dir_index = 0;
-	int type_index = static_cast<int>(ani_type);
+	int type_index = static_cast<int>(ani_type());
 	if (type_index < ANI_WALK || type_index > ANI_SLIME_SPLIT)
 	{
 		type_index = ANI_WALK;
-		ani_type = static_cast<char>(ANI_WALK);
-		cycle = 0;
+		set_ani_type(static_cast<char>(ANI_WALK));
+		set_cycle(0);
 	}
 
 	const int ani_index = dir_index + type_index * NUM_FACINGS;
 	const signed char* seq = ani[ani_index];
 	if (!seq)
 	{
-		ani_type = ANI_WALK;
-		cycle = 0;
+		set_ani_type(ANI_WALK);
+		set_cycle(0);
 		return 0;
 	}
 
@@ -951,81 +956,81 @@ bool walker::animate()
 		seq_len++;
 	if (seq_len <= 0 || seq_len >= 128)
 	{
-		ani_type = ANI_WALK;
-		cycle = 0;
+		set_ani_type(ANI_WALK);
+		set_cycle(0);
 		return 0;
 	}
 
-	int c = static_cast<int>(cycle);
+	int c = static_cast<int>(cycle());
 	if (c < 0)
 		c = 0;
 
 	// If cycle is already past the end (e.g. walk() advanced it beyond the
 	// current animation's bounds), treat as end-of-animation rather than
-	// restarting from frame 0.  Resetting to 0 loops forever when walk()
-	// keeps pushing cycle forward each frame (attack-while-running bug).
+	// restarting from frame() 0.  Resetting to 0 loops forever when walk()
+	// keeps pushing cycle forward each frame() (attack-while-running bug).
 	bool at_end;
 	if (c >= seq_len)
 	{
 		at_end = true;
-		cycle = 0;
+		set_cycle(0);
 	}
 	else
 	{
 		set_frame(seq[c]);
 		c++;
 		at_end = (c >= seq_len);
-		cycle = static_cast<signed char>(c);
+		set_cycle(static_cast<signed char>(c));
 	}
 
 	if (at_end)
 	{
 		//          if (ani_type == ANI_ATTACK &&
 		//                        query_order() == Order::Living)
-		if (ani_type == ANI_ATTACK)
+		if (ani_type() == ANI_ATTACK)
 		{
 			fire();
-			ani_type = ANI_WALK;
-			cycle = 0;
+			set_ani_type(ANI_WALK);
+			set_cycle(0);
 			return 1;
 		}
-		if (ani_type == ANI_SKEL_GROW && order == Order::Living)
+		if (ani_type() == ANI_SKEL_GROW && order() == Order::Living)
 		{
-			const auto* fd = get_family_descriptor(family);
+			const auto* fd = get_family_descriptor(family());
 			if (fd && fd->init_ani_type == ANI_SKEL_GROW)
 			{
-				ani_type = ANI_WALK;
-				cycle = 0;
+				set_ani_type(ANI_WALK);
+				set_cycle(0);
 				return 1;
 			}
 		}
-		if (ani_type == ANI_TELE_OUT && order == Order::Living)
+		if (ani_type() == ANI_TELE_OUT && order() == Order::Living)
 		{
-			const auto* fd = get_family_descriptor(family);
+			const auto* fd = get_family_descriptor(family());
 			if (fd && fd->handle_teleport && fd->handle_teleport(this))
 				return 1;
 			// Default: no teleport handler, just stop
-			ani_type = ANI_WALK;
-			cycle = 0;
+			set_ani_type(ANI_WALK);
+			set_cycle(0);
 			return 0;
 		}
-		if (order == Order::Living)
+		if (order() == Order::Living)
 		{
-			const auto* fd2 = get_family_descriptor(family);
+			const auto* fd2 = get_family_descriptor(family());
 			if (fd2 && fd2->on_ani_complete && fd2->on_ani_complete(this))
 				return 1;
 		}
 
-		ani_type = ANI_WALK;
-		cycle = 0;
+		set_ani_type(ANI_WALK);
+		set_cycle(0);
 	}
 	return 1;
 }
 
 bool walker::set_order_family(Order neworder, char newfamily)
 {
-	order = neworder;
-	family = newfamily;
+	set_order(neworder);
+	set_family(newfamily);
 	return 1;
 }
 
@@ -1038,49 +1043,48 @@ walker  *walker::create_weapon()
 	// Special case for generators
 	if (query_order() == Order::Generator)
 	{
-		weapon = current_game->world->add_ob(Order::Living, static_cast<char>(default_weapon));
-		weapon->team_num = team_num;
+			weapon = current_game->world->add_ob(Order::Living, static_cast<char>(default_weapon()));
+		weapon->set_team_num(team_num());
 		weapon->set_owner(this);
-		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
+		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
 		return weapon;
 	}
 	// Normally, only livings fire
-	weapon_type = current_weapon;
+		weapon_type = current_weapon();
 
 	weapon = current_game->world->add_ob(Order::Weapon, static_cast<char>(weapon_type));
-	weapon->team_num = team_num;
+	weapon->set_team_num(team_num());
 	weapon->set_owner(this);
-	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
-	weapon->damage = (weapon->damage * (static_cast<float>(stats_->level) + 3.0f)) / 4.0f;
+	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
+	weapon->set_damage((weapon->damage() * (static_cast<float>(stats_->level()) + 3.0f)) / 4.0f);
 	if (myguy)
 	{
-		weapon->lineofsight += (myguy->strength / 23) + (myguy->dexterity / 31);
-		weapon->damage += (myguy->strength / 7.0f);
+			weapon->set_lineofsight(weapon->lineofsight() + (myguy->strength / 23) + (myguy->dexterity / 31));
+			weapon->set_damage(weapon->damage() + (myguy->strength / 7.0f));
 	}
 	else
 	{
-		weapon->damage *= static_cast<float>(stats_->level);
-	}
-	weapon->lineofsight += (stats_->level / 3);
-		switch ( facing(lastx, lasty) ) // make 'circular' ranges
+			weapon->set_damage(weapon->damage() * static_cast<float>(stats_->level()));
+		}
+		weapon->set_lineofsight(weapon->lineofsight() + (stats_->level() / 3));
+		switch (facing(lastx(), lasty())) // make 'circular' ranges
 		{
 			case FACE_UP:
 			case FACE_RIGHT:
 			case FACE_DOWN:
 			case FACE_LEFT:
 				// this will multiply by 1.207 ..
-				weapon->lineofsight = scale_los_circular(weapon->lineofsight);
+				weapon->set_lineofsight(scale_los_circular(weapon->lineofsight()));
 				// this will multiply by 1.414
-				weapon->stepsize *= 362;
-				weapon->stepsize /= 256;
+				weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);
 				break;
 		default :
 			break;
 	}
 
-	if (order == Order::Living)
+	if (order() == Order::Living)
 	{
-		const auto* fd = get_family_descriptor(family);
+		const auto* fd = get_family_descriptor(family());
 		if (fd && fd->customize_weapon)
 			fd->customize_weapon(this, weapon);
 	}
@@ -1091,17 +1095,17 @@ bool walker::query_next_to()
 {
 	short newx, newy;
 
-	newx = xpos;
-	newy = ypos;
+	newx = xpos();
+	newy = ypos();
 
-	if (lastx > 0)
-		newx += sizex;
-	else if (lastx < 0)
-		newx += -sizex;
-	if (lasty > 0)
-		newy += sizey;
+	if (lastx() > 0.0f)
+		newx += sizex();
+	else if (lastx() < 0.0f)
+		newx += -sizex();
+	if (lasty() > 0.0f)
+		newy += sizey();
 	else //if (lasty < 0)
-		newy += -sizey;
+		newy += -sizey();
 
 	if (!current_game->world->query_object_passable(newx, newy, this))
 	{
@@ -1124,7 +1128,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	short targetdir;
 
 	// Allow generators to 'always' succeed
-	if (order == Order::Generator)
+	if (order() == Order::Generator)
 		return 1;
 
 	weapon = create_weapon();
@@ -1145,28 +1149,28 @@ bool walker::fire_check(short xdelta, short ydelta)
 
 	if (stats_->query_bit_flags(BIT_NO_RANGED))
 	{
-		weapon->dead = 1;
+		weapon->set_dead(1);
 		return 0;
 	}
 
-	if (stats_->weapon_cost > stats_->magicpoints)
+	if (stats_->weapon_cost() > stats_->magicpoints())
 	{
-		weapon->dead = 1;
+		weapon->set_dead(1);
 		return 0;
 	}
 
 	distance = distance_to_ob(foe());
-	if (distance > static_cast<std::int32_t>( static_cast<std::int32_t>(weapon->stepsize) * static_cast<std::int32_t>(weapon->lineofsight)) )
+	if (distance > static_cast<std::int32_t>( static_cast<std::int32_t>(weapon->stepsize()) * static_cast<std::int32_t>(weapon->lineofsight())) )
 	{
-		weapon->dead = 1;
+		weapon->set_dead(1);
 		return 0;
 	}
 
 	targetdir = facing(xdelta,ydelta);
-	if (targetdir != curdir)
+	if (targetdir != curdir())
 	{
 		//         turn(targetdir);
-		weapon->dead = 1;
+		weapon->set_dead(1);
 		return 0;
 	}
 
@@ -1177,26 +1181,26 @@ bool walker::fire_check(short xdelta, short ydelta)
 			ydir = (ydelta > 0) ? 1 : -1;
 
 	// Run weapon through where it would go if all went well ..
-	for (i=0; i < weapon->lineofsight; i++)
+	for (i=0; i < weapon->lineofsight(); i++)
 	{
-		weapon->setxy(weapon->xpos + weapon->lastx,
-		              weapon->ypos + weapon->lasty);
-		if ( !current_game->world->query_grid_passable(weapon->xpos, weapon->ypos, weapon) )
+		weapon->setxy(weapon->xpos() + weapon->lastx(),
+		              weapon->ypos() + weapon->lasty());
+		if ( !current_game->world->query_grid_passable(weapon->xpos(), weapon->ypos(), weapon) )
 		{
 			// we hit a wall, so fail
-			weapon->dead = 1;
+			weapon->set_dead(1);
 			return 0;
 		}
-		if ( !current_game->world->query_object_passable(weapon->xpos, weapon->ypos, weapon) )
+		if ( !current_game->world->query_object_passable(weapon->xpos(), weapon->ypos(), weapon) )
 		{
 			// we hit an enemy, so good!
-			weapon->dead = 1;
+			weapon->set_dead(1);
 			return 1;
 		}
 	}
 	// By this point, we should have won or lost .. fail if we went our
 	// range and didn't hit anyone ..
-	weapon->dead = 1;
+	weapon->set_dead(1);
 	return 0;
 }
 
@@ -1210,19 +1214,19 @@ bool
 walker::act_generate()
 {
 	if ( current_game->world->living_count < MAXOBS &&
-	        (current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level * 3)) > current_game->world->rng_.next(static_cast<std::uint32_t>(300 + (current_game->world->living_count * 8))) )
+	        (current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level() * 3)) > current_game->world->rng_.next(static_cast<std::uint32_t>(300 + (current_game->world->living_count * 8))) )
 	   )
 	{
-		lastx = static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));
-		lasty = static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3)));
-		if (!lastx && !lasty)
-			lastx = 1;
-		init_fire(static_cast<short>(lastx), static_cast<short>(lasty));
+		set_lastx(static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3))));
+		set_lasty(static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3))));
+		if (!lastx() && !lasty())
+			set_lastx(1.0f);
+		init_fire(static_cast<short>(lastx()), static_cast<short>(lasty()));
 		//    lastx = 0;
 		//    lasty = 0;
-		stats_->hitpoints++;
-		if (stats_->hitpoints > stats_->max_hitpoints)
-			stats_->hitpoints--;
+		stats_->set_hitpoints(	stats_->hitpoints() + 1);
+		if (stats_->hitpoints() > stats_->max_hitpoints())
+			stats_->set_hitpoints(	stats_->hitpoints() - 1);
 	}
 	return 1;
 }
@@ -1230,21 +1234,23 @@ walker::act_generate()
 bool
 walker::act_fire()
 {
-	if (!(lineofsight--)) // this is the range of the weapon
+	const auto remaining_range = lineofsight();
+	set_lineofsight(remaining_range - 1);
+	if (!remaining_range) // this is the range of the weapon
 	{
-		dead = 1;
+		set_dead(1);
 		death();
 	}
 	else if (!walk() || stats_->query_bit_flags(BIT_NO_COLLIDE))
 	{
 		// Hit the collide_ob;
-		if (collide_ob() && !collide_ob()->dead)
+		if (collide_ob() && !collide_ob()->dead())
 		{
 			attack(collide_ob());
 		}
 		if (!stats_->query_bit_flags(BIT_IMMORTAL))
 		{
-			dead = 1;
+			set_dead(1);
 			death();
 		}
 	}
@@ -1264,7 +1270,7 @@ walker::act_guard()
 	set_foe(current_game->world->find_near_foe(this));
 	if (foe())
 	{
-		curdir = static_cast<char>(facing(foe()->xpos - xpos, foe()->ypos-ypos));
+		set_curdir(static_cast<signed char>(facing(foe()->xpos() - xpos(), foe()->ypos()-ypos())));
 		stats_->try_command(COMMAND_FIRE,current_game->world->rng_.next(30));
 		return 1;
 	}
@@ -1279,7 +1285,7 @@ walker::act_random()
 	short xdist, ydist;
 
 	// Specially put in to attempt to make enemy harder
-	//if (current_game->world->rng_.next(sizex/GRID_SIZE)) return 0;
+	//if (current_game->world->rng_.next(sizex()/GRID_SIZE)) return 0;
 
 	// Find our foe
 	if (!current_game->world->rng_.next(70) || (!foe()))
@@ -1287,12 +1293,12 @@ walker::act_random()
 	if (!foe())
 		return stats_->try_command(COMMAND_RANDOM_WALK,20);
 
-	xdist = foe()->xpos - xpos;
-	ydist = foe()->ypos - ypos;
+	xdist = foe()->xpos() - xpos();
+	ydist = foe()->ypos() - ypos();
 
 	// If foe is in firing range, turn and fire
-	if (abs(xdist) < lineofsight*GRID_SIZE &&
-	        abs(ydist) < lineofsight*GRID_SIZE)
+	if (abs(xdist) < lineofsight() * GRID_SIZE &&
+	        abs(ydist) < lineofsight() * GRID_SIZE)
 	{
 		if (fire_check(xdist, ydist))
 		{
@@ -1348,7 +1354,7 @@ short walker::spaces_clear()
 	for (i=-1; i < 2; i++)
 		for (j=-1; j < 2; j++)
 			if (i || j) // don't check our own location
-				if (current_game->world->query_passable(xpos+(i*sizex), ypos+(j*sizey), this) )
+				if (current_game->world->query_passable(xpos()+(i*sizex()), ypos()+(j*sizey()), this) )
 					count++;
 
 	return count;
@@ -1359,24 +1365,24 @@ void walker::transfer_stats(walker  *newob)
 	short i;
 
 	// First do the 'stats' stuff ..
-	newob->stats()->hitpoints = stats_->hitpoints;
-	newob->stats()->max_hitpoints = stats_->max_hitpoints;
-	newob->stats()->heal_per_round = stats_->heal_per_round;
-	newob->stats()->max_heal_delay = stats_->max_heal_delay;
+	newob->stats()->set_hitpoints(stats_->hitpoints());
+	newob->stats()->set_max_hitpoints(stats_->max_hitpoints());
+	newob->stats()->set_heal_per_round(stats_->heal_per_round());
+	newob->stats()->set_max_heal_delay(stats_->max_heal_delay());
 	// Magic..
-	newob->stats()->magicpoints = stats_->magicpoints;
-	newob->stats()->max_magicpoints = stats_->max_magicpoints;
-	newob->stats()->magic_per_round = stats_->magic_per_round/2;
-	newob->stats()->max_magic_delay = stats_->max_magic_delay;
+	newob->stats()->set_magicpoints(stats_->magicpoints());
+	newob->stats()->set_max_magicpoints(stats_->max_magicpoints());
+	newob->stats()->set_magic_per_round(stats_->magic_per_round()/2);
+	newob->stats()->set_max_magic_delay(stats_->max_magic_delay());
 
-	newob->stats()->level = stats_->level;
-	newob->stats()->frozen_delay = stats_->frozen_delay;
+	newob->stats()->set_level(stats_->level());
+	newob->stats()->set_frozen_delay(stats_->frozen_delay());
 	for (i=0; i < 5; i++)
-		newob->stats()->special_cost[i] = stats_->special_cost[i];
-	newob->stats()->weapon_cost = stats_->weapon_cost;
+		newob->stats()->set_special_cost(i, stats_->special_cost(i));
+	newob->stats()->set_weapon_cost(stats_->weapon_cost());
 
-	newob->stats()->bit_flags = stats_->bit_flags;
-	newob->stats()->delete_me = stats_->delete_me;
+	newob->stats()->set_bit_flags(stats_->bit_flags());
+	newob->stats()->set_delete_me(stats_->delete_me());
 
 	// Do we have a 'guy' ?
 	if (myguy)
@@ -1393,16 +1399,16 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	short xcenter, ycenter;
 	short tempxpos, tempypos;
 	short reset = 0;
-	short tempact = act_type;;
+	short tempact = act_type();
 
 	// First remove us from the collision table..
 	if (current_game && current_game->world && current_game->world->myobmap)
 		current_game->world->myobmap->remove(this);
 
-	if (order == whatorder) // same object type
+	if (order() == whatorder) // same object type
 	{
 		reset = 1;
-		tempact = act_type;
+		tempact = act_type();
 	}
 
 	// Reset bit flags
@@ -1412,8 +1418,8 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 		return;
 
 	// Do this before resetting graphic so illegal
-	//  family values don't try to set graphics.
-	//  order and family are only set if legal
+	//  family() values don't try to set graphics.
+	//  order() and family() are only set if legal
 	const PixieData* data = current_game->world->configure_existing_entity(*this, whatorder, whatfamily);
 	if (data == nullptr)
 		return;
@@ -1421,17 +1427,17 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 	// Reset the graphics
 	const PixieData& new_data = *data;
 
-	// Save center before resize (uses old sizex/sizey)
-	xcenter = xpos + sizex/2;
-	ycenter = ypos + sizey/2;
+	// Save center before resize (uses old sizex()/sizey())
+	xcenter = xpos() + sizex()/2;
+	ycenter = ypos() + sizey()/2;
 
 	// Update sim fields + sync render component
 	set_data(new_data);
-	frame = 0;
-	cycle = 0;
+	set_direct_frame(0);
+	set_cycle(0);
 
-	tempxpos = xcenter - sizex/2;
-	tempypos = ycenter - sizey/2;
+	tempxpos = xcenter - sizex()/2;
+	tempypos = ycenter - sizey()/2;
 
 
 	if (reset)
@@ -1439,7 +1445,7 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 
 	setxy(tempxpos, tempypos);  // automatically re-adds us to the list ..
 	// set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
-	// Don't manually set the frame here -- it can break circles
+	// Don't manually set the frame() here -- it can break circles
 	// of protection, etc., which are special cases .. instead:
 	set_frame(0);
 	animate();
@@ -1450,16 +1456,16 @@ void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 // for special effects ..
 bool walker::death()
 {
-	// Note that the 'dead' variable should ALREADY be set by the
+	// Note that the 'dead()' variable should ALREADY be set by the
 	// time this function is called, so that we can easily reverse
 	// the decision :)
 	walker  *newob = nullptr;
 	std::int32_t i;
 
-	if (death_called)
+	if (death_called())
 		return 0;
 
-	death_called = 1;
+	set_death_called(1);
 
 	// Ensure we are removed from collision bookkeeping as soon as we "die".
 	// This prevents stale pointers in the obmap when callers manage walker
@@ -1473,16 +1479,17 @@ bool walker::death()
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
 			newob = current_game->world->add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
-			newob->stats()->hitpoints = static_cast<float>(myguy->query_heart_value());
-			newob->stats()->hitpoints *= 0.75f / 2.0f;  // 75%, divided by 2, since score is doubled at end of level
-			newob->team_num = team_num;
+			newob->stats()->set_hitpoints(static_cast<float>(myguy->query_heart_value()));
+			newob->stats()->set_hitpoints(
+			    newob->stats()->hitpoints() * (0.75f / 2.0f));  // 75%, divided by 2, since score is doubled at end of level
+			newob->set_team_num(team_num());
 			newob->center_on(this);
 		}
 
-	switch (order)
+	switch (order())
 	{
 		case Order::Living:
-			if (   (team_num == 0 || myguy) // our team
+			if (   (team_num() == 0 || myguy) // our team
 			        && (current_game->world->type & SCEN_TYPE_SAVE_ALL)
 			        && (stats_->name.size()) // we were named
 			   )
@@ -1494,7 +1501,7 @@ bool walker::death()
 				return true;
 			}
 			{
-				auto* fd = get_family_descriptor(family);
+				auto* fd = get_family_descriptor(family());
 				if (fd && fd->on_death)
 				{
 					fd->on_death(this);
@@ -1507,19 +1514,19 @@ bool walker::death()
 				{
 					generate_bloodspot();
 				}
-			}  // end of family dispatch
-			break;  // end of order livings case
+			}  // end of family() dispatch
+			break;  // end of order() livings case
 		case Order::Generator:  // go up in flames :>
 			for (i=0; i < 4; i++)
 			{
 				newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 				if (!newob) // failsafe
 					break;
-				newob->team_num = team_num;
-				newob->stats()->level = stats_->level;
-				newob->ani_type = ANI_EXPLODE;
-				newob->setxy(xpos+current_game->world->rng_.next(sizex-8)+4, ypos+4+current_game->world->rng_.next(sizey-8) );
-					newob->damage = static_cast<float>(stats_->level) * 2.0f;
+				newob->set_team_num(team_num());
+				newob->stats()->set_level(stats_->level());
+				newob->set_ani_type(ANI_EXPLODE);
+				newob->setxy(xpos()+current_game->world->rng_.next(sizex()-8)+4, ypos()+4+current_game->world->rng_.next(sizey()-8) );
+					newob->set_damage(static_cast<float>(stats_->level()) * 2.0f);
 					newob->set_frame(static_cast<short>(current_game->world->rng_.next(3)));
 				og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
 			}
@@ -1542,26 +1549,26 @@ void walker::generate_bloodspot()
 	//char  *data;
 	// Make permanent stain:
 
-	dead = 1; // just in case ..
+	set_dead(1); // just in case ..
 
 	bloodstain = current_game->world->add_fx_ob(Order::Treasure, FAMILY_STAIN);
-	bloodstain->ignore = 1;
+	bloodstain->set_ignore(1);
 	transfer_stats(bloodstain);
 
-	bloodstain->order  = Order::Treasure;
-	bloodstain->family = FAMILY_STAIN;
-	bloodstain->stats()->old_order = order;
-	bloodstain->stats()->old_family= family;
+	bloodstain->set_order(Order::Treasure);
+	bloodstain->set_family(FAMILY_STAIN);
+	bloodstain->stats()->set_old_order(order());
+	bloodstain->stats()->set_old_family(family());
 
-	bloodstain->team_num = team_num;
-	bloodstain->dead = 0;
-	bloodstain->setxy(xpos, ypos);
+	bloodstain->set_team_num(team_num());
+	bloodstain->set_dead(0);
+	bloodstain->setxy(xpos(), ypos());
 	//data = myscreen->myloader->graphics[PIX(Order::Treasure, FAMILY_STAIN)];
 	// We can't select other 'bloodspot' frames, because set_frame
-	// appears to check the order and family and reset our picture
+	// appears to check the order() and family() and reset our picture
 	// to a living guy .. we need to find a way around this ..
 	bloodstain->set_frame(static_cast<short>(current_game->world->rng_.next(4)));  // has no effect yet ..
-	bloodstain->ani_type = ANI_WALK;
+	bloodstain->set_ani_type(ANI_WALK);
 	//bloodstain->bmp = (char *) (data+3); // our image
 
 }
@@ -1594,12 +1601,12 @@ void walker::center_on(walker  *target)
 	short newx, newy;
 
 	// First get the center of our target ..
-	newx = target->xpos + target->sizex/2;
-	newy = target->ypos + target->sizey/2;
+	newx = target->xpos() + target->sizex()/2;
+	newy = target->ypos() + target->sizey()/2;
 
 	// Now adjust for our position ..
-	newx -= sizex/2;
-	newy -= sizey/2;
+	newx -= sizex()/2;
+	newy -= sizey()/2;
 
 	// Now set our position ..
 	setxy(newx, newy);
@@ -1611,20 +1618,20 @@ void walker::set_difficulty(std::uint32_t whatlevel)
 
 	dif1 = query_difficulty_percent();
 
-	switch (order)
+	switch (order())
 	{
 		case Order::Generator:
 			temp = 100*whatlevel;
 			temp = (temp * dif1) / 100;
-			stats_->hitpoints = static_cast<float>(temp);
+			stats_->set_hitpoints(static_cast<float>(temp));
 			break;
 		default:  // adjust standard settings for the rest ..
-			if (team_num != 0)  // do all EXCEPT player characters
+			if (team_num() != 0)  // do all EXCEPT player characters
 			{
 				const float dif = static_cast<float>(dif1);
-				stats_->max_hitpoints = (stats_->max_hitpoints * dif) / 100.0f;
-				stats_->max_magicpoints = (stats_->max_magicpoints * dif) / 100.0f;
-				damage = (damage * dif) / 100.0f;
+				stats_->set_max_hitpoints((stats_->max_hitpoints() * dif) / 100.0f);
+				stats_->set_max_magicpoints((stats_->max_magicpoints() * dif) / 100.0f);
+				set_damage((damage() * dif) / 100.0f);
 			}
 			break;
 	}
@@ -1636,12 +1643,12 @@ std::int32_t walker::distance_to_ob(const walker  * target) const
 {
 	//std::int32_t xdelta,ydelta;
 
-	//xdelta = static_cast<std::int32_t>(target->xpos - xpos) +
-	//         static_cast<std::int32_t>( (target->sizex - sizex) / 2 );
-	//ydelta = static_cast<std::int32_t>(target->ypos - ypos) +
-	//         static_cast<std::int32_t>( (target->sizey - sizey) / 2 );
+	//xdelta = static_cast<std::int32_t>(target->xpos() - xpos()) +
+	//         static_cast<std::int32_t>( (target->sizex() - sizex()) / 2 );
+	//ydelta = static_cast<std::int32_t>(target->ypos() - ypos()) +
+	//         static_cast<std::int32_t>( (target->sizey() - sizey()) / 2 );
 	//return static_cast<std::int32_t>(xdelta*xdelta + ydelta*ydelta);
-	return ( abs(target->xpos - xpos) + abs(target->ypos - ypos) );
+	return ( abs(target->xpos() - xpos()) + abs(target->ypos() - ypos()) );
 
 }
 
@@ -1649,18 +1656,18 @@ std::int32_t walker::distance_to_ob_center(const walker * target) const
 {
 	std::int32_t xdelta,ydelta;
 
-	xdelta = static_cast<std::int32_t>(target->xpos - xpos) +
-	         static_cast<std::int32_t>( (target->sizex - sizex) / 2 );
-	ydelta = static_cast<std::int32_t>(target->ypos - ypos) +
-	         static_cast<std::int32_t>( (target->sizey - sizey) / 2 );
+	xdelta = static_cast<std::int32_t>(target->xpos() - xpos()) +
+	         static_cast<std::int32_t>( (target->sizex() - sizex()) / 2 );
+	ydelta = static_cast<std::int32_t>(target->ypos() - ypos()) +
+	         static_cast<std::int32_t>( (target->sizey() - sizey()) / 2 );
 	return static_cast<std::int32_t>(xdelta*xdelta + ydelta*ydelta);
 }
 
 unsigned char walker::query_team_color() const
 {
 	// Debugging ..
-	//if (foe && !foe->dead)
-	return static_cast<unsigned char>(team_num*16+40);
+	//if (foe && !foe->dead())
+	return static_cast<unsigned char>(team_num()*16+40);
 	//else
 	//  return static_cast<unsigned char>(7*16 + 40);
 }
@@ -1678,19 +1685,19 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// we're always unfriendly :)
 	if (target == nullptr)
 		return 0;
-	// If either of us is dead, we're also unfriendly :)
-	if (dead || target->dead)
+	// If either of us is dead(), we're also unfriendly :)
+	if (dead() || target->dead())
 		return 0;
 
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner() && (headguy->owner()->dead == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
 		headguy = headguy->owner();
 	headus = headguy;
 	// Now our target ..
 	headguy = target;
-	while (headguy->owner() && (headguy->owner()->dead == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
 		headguy = headguy->owner();
 	headtarget = headguy;
 
@@ -1713,7 +1720,7 @@ std::int32_t walker::is_friendly(const walker *target) const
 	// we are not friendly
 	if (query_allied_mode() == 0 || has_myguy == 0)
 	{
-		return (headus->team_num == headtarget->team_num);
+		return headus->team_num() == headtarget->team_num();
 	}
 	
 	// Allied
@@ -1722,7 +1729,8 @@ std::int32_t walker::is_friendly(const walker *target) const
         // One person is missing a myguy pointer.
         // The one with a myguy pointer is owned by a player.
         // If the other person belongs to team 0 (red), then they are friendly.
-        return (headtarget->myguy == nullptr && headtarget->team_num == 0) || (headus->myguy == nullptr && headus->team_num == 0);
+        return (headtarget->myguy == nullptr && headtarget->team_num() == 0) ||
+               (headus->myguy == nullptr && headus->team_num() == 0);
     }
 
 	// If we're in 'friendly' mode, then everyone with
@@ -1742,14 +1750,14 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	const walker *headguy;
 	const walker *headus;
 	
-	// If dead, we're also unfriendly :)
-	if (dead)
+	// If dead(), we're also unfriendly :)
+	if (dead())
 		return 0;
 
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner() && (headguy->owner()->dead == 0) && (headguy->owner() != headguy) )
+	while (headguy->owner() && (headguy->owner()->dead() == 0) && (headguy->owner() != headguy) )
 		headguy = headguy->owner();
 	headus = headguy;
 	
@@ -1769,7 +1777,7 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	// If so, then our team number must match.
 	if (query_allied_mode() == 0 || has_myguy == 0)
 	{
-		return (headus->team_num == team);
+		return headus->team_num() == team;
 	}
 	
 	// If we're a hired guy in allied mode, then we're friendly with team 0 (red)

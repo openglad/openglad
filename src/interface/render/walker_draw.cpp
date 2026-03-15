@@ -58,8 +58,8 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
         return;
     }
 
-	Sint32 xscreen = static_cast<Sint32>(w->xpos - view_buf->topx + view_buf->xloc);
-	Sint32 yscreen = static_cast<Sint32>(w->ypos - view_buf->topy + view_buf->yloc);
+	Sint32 xscreen = static_cast<Sint32>(w->xpos() - view_buf->topx + view_buf->xloc);
+	Sint32 yscreen = static_cast<Sint32>(w->ypos() - view_buf->topy + view_buf->yloc);
 
     const Sint32 walkerstartx = xscreen;
     const Sint32 walkerstarty = yscreen;
@@ -69,29 +69,29 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
     const Sint32 portendy = view_buf->endy;
 
     const Sint32 bar_x = walkerstartx;
-    const Sint32 bar_y = walkerstarty + w->sizey + 1;
-    const Sint32 bar_w = w->sizex;
+    const Sint32 bar_y = walkerstarty + w->sizey() + 1;
+    const Sint32 bar_w = w->sizex();
     const Sint32 bar_h = 1;
     if(bar_x < portstartx || bar_x > portendx || bar_y < portstarty || bar_y > portendy)
         return;
 
     // Last hit's effect
-    float last_points = w->last_hitpoints;
-    float last_ratio = float(last_points)/w->stats()->max_hitpoints;
+    float last_points = w->last_hitpoints();
+    float last_ratio = float(last_points)/w->stats()->max_hitpoints();
 
     // Current HP
-    float points = w->stats()->hitpoints;
-    float ratio = float(points)/w->stats()->max_hitpoints;
+    float points = w->stats()->hitpoints();
+    float ratio = float(points)/w->stats()->max_hitpoints();
 
     unsigned char whatcolor;
 
-    if (float_eq(points, w->stats()->max_hitpoints))
+    if (float_eq(points, w->stats()->max_hitpoints()))
         whatcolor = MAX_HP_COLOR;
-    else if ( (points * 3) < w->stats()->max_hitpoints)
+    else if ( (points * 3) < w->stats()->max_hitpoints())
         whatcolor = LOW_HP_COLOR;
-    else if ( (points * 3 / 2) < w->stats()->max_hitpoints)
+    else if ( (points * 3 / 2) < w->stats()->max_hitpoints())
         whatcolor = MID_HP_COLOR;
-    else if (points < w->stats()->max_hitpoints)
+    else if (points < w->stats()->max_hitpoints())
         whatcolor = LIGHT_GREEN;//HIGH_HP_COLOR;
     else
         whatcolor = ORANGE_START;
@@ -103,7 +103,7 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
             const Sint32 max_w = bar_w;
             const float width_f = static_cast<float>(bar_w);
 
-            if(w->last_hitpoints > w->stats()->hitpoints && last_ratio <= 1.0f)
+            if(w->last_hitpoints() > w->stats()->hitpoints() && last_ratio <= 1.0f)
             {
                 const Sint32 last_w = static_cast<Sint32>(width_f * last_ratio);
                 og::runtime::current_session->myscreen_->draw_box(bar_x, bar_y, bar_x + last_w, bar_y + bar_h, static_cast<unsigned char>(53), 1);
@@ -128,37 +128,36 @@ bool draw_walker(walker& w, viewscreen* view_buf)
     const bool show_damage_numbers = cfg.is_on("effects", "damage_numbers");
     const bool show_heal_numbers = cfg.is_on("effects", "heal_numbers");
 
-    // Update the drawing coords from the real position
-    w.xpos = static_cast<short>(w.worldx());
-    w.ypos = static_cast<short>(w.worldy());
+    const short draw_x = static_cast<short>(w.worldx());
+    const short draw_y = static_cast<short>(w.worldy());
 
 	Sint32 xscreen, yscreen;
 
-	if (w.dead)
+	if (w.dead())
 	{
 		Log("drawing a dead guy!\n");
 		return 0;
 	}
-	w.drawcycle++;
+	w.set_drawcycle(static_cast<unsigned char>(w.drawcycle() + 1));
 
-    if (!show_hit_anim && w.query_order() == Order::FX && w.family == FAMILY_HIT)
+    if (!show_hit_anim && w.query_order() == Order::FX && w.family() == FAMILY_HIT)
         return true;
 
-	xscreen = static_cast<Sint32>(w.xpos - view_buf->topx + view_buf->xloc);
-	yscreen = static_cast<Sint32>(w.ypos - view_buf->topy + view_buf->yloc);
+	xscreen = static_cast<Sint32>(draw_x - view_buf->topx + view_buf->xloc);
+	yscreen = static_cast<Sint32>(draw_y - view_buf->topy + view_buf->yloc);
 
-	if(show_attack_lunge && w.attack_lunge > 0.0f)
+		if(show_attack_lunge && w.attack_lunge() > 0.0f)
 	    {
-	        const float dx = w.attack_lunge * ATTACK_LUNGE_SIZE * cosf(w.attack_lunge_angle);
-	        const float dy = w.attack_lunge * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle);
+	        const float dx = w.attack_lunge() * ATTACK_LUNGE_SIZE * cosf(w.attack_lunge_angle());
+	        const float dy = w.attack_lunge() * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle());
 	        xscreen += static_cast<Sint32>(dx);
 	        yscreen += static_cast<Sint32>(dy);
 	    }
 
-	if(show_hit_recoil && w.hit_recoil > 0.0f)
+		if(show_hit_recoil && w.hit_recoil() > 0.0f)
 	    {
-	        const float dx = w.hit_recoil * HIT_RECOIL_SIZE * cosf(w.hit_recoil_angle);
-	        const float dy = w.hit_recoil * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle);
+	        const float dx = w.hit_recoil() * HIT_RECOIL_SIZE * cosf(w.hit_recoil_angle());
+	        const float dy = w.hit_recoil() * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle());
 	        xscreen += static_cast<Sint32>(dx);
 	        yscreen += static_cast<Sint32>(dy);
 	    }
@@ -177,56 +176,56 @@ bool draw_walker(walker& w, viewscreen* view_buf)
         phantom_mode = SHIFT_RANDOM;
         should_draw_hp = false;
     }
-	else if (w.invisibility_left && view_buf->control != nullptr)  //WE ARE INVISIBLE
+	else if (w.invisibility_left() && view_buf->control != nullptr)  //WE ARE INVISIBLE
 	{
-		if (w.team_num == view_buf->control->team_num)
+		if (w.team_num() == view_buf->control->team_num())
         {
             fill_mode = INVISIBLE_MODE;
-            invisibility_amount = ( w.invisibility_left + 10 );
-            outline_style = w.outline;
+            invisibility_amount = (w.invisibility_left() + 10);
+	            outline_style = w.outline();
             should_draw_hp = false;
         }
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
+	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
-	         && (w.flight_left < 1) )
+	         && (w.flight_left() < 1) )
     {
         fill_mode = INVISIBLE_MODE;
         invisibility_amount = 1000;
         outline_style = 1;
         should_draw_hp = false;
     }
-	else if (w.outline)    // WE HAVE SOME OUTLINE
+	else if (w.outline())    // WE HAVE SOME OUTLINE
 	{
 	    fill_mode = OUTLINE_MODE;
-	    outline_style = w.outline;
+	    outline_style = w.outline();
 	}
 
 	// Draw me
-	if(show_hit_flash && w.hurt_flash)
-    {
-        w.hurt_flash = false;
+		if(show_hit_flash && w.hurt_flash())
+	    {
+	        w.set_hurt_flash(false);
 
-        auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex * w.sizey)};
-        og::runtime::current_session->myscreen_->walkputbuffer_flash(xscreen, yscreen, w.sizex, w.sizey,
+        auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())};
+        og::runtime::current_session->myscreen_->walkputbuffer_flash(xscreen, yscreen, w.sizex(), w.sizey(),
                                    view_buf->xloc, view_buf->yloc,
                                    view_buf->endx, view_buf->endy,
                                    bmp_span, w.query_team_color());
     }
     else
     {
-        auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex * w.sizey)};
+        auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())};
         if(fill_mode == 0 && outline_style == 0)
         {
-            og::runtime::current_session->myscreen_->walkputbuffer(xscreen, yscreen, w.sizex, w.sizey,
+            og::runtime::current_session->myscreen_->walkputbuffer(xscreen, yscreen, w.sizex(), w.sizey(),
                                    view_buf->xloc, view_buf->yloc,
                                    view_buf->endx, view_buf->endy,
                                    bmp_span, w.query_team_color());
         }
         else
         {
-	            og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+	            og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),
 	                                    view_buf->xloc, view_buf->yloc,
 	                                    view_buf->endx, view_buf->endy,
 	                                    bmp_span, w.query_team_color(),
@@ -274,29 +273,31 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 bool draw_walker_tile(walker& w, viewscreen* view_buf)
 {
     if (!cfg.is_on("effects", "hit_anim") &&
-        w.query_order() == Order::FX && w.family == FAMILY_HIT)
+        w.query_order() == Order::FX && w.family() == FAMILY_HIT)
     {
         return true;
     }
 
 	Sint32 xscreen, yscreen;
+    const short draw_x = static_cast<short>(w.worldx());
+    const short draw_y = static_cast<short>(w.worldy());
 
-	if (w.dead)
+	if (w.dead())
 	{
 		Log("drawing a dead guy!\n");
 		return 0;
 	}
-	w.drawcycle++;
+	w.set_drawcycle(static_cast<unsigned char>(w.drawcycle() + 1));
 
-	xscreen = static_cast<Sint32>(w.xpos - view_buf->topx + view_buf->xloc);
-	yscreen = static_cast<Sint32>(w.ypos - view_buf->topy + view_buf->yloc);
+	xscreen = static_cast<Sint32>(draw_x - view_buf->topx + view_buf->xloc);
+	yscreen = static_cast<Sint32>(draw_y - view_buf->topy + view_buf->yloc);
 
 	w.compute_outline(view_buf->control);
 
-	auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex * w.sizey)};
+	auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())};
 
 	if (w.stats()->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
-		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp_span, w.query_team_color(),
@@ -305,23 +306,23 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 		                        0, //outline
 		                        SHIFT_RANDOM); //type of phantom
 
-	else if (w.invisibility_left)  //WE ARE INVISIBLE
+	else if (w.invisibility_left())  //WE ARE INVISIBLE
 	{
-		if (w.team_num == view_buf->control->team_num)
-			og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+		if (w.team_num() == view_buf->control->team_num())
+			og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),
 			                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 			                        bmp_span, w.query_team_color(),
 			                        INVISIBLE_MODE,  //mode
-			                        ( w.invisibility_left + 10 ), //invisibility
-			                        w.outline,  //outline
+			                        (w.invisibility_left() + 10), //invisibility
+				                        w.outline(),  //outline
 			                        0 ); //type of phantom
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
+	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
-	         && (w.flight_left < 1) )
-		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+	         && (w.flight_left() < 1) )
+		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp_span, w.query_team_color(),
@@ -330,22 +331,22 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 		                        1,  //outline
 		                        0 ); //type of phantom
 
-	else if (w.outline)    // WE HAVE SOME OUTLINE
+	else if (w.outline())    // WE HAVE SOME OUTLINE
 	{
-		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp_span, w.query_team_color(),
 		                        OUTLINE_MODE, //mode
 		                        0, //invisibility
-		                        w.outline, //outline
+				                        w.outline(), //outline
 		                        0 ); //type of phantom
 
         draw_small_health_bar(&w, view_buf);
 	}
 	else
 	{
-		og::runtime::current_session->myscreen_->walkputbuffer(xscreen, yscreen, w.sizex, w.sizey,
+		og::runtime::current_session->myscreen_->walkputbuffer(xscreen, yscreen, w.sizex(), w.sizey(),
 		                       view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                       bmp_span, w.query_team_color());

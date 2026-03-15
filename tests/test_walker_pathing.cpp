@@ -96,12 +96,12 @@ TEST(WalkerPathing, walker_damage_numbers_and_compute_outline_smoke)
 
     // Damage numbers only draw for the controlling walker.
     v->control = w;
-    w->damage_numbers.emplace_back(w->xpos, w->ypos, 12.0f, 55);
+    w->damage_numbers.emplace_back(w->xpos(), w->ypos(), 12.0f, 55);
 
     // Outline mode changes based on these fields.
-    w->invisibility_left = 1;
-    w->invulnerable_left = 1;
-    w->flight_left = 1;
+    w->set_invisibility_left(1);
+    w->set_invulnerable_left(1);
+    w->set_flight_left(1);
     w->compute_outline(v->control);
 
     // Draw should update and consume damage numbers over time.
@@ -127,10 +127,12 @@ TEST(WalkerPathing, direct_solver_returns_expected_route_and_cost)
     if (!(actor && foe))
         return;
 
-    actor->team_num = 0;
-    foe->team_num = 1;
-    actor->sizex = actor->sizey = GRID_SIZE - 1;
-    foe->sizex = foe->sizey = GRID_SIZE - 1;
+    actor->set_team_num(0);
+    foe->set_team_num(1);
+    actor->set_sizey(GRID_SIZE - 1);
+    actor->set_sizex(GRID_SIZE - 1);
+    foe->set_sizey(GRID_SIZE - 1);
+    foe->set_sizex(GRID_SIZE - 1);
     ASSERT_TRUE(actor->setxy(32, 32));
     ASSERT_TRUE(foe->setxy(64, 64));
     actor->set_foe(foe);
@@ -146,12 +148,12 @@ TEST(WalkerPathing, direct_solver_returns_expected_route_and_cost)
 
     std::vector<MicroPatherState> path;
     float total_cost = 0.0f;
-    pathing->solve_for(actor, make_state(actor->xpos, actor->ypos),
-                       make_state(foe->xpos, foe->ypos), path, total_cost);
+    pathing->solve_for(actor, make_state(actor->xpos(), actor->ypos()),
+                       make_state(foe->xpos(), foe->ypos()), path, total_cost);
 
     ASSERT_GE(path.size(), 2u) << "solver should produce a route on an open grid";
     const std::size_t route_offset =
-        (GET_STATE_X(path.front()) == actor->xpos && GET_STATE_Y(path.front()) == actor->ypos)
+        (GET_STATE_X(path.front()) == actor->xpos() && GET_STATE_Y(path.front()) == actor->ypos())
             ? 1u
             : 0u;
     ASSERT_EQ(path.size(), 2u + route_offset);
@@ -191,10 +193,10 @@ TEST(WalkerPathing, round10_follow_path_node_erase_and_normalize_paths)
     // Diagonal node -> normalize dx/dy and walkstep branch.
     w->path_to_foe.clear();
     w->path_to_foe.push_back(make_state(48, 48));
-    const short x_before = w->xpos;
-    const short y_before = w->ypos;
+    const short x_before = w->xpos();
+    const short y_before = w->ypos();
     w->follow_path_to_foe();
-    ASSERT_TRUE(w->xpos >= x_before && w->ypos >= y_before) << "follow_path_to_foe should move toward diagonal next node";
+    ASSERT_TRUE(w->xpos() >= x_before && w->ypos() >= y_before) << "follow_path_to_foe should move toward diagonal next node";
 
     delete w;
 }

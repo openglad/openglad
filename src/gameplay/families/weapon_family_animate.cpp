@@ -17,14 +17,14 @@
 
 static bool tree_blood_on_animate(weap* self)
 {
-    if (self->ani_type > 1)
-        self->ani_type = 0;
-    self->set_frame(self->ani[self->curdir+self->ani_type*NUM_FACINGS][self->cycle]);
-    self->cycle++;
-    if (self->ani[self->curdir+self->ani_type*NUM_FACINGS][self->cycle] == -1)
+    if (self->ani_type() > 1)
+        self->set_ani_type(0);
+    self->set_frame(self->ani[self->curdir()+self->ani_type()*NUM_FACINGS][self->cycle()]);
+    self->set_cycle(static_cast<signed char>(self->cycle() + 1));
+    if (self->ani[self->curdir()+self->ani_type()*NUM_FACINGS][self->cycle()] == -1)
     {
-        self->ani_type = 0;
-        self->cycle = 0;
+        self->set_ani_type(0);
+        self->set_cycle(0);
     }
     return true;
 }
@@ -33,9 +33,9 @@ static bool tree_blood_on_animate(weap* self)
 
 static bool circle_protection_on_animate(weap* self)
 {
-    if (!self->owner() || self->owner()->dead || self->stats()->hitpoints <= 0)
+    if (!self->owner() || self->owner()->dead() || self->stats()->hitpoints() <= 0)
     {
-        self->dead = 1;
+        self->set_dead(1);
         return false; // let default death handling proceed
     }
     self->center_on(self->owner());
@@ -46,18 +46,20 @@ static bool circle_protection_on_animate(weap* self)
 
 static bool glow_on_animate(weap* self)
 {
-    if (self->ani_type > 2) // illegal case
-        self->ani_type = 2; // pulse case
-    self->set_frame(self->ani[self->curdir+self->ani_type*NUM_FACINGS][self->cycle]);
-    self->cycle++;
-    if (self->ani[self->curdir+self->ani_type*NUM_FACINGS][self->cycle] == -1)
+    if (self->ani_type() > 2) // illegal case
+        self->set_ani_type(2); // pulse case
+    self->set_frame(self->ani[self->curdir()+self->ani_type()*NUM_FACINGS][self->cycle()]);
+    self->set_cycle(static_cast<signed char>(self->cycle() + 1));
+    if (self->ani[self->curdir()+self->ani_type()*NUM_FACINGS][self->cycle()] == -1)
     {
-        self->ani_type = 2; // pulse
-        self->cycle = 0;
+        self->set_ani_type(2); // pulse
+        self->set_cycle(0);
     }
-    if (self->lifetime-- < 1)
+    const auto lifetime = self->lifetime();
+    self->set_lifetime(lifetime - 1);
+    if (lifetime < 1)
     {
-        self->dead = 1;
+        self->set_dead(1);
         self->death();
     }
     return true;
@@ -70,8 +72,7 @@ static bool sprinkle_on_hit_target([[maybe_unused]] walker* weapon, walker* targ
     if (target->query_order() == Order::Living)
     {
         std::int32_t con = target->myguy ? target->myguy->constitution : 0;
-        target->stats()->frozen_delay =
-            static_cast<short>(compute_freeze_duration(owner->stats()->level, con, current_game->world->rng_));
+        target->stats()->set_frozen_delay(static_cast<short>(compute_freeze_duration(owner->stats()->level(), con, current_game->world->rng_)));
     }
     return true;
 }

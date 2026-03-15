@@ -18,34 +18,34 @@
 
 static bool drumstick_on_eat(treasure* self, walker* eater)
 {
-    if (eater->stats()->hitpoints >= eater->stats()->max_hitpoints)
+    if (eater->stats()->hitpoints() >= eater->stats()->max_hitpoints())
         return true;
-    const std::int32_t heal_amount = 10 * self->stats()->level + static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(10 * self->stats()->level)));
+    const std::int32_t heal_amount = 10 * self->stats()->level() + static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(10 * self->stats()->level())));
     const short amount = static_cast<short>(heal_amount);
-    eater->stats()->hitpoints += amount;
-    if (eater->stats()->hitpoints > eater->stats()->max_hitpoints)
-        eater->stats()->hitpoints = eater->stats()->max_hitpoints;
+    eater->stats()->set_hitpoints(eater->stats()->hitpoints() + amount);
+    if (eater->stats()->hitpoints() > eater->stats()->max_hitpoints())
+        eater->stats()->set_hitpoints(eater->stats()->max_hitpoints());
     self->do_heal_effects(nullptr, eater, amount);
-    self->dead = 1;
+    self->set_dead(1);
     og::sim::emit_sound(current_game->sim_events, SOUND_EAT);
     return true;
 }
 
 static void notify_potion_consume(treasure* self, walker* eater, std::string_view name)
 {
-    if (eater->user != -1)
+    if (eater->user() != -1)
     {
-        std::string message = std::format("Potion of {}({})!", name, self->stats()->level);
+        std::string message = std::format("Potion of {}({})!", name, self->stats()->level());
         og::sim::emit_notification(current_game->sim_events, message);
     }
-    self->dead = 1;
+    self->set_dead(1);
 }
 
 static bool magic_potion_on_eat(treasure* self, walker* eater)
 {
-    if (eater->stats()->magicpoints < eater->stats()->max_magicpoints)
-        eater->stats()->magicpoints = eater->stats()->max_magicpoints;
-    eater->stats()->magicpoints += static_cast<float>(50 * self->stats()->level);
+    if (eater->stats()->magicpoints() < eater->stats()->max_magicpoints())
+        eater->stats()->set_magicpoints(eater->stats()->max_magicpoints());
+    eater->stats()->set_magicpoints(eater->stats()->magicpoints() + static_cast<float>(50 * self->stats()->level()));
     notify_potion_consume(self, eater, "Mana");
     return true;
 }
@@ -54,7 +54,7 @@ static bool flight_potion_on_eat(treasure* self, walker* eater)
 {
     if (!eater->stats()->query_bit_flags(BIT_FLYING))
     {
-        eater->flight_left = static_cast<short>(eater->flight_left + (150 * self->stats()->level));
+        eater->set_flight_left(static_cast<short>(eater->flight_left() + (150 * self->stats()->level())));
         notify_potion_consume(self, eater, "Flight");
     }
     return true;
@@ -64,7 +64,7 @@ static bool invulnerable_potion_on_eat(treasure* self, walker* eater)
 {
     if (!eater->stats()->query_bit_flags(BIT_INVINCIBLE))
     {
-        eater->invulnerable_left = static_cast<short>(eater->invulnerable_left + (150 * self->stats()->level));
+        eater->set_invulnerable_left(static_cast<short>(eater->invulnerable_left() + (150 * self->stats()->level())));
         notify_potion_consume(self, eater, "Invulnerability");
     }
     return true;
@@ -72,15 +72,15 @@ static bool invulnerable_potion_on_eat(treasure* self, walker* eater)
 
 static bool invis_potion_on_eat(treasure* self, walker* eater)
 {
-    eater->invisibility_left = static_cast<short>(eater->invisibility_left + (150 * self->stats()->level));
+    eater->set_invisibility_left(static_cast<short>(eater->invisibility_left() + (150 * self->stats()->level())));
     notify_potion_consume(self, eater, "Invisibility");
     return true;
 }
 
 static bool speed_potion_on_eat(treasure* self, walker* eater)
 {
-    eater->speed_bonus_left = eater->speed_bonus_left + 50 * self->stats()->level;
-    eater->speed_bonus = static_cast<float>(self->stats()->level);
+    eater->set_speed_bonus_left(eater->speed_bonus_left() + 50 * self->stats()->level());
+    eater->set_speed_bonus(static_cast<float>(self->stats()->level()));
     notify_potion_consume(self, eater, "Speed");
     return true;
 }

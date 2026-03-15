@@ -142,8 +142,8 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
     w1->myguy->scen_damage = 30;
     w1->myguy->scen_damage_taken = 2;
     w1->myguy->scen_min_hp = 1;
-    w1->stats()->max_hitpoints = 10;
-    w1->stats()->hitpoints = 6;
+    w1->stats()->set_max_hitpoints(10);
+    w1->stats()->set_hitpoints(6);
 
     w2->myguy->name = "Beta";
     w2->myguy->family = FAMILY_MAGE;
@@ -152,8 +152,8 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
     w2->myguy->scen_damage = 3;
     w2->myguy->scen_damage_taken = 20;
     w2->myguy->scen_min_hp = 0;
-    w2->stats()->max_hitpoints = 10;
-    w2->stats()->hitpoints = 0;
+    w2->stats()->set_max_hitpoints(10);
+    w2->stats()->set_hitpoints(0);
 
     w3->myguy->name = "Gamma";
     w3->myguy->family = FAMILY_ARCHER;
@@ -162,8 +162,8 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
     w3->myguy->scen_damage = 8;
     w3->myguy->scen_damage_taken = 1;
     w3->myguy->scen_min_hp = 2;
-    w3->stats()->max_hitpoints = 10;
-    w3->stats()->hitpoints = 9;
+    w3->stats()->set_max_hitpoints(10);
+    w3->stats()->set_hitpoints(9);
 
     after[1] = w1;
     after[2] = w2;
@@ -222,8 +222,8 @@ TEST(ResultsScreenFullUi, troop_scroll_paths_cover_bonus_losses_and_specials)
         w->myguy->scen_damage = static_cast<float>(10 + i);
         w->myguy->scen_damage_taken = static_cast<float>(i);
         w->myguy->scen_min_hp = (i == 2) ? 0 : 2;
-        w->stats()->max_hitpoints = 10;
-        w->stats()->hitpoints = (i == 2) ? 0 : 7;
+        w->stats()->set_max_hitpoints(10);
+        w->stats()->set_hitpoints((i == 2) ? 0 : 7);
 
         if (i < 6)
         {

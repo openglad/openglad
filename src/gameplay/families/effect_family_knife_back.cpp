@@ -12,62 +12,62 @@
 
 static bool knife_back_on_act(effect* self)
 {
-    if (!self->owner() || self->owner()->dead)
+    if (!self->owner() || self->owner()->dead())
     {
-        self->dead = 1;
+        self->set_dead(1);
         return true;
     }
     std::int32_t distance = self->distance_to_ob(self->owner());
     if (distance > 10)
     {
         float xd = 0, yd = 0;
-        if (self->owner()->xpos > self->xpos)
+        if (self->owner()->xpos() > self->xpos())
         {
-            if ( (self->owner()->xpos - self->xpos) > self->stepsize )
-                xd = self->stepsize;
+            if ( (self->owner()->xpos() - self->xpos()) > self->stepsize() )
+                xd = self->stepsize();
             else
-                xd = self->owner()->xpos - self->xpos;
+                xd = self->owner()->xpos() - self->xpos();
         }
-        else if (self->owner()->xpos < self->xpos)
+        else if (self->owner()->xpos() < self->xpos())
         {
-            if ( (self->xpos - self->owner()->xpos) > self->stepsize )
-                xd = -self->stepsize;
+            if ( (self->xpos() - self->owner()->xpos()) > self->stepsize() )
+                xd = -self->stepsize();
             else
-                xd = self->owner()->xpos - self->xpos;
+                xd = self->owner()->xpos() - self->xpos();
         }
-        if (self->owner()->ypos > self->ypos)
+        if (self->owner()->ypos() > self->ypos())
         {
-            if ( (self->owner()->ypos - self->ypos) > self->stepsize )
-                yd = self->stepsize;
+            if ( (self->owner()->ypos() - self->ypos()) > self->stepsize() )
+                yd = self->stepsize();
             else
-                yd = self->owner()->ypos - self->ypos;
+                yd = self->owner()->ypos() - self->ypos();
         }
-        else if (self->owner()->ypos < self->ypos)
+        else if (self->owner()->ypos() < self->ypos())
         {
-            if ( (self->ypos - self->owner()->ypos) > self->stepsize )
-                yd = -self->stepsize;
+            if ( (self->ypos() - self->owner()->ypos()) > self->stepsize() )
+                yd = -self->stepsize();
             else
-                yd = self->owner()->ypos - self->ypos;
+                yd = self->owner()->ypos() - self->ypos();
         }
         self->setworldxy(self->worldx()+xd, self->worldy()+yd);
         walker* newob = current_game->world->add_ob(Order::Weapon, FAMILY_KNIFE);
-        newob->damage = self->damage;
+        newob->set_damage(self->damage());
         newob->set_owner(self->owner());
-        newob->team_num = self->team_num;
-        newob->death_called = 1; // to ensure no spawning of more ..
+        newob->set_team_num(self->team_num());
+        newob->set_death_called(1); // to ensure no spawning of more ..
         newob->setworldxy(self->worldx(), self->worldy());
-        if (!current_game->world->query_object_passable(self->xpos+xd, self->ypos+yd, newob))
+        if (!current_game->world->query_object_passable(self->xpos()+xd, self->ypos()+yd, newob))
         {
             newob->attack(newob->collide_ob());
-            self->damage /= 4.0f;
+            self->set_damage(self->damage() / 4.0f);
         }
-        newob->dead = 1;
+        newob->set_dead(1);
     }
     else
     {
-        self->owner()->weapons_left = self->owner()->weapons_left + 1;
-        self->ani_type = ANI_WALK;
-        self->dead = 1;
+        self->owner()->set_weapons_left(self->owner()->weapons_left() + 1);
+        self->set_ani_type(ANI_WALK);
+        self->set_dead(1);
     }
     return true;
 }

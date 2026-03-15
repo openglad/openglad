@@ -129,11 +129,11 @@ void statscopy(guy *dest, guy *source);
 static og::ui::DerivedStats compute_guy_derived_stats(const guy& g)
 {
     auto pix = PIX(Order::Living, g.family);
-    return og::ui::compute_derived_stats(g,
-        og::runtime::current_session->myscreen_->myloader->hitpoints[pix],
-        og::runtime::current_session->myscreen_->myloader->damage[pix],
-        og::runtime::current_session->myscreen_->myloader->stepsizes[pix],
-        og::runtime::current_session->myscreen_->myloader->fire_frequency[pix]);
+	return og::ui::compute_derived_stats(g,
+	    og::runtime::current_session->myscreen_->myloader->hitpoints[pix],
+	    og::runtime::current_session->myscreen_->myloader->damage[pix],
+	    og::runtime::current_session->myscreen_->myloader->stepsizes[pix],
+	    og::runtime::current_session->myscreen_->myloader->fire_frequency[pix]);
 }
 
 // Draw the HP/MP/ATK/DEF/SPD/ATK_SPD derived stats block.
@@ -1170,15 +1170,15 @@ Sint32 cycle_guy(Sint32 whichway)
 		newfamily = og::runtime::current_session->current_guy_->family;
 
 		mywalker = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Living, newfamily);
-		mywalker->stats()->bit_flags = 0;
-		mywalker->curdir = static_cast<signed char>(((frames/192) + FACE_DOWN)%8);
-		mywalker->ani_type = ANI_WALK;
+		mywalker->stats()->set_bit_flags(0);
+		mywalker->set_curdir(static_cast<signed char>(((frames/192) + FACE_DOWN)%8));
+		mywalker->set_ani_type(ANI_WALK);
 		for (i=0; i <= (frames/12)%4; i++)
 			mywalker->animate();
-		//mywalker->team_num = ourteam[editguy]->teamnum;
-		mywalker->team_num = static_cast<unsigned char>(og::runtime::current_session->current_guy_->teamnum);
+		//mywalker->set_team_num(ourteam[editguy]->teamnum);
+		mywalker->set_team_num(static_cast<unsigned char>(og::runtime::current_session->current_guy_->teamnum));
 
-	mywalker->setxy(centerx - (mywalker->sizex/2), centery - (mywalker->sizey/2));
+	mywalker->setxy(centerx - (mywalker->sizex()/2), centery - (mywalker->sizey()/2));
 	og::runtime::current_session->myscreen_->draw_button(centerx - 80 + 54, centery - 45 + 26, centerx - 80 + 106, centery - 45 + 64, 1, 1);
 	og::runtime::current_session->myscreen_->draw_text_bar(centerx - 80 + 56, centery - 45 + 28, centerx - 80 + 104, centery - 45 + 62);
 	draw_walker(*mywalker, og::runtime::current_session->myscreen_->viewob[0].get());

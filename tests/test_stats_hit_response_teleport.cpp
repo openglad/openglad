@@ -73,41 +73,40 @@ TEST(StatsHitResponseTeleport, stats_hit_response_mage_and_archmage_teleport_bra
     ASSERT_TRUE(foe != nullptr) << "foe created";
     if (!foe)
         return;
-    foe->team_num = 1;
+    foe->set_team_num(1);
     foe->setxy(160, 100);
 
     walker* mage = level.add_ob(Order::Living, FAMILY_MAGE);
     ASSERT_TRUE(mage != nullptr) << "mage created";
     if (mage) {
-        mage->team_num = 0;
+        mage->set_team_num(0);
         mage->setxy(100, 100);
         mage->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
-        mage->stats()->level = 3;
-        mage->stats()->max_hitpoints = 100.0f;
-        mage->stats()->hitpoints = 10.0f;  // < threshold
-        mage->stats()->magicpoints = 100.0f;
-        mage->stats()->special_cost[1] = 0;
+        mage->stats()->set_level(3);
+        mage->stats()->set_max_hitpoints(100.0f);
+        mage->stats()->set_hitpoints(10.0f);  // < threshold
+        mage->stats()->set_magicpoints(100.0f);
+        mage->stats()->set_special_cost(1, 0);
 
         mage->stats()->hit_response(foe);
-        ASSERT_TRUE(mage->current_special == 1) << "mage hit_response should set teleport special";
+        ASSERT_TRUE(mage->current_special() == 1) << "mage hit_response should set teleport special";
     }
 
     walker* arch = level.add_ob(Order::Living, FAMILY_ARCHMAGE);
     ASSERT_TRUE(arch != nullptr) << "archmage created";
     if (arch) {
-        arch->team_num = 0;
+        arch->set_team_num(0);
         arch->setxy(120, 100);
         arch->set_owned_myguy(std::make_unique<guy>(FAMILY_ARCHMAGE));
-        arch->stats()->level = 3;
-        arch->stats()->max_hitpoints = 100.0f;
-        arch->stats()->hitpoints = 10.0f;  // < threshold
-        arch->stats()->magicpoints = 100.0f;
-        arch->stats()->special_cost[1] = 0;
+        arch->stats()->set_level(3);
+        arch->stats()->set_max_hitpoints(100.0f);
+        arch->stats()->set_hitpoints(10.0f);  // < threshold
+        arch->stats()->set_magicpoints(100.0f);
+        arch->stats()->set_special_cost(1, 0);
 
         arch->stats()->hit_response(foe);
-        ASSERT_TRUE(arch->current_special == 1) << "archmage hit_response should set teleport special";
+        ASSERT_TRUE(arch->current_special() == 1) << "archmage hit_response should set teleport special";
     }
 
     remove_new_leveldata_objects(level, ob_before, fx_before, weap_before);
 }
-

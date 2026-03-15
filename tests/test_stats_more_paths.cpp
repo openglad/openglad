@@ -62,21 +62,21 @@ TEST(StatsMorePaths, stats_do_command_follow_branches)
     if (!(leader && follower))
         return;
 
-    leader->team_num = 0;
-    follower->team_num = 0;
+    leader->set_team_num(0);
+    follower->set_team_num(0);
 
     og::runtime::current_session->myscreen_->viewob[0]->control = leader.get();
     follower->set_leader(nullptr);
     follower->set_foe(nullptr);
 
     // Ensure leader is far enough to exercise walkstep and normalization.
-    leader->setxy(static_cast<Sint32>(follower->xpos) + 200, static_cast<Sint32>(follower->ypos));
+    leader->setxy(static_cast<Sint32>(follower->xpos()) + 200, static_cast<Sint32>(follower->ypos()));
 
     follower->stats()->force_command(COMMAND_FOLLOW, 2, 0, 0);
     (void)follower->stats()->do_command();
 
     // If we're close, leader should be cleared (distance < 60 path).
-    leader->setxy(static_cast<Sint32>(follower->xpos) + 10, static_cast<Sint32>(follower->ypos));
+    leader->setxy(static_cast<Sint32>(follower->xpos()) + 10, static_cast<Sint32>(follower->ypos()));
     follower->set_leader(leader.get());
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)follower->stats()->do_command();
@@ -126,12 +126,12 @@ TEST(StatsMorePaths, stats_hit_response_triggers_yell_for_help_for_low_hp)
     if (!(target && attacker))
         return;
 
-    target->team_num = 0;
-    attacker->team_num = 1;
-    target->yo_delay = 0;
-    target->stats()->hitpoints = 1; // below flee threshold
+    target->set_team_num(0);
+    attacker->set_team_num(1);
+    target->set_yo_delay(0);
+    target->stats()->set_hitpoints(1); // below flee threshold
 
-    attacker->setxy(static_cast<Sint32>(target->xpos) + 5, static_cast<Sint32>(target->ypos));
+    attacker->setxy(static_cast<Sint32>(target->xpos()) + 5, static_cast<Sint32>(target->ypos()));
     target->stats()->hit_response(attacker.get());
 }
 
@@ -149,13 +149,13 @@ TEST(StatsMorePaths, stats_right_walk_exercises_direction_switch_when_direct_wal
         return;
 
     w->setxy(GRID_SIZE * 10, GRID_SIZE * 10);
-    w->lastx = 1;
-    w->lasty = 0;
+    w->set_lastx(1);
+    w->set_lasty(0);
     w->set_foe(nullptr); // forces direct_walk() to return 0
 
     for (int dir = 0; dir < 8; dir++) {
-        w->curdir = static_cast<char>(dir);
-        w->enddir = static_cast<char>(dir);
+        w->set_curdir(static_cast<char>(dir));
+        w->set_enddir(static_cast<char>(dir));
         (void)w->stats()->right_walk();
     }
 }
@@ -165,17 +165,17 @@ TEST(StatsMorePaths, stats_constructor_null_controller_and_command_die_shortcuts
 {
     statistics s(nullptr);
     ASSERT_TRUE(s.controller() == nullptr) << "null-controller ctor should keep controller null";
-    ASSERT_EQ((int)Order::Living, (int)s.old_order) << "null-controller ctor should set fallback old_order";
-    ASSERT_EQ((int)FAMILY_SOLDIER, (int)s.old_family) << "null-controller ctor should set fallback old_family";
+    ASSERT_EQ((int)Order::Living, (int)s.old_order()) << "null-controller ctor should set fallback old_order";
+    ASSERT_EQ((int)FAMILY_SOLDIER, (int)s.old_family()) << "null-controller ctor should set fallback old_family";
 
     auto w = make_walker(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "walker created";
     if (!w)
         return;
 
-    w->stats()->delete_me = 0;
+    w->stats()->set_delete_me(0);
     w->stats()->add_command(COMMAND_DIE, 1, 0, 0);
-    ASSERT_TRUE(w->stats()->delete_me == 1) << "COMMAND_DIE add_command should mark delete_me";
+    ASSERT_TRUE(w->stats()->delete_me() == 1) << "COMMAND_DIE add_command should mark delete_me";
 }
 
 
@@ -186,17 +186,17 @@ TEST(StatsMorePaths, stats_do_command_set_reset_weapon_and_search_without_foe)
     if (!w)
         return;
 
-    w->default_weapon = FAMILY_KNIFE;
-    w->current_weapon = FAMILY_ARROW;
+    w->set_default_weapon(FAMILY_KNIFE);
+    w->set_current_weapon(FAMILY_ARROW);
     w->stats()->commands.clear();
 
     w->stats()->force_command(COMMAND_SET_WEAPON, 1, FAMILY_BOMB, 0);
     (void)w->stats()->do_command();
-    ASSERT_EQ((int)FAMILY_BOMB, (int)w->current_weapon) << "COMMAND_SET_WEAPON should set current weapon";
+    ASSERT_EQ((int)FAMILY_BOMB, (int)w->current_weapon()) << "COMMAND_SET_WEAPON should set current weapon";
 
     w->stats()->force_command(COMMAND_RESET_WEAPON, 1, 0, 0);
     (void)w->stats()->do_command();
-    ASSERT_EQ((int)w->default_weapon, (int)w->current_weapon) << "COMMAND_RESET_WEAPON should restore default";
+    ASSERT_EQ((int)w->default_weapon(), (int)w->current_weapon()) << "COMMAND_RESET_WEAPON should restore default";
 
     w->set_foe(nullptr);
     w->stats()->force_command(COMMAND_SEARCH, 1, 0, 0);
@@ -214,7 +214,7 @@ TEST(StatsMorePaths, stats_blocked_helpers_default_dir_branches)
 
     og::runtime::current_session->myscreen_->world().create_new_grid();
     w->setxy(128, 128);
-    w->curdir = 99;
+    w->set_curdir(99);
 
     (void)w->stats()->right_blocked();
     (void)w->stats()->right_forward_blocked();
@@ -232,8 +232,8 @@ TEST(StatsMorePaths, stats_forward_and_side_blocked_invalid_direction_defaults)
 
     og::runtime::current_session->myscreen_->world().create_new_grid();
     w->setxy(GRID_SIZE * 4, GRID_SIZE * 4);
-    w->curdir = static_cast<char>(127);
-    w->enddir = static_cast<char>(127);
+    w->set_curdir(static_cast<char>(127));
+    w->set_enddir(static_cast<char>(127));
 
     ASSERT_TRUE(!w->stats()->forward_blocked()) << "invalid curdir should fall back to no forward block";
     ASSERT_TRUE(!w->stats()->right_forward_blocked()) << "invalid curdir should fall back to no right-forward block";
@@ -282,7 +282,7 @@ TEST(StatsMorePaths, stats_do_command_die_and_multido_paths)
     local_stats_die.commands.clear();
     local_stats_die.force_command(COMMAND_DIE, 1, 0, 0);
     (void)local_stats_die.do_command();
-    ASSERT_TRUE(local_stats_die.delete_me == 1) << "COMMAND_DIE do_command should mark delete_me";
+    ASSERT_TRUE(local_stats_die.delete_me() == 1) << "COMMAND_DIE do_command should mark delete_me";
 
     // COMMAND_MULTIDO case branch with com1=0 avoids recursive self-entry while still
     // executing the switch branch and post-switch command decrement path.
@@ -311,14 +311,14 @@ TEST(StatsMorePaths, stats_set_command_die_and_hit_response_early_returns)
     target->stats()->hit_response(nullptr);
 
     // hit_response early return: dead attacker.
-    attacker->dead = 1;
+    attacker->set_dead(1);
     target->stats()->hit_response(attacker.get());
-    attacker->dead = 0;
+    attacker->set_dead(0);
 
     // hit_response early return: dead controller.
-    target->dead = 1;
+    target->set_dead(1);
     target->stats()->hit_response(attacker.get());
-    target->dead = 0;
+    target->set_dead(0);
 
     // hit_response early return: ACT_CONTROL.
     target->set_act_type(ACT_CONTROL);
@@ -348,12 +348,12 @@ TEST(StatsMorePaths, stats_walk_to_foe_short_circuit_and_path_branches)
     if (!(actor && foe))
         return;
 
-    actor->team_num = 0;
-    foe->team_num = 1;
+    actor->set_team_num(0);
+    foe->set_team_num(1);
     actor->setxy(GRID_SIZE * 8, GRID_SIZE * 8);
-    foe->setxy(static_cast<std::int32_t>(actor->xpos + 16), static_cast<std::int32_t>(actor->ypos));
+    foe->setxy(static_cast<std::int32_t>(actor->xpos() + 16), static_cast<std::int32_t>(actor->ypos()));
     actor->set_foe(foe);
-    actor->path_check_counter = 0;
+    actor->set_path_check_counter(0);
     actor->stats()->clear_command();
 
     FixedRandom rng_nonzero(1); // avoid rng(300)==0 early-return branch
@@ -366,18 +366,20 @@ TEST(StatsMorePaths, stats_walk_to_foe_short_circuit_and_path_branches)
 
     // Nearby but dead foe: find_foes_in_range should fail and zero command count branch should run.
     actor->stats()->force_command(COMMAND_WALK, 5, 1, 0);
-    foe->dead = 1;
-    actor->path_check_counter = 0;
+    foe->set_dead(1);
+    actor->set_path_check_counter(0);
     ok = actor->stats()->walk_to_foe();
     ASSERT_TRUE(ok) << "walk_to_foe should still run with dead remembered foe";
 
     // Distant foe path: executes find_path_to_foe() branch.
-    foe->dead = 0;
-    actor->sizex = actor->sizey = GRID_SIZE - 1;
-    foe->sizex = foe->sizey = GRID_SIZE - 1;
+    foe->set_dead(0);
+    actor->set_sizey(GRID_SIZE - 1);
+    actor->set_sizex(GRID_SIZE - 1);
+    foe->set_sizey(GRID_SIZE - 1);
+    foe->set_sizex(GRID_SIZE - 1);
     ASSERT_TRUE(actor->setxy(32, 32));
     ASSERT_TRUE(foe->setxy(128, 128));
-    actor->path_check_counter = 0;
+    actor->set_path_check_counter(0);
     ok = actor->stats()->walk_to_foe();
     ASSERT_TRUE(ok) << "walk_to_foe should run distant-path branch";
     ASSERT_FALSE(actor->path_to_foe.empty()) << "walk_to_foe should retain a remaining route after the first follow step";
@@ -385,8 +387,8 @@ TEST(StatsMorePaths, stats_walk_to_foe_short_circuit_and_path_branches)
     EXPECT_EQ(GET_STATE_Y(actor->path_to_foe.front()), 48);
     EXPECT_EQ(GET_STATE_X(actor->path_to_foe.back()), 128);
     EXPECT_EQ(GET_STATE_Y(actor->path_to_foe.back()), 128);
-    EXPECT_GT(actor->xpos, 32);
-    EXPECT_GT(actor->ypos, 32);
+    EXPECT_GT(actor->xpos(), 32);
+    EXPECT_GT(actor->ypos(), 32);
 
     ctx().rng = prev_rng;
 }
@@ -403,9 +405,9 @@ TEST(StatsMorePaths, stats_right_walk_round7_right_back_and_forward_direction_ma
         return;
 
     actor->setxy(GRID_SIZE * 10, GRID_SIZE * 10);
-    actor->curdir = FACE_UP;
-    actor->lastx = 0;
-    actor->lasty = -1;
+    actor->set_curdir(FACE_UP);
+    actor->set_lastx(0);
+    actor->set_lasty(-1);
     actor->stats()->commands.clear();
 
     // Force only right_back_blocked() to be true for FACE_UP.
@@ -413,9 +415,9 @@ TEST(StatsMorePaths, stats_right_walk_round7_right_back_and_forward_direction_ma
     ASSERT_TRUE(blocker != nullptr) << "blocker created";
     if (!blocker)
         return;
-    blocker->team_num = 1;
-    blocker->setxy(static_cast<short>(actor->xpos + 1),
-                   static_cast<short>(actor->ypos + 1));
+    blocker->set_team_num(1);
+    blocker->setxy(static_cast<short>(actor->xpos() + 1),
+                   static_cast<short>(actor->ypos() + 1));
 
     struct ExpectedDir {
         char target_dir;
@@ -435,14 +437,14 @@ TEST(StatsMorePaths, stats_right_walk_round7_right_back_and_forward_direction_ma
 
     for (const auto& e : expected)
     {
-        actor->enddir = static_cast<char>((e.target_dir + 6) % 8); // +2 in right_walk => target_dir
+        actor->set_enddir(static_cast<char>((e.target_dir + 6) % 8)); // +2 in right_walk => target_dir
         actor->stats()->commands.clear();
-        const short x_before = actor->xpos;
-        const short y_before = actor->ypos;
-        const char enddir_before = actor->enddir;
+        const short x_before = actor->xpos();
+        const short y_before = actor->ypos();
+        const char enddir_before = actor->enddir();
         ASSERT_TRUE(actor->stats()->right_walk()) << "right_walk should succeed in right_back_blocked branch";
-        ASSERT_TRUE(!actor->stats()->commands.empty() || actor->xpos != x_before || actor->ypos != y_before
-                        || actor->enddir != enddir_before) << "right_walk should queue, move, or update heading";
+        ASSERT_TRUE(!actor->stats()->commands.empty() || actor->xpos() != x_before || actor->ypos() != y_before
+                        || actor->enddir() != enddir_before) << "right_walk should queue, move, or update heading";
         if (!actor->stats()->commands.empty())
         {
             const command& c = actor->stats()->commands.back();
@@ -455,11 +457,11 @@ TEST(StatsMorePaths, stats_right_walk_round7_right_back_and_forward_direction_ma
     // Remove blocker and force the direct_walk()==false fallback switch for FACE_UP.
     og::runtime::current_session->myscreen_->world().remove_ob(blocker);
     actor->set_foe(nullptr);
-    actor->curdir = FACE_UP;
-    actor->enddir = FACE_UP;
-    const short y_before = actor->ypos;
+    actor->set_curdir(FACE_UP);
+    actor->set_enddir(FACE_UP);
+    const short y_before = actor->ypos();
     ASSERT_TRUE(actor->stats()->right_walk()) << "right_walk direct-walk fallback should return true";
-    ASSERT_TRUE(actor->ypos <= y_before) << "FACE_UP fallback should walk in negative y direction";
+    ASSERT_TRUE(actor->ypos() <= y_before) << "FACE_UP fallback should walk in negative y direction";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
@@ -477,8 +479,8 @@ TEST(StatsMorePaths, stats_right_walk_round8_negative_enddir_default_switch_path
     // - right/right-forward/forward are passable
     // - right-back is blocked by bottom boundary
     actor->setxy(GRID_SIZE * 6, static_cast<std::int32_t>(og::runtime::current_session->myscreen_->world().pixmaxy - 1));
-    actor->curdir = FACE_UP;
-    actor->enddir = static_cast<char>(-127);
+    actor->set_curdir(FACE_UP);
+    actor->set_enddir(static_cast<char>(-127));
     actor->stats()->commands.clear();
 
     ASSERT_TRUE(actor->stats()->right_walk()) << "right_walk should return true for negative-enddir fallback path";
@@ -518,21 +520,21 @@ TEST(StatsMorePaths, stats_round11_follow_force_walk_and_right_walk_distance_bra
 
     // COMMAND_FOLLOW axis-normalization branch (stats.cpp:303-310).
     og::runtime::current_session->myscreen_->viewob[0]->control = leader.get();
-    leader->setxy(static_cast<Sint32>(follower->xpos) + 300, static_cast<Sint32>(follower->ypos) + 40);
+    leader->setxy(static_cast<Sint32>(follower->xpos()) + 300, static_cast<Sint32>(follower->ypos()) + 40);
     follower->set_leader(nullptr);
     follower->set_foe(nullptr);
-    const short before_y = follower->ypos;
+    const short before_y = follower->ypos();
     follower->stats()->force_command(COMMAND_FOLLOW, 2, 0, 0);
     (void)follower->stats()->do_command();
-    ASSERT_TRUE(follower->ypos == before_y || std::abs((int)follower->ypos - (int)before_y) <= 1) << "follow axis-normalization should heavily favor x-axis movement";
+    ASSERT_TRUE(follower->ypos() == before_y || std::abs((int)follower->ypos() - (int)before_y) <= 1) << "follow axis-normalization should heavily favor x-axis movement";
 
     // COMMAND_RIGHT_WALK distance gate branches (stats.cpp:360-368).
     follower->set_foe(foe.get());
-    foe->setxy(static_cast<Sint32>(follower->xpos) + 150, static_cast<Sint32>(follower->ypos)); // distance in (120,240)
+    foe->setxy(static_cast<Sint32>(follower->xpos()) + 150, static_cast<Sint32>(follower->ypos())); // distance in (120,240)
     follower->stats()->force_command(COMMAND_RIGHT_WALK, 1, 0, 0);
     (void)follower->stats()->do_command();
 
-    foe->setxy(static_cast<Sint32>(follower->xpos) + 20, static_cast<Sint32>(follower->ypos)); // distance outside (120,240)
+    foe->setxy(static_cast<Sint32>(follower->xpos()) + 20, static_cast<Sint32>(follower->ypos())); // distance outside (120,240)
     follower->stats()->force_command(COMMAND_RIGHT_WALK, 1, 0, 0);
     (void)follower->stats()->do_command();
 
@@ -583,7 +585,7 @@ TEST(StatsMorePaths, stats_round12_add_command_walk_clamps_and_follow_shortcuts)
     // COMMAND_FOLLOW close-distance branch (stats.cpp:295-300).
     follower->set_foe(nullptr);
     follower->set_leader(leader.get());
-    leader->setxy(static_cast<Sint32>(follower->xpos) + 10, static_cast<Sint32>(follower->ypos) + 10);
+    leader->setxy(static_cast<Sint32>(follower->xpos()) + 10, static_cast<Sint32>(follower->ypos()) + 10);
     follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)follower->stats()->do_command();
     ASSERT_TRUE(follower->leader() == nullptr) << "follow should drop leader when already close";
@@ -602,11 +604,11 @@ TEST(StatsMorePaths, stats_round13_die_and_non_living_fire_command_branches)
         return;
 
     // COMMAND_DIE branch (stats.cpp:266-271).
-    living->dead = 1;
-    living->stats()->delete_me = 0;
+    living->set_dead(1);
+    living->stats()->set_delete_me(0);
     living->stats()->force_command(COMMAND_DIE, 1, 0, 0);
     (void)living->stats()->do_command();
-    ASSERT_EQ(1, (int)living->stats()->delete_me) << "COMMAND_DIE should set delete_me when count is low";
+    ASSERT_EQ(1, (int)living->stats()->delete_me()) << "COMMAND_DIE should set delete_me when count is low";
 
     // COMMAND_FIRE on non-living controller path (stats.cpp:253-257).
     weapon->stats()->force_command(COMMAND_FIRE, 1, 1, 0);
@@ -660,9 +662,9 @@ TEST(StatsMorePaths, stats_round14_quickfire_multido_rush_and_walk_to_foe_firstf
     actor->setxy(100, 100);
     foe->setxy(120, 100); // short-circuit distance path
     actor->set_foe(foe.get());
-    actor->path_check_counter = 0;
-    actor->stats()->last_distance = 99999;
-    foe->invisibility_left = 64; // allows near-foe scan to skip via rng
+    actor->set_path_check_counter(0);
+    actor->stats()->set_last_distance(99999);
+    foe->set_invisibility_left(64); // allows near-foe scan to skip via rng
     SeqRandom rng({1, 1, 1, 1, 1});
     const bool walked = actor->stats()->walk_to_foe();
     ASSERT_TRUE(walked) << "walk_to_foe should still succeed when using firstfoe fallback path";

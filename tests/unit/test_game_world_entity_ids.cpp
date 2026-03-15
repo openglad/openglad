@@ -16,10 +16,9 @@ struct GameWorldEntityIdsFixture : testing::Test
     {
         world.entity_factory = [](Order order, std::int32_t family) -> std::unique_ptr<walker> {
             auto entity = std::make_unique<walker>();
-            entity->order = order;
-            entity->family = static_cast<char>(family);
-            entity->sizex = 16;
-            entity->sizey = 16;
+            entity->set_order_family(order, static_cast<char>(family));
+            entity->set_sizex(16);
+            entity->set_sizey(16);
             return entity;
         };
     }
@@ -43,7 +42,7 @@ TEST_F(GameWorldEntityIdsFixture, assigns_unique_non_zero_ids_and_finds_entities
     EXPECT_NE(0u, fx->entity_id());
     EXPECT_NE(0u, weapon->entity_id());
     ASSERT_NE(nullptr, living->stats());
-    EXPECT_EQ(living->entity_id(), living->stats()->controller_id);
+    EXPECT_EQ(living->entity_id(), living->stats()->controller_id());
     EXPECT_NE(living->entity_id(), fx->entity_id());
     EXPECT_NE(living->entity_id(), weapon->entity_id());
     EXPECT_NE(fx->entity_id(), weapon->entity_id());
@@ -82,17 +81,16 @@ TEST_F(GameWorldEntityIdsFixture, remove_ob_erases_entities_from_id_index)
 TEST_F(GameWorldEntityIdsFixture, direct_public_insert_assigns_id_and_rebuilds_id_index_on_lookup)
 {
     auto external = std::make_unique<walker>();
-    external->order = Order::Living;
-    external->family = FAMILY_SOLDIER;
-    external->sizex = 16;
-    external->sizey = 16;
+    external->set_order_family(Order::Living, FAMILY_SOLDIER);
+    external->set_sizex(16);
+    external->set_sizey(16);
     walker* raw = external.get();
 
     world.oblist.push_back(std::move(external));
 
     EXPECT_NE(0u, raw->entity_id());
     ASSERT_NE(nullptr, raw->stats());
-    EXPECT_EQ(raw->entity_id(), raw->stats()->controller_id);
+    EXPECT_EQ(raw->entity_id(), raw->stats()->controller_id());
     EXPECT_EQ(raw, world.find_by_id(raw->entity_id()));
 }
 
@@ -225,23 +223,23 @@ TEST_F(GameWorldEntityIdsFixture, cross_reference_setters_keep_pointer_and_id_fi
     EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_CONTROLLER_ID));
 
     EXPECT_EQ(foe, actor->foe());
-    EXPECT_EQ(foe->entity_id(), actor->foe_id);
+    EXPECT_EQ(foe->entity_id(), actor->foe_id());
     EXPECT_EQ(leader, actor->leader());
-    EXPECT_EQ(leader->entity_id(), actor->leader_id);
+    EXPECT_EQ(leader->entity_id(), actor->leader_id());
     EXPECT_EQ(owner, actor->owner());
-    EXPECT_EQ(owner->entity_id(), actor->owner_id);
+    EXPECT_EQ(owner->entity_id(), actor->owner_id());
     EXPECT_EQ(collide, actor->collide_ob());
-    EXPECT_EQ(collide->entity_id(), actor->collide_ob_id);
+    EXPECT_EQ(collide->entity_id(), actor->collide_ob_id());
     EXPECT_EQ(controller, actor->stats()->controller());
-    EXPECT_EQ(controller->entity_id(), actor->stats()->controller_id);
+    EXPECT_EQ(controller->entity_id(), actor->stats()->controller_id());
 
     actor->set_foe(nullptr);
     actor->stats()->set_controller(nullptr);
 
     EXPECT_EQ(nullptr, actor->foe());
-    EXPECT_EQ(0u, actor->foe_id);
+    EXPECT_EQ(0u, actor->foe_id());
     EXPECT_EQ(nullptr, actor->stats()->controller());
-    EXPECT_EQ(0u, actor->stats()->controller_id);
+    EXPECT_EQ(0u, actor->stats()->controller_id());
 }
 
 TEST_F(GameWorldEntityIdsFixture, sync_ids_from_pointers_clears_zero_id_cross_references)
@@ -259,16 +257,16 @@ TEST_F(GameWorldEntityIdsFixture, sync_ids_from_pointers_clears_zero_id_cross_re
     actor->stats()->set_controller(orphan_controller.get());
     actor->clear_dirty();
 
-    actor->owner_id = 99;
-    actor->stats()->controller_id = 77;
+    actor->set_owner_id(99);
+    actor->stats()->set_controller_id(77);
 
     actor->sync_ids_from_pointers();
 
     EXPECT_EQ(nullptr, actor->owner());
-    EXPECT_EQ(0u, actor->owner_id);
+    EXPECT_EQ(0u, actor->owner_id());
     EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_OWNER_ID));
     EXPECT_EQ(nullptr, actor->stats()->controller());
-    EXPECT_EQ(0u, actor->stats()->controller_id);
+    EXPECT_EQ(0u, actor->stats()->controller_id());
     EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_CONTROLLER_ID));
 }
 
@@ -296,11 +294,11 @@ TEST_F(GameWorldEntityIdsFixture,
     EXPECT_EQ(nullptr, actor->owner());
     EXPECT_EQ(nullptr, actor->collide_ob());
     EXPECT_EQ(nullptr, actor->stats()->controller());
-    EXPECT_EQ(0u, actor->foe_id);
-    EXPECT_EQ(0u, actor->leader_id);
-    EXPECT_EQ(0u, actor->owner_id);
-    EXPECT_EQ(0u, actor->collide_ob_id);
-    EXPECT_EQ(0u, actor->stats()->controller_id);
+    EXPECT_EQ(0u, actor->foe_id());
+    EXPECT_EQ(0u, actor->leader_id());
+    EXPECT_EQ(0u, actor->owner_id());
+    EXPECT_EQ(0u, actor->collide_ob_id());
+    EXPECT_EQ(0u, actor->stats()->controller_id());
     EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_FOE_ID));
     EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_LEADER_ID));
     EXPECT_TRUE(actor->is_dirty(og::dirty::BIT_OWNER_ID));

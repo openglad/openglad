@@ -31,7 +31,7 @@ struct SnapshotWalker final : walker
 
     void set_regen_delay(std::int32_t value)
     {
-        regen_delay_ = value;
+        walker::set_regen_delay(value);
     }
 
     bool act() override
@@ -116,9 +116,9 @@ void configure_snapshot_test_entity(walker& entity, Order order, std::int32_t fa
     entity.set_order_family(order, static_cast<char>(family));
     entity.set_data(pix);
     entity.ani = animation_rows_for_family(family);
-    entity.sizex = pix.w;
-    entity.sizey = pix.h;
-    entity.frame = 0;
+    entity.set_sizex(pix.w);
+    entity.set_sizey(pix.h);
+    entity.set_direct_frame(0);
 }
 
 void apply_snapshot_test_derived_stats(walker* entity,
@@ -128,14 +128,14 @@ void apply_snapshot_test_derived_stats(walker* entity,
     if (entity == nullptr || entity->stats() == nullptr)
         return;
 
-    entity->stepsize = 1.0f + static_cast<float>(family % 3);
-    entity->normal_stepsize = entity->stepsize;
-    entity->lineofsight = 20 + family;
-    entity->damage = 4.0f + static_cast<float>(family);
-    entity->fire_frequency = 0.5f + static_cast<float>(family) / 10.0f;
-    entity->stats()->max_hitpoints = 10.0f + static_cast<float>(family);
-    entity->stats()->hitpoints = entity->stats()->max_hitpoints;
-    entity->stats()->level = static_cast<std::int32_t>(order) + family;
+    entity->set_stepsize(1.0f + static_cast<float>(family % 3));
+    entity->set_normal_stepsize(entity->stepsize());
+    entity->set_lineofsight(20 + family);
+    entity->set_damage(4.0f + static_cast<float>(family));
+    entity->set_fire_frequency(0.5f + static_cast<float>(family) / 10.0f);
+    entity->stats()->set_max_hitpoints(10.0f + static_cast<float>(family));
+    entity->stats()->set_hitpoints(entity->stats()->max_hitpoints());
+    entity->stats()->set_level(static_cast<std::int32_t>(order) + family);
 }
 
 void configure_snapshot_test_services(GameWorld& world)
@@ -273,97 +273,97 @@ void expect_entity_snapshot_matches(
               snapshot.guy_id);
 
     EXPECT_EQ(live.entity_id(), snapshot.entity_id);
-    EXPECT_EQ(live.xpos, snapshot.xpos);
-    EXPECT_EQ(live.ypos, snapshot.ypos);
-    EXPECT_EQ(live.sizex, snapshot.sizex);
-    EXPECT_EQ(live.sizey, snapshot.sizey);
-    EXPECT_EQ(live.team_num, snapshot.team_num);
-    EXPECT_EQ(live.real_team_num, snapshot.real_team_num);
-    EXPECT_EQ(live.user, snapshot.user);
-    EXPECT_EQ(live.dead, snapshot.dead);
-    EXPECT_EQ(live.death_called, snapshot.death_called);
-    EXPECT_EQ(live.invulnerable_left, snapshot.invulnerable_left);
-    EXPECT_EQ(live.invisibility_left, snapshot.invisibility_left);
-    EXPECT_EQ(live.flight_left, snapshot.flight_left);
-    EXPECT_EQ(live.bonus_rounds, snapshot.bonus_rounds);
-    EXPECT_EQ(live.order, snapshot.order);
-    EXPECT_EQ(live.family, snapshot.family);
-    EXPECT_EQ(live.frame, snapshot.frame);
+    EXPECT_EQ(live.xpos(), snapshot.xpos);
+    EXPECT_EQ(live.ypos(), snapshot.ypos);
+    EXPECT_EQ(live.sizex(), snapshot.sizex);
+    EXPECT_EQ(live.sizey(), snapshot.sizey);
+    EXPECT_EQ(live.team_num(), snapshot.team_num);
+    EXPECT_EQ(live.real_team_num(), snapshot.real_team_num);
+    EXPECT_EQ(live.user(), snapshot.user);
+    EXPECT_EQ(live.dead(), snapshot.dead);
+    EXPECT_EQ(live.death_called(), snapshot.death_called);
+    EXPECT_EQ(live.invulnerable_left(), snapshot.invulnerable_left);
+    EXPECT_EQ(live.invisibility_left(), snapshot.invisibility_left);
+    EXPECT_EQ(live.flight_left(), snapshot.flight_left);
+    EXPECT_EQ(live.bonus_rounds(), snapshot.bonus_rounds);
+    EXPECT_EQ(live.order(), snapshot.order);
+    EXPECT_EQ(live.family(), snapshot.family);
+    EXPECT_EQ(live.frame(), snapshot.frame);
     EXPECT_FLOAT_EQ(live.worldx(), snapshot.worldx);
     EXPECT_FLOAT_EQ(live.worldy(), snapshot.worldy);
 
-    EXPECT_FLOAT_EQ(live.lastx, snapshot.lastx);
-    EXPECT_FLOAT_EQ(live.lasty, snapshot.lasty);
-    EXPECT_FLOAT_EQ(live.stepsize, snapshot.stepsize);
-    EXPECT_FLOAT_EQ(live.normal_stepsize, snapshot.normal_stepsize);
-    EXPECT_EQ(live.curdir, snapshot.curdir);
-    EXPECT_EQ(live.enddir, snapshot.enddir);
-    EXPECT_FLOAT_EQ(live.damage, snapshot.damage);
-    EXPECT_FLOAT_EQ(live.fire_frequency, snapshot.fire_frequency);
-    EXPECT_FLOAT_EQ(live.busy, snapshot.busy);
-    EXPECT_EQ(live.current_weapon, snapshot.current_weapon);
-    EXPECT_EQ(live.default_weapon, snapshot.default_weapon);
-    EXPECT_FLOAT_EQ(live.attack_lunge, snapshot.attack_lunge);
-    EXPECT_FLOAT_EQ(live.attack_lunge_angle, snapshot.attack_lunge_angle);
-    EXPECT_FLOAT_EQ(live.hit_recoil, snapshot.hit_recoil);
-    EXPECT_FLOAT_EQ(live.hit_recoil_angle, snapshot.hit_recoil_angle);
-    EXPECT_FLOAT_EQ(live.last_hitpoints, snapshot.last_hitpoints);
-    EXPECT_EQ(live.action, snapshot.action);
-    EXPECT_EQ(live.act_type, snapshot.act_type);
-    EXPECT_EQ(live.old_act_type, snapshot.old_act_type);
-    EXPECT_EQ(live.ani_type, snapshot.ani_type);
-    EXPECT_EQ(live.cycle, snapshot.cycle);
-    EXPECT_EQ(live.drawcycle, snapshot.drawcycle);
-    EXPECT_EQ(live.current_special, snapshot.current_special);
-    EXPECT_EQ(live.ignore, snapshot.ignore);
-    EXPECT_EQ(snapshot_bool(live.in_act), snapshot.in_act);
-    EXPECT_EQ(live.shifter_down, snapshot.shifter_down);
-    EXPECT_EQ(live.yo_delay, snapshot.yo_delay);
-    EXPECT_EQ(live.skip_exit, snapshot.skip_exit);
-    EXPECT_EQ(live.outline, snapshot.outline);
-    EXPECT_EQ(snapshot_bool(live.hurt_flash), snapshot.hurt_flash);
-    EXPECT_EQ(live.lifetime, snapshot.lifetime);
-    EXPECT_FLOAT_EQ(live.speed_bonus, snapshot.speed_bonus);
-    EXPECT_EQ(live.speed_bonus_left, snapshot.speed_bonus_left);
-    EXPECT_EQ(live.charm_left, snapshot.charm_left);
-    EXPECT_EQ(live.weapons_left, snapshot.weapons_left);
-    EXPECT_EQ(live.keys, snapshot.keys);
-    EXPECT_EQ(live.view_all, snapshot.view_all);
-    EXPECT_EQ(live.lineofsight, snapshot.lineofsight);
-    EXPECT_EQ(live.path_check_counter, snapshot.path_check_counter);
+    EXPECT_FLOAT_EQ(live.lastx(), snapshot.lastx);
+    EXPECT_FLOAT_EQ(live.lasty(), snapshot.lasty);
+    EXPECT_FLOAT_EQ(live.stepsize(), snapshot.stepsize);
+    EXPECT_FLOAT_EQ(live.normal_stepsize(), snapshot.normal_stepsize);
+    EXPECT_EQ(live.curdir(), snapshot.curdir);
+    EXPECT_EQ(live.enddir(), snapshot.enddir);
+    EXPECT_FLOAT_EQ(live.damage(), snapshot.damage);
+    EXPECT_FLOAT_EQ(live.fire_frequency(), snapshot.fire_frequency);
+    EXPECT_FLOAT_EQ(live.busy(), snapshot.busy);
+    EXPECT_EQ(live.current_weapon(), snapshot.current_weapon);
+    EXPECT_EQ(live.default_weapon(), snapshot.default_weapon);
+    EXPECT_FLOAT_EQ(live.attack_lunge(), snapshot.attack_lunge);
+    EXPECT_FLOAT_EQ(live.attack_lunge_angle(), snapshot.attack_lunge_angle);
+    EXPECT_FLOAT_EQ(live.hit_recoil(), snapshot.hit_recoil);
+    EXPECT_FLOAT_EQ(live.hit_recoil_angle(), snapshot.hit_recoil_angle);
+    EXPECT_FLOAT_EQ(live.last_hitpoints(), snapshot.last_hitpoints);
+    EXPECT_EQ(live.action(), snapshot.action);
+    EXPECT_EQ(live.act_type(), snapshot.act_type);
+    EXPECT_EQ(live.old_act_type(), snapshot.old_act_type);
+    EXPECT_EQ(live.ani_type(), snapshot.ani_type);
+    EXPECT_EQ(live.cycle(), snapshot.cycle);
+    EXPECT_EQ(live.drawcycle(), snapshot.drawcycle);
+    EXPECT_EQ(live.current_special(), snapshot.current_special);
+    EXPECT_EQ(live.ignore(), snapshot.ignore);
+    EXPECT_EQ(snapshot_bool(live.in_act()), snapshot.in_act);
+    EXPECT_EQ(live.shifter_down(), snapshot.shifter_down);
+    EXPECT_EQ(live.yo_delay(), snapshot.yo_delay);
+    EXPECT_EQ(live.skip_exit(), snapshot.skip_exit);
+    EXPECT_EQ(live.outline(), snapshot.outline);
+    EXPECT_EQ(snapshot_bool(live.hurt_flash()), snapshot.hurt_flash);
+    EXPECT_EQ(live.lifetime(), snapshot.lifetime);
+    EXPECT_FLOAT_EQ(live.speed_bonus(), snapshot.speed_bonus);
+    EXPECT_EQ(live.speed_bonus_left(), snapshot.speed_bonus_left);
+    EXPECT_EQ(live.charm_left(), snapshot.charm_left);
+    EXPECT_EQ(live.weapons_left(), snapshot.weapons_left);
+    EXPECT_EQ(live.keys(), snapshot.keys);
+    EXPECT_EQ(live.view_all(), snapshot.view_all);
+    EXPECT_EQ(live.lineofsight(), snapshot.lineofsight);
+    EXPECT_EQ(live.path_check_counter(), snapshot.path_check_counter);
     EXPECT_EQ(live.regen_delay(), snapshot.regen_delay);
-    EXPECT_EQ(live.foe_id, snapshot.foe_id);
-    EXPECT_EQ(live.leader_id, snapshot.leader_id);
-    EXPECT_EQ(live.owner_id, snapshot.owner_id);
-    EXPECT_EQ(live.collide_ob_id, snapshot.collide_ob_id);
+    EXPECT_EQ(live.foe_id(), snapshot.foe_id);
+    EXPECT_EQ(live.leader_id(), snapshot.leader_id);
+    EXPECT_EQ(live.owner_id(), snapshot.owner_id);
+    EXPECT_EQ(live.collide_ob_id(), snapshot.collide_ob_id);
 
-    EXPECT_FLOAT_EQ(stats->hitpoints, snapshot.hitpoints);
-    EXPECT_FLOAT_EQ(stats->max_hitpoints, snapshot.max_hitpoints);
-    EXPECT_FLOAT_EQ(stats->magicpoints, snapshot.magicpoints);
-    EXPECT_FLOAT_EQ(stats->max_magicpoints, snapshot.max_magicpoints);
-    EXPECT_EQ(stats->max_heal_delay, snapshot.max_heal_delay);
-    EXPECT_EQ(stats->current_heal_delay, snapshot.current_heal_delay);
-    EXPECT_EQ(stats->max_magic_delay, snapshot.max_magic_delay);
-    EXPECT_EQ(stats->current_magic_delay, snapshot.current_magic_delay);
-    EXPECT_FLOAT_EQ(stats->magic_per_round, snapshot.magic_per_round);
-    EXPECT_FLOAT_EQ(stats->heal_per_round, snapshot.heal_per_round);
-    EXPECT_FLOAT_EQ(stats->armor, snapshot.armor);
-    EXPECT_EQ(stats->level, snapshot.level);
-    EXPECT_EQ(stats->bit_flags, snapshot.bit_flags);
-    EXPECT_EQ(stats->delete_me, snapshot.delete_me);
-    EXPECT_EQ(stats->frozen_delay, snapshot.frozen_delay);
-    EXPECT_EQ(stats->weapon_cost, snapshot.weapon_cost);
+    EXPECT_FLOAT_EQ(stats->hitpoints(), snapshot.hitpoints);
+    EXPECT_FLOAT_EQ(stats->max_hitpoints(), snapshot.max_hitpoints);
+    EXPECT_FLOAT_EQ(stats->magicpoints(), snapshot.magicpoints);
+    EXPECT_FLOAT_EQ(stats->max_magicpoints(), snapshot.max_magicpoints);
+    EXPECT_EQ(stats->max_heal_delay(), snapshot.max_heal_delay);
+    EXPECT_EQ(stats->current_heal_delay(), snapshot.current_heal_delay);
+    EXPECT_EQ(stats->max_magic_delay(), snapshot.max_magic_delay);
+    EXPECT_EQ(stats->current_magic_delay(), snapshot.current_magic_delay);
+    EXPECT_FLOAT_EQ(stats->magic_per_round(), snapshot.magic_per_round);
+    EXPECT_FLOAT_EQ(stats->heal_per_round(), snapshot.heal_per_round);
+    EXPECT_FLOAT_EQ(stats->armor(), snapshot.armor);
+    EXPECT_EQ(stats->level(), snapshot.level);
+    EXPECT_EQ(stats->bit_flags(), snapshot.bit_flags);
+    EXPECT_EQ(stats->delete_me(), snapshot.delete_me);
+    EXPECT_EQ(stats->frozen_delay(), snapshot.frozen_delay);
+    EXPECT_EQ(stats->weapon_cost(), snapshot.weapon_cost);
     for (int i = 0; i < NUM_SPECIALS; ++i)
-        EXPECT_EQ(stats->special_cost[i], snapshot.special_cost[i]);
-    EXPECT_EQ(stats->old_order, snapshot.old_order);
-    EXPECT_EQ(stats->old_family, snapshot.old_family);
-    EXPECT_EQ(stats->last_distance, snapshot.last_distance);
-    EXPECT_EQ(stats->current_distance, snapshot.current_distance);
-    EXPECT_EQ(stats->controller_id, snapshot.controller_id);
+        EXPECT_EQ(stats->special_cost(i), snapshot.special_cost[i]);
+    EXPECT_EQ(stats->old_order(), snapshot.old_order);
+    EXPECT_EQ(stats->old_family(), snapshot.old_family);
+    EXPECT_EQ(stats->last_distance(), snapshot.last_distance);
+    EXPECT_EQ(stats->current_distance(), snapshot.current_distance);
+    EXPECT_EQ(stats->controller_id(), snapshot.controller_id);
 
     const std::int32_t expected_do_bounce =
         live.query_order() == Order::Weapon
-            ? static_cast<const weap&>(live).do_bounce
+            ? static_cast<const weap&>(live).do_bounce()
             : 0;
     EXPECT_EQ(expected_do_bounce, snapshot.do_bounce);
 }
@@ -507,10 +507,9 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
         else
             entity = std::make_unique<SnapshotWalker>();
 
-        entity->order = order;
-        entity->family = static_cast<char>(family);
-        entity->sizex = 16;
-        entity->sizey = 16;
+        entity->set_order_family(order, static_cast<char>(family));
+        entity->set_sizex(16);
+        entity->set_sizey(16);
         return entity;
     };
 
@@ -536,85 +535,85 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
 
     actor->setxy(48, 64);
     actor->setworldxy(48.5f, 64.25f);
-    actor->sizex = 18;
-    actor->sizey = 20;
-    actor->team_num = 2;
-    actor->real_team_num = 3;
-    actor->user = 1;
-    actor->dead = 2;
-    actor->death_called = 1;
-    actor->invulnerable_left = 12;
-    actor->invisibility_left = 13;
-    actor->flight_left = 14;
-    actor->bonus_rounds = 15;
-    actor->frame = 6;
-    actor->lastx = 1.25f;
-    actor->lasty = -0.5f;
-    actor->stepsize = 2.5f;
-    actor->normal_stepsize = 2.0f;
-    actor->curdir = FACE_RIGHT;
-    actor->enddir = FACE_LEFT;
-    actor->damage = 9.5f;
-    actor->fire_frequency = 3.0f;
-    actor->busy = 1.0f;
-    actor->current_weapon = FAMILY_ARROW;
-    actor->default_weapon = FAMILY_KNIFE;
-    actor->attack_lunge = 4.0f;
-    actor->attack_lunge_angle = 0.75f;
-    actor->hit_recoil = 2.0f;
-    actor->hit_recoil_angle = 1.25f;
-    actor->last_hitpoints = 17.0f;
-    actor->action = 3;
-    actor->act_type = ACT_CONTROL;
-    actor->old_act_type = ACT_RANDOM;
-    actor->ani_type = ANI_WALK;
-    actor->cycle = 2;
-    actor->drawcycle = 3;
-    actor->current_special = 1;
-    actor->ignore = 0;
-    actor->in_act = true;
-    actor->shifter_down = 1;
-    actor->yo_delay = 4;
-    actor->skip_exit = 5;
-    actor->outline = 1;
-    actor->hurt_flash = true;
-    actor->lifetime = 123;
-    actor->speed_bonus = 1.5f;
-    actor->speed_bonus_left = 22;
-    actor->charm_left = 7;
-    actor->weapons_left = 8;
-    actor->keys = 0x1234;
-    actor->view_all = 1;
-    actor->lineofsight = 33;
-    actor->path_check_counter = 44;
+    actor->set_sizex(18);
+    actor->set_sizey(20);
+    actor->set_team_num(2);
+    actor->set_real_team_num(3);
+    actor->set_user(1);
+    actor->set_dead(2);
+    actor->set_death_called(1);
+    actor->set_invulnerable_left(12);
+    actor->set_invisibility_left(13);
+    actor->set_flight_left(14);
+    actor->set_bonus_rounds(15);
+    actor->set_direct_frame(6);
+    actor->set_lastx(1.25f);
+    actor->set_lasty(-0.5f);
+    actor->set_stepsize(2.5f);
+    actor->set_normal_stepsize(2.0f);
+    actor->set_curdir(FACE_RIGHT);
+    actor->set_enddir(FACE_LEFT);
+    actor->set_damage(9.5f);
+    actor->set_fire_frequency(3.0f);
+    actor->set_busy(1.0f);
+    actor->set_current_weapon(FAMILY_ARROW);
+    actor->set_default_weapon(FAMILY_KNIFE);
+    actor->set_attack_lunge(4.0f);
+    actor->set_attack_lunge_angle(0.75f);
+    actor->set_hit_recoil(2.0f);
+    actor->set_hit_recoil_angle(1.25f);
+    actor->set_last_hitpoints(17.0f);
+    actor->set_action(3);
+    actor->set_act_type_state(ACT_CONTROL);
+    actor->set_old_act_type(ACT_RANDOM);
+    actor->set_ani_type(ANI_WALK);
+    actor->set_cycle(2);
+    actor->set_drawcycle(3);
+    actor->set_current_special(1);
+    actor->set_ignore(0);
+    actor->set_in_act(true);
+    actor->set_shifter_down(1);
+    actor->set_yo_delay(4);
+    actor->set_skip_exit(5);
+    actor->set_outline(1);
+    actor->set_hurt_flash(true);
+    actor->set_lifetime(123);
+    actor->set_speed_bonus(1.5f);
+    actor->set_speed_bonus_left(22);
+    actor->set_charm_left(7);
+    actor->set_weapons_left(8);
+    actor->set_keys(0x1234);
+    actor->set_view_all(1);
+    actor->set_lineofsight(33);
+    actor->set_path_check_counter(44);
     static_cast<SnapshotWalker*>(actor)->set_regen_delay(73);
 
-    actor->stats()->hitpoints = 19.0f;
-    actor->stats()->max_hitpoints = 20.0f;
-    actor->stats()->magicpoints = 6.0f;
-    actor->stats()->max_magicpoints = 7.0f;
-    actor->stats()->max_heal_delay = 101;
-    actor->stats()->current_heal_delay = 51;
-    actor->stats()->max_magic_delay = 201;
-    actor->stats()->current_magic_delay = 91;
-    actor->stats()->magic_per_round = 0.5f;
-    actor->stats()->heal_per_round = 0.25f;
-    actor->stats()->armor = 4.0f;
-    actor->stats()->level = 9;
-    actor->stats()->bit_flags = BIT_FORESTWALK | BIT_MAGICAL;
-    actor->stats()->delete_me = 1;
-    actor->stats()->frozen_delay = 2;
-    actor->stats()->weapon_cost = 3;
-    actor->stats()->special_cost[0] = 11;
-    actor->stats()->special_cost[1] = 12;
-    actor->stats()->special_cost[2] = 13;
-    actor->stats()->special_cost[3] = 14;
-    actor->stats()->special_cost[4] = 15;
-    actor->stats()->special_cost[5] = 16;
-    actor->stats()->old_order = Order::Weapon;
-    actor->stats()->old_family = FAMILY_ARROW;
-    actor->stats()->last_distance = 99;
-    actor->stats()->current_distance = 88;
+    actor->stats()->set_hitpoints(19.0f);
+    actor->stats()->set_max_hitpoints(20.0f);
+    actor->stats()->set_magicpoints(6.0f);
+    actor->stats()->set_max_magicpoints(7.0f);
+    actor->stats()->set_max_heal_delay(101);
+    actor->stats()->set_current_heal_delay(51);
+    actor->stats()->set_max_magic_delay(201);
+    actor->stats()->set_current_magic_delay(91);
+    actor->stats()->set_magic_per_round(0.5f);
+    actor->stats()->set_heal_per_round(0.25f);
+    actor->stats()->set_armor(4.0f);
+    actor->stats()->set_level(9);
+    actor->stats()->set_bit_flags(BIT_FORESTWALK | BIT_MAGICAL);
+    actor->stats()->set_delete_me(1);
+    actor->stats()->set_frozen_delay(2);
+    actor->stats()->set_weapon_cost(3);
+    actor->stats()->set_special_cost(0, 11);
+    actor->stats()->set_special_cost(1, 12);
+    actor->stats()->set_special_cost(2, 13);
+    actor->stats()->set_special_cost(3, 14);
+    actor->stats()->set_special_cost(4, 15);
+    actor->stats()->set_special_cost(5, 16);
+    actor->stats()->set_old_order(Order::Weapon);
+    actor->stats()->set_old_family(FAMILY_ARROW);
+    actor->stats()->set_last_distance(99);
+    actor->stats()->set_current_distance(88);
 
     auto player_guy = std::make_unique<guy>(FAMILY_SOLDIER);
     player_guy->name = "Aldo";
@@ -640,7 +639,7 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
     const int guy_id = player_guy->id;
     actor->set_owned_myguy(std::move(player_guy));
 
-    static_cast<weap*>(weapon)->do_bounce = 7;
+    static_cast<weap*>(weapon)->set_do_bounce(7);
 
     actor->set_foe(foe);
     actor->set_leader(leader);
@@ -651,11 +650,11 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
     actor->clear_dirty();
     weapon->clear_dirty();
     fx_entity->clear_dirty();
-    actor->foe_id = 0;
-    actor->leader_id = 0;
-    actor->owner_id = 0;
-    actor->collide_ob_id = 0;
-    actor->stats()->controller_id = 0;
+    actor->set_foe_id(0);
+    actor->set_leader_id(0);
+    actor->set_owner_id(0);
+    actor->set_collide_ob_id(0);
+    actor->stats()->set_controller_id(0);
 
     std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>
         actor_expected_dirty = {};
@@ -772,18 +771,16 @@ TEST(WorldSnapshot, keyframe_capture_marks_all_fields_and_sends_full_grid)
         if (order == Order::Weapon)
         {
             auto entity = std::make_unique<SnapshotWeapon>();
-            entity->order = order;
-            entity->family = static_cast<char>(family);
-            entity->sizex = 16;
-            entity->sizey = 16;
+            entity->set_order_family(order, static_cast<char>(family));
+            entity->set_sizex(16);
+            entity->set_sizey(16);
             return entity;
         }
 
         auto entity = std::make_unique<SnapshotWalker>();
-        entity->order = order;
-        entity->family = static_cast<char>(family);
-        entity->sizex = 16;
-        entity->sizey = 16;
+        entity->set_order_family(order, static_cast<char>(family));
+        entity->set_sizex(16);
+        entity->set_sizey(16);
         return entity;
     };
 
@@ -809,10 +806,9 @@ TEST(WorldSnapshot, weapon_ordered_base_walker_captures_do_bounce_as_zero)
     GameWorld& world = fx.world();
     world.entity_factory = [](Order order, std::int32_t family) -> std::unique_ptr<walker> {
         auto entity = std::make_unique<SnapshotWalker>();
-        entity->order = order;
-        entity->family = static_cast<char>(family);
-        entity->sizex = 16;
-        entity->sizey = 16;
+        entity->set_order_family(order, static_cast<char>(family));
+        entity->set_sizex(16);
+        entity->set_sizey(16);
         return entity;
     };
 
@@ -852,12 +848,12 @@ TEST(WorldSnapshot, capture_snapshot_collects_grid_damage_from_explosion)
 
     explosion->set_owner(nullptr);
     explosion->setxy(4 * GRID_SIZE, 5 * GRID_SIZE);
-    explosion->dead = 1;
+    explosion->set_dead(1);
 
     const short damage_x =
-        static_cast<short>(explosion->xpos + (explosion->sizex / 2));
+        static_cast<short>(explosion->xpos() + (explosion->sizex() / 2));
     const short damage_y =
-        static_cast<short>(explosion->ypos + (explosion->sizey / 2));
+        static_cast<short>(explosion->ypos() + (explosion->sizey() / 2));
     const short tile_x = static_cast<short>(damage_x / GRID_SIZE);
     const short tile_y = static_cast<short>(damage_y / GRID_SIZE);
     const std::size_t tile_index =
@@ -933,11 +929,11 @@ TEST(WorldSnapshot, apply_snapshot_replaces_state_reorders_lists_and_skips_death
     fx_entity->setworldxy(72.0f, 44.0f);
     weapon->setworldxy(64.0f, 50.0f);
 
-    actor->team_num = 2;
-    actor->real_team_num = 3;
-    actor->user = 1;
-    actor->frame = 1;
-    actor->path_check_counter = 44;
+    actor->set_team_num(2);
+    actor->set_real_team_num(3);
+    actor->set_user(1);
+    actor->set_direct_frame(1);
+    actor->set_path_check_counter(44);
     actor->set_regen_delay(73);
     actor->set_foe(foe);
     actor->set_leader(slime);
@@ -947,7 +943,7 @@ TEST(WorldSnapshot, apply_snapshot_replaces_state_reorders_lists_and_skips_death
     actor->stats()->commands.emplace_back();
 
     weapon->set_owner(actor);
-    static_cast<SnapshotWeapon*>(weapon)->do_bounce = 7;
+    static_cast<SnapshotWeapon*>(weapon)->set_do_bounce(7);
 
     auto player_guy = std::make_unique<guy>(FAMILY_SOLDIER);
     player_guy->name = "Aldo";
@@ -1026,8 +1022,8 @@ TEST(WorldSnapshot, apply_snapshot_replaces_state_reorders_lists_and_skips_death
 
     mirror_slime->set_order_family(Order::Living, FAMILY_SLIME);
     mirror_slime->ani = animation_rows_for_family(FAMILY_SLIME);
-    mirror_slime->sizex = 16;
-    mirror_slime->sizey = 16;
+    mirror_slime->set_sizex(16);
+    mirror_slime->set_sizey(16);
 
     walker* doomed_generator = mirror.add_ob(Order::Generator, FAMILY_TENT);
     ASSERT_NE(nullptr, doomed_generator);
@@ -1052,13 +1048,13 @@ TEST(WorldSnapshot, apply_snapshot_replaces_state_reorders_lists_and_skips_death
     ASSERT_NE(nullptr, mirror_weapon);
 
     EXPECT_TRUE(mirror_actor->stats()->commands.empty());
-    EXPECT_EQ(FAMILY_SMALL_SLIME, mirror_slime->family);
+    EXPECT_EQ(FAMILY_SMALL_SLIME, mirror_slime->family());
     EXPECT_EQ(kSmallSlimeAnimRows, mirror_slime->ani);
-    EXPECT_EQ(pixie_for_family(FAMILY_SMALL_SLIME).w, mirror_slime->sizex);
-    EXPECT_EQ(pixie_for_family(FAMILY_SMALL_SLIME).h, mirror_slime->sizey);
+    EXPECT_EQ(pixie_for_family(FAMILY_SMALL_SLIME).w, mirror_slime->sizex());
+    EXPECT_EQ(pixie_for_family(FAMILY_SMALL_SLIME).h, mirror_slime->sizey());
     ASSERT_NE(nullptr, mirror.myobmap.get());
     EXPECT_TRUE(pile_contains(
-        mirror.myobmap->obmap_get_list(mirror_actor->xpos, mirror_actor->ypos),
+        mirror.myobmap->obmap_get_list(mirror_actor->xpos(), mirror_actor->ypos()),
         mirror_actor));
 
     const og::sim::WorldSnapshot actual = og::sim::capture_snapshot(mirror);
@@ -1165,13 +1161,13 @@ TEST(WorldSnapshot, apply_snapshot_keeps_dead_players_out_of_obmap)
     walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, actor);
     actor->setworldxy(80.0f, 112.0f);
-    actor->dead = 1;
+    actor->set_dead(1);
     actor->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
 
     ASSERT_NE(nullptr, source.myobmap.get());
     source.myobmap->remove(actor);
     EXPECT_FALSE(pile_contains(
-        source.myobmap->obmap_get_list(actor->xpos, actor->ypos), actor));
+        source.myobmap->obmap_get_list(actor->xpos(), actor->ypos()), actor));
 
     const og::sim::WorldSnapshot snapshot = og::sim::capture_snapshot(source);
     ASSERT_EQ(1u, snapshot.oblist.size());
@@ -1184,10 +1180,10 @@ TEST(WorldSnapshot, apply_snapshot_keeps_dead_players_out_of_obmap)
 
     walker* mirror_actor = mirror.find_by_id(actor->entity_id());
     ASSERT_NE(nullptr, mirror_actor);
-    EXPECT_TRUE(mirror_actor->dead);
+    EXPECT_TRUE(mirror_actor->dead());
     ASSERT_NE(nullptr, mirror.myobmap.get());
     EXPECT_FALSE(pile_contains(
-        mirror.myobmap->obmap_get_list(mirror_actor->xpos, mirror_actor->ypos),
+        mirror.myobmap->obmap_get_list(mirror_actor->xpos(), mirror_actor->ypos()),
         mirror_actor));
 }
 

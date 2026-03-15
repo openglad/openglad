@@ -63,17 +63,17 @@ TEST(Stats, statistics_clear_command_restores_weapon_and_team)
     ASSERT_TRUE(leader != nullptr) << "create_walker(orc) should succeed";
 
     // Simulate being charmed / weapon-swapped.
-    w->default_weapon = FAMILY_KNIFE;
-    w->current_weapon = FAMILY_ARROW;
-    w->team_num = 2;
-    w->real_team_num = 0;
+    w->set_default_weapon(FAMILY_KNIFE);
+    w->set_current_weapon(FAMILY_ARROW);
+    w->set_team_num(2);
+    w->set_real_team_num(0);
     w->set_leader(leader.get());
 
     w->stats()->clear_command();
 
-    ASSERT_EQ((int)w->default_weapon, (int)w->current_weapon) << "clear_command should restore current_weapon";
-    ASSERT_EQ(0, (int)w->team_num) << "clear_command should restore team_num from real_team_num";
-    ASSERT_EQ(255, (int)w->real_team_num) << "clear_command should reset real_team_num to 255";
+    ASSERT_EQ((int)w->default_weapon(), (int)w->current_weapon()) << "clear_command should restore current_weapon";
+    ASSERT_EQ(0, (int)w->team_num()) << "clear_command should restore team_num from real_team_num";
+    ASSERT_EQ(255, (int)w->real_team_num()) << "clear_command should reset real_team_num to 255";
     ASSERT_TRUE(w->leader() == nullptr) << "clear_command should clear leader";
 
 }

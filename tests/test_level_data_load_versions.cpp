@@ -774,10 +774,10 @@ TEST(LevelDataLoadVersions, level_data_load_version6plus_named_objects_treasure_
     for (auto& uptr : data.world().weaplist)
     {
         walker* w = uptr.get();
-        if (w && w->family == FAMILY_DOOR)
+        if (w && w->family() == FAMILY_DOOR)
         {
             saw_door = true;
-            ASSERT_EQ(1, (int)w->frame) << "door with wall above should be frame 1 after fixup";
+            ASSERT_EQ(1, (int)w->frame()) << "door with wall above should be frame 1 after fixup";
         }
     }
     ASSERT_TRUE(saw_door) << "door object should be present in loaded weapon list";
@@ -797,4 +797,3 @@ TEST(LevelDataLoadVersions, level_data_load_scenario_dispatch_case2_path)
     const short result = load_scenario_version(rw, &data, 2);
     ASSERT_TRUE(result == 0 || result == 1) << "dispatch case 2 should execute without crashing";
 }
-

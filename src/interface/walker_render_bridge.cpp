@@ -53,17 +53,17 @@ void walker::attach_render(const PixieData& data)
 {
 	render_ = std::make_unique<WalkerRender>(data);
 	// Sync size from PixieData into SimEntity fields
-	sizex = data.w;
-	sizey = data.h;
+	set_sizex(data.w);
+	set_sizey(data.h);
 	frames = data.frames;
-	frame = 0;
+	set_frame_state(0);
 }
 
 void walker::set_data(const PixieData& data)
 {
 	// Update render graphics and sync sim-level size/frame fields
-	sizex = data.w;
-	sizey = data.h;
+	set_sizex(data.w);
+	set_sizey(data.h);
 	frames = data.frames;
 	if (WalkerRender* render = as_walker_render(this))
 		render->set_data(data);
@@ -79,7 +79,7 @@ short walker::set_frame(short framenum)
 {
 	if (framenum < 0 || framenum >= frames)
 		return 0;
-	frame = framenum;
+	set_frame_state(framenum);
 	if (WalkerRender* render = as_walker_render(this))
 		render->set_frame(framenum);
 	return 1;
@@ -87,7 +87,7 @@ short walker::set_frame(short framenum)
 
 void walker::set_direct_frame(short whichframe)
 {
-	frame = whichframe;
+	set_frame_state(whichframe);
 
 	// Update render component's bmp pointer if available
 	if (WalkerRender* render = as_walker_render(this))
@@ -102,7 +102,7 @@ walker::~walker()
 	set_leader(nullptr);
 	set_owner(nullptr);
 	set_collide_ob(nullptr);
-	dead = 1;
+	set_dead(1);
 
 	// Walkers can outlive a particular GameWorld::myobmap instance in tests
 	// (screen cleanup replaces the obmap). Ensure we remove from the current

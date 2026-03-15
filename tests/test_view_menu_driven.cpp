@@ -22,7 +22,7 @@ static std::unique_ptr<walker> create_controlled_living(char family)
     auto w = l->create_walker_owned(Order::Living, family);
     if (!w)
         return nullptr;
-    w->team_num = 0;
+    w->set_team_num(0);
     w->setxy(50, 50);
     return w;
 }

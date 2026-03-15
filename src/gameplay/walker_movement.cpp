@@ -27,53 +27,53 @@
 
 short walker::move(short x, short y)
 {
-    return setxy(static_cast<short>(xpos+x), static_cast<short>(ypos+y));
+    return setxy(static_cast<short>(xpos() + x), static_cast<short>(ypos() + y));
 }
 
 void walker::worldmove(float x, float y)
 {
-    return setworldxy(worldx_+x, worldy_+y);
+    return setworldxy(worldx() + x, worldy() + y);
 }
 
 bool walker::setxy(short x, short y)
 {
-    worldx_ = x;
-    worldy_ = y;
+    set_worldx(static_cast<float>(x));
+    set_worldy(static_cast<float>(y));
 
     obmap* map = (current_game && current_game->world)
         ? current_game->world->myobmap.get()
         : nullptr;
     if (map != nullptr)
     {
-        if (!ignore)
+        if (!ignore())
             map->move(this, x, y);
         else // just remove us, in case :)
             map->remove(this);
     }
 
-    xpos = x;
-    ypos = y;
+    set_xpos(x);
+    set_ypos(y);
     return true;
 }
 
 void walker::setworldxy(float x, float y)
 {
-    worldx_ = x;
-    worldy_ = y;
+    set_worldx(x);
+    set_worldy(y);
 
     obmap* map = (current_game && current_game->world)
         ? current_game->world->myobmap.get()
         : nullptr;
     if (map != nullptr)
     {
-        if (!ignore)
+        if (!ignore())
             map->move(this, static_cast<short>(x), static_cast<short>(y));
         else // just remove us, in case :)
             map->remove(this);
     }
 
-    xpos = static_cast<short>(x);
-    ypos = static_cast<short>(y);
+    set_xpos(static_cast<short>(x));
+    set_ypos(static_cast<short>(y));
 }
 
 // WALK -- This function allows us to change facing when we walk.
@@ -83,7 +83,7 @@ void walker::setworldxy(float x, float y)
 // It calls the lower level function MOVE.
 bool walker::walk()
 {
-    return walker::walk(lastx, lasty);
+    return walker::walk(lastx(), lasty());
 }
 
 short walker::facing(short x, short y)
@@ -133,7 +133,8 @@ short walker::shove(walker  *target, short x, short y)
     // this code has been moved to living, we should only shove livings
 
     if (x || y || target)
-        Log("Shoving a non-living. ORDER: {} FAMILY: {}\n", static_cast<int>(order), static_cast<int>(family));
+        Log("Shoving a non-living. ORDER: {} FAMILY: {}\n",
+            static_cast<int>(order()), static_cast<int>(family()));
     return -1;
 
 }
@@ -142,8 +143,8 @@ bool walker::walkstep(float x, float y)
 {
     short returnvalue;
     short ret1 = 0, ret2 = 0;
-    short oldcurdir = curdir;
-    float step = stepsize;
+    short oldcurdir = curdir();
+    float step = stepsize();
     float halfstep;
     std::int32_t i;
     //walker *control1 = myscreen->viewob[0]->control;
@@ -151,22 +152,22 @@ bool walker::walkstep(float x, float y)
     short mycycle;
 
     // Repeat last walk.
-    lastx = x*stepsize;
-    lasty = y*stepsize;
+    set_lastx(x * stepsize());
+    set_lasty(y * stepsize());
 
-    if (order == Order::Living)
+    if (order() == Order::Living)
     {
-        const auto* fd = get_family_descriptor(family);
+        const auto* fd = get_family_descriptor(family());
         if (fd && fd->is_stationary)
         {
-            curdir = static_cast<signed char>(facing(x, y));
-            enddir = curdir;
-            lastx = x;
-            lasty = y;
+            set_curdir(static_cast<signed char>(facing(x, y)));
+            set_enddir(static_cast<char>(curdir()));
+            set_lastx(x);
+            set_lasty(y);
             return 1;
         }
     }
-    returnvalue = walk(x*stepsize, y*stepsize);
+    returnvalue = walk(x * stepsize(), y * stepsize());
     halfstep = 1;
 
     if (!returnvalue) // couldn't walk this direction ..
@@ -174,49 +175,49 @@ bool walker::walkstep(float x, float y)
         returnvalue = walk(x*halfstep, y*halfstep); // Now try a baby step
         if (!returnvalue) // if we still fail
         {
-            if (user == -1) // means we are an npc
+            if (user() == -1) // means we are an npc
             {
                 switch (facing(x, y))
                 {
                     case FACE_UP:    // For cardinal directions, fail if
-                        curdir = FACE_LEFT;
+                        set_curdir(static_cast<signed char>(FACE_LEFT));
                         ret1 = walk(-step, 0);
                         break;
                     case FACE_RIGHT: // we can't walk this direction
-                        curdir = FACE_UP;
+                        set_curdir(static_cast<signed char>(FACE_UP));
                         ret1 = walk(0, -step);
                         break;
                     case FACE_DOWN:
-                        curdir = FACE_RIGHT;
+                        set_curdir(static_cast<signed char>(FACE_RIGHT));
                         ret1 = walk(step, 0);
                         break;
                     case FACE_LEFT:
-                        curdir = FACE_DOWN;
+                        set_curdir(static_cast<signed char>(FACE_DOWN));
                         ret1 = walk(0, step);
                         break;
                         //return returnvalue;
                     case FACE_UP_RIGHT:
-                        curdir = FACE_UP;
+                        set_curdir(static_cast<signed char>(FACE_UP));
                         ret1 = walk(0, y*step);
-                        curdir = FACE_RIGHT;
+                        set_curdir(static_cast<signed char>(FACE_RIGHT));
                         ret2 = walk(x*step, 0);
                         break;
                     case FACE_DOWN_RIGHT:
-                        curdir = FACE_DOWN;
+                        set_curdir(static_cast<signed char>(FACE_DOWN));
                         ret1 = walk(0, y*step);
-                        curdir = FACE_RIGHT;
+                        set_curdir(static_cast<signed char>(FACE_RIGHT));
                         ret2 = walk(x*step, 0);
                         break;
                     case FACE_DOWN_LEFT:
-                        curdir = FACE_DOWN;
+                        set_curdir(static_cast<signed char>(FACE_DOWN));
                         ret1 = walk(0, y*step);
-                        curdir = FACE_LEFT;
+                        set_curdir(static_cast<signed char>(FACE_LEFT));
                         ret2 = walk(x*step, 0);
                         break;
                     case FACE_UP_LEFT:
-                        curdir = FACE_UP;
+                        set_curdir(static_cast<signed char>(FACE_UP));
                         ret1 = walk(0, y*step);
-                        curdir = FACE_LEFT;
+                        set_curdir(static_cast<signed char>(FACE_LEFT));
                         ret2 = walk(x*step, 0);
                         break;
                     default:
@@ -230,7 +231,7 @@ bool walker::walkstep(float x, float y)
                 // We can't move where we want to.  Can we slide against the wall?
                 
                 // Store our cycle
-                mycycle = cycle;
+                mycycle = cycle();
                 short myfacing = facing(x, y);
                 bool gotup = false, gotover = false;
                 short dx = 0, dy = 0;
@@ -269,12 +270,12 @@ bool walker::walkstep(float x, float y)
                     const std::int32_t step_i = static_cast<std::int32_t>(step);
                     for (i = 0; i < step_i; i++)
                     {
-                        if (current_game->world->query_passable(xpos, ypos + dy, this))
+                        if (current_game->world->query_passable(xpos(), ypos() + dy, this))
                         {
                             worldmove(0, dy);  // walk without turning ..
                             gotup = true;
                         }
-                        if (current_game->world->query_passable(xpos + dx, ypos, this))
+                        if (current_game->world->query_passable(xpos() + dx, ypos(), this))
                         {
                             worldmove(dx, 0);
                             gotover = true;
@@ -282,32 +283,32 @@ bool walker::walkstep(float x, float y)
                         if (!gotup && gotover)  // moved horizontally
                         {
                             if(dx > 0)
-                                curdir = FACE_RIGHT;
+                                set_curdir(static_cast<signed char>(FACE_RIGHT));
                             else
-                                curdir = FACE_LEFT;
+                                set_curdir(static_cast<signed char>(FACE_LEFT));
                         }
                         else if (gotup && !gotover) // moved vertically
                         {
                             if(dy < 0)
-                                curdir = FACE_UP;
+                                set_curdir(static_cast<signed char>(FACE_UP));
                             else
-                                curdir = FACE_DOWN;
+                                set_curdir(static_cast<signed char>(FACE_DOWN));
                         }
                         if (gotup || gotover) // we moved somewhere?
                         {
-                            cycle = static_cast<signed char>(mycycle);
-                            cycle++;
+                            set_cycle(static_cast<signed char>(mycycle));
+                            set_cycle(static_cast<signed char>(cycle() + 1));
                             if (ani) {
-                                if (ani[curdir][cycle] == -1)
-                                    cycle = 0;
-                                set_frame(ani[curdir][cycle]);
+                                if (ani[curdir()][cycle()] == -1)
+                                    set_cycle(0);
+                                set_frame(ani[curdir()][cycle()]);
                             }
                         }  // end of cycled us a frame
                     }
                 }
             }
 
-            curdir = static_cast<char>(oldcurdir);
+            set_curdir(static_cast<signed char>(oldcurdir));
             return ( ret1 || ret2 );
         }
     }
@@ -320,12 +321,12 @@ bool walker::walk(float x, float y)
 
     dir = facing(x, y);
 
-    if (order == Order::Living)
+    if (order() == Order::Living)
     {
-        const auto* fd = get_family_descriptor(family);
+        const auto* fd = get_family_descriptor(family());
         if (fd && fd->is_stationary)
         {
-            curdir = static_cast<signed char>(dir);
+            set_curdir(static_cast<signed char>(dir));
             return 1;
         }
     }
@@ -336,29 +337,29 @@ bool walker::walk(float x, float y)
         //this happens sometimes, and shouldn't, but it is non-fatal
         return 1;
     }
-    if (curdir == dir)  // if continue direction
+    if (curdir() == dir)  // if continue direction
     {
         // check if off map
-        if (x+xpos < 0 ||
-                x+xpos >= current_game->world->grid.w*GRID_SIZE ||
-                y+ypos < 0 ||
-                y+ypos >= current_game->world->grid.h*GRID_SIZE)
+        if (x + xpos() < 0 ||
+                x + xpos() >= current_game->world->grid.w * GRID_SIZE ||
+                y + ypos() < 0 ||
+                y + ypos() >= current_game->world->grid.h * GRID_SIZE)
         {
             return 0;
         }
 
         // Here we check if the move is valid
-        if (current_game->world->query_passable(xpos+x, ypos+y, this))
+        if (current_game->world->query_passable(xpos() + x, ypos() + y, this))
         {
             // Control object does complete redraw anyway
             worldmove(x,y);
-            cycle++;
+            set_cycle(static_cast<signed char>(cycle() + 1));
             //if (!ani || (curdir*cycle > sizeof(ani)) )
             //  Log("WALKER::WALK: Bad ani!\n");
             if (ani) {
-                if (ani[curdir][cycle] == -1)
-                    cycle = 0;
-                set_frame(ani[curdir][cycle]);
+                if (ani[curdir()][cycle()] == -1)
+                    set_cycle(0);
+                set_frame(ani[curdir()][cycle()]);
             }
             return 1;
         }
@@ -368,11 +369,11 @@ bool walker::walk(float x, float y)
 
             if (stats_->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
             {
-                cycle++;
+                set_cycle(static_cast<signed char>(cycle() + 1));
                 if (ani) {
-                    if (ani[curdir][cycle] == -1)
-                        cycle = 0;
-                    set_frame(ani[curdir][cycle]);
+                    if (ani[curdir()][cycle()] == -1)
+                        set_cycle(0);
+                    set_frame(ani[curdir()][cycle()]);
                 }
             }
             return 0;
@@ -380,10 +381,10 @@ bool walker::walk(float x, float y)
     }
     else  // changed direction
     {
-        curdir = static_cast<char>(dir);
-        cycle = 0;
+        set_curdir(static_cast<signed char>(dir));
+        set_cycle(0);
         if (ani)
-            set_frame(ani[curdir][cycle]);
+            set_frame(ani[curdir()][cycle()]);
         worldmove(0,0);
     }
     return 1;
@@ -391,7 +392,7 @@ bool walker::walk(float x, float y)
 
 float walker::get_current_angle()
 {
-    switch (curdir)
+    switch (curdir())
     {
         case FACE_UP:
             return -static_cast<float>(M_PI_2);
@@ -421,7 +422,7 @@ bool walker::turn(short targetdir)
     };
 
     short distance;
-    short currentdir = clamp_dir(static_cast<short>(curdir));
+    short currentdir = clamp_dir(static_cast<short>(curdir()));
     short target = clamp_dir(targetdir);
 
     //   We use a clock-ordered
@@ -438,57 +439,57 @@ bool walker::turn(short targetdir)
     else
         currentdir = static_cast<short>((currentdir + 7) % 8);
 
-    curdir = static_cast<char>(currentdir);
+    set_curdir(static_cast<signed char>(currentdir));
 
     // Now set our lastx and lasty (facing) variables correctly
-    const bool stationary = (order == Order::Living) && [&]{
-        const auto* fd = get_family_descriptor(family);
+    const bool stationary = (order() == Order::Living) && [&]{
+        const auto* fd = get_family_descriptor(family());
         return fd && fd->is_stationary;
     }();
     if (!stationary)
     {
-        switch (curdir)
+        switch (curdir())
         {
             case FACE_UP:
-                lastx = 0;
-                lasty = -stepsize;
+                set_lastx(0.0f);
+                set_lasty(-stepsize());
                 break;
             case FACE_UP_RIGHT:
-                lastx = stepsize;
-                lasty = -stepsize;
+                set_lastx(stepsize());
+                set_lasty(-stepsize());
                 break;
             case FACE_RIGHT:
-                lastx = stepsize;
-                lasty = 0;
+                set_lastx(stepsize());
+                set_lasty(0.0f);
                 break;
             case FACE_DOWN_RIGHT:
-                lastx = stepsize;
-                lasty = stepsize;
+                set_lastx(stepsize());
+                set_lasty(stepsize());
                 break;
             case FACE_DOWN:
-                lastx = 0;
-                lasty = stepsize;
+                set_lastx(0.0f);
+                set_lasty(stepsize());
                 break;
             case FACE_DOWN_LEFT:
-                lastx = -stepsize;
-                lasty = stepsize;
+                set_lastx(-stepsize());
+                set_lasty(stepsize());
                 break;
             case FACE_LEFT:
-                lastx = -stepsize;
-                lasty = 0;
+                set_lastx(-stepsize());
+                set_lasty(0.0f);
                 break;
             case FACE_UP_LEFT:
-                lastx = -stepsize;
-                lasty = -stepsize;
+                set_lastx(-stepsize());
+                set_lasty(-stepsize());
                 break;
             default :
-                lastx = 0;
-                lasty = -stepsize;
+                set_lastx(0.0f);
+                set_lasty(-stepsize());
         }
     }
-    cycle = 0;
+    set_cycle(0);
     if (ani)
-        set_frame(ani[curdir][cycle]);
+        set_frame(ani[curdir()][cycle()]);
     worldmove(0,0);
     return true;
 }

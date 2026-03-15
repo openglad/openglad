@@ -131,8 +131,8 @@ static std::unique_ptr<walker> make_living(unsigned char family)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
     if (w) {
-        w->dead = 0;
-        w->user = -1;
+        w->set_dead(0);
+        w->set_user(-1);
     }
     return w;
 }

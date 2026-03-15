@@ -16,64 +16,66 @@ std::int32_t compute_explosion_range(std::int32_t level, short skip_exit);
 
 static bool bomb_on_death(effect* self)
 {
-    if (!self->owner() || self->owner()->dead)
+    if (!self->owner() || self->owner()->dead())
         self->set_owner(self);
     og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
     walker* newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
     newob->set_owner(self->owner());
-    newob->stats()->hitpoints = 0;
-    newob->stats()->level = self->owner()->stats()->level;
-    newob->ani_type = ANI_EXPLODE;
+    newob->stats()->set_hitpoints(0);
+    newob->stats()->set_level(self->owner()->stats()->level());
+    newob->set_ani_type(ANI_EXPLODE);
     newob->center_on(self);
-    newob->damage = self->damage;
+    newob->set_damage(self->damage());
     return true;
 }
 
 static bool explosion_on_death(effect* self)
 {
-    if (!self->owner() || self->owner()->dead)
+    if (!self->owner() || self->owner()->dead())
         self->set_owner(self);
-    std::int32_t generic = compute_explosion_range(self->owner()->stats()->level, self->skip_exit);
+    std::int32_t generic = compute_explosion_range(self->owner()->stats()->level(), self->skip_exit());
     std::int32_t howmany = 0;
     auto foelist = current_game->world->find_in_range(current_game->world->oblist, 15+generic,
         &howmany, self);
 
     current_game->world->damage_tile(
-        static_cast<short>(self->xpos + (self->sizex / 2)),
-        static_cast<short>(self->ypos + (self->sizey / 2)));
+        static_cast<short>(self->xpos() + (self->sizex() / 2)),
+        static_cast<short>(self->ypos() + (self->sizey() / 2)));
     if (howmany < 1)
         return false;
 
     for(auto* w : foelist)
     {
-        if (w && !w->dead &&
+        if (w && !w->dead() &&
                 (w->query_order() != Order::Treasure) &&
                 (w->query_order() != Order::FX) &&
-                (!self->skip_exit || w != self->owner())
+                (!self->skip_exit() || w != self->owner())
            )
         {
-            std::int32_t xdelta = w->xpos - self->xpos;
+            std::int32_t xdelta = w->xpos() - self->xpos();
             if (xdelta)
                 xdelta = xdelta/abs(xdelta);
-            std::int32_t ydelta = w->ypos - self->ypos;
+            std::int32_t ydelta = w->ypos() - self->ypos();
             if (ydelta)
                 ydelta = ydelta/abs(ydelta);
-            generic = 2+self->owner()->stats()->level/15;
+            generic = 2+self->owner()->stats()->level()/15;
             if (generic > 8)
                 generic = 8;
             w->stats()->force_command(COMMAND_WALK,generic,
                 static_cast<short>(xdelta),static_cast<short>(ydelta));
             if (w == self->owner())
             {
-                self->damage /= 4.0f;
+                const float damage = self->damage();
+                self->set_damage(damage / 4.0f);
                 self->attack(w);
-                self->damage *= 4.0f;
+                self->set_damage(damage);
             }
-            else if (!self->owner()->dead && self->owner()->is_friendly(w))
+            else if (!self->owner()->dead() && self->owner()->is_friendly(w))
             {
-                self->damage /= 2.0f;
+                const float damage = self->damage();
+                self->set_damage(damage / 2.0f);
                 self->attack(w);
-                self->damage *= 2.0f;
+                self->set_damage(damage);
             }
             else
                 self->attack(w);

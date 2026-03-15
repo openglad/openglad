@@ -23,10 +23,10 @@ static bool fire_elemental_check_special_ai(living* self)
 
 static bool fire_elemental_on_death(walker* self)
 {
-    self->dead = 0;
-    self->stats()->magicpoints += self->stats()->special_cost[1];
+    self->set_dead(0);
+    self->stats()->set_magicpoints(self->stats()->magicpoints() + self->stats()->special_cost(1));
     self->special();
-    self->dead = 1;
+    self->set_dead(1);
     return true;
 }
 
@@ -38,46 +38,46 @@ static void fire_elemental_level_up(guy* self, std::int32_t level_diff)
 static void fire_elemental_on_act_living(living* self)
 {
     // Summoned fire elemental drains owner HP/MP to heal itself
-    if (self->lifetime && self->owner() && !self->owner()->dead)
+    if (self->lifetime() && self->owner() && !self->owner()->dead())
     {
-        if (self->stats()->hitpoints < self->stats()->max_hitpoints)
+        if (self->stats()->hitpoints() < self->stats()->max_hitpoints())
         {
             std::int32_t temp = 0;
-            if (self->owner()->stats()->hitpoints >= (self->owner()->stats()->max_hitpoints / 3))
+            if (self->owner()->stats()->hitpoints() >= (self->owner()->stats()->max_hitpoints() / 3))
             {
                 temp = 1;
-                self->owner()->stats()->hitpoints--;
+                self->owner()->stats()->set_hitpoints(self->owner()->stats()->hitpoints() - 1);
             }
-            if (temp && (self->owner()->stats()->magicpoints >= 3))
+            if (temp && (self->owner()->stats()->magicpoints() >= 3))
             {
                 temp += 1;
-                self->owner()->stats()->magicpoints -= 3;
+                self->owner()->stats()->set_magicpoints(self->owner()->stats()->magicpoints() - 3);
             }
             if (temp == 2)
-                self->stats()->hitpoints++;
+                self->stats()->set_hitpoints(self->stats()->hitpoints() + 1);
             else
-                self->lifetime--;
+                self->set_lifetime(self->lifetime() - 1);
         }
     }
 }
 
 static bool fire_elemental_do_special(walker* self)
 {
-    std::int32_t tempx = static_cast<std::int32_t>(self->lastx);
-    std::int32_t tempy = static_cast<std::int32_t>(self->lasty);
-    self->stats()->magicpoints += 8.0f * static_cast<float>(self->stats()->weapon_cost);
+    std::int32_t tempx = static_cast<std::int32_t>(self->lastx());
+    std::int32_t tempy = static_cast<std::int32_t>(self->lasty());
+    self->stats()->set_magicpoints(self->stats()->magicpoints() + 8.0f * static_cast<float>(self->stats()->weapon_cost()));
     for (std::int32_t i = -1; i < 2; i++)
         for (std::int32_t j = -1; j < 2; j++)
         {
             if (i || j)
             {
-                self->lastx = static_cast<float>(i);
-                self->lasty = static_cast<float>(j);
+                self->set_lastx(static_cast<float>(i));
+                self->set_lasty(static_cast<float>(j));
                 self->fire();
             }
         }
-    self->lastx = static_cast<float>(tempx);
-    self->lasty = static_cast<float>(tempy);
+    self->set_lastx(static_cast<float>(tempx));
+    self->set_lasty(static_cast<float>(tempy));
     return true;
 }
 

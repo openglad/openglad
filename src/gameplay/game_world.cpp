@@ -401,35 +401,35 @@ void GameWorld::attach_entity_to_world(walker& entity)
 
 std::uint32_t GameWorld::assign_entity_id(walker& entity)
 {
-    if (entity.entity_id_ == 0)
-        entity.entity_id_ = next_entity_id_++;
-    else if (entity.entity_id_ >= next_entity_id_)
-        next_entity_id_ = entity.entity_id_ + 1;
+    if (entity.entity_id() == 0)
+        entity.set_entity_id(next_entity_id_++);
+    else if (entity.entity_id() >= next_entity_id_)
+        next_entity_id_ = entity.entity_id() + 1;
 
-    return entity.entity_id_;
+    return entity.entity_id();
 }
 
 void GameWorld::index_entity(walker& entity)
 {
     attach_entity_to_world(entity);
-    if (entity.entity_id_ == 0)
+    if (entity.entity_id() == 0)
         return;
 
-    id_index_[entity.entity_id_] = &entity;
+    id_index_[entity.entity_id()] = &entity;
 }
 
 void GameWorld::remove_from_id_index(const walker* entity)
 {
-    if (entity == nullptr || entity->entity_id_ == 0)
+    if (entity == nullptr || entity->entity_id() == 0)
         return;
 
     if (entity_tracking_dirty_)
         rebuild_id_index();
 
-    const auto it = id_index_.find(entity->entity_id_);
+    const auto it = id_index_.find(entity->entity_id());
     if (it != id_index_.end() && it->second == entity)
     {
-        removed_entity_ids_.push_back(entity->entity_id_);
+        removed_entity_ids_.push_back(entity->entity_id());
         id_index_.erase(it);
     }
 }
@@ -454,10 +454,10 @@ void GameWorld::rebuild_id_index()
                 continue;
 
             attach_entity_to_world(*entity);
-            if (entity->entity_id_ >= next_entity_id_)
-                next_entity_id_ = entity->entity_id_ + 1;
-            if (include_in_index && entity->entity_id_ != 0)
-                id_index_[entity->entity_id_] = entity;
+            if (entity->entity_id() >= next_entity_id_)
+                next_entity_id_ = entity->entity_id() + 1;
+            if (include_in_index && entity->entity_id() != 0)
+                id_index_[entity->entity_id()] = entity;
         }
     };
 
@@ -502,7 +502,7 @@ const walker* GameWorld::find_by_id(std::uint32_t entity_id) const
     auto it = id_index_.find(entity_id);
     if (it == id_index_.end() ||
         it->second == nullptr ||
-        it->second->entity_id_ != entity_id ||
+        it->second->entity_id() != entity_id ||
         it->second->owning_world_ != this)
     {
         mutable_world->rebuild_id_index();
@@ -620,8 +620,8 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
     std::int32_t xtray = 1;
     const std::int32_t x_i = static_cast<std::int32_t>(x);
     const std::int32_t y_i = static_cast<std::int32_t>(y);
-    const std::int32_t xover = x_i + ob->sizex;
-    const std::int32_t yover = y_i + ob->sizey;
+    const std::int32_t xover = x_i + ob->sizex();
+    const std::int32_t yover = y_i + ob->sizey();
 
     if (x_i < 0 || y_i < 0 || xover >= pixmaxx || yover >= pixmaxy)
         return false;
@@ -731,7 +731,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                 case PIX_TREE_T1:
                     if (ob->stats()->query_bit_flags(BIT_FORESTWALK))
                         break;
-                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
+                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
                         break;
                     return false;
                 case PIX_TREE_B1:
@@ -740,7 +740,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                     {
                         break;
                     }
-                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
+                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
                         break;
                     return false;
 
@@ -759,10 +759,10 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                     if (ob->query_order() == Order::Living)
                         return false;
 
-                    if (std::abs(ob->xpos - ob->owner()->xpos) >
-                        std::abs(ob->ypos - ob->owner()->ypos))
+                    if (std::abs(ob->xpos() - ob->owner()->xpos()) >
+                        std::abs(ob->ypos() - ob->owner()->ypos()))
                     {
-                        std::int32_t dist = std::abs(ob->xpos - ob->owner()->xpos);
+                        std::int32_t dist = std::abs(ob->xpos() - ob->owner()->xpos());
                         dist -= (GRID_SIZE / 2);
                         if (dist < GRID_SIZE)
                             dist += GRID_SIZE;
@@ -771,7 +771,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                     }
                     else
                     {
-                        std::int32_t dist = std::abs(ob->ypos - ob->owner()->ypos);
+                        std::int32_t dist = std::abs(ob->ypos() - ob->owner()->ypos());
                         dist -= (GRID_SIZE / 2);
                         if (dist < GRID_SIZE)
                             dist += GRID_SIZE;
@@ -807,7 +807,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                 case PIX_BOULDER_4:
                     if (ob->query_order() == Order::Weapon)
                         break;
-                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
+                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
                         break;
                     return false;
                 default:
@@ -824,7 +824,7 @@ bool GameWorld::query_object_passable(float x, float y, walker* ob)
     if (ob == nullptr)
         return false;
 
-    if (ob->dead)
+    if (ob->dead())
         return true;
 
     if (!myobmap)
@@ -849,8 +849,8 @@ walker* GameWorld::find_near_foe(walker* ob)
     if (!myobmap)
         return find_far_foe(ob);
 
-    short targx = ob->xpos;
-    short targy = ob->ypos;
+    short targx = ob->xpos();
+    short targy = ob->ypos();
     short spread = 1;
     short xchange = 0;
     short resolution = myobmap->obmapres;
@@ -883,8 +883,8 @@ walker* GameWorld::find_near_foe(walker* ob)
                 }
                 sanitize_owner_chain_link(*this, ob);
                 sanitize_owner_chain_link(*this, w);
-                if (!w->dead && ob->is_friendly(w) == 0 &&
-                    rng_.next(w->invisibility_left / 20) == 0)
+                if (!w->dead() && ob->is_friendly(w) == 0 &&
+                    rng_.next(w->invisibility_left() / 20) == 0)
                 {
                     if (w->query_order() == Order::Living ||
                         w->query_order() == Order::Generator)
@@ -917,13 +917,13 @@ walker* GameWorld::find_far_foe(walker* ob)
 
     walker* endfoe = nullptr;
     std::int32_t distance = 10000;
-    ob->stats()->last_distance = 10000;
+    ob->stats()->set_last_distance(10000);
     sanitize_owner_chain_link(*this, ob);
 
     for (auto& uptr : oblist)
     {
         walker* foe = uptr.get();
-        if (foe == nullptr || foe->dead)
+        if (foe == nullptr || foe->dead())
             continue;
 
         sanitize_owner_chain_link(*this, foe);
@@ -931,7 +931,7 @@ walker* GameWorld::find_far_foe(walker* ob)
         if (ob->is_friendly(foe) == 0 &&
             (foe->query_order() == Order::Living ||
              foe->query_order() == Order::Generator) &&
-            (rng_.next(foe->invisibility_left / 20) == 0))
+            (rng_.next(foe->invisibility_left() / 20) == 0))
         {
             const std::int32_t tempdistance = ob->distance_to_ob(foe);
             if (tempdistance < distance)
@@ -957,7 +957,7 @@ walker* GameWorld::find_nearest_blood(walker* who)
     {
         walker* w = uptr.get();
         if (w && w->query_order() == Order::Treasure &&
-            w->family == FAMILY_STAIN && !w->dead)
+            w->family() == FAMILY_STAIN && !w->dead())
         {
             const std::int32_t newdistance =
                 static_cast<std::int32_t>(who->distance_to_ob_center(w));
@@ -983,7 +983,7 @@ walker* GameWorld::find_nearest_player(walker* ob)
     for (auto& uptr : oblist)
     {
         walker* w = uptr.get();
-        if (w && w->user != -1)
+        if (w && w->user() != -1)
         {
             const std::uint32_t tempdistance = ob->distance_to_ob(w);
             if (tempdistance < distance)
@@ -1011,7 +1011,7 @@ std::list<walker*> GameWorld::find_in_range(const std::list<std::unique_ptr<walk
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead && ob->distance_to_ob(w) <= range)
+        if (w && !w->dead() && ob->distance_to_ob(w) <= range)
         {
             result.push_back(w);
             (*howmany)++;
@@ -1035,7 +1035,7 @@ std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead &&
+        if (w && !w->dead() &&
             (w->query_order() == Order::Living ||
              w->query_order() == Order::Generator) &&
             (ob->is_friendly(w) == 0) &&
@@ -1063,7 +1063,7 @@ std::list<walker*> GameWorld::find_foe_weapons_in_range(const std::list<std::uni
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead &&
+        if (w && !w->dead() &&
             w->query_order() == Order::Weapon &&
             ob->is_friendly(w) &&
             ob->distance_to_ob(w) <= range)
@@ -1090,7 +1090,7 @@ std::list<walker*> GameWorld::find_friends_in_range(const std::list<std::unique_
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead &&
+        if (w && !w->dead() &&
             w->query_order() == Order::Living &&
             ob->is_friendly(w) &&
             ob->distance_to_ob(w) <= range)
@@ -1190,8 +1190,8 @@ void GameWorld::resize_grid(int width, int height)
     const int h = grid.h * GRID_SIZE;
     auto off_map = [x, y, w, h](const std::unique_ptr<walker>& uptr) {
         walker* ob = uptr.get();
-        return ob == nullptr || (x > ob->xpos || ob->xpos >= x + w ||
-                                 y > ob->ypos || ob->ypos >= y + h);
+        return ob == nullptr || (x > ob->xpos() || ob->xpos() >= x + w ||
+                                 y > ob->ypos() || ob->ypos() >= y + h);
     };
 
     std::erase_if(oblist.raw_mutable(), [this, &off_map](const auto& uptr) {
@@ -1327,7 +1327,7 @@ short GameWorld::remaining_foes(walker* myguy) const
     for (auto& uptr : oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead &&
+        if (w && !w->dead() &&
             (w->query_order() == Order::Living) &&
             !myguy->is_friendly(w))
         {
@@ -1395,12 +1395,12 @@ void GameWorld::tick()
         walker* ob = uptr.get();
         if (!enemy_freeze) // normal functionality
         {
-            if (ob && !ob->dead)
+            if (ob && !ob->dead())
             {
-                ob->in_act = true;
+                ob->set_in_act(true);
                 ob->act();
-                ob->in_act = false;
-                if (ob && !ob->dead)
+                ob->set_in_act(false);
+                if (ob && !ob->dead())
                 {
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                         ob->query_order() == Order::Living)
@@ -1418,13 +1418,13 @@ void GameWorld::tick()
                 events.push_notification(obmessage, 10);
                 printed_time = true;
             }
-            if (ob && !ob->dead &&
+            if (ob && !ob->dead() &&
                 (((ob->query_order() != Order::Living) &&
                   (ob->query_order() != Order::Generator)) ||
                  ob->is_friendly_to_team(static_cast<unsigned char>(my_team))))
             {
                 ob->act();
-                if (ob && !ob->dead)
+                if (ob && !ob->dead())
                 {
                     if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                         ob->query_order() == Order::Living)
@@ -1444,10 +1444,10 @@ void GameWorld::tick()
             break;
 
         walker* ob = uptr.get();
-        if (ob && !ob->dead)
+        if (ob && !ob->dead())
         {
             ob->act();
-            if (ob && !ob->dead)
+            if (ob && !ob->dead())
             {
                 if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
                     ob->query_order() == Order::Living)
@@ -1466,10 +1466,10 @@ void GameWorld::tick()
             break;
 
         walker* ob = uptr.get();
-        if (ob && !ob->dead)
+        if (ob && !ob->dead())
         {
             if (ob->query_order() == Order::Treasure &&
-                ob->family == FAMILY_EXIT && level_done != 0)
+                ob->family() == FAMILY_EXIT && level_done != 0)
             {
                 level_done = 1;
             }
@@ -1499,16 +1499,16 @@ void GameWorld::tick()
         if (ob == nullptr)
             return;
 
-        if (ob->foe() && ob->foe()->dead)
+        if (ob->foe() && ob->foe()->dead())
             ob->set_foe(nullptr);
-        if (ob->leader() && ob->leader()->dead)
+        if (ob->leader() && ob->leader()->dead())
             ob->set_leader(nullptr);
-        if (ob->owner() && ob->owner()->dead)
+        if (ob->owner() && ob->owner()->dead())
             ob->set_owner(nullptr);
-        if (ob->collide_ob() && ob->collide_ob()->dead)
+        if (ob->collide_ob() && ob->collide_ob()->dead())
             ob->set_collide_ob(nullptr);
         if (statistics* stats = ob->stats();
-            stats != nullptr && stats->controller() && stats->controller()->dead)
+            stats != nullptr && stats->controller() && stats->controller()->dead())
             stats->set_controller(nullptr);
     };
 
@@ -1529,7 +1529,7 @@ void GameWorld::tick()
     for (auto e = objects.begin(); e != objects.end();)
     {
         walker* ob = e->get();
-        if (ob && ob->dead && ob->myguy == nullptr)
+        if (ob && ob->dead() && ob->myguy == nullptr)
         {
             remove_from_id_index(ob);
             dead.push_back(std::move(*e));
@@ -1545,7 +1545,7 @@ void GameWorld::tick()
 
     std::erase_if(fxlist.raw_mutable(), [this](const auto& uptr) {
         walker* ob = uptr.get();
-        if (!(ob && ob->dead))
+        if (!(ob && ob->dead()))
             return false;
         remove_from_id_index(ob);
         return true;
@@ -1553,7 +1553,7 @@ void GameWorld::tick()
 
     std::erase_if(weaplist.raw_mutable(), [this](const auto& uptr) {
         walker* ob = uptr.get();
-        if (!(ob && ob->dead))
+        if (!(ob && ob->dead()))
             return false;
         remove_from_id_index(ob);
         return true;

@@ -95,10 +95,10 @@ TEST(WalkerExtended, walker_turn_basic)
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
-    w->curdir = FACE_UP;
+    w->set_curdir(FACE_UP);
     w->turn(FACE_RIGHT);
     // After turning, curdir should have changed
-    ASSERT_TRUE(w->curdir != FACE_UP || w->curdir == FACE_RIGHT) << "turn should change direction";
+    ASSERT_TRUE(w->curdir() != FACE_UP || w->curdir() == FACE_RIGHT) << "turn should change direction";
 
 }
 
@@ -109,7 +109,7 @@ TEST(WalkerExtended, walker_turn_all_targets)
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
     for (int dir = 0; dir < 8; dir++) {
-        w->curdir = FACE_UP;
+        w->set_curdir(FACE_UP);
         w->turn(static_cast<short>(dir));
     }
 
@@ -173,15 +173,15 @@ TEST(WalkerExtended, walker_query_team_color)
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
-    w->team_num = 0;
+    w->set_team_num(0);
     unsigned char c0 = w->query_team_color();
     ASSERT_EQ(40, (int)c0) << "team 0 color should be 40";
 
-    w->team_num = 1;
+    w->set_team_num(1);
     unsigned char c1 = w->query_team_color();
     ASSERT_EQ(56, (int)c1) << "team 1 color should be 56";
 
-    w->team_num = 3;
+    w->set_team_num(3);
     unsigned char c3 = w->query_team_color();
     ASSERT_EQ(88, (int)c3) << "team 3 color should be 88";
 
@@ -198,7 +198,7 @@ TEST(WalkerExtended, walker_get_current_angle)
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
     for (int dir = 0; dir < 8; dir++) {
-        w->curdir = static_cast<char>(dir);
+        w->set_curdir(static_cast<char>(dir));
         float angle = w->get_current_angle();
         (void)angle; // just verify no crash
     }
@@ -216,13 +216,13 @@ TEST(WalkerExtended, walker_set_act_type)
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
     w->set_act_type(ACT_CONTROL);
-    ASSERT_EQ(ACT_CONTROL, (int)w->act_type) << "act type should be ACT_CONTROL";
+    ASSERT_EQ(ACT_CONTROL, (int)w->act_type()) << "act type should be ACT_CONTROL";
 
-    w->old_act_type = ACT_RANDOM;
-    ASSERT_EQ(ACT_RANDOM, (int)w->old_act_type) << "old act type should be ACT_RANDOM";
+    w->set_old_act_type(ACT_RANDOM);
+    ASSERT_EQ(ACT_RANDOM, (int)w->old_act_type()) << "old act type should be ACT_RANDOM";
 
     w->restore_act_type();
-    ASSERT_EQ(ACT_RANDOM, (int)w->act_type) << "restored act type should be ACT_RANDOM";
+    ASSERT_EQ(ACT_RANDOM, (int)w->act_type()) << "restored act type should be ACT_RANDOM";
 
 }
 
@@ -286,7 +286,7 @@ TEST(WalkerExtended, walker_set_order_family)
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
     w->set_order_family(Order::Living, FAMILY_ARCHER);
-    ASSERT_EQ((int)FAMILY_ARCHER, (int)w->family) << "family should be archer";
+    ASSERT_EQ((int)FAMILY_ARCHER, (int)w->family()) << "family should be archer";
 
 }
 
@@ -302,8 +302,8 @@ TEST(WalkerExtended, walker_is_friendly_same_team)
     ASSERT_TRUE(a != nullptr) << "create a should succeed";
     ASSERT_TRUE(b != nullptr) << "create b should succeed";
 
-    a->team_num = 0;
-    b->team_num = 0;
+    a->set_team_num(0);
+    b->set_team_num(0);
     ASSERT_TRUE(a->is_friendly(b.get())) << "same team should be friendly";
 
 }
@@ -317,4 +317,3 @@ TEST(WalkerExtended, walker_is_friendly_null)
     ASSERT_TRUE(!a->is_friendly(nullptr)) << "null target should not be friendly";
 
 }
-

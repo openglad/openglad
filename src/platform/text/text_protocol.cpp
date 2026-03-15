@@ -35,13 +35,13 @@ static void json_entity(std::ostream& os, const walker* w, int index)
 {
     os << "{\"id\":" << index
        << ",\"order\":" << static_cast<int>(w->query_order())
-       << ",\"family\":" << static_cast<int>(w->family)
-       << ",\"team\":" << static_cast<int>(w->team_num)
-       << ",\"x\":" << w->xpos
-       << ",\"y\":" << w->ypos
-       << ",\"hp\":" << (w->stats() ? w->stats()->hitpoints : 0)
-       << ",\"max_hp\":" << (w->stats() ? w->stats()->max_hitpoints : 0)
-       << ",\"dead\":" << (w->dead ? "true" : "false")
+       << ",\"family\":" << static_cast<int>(w->family())
+       << ",\"team\":" << static_cast<int>(w->team_num())
+       << ",\"x\":" << w->xpos()
+       << ",\"y\":" << w->ypos()
+       << ",\"hp\":" << (w->stats() ? w->stats()->hitpoints() : 0)
+       << ",\"max_hp\":" << (w->stats() ? w->stats()->max_hitpoints() : 0)
+       << ",\"dead\":" << (w->dead() ? "true" : "false")
        << "}";
 }
 
@@ -162,9 +162,9 @@ int run_text_protocol_session(const TextProtocolArgs& args)
         int family = args.team_families[i];
         walker* w = level.add_ob(Order::Living, family);
         if (w) {
-            w->team_num = 0;
-            w->real_team_num = 0;
-            w->user = static_cast<signed char>(i < 4 ? i : -1);
+            w->set_team_num(0);
+            w->set_real_team_num(0);
+            w->set_user(static_cast<signed char>(i < 4 ? i : -1));
 
             auto g = std::make_unique<guy>();
             g->family = static_cast<char>(family);

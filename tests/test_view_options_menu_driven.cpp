@@ -95,7 +95,7 @@ TEST(ViewOptionsMenuDriven, viewscreen_options_menu_driven_exercises_hotkeys)
         if (w)
         {
             w->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
-            w->team_num = 0;
+            w->set_team_num(0);
             vs->control = w;
         }
     }

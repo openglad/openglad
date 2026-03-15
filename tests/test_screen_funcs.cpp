@@ -27,11 +27,11 @@ TEST(ScreenFuncs, screen_first_of_found)
 	    ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
 	    // Add to oblist
-	    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
     walker* found = og::runtime::current_session->myscreen_->first_of(Order::Living, FAMILY_SOLDIER);
     ASSERT_TRUE(found != nullptr) << "first_of should find the soldier";
-    ASSERT_EQ((int)FAMILY_SOLDIER, (int)found->family) << "found should be soldier";
+    ASSERT_EQ((int)FAMILY_SOLDIER, (int)found->family()) << "found should be soldier";
 
     // Remove from oblist (don't double-delete)
     og::runtime::current_session->myscreen_->world().oblist.pop_back();
@@ -50,7 +50,7 @@ TEST(ScreenFuncs, screen_first_of_with_team)
 {
     auto w = create_living(FAMILY_SOLDIER);
 	    ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
-	    w->team_num = 7;
+	    w->set_team_num(7);
 
 	    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
@@ -58,7 +58,7 @@ TEST(ScreenFuncs, screen_first_of_with_team)
     ASSERT_TRUE(found != nullptr) << "first_of with matching team should find it";
 
     walker* not_found = og::runtime::current_session->myscreen_->first_of(Order::Living, FAMILY_SOLDIER, 99);
-    ASSERT_TRUE(not_found == nullptr || not_found->team_num != 99) << "first_of with wrong team should not find team 99 unit";
+    ASSERT_TRUE(not_found == nullptr || not_found->team_num() != 99) << "first_of with wrong team should not find team 99 unit";
 
     og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }
@@ -119,9 +119,9 @@ TEST(ScreenFuncs, screen_find_foes_in_range)
     ASSERT_TRUE(seeker != nullptr) << "create seeker should succeed";
     ASSERT_TRUE(enemy != nullptr) << "create enemy should succeed";
 
-    seeker->team_num = 0;
+    seeker->set_team_num(0);
     seeker->setxy(100, 100);
-	    enemy->team_num = 1;
+	    enemy->set_team_num(1);
 	    enemy->setxy(110, 100);
 
 	    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(enemy));
@@ -145,9 +145,9 @@ TEST(ScreenFuncs, screen_find_friends_in_range)
     ASSERT_TRUE(seeker != nullptr) << "create seeker should succeed";
     ASSERT_TRUE(friend_w != nullptr) << "create friend should succeed";
 
-    seeker->team_num = 0;
+    seeker->set_team_num(0);
     seeker->setxy(100, 100);
-	    friend_w->team_num = 0;
+	    friend_w->set_team_num(0);
 	    friend_w->setxy(110, 100);
 
 	    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(friend_w));
@@ -228,7 +228,7 @@ TEST(ScreenFuncs, screen_find_far_foe_smoke)
 {
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
-    w->team_num = 0;
+    w->set_team_num(0);
 
     walker* result = og::runtime::current_session->myscreen_->world().find_far_foe(w.get());
     // May or may not find one, but should not crash
@@ -245,7 +245,7 @@ TEST(ScreenFuncs, screen_find_near_foe_smoke)
 {
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
-    w->team_num = 0;
+    w->set_team_num(0);
     w->setxy(100, 100);
 
     walker* result = og::runtime::current_session->myscreen_->world().find_near_foe(w.get());
@@ -283,4 +283,3 @@ TEST(ScreenFuncs, screen_query_passable_smoke)
     (void)p;
 
 }
-

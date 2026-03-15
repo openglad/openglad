@@ -33,17 +33,17 @@ static bool orc_do_special(walker* self)
     std::uint32_t distance;
     std::string message;
 
-    switch (self->current_special)
+    switch (self->current_special())
     {
         case 1: // yell and 'freeze' foes
-            if (self->busy > 0)
+            if (self->busy() > 0)
                 return false;
-            self->busy += 2;
+            self->set_busy(self->busy() + 2.0f);
 
             {
                 std::list<walker*> newlist = current_game->world->find_foes_in_range(
                     current_game->world->oblist,
-                    160 + (20 * self->stats()->level), &howmany, self);
+                    160 + (20 * self->stats()->level()), &howmany, self);
 
                 for (auto* ob : newlist)
                 {
@@ -52,14 +52,14 @@ static bool orc_do_special(walker* self)
                         if (ob->myguy)
                             tempx = ob->myguy->constitution;
                         else
-                            tempx = static_cast<std::int32_t>(ob->stats()->hitpoints / 30.0f);
+                            tempx = static_cast<std::int32_t>(ob->stats()->hitpoints() / 30.0f);
                         std::int32_t tempx_clamped = (tempx > 0) ? tempx : 0;
                         tempy = 10
-                            + static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(self->stats()->level * 10)))
+                            + static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(self->stats()->level() * 10)))
                             - static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(tempx_clamped * 10)));
                         if (tempy < 0)
                             tempy = 0;
-                        ob->stats()->frozen_delay = static_cast<short>(ob->stats()->frozen_delay + tempy);
+                        ob->stats()->set_frozen_delay(static_cast<short>(ob->stats()->frozen_delay() + tempy));
                     }
                 }
 
@@ -70,7 +70,7 @@ static bool orc_do_special(walker* self)
         case 3:
         case 4:
         default:
-            if (self->stats()->hitpoints >= self->stats()->max_hitpoints)
+            if (self->stats()->hitpoints() >= self->stats()->max_hitpoints())
                 return false;
             newob = current_game->world->find_nearest_blood(self);
             if (!newob)
@@ -78,8 +78,8 @@ static bool orc_do_special(walker* self)
             distance = static_cast<std::uint32_t>(self->distance_to_ob_center(newob));
             if (distance > 24)
                 return false;
-            self->stats()->hitpoints += static_cast<float>(newob->stats()->level) * 5.0f;
-            self->do_heal_effects(nullptr, self, static_cast<short>(newob->stats()->level * 5));
+            self->stats()->set_hitpoints(self->stats()->hitpoints() + static_cast<float>(newob->stats()->level()) * 5.0f);
+            self->do_heal_effects(nullptr, self, static_cast<short>(newob->stats()->level() * 5));
             // Print the eating notice
             if (self->myguy)
             {
@@ -88,9 +88,9 @@ static bool orc_do_special(walker* self)
             message = std::format("{} ate a corpse.", entity_display_name(self, "Orc"));
 
             og::sim::emit_notification(current_game->sim_events, message);
-            if (self->stats()->hitpoints > self->stats()->max_hitpoints)
-                self->stats()->hitpoints = self->stats()->max_hitpoints;
-            newob->dead = 1;
+            if (self->stats()->hitpoints() > self->stats()->max_hitpoints())
+                self->stats()->set_hitpoints(self->stats()->max_hitpoints());
+            newob->set_dead(1);
             newob->death();
             break;
     }

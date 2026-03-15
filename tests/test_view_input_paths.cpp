@@ -63,11 +63,11 @@ static std::unique_ptr<walker> make_living(unsigned char family, unsigned char t
     auto w = l->create_walker_owned(Order::Living, family);
     if (!w)
         return nullptr;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
-    w->user = -1;
-    w->action = 0;
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
+    w->set_user(-1);
+    w->set_action(0);
     w->set_act_type(ACT_RANDOM);
     w->setxy((short)x, (short)y);
     return w;
@@ -145,7 +145,7 @@ TEST(ViewInputPaths, view_input_yell_and_shift_yell_team_actions)
     walker* allyp = ally.get();
 
     controlp->set_act_type(ACT_CONTROL);
-    controlp->user = 0;
+    controlp->set_user(0);
     allyp->set_leader(nullptr);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control));
@@ -158,7 +158,7 @@ TEST(ViewInputPaths, view_input_yell_and_shift_yell_team_actions)
     yell_input.players[0].held[static_cast<int>(InputAction::Yell)] = true;
     v->process_input(yell_input);
     ASSERT_TRUE(allyp->leader() == controlp) << "plain yell should assign control as leader";
-    ASSERT_TRUE(controlp->yo_delay == 30) << "plain yell should set yo_delay";
+    ASSERT_TRUE(controlp->yo_delay() == 30) << "plain yell should set yo_delay";
 
     // Shift+YELL toggles team defense mode.
     InputState shift_yell = {};
@@ -166,12 +166,12 @@ TEST(ViewInputPaths, view_input_yell_and_shift_yell_team_actions)
     shift_yell.players[0].held[static_cast<int>(InputAction::Yell)] = true;
     shift_yell.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     v->process_input(shift_yell);
-    ASSERT_TRUE(controlp->action == ACTION_FOLLOW) << "shift+yell should enter follow/defense mode";
-    ASSERT_TRUE(allyp->action == ACTION_FOLLOW) << "ally should enter follow action";
+    ASSERT_TRUE(controlp->action() == ACTION_FOLLOW) << "shift+yell should enter follow/defense mode";
+    ASSERT_TRUE(allyp->action() == ACTION_FOLLOW) << "ally should enter follow action";
 
     // Repeat shift+yell should release defense mode.
     v->process_input(shift_yell);
-    ASSERT_TRUE(controlp->action == 0) << "second shift+yell should clear defense mode";
+    ASSERT_TRUE(controlp->action() == 0) << "second shift+yell should clear defense mode";
 }
 
 
@@ -198,9 +198,9 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     walker* controlp = control.get();
     walker* enemyp = enemy.get();
 
-    controlp->user = 0;
+    controlp->set_user(0);
     controlp->set_act_type(ACT_CONTROL);
-    controlp->stats()->level = 5;
+    controlp->stats()->set_level(5);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(teammate));
@@ -226,20 +226,20 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = false;
 
     // Cheat+F12: eliminate enemy living units.
-    enemyp->stats()->hitpoints = 25;
+    enemyp->stats()->set_hitpoints(25);
     e.key.keysym.sym = SDLK_F12;
     v->input(e);
     ASSERT_TRUE(v->control != nullptr) << "cheat F12 path should keep control valid";
 
     // Cheat level tuning keys.
-    const int level_before = v->control->stats()->level;
+    const int level_before = v->control->stats()->level();
     e.key.keysym.sym = SDLK_RIGHTBRACKET;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->level >= level_before) << "right bracket should not lower level";
+    ASSERT_TRUE(v->control->stats()->level() >= level_before) << "right bracket should not lower level";
 
     e.key.keysym.sym = SDLK_LEFTBRACKET;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->level >= 1) << "left bracket should keep level >= 1";
+    ASSERT_TRUE(v->control->stats()->level() >= 1) << "left bracket should keep level >= 1";
 
     // Extra cheat keys for additional input branches.
     const int freeze_before = og::runtime::current_session->myscreen_->world().enemy_freeze;
@@ -257,25 +257,25 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     v->input(e);
     ASSERT_TRUE((v->control->stats()->query_bit_flags(BIT_FLYING) != 0) != flying_before) << "f key should toggle flying bit";
 
-    const float hp_before = v->control->stats()->hitpoints;
+    const float hp_before = v->control->stats()->hitpoints();
     e.key.keysym.sym = SDLK_h;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->hitpoints >= hp_before + 100.0f) << "h key should increase hitpoints";
+    ASSERT_TRUE(v->control->stats()->hitpoints() >= hp_before + 100.0f) << "h key should increase hitpoints";
 
     const bool inv_before = v->control->stats()->query_bit_flags(BIT_INVINCIBLE) != 0;
     e.key.keysym.sym = SDLK_i;
     v->input(e);
     ASSERT_TRUE((v->control->stats()->query_bit_flags(BIT_INVINCIBLE) != 0) != inv_before) << "i key should toggle invincible bit";
 
-    const float mp_before = v->control->stats()->magicpoints;
+    const float mp_before = v->control->stats()->magicpoints();
     e.key.keysym.sym = SDLK_m;
     v->input(e);
-    ASSERT_TRUE(v->control->stats()->magicpoints >= mp_before + 150.0f) << "m key should increase magicpoints";
+    ASSERT_TRUE(v->control->stats()->magicpoints() >= mp_before + 150.0f) << "m key should increase magicpoints";
 
-    const int speed_bonus_before = v->control->speed_bonus_left;
+    const int speed_bonus_before = v->control->speed_bonus_left();
     e.key.keysym.sym = SDLK_s;
     v->input(e);
-    ASSERT_TRUE(v->control->speed_bonus_left >= speed_bonus_before + 20) << "s key should increase speed bonus";
+    ASSERT_TRUE(v->control->speed_bonus_left() >= speed_bonus_before + 20) << "s key should increase speed bonus";
 
     ks.set(SDLK_c, false);
     ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;

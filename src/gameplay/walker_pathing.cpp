@@ -35,8 +35,8 @@ void walker::find_path_to_foe()
         return;
 
     float total_cost = 0.0f;
-    const MicroPatherState start_state = MAKE_STATE(xpos, ypos);
-    const MicroPatherState end_state = MAKE_STATE(foe()->xpos, foe()->ypos);
+    const MicroPatherState start_state = MAKE_STATE(xpos(), ypos());
+    const MicroPatherState end_state = MAKE_STATE(foe()->xpos(), foe()->ypos());
 
     pathing->solve_for(this, start_state, end_state, path_to_foe, total_cost);
 }
@@ -47,8 +47,8 @@ void walker::follow_path_to_foe()
     {
         auto node = path_to_foe.begin();
         const MicroPatherState state = *node;
-        int dx = GET_STATE_X(state) - ALIGN_TO_GRID(xpos);
-        int dy = GET_STATE_Y(state) - ALIGN_TO_GRID(ypos);
+        int dx = GET_STATE_X(state) - ALIGN_TO_GRID(xpos());
+        int dy = GET_STATE_Y(state) - ALIGN_TO_GRID(ypos());
 
         if (dx != 0 || dy != 0)
         {

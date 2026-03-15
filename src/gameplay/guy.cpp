@@ -402,10 +402,10 @@ void apply_difficulty_scaling(living* self, std::uint32_t level, const Difficult
 {
     const float levmult = static_cast<float>(level) * static_cast<float>(level);
     const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += s.hp * levmult;
-    self->stats()->max_magicpoints += s.mp * levmult;
-    self->damage += s.dmg * level_f;
-    self->stats()->armor += s.armor * levmult;
+    self->stats()->set_max_hitpoints(self->stats()->max_hitpoints() + s.hp * levmult);
+    self->stats()->set_max_magicpoints(self->stats()->max_magicpoints() + s.mp * levmult);
+    self->set_damage(self->damage() + s.dmg * level_f);
+    self->stats()->set_armor(self->stats()->armor() + s.armor * levmult);
 }
 
 bool check_special_ai_distance(living* self, std::uint32_t threshold)
@@ -482,84 +482,86 @@ void guy::update_derived_stats(walker* w)
         current_game->world->set_entity_derived_stats(w, Order::Living, temp_guy->family);
     
     
-    w->stats()->max_hitpoints += temp_guy->get_hp_bonus();
-    w->stats()->hitpoints = w->stats()->max_hitpoints;
+    w->stats()->set_max_hitpoints(w->stats()->max_hitpoints() + temp_guy->get_hp_bonus());
+    w->stats()->set_hitpoints(w->stats()->max_hitpoints());
     
     // No class base value for MP...
-    w->stats()->max_magicpoints = temp_guy->get_mp_bonus();
-    w->stats()->magicpoints = w->stats()->max_magicpoints;
+    w->stats()->set_max_magicpoints(temp_guy->get_mp_bonus());
+    w->stats()->set_magicpoints(w->stats()->max_magicpoints());
 
-    w->damage = w->damage + temp_guy->get_damage_bonus();
+    w->set_damage(w->damage() + temp_guy->get_damage_bonus());
 
     // No class base value for armor...
-    w->stats()->armor = temp_guy->get_armor_bonus();
+    w->stats()->set_armor(temp_guy->get_armor_bonus());
 
     //stepsize makes us run faster, max for a non-weapon is 12
-    w->stepsize = w->stepsize + temp_guy->get_speed_bonus();
-    if (w->stepsize > 12)
-        w->stepsize = 12;
-    w->normal_stepsize = w->stepsize;
+    w->set_stepsize(w->stepsize() + temp_guy->get_speed_bonus());
+    if (w->stepsize() > 12)
+        w->set_stepsize(12);
+    w->set_normal_stepsize(w->stepsize());
 
     //fire_frequency makes us fire faster, min is 1
-    w->fire_frequency = w->fire_frequency - temp_guy->get_fire_frequency_bonus();
-    if (w->fire_frequency < 1)
-        w->fire_frequency = 1;
+    w->set_fire_frequency(w->fire_frequency() - temp_guy->get_fire_frequency_bonus());
+    if (w->fire_frequency() < 1)
+        w->set_fire_frequency(1);
 
     // Per-family walker creation hooks (e.g. soldier weapons_left)
     {
-        const auto* fd = get_family_descriptor(w->family);
+        const auto* fd = get_family_descriptor(w->family());
         if (fd && fd->on_create)
             fd->on_create(w);
     }
 
     // Set the heal delay ..
-    w->stats()->max_heal_delay = REGEN;
+    w->stats()->set_max_heal_delay(REGEN);
     {
         float heal_delay = static_cast<float>(temp_guy->constitution) + static_cast<float>(temp_guy->strength) / 6.0f + 20.0f + 1000.0f;
-        w->stats()->current_heal_delay = static_cast<std::int32_t>(heal_delay); // for purposes of calculation only
+        w->stats()->set_current_heal_delay(static_cast<std::int32_t>(heal_delay)); // for purposes of calculation only
     }
 
-    while (w->stats()->current_heal_delay > REGEN)
+    while (w->stats()->current_heal_delay() > REGEN)
     {
-        w->stats()->current_heal_delay -= REGEN;
-        w->stats()->heal_per_round++;
+        w->stats()->set_current_heal_delay(w->stats()->current_heal_delay() - REGEN);
+        w->stats()->set_heal_per_round(w->stats()->heal_per_round() + 1);
     } // this takes care of the integer part, now calculate the fraction
 
-    if (w->stats()->current_heal_delay > 1)
+    if (w->stats()->current_heal_delay() > 1)
     {
-        w->stats()->max_heal_delay /=
-            static_cast<std::int32_t>(w->stats()->current_heal_delay + 1);
+        w->stats()->set_max_heal_delay(
+            w->stats()->max_heal_delay() /
+            static_cast<std::int32_t>(w->stats()->current_heal_delay() + 1));
     }
-    w->stats()->current_heal_delay = 0; //start off without healing
+    w->stats()->set_current_heal_delay(0); //start off without healing
 
     //make sure we have at least a 2 wait, otherwise we should have
     //calculated our heal_per_round as one higher, and the math must
     //have been screwed up some how
-    if (w->stats()->max_heal_delay < 2)
-        w->stats()->max_heal_delay = 2;
+    if (w->stats()->max_heal_delay() < 2)
+        w->stats()->set_max_heal_delay(2);
 
     // Set the magic delay ..
-    w->stats()->max_magic_delay = REGEN;
-    w->stats()->current_magic_delay = temp_guy->intelligence * 45 + temp_guy->dexterity * 15 + 200;
+    w->stats()->set_max_magic_delay(REGEN);
+    w->stats()->set_current_magic_delay(temp_guy->intelligence * 45 + temp_guy->dexterity * 15 + 200);
 
-    while (w->stats()->current_magic_delay > REGEN)
+    while (w->stats()->current_magic_delay() > REGEN)
     {
-        w->stats()->current_magic_delay -= REGEN;
-        w->stats()->magic_per_round++;
+        w->stats()->set_current_magic_delay(w->stats()->current_magic_delay() - REGEN);
+        w->stats()->set_magic_per_round(w->stats()->magic_per_round() + 1);
     } // this takes care of the integer part, now calculate the fraction
 
-    if (w->stats()->current_magic_delay > 1)
+    if (w->stats()->current_magic_delay() > 1)
     {
-        w->stats()->max_magic_delay /=
-            static_cast<std::int32_t>(w->stats()->current_magic_delay + 1);
+        w->stats()->set_max_magic_delay(
+            w->stats()->max_magic_delay() /
+            static_cast<std::int32_t>(w->stats()->current_magic_delay() + 1));
     }
-    w->stats()->current_magic_delay = 0; //start off without magic regen
+    w->stats()->set_current_magic_delay(0); //start off without magic regen
 
     //make sure we have at least a 2 wait, otherwise we should have
     //calculated our magic_per_round as one higher, and the math must
     //have been screwed up some how
-    if (w->stats()->max_magic_delay < 2)
-        w->stats()->max_magic_delay = 2;
+    if (w->stats()->max_magic_delay() < 2)
+        w->stats()->set_max_magic_delay(2);
 }
 
 // guy_create_walker_owned and guy_create_and_add_walker are free functions

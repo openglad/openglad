@@ -46,13 +46,13 @@ living* add_living(LivingFixture& fx, char family, unsigned char team)
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(96, 96);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
-    w->normal_stepsize = 1.0f;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_normal_stepsize(1.0f);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     living* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -67,24 +67,24 @@ TEST(LivingUnit, living_r11_act_owner_dead_and_action_follow)
     living* owner = add_living(fx, FAMILY_SOLDIER, 0);
     ASSERT_TRUE(self != nullptr && owner != nullptr);
 
-    self->dead = 1;
+    self->set_dead(1);
     ASSERT_TRUE(!self->act());
-    self->dead = 0;
+    self->set_dead(0);
 
     self->set_owner(owner);
-    self->lifetime = 5;
-    owner->dead = 1;
+    self->set_lifetime(5);
+    owner->set_dead(1);
     ASSERT_TRUE(!self->act());
 
     // ACTION_FOLLOW path in do_action
-    self->dead = 0;
+    self->set_dead(0);
     self->set_owner(nullptr);
-    self->lifetime = 0;
-    self->action = ACTION_FOLLOW;
+    self->set_lifetime(0);
+    self->set_action(ACTION_FOLLOW);
     self->set_foe(nullptr);
-    owner->dead = 0;
+    owner->set_dead(0);
     owner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
-    owner->team_num = 0;
+    owner->set_team_num(0);
     ASSERT_TRUE(self->do_action() == 1 || self->do_action() == 0);
 }
 
@@ -124,7 +124,7 @@ TEST(LivingUnit, living_r11_collide_and_act_type_switches)
 
     self->set_act_type(ACT_DIE);
     ASSERT_TRUE(self->act());
-    ASSERT_TRUE(self->dead == 1 || self->dead == 0);
+    ASSERT_TRUE(self->dead() == 1 || self->dead() == 0);
 }
 
 TEST(LivingUnit, living_r11_summon_difficulty_checkspecial_and_walk_paths)
@@ -138,31 +138,31 @@ TEST(LivingUnit, living_r11_summon_difficulty_checkspecial_and_walk_paths)
     walker* summoned = self->do_summon(FAMILY_SKELETON, 25);
     ASSERT_TRUE(summoned != nullptr);
     ASSERT_TRUE(summoned->owner() == self);
-    ASSERT_TRUE(summoned->lifetime == 25);
+    ASSERT_TRUE(summoned->lifetime() == 25);
 
     // Default set_difficulty fallback path on unknown family id.
     self->set_order_family(Order::Living, static_cast<char>(127));
     self->set_difficulty(2);
-    ASSERT_TRUE(self->stats()->max_hitpoints >= self->stats()->hitpoints);
+    ASSERT_TRUE(self->stats()->max_hitpoints() >= self->stats()->hitpoints());
     self->set_order_family(Order::Living, FAMILY_SOLDIER);
 
     // check_special path when not enough magic resets special to 1.
-    self->current_special = 4;
-    self->stats()->special_cost[4] = 200;
-    self->stats()->magicpoints = 0;
+    self->set_current_special(4);
+    self->stats()->set_special_cost(4, 200);
+    self->stats()->set_magicpoints(0);
     (void)self->check_special();
-    ASSERT_TRUE(self->current_special == 1);
+    ASSERT_TRUE(self->current_special() == 1);
 
     // living::walk bounds fail + direction-turn path.
     self->setxy(0, 0);
-    self->curdir = FACE_LEFT;
+    self->set_curdir(FACE_LEFT);
     ASSERT_TRUE(!self->walk(-1.0f, 0.0f));
-    self->curdir = FACE_UP;
+    self->set_curdir(FACE_UP);
     ASSERT_TRUE(self->walk(1.0f, 0.0f));
 
     // ACT_RANDOM path with foe present/no fire then search.
     self->set_foe(foe);
-    self->lineofsight = 1;
+    self->set_lineofsight(1);
     self->set_act_type(ACT_RANDOM);
     (void)self->act();
 }
@@ -202,14 +202,14 @@ living* add_living(LivingR14Fixture& fx, char family, unsigned char team, short 
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 3.0f;
-    w->normal_stepsize = 3.0f;
-    w->lineofsight = 6;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(3.0f);
+    w->set_normal_stepsize(3.0f);
+    w->set_lineofsight(6);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     living* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -240,33 +240,33 @@ TEST(LivingUnit, living_r14_lines_65_73_89_95_138_175_owner_lifetime_and_counter
     living* foe = add_living(fx, FAMILY_ORC, 1, 128, 96);
     ASSERT_TRUE(self && owner && foe);
 
-    self->bonus_rounds = 1;
+    self->set_bonus_rounds(1);
     self->set_act_type(ACT_CONTROL);
     ASSERT_TRUE(self->act());
 
     self->set_foe(foe);
-    foe->dead = 1;
+    foe->set_dead(1);
     self->set_leader(owner);
-    owner->dead = 0;
-    self->view_all = 2;
-    self->invulnerable_left = 2;
-    self->invisibility_left = 2;
-    self->flight_left = 2;
-    self->charm_left = (2);
-    self->real_team_num = 1;
+    owner->set_dead(0);
+    self->set_view_all(2);
+    self->set_invulnerable_left(2);
+    self->set_invisibility_left(2);
+    self->set_flight_left(2);
+    self->set_charm_left((2));
+    self->set_real_team_num(1);
     self->set_act_type(ACT_CONTROL);
     ASSERT_TRUE(self->act());
 
     self->set_owner(owner);
-    self->lifetime = 2;
-    owner->dead = 1;
+    self->set_lifetime(2);
+    owner->set_dead(1);
     ASSERT_TRUE(!self->act());
 
-    self->dead = 0;
-    owner->dead = 0;
+    self->set_dead(0);
+    owner->set_dead(0);
     self->set_owner(owner);
-    self->lifetime = 1;
-    ASSERT_TRUE(!self->act() || self->dead == 1);
+    self->set_lifetime(1);
+    ASSERT_TRUE(!self->act() || self->dead() == 1);
 }
 
 TEST(LivingUnit, living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_303_308)
@@ -279,12 +279,12 @@ TEST(LivingUnit, living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_30
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     self->myguy->dexterity = 10;
     self->stats()->set_bit_flags(BIT_FORESTWALK, 1);
-    self->stats()->magicpoints = 10.0f;
-    self->stats()->current_magic_delay = 0;
-    self->speed_bonus = 1;
-    self->speed_bonus_left = 3;
-    self->attack_lunge = 1.0f;
-    self->hit_recoil = 1.0f;
+    self->stats()->set_magicpoints(10.0f);
+    self->stats()->set_current_magic_delay(0);
+    self->set_speed_bonus(1);
+    self->set_speed_bonus_left(3);
+    self->set_attack_lunge(1.0f);
+    self->set_hit_recoil(1.0f);
 
     fx.level.world().grid.frames = 1;
     fx.level.world().grid.w = 1;
@@ -297,37 +297,37 @@ TEST(LivingUnit, living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_30
 
     cfg.apply_setting("effects", "damage_numbers", "on");
 
-    self->stats()->hitpoints = 1.0f;
-    self->flight_left = 0;
-    self->ani_type = ANI_WALK;
+    self->stats()->set_hitpoints(1.0f);
+    self->set_flight_left(0);
+    self->set_ani_type(ANI_WALK);
     self->set_act_type(ACT_CONTROL);
-    ASSERT_TRUE(self->act() || self->dead == 1);
+    ASSERT_TRUE(self->act() || self->dead() == 1);
 
-    self->dead = 0;
-    self->stats()->frozen_delay = 1;
+    self->set_dead(0);
+    self->stats()->set_frozen_delay(1);
     ASSERT_TRUE(self->act());
 
-    self->dead = 0;
-    self->busy = 1;
-    self->skip_exit = 2;
-    self->action = ACTION_FOLLOW;
-    self->user = -1;
+    self->set_dead(0);
+    self->set_busy(1);
+    self->set_skip_exit(2);
+    self->set_action(ACTION_FOLLOW);
+    self->set_user(-1);
     self->set_act_type(ACT_GUARD);
     self->stats()->force_command(COMMAND_WALK, 1, 1, 0);
     ASSERT_TRUE(self->act());
 
-    self->action = 0;
-    self->skip_exit = 0;
+    self->set_action(0);
+    self->set_skip_exit(0);
     self->stats()->clear_command();
     self->setxy(64, 64);
-    self->ani_type = ANI_WALK;
-    self->busy = 0;
-    self->stats()->frozen_delay = 0;
-    self->charm_left = (0);
+    self->set_ani_type(ANI_WALK);
+    self->set_busy(0);
+    self->stats()->set_frozen_delay(0);
+    self->set_charm_left((0));
     self->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     self->set_act_type(ACT_DIE);
     (void)self->act();
-    ASSERT_TRUE(self->dead == 1);
+    ASSERT_TRUE(self->dead() == 1);
 }
 
 TEST(LivingUnit, living_r14_lines_371_375_380_419_433_440_shove_walk_and_animate_fallback)
@@ -343,12 +343,12 @@ TEST(LivingUnit, living_r14_lines_371_375_380_419_433_440_shove_walk_and_animate
     ally->set_act_type(ACT_GUARD);
     ASSERT_TRUE(self->shove(ally, 1, 0) == 0 || self->shove(ally, 1, 0) == 1);
 
-    self->curdir = FACE_LEFT;
+    self->set_curdir(FACE_LEFT);
     self->setxy(0, 0);
     self->stats()->set_bit_flags(BIT_ANIMATE, 1);
     ASSERT_TRUE(!self->walk(-1.0f, 0.0f));
 
-    self->curdir = FACE_RIGHT;
+    self->set_curdir(FACE_RIGHT);
     self->setxy(10, 10);
     self->set_collide_ob(ally);
     self->stats()->set_bit_flags(BIT_ANIMATE, 1);

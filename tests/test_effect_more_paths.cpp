@@ -76,17 +76,17 @@ TEST(EffectMorePaths, effect_magic_shield_hits_weapon_and_enemy_paths)
         return;
 
     shield->set_owner(owner.get());
-    shield->team_num = owner->team_num;
-    shield->stats()->hitpoints = 50;
-    shield->lifetime = 5;
+    shield->set_team_num(owner->team_num());
+    shield->stats()->set_hitpoints(50);
+    shield->set_lifetime(5);
     shield->setxy(100, 100);
 
     // Inject a weapon into oblist (effect::act queries level_data.oblist for weapons).
     auto weapon = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     ASSERT_TRUE(weapon != nullptr) << "weapon created";
     if (weapon) {
-        weapon->team_num = 2; // opposing team
-        weapon->damage = 7.0f;
+        weapon->set_team_num(2); // opposing team
+        weapon->set_damage(7.0f);
         weapon->setxy(102, 100);
         og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(weapon));
     }
@@ -95,8 +95,8 @@ TEST(EffectMorePaths, effect_magic_shield_hits_weapon_and_enemy_paths)
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     ASSERT_TRUE(foe != nullptr) << "foe created";
     if (foe) {
-        foe->team_num = 2;
-        foe->damage = 5.0f;
+        foe->set_team_num(2);
+        foe->set_damage(5.0f);
         foe->setxy(104, 100);
     }
 
@@ -126,25 +126,25 @@ TEST(EffectMorePaths, effect_boomerang_hits_weapon_and_enemy_paths)
         return;
 
     fx->set_owner(owner.get());
-    fx->team_num = owner->team_num;
-    fx->stats()->hitpoints = 50;
-    fx->lifetime = 5;
-    fx->drawcycle = 12;
+    fx->set_team_num(owner->team_num());
+    fx->stats()->set_hitpoints(50);
+    fx->set_lifetime(5);
+    fx->set_drawcycle(12);
     fx->setxy(100, 100);
 
     auto weapon = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     ASSERT_TRUE(weapon != nullptr) << "weapon created";
     if (weapon) {
-        weapon->team_num = 2;
-        weapon->damage = 3.0f;
+        weapon->set_team_num(2);
+        weapon->set_damage(3.0f);
         weapon->setxy(102, 100);
         og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(weapon));
     }
 
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     if (foe) {
-        foe->team_num = 2;
-        foe->damage = 4.0f;
+        foe->set_team_num(2);
+        foe->set_damage(4.0f);
         foe->setxy(104, 100);
     }
 
@@ -175,8 +175,8 @@ TEST(EffectMorePaths, effect_cloud_hits_collision_branch_and_walk_command_path)
         return;
 
     cloud->set_owner(owner.get());
-    cloud->team_num = 1;
-    cloud->lifetime = 15;
+    cloud->set_team_num(1);
+    cloud->set_lifetime(15);
     cloud->setxy(100, 100);
 
     // First act() should enqueue a walk command, second should execute it.
@@ -205,7 +205,7 @@ TEST(EffectMorePaths, effect_chain_lightning_hits_leader_and_spawns_explosion)
     if (!leader)
         return;
 
-    leader->team_num = 2;
+    leader->set_team_num(2);
     leader->setxy(100, 100);
 
     walker* chain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CHAIN);
@@ -215,9 +215,9 @@ TEST(EffectMorePaths, effect_chain_lightning_hits_leader_and_spawns_explosion)
 
     chain->set_owner(caster.get());
     chain->set_leader(leader);
-    chain->team_num = caster->team_num;
-    chain->damage = 50.0f;
-    chain->lineofsight = 2;
+    chain->set_team_num(caster->team_num());
+    chain->set_damage(50.0f);
+    chain->set_lineofsight(2);
     chain->setxy(100, 100); // overlap -> hit leader immediately
 
     (void)chain->act();
@@ -245,14 +245,14 @@ TEST(EffectMorePaths, effect_death_explosion_shoves_nearby_targets)
         return;
 
     explosion->set_owner(owner.get());
-    explosion->skip_exit = 0;
+    explosion->set_skip_exit(0);
     explosion->setxy(100, 100);
-    explosion->damage = 40.0f;
+    explosion->set_damage(40.0f);
 
     walker* target = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     ASSERT_TRUE(target != nullptr) << "target created";
     if (target) {
-        target->team_num = 2;
+        target->set_team_num(2);
         target->setxy(110, 100);
         target->stats()->clear_command();
         // effect::death(FAMILY_EXPLOSION) shoves via force_command(), but the
@@ -262,7 +262,7 @@ TEST(EffectMorePaths, effect_death_explosion_shoves_nearby_targets)
         target->set_foe(owner.get());
     }
 
-    explosion->dead = 1;
+    explosion->set_dead(1);
     (void)explosion->death();
 
     if (target) {
@@ -282,8 +282,8 @@ TEST(EffectMorePaths, effect_batch3_explosion_owner_fallback_and_empty_target_li
         return;
 
     explosion->set_owner(nullptr); // force owner=self path in explosion_on_death()
-    explosion->skip_exit = 1;   // range gets zeroed then clamped to 16
-    explosion->dead = 1;
+    explosion->set_skip_exit(1);   // range gets zeroed then clamped to 16
+    explosion->set_dead(1);
     (void)explosion->death();   // no targets nearby: howmany<1 branch
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -298,7 +298,7 @@ TEST(EffectMorePaths, effect_batch3_bomb_owner_dead_fallback_path)
     ASSERT_TRUE(dead_owner != nullptr) << "owner created";
     if (!dead_owner)
         return;
-    dead_owner->dead = 1;
+    dead_owner->set_dead(1);
 
     walker* bomb = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_BOMB);
     ASSERT_TRUE(bomb != nullptr) << "bomb created";
@@ -306,8 +306,8 @@ TEST(EffectMorePaths, effect_batch3_bomb_owner_dead_fallback_path)
         return;
 
     bomb->set_owner(dead_owner); // bomb_on_death should replace this with self
-    bomb->damage = 15.0f;
-    bomb->dead = 1;
+    bomb->set_damage(15.0f);
+    bomb->set_dead(1);
     (void)bomb->death();
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -334,16 +334,16 @@ TEST(EffectMorePaths, effect_batch3_shield_and_boomerang_collision_loops)
     if (!shield)
         return;
     shield->set_owner(owner.get());
-    shield->team_num = owner->team_num;
+    shield->set_team_num(owner->team_num());
     shield->setxy(100, 100);
-    shield->stats()->hitpoints = 1.0f;
-    shield->lifetime = 0;
+    shield->stats()->set_hitpoints(1.0f);
+    shield->set_lifetime(0);
 
     auto incoming = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     ASSERT_TRUE(incoming != nullptr) << "incoming weapon created";
     if (incoming) {
-        incoming->team_num = 2;
-        incoming->damage = 2.0f;
+        incoming->set_team_num(2);
+        incoming->set_damage(2.0f);
         incoming->setxy(100, 100);
         og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(incoming));
     }
@@ -351,8 +351,8 @@ TEST(EffectMorePaths, effect_batch3_shield_and_boomerang_collision_loops)
     walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
     ASSERT_TRUE(foe != nullptr) << "foe created";
     if (foe) {
-        foe->team_num = 2;
-        foe->damage = 2.0f;
+        foe->set_team_num(2);
+        foe->set_damage(2.0f);
         foe->setxy(100, 100);
     }
 
@@ -363,11 +363,11 @@ TEST(EffectMorePaths, effect_batch3_shield_and_boomerang_collision_loops)
     ASSERT_TRUE(boomerang != nullptr) << "boomerang created";
     if (boomerang) {
         boomerang->set_owner(owner.get());
-        boomerang->team_num = owner->team_num;
+        boomerang->set_team_num(owner->team_num());
         boomerang->setxy(100, 100);
-        boomerang->drawcycle = 10;
-        boomerang->stats()->hitpoints = 20.0f;
-        boomerang->lifetime = 5;
+        boomerang->set_drawcycle(10);
+        boomerang->stats()->set_hitpoints(20.0f);
+        boomerang->set_lifetime(5);
         (void)boomerang->act();
     }
 
@@ -384,7 +384,7 @@ TEST(EffectMorePaths, effect_batch3_chain_snap_to_leader_and_effect_death_guard)
     ASSERT_TRUE(owner != nullptr && leader != nullptr) << "owner+leader created";
     if (!(owner && leader))
         return;
-    leader->team_num = 2;
+    leader->set_team_num(2);
 
     // Place close enough that chain takes the center_on(leader) branch.
     walker* chain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_CHAIN);
@@ -393,7 +393,7 @@ TEST(EffectMorePaths, effect_batch3_chain_snap_to_leader_and_effect_death_guard)
         return;
     chain->set_owner(owner.get());
     chain->set_leader(leader);
-    chain->lineofsight = 10;
+    chain->set_lineofsight(10);
     leader->setxy(120, 120);
     chain->setxy(121, 121);
     std::int32_t before_dist = chain->distance_to_ob_center(leader);
@@ -406,7 +406,7 @@ TEST(EffectMorePaths, effect_batch3_chain_snap_to_leader_and_effect_death_guard)
     ASSERT_TRUE(death_fx != nullptr) << "death guard fx created";
     if (!death_fx)
         return;
-    death_fx->dead = 1;
+    death_fx->set_dead(1);
     bool first = death_fx->death();
     bool second = death_fx->death();
     ASSERT_TRUE(first) << "first death call should succeed";
@@ -427,11 +427,11 @@ TEST(EffectMorePaths, effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan
     if (orphan_chain && any_leader)
     {
         orphan_chain->set_leader(any_leader);
-        orphan_chain->lineofsight = 4;
+        orphan_chain->set_lineofsight(4);
         orphan_chain->setxy(100, 100);
         any_leader->setxy(100, 100);
         (void)orphan_chain->act();
-        ASSERT_TRUE(orphan_chain->dead == 1) << "ownerless chain should die in guard path";
+        ASSERT_TRUE(orphan_chain->dead() == 1) << "ownerless chain should die in guard path";
     }
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -445,18 +445,18 @@ TEST(EffectMorePaths, effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan
     if (!(owner && leader && foe && chain))
         return;
 
-    owner->team_num = 1;
-    owner->stats()->level = 8;
-    leader->team_num = 1; // not a foe, prevents leader from consuming the first chain bounce
-    foe->team_num = 2;
+    owner->set_team_num(1);
+    owner->stats()->set_level(8);
+    leader->set_team_num(1); // not a foe, prevents leader from consuming the first chain bounce
+    foe->set_team_num(2);
     leader->setxy(120, 120);
     foe->setxy(124, 120);
 
     chain->set_owner(owner);
     chain->set_leader(leader);
-    chain->team_num = owner->team_num;
-    chain->damage = 70.0f; // generic=35, so branch generic>20 can run
-    chain->lineofsight = 3;
+    chain->set_team_num(owner->team_num());
+    chain->set_damage(70.0f); // generic=35, so branch generic>20 can run
+    chain->set_lineofsight(3);
     chain->setxy(120, 120); // overlap leader -> explosion/branch fanout path
 
     SequenceRandom seq_rng({0});
@@ -477,20 +477,20 @@ TEST(EffectMorePaths, effect_batch4_chain_movement_negative_delta_branch)
     if (!(owner && leader && chain))
         return;
 
-    owner->team_num = 1;
-    leader->team_num = 2;
+    owner->set_team_num(1);
+    leader->set_team_num(2);
     leader->setxy(60, 60);
     chain->set_owner(owner);
     chain->set_leader(leader);
-    chain->team_num = 1;
-    chain->lineofsight = 8;
-    chain->stepsize = 4.0f;
+    chain->set_team_num(1);
+    chain->set_lineofsight(8);
+    chain->set_stepsize(4.0f);
     chain->setxy(140, 140); // ensures x and y deltas are negative
 
-    const short before_x = chain->xpos;
-    const short before_y = chain->ypos;
+    const short before_x = chain->xpos();
+    const short before_y = chain->ypos();
     (void)chain->act();
-    ASSERT_TRUE(chain->xpos <= before_x && chain->ypos <= before_y) << "chain movement should step toward upper-left leader when deltas are negative";
+    ASSERT_TRUE(chain->xpos() <= before_x && chain->ypos() <= before_y) << "chain movement should step toward upper-left leader when deltas are negative";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
@@ -507,23 +507,23 @@ TEST(EffectMorePaths, effect_batch6_chain_small_delta_else_branches)
     if (!(owner && leader && chain))
         return;
 
-    owner->team_num = 1;
-    leader->team_num = 2;
+    owner->set_team_num(1);
+    leader->set_team_num(2);
     chain->set_owner(owner);
     chain->set_leader(leader);
-    chain->team_num = 1;
-    chain->lineofsight = 8;
-    chain->stepsize = 10.0f;
+    chain->set_team_num(1);
+    chain->set_lineofsight(8);
+    chain->set_stepsize(10.0f);
     chain->setxy(100, 100);
 
     // X delta within stepsize (else sub-branch), Y delta larger than stepsize
     // (main sub-branch), while distance stays > 2*stepsize so movement branch runs.
     leader->setxy(106, 150);
-    const short before_x = chain->xpos;
-    const short before_y = chain->ypos;
+    const short before_x = chain->xpos();
+    const short before_y = chain->ypos();
     (void)chain->act();
-    ASSERT_TRUE(chain->xpos > before_x) << "small positive x delta should move right";
-    ASSERT_TRUE(chain->ypos > before_y) << "large positive y delta should move down toward leader";
+    ASSERT_TRUE(chain->xpos() > before_x) << "small positive x delta should move right";
+    ASSERT_TRUE(chain->ypos() > before_y) << "large positive y delta should move down toward leader";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
@@ -553,11 +553,11 @@ TEST(EffectMorePaths, effect_round8_orbit_offset_and_default_act_death_paths)
     if (!eff)
         return;
 
-    eff->ani_type = ANI_WALK;
-    eff->dead = 0;
+    eff->set_ani_type(ANI_WALK);
+    eff->set_dead(0);
     const bool r = eff->act();
     ASSERT_TRUE(!r) << "default effect act path should return false after killing itself";
-    ASSERT_TRUE(eff->dead == 1) << "default effect act path should mark effect dead";
+    ASSERT_TRUE(eff->dead() == 1) << "default effect act path should mark effect dead";
 }
 
 
@@ -568,7 +568,7 @@ TEST(EffectMorePaths, effect_round9_death_called_guard_returns_false_on_second_c
     if (!eff)
         return;
 
-    eff->dead = 1;
+    eff->set_dead(1);
     ASSERT_TRUE(eff->death()) << "first death() call should succeed";
     ASSERT_TRUE(!eff->death()) << "second death() call should be guarded and return false";
 }
@@ -594,4 +594,3 @@ TEST(EffectMorePaths, effect_round11_compute_explosion_range_clamps_and_hits_edg
     ASSERT_EQ(1, (int)hits(10, 10, 10, 10, 20, 10, 5, 5)) << "touching on x edge should count as hit";
     ASSERT_EQ(1, (int)hits(10, 10, 10, 10, 10, 20, 5, 5)) << "touching on y edge should count as hit";
 }
-

@@ -29,11 +29,11 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead &&
+        if (w && !w->dead() &&
             w->query_order() == Order::Living &&
-            w->user == -1 &&
+            w->user() == -1 &&
             w->myguy &&
-            w->team_num == my_team)
+            w->team_num() == my_team)
         {
             TRACE("sim_input", "found player character '%s'", w->stats()->name.c_str());
             return w;
@@ -44,10 +44,10 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead &&
+        if (w && !w->dead() &&
             w->query_order() == Order::Living &&
-            w->user == -1 &&
-            w->team_num == my_team)
+            w->user() == -1 &&
+            w->team_num() == my_team)
         {
             TRACE("sim_input", "found team member '%s'", w->stats()->name.c_str());
             return w;
@@ -58,7 +58,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead &&
+        if (w && !w->dead() &&
             w->query_order() == Order::Living &&
             w->myguy)
         {
@@ -134,13 +134,13 @@ SimInputResult sim_process_player_input(
     walker* oldcontrol = control;
 
     // --- Control setup ---
-    if (control && control->user == -1)
+    if (control && control->user() == -1)
     {
         control->set_act_type(ACT_CONTROL);
-        control->user = static_cast<signed char>(player_num);
+        control->set_user(static_cast<signed char>(player_num));
         control->stats()->clear_command();
     }
-    if (!control || control->dead)
+    if (!control || control->dead())
     {
         control = sim_find_next_control(level, my_team);
         if (!control)
@@ -149,18 +149,18 @@ SimInputResult sim_process_player_input(
             result.endgame_type = 1;
             return result;
         }
-        if (control->user == -1)
-            control->user = static_cast<signed char>(player_num);
+        if (control->user() == -1)
+            control->set_user(static_cast<signed char>(player_num));
         control->set_act_type(ACT_CONTROL);
         result.control_hp_changed = true;
-        result.control_hp = control->stats()->hitpoints;
+        result.control_hp = control->stats()->hitpoints();
     }
 
     // --- Bonus rounds ---
-    if (control && control->bonus_rounds)
+    if (control && control->bonus_rounds())
     {
-        control->bonus_rounds = control->bonus_rounds - 1;
-        if (control->lastx != 0.0f || control->lasty != 0.0f)
+        control->set_bonus_rounds(control->bonus_rounds() - 1);
+        if (control->lastx() != 0.0f || control->lasty() != 0.0f)
             control->walk();
     }
 
@@ -172,17 +172,17 @@ SimInputResult sim_process_player_input(
         bool reverse = pi.is_held(InputAction::Shift);
         debounce.changedchar = 1;
 
-        if (control->user == player_num)
+        if (control->user() == player_num)
         {
             control->restore_act_type();
-            control->user = -1;
+            control->set_user(-1);
         }
         control = nullptr;
 
         auto filter = [oldcontrol, my_team](const walker* w) {
             return w->query_order() == Order::Living &&
-                   w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                   w->real_team_num == 255 && w->user == -1;
+                   w->is_friendly(oldcontrol) && w->team_num() == my_team &&
+                   w->real_team_num() == 255 && w->user() == -1;
         };
         control = sim_cycle_next_character(level.oblist, oldcontrol, reverse, filter);
 
@@ -190,7 +190,7 @@ SimInputResult sim_process_player_input(
             control = oldcontrol;
 
         result.control_hp_changed = true;
-        result.control_hp = control->stats()->hitpoints;
+        result.control_hp = control->stats()->hitpoints();
     }
 
     // --- Switch special ---
@@ -200,10 +200,10 @@ SimInputResult sim_process_player_input(
     if (pi.was_pressed(InputAction::SwitchSpecial) && !debounce.changedspec)
     {
         debounce.changedspec = 1;
-        control->current_special = control->current_special + 1;
+        control->set_current_special(control->current_special() + 1);
 
-        const int special_index = static_cast<int>(control->current_special);
-        const int family_index = static_cast<int>(static_cast<unsigned char>(control->family));
+        const int special_index = static_cast<int>(control->current_special());
+        const int family_index = static_cast<int>(static_cast<unsigned char>(control->family()));
         bool special_missing = true;
         if (special_names != nullptr &&
             family_index >= 0 && family_index < NUM_FAMILIES &&
@@ -214,16 +214,16 @@ SimInputResult sim_process_player_input(
 
         if (special_index < 0 || special_index > (NUM_SPECIALS - 1)
             || special_missing
-            || (((control->current_special - 1) * 3 + 1) > control->stats()->level))
-            control->current_special = 1;
+            || (((control->current_special() - 1) * 3 + 1) > control->stats()->level()))
+            control->set_current_special(1);
     }
 
     // --- yo_delay tick ---
-    if (control->yo_delay > 0)
-        control->yo_delay = control->yo_delay - 1;
+    if (control->yo_delay() > 0)
+        control->set_yo_delay(control->yo_delay() - 1);
 
     // --- Yell for help ---
-    if (pi.was_pressed(InputAction::Yell) && !control->yo_delay
+    if (pi.was_pressed(InputAction::Yell) && !control->yo_delay()
         && !pi.is_held(InputAction::Shift)
         && !pi.is_held(InputAction::Cheat))
     {
@@ -231,8 +231,8 @@ SimInputResult sim_process_player_input(
         {
             walker* w = uptr.get();
             if (w && (w->query_order() == Order::Living) &&
-                (w->act_type != ACT_CONTROL) &&
-                (w->team_num == control->team_num) &&
+                (w->act_type() != ACT_CONTROL) &&
+                (w->team_num() == control->team_num()) &&
                 (!w->leader()))
             {
                 w->set_leader(control);
@@ -240,7 +240,7 @@ SimInputResult sim_process_player_input(
                 w->stats()->force_command(COMMAND_FOLLOW, 100, 0, 0);
             }
         }
-        control->yo_delay = 30;
+        control->set_yo_delay(30);
         result.play_sound = SOUND_YO;
         result.notify_text = "Yo!";
         result.notify_source = control;
@@ -250,17 +250,17 @@ SimInputResult sim_process_player_input(
     if (pi.is_held(InputAction::Shift) && pi.was_pressed(InputAction::Yell)
         && !pi.is_held(InputAction::Cheat))
     {
-        switch (control->action)
+        switch (control->action())
         {
             case 0:
                 for (auto& uptr : level.oblist)
                 {
                     walker* w = uptr.get();
-                    if (w && (w->team_num == control->team_num) && w->is_friendly(control))
+                    if (w && (w->team_num() == control->team_num()) && w->is_friendly(control))
                     {
                         w->set_leader(control);
                         w->set_foe(nullptr);
-                        w->action = ACTION_FOLLOW;
+                        w->set_action(ACTION_FOLLOW);
                     }
                 }
                 result.notify_text = "SUMMONING DEFENSE!";
@@ -271,39 +271,39 @@ SimInputResult sim_process_player_input(
                 {
                     walker* w = uptr.get();
                     if (w && (w->query_order() == Order::Living) &&
-                        (w->act_type != ACT_CONTROL) &&
-                        (w->team_num == control->team_num))
+                        (w->act_type() != ACT_CONTROL) &&
+                        (w->team_num() == control->team_num()))
                     {
-                        w->action = 0;
+                        w->set_action(0);
                     }
                 }
-                control->action = 0;
+                control->set_action(0);
                 result.notify_text = "RELEASING MEN!";
                 result.notify_source = control;
                 break;
             default:
-                control->action = 0;
+                control->set_action(0);
                 break;
         }
     }
 
     // --- Ensure correct user assignment ---
-    if (control->user != player_num)
+    if (control->user() != player_num)
     {
         result.new_control = control;
         return result;
     }
 
-    if (control->ani_type != ANI_WALK)
+    if (control->ani_type() != ANI_WALK)
         control->animate();
 
     if (control != oldcontrol)
         control->stats()->clear_command();
 
-    if (control->dead || control->stats()->frozen_delay)
+    if (control->dead() || control->stats()->frozen_delay())
     {
-        if (control->stats()->frozen_delay)
-            control->stats()->frozen_delay--;
+        if (control->stats()->frozen_delay())
+            control->stats()->set_frozen_delay(control->stats()->frozen_delay() - 1);
         result.new_control = control;
         return result;
     }
@@ -312,13 +312,13 @@ SimInputResult sim_process_player_input(
     if (control->stats()->commands.empty())
     {
         #ifndef USE_TOUCH_INPUT
-        control->shifter_down = pi.is_held(InputAction::Shift) ? 1 : 0;
+        control->set_shifter_down(pi.is_held(InputAction::Shift) ? 1 : 0);
         #else
         if (pi.was_pressed(InputAction::Shift))
         {
-            control->shifter_down = 1;
+            control->set_shifter_down(1);
             control->special();
-            control->shifter_down = 0;
+            control->set_shifter_down(0);
         }
         #endif
 
@@ -340,10 +340,10 @@ SimInputResult sim_process_player_input(
         }
         else if (control->stats()->query_bit_flags(BIT_ANIMATE))
         {
-            control->cycle = control->cycle + 1;
-            if (control->ani[control->curdir][control->cycle] == -1)
-                control->cycle = 0;
-            control->set_frame(control->ani[control->curdir][control->cycle]);
+            control->set_cycle(control->cycle() + 1);
+            if (control->ani[control->curdir()][control->cycle()] == -1)
+                control->set_cycle(0);
+            control->set_frame(control->ani[control->curdir()][control->cycle()]);
         }
 
         if (pi.is_held(InputAction::Fire))

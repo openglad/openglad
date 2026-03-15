@@ -265,8 +265,8 @@ bool viewscreen::redraw()
 	//   extra row
 	if (controlob)
 	{
-		topx = controlob->xpos - (xview - controlob->sizex)/2;
-		topy = controlob->ypos - (yview - controlob->sizey)/2;
+		topx = controlob->xpos() - (xview - controlob->sizex())/2;
+		topy = controlob->ypos() - (yview - controlob->sizey())/2;
 	}
 	else // no control object now ..
 	{
@@ -302,7 +302,7 @@ bool viewscreen::redraw()
 	}
 
 	draw_obs(); //moved here to put the radar on top of obs
-	if (controlob && !controlob->dead && controlob->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
 	display_text();
 	return 1;
@@ -326,8 +326,8 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	//   extra row
 	if (controlob)
 	{
-		topx = controlob->xpos - (xview - controlob->sizex)/2;
-		topy = controlob->ypos - (yview - controlob->sizey)/2;
+		topx = controlob->xpos() - (xview - controlob->sizex())/2;
+		topy = controlob->ypos() - (yview - controlob->sizey())/2;
 	}
 	else // no control object now ..
 	{
@@ -363,7 +363,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	}
 
 	draw_obs(data); //moved here to put the radar on top of obs
-	if (draw_radar && controlob && !controlob->dead && controlob->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();
 	return 1;
@@ -429,7 +429,7 @@ short viewscreen::input(const void* native_event)
     LevelRuntimeData& level = active_screen()->level_runtime_data();
     walker* controlob = sanitize_control_pointer(*this, level);
 
-	if (!controlob || controlob->dead)
+	if (!controlob || controlob->dead())
 		return 1;
 
 	const PlayerInput& pi = ctx().input.players[mynum];
@@ -500,18 +500,18 @@ void viewscreen::process_input(const InputState& input_state)
 			bool reverse = pi.is_held(InputAction::Shift);
 			short team = my_team;
 			auto filter = [team](const walker* w) {
-				return !w->dead && w->query_order() == Order::Living
-				       && w->team_num == team;
+				return !w->dead() && w->query_order() == Order::Living
+				       && w->team_num() == team;
 			};
 			walker* found = sim_cycle_next_character(
 				active_screen()->world().oblist, oldcontrol, reverse, filter);
 			if (found)
 				control = found;
-			if (control && control->dead)
+			if (control && control->dead())
 				control = find_next_control();
 		}
 		// If the current control died or was never set, re-acquire
-		if (!control || control->dead)
+		if (!control || control->dead())
 			control = find_next_control();
 		return; // No further input processing in spectator mode
 	}
@@ -591,7 +591,7 @@ bool viewscreen::draw_obs(LevelRuntimeData* data)
 	for (auto& uptr : data->world().fxlist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->dead)
+		if(w && !w->dead())
 			draw_walker(*w, this);
 	}
 
@@ -599,7 +599,7 @@ bool viewscreen::draw_obs(LevelRuntimeData* data)
 	for (auto& uptr : data->world().oblist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->dead)
+		if(w && !w->dead())
 			draw_walker(*w, this);
 	}
 
@@ -607,7 +607,7 @@ bool viewscreen::draw_obs(LevelRuntimeData* data)
 	for (auto& uptr : data->world().weaplist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->dead)
+		if(w && !w->dead())
 			draw_walker(*w, this);
 	}
 
@@ -854,9 +854,9 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	for(auto& uptr : active_screen()->world().oblist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->dead
+		if (w && !w->dead()
 		        && w->query_order() == Order::Living
-		        && w->team_num == teamnum
+		        && w->team_num() == teamnum
 		        && (!w->stats()->name.empty() || w->myguy)) //&& w->owner() == nullptr)
 		{
 		    ls.push_back(w);
@@ -872,10 +872,10 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 		{
 			if (numguys++ > 30)
 				break;
-			hp = w->stats()->hitpoints;
-			mp = w->stats()->magicpoints;
-			maxhp = w->stats()->max_hitpoints;
-			maxmp = w->stats()->max_magicpoints;
+			hp = w->stats()->hitpoints();
+			mp = w->stats()->magicpoints();
+			maxhp = w->stats()->max_hitpoints();
+			maxmp = w->stats()->max_magicpoints();
 
 			hpcolor = compute_hp_color(hp, maxhp);
 
@@ -898,7 +898,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 			message = std::format("{:4.0f}/{:.0f}", ceilf(mp), maxmp);
 			mytext.write_xy(left+130, text_down, message.c_str(), static_cast<unsigned char>(mpcolor));
 
-			message = std::format("{:2d}", w->stats()->level);
+			message = std::format("{:2d}", w->stats()->level());
 			mytext.write_xy(left+195, text_down, message.c_str(), static_cast<unsigned char>(BLACK));
 
 			text_down+=6;

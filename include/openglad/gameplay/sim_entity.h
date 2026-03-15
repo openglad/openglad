@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <openglad/core/order.h>
+#include <openglad/gameplay/dirty_field_bits.h>
 #include <cstdint>
 
 class GameWorld;
@@ -34,30 +35,129 @@ public:
     SimEntity(SimEntity&&) = delete;
     SimEntity& operator=(SimEntity&&) = delete;
 
-    // Position (pixel coordinates in the game world)
-    short xpos = 0;
-    short ypos = 0;
-    short sizex = 0;
-    short sizey = 0;
+    [[nodiscard]] short xpos() const noexcept { return xpos_; }
+    void set_xpos(short value) noexcept
+    {
+        xpos_ = value;
+        mark_dirty(og::dirty::BIT_XPOS);
+    }
 
-    // Team/identity (public to match walker API)
-    unsigned char team_num = 0;
-    unsigned char real_team_num = 255;
-    signed char user = -1;              // Controlling player (-1 = AI)
+    [[nodiscard]] short ypos() const noexcept { return ypos_; }
+    void set_ypos(short value) noexcept
+    {
+        ypos_ = value;
+        mark_dirty(og::dirty::BIT_YPOS);
+    }
 
-    // State flags
-    short dead = 0;
-    short death_called = 0;
-    short invulnerable_left = 0;
-    short invisibility_left = 0;
-    short flight_left = 0;
-    short bonus_rounds = 0;
+    [[nodiscard]] short sizex() const noexcept { return sizex_; }
+    void set_sizex(short value) noexcept
+    {
+        sizex_ = value;
+        mark_dirty(og::dirty::BIT_SIZEX);
+    }
 
-    // Identity
-    Order order = Order::Living;
-    char  family = 0;
+    [[nodiscard]] short sizey() const noexcept { return sizey_; }
+    void set_sizey(short value) noexcept
+    {
+        sizey_ = value;
+        mark_dirty(og::dirty::BIT_SIZEY);
+    }
 
-    [[nodiscard]] std::uint32_t entity_id() const noexcept { return entity_id_; }
+    [[nodiscard]] unsigned char team_num() const noexcept { return team_num_; }
+    void set_team_num(unsigned char value) noexcept
+    {
+        team_num_ = value;
+        mark_dirty(og::dirty::BIT_TEAM_NUM);
+    }
+
+    [[nodiscard]] unsigned char real_team_num() const noexcept
+    {
+        return real_team_num_;
+    }
+    void set_real_team_num(unsigned char value) noexcept
+    {
+        real_team_num_ = value;
+        mark_dirty(og::dirty::BIT_REAL_TEAM_NUM);
+    }
+
+    [[nodiscard]] signed char user() const noexcept { return user_; }
+    void set_user(signed char value) noexcept
+    {
+        user_ = value;
+        mark_dirty(og::dirty::BIT_USER);
+    }
+
+    [[nodiscard]] short dead() const noexcept { return dead_; }
+    void set_dead(short value) noexcept
+    {
+        dead_ = value;
+        mark_dirty(og::dirty::BIT_DEAD);
+    }
+
+    [[nodiscard]] short death_called() const noexcept { return death_called_; }
+    void set_death_called(short value) noexcept
+    {
+        death_called_ = value;
+        mark_dirty(og::dirty::BIT_DEATH_CALLED);
+    }
+
+    [[nodiscard]] short invulnerable_left() const noexcept
+    {
+        return invulnerable_left_;
+    }
+    void set_invulnerable_left(short value) noexcept
+    {
+        invulnerable_left_ = value;
+        mark_dirty(og::dirty::BIT_INVULNERABLE_LEFT);
+    }
+
+    [[nodiscard]] short invisibility_left() const noexcept
+    {
+        return invisibility_left_;
+    }
+    void set_invisibility_left(short value) noexcept
+    {
+        invisibility_left_ = value;
+        mark_dirty(og::dirty::BIT_INVISIBILITY_LEFT);
+    }
+
+    [[nodiscard]] short flight_left() const noexcept { return flight_left_; }
+    void set_flight_left(short value) noexcept
+    {
+        flight_left_ = value;
+        mark_dirty(og::dirty::BIT_FLIGHT_LEFT);
+    }
+
+    [[nodiscard]] short bonus_rounds() const noexcept { return bonus_rounds_; }
+    void set_bonus_rounds(short value) noexcept
+    {
+        bonus_rounds_ = value;
+        mark_dirty(og::dirty::BIT_BONUS_ROUNDS);
+    }
+
+    [[nodiscard]] Order order() const noexcept { return order_; }
+    void set_order(Order value) noexcept
+    {
+        order_ = value;
+        mark_dirty(og::dirty::BIT_ORDER);
+    }
+
+    [[nodiscard]] char family() const noexcept { return family_; }
+    void set_family(char value) noexcept
+    {
+        family_ = value;
+        mark_dirty(og::dirty::BIT_FAMILY);
+    }
+
+    [[nodiscard]] std::uint32_t entity_id() const noexcept
+    {
+        return entity_id_value_;
+    }
+    void set_entity_id(std::uint32_t entity_id) noexcept
+    {
+        entity_id_value_ = entity_id;
+        mark_dirty(og::dirty::BIT_ENTITY_ID);
+    }
     void mark_dirty(std::uint8_t bit) noexcept
     {
         dirty_mask_[bit / 64] |= (1ULL << (bit % 64));
@@ -82,26 +182,65 @@ public:
     }
     void set_snapshot_entity_id(std::uint32_t entity_id) noexcept
     {
-        entity_id_ = entity_id;
+        set_entity_id(entity_id);
     }
     void set_snapshot_position(short xpos_value, short ypos_value,
                                float worldx_value, float worldy_value) noexcept
     {
-        xpos = xpos_value;
-        ypos = ypos_value;
-        worldx_ = worldx_value;
-        worldy_ = worldy_value;
+        set_xpos(xpos_value);
+        set_ypos(ypos_value);
+        set_worldx(worldx_value);
+        set_worldy(worldy_value);
     }
 
     // Animation frame state (sim-relevant; actual pixel data is in render component)
-    short frame = 0;
+    [[nodiscard]] short frame() const noexcept { return frame_; }
 
 protected:
-    // Position: floating-point authoritative, xpos/ypos are display-snapped
-    float worldx_ = -1.0f;
-    float worldy_ = -1.0f;
+    void set_frame_state(short value) noexcept
+    {
+        frame_ = value;
+        mark_dirty(og::dirty::BIT_FRAME);
+    }
 
-    std::uint32_t entity_id_ = 0;
+    [[nodiscard]] float worldx() const noexcept { return worldx_value_; }
+    void set_worldx(float value) noexcept
+    {
+        worldx_value_ = value;
+        mark_dirty(og::dirty::BIT_WORLDX);
+    }
+
+    [[nodiscard]] float worldy() const noexcept { return worldy_value_; }
+    void set_worldy(float value) noexcept
+    {
+        worldy_value_ = value;
+        mark_dirty(og::dirty::BIT_WORLDY);
+    }
+
+    // Position: floating-point authoritative, xpos/ypos are display-snapped
+    float worldx_value_ = -1.0f;
+    float worldy_value_ = -1.0f;
+
+private:
+    short xpos_ = 0;
+    short ypos_ = 0;
+    short sizex_ = 0;
+    short sizey_ = 0;
+    unsigned char team_num_ = 0;
+    unsigned char real_team_num_ = 255;
+    signed char user_ = -1;
+    short dead_ = 0;
+    short death_called_ = 0;
+    short invulnerable_left_ = 0;
+    short invisibility_left_ = 0;
+    short flight_left_ = 0;
+    short bonus_rounds_ = 0;
+    Order order_ = Order::Living;
+    char family_ = 0;
+    short frame_ = 0;
+    std::uint32_t entity_id_value_ = 0;
+
+protected:
     short frames = 0;
     GameWorld* owning_world_ = nullptr;
     std::uint64_t dirty_mask_[2] = {};

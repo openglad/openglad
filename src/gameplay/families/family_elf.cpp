@@ -44,61 +44,59 @@ static bool elf_do_special(walker* self)
     std::int32_t i;
     IRandom& rng = elf_rng();
 
-    switch (self->current_special)
+    switch (self->current_special())
     {
         case 1: // some rocks (normal)
-            self->stats()->magicpoints += 2.0f * static_cast<float>(self->stats()->weapon_cost);
+            self->stats()->set_magicpoints(self->stats()->magicpoints() + 2.0f * static_cast<float>(self->stats()->weapon_cost()));
             fireob = static_cast<weap*>(self->fire());
             if (!fireob)
                 return false;
-            fireob->lastx *= next_spread_multiplier(rng);
-            fireob->lasty *= next_spread_multiplier(rng);
+            fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng));
+            fireob->set_lasty(fireob->lasty() * next_spread_multiplier(rng));
             fireob = static_cast<weap*>(self->fire());
             if (!fireob)
                 return false;
-            fireob->lastx *= next_spread_multiplier(rng);
-            fireob->lasty *= next_spread_multiplier(rng);
+            fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng));
+            fireob->set_lasty(fireob->lasty() * next_spread_multiplier(rng));
             break;
         case 2: // more rocks, and bouncing
-            self->stats()->magicpoints += 3.0f * static_cast<float>(self->stats()->weapon_cost);
+            self->stats()->set_magicpoints(self->stats()->magicpoints() + 3.0f * static_cast<float>(self->stats()->weapon_cost()));
             for (i = 0; i < 2; i++)
             {
                 fireob = static_cast<weap*>(self->fire());
                 if (!fireob)
                     return false;
-                fireob->lineofsight *= 3;
-                fireob->lineofsight /= 2;
-                fireob->do_bounce = 1;
-                fireob->lastx *= next_spread_multiplier(rng);
-                fireob->lasty *= next_spread_multiplier(rng);
+                fireob->set_lineofsight((fireob->lineofsight() * 3) / 2);
+                fireob->set_do_bounce(1);
+                fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng));
+                fireob->set_lasty(fireob->lasty() * next_spread_multiplier(rng));
             }
             break;
         case 3:
-            self->stats()->magicpoints += 4.0f * static_cast<float>(self->stats()->weapon_cost);
+            self->stats()->set_magicpoints(self->stats()->magicpoints() + 4.0f * static_cast<float>(self->stats()->weapon_cost()));
             for (i = 0; i < 3; i++)
             {
                 fireob = static_cast<weap*>(self->fire());
                 if (!fireob)
                     return false;
-                fireob->lineofsight *= 2;
-                fireob->do_bounce = 1;
-                fireob->lastx *= next_spread_multiplier(rng);
-                fireob->lasty *= next_spread_multiplier(rng);
+                fireob->set_lineofsight(fireob->lineofsight() * 2);
+                fireob->set_do_bounce(1);
+                fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng));
+                fireob->set_lasty(fireob->lasty() * next_spread_multiplier(rng));
             }
             break;
         case 4:
         default:
-            self->stats()->magicpoints += 5.0f * static_cast<float>(self->stats()->weapon_cost);
+            self->stats()->set_magicpoints(self->stats()->magicpoints() + 5.0f * static_cast<float>(self->stats()->weapon_cost()));
             for (i = 0; i < 4; i++)
             {
                 fireob = static_cast<weap*>(self->fire());
                 if (!fireob)
                     return false;
-                fireob->lineofsight *= 5;
-                fireob->lineofsight /= 2;
-                fireob->do_bounce = 1;
-                fireob->lastx *= next_spread_multiplier(rng);
-                fireob->lasty *= next_spread_multiplier(rng);
+                fireob->set_lineofsight((fireob->lineofsight() * 5) / 2);
+                fireob->set_do_bounce(1);
+                fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng));
+                fireob->set_lasty(fireob->lasty() * next_spread_multiplier(rng));
             }
             break;
     }

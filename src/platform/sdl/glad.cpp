@@ -322,9 +322,9 @@ void draw_radar_gems(screen* s)
 	short team_light;
 
 	static short old_team_num = -1;
-	if (old_team_num == s->viewob[0]->control->team_num)
+	if (old_team_num == s->viewob[0]->control->team_num())
 		return;
-	old_team_num = s->viewob[0]->control->team_num;
+	old_team_num = s->viewob[0]->control->team_num();
 
 	team_light = s->viewob[0]->control->query_team_color();
 
@@ -368,28 +368,28 @@ void draw_value_bar(short left, short top,
 
 	if (mode == 0) // hitpoint bar
 	{
-		points = control->stats()->hitpoints;
+		points = control->stats()->hitpoints();
 
-		if (float_eq(points, control->stats()->max_hitpoints))
+		if (float_eq(points, control->stats()->max_hitpoints()))
 			whatcolor = MAX_HP_COLOR;
-		else if ( (points * 3) < control->stats()->max_hitpoints)
+		else if ( (points * 3) < control->stats()->max_hitpoints())
 			whatcolor = LOW_HP_COLOR;
-		else if ( (points * 3 / 2) < control->stats()->max_hitpoints)
+		else if ( (points * 3 / 2) < control->stats()->max_hitpoints())
 			whatcolor = MID_HP_COLOR;
-		else if (points < control->stats()->max_hitpoints)
+		else if (points < control->stats()->max_hitpoints())
 			whatcolor = HIGH_HP_COLOR;
 			else 
 				whatcolor = ORANGE_START;
 
-			if (points > control->stats()->max_hitpoints)
+			if (points > control->stats()->max_hitpoints())
 				bar_length = 60;
 			else
-				bar_length = static_cast<Sint32>(ceilf(points * 60.0f / control->stats()->max_hitpoints));
+				bar_length = static_cast<Sint32>(ceilf(points * 60.0f / control->stats()->max_hitpoints()));
 			bar_remainder = 60 - bar_length;
 
 			s->draw_box(left, top, left+61, top+6, BOX_COLOR, 0);
 			//myscreen->fastbox(left, top, 61, 6, BOX_COLOR, 1);
-			if ( points > control->stats()->max_hitpoints)
+			if ( points > control->stats()->max_hitpoints())
 				for (i=0;i<bar_length/2;i++)
 					for (j=0; j<3; j++)
 					{
@@ -427,27 +427,27 @@ void draw_value_bar(short left, short top,
 	}  // end of doing hp stuff..
 	else if (mode == 1) // sp stuff ..
 	{
-		points = control->stats()->magicpoints;
+		points = control->stats()->magicpoints();
 
-		if (float_eq(points, control->stats()->max_magicpoints))
+		if (float_eq(points, control->stats()->max_magicpoints()))
 			whatcolor = MAX_MP_COLOR;
-		else if ( (points * 3) < control->stats()->max_magicpoints)
+		else if ( (points * 3) < control->stats()->max_magicpoints())
 			whatcolor = LOW_MP_COLOR;
-		else if ( (points * 3 / 2) < control->stats()->max_magicpoints)
+		else if ( (points * 3 / 2) < control->stats()->max_magicpoints())
 			whatcolor = MID_MP_COLOR;
-		else if (points < control->stats()->max_magicpoints)
+		else if (points < control->stats()->max_magicpoints())
 			whatcolor = HIGH_MP_COLOR;
 			else 
 				whatcolor = WATER_START;
 
-			if (points > control->stats()->max_magicpoints)
+			if (points > control->stats()->max_magicpoints())
 				bar_length = 60;
 			else
-				bar_length = static_cast<Sint32>(ceilf(points * 60.0f / control->stats()->max_magicpoints));
+				bar_length = static_cast<Sint32>(ceilf(points * 60.0f / control->stats()->max_magicpoints()));
 			bar_remainder = 60 - bar_length;
 
 			s->draw_box(left, top, left+61, top+6, BOX_COLOR, 0);
-			if ( points > control->stats()->max_magicpoints)
+			if ( points > control->stats()->max_magicpoints())
 				for (i=0;i<bar_length/2;i++)
 					for (j=0; j<3; j++)
 					{

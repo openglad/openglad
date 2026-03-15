@@ -64,7 +64,7 @@ TEST(LivingFuncs, living_set_difficulty_basic)
 
     static_cast<living*>(w.get())->set_difficulty(5);
     // After set_difficulty, stats should have changed
-    ASSERT_TRUE(w->stats()->max_hitpoints > 0) << "max HP should be positive after set_difficulty";
+    ASSERT_TRUE(w->stats()->max_hitpoints() > 0) << "max HP should be positive after set_difficulty";
 
 }
 
@@ -76,11 +76,11 @@ TEST(LivingFuncs, living_set_difficulty_level_10)
 
     float hp_low, hp_high;
     static_cast<living*>(w.get())->set_difficulty(1);
-    hp_low = w->stats()->max_hitpoints;
+    hp_low = w->stats()->max_hitpoints();
 
     auto w2 = create_living(FAMILY_SOLDIER);
     static_cast<living*>(w2.get())->set_difficulty(10);
-    hp_high = w2->stats()->max_hitpoints;
+    hp_high = w2->stats()->max_hitpoints();
 
     ASSERT_TRUE(hp_high > hp_low) << "higher difficulty level should give more HP";
 
@@ -97,7 +97,7 @@ TEST(LivingFuncs, living_set_difficulty_all_families)
         auto w = create_living(families[i]);
         if (w) {
             static_cast<living*>(w.get())->set_difficulty(3);
-            ASSERT_TRUE(w->stats()->max_hitpoints > 0) << "every family should have positive HP after set_difficulty";
+            ASSERT_TRUE(w->stats()->max_hitpoints() > 0) << "every family should have positive HP after set_difficulty";
         }
     }
 }
@@ -112,8 +112,8 @@ TEST(LivingFuncs, living_check_special_soldier)
     auto w = create_living(FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
-    w->stats()->magicpoints = 100;
-    w->stats()->max_magicpoints = 100;
+    w->stats()->set_magicpoints(100);
+    w->stats()->set_max_magicpoints(100);
 
     bool result = static_cast<living*>(w.get())->check_special();
     (void)result; // May return true or false
@@ -126,8 +126,8 @@ TEST(LivingFuncs, living_check_special_mage)
     auto w = create_living(FAMILY_MAGE);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
-    w->stats()->magicpoints = 100;
-    w->stats()->max_magicpoints = 100;
+    w->stats()->set_magicpoints(100);
+    w->stats()->set_max_magicpoints(100);
 
     bool result = static_cast<living*>(w.get())->check_special();
     (void)result;
@@ -167,8 +167,8 @@ TEST(LivingFuncs, living_shove_smoke)
     ASSERT_TRUE(a != nullptr) << "create a should succeed";
     ASSERT_TRUE(b != nullptr) << "create b should succeed";
 
-    a->team_num = 0;
-    b->team_num = 0;
+    a->set_team_num(0);
+    b->set_team_num(0);
     a->setxy(100, 100);
     b->setxy(105, 100);
 

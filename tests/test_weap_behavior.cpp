@@ -45,8 +45,8 @@ TEST(WeapBehavior, weap_act_fire)
     walker* w = make_weapon(FAMILY_KNIFE);
     if (!w) return;
     w->set_act_type(ACT_FIRE);
-    w->lastx = 1;
-    w->lasty = 0;
+    w->set_lastx(1);
+    w->set_lasty(0);
     w->act();
     og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
@@ -91,7 +91,7 @@ TEST(WeapBehavior, weap_act_die)
     if (!w) return;
     w->set_act_type(ACT_DIE);
     w->act();
-    ASSERT_TRUE(w->dead == 1) << "weap act die sets dead";
+    ASSERT_TRUE(w->dead() == 1) << "weap act die sets dead";
     og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
 
@@ -118,7 +118,7 @@ TEST(WeapBehavior, weap_death_knife_soldier_owner)
     walker* knife = make_weapon(FAMILY_KNIFE);
     if (!knife) return;
     knife->set_owner(owner.get());
-    knife->dead = 1;
+    knife->set_dead(1);
     knife->death();
     // Should create a KNIFE_BACK effect
 
@@ -134,7 +134,7 @@ TEST(WeapBehavior, weap_death_knife_non_soldier)
     walker* knife = make_weapon(FAMILY_KNIFE);
     if (!knife) return;
     knife->set_owner(owner.get());
-    knife->dead = 1;
+    knife->set_dead(1);
     knife->death();
     // Should NOT create a KNIFE_BACK since owner is not soldier
 
@@ -150,8 +150,8 @@ TEST(WeapBehavior, weap_death_fire_arrow_exploding)
 	    walker* arrow = make_weapon(FAMILY_FIRE_ARROW);
 	    if (!arrow) return;
 	    arrow->set_owner(owner.get());
-	    arrow->skip_exit = 1; // means it's supposed to explode
-	    arrow->dead = 1;
+	    arrow->set_skip_exit(1); // means it's supposed to explode
+	    arrow->set_dead(1);
 	    arrow->death();
 
     og::runtime::current_session->myscreen_->world().remove_ob(arrow);
@@ -162,8 +162,8 @@ TEST(WeapBehavior, weap_death_fire_arrow_no_explode)
 {
     walker* arrow = make_weapon(FAMILY_FIRE_ARROW);
     if (!arrow) return;
-    arrow->skip_exit = 0; // not supposed to explode
-    arrow->dead = 1;
+    arrow->set_skip_exit(0); // not supposed to explode
+    arrow->set_dead(1);
     arrow->death();
     og::runtime::current_session->myscreen_->world().remove_ob(arrow);
 }
@@ -173,10 +173,10 @@ TEST(WeapBehavior, weap_death_wave_transforms)
 {
     walker* wave = make_weapon(FAMILY_WAVE);
     if (!wave) return;
-    wave->dead = 1;
+    wave->set_dead(1);
     wave->death();
     // Should transform to WAVE2 and un-dead
-    ASSERT_TRUE(wave->dead == 0) << "wave should un-dead on transform";
+    ASSERT_TRUE(wave->dead() == 0) << "wave should un-dead on transform";
     og::runtime::current_session->myscreen_->world().remove_ob(wave);
 }
 
@@ -185,9 +185,9 @@ TEST(WeapBehavior, weap_death_wave2_transforms)
 {
     walker* wave = make_weapon(FAMILY_WAVE2);
     if (!wave) return;
-    wave->dead = 1;
+    wave->set_dead(1);
     wave->death();
-    ASSERT_TRUE(wave->dead == 0) << "wave2 should un-dead on transform";
+    ASSERT_TRUE(wave->dead() == 0) << "wave2 should un-dead on transform";
     og::runtime::current_session->myscreen_->world().remove_ob(wave);
 }
 
@@ -196,7 +196,7 @@ TEST(WeapBehavior, weap_death_door)
 {
     walker* door = make_weapon(FAMILY_DOOR);
     if (!door) return;
-    door->dead = 1;
+    door->set_dead(1);
     door->death();
     og::runtime::current_session->myscreen_->world().remove_ob(door);
 }
@@ -208,7 +208,7 @@ TEST(WeapBehavior, weap_death_rock_no_bounce)
     if (!rock) return;
     // do_bounce is a member of weap, not walker base
     // Just test death with default state
-    rock->dead = 1;
+    rock->set_dead(1);
     rock->death();
     og::runtime::current_session->myscreen_->world().remove_ob(rock);
 }
@@ -218,8 +218,8 @@ TEST(WeapBehavior, weap_death_boulder_exploding)
 {
     walker* boulder = make_weapon(FAMILY_BOULDER);
     if (!boulder) return;
-    boulder->skip_exit = 1;
-    boulder->dead = 1;
+    boulder->set_skip_exit(1);
+    boulder->set_dead(1);
     boulder->death();
     og::runtime::current_session->myscreen_->world().remove_ob(boulder);
 }
@@ -233,7 +233,7 @@ TEST(WeapBehavior, weap_animate_knife)
 {
     walker* w = make_weapon(FAMILY_KNIFE);
     if (!w) return;
-    w->ani_type = ANI_ATTACK;
+    w->set_ani_type(ANI_ATTACK);
     w->animate();
     og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
@@ -243,7 +243,7 @@ TEST(WeapBehavior, weap_animate_arrow)
 {
     walker* w = make_weapon(FAMILY_ARROW);
     if (!w) return;
-    w->ani_type = ANI_ATTACK;
+    w->set_ani_type(ANI_ATTACK);
     w->animate();
     og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
@@ -258,19 +258,19 @@ TEST(WeapBehavior, weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofs
     if (!(w && dead_living))
         return;
 
-    dead_living->dead = 1;
+    dead_living->set_dead(1);
     w->set_foe(dead_living.get());
     w->set_leader(dead_living.get());
     w->set_owner(dead_living.get());
     w->setxy(0, 0);
-    w->lineofsight = 5;
+    w->set_lineofsight(5);
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_TREE_M1;
     w->set_act_type(ACT_RANDOM);
 
     (void)w->act();
     ASSERT_TRUE(w->foe() == nullptr && w->leader() == nullptr) << "dead foe/leader should be cleared";
     ASSERT_TRUE(w->owner() == w) << "dead owner should be cleared then default to self";
-    ASSERT_EQ(4, (int)w->lineofsight) << "trees tile should decrement lineofsight";
+    ASSERT_EQ(4, (int)w->lineofsight()) << "trees tile should decrement lineofsight";
 
     og::runtime::current_session->myscreen_->world().remove_ob(w);
 }
@@ -311,7 +311,7 @@ TEST(WeapBehavior, weap_death_is_idempotent)
     ASSERT_TRUE(w != nullptr) << "weapon created";
     if (!w)
         return;
-    w->dead = 1;
+    w->set_dead(1);
     ASSERT_TRUE(w->death()) << "first death() call should succeed";
     ASSERT_TRUE(!w->death()) << "second death() call should short-circuit";
     og::runtime::current_session->myscreen_->world().remove_ob(w);
@@ -321,12 +321,12 @@ TEST(WeapBehavior, weap_death_is_idempotent)
 TEST(WeapBehavior, weap_headless_default_ctor_and_setxy_path)
 {
     weap headless;
-    ASSERT_EQ(0, (int)headless.do_bounce) << "default weap ctor should initialize do_bounce=0";
+    ASSERT_EQ(0, (int)headless.do_bounce()) << "default weap ctor should initialize do_bounce=0";
     ASSERT_EQ((int)Order::Weapon, (int)headless.query_order()) << "headless weap should report weapon order";
 
     headless.setxy(12, 34);
-    ASSERT_EQ(12, (int)headless.xpos) << "weap::setxy override should update xpos";
-    ASSERT_EQ(34, (int)headless.ypos) << "weap::setxy override should update ypos";
+    ASSERT_EQ(12, (int)headless.xpos()) << "weap::setxy override should update xpos";
+    ASSERT_EQ(34, (int)headless.ypos()) << "weap::setxy override should update ypos";
 }
 
 
@@ -358,70 +358,70 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
     }
 
     rock->setxy(64, 64);
-    rock->lastx = GRID_SIZE;
-    rock->lasty = GRID_SIZE;
+    rock->set_lastx(GRID_SIZE);
+    rock->set_lasty(GRID_SIZE);
     rock->set_collide_ob(nullptr);
-    rock->lineofsight = 1;
+    rock->set_lineofsight(1);
 
     // Guard: do_bounce disabled.
-    rock->dead = 1;
-    rock->do_bounce = 0;
+    rock->set_dead(1);
+    rock->set_do_bounce(0);
     ASSERT_TRUE(!rock_desc->on_death(rock)) << "rock on_death should short-circuit when do_bounce=0";
 
     // First probe passable => no bounce, die normally.
-    rock->do_bounce = 1;
-    rock->dead = 1;
+    rock->set_do_bounce(1);
+    rock->set_dead(1);
     set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_GRASS1);
     ASSERT_TRUE(!rock_desc->on_death(rock)) << "rock on_death should return false when forward tile is passable";
-    ASSERT_EQ(1, (int)rock->dead) << "forward-passable path should leave rock dead";
+    ASSERT_EQ(1, (int)rock->dead()) << "forward-passable path should leave rock dead";
 
     // First blocked, second passable => bounce down-left (flip X only).
     rock->setxy(64, 64);
-    rock->lastx = GRID_SIZE;
-    rock->lasty = GRID_SIZE;
-    rock->dead = 1;
+    rock->set_lastx(GRID_SIZE);
+    rock->set_lasty(GRID_SIZE);
+    rock->set_dead(1);
     set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_GRASS1);
     ASSERT_TRUE(rock_desc->on_death(rock)) << "rock on_death should bounce down-left";
-    ASSERT_EQ(-GRID_SIZE, (int)rock->lastx) << "down-left bounce should invert X velocity";
-    ASSERT_EQ(GRID_SIZE, (int)rock->lasty) << "down-left bounce should preserve Y velocity";
+    ASSERT_EQ(-GRID_SIZE, (int)rock->lastx()) << "down-left bounce should invert X velocity";
+    ASSERT_EQ(GRID_SIZE, (int)rock->lasty()) << "down-left bounce should preserve Y velocity";
 
     // First+second blocked, third passable => bounce up-right (flip Y only).
     rock->setxy(64, 64);
-    rock->lastx = GRID_SIZE;
-    rock->lasty = GRID_SIZE;
-    rock->dead = 1;
+    rock->set_lastx(GRID_SIZE);
+    rock->set_lasty(GRID_SIZE);
+    rock->set_dead(1);
     set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 + GRID_SIZE, 64 - GRID_SIZE, PIX_GRASS1);
     ASSERT_TRUE(rock_desc->on_death(rock)) << "rock on_death should bounce up-right";
-    ASSERT_EQ(GRID_SIZE, (int)rock->lastx) << "up-right bounce should preserve X velocity";
-    ASSERT_EQ(-GRID_SIZE, (int)rock->lasty) << "up-right bounce should invert Y velocity";
+    ASSERT_EQ(GRID_SIZE, (int)rock->lastx()) << "up-right bounce should preserve X velocity";
+    ASSERT_EQ(-GRID_SIZE, (int)rock->lasty()) << "up-right bounce should invert Y velocity";
 
     // First+second+third blocked, fourth passable => bounce up-left (flip both).
     rock->setxy(64, 64);
-    rock->lastx = GRID_SIZE;
-    rock->lasty = GRID_SIZE;
-    rock->dead = 1;
+    rock->set_lastx(GRID_SIZE);
+    rock->set_lasty(GRID_SIZE);
+    rock->set_dead(1);
     set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 + GRID_SIZE, 64 - GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 - GRID_SIZE, 64 - GRID_SIZE, PIX_GRASS1);
     ASSERT_TRUE(rock_desc->on_death(rock)) << "rock on_death should bounce up-left";
-    ASSERT_EQ(-GRID_SIZE, (int)rock->lastx) << "up-left bounce should invert X velocity";
-    ASSERT_EQ(-GRID_SIZE, (int)rock->lasty) << "up-left bounce should invert Y velocity";
+    ASSERT_EQ(-GRID_SIZE, (int)rock->lastx()) << "up-left bounce should invert X velocity";
+    ASSERT_EQ(-GRID_SIZE, (int)rock->lasty()) << "up-left bounce should invert Y velocity";
 
     // All blocked => remain dead.
     rock->setxy(64, 64);
-    rock->lastx = GRID_SIZE;
-    rock->lasty = GRID_SIZE;
-    rock->dead = 1;
+    rock->set_lastx(GRID_SIZE);
+    rock->set_lasty(GRID_SIZE);
+    rock->set_dead(1);
     set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 + GRID_SIZE, 64 - GRID_SIZE, PIX_H_WALL1);
     set_world_tile(64 - GRID_SIZE, 64 - GRID_SIZE, PIX_H_WALL1);
     ASSERT_TRUE(!rock_desc->on_death(rock)) << "rock on_death should fail when all bounce probes are blocked";
-    ASSERT_EQ(1, (int)rock->dead) << "all-blocked path should leave rock dead";
+    ASSERT_EQ(1, (int)rock->dead()) << "all-blocked path should leave rock dead";
 
     og::runtime::current_session->myscreen_->world().remove_ob(rock_w);
 }
@@ -440,9 +440,9 @@ TEST(WeapBehavior, weapon_family_animate_callbacks_and_sprinkle_hit_paths)
         return;
 
     // TREE/BLOOD callback: ani_type clamp + sentinel reset.
-    tree_w->curdir = 0;
-    tree_w->ani_type = 5;
-    tree_w->cycle = 0;
+    tree_w->set_curdir(0);
+    tree_w->set_ani_type(5);
+    tree_w->set_cycle(0);
     // Create local mutable animation data (global tables are const)
     static signed char tree_test_seq[] = {10, -1};
     static const signed char * tree_test_rows[] = {tree_test_seq, tree_test_seq, tree_test_seq, tree_test_seq,
@@ -451,33 +451,33 @@ TEST(WeapBehavior, weapon_family_animate_callbacks_and_sprinkle_hit_paths)
                                                     tree_test_seq, tree_test_seq, tree_test_seq, tree_test_seq};
     tree_w->ani = tree_test_rows;
     ASSERT_TRUE(tree_w->animate()) << "tree animate should succeed";
-    ASSERT_EQ(0, (int)tree_w->ani_type) << "tree animate should clamp ani_type >1 to 0";
-    ASSERT_EQ(0, (int)tree_w->cycle) << "tree animate should reset cycle at -1 sentinel";
+    ASSERT_EQ(0, (int)tree_w->ani_type()) << "tree animate should clamp ani_type >1 to 0";
+    ASSERT_EQ(0, (int)tree_w->cycle()) << "tree animate should reset cycle at -1 sentinel";
 
     // CIRCLE_PROTECTION callback: no owner/invalid owner path.
     circle_w->set_owner(nullptr);
-    circle_w->dead = 0;
+    circle_w->set_dead(0);
     ASSERT_TRUE(circle_w->animate()) << "circle animate should still return via death handling";
-    ASSERT_EQ(1, (int)circle_w->dead) << "circle animate should mark dead when owner is missing";
+    ASSERT_EQ(1, (int)circle_w->dead()) << "circle animate should mark dead when owner is missing";
 
     // CIRCLE_PROTECTION callback: valid owner centers on owner.
-    circle_w->dead = 0;
-    circle_w->death_called = 0;
+    circle_w->set_dead(0);
+    circle_w->set_death_called(0);
     circle_w->set_owner(owner.get());
-    owner->dead = 0;
-    circle_w->stats()->hitpoints = 5;
+    owner->set_dead(0);
+    circle_w->stats()->set_hitpoints(5);
     owner->setxy(180, 188);
     ASSERT_TRUE(circle_w->animate()) << "circle animate should succeed with valid owner";
-    ASSERT_TRUE(std::abs((int)circle_w->xpos - (int)owner->xpos) <= GRID_SIZE) << "circle animate should center near owner on X";
-    ASSERT_TRUE(std::abs((int)circle_w->ypos - (int)owner->ypos) <= GRID_SIZE) << "circle animate should center near owner on Y";
+    ASSERT_TRUE(std::abs((int)circle_w->xpos() - (int)owner->xpos()) <= GRID_SIZE) << "circle animate should center near owner on X";
+    ASSERT_TRUE(std::abs((int)circle_w->ypos() - (int)owner->ypos()) <= GRID_SIZE) << "circle animate should center near owner on Y";
 
     // GLOW callback: illegal ani_type clamp + sentinel reset + lifetime death.
-    glow_w->curdir = 0;
-    glow_w->ani_type = 9;
-    glow_w->cycle = 0;
-    glow_w->lifetime = 0;
-    glow_w->dead = 0;
-    glow_w->death_called = 0;
+    glow_w->set_curdir(0);
+    glow_w->set_ani_type(9);
+    glow_w->set_cycle(0);
+    glow_w->set_lifetime(0);
+    glow_w->set_dead(0);
+    glow_w->set_death_called(0);
     // Create local mutable animation data for glow (global tables are const)
     static signed char glow_test_seq[] = {12, -1};
     static const signed char * glow_test_rows[32] = {};
@@ -486,9 +486,9 @@ TEST(WeapBehavior, weapon_family_animate_callbacks_and_sprinkle_hit_paths)
         glow_test_rows[i] = glow_test_seq;
     glow_w->ani = glow_test_rows;
     ASSERT_TRUE(glow_w->animate()) << "glow animate should succeed";
-    ASSERT_EQ(2, (int)glow_w->ani_type) << "glow animate should clamp ani_type >2 to pulse state";
-    ASSERT_EQ(0, (int)glow_w->cycle) << "glow animate should reset cycle at sentinel";
-    ASSERT_EQ(1, (int)glow_w->dead) << "glow animate should mark dead when lifetime expires";
+    ASSERT_EQ(2, (int)glow_w->ani_type()) << "glow animate should clamp ani_type >2 to pulse state";
+    ASSERT_EQ(0, (int)glow_w->cycle()) << "glow animate should reset cycle at sentinel";
+    ASSERT_EQ(1, (int)glow_w->dead()) << "glow animate should mark dead when lifetime expires";
 
     // SPRINKLE callback: non-living target no-op; living target with null myguy uses con=0.
     const WeaponFamilyDescriptor* sprinkle_desc = get_weapon_family_descriptor(FAMILY_SPRINKLE);
@@ -498,15 +498,15 @@ TEST(WeapBehavior, weapon_family_animate_callbacks_and_sprinkle_hit_paths)
     ASSERT_TRUE(non_living_target != nullptr && living_target != nullptr) << "sprinkle targets created";
     if (sprinkle_desc && sprinkle_desc->on_hit_target && non_living_target && living_target)
     {
-        short before_non_living = non_living_target->stats()->frozen_delay;
+        short before_non_living = non_living_target->stats()->frozen_delay();
         ASSERT_TRUE(sprinkle_desc->on_hit_target(tree_w, non_living_target, owner.get())) << "sprinkle hit callback should return true for non-living targets";
-        ASSERT_EQ((int)before_non_living, (int)non_living_target->stats()->frozen_delay) << "sprinkle should not change frozen_delay for non-living targets";
+        ASSERT_EQ((int)before_non_living, (int)non_living_target->stats()->frozen_delay()) << "sprinkle should not change frozen_delay for non-living targets";
 
         living_target->myguy = nullptr;
-        living_target->stats()->frozen_delay = 0;
-        owner->stats()->level = 6;
+        living_target->stats()->set_frozen_delay(0);
+        owner->stats()->set_level(6);
         ASSERT_TRUE(sprinkle_desc->on_hit_target(tree_w, living_target, owner.get())) << "sprinkle hit callback should return true for living targets";
-        ASSERT_TRUE(living_target->stats()->frozen_delay >= 0) << "sprinkle should set a deterministic frozen_delay for living targets";
+        ASSERT_TRUE(living_target->stats()->frozen_delay() >= 0) << "sprinkle should set a deterministic frozen_delay for living targets";
     }
 
     og::runtime::current_session->myscreen_->world().remove_ob(non_living_target);
@@ -529,12 +529,11 @@ TEST(WeapBehavior, weap_act_sit_with_non_skipping_family_and_act_animate_shortcu
     ASSERT_TRUE(sit_weapon->act()) << "non-skip sit family should still return true";
 
     // Cover act() early return path when previous animation is still active.
-    anim_weapon->ani_type = ANI_ATTACK;
-    anim_weapon->cycle = 0;
-    anim_weapon->curdir = 0;
+    anim_weapon->set_ani_type(ANI_ATTACK);
+    anim_weapon->set_cycle(0);
+    anim_weapon->set_curdir(0);
     ASSERT_TRUE(anim_weapon->act()) << "non-walk ani_type should route through animate() and return true";
 
     og::runtime::current_session->myscreen_->world().remove_ob(sit_weapon);
     og::runtime::current_session->myscreen_->world().remove_ob(anim_weapon);
 }
-

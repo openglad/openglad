@@ -159,8 +159,8 @@ TEST(GameLoop, game_frame_options_menu_via_key_prefs_completes)
         ASSERT_TRUE(w != nullptr) << "control walker created";
         if (!w)
             return;
-        w->team_num = 0;
-        w->user = 0;
+        w->set_team_num(0);
+        w->set_user(0);
         w->set_act_type(ACT_CONTROL);
         vs->control = w;
     }

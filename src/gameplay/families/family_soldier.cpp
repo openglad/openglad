@@ -29,14 +29,14 @@ static bool soldier_do_special(walker* self)
     std::int32_t tempx, tempy;
     std::int32_t generic;
 
-    switch (self->current_special)
+    switch (self->current_special())
     {
         case 1: // charge enemy
             if (!self->stats()->forward_blocked())
             {
                 self->stats()->add_command(COMMAND_RUSH, 3,
-                    static_cast<std::int32_t>(self->lastx / self->stepsize),
-                    static_cast<std::int32_t>(self->lasty / self->stepsize));
+                    static_cast<std::int32_t>(self->lastx() / self->stepsize()),
+                    static_cast<std::int32_t>(self->lasty() / self->stepsize()));
                 og::sim::emit_sound(current_game->sim_events, SOUND_CHARGE);
             }
             else
@@ -44,21 +44,21 @@ static bool soldier_do_special(walker* self)
             break;
         case 2: // boomerang
             newob = summon_entity(self, Order::FX, FAMILY_BOOMERANG);
-            newob->ani_type = 1;
-            newob->lifetime = 30 + self->stats()->level * 12;
-            newob->stats()->hitpoints += static_cast<float>(self->stats()->level) * 12.0f;
-            newob->stats()->max_hitpoints = newob->stats()->hitpoints;
-            newob->damage += static_cast<float>(self->stats()->level) * 4.0f;
+            newob->set_ani_type(1);
+            newob->set_lifetime(30 + self->stats()->level() * 12);
+            newob->stats()->set_hitpoints(newob->stats()->hitpoints() + static_cast<float>(self->stats()->level()) * 12.0f);
+            newob->stats()->set_max_hitpoints(newob->stats()->hitpoints());
+            newob->set_damage(newob->damage() + static_cast<float>(self->stats()->level()) * 4.0f);
             break;
         case 3: // whirlwind attack
-            if (self->busy)
+            if (self->busy())
                 return false;
-            self->busy += 8;
-            tempx = static_cast<std::int32_t>(self->lastx);
-            tempy = static_cast<std::int32_t>(self->lasty);
-            self->curdir = -1;
-            self->lastx = 0;
-            self->lasty = 0;
+            self->set_busy(self->busy() + 8.0f);
+            tempx = static_cast<std::int32_t>(self->lastx());
+            tempy = static_cast<std::int32_t>(self->lasty());
+            self->set_curdir(-1);
+            self->set_lastx(0);
+            self->set_lasty(0);
             self->stats()->add_command(COMMAND_WALK, 1, 0, -1);
             self->stats()->add_command(COMMAND_WALK, 1, 1, -1);
             self->stats()->add_command(COMMAND_WALK, 1, 1, 0);
@@ -68,11 +68,11 @@ static bool soldier_do_special(walker* self)
             self->stats()->add_command(COMMAND_WALK, 1, -1, 0);
             self->stats()->add_command(COMMAND_WALK, 1, -1, -1);
 
-            for_each_foe_in_range(self, 32 + self->stats()->level * 2, [&](walker* w) {
-                tempx = w->xpos - self->xpos;
+            for_each_foe_in_range(self, 32 + self->stats()->level() * 2, [&](walker* w) {
+                tempx = w->xpos() - self->xpos();
                 if (tempx)
                     tempx = tempx / (abs(tempx));
-                tempy = w->ypos - self->ypos;
+                tempy = w->ypos() - self->ypos();
                 if (tempy)
                     tempy = tempy / (abs(tempy));
                 self->attack(w);
@@ -80,7 +80,7 @@ static bool soldier_do_special(walker* self)
             });
             break;
         case 4: // Disarm opponent
-            if (self->busy)
+            if (self->busy())
                 return false;
             if (!self->stats()->forward_blocked())
                 return false;
@@ -88,17 +88,17 @@ static bool soldier_do_special(walker* self)
             {
                 generic = 0;
                 for_each_foe_in_range(self, 28, [&](walker* w) {
-                    if (current_game->world->rng_.next(self->stats()->level) >= current_game->world->rng_.next(w->stats()->level))
-                        w->busy += 6.0f * static_cast<float>(self->stats()->level - w->stats()->level + 1);
+                    if (current_game->world->rng_.next(self->stats()->level()) >= current_game->world->rng_.next(w->stats()->level()))
+                        w->set_busy(w->busy() + 6.0f * static_cast<float>(self->stats()->level() - w->stats()->level() + 1));
                     generic = 1;
                 });
 
                 if (generic)
                 {
                     og::sim::emit_sound(current_game->sim_events, SOUND_CHARGE);
-                    if (self->team_num == 0 || self->myguy)
+                    if (self->team_num() == 0 || self->myguy)
                         og::sim::emit_notification(current_game->sim_events, "Fighter Disarmed Enemy!");
-                    self->busy += 5;
+                    self->set_busy(self->busy() + 5.0f);
                 }
                 else
                     return false;
@@ -133,13 +133,13 @@ static bool soldier_on_fire_weapon(walker* self, walker* weapon)
     living* lv = dynamic_cast<living*>(self);
     if (lv == nullptr)
         return true;
-    if (lv->weapons_left <= 0)
+    if (lv->weapons_left() <= 0)
     {
-        self->stats()->magicpoints += self->stats()->weapon_cost;
-        weapon->dead = 1;
+        self->stats()->set_magicpoints(self->stats()->magicpoints() + self->stats()->weapon_cost());
+        weapon->set_dead(1);
         return false;
     }
-    lv->weapons_left--;
+    lv->set_weapons_left(static_cast<short>(lv->weapons_left() - 1));
     return true;
 }
 
@@ -147,14 +147,14 @@ static void soldier_on_create(walker* self)
 {
     if (living* lv = dynamic_cast<living*>(self))
     {
-        lv->weapons_left = static_cast<short>((self->stats()->level + 1) / 2);
+        lv->set_weapons_left(static_cast<short>((self->stats()->level() + 1) / 2));
     }
 }
 
 static void soldier_set_difficulty(living* self, std::uint32_t level)
 {
     apply_difficulty_scaling(self, level, {13.0f, 8.0f, 5.0f, 2.0f});
-    self->weapons_left = static_cast<short>((level + 1) / 2);
+    self->set_weapons_left(static_cast<short>((level + 1) / 2));
 }
 
 static const char* const soldier_names[] = {"Lothar", "Arthur", "Uther", "Achilles", "Lu Bu", "Wallace", "Leonidas", "Attila", "Alexander", "Ajax", "Nestor", "Priam", "Hector", "Tom", "Bigfoot"};

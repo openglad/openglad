@@ -23,13 +23,13 @@ std::unique_ptr<walker> guy_create_walker_owned(guy& g, screen* screen_)
     if (!temp_walker)
         return nullptr;
     temp_walker->set_owned_myguy(std::move(temp_guy));
-    temp_walker->stats()->level = temp_walker->myguy->level;
+    temp_walker->stats()->set_level(temp_walker->myguy->level);
 
     g.update_derived_stats(temp_walker.get());
 
     // Set our team number ..
-    temp_walker->team_num = static_cast<unsigned char>(temp_walker->myguy->teamnum);
-    temp_walker->real_team_num = 255;
+    temp_walker->set_team_num(static_cast<unsigned char>(temp_walker->myguy->teamnum));
+    temp_walker->set_real_team_num(255);
 
     return temp_walker;
 }
@@ -39,13 +39,13 @@ walker* guy_create_and_add_walker(guy& g, screen* screen_)
     auto temp_guy = std::make_unique<guy>(g);
     walker* temp_walker = screen_->world().add_ob(Order::Living, temp_guy->family);
     temp_walker->set_owned_myguy(std::move(temp_guy));
-    temp_walker->stats()->level = temp_walker->myguy->level;
+    temp_walker->stats()->set_level(temp_walker->myguy->level);
 
     g.update_derived_stats(temp_walker);
 
     // Set our team number ..
-    temp_walker->team_num = static_cast<unsigned char>(temp_walker->myguy->teamnum);
-    temp_walker->real_team_num = 255;
+    temp_walker->set_team_num(static_cast<unsigned char>(temp_walker->myguy->teamnum));
+    temp_walker->set_real_team_num(255);
 
     return temp_walker;
 }

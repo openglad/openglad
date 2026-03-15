@@ -133,10 +133,10 @@ TEST(EffectExtended, compute_explosion_range_clamp)
 TEST(EffectExtended, effect_ctor_defaults_and_owner_pointer_cleanup_in_act)
 {
     effect headless;
-    ASSERT_EQ(1, (int)headless.ignore) << "headless effect ctor should set ignore";
+    ASSERT_EQ(1, (int)headless.ignore()) << "headless effect ctor should set ignore";
 
     effect fx;
-    fx.ani_type = ANI_WALK;
+    fx.set_ani_type(ANI_WALK);
     fx.set_order_family(Order::FX, 120);
 
     walker foe;
@@ -145,13 +145,12 @@ TEST(EffectExtended, effect_ctor_defaults_and_owner_pointer_cleanup_in_act)
     fx.set_foe(&foe);
     fx.set_leader(&leader);
     fx.set_owner(&owner);
-    foe.dead = 1;
-    leader.dead = 1;
-    owner.dead = 1;
+    foe.set_dead(1);
+    leader.set_dead(1);
+    owner.set_dead(1);
 
     (void)fx.act();
     ASSERT_TRUE(fx.foe() == nullptr) << "effect act should clear dead foe pointer";
     ASSERT_TRUE(fx.leader() == nullptr) << "effect act should clear dead leader pointer";
     ASSERT_TRUE(fx.owner() == nullptr) << "effect act should clear dead owner pointer";
 }
-

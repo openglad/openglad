@@ -63,17 +63,17 @@ TEST(ViewInputMorePaths, viewscreen_input_switch_yell_and_special_switch_paths)
     if (!(w0 && w1 && w2))
         return;
 
-    w0->team_num = 0;
-    w1->team_num = 0;
-    w2->team_num = 0;
+    w0->set_team_num(0);
+    w1->set_team_num(0);
+    w2->set_team_num(0);
 
-    w0->real_team_num = 255;
-    w1->real_team_num = 255;
-    w2->real_team_num = 255;
+    w0->set_real_team_num(255);
+    w1->set_real_team_num(255);
+    w2->set_real_team_num(255);
 
-    w0->user = 0;
-    w1->user = -1;
-    w2->user = -1;
+    w0->set_user(0);
+    w1->set_user(-1);
+    w2->set_user(-1);
 
     w0->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
     w1->setxy(GRID_SIZE * 4, GRID_SIZE * 3);
@@ -104,7 +104,7 @@ TEST(ViewInputMorePaths, viewscreen_input_switch_yell_and_special_switch_paths)
 
     // Yell for help: KEY_YELL is 's' for player 0, requires not holding shifter.
     if (vs->control)
-        vs->control->yo_delay = 0;
+        vs->control->set_yo_delay(0);
     (void)vs->input(dummy_event());
     (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_YELL])));
 
@@ -112,7 +112,7 @@ TEST(ViewInputMorePaths, viewscreen_input_switch_yell_and_special_switch_paths)
     (void)vs->input(dummy_event());
     ks.fake[SDL_SCANCODE_LSHIFT] = 1;
     if (vs->control)
-        vs->control->action = 0;
+        vs->control->set_action(0);
     (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_YELL])));
     ks.fake[SDL_SCANCODE_LSHIFT] = 0;
 
@@ -120,7 +120,7 @@ TEST(ViewInputMorePaths, viewscreen_input_switch_yell_and_special_switch_paths)
     (void)vs->input(dummy_event());
     ks.fake[SDL_SCANCODE_LSHIFT] = 1;
     if (vs->control)
-        vs->control->action = ACTION_FOLLOW;
+        vs->control->set_action(ACTION_FOLLOW);
     (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_YELL])));
     ks.fake[SDL_SCANCODE_LSHIFT] = 0;
 

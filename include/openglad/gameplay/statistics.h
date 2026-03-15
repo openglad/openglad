@@ -20,6 +20,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
+#include <openglad/gameplay/dirty_field_bits.h>
 #include <cstdint>
 #include <list>
 #include <string>
@@ -60,6 +61,14 @@ inline constexpr int FAERIE_FREEZE_TIME = 40;
 class statistics
 {
 	public:
+#define OG_STATS_DIRTY_FIELD(type, name, bit)                             \
+        [[nodiscard]] type name() const noexcept { return name##_; }      \
+        void set_##name(type value)                                       \
+        {                                                                 \
+            name##_ = value;                                              \
+            mark_dirty(bit);                                              \
+        }
+
 		statistics(walker  *);
 		~statistics();
 		void set_controller(walker* value);
@@ -76,6 +85,12 @@ class statistics
 		void hit_response(walker * who);
 		void yell_for_help(walker *foe);  // yell and run away
 		short query_bit_flags(std::int32_t myvalue) const;
+        [[nodiscard]] std::int32_t bit_flags() const noexcept { return bit_flags_; }
+        void set_bit_flags(std::int32_t value)
+        {
+            bit_flags_ = value;
+            mark_dirty(og::dirty::BIT_BIT_FLAGS);
+        }
         void clear_bit_flags();
 		void set_bit_flags(std::int32_t someflag, short newvalue); // sets a single flag
 		bool right_blocked(); // is our right blocked?
@@ -88,37 +103,84 @@ class statistics
 		bool walk_to_foe(); // try to walk intelligently towards foe
 
 		std::string name; // for NPC's, normally ..
-		Order old_order;
-		char old_family;
-		std::uint32_t last_distance;
-		std::int32_t current_distance;  // Distances (to foe) are used for AI walking
-		std::int32_t bit_flags;         // holds (currently) 32 bit flags
-		short delete_me;
+        OG_STATS_DIRTY_FIELD(Order, old_order, og::dirty::BIT_OLD_ORDER);
+        OG_STATS_DIRTY_FIELD(char, old_family, og::dirty::BIT_OLD_FAMILY);
+        OG_STATS_DIRTY_FIELD(std::uint32_t, last_distance, og::dirty::BIT_LAST_DISTANCE);
+        OG_STATS_DIRTY_FIELD(std::int32_t, current_distance, og::dirty::BIT_CURRENT_DISTANCE);
+        OG_STATS_DIRTY_FIELD(short, delete_me, og::dirty::BIT_DELETE_ME);
 
-		float hitpoints;
-		float max_hitpoints;
-		float magicpoints;
-		float max_magicpoints;
+        OG_STATS_DIRTY_FIELD(float, hitpoints, og::dirty::BIT_HITPOINTS);
+        OG_STATS_DIRTY_FIELD(float, max_hitpoints, og::dirty::BIT_MAX_HITPOINTS);
+        OG_STATS_DIRTY_FIELD(float, magicpoints, og::dirty::BIT_MAGICPOINTS);
+        OG_STATS_DIRTY_FIELD(float, max_magicpoints, og::dirty::BIT_MAX_MAGICPOINTS);
 
-		std::int32_t max_heal_delay;
-		std::int32_t current_heal_delay;
-		std::int32_t max_magic_delay;
-		std::int32_t current_magic_delay;
-		float magic_per_round; // magic we regain each round
-		float heal_per_round;  // hp we regain each round
-		float armor; // reduces damage against us
+        OG_STATS_DIRTY_FIELD(std::int32_t, max_heal_delay, og::dirty::BIT_MAX_HEAL_DELAY);
+        OG_STATS_DIRTY_FIELD(std::int32_t, current_heal_delay, og::dirty::BIT_CURRENT_HEAL_DELAY);
+        OG_STATS_DIRTY_FIELD(std::int32_t, max_magic_delay, og::dirty::BIT_MAX_MAGIC_DELAY);
+        OG_STATS_DIRTY_FIELD(std::int32_t, current_magic_delay, og::dirty::BIT_CURRENT_MAGIC_DELAY);
+        OG_STATS_DIRTY_FIELD(float, magic_per_round, og::dirty::BIT_MAGIC_PER_ROUND);
+        OG_STATS_DIRTY_FIELD(float, heal_per_round, og::dirty::BIT_HEAL_PER_ROUND);
+        OG_STATS_DIRTY_FIELD(float, armor, og::dirty::BIT_ARMOR);
 
-		std::int32_t level;
-		short frozen_delay;              // use for paralyzing..
-		unsigned short special_cost[NUM_SPECIALS];  // cost of our special ability
-		short weapon_cost;                          // cost of our weapon
-		std::uint32_t controller_id = 0;
+        OG_STATS_DIRTY_FIELD(std::int32_t, level, og::dirty::BIT_LEVEL);
+        OG_STATS_DIRTY_FIELD(short, frozen_delay, og::dirty::BIT_FROZEN_DELAY);
+        OG_STATS_DIRTY_FIELD(short, weapon_cost, og::dirty::BIT_WEAPON_COST);
+        OG_STATS_DIRTY_FIELD(std::uint32_t, controller_id, og::dirty::BIT_CONTROLLER_ID);
+        [[nodiscard]] unsigned short special_cost(int index) const noexcept
+        {
+            return special_cost_[index];
+        }
+        void set_special_cost(int index, unsigned short value)
+        {
+            special_cost_[index] = value;
+            mark_dirty(og::dirty::BIT_SPECIAL_COST);
+        }
+        void adjust_hitpoints(float delta) { set_hitpoints(hitpoints_ + delta); }
+        void adjust_max_hitpoints(float delta) { set_max_hitpoints(max_hitpoints_ + delta); }
+        void adjust_magicpoints(float delta) { set_magicpoints(magicpoints_ + delta); }
+        void adjust_max_magicpoints(float delta) { set_max_magicpoints(max_magicpoints_ + delta); }
+        void adjust_magic_per_round(float delta) { set_magic_per_round(magic_per_round_ + delta); }
+        void adjust_heal_per_round(float delta) { set_heal_per_round(heal_per_round_ + delta); }
+        void adjust_armor(float delta) { set_armor(armor_ + delta); }
+        void adjust_frozen_delay(short delta)
+        {
+            set_frozen_delay(static_cast<short>(frozen_delay_ + delta));
+        }
 		std::list<command> commands;
 
 	private:
+        void mark_dirty(std::uint8_t bit_index);
+
+        Order old_order_ = Order::Living;
+        char old_family_ = FAMILY_SOLDIER;
+        std::uint32_t last_distance_ = 0;
+        std::int32_t current_distance_ = 0;  // Distances (to foe) are used for AI walking
+        std::int32_t bit_flags_ = 0;         // holds (currently) 32 bit flags
+        short delete_me_ = 0;
+
+        float hitpoints_ = 0.0f;
+        float max_hitpoints_ = 0.0f;
+        float magicpoints_ = 0.0f;
+        float max_magicpoints_ = 0.0f;
+
+        std::int32_t max_heal_delay_ = 0;
+        std::int32_t current_heal_delay_ = 0;
+        std::int32_t max_magic_delay_ = 0;
+        std::int32_t current_magic_delay_ = 0;
+        float magic_per_round_ = 0.0f; // magic we regain each round
+        float heal_per_round_ = 0.0f;  // hp we regain each round
+        float armor_ = 0.0f; // reduces damage against us
+
+        std::int32_t level_ = 0;
+        short frozen_delay_ = 0;              // use for paralyzing..
+        unsigned short special_cost_[NUM_SPECIALS] = {};  // cost of our special ability
+        short weapon_cost_ = 0;                          // cost of our weapon
+        std::uint32_t controller_id_ = 0;
 		walker* controller_ = nullptr;
 		walker* owner_ = nullptr;
 };
+
+#undef OG_STATS_DIRTY_FIELD
 
 class command
 {

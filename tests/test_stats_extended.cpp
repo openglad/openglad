@@ -120,10 +120,10 @@ TEST(StatsExtended, statistics_do_command_attack)
 
     auto foe = create_living(FAMILY_SMALL_SLIME);
     ASSERT_TRUE(foe != nullptr) << "create foe should succeed";
-    foe->team_num = 1;
+    foe->set_team_num(1);
     foe->setxy(60, 50);
     w->set_foe(foe.get());
-    w->team_num = 0;
+    w->set_team_num(0);
 
     w->stats()->commands.clear();
     w->stats()->add_command(COMMAND_ATTACK, 5, 0, 0);
@@ -156,20 +156,20 @@ TEST(StatsExtended, statistics_forward_blocked_smoke)
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 
     w->setxy(100, 100);
-    w->curdir = FACE_UP;
+    w->set_curdir(FACE_UP);
     bool result = w->stats()->forward_blocked();
     // Just check it doesn't crash
     (void)result;
 
-    w->curdir = FACE_RIGHT;
+    w->set_curdir(FACE_RIGHT);
     result = w->stats()->forward_blocked();
     (void)result;
 
-    w->curdir = FACE_DOWN;
+    w->set_curdir(FACE_DOWN);
     result = w->stats()->forward_blocked();
     (void)result;
 
-    w->curdir = FACE_LEFT;
+    w->set_curdir(FACE_LEFT);
     result = w->stats()->forward_blocked();
     (void)result;
 
@@ -183,7 +183,7 @@ TEST(StatsExtended, statistics_right_blocked_smoke)
 
     w->setxy(100, 100);
     for (int dir = 0; dir < 8; dir++) {
-        w->curdir = static_cast<char>(dir);
+        w->set_curdir(static_cast<char>(dir));
         bool result = w->stats()->right_blocked();
         (void)result;
     }
@@ -198,7 +198,7 @@ TEST(StatsExtended, statistics_right_forward_blocked_smoke)
 
     w->setxy(100, 100);
     for (int dir = 0; dir < 8; dir++) {
-        w->curdir = static_cast<char>(dir);
+        w->set_curdir(static_cast<char>(dir));
         bool result = w->stats()->right_forward_blocked();
         (void)result;
     }
@@ -213,7 +213,7 @@ TEST(StatsExtended, statistics_right_back_blocked_smoke)
 
     w->setxy(100, 100);
     for (int dir = 0; dir < 8; dir++) {
-        w->curdir = static_cast<char>(dir);
+        w->set_curdir(static_cast<char>(dir));
         bool result = w->stats()->right_back_blocked();
         (void)result;
     }
@@ -232,8 +232,8 @@ TEST(StatsExtended, statistics_hit_response_soldier)
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
     ASSERT_TRUE(attacker != nullptr) << "create attacker should succeed";
 
-    w->team_num = 0;
-    attacker->team_num = 1;
+    w->set_team_num(0);
+    attacker->set_team_num(1);
     w->setxy(100, 100);
     attacker->setxy(110, 100);
 
@@ -249,11 +249,11 @@ TEST(StatsExtended, statistics_hit_response_mage)
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
     ASSERT_TRUE(attacker != nullptr) << "create attacker should succeed";
 
-    w->team_num = 0;
+    w->set_team_num(0);
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
-    w->stats()->magicpoints = 100;
-    w->stats()->max_magicpoints = 100;
-    attacker->team_num = 1;
+    w->stats()->set_magicpoints(100);
+    w->stats()->set_max_magicpoints(100);
+    attacker->set_team_num(1);
     w->setxy(100, 100);
     attacker->setxy(110, 100);
 
@@ -269,8 +269,8 @@ TEST(StatsExtended, statistics_hit_response_archer)
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
     ASSERT_TRUE(attacker != nullptr) << "create attacker should succeed";
 
-    w->team_num = 0;
-    attacker->team_num = 1;
+    w->set_team_num(0);
+    attacker->set_team_num(1);
     w->setxy(100, 100);
     attacker->setxy(110, 100);
 

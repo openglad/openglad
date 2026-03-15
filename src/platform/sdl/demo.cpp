@@ -115,8 +115,8 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng)
     std::vector<int> enemy_levels;
     for (auto& uptr : s->world().oblist) {
         walker* w = uptr.get();
-        if (w && !w->dead && w->order == Order::Living && w->team_num != 0) {
-            enemy_levels.push_back(static_cast<int>(w->stats()->level));
+        if (w && !w->dead() && w->order() == Order::Living && w->team_num() != 0) {
+            enemy_levels.push_back(static_cast<int>(w->stats()->level()));
         }
     }
 
@@ -133,7 +133,7 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng)
 
         walker* w = guy_create_and_add_walker(g, s);
         if (w) {
-            w->team_num = 0;
+            w->set_team_num(0);
             w->teleport();
         }
     }

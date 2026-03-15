@@ -43,9 +43,9 @@ walker* add_living(unsigned char team = 0, unsigned char family = FAMILY_SOLDIER
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, family);
     if (!w)
         return nullptr;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     w->setxy(100, 100);
     return w;
 }
@@ -55,9 +55,9 @@ walker* add_weapon(unsigned char family = FAMILY_KNIFE, unsigned char team = 1)
     walker* w = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, family);
     if (!w)
         return nullptr;
-    w->team_num = team;
-    w->real_team_num = team;
-    w->dead = 0;
+    w->set_team_num(team);
+    w->set_real_team_num(team);
+    w->set_dead(0);
     w->setxy(105, 100);
     return w;
 }
@@ -324,18 +324,18 @@ TEST(MassCoverage, find_follow_leader_prefers_active_multiview_control) {
     walker* right = add_living(1, FAMILY_ORC);
     ASSERT_TRUE(left != nullptr && right != nullptr) << "test leaders should exist";
     if (left && right && s->viewob[0] && s->viewob[1]) {
-        left->yo_delay = 0;
-        right->yo_delay = 4;
+        left->set_yo_delay(0);
+        right->set_yo_delay(4);
         s->viewob[0]->control = left;
         s->viewob[1]->control = right;
         ASSERT_EQ(right, find_follow_leader()) << "second active view should be selected";
 
-        left->yo_delay = 6;
-        right->yo_delay = 0;
+        left->set_yo_delay(6);
+        right->set_yo_delay(0);
         ASSERT_EQ(left, find_follow_leader()) << "first active view should be selected";
 
-        left->yo_delay = 0;
-        right->yo_delay = 0;
+        left->set_yo_delay(0);
+        right->set_yo_delay(0);
         ASSERT_EQ(nullptr, find_follow_leader()) << "no delayed view should return null";
 
         s->viewob[0]->control = nullptr;

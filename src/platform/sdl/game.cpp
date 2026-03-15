@@ -87,7 +87,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	{
 	    walker* w = uptr.get();
 		if (w)
-			w->set_difficulty(static_cast<Uint32>(w->stats()->level));
+			w->set_difficulty(static_cast<Uint32>(w->stats()->level()));
 	}
 
 	// Cycle through the team list ..
@@ -112,8 +112,8 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 				replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 		if (replace_walker)
 		{
-			temp_walker->setxy(replace_walker->xpos, replace_walker->ypos);
-			replace_walker->dead = 1;
+			temp_walker->setxy(replace_walker->xpos(), replace_walker->ypos());
+			replace_walker->set_dead(1);
 		}
 		else
 		{
@@ -126,7 +126,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 	while (replace_walker)
 	{
-		replace_walker->dead = 1;
+		replace_walker->set_dead(1);
 		replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 	}
 
@@ -153,17 +153,17 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			if (w)
 			{
 			    // Kill everything except for our team, exits, and teleporters
-				myfam = w->family;
+				myfam = w->family();
 				myord = w->query_order();
-				if ( ( (w->team_num==0 || w->myguy) && myord==Order::Living) || //living team member
+				if ( ( (w->team_num() ==0 || w->myguy) && myord==Order::Living) || //living team member
 				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
 				        (myord==Order::Treasure && myfam==FAMILY_TELEPORTER)  // teleporters
 				   )
 				{
-					// do nothing; legal guy
+					// do nothing); legal guy
 				}
 				else
-					w->dead = 1;
+					w->set_dead(1);
 			}
 		}
 
@@ -172,18 +172,18 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			    walker* w = uptr.get();
 			if (w)
 			{
-				myfam = w->family;
+				myfam = w->family();
 				myord = w->query_order();
-				if ( (w->team_num==0 && myord==Order::Living) || //living team member
+				if ( (w->team_num() ==0 && myord==Order::Living) || //living team member
 				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
 				        (myord==Order::Treasure && myfam==FAMILY_TELEPORTER)  // teleporters
 
 				   )
 				{
-					// do nothing; legal guy
+					// do nothing); legal guy
 				}
 				else
-					w->dead = 1;
+					w->set_dead(1);
 			}
 		}
 
@@ -192,18 +192,18 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			    walker* w = uptr.get();
 			if (w)
 			{
-				myfam = w->family;
+				myfam = w->family();
 				myord = w->query_order();
-				if ( (w->team_num==0 && myord==Order::Living) || //living team member
+				if ( (w->team_num() ==0 && myord==Order::Living) || //living team member
 				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
 				        (myord==Order::Treasure && myfam==FAMILY_TELEPORTER)  // teleporters
 
 				   )
 				{
-					// do nothing; legal guy
+					// do nothing); legal guy
 				}
 				else
-					w->dead = 1;
+					w->set_dead(1);
 			}
 		}
 	}
@@ -228,15 +228,15 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
         {
             // Spectator mode: set a camera target but don't claim player control
             if (view->control && view_idx == 0)
-                screenp->world().control_hp = view->control->stats()->hitpoints;
+                screenp->world().control_hp = view->control->stats()->hitpoints();
         }
-        else if (view->control && view->control->user == -1)
+        else if (view->control && view->control->user() == -1)
         {
-            view->control->user = static_cast<signed char>(view_idx);
+            view->control->set_user(static_cast<signed char>(view_idx));
             view->control->set_act_type(ACT_CONTROL);
             view->control->stats()->clear_command();
             if (view_idx == 0)
-                screenp->world().control_hp = view->control->stats()->hitpoints;
+                screenp->world().control_hp = view->control->stats()->hitpoints();
         }
         ++view_idx;
     }

@@ -1095,6 +1095,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_text_rendering.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_intro_smoke.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_dirty_tracking_safety.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sai2x_scaler.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_options_menu_driven.cpp
@@ -1378,6 +1379,10 @@ if(NOT EMSCRIPTEN)
             test_go_no_team.cpp
             test_fairy_death.cpp
             test_overpowered_team.cpp
+        )
+
+        og_add_test_group(og_test_snapshot_safety FILES
+            test_dirty_tracking_safety.cpp
         )
 
         og_add_test_group(og_test_screen FILES

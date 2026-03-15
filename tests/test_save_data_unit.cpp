@@ -17,7 +17,7 @@ TEST(SaveDataUnit, save_data_update_guys_clamps_to_max_team_size)
     for (int i = 0; i < walker_count; ++i)
     {
         auto w = std::make_unique<walker>();
-        w->dead = 0;
+        w->set_dead(0);
         auto recruited = std::make_unique<guy>(FAMILY_SOLDIER);
         recruited->exp = static_cast<std::uint32_t>(100 + i);
         w->set_owned_myguy(std::move(recruited));

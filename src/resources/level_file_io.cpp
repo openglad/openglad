@@ -78,7 +78,13 @@ std::string ensure_png_extension(std::string_view name)
     std::string s(name);
     if (s.size() >= 4 && s.compare(s.size() - 4, 4, ".png") == 0)
         return s;
-    if (s.size() >= 4 && s.compare(s.size() - 4, 4, ".pix") == 0)
+    const bool ends_with_legacy_pix_ext =
+        s.size() >= 4 &&
+        s[s.size() - 4] == '.' &&
+        s[s.size() - 3] == 'p' &&
+        s[s.size() - 2] == 'i' &&
+        s[s.size() - 1] == 'x';
+    if (ends_with_legacy_pix_ext)
         s.replace(s.size() - 4, 4, ".png");
     else
         s += ".png";
@@ -220,12 +226,12 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         }
 
         new_guy->setxy(currentx, currenty);
-        new_guy->team_num = sanitize_loaded_team_num(tempteam);
+        new_guy->set_team_num(sanitize_loaded_team_num(tempteam));
 
         if (version >= 7)
-            new_guy->stats()->level = shortlevel;
+            new_guy->stats()->set_level(shortlevel);
         else if (version >= 3)
-            new_guy->stats()->level = templevel;
+            new_guy->stats()->set_level(templevel);
 
         if (version >= 4)
         {
@@ -299,11 +305,11 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         for (auto& uptr : world.weaplist)
         {
             walker* w = uptr.get();
-            if (w != nullptr && w->family == FAMILY_DOOR)
+            if (w != nullptr && w->family() == FAMILY_DOOR)
             {
                 if (world.mysmoother.query_genre_x_y(
-                        w->xpos / GRID_SIZE,
-                        (w->ypos / GRID_SIZE) - 1) == TYPE_WALL)
+                        w->xpos() / GRID_SIZE,
+                        (w->ypos() / GRID_SIZE) - 1) == TYPE_WALL)
                 {
                     w->set_frame(1);
                 }
@@ -495,13 +501,13 @@ bool write_scenario_payload(og::io::OgFile& outfile,
 
             unsigned char temporder =
                 static_cast<unsigned char>(ob->query_order());
-            char tempfamily = ob->family;
-            std::int32_t currentx = ob->xpos;
-            std::int32_t currenty = ob->ypos;
-            char tempteam = static_cast<char>(ob->team_num);
-            char tempfacing = ob->curdir;
-            char tempcommand = static_cast<char>(ob->act_type);
-            short shortlevel = static_cast<short>(ob->stats()->level);
+            char tempfamily = ob->family();
+            std::int32_t currentx = ob->xpos();
+            std::int32_t currenty = ob->ypos();
+            char tempteam = static_cast<char>(ob->team_num());
+            char tempfacing = ob->curdir();
+            char tempcommand = static_cast<char>(ob->act_type());
+            short shortlevel = static_cast<short>(ob->stats()->level());
             char tempname[12] = {};
             snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
 

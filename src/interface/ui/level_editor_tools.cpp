@@ -33,21 +33,21 @@ bool are_objects_outside_area(LevelRuntimeData* level, int x, int y, int w, int 
     for (auto& uptr : level->world().oblist)
     {
         walker* ob = uptr.get();
-        if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
+        if(ob && (x > ob->xpos() || ob->xpos() >= x + w || y > ob->ypos() || ob->ypos() >= y + h))
             return true;
     }
 
     for (auto& uptr : level->world().fxlist)
     {
         walker* ob = uptr.get();
-        if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
+        if(ob && (x > ob->xpos() || ob->xpos() >= x + w || y > ob->ypos() || ob->ypos() >= y + h))
             return true;
     }
 
     for (auto& uptr : level->world().weaplist)
     {
         walker* ob = uptr.get();
-        if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
+        if(ob && (x > ob->xpos() || ob->xpos() >= x + w || y > ob->ypos() || ob->ypos() >= y + h))
             return true;
     }
 

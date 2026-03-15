@@ -186,94 +186,93 @@ void apply_entity_snapshot_fields(GameWorld& world,
     entity.set_order_family(snapshot.order, snapshot.family);
     entity.set_snapshot_position(snapshot.xpos, snapshot.ypos,
                                  snapshot.worldx, snapshot.worldy);
-    entity.sizex = snapshot.sizex;
-    entity.sizey = snapshot.sizey;
-    entity.team_num = snapshot.team_num;
-    entity.real_team_num = snapshot.real_team_num;
-    entity.user = snapshot.user;
-    entity.dead = snapshot.dead;
-    entity.death_called = snapshot.death_called;
-    entity.invulnerable_left = snapshot.invulnerable_left;
-    entity.invisibility_left = snapshot.invisibility_left;
-    entity.flight_left = snapshot.flight_left;
-    entity.bonus_rounds = snapshot.bonus_rounds;
-    entity.lastx = snapshot.lastx;
-    entity.lasty = snapshot.lasty;
-    entity.stepsize = snapshot.stepsize;
-    entity.normal_stepsize = snapshot.normal_stepsize;
-    entity.curdir = snapshot.curdir;
-    entity.enddir = snapshot.enddir;
-    entity.damage = snapshot.damage;
-    entity.fire_frequency = snapshot.fire_frequency;
-    entity.busy = snapshot.busy;
-    entity.current_weapon = snapshot.current_weapon;
-    entity.default_weapon = snapshot.default_weapon;
-    entity.attack_lunge = snapshot.attack_lunge;
-    entity.attack_lunge_angle = snapshot.attack_lunge_angle;
-    entity.hit_recoil = snapshot.hit_recoil;
-    entity.hit_recoil_angle = snapshot.hit_recoil_angle;
-    entity.last_hitpoints = snapshot.last_hitpoints;
-    entity.action = snapshot.action;
-    entity.act_type = snapshot.act_type;
-    entity.old_act_type = snapshot.old_act_type;
-    entity.ani_type = snapshot.ani_type;
-    entity.cycle = snapshot.cycle;
-    entity.drawcycle = snapshot.drawcycle;
-    entity.current_special = snapshot.current_special;
-    entity.ignore = snapshot.ignore;
-    entity.in_act = snapshot.in_act != 0;
-    entity.shifter_down = snapshot.shifter_down;
-    entity.yo_delay = snapshot.yo_delay;
-    entity.skip_exit = snapshot.skip_exit;
-    entity.outline = snapshot.outline;
-    entity.hurt_flash = snapshot.hurt_flash != 0;
-    entity.lifetime = snapshot.lifetime;
-    entity.speed_bonus = snapshot.speed_bonus;
-    entity.speed_bonus_left = snapshot.speed_bonus_left;
-    entity.charm_left = snapshot.charm_left;
-    entity.weapons_left = snapshot.weapons_left;
-    entity.keys = snapshot.keys;
-    entity.view_all = snapshot.view_all;
-    entity.lineofsight = snapshot.lineofsight;
-    entity.path_check_counter = snapshot.path_check_counter;
+    entity.set_sizex(snapshot.sizex);
+    entity.set_sizey(snapshot.sizey);
+    entity.set_team_num(snapshot.team_num);
+    entity.set_real_team_num(snapshot.real_team_num);
+    entity.set_user(snapshot.user);
+    entity.set_dead(snapshot.dead);
+    entity.set_death_called(snapshot.death_called);
+    entity.set_invulnerable_left(snapshot.invulnerable_left);
+    entity.set_invisibility_left(snapshot.invisibility_left);
+    entity.set_flight_left(snapshot.flight_left);
+    entity.set_bonus_rounds(snapshot.bonus_rounds);
+    entity.set_lastx(snapshot.lastx);
+    entity.set_lasty(snapshot.lasty);
+    entity.set_stepsize(snapshot.stepsize);
+    entity.set_normal_stepsize(snapshot.normal_stepsize);
+    entity.set_curdir(snapshot.curdir);
+    entity.set_enddir(snapshot.enddir);
+    entity.set_damage(snapshot.damage);
+    entity.set_fire_frequency(snapshot.fire_frequency);
+    entity.set_busy(snapshot.busy);
+    entity.set_current_weapon(snapshot.current_weapon);
+    entity.set_default_weapon(snapshot.default_weapon);
+    entity.set_attack_lunge(snapshot.attack_lunge);
+    entity.set_attack_lunge_angle(snapshot.attack_lunge_angle);
+    entity.set_hit_recoil(snapshot.hit_recoil);
+    entity.set_hit_recoil_angle(snapshot.hit_recoil_angle);
+    entity.set_last_hitpoints(snapshot.last_hitpoints);
+    entity.set_action(snapshot.action);
+    entity.set_act_type_state(snapshot.act_type);
+    entity.set_old_act_type(snapshot.old_act_type);
+    entity.set_ani_type(snapshot.ani_type);
+    entity.set_cycle(snapshot.cycle);
+    entity.set_drawcycle(snapshot.drawcycle);
+    entity.set_current_special(snapshot.current_special);
+    entity.set_ignore(snapshot.ignore);
+    entity.set_in_act(snapshot.in_act != 0);
+    entity.set_shifter_down(snapshot.shifter_down);
+    entity.set_yo_delay(snapshot.yo_delay);
+    entity.set_skip_exit(snapshot.skip_exit);
+    entity.set_outline(snapshot.outline);
+    entity.set_hurt_flash(snapshot.hurt_flash != 0);
+    entity.set_lifetime(snapshot.lifetime);
+    entity.set_speed_bonus(snapshot.speed_bonus);
+    entity.set_speed_bonus_left(snapshot.speed_bonus_left);
+    entity.set_charm_left(snapshot.charm_left);
+    entity.set_weapons_left(snapshot.weapons_left);
+    entity.set_keys(snapshot.keys);
+    entity.set_view_all(snapshot.view_all);
+    entity.set_lineofsight(snapshot.lineofsight);
+    entity.set_path_check_counter(snapshot.path_check_counter);
     entity.set_regen_delay(snapshot.regen_delay);
-    entity.foe_id = snapshot.foe_id;
-    entity.leader_id = snapshot.leader_id;
-    entity.owner_id = snapshot.owner_id;
-    entity.collide_ob_id = snapshot.collide_ob_id;
+    entity.set_foe_id(snapshot.foe_id);
+    entity.set_leader_id(snapshot.leader_id);
+    entity.set_owner_id(snapshot.owner_id);
+    entity.set_collide_ob_id(snapshot.collide_ob_id);
 
     if (statistics* const stats = entity.stats(); stats != nullptr)
     {
         stats->set_controller(nullptr);
-        stats->hitpoints = snapshot.hitpoints;
-        stats->max_hitpoints = snapshot.max_hitpoints;
-        stats->magicpoints = snapshot.magicpoints;
-        stats->max_magicpoints = snapshot.max_magicpoints;
-        stats->max_heal_delay = snapshot.max_heal_delay;
-        stats->current_heal_delay = snapshot.current_heal_delay;
-        stats->max_magic_delay = snapshot.max_magic_delay;
-        stats->current_magic_delay = snapshot.current_magic_delay;
-        stats->magic_per_round = snapshot.magic_per_round;
-        stats->heal_per_round = snapshot.heal_per_round;
-        stats->armor = snapshot.armor;
-        stats->level = snapshot.level;
-        stats->bit_flags = snapshot.bit_flags;
-        stats->delete_me = snapshot.delete_me;
-        stats->frozen_delay = snapshot.frozen_delay;
-        stats->weapon_cost = snapshot.weapon_cost;
-        std::copy(std::begin(snapshot.special_cost),
-                  std::end(snapshot.special_cost),
-                  std::begin(stats->special_cost));
-        stats->old_order = snapshot.old_order;
-        stats->old_family = snapshot.old_family;
-        stats->last_distance = snapshot.last_distance;
-        stats->current_distance = snapshot.current_distance;
-        stats->controller_id = snapshot.controller_id;
+        stats->set_hitpoints(snapshot.hitpoints);
+        stats->set_max_hitpoints(snapshot.max_hitpoints);
+        stats->set_magicpoints(snapshot.magicpoints);
+        stats->set_max_magicpoints(snapshot.max_magicpoints);
+        stats->set_max_heal_delay(snapshot.max_heal_delay);
+        stats->set_current_heal_delay(snapshot.current_heal_delay);
+        stats->set_max_magic_delay(snapshot.max_magic_delay);
+        stats->set_current_magic_delay(snapshot.current_magic_delay);
+        stats->set_magic_per_round(snapshot.magic_per_round);
+        stats->set_heal_per_round(snapshot.heal_per_round);
+        stats->set_armor(snapshot.armor);
+        stats->set_level(snapshot.level);
+        stats->set_bit_flags(snapshot.bit_flags);
+        stats->set_delete_me(snapshot.delete_me);
+        stats->set_frozen_delay(snapshot.frozen_delay);
+        stats->set_weapon_cost(snapshot.weapon_cost);
+        for (int i = 0; i < NUM_SPECIALS; ++i)
+            stats->set_special_cost(i, snapshot.special_cost[i]);
+        stats->set_old_order(snapshot.old_order);
+        stats->set_old_family(snapshot.old_family);
+        stats->set_last_distance(snapshot.last_distance);
+        stats->set_current_distance(snapshot.current_distance);
+        stats->set_controller_id(snapshot.controller_id);
         stats->commands.clear();
     }
 
     if (auto* weapon = dynamic_cast<weap*>(&entity); weapon != nullptr)
-        weapon->do_bounce = snapshot.do_bounce;
+        weapon->set_do_bounce(snapshot.do_bounce);
 
     entity.set_direct_frame(snapshot.frame);
 }
@@ -295,7 +294,7 @@ void update_existing_entities(GameWorld& world,
 
         const og::sim::EntitySnapshot& snapshot = *snapshot_it->second;
         const bool reconfigure =
-            entity->order != snapshot.order || entity->family != snapshot.family;
+            entity->order() != snapshot.order || entity->family() != snapshot.family;
         apply_entity_snapshot_fields(world, *entity, snapshot, reconfigure);
     }
 }
@@ -372,13 +371,13 @@ void resolve_cross_references(GameWorld& world,
             return (it == index.end()) ? nullptr : it->second;
         };
 
-        entity.set_foe(lookup(entity.foe_id));
-        entity.set_leader(lookup(entity.leader_id));
-        entity.set_owner(lookup(entity.owner_id));
-        entity.set_collide_ob(lookup(entity.collide_ob_id));
+        entity.set_foe(lookup(entity.foe_id()));
+        entity.set_leader(lookup(entity.leader_id()));
+        entity.set_owner(lookup(entity.owner_id()));
+        entity.set_collide_ob(lookup(entity.collide_ob_id()));
 
         if (statistics* const stats = entity.stats(); stats != nullptr)
-            stats->set_controller(lookup(stats->controller_id));
+            stats->set_controller(lookup(stats->controller_id()));
     };
 
     for (const auto& entry : world.oblist)
@@ -454,8 +453,8 @@ void rebuild_obmap(GameWorld& world)
         {
             if (entry == nullptr)
                 continue;
-            if (!entry->ignore && !entry->dead)
-                world.myobmap->add(entry.get(), entry->xpos, entry->ypos);
+            if (!entry->ignore() && !entry->dead())
+                world.myobmap->add(entry.get(), entry->xpos(), entry->ypos());
             else
                 world.myobmap->remove(entry.get());
         }
@@ -599,30 +598,29 @@ void capture_entity_stats(const statistics* entity_stats,
     if (entity_stats == nullptr)
         return;
 
-    snapshot.hitpoints = entity_stats->hitpoints;
-    snapshot.max_hitpoints = entity_stats->max_hitpoints;
-    snapshot.magicpoints = entity_stats->magicpoints;
-    snapshot.max_magicpoints = entity_stats->max_magicpoints;
-    snapshot.max_heal_delay = entity_stats->max_heal_delay;
-    snapshot.current_heal_delay = entity_stats->current_heal_delay;
-    snapshot.max_magic_delay = entity_stats->max_magic_delay;
-    snapshot.current_magic_delay = entity_stats->current_magic_delay;
-    snapshot.magic_per_round = entity_stats->magic_per_round;
-    snapshot.heal_per_round = entity_stats->heal_per_round;
-    snapshot.armor = entity_stats->armor;
-    snapshot.level = entity_stats->level;
-    snapshot.bit_flags = entity_stats->bit_flags;
-    snapshot.delete_me = entity_stats->delete_me;
-    snapshot.frozen_delay = entity_stats->frozen_delay;
-    snapshot.weapon_cost = entity_stats->weapon_cost;
-    std::copy(std::begin(entity_stats->special_cost),
-              std::end(entity_stats->special_cost),
-              std::begin(snapshot.special_cost));
-    snapshot.old_order = entity_stats->old_order;
-    snapshot.old_family = entity_stats->old_family;
-    snapshot.last_distance = entity_stats->last_distance;
-    snapshot.current_distance = entity_stats->current_distance;
-    snapshot.controller_id = entity_stats->controller_id;
+    snapshot.hitpoints = entity_stats->hitpoints();
+    snapshot.max_hitpoints = entity_stats->max_hitpoints();
+    snapshot.magicpoints = entity_stats->magicpoints();
+    snapshot.max_magicpoints = entity_stats->max_magicpoints();
+    snapshot.max_heal_delay = entity_stats->max_heal_delay();
+    snapshot.current_heal_delay = entity_stats->current_heal_delay();
+    snapshot.max_magic_delay = entity_stats->max_magic_delay();
+    snapshot.current_magic_delay = entity_stats->current_magic_delay();
+    snapshot.magic_per_round = entity_stats->magic_per_round();
+    snapshot.heal_per_round = entity_stats->heal_per_round();
+    snapshot.armor = entity_stats->armor();
+    snapshot.level = entity_stats->level();
+    snapshot.bit_flags = entity_stats->bit_flags();
+    snapshot.delete_me = entity_stats->delete_me();
+    snapshot.frozen_delay = entity_stats->frozen_delay();
+    snapshot.weapon_cost = entity_stats->weapon_cost();
+    for (int i = 0; i < NUM_SPECIALS; ++i)
+        snapshot.special_cost[i] = entity_stats->special_cost(i);
+    snapshot.old_order = entity_stats->old_order();
+    snapshot.old_family = entity_stats->old_family();
+    snapshot.last_distance = entity_stats->last_distance();
+    snapshot.current_distance = entity_stats->current_distance();
+    snapshot.controller_id = entity_stats->controller_id();
 }
 
 og::sim::EntitySnapshot capture_entity_snapshot(walker& entity, bool keyframe)
@@ -645,76 +643,76 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity, bool keyframe)
     snapshot.guy_id = (entity.myguy != nullptr) ? entity.myguy->id
                                                 : og::sim::kNoGuyId;
     snapshot.entity_id = entity.entity_id();
-    snapshot.xpos = entity.xpos;
-    snapshot.ypos = entity.ypos;
-    snapshot.sizex = entity.sizex;
-    snapshot.sizey = entity.sizey;
-    snapshot.team_num = entity.team_num;
-    snapshot.real_team_num = entity.real_team_num;
-    snapshot.user = entity.user;
-    snapshot.dead = entity.dead;
-    snapshot.death_called = entity.death_called;
-    snapshot.invulnerable_left = entity.invulnerable_left;
-    snapshot.invisibility_left = entity.invisibility_left;
-    snapshot.flight_left = entity.flight_left;
-    snapshot.bonus_rounds = entity.bonus_rounds;
-    snapshot.order = entity.order;
-    snapshot.family = entity.family;
-    snapshot.frame = entity.frame;
+    snapshot.xpos = entity.xpos();
+    snapshot.ypos = entity.ypos();
+    snapshot.sizex = entity.sizex();
+    snapshot.sizey = entity.sizey();
+    snapshot.team_num = entity.team_num();
+    snapshot.real_team_num = entity.real_team_num();
+    snapshot.user = entity.user();
+    snapshot.dead = entity.dead();
+    snapshot.death_called = entity.death_called();
+    snapshot.invulnerable_left = entity.invulnerable_left();
+    snapshot.invisibility_left = entity.invisibility_left();
+    snapshot.flight_left = entity.flight_left();
+    snapshot.bonus_rounds = entity.bonus_rounds();
+    snapshot.order = entity.order();
+    snapshot.family = entity.family();
+    snapshot.frame = entity.frame();
     snapshot.worldx = entity.worldx();
     snapshot.worldy = entity.worldy();
 
-    snapshot.lastx = entity.lastx;
-    snapshot.lasty = entity.lasty;
-    snapshot.stepsize = entity.stepsize;
-    snapshot.normal_stepsize = entity.normal_stepsize;
-    snapshot.curdir = entity.curdir;
-    snapshot.enddir = entity.enddir;
-    snapshot.damage = entity.damage;
-    snapshot.fire_frequency = entity.fire_frequency;
-    snapshot.busy = entity.busy;
-    snapshot.current_weapon = entity.current_weapon;
-    snapshot.default_weapon = entity.default_weapon;
-    snapshot.attack_lunge = entity.attack_lunge;
-    snapshot.attack_lunge_angle = entity.attack_lunge_angle;
-    snapshot.hit_recoil = entity.hit_recoil;
-    snapshot.hit_recoil_angle = entity.hit_recoil_angle;
-    snapshot.last_hitpoints = entity.last_hitpoints;
-    snapshot.action = entity.action;
-    snapshot.act_type = entity.act_type;
-    snapshot.old_act_type = entity.old_act_type;
-    snapshot.ani_type = entity.ani_type;
-    snapshot.cycle = entity.cycle;
-    snapshot.drawcycle = entity.drawcycle;
-    snapshot.current_special = entity.current_special;
-    snapshot.ignore = entity.ignore;
-    snapshot.in_act = capture_bool_byte(entity.in_act);
-    snapshot.shifter_down = entity.shifter_down;
-    snapshot.yo_delay = entity.yo_delay;
-    snapshot.skip_exit = entity.skip_exit;
-    snapshot.outline = entity.outline;
-    snapshot.hurt_flash = capture_bool_byte(entity.hurt_flash);
-    snapshot.lifetime = entity.lifetime;
-    snapshot.speed_bonus = entity.speed_bonus;
-    snapshot.speed_bonus_left = entity.speed_bonus_left;
-    snapshot.charm_left = entity.charm_left;
-    snapshot.weapons_left = entity.weapons_left;
-    snapshot.keys = entity.keys;
-    snapshot.view_all = entity.view_all;
-    snapshot.lineofsight = entity.lineofsight;
-    snapshot.path_check_counter = entity.path_check_counter;
+    snapshot.lastx = entity.lastx();
+    snapshot.lasty = entity.lasty();
+    snapshot.stepsize = entity.stepsize();
+    snapshot.normal_stepsize = entity.normal_stepsize();
+    snapshot.curdir = entity.curdir();
+    snapshot.enddir = entity.enddir();
+    snapshot.damage = entity.damage();
+    snapshot.fire_frequency = entity.fire_frequency();
+    snapshot.busy = entity.busy();
+    snapshot.current_weapon = entity.current_weapon();
+    snapshot.default_weapon = entity.default_weapon();
+    snapshot.attack_lunge = entity.attack_lunge();
+    snapshot.attack_lunge_angle = entity.attack_lunge_angle();
+    snapshot.hit_recoil = entity.hit_recoil();
+    snapshot.hit_recoil_angle = entity.hit_recoil_angle();
+    snapshot.last_hitpoints = entity.last_hitpoints();
+    snapshot.action = entity.action();
+    snapshot.act_type = entity.act_type();
+    snapshot.old_act_type = entity.old_act_type();
+    snapshot.ani_type = entity.ani_type();
+    snapshot.cycle = entity.cycle();
+    snapshot.drawcycle = entity.drawcycle();
+    snapshot.current_special = entity.current_special();
+    snapshot.ignore = entity.ignore();
+    snapshot.in_act = capture_bool_byte(entity.in_act());
+    snapshot.shifter_down = entity.shifter_down();
+    snapshot.yo_delay = entity.yo_delay();
+    snapshot.skip_exit = entity.skip_exit();
+    snapshot.outline = entity.outline();
+    snapshot.hurt_flash = capture_bool_byte(entity.hurt_flash());
+    snapshot.lifetime = entity.lifetime();
+    snapshot.speed_bonus = entity.speed_bonus();
+    snapshot.speed_bonus_left = entity.speed_bonus_left();
+    snapshot.charm_left = entity.charm_left();
+    snapshot.weapons_left = entity.weapons_left();
+    snapshot.keys = entity.keys();
+    snapshot.view_all = entity.view_all();
+    snapshot.lineofsight = entity.lineofsight();
+    snapshot.path_check_counter = entity.path_check_counter();
     snapshot.regen_delay = entity.regen_delay();
-    snapshot.foe_id = entity.foe_id;
-    snapshot.leader_id = entity.leader_id;
-    snapshot.owner_id = entity.owner_id;
-    snapshot.collide_ob_id = entity.collide_ob_id;
+    snapshot.foe_id = entity.foe_id();
+    snapshot.leader_id = entity.leader_id();
+    snapshot.owner_id = entity.owner_id();
+    snapshot.collide_ob_id = entity.collide_ob_id();
 
     capture_entity_stats(entity.stats(), snapshot);
 
     if (const auto* weapon = dynamic_cast<const weap*>(&entity);
         weapon != nullptr)
     {
-        snapshot.do_bounce = weapon->do_bounce;
+        snapshot.do_bounce = weapon->do_bounce();
     }
     else
     {

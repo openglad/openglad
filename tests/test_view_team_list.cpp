@@ -26,9 +26,9 @@ TEST(ViewTeamList, viewscreen_view_team_renders_entries_for_my_team)
         return;
 
     vs->my_team = 1;
-    w0->team_num = 1;
-    w1->team_num = 1;
-    w_other->team_num = 2;
+    w0->set_team_num(1);
+    w1->set_team_num(1);
+    w_other->set_team_num(2);
 
     w0->stats()->name = "A";
     w1->stats()->name = "B";
@@ -36,15 +36,15 @@ TEST(ViewTeamList, viewscreen_view_team_renders_entries_for_my_team)
 
     // Force a few color branches.
     vs->control = w1;                 // namecolor red for control
-    w0->stats()->hitpoints = 1;       // low hp -> LOW_HP_COLOR
-    w0->stats()->max_hitpoints = 10;
-    w0->stats()->magicpoints = 10;
-    w0->stats()->max_magicpoints = 10; // mp == max -> HIGH_MP_COLOR+3
+    w0->stats()->set_hitpoints(1);       // low hp -> LOW_HP_COLOR
+    w0->stats()->set_max_hitpoints(10);
+    w0->stats()->set_magicpoints(10);
+    w0->stats()->set_max_magicpoints(10); // mp == max -> HIGH_MP_COLOR+3
 
-    w1->stats()->hitpoints = 20;       // hp > max -> ORANGE_START
-    w1->stats()->max_hitpoints = 10;
-    w1->stats()->magicpoints = 0;      // low mp -> LOW_MP_COLOR
-    w1->stats()->max_magicpoints = 10;
+    w1->stats()->set_hitpoints(20);       // hp > max -> ORANGE_START
+    w1->stats()->set_max_hitpoints(10);
+    w1->stats()->set_magicpoints(0);      // low mp -> LOW_MP_COLOR
+    w1->stats()->set_max_magicpoints(10);
 
     vs->view_team();
 

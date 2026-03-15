@@ -32,16 +32,16 @@ void WalkerRender::set_data(const PixieData&) {}
 void walker::attach_render(const PixieData& data)
 {
 	// No render component in headless mode; just sync sim fields.
-	sizex = data.w;
-	sizey = data.h;
+	set_sizex(data.w);
+	set_sizey(data.h);
 	frames = data.frames;
-	frame = 0;
+	set_frame_state(0);
 }
 
 void walker::set_data(const PixieData& data)
 {
-	sizex = data.w;
-	sizey = data.h;
+	set_sizex(data.w);
+	set_sizey(data.h);
 	frames = data.frames;
 }
 
@@ -54,13 +54,13 @@ short walker::set_frame(short framenum)
 {
 	if (framenum < 0 || framenum >= frames)
 		return 0;
-	frame = framenum;
+	set_frame_state(framenum);
 	return 1;
 }
 
 void walker::set_direct_frame(short whichframe)
 {
-	frame = whichframe;
+	set_frame_state(whichframe);
 }
 
 walker::~walker()
@@ -70,7 +70,7 @@ walker::~walker()
 	set_leader(nullptr);
 	set_owner(nullptr);
 	set_collide_ob(nullptr);
-	dead = 1;
+	set_dead(1);
 
 	obmap* active = (current_game != nullptr && current_game->world != nullptr)
 	    ? current_game->world->myobmap.get()

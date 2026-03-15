@@ -494,16 +494,16 @@ TEST(SaveDataVersions, save_data_update_guys_copies_only_live_entries_with_myguy
     std::list<std::unique_ptr<walker>> oblist;
 
     auto live_with_guy = std::make_unique<walker>();
-    live_with_guy->dead = 0;
+    live_with_guy->set_dead(0);
     live_with_guy->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     live_with_guy->myguy->exp = 50;
 
     auto dead_with_guy = std::make_unique<walker>();
-    dead_with_guy->dead = 1;
+    dead_with_guy->set_dead(1);
     dead_with_guy->set_owned_myguy(std::make_unique<guy>(FAMILY_ARCHER));
 
     auto live_no_guy = std::make_unique<walker>();
-    live_no_guy->dead = 0;
+    live_no_guy->set_dead(0);
     live_no_guy->clear_myguy();
 
     oblist.push_back(std::move(live_with_guy));

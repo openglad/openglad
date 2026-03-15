@@ -17,37 +17,44 @@ static bool magic_shield_on_act(effect* self)
     float xd, yd;
     std::int32_t temp = 0;
 
-    if (!self->owner() || self->owner()->dead)
+    if (!self->owner() || self->owner()->dead())
     {
-        self->dead = 1;
+        self->set_dead(1);
         self->death();
         return true;
     }
-    orbit_offset(self->drawcycle, xd, yd);
+    orbit_offset(self->drawcycle(), xd, yd);
     self->center_on(self->owner());
     self->setworldxy(self->worldx()+xd, self->worldy()+yd);
 
     auto foelist = current_game->world->find_foe_weapons_in_range(
-        current_game->world->oblist, self->sizex, &temp, self);
+        current_game->world->oblist, self->sizex(), &temp, self);
     for(auto* w : foelist)
     {
-        self->stats()->hitpoints -= w->damage;
-        w->dead = 1;
+        self->stats()->set_hitpoints(self->stats()->hitpoints() - w->damage());
+        w->set_dead(1);
         w->death();
     }
 
     foelist = current_game->world->find_foes_in_range(
-        current_game->world->oblist, self->sizex, &temp, self);
+        current_game->world->oblist, self->sizex(), &temp, self);
     for(auto* w : foelist)
     {
-        self->stats()->hitpoints -= w->damage;
+        self->stats()->set_hitpoints(self->stats()->hitpoints() - w->damage());
         self->attack(w);
-        self->dead = 0;
+        self->set_dead(0);
     }
 
-    if ( (self->stats()->hitpoints <= 0) || (self->lifetime-- < 0) )
+    bool shield_expired = false;
+    if (self->stats()->hitpoints() > 0)
     {
-        self->dead = 1;
+        const auto lifetime = self->lifetime();
+        self->set_lifetime(lifetime - 1);
+        shield_expired = lifetime < 0;
+    }
+    if ((self->stats()->hitpoints() <= 0) || shield_expired)
+    {
+        self->set_dead(1);
         self->death();
     }
     return true;
@@ -58,41 +65,48 @@ static bool boomerang_on_act(effect* self)
     float xd, yd;
     std::int32_t temp = 0;
 
-    if (!self->owner() || self->owner()->dead || self->drawcycle > 253)
+    if (!self->owner() || self->owner()->dead() || self->drawcycle() > 253)
     {
-        self->dead = 1;
+        self->set_dead(1);
         self->death();
         return true;
     }
-    orbit_offset(self->drawcycle, xd, yd);
-    xd *= (self->drawcycle+4);
+    orbit_offset(self->drawcycle(), xd, yd);
+    xd *= (self->drawcycle()+4);
     xd /= 48;
-    yd *= (self->drawcycle+4);
+    yd *= (self->drawcycle()+4);
     yd /= 48;
     self->center_on(self->owner());
     self->setworldxy(self->worldx()+xd, self->worldy()+yd);
 
     auto foelist = current_game->world->find_foe_weapons_in_range(
-        current_game->world->oblist, self->sizex*2, &temp, self);
+        current_game->world->oblist, self->sizex()*2, &temp, self);
     for(auto* w : foelist)
     {
-        self->stats()->hitpoints -= w->damage;
-        w->dead = 1;
+        self->stats()->set_hitpoints(self->stats()->hitpoints() - w->damage());
+        w->set_dead(1);
         w->death();
     }
 
     foelist = current_game->world->find_foes_in_range(
-        current_game->world->oblist, self->sizex, &temp, self);
+        current_game->world->oblist, self->sizex(), &temp, self);
     for(auto* w : foelist)
     {
-        self->stats()->hitpoints -= w->damage;
+        self->stats()->set_hitpoints(self->stats()->hitpoints() - w->damage());
         self->attack(w);
-        self->dead = 0;
+        self->set_dead(0);
     }
 
-    if ( (self->stats()->hitpoints <= 0) || (self->lifetime-- < 0) )
+    bool boomerang_expired = false;
+    if (self->stats()->hitpoints() > 0)
     {
-        self->dead = 1;
+        const auto lifetime = self->lifetime();
+        self->set_lifetime(lifetime - 1);
+        boomerang_expired = lifetime < 0;
+    }
+    if ((self->stats()->hitpoints() <= 0) || boomerang_expired)
+    {
+        self->set_dead(1);
         self->death();
     }
     return true;

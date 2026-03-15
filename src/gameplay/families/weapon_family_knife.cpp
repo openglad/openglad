@@ -15,18 +15,18 @@
 
 static bool knife_on_death(weap* self)
 {
-    const auto* owner_fd = self->owner() ? get_family_descriptor(self->owner()->family) : nullptr;
+    const auto* owner_fd = self->owner() ? get_family_descriptor(self->owner()->family()) : nullptr;
     if (!owner_fd || !owner_fd->has_returning_weapon)
         return false; // no special handling
 
     walker* newob = current_game->world->add_ob(Order::FX, FAMILY_KNIFE_BACK);
     newob->set_owner(self->owner());
     newob->center_on(self);
-    newob->lastx = self->lastx;
-    newob->lasty = self->lasty;
-    newob->stepsize = self->stepsize;
-    newob->ani_type = ANI_ATTACK;
-    newob->damage = self->damage;
+    newob->set_lastx(self->lastx());
+    newob->set_lasty(self->lasty());
+    newob->set_stepsize(self->stepsize());
+    newob->set_ani_type(ANI_ATTACK);
+    newob->set_damage(self->damage());
     return true;
 }
 

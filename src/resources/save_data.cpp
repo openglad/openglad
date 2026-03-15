@@ -490,7 +490,7 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
     for(auto& uptr : oblist)
 	{
 	    walker* ob = uptr.get();
-        if (ob && !ob->dead && ob->myguy)
+        if (ob && !ob->dead() && ob->myguy)
 		{
             if (team_size >= MAX_TEAM_SIZE)
             {
