@@ -118,7 +118,7 @@ static inline GameLoopFrameState& g_frame_state() {
 }
 
 // Forward declarations
-void glad_init();
+void glad_init(bool preserve_frame_timing = false);
 
 #ifdef __EMSCRIPTEN__
 // Forward declarations for state handlers
@@ -187,7 +187,7 @@ static void emscripten_frame_wrapper() {
 					current_screen->ready_for_battle(numviews);
 				}
 					og::runtime::current_session->gameplay_active_ = true;
-					glad_init();
+					glad_init(true);
 					g_frame_state().done = false;
 					g_frame_state().currentcycle = 0;
 					g_frame_state().cycletime = 3;

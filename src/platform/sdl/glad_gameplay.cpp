@@ -34,7 +34,7 @@ bool g_test_remove_exits = false;
 #endif
 
 // Initialize the game for playing (called before game loop starts).
-void glad_init()
+void glad_init(bool preserve_frame_timing)
 {
     screen* current_screen = og::runtime::current_session->myscreen_;
     if (current_screen == nullptr)
@@ -79,8 +79,13 @@ void glad_init()
     current_screen->timerstart = query_timer_control();
     og::runtime::begin_replay_recording(*current_screen);
 
-    g_frame_state() = {};
-    g_frame_state().cycletime = 3;
+    GameLoopFrameState fresh_state;
+    if (preserve_frame_timing) {
+        fresh_state.last_frame_time = g_frame_state().last_frame_time;
+        fresh_state.accumulated_time = g_frame_state().accumulated_time;
+    }
+    fresh_state.cycletime = 3;
+    g_frame_state() = fresh_state;
 }
 
 void glad_main(Sint32 playermode)
@@ -105,7 +110,7 @@ void glad_main(Sint32 playermode)
         }
     } gameplay_scope;
 
-    glad_init();
+    glad_init(false);
 
 #ifdef __EMSCRIPTEN__
     // For Emscripten, the unified main loop in main() handles game_frame() calls

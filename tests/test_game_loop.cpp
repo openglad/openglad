@@ -20,7 +20,7 @@
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_saved_game(const char* filename, screen* scr);
-void glad_init();
+void glad_init(bool preserve_frame_timing = false);
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 
@@ -271,6 +271,42 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
     game_screen->world().end = 0;
     game_screen->world().delete_objects();
     std::filesystem::remove(replay_path, ec);
+}
+
+TEST(GameLoop, glad_init_preserves_existing_timing_when_requested)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    GameLoopFrameState& st = og::runtime::current_session->frame_state_;
+    st.done = true;
+    st.initialized = true;
+    st.currentcycle = 9;
+    st.cycletime = 11;
+    st.last_frame_time = 1234u;
+    st.accumulated_time = 567u;
+    st.has_pending_input = true;
+    st.pending_input.players[0].held[KEY_YELL] = true;
+
+    glad_init(true);
+
+    EXPECT_FALSE(st.done);
+    EXPECT_FALSE(st.initialized);
+    EXPECT_EQ(0, st.currentcycle);
+    EXPECT_EQ(3, st.cycletime);
+    EXPECT_EQ(1234u, st.last_frame_time);
+    EXPECT_EQ(567u, st.accumulated_time);
+    EXPECT_FALSE(st.has_pending_input);
+    EXPECT_FALSE(st.pending_input.players[0].held[KEY_YELL]);
+
+    game_screen->world().delete_objects();
 }
 
 TEST(GameLoop, game_frame_with_result_caps_accumulator_to_four_ticks_per_call)
