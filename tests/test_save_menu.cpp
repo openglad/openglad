@@ -10,12 +10,8 @@
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
+#include <atomic>
 // myscreen is now a macro defined in base.h (via game_session.h)
-
-// Forward declarations from picker.cpp
-void picker_main(Sint32 argc, char **argv);
-extern int g_picker_mainmenu_calls;
-extern int g_picker_max_mainmenu_calls;
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
@@ -35,57 +31,68 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
-// Test: Navigate to Save Team menu, see the save slots, then exit.
+// Test: Open the Save Team menu directly, verify the save slots appear, then
+// exit via the menu's BACK button.
 //
 // Note: We can't test actually saving via menu because do_save() calls
-// prompt_for_string() which requires keyboard text input. But we CAN
-// verify the save menu opens and has the right buttons.
-//
-// Flow: Main Menu -> Continue -> Save Team -> Back -> Back
+// prompt_for_string() which requires keyboard text input. But we CAN verify
+// the real save menu opens, exposes the slot buttons, and unwinds cleanly.
 
 struct SaveMenuState {
-    bool started;
     bool finished;
     bool saw_save_menu;
+    bool clicked_back;
+    std::atomic<bool>* menu_done;
 };
 
 static int save_menu_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     SaveMenuState* state = static_cast<SaveMenuState*>(data);
-    state->started = true;
+    int elapsed = 0;
+    const int poll_interval = 50;
+    int esc_cooldown_ms = 0;
+    int click_cooldown_ms = 0;
 
-    wait_for_interactable("continue_game", 5000);
-    SDL_Delay(750);
+    while (!state->menu_done->load(std::memory_order_acquire)) {
+        const auto interactables = get_interactables();
 
-    fprintf(stderr, "  [test] clicking continue_game\n");
-    interact("continue_game");
+        for (const auto& item : interactables) {
+            if (item.hidden)
+                continue;
 
-    SDL_Delay(500);
-    wait_for_interactable("save_team", 10000);
-    SDL_Delay(750);
+            if (item.id == "save_slot_1")
+                state->saw_save_menu = true;
 
-    fprintf(stderr, "  [test] clicking save_team\n");
-    interact("save_team");
+            if (click_cooldown_ms <= 0 && item.id == "back" && item.y >= 170) {
+                const int game_x = item.x + item.width / 2;
+                const int game_y = item.y + item.height / 2;
+                const int win_x = static_cast<int>(static_cast<float>(game_x)
+                    * (og::runtime::current_session->viewport_w_ / 320.0f)
+                    + og::runtime::current_session->viewport_offset_x_);
+                const int win_y = static_cast<int>(static_cast<float>(game_y)
+                    * (og::runtime::current_session->viewport_h_ / 200.0f)
+                    + og::runtime::current_session->viewport_offset_y_);
+                fprintf(stderr, "  [test] clicking back from save menu\n");
+                inject_click(win_x, win_y);
+                state->clicked_back = true;
+                click_cooldown_ms = 200;
+                break;
+            }
+        }
 
-    // Save menu has save_slot_1 through save_slot_10 and back
-    SDL_Delay(500);
-    if (wait_for_interactable("save_slot_1", 10000)) {
-        state->saw_save_menu = true;
-        SDL_Delay(500);
+        if (elapsed >= 5000 && esc_cooldown_ms <= 0) {
+            inject_key_press(SDLK_ESCAPE, 10);
+            esc_cooldown_ms = 200;
+        }
 
-        // Just verify the slots exist, don't actually try to save
-        // (that would trigger prompt_for_string)
-        fprintf(stderr, "  [test] clicking back from save menu\n");
-        interact("back");
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+        if (click_cooldown_ms > 0)
+            click_cooldown_ms -= poll_interval;
+        if (esc_cooldown_ms > 0)
+            esc_cooldown_ms -= poll_interval;
     }
-
-    // Back in team menu
-    SDL_Delay(2000);
-    wait_for_interactable("back", 10000);
-    SDL_Delay(500);
-    fprintf(stderr, "  [test] clicking back from team menu\n");
-    interact("back");
 
     state->finished = true;
     return 0;
@@ -94,7 +101,7 @@ static int save_menu_injector(void* data)
 TEST(SaveMenu, save_team_menu) {
     trace_clear();
 
-    // Need some team data
+    // Need some team data so the slot menu has a realistic save payload.
     og::runtime::current_session->myscreen_->save_data.reset();
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
@@ -104,22 +111,21 @@ TEST(SaveMenu, save_team_menu) {
     og::runtime::current_session->myscreen_->save_data.team_size = 1;
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    SaveMenuState state = { false, false, false };
+    std::atomic<bool> menu_done{false};
+    SaveMenuState state = { false, false, false, &menu_done };
     SDL_Thread* thread = SDL_CreateThread(save_menu_injector, "save_menu_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
-    g_picker_mainmenu_calls = 0;
-    g_picker_max_mainmenu_calls = 1;
-
-    picker_main(0, nullptr);
+    const Sint32 ret = create_save_menu(0);
+    menu_done.store(true, std::memory_order_release);
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);
 
     cleanup_picker_state();
-    g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_save_menu) << "should have seen the save team menu";
+    ASSERT_TRUE(state.clicked_back) << "should have exited via the save menu back button";
+    ASSERT_TRUE(ret & 2) << "create_save_menu(back) should return REDRAW";
 }
-
