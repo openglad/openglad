@@ -807,7 +807,7 @@ if(NOT EMSCRIPTEN)
     add_library(og_gameplay STATIC ${OG_GAMEPLAY_COMPONENT_SOURCES})
     configure_component_library(og_gameplay "${OG_GAMEPLAY_INCLUDE_ROOT}")
     target_include_directories(og_gameplay PRIVATE ${THIRD_PARTY_DIR}/micropather)
-    target_link_libraries(og_gameplay PUBLIC og_core ${OG_EXTERNAL_LIBS})
+    target_link_libraries(og_gameplay PUBLIC og_core ${OG_EXTERNAL_LIBS} og_ext_zlib)
 
     add_library(og_resources STATIC ${OG_RESOURCES_COMPONENT_SOURCES})
     configure_component_library(og_resources "${OG_RESOURCES_INCLUDE_ROOT}")

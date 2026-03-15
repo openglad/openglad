@@ -9,6 +9,7 @@
 #include <openglad/gameplay/event.h>
 #include <openglad/gameplay/statistics.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -27,6 +28,14 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
+inline constexpr std::uint8_t kSnapshotProtocolVersion = 1;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 1;
+inline constexpr std::uint8_t kSnapshotMessageType = 1;
+inline constexpr std::uint8_t kDeltaSnapshotMessageType = 2;
+inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x80;
+
+using EntitySnapshotDirtyMask =
+    std::array<std::uint64_t, kEntitySnapshotDirtyMaskWords>;
 
 // Fixed-layout entity payload used by capture/apply and byte serialization.
 // Keep this trivially copyable so memcpy-based field serialization stays safe.
@@ -460,6 +469,11 @@ static_assert(entity_snapshot_field_table_is_valid(),
 WorldSnapshot capture_snapshot(GameWorld& world);
 WorldSnapshot capture_keyframe_snapshot(GameWorld& world);
 void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot);
+std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot);
+WorldSnapshot deserialize_snapshot(const std::uint8_t* data, std::size_t size);
+std::vector<std::uint8_t> serialize_delta(const WorldSnapshot& delta);
+WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size);
+void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta);
 SimEventBatch drain_sim_events(SimEventLog& log);
 
 } // namespace og::sim

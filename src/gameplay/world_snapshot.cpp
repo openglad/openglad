@@ -10,11 +10,14 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/weap.h>
+#include <openglad/core/zlib_api.h>
 
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstring>
+#include <limits>
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -27,6 +30,990 @@ using EntitySnapshotLookup =
     std::unordered_map<std::uint32_t, const og::sim::EntitySnapshot*>;
 using GuyStorage = std::unordered_map<std::int32_t, std::unique_ptr<guy>>;
 using GuyLookup = std::unordered_map<std::int32_t, guy*>;
+using EntityDirtyMask = og::sim::EntitySnapshotDirtyMask;
+
+constexpr std::size_t kDeltaHeaderSize = 8;
+constexpr std::size_t kZlibChunkSize = 4096;
+constexpr std::uint8_t kDeltaEntityHasDirtyWord1Flag = 0x01;
+constexpr EntityDirtyMask kAllEntityFieldsDirty = {~0ULL, ~0ULL};
+
+class ByteReader
+{
+public:
+    ByteReader(const std::uint8_t* data,
+               std::size_t size,
+               const char* source_name)
+        : cursor_(data)
+        , end_(data + size)
+        , source_name_(source_name)
+    {
+    }
+
+    std::size_t remaining() const noexcept
+    {
+        return static_cast<std::size_t>(end_ - cursor_);
+    }
+
+    std::uint8_t read_u8(const char* field_name)
+    {
+        require(1, field_name);
+        return *cursor_++;
+    }
+
+    bool read_bool(const char* field_name)
+    {
+        return read_u8(field_name) != 0;
+    }
+
+    std::uint16_t read_u16(const char* field_name)
+    {
+        require(2, field_name);
+        const std::uint16_t value =
+            static_cast<std::uint16_t>(cursor_[0]) |
+            (static_cast<std::uint16_t>(cursor_[1]) << 8);
+        cursor_ += 2;
+        return value;
+    }
+
+    std::int16_t read_i16(const char* field_name)
+    {
+        return static_cast<std::int16_t>(read_u16(field_name));
+    }
+
+    std::uint32_t read_u32(const char* field_name)
+    {
+        require(4, field_name);
+        const std::uint32_t value =
+            static_cast<std::uint32_t>(cursor_[0]) |
+            (static_cast<std::uint32_t>(cursor_[1]) << 8) |
+            (static_cast<std::uint32_t>(cursor_[2]) << 16) |
+            (static_cast<std::uint32_t>(cursor_[3]) << 24);
+        cursor_ += 4;
+        return value;
+    }
+
+    std::int32_t read_i32(const char* field_name)
+    {
+        return static_cast<std::int32_t>(read_u32(field_name));
+    }
+
+    std::uint64_t read_u64(const char* field_name)
+    {
+        require(8, field_name);
+        const std::uint64_t value =
+            static_cast<std::uint64_t>(cursor_[0]) |
+            (static_cast<std::uint64_t>(cursor_[1]) << 8) |
+            (static_cast<std::uint64_t>(cursor_[2]) << 16) |
+            (static_cast<std::uint64_t>(cursor_[3]) << 24) |
+            (static_cast<std::uint64_t>(cursor_[4]) << 32) |
+            (static_cast<std::uint64_t>(cursor_[5]) << 40) |
+            (static_cast<std::uint64_t>(cursor_[6]) << 48) |
+            (static_cast<std::uint64_t>(cursor_[7]) << 56);
+        cursor_ += 8;
+        return value;
+    }
+
+    float read_f32(const char* field_name)
+    {
+        const std::uint32_t bits = read_u32(field_name);
+        float value = 0.0f;
+        std::memcpy(&value, &bits, sizeof(value));
+        return value;
+    }
+
+    std::string read_string(const char* field_name)
+    {
+        const std::uint32_t length = read_u32(field_name);
+        require(length, field_name);
+        std::string value;
+        value.resize(length);
+        if (length > 0)
+        {
+            std::memcpy(value.data(), cursor_, length);
+            cursor_ += length;
+        }
+        return value;
+    }
+
+    std::vector<std::uint8_t> read_bytes(std::size_t count, const char* field_name)
+    {
+        require(count, field_name);
+        std::vector<std::uint8_t> value(count);
+        if (count > 0)
+        {
+            std::memcpy(value.data(), cursor_, count);
+            cursor_ += count;
+        }
+        return value;
+    }
+
+    void finish(const char* context) const
+    {
+        if (cursor_ != end_)
+        {
+            throw std::runtime_error(std::string(context) +
+                                     ": trailing bytes remain in " +
+                                     source_name_);
+        }
+    }
+
+private:
+    void require(std::size_t count, const char* field_name)
+    {
+        if (remaining() < count)
+        {
+            throw std::runtime_error(std::string(source_name_) +
+                                     ": truncated while reading " +
+                                     field_name);
+        }
+    }
+
+    const std::uint8_t* cursor_ = nullptr;
+    const std::uint8_t* end_ = nullptr;
+    const char* source_name_ = nullptr;
+};
+
+void append_u8(std::vector<std::uint8_t>& buffer, std::uint8_t value)
+{
+    buffer.push_back(value);
+}
+
+void append_bool(std::vector<std::uint8_t>& buffer, bool value)
+{
+    append_u8(buffer, value ? 1U : 0U);
+}
+
+void append_u16(std::vector<std::uint8_t>& buffer, std::uint16_t value)
+{
+    buffer.push_back(static_cast<std::uint8_t>(value & 0xffu));
+    buffer.push_back(static_cast<std::uint8_t>((value >> 8) & 0xffu));
+}
+
+void append_i16(std::vector<std::uint8_t>& buffer, std::int16_t value)
+{
+    append_u16(buffer, static_cast<std::uint16_t>(value));
+}
+
+void append_u32(std::vector<std::uint8_t>& buffer, std::uint32_t value)
+{
+    buffer.push_back(static_cast<std::uint8_t>(value & 0xffu));
+    buffer.push_back(static_cast<std::uint8_t>((value >> 8) & 0xffu));
+    buffer.push_back(static_cast<std::uint8_t>((value >> 16) & 0xffu));
+    buffer.push_back(static_cast<std::uint8_t>((value >> 24) & 0xffu));
+}
+
+void append_i32(std::vector<std::uint8_t>& buffer, std::int32_t value)
+{
+    append_u32(buffer, static_cast<std::uint32_t>(value));
+}
+
+void append_u64(std::vector<std::uint8_t>& buffer, std::uint64_t value)
+{
+    for (int i = 0; i < 8; ++i)
+        buffer.push_back(static_cast<std::uint8_t>((value >> (i * 8)) & 0xffu));
+}
+
+void append_f32(std::vector<std::uint8_t>& buffer, float value)
+{
+    std::uint32_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(value));
+    std::memcpy(&bits, &value, sizeof(bits));
+    append_u32(buffer, bits);
+}
+
+void append_bytes(std::vector<std::uint8_t>& buffer,
+                  const std::uint8_t* data,
+                  std::size_t size)
+{
+    buffer.insert(buffer.end(), data, data + size);
+}
+
+void append_string(std::vector<std::uint8_t>& buffer, const std::string& value)
+{
+    if (value.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error("snapshot serialization: string field exceeds 32-bit length");
+    }
+
+    append_u32(buffer, static_cast<std::uint32_t>(value.size()));
+    append_bytes(buffer,
+                 reinterpret_cast<const std::uint8_t*>(value.data()),
+                 value.size());
+}
+
+bool mask_has_bit(const std::uint64_t* mask, std::uint8_t bit_index) noexcept
+{
+    return (mask[bit_index / 64] & (1ULL << (bit_index % 64))) != 0;
+}
+
+const og::sim::EntitySnapshotFieldDesc* find_field_desc(std::uint8_t bit_index)
+{
+    const auto it = std::find_if(
+        std::begin(og::sim::kEntitySnapshotFields),
+        std::end(og::sim::kEntitySnapshotFields),
+        [bit_index](const og::sim::EntitySnapshotFieldDesc& desc) {
+            return desc.bit_index == bit_index;
+        });
+    return it == std::end(og::sim::kEntitySnapshotFields) ? nullptr : &*it;
+}
+
+void append_raw_trivial_field(std::vector<std::uint8_t>& buffer,
+                              const void* src,
+                              std::size_t size)
+{
+    switch (size)
+    {
+    case 1:
+        append_u8(buffer, *static_cast<const std::uint8_t*>(src));
+        return;
+    case 2:
+    {
+        std::uint16_t value = 0;
+        std::memcpy(&value, src, sizeof(value));
+        append_u16(buffer, value);
+        return;
+    }
+    case 4:
+    {
+        std::uint32_t value = 0;
+        std::memcpy(&value, src, sizeof(value));
+        append_u32(buffer, value);
+        return;
+    }
+    case 8:
+    {
+        std::uint64_t value = 0;
+        std::memcpy(&value, src, sizeof(value));
+        append_u64(buffer, value);
+        return;
+    }
+    default:
+        throw std::runtime_error("snapshot serialization: unsupported field size");
+    }
+}
+
+void read_raw_trivial_field(ByteReader& reader,
+                            void* dst,
+                            std::size_t size,
+                            const char* field_name)
+{
+    switch (size)
+    {
+    case 1:
+    {
+        const std::uint8_t value = reader.read_u8(field_name);
+        std::memcpy(dst, &value, sizeof(value));
+        return;
+    }
+    case 2:
+    {
+        const std::uint16_t value = reader.read_u16(field_name);
+        std::memcpy(dst, &value, sizeof(value));
+        return;
+    }
+    case 4:
+    {
+        const std::uint32_t value = reader.read_u32(field_name);
+        std::memcpy(dst, &value, sizeof(value));
+        return;
+    }
+    case 8:
+    {
+        const std::uint64_t value = reader.read_u64(field_name);
+        std::memcpy(dst, &value, sizeof(value));
+        return;
+    }
+    default:
+        throw std::runtime_error("snapshot deserialization: unsupported field size");
+    }
+}
+
+void serialize_entity_field(std::vector<std::uint8_t>& buffer,
+                            const og::sim::EntitySnapshot& snapshot,
+                            std::uint8_t bit_index)
+{
+    switch (bit_index)
+    {
+    case og::dirty::BIT_ENTITY_ID:
+        return;
+    case og::dirty::BIT_REGEN_DELAY:
+        append_i32(buffer, snapshot.regen_delay);
+        return;
+    case og::dirty::BIT_SPECIAL_COST:
+        for (int i = 0; i < NUM_SPECIALS; ++i)
+            append_u16(buffer, snapshot.special_cost[i]);
+        return;
+    case og::dirty::BIT_DO_BOUNCE:
+        append_i32(buffer, snapshot.do_bounce);
+        return;
+    default:
+        break;
+    }
+
+    const og::sim::EntitySnapshotFieldDesc* const field = find_field_desc(bit_index);
+    if (field == nullptr)
+    {
+        throw std::runtime_error("snapshot serialization: unknown entity field bit");
+    }
+
+    const std::uint8_t* const src =
+        reinterpret_cast<const std::uint8_t*>(&snapshot) + field->snap_offset;
+    append_raw_trivial_field(buffer, src, field->size);
+}
+
+void deserialize_entity_field(ByteReader& reader,
+                              og::sim::EntitySnapshot& snapshot,
+                              std::uint8_t bit_index)
+{
+    switch (bit_index)
+    {
+    case og::dirty::BIT_ENTITY_ID:
+        return;
+    case og::dirty::BIT_REGEN_DELAY:
+        snapshot.regen_delay = reader.read_i32("entity.regen_delay");
+        return;
+    case og::dirty::BIT_SPECIAL_COST:
+        for (int i = 0; i < NUM_SPECIALS; ++i)
+            snapshot.special_cost[i] = reader.read_u16("entity.special_cost");
+        return;
+    case og::dirty::BIT_DO_BOUNCE:
+        snapshot.do_bounce = reader.read_i32("entity.do_bounce");
+        return;
+    default:
+        break;
+    }
+
+    const og::sim::EntitySnapshotFieldDesc* const field = find_field_desc(bit_index);
+    if (field == nullptr)
+    {
+        throw std::runtime_error("snapshot deserialization: unknown entity field bit");
+    }
+
+    std::uint8_t* const dst =
+        reinterpret_cast<std::uint8_t*>(&snapshot) + field->snap_offset;
+    read_raw_trivial_field(reader, dst, field->size, "entity.field");
+}
+
+void serialize_entity_fields(std::vector<std::uint8_t>& buffer,
+                             const og::sim::EntitySnapshot& snapshot,
+                             const std::uint64_t* dirty_mask)
+{
+    for (std::uint8_t bit = 0; bit < og::dirty::FIELD_COUNT; ++bit)
+    {
+        if (!mask_has_bit(dirty_mask, bit))
+            continue;
+        serialize_entity_field(buffer, snapshot, bit);
+    }
+}
+
+void deserialize_entity_fields(ByteReader& reader,
+                               og::sim::EntitySnapshot& snapshot,
+                               const std::uint64_t* dirty_mask)
+{
+    for (std::uint8_t bit = 0; bit < og::dirty::FIELD_COUNT; ++bit)
+    {
+        if (!mask_has_bit(dirty_mask, bit))
+            continue;
+        deserialize_entity_field(reader, snapshot, bit);
+    }
+}
+
+void copy_entity_field(og::sim::EntitySnapshot& dst,
+                       const og::sim::EntitySnapshot& src,
+                       std::uint8_t bit_index)
+{
+    switch (bit_index)
+    {
+    case og::dirty::BIT_ENTITY_ID:
+        dst.entity_id = src.entity_id;
+        return;
+    case og::dirty::BIT_REGEN_DELAY:
+        dst.regen_delay = src.regen_delay;
+        return;
+    case og::dirty::BIT_DO_BOUNCE:
+        dst.do_bounce = src.do_bounce;
+        return;
+    default:
+        break;
+    }
+
+    const og::sim::EntitySnapshotFieldDesc* const field = find_field_desc(bit_index);
+    if (field == nullptr)
+    {
+        throw std::runtime_error("apply_delta: unknown entity field bit");
+    }
+
+    std::memcpy(reinterpret_cast<std::uint8_t*>(&dst) + field->snap_offset,
+                reinterpret_cast<const std::uint8_t*>(&src) + field->snap_offset,
+                field->size);
+}
+
+void apply_entity_delta_fields(og::sim::EntitySnapshot& baseline,
+                               const og::sim::EntitySnapshot& delta)
+{
+    for (std::uint8_t bit = 0; bit < og::dirty::FIELD_COUNT; ++bit)
+    {
+        if (!mask_has_bit(delta.dirty_mask, bit))
+            continue;
+        copy_entity_field(baseline, delta, bit);
+    }
+}
+
+void serialize_guy_snapshot(std::vector<std::uint8_t>& buffer,
+                            const og::sim::GuySnapshot& snapshot)
+{
+    append_i32(buffer, snapshot.guy_id);
+    append_string(buffer, snapshot.name);
+    append_u8(buffer, static_cast<std::uint8_t>(snapshot.family));
+    append_i16(buffer, snapshot.strength);
+    append_i16(buffer, snapshot.dexterity);
+    append_i16(buffer, snapshot.constitution);
+    append_i16(buffer, snapshot.intelligence);
+    append_i16(buffer, snapshot.armor);
+    append_u32(buffer, snapshot.exp);
+    append_i16(buffer, snapshot.kills);
+    append_i32(buffer, snapshot.level_kills);
+    append_i32(buffer, snapshot.total_damage);
+    append_i32(buffer, snapshot.total_hits);
+    append_i32(buffer, snapshot.total_shots);
+    append_i16(buffer, snapshot.teamnum);
+    append_f32(buffer, snapshot.scen_damage);
+    append_i16(buffer, snapshot.scen_kills);
+    append_f32(buffer, snapshot.scen_damage_taken);
+    append_f32(buffer, snapshot.scen_min_hp);
+    append_i16(buffer, snapshot.scen_shots);
+    append_i16(buffer, snapshot.scen_hits);
+    append_i16(buffer, snapshot.level);
+}
+
+og::sim::GuySnapshot deserialize_guy_snapshot(ByteReader& reader)
+{
+    og::sim::GuySnapshot snapshot;
+    snapshot.guy_id = reader.read_i32("guy.guy_id");
+    snapshot.name = reader.read_string("guy.name");
+    snapshot.family = static_cast<std::int8_t>(reader.read_u8("guy.family"));
+    snapshot.strength = reader.read_i16("guy.strength");
+    snapshot.dexterity = reader.read_i16("guy.dexterity");
+    snapshot.constitution = reader.read_i16("guy.constitution");
+    snapshot.intelligence = reader.read_i16("guy.intelligence");
+    snapshot.armor = reader.read_i16("guy.armor");
+    snapshot.exp = reader.read_u32("guy.exp");
+    snapshot.kills = reader.read_i16("guy.kills");
+    snapshot.level_kills = reader.read_i32("guy.level_kills");
+    snapshot.total_damage = reader.read_i32("guy.total_damage");
+    snapshot.total_hits = reader.read_i32("guy.total_hits");
+    snapshot.total_shots = reader.read_i32("guy.total_shots");
+    snapshot.teamnum = reader.read_i16("guy.teamnum");
+    snapshot.scen_damage = reader.read_f32("guy.scen_damage");
+    snapshot.scen_kills = reader.read_i16("guy.scen_kills");
+    snapshot.scen_damage_taken = reader.read_f32("guy.scen_damage_taken");
+    snapshot.scen_min_hp = reader.read_f32("guy.scen_min_hp");
+    snapshot.scen_shots = reader.read_i16("guy.scen_shots");
+    snapshot.scen_hits = reader.read_i16("guy.scen_hits");
+    snapshot.level = reader.read_i16("guy.level");
+    return snapshot;
+}
+
+void serialize_world_state(std::vector<std::uint8_t>& buffer,
+                           const og::sim::WorldSnapshot& snapshot)
+{
+    append_u32(buffer, snapshot.tick_count);
+    append_u32(buffer, snapshot.rng_state);
+    append_u32(buffer, snapshot.level_tick_count);
+    append_i16(buffer, snapshot.level_done);
+    append_bool(buffer, snapshot.game_ended);
+    append_u8(buffer, static_cast<std::uint8_t>(snapshot.end));
+    append_bool(buffer, snapshot.retry);
+    append_i16(buffer, snapshot.next_level);
+    append_i16(buffer, snapshot.ending);
+    append_i32(buffer, snapshot.enemy_freeze);
+    append_u8(buffer, static_cast<std::uint8_t>(snapshot.timer_wait));
+    append_i32(buffer, snapshot.living_count);
+    append_f32(buffer, snapshot.control_hp);
+    append_bool(buffer, snapshot.withdraw_requested);
+    append_i16(buffer, snapshot.withdraw_level);
+    append_i32(buffer, snapshot.guy_id_counter);
+    for (std::uint32_t score : snapshot.m_score)
+        append_u32(buffer, score);
+    append_u8(buffer, snapshot.current_palette_id);
+    append_bool(buffer, snapshot.pending_exit_prompt);
+    append_bool(buffer, snapshot.paused);
+    append_u8(buffer, snapshot.pause_player_index);
+}
+
+void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
+{
+    snapshot.tick_count = reader.read_u32("world.tick_count");
+    snapshot.rng_state = reader.read_u32("world.rng_state");
+    snapshot.level_tick_count = reader.read_u32("world.level_tick_count");
+    snapshot.level_done = reader.read_i16("world.level_done");
+    snapshot.game_ended = reader.read_bool("world.game_ended");
+    snapshot.end = static_cast<std::int8_t>(reader.read_u8("world.end"));
+    snapshot.retry = reader.read_bool("world.retry");
+    snapshot.next_level = reader.read_i16("world.next_level");
+    snapshot.ending = reader.read_i16("world.ending");
+    snapshot.enemy_freeze = reader.read_i32("world.enemy_freeze");
+    snapshot.timer_wait = static_cast<std::int8_t>(reader.read_u8("world.timer_wait"));
+    snapshot.living_count = reader.read_i32("world.living_count");
+    snapshot.control_hp = reader.read_f32("world.control_hp");
+    snapshot.withdraw_requested = reader.read_bool("world.withdraw_requested");
+    snapshot.withdraw_level = reader.read_i16("world.withdraw_level");
+    snapshot.guy_id_counter = reader.read_i32("world.guy_id_counter");
+    for (std::uint32_t& score : snapshot.m_score)
+        score = reader.read_u32("world.m_score");
+    snapshot.current_palette_id = reader.read_u8("world.current_palette_id");
+    snapshot.pending_exit_prompt = reader.read_bool("world.pending_exit_prompt");
+    snapshot.paused = reader.read_bool("world.paused");
+    snapshot.pause_player_index = reader.read_u8("world.pause_player_index");
+}
+
+void serialize_grid_state(std::vector<std::uint8_t>& buffer,
+                          const og::sim::WorldSnapshot& snapshot)
+{
+    append_bool(buffer, snapshot.grid_dirty);
+    append_bool(buffer, snapshot.grid_full_resend);
+
+    if (snapshot.full_grid_data.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error("snapshot serialization: grid payload exceeds 32-bit length");
+    }
+    append_u32(buffer, static_cast<std::uint32_t>(snapshot.full_grid_data.size()));
+    append_bytes(buffer, snapshot.full_grid_data.data(), snapshot.full_grid_data.size());
+
+    if (snapshot.grid_dirty_tiles.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error("snapshot serialization: grid dirty tile count exceeds 32-bit length");
+    }
+    append_u32(buffer, static_cast<std::uint32_t>(snapshot.grid_dirty_tiles.size()));
+    for (const auto& tile : snapshot.grid_dirty_tiles)
+    {
+        append_i16(buffer, tile.x);
+        append_i16(buffer, tile.y);
+        append_u8(buffer, tile.value);
+    }
+}
+
+void deserialize_grid_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
+{
+    snapshot.grid_dirty = reader.read_bool("grid.grid_dirty");
+    snapshot.grid_full_resend = reader.read_bool("grid.grid_full_resend");
+    snapshot.full_grid_data =
+        reader.read_bytes(reader.read_u32("grid.full_grid_size"), "grid.full_grid_data");
+
+    const std::uint32_t dirty_tile_count = reader.read_u32("grid.dirty_tile_count");
+    snapshot.grid_dirty_tiles.clear();
+    snapshot.grid_dirty_tiles.reserve(dirty_tile_count);
+    for (std::uint32_t i = 0; i < dirty_tile_count; ++i)
+    {
+        og::sim::GridTileSnapshot tile;
+        tile.x = reader.read_i16("grid.tile.x");
+        tile.y = reader.read_i16("grid.tile.y");
+        tile.value = reader.read_u8("grid.tile.value");
+        snapshot.grid_dirty_tiles.push_back(tile);
+    }
+}
+
+void serialize_guy_snapshots(std::vector<std::uint8_t>& buffer,
+                             const std::vector<og::sim::GuySnapshot>& snapshots)
+{
+    if (snapshots.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error("snapshot serialization: too many guy snapshots");
+    }
+
+    append_u32(buffer, static_cast<std::uint32_t>(snapshots.size()));
+    for (const auto& snapshot : snapshots)
+        serialize_guy_snapshot(buffer, snapshot);
+}
+
+void deserialize_guy_snapshots(ByteReader& reader,
+                               std::vector<og::sim::GuySnapshot>& snapshots)
+{
+    const std::uint32_t count = reader.read_u32("guy_snapshot_count");
+    snapshots.clear();
+    snapshots.reserve(count);
+    for (std::uint32_t i = 0; i < count; ++i)
+        snapshots.push_back(deserialize_guy_snapshot(reader));
+}
+
+void serialize_keyframe_entity(std::vector<std::uint8_t>& buffer,
+                               const og::sim::EntitySnapshot& snapshot)
+{
+    append_i32(buffer, snapshot.guy_id);
+    append_u32(buffer, snapshot.entity_id);
+    serialize_entity_fields(buffer, snapshot, kAllEntityFieldsDirty.data());
+}
+
+og::sim::EntitySnapshot deserialize_keyframe_entity(ByteReader& reader)
+{
+    og::sim::EntitySnapshot snapshot;
+    snapshot.guy_id = reader.read_i32("entity.guy_id");
+    snapshot.entity_id = reader.read_u32("entity.entity_id");
+    snapshot.dirty_mask[0] = kAllEntityFieldsDirty[0];
+    snapshot.dirty_mask[1] = kAllEntityFieldsDirty[1];
+    deserialize_entity_fields(reader, snapshot, snapshot.dirty_mask);
+    return snapshot;
+}
+
+void serialize_delta_entity(std::vector<std::uint8_t>& buffer,
+                            const og::sim::EntitySnapshot& snapshot)
+{
+    append_i32(buffer, snapshot.guy_id);
+    append_u32(buffer, snapshot.entity_id);
+
+    std::uint8_t flags = 0;
+    if (snapshot.dirty_mask[1] != 0)
+        flags |= kDeltaEntityHasDirtyWord1Flag;
+    append_u8(buffer, flags);
+    append_u64(buffer, snapshot.dirty_mask[0]);
+    if ((flags & kDeltaEntityHasDirtyWord1Flag) != 0)
+        append_u64(buffer, snapshot.dirty_mask[1]);
+
+    serialize_entity_fields(buffer, snapshot, snapshot.dirty_mask);
+}
+
+og::sim::EntitySnapshot deserialize_delta_entity(ByteReader& reader)
+{
+    og::sim::EntitySnapshot snapshot;
+    snapshot.guy_id = reader.read_i32("entity.guy_id");
+    snapshot.entity_id = reader.read_u32("entity.entity_id");
+    const std::uint8_t flags = reader.read_u8("entity.flags");
+    if ((flags & ~kDeltaEntityHasDirtyWord1Flag) != 0)
+    {
+        throw std::runtime_error("delta payload: unknown entity flags");
+    }
+
+    snapshot.dirty_mask[0] = reader.read_u64("entity.dirty_mask0");
+    snapshot.dirty_mask[1] =
+        ((flags & kDeltaEntityHasDirtyWord1Flag) != 0)
+            ? reader.read_u64("entity.dirty_mask1")
+            : 0ULL;
+    deserialize_entity_fields(reader, snapshot, snapshot.dirty_mask);
+    return snapshot;
+}
+
+void serialize_removed_entity(std::vector<std::uint8_t>& buffer, std::uint32_t entity_id)
+{
+    append_u32(buffer, entity_id);
+    append_u8(buffer, 0);
+    append_u64(buffer, 0);
+}
+
+std::uint32_t deserialize_removed_entity(ByteReader& reader)
+{
+    const std::uint32_t entity_id = reader.read_u32("removed_entity.entity_id");
+    const std::uint8_t flags = reader.read_u8("removed_entity.flags");
+    if ((flags & ~kDeltaEntityHasDirtyWord1Flag) != 0)
+    {
+        throw std::runtime_error("delta payload: unknown removed-entity flags");
+    }
+
+    const std::uint64_t dirty0 = reader.read_u64("removed_entity.dirty_mask0");
+    const std::uint64_t dirty1 =
+        ((flags & kDeltaEntityHasDirtyWord1Flag) != 0)
+            ? reader.read_u64("removed_entity.dirty_mask1")
+            : 0ULL;
+    if (dirty0 != 0 || dirty1 != 0)
+    {
+        throw std::runtime_error("delta payload: removed entity sentinel carried dirty fields");
+    }
+    return entity_id;
+}
+
+void serialize_keyframe_entity_list(std::vector<std::uint8_t>& buffer,
+                                    const std::vector<og::sim::EntitySnapshot>& entities)
+{
+    if (entities.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error("snapshot serialization: too many entities");
+    }
+
+    append_u32(buffer, static_cast<std::uint32_t>(entities.size()));
+    for (const auto& entity : entities)
+        serialize_keyframe_entity(buffer, entity);
+}
+
+void deserialize_keyframe_entity_list(ByteReader& reader,
+                                      std::vector<og::sim::EntitySnapshot>& entities)
+{
+    const std::uint32_t count = reader.read_u32("entity_count");
+    entities.clear();
+    entities.reserve(count);
+    for (std::uint32_t i = 0; i < count; ++i)
+        entities.push_back(deserialize_keyframe_entity(reader));
+}
+
+void serialize_delta_entity_list(std::vector<std::uint8_t>& buffer,
+                                 const std::vector<og::sim::EntitySnapshot>& entities)
+{
+    if (entities.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error("delta serialization: too many entities");
+    }
+
+    append_u32(buffer, static_cast<std::uint32_t>(entities.size()));
+    for (const auto& entity : entities)
+        serialize_delta_entity(buffer, entity);
+}
+
+void deserialize_delta_entity_list(ByteReader& reader,
+                                   std::vector<og::sim::EntitySnapshot>& entities)
+{
+    const std::uint32_t count = reader.read_u32("delta_entity_count");
+    entities.clear();
+    entities.reserve(count);
+    for (std::uint32_t i = 0; i < count; ++i)
+        entities.push_back(deserialize_delta_entity(reader));
+}
+
+void serialize_removed_entity_list(std::vector<std::uint8_t>& buffer,
+                                   const std::vector<std::uint32_t>& removed_entity_ids)
+{
+    if (removed_entity_ids.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error("delta serialization: too many removed entities");
+    }
+
+    append_u32(buffer, static_cast<std::uint32_t>(removed_entity_ids.size()));
+    for (std::uint32_t entity_id : removed_entity_ids)
+        serialize_removed_entity(buffer, entity_id);
+}
+
+void deserialize_removed_entity_list(ByteReader& reader,
+                                     std::vector<std::uint32_t>& removed_entity_ids)
+{
+    const std::uint32_t count = reader.read_u32("removed_entity_count");
+    removed_entity_ids.clear();
+    removed_entity_ids.reserve(count);
+    for (std::uint32_t i = 0; i < count; ++i)
+        removed_entity_ids.push_back(deserialize_removed_entity(reader));
+}
+
+std::vector<std::uint8_t> compress_zlib_payload(const std::vector<std::uint8_t>& payload)
+{
+    if (payload.size() > std::numeric_limits<uLong>::max())
+    {
+        throw std::runtime_error("snapshot compression: payload exceeds zlib input size");
+    }
+
+    std::vector<std::uint8_t> compressed(compressBound(static_cast<uLong>(payload.size())));
+    uLongf compressed_size = static_cast<uLongf>(compressed.size());
+    const int rc = compress2(compressed.data(),
+                             &compressed_size,
+                             payload.data(),
+                             static_cast<uLong>(payload.size()),
+                             Z_DEFAULT_COMPRESSION);
+    if (rc != Z_OK)
+    {
+        throw std::runtime_error("snapshot compression failed");
+    }
+
+    compressed.resize(static_cast<std::size_t>(compressed_size));
+    return compressed;
+}
+
+std::vector<std::uint8_t> decompress_zlib_payload(const std::uint8_t* data,
+                                                  std::size_t size)
+{
+    if (size > std::numeric_limits<uInt>::max())
+    {
+        throw std::runtime_error("snapshot decompression: payload exceeds zlib input size");
+    }
+
+    z_stream stream{};
+    stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(data));
+    stream.avail_in = static_cast<uInt>(size);
+
+    const int init_rc = inflateInit(&stream);
+    if (init_rc != Z_OK)
+    {
+        throw std::runtime_error("snapshot decompression setup failed");
+    }
+
+    std::vector<std::uint8_t> output;
+    std::array<std::uint8_t, kZlibChunkSize> chunk{};
+    int rc = Z_OK;
+    do
+    {
+        stream.next_out = chunk.data();
+        stream.avail_out = static_cast<uInt>(chunk.size());
+        rc = inflate(&stream, Z_NO_FLUSH);
+        if (rc != Z_OK && rc != Z_STREAM_END)
+        {
+            inflateEnd(&stream);
+            throw std::runtime_error("snapshot decompression failed");
+        }
+
+        const std::size_t produced = chunk.size() - stream.avail_out;
+        output.insert(output.end(), chunk.begin(), chunk.begin() + produced);
+    } while (rc != Z_STREAM_END);
+
+    inflateEnd(&stream);
+    return output;
+}
+
+std::vector<std::uint8_t> serialize_snapshot_payload(const og::sim::WorldSnapshot& snapshot)
+{
+    std::vector<std::uint8_t> payload;
+    append_u8(payload, og::sim::kSnapshotFormatVersion);
+    serialize_world_state(payload, snapshot);
+    serialize_grid_state(payload, snapshot);
+    serialize_guy_snapshots(payload, snapshot.guy_snapshots);
+    serialize_keyframe_entity_list(payload, snapshot.oblist);
+    serialize_keyframe_entity_list(payload, snapshot.fxlist);
+    serialize_keyframe_entity_list(payload, snapshot.weaplist);
+
+    if (snapshot.removed_entity_ids.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error("snapshot serialization: too many removed entities");
+    }
+    append_u32(payload, static_cast<std::uint32_t>(snapshot.removed_entity_ids.size()));
+    for (std::uint32_t entity_id : snapshot.removed_entity_ids)
+        append_u32(payload, entity_id);
+
+    return payload;
+}
+
+og::sim::WorldSnapshot deserialize_snapshot_payload(const std::vector<std::uint8_t>& payload)
+{
+    ByteReader reader(payload.data(), payload.size(), "snapshot payload");
+    const std::uint8_t format_version = reader.read_u8("snapshot.format_version");
+    if (format_version != og::sim::kSnapshotFormatVersion)
+    {
+        throw std::runtime_error(
+            "server snapshot format v" + std::to_string(format_version) +
+            ", client supports v" +
+            std::to_string(og::sim::kSnapshotFormatVersion) +
+            " -- please update");
+    }
+
+    og::sim::WorldSnapshot snapshot;
+    deserialize_world_state(reader, snapshot);
+    deserialize_grid_state(reader, snapshot);
+    deserialize_guy_snapshots(reader, snapshot.guy_snapshots);
+    deserialize_keyframe_entity_list(reader, snapshot.oblist);
+    deserialize_keyframe_entity_list(reader, snapshot.fxlist);
+    deserialize_keyframe_entity_list(reader, snapshot.weaplist);
+
+    const std::uint32_t removed_count = reader.read_u32("snapshot.removed_entity_count");
+    snapshot.removed_entity_ids.clear();
+    snapshot.removed_entity_ids.reserve(removed_count);
+    for (std::uint32_t i = 0; i < removed_count; ++i)
+        snapshot.removed_entity_ids.push_back(reader.read_u32("snapshot.removed_entity_id"));
+
+    reader.finish("snapshot payload");
+    return snapshot;
+}
+
+std::vector<std::uint8_t> serialize_delta_payload(const og::sim::WorldSnapshot& delta)
+{
+    std::vector<std::uint8_t> payload;
+    append_u8(payload, og::sim::kSnapshotFormatVersion);
+    serialize_world_state(payload, delta);
+    serialize_grid_state(payload, delta);
+    serialize_guy_snapshots(payload, delta.guy_snapshots);
+    serialize_delta_entity_list(payload, delta.oblist);
+    serialize_delta_entity_list(payload, delta.fxlist);
+    serialize_delta_entity_list(payload, delta.weaplist);
+    serialize_removed_entity_list(payload, delta.removed_entity_ids);
+    return payload;
+}
+
+og::sim::WorldSnapshot deserialize_delta_payload(const std::vector<std::uint8_t>& payload)
+{
+    ByteReader reader(payload.data(), payload.size(), "delta payload");
+    const std::uint8_t format_version = reader.read_u8("delta.format_version");
+    if (format_version != og::sim::kSnapshotFormatVersion)
+    {
+        throw std::runtime_error(
+            "server snapshot format v" + std::to_string(format_version) +
+            ", client supports v" +
+            std::to_string(og::sim::kSnapshotFormatVersion) +
+            " -- please update");
+    }
+
+    og::sim::WorldSnapshot delta;
+    deserialize_world_state(reader, delta);
+    deserialize_grid_state(reader, delta);
+    deserialize_guy_snapshots(reader, delta.guy_snapshots);
+    deserialize_delta_entity_list(reader, delta.oblist);
+    deserialize_delta_entity_list(reader, delta.fxlist);
+    deserialize_delta_entity_list(reader, delta.weaplist);
+    deserialize_removed_entity_list(reader, delta.removed_entity_ids);
+    reader.finish("delta payload");
+    return delta;
+}
+
+bool erase_entity_snapshot(std::vector<og::sim::EntitySnapshot>& entities,
+                           std::uint32_t entity_id,
+                           og::sim::EntitySnapshot* extracted = nullptr)
+{
+    const auto it = std::find_if(
+        entities.begin(), entities.end(),
+        [entity_id](const og::sim::EntitySnapshot& snapshot) {
+            return snapshot.entity_id == entity_id;
+        });
+    if (it == entities.end())
+        return false;
+
+    if (extracted != nullptr)
+        *extracted = *it;
+    entities.erase(it);
+    return true;
+}
+
+og::sim::EntitySnapshot* find_entity_snapshot_mutable(
+    std::vector<og::sim::EntitySnapshot>& entities,
+    std::uint32_t entity_id)
+{
+    const auto it = std::find_if(
+        entities.begin(), entities.end(),
+        [entity_id](const og::sim::EntitySnapshot& snapshot) {
+            return snapshot.entity_id == entity_id;
+        });
+    return it == entities.end() ? nullptr : &*it;
+}
+
+void remove_entity_from_all_lists(og::sim::WorldSnapshot& snapshot, std::uint32_t entity_id)
+{
+    (void)erase_entity_snapshot(snapshot.oblist, entity_id);
+    (void)erase_entity_snapshot(snapshot.fxlist, entity_id);
+    (void)erase_entity_snapshot(snapshot.weaplist, entity_id);
+}
+
+void apply_delta_entity_list(std::vector<og::sim::EntitySnapshot>& target,
+                             std::vector<og::sim::EntitySnapshot>& list_a,
+                             std::vector<og::sim::EntitySnapshot>& list_b,
+                             const std::vector<og::sim::EntitySnapshot>& delta_entities)
+{
+    for (const auto& delta_entity : delta_entities)
+    {
+        og::sim::EntitySnapshot* baseline_entity =
+            find_entity_snapshot_mutable(target, delta_entity.entity_id);
+        if (baseline_entity == nullptr)
+        {
+            og::sim::EntitySnapshot extracted;
+            if (erase_entity_snapshot(list_a, delta_entity.entity_id, &extracted) ||
+                erase_entity_snapshot(list_b, delta_entity.entity_id, &extracted))
+            {
+                target.push_back(extracted);
+            }
+            else
+            {
+                og::sim::EntitySnapshot created;
+                created.entity_id = delta_entity.entity_id;
+                target.push_back(created);
+            }
+
+            baseline_entity = &target.back();
+        }
+
+        baseline_entity->guy_id = delta_entity.guy_id;
+        apply_entity_delta_fields(*baseline_entity, delta_entity);
+        baseline_entity->dirty_mask[0] = 0;
+        baseline_entity->dirty_mask[1] = 0;
+    }
+}
 
 class ApplyingSnapshotGuard
 {
@@ -804,6 +1791,123 @@ WorldSnapshot capture_keyframe_snapshot(GameWorld& world)
     return capture_snapshot_impl(world, true);
 }
 
+std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot)
+{
+    const std::vector<std::uint8_t> payload = serialize_snapshot_payload(snapshot);
+    const std::vector<std::uint8_t> compressed = compress_zlib_payload(payload);
+
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(1 + compressed.size());
+    bytes.push_back(kSnapshotProtocolVersion);
+    bytes.insert(bytes.end(), compressed.begin(), compressed.end());
+    return bytes;
+}
+
+WorldSnapshot deserialize_snapshot(const std::uint8_t* data, std::size_t size)
+{
+    if (data == nullptr || size < 1)
+    {
+        throw std::runtime_error("snapshot message: missing protocol header");
+    }
+    if (data[0] != kSnapshotProtocolVersion)
+    {
+        throw std::runtime_error(
+            "snapshot message: unsupported protocol version " +
+            std::to_string(data[0]));
+    }
+
+    const std::vector<std::uint8_t> payload =
+        decompress_zlib_payload(data + 1, size - 1);
+    return deserialize_snapshot_payload(payload);
+}
+
+std::vector<std::uint8_t> serialize_delta(const WorldSnapshot& delta)
+{
+    const std::vector<std::uint8_t> payload = serialize_delta_payload(delta);
+    const std::vector<std::uint8_t> compressed = compress_zlib_payload(payload);
+    const bool use_uncompressed = compressed.size() >= payload.size();
+    const std::vector<std::uint8_t>& wire_payload =
+        use_uncompressed ? payload : compressed;
+
+    if (wire_payload.size() > std::numeric_limits<std::uint16_t>::max())
+    {
+        throw std::runtime_error("delta message: payload exceeds 16-bit wire length");
+    }
+
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(kDeltaHeaderSize + wire_payload.size());
+    append_u8(bytes, kSnapshotProtocolVersion);
+    append_u8(bytes,
+              static_cast<std::uint8_t>(
+                  kDeltaSnapshotMessageType |
+                  (use_uncompressed ? kDeltaPayloadUncompressedFlag : 0U)));
+    append_u16(bytes, static_cast<std::uint16_t>(wire_payload.size()));
+    append_u32(bytes, delta.tick_count);
+    append_bytes(bytes, wire_payload.data(), wire_payload.size());
+    return bytes;
+}
+
+WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size)
+{
+    if (data == nullptr || size < kDeltaHeaderSize)
+    {
+        throw std::runtime_error("delta message: truncated header");
+    }
+    if (data[0] != kSnapshotProtocolVersion)
+    {
+        throw std::runtime_error(
+            "delta message: unsupported protocol version " +
+            std::to_string(data[0]));
+    }
+
+    const std::uint8_t header_type = data[1];
+    const bool payload_is_uncompressed =
+        (header_type & kDeltaPayloadUncompressedFlag) != 0;
+    const std::uint8_t message_type =
+        static_cast<std::uint8_t>(header_type & ~kDeltaPayloadUncompressedFlag);
+    if (message_type != kDeltaSnapshotMessageType)
+    {
+        throw std::runtime_error(
+            "delta message: unexpected message type " +
+            std::to_string(message_type));
+    }
+
+    const std::uint16_t payload_length =
+        static_cast<std::uint16_t>(data[2]) |
+        (static_cast<std::uint16_t>(data[3]) << 8);
+    if (size != kDeltaHeaderSize + payload_length)
+    {
+        throw std::runtime_error("delta message: payload length mismatch");
+    }
+
+    const std::uint32_t server_tick =
+        static_cast<std::uint32_t>(data[4]) |
+        (static_cast<std::uint32_t>(data[5]) << 8) |
+        (static_cast<std::uint32_t>(data[6]) << 16) |
+        (static_cast<std::uint32_t>(data[7]) << 24);
+
+    std::vector<std::uint8_t> payload;
+    if (payload_is_uncompressed)
+    {
+        payload.assign(data + kDeltaHeaderSize, data + size);
+    }
+    else
+    {
+        payload = decompress_zlib_payload(data + kDeltaHeaderSize, payload_length);
+    }
+
+    WorldSnapshot delta = deserialize_delta_payload(payload);
+    if (delta.tick_count != server_tick)
+    {
+        throw std::runtime_error(
+            "delta message: header/server tick mismatch (" +
+            std::to_string(server_tick) + " vs " +
+            std::to_string(delta.tick_count) + ")");
+    }
+
+    return delta;
+}
+
 void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
 {
     ApplyingSnapshotGuard applying_guard(world);
@@ -914,6 +2018,49 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     // walker construction rolls path_check_counter from the world RNG, so
     // restore the authoritative snapshot state after all apply-side effects.
     world.rng_.state_ = snapshot.rng_state;
+}
+
+void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
+{
+    baseline.tick_count = delta.tick_count;
+    baseline.rng_state = delta.rng_state;
+    baseline.level_tick_count = delta.level_tick_count;
+    baseline.level_done = delta.level_done;
+    baseline.game_ended = delta.game_ended;
+    baseline.end = delta.end;
+    baseline.retry = delta.retry;
+    baseline.next_level = delta.next_level;
+    baseline.ending = delta.ending;
+    baseline.enemy_freeze = delta.enemy_freeze;
+    baseline.timer_wait = delta.timer_wait;
+    baseline.living_count = delta.living_count;
+    baseline.control_hp = delta.control_hp;
+    baseline.withdraw_requested = delta.withdraw_requested;
+    baseline.withdraw_level = delta.withdraw_level;
+    baseline.guy_id_counter = delta.guy_id_counter;
+    std::copy(std::begin(delta.m_score), std::end(delta.m_score),
+              std::begin(baseline.m_score));
+    baseline.current_palette_id = delta.current_palette_id;
+    baseline.pending_exit_prompt = delta.pending_exit_prompt;
+    baseline.paused = delta.paused;
+    baseline.pause_player_index = delta.pause_player_index;
+
+    baseline.grid_dirty = delta.grid_dirty;
+    baseline.grid_full_resend = delta.grid_full_resend;
+    baseline.full_grid_data = delta.full_grid_data;
+    baseline.grid_dirty_tiles = delta.grid_dirty_tiles;
+    baseline.guy_snapshots = delta.guy_snapshots;
+    baseline.removed_entity_ids = delta.removed_entity_ids;
+
+    for (std::uint32_t removed_id : delta.removed_entity_ids)
+        remove_entity_from_all_lists(baseline, removed_id);
+
+    apply_delta_entity_list(baseline.oblist, baseline.fxlist, baseline.weaplist,
+                            delta.oblist);
+    apply_delta_entity_list(baseline.fxlist, baseline.oblist, baseline.weaplist,
+                            delta.fxlist);
+    apply_delta_entity_list(baseline.weaplist, baseline.oblist, baseline.fxlist,
+                            delta.weaplist);
 }
 
 SimEventBatch drain_sim_events(SimEventLog& log)

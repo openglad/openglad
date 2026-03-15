@@ -18,6 +18,8 @@
 
 #include <gtest/gtest.h>
 
+#include "zlib.h"
+
 #include "test_game_world_fixture.h"
 
 namespace {
@@ -366,6 +368,331 @@ void expect_entity_snapshot_matches(
             ? static_cast<const weap&>(live).do_bounce()
             : 0;
     EXPECT_EQ(expected_do_bounce, snapshot.do_bounce);
+}
+
+void expect_guy_snapshot_eq(const og::sim::GuySnapshot& expected,
+                            const og::sim::GuySnapshot& actual)
+{
+    EXPECT_EQ(expected.guy_id, actual.guy_id);
+    EXPECT_EQ(expected.name, actual.name);
+    EXPECT_EQ(expected.family, actual.family);
+    EXPECT_EQ(expected.strength, actual.strength);
+    EXPECT_EQ(expected.dexterity, actual.dexterity);
+    EXPECT_EQ(expected.constitution, actual.constitution);
+    EXPECT_EQ(expected.intelligence, actual.intelligence);
+    EXPECT_EQ(expected.armor, actual.armor);
+    EXPECT_EQ(expected.exp, actual.exp);
+    EXPECT_EQ(expected.kills, actual.kills);
+    EXPECT_EQ(expected.level_kills, actual.level_kills);
+    EXPECT_EQ(expected.total_damage, actual.total_damage);
+    EXPECT_EQ(expected.total_hits, actual.total_hits);
+    EXPECT_EQ(expected.total_shots, actual.total_shots);
+    EXPECT_EQ(expected.teamnum, actual.teamnum);
+    EXPECT_FLOAT_EQ(expected.scen_damage, actual.scen_damage);
+    EXPECT_EQ(expected.scen_kills, actual.scen_kills);
+    EXPECT_FLOAT_EQ(expected.scen_damage_taken, actual.scen_damage_taken);
+    EXPECT_FLOAT_EQ(expected.scen_min_hp, actual.scen_min_hp);
+    EXPECT_EQ(expected.scen_shots, actual.scen_shots);
+    EXPECT_EQ(expected.scen_hits, actual.scen_hits);
+    EXPECT_EQ(expected.level, actual.level);
+}
+
+void expect_entity_snapshot_eq(const og::sim::EntitySnapshot& expected,
+                               const og::sim::EntitySnapshot& actual,
+                               bool compare_dirty_mask = true)
+{
+    SCOPED_TRACE(::testing::Message() << "entity_id=" << expected.entity_id);
+
+    if (compare_dirty_mask)
+    {
+        EXPECT_EQ(expected.dirty_mask[0], actual.dirty_mask[0]);
+        EXPECT_EQ(expected.dirty_mask[1], actual.dirty_mask[1]);
+    }
+
+    EXPECT_EQ(expected.guy_id, actual.guy_id);
+    EXPECT_EQ(expected.entity_id, actual.entity_id);
+    EXPECT_EQ(expected.xpos, actual.xpos);
+    EXPECT_EQ(expected.ypos, actual.ypos);
+    EXPECT_EQ(expected.sizex, actual.sizex);
+    EXPECT_EQ(expected.sizey, actual.sizey);
+    EXPECT_EQ(expected.team_num, actual.team_num);
+    EXPECT_EQ(expected.real_team_num, actual.real_team_num);
+    EXPECT_EQ(expected.user, actual.user);
+    EXPECT_EQ(expected.dead, actual.dead);
+    EXPECT_EQ(expected.death_called, actual.death_called);
+    EXPECT_EQ(expected.invulnerable_left, actual.invulnerable_left);
+    EXPECT_EQ(expected.invisibility_left, actual.invisibility_left);
+    EXPECT_EQ(expected.flight_left, actual.flight_left);
+    EXPECT_EQ(expected.bonus_rounds, actual.bonus_rounds);
+    EXPECT_EQ(expected.order, actual.order);
+    EXPECT_EQ(expected.family, actual.family);
+    EXPECT_EQ(expected.frame, actual.frame);
+    EXPECT_FLOAT_EQ(expected.worldx, actual.worldx);
+    EXPECT_FLOAT_EQ(expected.worldy, actual.worldy);
+    EXPECT_FLOAT_EQ(expected.lastx, actual.lastx);
+    EXPECT_FLOAT_EQ(expected.lasty, actual.lasty);
+    EXPECT_FLOAT_EQ(expected.stepsize, actual.stepsize);
+    EXPECT_FLOAT_EQ(expected.normal_stepsize, actual.normal_stepsize);
+    EXPECT_EQ(expected.curdir, actual.curdir);
+    EXPECT_EQ(expected.enddir, actual.enddir);
+    EXPECT_FLOAT_EQ(expected.damage, actual.damage);
+    EXPECT_FLOAT_EQ(expected.fire_frequency, actual.fire_frequency);
+    EXPECT_FLOAT_EQ(expected.busy, actual.busy);
+    EXPECT_EQ(expected.current_weapon, actual.current_weapon);
+    EXPECT_EQ(expected.default_weapon, actual.default_weapon);
+    EXPECT_FLOAT_EQ(expected.attack_lunge, actual.attack_lunge);
+    EXPECT_FLOAT_EQ(expected.attack_lunge_angle, actual.attack_lunge_angle);
+    EXPECT_FLOAT_EQ(expected.hit_recoil, actual.hit_recoil);
+    EXPECT_FLOAT_EQ(expected.hit_recoil_angle, actual.hit_recoil_angle);
+    EXPECT_FLOAT_EQ(expected.last_hitpoints, actual.last_hitpoints);
+    EXPECT_EQ(expected.action, actual.action);
+    EXPECT_EQ(expected.act_type, actual.act_type);
+    EXPECT_EQ(expected.old_act_type, actual.old_act_type);
+    EXPECT_EQ(expected.ani_type, actual.ani_type);
+    EXPECT_EQ(expected.cycle, actual.cycle);
+    EXPECT_EQ(expected.drawcycle, actual.drawcycle);
+    EXPECT_EQ(expected.current_special, actual.current_special);
+    EXPECT_EQ(expected.ignore, actual.ignore);
+    EXPECT_EQ(expected.in_act, actual.in_act);
+    EXPECT_EQ(expected.shifter_down, actual.shifter_down);
+    EXPECT_EQ(expected.yo_delay, actual.yo_delay);
+    EXPECT_EQ(expected.skip_exit, actual.skip_exit);
+    EXPECT_EQ(expected.outline, actual.outline);
+    EXPECT_EQ(expected.hurt_flash, actual.hurt_flash);
+    EXPECT_EQ(expected.lifetime, actual.lifetime);
+    EXPECT_FLOAT_EQ(expected.speed_bonus, actual.speed_bonus);
+    EXPECT_EQ(expected.speed_bonus_left, actual.speed_bonus_left);
+    EXPECT_EQ(expected.charm_left, actual.charm_left);
+    EXPECT_EQ(expected.weapons_left, actual.weapons_left);
+    EXPECT_EQ(expected.keys, actual.keys);
+    EXPECT_EQ(expected.view_all, actual.view_all);
+    EXPECT_EQ(expected.lineofsight, actual.lineofsight);
+    EXPECT_EQ(expected.path_check_counter, actual.path_check_counter);
+    EXPECT_EQ(expected.regen_delay, actual.regen_delay);
+    EXPECT_EQ(expected.foe_id, actual.foe_id);
+    EXPECT_EQ(expected.leader_id, actual.leader_id);
+    EXPECT_EQ(expected.owner_id, actual.owner_id);
+    EXPECT_EQ(expected.collide_ob_id, actual.collide_ob_id);
+    EXPECT_FLOAT_EQ(expected.hitpoints, actual.hitpoints);
+    EXPECT_FLOAT_EQ(expected.max_hitpoints, actual.max_hitpoints);
+    EXPECT_FLOAT_EQ(expected.magicpoints, actual.magicpoints);
+    EXPECT_FLOAT_EQ(expected.max_magicpoints, actual.max_magicpoints);
+    EXPECT_EQ(expected.max_heal_delay, actual.max_heal_delay);
+    EXPECT_EQ(expected.current_heal_delay, actual.current_heal_delay);
+    EXPECT_EQ(expected.max_magic_delay, actual.max_magic_delay);
+    EXPECT_EQ(expected.current_magic_delay, actual.current_magic_delay);
+    EXPECT_FLOAT_EQ(expected.magic_per_round, actual.magic_per_round);
+    EXPECT_FLOAT_EQ(expected.heal_per_round, actual.heal_per_round);
+    EXPECT_FLOAT_EQ(expected.armor, actual.armor);
+    EXPECT_EQ(expected.level, actual.level);
+    EXPECT_EQ(expected.bit_flags, actual.bit_flags);
+    EXPECT_EQ(expected.delete_me, actual.delete_me);
+    EXPECT_EQ(expected.frozen_delay, actual.frozen_delay);
+    EXPECT_EQ(expected.weapon_cost, actual.weapon_cost);
+    for (int i = 0; i < NUM_SPECIALS; ++i)
+        EXPECT_EQ(expected.special_cost[i], actual.special_cost[i]);
+    EXPECT_EQ(expected.old_order, actual.old_order);
+    EXPECT_EQ(expected.old_family, actual.old_family);
+    EXPECT_EQ(expected.last_distance, actual.last_distance);
+    EXPECT_EQ(expected.current_distance, actual.current_distance);
+    EXPECT_EQ(expected.controller_id, actual.controller_id);
+    EXPECT_EQ(expected.do_bounce, actual.do_bounce);
+}
+
+void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
+                              const og::sim::WorldSnapshot& actual,
+                              bool compare_dirty_mask = true)
+{
+    EXPECT_EQ(expected.tick_count, actual.tick_count);
+    EXPECT_EQ(expected.rng_state, actual.rng_state);
+    EXPECT_EQ(expected.level_tick_count, actual.level_tick_count);
+    EXPECT_EQ(expected.level_done, actual.level_done);
+    EXPECT_EQ(expected.game_ended, actual.game_ended);
+    EXPECT_EQ(expected.end, actual.end);
+    EXPECT_EQ(expected.retry, actual.retry);
+    EXPECT_EQ(expected.next_level, actual.next_level);
+    EXPECT_EQ(expected.ending, actual.ending);
+    EXPECT_EQ(expected.enemy_freeze, actual.enemy_freeze);
+    EXPECT_EQ(expected.timer_wait, actual.timer_wait);
+    EXPECT_EQ(expected.living_count, actual.living_count);
+    EXPECT_FLOAT_EQ(expected.control_hp, actual.control_hp);
+    EXPECT_EQ(expected.withdraw_requested, actual.withdraw_requested);
+    EXPECT_EQ(expected.withdraw_level, actual.withdraw_level);
+    EXPECT_EQ(expected.guy_id_counter, actual.guy_id_counter);
+    EXPECT_EQ(expected.current_palette_id, actual.current_palette_id);
+    EXPECT_EQ(expected.pending_exit_prompt, actual.pending_exit_prompt);
+    EXPECT_EQ(expected.paused, actual.paused);
+    EXPECT_EQ(expected.pause_player_index, actual.pause_player_index);
+    EXPECT_EQ(expected.grid_dirty, actual.grid_dirty);
+    EXPECT_EQ(expected.grid_full_resend, actual.grid_full_resend);
+    EXPECT_EQ(expected.full_grid_data, actual.full_grid_data);
+    EXPECT_EQ(expected.grid_dirty_tiles.size(), actual.grid_dirty_tiles.size());
+    for (std::size_t i = 0; i < expected.grid_dirty_tiles.size(); ++i)
+    {
+        EXPECT_EQ(expected.grid_dirty_tiles[i].x, actual.grid_dirty_tiles[i].x);
+        EXPECT_EQ(expected.grid_dirty_tiles[i].y, actual.grid_dirty_tiles[i].y);
+        EXPECT_EQ(expected.grid_dirty_tiles[i].value,
+                  actual.grid_dirty_tiles[i].value);
+    }
+    for (int i = 0; i < 4; ++i)
+        EXPECT_EQ(expected.m_score[i], actual.m_score[i]);
+
+    ASSERT_EQ(expected.guy_snapshots.size(), actual.guy_snapshots.size());
+    for (std::size_t i = 0; i < expected.guy_snapshots.size(); ++i)
+        expect_guy_snapshot_eq(expected.guy_snapshots[i], actual.guy_snapshots[i]);
+
+    EXPECT_EQ(snapshot_ids(expected.oblist), snapshot_ids(actual.oblist));
+    EXPECT_EQ(snapshot_ids(expected.fxlist), snapshot_ids(actual.fxlist));
+    EXPECT_EQ(snapshot_ids(expected.weaplist), snapshot_ids(actual.weaplist));
+
+    ASSERT_EQ(expected.oblist.size(), actual.oblist.size());
+    for (std::size_t i = 0; i < expected.oblist.size(); ++i)
+        expect_entity_snapshot_eq(expected.oblist[i], actual.oblist[i], compare_dirty_mask);
+
+    ASSERT_EQ(expected.fxlist.size(), actual.fxlist.size());
+    for (std::size_t i = 0; i < expected.fxlist.size(); ++i)
+        expect_entity_snapshot_eq(expected.fxlist[i], actual.fxlist[i], compare_dirty_mask);
+
+    ASSERT_EQ(expected.weaplist.size(), actual.weaplist.size());
+    for (std::size_t i = 0; i < expected.weaplist.size(); ++i)
+        expect_entity_snapshot_eq(expected.weaplist[i], actual.weaplist[i], compare_dirty_mask);
+
+    EXPECT_EQ(expected.removed_entity_ids, actual.removed_entity_ids);
+}
+
+using DirtyMask =
+    std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>;
+using DirtyMaskMap = std::unordered_map<std::uint32_t, DirtyMask>;
+
+bool mask_any(const DirtyMask& mask)
+{
+    return mask[0] != 0 || mask[1] != 0;
+}
+
+void accumulate_entity_masks(const std::vector<og::sim::EntitySnapshot>& entities,
+                             DirtyMaskMap& accumulated)
+{
+    for (const auto& entity : entities)
+    {
+        DirtyMask& mask = accumulated[entity.entity_id];
+        mask[0] |= entity.dirty_mask[0];
+        mask[1] |= entity.dirty_mask[1];
+    }
+}
+
+void accumulate_snapshot_masks(const og::sim::WorldSnapshot& snapshot,
+                               DirtyMaskMap& accumulated)
+{
+    accumulate_entity_masks(snapshot.oblist, accumulated);
+    accumulate_entity_masks(snapshot.fxlist, accumulated);
+    accumulate_entity_masks(snapshot.weaplist, accumulated);
+}
+
+std::unordered_set<std::uint32_t> snapshot_entity_id_set(
+    const og::sim::WorldSnapshot& snapshot)
+{
+    std::unordered_set<std::uint32_t> ids;
+    ids.reserve(snapshot.oblist.size() + snapshot.fxlist.size() +
+                snapshot.weaplist.size());
+    for (const auto& entity : snapshot.oblist)
+        ids.insert(entity.entity_id);
+    for (const auto& entity : snapshot.fxlist)
+        ids.insert(entity.entity_id);
+    for (const auto& entity : snapshot.weaplist)
+        ids.insert(entity.entity_id);
+    return ids;
+}
+
+std::vector<og::sim::EntitySnapshot> select_delta_entities(
+    const std::vector<og::sim::EntitySnapshot>& current,
+    const DirtyMaskMap& accumulated,
+    const std::unordered_set<std::uint32_t>& new_entity_ids)
+{
+    std::vector<og::sim::EntitySnapshot> selected;
+    for (const auto& entity : current)
+    {
+        og::sim::EntitySnapshot candidate = entity;
+        if (new_entity_ids.find(entity.entity_id) != new_entity_ids.end())
+        {
+            candidate.dirty_mask[0] = ~0ULL;
+            candidate.dirty_mask[1] = ~0ULL;
+            selected.push_back(candidate);
+            continue;
+        }
+
+        const auto it = accumulated.find(entity.entity_id);
+        if (it == accumulated.end() || !mask_any(it->second))
+            continue;
+
+        candidate.dirty_mask[0] = it->second[0];
+        candidate.dirty_mask[1] = it->second[1];
+        selected.push_back(candidate);
+    }
+    return selected;
+}
+
+og::sim::WorldSnapshot build_delta_snapshot(
+    const og::sim::WorldSnapshot& current,
+    const DirtyMaskMap& accumulated,
+    const std::unordered_set<std::uint32_t>& new_entity_ids,
+    const std::vector<std::uint32_t>& removed_entity_ids)
+{
+    og::sim::WorldSnapshot delta = current;
+    delta.oblist = select_delta_entities(current.oblist, accumulated, new_entity_ids);
+    delta.fxlist = select_delta_entities(current.fxlist, accumulated, new_entity_ids);
+    delta.weaplist =
+        select_delta_entities(current.weaplist, accumulated, new_entity_ids);
+    delta.removed_entity_ids = removed_entity_ids;
+    return delta;
+}
+
+void fill_world_grid(GameWorld& world, std::uint8_t value)
+{
+    std::fill_n(world.grid.data.get(),
+                static_cast<std::size_t>(world.grid.w) * world.grid.h,
+                value);
+}
+
+std::vector<std::uint8_t> zlib_compress_for_test(
+    const std::vector<std::uint8_t>& payload)
+{
+    std::vector<std::uint8_t> compressed(compressBound(static_cast<uLong>(payload.size())));
+    uLongf compressed_size = static_cast<uLongf>(compressed.size());
+    const int rc = compress2(compressed.data(),
+                             &compressed_size,
+                             payload.data(),
+                             static_cast<uLong>(payload.size()),
+                             Z_DEFAULT_COMPRESSION);
+    EXPECT_EQ(Z_OK, rc);
+    compressed.resize(static_cast<std::size_t>(compressed_size));
+    return compressed;
+}
+
+std::vector<std::uint8_t> zlib_decompress_for_test(
+    const std::uint8_t* data,
+    std::size_t size)
+{
+    z_stream stream{};
+    stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(data));
+    stream.avail_in = static_cast<uInt>(size);
+    EXPECT_EQ(Z_OK, inflateInit(&stream));
+
+    std::vector<std::uint8_t> output;
+    std::array<std::uint8_t, 256> chunk{};
+    int rc = Z_OK;
+    do
+    {
+        stream.next_out = chunk.data();
+        stream.avail_out = static_cast<uInt>(chunk.size());
+        rc = inflate(&stream, Z_NO_FLUSH);
+        EXPECT_TRUE(rc == Z_OK || rc == Z_STREAM_END);
+        output.insert(output.end(),
+                      chunk.begin(),
+                      chunk.begin() + (chunk.size() - stream.avail_out));
+    } while (rc != Z_STREAM_END);
+
+    EXPECT_EQ(Z_OK, inflateEnd(&stream));
+    return output;
 }
 
 } // namespace
@@ -1218,4 +1545,305 @@ TEST(WorldSnapshot, apply_snapshot_overwrites_grid_dirty_tiles)
               keyframe.full_grid_data.size());
     EXPECT_EQ(snapshot.grid_dirty_tiles.front().value,
               keyframe.full_grid_data[tile_index]);
+}
+
+TEST(WorldSnapshot, serialize_snapshot_roundtrip_preserves_keyframe_and_compresses)
+{
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    configure_snapshot_test_services(world);
+    world.resize_grid(128, 128);
+    fill_world_grid(world, PIX_GRASS1);
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* ally = world.add_ob(Order::Living, FAMILY_ELF);
+    walker* weapon = world.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(nullptr, ally);
+    ASSERT_NE(nullptr, weapon);
+
+    actor->setworldxy(64.0f, 80.0f);
+    actor->set_team_num(2);
+    actor->set_user(1);
+    actor->set_busy(1.5f);
+    actor->stats()->set_hitpoints(18.0f);
+    actor->stats()->set_magicpoints(7.0f);
+    actor->stats()->set_special_cost(0, 9);
+    actor->set_foe(ally);
+    static_cast<weap*>(weapon)->set_do_bounce(3);
+    weapon->set_owner(actor);
+
+    auto player_guy = std::make_unique<guy>(FAMILY_SOLDIER);
+    player_guy->name = "SnapshotHero";
+    actor->set_owned_myguy(std::move(player_guy));
+
+    world.tick_count_ = 99;
+    world.rng_.state_ = 0x12345678u;
+    world.current_palette_id = 1;
+    world.pending_exit_prompt = true;
+    world.paused = true;
+    world.pause_player_index = 2;
+    world.m_score[0] = 111;
+    world.m_score[1] = 222;
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(world);
+    ASSERT_FALSE(keyframe.full_grid_data.empty());
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
+    ASSERT_FALSE(bytes.empty());
+    EXPECT_EQ(og::sim::kSnapshotProtocolVersion, bytes.front());
+    EXPECT_LT(bytes.size(), keyframe.full_grid_data.size() / 2);
+
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(bytes.data(), bytes.size());
+    expect_world_snapshot_eq(keyframe, decoded);
+}
+
+TEST(WorldSnapshot, serialize_delta_roundtrip_uses_uncompressed_bypass_when_smaller)
+{
+    og::sim::WorldSnapshot delta;
+    delta.tick_count = 77;
+    delta.rng_state = 0x10203040u;
+    delta.level_tick_count = 11;
+    delta.level_done = 1;
+    delta.game_ended = true;
+    delta.retry = true;
+    delta.next_level = 3;
+    delta.ending = 2;
+    delta.enemy_freeze = 4;
+    delta.timer_wait = 5;
+    delta.living_count = 6;
+    delta.control_hp = 7.5f;
+    delta.withdraw_requested = true;
+    delta.withdraw_level = 8;
+    delta.guy_id_counter = 9;
+    delta.m_score[0] = 101;
+    delta.m_score[1] = 202;
+    delta.current_palette_id = 1;
+    delta.pending_exit_prompt = true;
+    delta.paused = true;
+    delta.pause_player_index = 3;
+    delta.grid_dirty = true;
+    delta.grid_full_resend = true;
+    delta.full_grid_data.resize(63);
+    for (std::size_t i = 0; i < delta.full_grid_data.size(); ++i)
+    {
+        delta.full_grid_data[i] =
+            static_cast<std::uint8_t>((i * 37U + 11U) & 0xffU);
+    }
+    og::sim::GuySnapshot guy_snapshot;
+    guy_snapshot.guy_id = 42;
+    guy_snapshot.name = "Q7mP2xN9cR4tV8bL1kH5sD0fJ6aW3eY";
+    guy_snapshot.family = FAMILY_ELF;
+    guy_snapshot.strength = 10;
+    guy_snapshot.dexterity = 11;
+    guy_snapshot.constitution = 12;
+    guy_snapshot.intelligence = 13;
+    guy_snapshot.armor = 14;
+    guy_snapshot.exp = 15;
+    guy_snapshot.kills = 16;
+    guy_snapshot.level_kills = 17;
+    guy_snapshot.total_damage = 18;
+    guy_snapshot.total_hits = 19;
+    guy_snapshot.total_shots = 20;
+    guy_snapshot.teamnum = 21;
+    guy_snapshot.scen_damage = 22.0f;
+    guy_snapshot.scen_kills = 23;
+    guy_snapshot.scen_damage_taken = 24.0f;
+    guy_snapshot.scen_min_hp = 25.0f;
+    guy_snapshot.scen_shots = 26;
+    guy_snapshot.scen_hits = 27;
+    guy_snapshot.level = 28;
+    delta.guy_snapshots.push_back(guy_snapshot);
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
+    ASSERT_GE(bytes.size(), 8u);
+    EXPECT_EQ(og::sim::kSnapshotProtocolVersion, bytes[0]);
+    EXPECT_EQ(og::sim::kDeltaSnapshotMessageType,
+              bytes[1] & ~og::sim::kDeltaPayloadUncompressedFlag);
+
+    const bool payload_is_uncompressed =
+        (bytes[1] & og::sim::kDeltaPayloadUncompressedFlag) != 0;
+    const std::uint16_t payload_length =
+        static_cast<std::uint16_t>(bytes[2]) |
+        (static_cast<std::uint16_t>(bytes[3]) << 8);
+    const std::vector<std::uint8_t> raw_payload =
+        payload_is_uncompressed
+            ? std::vector<std::uint8_t>(bytes.begin() + 8, bytes.end())
+            : zlib_decompress_for_test(bytes.data() + 8, payload_length);
+    const std::vector<std::uint8_t> recompressed =
+        zlib_compress_for_test(raw_payload);
+    if (payload_is_uncompressed)
+        EXPECT_GE(recompressed.size(), raw_payload.size());
+    else
+        EXPECT_LT(recompressed.size(), raw_payload.size());
+
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_delta(bytes.data(), bytes.size());
+    expect_world_snapshot_eq(delta, decoded);
+}
+
+TEST(WorldSnapshot, apply_delta_with_all_fields_dirty_matches_current_world_state)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+
+    walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = source.add_ob(Order::Living, FAMILY_ORC);
+    walker* weapon = source.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(nullptr, foe);
+    ASSERT_NE(nullptr, weapon);
+
+    actor->set_foe(foe);
+    weapon->set_owner(actor);
+    source.current_palette_id = 1;
+
+    og::sim::WorldSnapshot client_baseline =
+        og::sim::capture_keyframe_snapshot(source);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    og::sim::apply_snapshot(mirror, client_baseline);
+
+    actor->setworldxy(120.0f, 144.0f);
+    actor->set_busy(2.0f);
+    actor->stats()->set_hitpoints(13.0f);
+    actor->stats()->set_magicpoints(5.0f);
+    static_cast<weap*>(weapon)->set_do_bounce(7);
+    source.pending_exit_prompt = true;
+    source.paused = true;
+    source.pause_player_index = 1;
+
+    const og::sim::WorldSnapshot current = og::sim::capture_snapshot(source);
+
+    DirtyMaskMap all_dirty;
+    for (const auto& entity : current.oblist)
+        all_dirty[entity.entity_id] = {~0ULL, ~0ULL};
+    for (const auto& entity : current.fxlist)
+        all_dirty[entity.entity_id] = {~0ULL, ~0ULL};
+    for (const auto& entity : current.weaplist)
+        all_dirty[entity.entity_id] = {~0ULL, ~0ULL};
+
+    const og::sim::WorldSnapshot delta =
+        build_delta_snapshot(current, all_dirty, {}, current.removed_entity_ids);
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_delta(bytes.data(), bytes.size());
+
+    og::sim::apply_delta(client_baseline, decoded);
+    og::sim::apply_snapshot(mirror, client_baseline);
+
+    const og::sim::WorldSnapshot source_keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    const og::sim::WorldSnapshot mirror_keyframe =
+        og::sim::capture_keyframe_snapshot(mirror);
+    expect_world_snapshot_eq(source_keyframe, mirror_keyframe);
+}
+
+TEST(WorldSnapshot, apply_delta_accumulates_multi_tick_changes_with_spawn_and_removal)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+
+    walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = source.add_ob(Order::Living, FAMILY_ORC);
+    walker* weapon = source.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(nullptr, foe);
+    ASSERT_NE(nullptr, weapon);
+
+    actor->set_foe(foe);
+    weapon->set_owner(actor);
+    source.m_score[0] = 10;
+
+    og::sim::WorldSnapshot client_baseline =
+        og::sim::capture_keyframe_snapshot(source);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    og::sim::apply_snapshot(mirror, client_baseline);
+
+    DirtyMaskMap accumulated;
+    std::unordered_set<std::uint32_t> known_ids =
+        snapshot_entity_id_set(client_baseline);
+    std::unordered_set<std::uint32_t> new_entity_ids;
+    std::vector<std::uint32_t> removed_entity_ids;
+
+    auto record_snapshot = [&](const og::sim::WorldSnapshot& snapshot) {
+        accumulate_snapshot_masks(snapshot, accumulated);
+        for (std::uint32_t removed_id : snapshot.removed_entity_ids)
+        {
+            removed_entity_ids.push_back(removed_id);
+            known_ids.erase(removed_id);
+            accumulated.erase(removed_id);
+        }
+
+        const std::unordered_set<std::uint32_t> current_ids =
+            snapshot_entity_id_set(snapshot);
+        for (std::uint32_t entity_id : current_ids)
+        {
+            if (known_ids.insert(entity_id).second)
+                new_entity_ids.insert(entity_id);
+        }
+    };
+
+    actor->setworldxy(96.0f, 112.0f);
+    actor->set_busy(1.0f);
+    actor->stats()->set_hitpoints(16.0f);
+    source.current_palette_id = 1;
+    const og::sim::WorldSnapshot tick_one = og::sim::capture_snapshot(source);
+    record_snapshot(tick_one);
+
+    walker* slime = source.add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    ASSERT_NE(nullptr, slime);
+    slime->setworldxy(160.0f, 176.0f);
+    slime->set_team_num(3);
+    slime->stats()->set_hitpoints(12.0f);
+    source.m_score[1] = 20;
+    const std::uint32_t slime_id = slime->entity_id();
+    const og::sim::WorldSnapshot tick_two = og::sim::capture_snapshot(source);
+    record_snapshot(tick_two);
+
+    const std::uint32_t removed_foe_id = foe->entity_id();
+    ASSERT_EQ(1, source.remove_ob(foe));
+    slime->stats()->set_magicpoints(9.0f);
+    slime->set_busy(0.75f);
+    source.damage_tile(3 * GRID_SIZE, 4 * GRID_SIZE);
+    source.pending_exit_prompt = true;
+    source.paused = true;
+    source.pause_player_index = 2;
+    const og::sim::WorldSnapshot tick_three = og::sim::capture_snapshot(source);
+    record_snapshot(tick_three);
+
+    const og::sim::WorldSnapshot delta = build_delta_snapshot(
+        tick_three, accumulated, new_entity_ids, removed_entity_ids);
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_delta(bytes.data(), bytes.size());
+
+    EXPECT_NE(decoded.removed_entity_ids.end(),
+              std::find(decoded.removed_entity_ids.begin(),
+                        decoded.removed_entity_ids.end(),
+                        removed_foe_id));
+
+    const og::sim::EntitySnapshot* slime_delta =
+        find_entity_snapshot(decoded.oblist, slime_id);
+    ASSERT_NE(nullptr, slime_delta);
+    EXPECT_EQ(~0ULL, slime_delta->dirty_mask[0]);
+    EXPECT_EQ(~0ULL, slime_delta->dirty_mask[1]);
+
+    og::sim::apply_delta(client_baseline, decoded);
+    og::sim::apply_snapshot(mirror, client_baseline);
+
+    const og::sim::WorldSnapshot source_keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    const og::sim::WorldSnapshot mirror_keyframe =
+        og::sim::capture_keyframe_snapshot(mirror);
+    expect_world_snapshot_eq(source_keyframe, mirror_keyframe);
 }
