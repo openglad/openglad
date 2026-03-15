@@ -216,7 +216,7 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity, bool keyframe)
 }
 
 template <typename EntityList>
-void capture_entity_list(const EntityList& entities,
+void capture_entity_list(EntityList& entities,
                          std::vector<og::sim::EntitySnapshot>& entity_snapshots,
                          std::vector<og::sim::GuySnapshot>& guy_snapshots,
                          std::unordered_set<int>& seen_guy_ids,
@@ -239,10 +239,8 @@ void capture_entity_list(const EntityList& entities,
     }
 }
 
-og::sim::WorldSnapshot capture_snapshot_impl(const GameWorld& world, bool keyframe)
+og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world, bool keyframe)
 {
-    GameWorld& mutable_world = const_cast<GameWorld&>(world);
-
     og::sim::WorldSnapshot snapshot;
     snapshot.tick_count = world.tick_count_;
     snapshot.rng_state = world.rng_.state_;
@@ -278,9 +276,8 @@ og::sim::WorldSnapshot capture_snapshot_impl(const GameWorld& world, bool keyfra
     capture_entity_list(world.weaplist, snapshot.weaplist, snapshot.guy_snapshots,
                         seen_guy_ids, keyframe);
 
-    snapshot.removed_entity_ids = mutable_world.take_removed_entity_ids();
-    capture_world_grid(world, snapshot, mutable_world.take_grid_dirty_tiles(),
-                       keyframe);
+    snapshot.removed_entity_ids = world.take_removed_entity_ids();
+    capture_world_grid(world, snapshot, world.take_grid_dirty_tiles(), keyframe);
 
     return snapshot;
 }
@@ -289,12 +286,12 @@ og::sim::WorldSnapshot capture_snapshot_impl(const GameWorld& world, bool keyfra
 
 namespace og::sim {
 
-WorldSnapshot capture_snapshot(const GameWorld& world)
+WorldSnapshot capture_snapshot(GameWorld& world)
 {
     return capture_snapshot_impl(world, false);
 }
 
-WorldSnapshot capture_keyframe_snapshot(const GameWorld& world)
+WorldSnapshot capture_keyframe_snapshot(GameWorld& world)
 {
     return capture_snapshot_impl(world, true);
 }

@@ -454,8 +454,11 @@ static_assert(kEntitySnapshotTrackedFieldCount == og::dirty::FIELD_COUNT,
 static_assert(entity_snapshot_field_table_is_valid(),
               "EntitySnapshot field table drift -- update world_snapshot.h");
 
-WorldSnapshot capture_snapshot(const GameWorld& world);
-WorldSnapshot capture_keyframe_snapshot(const GameWorld& world);
+// Captures a tick snapshot and drains per-tick replication bookkeeping from
+// the live world, including entity dirty masks, removed entity ids, and grid
+// dirty tiles.
+WorldSnapshot capture_snapshot(GameWorld& world);
+WorldSnapshot capture_keyframe_snapshot(GameWorld& world);
 SimEventBatch drain_sim_events(SimEventLog& log);
 
 } // namespace og::sim
