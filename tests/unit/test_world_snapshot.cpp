@@ -1511,8 +1511,23 @@ TEST(WorldSnapshot, serialize_snapshot_roundtrip_preserves_keyframe_and_compress
     ASSERT_FALSE(keyframe.full_grid_data.empty());
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
-    ASSERT_FALSE(bytes.empty());
-    EXPECT_EQ(og::sim::kSnapshotProtocolVersion, bytes.front());
+    ASSERT_GE(bytes.size(), 8u);
+    EXPECT_EQ(og::sim::kSnapshotProtocolVersion, bytes[0]);
+    EXPECT_EQ(og::sim::kSnapshotMessageType, bytes[1]);
+    const std::uint16_t payload_length =
+        static_cast<std::uint16_t>(bytes[2]) |
+        (static_cast<std::uint16_t>(bytes[3]) << 8);
+    EXPECT_EQ(bytes.size(), 8u + payload_length);
+    const std::uint32_t server_tick =
+        static_cast<std::uint32_t>(bytes[4]) |
+        (static_cast<std::uint32_t>(bytes[5]) << 8) |
+        (static_cast<std::uint32_t>(bytes[6]) << 16) |
+        (static_cast<std::uint32_t>(bytes[7]) << 24);
+    EXPECT_EQ(keyframe.tick_count, server_tick);
+    const std::vector<std::uint8_t> raw_payload =
+        zlib_decompress_for_test(bytes.data() + 8, payload_length);
+    ASSERT_FALSE(raw_payload.empty());
+    EXPECT_EQ(og::sim::kSnapshotFormatVersion, raw_payload.front());
     EXPECT_LT(bytes.size(), keyframe.full_grid_data.size() / 2);
 
     const og::sim::WorldSnapshot decoded =
@@ -1663,7 +1678,7 @@ TEST(WorldSnapshot, serialize_delta_roundtrip_preserves_zero_mask_removal_sentin
     EXPECT_EQ(std::vector<std::uint32_t>({77u}), decoded.removed_entity_ids);
 }
 
-TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_protocol_and_format_version)
+TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_headers_and_format_version)
 {
     TestGameWorld fx;
     GameWorld& world = fx.world();
@@ -1687,15 +1702,44 @@ TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_protocol_and_format_version
                   std::string::npos);
     }
 
+    std::vector<std::uint8_t> bad_type = bytes;
+    bad_type[1] = og::sim::kDeltaSnapshotMessageType;
+    EXPECT_THROW(
+        (void)og::sim::deserialize_snapshot(bad_type.data(), bad_type.size()),
+        std::runtime_error);
+
+    std::vector<std::uint8_t> bad_length = bytes;
+    bad_length[2] = 0;
+    bad_length[3] = 0;
+    EXPECT_THROW(
+        (void)og::sim::deserialize_snapshot(bad_length.data(), bad_length.size()),
+        std::runtime_error);
+
+    std::vector<std::uint8_t> bad_tick = bytes;
+    bad_tick[4] ^= 0xffu;
+    EXPECT_THROW(
+        (void)og::sim::deserialize_snapshot(bad_tick.data(), bad_tick.size()),
+        std::runtime_error);
+
+    const std::size_t payload_length =
+        static_cast<std::size_t>(bytes[2]) |
+        (static_cast<std::size_t>(bytes[3]) << 8);
     std::vector<std::uint8_t> payload =
-        zlib_decompress_for_test(bytes.data() + 1, bytes.size() - 1);
+        zlib_decompress_for_test(bytes.data() + 8, payload_length);
     payload[0] = static_cast<std::uint8_t>(og::sim::kSnapshotFormatVersion + 1);
     const std::vector<std::uint8_t> corrupted_payload =
         zlib_compress_for_test(payload);
 
     std::vector<std::uint8_t> bad_format;
-    bad_format.reserve(1 + corrupted_payload.size());
+    bad_format.reserve(8 + corrupted_payload.size());
     bad_format.push_back(og::sim::kSnapshotProtocolVersion);
+    bad_format.push_back(og::sim::kSnapshotMessageType);
+    bad_format.push_back(static_cast<std::uint8_t>(corrupted_payload.size() & 0xffu));
+    bad_format.push_back(static_cast<std::uint8_t>((corrupted_payload.size() >> 8) & 0xffu));
+    bad_format.push_back(static_cast<std::uint8_t>(keyframe.tick_count & 0xffu));
+    bad_format.push_back(static_cast<std::uint8_t>((keyframe.tick_count >> 8) & 0xffu));
+    bad_format.push_back(static_cast<std::uint8_t>((keyframe.tick_count >> 16) & 0xffu));
+    bad_format.push_back(static_cast<std::uint8_t>((keyframe.tick_count >> 24) & 0xffu));
     bad_format.insert(bad_format.end(),
                       corrupted_payload.begin(), corrupted_payload.end());
 
@@ -1709,6 +1753,12 @@ TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_protocol_and_format_version
         EXPECT_NE(std::string(error.what()).find("please update"),
                   std::string::npos);
     }
+
+    std::vector<std::uint8_t> truncated = bytes;
+    truncated.pop_back();
+    EXPECT_THROW(
+        (void)og::sim::deserialize_snapshot(truncated.data(), truncated.size()),
+        std::runtime_error);
 }
 
 TEST(WorldSnapshot, deserialize_delta_rejects_bad_headers_and_malformed_payloads)
