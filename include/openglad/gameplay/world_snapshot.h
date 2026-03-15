@@ -470,6 +470,10 @@ static_assert(entity_snapshot_field_table_is_valid(),
 // dirty tiles.
 WorldSnapshot capture_snapshot(GameWorld& world);
 WorldSnapshot capture_keyframe_snapshot(GameWorld& world);
+// Non-destructive snapshot variants for replay/debug verification. These
+// preserve entity dirty masks and transient bookkeeping in the live world.
+WorldSnapshot peek_snapshot(GameWorld& world);
+WorldSnapshot peek_keyframe_snapshot(GameWorld& world);
 void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot);
 std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot);
 WorldSnapshot deserialize_snapshot(const std::uint8_t* data, std::size_t size);

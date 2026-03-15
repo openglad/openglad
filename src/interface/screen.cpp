@@ -69,6 +69,31 @@ walker* find_follow_leader()
 
 namespace
 {
+class ScopedGameplayTickActivation
+{
+public:
+    explicit ScopedGameplayTickActivation(og::runtime::SessionState* session)
+        : session_(session)
+        , previous_(session_ ? session_->gameplay_active_ : false)
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = true;
+    }
+
+    ~ScopedGameplayTickActivation()
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = previous_;
+    }
+
+    ScopedGameplayTickActivation(const ScopedGameplayTickActivation&) = delete;
+    ScopedGameplayTickActivation& operator=(const ScopedGameplayTickActivation&) = delete;
+
+private:
+    og::runtime::SessionState* session_ = nullptr;
+    bool previous_ = false;
+};
+
 const char* scenario_title_error_string(screen::ScenarioTitleError err)
 {
     switch(err)
@@ -892,6 +917,7 @@ short screen::continuous_input()
 
 void screen::process_input(const InputState& input_state)
 {
+    ScopedGameplayTickActivation gameplay_input_active(og::runtime::current_session);
 	for (short i = 0; i < numviews; i++)
 		viewob[i]->process_input(input_state);
 }
@@ -904,6 +930,7 @@ bool screen::act()
 	if (current_game == nullptr || current_game->sim_events == nullptr)
 		return 1;
 	og::sim::SimEventLog& events = *current_game->sim_events;
+    ScopedGameplayTickActivation gameplay_tick_active(og::runtime::current_session);
 	world_.tick();
 
 	// Post-tick: clean up viewscreen control pointers for dead player entities.

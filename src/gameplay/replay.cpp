@@ -604,12 +604,12 @@ void ReplayRecorder::record_snapshot(std::uint32_t tick,
 
 void ReplayRecorder::record_world_snapshot(std::uint32_t tick, GameWorld& world)
 {
-    record_snapshot(tick, capture_snapshot(world), ReplayCheckpointKind::Snapshot);
+    record_snapshot(tick, peek_snapshot(world), ReplayCheckpointKind::Snapshot);
 }
 
 void ReplayRecorder::record_world_keyframe(std::uint32_t tick, GameWorld& world)
 {
-    record_snapshot(tick, capture_keyframe_snapshot(world), ReplayCheckpointKind::Keyframe);
+    record_snapshot(tick, peek_keyframe_snapshot(world), ReplayCheckpointKind::Keyframe);
 }
 
 std::vector<std::uint8_t> ReplayRecorder::serialize() const
@@ -727,8 +727,8 @@ std::optional<ReplayVerificationFailure> ReplayPlayer::verify_world(
     const ReplayCheckpoint& checkpoint = checkpoints_[next_checkpoint_index_++];
     const WorldSnapshot actual =
         checkpoint.kind == ReplayCheckpointKind::Snapshot
-            ? capture_snapshot(world)
-            : capture_keyframe_snapshot(world);
+            ? peek_snapshot(world)
+            : peek_keyframe_snapshot(world);
     const std::optional<ReplayVerificationFailure> failure =
         find_first_snapshot_difference(tick,
                                        checkpoint.snapshot,

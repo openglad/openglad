@@ -25,6 +25,7 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/interface/screen.h>
 #include <algorithm>
 #include <format>
@@ -32,6 +33,34 @@
 #include <vector>
 
 void popup_dialog(const char* title, const char* message);
+
+namespace
+{
+class ScopedGameplayLoadActivation
+{
+public:
+    explicit ScopedGameplayLoadActivation(og::runtime::SessionState* session)
+        : session_(session)
+        , previous_(session_ ? session_->gameplay_active_ : false)
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = true;
+    }
+
+    ~ScopedGameplayLoadActivation()
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = previous_;
+    }
+
+    ScopedGameplayLoadActivation(const ScopedGameplayLoadActivation&) = delete;
+    ScopedGameplayLoadActivation& operator=(const ScopedGameplayLoadActivation&) = delete;
+
+private:
+    og::runtime::SessionState* session_ = nullptr;
+    bool previous_ = false;
+};
+} // namespace
 
 LoadSavedGameError load_saved_game_with_error(const char *filename, screen *screenp)
 {
@@ -47,6 +76,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	Order         myord{};
 	short         myfam;
 	bool used_fallback_level = false;
+    ScopedGameplayLoadActivation gameplay_load_active(og::runtime::current_session);
 
 	// Spectator mode (numplayers==0) still needs 1 viewscreen for the camera
 	screenp->numviews = (screenp->save_data.numplayers == 0)

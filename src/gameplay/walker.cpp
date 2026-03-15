@@ -152,6 +152,7 @@ void walker_init_common(walker* w, IRandom& rng)
 	w->set_current_special(0);
 	w->set_in_act(false);
 	w->set_path_check_counter(next_path_check_counter(rng));
+	w->set_regen_delay(0);
 	w->set_hurt_flash(false);
 	w->set_attack_lunge(0.0f);
 	w->set_hit_recoil(0.0f);

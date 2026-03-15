@@ -243,7 +243,7 @@ class walker : public og::sim::SimEntity
 		bool act_fire();
 		bool act_guard();
 		virtual bool act_random();
-		std::int32_t regen_delay_;           // Delay after being hit
+		std::int32_t regen_delay_ = 0;       // Delay after being hit
 		walker * myself_;
 		std::unique_ptr<statistics> stats_;
 		std::unique_ptr<guy> owned_myguy_;

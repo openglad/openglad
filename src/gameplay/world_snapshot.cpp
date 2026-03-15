@@ -1777,7 +1777,9 @@ void capture_entity_stats(const statistics* entity_stats,
     snapshot.controller_id = entity_stats->controller_id();
 }
 
-og::sim::EntitySnapshot capture_entity_snapshot(walker& entity, bool keyframe)
+og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
+                                                bool keyframe,
+                                                bool consume_dirty_state)
 {
     entity.sync_ids_from_pointers();
 
@@ -1873,7 +1875,8 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity, bool keyframe)
         snapshot.do_bounce = 0;
     }
 
-    entity.clear_dirty();
+    if (consume_dirty_state)
+        entity.clear_dirty();
     return snapshot;
 }
 
@@ -1882,7 +1885,8 @@ void capture_entity_list(EntityList& entities,
                          std::vector<og::sim::EntitySnapshot>& entity_snapshots,
                          std::vector<og::sim::GuySnapshot>& guy_snapshots,
                          std::unordered_set<int>& seen_guy_ids,
-                         bool keyframe)
+                         bool keyframe,
+                         bool consume_dirty_state)
 {
     entity_snapshots.reserve(entities.size());
     for (const auto& entry : entities)
@@ -1897,11 +1901,20 @@ void capture_entity_list(EntityList& entities,
             guy_snapshots.push_back(capture_guy_snapshot(*entity->myguy));
         }
 
-        entity_snapshots.push_back(capture_entity_snapshot(*entity, keyframe));
+        entity_snapshots.push_back(
+            capture_entity_snapshot(*entity, keyframe, consume_dirty_state));
     }
 }
 
-og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world, bool keyframe)
+std::vector<std::pair<short, short>> copy_grid_dirty_tiles(const GameWorld& world)
+{
+    return std::vector<std::pair<short, short>>(world.grid_dirty_tiles().begin(),
+                                                world.grid_dirty_tiles().end());
+}
+
+og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
+                                             bool keyframe,
+                                             bool consume_transients)
 {
     og::sim::WorldSnapshot snapshot;
     snapshot.tick_count = world.tick_count_;
@@ -1932,14 +1945,21 @@ og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world, bool keyframe)
 
     std::unordered_set<int> seen_guy_ids;
     capture_entity_list(world.oblist, snapshot.oblist, snapshot.guy_snapshots,
-                        seen_guy_ids, keyframe);
+                        seen_guy_ids, keyframe, consume_transients);
     capture_entity_list(world.fxlist, snapshot.fxlist, snapshot.guy_snapshots,
-                        seen_guy_ids, keyframe);
+                        seen_guy_ids, keyframe, consume_transients);
     capture_entity_list(world.weaplist, snapshot.weaplist, snapshot.guy_snapshots,
-                        seen_guy_ids, keyframe);
+                        seen_guy_ids, keyframe, consume_transients);
 
-    snapshot.removed_entity_ids = world.take_removed_entity_ids();
-    capture_world_grid(world, snapshot, world.take_grid_dirty_tiles(), keyframe);
+    snapshot.removed_entity_ids = consume_transients
+        ? world.take_removed_entity_ids()
+        : std::vector<std::uint32_t>(
+              world.removed_entity_ids().begin(), world.removed_entity_ids().end());
+    capture_world_grid(world,
+                       snapshot,
+                       consume_transients ? world.take_grid_dirty_tiles()
+                                          : copy_grid_dirty_tiles(world),
+                       keyframe);
 
     return snapshot;
 }
@@ -1950,12 +1970,22 @@ namespace og::sim {
 
 WorldSnapshot capture_snapshot(GameWorld& world)
 {
-    return capture_snapshot_impl(world, false);
+    return capture_snapshot_impl(world, false, true);
 }
 
 WorldSnapshot capture_keyframe_snapshot(GameWorld& world)
 {
-    return capture_snapshot_impl(world, true);
+    return capture_snapshot_impl(world, true, true);
+}
+
+WorldSnapshot peek_snapshot(GameWorld& world)
+{
+    return capture_snapshot_impl(world, false, false);
+}
+
+WorldSnapshot peek_keyframe_snapshot(GameWorld& world)
+{
+    return capture_snapshot_impl(world, true, false);
 }
 
 std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot)

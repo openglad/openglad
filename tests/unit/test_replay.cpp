@@ -10,6 +10,8 @@
 #include <optional>
 #include <vector>
 
+#include "test_game_world_fixture.h"
+
 namespace {
 
 void set_flags(bool (&slots)[NUM_INPUT_KEYS], std::initializer_list<InputAction> actions)
@@ -160,4 +162,47 @@ TEST(Replay, find_first_snapshot_difference_reports_nested_field)
     EXPECT_EQ("oblist[0].xpos", diff->field);
     EXPECT_EQ("0", diff->expected_value);
     EXPECT_EQ("77", diff->actual_value);
+}
+
+TEST(Replay, replay_player_verify_world_tracks_first_divergence)
+{
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    world.tick_count_ = 7u;
+    world.rng_.state_ = 0xCAFEBABEu;
+    world.timer_wait = 5;
+    world.m_score[0] = 11u;
+    world.pending_exit_prompt = true;
+
+    const og::sim::ReplayCheckpoint checkpoint = {
+        .tick = world.tick_count_,
+        .kind = og::sim::ReplayCheckpointKind::Keyframe,
+        .snapshot = og::sim::peek_keyframe_snapshot(world),
+    };
+
+    og::sim::ReplayPlayer player;
+    player.set_checkpoints({checkpoint});
+
+    EXPECT_FALSE(player.verify_world(world, checkpoint.tick - 1, false).has_value());
+    EXPECT_FALSE(player.first_divergence().has_value());
+
+    EXPECT_FALSE(player.verify_world(world, checkpoint.tick, false).has_value());
+    EXPECT_FALSE(player.first_divergence().has_value());
+
+    player.reset();
+    world.m_score[0] = 99u;
+
+    const std::optional<og::sim::ReplayVerificationFailure> failure =
+        player.verify_world(world, checkpoint.tick, false);
+    ASSERT_TRUE(failure.has_value());
+    EXPECT_EQ(checkpoint.tick, failure->tick);
+    EXPECT_EQ("m_score[0]", failure->field);
+    EXPECT_EQ("11", failure->expected_value);
+    EXPECT_EQ("99", failure->actual_value);
+
+    ASSERT_TRUE(player.first_divergence().has_value());
+    EXPECT_EQ(failure->tick, player.first_divergence()->tick);
+    EXPECT_EQ(failure->field, player.first_divergence()->field);
+    EXPECT_EQ(failure->expected_value, player.first_divergence()->expected_value);
+    EXPECT_EQ(failure->actual_value, player.first_divergence()->actual_value);
 }

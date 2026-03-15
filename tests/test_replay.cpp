@@ -3,7 +3,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_action.h>
-#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/interface/render/view.h>
@@ -180,36 +179,10 @@ void reset_loaded_world_for_replay(GameWorld& world)
 {
     world.tick_count_ = 0;
     world.reset_level_progress();
+    world.clear_removed_entity_ids();
+    world.clear_grid_dirty_tiles();
     if (current_game != nullptr && current_game->sim_events != nullptr)
         current_game->sim_events->clear();
-}
-
-void apply_snapshot_for_replay(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
-{
-    GameplayContext* const saved_context = current_game;
-    current_game = nullptr;
-    og::sim::apply_snapshot(world, snapshot);
-    current_game = saved_context;
-}
-
-void strip_bookkeeping_for_final_compare(og::sim::WorldSnapshot& snapshot)
-{
-    snapshot.grid_dirty = false;
-    snapshot.grid_full_resend = false;
-    snapshot.full_grid_data.clear();
-    snapshot.grid_dirty_tiles.clear();
-    snapshot.removed_entity_ids.clear();
-
-    const auto strip_entity_list = [](std::vector<og::sim::EntitySnapshot>& entities) {
-        for (auto& entity : entities)
-        {
-            entity.path_check_counter = 0;
-            entity.regen_delay = 0;
-        }
-    };
-    strip_entity_list(snapshot.oblist);
-    strip_entity_list(snapshot.fxlist);
-    strip_entity_list(snapshot.weaplist);
 }
 
 std::string format_failure(const og::sim::ReplayVerificationFailure& failure)
@@ -219,6 +192,19 @@ std::string format_failure(const og::sim::ReplayVerificationFailure& failure)
                        failure.field,
                        failure.expected_value,
                        failure.actual_value);
+}
+
+void assert_snapshot_matches(std::string_view label,
+                             const og::sim::WorldSnapshot& expected,
+                             const og::sim::WorldSnapshot& actual)
+{
+    const std::optional<og::sim::ReplayVerificationFailure> failure =
+        og::sim::find_first_snapshot_difference(actual.tick_count,
+                                                expected,
+                                                actual,
+                                                false);
+    if (failure.has_value())
+        FAIL() << label << " divergence: " << format_failure(*failure);
 }
 
 void run_replay_roundtrip(int player_count)
@@ -274,7 +260,7 @@ void run_replay_roundtrip(int player_count)
     }
 
     const og::sim::WorldSnapshot expected_final_snapshot =
-        og::sim::capture_keyframe_snapshot(live_world);
+        og::sim::peek_keyframe_snapshot(live_world);
 
     const std::filesystem::path replay_path =
         std::filesystem::temp_directory_path() /
@@ -304,7 +290,20 @@ void run_replay_roundtrip(int player_count)
     GameWorld& replay_world = game_screen.world();
     reset_loaded_world_for_replay(replay_world);
     ASSERT_EQ(player.header().level_id, replay_world.id);
-    apply_snapshot_for_replay(replay_world, expected_initial_snapshot);
+
+    const og::sim::WorldSnapshot actual_initial_snapshot =
+        og::sim::peek_keyframe_snapshot(replay_world);
+    assert_snapshot_matches("initial snapshot",
+                            expected_initial_snapshot,
+                            actual_initial_snapshot);
+
+    if (const std::optional<og::sim::ReplayVerificationFailure> initial_checkpoint_failure =
+            player.verify_world(replay_world, replay_world.tick_count_, false);
+        initial_checkpoint_failure.has_value())
+    {
+        FAIL() << "initial checkpoint divergence: "
+               << format_failure(*initial_checkpoint_failure);
+    }
 
     reset_screen_replay_state(game_screen, player_count);
     std::size_t replay_tick_index = 0;
@@ -321,23 +320,22 @@ void run_replay_roundtrip(int player_count)
         EXPECT_EQ(expected_rng_states[replay_tick_index], replay_world.rng_.state_)
             << "rng divergence at replay tick " << replay_tick_index;
 
+        const std::optional<og::sim::ReplayVerificationFailure> checkpoint_failure =
+            player.verify_world(replay_world, replay_world.tick_count_, false);
+        if (checkpoint_failure.has_value())
+            FAIL() << "checkpoint divergence: " << format_failure(*checkpoint_failure);
+
         ++replay_tick_index;
     }
 
     EXPECT_EQ(expected_rng_states.size(), replay_tick_index);
+    EXPECT_FALSE(player.first_divergence().has_value());
 
-    og::sim::WorldSnapshot actual_final_snapshot =
-        og::sim::capture_keyframe_snapshot(replay_world);
-    og::sim::WorldSnapshot expected_final_snapshot_for_compare = expected_final_snapshot;
-    strip_bookkeeping_for_final_compare(expected_final_snapshot_for_compare);
-    strip_bookkeeping_for_final_compare(actual_final_snapshot);
-    const std::optional<og::sim::ReplayVerificationFailure> final_failure =
-        og::sim::find_first_snapshot_difference(actual_final_snapshot.tick_count,
-                                                expected_final_snapshot_for_compare,
-                                                actual_final_snapshot,
-                                                false);
-    if (final_failure.has_value())
-        FAIL() << "final snapshot divergence: " << format_failure(*final_failure);
+    const og::sim::WorldSnapshot actual_final_snapshot =
+        og::sim::peek_keyframe_snapshot(replay_world);
+    assert_snapshot_matches("final snapshot",
+                            expected_final_snapshot,
+                            actual_final_snapshot);
 
     replay_world.delete_objects();
     std::filesystem::remove(replay_path, ec);
