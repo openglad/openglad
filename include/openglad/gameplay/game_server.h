@@ -27,6 +27,10 @@ struct PerClientState {
     std::vector<std::uint32_t> new_entity_ids;
     std::vector<PendingRemovedEntity> removed_entities;
     std::unordered_map<std::uint32_t, SnapshotEntityListKind> known_entity_lists;
+    bool pending_grid_dirty = false;
+    bool pending_grid_full_resend = false;
+    std::vector<std::uint8_t> pending_full_grid_data;
+    std::vector<GridTileSnapshot> pending_grid_dirty_tiles;
 };
 
 void reset_client_snapshot_state(PerClientState& client_state) noexcept;

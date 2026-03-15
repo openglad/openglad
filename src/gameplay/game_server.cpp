@@ -39,6 +39,42 @@ bool contains_removed_entity(const std::vector<PendingRemovedEntity>& removed_en
                }) != removed_entities.end();
 }
 
+void upsert_grid_dirty_tile(std::vector<og::sim::GridTileSnapshot>& tiles,
+                            const og::sim::GridTileSnapshot& tile)
+{
+    const auto it = std::find_if(
+        tiles.begin(), tiles.end(),
+        [&tile](const og::sim::GridTileSnapshot& existing) {
+            return existing.x == tile.x && existing.y == tile.y;
+        });
+    if (it == tiles.end())
+    {
+        tiles.push_back(tile);
+    }
+    else
+    {
+        *it = tile;
+    }
+}
+
+void accumulate_grid_for_client(og::sim::PerClientState& client_state,
+                                const og::sim::WorldSnapshot& snapshot)
+{
+    if (snapshot.grid_full_resend)
+    {
+        client_state.pending_grid_dirty = true;
+        client_state.pending_grid_full_resend = true;
+        client_state.pending_full_grid_data = snapshot.full_grid_data;
+        client_state.pending_grid_dirty_tiles.clear();
+    }
+
+    if (snapshot.grid_dirty)
+        client_state.pending_grid_dirty = true;
+
+    for (const auto& tile : snapshot.grid_dirty_tiles)
+        upsert_grid_dirty_tile(client_state.pending_grid_dirty_tiles, tile);
+}
+
 void collect_snapshot_entity_lists(
     const og::sim::WorldSnapshot& snapshot,
     std::unordered_map<std::uint32_t, EntityListKind>& entity_lists)
@@ -141,6 +177,10 @@ void reset_client_snapshot_state(PerClientState& client_state) noexcept
     client_state.new_entity_ids.clear();
     client_state.removed_entities.clear();
     client_state.known_entity_lists.clear();
+    client_state.pending_grid_dirty = false;
+    client_state.pending_grid_full_resend = false;
+    client_state.pending_full_grid_data.clear();
+    client_state.pending_grid_dirty_tiles.clear();
 }
 
 void seed_client_snapshot_baseline(PerClientState& client_state,
@@ -154,6 +194,8 @@ void seed_client_snapshot_baseline(PerClientState& client_state,
 void accumulate_snapshot_for_client(PerClientState& client_state,
                                     const WorldSnapshot& snapshot)
 {
+    accumulate_grid_for_client(client_state, snapshot);
+
     auto accumulate_entities = [&client_state](const auto& entities,
                                                EntityListKind list_kind) {
         for (const auto& entity : entities)
@@ -215,6 +257,12 @@ WorldSnapshot consume_delta_snapshot_for_client(PerClientState& client_state,
                                                 const WorldSnapshot& snapshot)
 {
     WorldSnapshot delta = snapshot;
+    delta.grid_dirty = client_state.pending_grid_dirty;
+    delta.grid_full_resend = client_state.pending_grid_full_resend;
+    delta.full_grid_data = client_state.pending_grid_full_resend
+        ? client_state.pending_full_grid_data
+        : std::vector<std::uint8_t>{};
+    delta.grid_dirty_tiles = client_state.pending_grid_dirty_tiles;
     delta.oblist = select_delta_entities(snapshot.oblist, client_state);
     delta.fxlist = select_delta_entities(snapshot.fxlist, client_state);
     delta.weaplist = select_delta_entities(snapshot.weaplist, client_state);
@@ -239,6 +287,10 @@ WorldSnapshot consume_delta_snapshot_for_client(PerClientState& client_state,
     client_state.accumulated_dirty.clear();
     client_state.new_entity_ids.clear();
     client_state.removed_entities.clear();
+    client_state.pending_grid_dirty = false;
+    client_state.pending_grid_full_resend = false;
+    client_state.pending_full_grid_data.clear();
+    client_state.pending_grid_dirty_tiles.clear();
     return delta;
 }
 

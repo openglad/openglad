@@ -225,6 +225,19 @@ bool is_removed_entity_sentinel(const og::sim::EntitySnapshot& snapshot)
     return snapshot.dirty_mask[0] == 0 && snapshot.dirty_mask[1] == 0;
 }
 
+const og::sim::GridTileSnapshot* find_grid_dirty_tile(
+    const std::vector<og::sim::GridTileSnapshot>& tiles,
+    short x,
+    short y)
+{
+    const auto it = std::find_if(
+        tiles.begin(), tiles.end(),
+        [x, y](const og::sim::GridTileSnapshot& tile) {
+            return tile.x == x && tile.y == y;
+        });
+    return it == tiles.end() ? nullptr : &*it;
+}
+
 void set_mask_bit(
     std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>& mask,
     std::uint8_t bit)
@@ -1881,6 +1894,131 @@ TEST(WorldSnapshot, apply_delta_with_all_fields_dirty_matches_current_world_stat
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
         og::sim::deserialize_delta(bytes.data(), bytes.size());
+
+    og::sim::apply_delta(client_baseline, decoded);
+    og::sim::apply_snapshot(mirror, client_baseline);
+
+    const og::sim::WorldSnapshot source_keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    const og::sim::WorldSnapshot mirror_keyframe =
+        og::sim::capture_keyframe_snapshot(mirror);
+    expect_world_snapshot_eq(source_keyframe, mirror_keyframe);
+}
+
+TEST(WorldSnapshot, consume_delta_snapshot_for_client_accumulates_grid_tiles_across_skipped_sends)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(16, 16);
+    fill_world_grid(source, PIX_GRASS1);
+
+    og::sim::WorldSnapshot client_baseline =
+        og::sim::capture_keyframe_snapshot(source);
+    og::sim::PerClientState client_state;
+    og::sim::seed_client_snapshot_baseline(client_state, client_baseline);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    mirror.resize_grid(16, 16);
+    fill_world_grid(mirror, PIX_GRASS1);
+    og::sim::apply_snapshot(mirror, client_baseline);
+
+    source.tick_count_ = client_baseline.tick_count + 1;
+    source.damage_tile(1 * GRID_SIZE, 2 * GRID_SIZE);
+    const og::sim::WorldSnapshot tick_one = og::sim::capture_snapshot(source);
+    og::sim::accumulate_snapshot_for_client(client_state, tick_one);
+
+    source.tick_count_ = client_baseline.tick_count + 2;
+    source.damage_tile(3 * GRID_SIZE, 4 * GRID_SIZE);
+    const og::sim::WorldSnapshot tick_two = og::sim::capture_snapshot(source);
+    og::sim::accumulate_snapshot_for_client(client_state, tick_two);
+
+    const og::sim::WorldSnapshot delta =
+        og::sim::consume_delta_snapshot_for_client(client_state, tick_two);
+    EXPECT_TRUE(delta.grid_dirty);
+    EXPECT_FALSE(delta.grid_full_resend);
+    ASSERT_EQ(2u, delta.grid_dirty_tiles.size());
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_delta(bytes.data(), bytes.size());
+
+    EXPECT_TRUE(decoded.grid_dirty);
+    EXPECT_FALSE(decoded.grid_full_resend);
+    ASSERT_NE(nullptr, find_grid_dirty_tile(decoded.grid_dirty_tiles, 1, 2));
+    ASSERT_NE(nullptr, find_grid_dirty_tile(decoded.grid_dirty_tiles, 3, 4));
+
+    og::sim::apply_delta(client_baseline, decoded);
+    og::sim::apply_snapshot(mirror, client_baseline);
+
+    const og::sim::WorldSnapshot source_keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    const og::sim::WorldSnapshot mirror_keyframe =
+        og::sim::capture_keyframe_snapshot(mirror);
+    expect_world_snapshot_eq(source_keyframe, mirror_keyframe);
+}
+
+TEST(WorldSnapshot, consume_delta_snapshot_for_client_keeps_later_grid_tiles_after_full_resend)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(16, 16);
+    fill_world_grid(source, PIX_GRASS1);
+
+    og::sim::WorldSnapshot client_baseline =
+        og::sim::capture_keyframe_snapshot(source);
+    og::sim::PerClientState client_state;
+    og::sim::seed_client_snapshot_baseline(client_state, client_baseline);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    mirror.resize_grid(16, 16);
+    fill_world_grid(mirror, PIX_GRASS1);
+    og::sim::apply_snapshot(mirror, client_baseline);
+
+    source.tick_count_ = client_baseline.tick_count + 1;
+    int damaged = 0;
+    for (short y = 0; y < source.grid.h &&
+                      damaged <= static_cast<int>(og::sim::MAX_GRID_DIRTY_TILES);
+         ++y)
+    {
+        for (short x = 0; x < source.grid.w &&
+                          damaged <= static_cast<int>(og::sim::MAX_GRID_DIRTY_TILES);
+             ++x)
+        {
+            source.damage_tile(x * GRID_SIZE, y * GRID_SIZE);
+            ++damaged;
+        }
+    }
+    const og::sim::WorldSnapshot overflow_tick = og::sim::capture_snapshot(source);
+    ASSERT_TRUE(overflow_tick.grid_full_resend);
+    og::sim::accumulate_snapshot_for_client(client_state, overflow_tick);
+
+    source.tick_count_ = client_baseline.tick_count + 2;
+    source.damage_tile(15 * GRID_SIZE, 15 * GRID_SIZE);
+    const og::sim::WorldSnapshot later_tick = og::sim::capture_snapshot(source);
+    ASSERT_TRUE(later_tick.grid_dirty);
+    ASSERT_FALSE(later_tick.grid_full_resend);
+    og::sim::accumulate_snapshot_for_client(client_state, later_tick);
+
+    const og::sim::WorldSnapshot delta =
+        og::sim::consume_delta_snapshot_for_client(client_state, later_tick);
+    EXPECT_TRUE(delta.grid_dirty);
+    EXPECT_TRUE(delta.grid_full_resend);
+    ASSERT_FALSE(delta.full_grid_data.empty());
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_delta(bytes.data(), bytes.size());
+
+    EXPECT_TRUE(decoded.grid_dirty);
+    EXPECT_TRUE(decoded.grid_full_resend);
+    ASSERT_FALSE(decoded.full_grid_data.empty());
+    ASSERT_NE(nullptr, find_grid_dirty_tile(decoded.grid_dirty_tiles, 15, 15));
 
     og::sim::apply_delta(client_baseline, decoded);
     og::sim::apply_snapshot(mirror, client_baseline);
