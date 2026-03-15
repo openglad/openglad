@@ -44,16 +44,12 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 
 Sint32 leftmouse(button* buttons)
 {
-    // Use static variables for edge detection instead of blocking while loops
-    // This prevents ASYNCIFY state corruption in Emscripten
-    static bool was_left_down = false;
-    static bool was_right_down = false;
-
     Sint32 i = 0;
     Sint32 somebutton = -1;
 
     grab_mouse();
     MouseState& mymouse = query_mouse();
+    InputHardwareState& input_hw = input_hardware_state();
 
     while (og::runtime::current_session->allbuttons_[i])
     {
@@ -72,12 +68,12 @@ Sint32 leftmouse(button* buttons)
     }
 
     // Detect click transitions (button went from up to down)
-    bool left_clicked = mymouse.left && !was_left_down;
-    bool right_clicked = mymouse.right && !was_right_down;
+    bool left_clicked = mymouse.left && !input_hw.picker_was_left_down;
+    bool right_clicked = mymouse.right && !input_hw.picker_was_right_down;
 
     // Update state for next frame
-    was_left_down = mymouse.left;
-    was_right_down = mymouse.right;
+    input_hw.picker_was_left_down = mymouse.left;
+    input_hw.picker_was_right_down = mymouse.right;
 
     if (left_clicked)
         return 1;

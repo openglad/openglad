@@ -21,15 +21,85 @@ extern "C" void __gcov_dump(void);
 #include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/legacy/base.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/screen_lifecycle.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
 
+extern int g_picker_mainmenu_calls;
+extern int g_picker_max_mainmenu_calls;
+#ifdef TESTING
+extern bool g_test_remove_exits;
+extern std::atomic<bool> g_test_in_game;
+extern std::atomic<int> g_test_game_epoch;
+#endif
+
 namespace {
+
+void reset_integration_ui_state()
+{
+    SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
+    clear_keyboard();
+    clear_key_press_event();
+    set_game_speed(1.0f);
+
+    if (og::runtime::current_session == nullptr)
+        return;
+
+    if (og::runtime::current_session->input_hw_ != nullptr) {
+        og::runtime::current_session->input_hw_->mouse = {};
+        og::runtime::current_session->input_hw_->mouse_buttons = 0;
+        og::runtime::current_session->input_hw_->picker_was_left_down = false;
+        og::runtime::current_session->input_hw_->picker_was_right_down = false;
+    }
+
+    if (og::runtime::current_session->picker_ != nullptr) {
+        PickerState& picker = *og::runtime::current_session->picker_;
+        for (int i = 0; i < 5; i++) {
+            picker.backdrops[i].reset();
+            picker.backpics[i].free();
+        }
+        picker.main_columns_pix.reset();
+        picker.main_columns_data.free();
+        picker.main_title_logo_pix.reset();
+        picker.main_title_logo_data.free();
+        picker.old_guy = nullptr;
+        picker.menu_nav_enabled = false;
+        picker.menu_nav_enabled_time = 0;
+        picker.intercept_scope = 0;
+        picker.selected_menu_item = nullptr;
+        picker.hire_session = nullptr;
+        picker.train_session = nullptr;
+    }
+
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+    og::runtime::current_session->current_guy_.reset();
+    og::runtime::current_session->current_type_ = 0;
+    og::runtime::current_session->current_team_num_ = 0;
+    og::runtime::current_session->editguy_ = 0;
+    og::runtime::current_session->message_.clear();
+    og::runtime::current_session->frame_state_ = {};
+
+    if (og::runtime::current_session->myscreen_ != nullptr) {
+        og::runtime::current_session->myscreen_->world().delete_objects();
+    }
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 0;
+#ifdef TESTING
+    g_test_remove_exits = false;
+    g_test_in_game.store(false, std::memory_order_release);
+    g_test_game_epoch.store(0, std::memory_order_release);
+#endif
+}
 
 void handle_test_signal(int sig)
 {
@@ -42,13 +112,14 @@ void handle_test_signal(int sig)
 class WorldCleanupListener final : public ::testing::EmptyTestEventListener
 {
 public:
+    void OnTestStart(const ::testing::TestInfo&) override
+    {
+        reset_integration_ui_state();
+    }
+
     void OnTestEnd(const ::testing::TestInfo&) override
     {
-        if (og::runtime::current_session != nullptr &&
-            og::runtime::current_session->myscreen_ != nullptr)
-        {
-            og::runtime::current_session->myscreen_->world().delete_objects();
-        }
+        reset_integration_ui_state();
     }
 };
 
