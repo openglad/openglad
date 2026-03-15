@@ -542,6 +542,8 @@ void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
     EXPECT_EQ(expected.pending_exit_prompt, actual.pending_exit_prompt);
     EXPECT_EQ(expected.paused, actual.paused);
     EXPECT_EQ(expected.pause_player_index, actual.pause_player_index);
+    EXPECT_EQ(expected.grid_width, actual.grid_width);
+    EXPECT_EQ(expected.grid_height, actual.grid_height);
     EXPECT_EQ(expected.grid_dirty, actual.grid_dirty);
     EXPECT_EQ(expected.grid_full_resend, actual.grid_full_resend);
     EXPECT_EQ(expected.full_grid_data, actual.full_grid_data);
@@ -725,6 +727,8 @@ TEST(WorldSnapshot, world_snapshot_can_hold_world_and_guy_state)
     snapshot.pending_exit_prompt = true;
     snapshot.paused = true;
     snapshot.pause_player_index = 2;
+    snapshot.grid_width = 8;
+    snapshot.grid_height = 8;
     snapshot.grid_dirty = true;
     snapshot.grid_full_resend = false;
     snapshot.grid_dirty_tiles.push_back({3, 4, 5});
@@ -1572,6 +1576,8 @@ TEST(WorldSnapshot, serialize_delta_roundtrip_uses_uncompressed_bypass_when_smal
     delta.pending_exit_prompt = true;
     delta.paused = true;
     delta.pause_player_index = 3;
+    delta.grid_width = 9;
+    delta.grid_height = 7;
     delta.grid_dirty = true;
     delta.grid_full_resend = true;
     delta.full_grid_data.resize(63);
@@ -1668,6 +1674,11 @@ TEST(WorldSnapshot, empty_delta_roundtrip_preserves_world_state_without_entities
     EXPECT_EQ(current.tick_count, decoded.tick_count);
     EXPECT_EQ(current.rng_state, decoded.rng_state);
     EXPECT_EQ(current.current_palette_id, decoded.current_palette_id);
+
+    og::sim::apply_delta(baseline, decoded);
+    const og::sim::WorldSnapshot current_keyframe =
+        og::sim::capture_keyframe_snapshot(world);
+    expect_world_snapshot_eq(current_keyframe, baseline, false);
 }
 
 TEST(WorldSnapshot, serialize_delta_roundtrip_preserves_zero_mask_removal_sentinel)
@@ -1966,10 +1977,10 @@ TEST(WorldSnapshot, apply_delta_with_all_fields_dirty_matches_current_world_stat
         og::sim::deserialize_delta(bytes.data(), bytes.size());
 
     og::sim::apply_delta(client_baseline, decoded);
-    og::sim::apply_snapshot(mirror, client_baseline);
-
     const og::sim::WorldSnapshot source_keyframe =
         og::sim::capture_keyframe_snapshot(source);
+    expect_world_snapshot_eq(source_keyframe, client_baseline, false);
+    og::sim::apply_snapshot(mirror, client_baseline);
     const og::sim::WorldSnapshot mirror_keyframe =
         og::sim::capture_keyframe_snapshot(mirror);
     expect_world_snapshot_eq(source_keyframe, mirror_keyframe);
@@ -2021,10 +2032,10 @@ TEST(WorldSnapshot, consume_delta_snapshot_for_client_accumulates_grid_tiles_acr
     ASSERT_NE(nullptr, find_grid_dirty_tile(decoded.grid_dirty_tiles, 3, 4));
 
     og::sim::apply_delta(client_baseline, decoded);
-    og::sim::apply_snapshot(mirror, client_baseline);
-
     const og::sim::WorldSnapshot source_keyframe =
         og::sim::capture_keyframe_snapshot(source);
+    expect_world_snapshot_eq(source_keyframe, client_baseline, false);
+    og::sim::apply_snapshot(mirror, client_baseline);
     const og::sim::WorldSnapshot mirror_keyframe =
         og::sim::capture_keyframe_snapshot(mirror);
     expect_world_snapshot_eq(source_keyframe, mirror_keyframe);
@@ -2091,10 +2102,10 @@ TEST(WorldSnapshot, consume_delta_snapshot_for_client_keeps_later_grid_tiles_aft
     ASSERT_NE(nullptr, find_grid_dirty_tile(decoded.grid_dirty_tiles, 15, 15));
 
     og::sim::apply_delta(client_baseline, decoded);
-    og::sim::apply_snapshot(mirror, client_baseline);
-
     const og::sim::WorldSnapshot source_keyframe =
         og::sim::capture_keyframe_snapshot(source);
+    expect_world_snapshot_eq(source_keyframe, client_baseline, false);
+    og::sim::apply_snapshot(mirror, client_baseline);
     const og::sim::WorldSnapshot mirror_keyframe =
         og::sim::capture_keyframe_snapshot(mirror);
     expect_world_snapshot_eq(source_keyframe, mirror_keyframe);
@@ -2131,7 +2142,7 @@ TEST(WorldSnapshot, apply_delta_removes_entity_from_baseline_on_zero_mask_sentin
 
     EXPECT_NE(nullptr, find_entity_snapshot(baseline.oblist, actor_id));
     EXPECT_EQ(nullptr, find_entity_snapshot(baseline.oblist, foe_id));
-    EXPECT_EQ(std::vector<std::uint32_t>({foe_id}), baseline.removed_entity_ids);
+    EXPECT_TRUE(baseline.removed_entity_ids.empty());
 }
 
 TEST(WorldSnapshot, apply_delta_accumulates_multi_tick_changes_with_spawn_and_removal)
@@ -2212,10 +2223,10 @@ TEST(WorldSnapshot, apply_delta_accumulates_multi_tick_changes_with_spawn_and_re
     EXPECT_EQ(~0ULL, slime_delta->dirty_mask[1]);
 
     og::sim::apply_delta(client_baseline, decoded);
-    og::sim::apply_snapshot(mirror, client_baseline);
-
     const og::sim::WorldSnapshot source_keyframe =
         og::sim::capture_keyframe_snapshot(source);
+    expect_world_snapshot_eq(source_keyframe, client_baseline, false);
+    og::sim::apply_snapshot(mirror, client_baseline);
     const og::sim::WorldSnapshot mirror_keyframe =
         og::sim::capture_keyframe_snapshot(mirror);
     expect_world_snapshot_eq(source_keyframe, mirror_keyframe);

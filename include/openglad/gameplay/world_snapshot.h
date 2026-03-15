@@ -29,7 +29,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 1;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 2;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag =
     kTransportPayloadUncompressedFlag;
@@ -201,6 +201,8 @@ struct WorldSnapshot {
     bool paused = false;
     std::uint8_t pause_player_index = kNoPausePlayerIndex;
 
+    std::uint8_t grid_width = 0;
+    std::uint8_t grid_height = 0;
     bool grid_dirty = false;
     bool grid_full_resend = false;
     std::vector<std::uint8_t> full_grid_data;

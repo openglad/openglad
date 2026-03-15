@@ -204,6 +204,36 @@ std::uint32_t read_bounded_count(ByteReader& reader,
     return count;
 }
 
+std::size_t grid_cell_count(std::uint8_t width, std::uint8_t height) noexcept
+{
+    return static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+}
+
+bool has_materialized_grid(const og::sim::WorldSnapshot& snapshot) noexcept
+{
+    if (snapshot.grid_width == 0 || snapshot.grid_height == 0)
+        return false;
+
+    return snapshot.full_grid_data.size() ==
+           grid_cell_count(snapshot.grid_width, snapshot.grid_height);
+}
+
+void normalize_materialized_grid(og::sim::WorldSnapshot& snapshot)
+{
+    if (!has_materialized_grid(snapshot))
+    {
+        snapshot.grid_dirty = false;
+        snapshot.grid_full_resend = false;
+        snapshot.full_grid_data.clear();
+        snapshot.grid_dirty_tiles.clear();
+        return;
+    }
+
+    snapshot.grid_dirty = true;
+    snapshot.grid_full_resend = true;
+    snapshot.grid_dirty_tiles.clear();
+}
+
 void append_u8(std::vector<std::uint8_t>& buffer, std::uint8_t value)
 {
     buffer.push_back(value);
@@ -601,6 +631,40 @@ void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapsho
 void serialize_grid_state(std::vector<std::uint8_t>& buffer,
                           const og::sim::WorldSnapshot& snapshot)
 {
+    const std::size_t expected_grid_size =
+        grid_cell_count(snapshot.grid_width, snapshot.grid_height);
+    if (snapshot.grid_full_resend)
+    {
+        if (expected_grid_size == 0)
+        {
+            throw std::runtime_error(
+                "snapshot serialization: full grid resend requires non-zero dimensions");
+        }
+        if (snapshot.full_grid_data.size() != expected_grid_size)
+        {
+            throw std::runtime_error(
+                "snapshot serialization: full grid payload size does not match dimensions");
+        }
+    }
+    else if (!snapshot.full_grid_data.empty())
+    {
+        throw std::runtime_error(
+            "snapshot serialization: incremental grid update cannot carry full grid payload");
+    }
+
+    if (snapshot.grid_full_resend && !snapshot.grid_dirty)
+    {
+        throw std::runtime_error(
+            "snapshot serialization: full grid resend requires grid_dirty");
+    }
+    if (!snapshot.grid_dirty && !snapshot.grid_dirty_tiles.empty())
+    {
+        throw std::runtime_error(
+            "snapshot serialization: clean grid snapshot cannot carry dirty tiles");
+    }
+
+    append_u8(buffer, snapshot.grid_width);
+    append_u8(buffer, snapshot.grid_height);
     append_bool(buffer, snapshot.grid_dirty);
     append_bool(buffer, snapshot.grid_full_resend);
 
@@ -618,6 +682,12 @@ void serialize_grid_state(std::vector<std::uint8_t>& buffer,
     append_u32(buffer, static_cast<std::uint32_t>(snapshot.grid_dirty_tiles.size()));
     for (const auto& tile : snapshot.grid_dirty_tiles)
     {
+        if (tile.x < 0 || tile.y < 0 ||
+            tile.x >= snapshot.grid_width || tile.y >= snapshot.grid_height)
+        {
+            throw std::runtime_error(
+                "snapshot serialization: grid dirty tile is outside snapshot dimensions");
+        }
         append_i16(buffer, tile.x);
         append_i16(buffer, tile.y);
         append_u8(buffer, tile.value);
@@ -626,6 +696,8 @@ void serialize_grid_state(std::vector<std::uint8_t>& buffer,
 
 void deserialize_grid_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
 {
+    snapshot.grid_width = reader.read_u8("grid.grid_width");
+    snapshot.grid_height = reader.read_u8("grid.grid_height");
     snapshot.grid_dirty = reader.read_bool("grid.grid_dirty");
     snapshot.grid_full_resend = reader.read_bool("grid.grid_full_resend");
     const std::uint32_t full_grid_size =
@@ -637,6 +709,39 @@ void deserialize_grid_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot
     const std::uint32_t dirty_tile_count =
         read_bounded_count(reader, "grid.dirty_tile_count",
                            kMaxGridDirtyTileCount, "grid dirty tile count");
+
+    const std::size_t expected_grid_size =
+        grid_cell_count(snapshot.grid_width, snapshot.grid_height);
+    if (snapshot.grid_full_resend)
+    {
+        if (expected_grid_size == 0)
+        {
+            throw std::runtime_error(
+                "grid full resend requires non-zero dimensions");
+        }
+        if (full_grid_size != expected_grid_size)
+        {
+            throw std::runtime_error(
+                "grid full payload size does not match grid dimensions");
+        }
+    }
+    else if (full_grid_size != 0)
+    {
+        throw std::runtime_error(
+            "incremental grid update cannot include full grid payload");
+    }
+
+    if (snapshot.grid_full_resend && !snapshot.grid_dirty)
+    {
+        throw std::runtime_error(
+            "grid full resend requires grid_dirty flag");
+    }
+    if (!snapshot.grid_dirty && dirty_tile_count != 0)
+    {
+        throw std::runtime_error(
+            "clean grid snapshot cannot include dirty tiles");
+    }
+
     snapshot.grid_dirty_tiles.clear();
     snapshot.grid_dirty_tiles.reserve(dirty_tile_count);
     for (std::uint32_t i = 0; i < dirty_tile_count; ++i)
@@ -645,6 +750,12 @@ void deserialize_grid_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot
         tile.x = reader.read_i16("grid.tile.x");
         tile.y = reader.read_i16("grid.tile.y");
         tile.value = reader.read_u8("grid.tile.value");
+        if (tile.x < 0 || tile.y < 0 ||
+            tile.x >= snapshot.grid_width || tile.y >= snapshot.grid_height)
+        {
+            throw std::runtime_error(
+                "grid dirty tile is outside snapshot dimensions");
+        }
         snapshot.grid_dirty_tiles.push_back(tile);
     }
 }
@@ -1499,6 +1610,49 @@ void apply_grid_snapshot(GameWorld& world, const og::sim::WorldSnapshot& snapsho
     }
 }
 
+void apply_delta_grid(og::sim::WorldSnapshot& baseline,
+                      const og::sim::WorldSnapshot& delta)
+{
+    baseline.grid_width = delta.grid_width;
+    baseline.grid_height = delta.grid_height;
+
+    if (baseline.grid_width == 0 || baseline.grid_height == 0)
+    {
+        baseline.grid_dirty = false;
+        baseline.grid_full_resend = false;
+        baseline.full_grid_data.clear();
+        baseline.grid_dirty_tiles.clear();
+        return;
+    }
+
+    if (delta.grid_full_resend)
+        baseline.full_grid_data = delta.full_grid_data;
+
+    if (!has_materialized_grid(baseline))
+    {
+        baseline.grid_dirty = delta.grid_dirty;
+        baseline.grid_full_resend = delta.grid_full_resend;
+        baseline.full_grid_data = delta.full_grid_data;
+        baseline.grid_dirty_tiles = delta.grid_dirty_tiles;
+        return;
+    }
+
+    for (const auto& tile : delta.grid_dirty_tiles)
+    {
+        if (tile.x < 0 || tile.y < 0 ||
+            tile.x >= baseline.grid_width || tile.y >= baseline.grid_height)
+        {
+            continue;
+        }
+
+        const std::size_t grid_index =
+            static_cast<std::size_t>(tile.y) * baseline.grid_width + tile.x;
+        baseline.full_grid_data[grid_index] = tile.value;
+    }
+
+    normalize_materialized_grid(baseline);
+}
+
 template <typename EntityList>
 void reorder_entity_list(EntityList& entities,
                          const std::vector<og::sim::EntitySnapshot>& snapshots)
@@ -1558,6 +1712,9 @@ void capture_world_grid(const GameWorld& world,
                         std::vector<std::pair<short, short>> dirty_tiles,
                         bool keyframe)
 {
+    snapshot.grid_width = world.grid.w;
+    snapshot.grid_height = world.grid.h;
+
     if (!world.grid.valid())
         return;
 
@@ -2075,20 +2232,18 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.paused = delta.paused;
     baseline.pause_player_index = delta.pause_player_index;
 
-    baseline.grid_dirty = delta.grid_dirty;
-    baseline.grid_full_resend = delta.grid_full_resend;
-    baseline.full_grid_data = delta.full_grid_data;
-    baseline.grid_dirty_tiles = delta.grid_dirty_tiles;
+    apply_delta_grid(baseline, delta);
     baseline.guy_snapshots = delta.guy_snapshots;
-    baseline.removed_entity_ids.clear();
-    baseline.removed_entity_ids.reserve(delta.removed_entity_ids.size());
+    std::vector<std::uint32_t> removed_entity_ids;
+    removed_entity_ids.reserve(delta.removed_entity_ids.size());
 
     apply_delta_entity_list(baseline.oblist, baseline.fxlist, baseline.weaplist,
-                            delta.oblist, baseline.removed_entity_ids);
+                            delta.oblist, removed_entity_ids);
     apply_delta_entity_list(baseline.fxlist, baseline.oblist, baseline.weaplist,
-                            delta.fxlist, baseline.removed_entity_ids);
+                            delta.fxlist, removed_entity_ids);
     apply_delta_entity_list(baseline.weaplist, baseline.oblist, baseline.fxlist,
-                            delta.weaplist, baseline.removed_entity_ids);
+                            delta.weaplist, removed_entity_ids);
+    baseline.removed_entity_ids.clear();
 }
 
 SimEventBatch drain_sim_events(SimEventLog& log)
