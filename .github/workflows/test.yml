@@ -26,7 +26,7 @@ jobs:
           key: ci-test
 
       - name: Configure (ci-test preset)
-        run: cmake --preset ci-test -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        run: cmake --preset ci-test -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build all test binaries
         run: cmake --build --preset ci-test -j"$(nproc)"
@@ -82,7 +82,7 @@ jobs:
           key: ci-asan
 
       - name: Configure (ci-asan preset)
-        run: cmake --preset ci-asan -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        run: cmake --preset ci-asan -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build all test binaries
         run: cmake --build --preset ci-asan -j"$(nproc)"
