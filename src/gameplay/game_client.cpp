@@ -196,6 +196,12 @@ void GameClient::set_control_mapping_callback(
     control_mapping_callback_ = std::move(callback);
 }
 
+void GameClient::set_initial_setup_callback(
+    std::function<void(const InitialSetupMessage&, bool)> callback)
+{
+    initial_setup_callback_ = std::move(callback);
+}
+
 void GameClient::set_sim_event_batch_callback(
     std::function<void(const SimEventBatch&)> callback)
 {
@@ -218,6 +224,12 @@ void GameClient::set_pause_broadcast_callback(
     std::function<void(const PauseBroadcastMessage&)> callback)
 {
     pause_broadcast_callback_ = std::move(callback);
+}
+
+void GameClient::set_palette_sync_callback(
+    std::function<void(std::uint8_t)> callback)
+{
+    palette_sync_callback_ = std::move(callback);
 }
 
 void GameClient::send_input(const InputState& input, std::uint32_t tick)
@@ -329,6 +341,13 @@ void GameClient::notify_control_mapping_changed()
         control_mapping_callback_(controlled_entity_ids_, world_);
 }
 
+void GameClient::notify_initial_setup(const InitialSetupMessage& message,
+                                      bool is_level_transition)
+{
+    if (initial_setup_callback_)
+        initial_setup_callback_(message, is_level_transition);
+}
+
 void GameClient::notify_sim_event_batch(const SimEventBatch& batch)
 {
     if (sim_event_batch_callback_)
@@ -353,8 +372,15 @@ void GameClient::notify_pause_broadcast(const PauseBroadcastMessage& message)
         pause_broadcast_callback_(message);
 }
 
+void GameClient::notify_palette_sync(std::uint8_t palette_id)
+{
+    if (palette_sync_callback_)
+        palette_sync_callback_(palette_id);
+}
+
 void GameClient::apply_initial_setup(const InitialSetupMessage& message)
 {
+    const bool is_level_transition = baseline_.has_value();
     initial_setup_ = message;
     controlled_entity_ids_ = message.controlled_entity_ids;
     initial_setup_guys_.clear();
@@ -372,6 +398,7 @@ void GameClient::apply_initial_setup(const InitialSetupMessage& message)
     has_game_flow_event_sequence_ = false;
     last_exit_prompt_.reset();
     last_pause_broadcast_.reset();
+    notify_initial_setup(message, is_level_transition);
     notify_control_mapping_changed();
 }
 
@@ -386,6 +413,7 @@ void GameClient::apply_full_snapshot(const WorldSnapshot& snapshot)
     clear_transport_only_snapshot_state(*baseline_);
     last_seen_server_tick_ = baseline_->tick_count;
     notify_control_mapping_changed();
+    notify_palette_sync(baseline_->current_palette_id);
     waiting_for_keyframe_ = false;
     maybe_send_client_ready();
     maybe_send_snapshot_hash_check(true);
@@ -422,6 +450,7 @@ void GameClient::apply_delta_snapshot(const WorldSnapshot& snapshot)
     clear_transport_only_snapshot_state(*baseline_);
     last_seen_server_tick_ = baseline_->tick_count;
     notify_control_mapping_changed();
+    notify_palette_sync(baseline_->current_palette_id);
     maybe_send_snapshot_hash_check(false);
 }
 

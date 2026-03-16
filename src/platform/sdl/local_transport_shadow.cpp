@@ -1,5 +1,6 @@
 #include <openglad/platform/local_transport_shadow.h>
 
+#include <openglad/core/util.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/input_state.h>
@@ -7,6 +8,7 @@
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/world_snapshot.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
@@ -16,12 +18,14 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 short load_saved_game(const char* filename, screen* scr);
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+Uint32 get_time_bonus(int playernum);
 
 namespace
 {
@@ -109,6 +113,170 @@ void prepare_server_session_for_gameplay(og::runtime::GameSession& server_sessio
     server_screen->world().clear_grid_dirty_tiles();
     if (current_game != nullptr && current_game->sim_events != nullptr)
         current_game->sim_events->clear();
+}
+
+void apply_palette_id(screen& gameplay_screen, std::uint8_t palette_id)
+{
+    if (palette_id == 0u)
+    {
+        gameplay_screen.world().current_palette_id = 0;
+        set_palette(gameplay_screen.ourpalette);
+    }
+    else
+    {
+        gameplay_screen.world().current_palette_id = 1;
+        set_palette(gameplay_screen.bluepalette);
+    }
+    gameplay_screen.redrawme = 1;
+}
+
+void release_screen_control_claims(screen& gameplay_screen)
+{
+    for (auto& uptr : gameplay_screen.world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity == nullptr || entity->user() == -1)
+            continue;
+
+        entity->set_user(-1);
+        entity->restore_act_type();
+    }
+
+    for (auto& view : gameplay_screen.viewob)
+    {
+        if (view == nullptr)
+            continue;
+        view->control = nullptr;
+    }
+    gameplay_screen.world().control_hp = 0.0f;
+}
+
+bool save_shadow_save_data(screen& gameplay_screen, const char* action)
+{
+    const SaveDataIoError save_error =
+        gameplay_screen.save_data.save_with_error("save0");
+    if (save_error == SaveDataIoError::None)
+        return true;
+
+    LogError("local_transport_shadow_save_failed action={} error={}\n",
+             action,
+             static_cast<int>(save_error));
+    return false;
+}
+
+bool load_shadow_level_from_save(screen& gameplay_screen, const char* action)
+{
+    if (load_saved_game("", &gameplay_screen) == 0)
+    {
+        LogError("local_transport_shadow_level_load_failed action={} level={}\n",
+                 action,
+                 gameplay_screen.save_data.scen_num);
+        return false;
+    }
+
+    release_screen_control_claims(gameplay_screen);
+    return true;
+}
+
+bool complete_level_and_load_next(screen& gameplay_screen, int next_level)
+{
+    gameplay_screen.sync_save_data_from_world();
+
+    for (std::size_t team_index = 0;
+         team_index < std::size(gameplay_screen.save_data.m_score);
+         ++team_index)
+    {
+        gameplay_screen.save_data.m_totalscore[team_index] +=
+            gameplay_screen.save_data.m_score[team_index];
+        gameplay_screen.save_data.m_totalcash[team_index] +=
+            gameplay_screen.save_data.m_score[team_index] * 2u;
+    }
+
+    const bool already_completed =
+        gameplay_screen.save_data.is_level_completed(
+            gameplay_screen.save_data.scen_num);
+    for (std::size_t team_index = 0;
+         team_index < std::size(gameplay_screen.save_data.m_score);
+         ++team_index)
+    {
+        if (!already_completed)
+        {
+            gameplay_screen.save_data.m_totalcash[team_index] +=
+                get_time_bonus(static_cast<int>(team_index));
+        }
+        gameplay_screen.save_data.m_score[team_index] = 0;
+    }
+
+    gameplay_screen.save_data.add_level_completed(
+        gameplay_screen.save_data.current_campaign,
+        gameplay_screen.save_data.scen_num);
+    gameplay_screen.save_data.scen_num = static_cast<short>(next_level);
+    gameplay_screen.save_data.update_guys(gameplay_screen.world().oblist);
+    if (!save_shadow_save_data(gameplay_screen, "complete_level"))
+        return false;
+
+    return load_shadow_level_from_save(gameplay_screen, "complete_level");
+}
+
+bool withdraw_and_load_level(screen& gameplay_screen, int destination_level)
+{
+    const SaveDataIoError load_error =
+        gameplay_screen.save_data.load_with_error("save0");
+    if (load_error != SaveDataIoError::None)
+    {
+        LogError("local_transport_shadow_withdraw_load_failed level={} error={}\n",
+                 destination_level,
+                 static_cast<int>(load_error));
+        return false;
+    }
+
+    gameplay_screen.save_data.scen_num = static_cast<short>(destination_level);
+    if (!save_shadow_save_data(gameplay_screen, "withdraw"))
+        return false;
+
+    return load_shadow_level_from_save(gameplay_screen, "withdraw");
+}
+
+void apply_initial_setup_to_client_save(
+    screen& gameplay_screen,
+    const og::sim::InitialSetupMessage& message)
+{
+    gameplay_screen.save_data.scen_num = static_cast<short>(message.level_id);
+    gameplay_screen.save_data.my_team = static_cast<short>(message.my_team);
+    gameplay_screen.save_data.allied_mode =
+        static_cast<short>(message.allied_mode);
+
+    std::set<int>& completed =
+        gameplay_screen.save_data
+            .completed_levels[gameplay_screen.save_data.current_campaign];
+    completed.clear();
+    for (const std::int32_t level_id : message.completed_levels)
+        completed.insert(level_id);
+}
+
+bool prepare_display_level_for_initial_setup(
+    screen& gameplay_screen,
+    const og::sim::InitialSetupMessage& message)
+{
+    gameplay_screen.cleanup(gameplay_screen.numviews);
+    gameplay_screen.initialize_views();
+    apply_initial_setup_to_client_save(gameplay_screen, message);
+    gameplay_screen.sync_world_from_save_data();
+    gameplay_screen.world().id = static_cast<short>(message.level_id);
+    if (!gameplay_screen.load_level())
+    {
+        LogError("local_transport_shadow_client_level_load_failed level={}\n",
+                 message.level_id);
+        return false;
+    }
+
+    gameplay_screen.sync_world_from_save_data();
+    gameplay_screen.world().tick_count_ = 0;
+    gameplay_screen.world().reset_level_progress();
+    gameplay_screen.world().clear_removed_entity_ids();
+    gameplay_screen.world().clear_grid_dirty_tiles();
+    gameplay_screen.redrawme = 1;
+    return true;
 }
 
 void sync_display_controls(screen& gameplay_screen,
@@ -241,6 +409,45 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
         server_screen->world(),
         *shadow->server_session->game_.sim_events,
         *shadow->server_transport);
+    shadow->server->on_save_sync = [server_screen] {
+        server_screen->sync_save_data_from_world();
+    };
+    shadow->server->on_level_transition =
+        [server_screen,
+         display_screen = &gameplay_screen,
+         server_session = shadow->server_session.get()](
+            int level_id) {
+            auto server_scope = server_session->activate();
+            server_screen->framecount = display_screen->framecount;
+            if (!complete_level_and_load_next(*server_screen, level_id))
+                return false;
+
+            prepare_server_session_for_gameplay(*server_session);
+            return true;
+        };
+    shadow->server->on_exit_accepted =
+        [server_screen,
+         display_screen = &gameplay_screen,
+         server_session = shadow->server_session.get()](
+            int destination) {
+            auto server_scope = server_session->activate();
+            server_screen->framecount = display_screen->framecount;
+            if (!complete_level_and_load_next(*server_screen, destination))
+                return false;
+
+            prepare_server_session_for_gameplay(*server_session);
+            return true;
+        };
+    shadow->server->on_withdraw_accepted =
+        [server_screen, server_session = shadow->server_session.get()](
+            int destination) {
+            auto server_scope = server_session->activate();
+            if (!withdraw_and_load_level(*server_screen, destination))
+                return false;
+
+            prepare_server_session_for_gameplay(*server_session);
+            return true;
+        };
 
     const std::size_t player_count = compute_local_player_count(gameplay_screen);
     shadow->clients.reserve(player_count);
@@ -265,9 +472,32 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
             *client.transport,
             peer_id,
             client.drives_display ? &gameplay_screen.world() : nullptr);
+        og::sim::GameClient* const local_client = client.game_client.get();
+        local_client->set_initial_setup_callback(
+            [local_client](
+                const og::sim::InitialSetupMessage&,
+                bool is_level_transition) {
+                if (is_level_transition)
+                    local_client->send_client_ready();
+            });
         if (client.drives_display)
         {
-            og::sim::GameClient* const display_client = client.game_client.get();
+            og::sim::GameClient* const display_client = local_client;
+            display_client->set_initial_setup_callback(
+                [&gameplay_screen, display_client](
+                    const og::sim::InitialSetupMessage& message,
+                    bool is_level_transition) {
+                    if (!is_level_transition)
+                        return;
+
+                    if (!prepare_display_level_for_initial_setup(
+                            gameplay_screen, message))
+                    {
+                        return;
+                    }
+
+                    display_client->send_client_ready();
+                });
             display_client->set_control_mapping_callback(
                 [&gameplay_screen](
                     const std::array<std::uint32_t, MAX_PLAYERS>&
@@ -304,6 +534,10 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
                         view->set_display_text(text, 1);
                     }
                     gameplay_screen.redrawme = 1;
+                });
+            display_client->set_palette_sync_callback(
+                [&gameplay_screen](std::uint8_t palette_id) {
+                    apply_palette_id(gameplay_screen, palette_id);
                 });
         }
         shadow->clients.push_back(std::move(client));

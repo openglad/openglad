@@ -32,6 +32,9 @@ public:
     void set_control_mapping_callback(
         std::function<void(const std::array<std::uint32_t, MAX_PLAYERS>&,
                            GameWorld*)> callback);
+    void set_initial_setup_callback(
+        std::function<void(const InitialSetupMessage&, bool is_level_transition)>
+            callback);
     void set_sim_event_batch_callback(
         std::function<void(const SimEventBatch&)> callback);
     void set_game_flow_event_batch_callback(
@@ -40,6 +43,8 @@ public:
         std::function<void(const ExitPromptBroadcastMessage&)> callback);
     void set_pause_broadcast_callback(
         std::function<void(const PauseBroadcastMessage&)> callback);
+    void set_palette_sync_callback(
+        std::function<void(std::uint8_t palette_id)> callback);
 
     [[nodiscard]] const std::optional<WorldSnapshot>& baseline() const noexcept
     {
@@ -121,10 +126,13 @@ private:
                               std::uint32_t actual,
                               const char* label) const;
     void notify_control_mapping_changed();
+    void notify_initial_setup(const InitialSetupMessage& message,
+                              bool is_level_transition);
     void notify_sim_event_batch(const SimEventBatch& batch);
     void notify_game_flow_event_batch(const SimEventBatch& batch);
     void notify_exit_prompt(const ExitPromptBroadcastMessage& message);
     void notify_pause_broadcast(const PauseBroadcastMessage& message);
+    void notify_palette_sync(std::uint8_t palette_id);
     std::uint32_t compute_local_snapshot_hash() const;
     void maybe_send_client_ready();
     void maybe_send_snapshot_hash_check(bool force = false);
@@ -153,10 +161,12 @@ private:
     std::uint32_t snapshot_hash_check_count_ = 0;
     std::function<void(const std::array<std::uint32_t, MAX_PLAYERS>&,
                        GameWorld*)> control_mapping_callback_;
+    std::function<void(const InitialSetupMessage&, bool)> initial_setup_callback_;
     std::function<void(const SimEventBatch&)> sim_event_batch_callback_;
     std::function<void(const SimEventBatch&)> game_flow_event_batch_callback_;
     std::function<void(const ExitPromptBroadcastMessage&)> exit_prompt_callback_;
     std::function<void(const PauseBroadcastMessage&)> pause_broadcast_callback_;
+    std::function<void(std::uint8_t)> palette_sync_callback_;
 };
 
 } // namespace og::sim
