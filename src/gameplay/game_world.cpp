@@ -1522,8 +1522,8 @@ void GameWorld::tick()
         clear_stale_cross_refs(uptr.get());
 
     // --- Remove dead entities ---
-    // Note: viewscreen control pointer cleanup is handled by the caller
-    // (screen::act) since viewscreens are a rendering concern.
+    // Note: viewscreen control pointer cleanup is handled by the display
+    // runtime since viewscreens are a rendering concern.
     auto& objects = oblist.raw_mutable();
     auto& dead = dead_list.raw_mutable();
     for (auto e = objects.begin(); e != objects.end();)

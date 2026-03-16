@@ -9,6 +9,8 @@
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/interface/screen.h>
+#include <openglad/platform/game_session.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/io_common.h>
 
 #include <array>
@@ -172,10 +174,31 @@ void populate_chaotic_input(InputState& input, int tick)
     }
 }
 
-void advance_screen_tick(screen& game_screen, const InputState& input)
+void reset_network_shadow(screen& game_screen)
 {
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    ASSERT_TRUE(game_screen.save_data.save("save0"))
+        << "local transport shadow bootstrap save should succeed";
+    og::runtime::reset_local_transport_shadow(
+        *og::runtime::current_game_session,
+        game_screen);
+    ASSERT_TRUE(og::runtime::local_transport_active(
+        *og::runtime::current_game_session));
+}
+
+void advance_network_tick(screen& game_screen, const InputState& input)
+{
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    ASSERT_TRUE(og::runtime::local_transport_active(
+        *og::runtime::current_game_session));
+    og::runtime::local_transport_shadow_send_input(
+        *og::runtime::current_game_session,
+        input,
+        game_screen.world().tick_count_ + 1);
     game_screen.process_input(input);
-    ASSERT_TRUE(game_screen.act()) << "screen.act should continue running";
+    game_screen.continuous_input();
+    og::runtime::local_transport_shadow_finish_tick(
+        *og::runtime::current_game_session);
     ASSERT_FALSE(game_screen.world().game_ended)
         << "benchmark scenario should not end during replay capture";
 }
@@ -404,6 +427,7 @@ TEST(SnapshotSizeBenchmark,
 
     GameWorld& replay_world = game_screen.world();
     reset_loaded_world_for_benchmark(replay_world);
+    reset_network_shadow(game_screen);
     ASSERT_EQ(4, game_screen.numviews);
     for (int i = 0; i < 4; ++i)
         ASSERT_NE(nullptr, game_screen.viewob[i]);
@@ -413,7 +437,7 @@ TEST(SnapshotSizeBenchmark,
         const std::optional<og::sim::InputStateMessage> frame = player.next_frame();
         ASSERT_TRUE(frame.has_value()) << "benchmark replay should include warmup ticks";
         ASSERT_EQ(replay_world.tick_count_ + 1u, frame->tick);
-        advance_screen_tick(game_screen, frame->input);
+        advance_network_tick(game_screen, frame->input);
     }
 
     const og::sim::WorldSnapshot live_snapshot =
@@ -441,7 +465,7 @@ TEST(SnapshotSizeBenchmark,
         const std::optional<og::sim::InputStateMessage> frame = player.next_frame();
         ASSERT_TRUE(frame.has_value()) << "benchmark replay should include catchup ticks";
         ASSERT_EQ(replay_world.tick_count_ + 1u, frame->tick);
-        advance_screen_tick(game_screen, frame->input);
+        advance_network_tick(game_screen, frame->input);
 
         final_tick_snapshot = og::sim::capture_snapshot(replay_world);
         if (tick == 0)

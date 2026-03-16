@@ -11,6 +11,8 @@
 #include <filesystem>
 #include <memory>
 
+#include "test_network_fixture.h"
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 static std::unique_ptr<walker> make_walker_at(char family, short x, short y, unsigned char team)
@@ -23,13 +25,17 @@ static std::unique_ptr<walker> make_walker_at(char family, short x, short y, uns
     return w;
 }
 
-// ---------------------------------------------------------------------------
-// screen::act smoke test - exercises the main game loop tick
-// ---------------------------------------------------------------------------
-
-TEST(ScreenExtended, screen_act_empty)
+TEST(ScreenExtended, network_fixture_advances_empty_tick)
 {
-    og::runtime::current_session->myscreen_->act();
+    og::sim::test::NetworkTestFixture fixture({
+        .level_id = 1,
+        .tick_count = 1,
+    });
+    fixture.run();
+
+    EXPECT_EQ(1u, fixture.server_world().tick_count_);
+    EXPECT_EQ(1u, fixture.client_world(0).tick_count_);
+    fixture.expect_clients_match_server();
 }
 
 

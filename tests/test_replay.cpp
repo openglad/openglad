@@ -8,6 +8,8 @@
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/platform/game_session.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/io_common.h>
 
 #include <array>
@@ -187,10 +189,31 @@ void poison_replay_input_debounce(screen& game_screen)
     game_screen.process_input(input);
 }
 
-void advance_screen_tick(screen& game_screen, const InputState& input)
+void reset_network_shadow(screen& game_screen)
 {
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    ASSERT_TRUE(game_screen.save_data.save("save0"))
+        << "local transport shadow bootstrap save should succeed";
+    og::runtime::reset_local_transport_shadow(
+        *og::runtime::current_game_session,
+        game_screen);
+    ASSERT_TRUE(og::runtime::local_transport_active(
+        *og::runtime::current_game_session));
+}
+
+void advance_network_tick(screen& game_screen, const InputState& input)
+{
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    ASSERT_TRUE(og::runtime::local_transport_active(
+        *og::runtime::current_game_session));
+    og::runtime::local_transport_shadow_send_input(
+        *og::runtime::current_game_session,
+        input,
+        game_screen.world().tick_count_ + 1);
     game_screen.process_input(input);
-    ASSERT_TRUE(game_screen.act()) << "replay test act() should continue";
+    game_screen.continuous_input();
+    og::runtime::local_transport_shadow_finish_tick(
+        *og::runtime::current_game_session);
     ASSERT_FALSE(game_screen.world().game_ended)
         << "replay test should not end the game early";
 }
@@ -251,6 +274,7 @@ void run_replay_roundtrip(int player_count)
 
     GameWorld& live_world = game_screen.world();
     reset_loaded_world_for_replay(live_world);
+    reset_network_shadow(game_screen);
     ASSERT_EQ(kReplayLevel, live_world.id);
     ASSERT_TRUE(live_world.grid.valid());
     ASSERT_EQ(player_count, game_screen.numviews);
@@ -280,7 +304,7 @@ void run_replay_roundtrip(int player_count)
     {
         populate_chaotic_input(input, tick, player_count);
         recorder.record_input(live_world.tick_count_ + 1, input);
-        advance_screen_tick(game_screen, input);
+        advance_network_tick(game_screen, input);
         expected_rng_states.push_back(live_world.rng_.state_);
 
         if (((tick + 1) % kCheckpointInterval) == 0)
@@ -336,6 +360,7 @@ void run_replay_roundtrip(int player_count)
 
     GameWorld& replay_world = game_screen.world();
     reset_loaded_world_for_replay(replay_world);
+    reset_network_shadow(game_screen);
     ASSERT_EQ(player.header().level_id, replay_world.id);
     ASSERT_EQ(player.header().player_count, static_cast<std::uint8_t>(game_screen.numviews));
     ASSERT_EQ(player.header().timer_wait, replay_world.timer_wait);
@@ -371,7 +396,7 @@ void run_replay_roundtrip(int player_count)
             break;
 
         ASSERT_EQ(replay_world.tick_count_ + 1, frame->tick);
-        advance_screen_tick(game_screen, frame->input);
+        advance_network_tick(game_screen, frame->input);
         ASSERT_EQ(frame->tick, replay_world.tick_count_);
         ASSERT_LT(replay_tick_index, expected_rng_states.size());
         EXPECT_EQ(expected_rng_states[replay_tick_index], replay_world.rng_.state_)

@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/platform/game_loop.h>
+#include <openglad/core/util.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/platform/game_context.h>
@@ -174,6 +175,23 @@ void clear_pending_input(GameLoopFrameState& st)
     st.pending_input = {};
 }
 
+og::runtime::GameSession* require_local_transport_session()
+{
+    og::runtime::GameSession* const gameplay_session =
+        og::runtime::current_game_session;
+    if (gameplay_session == nullptr)
+    {
+        LogError("game_frame_missing_game_session\n");
+        return nullptr;
+    }
+    if (!og::runtime::local_transport_active(*gameplay_session))
+    {
+        LogError("game_frame_missing_local_transport_runtime\n");
+        return nullptr;
+    }
+    return gameplay_session;
+}
+
 GameFrameResult run_game_tick(screen& s,
                               GameLoopFrameState& st,
                               const GameLoopDeps& deps,
@@ -181,21 +199,18 @@ GameFrameResult run_game_tick(screen& s,
 {
     og::runtime::record_replay_input(s, input);
     og::runtime::GameSession* const gameplay_session =
-        og::runtime::current_game_session;
-    const bool use_server_client_path =
-        gameplay_session != nullptr &&
-        og::runtime::local_transport_active(*gameplay_session);
-    if (use_server_client_path)
-    {
-        // The per-frame order is:
-        // 1-2. sample input in game_frame_with_result(), then enqueue it here;
-        // 3-14. local_transport_shadow_finish_tick() runs the authoritative
-        // server step and then drains the client mirror before render.
-        og::runtime::local_transport_shadow_send_input(
-            *gameplay_session,
-            input,
-            s.world().tick_count_ + 1);
-    }
+        require_local_transport_session();
+    if (gameplay_session == nullptr)
+        return finish_done(st);
+
+    // The per-frame order is:
+    // 1-2. sample input in game_frame_with_result(), then enqueue it here;
+    // 3-14. local_transport_shadow_finish_tick() runs the authoritative
+    // server step and then drains the client mirror before render.
+    og::runtime::local_transport_shadow_send_input(
+        *gameplay_session,
+        input,
+        s.world().tick_count_ + 1);
 
     s.process_input(input);
     s.continuous_input();
@@ -203,10 +218,7 @@ GameFrameResult run_game_tick(screen& s,
     if (s.world().end)
         return finish_done(st);
 
-    if (use_server_client_path)
-        og::runtime::local_transport_shadow_finish_tick(*gameplay_session);
-    else
-        s.act();
+    og::runtime::local_transport_shadow_finish_tick(*gameplay_session);
     s.framecount++;
 #ifdef TESTING
     picker_testing_mark_frame_advance();

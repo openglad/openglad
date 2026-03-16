@@ -612,7 +612,9 @@ TEST(RuntimeCoveragePaths, screen_withdraw_aborts_when_autosave_load_fails)
                               "Withdraw to Level 4?", 4, 1);
     sim_events.push(og::sim::EventKind::WithdrawToLevel, 4, 0);
 
-    ASSERT_TRUE(s->act()) << "act should continue after failed withdraw load";
+    ASSERT_TRUE(
+        s->dispatch_sim_event_batch(og::sim::drain_sim_events(sim_events)))
+        << "dispatch should continue after failed withdraw load";
     ASSERT_EQ(7, static_cast<int>(s->save_data.scen_num)) << "failed withdraw load should not change scen_num";
     ASSERT_EQ(7, static_cast<int>(s->world_.current_scenario)) << "failed withdraw load should keep world scenario unchanged";
     ASSERT_EQ(static_cast<int>(SaveDataIoError::CampaignLoadFailed), static_cast<int>(s->save_data.last_io_error())) << "withdraw load failure should be surfaced as campaign load failure";
@@ -766,7 +768,7 @@ TEST(RuntimeCoveragePaths, screen_dispatch_game_flow_events_handles_direct_batch
     batch.events.push_back(exit_prompt_event);
 
     ASSERT_TRUE(s->dispatch_game_flow_events(batch))
-        << "game flow batch should remain compatible with the act() return path";
+        << "game flow batch should preserve the continue/stop contract";
     ASSERT_EQ(1, static_cast<int>(s->world_.end))
         << "SetEnd should flip the world end flag";
     ASSERT_EQ(1, static_cast<int>(s->redrawme))

@@ -40,6 +40,7 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/interface/screen.h>
 #include "SDL.h"
@@ -176,6 +177,12 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
     s->redrawme = 1;
     s->framecount = 0;
     s->timerstart = query_timer_control();
+    og::runtime::reset_local_transport_shadow(*demo.session, *s);
+    if (!og::runtime::local_transport_active(*demo.session)) {
+        throw std::runtime_error(std::format(
+            "openglad_demo failed to initialize local transport for scenario {}",
+            scen_id));
+    }
     demo.session->frame_state_ = {};
     demo.finished.store(false, std::memory_order_relaxed);
 }
@@ -187,8 +194,9 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
 // current_session and waits for the main thread to signal each frame.
 static void worker_thread_func(WorkerSync& sync, DemoSession& demo, int session_idx)
 {
-    // Install this session as thread_local current_session and current_game.
+    // Install this session as thread_local current_session/current_game/current_game_session.
     og::runtime::current_session = demo.session.get();
+    og::runtime::current_game_session = demo.session.get();
     current_game = &demo.session->game_;
 
     // Simulation-only deps: no rendering, no event polling, no frame timing.

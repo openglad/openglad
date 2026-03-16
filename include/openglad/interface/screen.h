@@ -194,7 +194,6 @@ public:
     [[nodiscard]] TickWorldBatches tick_world();
     void dispatch_cosmetic_events(const og::sim::SimEventBatch& batch);
     bool dispatch_game_flow_events(const og::sim::GameFlowEventBatch& batch);
-    bool act();
     bool dispatch_sim_event_batch(const og::sim::SimEventBatch& batch);
 
     short endgame(short ending);
