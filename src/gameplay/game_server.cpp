@@ -809,6 +809,7 @@ PlayerInput GameServer::select_effective_input(ConnectedClientState& client,
 
     PlayerInput effective = client.last_known_input;
     clear_pressed(effective);
+    std::array<bool, NUM_INPUT_KEYS> late_pressed = {};
     bool has_exact_input = false;
 
     for (const std::uint32_t tick : pending_ticks)
@@ -829,7 +830,7 @@ PlayerInput GameServer::select_effective_input(ConnectedClientState& client,
         else if (expected_tick - tick <= MAX_LATE_PRESS_TICKS)
         {
             for (int key = 0; key < NUM_INPUT_KEYS; ++key)
-                effective.pressed[key] = effective.pressed[key] || received.pressed[key];
+                late_pressed[key] = late_pressed[key] || received.pressed[key];
         }
 
         client.pending_inputs.erase(input_it);
@@ -840,6 +841,9 @@ PlayerInput GameServer::select_effective_input(ConnectedClientState& client,
         for (int key = 0; key < NUM_INPUT_KEYS; ++key)
             effective.held[key] = client.last_known_input.held[key];
     }
+
+    for (int key = 0; key < NUM_INPUT_KEYS; ++key)
+        effective.pressed[key] = effective.pressed[key] || late_pressed[key];
 
     return effective;
 }
@@ -953,6 +957,20 @@ void GameServer::update_timeouts()
     {
         clear_pause_state();
     }
+
+    std::vector<PeerId> timed_out_peers;
+    timed_out_peers.reserve(clients_.size());
+    for (const auto& [peer_id, client] : clients_)
+    {
+        if (client.last_received_input_ms == 0 || now < client.last_received_input_ms)
+            continue;
+
+        if (now - client.last_received_input_ms >= DISCONNECT_TIMEOUT_MS)
+            timed_out_peers.push_back(peer_id);
+    }
+
+    for (const PeerId peer_id : timed_out_peers)
+        disconnect_client(peer_id);
 }
 
 void GameServer::clear_pending_exit_prompt()

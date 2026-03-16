@@ -1,4 +1,5 @@
 #include <openglad/gameplay/game_server.h>
+#include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/core/constants.h>
@@ -465,6 +466,124 @@ TEST(NetTransportInProcess, network_fixture_freezes_on_exit_prompt_and_resumes)
     fixture.expect_clients_match_server();
 }
 
+TEST(NetTransportInProcess, network_fixture_keeps_two_clients_in_sync)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(3);
+
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess, network_fixture_keeps_four_clients_in_sync)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 4,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(3);
+
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_merges_late_pressed_input_with_exact_tick_input)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    walker* const control = fixture.server_control(0);
+    ASSERT_NE(nullptr, control);
+    EXPECT_EQ(0, control->yo_delay());
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    InputState late_input;
+    late_input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    fixture.client(0).send_input(late_input, 1u);
+
+    InputState exact_input;
+    fixture.client(0).send_input(exact_input, 2u);
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    EXPECT_GT(control->yo_delay(), 0);
+}
+
+TEST(NetTransportInProcess, network_fixture_pause_broadcast_freezes_and_resumes)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    fixture.client(0).send_pause_request();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    ASSERT_TRUE(fixture.server().paused());
+    ASSERT_TRUE(fixture.client(0).last_pause_broadcast().has_value());
+    ASSERT_TRUE(fixture.client(1).last_pause_broadcast().has_value());
+    EXPECT_EQ(0u, fixture.client(0).last_pause_broadcast()->player_index);
+    EXPECT_EQ(0u, fixture.client(1).last_pause_broadcast()->player_index);
+
+    const std::uint32_t frozen_tick = fixture.server_world().tick_count_;
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+    EXPECT_EQ(frozen_tick, fixture.server_world().tick_count_);
+
+    fixture.client(1).send_pause_response();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    EXPECT_FALSE(fixture.server().paused());
+    EXPECT_GT(fixture.server_world().tick_count_, frozen_tick);
+    fixture.expect_clients_match_server();
+}
+
 TEST(NetTransportInProcess,
      network_fixture_level_transition_uses_callbacks_and_waits_for_ready)
 {
@@ -599,6 +718,44 @@ TEST(NetTransportInProcess,
         fixture.server().step();
     });
     EXPECT_GT(fixture.server_world().tick_count_, frozen_tick);
+}
+
+TEST(NetTransportInProcess, network_fixture_disconnects_client_after_input_timeout)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    std::uint64_t now_ms = 1000;
+    fixture.server().set_wall_clock_ms_source([&] { return now_ms; });
+
+    InputState empty_input;
+    fixture.client(0).send_input(empty_input, 1u);
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    walker* const control = fixture.server_control(0);
+    ASSERT_NE(nullptr, control);
+    EXPECT_EQ(1u, fixture.server_transport().connected_peers().size());
+    EXPECT_EQ(0, static_cast<int>(control->user()));
+
+    now_ms += static_cast<std::uint64_t>(og::sim::DISCONNECT_TIMEOUT_MS) + 1u;
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+
+    EXPECT_TRUE(fixture.server_transport().connected_peers().empty());
+    EXPECT_EQ(-1, static_cast<int>(control->user()));
+    EXPECT_NE(ACT_CONTROL, control->act_type());
 }
 
 TEST(NetTransportInProcess,
