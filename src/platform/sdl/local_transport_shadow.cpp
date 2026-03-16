@@ -2,6 +2,7 @@
 
 #include <openglad/core/util.h>
 #include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
@@ -17,10 +18,8 @@
 
 #include <algorithm>
 #include <memory>
-#include <mutex>
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 short load_saved_game(const char* filename, screen* scr);
@@ -41,7 +40,25 @@ struct LocalTransportClient {
     }
 };
 
-struct LocalTransportShadow {
+} // namespace
+
+namespace og::runtime {
+
+struct LocalTransportRuntimeAccess
+{
+    static std::shared_ptr<LocalTransportRuntime>& runtime(GameSession& session)
+    {
+        return session.local_transport_runtime_;
+    }
+
+    static const std::shared_ptr<LocalTransportRuntime>& runtime(
+        const GameSession& session)
+    {
+        return session.local_transport_runtime_;
+    }
+};
+
+struct LocalTransportRuntime {
     std::unique_ptr<og::runtime::GameSession> server_session;
     std::shared_ptr<og::sim::InProcessTransport> server_transport;
     std::unique_ptr<og::sim::GameServer> server;
@@ -62,20 +79,13 @@ struct LocalTransportShadow {
     }
 };
 
-using ShadowMap =
-    std::unordered_map<og::runtime::SessionState*,
-                       std::shared_ptr<LocalTransportShadow>>;
+} // namespace og::runtime
 
-ShadowMap& local_transport_shadows()
+namespace
 {
-    static ShadowMap shadows;
-    return shadows;
-}
-
-std::mutex& local_transport_shadows_mutex()
+og::runtime::GameSession* as_game_session(og::runtime::SessionState* session) noexcept
 {
-    static std::mutex mutex;
-    return mutex;
+    return static_cast<og::runtime::GameSession*>(session);
 }
 
 class ScopedSessionGameplayActivation
@@ -105,7 +115,11 @@ private:
 std::size_t compute_local_player_count(const screen& gameplay_screen)
 {
     return std::min<std::size_t>(
-        std::max<short>(gameplay_screen.numviews, 1),
+        std::max<short>(
+            gameplay_screen.save_data.numplayers > 0
+                ? gameplay_screen.save_data.numplayers
+                : gameplay_screen.numviews,
+            1),
         static_cast<std::size_t>(MAX_PLAYERS));
 }
 
@@ -372,31 +386,39 @@ void render_pause_overlay(screen& gameplay_screen,
     gameplay_screen.redrawme = 1;
 }
 
+std::shared_ptr<og::runtime::LocalTransportRuntime> session_runtime(
+    og::runtime::SessionState& session)
+{
+    og::runtime::GameSession* const game_session = as_game_session(&session);
+    return game_session != nullptr
+        ? og::runtime::LocalTransportRuntimeAccess::runtime(*game_session)
+        : nullptr;
+}
+
+std::shared_ptr<const og::runtime::LocalTransportRuntime> session_runtime(
+    const og::runtime::SessionState& session)
+{
+    const auto* const game_session =
+        as_game_session(const_cast<og::runtime::SessionState*>(&session));
+    return game_session != nullptr
+        ? og::runtime::LocalTransportRuntimeAccess::runtime(*game_session)
+        : nullptr;
+}
+
 } // namespace
 
 namespace og::runtime {
 
 bool local_transport_active(const SessionState& session) noexcept
 {
-    std::lock_guard lock(local_transport_shadows_mutex());
-    return local_transport_shadows().contains(
-        const_cast<SessionState*>(&session));
+    return session_runtime(session) != nullptr;
 }
 
 bool local_transport_shadow_is_paused(const SessionState& session) noexcept
 {
-    std::shared_ptr<LocalTransportShadow> shadow;
-    {
-        std::lock_guard lock(local_transport_shadows_mutex());
-        const auto it = local_transport_shadows().find(
-            const_cast<SessionState*>(&session));
-        if (it == local_transport_shadows().end())
-            return false;
-        shadow = it->second;
-    }
-
+    const auto runtime = session_runtime(session);
     const og::sim::GameClient* const display_client =
-        shadow != nullptr ? shadow->display_client() : nullptr;
+        runtime != nullptr ? runtime->display_client() : nullptr;
     return display_client != nullptr &&
         display_client->baseline().has_value() &&
         display_client->baseline()->paused;
@@ -404,17 +426,9 @@ bool local_transport_shadow_is_paused(const SessionState& session) noexcept
 
 bool local_transport_shadow_toggle_pause(SessionState& session)
 {
-    std::shared_ptr<LocalTransportShadow> shadow;
-    {
-        std::lock_guard lock(local_transport_shadows_mutex());
-        const auto it = local_transport_shadows().find(&session);
-        if (it == local_transport_shadows().end())
-            return false;
-        shadow = it->second;
-    }
-
+    const auto runtime = session_runtime(session);
     og::sim::GameClient* const display_client =
-        shadow != nullptr ? shadow->display_client() : nullptr;
+        runtime != nullptr ? runtime->display_client() : nullptr;
     if (display_client == nullptr)
         return false;
 
@@ -441,18 +455,13 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
         return;
     }
 
-    std::shared_ptr<LocalTransportShadow> old_shadow;
-    {
-        std::lock_guard lock(local_transport_shadows_mutex());
-        auto it = local_transport_shadows().find(&session);
-        if (it != local_transport_shadows().end())
-        {
-            old_shadow = std::move(it->second);
-            local_transport_shadows().erase(it);
-        }
-    }
+    GameSession* const owning_session = as_game_session(&session);
+    if (owning_session == nullptr)
+        return;
 
-    auto shadow = std::make_shared<LocalTransportShadow>();
+    LocalTransportRuntimeAccess::runtime(*owning_session).reset();
+
+    auto runtime = std::make_shared<LocalTransportRuntime>();
     const std::size_t player_count = compute_local_player_count(gameplay_screen);
     std::array<std::uint32_t, MAX_PLAYERS> control_entity_ids = {};
     std::array<short, MAX_PLAYERS> player_teams = {};
@@ -471,19 +480,21 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
     server_cfg.numviews = gameplay_screen.numviews;
     server_cfg.create_display = false;
     server_cfg.install_legacy_globals = false;
-    shadow->server_session = std::make_unique<GameSession>(server_cfg);
-    shadow->server_transport = og::sim::InProcessTransport::create_server();
-    shadow->server_transport->accept_connections();
+    runtime->server_session = std::make_unique<GameSession>(server_cfg);
+    runtime->server_transport = og::sim::InProcessTransport::create_server();
+    runtime->server_transport->accept_connections();
 
     {
-        auto server_scope = shadow->server_session->activate();
-        screen* const server_screen = shadow->server_screen();
+        auto server_scope = runtime->server_session->activate();
+        GameplayContextGuard server_gameplay_scope(
+            &runtime->server_session->game_);
+        screen* const server_screen = runtime->server_screen();
         if (server_screen == nullptr ||
             load_saved_game("save0", server_screen) == 0)
         {
             return;
         }
-        prepare_server_session_for_gameplay(*shadow->server_session);
+        prepare_server_session_for_gameplay(*runtime->server_session);
         og::sim::apply_snapshot(
             server_screen->world(),
             og::sim::capture_keyframe_snapshot(gameplay_screen.world()));
@@ -497,23 +508,24 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
         }
     }
 
-    screen* const server_screen = shadow->server_screen();
+    screen* const server_screen = runtime->server_screen();
     if (server_screen == nullptr)
         return;
 
-    shadow->server = std::make_unique<og::sim::GameServer>(
+    runtime->server = std::make_unique<og::sim::GameServer>(
         server_screen->world(),
-        *shadow->server_session->game_.sim_events,
-        *shadow->server_transport);
-    shadow->server->on_save_sync = [server_screen] {
+        *runtime->server_session->game_.sim_events,
+        *runtime->server_transport);
+    runtime->server->on_save_sync = [server_screen] {
         server_screen->sync_save_data_from_world();
     };
-    shadow->server->on_level_transition =
+    runtime->server->on_level_transition =
         [server_screen,
          display_screen = &gameplay_screen,
-         server_session = shadow->server_session.get()](
+         server_session = runtime->server_session.get()](
             int level_id) {
             auto server_scope = server_session->activate();
+            GameplayContextGuard server_gameplay_scope(&server_session->game_);
             server_screen->framecount = display_screen->framecount;
             if (!complete_level_and_load_next(*server_screen, level_id))
                 return false;
@@ -521,12 +533,13 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
             prepare_server_session_for_gameplay(*server_session);
             return true;
         };
-    shadow->server->on_exit_accepted =
+    runtime->server->on_exit_accepted =
         [server_screen,
          display_screen = &gameplay_screen,
-         server_session = shadow->server_session.get()](
+         server_session = runtime->server_session.get()](
             int destination) {
             auto server_scope = server_session->activate();
+            GameplayContextGuard server_gameplay_scope(&server_session->game_);
             server_screen->framecount = display_screen->framecount;
             if (!complete_level_and_load_next(*server_screen, destination))
                 return false;
@@ -534,10 +547,11 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
             prepare_server_session_for_gameplay(*server_session);
             return true;
         };
-    shadow->server->on_withdraw_accepted =
-        [server_screen, server_session = shadow->server_session.get()](
+    runtime->server->on_withdraw_accepted =
+        [server_screen, server_session = runtime->server_session.get()](
             int destination) {
             auto server_scope = server_session->activate();
+            GameplayContextGuard server_gameplay_scope(&server_session->game_);
             if (!withdraw_and_load_level(*server_screen, destination))
                 return false;
 
@@ -545,18 +559,18 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
             return true;
         };
 
-    shadow->clients.reserve(player_count);
+    runtime->clients.reserve(player_count);
     for (std::size_t index = 0; index < player_count; ++index)
     {
         LocalTransportClient client;
-        client.transport = shadow->server_transport->create_client_transport();
+        client.transport = runtime->server_transport->create_client_transport();
         client.drives_display = (index == 0);
 
         const og::sim::PeerId peer_id = client.peer_id();
-        shadow->server->connect_client(peer_id);
+        runtime->server->connect_client(peer_id);
         walker* const initial_control = resolve_control_from_entity_id(
             server_screen->world(), control_entity_ids[index]);
-        shadow->server->bind_player(
+        runtime->server->bind_player(
             peer_id,
             index,
             player_teams[index],
@@ -604,14 +618,14 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
                     dispatch_display_event_batch(gameplay_screen, batch);
                 });
             display_client->set_game_flow_event_batch_callback(
-                [&gameplay_screen, shadow_ptr = shadow.get()](
+                [&gameplay_screen, runtime_ptr = runtime.get()](
                     const og::sim::SimEventBatch& batch) {
                     dispatch_display_event_batch(gameplay_screen, batch);
-                    if (shadow_ptr != nullptr &&
+                    if (runtime_ptr != nullptr &&
                         (gameplay_screen.world().end != 0 ||
                          batch_ends_display_session(batch)))
                     {
-                        shadow_ptr->display_session_finished = true;
+                        runtime_ptr->display_session_finished = true;
                     }
                 });
             display_client->set_message_processing_break_callback(
@@ -644,110 +658,112 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
                     apply_palette_id(gameplay_screen, palette_id);
                 });
         }
-        shadow->clients.push_back(std::move(client));
+        runtime->clients.push_back(std::move(client));
     }
 
     {
-        auto server_scope = shadow->server_session->activate();
-        shadow->server->send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
+        auto server_scope = runtime->server_session->activate();
+        GameplayContextGuard server_gameplay_scope(
+            &runtime->server_session->game_);
+        runtime->server->send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
     }
-    for (auto& client : shadow->clients)
-        client.game_client->poll_messages();
-
     {
-        std::lock_guard lock(local_transport_shadows_mutex());
-        local_transport_shadows()[&session] = shadow;
+        auto client_scope = owning_session->activate();
+        GameplayContextGuard client_gameplay_scope(&owning_session->game_);
+        for (auto& client : runtime->clients)
+            client.game_client->poll_messages();
     }
+
+    LocalTransportRuntimeAccess::runtime(*owning_session) = std::move(runtime);
 }
 
 void clear_local_transport_shadow(SessionState& session) noexcept
 {
-    std::shared_ptr<LocalTransportShadow> owned_shadow;
-    {
-        std::lock_guard lock(local_transport_shadows_mutex());
-        auto it = local_transport_shadows().find(&session);
-        if (it == local_transport_shadows().end())
-            return;
-        owned_shadow = std::move(it->second);
-        local_transport_shadows().erase(it);
-    }
+    if (GameSession* const game_session = as_game_session(&session))
+        LocalTransportRuntimeAccess::runtime(*game_session).reset();
 }
 
 void local_transport_shadow_send_input(SessionState& session,
                                        const InputState& input,
                                        std::uint32_t tick)
 {
-    std::shared_ptr<LocalTransportShadow> shadow;
-    {
-        std::lock_guard lock(local_transport_shadows_mutex());
-        const auto it = local_transport_shadows().find(&session);
-        if (it == local_transport_shadows().end())
-            return;
-        shadow = it->second;
-    }
+    const auto runtime = session_runtime(session);
+    if (runtime == nullptr)
+        return;
 
     const bool spectator =
         session.myscreen_ != nullptr &&
         og::ui::is_spectator_mode(session.myscreen_->save_data);
-    for (std::size_t index = 0; index < shadow->clients.size(); ++index)
+    for (std::size_t index = 0; index < runtime->clients.size(); ++index)
     {
         InputState player_input{};
         player_input.quit_requested = input.quit_requested;
         player_input.timer_wait_request =
-            index == shadow->display_client_index
+            index == runtime->display_client_index
                 ? input.timer_wait_request
                 : kNoTimerWaitRequest;
         if (!spectator && index < static_cast<std::size_t>(MAX_PLAYERS))
             player_input.players[index] = input.players[index];
-        shadow->clients[index].game_client->send_input(player_input, tick);
+        runtime->clients[index].game_client->send_input(player_input, tick);
     }
 }
 
 void local_transport_shadow_finish_tick(SessionState& session)
 {
-    std::shared_ptr<LocalTransportShadow> shadow;
-    {
-        std::lock_guard lock(local_transport_shadows_mutex());
-        const auto it = local_transport_shadows().find(&session);
-        if (it == local_transport_shadows().end())
-            return;
-        shadow = it->second;
-    }
+    const auto runtime = session_runtime(session);
+    if (runtime == nullptr)
+        return;
 
-    if (session.myscreen_ == nullptr || shadow->server == nullptr ||
-        shadow->server_session == nullptr)
+    GameSession* const client_session = as_game_session(&session);
+    if (client_session == nullptr)
+        return;
+
+    if (session.myscreen_ == nullptr || runtime->server == nullptr ||
+        runtime->server_session == nullptr)
     {
         return;
     }
 
-    if (shadow->display_session_finished || session.myscreen_->world().end != 0)
+    if (runtime->display_session_finished || session.myscreen_->world().end != 0)
     {
-        shadow->display_session_finished = true;
+        runtime->display_session_finished = true;
         session.myscreen_->world().end = 1;
         return;
     }
 
+    // Single-thread in-process order:
+    //  3-9. Install the server session/context and run one authoritative step.
     {
-        auto server_scope = shadow->server_session->activate();
-        ScopedSessionGameplayActivation gameplay_active(*shadow->server_session);
-        shadow->server->step();
+        auto server_scope = runtime->server_session->activate();
+        GameplayContextGuard server_gameplay_scope(
+            &runtime->server_session->game_);
+        ScopedSessionGameplayActivation gameplay_active(*runtime->server_session);
+        runtime->server->step();
     }
-    for (auto& client : shadow->clients)
+
+    // 10-14. Restore the display session, then drain snapshots/events into the
+    // client mirror before rendering.
     {
-        client.game_client->poll_messages();
-        if (shadow->display_session_finished || session.myscreen_->world().end != 0)
+        auto client_scope = client_session->activate();
+        GameplayContextGuard client_gameplay_scope(&client_session->game_);
+        for (auto& client : runtime->clients)
         {
-            shadow->display_session_finished = true;
-            session.myscreen_->world().end = 1;
-            return;
+            client.game_client->poll_messages();
+            if (runtime->display_session_finished ||
+                session.myscreen_->world().end != 0)
+            {
+                runtime->display_session_finished = true;
+                session.myscreen_->world().end = 1;
+                return;
+            }
         }
-    }
-    if (shadow->display_client_index < shadow->clients.size() &&
-        shadow->clients[shadow->display_client_index].game_client)
-    {
-        render_pause_overlay(
-            *session.myscreen_,
-            *shadow->clients[shadow->display_client_index].game_client);
+        if (runtime->display_client_index < runtime->clients.size() &&
+            runtime->clients[runtime->display_client_index].game_client)
+        {
+            render_pause_overlay(
+                *session.myscreen_,
+                *runtime->clients[runtime->display_client_index].game_client);
+        }
     }
 }
 

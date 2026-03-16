@@ -179,11 +179,15 @@ GameFrameResult run_game_tick(screen& s,
                               const InputState& input)
 {
     og::runtime::record_replay_input(s, input);
-    const bool use_local_transport =
+    const bool use_server_client_path =
         og::runtime::current_session != nullptr &&
         og::runtime::local_transport_active(*og::runtime::current_session);
-    if (use_local_transport)
+    if (use_server_client_path)
     {
+        // The per-frame order is:
+        // 1-2. sample input in game_frame_with_result(), then enqueue it here;
+        // 3-14. local_transport_shadow_finish_tick() runs the authoritative
+        // server step and then drains the client mirror before render.
         og::runtime::local_transport_shadow_send_input(
             *og::runtime::current_session,
             input,
@@ -196,7 +200,7 @@ GameFrameResult run_game_tick(screen& s,
     if (s.world().end)
         return finish_done(st);
 
-    if (use_local_transport)
+    if (use_server_client_path)
         og::runtime::local_transport_shadow_finish_tick(
             *og::runtime::current_session);
     else

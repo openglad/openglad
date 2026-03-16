@@ -10,8 +10,12 @@ struct SDL_Surface;
 class screen;
 class options;
 class cfg_store;
+struct InputState;
 
 namespace og::runtime {
+
+struct LocalTransportRuntime;
+struct LocalTransportRuntimeAccess;
 
 // GameSession: RAII root object for runtime state.
 //
@@ -56,6 +60,19 @@ public:
     SDL_Surface* session_surface_ = nullptr;
 
 private:
+    friend struct LocalTransportRuntimeAccess;
+    friend bool local_transport_active(const SessionState& session) noexcept;
+    friend bool local_transport_shadow_is_paused(
+        const SessionState& session) noexcept;
+    friend void reset_local_transport_shadow(SessionState& session,
+                                             screen& gameplay_screen);
+    friend void clear_local_transport_shadow(SessionState& session) noexcept;
+    friend bool local_transport_shadow_toggle_pause(SessionState& session);
+    friend void local_transport_shadow_send_input(SessionState& session,
+                                                  const InputState& input,
+                                                  std::uint32_t tick);
+    friend void local_transport_shadow_finish_tick(SessionState& session);
+
     Config cfg_;
 
     // Default RNG for sessions that install a global context but don't opt into a seeded RNG.
@@ -72,6 +89,8 @@ private:
     GameWorld world_owner_{};
     std::unique_ptr<options> prefs_owner_;
     std::unique_ptr<::screen> screen_owner_;
+    // Session-owned local in-process GameServer/GameClient runtime.
+    std::shared_ptr<LocalTransportRuntime> local_transport_runtime_;
 };
 
 // RAII guard: while alive, the associated session's globals are installed.

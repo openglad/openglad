@@ -319,6 +319,27 @@ TEST(GameLoop, glad_init_preserves_existing_timing_when_requested)
     game_screen->world().delete_objects();
 }
 
+TEST(GameLoop, clear_local_transport_shadow_deactivates_session_runtime)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
+
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
+    EXPECT_FALSE(og::runtime::local_transport_active(*og::runtime::current_session));
+
+    game_screen->world().delete_objects();
+}
+
 TEST(GameLoop, game_frame_with_result_caps_accumulator_to_four_ticks_per_call)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
