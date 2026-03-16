@@ -6,10 +6,13 @@ namespace og::sim {
 namespace {
 
 constexpr std::uint8_t kQuitRequestedTrue = 0x01;
+constexpr std::uint8_t kQuitRequestedMask = 0x01;
+constexpr std::uint8_t kTimerWaitShift = 1;
+constexpr std::uint8_t kTimerWaitMask = 0x3e;
 constexpr std::size_t kInputTickOffset = kTransportHeaderSize;
-constexpr std::size_t kQuitRequestedOffset =
+constexpr std::size_t kInputMetadataOffset =
     kInputTickOffset + sizeof(std::uint32_t);
-constexpr std::size_t kPlayerBitsOffset = kQuitRequestedOffset + 1;
+constexpr std::size_t kPlayerBitsOffset = kInputMetadataOffset + 1;
 
 static_assert(MAX_PLAYERS == 4);
 static_assert(NUM_INPUT_KEYS == 16);
@@ -61,6 +64,28 @@ std::uint32_t read_u32_le(std::span<const std::uint8_t> bytes, std::size_t offse
         | (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
 }
 
+std::uint8_t encode_input_metadata(const InputState& input)
+{
+    std::uint8_t metadata = input.quit_requested ? kQuitRequestedTrue : 0U;
+    if (input.timer_wait_request >= 0 && input.timer_wait_request <= 20)
+    {
+        const std::uint8_t encoded_timer_wait = static_cast<std::uint8_t>(
+            input.timer_wait_request + 1);
+        metadata |= static_cast<std::uint8_t>(
+            (encoded_timer_wait << kTimerWaitShift) & kTimerWaitMask);
+    }
+    return metadata;
+}
+
+std::int8_t decode_timer_wait_request(std::uint8_t metadata)
+{
+    const std::uint8_t encoded_timer_wait =
+        static_cast<std::uint8_t>((metadata & kTimerWaitMask) >> kTimerWaitShift);
+    return encoded_timer_wait == 0
+        ? kNoTimerWaitRequest
+        : static_cast<std::int8_t>(encoded_timer_wait - 1);
+}
+
 } // namespace
 
 std::array<std::uint8_t, kSerializedInputMessageSize>
@@ -76,7 +101,7 @@ serialize_input(std::uint32_t tick, const InputState& input)
     write_transport_header(bytes, kInputMessageType,
                            static_cast<std::uint16_t>(kSerializedInputPayloadSize));
     write_u32_le(bytes, kInputTickOffset, tick);
-    bytes[kQuitRequestedOffset] = input.quit_requested ? kQuitRequestedTrue : 0U;
+    bytes[kInputMetadataOffset] = encode_input_metadata(input);
 
     for (int player = 0; player < MAX_PLAYERS; ++player)
     {
@@ -107,7 +132,9 @@ std::optional<InputStateMessage> deserialize_input_message(
     InputStateMessage message;
     message.tick = read_u32_le(bytes, kInputTickOffset);
     message.input.quit_requested =
-        bytes[kQuitRequestedOffset] == kQuitRequestedTrue;
+        (bytes[kInputMetadataOffset] & kQuitRequestedMask) != 0;
+    message.input.timer_wait_request =
+        decode_timer_wait_request(bytes[kInputMetadataOffset]);
 
     for (int player = 0; player < MAX_PLAYERS; ++player)
     {

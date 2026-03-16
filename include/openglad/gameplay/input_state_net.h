@@ -26,7 +26,9 @@ struct InputStateMessage {
 // Wire format:
 // - bytes 0-3: shared transport envelope
 // - bytes 4-7: little-endian tick
-// - byte 8: quit_requested
+// - byte 8: input metadata
+//   - bit 0: quit_requested
+//   - bits 1-5: timer_wait_request + 1 (0 means no request)
 // - bytes 9-24: four little-endian player bitfields; bits 0-15 map held[],
 //   bits 16-31 map pressed[].
 std::array<std::uint8_t, kSerializedInputMessageSize>

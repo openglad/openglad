@@ -151,6 +151,8 @@ void latch_polled_input(GameLoopFrameState& st, const InputState& sampled_input)
 
     st.pending_input.quit_requested =
         st.pending_input.quit_requested || sampled_input.quit_requested;
+    if (sampled_input.timer_wait_request != kNoTimerWaitRequest)
+        st.pending_input.timer_wait_request = sampled_input.timer_wait_request;
 
     for (int player = 0; player < MAX_PLAYERS; ++player)
     {

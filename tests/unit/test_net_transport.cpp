@@ -86,6 +86,7 @@ private:
 void expect_input_state_eq(const InputState& expected, const InputState& actual)
 {
     EXPECT_EQ(expected.quit_requested, actual.quit_requested);
+    EXPECT_EQ(expected.timer_wait_request, actual.timer_wait_request);
     for (int player = 0; player < MAX_PLAYERS; ++player)
     {
         for (int key = 0; key < NUM_INPUT_KEYS; ++key)
@@ -251,6 +252,7 @@ TEST(NetTransport, game_client_send_input_uses_raw_fallback)
 
     InputState input{};
     input.quit_requested = true;
+    input.timer_wait_request = 9;
     input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
     input.players[1].pressed[static_cast<int>(InputAction::Fire)] = true;
     client.send_input(input, 12u);
@@ -273,6 +275,7 @@ TEST(NetTransport,
 
     InputState input{};
     input.quit_requested = true;
+    input.timer_wait_request = 4;
     input.players[0].held[static_cast<int>(InputAction::MoveLeft)] = true;
     input.players[1].pressed[static_cast<int>(InputAction::Fire)] = true;
 

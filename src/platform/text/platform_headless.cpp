@@ -396,8 +396,9 @@ int toInt(const std::string& s)
 }
 
 // Category B: SDL input sampling not available in headless mode
-void input_state_from_sdl(InputState&)
+void input_state_from_sdl(InputState& out)
 {
+    out.timer_wait_request = kNoTimerWaitRequest;
     std::call_once(warn_input_state, [] {
         LogWarn("input_state_from_sdl: not supported in headless mode\n");
     });

@@ -15,6 +15,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/level_render.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/gloader.h>
 
@@ -22,6 +23,7 @@
 
 void input_state_from_sdl(InputState& out)
 {
+    out.timer_wait_request = kNoTimerWaitRequest;
     for (int p = 0; p < MAX_PLAYERS; p++) {
         // Save previous held state to detect press edges
         bool was_held[NUM_INPUT_KEYS];
@@ -46,6 +48,14 @@ void input_state_from_sdl(InputState& out)
             out.players[p].pressed[KEY_DOWN_LEFT] = false;
             out.players[p].pressed[KEY_UP_LEFT] = false;
         }
+    }
+
+    if (og::runtime::current_session != nullptr)
+    {
+        out.timer_wait_request =
+            og::runtime::current_session->pending_timer_wait_request_;
+        og::runtime::current_session->pending_timer_wait_request_ =
+            kNoTimerWaitRequest;
     }
 }
 

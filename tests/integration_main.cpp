@@ -94,6 +94,8 @@ void reset_integration_ui_state()
     og::runtime::current_session->text_input_event_ = 0;
     og::runtime::current_session->scroll_amount_ = 0;
     og::runtime::current_session->input_continue_ = false;
+    og::runtime::current_session->pending_timer_wait_request_ =
+        kNoTimerWaitRequest;
     og::runtime::current_session->current_guy_.reset();
     og::runtime::current_session->current_type_ = 0;
     og::runtime::current_session->current_team_num_ = 0;

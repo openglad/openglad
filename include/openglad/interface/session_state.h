@@ -73,6 +73,7 @@ struct SessionState {
 
     // Game speed + debug state (Batch 7) — moved from util.cpp/walker.cpp/obmap.cpp.
     float g_game_speed_factor_ = 1.0f;
+    std::int8_t pending_timer_wait_request_ = kNoTimerWaitRequest;
     bool debug_draw_paths_ = false;
     bool debug_draw_obmap_ = false;
 

@@ -5,10 +5,13 @@
  */
 #pragma once
 
+#include <cstdint>
+
 #include <openglad/gameplay/input_action.h>
 
 inline constexpr int MAX_PLAYERS = 4;
 inline constexpr int NUM_INPUT_KEYS = 16;
+inline constexpr std::int8_t kNoTimerWaitRequest = -1;
 
 // Indices match KEY_UP..KEY_CHEAT from input.h.
 enum class InputKey : int {
@@ -40,6 +43,7 @@ struct PlayerInput {
 struct InputState {
     PlayerInput players[MAX_PLAYERS] = {};
     bool quit_requested = false;
+    std::int8_t timer_wait_request = kNoTimerWaitRequest;
 
     void clear();
 };

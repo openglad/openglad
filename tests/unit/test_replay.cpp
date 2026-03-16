@@ -32,6 +32,7 @@ void expect_player_input_eq(const PlayerInput& expected, const PlayerInput& actu
 void expect_input_state_eq(const InputState& expected, const InputState& actual)
 {
     EXPECT_EQ(expected.quit_requested, actual.quit_requested);
+    EXPECT_EQ(expected.timer_wait_request, actual.timer_wait_request);
     for (int player = 0; player < MAX_PLAYERS; ++player)
         expect_player_input_eq(expected.players[player], actual.players[player]);
 }

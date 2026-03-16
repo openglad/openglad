@@ -20,6 +20,7 @@ namespace {
 void expect_input_state_eq(const InputState& expected, const InputState& actual)
 {
     EXPECT_EQ(expected.quit_requested, actual.quit_requested);
+    EXPECT_EQ(expected.timer_wait_request, actual.timer_wait_request);
     for (int player = 0; player < MAX_PLAYERS; ++player)
     {
         for (int key = 0; key < NUM_INPUT_KEYS; ++key)
@@ -272,6 +273,46 @@ TEST(NetTransportInProcess,
                        *second_client_messages[1].snapshot);
 }
 
+TEST(NetTransportInProcess,
+     game_server_applies_set_palette_event_to_authoritative_state)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    fixture.server_world().current_palette_id = 0;
+    fixture.with_server_context([&] {
+        fixture.server_events().push(og::sim::EventKind::SetPalette, 1u, 0u);
+        fixture.server().broadcast_current_state(
+            og::sim::SnapshotCaptureMode::Peek,
+            og::sim::EventDeliveryMode::Drain);
+    });
+
+    EXPECT_EQ(1, fixture.server_world().current_palette_id);
+
+    const std::vector<og::sim::TypedReceivedMessage> messages =
+        fixture.client_transport(0).poll_typed();
+    const auto snapshot_it = std::find_if(
+        messages.begin(),
+        messages.end(),
+        [](const og::sim::TypedReceivedMessage& message) {
+            return (message.kind == og::sim::TypedReceivedMessageKind::Snapshot ||
+                    message.kind ==
+                        og::sim::TypedReceivedMessageKind::DeltaSnapshot) &&
+                message.snapshot != nullptr;
+        });
+    ASSERT_NE(messages.end(), snapshot_it);
+    EXPECT_EQ(1, snapshot_it->snapshot->current_palette_id);
+}
+
 TEST(NetTransportInProcess, validating_mode_roundtrips_all_typed_messages)
 {
     const auto pair = og::sim::InProcessTransport::create_linked_pair(
@@ -288,6 +329,7 @@ TEST(NetTransportInProcess, validating_mode_roundtrips_all_typed_messages)
 
     InputState input{};
     input.quit_requested = true;
+    input.timer_wait_request = 5;
     input.players[0].held[static_cast<int>(InputAction::MoveLeft)] = true;
     input.players[1].pressed[static_cast<int>(InputAction::Fire)] = true;
     pair.client->send_input(pair.peer_id,
@@ -331,6 +373,46 @@ TEST(NetTransportInProcess, validating_mode_roundtrips_all_typed_messages)
     EXPECT_EQ(19u, server_messages[0].tick);
     ASSERT_NE(nullptr, server_messages[0].input);
     expect_input_state_eq(input, *server_messages[0].input);
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_accepts_timer_wait_request_only_from_host_client)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    fixture.server_world().timer_wait = 6;
+
+    InputState host_input{};
+    host_input.timer_wait_request = 4;
+    InputState guest_input{};
+    guest_input.timer_wait_request = 18;
+
+    std::uint32_t tick = fixture.server_world().tick_count_ + 1;
+    fixture.client(1).send_input(guest_input, tick);
+    fixture.client(0).send_input(host_input, tick);
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    EXPECT_EQ(4, fixture.server_world().timer_wait);
+
+    InputState guest_only_input{};
+    guest_only_input.timer_wait_request = 12;
+    tick = fixture.server_world().tick_count_ + 1;
+    fixture.client(1).send_input(guest_only_input, tick);
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    EXPECT_EQ(4, fixture.server_world().timer_wait);
 }
 
 TEST(NetTransportInProcess, network_fixture_loads_ticks_and_keeps_client_in_sync)

@@ -1372,6 +1372,11 @@ Sint32 viewscreen::change_speed(Sint32 whichway)
 		if (active_screen()->world().timer_wait > 20)
 			active_screen()->world().timer_wait = 20;
 	}
+    if (og::runtime::current_session != nullptr)
+    {
+        og::runtime::current_session->pending_timer_wait_request_ =
+            active_screen()->world().timer_wait;
+    }
 	return static_cast<Sint32>((20-active_screen()->world().timer_wait)/2+1);
 }
 

@@ -263,6 +263,26 @@ bool contains_endgame_event(const og::sim::SimEventBatch& batch) noexcept
         });
 }
 
+std::uint8_t palette_id_from_event_value(std::uint32_t value) noexcept
+{
+    return value == 0u ? 0u : 1u;
+}
+
+void apply_authoritative_event_state(GameWorld& world,
+                                     const og::sim::SimEventBatch& batch,
+                                     og::sim::WorldSnapshot& snapshot)
+{
+    for (const auto& event : batch.events)
+    {
+        if (event.kind != og::sim::EventKind::SetPalette)
+            continue;
+
+        const std::uint8_t palette_id = palette_id_from_event_value(event.a);
+        world.current_palette_id = palette_id;
+        snapshot.current_palette_id = palette_id;
+    }
+}
+
 void move_endgame_to_back(std::vector<og::sim::Event>& events)
 {
     std::stable_sort(
@@ -670,10 +690,13 @@ void GameServer::connect_client(PeerId peer_id)
 {
     ConnectedClientState& client = clients_[peer_id];
     client.last_received_input_ms = now_ms();
+    if (!host_peer_id_.has_value())
+        host_peer_id_ = peer_id;
 }
 
 void GameServer::disconnect_client(PeerId peer_id)
 {
+    const bool was_host = host_peer_id_.has_value() && *host_peer_id_ == peer_id;
     const auto it = clients_.find(peer_id);
     if (it != clients_.end())
     {
@@ -697,6 +720,13 @@ void GameServer::disconnect_client(PeerId peer_id)
         }
 
         clients_.erase(it);
+    }
+
+    if (was_host)
+    {
+        host_peer_id_ = clients_.empty()
+            ? std::nullopt
+            : std::optional<PeerId>(clients_.begin()->first);
     }
 
     transport_.disconnect(peer_id);
@@ -870,6 +900,15 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         case TypedReceivedMessageKind::Input:
             if (!message.input || !client.has_player_binding)
                 break;
+            if (host_peer_id_.has_value() &&
+                message.peer_id == *host_peer_id_ &&
+                message.input->timer_wait_request != kNoTimerWaitRequest)
+            {
+                world_.timer_wait = static_cast<signed char>(std::clamp<int>(
+                    message.input->timer_wait_request,
+                    0,
+                    20));
+            }
             client.pending_inputs[message.tick] =
                 select_player_input(*message.input, client.player_index);
             client.last_received_input_tick = message.tick;
@@ -1415,6 +1454,7 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
     {
         drained_batch = drain_sim_events(events_);
         maybe_resolve_world_events(*drained_batch, snapshot);
+        apply_authoritative_event_state(world_, *drained_batch, snapshot);
         if (snapshot.game_ended && !contains_endgame_event(*drained_batch))
         {
             Event endgame_event;

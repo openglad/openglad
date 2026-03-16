@@ -30,6 +30,7 @@ void expect_player_input_eq(const PlayerInput& expected, const PlayerInput& actu
 void expect_input_state_eq(const InputState& expected, const InputState& actual)
 {
     ASSERT_EQ(expected.quit_requested, actual.quit_requested);
+    ASSERT_EQ(expected.timer_wait_request, actual.timer_wait_request);
     for (int player = 0; player < MAX_PLAYERS; ++player)
     {
         expect_player_input_eq(expected.players[player], actual.players[player]);
@@ -52,6 +53,7 @@ InputState make_directional_pattern()
     set_flags(input.players[3].pressed, {InputAction::MoveUpLeft, InputAction::Fire, InputAction::OpenPrefs, InputAction::Cheat});
 
     input.quit_requested = true;
+    input.timer_wait_request = 7;
     return input;
 }
 
@@ -66,6 +68,7 @@ InputState make_dense_pattern()
             input.players[player].pressed[key] = ((player * 3 + key) % 5) <= 1;
         }
     }
+    input.timer_wait_request = 20;
     return input;
 }
 
@@ -192,4 +195,20 @@ TEST(InputStateNet, deserialize_rejects_wrong_size_version_type_and_length)
     bad_length[2] = 0;
     bad_length[3] = 0;
     ASSERT_FALSE(og::sim::deserialize_input(bad_length).has_value());
+}
+
+TEST(InputStateNet, metadata_byte_packs_quit_flag_and_timer_wait_request)
+{
+    InputState input{};
+    input.quit_requested = true;
+    input.timer_wait_request = 7;
+
+    const auto bytes = og::sim::serialize_input(input);
+    ASSERT_EQ(0x11u, bytes[8]);
+
+    const std::optional<og::sim::InputStateMessage> decoded =
+        og::sim::deserialize_input_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_TRUE(decoded->input.quit_requested);
+    EXPECT_EQ(7, decoded->input.timer_wait_request);
 }

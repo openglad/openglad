@@ -636,6 +636,10 @@ void local_transport_shadow_send_input(SessionState& session,
     {
         InputState player_input{};
         player_input.quit_requested = input.quit_requested;
+        player_input.timer_wait_request =
+            index == shadow->display_client_index
+                ? input.timer_wait_request
+                : kNoTimerWaitRequest;
         if (!spectator && index < static_cast<std::size_t>(MAX_PLAYERS))
             player_input.players[index] = input.players[index];
         shadow->clients[index].game_client->send_input(player_input, tick);

@@ -37,4 +37,5 @@ void InputState::clear()
         }
     }
     quit_requested = false;
+    timer_wait_request = kNoTimerWaitRequest;
 }
