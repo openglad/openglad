@@ -7,11 +7,12 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-struct InputState;
 class GameWorld;
 class walker;
 
@@ -69,6 +70,28 @@ struct ConnectedClientState {
     walker* control = nullptr;
     bool has_player_binding = false;
     bool has_initial_snapshot = false;
+    bool initial_setup_sent = false;
+    bool client_ready = false;
+    bool force_keyframe = false;
+    std::unordered_map<std::uint32_t, PlayerInput> pending_inputs;
+    PlayerInput last_known_input = {};
+    std::uint32_t last_received_input_tick = 0;
+    std::uint64_t last_received_input_ms = 0;
+    std::uint64_t last_pause_request_ms = 0;
+};
+
+struct PendingExitPromptState {
+    std::int16_t destination_level = -1;
+    bool withdraw_prompt = false;
+    std::string prompt_text;
+    std::uint64_t opened_at_ms = 0;
+    std::size_t triggering_player_index = static_cast<std::size_t>(-1);
+};
+
+struct PendingPauseState {
+    std::size_t player_index = static_cast<std::size_t>(-1);
+    std::string player_name;
+    std::uint64_t opened_at_ms = 0;
 };
 
 class GameServer
@@ -97,14 +120,52 @@ public:
         EventDeliveryMode event_mode = EventDeliveryMode::Drain);
     void step();
 
+    void set_wall_clock_ms_source(std::function<std::uint64_t()> source);
+    [[nodiscard]] bool pending_exit_prompt() const noexcept
+    {
+        return pending_exit_prompt_state_.has_value();
+    }
+    [[nodiscard]] bool paused() const noexcept
+    {
+        return pending_pause_state_.has_value();
+    }
+    [[nodiscard]] std::size_t snapshot_hash_mismatch_count() const noexcept
+    {
+        return snapshot_hash_mismatch_count_;
+    }
+
     [[nodiscard]] const std::vector<TypedReceivedMessage>&
     last_polled_messages() const noexcept
     {
         return last_polled_messages_;
     }
 
+    std::function<bool(int level_id)> on_level_transition;
+    std::function<void()> on_save_sync;
+    std::function<bool(int destination)> on_exit_accepted;
+    std::function<bool(int destination)> on_withdraw_accepted;
+
 private:
     [[nodiscard]] bool apply_polled_inputs(std::uint32_t expected_tick);
+    void process_non_input_messages(std::uint32_t expected_tick);
+    void update_timeouts();
+    void clear_pending_exit_prompt();
+    void clear_pause_state();
+    void handle_exit_prompt_response(bool accepted);
+    void handle_pause_request(PeerId peer_id);
+    void handle_pause_response();
+    void remember_snapshot_hash(const WorldSnapshot& snapshot);
+    void maybe_send_control_change(std::size_t player_index, walker* control);
+    void maybe_resolve_world_events(SimEventBatch& batch, WorldSnapshot& snapshot);
+    void maybe_broadcast_special_state();
+    [[nodiscard]] std::uint64_t now_ms() const;
+    [[nodiscard]] InitialSetupMessage build_initial_setup(PeerId peer_id) const;
+    void send_initial_setup(PeerId peer_id);
+    [[nodiscard]] bool should_send_to_client(const ConnectedClientState& client) const;
+    [[nodiscard]] bool should_send_keyframe(const ConnectedClientState& client,
+                                            const WorldSnapshot& snapshot) const;
+    [[nodiscard]] PlayerInput select_effective_input(ConnectedClientState& client,
+                                                     std::uint32_t expected_tick);
 
     GameWorld& world_;
     SimEventLog& events_;
@@ -114,6 +175,12 @@ private:
     std::array<SimInputDebounce, MAX_PLAYERS> player_input_debounce_ = {};
     std::string special_names_[NUM_FAMILIES][NUM_SPECIALS] = {};
     std::vector<TypedReceivedMessage> last_polled_messages_;
+    std::optional<PendingExitPromptState> pending_exit_prompt_state_ =
+        std::nullopt;
+    std::optional<PendingPauseState> pending_pause_state_ = std::nullopt;
+    std::unordered_map<std::uint32_t, std::uint32_t> snapshot_hashes_by_tick_;
+    std::size_t snapshot_hash_mismatch_count_ = 0;
+    std::function<std::uint64_t()> wall_clock_ms_source_;
 };
 
 } // namespace og::sim

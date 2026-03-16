@@ -481,6 +481,14 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
         }
     }
 
+    if (!compare_value("snapshot_hash",
+                       expected.snapshot_hash,
+                       actual.snapshot_hash,
+                       failure))
+    {
+        return false;
+    }
+
     return true;
 }
 

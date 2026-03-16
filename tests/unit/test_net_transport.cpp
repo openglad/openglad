@@ -299,6 +299,7 @@ TEST(NetTransport, game_server_broadcast_current_state_uses_raw_fallback)
     MockTransport transport;
     og::sim::GameServer server(fixture.world(), fixture.events, transport);
     server.connect_client(7u);
+    server.bind_player(7u, 0u, 2);
 
     fixture.world().tick_count_ = 3u;
     fixture.world().my_team = 2;
@@ -320,27 +321,27 @@ TEST(NetTransport, game_server_broadcast_current_state_uses_raw_fallback)
     ASSERT_TRUE(og::sim::decode_transport_envelope(
         transport.sent_messages()[0].data,
         envelope));
-    EXPECT_EQ(og::sim::kSnapshotMessageType, envelope.message_type);
-    const og::sim::WorldSnapshot initial =
-        og::sim::deserialize_snapshot(transport.sent_messages()[0].data.data(),
-                                      transport.sent_messages()[0].data.size());
-    EXPECT_EQ(3u, initial.tick_count);
-    EXPECT_EQ(2, initial.my_team);
-    EXPECT_EQ(1, initial.current_palette_id);
+    EXPECT_EQ(og::sim::kInitialSetupMessageType, envelope.message_type);
+    const auto initial_setup =
+        og::sim::deserialize_initial_setup_message(
+            transport.sent_messages()[0].data);
+    ASSERT_TRUE(initial_setup.has_value());
+    EXPECT_EQ(2, initial_setup->my_team);
+    EXPECT_EQ(fixture.world().id, initial_setup->level_id);
 
     ASSERT_TRUE(og::sim::decode_transport_envelope(
         transport.sent_messages()[1].data,
         envelope));
-    EXPECT_EQ(og::sim::kDeltaSnapshotMessageType, envelope.message_type);
-    const og::sim::WorldSnapshot delta =
-        og::sim::deserialize_delta(transport.sent_messages()[1].data.data(),
-                                   transport.sent_messages()[1].data.size());
-    EXPECT_EQ(4u, delta.tick_count);
-    EXPECT_EQ(2, delta.current_palette_id);
-    EXPECT_TRUE(delta.pending_exit_prompt);
+    EXPECT_EQ(og::sim::kSnapshotMessageType, envelope.message_type);
+    const og::sim::WorldSnapshot initial =
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data.data(),
+                                      transport.sent_messages()[1].data.size());
+    EXPECT_EQ(3u, initial.tick_count);
+    EXPECT_EQ(2, initial.my_team);
+    EXPECT_EQ(1, initial.current_palette_id);
 }
 
-TEST(NetTransport, game_server_forward_event_batch_uses_raw_fallback)
+TEST(NetTransport, game_server_forward_event_batch_skips_unready_raw_clients)
 {
     TestGameWorld fixture;
     MockTransport transport;
@@ -366,35 +367,77 @@ TEST(NetTransport, game_server_forward_event_batch_uses_raw_fallback)
 
     server.forward_event_batch(batch);
 
-    ASSERT_EQ(2u, transport.sent_messages().size());
+    EXPECT_TRUE(transport.sent_messages().empty());
+}
 
-    og::sim::TransportEnvelope envelope;
-    ASSERT_TRUE(og::sim::decode_transport_envelope(
-        transport.sent_messages()[0].data,
-        envelope));
-    EXPECT_EQ(og::sim::kSimEventBatchMessageType, envelope.message_type);
-    const og::sim::SimEventBatch sim_batch =
-        og::sim::deserialize_sim_event_batch(
-            transport.sent_messages()[0].data.data(),
-            transport.sent_messages()[0].data.size());
-    EXPECT_EQ(9u, sim_batch.sequence);
-    ASSERT_EQ(1u, sim_batch.events.size());
-    EXPECT_EQ(og::sim::EventKind::Notification, sim_batch.events[0].kind);
-    EXPECT_EQ("sim", sim_batch.events[0].text);
+TEST(NetTransport,
+     initial_setup_control_change_and_snapshot_hash_messages_roundtrip)
+{
+    og::sim::InitialSetupMessage initial_setup;
+    initial_setup.level_id = 7;
+    initial_setup.level_title = "Test Level";
+    initial_setup.level_type = 3;
+    initial_setup.par_value = 11;
+    initial_setup.time_bonus_limit = 222;
+    initial_setup.difficulty = 140;
+    initial_setup.pixmaxx = 1024;
+    initial_setup.pixmaxy = 768;
+    initial_setup.my_team = 2;
+    initial_setup.allied_mode = 1;
+    initial_setup.current_scenario = 7;
+    initial_setup.completed_levels = {1, 4, 7};
+    initial_setup.controlled_entity_ids = {10u, 20u, 30u, 40u};
+    initial_setup.guys.push_back({
+        .guy_id = 99,
+        .name = "Ari",
+        .family = 2,
+        .strength = 12,
+        .dexterity = 13,
+        .constitution = 14,
+        .intelligence = 15,
+        .armor = 16,
+        .exp = 1234u,
+        .kills = 8,
+        .level_kills = 9,
+        .total_damage = 10,
+        .total_hits = 11,
+        .total_shots = 12,
+        .teamnum = 2,
+        .scen_damage = 3.5f,
+        .scen_kills = 4,
+        .scen_damage_taken = 5.5f,
+        .scen_min_hp = 6.5f,
+        .scen_shots = 7,
+        .scen_hits = 8,
+        .level = 9,
+    });
 
-    ASSERT_TRUE(og::sim::decode_transport_envelope(
-        transport.sent_messages()[1].data,
-        envelope));
-    EXPECT_EQ(og::sim::kGameFlowEventBatchMessageType, envelope.message_type);
-    const og::sim::SimEventBatch game_flow_batch =
-        og::sim::deserialize_game_flow_event_batch(
-            transport.sent_messages()[1].data.data(),
-            transport.sent_messages()[1].data.size());
-    EXPECT_EQ(9u, game_flow_batch.sequence);
-    ASSERT_EQ(1u, game_flow_batch.events.size());
-    EXPECT_EQ(og::sim::EventKind::EndGame, game_flow_batch.events[0].kind);
-    EXPECT_EQ(1u, game_flow_batch.events[0].a);
-    EXPECT_EQ(2u, game_flow_batch.events[0].b);
+    const std::vector<std::uint8_t> initial_setup_bytes =
+        og::sim::serialize_initial_setup_message(initial_setup);
+    const auto decoded_initial_setup =
+        og::sim::deserialize_initial_setup_message(initial_setup_bytes);
+    ASSERT_TRUE(decoded_initial_setup.has_value());
+    EXPECT_EQ(initial_setup, *decoded_initial_setup);
+
+    og::sim::ControlChangeMessage control_change;
+    control_change.player_index = 2;
+    control_change.entity_id = 444u;
+    const std::vector<std::uint8_t> control_change_bytes =
+        og::sim::serialize_control_change_message(control_change);
+    const auto decoded_control_change =
+        og::sim::deserialize_control_change_message(control_change_bytes);
+    ASSERT_TRUE(decoded_control_change.has_value());
+    EXPECT_EQ(control_change, *decoded_control_change);
+
+    og::sim::SnapshotHashCheckMessage hash_check;
+    hash_check.tick = 55u;
+    hash_check.snapshot_hash = 0xaabbccddU;
+    const std::vector<std::uint8_t> hash_check_bytes =
+        og::sim::serialize_snapshot_hash_check_message(hash_check);
+    const auto decoded_hash_check =
+        og::sim::deserialize_snapshot_hash_check_message(hash_check_bytes);
+    ASSERT_TRUE(decoded_hash_check.has_value());
+    EXPECT_EQ(hash_check, *decoded_hash_check);
 }
 
 TEST(NetTransport, game_client_polls_raw_messages_when_typed_path_is_unavailable)

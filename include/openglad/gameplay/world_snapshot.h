@@ -203,6 +203,7 @@ struct WorldSnapshot {
     bool pending_exit_prompt = false;
     bool paused = false;
     std::uint8_t pause_player_index = kNoPausePlayerIndex;
+    std::uint32_t snapshot_hash = 0;
 
     std::uint8_t grid_width = 0;
     std::uint8_t grid_height = 0;
@@ -478,6 +479,7 @@ WorldSnapshot capture_keyframe_snapshot(GameWorld& world);
 WorldSnapshot peek_snapshot(GameWorld& world);
 WorldSnapshot peek_keyframe_snapshot(GameWorld& world);
 void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot);
+std::uint32_t compute_snapshot_hash(const WorldSnapshot& snapshot);
 std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot);
 WorldSnapshot deserialize_snapshot(const std::uint8_t* data, std::size_t size);
 std::vector<std::uint8_t> serialize_delta(const WorldSnapshot& delta);

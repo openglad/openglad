@@ -11,6 +11,7 @@
 #include "../test_game_world_fixture.h"
 #include "../test_network_fixture.h"
 
+#include <algorithm>
 #include <array>
 
 namespace {
@@ -218,6 +219,8 @@ TEST(NetTransportInProcess,
                                *server_transport);
     server.connect_client(client_one->local_peer_id());
     server.connect_client(client_two->local_peer_id());
+    server.bind_player(client_one->local_peer_id(), 0u, 2);
+    server.bind_player(client_two->local_peer_id(), 1u, 2);
 
     fixture.world().tick_count_ = 3u;
     fixture.world().my_team = 2;
@@ -244,29 +247,26 @@ TEST(NetTransportInProcess,
     EXPECT_EQ(client_two->local_peer_id(), second_client_messages[0].peer_id);
     EXPECT_EQ(client_two->local_peer_id(), second_client_messages[1].peer_id);
 
-    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Snapshot,
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::InitialSetup,
               first_client_messages[0].kind);
-    EXPECT_EQ(og::sim::TypedReceivedMessageKind::DeltaSnapshot,
-              first_client_messages[1].kind);
     EXPECT_EQ(og::sim::TypedReceivedMessageKind::Snapshot,
+              first_client_messages[1].kind);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::InitialSetup,
               second_client_messages[0].kind);
-    EXPECT_EQ(og::sim::TypedReceivedMessageKind::DeltaSnapshot,
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Snapshot,
               second_client_messages[1].kind);
 
-    ASSERT_NE(nullptr, first_client_messages[0].snapshot);
     ASSERT_NE(nullptr, first_client_messages[1].snapshot);
-    ASSERT_NE(nullptr, second_client_messages[0].snapshot);
     ASSERT_NE(nullptr, second_client_messages[1].snapshot);
+    ASSERT_NE(nullptr, first_client_messages[0].initial_setup);
+    ASSERT_NE(nullptr, second_client_messages[0].initial_setup);
 
-    EXPECT_EQ(3u, first_client_messages[0].snapshot->tick_count);
-    EXPECT_EQ(2, first_client_messages[0].snapshot->my_team);
-    EXPECT_EQ(1, first_client_messages[0].snapshot->current_palette_id);
-    EXPECT_EQ(4u, first_client_messages[1].snapshot->tick_count);
-    EXPECT_EQ(2, first_client_messages[1].snapshot->current_palette_id);
-    EXPECT_TRUE(first_client_messages[1].snapshot->pending_exit_prompt);
+    EXPECT_EQ(2, first_client_messages[0].initial_setup->my_team);
+    EXPECT_EQ(2, second_client_messages[0].initial_setup->my_team);
+    EXPECT_EQ(3u, first_client_messages[1].snapshot->tick_count);
+    EXPECT_EQ(2, first_client_messages[1].snapshot->my_team);
+    EXPECT_EQ(1, first_client_messages[1].snapshot->current_palette_id);
 
-    expect_snapshot_eq(*first_client_messages[0].snapshot,
-                       *second_client_messages[0].snapshot);
     expect_snapshot_eq(*first_client_messages[1].snapshot,
                        *second_client_messages[1].snapshot);
 }
@@ -365,14 +365,145 @@ TEST(NetTransportInProcess,
 
     fixture.run();
 
-    ASSERT_EQ(1u, fixture.server_inbox().size());
-    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Input,
-              fixture.server_inbox()[0].kind);
-    ASSERT_NE(nullptr, fixture.server_inbox()[0].input);
-    EXPECT_TRUE(fixture.server_inbox()[0].input->players[0].held[static_cast<int>(
+    const auto input_it = std::find_if(
+        fixture.server_inbox().begin(),
+        fixture.server_inbox().end(),
+        [](const og::sim::TypedReceivedMessage& message) {
+            return message.kind == og::sim::TypedReceivedMessageKind::Input;
+        });
+    ASSERT_NE(fixture.server_inbox().end(), input_it);
+    ASSERT_NE(nullptr, input_it->input);
+    EXPECT_TRUE(input_it->input->players[0].held[static_cast<int>(
         InputAction::MoveRight)]);
     EXPECT_NE(nullptr, fixture.server_control(0));
     EXPECT_GT(fixture.server_world().control_hp, 0.0f);
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_requests_keyframe_after_delta_gap_and_recovers)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    ASSERT_FALSE(fixture.client_transport(0).poll_typed().empty())
+        << "dropping the first post-ready keyframe should create the gap";
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    EXPECT_TRUE(fixture.client(0).waiting_for_keyframe());
+    EXPECT_EQ(1u, fixture.client(0).keyframe_request_count());
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    EXPECT_FALSE(fixture.client(0).waiting_for_keyframe());
+    ASSERT_TRUE(fixture.client(0).baseline().has_value());
+    EXPECT_EQ(fixture.server_world().tick_count_,
+              fixture.client(0).baseline()->tick_count);
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess, network_fixture_freezes_on_exit_prompt_and_resumes)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    fixture.with_server_context([&] {
+        fixture.server_events().push_with_text(
+            og::sim::EventKind::RequestExitConfirmation,
+            "Exit now?",
+            5u,
+            0u);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    ASSERT_TRUE(fixture.server().pending_exit_prompt());
+    ASSERT_TRUE(fixture.client(0).last_exit_prompt().has_value());
+    EXPECT_EQ(5, fixture.client(0).last_exit_prompt()->destination_level);
+    EXPECT_EQ("Exit now?", fixture.client(0).last_exit_prompt()->prompt_text);
+
+    const std::uint32_t frozen_tick = fixture.server_world().tick_count_;
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    EXPECT_EQ(frozen_tick, fixture.server_world().tick_count_);
+
+    fixture.client(0).send_exit_prompt_response(false);
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    EXPECT_FALSE(fixture.server().pending_exit_prompt());
+    EXPECT_GT(fixture.server_world().tick_count_, frozen_tick);
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_detects_snapshot_hash_mismatch_and_resends_keyframe)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    walker* const control = fixture.server_control(0);
+    ASSERT_NE(nullptr, control);
+
+    fixture.with_client_context(0, [&] {
+        walker* const mirror =
+            fixture.client_world(0).find_by_id(control->entity_id());
+        ASSERT_NE(nullptr, mirror);
+        mirror->set_xpos(static_cast<short>(mirror->xpos() + GRID_SIZE));
+        fixture.client(0).send_snapshot_hash_check();
+    });
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    EXPECT_GE(fixture.server().snapshot_hash_mismatch_count(), 1u);
+    const bool saw_keyframe = std::any_of(
+        fixture.client(0).last_polled_messages().begin(),
+        fixture.client(0).last_polled_messages().end(),
+        [](const og::sim::TypedReceivedMessage& message) {
+            return message.kind == og::sim::TypedReceivedMessageKind::Snapshot;
+        });
+    EXPECT_TRUE(saw_keyframe);
     fixture.expect_clients_match_server();
 }
 

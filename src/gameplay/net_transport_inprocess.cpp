@@ -339,6 +339,31 @@ std::shared_ptr<og::sim::SimEventBatch> validate_event_batch_roundtrip(
     return std::make_shared<og::sim::SimEventBatch>(std::move(decoded));
 }
 
+template <typename Message, typename SerializeFn, typename DeserializeFn>
+std::shared_ptr<Message> validate_message_roundtrip(
+    const std::shared_ptr<Message>& message,
+    SerializeFn&& serialize_fn,
+    DeserializeFn&& deserialize_fn,
+    std::string_view label)
+{
+    const std::vector<std::uint8_t> bytes = serialize_fn(*message);
+    const std::optional<Message> decoded =
+        deserialize_fn(std::span<const std::uint8_t>(bytes.data(), bytes.size()));
+    if (!decoded.has_value())
+    {
+        throw std::runtime_error(std::format(
+            "{} round-trip failed to deserialize",
+            label));
+    }
+    if (*decoded != *message)
+    {
+        throw std::runtime_error(std::format(
+            "{} round-trip mismatch",
+            label));
+    }
+    return std::make_shared<Message>(*decoded);
+}
+
 std::vector<std::uint8_t> copy_raw_bytes(const std::uint8_t* data, std::size_t len)
 {
     if (data == nullptr || len == 0)
@@ -505,6 +530,195 @@ void InProcessTransport::send_game_flow_event_batch(
         ? validate_event_batch_roundtrip(batch, true)
         : std::move(batch);
     peer->enqueue_typed(std::move(message));
+}
+
+void InProcessTransport::send_initial_setup(
+    PeerId peer_id,
+    std::shared_ptr<InitialSetupMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::InitialSetup;
+    typed_message.initial_setup = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_initial_setup_message,
+              deserialize_initial_setup_message,
+              "initial setup")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
+void InProcessTransport::send_client_ready(
+    PeerId peer_id,
+    std::shared_ptr<ClientReadyMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::ClientReady;
+    typed_message.client_ready = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_client_ready_message,
+              deserialize_client_ready_message,
+              "client ready")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
+void InProcessTransport::send_keyframe_request(
+    PeerId peer_id,
+    std::shared_ptr<KeyframeRequestMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::KeyframeRequest;
+    typed_message.keyframe_request = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_keyframe_request_message,
+              deserialize_keyframe_request_message,
+              "keyframe request")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
+void InProcessTransport::send_exit_prompt_broadcast(
+    PeerId peer_id,
+    std::shared_ptr<ExitPromptBroadcastMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::ExitPromptBroadcast;
+    typed_message.exit_prompt_broadcast = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_exit_prompt_broadcast_message,
+              deserialize_exit_prompt_broadcast_message,
+              "exit prompt broadcast")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
+void InProcessTransport::send_exit_prompt_response(
+    PeerId peer_id,
+    std::shared_ptr<ExitPromptResponseMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::ExitPromptResponse;
+    typed_message.exit_prompt_response = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_exit_prompt_response_message,
+              deserialize_exit_prompt_response_message,
+              "exit prompt response")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
+void InProcessTransport::send_pause_broadcast(
+    PeerId peer_id,
+    std::shared_ptr<PauseBroadcastMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::PauseBroadcast;
+    typed_message.pause_broadcast = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_pause_broadcast_message,
+              deserialize_pause_broadcast_message,
+              "pause broadcast")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
+void InProcessTransport::send_pause_response(
+    PeerId peer_id,
+    std::shared_ptr<PauseResponseMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::PauseResponse;
+    typed_message.pause_response = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_pause_response_message,
+              deserialize_pause_response_message,
+              "pause response")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
+void InProcessTransport::send_control_change(
+    PeerId peer_id,
+    std::shared_ptr<ControlChangeMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::ControlChange;
+    typed_message.control_change = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_control_change_message,
+              deserialize_control_change_message,
+              "control change")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
+void InProcessTransport::send_snapshot_hash_check(
+    PeerId peer_id,
+    std::shared_ptr<SnapshotHashCheckMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::SnapshotHashCheck;
+    typed_message.snapshot_hash_check = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_snapshot_hash_check_message,
+              deserialize_snapshot_hash_check_message,
+              "snapshot hash check")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
 }
 
 std::vector<ReceivedMessage> InProcessTransport::poll()

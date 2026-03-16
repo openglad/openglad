@@ -607,6 +607,7 @@ void serialize_world_state(std::vector<std::uint8_t>& buffer,
     append_bool(buffer, snapshot.pending_exit_prompt);
     append_bool(buffer, snapshot.paused);
     append_u8(buffer, snapshot.pause_player_index);
+    append_u32(buffer, snapshot.snapshot_hash);
 }
 
 void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
@@ -636,6 +637,7 @@ void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapsho
     snapshot.pending_exit_prompt = reader.read_bool("world.pending_exit_prompt");
     snapshot.paused = reader.read_bool("world.paused");
     snapshot.pause_player_index = reader.read_u8("world.pause_player_index");
+    snapshot.snapshot_hash = reader.read_u32("world.snapshot_hash");
 }
 
 void serialize_grid_state(std::vector<std::uint8_t>& buffer,
@@ -995,6 +997,42 @@ std::vector<std::uint8_t> serialize_snapshot_payload(const og::sim::WorldSnapsho
         append_u32(payload, entity_id);
 
     return payload;
+}
+
+std::vector<std::uint8_t> serialize_snapshot_payload_for_hash(
+    const og::sim::WorldSnapshot& snapshot,
+    const GameWorld* world = nullptr)
+{
+    og::sim::WorldSnapshot normalized = snapshot;
+    normalized.snapshot_hash = 0;
+    normalized.removed_entity_ids.clear();
+    if (!has_materialized_grid(normalized) && world != nullptr && world->grid.valid())
+    {
+        normalized.grid_width = world->grid.w;
+        normalized.grid_height = world->grid.h;
+        const std::size_t grid_size =
+            static_cast<std::size_t>(world->grid.w) * world->grid.h;
+        normalized.full_grid_data.assign(world->grid.data.get(),
+                                         world->grid.data.get() + grid_size);
+    }
+    normalize_materialized_grid(normalized);
+    return serialize_snapshot_payload(normalized);
+}
+
+std::uint32_t compute_snapshot_hash_impl(const og::sim::WorldSnapshot& snapshot,
+                                         const GameWorld* world = nullptr)
+{
+    const std::vector<std::uint8_t> payload =
+        serialize_snapshot_payload_for_hash(snapshot, world);
+    if (payload.size() > std::numeric_limits<uInt>::max())
+    {
+        throw std::runtime_error("snapshot hash payload exceeds zlib input size");
+    }
+
+    return static_cast<std::uint32_t>(
+        crc32(0UL,
+              reinterpret_cast<const Bytef*>(payload.data()),
+              static_cast<uInt>(payload.size())));
 }
 
 og::sim::WorldSnapshot deserialize_snapshot_payload(const std::vector<std::uint8_t>& payload)
@@ -1973,6 +2011,7 @@ og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
                        consume_transients ? world.take_grid_dirty_tiles()
                                           : copy_grid_dirty_tiles(world),
                        keyframe);
+    snapshot.snapshot_hash = compute_snapshot_hash_impl(snapshot, &world);
 
     return snapshot;
 }
@@ -2430,6 +2469,7 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.pending_exit_prompt = delta.pending_exit_prompt;
     baseline.paused = delta.paused;
     baseline.pause_player_index = delta.pause_player_index;
+    baseline.snapshot_hash = delta.snapshot_hash;
 
     apply_delta_grid(baseline, delta);
     baseline.guy_snapshots = delta.guy_snapshots;
@@ -2451,6 +2491,11 @@ SimEventBatch drain_sim_events(SimEventLog& log)
     batch.sequence = log.current_tick_;
     batch.events = log.drain();
     return batch;
+}
+
+std::uint32_t compute_snapshot_hash(const WorldSnapshot& snapshot)
+{
+    return compute_snapshot_hash_impl(snapshot);
 }
 
 } // namespace og::sim

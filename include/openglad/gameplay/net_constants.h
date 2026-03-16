@@ -10,6 +10,12 @@ inline constexpr float TIMER_WAIT_TO_MS = 13.6f;
 inline constexpr signed char DEFAULT_TIMER_WAIT = 6;
 inline constexpr signed char MIN_TIMER_WAIT = 1;
 inline constexpr signed char MAX_TIMER_WAIT = 20;
+inline constexpr int KEYFRAME_INTERVAL_TICKS = DEFAULT_SIM_TICKS_PER_SEC * 5;
+inline constexpr int MAX_LATE_PRESS_TICKS = 2;
+inline constexpr std::uint64_t DISCONNECT_TIMEOUT_MS = 10'000;
+inline constexpr std::uint64_t EXIT_PROMPT_TIMEOUT_MS = 15'000;
+inline constexpr std::uint64_t PAUSE_TIMEOUT_MS = 60'000;
+inline constexpr std::uint64_t PAUSE_RATE_LIMIT_MS = 5'000;
 inline constexpr std::size_t MAX_GRID_DIRTY_TILES = 64;
 
 } // namespace og::sim

@@ -1,15 +1,16 @@
 #pragma once
 
+#include <openglad/gameplay/input_state.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <utility>
 #include <vector>
-
-struct InputState;
 
 namespace og::sim {
 
@@ -36,6 +37,7 @@ enum class NetMessageType : std::uint8_t {
     PauseBroadcast = 15,
     PauseResponse = 16,
     ControlChange = 17,
+    SnapshotHashCheck = 18,
 };
 
 constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexcept
@@ -87,6 +89,8 @@ inline constexpr std::uint8_t kPauseResponseMessageType =
     net_message_type_value(NetMessageType::PauseResponse);
 inline constexpr std::uint8_t kControlChangeMessageType =
     net_message_type_value(NetMessageType::ControlChange);
+inline constexpr std::uint8_t kSnapshotHashCheckMessageType =
+    net_message_type_value(NetMessageType::SnapshotHashCheck);
 
 // Hello payload wire format:
 // - byte 0: current protocol version
@@ -102,6 +106,105 @@ struct HelloMessage {
     std::uint32_t campaign_content_hash = 0;
 };
 
+struct InitialSetupGuyData {
+    std::int32_t guy_id = 0;
+    std::string name;
+    std::int8_t family = 0;
+    std::int16_t strength = 0;
+    std::int16_t dexterity = 0;
+    std::int16_t constitution = 0;
+    std::int16_t intelligence = 0;
+    std::int16_t armor = 0;
+    std::uint32_t exp = 0;
+    std::int16_t kills = 0;
+    std::int32_t level_kills = 0;
+    std::int32_t total_damage = 0;
+    std::int32_t total_hits = 0;
+    std::int32_t total_shots = 0;
+    std::int16_t teamnum = 0;
+    float scen_damage = 0.0f;
+    std::int16_t scen_kills = 0;
+    float scen_damage_taken = 0.0f;
+    float scen_min_hp = 0.0f;
+    std::int16_t scen_shots = 0;
+    std::int16_t scen_hits = 0;
+    std::int16_t level = 0;
+
+    bool operator==(const InitialSetupGuyData&) const = default;
+};
+
+struct InitialSetupMessage {
+    std::int32_t level_id = 0;
+    std::string level_title;
+    std::int8_t level_type = 0;
+    std::int16_t par_value = 0;
+    std::int16_t time_bonus_limit = 0;
+    std::int16_t difficulty = 0;
+    std::int32_t pixmaxx = 0;
+    std::int32_t pixmaxy = 0;
+    std::int16_t my_team = 0;
+    std::int16_t allied_mode = 0;
+    std::int16_t current_scenario = 0;
+    std::vector<InitialSetupGuyData> guys;
+    std::vector<std::int32_t> completed_levels;
+    std::array<std::uint32_t, MAX_PLAYERS> controlled_entity_ids = {};
+
+    bool operator==(const InitialSetupMessage&) const = default;
+};
+
+struct ClientReadyMessage {
+    std::uint32_t last_applied_tick = 0;
+
+    bool operator==(const ClientReadyMessage&) const = default;
+};
+
+struct KeyframeRequestMessage {
+    std::uint32_t last_seen_tick = 0;
+
+    bool operator==(const KeyframeRequestMessage&) const = default;
+};
+
+struct ExitPromptBroadcastMessage {
+    std::int16_t destination_level = -1;
+    bool withdraw_prompt = false;
+    std::string prompt_text;
+
+    bool operator==(const ExitPromptBroadcastMessage&) const = default;
+};
+
+struct ExitPromptResponseMessage {
+    bool accepted = false;
+
+    bool operator==(const ExitPromptResponseMessage&) const = default;
+};
+
+struct PauseBroadcastMessage {
+    std::uint8_t player_index = 0xff;
+    std::string player_name;
+
+    bool operator==(const PauseBroadcastMessage&) const = default;
+};
+
+struct PauseResponseMessage {
+    bool resume = true;
+
+    bool operator==(const PauseResponseMessage&) const = default;
+};
+
+struct ControlChangeMessage {
+    std::uint8_t player_index = 0xff;
+    std::uint32_t entity_id = 0;
+
+    bool operator==(const ControlChangeMessage&) const = default;
+};
+
+struct SnapshotHashCheckMessage {
+    std::uint32_t tick = 0;
+    std::uint32_t snapshot_hash = 0;
+
+    bool operator==(const SnapshotHashCheckMessage&) const = default;
+};
+
 struct ReceivedMessage {
     PeerId peer_id = 0;
     std::vector<std::uint8_t> data;
@@ -113,6 +216,15 @@ enum class TypedReceivedMessageKind : std::uint8_t {
     Input,
     SimEventBatch,
     GameFlowEventBatch,
+    InitialSetup,
+    ClientReady,
+    KeyframeRequest,
+    ExitPromptBroadcast,
+    ExitPromptResponse,
+    PauseBroadcast,
+    PauseResponse,
+    ControlChange,
+    SnapshotHashCheck,
 };
 
 struct TypedReceivedMessage {
@@ -121,8 +233,54 @@ struct TypedReceivedMessage {
     std::shared_ptr<WorldSnapshot> snapshot;
     std::shared_ptr<InputState> input;
     std::shared_ptr<SimEventBatch> event_batch;
+    std::shared_ptr<InitialSetupMessage> initial_setup;
+    std::shared_ptr<ClientReadyMessage> client_ready;
+    std::shared_ptr<KeyframeRequestMessage> keyframe_request;
+    std::shared_ptr<ExitPromptBroadcastMessage> exit_prompt_broadcast;
+    std::shared_ptr<ExitPromptResponseMessage> exit_prompt_response;
+    std::shared_ptr<PauseBroadcastMessage> pause_broadcast;
+    std::shared_ptr<PauseResponseMessage> pause_response;
+    std::shared_ptr<ControlChangeMessage> control_change;
+    std::shared_ptr<SnapshotHashCheckMessage> snapshot_hash_check;
     std::uint32_t tick = 0;
 };
+
+std::vector<std::uint8_t> serialize_initial_setup_message(
+    const InitialSetupMessage& message);
+std::optional<InitialSetupMessage> deserialize_initial_setup_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_client_ready_message(
+    const ClientReadyMessage& message);
+std::optional<ClientReadyMessage> deserialize_client_ready_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_keyframe_request_message(
+    const KeyframeRequestMessage& message);
+std::optional<KeyframeRequestMessage> deserialize_keyframe_request_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_exit_prompt_broadcast_message(
+    const ExitPromptBroadcastMessage& message);
+std::optional<ExitPromptBroadcastMessage>
+deserialize_exit_prompt_broadcast_message(std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_exit_prompt_response_message(
+    const ExitPromptResponseMessage& message);
+std::optional<ExitPromptResponseMessage>
+deserialize_exit_prompt_response_message(std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_pause_broadcast_message(
+    const PauseBroadcastMessage& message);
+std::optional<PauseBroadcastMessage> deserialize_pause_broadcast_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_pause_response_message(
+    const PauseResponseMessage& message);
+std::optional<PauseResponseMessage> deserialize_pause_response_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_control_change_message(
+    const ControlChangeMessage& message);
+std::optional<ControlChangeMessage> deserialize_control_change_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_snapshot_hash_check_message(
+    const SnapshotHashCheckMessage& message);
+std::optional<SnapshotHashCheckMessage> deserialize_snapshot_hash_check_message(
+    std::span<const std::uint8_t> bytes);
 
 class ITransport {
 public:
@@ -153,6 +311,30 @@ public:
                                       std::shared_ptr<SimEventBatch> batch);
     virtual void send_game_flow_event_batch(PeerId peer_id,
                                             std::shared_ptr<SimEventBatch> batch);
+    virtual void send_initial_setup(PeerId peer_id,
+                                    std::shared_ptr<InitialSetupMessage> message);
+    virtual void send_client_ready(PeerId peer_id,
+                                   std::shared_ptr<ClientReadyMessage> message);
+    virtual void send_keyframe_request(
+        PeerId peer_id,
+        std::shared_ptr<KeyframeRequestMessage> message);
+    virtual void send_exit_prompt_broadcast(
+        PeerId peer_id,
+        std::shared_ptr<ExitPromptBroadcastMessage> message);
+    virtual void send_exit_prompt_response(
+        PeerId peer_id,
+        std::shared_ptr<ExitPromptResponseMessage> message);
+    virtual void send_pause_broadcast(
+        PeerId peer_id,
+        std::shared_ptr<PauseBroadcastMessage> message);
+    virtual void send_pause_response(
+        PeerId peer_id,
+        std::shared_ptr<PauseResponseMessage> message);
+    virtual void send_control_change(PeerId peer_id,
+                                     std::shared_ptr<ControlChangeMessage> message);
+    virtual void send_snapshot_hash_check(
+        PeerId peer_id,
+        std::shared_ptr<SnapshotHashCheckMessage> message);
 
     [[nodiscard]] virtual std::vector<ReceivedMessage> poll() = 0;
     [[nodiscard]] virtual std::vector<TypedReceivedMessage> poll_typed();

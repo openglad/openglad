@@ -59,6 +59,31 @@ public:
                               std::shared_ptr<SimEventBatch> batch) override;
     void send_game_flow_event_batch(PeerId peer_id,
                                     std::shared_ptr<SimEventBatch> batch) override;
+    void send_initial_setup(PeerId peer_id,
+                            std::shared_ptr<InitialSetupMessage> message) override;
+    void send_client_ready(PeerId peer_id,
+                           std::shared_ptr<ClientReadyMessage> message) override;
+    void send_keyframe_request(
+        PeerId peer_id,
+        std::shared_ptr<KeyframeRequestMessage> message) override;
+    void send_exit_prompt_broadcast(
+        PeerId peer_id,
+        std::shared_ptr<ExitPromptBroadcastMessage> message) override;
+    void send_exit_prompt_response(
+        PeerId peer_id,
+        std::shared_ptr<ExitPromptResponseMessage> message) override;
+    void send_pause_broadcast(
+        PeerId peer_id,
+        std::shared_ptr<PauseBroadcastMessage> message) override;
+    void send_pause_response(
+        PeerId peer_id,
+        std::shared_ptr<PauseResponseMessage> message) override;
+    void send_control_change(
+        PeerId peer_id,
+        std::shared_ptr<ControlChangeMessage> message) override;
+    void send_snapshot_hash_check(
+        PeerId peer_id,
+        std::shared_ptr<SnapshotHashCheckMessage> message) override;
 
     [[nodiscard]] std::vector<ReceivedMessage> poll() override;
     [[nodiscard]] std::vector<TypedReceivedMessage> poll_typed() override;

@@ -111,7 +111,7 @@ public:
         ensure_level_loaded();
         ASSERT_FALSE(initial_sync_complete_);
 
-        server_world_.with_context([&] {
+        with_server_context([&] {
             server_->send_initial_snapshots(SnapshotCaptureMode::Peek);
         });
         for (auto& client : clients_)
@@ -133,7 +133,7 @@ public:
             const std::uint32_t next_tick =
                 server_world_.world().tick_count_ + 1;
             send_client_inputs(next_tick);
-            server_world_.with_context([&] {
+            with_server_context([&] {
                 server_->step();
             });
 
@@ -180,6 +180,7 @@ public:
     }
 
     GameWorld& server_world() { return server_world_.world(); }
+    SimEventLog& server_events() { return server_world_.events; }
     GameWorld& client_world(std::size_t client_index)
     {
         return clients_.at(client_index)->world.world();
@@ -194,10 +195,36 @@ public:
     {
         return server_ ? server_->player_control(player_index) : nullptr;
     }
+    GameServer& server() { return *server_; }
+    GameClient& client(std::size_t client_index)
+    {
+        return *clients_.at(client_index)->game_client;
+    }
 
     const std::vector<TypedReceivedMessage>& server_inbox() const noexcept
     {
         return server_->last_polled_messages();
+    }
+
+    template <typename Fn>
+    auto with_server_context(Fn&& fn)
+        -> std::invoke_result_t<Fn&>
+    {
+        return server_world_.with_context(std::forward<Fn>(fn));
+    }
+
+    template <typename Fn>
+    auto with_client_context(std::size_t client_index, Fn&& fn)
+        -> std::invoke_result_t<Fn&>
+    {
+        return clients_.at(client_index)->world.with_context(std::forward<Fn>(fn));
+    }
+
+    void poll_client_messages(std::size_t client_index)
+    {
+        with_client_context(client_index, [&] {
+            clients_.at(client_index)->game_client->poll_messages();
+        });
     }
 
 private:

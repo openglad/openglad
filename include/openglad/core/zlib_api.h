@@ -45,6 +45,7 @@ int compress2(Bytef* dest,
               const Bytef* source,
               uLong source_len,
               int level);
+uLong crc32(uLong crc, const Bytef* buf, uInt len);
 int inflateInit_(z_streamp strm, const char* version, int stream_size);
 int inflate(z_streamp strm, int flush);
 int inflateEnd(z_streamp strm);
