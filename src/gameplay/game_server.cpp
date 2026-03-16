@@ -253,6 +253,16 @@ bool is_game_flow_event(og::sim::EventKind kind) noexcept
     return false;
 }
 
+bool contains_endgame_event(const og::sim::SimEventBatch& batch) noexcept
+{
+    return std::any_of(
+        batch.events.begin(),
+        batch.events.end(),
+        [](const og::sim::Event& event) {
+            return event.kind == og::sim::EventKind::EndGame;
+        });
+}
+
 void move_endgame_to_back(std::vector<og::sim::Event>& events)
 {
     std::stable_sort(
@@ -1405,6 +1415,17 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
     {
         drained_batch = drain_sim_events(events_);
         maybe_resolve_world_events(*drained_batch, snapshot);
+        if (snapshot.game_ended && !contains_endgame_event(*drained_batch))
+        {
+            Event endgame_event;
+            endgame_event.kind = EventKind::EndGame;
+            endgame_event.a = static_cast<std::uint32_t>(
+                static_cast<std::int32_t>(snapshot.ending));
+            endgame_event.b = static_cast<std::uint32_t>(
+                static_cast<std::int32_t>(snapshot.next_level));
+            drained_batch->events.push_back(std::move(endgame_event));
+            move_endgame_to_back(drained_batch->events);
+        }
     }
 
     std::optional<WorldSnapshot> keyframe = std::nullopt;

@@ -58,6 +58,8 @@ void reset_integration_ui_state()
         return;
 
     og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
+    if (current_game != nullptr && current_game->sim_events != nullptr)
+        current_game->sim_events->clear();
 
     if (og::runtime::current_session->input_hw_ != nullptr) {
         og::runtime::current_session->input_hw_->mouse = {};
@@ -87,15 +89,57 @@ void reset_integration_ui_state()
 
     clear_allbuttons();
     og::runtime::current_session->localbuttons_ = nullptr;
+    og::runtime::current_session->raw_key_ = 0;
+    og::runtime::current_session->raw_text_input_.clear();
+    og::runtime::current_session->text_input_event_ = 0;
+    og::runtime::current_session->scroll_amount_ = 0;
+    og::runtime::current_session->input_continue_ = false;
     og::runtime::current_session->current_guy_.reset();
     og::runtime::current_session->current_type_ = 0;
     og::runtime::current_session->current_team_num_ = 0;
     og::runtime::current_session->editguy_ = 0;
+    og::runtime::current_session->current_difficulty_ = 1;
     og::runtime::current_session->message_.clear();
+    og::runtime::current_session->debug_draw_paths_ = false;
+    og::runtime::current_session->debug_draw_obmap_ = false;
     og::runtime::current_session->frame_state_ = {};
+    og::runtime::current_session->ctx_.input = {};
+    og::runtime::current_session->replay_recorder_.reset();
+    og::runtime::current_session->replay_output_path_.clear();
+    og::runtime::current_session->gameplay_active_ = false;
+    og::runtime::current_session->help_end_of_file_ = 0;
 
     if (og::runtime::current_session->myscreen_ != nullptr) {
+        // Preserve the world grid across the inter-test reset; PR #28 added
+        // tests that rely on a previously-created grid persisting between
+        // sibling tests in the same binary.
+        PixieData saved_grid = std::move(
+            og::runtime::current_session->myscreen_->world().grid);
+        const std::int32_t saved_pixmaxx =
+            og::runtime::current_session->myscreen_->world().pixmaxx;
+        const std::int32_t saved_pixmaxy =
+            og::runtime::current_session->myscreen_->world().pixmaxy;
+        og::runtime::current_session->myscreen_->level_runtime_data().clear();
+        og::runtime::current_session->myscreen_->world().grid =
+            std::move(saved_grid);
+        og::runtime::current_session->myscreen_->world().pixmaxx = saved_pixmaxx;
+        og::runtime::current_session->myscreen_->world().pixmaxy = saved_pixmaxy;
+        og::runtime::current_session->myscreen_->world().reset_level_progress();
         og::runtime::current_session->myscreen_->world().delete_objects();
+        og::runtime::current_session->myscreen_->world().control_hp = 0.0f;
+        og::runtime::current_session->myscreen_->world().game_ended = false;
+        og::runtime::current_session->myscreen_->world().end = 0;
+        og::runtime::current_session->myscreen_->world().retry = 0;
+        og::runtime::current_session->myscreen_->world().next_level = -1;
+        og::runtime::current_session->myscreen_->world().ending = 0;
+        og::runtime::current_session->myscreen_->world().level_done = 0;
+        og::runtime::current_session->myscreen_->world().withdraw_requested = false;
+        og::runtime::current_session->myscreen_->world().withdraw_level = -1;
+        for (auto& view : og::runtime::current_session->myscreen_->viewob) {
+            if (view == nullptr)
+                continue;
+            view->control = nullptr;
+        }
     }
 
     g_picker_mainmenu_calls = 0;

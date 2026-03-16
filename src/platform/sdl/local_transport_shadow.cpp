@@ -47,6 +47,7 @@ struct LocalTransportShadow {
     std::unique_ptr<og::sim::GameServer> server;
     std::vector<LocalTransportClient> clients;
     std::size_t display_client_index = 0;
+    bool display_session_finished = false;
 
     [[nodiscard]] screen* server_screen() const
     {
@@ -279,6 +280,11 @@ bool prepare_display_level_for_initial_setup(
     return true;
 }
 
+walker* resolve_control_from_entity_id(GameWorld& world, std::uint32_t entity_id)
+{
+    return entity_id != 0u ? world.find_by_id(entity_id) : nullptr;
+}
+
 void sync_display_controls(screen& gameplay_screen,
                            const std::array<std::uint32_t, MAX_PLAYERS>&
                                controlled_entity_ids,
@@ -304,6 +310,17 @@ void dispatch_display_event_batch(screen& gameplay_screen,
                                   const og::sim::SimEventBatch& batch)
 {
     gameplay_screen.dispatch_sim_event_batch(batch);
+}
+
+bool batch_ends_display_session(const og::sim::SimEventBatch& batch)
+{
+    return std::any_of(
+        batch.events.begin(),
+        batch.events.end(),
+        [](const og::sim::Event& event) {
+            return event.kind == og::sim::EventKind::EndGame ||
+                event.kind == og::sim::EventKind::SetEnd;
+        });
 }
 
 void respond_to_exit_prompt(screen& gameplay_screen,
@@ -379,6 +396,20 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
     }
 
     auto shadow = std::make_shared<LocalTransportShadow>();
+    const std::size_t player_count = compute_local_player_count(gameplay_screen);
+    std::array<std::uint32_t, MAX_PLAYERS> control_entity_ids = {};
+    std::array<short, MAX_PLAYERS> player_teams = {};
+    for (std::size_t index = 0; index < player_count; ++index)
+    {
+        viewscreen* const view = gameplay_screen.viewob[index].get();
+        player_teams[index] =
+            view != nullptr ? view->my_team : gameplay_screen.world().my_team;
+        control_entity_ids[index] =
+            view != nullptr && view->control != nullptr
+                ? view->control->entity_id()
+                : 0u;
+    }
+
     GameSession::Config server_cfg;
     server_cfg.numviews = gameplay_screen.numviews;
     server_cfg.create_display = false;
@@ -399,6 +430,14 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
         og::sim::apply_snapshot(
             server_screen->world(),
             og::sim::capture_keyframe_snapshot(gameplay_screen.world()));
+        for (std::size_t index = 0; index < player_count; ++index)
+        {
+            if (server_screen->viewob[index] == nullptr)
+                continue;
+            server_screen->viewob[index]->my_team = player_teams[index];
+            server_screen->viewob[index]->control = resolve_control_from_entity_id(
+                server_screen->world(), control_entity_ids[index]);
+        }
     }
 
     screen* const server_screen = shadow->server_screen();
@@ -449,7 +488,6 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
             return true;
         };
 
-    const std::size_t player_count = compute_local_player_count(gameplay_screen);
     shadow->clients.reserve(player_count);
     for (std::size_t index = 0; index < player_count; ++index)
     {
@@ -459,15 +497,13 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
 
         const og::sim::PeerId peer_id = client.peer_id();
         shadow->server->connect_client(peer_id);
+        walker* const initial_control = resolve_control_from_entity_id(
+            server_screen->world(), control_entity_ids[index]);
         shadow->server->bind_player(
             peer_id,
             index,
-            server_screen->viewob[index]
-                ? server_screen->viewob[index]->my_team
-                : server_screen->world().my_team,
-            server_screen->viewob[index]
-                ? server_screen->viewob[index]->control
-                : nullptr);
+            player_teams[index],
+            initial_control);
         client.game_client = std::make_unique<og::sim::GameClient>(
             *client.transport,
             peer_id,
@@ -511,8 +547,15 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
                     dispatch_display_event_batch(gameplay_screen, batch);
                 });
             display_client->set_game_flow_event_batch_callback(
-                [&gameplay_screen](const og::sim::SimEventBatch& batch) {
+                [&gameplay_screen, shadow_ptr = shadow.get()](
+                    const og::sim::SimEventBatch& batch) {
                     dispatch_display_event_batch(gameplay_screen, batch);
+                    if (shadow_ptr != nullptr &&
+                        (gameplay_screen.world().end != 0 ||
+                         batch_ends_display_session(batch)))
+                    {
+                        shadow_ptr->display_session_finished = true;
+                    }
                 });
             display_client->set_message_processing_break_callback(
                 [&gameplay_screen]() {
@@ -616,13 +659,28 @@ void local_transport_shadow_finish_tick(SessionState& session)
         return;
     }
 
+    if (shadow->display_session_finished || session.myscreen_->world().end != 0)
+    {
+        shadow->display_session_finished = true;
+        session.myscreen_->world().end = 1;
+        return;
+    }
+
     {
         auto server_scope = shadow->server_session->activate();
         ScopedSessionGameplayActivation gameplay_active(*shadow->server_session);
         shadow->server->step();
     }
     for (auto& client : shadow->clients)
+    {
         client.game_client->poll_messages();
+        if (shadow->display_session_finished || session.myscreen_->world().end != 0)
+        {
+            shadow->display_session_finished = true;
+            session.myscreen_->world().end = 1;
+            return;
+        }
+    }
     if (shadow->display_client_index < shadow->clients.size() &&
         shadow->clients[shadow->display_client_index].game_client)
     {
