@@ -466,6 +466,184 @@ TEST(NetTransportInProcess, network_fixture_freezes_on_exit_prompt_and_resumes)
 }
 
 TEST(NetTransportInProcess,
+     network_fixture_level_transition_uses_callbacks_and_waits_for_ready)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    std::size_t save_sync_count = 0;
+    std::vector<int> transitioned_levels;
+    fixture.with_server_context([&] {
+        fixture.server().on_save_sync = [&] { ++save_sync_count; };
+        fixture.server().on_level_transition = [&](int level_id) {
+            transitioned_levels.push_back(level_id);
+
+            GameWorld& world = fixture.server_world();
+            world.id = static_cast<short>(level_id);
+            world.current_scenario = static_cast<short>(level_id);
+            world.title = "Transitioned Level";
+            world.tick_count_ = 0;
+            world.reset_level_progress();
+            world.game_ended = false;
+            world.next_level = -1;
+            world.ending = 0;
+            world.level_done = 0;
+            world.end = 0;
+            world.retry = false;
+            world.withdraw_requested = false;
+            world.withdraw_level = -1;
+            world.pending_exit_prompt = false;
+            world.paused = false;
+            world.pause_player_index = og::sim::kNoPausePlayerIndex;
+            world.completed_levels.insert(1);
+
+            // Simulate load-time cosmetic events that should be discarded.
+            fixture.server_events().push_notification("loaded new level");
+            return true;
+        };
+
+        GameWorld& world = fixture.server_world();
+        world.game_ended = true;
+        world.ending = 0;
+        world.next_level = 2;
+        fixture.server().broadcast_current_state(
+            og::sim::SnapshotCaptureMode::Peek,
+            og::sim::EventDeliveryMode::Skip);
+    });
+    fixture.poll_client_messages(0);
+
+    ASSERT_EQ(1u, save_sync_count);
+    ASSERT_EQ(std::vector<int>{2}, transitioned_levels);
+    ASSERT_TRUE(fixture.client(0).initial_setup().has_value());
+    EXPECT_EQ(2, fixture.client(0).initial_setup()->level_id);
+    EXPECT_EQ("Transitioned Level", fixture.client(0).initial_setup()->level_title);
+    EXPECT_FALSE(fixture.client(0).baseline().has_value());
+    EXPECT_EQ(1u, fixture.client(0).client_ready_count())
+        << "level transition should wait for an explicit post-load ready";
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    const bool saw_unready_snapshot = std::any_of(
+        fixture.client(0).last_polled_messages().begin(),
+        fixture.client(0).last_polled_messages().end(),
+        [](const og::sim::TypedReceivedMessage& message) {
+            return message.kind == og::sim::TypedReceivedMessageKind::Snapshot ||
+                message.kind == og::sim::TypedReceivedMessageKind::DeltaSnapshot;
+        });
+    EXPECT_FALSE(saw_unready_snapshot);
+    EXPECT_FALSE(fixture.client(0).baseline().has_value());
+
+    fixture.client(0).send_client_ready();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    ASSERT_TRUE(fixture.client(0).baseline().has_value());
+    EXPECT_EQ(fixture.server_world().id, fixture.client(0).initial_setup()->level_id);
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_auto_declines_exit_prompt_when_triggering_player_disconnects)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    walker* const control = fixture.server_control(0);
+    ASSERT_NE(nullptr, control);
+
+    fixture.with_server_context([&] {
+        control->set_skip_exit(10);
+        fixture.server_events().push_with_text(
+            og::sim::EventKind::RequestExitConfirmation,
+            "Exit now?",
+            5u,
+            0u);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    ASSERT_TRUE(fixture.server().pending_exit_prompt());
+    const std::uint32_t frozen_tick = fixture.server_world().tick_count_;
+
+    fixture.with_server_context([&] {
+        fixture.server().disconnect_client(
+            fixture.client_transport(0).local_peer_id());
+    });
+
+    EXPECT_FALSE(fixture.server().pending_exit_prompt());
+    EXPECT_FALSE(fixture.server_world().pending_exit_prompt);
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    EXPECT_GT(fixture.server_world().tick_count_, frozen_tick);
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_auto_declines_exit_prompt_when_triggering_player_dies)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    walker* const control = fixture.server_control(0);
+    ASSERT_NE(nullptr, control);
+
+    fixture.with_server_context([&] {
+        control->set_skip_exit(10);
+        fixture.server_events().push_with_text(
+            og::sim::EventKind::RequestExitConfirmation,
+            "Exit now?",
+            5u,
+            0u);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    ASSERT_TRUE(fixture.server().pending_exit_prompt());
+    const std::uint32_t frozen_tick = fixture.server_world().tick_count_;
+
+    fixture.with_server_context([&] {
+        control->set_dead(1);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    EXPECT_FALSE(fixture.server().pending_exit_prompt());
+    EXPECT_GT(fixture.server_world().tick_count_, frozen_tick);
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess,
      network_fixture_detects_snapshot_hash_mismatch_and_resends_keyframe)
 {
     og::sim::test::NetworkTestFixture fixture({

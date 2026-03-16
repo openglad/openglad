@@ -152,9 +152,13 @@ private:
     void clear_pending_exit_prompt();
     void clear_pause_state();
     void handle_exit_prompt_response(bool accepted);
+    void handle_level_transition(std::int16_t next_level);
     void handle_pause_request(PeerId peer_id);
     void handle_pause_response();
+    void prepare_clients_for_loaded_level();
+    void rebind_players_for_loaded_level();
     void remember_snapshot_hash(const WorldSnapshot& snapshot);
+    [[nodiscard]] std::size_t infer_exit_triggering_player_index() const noexcept;
     void maybe_send_control_change(std::size_t player_index, walker* control);
     void maybe_resolve_world_events(SimEventBatch& batch, WorldSnapshot& snapshot);
     void maybe_broadcast_special_state();

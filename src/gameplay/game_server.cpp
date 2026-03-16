@@ -926,6 +926,19 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
 
 void GameServer::update_timeouts()
 {
+    if (pending_exit_prompt_state_.has_value() &&
+        pending_exit_prompt_state_->triggering_player_index <
+            static_cast<std::size_t>(MAX_PLAYERS))
+    {
+        walker* const triggering_control =
+            player_control(pending_exit_prompt_state_->triggering_player_index);
+        if (triggering_control == nullptr || triggering_control->dead())
+        {
+            handle_exit_prompt_response(false);
+            return;
+        }
+    }
+
     const std::uint64_t now = now_ms();
     if (pending_exit_prompt_state_.has_value() &&
         now >= pending_exit_prompt_state_->opened_at_ms &&
@@ -985,16 +998,108 @@ void GameServer::handle_exit_prompt_response(bool accepted)
     if (!handled)
         return;
 
+    prepare_clients_for_loaded_level();
+}
+
+void GameServer::handle_level_transition(std::int16_t next_level)
+{
+    if (next_level < 0 || !on_level_transition)
+        return;
+
+    if (on_save_sync)
+        on_save_sync();
+
+    if (!on_level_transition(next_level))
+        return;
+
+    prepare_clients_for_loaded_level();
+}
+
+void GameServer::prepare_clients_for_loaded_level()
+{
     events_.clear();
+    world_.clear_removed_entity_ids();
+    world_.clear_grid_dirty_tiles();
+    snapshot_hashes_by_tick_.clear();
+    player_controls_.fill(nullptr);
+    player_input_debounce_ = {};
+    world_.control_hp = 0.0f;
+
+    const std::uint64_t now = now_ms();
     for (auto& [peer_id, client] : clients_)
     {
         (void)peer_id;
         client.initial_setup_sent = false;
         client.has_initial_snapshot = false;
         client.client_ready = false;
-        client.force_keyframe = false;
+        client.force_keyframe = true;
+        client.pending_inputs.clear();
+        client.last_known_input = {};
+        client.last_received_input_tick = 0;
+        client.last_received_input_ms = now;
         reset_client_snapshot_state(client.snapshot_state);
     }
+
+    rebind_players_for_loaded_level();
+
+    for (const auto& [peer_id, client] : clients_)
+    {
+        (void)client;
+        send_initial_setup(peer_id);
+    }
+
+    poll_incoming_messages();
+    last_polled_messages_.clear();
+}
+
+void GameServer::rebind_players_for_loaded_level()
+{
+    struct PlayerBinding {
+        PeerId peer_id = 0;
+        std::size_t player_index = 0;
+        short team_num = 0;
+    };
+
+    std::vector<PlayerBinding> bindings;
+    bindings.reserve(clients_.size());
+    for (const auto& [peer_id, client] : clients_)
+    {
+        if (!client.has_player_binding)
+            continue;
+
+        bindings.push_back(PlayerBinding{
+            .peer_id = peer_id,
+            .player_index = client.player_index,
+            .team_num = client.team_num,
+        });
+    }
+
+    for (const PlayerBinding& binding : bindings)
+        bind_player(binding.peer_id, binding.player_index, binding.team_num, nullptr);
+}
+
+std::size_t GameServer::infer_exit_triggering_player_index() const noexcept
+{
+    constexpr std::size_t kNoPlayer = static_cast<std::size_t>(-1);
+    std::size_t fallback = kNoPlayer;
+
+    for (const auto& [peer_id, client] : clients_)
+    {
+        (void)peer_id;
+        if (!client.has_player_binding || client.control == nullptr ||
+            client.control->dead())
+        {
+            continue;
+        }
+
+        if (client.control->skip_exit() == 10)
+            return client.player_index;
+
+        if (fallback == kNoPlayer && client.control->skip_exit() > 1)
+            fallback = client.player_index;
+    }
+
+    return fallback;
 }
 
 void GameServer::handle_pause_request(PeerId peer_id)
@@ -1229,6 +1334,7 @@ void GameServer::maybe_resolve_world_events(SimEventBatch& batch,
                : std::format("Exit to Level {}?", prompt.destination_level))
         : exit_request->text;
     prompt.opened_at_ms = now_ms();
+    prompt.triggering_player_index = infer_exit_triggering_player_index();
     pending_exit_prompt_state_ = prompt;
 
     world_.pending_exit_prompt = true;
@@ -1291,9 +1397,24 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
 
     for (auto& [peer_id, client] : clients_)
     {
-        if (!client.initial_setup_sent || !client.has_initial_snapshot)
+        if (!client.initial_setup_sent)
         {
             send_initial_snapshot(peer_id, SnapshotCaptureMode::Peek);
+            continue;
+        }
+
+        if (!client.has_initial_snapshot)
+        {
+            if (!client.client_ready)
+                continue;
+
+            WorldSnapshot full = ensure_keyframe();
+            seed_client_snapshot_baseline(client.snapshot_state, full);
+            client.has_initial_snapshot = true;
+            client.force_keyframe = false;
+            transport_.send_snapshot(
+                peer_id,
+                std::make_shared<WorldSnapshot>(std::move(full)));
             continue;
         }
 
@@ -1322,6 +1443,9 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
 
     if (drained_batch.has_value())
         forward_event_batch(*drained_batch);
+
+    if (snapshot.game_ended && snapshot.next_level != -1)
+        handle_level_transition(snapshot.next_level);
 }
 
 void GameServer::step()
