@@ -514,6 +514,10 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
                 [&gameplay_screen](const og::sim::SimEventBatch& batch) {
                     dispatch_display_event_batch(gameplay_screen, batch);
                 });
+            display_client->set_message_processing_break_callback(
+                [&gameplay_screen]() {
+                    return gameplay_screen.world().end != 0;
+                });
             display_client->set_exit_prompt_callback(
                 [&gameplay_screen, display_client](
                     const og::sim::ExitPromptBroadcastMessage& prompt) {

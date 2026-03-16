@@ -184,6 +184,8 @@ private:
     std::optional<PendingPauseState> pending_pause_state_ = std::nullopt;
     std::unordered_map<std::uint32_t, std::uint32_t> snapshot_hashes_by_tick_;
     std::size_t snapshot_hash_mismatch_count_ = 0;
+    std::uint32_t next_sim_event_sequence_ = 1;
+    std::uint32_t next_game_flow_event_sequence_ = 1;
     std::function<std::uint64_t()> wall_clock_ms_source_;
 };
 

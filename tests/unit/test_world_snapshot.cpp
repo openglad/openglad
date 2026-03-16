@@ -1420,6 +1420,38 @@ TEST(WorldSnapshot, apply_snapshot_replaces_state_reorders_lists_and_skips_death
     expect_entity_snapshot_matches(*weapon, *weapon_snapshot, clean_expected_dirty);
 }
 
+TEST(WorldSnapshot,
+     apply_snapshot_creates_entities_in_snapshot_source_list_even_when_order_differs)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+
+    walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+    configure_snapshot_test_entity(*actor, Order::FX, FAMILY_FLASH);
+    apply_snapshot_test_derived_stats(actor, Order::FX, FAMILY_FLASH);
+    actor->set_snapshot_entity_id(4242u);
+
+    const og::sim::WorldSnapshot snapshot = og::sim::capture_snapshot(source);
+    ASSERT_EQ(1u, snapshot.oblist.size());
+    ASSERT_TRUE(snapshot.fxlist.empty());
+    EXPECT_EQ(Order::FX, snapshot.oblist.front().order);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+
+    og::sim::apply_snapshot(mirror, snapshot);
+
+    ASSERT_EQ(1u, mirror.oblist.size());
+    EXPECT_TRUE(mirror.fxlist.empty());
+    ASSERT_NE(nullptr, mirror.oblist.front().get());
+    EXPECT_EQ(snapshot.oblist.front().entity_id,
+              mirror.oblist.front()->entity_id());
+    EXPECT_EQ(Order::FX, mirror.oblist.front()->query_order());
+}
+
 TEST(WorldSnapshot, apply_snapshot_works_for_attached_external_worlds)
 {
     og::sim::WorldSnapshot snapshot;

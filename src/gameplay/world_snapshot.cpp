@@ -1455,17 +1455,6 @@ void update_existing_entities(GameWorld& world,
     }
 }
 
-GameWorld::EntityList& snapshot_target_list(GameWorld& world,
-                                            GameWorld::EntityList& preferred_list,
-                                            Order order)
-{
-    if (&preferred_list == &world.weaplist || order == Order::Weapon)
-        return world.weaplist;
-    if (&preferred_list == &world.fxlist || order == Order::FX)
-        return world.fxlist;
-    return world.oblist;
-}
-
 template <typename EntityList>
 void create_missing_entities(GameWorld& world,
                              EntityList& preferred_list,
@@ -1498,10 +1487,7 @@ void create_missing_entities(GameWorld& world,
             (void)world.configure_existing_entity(*raw, snapshot.order, snapshot.family);
         world.set_entity_derived_stats(raw, snapshot.order, snapshot.family);
         apply_entity_snapshot_fields(world, *raw, snapshot, false);
-
-        GameWorld::EntityList& target =
-            snapshot_target_list(world, preferred_list, snapshot.order);
-        target.push_back(std::move(created));
+        preferred_list.push_back(std::move(created));
     }
 }
 

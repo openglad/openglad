@@ -652,6 +652,78 @@ TEST(NetTransport, game_client_notifies_level_transition_before_next_keyframe)
     EXPECT_EQ(0u, ready_messages[1].last_applied_tick);
 }
 
+TEST(NetTransport,
+     game_client_stops_processing_transition_messages_after_endgame)
+{
+    MockTransport transport;
+    TestGameWorld fixture;
+
+    og::sim::InitialSetupMessage initial_setup;
+    initial_setup.level_id = fixture.world().id;
+    initial_setup.level_title = fixture.world().title;
+    initial_setup.level_type = fixture.world().type;
+    initial_setup.par_value = fixture.world().par_value;
+    initial_setup.time_bonus_limit = fixture.world().time_bonus_limit;
+    initial_setup.difficulty = fixture.world().difficulty;
+    initial_setup.pixmaxx = fixture.world().pixmaxx;
+    initial_setup.pixmaxy = fixture.world().pixmaxy;
+    initial_setup.my_team = fixture.world().my_team;
+    initial_setup.allied_mode = fixture.world().allied_mode;
+    initial_setup.current_scenario = fixture.world().current_scenario;
+
+    og::sim::WorldSnapshot snapshot =
+        og::sim::capture_keyframe_snapshot(fixture.world());
+    snapshot.tick_count = 1u;
+
+    og::sim::SimEventBatch endgame_batch;
+    endgame_batch.sequence = 1u;
+    endgame_batch.events.push_back({
+        .tick = 1u,
+        .kind = og::sim::EventKind::EndGame,
+        .a = 0u,
+        .b = 2u,
+        .text = {},
+    });
+
+    og::sim::InitialSetupMessage transition_setup = initial_setup;
+    transition_setup.level_id = fixture.world().id + 1;
+    transition_setup.current_scenario = fixture.world().current_scenario + 1;
+
+    transport.queue_received(
+        7u, og::sim::serialize_initial_setup_message(initial_setup));
+    transport.queue_received(7u, og::sim::serialize_snapshot(snapshot));
+    transport.queue_received(
+        7u, og::sim::serialize_game_flow_event_batch(endgame_batch));
+    transport.queue_received(
+        7u, og::sim::serialize_initial_setup_message(transition_setup));
+
+    og::sim::GameClient client(transport, 7u, &fixture.world());
+    std::vector<bool> transition_flags;
+    client.set_initial_setup_callback(
+        [&](const og::sim::InitialSetupMessage&, bool is_level_transition) {
+            transition_flags.push_back(is_level_transition);
+        });
+    client.set_game_flow_event_batch_callback(
+        [&](const og::sim::SimEventBatch& batch) {
+            if (!batch.events.empty() &&
+                batch.events.back().kind == og::sim::EventKind::EndGame)
+            {
+                fixture.world().end = 1;
+            }
+        });
+    client.set_message_processing_break_callback([&fixture]() {
+        return fixture.world().end != 0;
+    });
+
+    client.poll_messages();
+
+    ASSERT_EQ((std::vector<bool>{false}), transition_flags);
+    ASSERT_TRUE(client.initial_setup().has_value());
+    EXPECT_EQ(initial_setup.level_id, client.initial_setup()->level_id);
+    EXPECT_EQ(initial_setup.current_scenario,
+              client.initial_setup()->current_scenario);
+}
+
 TEST(NetTransport, game_client_polls_raw_messages_when_typed_path_is_unavailable)
 {
     MockTransport transport;

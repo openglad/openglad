@@ -45,6 +45,8 @@ public:
         std::function<void(const PauseBroadcastMessage&)> callback);
     void set_palette_sync_callback(
         std::function<void(std::uint8_t palette_id)> callback);
+    void set_message_processing_break_callback(
+        std::function<bool()> callback);
 
     [[nodiscard]] const std::optional<WorldSnapshot>& baseline() const noexcept
     {
@@ -167,6 +169,7 @@ private:
     std::function<void(const ExitPromptBroadcastMessage&)> exit_prompt_callback_;
     std::function<void(const PauseBroadcastMessage&)> pause_broadcast_callback_;
     std::function<void(std::uint8_t)> palette_sync_callback_;
+    std::function<bool()> message_processing_break_callback_;
 };
 
 } // namespace og::sim

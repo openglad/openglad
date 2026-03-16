@@ -267,8 +267,6 @@ void split_event_batches(const og::sim::SimEventBatch& source,
                          og::sim::SimEventBatch& sim_batch,
                          og::sim::SimEventBatch& game_flow_batch)
 {
-    sim_batch.sequence = source.sequence;
-    game_flow_batch.sequence = source.sequence;
     for (const auto& event : source.events)
     {
         if (is_game_flow_event(event.kind))
@@ -1039,6 +1037,8 @@ void GameServer::prepare_clients_for_loaded_level()
     world_.clear_removed_entity_ids();
     world_.clear_grid_dirty_tiles();
     snapshot_hashes_by_tick_.clear();
+    next_sim_event_sequence_ = 1;
+    next_game_flow_event_sequence_ = 1;
     player_controls_.fill(nullptr);
     player_input_debounce_ = {};
     world_.control_hp = 0.0f;
@@ -1252,6 +1252,10 @@ void GameServer::forward_event_batch(const SimEventBatch& batch)
     SimEventBatch sim_batch;
     SimEventBatch game_flow_batch;
     split_event_batches(batch, sim_batch, game_flow_batch);
+    if (!sim_batch.events.empty())
+        sim_batch.sequence = next_sim_event_sequence_++;
+    if (!game_flow_batch.events.empty())
+        game_flow_batch.sequence = next_game_flow_event_sequence_++;
 
     for (const auto& [peer_id, client] : clients_)
     {

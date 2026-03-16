@@ -232,6 +232,12 @@ void GameClient::set_palette_sync_callback(
     palette_sync_callback_ = std::move(callback);
 }
 
+void GameClient::set_message_processing_break_callback(
+    std::function<bool()> callback)
+{
+    message_processing_break_callback_ = std::move(callback);
+}
+
 void GameClient::send_input(const InputState& input, std::uint32_t tick)
 {
     transport_.send_input(server_peer_id_,
@@ -559,6 +565,12 @@ void GameClient::poll_messages()
         case TypedReceivedMessageKind::ExitPromptResponse:
         case TypedReceivedMessageKind::PauseResponse:
         case TypedReceivedMessageKind::SnapshotHashCheck:
+            break;
+        }
+
+        if (message_processing_break_callback_ &&
+            message_processing_break_callback_())
+        {
             break;
         }
     }
