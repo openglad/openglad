@@ -1,9 +1,12 @@
 #pragma once
 
 #include <openglad/gameplay/game_server.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/replay.h>
+#include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -15,6 +18,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -50,10 +55,16 @@ public:
 
         if (config_.player_count == 0)
             config_.player_count = 1;
+        if (config_.player_count > static_cast<std::size_t>(MAX_PLAYERS))
+        {
+            throw std::invalid_argument(
+                "NetworkTestFixture supports up to MAX_PLAYERS clients");
+        }
 
         server_transport_ = InProcessTransport::create_server(
             {.validate_serialization = config_.validate_serialization});
         server_transport_->accept_connections();
+        populate_special_names(special_names_);
 
         clients_.reserve(config_.player_count);
         for (std::size_t index = 0; index < config_.player_count; ++index)
@@ -109,7 +120,7 @@ public:
             const std::uint32_t next_tick =
                 server_world_.world().tick_count_ + 1;
             send_client_inputs(next_tick);
-            server_inbox_ = server_transport_->poll_typed();
+            process_server_messages(next_tick);
 
             server_world_.with_context([&] {
                 server_world_.world().tick();
@@ -179,6 +190,12 @@ public:
     InProcessTransport& client_transport(std::size_t client_index)
     {
         return *clients_.at(client_index)->transport;
+    }
+    walker* server_control(std::size_t player_index) const noexcept
+    {
+        return player_index < server_controls_.size()
+            ? server_controls_[player_index]
+            : nullptr;
     }
 
     const std::vector<TypedReceivedMessage>& server_inbox() const noexcept
@@ -259,6 +276,111 @@ private:
         }
     }
 
+    static void populate_special_names(
+        std::string (&special_names)[NUM_FAMILIES][NUM_SPECIALS])
+    {
+        for (int family = 0; family < NUM_FAMILIES; ++family)
+        {
+            const FamilyDescriptor* descriptor = get_family_descriptor(family);
+            for (int special = 0; special < NUM_SPECIALS; ++special)
+            {
+                special_names[family][special] =
+                    descriptor ? descriptor->special_names[special] : "NONE";
+            }
+        }
+    }
+
+    static bool player_input_has_activity(const PlayerInput& input)
+    {
+        for (int key = 0; key < NUM_INPUT_KEYS; ++key)
+        {
+            if (input.held[key] || input.pressed[key])
+                return true;
+        }
+        return false;
+    }
+
+    static const PlayerInput& select_player_input_for_client(
+        const InputState& input,
+        std::size_t player_index)
+    {
+        const std::size_t bounded_index = std::min(
+            player_index, static_cast<std::size_t>(MAX_PLAYERS - 1));
+        if (player_input_has_activity(input.players[bounded_index]))
+            return input.players[bounded_index];
+
+        const PlayerInput* only_active_input = nullptr;
+        for (int index = 0; index < MAX_PLAYERS; ++index)
+        {
+            if (!player_input_has_activity(input.players[index]))
+                continue;
+            if (only_active_input != nullptr)
+                return input.players[bounded_index];
+            only_active_input = &input.players[index];
+        }
+
+        return only_active_input != nullptr ? *only_active_input
+                                            : input.players[bounded_index];
+    }
+
+    void apply_client_input(PeerId peer_id,
+                            const InputState& input,
+                            std::uint32_t tick)
+    {
+        const auto client_it = std::find_if(
+            clients_.begin(), clients_.end(),
+            [peer_id](const auto& client) { return client->peer_id() == peer_id; });
+        ASSERT_TRUE(client_it != clients_.end())
+            << "received input for unknown peer " << peer_id;
+
+        const std::size_t player_index =
+            static_cast<std::size_t>(std::distance(clients_.begin(), client_it));
+        ASSERT_EQ(tick, server_world_.world().tick_count_ + 1)
+            << "fixture input tick should match the next server tick";
+
+        const SimInputResult result = sim_process_player_input(
+            select_player_input_for_client(input, player_index),
+            server_controls_[player_index], server_world_.world(),
+            static_cast<short>(player_index), server_world_.world().my_team,
+            server_input_debounce_[player_index], special_names_,
+            &server_world_.events);
+
+        if (result.control_hp_changed)
+            server_world_.world().control_hp = result.control_hp;
+        if (result.endgame_requested)
+        {
+            server_world_.world().ending = result.endgame_type;
+            server_world_.world().end = 1;
+        }
+    }
+
+    void process_server_messages(std::uint32_t tick)
+    {
+        server_inbox_ = server_transport_->poll_typed();
+        server_world_.with_context([&] {
+            server_world_.events.current_tick_ = tick;
+            for (const auto& message : server_inbox_)
+            {
+                switch (message.kind)
+                {
+                case TypedReceivedMessageKind::Input:
+                    ASSERT_NE(nullptr, message.input);
+                    apply_client_input(message.peer_id,
+                                       *message.input,
+                                       message.tick);
+                    break;
+
+                case TypedReceivedMessageKind::Snapshot:
+                case TypedReceivedMessageKind::DeltaSnapshot:
+                case TypedReceivedMessageKind::SimEventBatch:
+                case TypedReceivedMessageKind::GameFlowEventBatch:
+                    FAIL() << "server fixture received unexpected typed message kind";
+                    break;
+                }
+            }
+        });
+    }
+
     void ensure_level_loaded()
     {
         if (!level_loaded_)
@@ -331,6 +453,9 @@ private:
     std::shared_ptr<InProcessTransport> server_transport_;
     std::vector<std::unique_ptr<ClientState>> clients_;
     std::vector<TypedReceivedMessage> server_inbox_;
+    std::array<walker*, MAX_PLAYERS> server_controls_ = {};
+    std::array<SimInputDebounce, MAX_PLAYERS> server_input_debounce_ = {};
+    std::string special_names_[NUM_FAMILIES][NUM_SPECIALS] = {};
     bool level_loaded_ = false;
     bool initial_sync_complete_ = false;
 };

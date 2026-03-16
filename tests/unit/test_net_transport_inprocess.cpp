@@ -169,7 +169,7 @@ TEST(NetTransportInProcess, multi_client_broadcast_preserves_message_order)
     EXPECT_EQ(3u, second_messages[0].snapshot->tick_count);
 }
 
-TEST(NetTransportInProcess, validating_mode_roundtrips_snapshot_input_and_events)
+TEST(NetTransportInProcess, validating_mode_roundtrips_all_typed_messages)
 {
     const auto pair = og::sim::InProcessTransport::create_linked_pair(
         {.validate_serialization = true});
@@ -178,6 +178,10 @@ TEST(NetTransportInProcess, validating_mode_roundtrips_snapshot_input_and_events
     pair.server->send_snapshot(pair.peer_id,
                                std::make_shared<og::sim::WorldSnapshot>(
                                    snapshot));
+    const og::sim::WorldSnapshot delta = make_delta_snapshot(8u);
+    pair.server->send_delta_snapshot(
+        pair.peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(delta));
 
     InputState input{};
     input.quit_requested = true;
@@ -191,14 +195,30 @@ TEST(NetTransportInProcess, validating_mode_roundtrips_snapshot_input_and_events
     pair.server->send_sim_event_batch(
         pair.peer_id,
         std::make_shared<og::sim::SimEventBatch>(batch));
+    const og::sim::SimEventBatch game_flow_batch = make_event_batch(10u);
+    pair.server->send_game_flow_event_batch(
+        pair.peer_id,
+        std::make_shared<og::sim::SimEventBatch>(game_flow_batch));
 
     const std::vector<og::sim::TypedReceivedMessage> client_messages =
         pair.client->poll_typed();
-    ASSERT_EQ(2u, client_messages.size());
+    ASSERT_EQ(4u, client_messages.size());
     ASSERT_NE(nullptr, client_messages[0].snapshot);
-    ASSERT_NE(nullptr, client_messages[1].event_batch);
+    ASSERT_NE(nullptr, client_messages[1].snapshot);
+    ASSERT_NE(nullptr, client_messages[2].event_batch);
+    ASSERT_NE(nullptr, client_messages[3].event_batch);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Snapshot,
+              client_messages[0].kind);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::DeltaSnapshot,
+              client_messages[1].kind);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::SimEventBatch,
+              client_messages[2].kind);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::GameFlowEventBatch,
+              client_messages[3].kind);
     expect_snapshot_eq(snapshot, *client_messages[0].snapshot);
-    expect_event_batch_eq(batch, *client_messages[1].event_batch);
+    expect_snapshot_eq(delta, *client_messages[1].snapshot);
+    expect_event_batch_eq(batch, *client_messages[2].event_batch);
+    expect_event_batch_eq(game_flow_batch, *client_messages[3].event_batch);
 
     const std::vector<og::sim::TypedReceivedMessage> server_messages =
         pair.server->poll_typed();
@@ -221,5 +241,35 @@ TEST(NetTransportInProcess, network_fixture_loads_ticks_and_keeps_client_in_sync
     });
 
     fixture.run();
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_applies_input_sequence_and_keeps_client_in_sync)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 1,
+        .validate_serialization = true,
+        .input_sequence =
+            [](std::size_t client_index, std::uint32_t) {
+                InputState input{};
+                input.players[client_index].held[static_cast<int>(
+                    InputAction::MoveRight)] = true;
+                return input;
+            },
+    });
+
+    fixture.run();
+
+    ASSERT_EQ(1u, fixture.server_inbox().size());
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Input,
+              fixture.server_inbox()[0].kind);
+    ASSERT_NE(nullptr, fixture.server_inbox()[0].input);
+    EXPECT_TRUE(fixture.server_inbox()[0].input->players[0].held[static_cast<int>(
+        InputAction::MoveRight)]);
+    EXPECT_NE(nullptr, fixture.server_control(0));
+    EXPECT_GT(fixture.server_world().control_hp, 0.0f);
     fixture.expect_clients_match_server();
 }
