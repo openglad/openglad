@@ -259,6 +259,18 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                     og::runtime::current_session->debug_draw_obmap_ = !og::runtime::current_session->debug_draw_obmap_;
                 else if (event.key.keysym.sym == SDLK_ESCAPE)
                 {
+                    if (og::runtime::current_session != nullptr &&
+                        og::runtime::local_transport_active(
+                            *og::runtime::current_session) &&
+                        !og::runtime::local_transport_shadow_is_paused(
+                            *og::runtime::current_session) &&
+                        og::runtime::local_transport_shadow_toggle_pause(
+                            *og::runtime::current_session))
+                    {
+                        s.redrawme = 1;
+                        break;
+                    }
+
                     bool result = yes_or_no_prompt("Abort Mission", "Quit this mission?", false);
                     s.redrawme = 1;
                     if (result) // player wants to quit
@@ -270,6 +282,13 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                     }
                     else
                     {
+                        if (og::runtime::current_session != nullptr &&
+                            og::runtime::local_transport_active(
+                                *og::runtime::current_session))
+                        {
+                            (void)og::runtime::local_transport_shadow_toggle_pause(
+                                *og::runtime::current_session);
+                        }
                         set_palette(s.ourpalette);  // restore normal palette
                         adjust_palette(s.ourpalette, s.viewob[0]->gamma);
                     }

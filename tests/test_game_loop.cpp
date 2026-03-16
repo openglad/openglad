@@ -689,6 +689,115 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_confirmed)
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
 
+TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_active)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
+
+    GameSpeedGuard speed_guard(0.0f);
+    const auto run_escape_frame = [&]() {
+        EventScript script;
+        SDL_Event e{};
+        e.type = SDL_KEYDOWN;
+        e.key.keysym.sym = SDLK_ESCAPE;
+        script.events.push_back(e);
+        g_script = &script;
+
+        GameLoopFrameState st;
+        GameLoopDeps deps;
+        deps.enable_render = false;
+        deps.enable_event_poll = true;
+        deps.enable_frame_timing = false;
+        deps.poll_event = scripted_poll_adapter;
+
+        const GameFrameResult result =
+            game_frame_with_result(*game_screen, st, deps);
+        g_script = nullptr;
+        return std::pair(result, st.done);
+    };
+
+    const auto [pause_result, pause_done] = run_escape_frame();
+    EXPECT_EQ(GameFrameResult::Continue, pause_result);
+    EXPECT_FALSE(pause_done);
+    EXPECT_TRUE(game_screen->world().paused);
+    EXPECT_EQ(0u, game_screen->world().pause_player_index);
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(false);
+    const auto [resume_result, resume_done] = run_escape_frame();
+    EXPECT_EQ(GameFrameResult::Continue, resume_result);
+    EXPECT_FALSE(resume_done);
+    EXPECT_FALSE(game_screen->world().paused);
+    EXPECT_EQ(og::sim::kNoPausePlayerIndex, game_screen->world().pause_player_index);
+
+    picker_testing_yes_or_no_queue_clear();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_pause_confirmed)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
+
+    GameSpeedGuard speed_guard(0.0f);
+    const auto run_escape_frame = [&]() {
+        EventScript script;
+        SDL_Event e{};
+        e.type = SDL_KEYDOWN;
+        e.key.keysym.sym = SDLK_ESCAPE;
+        script.events.push_back(e);
+        g_script = &script;
+
+        GameLoopFrameState st;
+        GameLoopDeps deps;
+        deps.enable_render = false;
+        deps.enable_event_poll = true;
+        deps.enable_frame_timing = false;
+        deps.poll_event = scripted_poll_adapter;
+
+        const GameFrameResult result =
+            game_frame_with_result(*game_screen, st, deps);
+        g_script = nullptr;
+        return std::pair(result, st.done);
+    };
+
+    const auto [pause_result, pause_done] = run_escape_frame();
+    ASSERT_EQ(GameFrameResult::Continue, pause_result);
+    ASSERT_FALSE(pause_done);
+    ASSERT_TRUE(game_screen->world().paused);
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+    const auto [abort_result, abort_done] = run_escape_frame();
+    EXPECT_EQ(GameFrameResult::AbortedMission, abort_result);
+    EXPECT_TRUE(abort_done);
+
+    picker_testing_yes_or_no_queue_clear();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
+    game_screen->world().delete_objects();
+}
+
 
 TEST(GameLoop, game_frame_escape_abort_decline_continues_game)
 {

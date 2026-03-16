@@ -53,6 +53,13 @@ struct LocalTransportShadow {
     {
         return server_session ? server_session->myscreen_ : nullptr;
     }
+
+    [[nodiscard]] og::sim::GameClient* display_client() const
+    {
+        if (display_client_index >= clients.size())
+            return nullptr;
+        return clients[display_client_index].game_client.get();
+    }
 };
 
 using ShadowMap =
@@ -374,6 +381,56 @@ bool local_transport_active(const SessionState& session) noexcept
     std::lock_guard lock(local_transport_shadows_mutex());
     return local_transport_shadows().contains(
         const_cast<SessionState*>(&session));
+}
+
+bool local_transport_shadow_is_paused(const SessionState& session) noexcept
+{
+    std::shared_ptr<LocalTransportShadow> shadow;
+    {
+        std::lock_guard lock(local_transport_shadows_mutex());
+        const auto it = local_transport_shadows().find(
+            const_cast<SessionState*>(&session));
+        if (it == local_transport_shadows().end())
+            return false;
+        shadow = it->second;
+    }
+
+    const og::sim::GameClient* const display_client =
+        shadow != nullptr ? shadow->display_client() : nullptr;
+    return display_client != nullptr &&
+        display_client->baseline().has_value() &&
+        display_client->baseline()->paused;
+}
+
+bool local_transport_shadow_toggle_pause(SessionState& session)
+{
+    std::shared_ptr<LocalTransportShadow> shadow;
+    {
+        std::lock_guard lock(local_transport_shadows_mutex());
+        const auto it = local_transport_shadows().find(&session);
+        if (it == local_transport_shadows().end())
+            return false;
+        shadow = it->second;
+    }
+
+    og::sim::GameClient* const display_client =
+        shadow != nullptr ? shadow->display_client() : nullptr;
+    if (display_client == nullptr)
+        return false;
+
+    if (display_client->baseline().has_value() &&
+        display_client->baseline()->paused)
+    {
+        display_client->send_pause_response();
+    }
+    else
+    {
+        display_client->send_pause_request();
+    }
+
+    if (session.myscreen_ != nullptr)
+        session.myscreen_->redrawme = 1;
+    return true;
 }
 
 void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen)

@@ -248,7 +248,9 @@ static int fairy_injector(void* data)
             return 0;
         }
 
-        fprintf(stderr, "  [test] fairy died, aborting mission through UI\n");
+        fprintf(stderr, "  [test] fairy died, pausing then aborting mission through UI\n");
+        inject_key_press(SDLK_ESCAPE);
+        SDL_Delay(kUiSettleMs);
         picker_testing_yes_or_no_queue_clear();
         picker_testing_yes_or_no_queue_push(true);
         inject_key_press(SDLK_ESCAPE);
