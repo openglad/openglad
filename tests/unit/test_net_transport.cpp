@@ -1,4 +1,8 @@
+#include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/world_snapshot.h>
 
 #include <gtest/gtest.h>
 
@@ -220,6 +224,82 @@ TEST(NetTransport, interface_is_mockable_and_preserves_message_buffers)
     transport.disconnect(11u);
     EXPECT_EQ((std::vector<og::sim::PeerId>{11u}),
               transport.disconnected_peers());
+}
+
+TEST(NetTransport, game_client_send_input_uses_raw_fallback)
+{
+    MockTransport transport;
+    og::sim::GameClient client(transport, 9u);
+
+    InputState input{};
+    input.quit_requested = true;
+    input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
+    input.players[1].pressed[static_cast<int>(InputAction::Fire)] = true;
+    client.send_input(input, 12u);
+
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(9u, transport.sent_messages().front().peer_id);
+
+    const auto expected =
+        og::sim::serialize_input(12u, input);
+    EXPECT_EQ((std::vector<std::uint8_t>(expected.begin(), expected.end())),
+              transport.sent_messages().front().data);
+}
+
+TEST(NetTransport, game_client_polls_raw_messages_when_typed_path_is_unavailable)
+{
+    MockTransport transport;
+
+    og::sim::WorldSnapshot snapshot;
+    snapshot.tick_count = 1u;
+    snapshot.my_team = 2;
+    snapshot.current_palette_id = 1;
+
+    og::sim::WorldSnapshot delta;
+    delta.tick_count = 2u;
+    delta.my_team = 3;
+
+    og::sim::SimEventBatch sim_batch;
+    sim_batch.sequence = 2u;
+    sim_batch.events.push_back({
+        .tick = 2u,
+        .kind = og::sim::EventKind::Notification,
+        .a = 60u,
+        .text = "sim",
+    });
+
+    og::sim::SimEventBatch game_flow_batch;
+    game_flow_batch.sequence = 2u;
+    game_flow_batch.events.push_back({
+        .tick = 2u,
+        .kind = og::sim::EventKind::EndGame,
+        .a = 1u,
+        .b = 7u,
+        .text = {},
+    });
+
+    transport.queue_received(7u, og::sim::serialize_snapshot(snapshot));
+    transport.queue_received(7u, og::sim::serialize_delta(delta));
+    transport.queue_received(7u, og::sim::serialize_sim_event_batch(sim_batch));
+    transport.queue_received(7u,
+                             og::sim::serialize_game_flow_event_batch(
+                                 game_flow_batch));
+
+    og::sim::GameClient client(transport, 7u);
+    client.poll_messages();
+
+    ASSERT_EQ(4u, client.last_polled_messages().size());
+    ASSERT_TRUE(client.baseline().has_value());
+    EXPECT_EQ(2u, client.baseline()->tick_count);
+    EXPECT_EQ(3, client.baseline()->my_team);
+    ASSERT_EQ(1u, client.sim_event_batches().size());
+    EXPECT_EQ(sim_batch.sequence, client.sim_event_batches().front().sequence);
+    EXPECT_EQ(sim_batch.events, client.sim_event_batches().front().events);
+    ASSERT_EQ(1u, client.game_flow_event_batches().size());
+    EXPECT_EQ(game_flow_batch.sequence,
+              client.game_flow_event_batches().front().sequence);
+    EXPECT_EQ(game_flow_batch.events,
+              client.game_flow_event_batches().front().events);
 }
 
 } // namespace

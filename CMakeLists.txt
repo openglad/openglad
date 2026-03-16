@@ -96,6 +96,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/game_context.cpp
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
+    ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
     ${SRC_DIR}/interface/score_panel.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
@@ -210,6 +211,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
     ${SRC_DIR}/gameplay/game_server.cpp
+    ${SRC_DIR}/gameplay/game_client.cpp
     ${SRC_DIR}/gameplay/net_transport.cpp
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
@@ -240,6 +242,7 @@ set(OG_SIM_SOURCES
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
     ${SRC_DIR}/gameplay/game_server.cpp
+    ${SRC_DIR}/gameplay/game_client.cpp
     ${SRC_DIR}/gameplay/net_transport.cpp
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
@@ -316,6 +319,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/platform/sdl/game_loop.cpp
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
+    ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
     ${SRC_DIR}/interface/score_panel.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/interface/screen.cpp
@@ -430,6 +434,7 @@ set(OG_PLATFORM_SDL_COMPONENT_SOURCES
     ${SRC_DIR}/platform/sdl/game_loop.cpp
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
+    ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
 )

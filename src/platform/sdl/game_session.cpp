@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/platform/game_session.h>
+#include <openglad/platform/local_transport_shadow.h>
 
 #include <openglad/core/util.h> // LogError
 #include <openglad/resources/gparser.h> // cfg_store, ::cfg
@@ -192,6 +193,8 @@ const cfg_store& GameSession::config() const { return ::cfg; }
 
 GameSession::~GameSession()
 {
+    clear_local_transport_shadow(*this);
+
     if (cfg_.install_legacy_globals) {
         if (current_session == this)
             current_session = prev_session_;

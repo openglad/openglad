@@ -16,6 +16,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/obmap_debug_draw.h>
 #include <openglad/interface/replay_runtime.h>
+#include <openglad/platform/local_transport_shadow.h>
 
 #include <algorithm>
 #include <cmath>
@@ -176,6 +177,13 @@ GameFrameResult run_game_tick(screen& s,
                               const InputState& input)
 {
     og::runtime::record_replay_input(s, input);
+    if (og::runtime::current_session != nullptr)
+    {
+        og::runtime::local_transport_shadow_send_input(
+            *og::runtime::current_session,
+            input,
+            s.world().tick_count_ + 1);
+    }
 
     s.process_input(input);
     s.continuous_input();
@@ -190,6 +198,9 @@ GameFrameResult run_game_tick(screen& s,
 #endif
     if (deps.after_act)
         deps.after_act(s);
+    if (og::runtime::current_session != nullptr)
+        og::runtime::local_transport_shadow_finish_tick(
+            *og::runtime::current_session);
 
     if (s.world().end)
         return finish_done(st);
