@@ -44,20 +44,6 @@ struct LocalTransportClient {
 
 namespace og::runtime {
 
-struct LocalTransportRuntimeAccess
-{
-    static std::shared_ptr<LocalTransportRuntime>& runtime(GameSession& session)
-    {
-        return session.local_transport_runtime_;
-    }
-
-    static const std::shared_ptr<LocalTransportRuntime>& runtime(
-        const GameSession& session)
-    {
-        return session.local_transport_runtime_;
-    }
-};
-
 struct LocalTransportRuntime {
     std::unique_ptr<og::runtime::GameSession> server_session;
     std::shared_ptr<og::sim::InProcessTransport> server_transport;
@@ -83,10 +69,31 @@ struct LocalTransportRuntime {
 
 namespace
 {
-og::runtime::GameSession* as_game_session(og::runtime::SessionState* session) noexcept
+
+class ScopedSessionContext
 {
-    return static_cast<og::runtime::GameSession*>(session);
-}
+public:
+    explicit ScopedSessionContext(og::runtime::SessionState& session)
+        : saved_session_(og::runtime::current_session)
+        , saved_game_(current_game)
+    {
+        og::runtime::current_session = &session;
+        current_game = &session.game_;
+    }
+
+    ~ScopedSessionContext()
+    {
+        og::runtime::current_session = saved_session_;
+        current_game = saved_game_;
+    }
+
+    ScopedSessionContext(const ScopedSessionContext&) = delete;
+    ScopedSessionContext& operator=(const ScopedSessionContext&) = delete;
+
+private:
+    og::runtime::SessionState* saved_session_ = nullptr;
+    GameplayContext* saved_game_ = nullptr;
+};
 
 class ScopedSessionGameplayActivation
 {
@@ -386,23 +393,16 @@ void render_pause_overlay(screen& gameplay_screen,
     gameplay_screen.redrawme = 1;
 }
 
-std::shared_ptr<og::runtime::LocalTransportRuntime> session_runtime(
+std::shared_ptr<og::runtime::LocalTransportRuntime>& session_runtime(
     og::runtime::SessionState& session)
 {
-    og::runtime::GameSession* const game_session = as_game_session(&session);
-    return game_session != nullptr
-        ? og::runtime::LocalTransportRuntimeAccess::runtime(*game_session)
-        : nullptr;
+    return session.local_transport_runtime_;
 }
 
-std::shared_ptr<const og::runtime::LocalTransportRuntime> session_runtime(
+const std::shared_ptr<og::runtime::LocalTransportRuntime>& session_runtime(
     const og::runtime::SessionState& session)
 {
-    const auto* const game_session =
-        as_game_session(const_cast<og::runtime::SessionState*>(&session));
-    return game_session != nullptr
-        ? og::runtime::LocalTransportRuntimeAccess::runtime(*game_session)
-        : nullptr;
+    return session.local_transport_runtime_;
 }
 
 } // namespace
@@ -418,14 +418,6 @@ std::size_t local_transport_client_count(const SessionState& session) noexcept
 {
     const auto runtime = session_runtime(session);
     return runtime != nullptr ? runtime->clients.size() : 0u;
-}
-
-GameSession* local_transport_server_session(SessionState& session) noexcept
-{
-    const auto runtime = session_runtime(session);
-    return (runtime != nullptr && runtime->server_session != nullptr)
-        ? runtime->server_session.get()
-        : nullptr;
 }
 
 bool local_transport_shadow_is_paused(const SessionState& session) noexcept
@@ -469,11 +461,7 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
         return;
     }
 
-    GameSession* const owning_session = as_game_session(&session);
-    if (owning_session == nullptr)
-        return;
-
-    LocalTransportRuntimeAccess::runtime(*owning_session).reset();
+    session_runtime(session).reset();
 
     auto runtime = std::make_shared<LocalTransportRuntime>();
     const std::size_t player_count = compute_local_player_count(gameplay_screen);
@@ -682,19 +670,18 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
         runtime->server->send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
     }
     {
-        auto client_scope = owning_session->activate();
-        GameplayContextGuard client_gameplay_scope(&owning_session->game_);
+        ScopedSessionContext client_scope(session);
+        GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
             client.game_client->poll_messages();
     }
 
-    LocalTransportRuntimeAccess::runtime(*owning_session) = std::move(runtime);
+    session_runtime(session) = std::move(runtime);
 }
 
 void clear_local_transport_shadow(SessionState& session) noexcept
 {
-    if (GameSession* const game_session = as_game_session(&session))
-        LocalTransportRuntimeAccess::runtime(*game_session).reset();
+    session_runtime(session).reset();
 }
 
 void local_transport_shadow_send_input(SessionState& session,
@@ -728,10 +715,6 @@ void local_transport_shadow_finish_tick(SessionState& session)
     if (runtime == nullptr)
         return;
 
-    GameSession* const client_session = as_game_session(&session);
-    if (client_session == nullptr)
-        return;
-
     if (session.myscreen_ == nullptr || runtime->server == nullptr ||
         runtime->server_session == nullptr)
     {
@@ -758,8 +741,8 @@ void local_transport_shadow_finish_tick(SessionState& session)
     // 10-14. Restore the display session, then drain snapshots/events into the
     // client mirror before rendering.
     {
-        auto client_scope = client_session->activate();
-        GameplayContextGuard client_gameplay_scope(&client_session->game_);
+        ScopedSessionContext client_scope(session);
+        GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
         {
             client.game_client->poll_messages();

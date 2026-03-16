@@ -30,6 +30,8 @@ struct VButtonDeleter {
     void operator()(::vbutton* button) const;
 };
 
+struct LocalTransportRuntime;
+
 // Interface-visible subset of session globals.
 // Platform's GameSession derives from this and owns additional lifecycle state.
 struct SessionState {
@@ -120,6 +122,7 @@ struct SessionState {
     GameContext ctx_;
     GameplayContext game_;
     GameLoopFrameState frame_state_;
+    std::shared_ptr<LocalTransportRuntime> local_transport_runtime_;
     // True only while mission gameplay is actively running.
     // Window autosave uses this to choose the authoritative state source.
     bool gameplay_active_ = false;

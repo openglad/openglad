@@ -367,7 +367,7 @@ TEST(GameLoop, glad_init_uses_save_data_numplayers_for_local_transport_clients)
 }
 
 TEST(GameLoop,
-     local_transport_finish_tick_uses_gameplay_session_for_client_palette_sync)
+     reset_local_transport_shadow_uses_gameplay_session_for_client_palette_sync)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
@@ -380,18 +380,14 @@ TEST(GameLoop,
     ASSERT_TRUE(game_screen->save_data.save("save0"));
 
     glad_init();
-    auto* const gameplay_session =
-        static_cast<og::runtime::GameSession*>(og::runtime::current_session);
-    ASSERT_TRUE(gameplay_session != nullptr);
+    og::runtime::SessionState& gameplay_session = *og::runtime::current_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
 
-    og::runtime::GameSession* const server_session =
-        og::runtime::local_transport_server_session(*gameplay_session);
-    ASSERT_TRUE(server_session != nullptr);
-    ASSERT_TRUE(server_session->myscreen_ != nullptr);
-
-    std::fill(std::begin(gameplay_session->curpal_),
-              std::end(gameplay_session->curpal_),
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    std::fill(std::begin(gameplay_session.curpal_),
+              std::end(gameplay_session.curpal_),
               0u);
+    game_screen->world().current_palette_id = 1;
 
     og::runtime::GameSession::Config other_cfg;
     other_cfg.allocate_screen = false;
@@ -403,31 +399,21 @@ TEST(GameLoop,
               0u);
 
     {
-        auto server_scope = server_session->activate();
-        server_session->myscreen_->world().current_palette_id = 1;
-    }
-
-    {
         auto other_scope = other_session.activate();
-        InputState input{};
-        og::runtime::local_transport_shadow_send_input(
-            *gameplay_session,
-            input,
-            game_screen->world().tick_count_ + 1);
-        og::runtime::local_transport_shadow_finish_tick(*gameplay_session);
-
+        og::runtime::reset_local_transport_shadow(gameplay_session, *game_screen);
         EXPECT_EQ(&other_session, og::runtime::current_session);
     }
 
+    EXPECT_TRUE(og::runtime::local_transport_active(gameplay_session));
     EXPECT_EQ(1, game_screen->world().current_palette_id);
     EXPECT_TRUE(std::equal(std::begin(game_screen->bluepalette),
                            std::end(game_screen->bluepalette),
-                           std::begin(gameplay_session->curpal_)));
+                           std::begin(gameplay_session.curpal_)));
     EXPECT_TRUE(std::all_of(std::begin(other_session.curpal_),
                             std::end(other_session.curpal_),
                             [](unsigned char value) { return value == 0u; }));
 
-    og::runtime::clear_local_transport_shadow(*gameplay_session);
+    og::runtime::clear_local_transport_shadow(gameplay_session);
     game_screen->world().delete_objects();
 }
 
