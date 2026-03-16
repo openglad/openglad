@@ -401,6 +401,72 @@ TEST(NetTransport, game_server_forward_event_batch_skips_unready_raw_clients)
     EXPECT_TRUE(transport.sent_messages().empty());
 }
 
+TEST(NetTransport, game_server_forward_event_batch_uses_ready_raw_fallback)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    server.connect_client(7u);
+    server.bind_player(7u, 0u, fixture.world().my_team);
+    server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+
+    og::sim::ClientReadyMessage ready;
+    ready.last_applied_tick = fixture.world().tick_count_;
+    transport.queue_received(
+        7u, og::sim::serialize_client_ready_message(ready));
+    server.step();
+
+    const std::size_t sent_before = transport.sent_messages().size();
+
+    og::sim::SimEventBatch batch;
+    batch.sequence = 9u;
+    batch.events.push_back({
+        .tick = 9u,
+        .kind = og::sim::EventKind::Notification,
+        .a = 30u,
+        .b = 0u,
+        .text = "sim",
+    });
+    batch.events.push_back({
+        .tick = 9u,
+        .kind = og::sim::EventKind::EndGame,
+        .a = 1u,
+        .b = 2u,
+        .text = {},
+    });
+
+    server.forward_event_batch(batch);
+
+    ASSERT_EQ(sent_before + 2u, transport.sent_messages().size());
+
+    og::sim::TransportEnvelope envelope;
+    const auto& sim_message = transport.sent_messages()[sent_before];
+    EXPECT_EQ(7u, sim_message.peer_id);
+    ASSERT_TRUE(og::sim::decode_transport_envelope(sim_message.data, envelope));
+    EXPECT_EQ(og::sim::kSimEventBatchMessageType, envelope.message_type);
+    const og::sim::SimEventBatch sim_batch =
+        og::sim::deserialize_sim_event_batch(sim_message.data.data(),
+                                             sim_message.data.size());
+    EXPECT_NE(0u, sim_batch.sequence);
+    ASSERT_EQ(1u, sim_batch.events.size());
+    EXPECT_EQ(og::sim::EventKind::Notification, sim_batch.events[0].kind);
+    EXPECT_EQ("sim", sim_batch.events[0].text);
+
+    const auto& game_flow_message = transport.sent_messages()[sent_before + 1u];
+    EXPECT_EQ(7u, game_flow_message.peer_id);
+    ASSERT_TRUE(
+        og::sim::decode_transport_envelope(game_flow_message.data, envelope));
+    EXPECT_EQ(og::sim::kGameFlowEventBatchMessageType, envelope.message_type);
+    const og::sim::SimEventBatch game_flow_batch =
+        og::sim::deserialize_game_flow_event_batch(game_flow_message.data.data(),
+                                                   game_flow_message.data.size());
+    EXPECT_NE(0u, game_flow_batch.sequence);
+    ASSERT_EQ(1u, game_flow_batch.events.size());
+    EXPECT_EQ(og::sim::EventKind::EndGame, game_flow_batch.events[0].kind);
+    EXPECT_EQ(1u, game_flow_batch.events[0].a);
+    EXPECT_EQ(2u, game_flow_batch.events[0].b);
+}
+
 TEST(NetTransport,
      initial_setup_control_change_and_snapshot_hash_messages_roundtrip)
 {
