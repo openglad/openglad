@@ -176,13 +176,50 @@ void cleanup_dead_view_controls(screen& self)
     }
 }
 
-bool dispatch_screen_events(screen& self,
-                            const std::vector<og::sim::Event>& events)
+bool is_game_flow_event(og::sim::EventKind kind) noexcept
+{
+    switch (kind)
+    {
+        case og::sim::EventKind::EndGame:
+        case og::sim::EventKind::SetEnd:
+        case og::sim::EventKind::RequestExitConfirmation:
+        case og::sim::EventKind::WithdrawToLevel:
+        case og::sim::EventKind::ScoreChange:
+            return true;
+        case og::sim::EventKind::None:
+        case og::sim::EventKind::PlaySound:
+        case og::sim::EventKind::Notification:
+        case og::sim::EventKind::SetPalette:
+        case og::sim::EventKind::RequestRedraw:
+            return false;
+    }
+
+    return false;
+}
+
+screen::TickWorldBatches split_screen_event_batches(
+    const og::sim::SimEventBatch& source)
+{
+    og::sim::SimEventBatch cosmetic_batch;
+    og::sim::GameFlowEventBatch game_flow_batch;
+    cosmetic_batch.sequence = source.sequence;
+    game_flow_batch.sequence = source.sequence;
+
+    for (const auto& event : source.events)
+    {
+        if (is_game_flow_event(event.kind))
+            game_flow_batch.events.push_back(event);
+        else
+            cosmetic_batch.events.push_back(event);
+    }
+
+    return {std::move(cosmetic_batch), std::move(game_flow_batch)};
+}
+
+void dispatch_cosmetic_screen_events(screen& self,
+                                     const std::vector<og::sim::Event>& events)
 {
     cleanup_dead_view_controls(self);
-
-    const og::sim::Event* first_exit_request = nullptr;
-    const og::sim::Event* first_withdraw_request = nullptr;
     for (const auto& ev : events)
     {
         switch (ev.kind)
@@ -220,6 +257,29 @@ bool dispatch_screen_events(screen& self,
             case og::sim::EventKind::RequestRedraw:
                 self.redrawme = 1;
                 break;
+            case og::sim::EventKind::None:
+            case og::sim::EventKind::EndGame:
+            case og::sim::EventKind::SetEnd:
+            case og::sim::EventKind::RequestExitConfirmation:
+            case og::sim::EventKind::WithdrawToLevel:
+            case og::sim::EventKind::ScoreChange:
+            default:
+                break;
+        }
+    }
+}
+
+bool dispatch_game_flow_screen_events(screen& self,
+                                      const std::vector<og::sim::Event>& events)
+{
+    cleanup_dead_view_controls(self);
+
+    const og::sim::Event* first_exit_request = nullptr;
+    const og::sim::Event* first_withdraw_request = nullptr;
+    for (const auto& ev : events)
+    {
+        switch (ev.kind)
+        {
             case og::sim::EventKind::EndGame:
                 self.sync_save_data_from_world();
                 return self.endgame(static_cast<short>(ev.a),
@@ -239,6 +299,11 @@ bool dispatch_screen_events(screen& self,
             case og::sim::EventKind::ScoreChange:
                 self.redrawme = 1;
                 break;
+            case og::sim::EventKind::None:
+            case og::sim::EventKind::PlaySound:
+            case og::sim::EventKind::Notification:
+            case og::sim::EventKind::SetPalette:
+            case og::sim::EventKind::RequestRedraw:
             default:
                 break;
         }
@@ -1094,22 +1159,38 @@ void screen::process_input(const InputState& input_state)
 
 bool screen::dispatch_sim_event_batch(const og::sim::SimEventBatch& batch)
 {
-    return dispatch_screen_events(*this, batch.events);
+    dispatch_cosmetic_events(batch);
+    return dispatch_game_flow_events(batch);
+}
+
+screen::TickWorldBatches screen::tick_world()
+{
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return {};
+
+    ScopedGameplayTickActivation gameplay_tick_active(og::runtime::current_session);
+    world_.tick();
+
+    return split_screen_event_batches(
+        og::sim::drain_sim_events(*current_game->sim_events));
+}
+
+void screen::dispatch_cosmetic_events(const og::sim::SimEventBatch& batch)
+{
+    dispatch_cosmetic_screen_events(*this, batch.events);
+}
+
+bool screen::dispatch_game_flow_events(
+    const og::sim::GameFlowEventBatch& batch)
+{
+    return dispatch_game_flow_screen_events(*this, batch.events);
 }
 
 bool screen::act()
 {
-	// Delegate simulation tick to GameWorld.
-	// GameWorld encapsulates the deterministic entity update logic that
-	// was previously embedded directly in this method.
-	if (current_game == nullptr || current_game->sim_events == nullptr)
-		return 1;
-	og::sim::SimEventLog& events = *current_game->sim_events;
-    ScopedGameplayTickActivation gameplay_tick_active(og::runtime::current_session);
-	world_.tick();
-	const bool result = dispatch_screen_events(*this, events.events());
-	events.clear();
-	return result;
+    const auto [cosmetic_events, game_flow_events] = tick_world();
+    dispatch_cosmetic_events(cosmetic_events);
+    return dispatch_game_flow_events(game_flow_events);
 }
 
 Uint32 get_time_bonus(int playernum);

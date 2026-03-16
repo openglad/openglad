@@ -175,6 +175,8 @@ struct SimEventBatch {
     std::vector<Event> events;
 };
 
+using GameFlowEventBatch = SimEventBatch;
+
 struct WorldSnapshot {
     std::uint32_t tick_count = 0;
     std::uint32_t rng_state = 0;

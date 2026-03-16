@@ -23,6 +23,7 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/level_visuals.h>
 #include <openglad/resources/save_data.h>
@@ -34,13 +35,10 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 
 struct InputState;
 class soundob;
-
-namespace og::sim {
-struct SimEventBatch;
-}
 
 class screen : public video
 {
@@ -191,6 +189,11 @@ public:
     short input(const void* native_event);
     short continuous_input();
     void process_input(const InputState& input_state);
+    using TickWorldBatches =
+        std::pair<og::sim::SimEventBatch, og::sim::GameFlowEventBatch>;
+    [[nodiscard]] TickWorldBatches tick_world();
+    void dispatch_cosmetic_events(const og::sim::SimEventBatch& batch);
+    bool dispatch_game_flow_events(const og::sim::GameFlowEventBatch& batch);
     bool act();
     bool dispatch_sim_event_batch(const og::sim::SimEventBatch& batch);
 

@@ -628,6 +628,159 @@ TEST(RuntimeCoveragePaths, screen_withdraw_aborts_when_autosave_load_fails)
     ASSERT_TRUE(s->save_data.save("save0")) << "cleanup save0 should succeed";
 }
 
+TEST(RuntimeCoveragePaths, screen_tick_world_splits_cosmetic_and_game_flow_batches)
+{
+    clear_level_lists();
+
+    ASSERT_TRUE(current_game != nullptr && current_game->sim_events != nullptr)
+        << "sim events should be available";
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& sim_events = *current_game->sim_events;
+    sim_events.clear();
+
+    GameWorld& world = setup_tick_world(4242);
+    walker* ally = add_living(0);
+    walker* foe = add_living(1);
+    ASSERT_TRUE(ally && foe) << "living fixtures should exist";
+    if (!(ally && foe))
+        return;
+
+    sim_events.push_sound(7);
+    sim_events.push_notification("Tick cosmetic", 3);
+    sim_events.push(og::sim::EventKind::SetPalette, 1, 0);
+    sim_events.push(og::sim::EventKind::RequestRedraw);
+    sim_events.push(og::sim::EventKind::ScoreChange, 2, 125);
+    sim_events.push_with_text(og::sim::EventKind::RequestExitConfirmation,
+                              "Exit to Level 4?", 4, 0);
+
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr) << "active screen should be available";
+    if (!s)
+        return;
+
+    const auto [cosmetic_batch, game_flow_batch] = s->tick_world();
+
+    ASSERT_TRUE(sim_events.empty()) << "tick_world should drain the sim event log";
+    ASSERT_EQ(world.tick_count_, cosmetic_batch.sequence)
+        << "cosmetic batch sequence should match the producing tick";
+    ASSERT_EQ(world.tick_count_, game_flow_batch.sequence)
+        << "game flow batch sequence should match the producing tick";
+
+    ASSERT_EQ(4u, cosmetic_batch.events.size())
+        << "cosmetic batch should contain only non-game-flow events";
+    ASSERT_EQ(2u, game_flow_batch.events.size())
+        << "game flow batch should contain the score and exit events";
+
+    ASSERT_TRUE(cosmetic_batch.events[0].kind == og::sim::EventKind::PlaySound);
+    ASSERT_TRUE(cosmetic_batch.events[1].kind == og::sim::EventKind::Notification);
+    ASSERT_TRUE(cosmetic_batch.events[2].kind == og::sim::EventKind::SetPalette);
+    ASSERT_TRUE(cosmetic_batch.events[3].kind == og::sim::EventKind::RequestRedraw);
+
+    ASSERT_TRUE(game_flow_batch.events[0].kind == og::sim::EventKind::ScoreChange);
+    ASSERT_TRUE(game_flow_batch.events[1].kind ==
+                og::sim::EventKind::RequestExitConfirmation);
+
+    clear_level_lists();
+}
+
+TEST(RuntimeCoveragePaths, screen_dispatch_cosmetic_events_updates_view_state)
+{
+    clear_level_lists();
+
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr) << "active screen should be available";
+    if (!s)
+        return;
+
+    s->redrawme = 0;
+    s->world_.current_palette_id = 0;
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+
+    og::sim::SimEventBatch batch;
+    og::sim::Event notification_event;
+    notification_event.kind = og::sim::EventKind::Notification;
+    notification_event.a = 9;
+    notification_event.text = "Cosmetic dispatch";
+    batch.events.push_back(notification_event);
+
+    og::sim::Event palette_event;
+    palette_event.kind = og::sim::EventKind::SetPalette;
+    palette_event.a = 1;
+    batch.events.push_back(palette_event);
+
+    og::sim::Event redraw_event;
+    redraw_event.kind = og::sim::EventKind::RequestRedraw;
+    batch.events.push_back(redraw_event);
+
+    s->dispatch_cosmetic_events(batch);
+
+    ASSERT_EQ(1, static_cast<int>(s->redrawme))
+        << "cosmetic redraw event should mark the screen dirty";
+    ASSERT_EQ(1, static_cast<int>(s->world_.current_palette_id))
+        << "palette event should switch to the freeze palette id";
+    ASSERT_EQ(std::string("Cosmetic dispatch"), s->viewob[0]->textlist[0])
+        << "notification event should reach the active view";
+    ASSERT_EQ(9, static_cast<int>(s->viewob[0]->textcycles[0]))
+        << "notification duration should be preserved";
+
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+}
+
+TEST(RuntimeCoveragePaths, screen_dispatch_game_flow_events_handles_direct_batches)
+{
+    clear_level_lists();
+
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr) << "active screen should be available";
+    if (!s)
+        return;
+
+    s->world_.end = 0;
+    s->world_.withdraw_requested = true;
+    s->world_.withdraw_level = 6;
+    s->redrawme = 0;
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(false);
+
+    og::sim::GameFlowEventBatch batch;
+
+    og::sim::Event set_end_event;
+    set_end_event.kind = og::sim::EventKind::SetEnd;
+    batch.events.push_back(set_end_event);
+
+    og::sim::Event score_change_event;
+    score_change_event.kind = og::sim::EventKind::ScoreChange;
+    score_change_event.a = 0;
+    score_change_event.b = 50;
+    batch.events.push_back(score_change_event);
+
+    og::sim::Event exit_prompt_event;
+    exit_prompt_event.kind = og::sim::EventKind::RequestExitConfirmation;
+    exit_prompt_event.a = 6;
+    exit_prompt_event.b = 0;
+    exit_prompt_event.text = "Exit to Level 6?";
+    batch.events.push_back(exit_prompt_event);
+
+    ASSERT_TRUE(s->dispatch_game_flow_events(batch))
+        << "game flow batch should remain compatible with the act() return path";
+    ASSERT_EQ(1, static_cast<int>(s->world_.end))
+        << "SetEnd should flip the world end flag";
+    ASSERT_EQ(1, static_cast<int>(s->redrawme))
+        << "ScoreChange should still request a redraw";
+    ASSERT_TRUE(!s->world_.withdraw_requested)
+        << "declining the prompt should clear pending withdraw state";
+    ASSERT_EQ(-1, static_cast<int>(s->world_.withdraw_level))
+        << "declining the prompt should clear the withdraw destination";
+
+    picker_testing_yes_or_no_queue_clear();
+    s->world_.end = 0;
+    clear_level_lists();
+}
+
 
 TEST(RuntimeCoveragePaths, sim_world_tick_branches_for_end_freeze_and_cleanup)
 {
