@@ -1,4 +1,5 @@
 #include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_transport.h>
@@ -10,6 +11,8 @@
 #include <cstdint>
 #include <utility>
 #include <vector>
+
+#include "../test_game_world_fixture.h"
 
 namespace {
 
@@ -79,6 +82,21 @@ private:
     std::vector<og::sim::ReceivedMessage> sent_messages_;
     std::vector<og::sim::PeerId> disconnected_peers_;
 };
+
+void expect_input_state_eq(const InputState& expected, const InputState& actual)
+{
+    EXPECT_EQ(expected.quit_requested, actual.quit_requested);
+    for (int player = 0; player < MAX_PLAYERS; ++player)
+    {
+        for (int key = 0; key < NUM_INPUT_KEYS; ++key)
+        {
+            EXPECT_EQ(expected.players[player].held[key],
+                      actual.players[player].held[key]);
+            EXPECT_EQ(expected.players[player].pressed[key],
+                      actual.players[player].pressed[key]);
+        }
+    }
+}
 
 TEST(NetTransport, header_helpers_roundtrip_envelope)
 {
@@ -244,6 +262,139 @@ TEST(NetTransport, game_client_send_input_uses_raw_fallback)
         og::sim::serialize_input(12u, input);
     EXPECT_EQ((std::vector<std::uint8_t>(expected.begin(), expected.end())),
               transport.sent_messages().front().data);
+}
+
+TEST(NetTransport,
+     game_server_polls_raw_input_messages_when_typed_path_is_unavailable)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    InputState input{};
+    input.quit_requested = true;
+    input.players[0].held[static_cast<int>(InputAction::MoveLeft)] = true;
+    input.players[1].pressed[static_cast<int>(InputAction::Fire)] = true;
+
+    const auto bytes = og::sim::serialize_input(14u, input);
+    transport.queue_received(
+        5u,
+        std::vector<std::uint8_t>(bytes.begin(), bytes.end()));
+
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(1u, server.last_polled_messages().size());
+    const og::sim::TypedReceivedMessage& message =
+        server.last_polled_messages().front();
+    EXPECT_EQ(5u, message.peer_id);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Input, message.kind);
+    EXPECT_EQ(14u, message.tick);
+    ASSERT_NE(nullptr, message.input);
+    expect_input_state_eq(input, *message.input);
+}
+
+TEST(NetTransport, game_server_broadcast_current_state_uses_raw_fallback)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    server.connect_client(7u);
+
+    fixture.world().tick_count_ = 3u;
+    fixture.world().my_team = 2;
+    fixture.world().current_palette_id = 1;
+
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+
+    fixture.world().tick_count_ = 4u;
+    fixture.world().current_palette_id = 2;
+    fixture.world().pending_exit_prompt = true;
+
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+
+    ASSERT_EQ(2u, transport.sent_messages().size());
+
+    og::sim::TransportEnvelope envelope;
+    ASSERT_TRUE(og::sim::decode_transport_envelope(
+        transport.sent_messages()[0].data,
+        envelope));
+    EXPECT_EQ(og::sim::kSnapshotMessageType, envelope.message_type);
+    const og::sim::WorldSnapshot initial =
+        og::sim::deserialize_snapshot(transport.sent_messages()[0].data.data(),
+                                      transport.sent_messages()[0].data.size());
+    EXPECT_EQ(3u, initial.tick_count);
+    EXPECT_EQ(2, initial.my_team);
+    EXPECT_EQ(1, initial.current_palette_id);
+
+    ASSERT_TRUE(og::sim::decode_transport_envelope(
+        transport.sent_messages()[1].data,
+        envelope));
+    EXPECT_EQ(og::sim::kDeltaSnapshotMessageType, envelope.message_type);
+    const og::sim::WorldSnapshot delta =
+        og::sim::deserialize_delta(transport.sent_messages()[1].data.data(),
+                                   transport.sent_messages()[1].data.size());
+    EXPECT_EQ(4u, delta.tick_count);
+    EXPECT_EQ(2, delta.current_palette_id);
+    EXPECT_TRUE(delta.pending_exit_prompt);
+}
+
+TEST(NetTransport, game_server_forward_event_batch_uses_raw_fallback)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    server.connect_client(7u);
+
+    og::sim::SimEventBatch batch;
+    batch.sequence = 9u;
+    batch.events.push_back({
+        .tick = 9u,
+        .kind = og::sim::EventKind::Notification,
+        .a = 30u,
+        .b = 0u,
+        .text = "sim",
+    });
+    batch.events.push_back({
+        .tick = 9u,
+        .kind = og::sim::EventKind::EndGame,
+        .a = 1u,
+        .b = 2u,
+        .text = {},
+    });
+
+    server.forward_event_batch(batch);
+
+    ASSERT_EQ(2u, transport.sent_messages().size());
+
+    og::sim::TransportEnvelope envelope;
+    ASSERT_TRUE(og::sim::decode_transport_envelope(
+        transport.sent_messages()[0].data,
+        envelope));
+    EXPECT_EQ(og::sim::kSimEventBatchMessageType, envelope.message_type);
+    const og::sim::SimEventBatch sim_batch =
+        og::sim::deserialize_sim_event_batch(
+            transport.sent_messages()[0].data.data(),
+            transport.sent_messages()[0].data.size());
+    EXPECT_EQ(9u, sim_batch.sequence);
+    ASSERT_EQ(1u, sim_batch.events.size());
+    EXPECT_EQ(og::sim::EventKind::Notification, sim_batch.events[0].kind);
+    EXPECT_EQ("sim", sim_batch.events[0].text);
+
+    ASSERT_TRUE(og::sim::decode_transport_envelope(
+        transport.sent_messages()[1].data,
+        envelope));
+    EXPECT_EQ(og::sim::kGameFlowEventBatchMessageType, envelope.message_type);
+    const og::sim::SimEventBatch game_flow_batch =
+        og::sim::deserialize_game_flow_event_batch(
+            transport.sent_messages()[1].data.data(),
+            transport.sent_messages()[1].data.size());
+    EXPECT_EQ(9u, game_flow_batch.sequence);
+    ASSERT_EQ(1u, game_flow_batch.events.size());
+    EXPECT_EQ(og::sim::EventKind::EndGame, game_flow_batch.events[0].kind);
+    EXPECT_EQ(1u, game_flow_batch.events[0].a);
+    EXPECT_EQ(2u, game_flow_batch.events[0].b);
 }
 
 TEST(NetTransport, game_client_polls_raw_messages_when_typed_path_is_unavailable)

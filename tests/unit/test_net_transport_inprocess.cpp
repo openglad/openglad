@@ -1,3 +1,4 @@
+#include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/core/constants.h>
@@ -7,6 +8,7 @@
 
 #include <openglad/gameplay/replay.h>
 
+#include "../test_game_world_fixture.h"
 #include "../test_network_fixture.h"
 
 #include <array>
@@ -154,7 +156,7 @@ TEST(NetTransportInProcess, linked_pair_preserves_raw_send_receive)
               received.front().data);
 }
 
-TEST(NetTransportInProcess, multi_client_broadcast_preserves_message_order)
+TEST(NetTransportInProcess, direct_sends_to_multiple_clients_preserve_message_order)
 {
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();
@@ -201,6 +203,72 @@ TEST(NetTransportInProcess, multi_client_broadcast_preserves_message_order)
               second_messages[0].kind);
     ASSERT_NE(nullptr, second_messages[0].snapshot);
     EXPECT_EQ(3u, second_messages[0].snapshot->tick_count);
+}
+
+TEST(NetTransportInProcess,
+     game_server_broadcast_current_state_reaches_all_clients_in_order)
+{
+    TestGameWorld fixture;
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    server_transport->accept_connections();
+    auto client_one = server_transport->create_client_transport();
+    auto client_two = server_transport->create_client_transport();
+
+    og::sim::GameServer server(fixture.world(), fixture.events,
+                               *server_transport);
+    server.connect_client(client_one->local_peer_id());
+    server.connect_client(client_two->local_peer_id());
+
+    fixture.world().tick_count_ = 3u;
+    fixture.world().my_team = 2;
+    fixture.world().current_palette_id = 1;
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+
+    fixture.world().tick_count_ = 4u;
+    fixture.world().current_palette_id = 2;
+    fixture.world().pending_exit_prompt = true;
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+
+    const std::vector<og::sim::TypedReceivedMessage> first_client_messages =
+        client_one->poll_typed();
+    const std::vector<og::sim::TypedReceivedMessage> second_client_messages =
+        client_two->poll_typed();
+
+    ASSERT_EQ(2u, first_client_messages.size());
+    ASSERT_EQ(2u, second_client_messages.size());
+
+    EXPECT_EQ(client_one->local_peer_id(), first_client_messages[0].peer_id);
+    EXPECT_EQ(client_one->local_peer_id(), first_client_messages[1].peer_id);
+    EXPECT_EQ(client_two->local_peer_id(), second_client_messages[0].peer_id);
+    EXPECT_EQ(client_two->local_peer_id(), second_client_messages[1].peer_id);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Snapshot,
+              first_client_messages[0].kind);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::DeltaSnapshot,
+              first_client_messages[1].kind);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Snapshot,
+              second_client_messages[0].kind);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::DeltaSnapshot,
+              second_client_messages[1].kind);
+
+    ASSERT_NE(nullptr, first_client_messages[0].snapshot);
+    ASSERT_NE(nullptr, first_client_messages[1].snapshot);
+    ASSERT_NE(nullptr, second_client_messages[0].snapshot);
+    ASSERT_NE(nullptr, second_client_messages[1].snapshot);
+
+    EXPECT_EQ(3u, first_client_messages[0].snapshot->tick_count);
+    EXPECT_EQ(2, first_client_messages[0].snapshot->my_team);
+    EXPECT_EQ(1, first_client_messages[0].snapshot->current_palette_id);
+    EXPECT_EQ(4u, first_client_messages[1].snapshot->tick_count);
+    EXPECT_EQ(2, first_client_messages[1].snapshot->current_palette_id);
+    EXPECT_TRUE(first_client_messages[1].snapshot->pending_exit_prompt);
+
+    expect_snapshot_eq(*first_client_messages[0].snapshot,
+                       *second_client_messages[0].snapshot);
+    expect_snapshot_eq(*first_client_messages[1].snapshot,
+                       *second_client_messages[1].snapshot);
 }
 
 TEST(NetTransportInProcess, validating_mode_roundtrips_all_typed_messages)
