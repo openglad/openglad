@@ -414,6 +414,20 @@ bool local_transport_active(const SessionState& session) noexcept
     return session_runtime(session) != nullptr;
 }
 
+std::size_t local_transport_client_count(const SessionState& session) noexcept
+{
+    const auto runtime = session_runtime(session);
+    return runtime != nullptr ? runtime->clients.size() : 0u;
+}
+
+GameSession* local_transport_server_session(SessionState& session) noexcept
+{
+    const auto runtime = session_runtime(session);
+    return (runtime != nullptr && runtime->server_session != nullptr)
+        ? runtime->server_session.get()
+        : nullptr;
+}
+
 bool local_transport_shadow_is_paused(const SessionState& session) noexcept
 {
     const auto runtime = session_runtime(session);

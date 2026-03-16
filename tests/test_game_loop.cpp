@@ -1,4 +1,5 @@
 #include "SDL.h"
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <thread>
@@ -8,6 +9,7 @@
 #include <openglad/gameplay/replay.h>
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/platform/game_loop.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
@@ -337,6 +339,95 @@ TEST(GameLoop, clear_local_transport_shadow_deactivates_session_runtime)
     og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
     EXPECT_FALSE(og::runtime::local_transport_active(*og::runtime::current_session));
 
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, glad_init_uses_save_data_numplayers_for_local_transport_clients)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 3;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    game_screen->ready_for_battle(1);
+    ASSERT_EQ(1, game_screen->numviews);
+
+    glad_init();
+    EXPECT_EQ(3u,
+              og::runtime::local_transport_client_count(
+                  *og::runtime::current_session));
+
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop,
+     local_transport_finish_tick_uses_gameplay_session_for_client_palette_sync)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    auto* const gameplay_session =
+        static_cast<og::runtime::GameSession*>(og::runtime::current_session);
+    ASSERT_TRUE(gameplay_session != nullptr);
+
+    og::runtime::GameSession* const server_session =
+        og::runtime::local_transport_server_session(*gameplay_session);
+    ASSERT_TRUE(server_session != nullptr);
+    ASSERT_TRUE(server_session->myscreen_ != nullptr);
+
+    std::fill(std::begin(gameplay_session->curpal_),
+              std::end(gameplay_session->curpal_),
+              0u);
+
+    og::runtime::GameSession::Config other_cfg;
+    other_cfg.allocate_screen = false;
+    other_cfg.allocate_prefs = false;
+    other_cfg.install_legacy_globals = false;
+    og::runtime::GameSession other_session(other_cfg);
+    std::fill(std::begin(other_session.curpal_),
+              std::end(other_session.curpal_),
+              0u);
+
+    {
+        auto server_scope = server_session->activate();
+        server_session->myscreen_->world().current_palette_id = 1;
+    }
+
+    {
+        auto other_scope = other_session.activate();
+        InputState input{};
+        og::runtime::local_transport_shadow_send_input(
+            *gameplay_session,
+            input,
+            game_screen->world().tick_count_ + 1);
+        og::runtime::local_transport_shadow_finish_tick(*gameplay_session);
+
+        EXPECT_EQ(&other_session, og::runtime::current_session);
+    }
+
+    EXPECT_EQ(1, game_screen->world().current_palette_id);
+    EXPECT_TRUE(std::equal(std::begin(game_screen->bluepalette),
+                           std::end(game_screen->bluepalette),
+                           std::begin(gameplay_session->curpal_)));
+    EXPECT_TRUE(std::all_of(std::begin(other_session.curpal_),
+                            std::end(other_session.curpal_),
+                            [](unsigned char value) { return value == 0u; }));
+
+    og::runtime::clear_local_transport_shadow(*gameplay_session);
     game_screen->world().delete_objects();
 }
 

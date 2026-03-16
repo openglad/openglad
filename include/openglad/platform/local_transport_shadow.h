@@ -9,8 +9,11 @@ class screen;
 namespace og::runtime {
 
 struct SessionState;
+class GameSession;
 
 bool local_transport_active(const SessionState& session) noexcept;
+std::size_t local_transport_client_count(const SessionState& session) noexcept;
+GameSession* local_transport_server_session(SessionState& session) noexcept;
 bool local_transport_shadow_is_paused(const SessionState& session) noexcept;
 void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen);
 void clear_local_transport_shadow(SessionState& session) noexcept;
