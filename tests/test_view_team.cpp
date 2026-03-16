@@ -151,6 +151,32 @@ static bool wait_for_view_menu_buttons(int timeout_ms = 6000)
     return false;
 }
 
+static bool start_game_from_view_menu(
+    int epoch_before,
+    int timeout_ms,
+    const std::function<bool(const Interactable&)>& is_view_menu_go)
+{
+    int elapsed = 0;
+    int since_last_click = 250;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (g_test_game_epoch.load(std::memory_order_acquire) > epoch_before)
+            return true;
+
+        if (since_last_click >= 250 &&
+            has_interactable_match("go", is_view_menu_go)) {
+            interact_match("go", is_view_menu_go);
+            since_last_click = 0;
+        }
+
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+        since_last_click += poll_interval;
+    }
+
+    return g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
+}
+
 static bool enter_team_menu_from_main_menu(int timeout_ms = 15000)
 {
     if (!wait_for_interactable("continue_game", 5000))
@@ -288,18 +314,11 @@ static int view_team_go_injector(void* data)
     set_game_speed(0.0f);
 
     const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
-    interact_match("go", is_view_menu_go);
+    state->game_started = start_game_from_view_menu(
+        epoch_before, kGameStartTimeoutMs, is_view_menu_go);
 
     int waited_ms = 0;
     const int poll_ms = 50;
-    while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before
-           && waited_ms < kGameStartTimeoutMs) {
-        SDL_Delay(poll_ms);
-        waited_ms += poll_ms;
-    }
-    state->game_started = g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
-
-    waited_ms = 0;
     while (g_test_in_game.load(std::memory_order_acquire)
            && waited_ms < kGameFinishTimeoutMs) {
         SDL_Delay(poll_ms);
@@ -507,21 +526,15 @@ static int view_team_go_level17_injector(void* data)
     og::sim::g_test_level_tick_limit_override = 15;
     set_game_speed(0.0f);
     const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
-    interact_match("go", is_view_menu_go);
+    state->game_started =
+        start_game_from_view_menu(epoch_before, 10000, is_view_menu_go);
 
     int waited_ms = 0;
-    const int poll_ms = 50;
-    while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
+    int stable_polls = 0;
+    const int poll_ms = 100;
+    while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 90000) {
         SDL_Delay(poll_ms);
         waited_ms += poll_ms;
-    }
-    state->game_started = g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
-
-    int stable_polls = 0;
-    waited_ms = 0;
-    while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 90000) {
-        SDL_Delay(100);
-        waited_ms += 100;
         const int frames_seen = g_test_game_frame_ticks.load(std::memory_order_acquire);
         if (frames_seen > 0) {
             state->frame_progressed = true;
