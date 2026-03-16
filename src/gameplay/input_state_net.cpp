@@ -6,6 +6,10 @@ namespace og::sim {
 namespace {
 
 constexpr std::uint8_t kQuitRequestedTrue = 0x01;
+constexpr std::size_t kInputTickOffset = kTransportHeaderSize;
+constexpr std::size_t kQuitRequestedOffset =
+    kInputTickOffset + sizeof(std::uint32_t);
+constexpr std::size_t kPlayerBitsOffset = kQuitRequestedOffset + 1;
 
 static_assert(MAX_PLAYERS == 4);
 static_assert(NUM_INPUT_KEYS == 16);
@@ -69,15 +73,15 @@ std::array<std::uint8_t, kSerializedInputMessageSize>
 serialize_input(std::uint32_t tick, const InputState& input)
 {
     std::array<std::uint8_t, kSerializedInputMessageSize> bytes{};
-    write_transport_header(bytes, kInputStateMessageType,
-                           static_cast<std::uint16_t>(kSerializedInputPayloadSize),
-                           tick);
-    bytes[kTransportHeaderSize] = input.quit_requested ? kQuitRequestedTrue : 0U;
+    write_transport_header(bytes, kInputMessageType,
+                           static_cast<std::uint16_t>(kSerializedInputPayloadSize));
+    write_u32_le(bytes, kInputTickOffset, tick);
+    bytes[kQuitRequestedOffset] = input.quit_requested ? kQuitRequestedTrue : 0U;
 
     for (int player = 0; player < MAX_PLAYERS; ++player)
     {
         const std::size_t offset =
-            kTransportHeaderSize + 1 + (static_cast<std::size_t>(player) * 4);
+            kPlayerBitsOffset + (static_cast<std::size_t>(player) * 4);
         write_u32_le(bytes, offset, pack_player_bits(input.players[player]));
     }
 
@@ -94,22 +98,21 @@ std::optional<InputStateMessage> deserialize_input_message(
 
     TransportEnvelope envelope;
     if (!decode_transport_envelope(bytes, envelope) ||
-        envelope.header_type != kInputStateMessageType ||
-        envelope.message_type != kInputStateMessageType ||
+        envelope.message_type != kInputMessageType ||
         envelope.payload_length != kSerializedInputPayloadSize)
     {
         return std::nullopt;
     }
 
     InputStateMessage message;
-    message.tick = envelope.tick;
+    message.tick = read_u32_le(bytes, kInputTickOffset);
     message.input.quit_requested =
-        bytes[kTransportHeaderSize] == kQuitRequestedTrue;
+        bytes[kQuitRequestedOffset] == kQuitRequestedTrue;
 
     for (int player = 0; player < MAX_PLAYERS; ++player)
     {
         const std::size_t offset =
-            kTransportHeaderSize + 1 + (static_cast<std::size_t>(player) * 4);
+            kPlayerBitsOffset + (static_cast<std::size_t>(player) * 4);
         message.input.players[player] =
             unpack_player_bits(read_u32_le(bytes, offset));
     }

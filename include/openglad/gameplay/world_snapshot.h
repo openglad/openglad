@@ -31,8 +31,8 @@ inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
 inline constexpr std::uint8_t kSnapshotFormatVersion = 3;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
-inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag =
-    kTransportPayloadUncompressedFlag;
+inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
+inline constexpr std::size_t kDeltaPayloadHeaderSize = 1;
 
 using EntitySnapshotDirtyMask =
     std::array<std::uint64_t, kEntitySnapshotDirtyMaskWords>;

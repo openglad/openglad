@@ -33,6 +33,8 @@ using GuyLookup = std::unordered_map<std::int32_t, guy*>;
 using EntityDirtyMask = og::sim::EntitySnapshotDirtyMask;
 
 constexpr std::size_t kMessageHeaderSize = og::sim::kTransportHeaderSize;
+constexpr std::size_t kDeltaWirePayloadHeaderSize =
+    og::sim::kDeltaPayloadHeaderSize;
 constexpr std::size_t kZlibChunkSize = 4096;
 constexpr std::size_t kMaxDecompressedPayloadBytes = 4U * 1024U * 1024U;
 constexpr std::uint32_t kMaxSnapshotStringBytes = 1024;
@@ -41,6 +43,8 @@ constexpr std::uint32_t kMaxGridDirtyTileCount = kMaxGridCellCount;
 constexpr std::uint32_t kMaxGuySnapshotCount = 4096;
 constexpr std::uint32_t kMaxEntitySnapshotCount = 16384;
 constexpr std::uint32_t kMaxRemovedEntityCount = 16384;
+constexpr std::uint8_t kDeltaPayloadSupportedFlags =
+    og::sim::kDeltaPayloadUncompressedFlag;
 constexpr std::uint8_t kDeltaEntityHasDirtyWord1Flag = 0x01;
 constexpr EntityDirtyMask kAllEntityFieldsDirty = {~0ULL, ~0ULL};
 
@@ -2010,8 +2014,7 @@ std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot)
     std::vector<std::uint8_t> bytes;
     bytes.reserve(kMessageHeaderSize + compressed.size());
     append_transport_header(bytes, kSnapshotMessageType,
-                            static_cast<std::uint16_t>(compressed.size()),
-                            snapshot.tick_count);
+                            static_cast<std::uint16_t>(compressed.size()));
     append_bytes(bytes, compressed.data(), compressed.size());
     return bytes;
 }
@@ -2030,8 +2033,7 @@ WorldSnapshot deserialize_snapshot(const std::uint8_t* data, std::size_t size)
             "snapshot message: unsupported protocol version " +
             std::to_string(data[0]));
     }
-    if (envelope.header_type != kSnapshotMessageType ||
-        envelope.message_type != kSnapshotMessageType)
+    if (envelope.message_type != kSnapshotMessageType)
     {
         throw std::runtime_error(
             "snapshot message: unexpected message type " +
@@ -2044,16 +2046,7 @@ WorldSnapshot deserialize_snapshot(const std::uint8_t* data, std::size_t size)
 
     const std::vector<std::uint8_t> payload =
         decompress_zlib_payload(data + kMessageHeaderSize, envelope.payload_length);
-    WorldSnapshot snapshot = deserialize_snapshot_payload(payload);
-    if (snapshot.tick_count != envelope.tick)
-    {
-        throw std::runtime_error(
-            "snapshot message: header/server tick mismatch (" +
-            std::to_string(envelope.tick) + " vs " +
-            std::to_string(snapshot.tick_count) + ")");
-    }
-
-    return snapshot;
+    return deserialize_snapshot_payload(payload);
 }
 
 std::vector<std::uint8_t> serialize_delta(const WorldSnapshot& delta)
@@ -2063,21 +2056,19 @@ std::vector<std::uint8_t> serialize_delta(const WorldSnapshot& delta)
     const bool use_uncompressed = compressed.size() >= payload.size();
     const std::vector<std::uint8_t>& wire_payload =
         use_uncompressed ? payload : compressed;
+    const std::size_t framed_payload_size =
+        kDeltaWirePayloadHeaderSize + wire_payload.size();
 
-    if (wire_payload.size() > std::numeric_limits<std::uint16_t>::max())
+    if (framed_payload_size > std::numeric_limits<std::uint16_t>::max())
     {
         throw std::runtime_error("delta message: payload exceeds 16-bit wire length");
     }
 
     std::vector<std::uint8_t> bytes;
-    bytes.reserve(kMessageHeaderSize + wire_payload.size());
-    append_transport_header(
-        bytes,
-        static_cast<std::uint8_t>(
-            kDeltaSnapshotMessageType |
-            (use_uncompressed ? kDeltaPayloadUncompressedFlag : 0U)),
-        static_cast<std::uint16_t>(wire_payload.size()),
-        delta.tick_count);
+    bytes.reserve(kMessageHeaderSize + framed_payload_size);
+    append_transport_header(bytes, kDeltaSnapshotMessageType,
+                            static_cast<std::uint16_t>(framed_payload_size));
+    bytes.push_back(use_uncompressed ? kDeltaPayloadUncompressedFlag : 0U);
     append_bytes(bytes, wire_payload.data(), wire_payload.size());
     return bytes;
 }
@@ -2097,9 +2088,6 @@ WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size)
             std::to_string(data[0]));
     }
 
-    const std::uint8_t header_type = envelope.header_type;
-    const bool payload_is_uncompressed =
-        (header_type & kDeltaPayloadUncompressedFlag) != 0;
     if (envelope.message_type != kDeltaSnapshotMessageType)
     {
         throw std::runtime_error(
@@ -2110,28 +2098,37 @@ WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size)
     {
         throw std::runtime_error("delta message: payload length mismatch");
     }
+    if (envelope.payload_length < kDeltaWirePayloadHeaderSize)
+    {
+        throw std::runtime_error("delta message: truncated payload flags");
+    }
+
+    const std::uint8_t payload_flags = data[kMessageHeaderSize];
+    if ((payload_flags & ~kDeltaPayloadSupportedFlags) != 0)
+    {
+        throw std::runtime_error(
+            "delta message: unsupported payload flags " +
+            std::to_string(payload_flags));
+    }
+    const bool payload_is_uncompressed =
+        (payload_flags & kDeltaPayloadUncompressedFlag) != 0;
+    const std::size_t wire_payload_length =
+        static_cast<std::size_t>(envelope.payload_length) -
+        kDeltaWirePayloadHeaderSize;
+    const std::uint8_t* const wire_payload =
+        data + kMessageHeaderSize + kDeltaWirePayloadHeaderSize;
 
     std::vector<std::uint8_t> payload;
     if (payload_is_uncompressed)
     {
-        payload.assign(data + kMessageHeaderSize, data + size);
+        payload.assign(wire_payload, wire_payload + wire_payload_length);
     }
     else
     {
-        payload = decompress_zlib_payload(data + kMessageHeaderSize,
-                                          envelope.payload_length);
+        payload = decompress_zlib_payload(wire_payload, wire_payload_length);
     }
 
-    WorldSnapshot delta = deserialize_delta_payload(payload);
-    if (delta.tick_count != envelope.tick)
-    {
-        throw std::runtime_error(
-            "delta message: header/server tick mismatch (" +
-            std::to_string(envelope.tick) + " vs " +
-            std::to_string(delta.tick_count) + ")");
-    }
-
-    return delta;
+    return deserialize_delta_payload(payload);
 }
 
 void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)

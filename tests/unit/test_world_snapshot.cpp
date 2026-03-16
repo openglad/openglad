@@ -633,6 +633,47 @@ std::vector<std::uint8_t> zlib_decompress_for_test(
     return output;
 }
 
+std::size_t payload_length_from_header_for_test(
+    const std::vector<std::uint8_t>& bytes)
+{
+    EXPECT_GE(bytes.size(), og::sim::kTransportHeaderSize);
+    return static_cast<std::size_t>(bytes[2]) |
+           (static_cast<std::size_t>(bytes[3]) << 8);
+}
+
+bool delta_payload_is_uncompressed_for_test(
+    const std::vector<std::uint8_t>& bytes)
+{
+    EXPECT_GE(bytes.size(),
+              og::sim::kTransportHeaderSize + og::sim::kDeltaPayloadHeaderSize);
+    return (bytes[og::sim::kTransportHeaderSize] &
+            og::sim::kDeltaPayloadUncompressedFlag) != 0;
+}
+
+std::vector<std::uint8_t> decode_delta_payload_for_test(
+    const std::vector<std::uint8_t>& bytes)
+{
+    const std::size_t payload_length = payload_length_from_header_for_test(bytes);
+    EXPECT_EQ(bytes.size(), og::sim::kTransportHeaderSize + payload_length);
+    EXPECT_GE(payload_length, og::sim::kDeltaPayloadHeaderSize);
+
+    const bool payload_is_uncompressed =
+        delta_payload_is_uncompressed_for_test(bytes);
+    const std::size_t wire_payload_length =
+        payload_length - og::sim::kDeltaPayloadHeaderSize;
+    const std::uint8_t* const wire_payload =
+        bytes.data() + og::sim::kTransportHeaderSize +
+        og::sim::kDeltaPayloadHeaderSize;
+
+    if (payload_is_uncompressed)
+    {
+        return std::vector<std::uint8_t>(wire_payload,
+                                         wire_payload + wire_payload_length);
+    }
+
+    return zlib_decompress_for_test(wire_payload, wire_payload_length);
+}
+
 } // namespace
 
 TEST(WorldSnapshot, entity_snapshot_layout_matches_dirty_field_table)
@@ -1531,21 +1572,14 @@ TEST(WorldSnapshot, serialize_snapshot_roundtrip_preserves_keyframe_and_compress
     ASSERT_FALSE(keyframe.full_grid_data.empty());
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
-    ASSERT_GE(bytes.size(), 8u);
+    ASSERT_GE(bytes.size(), og::sim::kTransportHeaderSize);
     EXPECT_EQ(og::sim::kSnapshotProtocolVersion, bytes[0]);
     EXPECT_EQ(og::sim::kSnapshotMessageType, bytes[1]);
-    const std::uint16_t payload_length =
-        static_cast<std::uint16_t>(bytes[2]) |
-        (static_cast<std::uint16_t>(bytes[3]) << 8);
-    EXPECT_EQ(bytes.size(), 8u + payload_length);
-    const std::uint32_t server_tick =
-        static_cast<std::uint32_t>(bytes[4]) |
-        (static_cast<std::uint32_t>(bytes[5]) << 8) |
-        (static_cast<std::uint32_t>(bytes[6]) << 16) |
-        (static_cast<std::uint32_t>(bytes[7]) << 24);
-    EXPECT_EQ(keyframe.tick_count, server_tick);
+    const std::size_t payload_length = payload_length_from_header_for_test(bytes);
+    EXPECT_EQ(bytes.size(), og::sim::kTransportHeaderSize + payload_length);
     const std::vector<std::uint8_t> raw_payload =
-        zlib_decompress_for_test(bytes.data() + 8, payload_length);
+        zlib_decompress_for_test(bytes.data() + og::sim::kTransportHeaderSize,
+                                 payload_length);
     ASSERT_FALSE(raw_payload.empty());
     EXPECT_EQ(og::sim::kSnapshotFormatVersion, raw_payload.front());
     EXPECT_LT(bytes.size(), keyframe.full_grid_data.size() / 2);
@@ -1615,20 +1649,15 @@ TEST(WorldSnapshot, serialize_delta_roundtrip_uses_uncompressed_bypass_when_smal
     delta.guy_snapshots.push_back(guy_snapshot);
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
-    ASSERT_GE(bytes.size(), 8u);
+    ASSERT_GE(bytes.size(), og::sim::kTransportHeaderSize +
+                               og::sim::kDeltaPayloadHeaderSize);
     EXPECT_EQ(og::sim::kSnapshotProtocolVersion, bytes[0]);
-    EXPECT_EQ(og::sim::kDeltaSnapshotMessageType,
-              bytes[1] & ~og::sim::kDeltaPayloadUncompressedFlag);
+    EXPECT_EQ(og::sim::kDeltaSnapshotMessageType, bytes[1]);
 
     const bool payload_is_uncompressed =
-        (bytes[1] & og::sim::kDeltaPayloadUncompressedFlag) != 0;
-    const std::uint16_t payload_length =
-        static_cast<std::uint16_t>(bytes[2]) |
-        (static_cast<std::uint16_t>(bytes[3]) << 8);
+        delta_payload_is_uncompressed_for_test(bytes);
     const std::vector<std::uint8_t> raw_payload =
-        payload_is_uncompressed
-            ? std::vector<std::uint8_t>(bytes.begin() + 8, bytes.end())
-            : zlib_decompress_for_test(bytes.data() + 8, payload_length);
+        decode_delta_payload_for_test(bytes);
     const std::vector<std::uint8_t> recompressed =
         zlib_compress_for_test(raw_payload);
     if (payload_is_uncompressed)
@@ -1742,31 +1771,20 @@ TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_headers_and_format_version)
         (void)og::sim::deserialize_snapshot(bad_length.data(), bad_length.size()),
         std::runtime_error);
 
-    std::vector<std::uint8_t> bad_tick = bytes;
-    bad_tick[4] ^= 0xffu;
-    EXPECT_THROW(
-        (void)og::sim::deserialize_snapshot(bad_tick.data(), bad_tick.size()),
-        std::runtime_error);
-
-    const std::size_t payload_length =
-        static_cast<std::size_t>(bytes[2]) |
-        (static_cast<std::size_t>(bytes[3]) << 8);
+    const std::size_t payload_length = payload_length_from_header_for_test(bytes);
     std::vector<std::uint8_t> payload =
-        zlib_decompress_for_test(bytes.data() + 8, payload_length);
+        zlib_decompress_for_test(bytes.data() + og::sim::kTransportHeaderSize,
+                                 payload_length);
     payload[0] = static_cast<std::uint8_t>(og::sim::kSnapshotFormatVersion + 1);
     const std::vector<std::uint8_t> corrupted_payload =
         zlib_compress_for_test(payload);
 
     std::vector<std::uint8_t> bad_format;
-    bad_format.reserve(8 + corrupted_payload.size());
+    bad_format.reserve(og::sim::kTransportHeaderSize + corrupted_payload.size());
     bad_format.push_back(og::sim::kSnapshotProtocolVersion);
     bad_format.push_back(og::sim::kSnapshotMessageType);
     bad_format.push_back(static_cast<std::uint8_t>(corrupted_payload.size() & 0xffu));
     bad_format.push_back(static_cast<std::uint8_t>((corrupted_payload.size() >> 8) & 0xffu));
-    bad_format.push_back(static_cast<std::uint8_t>(keyframe.tick_count & 0xffu));
-    bad_format.push_back(static_cast<std::uint8_t>((keyframe.tick_count >> 8) & 0xffu));
-    bad_format.push_back(static_cast<std::uint8_t>((keyframe.tick_count >> 16) & 0xffu));
-    bad_format.push_back(static_cast<std::uint8_t>((keyframe.tick_count >> 24) & 0xffu));
     bad_format.insert(bad_format.end(),
                       corrupted_payload.begin(), corrupted_payload.end());
 
@@ -1814,37 +1832,24 @@ TEST(WorldSnapshot, deserialize_delta_rejects_bad_headers_and_malformed_payloads
         (void)og::sim::deserialize_delta(bad_length.data(), bad_length.size()),
         std::runtime_error);
 
-    std::vector<std::uint8_t> bad_tick = bytes;
-    bad_tick[4] ^= 0xffu;
-    EXPECT_THROW(
-        (void)og::sim::deserialize_delta(bad_tick.data(), bad_tick.size()),
-        std::runtime_error);
-
     const bool payload_is_uncompressed =
-        (bytes[1] & og::sim::kDeltaPayloadUncompressedFlag) != 0;
-    const std::size_t payload_length =
-        static_cast<std::size_t>(bytes[2]) |
-        (static_cast<std::size_t>(bytes[3]) << 8);
-    std::vector<std::uint8_t> payload =
-        payload_is_uncompressed
-            ? std::vector<std::uint8_t>(bytes.begin() + 8, bytes.end())
-            : zlib_decompress_for_test(bytes.data() + 8, payload_length);
+        delta_payload_is_uncompressed_for_test(bytes);
+    std::vector<std::uint8_t> payload = decode_delta_payload_for_test(bytes);
     payload[0] = static_cast<std::uint8_t>(og::sim::kSnapshotFormatVersion + 1);
     const std::vector<std::uint8_t> corrupted_payload = payload_is_uncompressed
         ? payload
         : zlib_compress_for_test(payload);
     std::vector<std::uint8_t> bad_format;
-    bad_format.reserve(8 + corrupted_payload.size());
+    const std::size_t bad_payload_length =
+        og::sim::kDeltaPayloadHeaderSize + corrupted_payload.size();
+    bad_format.reserve(og::sim::kTransportHeaderSize + bad_payload_length);
     bad_format.push_back(og::sim::kSnapshotProtocolVersion);
-    bad_format.push_back(static_cast<std::uint8_t>(
-        og::sim::kDeltaSnapshotMessageType |
-        (payload_is_uncompressed ? og::sim::kDeltaPayloadUncompressedFlag : 0U)));
-    bad_format.push_back(static_cast<std::uint8_t>(corrupted_payload.size() & 0xffu));
-    bad_format.push_back(static_cast<std::uint8_t>((corrupted_payload.size() >> 8) & 0xffu));
-    bad_format.push_back(12);
-    bad_format.push_back(0);
-    bad_format.push_back(0);
-    bad_format.push_back(0);
+    bad_format.push_back(og::sim::kDeltaSnapshotMessageType);
+    bad_format.push_back(static_cast<std::uint8_t>(bad_payload_length & 0xffu));
+    bad_format.push_back(static_cast<std::uint8_t>((bad_payload_length >> 8) & 0xffu));
+    bad_format.push_back(payload_is_uncompressed
+                             ? og::sim::kDeltaPayloadUncompressedFlag
+                             : 0U);
     bad_format.insert(bad_format.end(),
                       corrupted_payload.begin(), corrupted_payload.end());
     EXPECT_THROW(
@@ -1869,17 +1874,14 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
               static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()));
 
     std::vector<std::uint8_t> oversized_snapshot;
-    oversized_snapshot.reserve(8 + oversized_compressed.size());
+    oversized_snapshot.reserve(og::sim::kTransportHeaderSize +
+                               oversized_compressed.size());
     oversized_snapshot.push_back(og::sim::kSnapshotProtocolVersion);
     oversized_snapshot.push_back(og::sim::kSnapshotMessageType);
     oversized_snapshot.push_back(
         static_cast<std::uint8_t>(oversized_compressed.size() & 0xffu));
     oversized_snapshot.push_back(
         static_cast<std::uint8_t>((oversized_compressed.size() >> 8) & 0xffu));
-    oversized_snapshot.push_back(0);
-    oversized_snapshot.push_back(0);
-    oversized_snapshot.push_back(0);
-    oversized_snapshot.push_back(0);
     oversized_snapshot.insert(oversized_snapshot.end(),
                               oversized_compressed.begin(),
                               oversized_compressed.end());
@@ -1891,15 +1893,8 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
     og::sim::WorldSnapshot delta;
     delta.tick_count = 12;
     const std::vector<std::uint8_t> delta_bytes = og::sim::serialize_delta(delta);
-    const bool payload_is_uncompressed =
-        (delta_bytes[1] & og::sim::kDeltaPayloadUncompressedFlag) != 0;
-    const std::size_t payload_length =
-        static_cast<std::size_t>(delta_bytes[2]) |
-        (static_cast<std::size_t>(delta_bytes[3]) << 8);
     std::vector<std::uint8_t> raw_payload =
-        payload_is_uncompressed
-            ? std::vector<std::uint8_t>(delta_bytes.begin() + 8, delta_bytes.end())
-            : zlib_decompress_for_test(delta_bytes.data() + 8, payload_length);
+        decode_delta_payload_for_test(delta_bytes);
 
     constexpr std::size_t kEntityCountOffset = 76;
     ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
@@ -1909,17 +1904,14 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
     raw_payload[kEntityCountOffset + 3] = 0xffu;
 
     std::vector<std::uint8_t> bad_count_delta;
-    bad_count_delta.reserve(8 + raw_payload.size());
+    const std::size_t bad_payload_length =
+        og::sim::kDeltaPayloadHeaderSize + raw_payload.size();
+    bad_count_delta.reserve(og::sim::kTransportHeaderSize + bad_payload_length);
     bad_count_delta.push_back(og::sim::kSnapshotProtocolVersion);
-    bad_count_delta.push_back(static_cast<std::uint8_t>(
-        og::sim::kDeltaSnapshotMessageType |
-        og::sim::kDeltaPayloadUncompressedFlag));
-    bad_count_delta.push_back(static_cast<std::uint8_t>(raw_payload.size() & 0xffu));
-    bad_count_delta.push_back(static_cast<std::uint8_t>((raw_payload.size() >> 8) & 0xffu));
-    bad_count_delta.push_back(12);
-    bad_count_delta.push_back(0);
-    bad_count_delta.push_back(0);
-    bad_count_delta.push_back(0);
+    bad_count_delta.push_back(og::sim::kDeltaSnapshotMessageType);
+    bad_count_delta.push_back(static_cast<std::uint8_t>(bad_payload_length & 0xffu));
+    bad_count_delta.push_back(static_cast<std::uint8_t>((bad_payload_length >> 8) & 0xffu));
+    bad_count_delta.push_back(og::sim::kDeltaPayloadUncompressedFlag);
     bad_count_delta.insert(bad_count_delta.end(),
                            raw_payload.begin(), raw_payload.end());
     EXPECT_THROW(

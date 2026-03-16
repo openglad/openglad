@@ -281,16 +281,43 @@ std::size_t payload_length_from_header(const std::vector<std::uint8_t>& bytes)
            (static_cast<std::size_t>(bytes[3]) << 8);
 }
 
+bool delta_payload_is_uncompressed(const std::vector<std::uint8_t>& bytes)
+{
+    return (bytes[og::sim::kTransportHeaderSize] &
+            og::sim::kDeltaPayloadUncompressedFlag) != 0;
+}
+
+std::vector<std::uint8_t> decode_delta_payload_for_benchmark(
+    const std::vector<std::uint8_t>& bytes)
+{
+    const std::size_t payload_length = payload_length_from_header(bytes);
+    const bool payload_is_uncompressed = delta_payload_is_uncompressed(bytes);
+    const std::size_t wire_payload_length =
+        payload_length - og::sim::kDeltaPayloadHeaderSize;
+    const std::uint8_t* const wire_payload =
+        bytes.data() + og::sim::kTransportHeaderSize +
+        og::sim::kDeltaPayloadHeaderSize;
+
+    if (payload_is_uncompressed)
+    {
+        return std::vector<std::uint8_t>(wire_payload,
+                                         wire_payload + wire_payload_length);
+    }
+
+    return zlib_decompress_for_benchmark(wire_payload, wire_payload_length);
+}
+
 PayloadSizeReport measure_full_snapshot_payload(const og::sim::WorldSnapshot& snapshot)
 {
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(snapshot);
-    EXPECT_GE(bytes.size(), 8u);
+    EXPECT_GE(bytes.size(), og::sim::kTransportHeaderSize);
 
     const std::size_t payload_length = payload_length_from_header(bytes);
-    EXPECT_EQ(bytes.size(), payload_length + 8u);
+    EXPECT_EQ(bytes.size(), payload_length + og::sim::kTransportHeaderSize);
 
     const std::vector<std::uint8_t> raw_payload =
-        zlib_decompress_for_benchmark(bytes.data() + 8, payload_length);
+        zlib_decompress_for_benchmark(
+            bytes.data() + og::sim::kTransportHeaderSize, payload_length);
 
     PayloadSizeReport report;
     report.raw_payload_bytes = raw_payload.size();
@@ -304,17 +331,15 @@ PayloadSizeReport measure_full_snapshot_payload(const og::sim::WorldSnapshot& sn
 PayloadSizeReport measure_delta_payload(const og::sim::WorldSnapshot& delta)
 {
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
-    EXPECT_GE(bytes.size(), 8u);
+    EXPECT_GE(bytes.size(), og::sim::kTransportHeaderSize +
+                               og::sim::kDeltaPayloadHeaderSize);
 
     const std::size_t payload_length = payload_length_from_header(bytes);
-    EXPECT_EQ(bytes.size(), payload_length + 8u);
+    EXPECT_EQ(bytes.size(), payload_length + og::sim::kTransportHeaderSize);
 
-    const bool payload_is_uncompressed =
-        (bytes[1] & og::sim::kDeltaPayloadUncompressedFlag) != 0;
+    const bool payload_is_uncompressed = delta_payload_is_uncompressed(bytes);
     const std::vector<std::uint8_t> raw_payload =
-        payload_is_uncompressed
-            ? std::vector<std::uint8_t>(bytes.begin() + 8, bytes.end())
-            : zlib_decompress_for_benchmark(bytes.data() + 8, payload_length);
+        decode_delta_payload_for_benchmark(bytes);
     const std::vector<std::uint8_t> compressed_payload =
         zlib_compress_for_benchmark(raw_payload);
 
