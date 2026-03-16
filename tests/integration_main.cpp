@@ -26,9 +26,11 @@ extern "C" void __gcov_dump(void);
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/results_screen.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/legacy/base.h>
 #include <openglad/platform/game_context.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/screen_lifecycle.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
@@ -39,6 +41,8 @@ extern int g_picker_max_mainmenu_calls;
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_set_force_real_dialogs(bool enabled);
 #endif
 
 namespace {
@@ -52,6 +56,8 @@ void reset_integration_ui_state()
 
     if (og::runtime::current_session == nullptr)
         return;
+
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
 
     if (og::runtime::current_session->input_hw_ != nullptr) {
         og::runtime::current_session->input_hw_->mouse = {};
@@ -98,7 +104,10 @@ void reset_integration_ui_state()
     g_test_remove_exits = false;
     g_test_in_game.store(false, std::memory_order_release);
     g_test_game_epoch.store(0, std::memory_order_release);
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_set_force_real_dialogs(false);
 #endif
+    results_screen_testing_set_force_full(false);
 }
 
 void handle_test_signal(int sig)

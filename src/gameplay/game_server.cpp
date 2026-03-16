@@ -1131,7 +1131,8 @@ void GameServer::handle_pause_request(PeerId peer_id)
 
     ConnectedClientState& client = client_it->second;
     const std::uint64_t now = now_ms();
-    if (now >= client.last_pause_request_ms &&
+    if (client.last_pause_request_ms != 0 &&
+        now >= client.last_pause_request_ms &&
         now - client.last_pause_request_ms < PAUSE_RATE_LIMIT_MS)
     {
         return;

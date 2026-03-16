@@ -38,14 +38,9 @@ constexpr Uint32 kMenuTransitionMs = 250;
 constexpr Uint32 kCycleStepMs = 100;
 constexpr int kGameStartTimeoutMs = 20000;
 constexpr int kFairyDeathTimeoutMs = 60000;
-// The transport-backed gameplay loop is materially slower under validation and
-// sanitizers than the legacy direct tick path. Keep the UI test budget aligned
-// with the runtime we now exercise in CI instead of failing early.
 constexpr int kGameAbortTimeoutMs = 20000;
 constexpr short kFairyFragileConstitution = -20;
 constexpr short kFairyFragileArmor = -100;
-constexpr int kTeamMenuBackGameX = 60;
-constexpr int kTeamMenuBackGameY = 155;
 }
 
 // Picker globals that can leak across integration tests and affect menu start state
@@ -74,18 +69,18 @@ static void cleanup_picker_state()
     og::runtime::current_session->current_team_num_ = 0;
 }
 
-// Test: hire a lone fairy via the UI, start level 4 at max speed, stand there,
-// and confirm we lose.
+// Test: hire a fairy via the UI, start level 4 at max speed, confirm the fairy
+// dies in-world, then abort the mission through the normal prompt path.
 //
 // Flow:
 //   Main Menu -> Begin New Game -> (dismiss campaign intro) ->
-//   Hire Menu -> NEXT x12 to reach FAERIE -> HIRE ME -> BACK ->
-//   Team Menu -> (set scen_num=4) -> GO -> game runs -> fairy dies -> BACK -> exits
+//   Hire Menu -> NEXT x12 to reach FAERIE -> HIRE ME -> return to SOLDIER ->
+//   HIRE ME -> BACK -> Team Menu -> (set scen_num=4) -> GO -> game runs ->
+//   fairy dies -> Abort Mission prompt -> BACK -> exits
 //
-// Uses level 4 because the fairy starts near hostiles and dies quickly with
-// no player input once its stats are weakened. After confirming that in-world
-// death, the test exits through the normal "Abort Mission" prompt to unwind
-// back to the picker without mutating runtime state out of band.
+// Uses level 4 because the fairy starts near hostiles and dies quickly once its
+// stats are weakened. A second, durable teammate keeps the mission alive long
+// enough to observe the fairy's death and exit through the normal prompt path.
 //
 // Before starting the level the test makes the hired fairy deliberately
 // fragile, but still lets normal gameplay deliver the defeat.
@@ -159,6 +154,16 @@ static int fairy_injector(void* data)
     interact("hire_me");
     SDL_Delay(kCycleStepMs);
 
+    fprintf(stderr, "  [test] returning to soldier for escort\n");
+    for (int i = 0; i < FAERIE_INDEX; i++) {
+        interact("prev");
+        SDL_Delay(kCycleStepMs);
+    }
+
+    fprintf(stderr, "  [test] hiring escort soldier\n");
+    interact("hire_me");
+    SDL_Delay(kCycleStepMs);
+
     fprintf(stderr, "  [test] clicking back from hire menu\n");
     interact("back");
 
@@ -167,15 +172,37 @@ static int fairy_injector(void* data)
     wait_for_interactable("go", 10000);
     SDL_Delay(kUiSettleMs);
 
-    if (og::runtime::current_session->myscreen_->save_data.team_size < 1 ||
-        !og::runtime::current_session->myscreen_->save_data.team_list[0]) {
-        fprintf(stderr, "  [test] ERROR: expected hired fairy before starting level\n");
+    if (og::runtime::current_session->myscreen_->save_data.team_size < 2) {
+        fprintf(stderr, "  [test] ERROR: expected fairy and escort before starting level\n");
         set_game_speed(state->original_speed);
         return 0;
     }
-    guy* fairy = og::runtime::current_session->myscreen_->save_data.team_list[0].get();
+
+    guy* fairy = nullptr;
+    guy* escort = nullptr;
+    for (int i = 0; i < og::runtime::current_session->myscreen_->save_data.team_size; ++i) {
+        guy* const candidate =
+            og::runtime::current_session->myscreen_->save_data.team_list[i].get();
+        if (candidate == nullptr)
+            continue;
+        if (candidate->family == FAMILY_FAERIE && fairy == nullptr) {
+            fairy = candidate;
+        } else if (escort == nullptr) {
+            escort = candidate;
+        }
+    }
+    if (fairy == nullptr || escort == nullptr) {
+        fprintf(stderr, "  [test] ERROR: failed to locate fairy and escort\n");
+        set_game_speed(state->original_speed);
+        return 0;
+    }
+
     fairy->constitution = kFairyFragileConstitution;
     fairy->armor = kFairyFragileArmor;
+    escort->strength = 200;
+    escort->dexterity = 200;
+    escort->constitution = 200;
+    escort->armor = 200;
 
     og::runtime::current_session->myscreen_->save_data.scen_num = 4;
     set_game_speed(0.0f);
@@ -202,7 +229,6 @@ static int fairy_injector(void* data)
         }
 
         bool saw_fairy_alive = false;
-        bool game_exited_before_observed_death = false;
         waited_ms = 0;
         while (g_test_in_game.load(std::memory_order_acquire)
                && waited_ms < kFairyDeathTimeoutMs) {
@@ -214,54 +240,30 @@ static int fairy_injector(void* data)
             SDL_Delay(poll_ms);
             waited_ms += poll_ms;
         }
-        if (!g_test_in_game.load(std::memory_order_acquire) && !saw_fairy_alive)
-            game_exited_before_observed_death = true;
-
-        if ((!saw_fairy_alive && !game_exited_before_observed_death) ||
-            (g_test_in_game.load(std::memory_order_acquire) &&
-             query_hired_fairy_life_state() == FairyLifeState::Alive)) {
+        if (!saw_fairy_alive ||
+            !g_test_in_game.load(std::memory_order_acquire) ||
+            query_hired_fairy_life_state() == FairyLifeState::Alive) {
             fprintf(stderr, "  [test] ERROR: fairy never died within timeout\n");
             set_game_speed(state->original_speed);
             return 0;
         }
 
-        if (!g_test_in_game.load(std::memory_order_acquire)) {
-            fprintf(stderr,
-                    "  [test] game already exited after defeat before fairy observation\n");
-            SDL_Delay(kMenuTransitionMs + kUiSettleMs);
-            const int back_win_x = static_cast<int>(
-                static_cast<float>(kTeamMenuBackGameX) *
-                    (og::runtime::current_session->viewport_w_ / 320.0f) +
-                og::runtime::current_session->viewport_offset_x_);
-            const int back_win_y = static_cast<int>(
-                static_cast<float>(kTeamMenuBackGameY) *
-                    (og::runtime::current_session->viewport_h_ / 200.0f) +
-                og::runtime::current_session->viewport_offset_y_);
-            fprintf(stderr,
-                    "  [test] clicking back from team menu after auto-defeat\n");
-            inject_click(back_win_x, back_win_y);
-            SDL_Delay(kUiSettleMs);
-            set_game_speed(state->original_speed);
-            state->finished = true;
-            return 0;
-        } else {
-            fprintf(stderr, "  [test] fairy died, aborting mission through UI\n");
-            picker_testing_yes_or_no_queue_clear();
-            picker_testing_yes_or_no_queue_push(true);
-            inject_key_press(SDLK_ESCAPE);
+        fprintf(stderr, "  [test] fairy died, aborting mission through UI\n");
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(true);
+        inject_key_press(SDLK_ESCAPE);
 
-            waited_ms = 0;
-            while (g_test_in_game.load(std::memory_order_acquire)
-                   && waited_ms < kGameAbortTimeoutMs) {
-                SDL_Delay(poll_ms);
-                waited_ms += poll_ms;
-            }
-            if (g_test_in_game.load(std::memory_order_acquire)) {
-                fprintf(stderr,
-                        "  [test] ERROR: game did not exit after abort prompt\n");
-                set_game_speed(state->original_speed);
-                return 0;
-            }
+        waited_ms = 0;
+        while (g_test_in_game.load(std::memory_order_acquire)
+               && waited_ms < kGameAbortTimeoutMs) {
+            SDL_Delay(poll_ms);
+            waited_ms += poll_ms;
+        }
+        if (g_test_in_game.load(std::memory_order_acquire)) {
+            fprintf(stderr,
+                    "  [test] ERROR: game did not exit after abort prompt\n");
+            set_game_speed(state->original_speed);
+            return 0;
         }
     }
 

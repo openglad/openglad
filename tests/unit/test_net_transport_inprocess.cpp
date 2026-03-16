@@ -585,6 +585,97 @@ TEST(NetTransportInProcess, network_fixture_pause_broadcast_freezes_and_resumes)
 }
 
 TEST(NetTransportInProcess,
+     network_fixture_pause_auto_unpauses_after_timeout)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    std::uint64_t now_ms = 1000;
+    fixture.server().set_wall_clock_ms_source([&] { return now_ms; });
+
+    fixture.client(0).send_pause_request();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    ASSERT_TRUE(fixture.server().paused());
+    const std::uint32_t frozen_tick = fixture.server_world().tick_count_;
+
+    now_ms += static_cast<std::uint64_t>(og::sim::PAUSE_TIMEOUT_MS) + 1u;
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    EXPECT_FALSE(fixture.server().paused());
+    EXPECT_GT(fixture.server_world().tick_count_, frozen_tick);
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_pause_request_rate_limit_rejects_spam_until_window_expires)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    std::uint64_t now_ms = 1000;
+    fixture.server().set_wall_clock_ms_source([&] { return now_ms; });
+
+    fixture.client(0).send_pause_request();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    ASSERT_TRUE(fixture.server().paused());
+
+    fixture.client(0).send_pause_response();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    ASSERT_FALSE(fixture.server().paused());
+
+    now_ms += static_cast<std::uint64_t>(og::sim::PAUSE_RATE_LIMIT_MS) - 1u;
+    const std::uint32_t pre_rate_limited_tick = fixture.server_world().tick_count_;
+    fixture.client(0).send_pause_request();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    EXPECT_FALSE(fixture.server().paused());
+    EXPECT_GT(fixture.server_world().tick_count_, pre_rate_limited_tick);
+
+    now_ms += 2u;
+    fixture.client(0).send_pause_request();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    EXPECT_TRUE(fixture.server().paused());
+}
+
+TEST(NetTransportInProcess,
      network_fixture_level_transition_uses_callbacks_and_waits_for_ready)
 {
     og::sim::test::NetworkTestFixture fixture({
@@ -791,6 +882,47 @@ TEST(NetTransportInProcess,
 
     fixture.with_server_context([&] {
         control->set_dead(1);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    EXPECT_FALSE(fixture.server().pending_exit_prompt());
+    EXPECT_GT(fixture.server_world().tick_count_, frozen_tick);
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_auto_declines_exit_prompt_after_timeout)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    std::uint64_t now_ms = 1000;
+    fixture.server().set_wall_clock_ms_source([&] { return now_ms; });
+
+    fixture.with_server_context([&] {
+        fixture.server_events().push_with_text(
+            og::sim::EventKind::RequestExitConfirmation,
+            "Exit now?",
+            5u,
+            0u);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    ASSERT_TRUE(fixture.server().pending_exit_prompt());
+    const std::uint32_t frozen_tick = fixture.server_world().tick_count_;
+
+    now_ms += static_cast<std::uint64_t>(og::sim::EXIT_PROMPT_TIMEOUT_MS) + 1u;
+    fixture.with_server_context([&] {
         fixture.server().step();
     });
     fixture.poll_client_messages(0);
