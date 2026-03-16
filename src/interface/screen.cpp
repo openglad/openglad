@@ -1160,6 +1160,9 @@ bool screen::dispatch_game_flow_events(
 
 bool screen::act()
 {
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return 1;
+
     const auto [cosmetic_events, game_flow_events] = tick_world();
     dispatch_cosmetic_events(cosmetic_events);
     return dispatch_game_flow_events(game_flow_events);
