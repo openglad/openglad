@@ -849,6 +849,100 @@ TEST(NetTransportInProcess,
 }
 
 TEST(NetTransportInProcess,
+     network_fixture_level_transition_preserves_same_team_player_bindings)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    ASSERT_NE(nullptr, fixture.server_control(0));
+    ASSERT_NE(nullptr, fixture.server_control(1));
+    const std::uint32_t player_zero_control_id =
+        fixture.server_control(0)->entity_id();
+    const std::uint32_t player_one_control_id =
+        fixture.server_control(1)->entity_id();
+    ASSERT_NE(player_zero_control_id, player_one_control_id);
+
+    fixture.with_server_context([&] {
+        fixture.server().on_level_transition = [&](int level_id) {
+            GameWorld& world = fixture.server_world();
+            world.id = static_cast<short>(level_id);
+            world.current_scenario = static_cast<short>(level_id);
+            world.title = "Transitioned Level";
+            world.tick_count_ = 0;
+            world.reset_level_progress();
+            world.game_ended = false;
+            world.next_level = -1;
+            world.ending = 0;
+            world.level_done = 0;
+            world.end = 0;
+            world.retry = false;
+            world.withdraw_requested = false;
+            world.withdraw_level = -1;
+            world.pending_exit_prompt = false;
+            world.paused = false;
+            world.pause_player_index = og::sim::kNoPausePlayerIndex;
+
+            // A fresh level load recreates controls with no user claims.
+            for (auto& uptr : world.oblist)
+            {
+                walker* const control = uptr.get();
+                if (control == nullptr)
+                    continue;
+
+                control->set_user(-1);
+                control->restore_act_type();
+            }
+            return true;
+        };
+
+        GameWorld& world = fixture.server_world();
+        world.game_ended = true;
+        world.ending = 0;
+        world.next_level = 2;
+        fixture.server().broadcast_current_state(
+            og::sim::SnapshotCaptureMode::Peek,
+            og::sim::EventDeliveryMode::Skip);
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    ASSERT_NE(nullptr, fixture.server_control(0));
+    ASSERT_NE(nullptr, fixture.server_control(1));
+    EXPECT_EQ(player_zero_control_id, fixture.server_control(0)->entity_id());
+    EXPECT_EQ(player_one_control_id, fixture.server_control(1)->entity_id());
+
+    for (std::size_t client_index = 0; client_index < 2; ++client_index)
+    {
+        ASSERT_TRUE(fixture.client(client_index).initial_setup().has_value());
+        EXPECT_EQ(player_zero_control_id,
+                  fixture.client(client_index).controlled_entity_ids()[0]);
+        EXPECT_EQ(player_one_control_id,
+                  fixture.client(client_index).controlled_entity_ids()[1]);
+    }
+
+    fixture.client(0).send_client_ready();
+    fixture.client(1).send_client_ready();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    ASSERT_TRUE(fixture.client(0).baseline().has_value());
+    ASSERT_TRUE(fixture.client(1).baseline().has_value());
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess,
      network_fixture_auto_declines_exit_prompt_when_triggering_player_disconnects)
 {
     og::sim::test::NetworkTestFixture fixture({

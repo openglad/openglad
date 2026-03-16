@@ -1141,6 +1141,13 @@ void GameServer::rebind_players_for_loaded_level()
         });
     }
 
+    std::sort(bindings.begin(), bindings.end(),
+              [](const PlayerBinding& lhs, const PlayerBinding& rhs) {
+                  if (lhs.player_index != rhs.player_index)
+                      return lhs.player_index < rhs.player_index;
+                  return lhs.peer_id < rhs.peer_id;
+              });
+
     for (const PlayerBinding& binding : bindings)
         bind_player(binding.peer_id, binding.player_index, binding.team_num, nullptr);
 }
