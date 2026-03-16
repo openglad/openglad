@@ -8,6 +8,7 @@
 #include <openglad/gameplay/replay.h>
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/platform/game_loop.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/input.h>
@@ -259,12 +260,21 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
                                        player.frames().front().input));
 
     ASSERT_TRUE(og::runtime::initialize_replay_screen(*game_screen, player));
+    og::runtime::reset_local_transport_shadow(*og::runtime::current_session,
+                                              *game_screen);
     auto first_frame = player.next_frame();
     ASSERT_TRUE(first_frame.has_value());
     EXPECT_EQ(1u, first_frame->tick);
     EXPECT_EQ(og::sim::serialize_input(1u, InputState{}),
               og::sim::serialize_input(first_frame->tick, first_frame->input));
-    ASSERT_TRUE(game_screen->act());
+
+    GameLoopFrameState replay_state;
+    GameLoopDeps replay_deps;
+    replay_deps.enable_render = false;
+    replay_deps.enable_event_poll = false;
+    replay_deps.enable_frame_timing = false;
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, replay_state, replay_deps));
     expect_snapshot_bytes_match(*expected_after_tick_one,
                                 og::sim::peek_keyframe_snapshot(game_screen->world()));
 

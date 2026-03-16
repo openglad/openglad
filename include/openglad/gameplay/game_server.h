@@ -104,7 +104,7 @@ public:
     }
 
 private:
-    void apply_polled_inputs(std::uint32_t expected_tick);
+    [[nodiscard]] bool apply_polled_inputs(std::uint32_t expected_tick);
 
     GameWorld& world_;
     SimEventLog& events_;

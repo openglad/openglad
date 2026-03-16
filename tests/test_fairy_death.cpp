@@ -11,6 +11,7 @@
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/core/util.h>
+#include <openglad/platform/local_transport_shadow.h>
 
 #include <atomic>
 
@@ -33,6 +34,11 @@ namespace {
 constexpr Uint32 kUiSettleMs = 150;
 constexpr Uint32 kMenuTransitionMs = 250;
 constexpr Uint32 kCycleStepMs = 100;
+constexpr int kGameStartTimeoutMs = 20000;
+// The transport-backed gameplay loop is materially slower under validation and
+// sanitizers than the legacy direct tick path. Keep the UI test budget aligned
+// with the runtime we now exercise in CI instead of failing early.
+constexpr int kGameFinishTimeoutMs = 180000;
 }
 
 // Picker globals that can leak across integration tests and affect menu start state
@@ -142,7 +148,8 @@ static int fairy_injector(void* data)
     {
         int waited_ms = 0;
         const int poll_ms = 50;
-        while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
+        while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before
+               && waited_ms < kGameStartTimeoutMs) {
             SDL_Delay(poll_ms);
             waited_ms += poll_ms;
         }
@@ -151,8 +158,15 @@ static int fairy_injector(void* data)
             set_game_speed(state->original_speed);
             return 0;
         }
+        if (!og::runtime::local_transport_shadow_force_kill_player_control(
+                *og::runtime::current_session, 0)) {
+            fprintf(stderr, "  [test] ERROR: failed to kill fairy control on server\n");
+            set_game_speed(state->original_speed);
+            return 0;
+        }
         waited_ms = 0;
-        while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 60000) {
+        while (g_test_in_game.load(std::memory_order_acquire)
+               && waited_ms < kGameFinishTimeoutMs) {
             SDL_Delay(poll_ms);
             waited_ms += poll_ms;
         }

@@ -38,6 +38,10 @@
 struct InputState;
 class soundob;
 
+namespace og::sim {
+struct SimEventBatch;
+}
+
 class screen : public video
 {
 private:
@@ -188,6 +192,7 @@ public:
     short continuous_input();
     void process_input(const InputState& input_state);
     bool act();
+    bool dispatch_sim_event_batch(const og::sim::SimEventBatch& batch);
 
     short endgame(short ending);
     short endgame(short ending, short nextlevel); // what level next?

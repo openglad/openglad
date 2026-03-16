@@ -1612,6 +1612,13 @@ if(NOT EMSCRIPTEN)
             set_tests_properties(og_test_menu_ui PROPERTIES TIMEOUT 420)
         endif()
 
+        if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
+            # The gameplay suite now drives the full local transport path.
+            # Validation mode round-trips every message and sanitizers magnify
+            # the cost enough that the default 180s CTest budget is too tight.
+            set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
+        endif()
+
         add_test(NAME openglad_text_sim
             COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_client.sh $<TARGET_FILE:openglad_text>
         )

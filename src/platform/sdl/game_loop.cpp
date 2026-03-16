@@ -177,7 +177,10 @@ GameFrameResult run_game_tick(screen& s,
                               const InputState& input)
 {
     og::runtime::record_replay_input(s, input);
-    if (og::runtime::current_session != nullptr)
+    const bool use_local_transport =
+        og::runtime::current_session != nullptr &&
+        og::runtime::local_transport_active(*og::runtime::current_session);
+    if (use_local_transport)
     {
         og::runtime::local_transport_shadow_send_input(
             *og::runtime::current_session,
@@ -191,16 +194,17 @@ GameFrameResult run_game_tick(screen& s,
     if (s.world().end)
         return finish_done(st);
 
-    s.act();
+    if (use_local_transport)
+        og::runtime::local_transport_shadow_finish_tick(
+            *og::runtime::current_session);
+    else
+        s.act();
     s.framecount++;
 #ifdef TESTING
     picker_testing_mark_frame_advance();
 #endif
     if (deps.after_act)
         deps.after_act(s);
-    if (og::runtime::current_session != nullptr)
-        og::runtime::local_transport_shadow_finish_tick(
-            *og::runtime::current_session);
 
     if (s.world().end)
         return finish_done(st);

@@ -127,6 +127,7 @@ struct SessionState {
 
 // The currently-active session state. Set by GameSession ctor / SessionScope.
 extern thread_local SessionState* current_session;
+bool local_transport_active(const SessionState& session) noexcept;
 
 // Non-thread-local atomic pointer to the most recently installed session.
 // Used by child threads (e.g. test injector threads) to inherit the session

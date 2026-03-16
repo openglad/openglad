@@ -38,6 +38,7 @@
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/game_context.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/gameplay/sim_input_handler.h>
@@ -529,6 +530,13 @@ void viewscreen::process_input(const InputState& input_state)
 			options_menu();
 			return;
 		}
+	}
+
+	if (og::runtime::current_session != nullptr &&
+	    og::runtime::current_session->gameplay_active_ &&
+	    og::runtime::local_transport_active(*og::runtime::current_session))
+	{
+		return;
 	}
 
 	// Delegate all entity-driving logic to the sim layer

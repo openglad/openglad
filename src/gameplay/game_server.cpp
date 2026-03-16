@@ -4,6 +4,7 @@
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state_net.h>
+#include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/sim_event_log.h>
 
 #include <algorithm>
@@ -504,8 +505,9 @@ void GameServer::poll_incoming_messages()
     last_polled_messages_ = poll_server_messages(transport_);
 }
 
-void GameServer::apply_polled_inputs(std::uint32_t expected_tick)
+bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
 {
+    bool should_tick_world = true;
     for (const auto& message : last_polled_messages_)
     {
         if (message.kind != TypedReceivedMessageKind::Input || !message.input)
@@ -542,9 +544,14 @@ void GameServer::apply_polled_inputs(std::uint32_t expected_tick)
         if (result.endgame_requested)
         {
             world_.ending = result.endgame_type;
-            world_.end = 1;
+            emit_event(&events_, EventKind::EndGame,
+                       static_cast<std::uint32_t>(result.endgame_type),
+                       static_cast<std::uint32_t>(-1));
+            should_tick_world = false;
         }
     }
+
+    return should_tick_world;
 }
 
 void GameServer::send_initial_snapshot(PeerId peer_id,
@@ -639,8 +646,9 @@ void GameServer::step()
     const std::uint32_t next_tick = world_.tick_count_ + 1;
     events_.current_tick_ = next_tick;
     poll_incoming_messages();
-    apply_polled_inputs(next_tick);
-    world_.tick();
+    const bool should_tick_world = apply_polled_inputs(next_tick);
+    if (should_tick_world)
+        world_.tick();
     broadcast_current_state(SnapshotCaptureMode::Consume,
                             EventDeliveryMode::Drain);
 }

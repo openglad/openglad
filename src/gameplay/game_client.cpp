@@ -10,6 +10,21 @@
 namespace
 {
 
+void clear_transport_only_snapshot_state(og::sim::WorldSnapshot& snapshot)
+{
+    snapshot.removed_entity_ids.clear();
+    snapshot.grid_dirty = false;
+    snapshot.grid_full_resend = false;
+    snapshot.full_grid_data.clear();
+    snapshot.grid_dirty_tiles.clear();
+}
+
+void clear_transport_only_world_state(GameWorld& world)
+{
+    world.clear_removed_entity_ids();
+    world.clear_grid_dirty_tiles();
+}
+
 std::vector<og::sim::TypedReceivedMessage> poll_client_messages(
     og::sim::ITransport& transport)
 {
@@ -107,6 +122,8 @@ void GameClient::send_input(const InputState& input, std::uint32_t tick)
 void GameClient::poll_messages()
 {
     last_polled_messages_ = poll_client_messages(transport_);
+    sim_event_batches_.clear();
+    game_flow_event_batches_.clear();
     for (const auto& message : last_polled_messages_)
     {
         switch (message.kind)
@@ -115,8 +132,12 @@ void GameClient::poll_messages()
             if (!message.snapshot)
                 break;
             baseline_ = *message.snapshot;
+            clear_transport_only_snapshot_state(*baseline_);
             if (world_ != nullptr)
+            {
                 apply_snapshot(*world_, *baseline_);
+                clear_transport_only_world_state(*world_);
+            }
             break;
 
         case TypedReceivedMessageKind::DeltaSnapshot:
@@ -128,8 +149,12 @@ void GameClient::poll_messages()
                     "GameClient received delta snapshot before baseline");
             }
             apply_delta(*baseline_, *message.snapshot);
+            clear_transport_only_snapshot_state(*baseline_);
             if (world_ != nullptr)
+            {
                 apply_snapshot(*world_, *baseline_);
+                clear_transport_only_world_state(*world_);
+            }
             break;
 
         case TypedReceivedMessageKind::SimEventBatch:
