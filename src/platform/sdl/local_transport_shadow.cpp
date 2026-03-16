@@ -4,6 +4,7 @@
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
+#include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/render/view.h>
@@ -170,6 +171,39 @@ void mirror_client_prompt_state(LocalTransportShadow& shadow,
         gameplay_screen.world().withdraw_requested;
     server_screen->world().withdraw_level =
         gameplay_screen.world().withdraw_level;
+}
+
+bool team_has_living_member(const GameWorld& world, short team_num)
+{
+    return std::any_of(world.oblist.begin(), world.oblist.end(),
+                       [team_num](const auto& entry) {
+                           const walker* entity = entry.get();
+                           return entity != nullptr &&
+                               !entity->dead() &&
+                               entity->query_order() == Order::Living &&
+                               entity->team_num() == team_num;
+                       });
+}
+
+void queue_forced_loss_if_team_eliminated(LocalTransportShadow& shadow,
+                                          std::size_t player_index,
+                                          short team_num)
+{
+    screen* const server_screen = shadow.server_screen();
+    if (server_screen == nullptr)
+        return;
+
+    if (team_has_living_member(server_screen->world(), team_num))
+        return;
+
+    shadow.server->set_player_control(player_index, nullptr);
+    if (current_game != nullptr && current_game->sim_events != nullptr)
+    {
+        og::sim::emit_event(current_game->sim_events,
+                            og::sim::EventKind::EndGame,
+                            1,
+                            static_cast<std::uint32_t>(-1));
+    }
 }
 
 } // namespace
@@ -360,6 +394,7 @@ bool local_transport_shadow_force_kill_player_control(SessionState& session,
                 auto server_scope = it->second->server_session->activate();
                 ScopedSessionGameplayActivation gameplay_active(*it->second->server_session);
                 walker* control = it->second->server->player_control(player_index);
+                short control_team = 0;
                 if (control == nullptr)
                 {
                     screen* const server_screen = it->second->server_screen();
@@ -372,7 +407,12 @@ bool local_transport_shadow_force_kill_player_control(SessionState& session,
                             control = server_screen->viewob[player_index]->find_next_control();
                         if (control != nullptr)
                             it->second->server->set_player_control(player_index, control);
+                        control_team = server_screen->viewob[player_index]->my_team;
                     }
+                }
+                else
+                {
+                    control_team = control->team_num();
                 }
 
                 if (control == nullptr)
@@ -381,6 +421,9 @@ bool local_transport_shadow_force_kill_player_control(SessionState& session,
                 }
                 else if (control->dead())
                 {
+                    queue_forced_loss_if_team_eliminated(*it->second,
+                                                         player_index,
+                                                         control_team);
                     return true;
                 }
                 else
@@ -388,6 +431,9 @@ bool local_transport_shadow_force_kill_player_control(SessionState& session,
                     control->stats()->set_hitpoints(0);
                     control->set_dead(1);
                     control->death();
+                    queue_forced_loss_if_team_eliminated(*it->second,
+                                                         player_index,
+                                                         control_team);
                     return true;
                 }
             }
