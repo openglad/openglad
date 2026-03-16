@@ -44,6 +44,8 @@ constexpr int kFairyDeathTimeoutMs = 60000;
 constexpr int kGameAbortTimeoutMs = 20000;
 constexpr short kFairyFragileConstitution = -20;
 constexpr short kFairyFragileArmor = -100;
+constexpr int kTeamMenuBackGameX = 60;
+constexpr int kTeamMenuBackGameY = 155;
 }
 
 // Picker globals that can leak across integration tests and affect menu start state
@@ -200,6 +202,7 @@ static int fairy_injector(void* data)
         }
 
         bool saw_fairy_alive = false;
+        bool game_exited_before_observed_death = false;
         waited_ms = 0;
         while (g_test_in_game.load(std::memory_order_acquire)
                && waited_ms < kFairyDeathTimeoutMs) {
@@ -211,28 +214,54 @@ static int fairy_injector(void* data)
             SDL_Delay(poll_ms);
             waited_ms += poll_ms;
         }
-        if (!saw_fairy_alive ||
-            query_hired_fairy_life_state() == FairyLifeState::Alive) {
+        if (!g_test_in_game.load(std::memory_order_acquire) && !saw_fairy_alive)
+            game_exited_before_observed_death = true;
+
+        if ((!saw_fairy_alive && !game_exited_before_observed_death) ||
+            (g_test_in_game.load(std::memory_order_acquire) &&
+             query_hired_fairy_life_state() == FairyLifeState::Alive)) {
             fprintf(stderr, "  [test] ERROR: fairy never died within timeout\n");
             set_game_speed(state->original_speed);
             return 0;
         }
 
-        fprintf(stderr, "  [test] fairy died, aborting mission through UI\n");
-        picker_testing_yes_or_no_queue_clear();
-        picker_testing_yes_or_no_queue_push(true);
-        inject_key_press(SDLK_ESCAPE);
-
-        waited_ms = 0;
-        while (g_test_in_game.load(std::memory_order_acquire)
-               && waited_ms < kGameAbortTimeoutMs) {
-            SDL_Delay(poll_ms);
-            waited_ms += poll_ms;
-        }
-        if (g_test_in_game.load(std::memory_order_acquire)) {
-            fprintf(stderr, "  [test] ERROR: game did not exit after abort prompt\n");
+        if (!g_test_in_game.load(std::memory_order_acquire)) {
+            fprintf(stderr,
+                    "  [test] game already exited after defeat before fairy observation\n");
+            SDL_Delay(kMenuTransitionMs + kUiSettleMs);
+            const int back_win_x = static_cast<int>(
+                static_cast<float>(kTeamMenuBackGameX) *
+                    (og::runtime::current_session->viewport_w_ / 320.0f) +
+                og::runtime::current_session->viewport_offset_x_);
+            const int back_win_y = static_cast<int>(
+                static_cast<float>(kTeamMenuBackGameY) *
+                    (og::runtime::current_session->viewport_h_ / 200.0f) +
+                og::runtime::current_session->viewport_offset_y_);
+            fprintf(stderr,
+                    "  [test] clicking back from team menu after auto-defeat\n");
+            inject_click(back_win_x, back_win_y);
+            SDL_Delay(kUiSettleMs);
             set_game_speed(state->original_speed);
+            state->finished = true;
             return 0;
+        } else {
+            fprintf(stderr, "  [test] fairy died, aborting mission through UI\n");
+            picker_testing_yes_or_no_queue_clear();
+            picker_testing_yes_or_no_queue_push(true);
+            inject_key_press(SDLK_ESCAPE);
+
+            waited_ms = 0;
+            while (g_test_in_game.load(std::memory_order_acquire)
+                   && waited_ms < kGameAbortTimeoutMs) {
+                SDL_Delay(poll_ms);
+                waited_ms += poll_ms;
+            }
+            if (g_test_in_game.load(std::memory_order_acquire)) {
+                fprintf(stderr,
+                        "  [test] ERROR: game did not exit after abort prompt\n");
+                set_game_speed(state->original_speed);
+                return 0;
+            }
         }
     }
 
