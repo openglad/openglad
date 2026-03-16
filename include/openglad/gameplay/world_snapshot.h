@@ -482,6 +482,11 @@ std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot);
 WorldSnapshot deserialize_snapshot(const std::uint8_t* data, std::size_t size);
 std::vector<std::uint8_t> serialize_delta(const WorldSnapshot& delta);
 WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size);
+std::vector<std::uint8_t> serialize_sim_event_batch(const SimEventBatch& batch);
+SimEventBatch deserialize_sim_event_batch(const std::uint8_t* data, std::size_t size);
+std::vector<std::uint8_t> serialize_game_flow_event_batch(const SimEventBatch& batch);
+SimEventBatch deserialize_game_flow_event_batch(const std::uint8_t* data,
+                                                std::size_t size);
 void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta);
 SimEventBatch drain_sim_events(SimEventLog& log);
 

@@ -2001,6 +2001,114 @@ WorldSnapshot peek_keyframe_snapshot(GameWorld& world)
     return capture_snapshot_impl(world, true, false);
 }
 
+namespace {
+
+void serialize_event_payload(std::vector<std::uint8_t>& buffer,
+                             const og::sim::Event& event)
+{
+    append_u32(buffer, event.tick);
+    append_u32(buffer, static_cast<std::uint32_t>(event.kind));
+    append_u32(buffer, event.a);
+    append_u32(buffer, event.b);
+    append_string(buffer, event.text);
+}
+
+og::sim::Event deserialize_event_payload(ByteReader& reader,
+                                         std::size_t index,
+                                         const char* batch_name)
+{
+    const std::string prefix =
+        std::string(batch_name) + ".events[" + std::to_string(index) + "]";
+
+    og::sim::Event event;
+    event.tick = reader.read_u32((prefix + ".tick").c_str());
+    event.kind = static_cast<og::sim::EventKind>(
+        reader.read_u32((prefix + ".kind").c_str()));
+    event.a = reader.read_u32((prefix + ".a").c_str());
+    event.b = reader.read_u32((prefix + ".b").c_str());
+    event.text = reader.read_string((prefix + ".text").c_str());
+    return event;
+}
+
+std::vector<std::uint8_t> serialize_event_batch_message(
+    const og::sim::SimEventBatch& batch,
+    std::uint8_t message_type,
+    const char* batch_name)
+{
+    std::vector<std::uint8_t> payload;
+    payload.reserve(16 + (batch.events.size() * 24));
+    append_u32(payload, batch.sequence);
+    if (batch.events.size() > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error(std::string(batch_name) +
+                                 ": event count exceeds 32-bit wire length");
+    }
+    append_u32(payload, static_cast<std::uint32_t>(batch.events.size()));
+    for (const auto& event : batch.events)
+        serialize_event_payload(payload, event);
+
+    if (payload.size() > std::numeric_limits<std::uint16_t>::max())
+    {
+        throw std::runtime_error(std::string(batch_name) +
+                                 ": payload exceeds 16-bit wire length");
+    }
+
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(kMessageHeaderSize + payload.size());
+    append_transport_header(bytes, message_type,
+                            static_cast<std::uint16_t>(payload.size()));
+    append_bytes(bytes, payload.data(), payload.size());
+    return bytes;
+}
+
+og::sim::SimEventBatch deserialize_event_batch_message(
+    const std::uint8_t* data,
+    std::size_t size,
+    std::uint8_t message_type,
+    const char* batch_name)
+{
+    if (data == nullptr || size < kMessageHeaderSize)
+    {
+        throw std::runtime_error(std::string(batch_name) +
+                                 ": truncated header");
+    }
+
+    og::sim::TransportEnvelope envelope;
+    if (!decode_transport_envelope(std::span<const std::uint8_t>(data, size),
+                                   envelope))
+    {
+        throw std::runtime_error(std::string(batch_name) +
+                                 ": unsupported protocol version " +
+                                 std::to_string(data[0]));
+    }
+    if (envelope.message_type != message_type)
+    {
+        throw std::runtime_error(std::string(batch_name) +
+                                 ": unexpected message type " +
+                                 std::to_string(envelope.message_type));
+    }
+    if (size != kMessageHeaderSize + envelope.payload_length)
+    {
+        throw std::runtime_error(std::string(batch_name) +
+                                 ": payload length mismatch");
+    }
+
+    ByteReader reader(data + kMessageHeaderSize, envelope.payload_length,
+                      batch_name);
+    og::sim::SimEventBatch batch;
+    batch.sequence = reader.read_u32("event_batch.sequence");
+    const std::uint32_t event_count = read_bounded_count(
+        reader, "event_batch.count", 4096, batch_name);
+    batch.events.reserve(event_count);
+    for (std::uint32_t i = 0; i < event_count; ++i)
+        batch.events.push_back(
+            deserialize_event_payload(reader, i, "event_batch"));
+    reader.finish(batch_name);
+    return batch;
+}
+
+} // namespace
+
 std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot)
 {
     const std::vector<std::uint8_t> payload = serialize_snapshot_payload(snapshot);
@@ -2129,6 +2237,33 @@ WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size)
     }
 
     return deserialize_delta_payload(payload);
+}
+
+std::vector<std::uint8_t> serialize_sim_event_batch(const SimEventBatch& batch)
+{
+    return serialize_event_batch_message(batch, kSimEventBatchMessageType,
+                                         "sim event batch");
+}
+
+SimEventBatch deserialize_sim_event_batch(const std::uint8_t* data,
+                                          std::size_t size)
+{
+    return deserialize_event_batch_message(data, size, kSimEventBatchMessageType,
+                                           "sim event batch");
+}
+
+std::vector<std::uint8_t> serialize_game_flow_event_batch(
+    const SimEventBatch& batch)
+{
+    return serialize_event_batch_message(batch, kGameFlowEventBatchMessageType,
+                                         "game flow event batch");
+}
+
+SimEventBatch deserialize_game_flow_event_batch(const std::uint8_t* data,
+                                                std::size_t size)
+{
+    return deserialize_event_batch_message(
+        data, size, kGameFlowEventBatchMessageType, "game flow event batch");
 }
 
 void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)

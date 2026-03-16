@@ -21,6 +21,7 @@ option(ENABLE_COVERAGE "Enable gcov/lcov coverage instrumentation (tests only)" 
 option(ENABLE_SANITIZERS "Enable compiler sanitizers for project targets" OFF)
 option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis during C/C++ compilation (if found)" OFF)
 option(ENABLE_CPPCHECK "Enable cppcheck analysis during C/C++ compilation (if found)" OFF)
+option(VALIDATE_SERIALIZATION "Round-trip in-process transport typed messages through serializers" OFF)
 set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABLE_SANITIZERS is ON")
 
 # Coverage runs are only meaningful if the tests are built and executed.
@@ -209,6 +210,8 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
     ${SRC_DIR}/gameplay/game_server.cpp
+    ${SRC_DIR}/gameplay/net_transport.cpp
+    ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
@@ -237,6 +240,8 @@ set(OG_SIM_SOURCES
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
     ${SRC_DIR}/gameplay/game_server.cpp
+    ${SRC_DIR}/gameplay/net_transport.cpp
+    ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/input_state_net.cpp
     ${SRC_DIR}/gameplay/replay.cpp
@@ -627,6 +632,7 @@ set(OG_THIRD_PARTY_INCLUDE_DIRS
 set(COMMON_DEFINITIONS
     USE_BMP_SCREENSHOT=1
     _USE_MATH_DEFINES
+    OPENGLAD_VALIDATE_SERIALIZATION=$<BOOL:${VALIDATE_SERIALIZATION}>
     PHYSFS_NO_CDROM_SUPPORT=1
     PHYSFS_SUPPORTS_ZIP=1
     PHYSFS_SUPPORTS_7Z=0
@@ -1283,6 +1289,7 @@ if(NOT EMSCRIPTEN)
             target_include_directories(${NAME} PRIVATE ${CMAKE_SOURCE_DIR}/tests)
             target_link_libraries(${NAME} PRIVATE og_game GTest::gtest)
             configure_openglad_runtime_target(${NAME})
+            add_runtime_assets_dependency(${NAME})
 
             if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
                 target_compile_options(${NAME} PRIVATE -O1 -g)
@@ -1543,6 +1550,7 @@ if(NOT EMSCRIPTEN)
         og_add_unit_group(og_unit_sim FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_state_net.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_replay.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp

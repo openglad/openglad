@@ -3,11 +3,18 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
+#include <utility>
 #include <vector>
 
+struct InputState;
+
 namespace og::sim {
+
+struct SimEventBatch;
+struct WorldSnapshot;
 
 using PeerId = std::uint32_t;
 
@@ -100,6 +107,23 @@ struct ReceivedMessage {
     std::vector<std::uint8_t> data;
 };
 
+enum class TypedReceivedMessageKind : std::uint8_t {
+    Snapshot,
+    DeltaSnapshot,
+    Input,
+    SimEventBatch,
+    GameFlowEventBatch,
+};
+
+struct TypedReceivedMessage {
+    PeerId peer_id = 0;
+    TypedReceivedMessageKind kind = TypedReceivedMessageKind::Snapshot;
+    std::shared_ptr<WorldSnapshot> snapshot;
+    std::shared_ptr<InputState> input;
+    std::shared_ptr<SimEventBatch> event_batch;
+    std::uint32_t tick = 0;
+};
+
 class ITransport {
 public:
     virtual ~ITransport() = default;
@@ -113,7 +137,25 @@ public:
         send(peer_id, bytes.data(), bytes.size());
     }
 
+    [[nodiscard]] virtual bool supports_typed_messages() const noexcept;
+    virtual void send_snapshot(PeerId peer_id,
+                               std::shared_ptr<WorldSnapshot> snapshot);
+    virtual void send_delta_snapshot(PeerId peer_id,
+                                     std::shared_ptr<WorldSnapshot> snapshot);
+    virtual void send_input(PeerId peer_id,
+                            std::shared_ptr<InputState> input,
+                            std::uint32_t tick);
+    void send_input(PeerId peer_id, std::shared_ptr<InputState> input)
+    {
+        send_input(peer_id, std::move(input), 0);
+    }
+    virtual void send_sim_event_batch(PeerId peer_id,
+                                      std::shared_ptr<SimEventBatch> batch);
+    virtual void send_game_flow_event_batch(PeerId peer_id,
+                                            std::shared_ptr<SimEventBatch> batch);
+
     [[nodiscard]] virtual std::vector<ReceivedMessage> poll() = 0;
+    [[nodiscard]] virtual std::vector<TypedReceivedMessage> poll_typed();
     virtual void accept_connections() = 0;
     virtual void disconnect(PeerId peer_id) = 0;
     [[nodiscard]] virtual std::vector<PeerId> connected_peers() const = 0;
