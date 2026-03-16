@@ -16,6 +16,16 @@
 
 namespace {
 
+void write_u32_le(std::vector<std::uint8_t>& bytes,
+                  std::size_t offset,
+                  std::uint32_t value)
+{
+    bytes[offset] = static_cast<std::uint8_t>(value & 0xffu);
+    bytes[offset + 1] = static_cast<std::uint8_t>((value >> 8) & 0xffu);
+    bytes[offset + 2] = static_cast<std::uint8_t>((value >> 16) & 0xffu);
+    bytes[offset + 3] = static_cast<std::uint8_t>((value >> 24) & 0xffu);
+}
+
 class MockTransport final : public og::sim::ITransport
 {
 public:
@@ -174,6 +184,24 @@ TEST(NetTransport, decode_rejects_truncated_and_wrong_version_headers)
 
     const std::array<std::uint8_t, 4> wrong_version = {0x02, 0x01, 0x00, 0x00};
     EXPECT_FALSE(og::sim::decode_transport_envelope(wrong_version, envelope));
+}
+
+TEST(NetTransport, deserialize_initial_setup_rejects_oversized_counts)
+{
+    const auto bytes = og::sim::serialize_initial_setup_message(
+        og::sim::InitialSetupMessage{});
+
+    auto oversized_guy_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
+    write_u32_le(oversized_guy_count, 33, 0xffffffffu);
+    EXPECT_FALSE(
+        og::sim::deserialize_initial_setup_message(oversized_guy_count)
+            .has_value());
+
+    auto oversized_level_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
+    write_u32_le(oversized_level_count, 37, 0xffffffffu);
+    EXPECT_FALSE(
+        og::sim::deserialize_initial_setup_message(oversized_level_count)
+            .has_value());
 }
 
 TEST(NetTransport, deserialize_hello_rejects_wrong_size_version_type_and_range)

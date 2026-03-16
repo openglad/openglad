@@ -104,6 +104,11 @@ public:
     {
         return ok_ && offset_ == payload_.size();
     }
+    [[nodiscard]] std::size_t remaining_bytes() const noexcept
+    {
+        return offset_ <= payload_.size() ? payload_.size() - offset_ : 0;
+    }
+    void fail() noexcept { ok_ = false; }
 
     std::uint8_t read_u8()
     {
@@ -220,6 +225,8 @@ void append_initial_setup_guy(std::vector<std::uint8_t>& payload,
     append_i16(payload, guy.level);
 }
 
+constexpr std::size_t kMinSerializedInitialSetupGuySize = 59;
+
 og::sim::InitialSetupGuyData read_initial_setup_guy(PayloadReader& reader)
 {
     og::sim::InitialSetupGuyData guy;
@@ -315,14 +322,27 @@ std::optional<InitialSetupMessage> deserialize_initial_setup_message(
             message.allied_mode = reader.read_i16();
             message.current_scenario = reader.read_i16();
             const std::uint32_t guy_count = reader.read_u32();
+            if (!reader.ok() ||
+                guy_count >
+                    reader.remaining_bytes() / kMinSerializedInitialSetupGuySize)
+            {
+                reader.fail();
+                return;
+            }
             message.guys.clear();
             message.guys.reserve(guy_count);
-            for (std::uint32_t i = 0; i < guy_count; ++i)
+            for (std::uint32_t i = 0; i < guy_count && reader.ok(); ++i)
                 message.guys.push_back(read_initial_setup_guy(reader));
             const std::uint32_t level_count = reader.read_u32();
+            if (!reader.ok() ||
+                level_count > reader.remaining_bytes() / sizeof(std::int32_t))
+            {
+                reader.fail();
+                return;
+            }
             message.completed_levels.clear();
             message.completed_levels.reserve(level_count);
-            for (std::uint32_t i = 0; i < level_count; ++i)
+            for (std::uint32_t i = 0; i < level_count && reader.ok(); ++i)
                 message.completed_levels.push_back(reader.read_i32());
             for (std::uint32_t& entity_id : message.controlled_entity_ids)
                 entity_id = reader.read_u32();
