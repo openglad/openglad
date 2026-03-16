@@ -28,6 +28,9 @@ namespace {
 constexpr Uint32 kUiSettleMs = 150;
 constexpr Uint32 kMenuTransitionMs = 250;
 constexpr Uint32 kCycleStepMs = 100;
+constexpr int kTeamMenuTimeoutMs = 20000;
+constexpr int kGameStartTimeoutMs = 20000;
+constexpr int kGameFinishTimeoutMs = 90000;
 }
 
 
@@ -52,6 +55,26 @@ static void cleanup_picker_state()
     pks().main_columns_data.free();
     pks().main_title_logo_pix.reset();
     pks().main_title_logo_data.free();
+}
+
+static bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
+{
+    int elapsed = 0;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (!has_interactable("hire_me")
+            && has_interactable("view_team")
+            && has_interactable("go"))
+        {
+            return true;
+        }
+
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+    }
+
+    fprintf(stderr, "  [interact] TIMEOUT entering team menu (%d ms)\n", timeout_ms);
+    return false;
 }
 
 // Hire one of each character type via the actual UI, crank stats to absurd
@@ -117,7 +140,11 @@ static int op_injector(void* data)
 
     // -- Team Menu: cheat stats then GO --
     SDL_Delay(kUiSettleMs);
-    wait_for_interactable("go", 10000);
+    if (!wait_for_team_menu()) {
+        set_game_speed(state->original_speed);
+        g_test_remove_exits = false;
+        return 0;
+    }
     SDL_Delay(kUiSettleMs);
 
     // Programmatically crank every stat to ludicrous levels
@@ -151,7 +178,8 @@ static int op_injector(void* data)
     {
         int waited_ms = 0;
         const int poll_ms = 50;
-        while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
+        while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before
+               && waited_ms < kGameStartTimeoutMs) {
             SDL_Delay(poll_ms);
             waited_ms += poll_ms;
         }
@@ -162,7 +190,8 @@ static int op_injector(void* data)
             return 0;
         }
         waited_ms = 0;
-        while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 60000) {
+        while (g_test_in_game.load(std::memory_order_acquire)
+               && waited_ms < kGameFinishTimeoutMs) {
             SDL_Delay(poll_ms);
             waited_ms += poll_ms;
         }

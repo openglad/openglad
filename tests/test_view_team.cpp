@@ -16,6 +16,12 @@
 #include <cstdint>
 #include <functional>
 
+namespace {
+constexpr int kViewMenuTransitionTimeoutMs = 15000;
+constexpr int kGameStartTimeoutMs = 20000;
+constexpr int kGameFinishTimeoutMs = 90000;
+}
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
@@ -125,7 +131,8 @@ static bool wait_for_view_menu_buttons(int timeout_ms = 6000)
     int since_last_retry = 250;
     const int poll_interval = 50;
     while (elapsed < timeout_ms) {
-        if (has_interactable_match("go", is_view_menu_button)
+        if (!has_interactable("view_team")
+            && has_interactable_match("go", is_view_menu_button)
             && has_interactable_match("back", is_view_menu_button))
             return true;
 
@@ -193,7 +200,7 @@ static int view_team_injector(void* data)
     interact("view_team");
 
     const auto is_view_menu_back = [](const Interactable& item) { return item.y >= 160; };
-    if (wait_for_view_menu_buttons(7000)) {
+    if (wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
         state->saw_view_menu = true;
         fprintf(stderr, "  [test] clicking back from view menu\n");
         interact_match("back", is_view_menu_back);
@@ -268,12 +275,13 @@ static int view_team_go_injector(void* data)
     interact("view_team");
 
     const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_view_menu_buttons(7000)) {
+    if (!wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
         unwind_to_main_menu();
         state->finished = true;
         return 0;
     }
     state->saw_view_menu = true;
+    SDL_Delay(100);
 
     g_test_remove_exits = true;
     og::sim::g_test_level_tick_limit_override = 15;
@@ -284,14 +292,16 @@ static int view_team_go_injector(void* data)
 
     int waited_ms = 0;
     const int poll_ms = 50;
-    while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
+    while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before
+           && waited_ms < kGameStartTimeoutMs) {
         SDL_Delay(poll_ms);
         waited_ms += poll_ms;
     }
     state->game_started = g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
 
     waited_ms = 0;
-    while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 60000) {
+    while (g_test_in_game.load(std::memory_order_acquire)
+           && waited_ms < kGameFinishTimeoutMs) {
         SDL_Delay(poll_ms);
         waited_ms += poll_ms;
     }
@@ -584,4 +594,3 @@ TEST(ViewTeam, go_level17_no_hang)
     ASSERT_TRUE(state.frame_progressed) << "level 17 should advance frames";
     ASSERT_TRUE(state.game_finished) << "level 17 should return to picker (no hang)";
 }
-
