@@ -183,6 +183,7 @@ enum class LoadSavedGameError
 {
     None = 0,
     MissingScreen,
+    SaveDataLoadFailed,
     UsedFallbackLevel,
     FallbackLevelLoadFailed
 };

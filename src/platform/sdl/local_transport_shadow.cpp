@@ -49,7 +49,8 @@ struct LocalTransportShadow {
 };
 
 using ShadowMap =
-    std::unordered_map<og::runtime::SessionState*, std::unique_ptr<LocalTransportShadow>>;
+    std::unordered_map<og::runtime::SessionState*,
+                       std::shared_ptr<LocalTransportShadow>>;
 
 ShadowMap& local_transport_shadows()
 {
@@ -190,7 +191,7 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
         return;
     }
 
-    std::unique_ptr<LocalTransportShadow> old_shadow;
+    std::shared_ptr<LocalTransportShadow> old_shadow;
     {
         std::lock_guard lock(local_transport_shadows_mutex());
         auto it = local_transport_shadows().find(&session);
@@ -201,7 +202,7 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
         }
     }
 
-    auto shadow = std::make_unique<LocalTransportShadow>();
+    auto shadow = std::make_shared<LocalTransportShadow>();
     GameSession::Config server_cfg;
     server_cfg.numviews = gameplay_screen.numviews;
     server_cfg.create_display = false;
@@ -269,13 +270,13 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
 
     {
         std::lock_guard lock(local_transport_shadows_mutex());
-        local_transport_shadows()[&session] = std::move(shadow);
+        local_transport_shadows()[&session] = shadow;
     }
 }
 
 void clear_local_transport_shadow(SessionState& session) noexcept
 {
-    std::unique_ptr<LocalTransportShadow> owned_shadow;
+    std::shared_ptr<LocalTransportShadow> owned_shadow;
     {
         std::lock_guard lock(local_transport_shadows_mutex());
         auto it = local_transport_shadows().find(&session);
@@ -290,49 +291,57 @@ void local_transport_shadow_send_input(SessionState& session,
                                        const InputState& input,
                                        std::uint32_t tick)
 {
-    std::lock_guard lock(local_transport_shadows_mutex());
-    const auto it = local_transport_shadows().find(&session);
-    if (it == local_transport_shadows().end())
-        return;
+    std::shared_ptr<LocalTransportShadow> shadow;
+    {
+        std::lock_guard lock(local_transport_shadows_mutex());
+        const auto it = local_transport_shadows().find(&session);
+        if (it == local_transport_shadows().end())
+            return;
+        shadow = it->second;
+    }
 
     const bool spectator =
         session.myscreen_ != nullptr &&
         og::ui::is_spectator_mode(session.myscreen_->save_data);
-    for (std::size_t index = 0; index < it->second->clients.size(); ++index)
+    for (std::size_t index = 0; index < shadow->clients.size(); ++index)
     {
         InputState player_input{};
         player_input.quit_requested = input.quit_requested;
         if (!spectator && index < static_cast<std::size_t>(MAX_PLAYERS))
             player_input.players[index] = input.players[index];
-        it->second->clients[index].game_client->send_input(player_input, tick);
+        shadow->clients[index].game_client->send_input(player_input, tick);
     }
 }
 
 void local_transport_shadow_finish_tick(SessionState& session)
 {
-    std::lock_guard lock(local_transport_shadows_mutex());
-    const auto it = local_transport_shadows().find(&session);
-    if (it == local_transport_shadows().end())
-        return;
+    std::shared_ptr<LocalTransportShadow> shadow;
+    {
+        std::lock_guard lock(local_transport_shadows_mutex());
+        const auto it = local_transport_shadows().find(&session);
+        if (it == local_transport_shadows().end())
+            return;
+        shadow = it->second;
+    }
 
-    if (session.myscreen_ == nullptr || it->second->server == nullptr ||
-        it->second->server_session == nullptr)
+    if (session.myscreen_ == nullptr || shadow->server == nullptr ||
+        shadow->server_session == nullptr)
     {
         return;
     }
 
     {
-        auto server_scope = it->second->server_session->activate();
-        ScopedSessionGameplayActivation gameplay_active(*it->second->server_session);
-        it->second->server->step();
+        auto server_scope = shadow->server_session->activate();
+        ScopedSessionGameplayActivation gameplay_active(*shadow->server_session);
+        shadow->server->step();
     }
-    for (auto& client : it->second->clients)
+    for (auto& client : shadow->clients)
         client.game_client->poll_messages();
-    sync_display_controls(*session.myscreen_, *it->second);
+    sync_display_controls(*session.myscreen_, *shadow);
 
-    const og::sim::SimEventBatch batch = collect_display_event_batch(*it->second);
+    const og::sim::SimEventBatch batch = collect_display_event_batch(*shadow);
     session.myscreen_->dispatch_sim_event_batch(batch);
-    mirror_client_prompt_state(*it->second, *session.myscreen_);
+    mirror_client_prompt_state(*shadow, *session.myscreen_);
 }
 
 } // namespace og::runtime

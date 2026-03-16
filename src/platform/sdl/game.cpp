@@ -69,6 +69,19 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 		return LoadSavedGameError::MissingScreen;
 	}
 
+    if (filename != nullptr && filename[0] != '\0')
+    {
+        const SaveDataIoError load_error =
+            screenp->save_data.load_with_error(filename);
+        if (load_error != SaveDataIoError::None)
+        {
+            LogError("load_saved_game_failed file={} reason=save_data_load_failed io_error={}\n",
+                     filename,
+                     static_cast<int>(load_error));
+            return LoadSavedGameError::SaveDataLoadFailed;
+        }
+    }
+
 	TRACE("game", "load_saved_game file=%s scen=%d", filename, screenp->save_data.scen_num);
 	guy           *temp_guy;
 	walker        *temp_walker,  *replace_walker;
@@ -276,6 +289,12 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 short load_saved_game(const char *filename, screen  *screenp)
 {
 	const LoadSavedGameError err = load_saved_game_with_error(filename, screenp);
+	if(err == LoadSavedGameError::SaveDataLoadFailed)
+	{
+		std::string buf = "Could not load the saved game.\nPlease report this problem to the developer!\n";
+		popup_dialog("ERROR", buf.c_str());
+		return 0;
+	}
 	if(err == LoadSavedGameError::FallbackLevelLoadFailed)
 	{
 		std::string buf = "Fallback loading failed.\nCould not load scenario.\nPlease report this problem to the developer!\n";
