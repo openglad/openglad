@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -37,6 +38,13 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 
 inline constexpr std::uint8_t kNetworkProtocolVersion = 1;
 inline constexpr std::size_t kTransportHeaderSize = 4;
+inline constexpr std::size_t kSessionTokenSize = 16;
+using SessionToken = std::array<std::uint8_t, kSessionTokenSize>;
+inline constexpr SessionToken kZeroSessionToken = {};
+inline constexpr std::size_t kSerializedHelloPayloadSize =
+    3 + kSessionTokenSize + sizeof(std::uint32_t);
+inline constexpr std::size_t kSerializedHelloMessageSize =
+    kTransportHeaderSize + kSerializedHelloPayloadSize;
 inline constexpr std::uint8_t kHelloMessageType =
     net_message_type_value(NetMessageType::Hello);
 inline constexpr std::uint8_t kInputMessageType =
@@ -72,6 +80,20 @@ inline constexpr std::uint8_t kPauseResponseMessageType =
     net_message_type_value(NetMessageType::PauseResponse);
 inline constexpr std::uint8_t kControlChangeMessageType =
     net_message_type_value(NetMessageType::ControlChange);
+
+// Hello payload wire format:
+// - byte 0: current protocol version
+// - byte 1: minimum supported protocol version
+// - byte 2: snapshot format version
+// - bytes 3-18: session token
+// - bytes 19-22: little-endian campaign content hash
+struct HelloMessage {
+    std::uint8_t protocol_version = kNetworkProtocolVersion;
+    std::uint8_t min_protocol_version = kNetworkProtocolVersion;
+    std::uint8_t snapshot_format_version = 0;
+    SessionToken session_token = {};
+    std::uint32_t campaign_content_hash = 0;
+};
 
 struct ReceivedMessage {
     PeerId peer_id = 0;
@@ -142,6 +164,76 @@ inline bool decode_transport_envelope(std::span<const std::uint8_t> bytes,
     envelope.payload_length =
         static_cast<std::uint16_t>(payload_lo | payload_hi);
     return true;
+}
+
+inline std::array<std::uint8_t, kSerializedHelloMessageSize>
+serialize_hello(const HelloMessage& message)
+{
+    std::array<std::uint8_t, kSerializedHelloMessageSize> bytes{};
+    write_transport_header(bytes, kHelloMessageType,
+                           static_cast<std::uint16_t>(kSerializedHelloPayloadSize));
+
+    bytes[kTransportHeaderSize + 0] = message.protocol_version;
+    bytes[kTransportHeaderSize + 1] = message.min_protocol_version;
+    bytes[kTransportHeaderSize + 2] = message.snapshot_format_version;
+
+    for (std::size_t i = 0; i < kSessionTokenSize; ++i)
+    {
+        bytes[kTransportHeaderSize + 3 + i] = message.session_token[i];
+    }
+
+    const std::size_t hash_offset = kTransportHeaderSize + 3 + kSessionTokenSize;
+    bytes[hash_offset + 0] =
+        static_cast<std::uint8_t>(message.campaign_content_hash & 0xffu);
+    bytes[hash_offset + 1] = static_cast<std::uint8_t>(
+        (message.campaign_content_hash >> 8) & 0xffu);
+    bytes[hash_offset + 2] = static_cast<std::uint8_t>(
+        (message.campaign_content_hash >> 16) & 0xffu);
+    bytes[hash_offset + 3] = static_cast<std::uint8_t>(
+        (message.campaign_content_hash >> 24) & 0xffu);
+
+    return bytes;
+}
+
+inline std::optional<HelloMessage> deserialize_hello_message(
+    std::span<const std::uint8_t> bytes)
+{
+    if (bytes.size() != kSerializedHelloMessageSize)
+    {
+        return std::nullopt;
+    }
+
+    TransportEnvelope envelope;
+    if (!decode_transport_envelope(bytes, envelope) ||
+        envelope.message_type != kHelloMessageType ||
+        envelope.payload_length != kSerializedHelloPayloadSize)
+    {
+        return std::nullopt;
+    }
+
+    HelloMessage message;
+    message.protocol_version = bytes[kTransportHeaderSize + 0];
+    message.min_protocol_version = bytes[kTransportHeaderSize + 1];
+    message.snapshot_format_version = bytes[kTransportHeaderSize + 2];
+
+    if (message.protocol_version != envelope.protocol_version ||
+        message.min_protocol_version > message.protocol_version)
+    {
+        return std::nullopt;
+    }
+
+    for (std::size_t i = 0; i < kSessionTokenSize; ++i)
+    {
+        message.session_token[i] = bytes[kTransportHeaderSize + 3 + i];
+    }
+
+    const std::size_t hash_offset = kTransportHeaderSize + 3 + kSessionTokenSize;
+    message.campaign_content_hash =
+        static_cast<std::uint32_t>(bytes[hash_offset + 0]) |
+        (static_cast<std::uint32_t>(bytes[hash_offset + 1]) << 8) |
+        (static_cast<std::uint32_t>(bytes[hash_offset + 2]) << 16) |
+        (static_cast<std::uint32_t>(bytes[hash_offset + 3]) << 24);
+    return message;
 }
 
 } // namespace og::sim
