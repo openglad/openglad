@@ -264,6 +264,11 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     if (s.world().end || st.done)
         return finish_done(st);
 
+    og::runtime::GameSession* const gameplay_session =
+        require_local_transport_session();
+    if (gameplay_session == nullptr)
+        return finish_done(st);
+
     if (deps.enable_event_poll) {
         SDL_Event event;
         while (poll_event(&event))
@@ -277,13 +282,10 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                     og::runtime::current_session->debug_draw_obmap_ = !og::runtime::current_session->debug_draw_obmap_;
                 else if (event.key.keysym.sym == SDLK_ESCAPE)
                 {
-                    if (og::runtime::current_game_session != nullptr &&
-                        og::runtime::local_transport_active(
-                            *og::runtime::current_game_session) &&
-                        !og::runtime::local_transport_shadow_is_paused(
-                            *og::runtime::current_game_session) &&
+                    if (!og::runtime::local_transport_shadow_is_paused(
+                            *gameplay_session) &&
                         og::runtime::local_transport_shadow_toggle_pause(
-                            *og::runtime::current_game_session))
+                            *gameplay_session))
                     {
                         s.redrawme = 1;
                         break;
@@ -300,13 +302,8 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                     }
                     else
                     {
-                        if (og::runtime::current_game_session != nullptr &&
-                            og::runtime::local_transport_active(
-                                *og::runtime::current_game_session))
-                        {
-                            (void)og::runtime::local_transport_shadow_toggle_pause(
-                                *og::runtime::current_game_session);
-                        }
+                        (void)og::runtime::local_transport_shadow_toggle_pause(
+                            *gameplay_session);
                         set_palette(s.ourpalette);  // restore normal palette
                         adjust_palette(s.ourpalette, s.viewob[0]->gamma);
                     }

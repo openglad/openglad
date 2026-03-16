@@ -27,10 +27,10 @@ static std::unique_ptr<walker> make_walker_at(char family, short x, short y, uns
 
 TEST(ScreenExtended, network_fixture_advances_empty_tick)
 {
-    og::sim::test::NetworkTestFixture fixture({
-        .level_id = 1,
-        .tick_count = 1,
-    });
+    og::sim::test::NetworkTestConfig config;
+    config.level_id = 1;
+    config.tick_count = 1;
+    og::sim::test::NetworkTestFixture fixture(config);
     fixture.run();
 
     EXPECT_EQ(1u, fixture.server_world().tick_count_);
