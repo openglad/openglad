@@ -440,6 +440,148 @@ TEST(NetTransport,
     EXPECT_EQ(hash_check, *decoded_hash_check);
 }
 
+TEST(NetTransport, game_client_dispatches_callbacks_for_runtime_state)
+{
+    MockTransport transport;
+    TestGameWorld fixture;
+
+    walker* const first = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const second = fixture.world().add_ob(Order::Living, FAMILY_ARCHER);
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+    first->setxy(32, 32);
+    second->setxy(48, 48);
+
+    og::sim::InitialSetupMessage initial_setup;
+    initial_setup.level_id = fixture.world().id;
+    initial_setup.level_title = fixture.world().title;
+    initial_setup.level_type = fixture.world().type;
+    initial_setup.par_value = fixture.world().par_value;
+    initial_setup.time_bonus_limit = fixture.world().time_bonus_limit;
+    initial_setup.difficulty = fixture.world().difficulty;
+    initial_setup.pixmaxx = fixture.world().pixmaxx;
+    initial_setup.pixmaxy = fixture.world().pixmaxy;
+    initial_setup.my_team = fixture.world().my_team;
+    initial_setup.allied_mode = fixture.world().allied_mode;
+    initial_setup.current_scenario = fixture.world().current_scenario;
+    initial_setup.controlled_entity_ids = {
+        first->entity_id(), 0u, 0u, 0u};
+
+    og::sim::WorldSnapshot snapshot =
+        og::sim::capture_keyframe_snapshot(fixture.world());
+    snapshot.tick_count = 1u;
+    snapshot.current_palette_id = 1;
+
+    og::sim::SimEventBatch sim_batch;
+    sim_batch.sequence = 1u;
+    sim_batch.events.push_back({
+        .tick = 1u,
+        .kind = og::sim::EventKind::Notification,
+        .a = 25u,
+        .text = "sim",
+    });
+
+    og::sim::SimEventBatch game_flow_batch;
+    game_flow_batch.sequence = 1u;
+    game_flow_batch.events.push_back({
+        .tick = 1u,
+        .kind = og::sim::EventKind::EndGame,
+        .a = 0u,
+        .b = 2u,
+        .text = {},
+    });
+
+    og::sim::ExitPromptBroadcastMessage exit_prompt;
+    exit_prompt.destination_level = 3;
+    exit_prompt.prompt_text = "Exit now?";
+
+    og::sim::PauseBroadcastMessage pause_broadcast;
+    pause_broadcast.player_index = 0u;
+    pause_broadcast.player_name = "Ari";
+
+    og::sim::ControlChangeMessage control_change;
+    control_change.player_index = 0u;
+    control_change.entity_id = second->entity_id();
+
+    transport.queue_received(
+        7u, og::sim::serialize_initial_setup_message(initial_setup));
+    transport.queue_received(7u, og::sim::serialize_snapshot(snapshot));
+    transport.queue_received(7u, og::sim::serialize_sim_event_batch(sim_batch));
+    transport.queue_received(
+        7u,
+        og::sim::serialize_game_flow_event_batch(game_flow_batch));
+    transport.queue_received(
+        7u,
+        og::sim::serialize_exit_prompt_broadcast_message(exit_prompt));
+    transport.queue_received(
+        7u,
+        og::sim::serialize_pause_broadcast_message(pause_broadcast));
+    transport.queue_received(
+        7u,
+        og::sim::serialize_control_change_message(control_change));
+
+    og::sim::GameClient client(transport, 7u, &fixture.world());
+    std::vector<std::uint32_t> mapped_entity_ids;
+    std::vector<std::uint32_t> resolved_entity_ids;
+    std::vector<og::sim::SimEventBatch> dispatched_sim_batches;
+    std::vector<og::sim::SimEventBatch> dispatched_game_flow_batches;
+    std::optional<og::sim::ExitPromptBroadcastMessage> received_exit_prompt;
+    std::optional<og::sim::PauseBroadcastMessage> received_pause_broadcast;
+
+    client.set_control_mapping_callback(
+        [&](const std::array<std::uint32_t, MAX_PLAYERS>& controlled_entity_ids,
+            GameWorld* world) {
+            mapped_entity_ids.push_back(controlled_entity_ids[0]);
+            walker* const mapped =
+                (world != nullptr && controlled_entity_ids[0] != 0u)
+                    ? world->find_by_id(controlled_entity_ids[0])
+                    : nullptr;
+            resolved_entity_ids.push_back(
+                mapped != nullptr ? mapped->entity_id() : 0u);
+        });
+    client.set_sim_event_batch_callback(
+        [&](const og::sim::SimEventBatch& batch) {
+            dispatched_sim_batches.push_back(batch);
+        });
+    client.set_game_flow_event_batch_callback(
+        [&](const og::sim::SimEventBatch& batch) {
+            dispatched_game_flow_batches.push_back(batch);
+        });
+    client.set_exit_prompt_callback(
+        [&](const og::sim::ExitPromptBroadcastMessage& message) {
+            received_exit_prompt = message;
+        });
+    client.set_pause_broadcast_callback(
+        [&](const og::sim::PauseBroadcastMessage& message) {
+            received_pause_broadcast = message;
+        });
+
+    client.poll_messages();
+
+    ASSERT_TRUE(client.baseline().has_value());
+    EXPECT_EQ(1u, client.baseline()->tick_count);
+    ASSERT_GE(mapped_entity_ids.size(), 2u);
+    EXPECT_EQ(second->entity_id(), mapped_entity_ids.back());
+    EXPECT_EQ(second->entity_id(), resolved_entity_ids.back());
+    EXPECT_NE(mapped_entity_ids.end(),
+              std::find(mapped_entity_ids.begin(),
+                        mapped_entity_ids.end(),
+                        first->entity_id()));
+
+    ASSERT_EQ(1u, dispatched_sim_batches.size());
+    EXPECT_EQ(sim_batch.sequence, dispatched_sim_batches.front().sequence);
+    EXPECT_EQ(sim_batch.events, dispatched_sim_batches.front().events);
+    ASSERT_EQ(1u, dispatched_game_flow_batches.size());
+    EXPECT_EQ(game_flow_batch.sequence,
+              dispatched_game_flow_batches.front().sequence);
+    EXPECT_EQ(game_flow_batch.events,
+              dispatched_game_flow_batches.front().events);
+    ASSERT_TRUE(received_exit_prompt.has_value());
+    EXPECT_EQ(exit_prompt, *received_exit_prompt);
+    ASSERT_TRUE(received_pause_broadcast.has_value());
+    EXPECT_EQ(pause_broadcast, *received_pause_broadcast);
+}
+
 TEST(NetTransport, game_client_polls_raw_messages_when_typed_path_is_unavailable)
 {
     MockTransport transport;

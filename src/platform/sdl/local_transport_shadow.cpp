@@ -16,10 +16,12 @@
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 short load_saved_game(const char* filename, screen* scr);
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
 namespace
 {
@@ -109,67 +111,73 @@ void prepare_server_session_for_gameplay(og::runtime::GameSession& server_sessio
         current_game->sim_events->clear();
 }
 
-void sync_display_controls(screen& gameplay_screen, LocalTransportShadow& shadow)
+void sync_display_controls(screen& gameplay_screen,
+                           const std::array<std::uint32_t, MAX_PLAYERS>&
+                               controlled_entity_ids,
+                           GameWorld* world)
 {
+    if (world == nullptr)
+        return;
+
     const std::size_t player_count = compute_local_player_count(gameplay_screen);
     for (std::size_t index = 0; index < player_count; ++index)
     {
-        if (!gameplay_screen.viewob[index])
+        viewscreen* const view = gameplay_screen.viewob[index].get();
+        if (view == nullptr)
             continue;
 
-        walker* server_control = shadow.server->player_control(index);
-        gameplay_screen.viewob[index]->control =
-            (server_control != nullptr)
-                ? gameplay_screen.world().find_by_id(server_control->entity_id())
-                : nullptr;
+        const std::uint32_t entity_id = controlled_entity_ids[index];
+        view->control =
+            entity_id != 0u ? world->find_by_id(entity_id) : nullptr;
     }
 }
 
-og::sim::SimEventBatch collect_display_event_batch(
-    const LocalTransportShadow& shadow)
+void dispatch_display_event_batch(screen& gameplay_screen,
+                                  const og::sim::SimEventBatch& batch)
 {
-    og::sim::SimEventBatch combined;
-    const screen* const server_screen = shadow.server_screen();
-    if (server_screen != nullptr)
-        combined.sequence = server_screen->world().tick_count_;
+    gameplay_screen.dispatch_sim_event_batch(batch);
+}
 
-    if (shadow.clients.empty())
-        return combined;
+void respond_to_exit_prompt(screen& gameplay_screen,
+                            og::sim::GameClient& game_client,
+                            const og::sim::ExitPromptBroadcastMessage& prompt)
+{
+    const bool accepted =
+        yes_or_no_prompt("Exit Field", prompt.prompt_text.c_str(), false);
+    gameplay_screen.redrawme = 1;
+    game_client.send_exit_prompt_response(accepted);
+}
 
-    const LocalTransportClient& display_client =
-        shadow.clients.at(shadow.display_client_index);
-    if (!display_client.game_client)
-        return combined;
+std::string pause_overlay_text(const og::sim::PauseBroadcastMessage* pause)
+{
+    if (pause == nullptr || pause->player_name.empty())
+        return "PAUSED";
 
-    for (const auto& message : display_client.game_client->last_polled_messages())
+    return "PAUSED by " + pause->player_name;
+}
+
+void render_pause_overlay(screen& gameplay_screen,
+                          const og::sim::GameClient& game_client)
+{
+    if (!game_client.baseline().has_value() ||
+        !game_client.baseline()->paused)
     {
-        if ((message.kind != og::sim::TypedReceivedMessageKind::SimEventBatch &&
-             message.kind !=
-                 og::sim::TypedReceivedMessageKind::GameFlowEventBatch) ||
-            !message.event_batch)
-        {
-            continue;
-        }
-
-        combined.events.insert(combined.events.end(),
-                               message.event_batch->events.begin(),
-                               message.event_batch->events.end());
+        return;
     }
 
-    return combined;
-}
+    const std::string text =
+        pause_overlay_text(game_client.last_pause_broadcast().has_value()
+                               ? &*game_client.last_pause_broadcast()
+                               : nullptr);
+    for (int index = 0; index < gameplay_screen.numviews; ++index)
+    {
+        viewscreen* const view = gameplay_screen.viewob[index].get();
+        if (view == nullptr)
+            continue;
 
-void mirror_client_prompt_state(LocalTransportShadow& shadow,
-                                const screen& gameplay_screen)
-{
-    screen* const server_screen = shadow.server_screen();
-    if (server_screen == nullptr)
-        return;
-
-    server_screen->world().withdraw_requested =
-        gameplay_screen.world().withdraw_requested;
-    server_screen->world().withdraw_level =
-        gameplay_screen.world().withdraw_level;
+        view->set_display_text(text, 1);
+    }
+    gameplay_screen.redrawme = 1;
 }
 
 } // namespace
@@ -257,6 +265,47 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
             *client.transport,
             peer_id,
             client.drives_display ? &gameplay_screen.world() : nullptr);
+        if (client.drives_display)
+        {
+            og::sim::GameClient* const display_client = client.game_client.get();
+            display_client->set_control_mapping_callback(
+                [&gameplay_screen](
+                    const std::array<std::uint32_t, MAX_PLAYERS>&
+                        controlled_entity_ids,
+                    GameWorld* world) {
+                    sync_display_controls(
+                        gameplay_screen, controlled_entity_ids, world);
+                });
+            display_client->set_sim_event_batch_callback(
+                [&gameplay_screen](const og::sim::SimEventBatch& batch) {
+                    dispatch_display_event_batch(gameplay_screen, batch);
+                });
+            display_client->set_game_flow_event_batch_callback(
+                [&gameplay_screen](const og::sim::SimEventBatch& batch) {
+                    dispatch_display_event_batch(gameplay_screen, batch);
+                });
+            display_client->set_exit_prompt_callback(
+                [&gameplay_screen, display_client](
+                    const og::sim::ExitPromptBroadcastMessage& prompt) {
+                    respond_to_exit_prompt(
+                        gameplay_screen, *display_client, prompt);
+                });
+            display_client->set_pause_broadcast_callback(
+                [&gameplay_screen](
+                    const og::sim::PauseBroadcastMessage& pause) {
+                    const std::string text = pause_overlay_text(&pause);
+                    for (int view_index = 0; view_index < gameplay_screen.numviews;
+                         ++view_index)
+                    {
+                        viewscreen* const view =
+                            gameplay_screen.viewob[view_index].get();
+                        if (view == nullptr)
+                            continue;
+                        view->set_display_text(text, 1);
+                    }
+                    gameplay_screen.redrawme = 1;
+                });
+        }
         shadow->clients.push_back(std::move(client));
     }
 
@@ -266,7 +315,6 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
     }
     for (auto& client : shadow->clients)
         client.game_client->poll_messages();
-    sync_display_controls(gameplay_screen, *shadow);
 
     {
         std::lock_guard lock(local_transport_shadows_mutex());
@@ -337,11 +385,13 @@ void local_transport_shadow_finish_tick(SessionState& session)
     }
     for (auto& client : shadow->clients)
         client.game_client->poll_messages();
-    sync_display_controls(*session.myscreen_, *shadow);
-
-    const og::sim::SimEventBatch batch = collect_display_event_batch(*shadow);
-    session.myscreen_->dispatch_sim_event_batch(batch);
-    mirror_client_prompt_state(*shadow, *session.myscreen_);
+    if (shadow->display_client_index < shadow->clients.size() &&
+        shadow->clients[shadow->display_client_index].game_client)
+    {
+        render_pause_overlay(
+            *session.myscreen_,
+            *shadow->clients[shadow->display_client_index].game_client);
+    }
 }
 
 } // namespace og::runtime

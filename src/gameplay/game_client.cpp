@@ -189,6 +189,37 @@ GameClient::GameClient(ITransport& transport,
 {
 }
 
+void GameClient::set_control_mapping_callback(
+    std::function<void(const std::array<std::uint32_t, MAX_PLAYERS>&,
+                       GameWorld*)> callback)
+{
+    control_mapping_callback_ = std::move(callback);
+}
+
+void GameClient::set_sim_event_batch_callback(
+    std::function<void(const SimEventBatch&)> callback)
+{
+    sim_event_batch_callback_ = std::move(callback);
+}
+
+void GameClient::set_game_flow_event_batch_callback(
+    std::function<void(const SimEventBatch&)> callback)
+{
+    game_flow_event_batch_callback_ = std::move(callback);
+}
+
+void GameClient::set_exit_prompt_callback(
+    std::function<void(const ExitPromptBroadcastMessage&)> callback)
+{
+    exit_prompt_callback_ = std::move(callback);
+}
+
+void GameClient::set_pause_broadcast_callback(
+    std::function<void(const PauseBroadcastMessage&)> callback)
+{
+    pause_broadcast_callback_ = std::move(callback);
+}
+
 void GameClient::send_input(const InputState& input, std::uint32_t tick)
 {
     transport_.send_input(server_peer_id_,
@@ -292,6 +323,36 @@ void GameClient::maybe_send_snapshot_hash_check(bool force)
     send_snapshot_hash_check();
 }
 
+void GameClient::notify_control_mapping_changed()
+{
+    if (control_mapping_callback_)
+        control_mapping_callback_(controlled_entity_ids_, world_);
+}
+
+void GameClient::notify_sim_event_batch(const SimEventBatch& batch)
+{
+    if (sim_event_batch_callback_)
+        sim_event_batch_callback_(batch);
+}
+
+void GameClient::notify_game_flow_event_batch(const SimEventBatch& batch)
+{
+    if (game_flow_event_batch_callback_)
+        game_flow_event_batch_callback_(batch);
+}
+
+void GameClient::notify_exit_prompt(const ExitPromptBroadcastMessage& message)
+{
+    if (exit_prompt_callback_)
+        exit_prompt_callback_(message);
+}
+
+void GameClient::notify_pause_broadcast(const PauseBroadcastMessage& message)
+{
+    if (pause_broadcast_callback_)
+        pause_broadcast_callback_(message);
+}
+
 void GameClient::apply_initial_setup(const InitialSetupMessage& message)
 {
     initial_setup_ = message;
@@ -311,6 +372,7 @@ void GameClient::apply_initial_setup(const InitialSetupMessage& message)
     has_game_flow_event_sequence_ = false;
     last_exit_prompt_.reset();
     last_pause_broadcast_.reset();
+    notify_control_mapping_changed();
 }
 
 void GameClient::apply_full_snapshot(const WorldSnapshot& snapshot)
@@ -323,6 +385,7 @@ void GameClient::apply_full_snapshot(const WorldSnapshot& snapshot)
     }
     clear_transport_only_snapshot_state(*baseline_);
     last_seen_server_tick_ = baseline_->tick_count;
+    notify_control_mapping_changed();
     waiting_for_keyframe_ = false;
     maybe_send_client_ready();
     maybe_send_snapshot_hash_check(true);
@@ -358,6 +421,7 @@ void GameClient::apply_delta_snapshot(const WorldSnapshot& snapshot)
     }
     clear_transport_only_snapshot_state(*baseline_);
     last_seen_server_tick_ = baseline_->tick_count;
+    notify_control_mapping_changed();
     maybe_send_snapshot_hash_check(false);
 }
 
@@ -407,6 +471,7 @@ void GameClient::poll_messages()
                 has_sim_event_sequence_ = true;
                 last_sim_event_sequence_ = message.event_batch->sequence;
                 sim_event_batches_.push_back(*message.event_batch);
+                notify_sim_event_batch(*message.event_batch);
             }
             break;
 
@@ -424,6 +489,7 @@ void GameClient::poll_messages()
                 has_game_flow_event_sequence_ = true;
                 last_game_flow_event_sequence_ = message.event_batch->sequence;
                 game_flow_event_batches_.push_back(*message.event_batch);
+                notify_game_flow_event_batch(*message.event_batch);
             }
             break;
 
@@ -434,12 +500,18 @@ void GameClient::poll_messages()
 
         case TypedReceivedMessageKind::ExitPromptBroadcast:
             if (message.exit_prompt_broadcast)
+            {
                 last_exit_prompt_ = *message.exit_prompt_broadcast;
+                notify_exit_prompt(*message.exit_prompt_broadcast);
+            }
             break;
 
         case TypedReceivedMessageKind::PauseBroadcast:
             if (message.pause_broadcast)
+            {
                 last_pause_broadcast_ = *message.pause_broadcast;
+                notify_pause_broadcast(*message.pause_broadcast);
+            }
             break;
 
         case TypedReceivedMessageKind::ControlChange:
@@ -448,6 +520,7 @@ void GameClient::poll_messages()
             {
                 controlled_entity_ids_[message.control_change->player_index] =
                     message.control_change->entity_id;
+                notify_control_mapping_changed();
             }
             break;
 
