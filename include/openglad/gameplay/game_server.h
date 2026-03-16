@@ -91,6 +91,7 @@ public:
         SnapshotCaptureMode capture_mode = SnapshotCaptureMode::Consume);
     void send_initial_snapshots(
         SnapshotCaptureMode capture_mode = SnapshotCaptureMode::Consume);
+    void forward_event_batch(const SimEventBatch& batch);
     void broadcast_current_state(
         SnapshotCaptureMode capture_mode = SnapshotCaptureMode::Consume,
         EventDeliveryMode event_mode = EventDeliveryMode::Drain);

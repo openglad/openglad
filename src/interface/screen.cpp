@@ -51,6 +51,12 @@
 #include <cstring>
 #include <format>
 
+namespace og::runtime {
+struct SessionState;
+void local_transport_shadow_capture_events(SessionState& session,
+                                          const og::sim::SimEventBatch& batch);
+}
+
 // Used by statistics::do_command() COMMAND_FOLLOW to find a leader walker.
 // The function is declared in stats.cpp; defined here in the SDL build.
 walker* find_follow_leader()
@@ -936,6 +942,15 @@ bool screen::act()
 	og::sim::SimEventLog& events = *current_game->sim_events;
     ScopedGameplayTickActivation gameplay_tick_active(og::runtime::current_session);
 	world_.tick();
+    if (og::runtime::current_session != nullptr && !events.empty())
+    {
+        og::sim::SimEventBatch shadow_batch;
+        shadow_batch.sequence = world_.tick_count_;
+        shadow_batch.events = events.events();
+        og::runtime::local_transport_shadow_capture_events(
+            *og::runtime::current_session,
+            shadow_batch);
+    }
 
 	// Post-tick: clean up viewscreen control pointers for dead player entities.
 	// This is a rendering concern that doesn't belong in the simulation layer.

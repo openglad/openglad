@@ -567,6 +567,33 @@ void GameServer::send_initial_snapshots(SnapshotCaptureMode capture_mode)
     }
 }
 
+void GameServer::forward_event_batch(const SimEventBatch& batch)
+{
+    if (batch.events.empty())
+        return;
+
+    SimEventBatch sim_batch;
+    SimEventBatch game_flow_batch;
+    split_event_batches(batch, sim_batch, game_flow_batch);
+
+    for (const auto& [peer_id, client] : clients_)
+    {
+        (void)client;
+        if (!sim_batch.events.empty())
+        {
+            transport_.send_sim_event_batch(
+                peer_id,
+                std::make_shared<SimEventBatch>(sim_batch));
+        }
+        if (!game_flow_batch.events.empty())
+        {
+            transport_.send_game_flow_event_batch(
+                peer_id,
+                std::make_shared<SimEventBatch>(game_flow_batch));
+        }
+    }
+}
+
 void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
                                          EventDeliveryMode event_mode)
 {
@@ -577,14 +604,9 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
         [](const auto& entry) { return !entry.second.has_initial_snapshot; });
     if (needs_initial_keyframe)
         initial_keyframe = capture_server_keyframe(world_, capture_mode);
-
-    SimEventBatch sim_batch;
-    SimEventBatch game_flow_batch;
+    std::optional<SimEventBatch> drained_batch = std::nullopt;
     if (event_mode == EventDeliveryMode::Drain)
-    {
-        const SimEventBatch drained = drain_sim_events(events_);
-        split_event_batches(drained, sim_batch, game_flow_batch);
-    }
+        drained_batch = drain_sim_events(events_);
 
     for (auto& [peer_id, client] : clients_)
     {
@@ -606,20 +628,10 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
                 peer_id,
                 std::make_shared<WorldSnapshot>(std::move(delta)));
         }
-
-        if (!sim_batch.events.empty())
-        {
-            transport_.send_sim_event_batch(
-                peer_id,
-                std::make_shared<SimEventBatch>(sim_batch));
-        }
-        if (!game_flow_batch.events.empty())
-        {
-            transport_.send_game_flow_event_batch(
-                peer_id,
-                std::make_shared<SimEventBatch>(game_flow_batch));
-        }
     }
+
+    if (drained_batch.has_value())
+        forward_event_batch(*drained_batch);
 }
 
 void GameServer::step()

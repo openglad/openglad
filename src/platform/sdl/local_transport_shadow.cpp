@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 
 namespace
@@ -19,6 +20,7 @@ struct LocalTransportShadow {
     std::shared_ptr<og::sim::InProcessTransport> client_transport;
     std::unique_ptr<og::sim::GameServer> server;
     std::unique_ptr<og::sim::GameClient> client;
+    std::optional<og::sim::SimEventBatch> pending_event_batch = std::nullopt;
 };
 
 using ShadowMap =
@@ -90,6 +92,17 @@ void local_transport_shadow_send_input(SessionState& session,
     it->second->client->send_input(input, tick);
 }
 
+void local_transport_shadow_capture_events(SessionState& session,
+                                          const og::sim::SimEventBatch& batch)
+{
+    std::lock_guard lock(local_transport_shadows_mutex());
+    const auto it = local_transport_shadows().find(&session);
+    if (it == local_transport_shadows().end())
+        return;
+
+    it->second->pending_event_batch = batch;
+}
+
 void local_transport_shadow_finish_tick(SessionState& session)
 {
     std::lock_guard lock(local_transport_shadows_mutex());
@@ -101,6 +114,12 @@ void local_transport_shadow_finish_tick(SessionState& session)
     it->second->server->broadcast_current_state(
         og::sim::SnapshotCaptureMode::Peek,
         og::sim::EventDeliveryMode::Skip);
+    if (it->second->pending_event_batch.has_value())
+    {
+        it->second->server->forward_event_batch(
+            *it->second->pending_event_batch);
+        it->second->pending_event_batch.reset();
+    }
     it->second->client->poll_messages();
 }
 
