@@ -684,6 +684,52 @@ TEST(RuntimeCoveragePaths, screen_tick_world_splits_cosmetic_and_game_flow_batch
     clear_level_lists();
 }
 
+TEST(RuntimeCoveragePaths, screen_tick_world_moves_endgame_to_back)
+{
+    clear_level_lists();
+
+    ASSERT_TRUE(current_game != nullptr && current_game->sim_events != nullptr)
+        << "sim events should be available";
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& sim_events = *current_game->sim_events;
+    sim_events.clear();
+
+    GameWorld& world = setup_tick_world(5150);
+    walker* ally = add_living(0);
+    walker* foe = add_living(1);
+    ASSERT_TRUE(ally && foe) << "living fixtures should exist";
+    if (!(ally && foe))
+        return;
+
+    sim_events.push(og::sim::EventKind::EndGame, 0,
+                    static_cast<std::uint32_t>(-1));
+    sim_events.push(og::sim::EventKind::RequestRedraw);
+    sim_events.push(og::sim::EventKind::ScoreChange, 1, 25);
+
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr) << "active screen should be available";
+    if (!s)
+        return;
+
+    const auto [cosmetic_batch, game_flow_batch] = s->tick_world();
+
+    ASSERT_EQ(world.tick_count_, cosmetic_batch.sequence);
+    ASSERT_EQ(world.tick_count_, game_flow_batch.sequence);
+    ASSERT_EQ(1u, cosmetic_batch.events.size())
+        << "later cosmetic events should survive the split";
+    ASSERT_EQ(2u, game_flow_batch.events.size())
+        << "later game-flow events should survive the split";
+    ASSERT_TRUE(cosmetic_batch.events[0].kind ==
+                og::sim::EventKind::RequestRedraw);
+    ASSERT_TRUE(game_flow_batch.events[0].kind == og::sim::EventKind::ScoreChange)
+        << "non-EndGame game-flow events should stay ahead of EndGame";
+    ASSERT_TRUE(game_flow_batch.events[1].kind == og::sim::EventKind::EndGame)
+        << "split batches must enforce the EndGame-last invariant";
+
+    clear_level_lists();
+}
+
 TEST(RuntimeCoveragePaths, screen_dispatch_cosmetic_events_updates_view_state)
 {
     clear_level_lists();

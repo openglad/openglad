@@ -197,6 +197,16 @@ bool is_game_flow_event(og::sim::EventKind kind) noexcept
     return false;
 }
 
+void move_endgame_to_back(std::vector<og::sim::Event>& events)
+{
+    std::stable_sort(
+        events.begin(), events.end(),
+        [](const og::sim::Event& lhs, const og::sim::Event& rhs) {
+            return lhs.kind != og::sim::EventKind::EndGame &&
+                   rhs.kind == og::sim::EventKind::EndGame;
+        });
+}
+
 screen::TickWorldBatches split_screen_event_batches(
     const og::sim::SimEventBatch& source)
 {
@@ -212,6 +222,8 @@ screen::TickWorldBatches split_screen_event_batches(
         else
             cosmetic_batch.events.push_back(event);
     }
+
+    move_endgame_to_back(game_flow_batch.events);
 
     return {std::move(cosmetic_batch), std::move(game_flow_batch)};
 }
@@ -1159,8 +1171,10 @@ void screen::process_input(const InputState& input_state)
 
 bool screen::dispatch_sim_event_batch(const og::sim::SimEventBatch& batch)
 {
-    dispatch_cosmetic_events(batch);
-    return dispatch_game_flow_events(batch);
+    const auto [cosmetic_batch, game_flow_batch] =
+        split_screen_event_batches(batch);
+    dispatch_cosmetic_events(cosmetic_batch);
+    return dispatch_game_flow_events(game_flow_batch);
 }
 
 screen::TickWorldBatches screen::tick_world()
