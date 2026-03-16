@@ -13,10 +13,6 @@ namespace
 void clear_transport_only_snapshot_state(og::sim::WorldSnapshot& snapshot)
 {
     snapshot.removed_entity_ids.clear();
-    snapshot.grid_dirty = false;
-    snapshot.grid_full_resend = false;
-    snapshot.full_grid_data.clear();
-    snapshot.grid_dirty_tiles.clear();
 }
 
 void clear_transport_only_world_state(GameWorld& world)
@@ -132,12 +128,12 @@ void GameClient::poll_messages()
             if (!message.snapshot)
                 break;
             baseline_ = *message.snapshot;
-            clear_transport_only_snapshot_state(*baseline_);
             if (world_ != nullptr)
             {
                 apply_snapshot(*world_, *baseline_);
                 clear_transport_only_world_state(*world_);
             }
+            clear_transport_only_snapshot_state(*baseline_);
             break;
 
         case TypedReceivedMessageKind::DeltaSnapshot:
@@ -149,12 +145,12 @@ void GameClient::poll_messages()
                     "GameClient received delta snapshot before baseline");
             }
             apply_delta(*baseline_, *message.snapshot);
-            clear_transport_only_snapshot_state(*baseline_);
             if (world_ != nullptr)
             {
                 apply_snapshot(*world_, *baseline_);
                 clear_transport_only_world_state(*world_);
             }
+            clear_transport_only_snapshot_state(*baseline_);
             break;
 
         case TypedReceivedMessageKind::SimEventBatch:

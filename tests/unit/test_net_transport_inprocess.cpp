@@ -1,5 +1,7 @@
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/pixdefs.h>
 
 #include <gtest/gtest.h>
 
@@ -96,6 +98,38 @@ og::sim::SimEventBatch make_event_batch(std::uint32_t sequence)
         .text = {},
     });
     return batch;
+}
+
+std::pair<short, short> find_damageable_grid_tile(const GameWorld& world)
+{
+    EXPECT_TRUE(world.grid.valid());
+    for (short y = 0; y < world.grid.h; ++y)
+    {
+        for (short x = 0; x < world.grid.w; ++x)
+        {
+            const unsigned char value =
+                world.grid.data[static_cast<std::size_t>(y) * world.grid.w + x];
+            switch (value)
+            {
+            case PIX_GRASS1:
+            case PIX_GRASS2:
+            case PIX_GRASS3:
+            case PIX_GRASS4:
+                return {x, y};
+
+            default:
+                break;
+            }
+        }
+    }
+
+    ADD_FAILURE() << "expected a damageable grass tile in the fixture level";
+    return {0, 0};
+}
+
+unsigned char read_grid_tile(const GameWorld& world, short x, short y)
+{
+    return world.grid.data[static_cast<std::size_t>(y) * world.grid.w + x];
 }
 
 } // namespace
@@ -271,5 +305,36 @@ TEST(NetTransportInProcess,
         InputAction::MoveRight)]);
     EXPECT_NE(nullptr, fixture.server_control(0));
     EXPECT_GT(fixture.server_world().control_hp, 0.0f);
+    fixture.expect_clients_match_server();
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_replicates_server_grid_mutation_to_client)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    const auto [tile_x, tile_y] = find_damageable_grid_tile(fixture.server_world());
+    const unsigned char client_before =
+        read_grid_tile(fixture.client_world(0), tile_x, tile_y);
+    const unsigned char server_after = static_cast<unsigned char>(
+        fixture.server_world().damage_tile(
+            static_cast<short>(tile_x * GRID_SIZE),
+            static_cast<short>(tile_y * GRID_SIZE)));
+    ASSERT_NE(client_before, server_after)
+        << "server grid mutation should change the tile value";
+
+    fixture.step_ticks(1);
+
+    EXPECT_EQ(server_after,
+              read_grid_tile(fixture.client_world(0), tile_x, tile_y));
     fixture.expect_clients_match_server();
 }

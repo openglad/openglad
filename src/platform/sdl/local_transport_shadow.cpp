@@ -173,6 +173,7 @@ void mirror_client_prompt_state(LocalTransportShadow& shadow,
         gameplay_screen.world().withdraw_level;
 }
 
+#ifdef TESTING
 void queue_forced_loss(LocalTransportShadow& shadow,
                        std::size_t player_index)
 {
@@ -185,6 +186,7 @@ void queue_forced_loss(LocalTransportShadow& shadow,
                             static_cast<std::uint32_t>(-1));
     }
 }
+#endif
 
 } // namespace
 
