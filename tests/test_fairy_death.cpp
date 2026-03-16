@@ -4,6 +4,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 #include <SDL.h>
@@ -11,7 +12,6 @@
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/core/util.h>
-#include <openglad/platform/local_transport_shadow.h>
 
 #include <atomic>
 
@@ -21,6 +21,8 @@
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
 
 #ifdef TESTING
 extern std::atomic<bool> g_test_in_game;
@@ -35,10 +37,13 @@ constexpr Uint32 kUiSettleMs = 150;
 constexpr Uint32 kMenuTransitionMs = 250;
 constexpr Uint32 kCycleStepMs = 100;
 constexpr int kGameStartTimeoutMs = 20000;
+constexpr int kFairyDeathTimeoutMs = 60000;
 // The transport-backed gameplay loop is materially slower under validation and
 // sanitizers than the legacy direct tick path. Keep the UI test budget aligned
 // with the runtime we now exercise in CI instead of failing early.
-constexpr int kGameFinishTimeoutMs = 180000;
+constexpr int kGameAbortTimeoutMs = 20000;
+constexpr short kFairyFragileConstitution = -20;
+constexpr short kFairyFragileArmor = -100;
 }
 
 // Picker globals that can leak across integration tests and affect menu start state
@@ -75,19 +80,47 @@ static void cleanup_picker_state()
 //   Hire Menu -> NEXT x12 to reach FAERIE -> HIRE ME -> BACK ->
 //   Team Menu -> (set scen_num=4) -> GO -> game runs -> fairy dies -> BACK -> exits
 //
-// Uses level 4 because levels 1-3 have team0 NPC allies that keep the
-// game alive after the fairy dies (view.cpp hands control to any team0
-// entity). Level 4 has no team0 NPCs, so endgame(1) fires immediately
-// when the fairy dies.
+// Uses level 4 because the fairy starts near hostiles and dies quickly with
+// no player input once its stats are weakened. After confirming that in-world
+// death, the test exits through the normal "Abort Mission" prompt to unwind
+// back to the picker without mutating runtime state out of band.
 //
-// The fairy has the lowest HP of all characters. With no input, enemies
-// swarm and kill it quickly.
+// Before starting the level the test makes the hired fairy deliberately
+// fragile, but still lets normal gameplay deliver the defeat.
 
 struct FairyState {
     bool started;
     bool finished;
     float original_speed;
 };
+
+enum class FairyLifeState {
+    NotSpawned,
+    Alive,
+    DeadOrGone,
+};
+
+static FairyLifeState query_hired_fairy_life_state()
+{
+    screen* const screen = og::runtime::current_session->myscreen_;
+    if (screen == nullptr)
+        return FairyLifeState::NotSpawned;
+
+    for (const auto& entity_up : screen->world().oblist) {
+        walker* const entity = entity_up.get();
+        if (entity == nullptr || entity->myguy == nullptr)
+            continue;
+        if (entity->myguy->family != FAMILY_FAERIE || entity->myguy->teamnum != 0)
+            continue;
+        if (entity->dead() ||
+            (entity->stats() != nullptr && entity->stats()->hitpoints() <= 0.0f)) {
+            return FairyLifeState::DeadOrGone;
+        }
+        return FairyLifeState::Alive;
+    }
+
+    return FairyLifeState::NotSpawned;
+}
 
 static int fairy_injector(void* data)
 {
@@ -132,6 +165,16 @@ static int fairy_injector(void* data)
     wait_for_interactable("go", 10000);
     SDL_Delay(kUiSettleMs);
 
+    if (og::runtime::current_session->myscreen_->save_data.team_size < 1 ||
+        !og::runtime::current_session->myscreen_->save_data.team_list[0]) {
+        fprintf(stderr, "  [test] ERROR: expected hired fairy before starting level\n");
+        set_game_speed(state->original_speed);
+        return 0;
+    }
+    guy* fairy = og::runtime::current_session->myscreen_->save_data.team_list[0].get();
+    fairy->constitution = kFairyFragileConstitution;
+    fairy->armor = kFairyFragileArmor;
+
     og::runtime::current_session->myscreen_->save_data.scen_num = 4;
     set_game_speed(0.0f);
 
@@ -139,12 +182,9 @@ static int fairy_injector(void* data)
     int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
     interact("go");
 
-    // -- Wait for glad_main to finish --
-    // Old buttons from create_team_menu persist through glad_main, so
-    // wait_for_interactable("back") would return immediately (stale buttons).
-    // Instead, wait for a monotonic epoch increment and then poll g_test_in_game
-    // which is set/cleared around glad_main.
-    fprintf(stderr, "  [test] waiting for game to finish...\n");
+    // -- Wait for the hired fairy to die, then unwind through the normal
+    // abort-mission prompt --
+    fprintf(stderr, "  [test] waiting for fairy to die...\n");
     {
         int waited_ms = 0;
         const int poll_ms = 50;
@@ -158,20 +198,39 @@ static int fairy_injector(void* data)
             set_game_speed(state->original_speed);
             return 0;
         }
-        if (!og::runtime::local_transport_shadow_force_kill_player_control(
-                *og::runtime::current_session, 0)) {
-            fprintf(stderr, "  [test] ERROR: failed to kill fairy control on server\n");
+
+        bool saw_fairy_alive = false;
+        waited_ms = 0;
+        while (g_test_in_game.load(std::memory_order_acquire)
+               && waited_ms < kFairyDeathTimeoutMs) {
+            const FairyLifeState fairy_state = query_hired_fairy_life_state();
+            if (fairy_state == FairyLifeState::Alive)
+                saw_fairy_alive = true;
+            if (saw_fairy_alive && fairy_state != FairyLifeState::Alive)
+                break;
+            SDL_Delay(poll_ms);
+            waited_ms += poll_ms;
+        }
+        if (!saw_fairy_alive ||
+            query_hired_fairy_life_state() == FairyLifeState::Alive) {
+            fprintf(stderr, "  [test] ERROR: fairy never died within timeout\n");
             set_game_speed(state->original_speed);
             return 0;
         }
+
+        fprintf(stderr, "  [test] fairy died, aborting mission through UI\n");
+        picker_testing_yes_or_no_queue_clear();
+        picker_testing_yes_or_no_queue_push(true);
+        inject_key_press(SDLK_ESCAPE);
+
         waited_ms = 0;
         while (g_test_in_game.load(std::memory_order_acquire)
-               && waited_ms < kGameFinishTimeoutMs) {
+               && waited_ms < kGameAbortTimeoutMs) {
             SDL_Delay(poll_ms);
             waited_ms += poll_ms;
         }
         if (g_test_in_game.load(std::memory_order_acquire)) {
-            fprintf(stderr, "  [test] ERROR: game did not finish within timeout\n");
+            fprintf(stderr, "  [test] ERROR: game did not exit after abort prompt\n");
             set_game_speed(state->original_speed);
             return 0;
         }

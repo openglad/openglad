@@ -18,9 +18,4 @@ void local_transport_shadow_send_input(SessionState& session,
                                        std::uint32_t tick);
 void local_transport_shadow_finish_tick(SessionState& session);
 
-#ifdef TESTING
-bool local_transport_shadow_force_kill_player_control(SessionState& session,
-                                                      std::size_t player_index);
-#endif
-
 } // namespace og::runtime

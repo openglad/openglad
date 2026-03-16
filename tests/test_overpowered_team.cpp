@@ -60,17 +60,23 @@ static void cleanup_picker_state()
 static bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
 {
     int elapsed = 0;
+    int since_last_retry = 250;
     const int poll_interval = 50;
     while (elapsed < timeout_ms) {
-        if (!has_interactable("hire_me")
-            && has_interactable("view_team")
-            && has_interactable("go"))
+        if (has_interactable("view_team") && has_interactable("go"))
         {
             return true;
         }
 
+        if (since_last_retry >= 250 && has_interactable("hire_me")) {
+            fprintf(stderr, "  [test] retry clicking back from hire menu\n");
+            interact("back");
+            since_last_retry = 0;
+        }
+
         SDL_Delay(poll_interval);
         elapsed += poll_interval;
+        since_last_retry += poll_interval;
     }
 
     fprintf(stderr, "  [interact] TIMEOUT entering team menu (%d ms)\n", timeout_ms);

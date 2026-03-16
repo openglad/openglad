@@ -14,10 +14,8 @@
 #include <openglad/platform/game_session.h>
 
 #include <algorithm>
-#include <chrono>
 #include <memory>
 #include <mutex>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -172,21 +170,6 @@ void mirror_client_prompt_state(LocalTransportShadow& shadow,
     server_screen->world().withdraw_level =
         gameplay_screen.world().withdraw_level;
 }
-
-#ifdef TESTING
-void queue_forced_loss(LocalTransportShadow& shadow,
-                       std::size_t player_index)
-{
-    shadow.server->set_player_control(player_index, nullptr);
-    if (current_game != nullptr && current_game->sim_events != nullptr)
-    {
-        og::sim::emit_event(current_game->sim_events,
-                            og::sim::EventKind::EndGame,
-                            1,
-                            static_cast<std::uint32_t>(-1));
-    }
-}
-#endif
 
 } // namespace
 
@@ -351,75 +334,5 @@ void local_transport_shadow_finish_tick(SessionState& session)
     session.myscreen_->dispatch_sim_event_batch(batch);
     mirror_client_prompt_state(*it->second, *session.myscreen_);
 }
-
-#ifdef TESTING
-bool local_transport_shadow_force_kill_player_control(SessionState& session,
-                                                      std::size_t player_index)
-{
-    constexpr auto kWaitBudget = std::chrono::seconds(5);
-    constexpr auto kPollInterval = std::chrono::milliseconds(10);
-    const auto deadline = std::chrono::steady_clock::now() + kWaitBudget;
-
-    while (std::chrono::steady_clock::now() < deadline)
-    {
-        bool should_wait = false;
-        {
-            std::lock_guard lock(local_transport_shadows_mutex());
-            const auto it = local_transport_shadows().find(&session);
-            if (it == local_transport_shadows().end() || it->second->server == nullptr ||
-                it->second->server_session == nullptr)
-            {
-                should_wait = true;
-            }
-            else
-            {
-                auto server_scope = it->second->server_session->activate();
-                ScopedSessionGameplayActivation gameplay_active(*it->second->server_session);
-                walker* control = it->second->server->player_control(player_index);
-                if (control == nullptr)
-                {
-                    screen* const server_screen = it->second->server_screen();
-                    if (server_screen != nullptr &&
-                        player_index < static_cast<std::size_t>(server_screen->numviews) &&
-                        server_screen->viewob[player_index] != nullptr)
-                    {
-                        control = server_screen->viewob[player_index]->control;
-                        if (control == nullptr)
-                            control = server_screen->viewob[player_index]->find_next_control();
-                        if (control != nullptr)
-                            it->second->server->set_player_control(player_index, control);
-                    }
-                }
-
-                if (control == nullptr)
-                {
-                    should_wait = true;
-                }
-                else if (control->dead())
-                {
-                    queue_forced_loss(*it->second, player_index);
-                    return true;
-                }
-                else
-                {
-                    control->stats()->set_hitpoints(0);
-                    control->set_dead(1);
-                    control->death();
-                    queue_forced_loss(*it->second, player_index);
-                    return true;
-                }
-            }
-        }
-
-        if (!should_wait)
-        {
-            break;
-        }
-        std::this_thread::sleep_for(kPollInterval);
-    }
-
-    return false;
-}
-#endif
 
 } // namespace og::runtime
