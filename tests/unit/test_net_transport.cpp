@@ -684,7 +684,7 @@ TEST(NetTransport, game_client_notifies_level_transition_before_next_keyframe)
 }
 
 TEST(NetTransport,
-     game_client_stops_processing_transition_messages_after_endgame)
+     game_client_processes_queued_transition_messages_after_endgame)
 {
     MockTransport transport;
     TestGameWorld fixture;
@@ -748,10 +748,10 @@ TEST(NetTransport,
 
     client.poll_messages();
 
-    ASSERT_EQ((std::vector<bool>{false}), transition_flags);
+    ASSERT_EQ((std::vector<bool>{false, true}), transition_flags);
     ASSERT_TRUE(client.initial_setup().has_value());
-    EXPECT_EQ(initial_setup.level_id, client.initial_setup()->level_id);
-    EXPECT_EQ(initial_setup.current_scenario,
+    EXPECT_EQ(transition_setup.level_id, client.initial_setup()->level_id);
+    EXPECT_EQ(transition_setup.current_scenario,
               client.initial_setup()->current_scenario);
 }
 

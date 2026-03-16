@@ -76,6 +76,13 @@ std::optional<TransportValidationFailure> find_first_input_difference(
     {
         return failure;
     }
+    if (!compare_transport_value("timer_wait_request",
+                                 expected.timer_wait_request,
+                                 actual.timer_wait_request,
+                                 failure))
+    {
+        return failure;
+    }
 
     for (int player = 0; player < MAX_PLAYERS; ++player)
     {

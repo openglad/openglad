@@ -476,8 +476,26 @@ void GameClient::poll_messages()
     sim_event_batches_.clear();
     game_flow_event_batches_.clear();
 
-    for (const auto& message : last_polled_messages_)
+    const auto has_remaining_transition_initial_setup =
+        [this](std::size_t next_index) {
+            for (std::size_t index = next_index;
+                 index < last_polled_messages_.size();
+                 ++index)
+            {
+                const TypedReceivedMessage& queued = last_polled_messages_[index];
+                if (queued.peer_id == server_peer_id_ &&
+                    queued.kind == TypedReceivedMessageKind::InitialSetup &&
+                    queued.initial_setup)
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+    for (std::size_t index = 0; index < last_polled_messages_.size(); ++index)
     {
+        const auto& message = last_polled_messages_[index];
         if (message.peer_id != server_peer_id_)
             continue;
 
@@ -569,7 +587,8 @@ void GameClient::poll_messages()
         }
 
         if (message_processing_break_callback_ &&
-            message_processing_break_callback_())
+            message_processing_break_callback_() &&
+            !has_remaining_transition_initial_setup(index + 1))
         {
             break;
         }
