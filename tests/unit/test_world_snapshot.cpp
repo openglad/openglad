@@ -1146,6 +1146,45 @@ TEST(WorldSnapshot, drain_sim_events_moves_events_out_of_the_log)
     EXPECT_TRUE(log.empty());
 }
 
+TEST(WorldSnapshot, split_event_batches_uses_shared_game_flow_rules)
+{
+    og::sim::SimEventBatch source;
+    source.sequence = 17u;
+    source.events.push_back({
+        .tick = 17u,
+        .kind = og::sim::EventKind::EndGame,
+        .a = 1u,
+        .b = 2u,
+        .text = {},
+    });
+    source.events.push_back({
+        .tick = 17u,
+        .kind = og::sim::EventKind::RequestRedraw,
+        .a = 0u,
+        .b = 0u,
+        .text = {},
+    });
+    source.events.push_back({
+        .tick = 17u,
+        .kind = og::sim::EventKind::ScoreChange,
+        .a = 3u,
+        .b = 125u,
+        .text = {},
+    });
+
+    og::sim::SimEventBatch sim_batch;
+    og::sim::GameFlowEventBatch game_flow_batch;
+    og::sim::split_event_batches(source, sim_batch, game_flow_batch);
+
+    EXPECT_EQ(17u, sim_batch.sequence);
+    EXPECT_EQ(17u, game_flow_batch.sequence);
+    ASSERT_EQ(1u, sim_batch.events.size());
+    ASSERT_EQ(2u, game_flow_batch.events.size());
+    EXPECT_EQ(og::sim::EventKind::RequestRedraw, sim_batch.events[0].kind);
+    EXPECT_EQ(og::sim::EventKind::ScoreChange, game_flow_batch.events[0].kind);
+    EXPECT_EQ(og::sim::EventKind::EndGame, game_flow_batch.events[1].kind);
+}
+
 TEST(WorldSnapshot, capture_snapshot_collects_grid_damage_from_explosion)
 {
     TestGameWorld fx;

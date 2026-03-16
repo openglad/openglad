@@ -231,28 +231,6 @@ const PlayerInput& select_player_input(const InputState& input,
                                         : input.players[bounded_index];
 }
 
-bool is_game_flow_event(og::sim::EventKind kind) noexcept
-{
-    switch (kind)
-    {
-    case og::sim::EventKind::EndGame:
-    case og::sim::EventKind::SetEnd:
-    case og::sim::EventKind::RequestExitConfirmation:
-    case og::sim::EventKind::WithdrawToLevel:
-        return true;
-
-    case og::sim::EventKind::None:
-    case og::sim::EventKind::PlaySound:
-    case og::sim::EventKind::Notification:
-    case og::sim::EventKind::SetPalette:
-    case og::sim::EventKind::RequestRedraw:
-    case og::sim::EventKind::ScoreChange:
-        return false;
-    }
-
-    return false;
-}
-
 bool contains_endgame_event(const og::sim::SimEventBatch& batch) noexcept
 {
     return std::any_of(
@@ -281,31 +259,6 @@ void apply_authoritative_event_state(GameWorld& world,
         world.current_palette_id = palette_id;
         snapshot.current_palette_id = palette_id;
     }
-}
-
-void move_endgame_to_back(std::vector<og::sim::Event>& events)
-{
-    std::stable_sort(
-        events.begin(), events.end(),
-        [](const og::sim::Event& lhs, const og::sim::Event& rhs) {
-            return lhs.kind != og::sim::EventKind::EndGame &&
-                   rhs.kind == og::sim::EventKind::EndGame;
-        });
-}
-
-void split_event_batches(const og::sim::SimEventBatch& source,
-                         og::sim::SimEventBatch& sim_batch,
-                         og::sim::SimEventBatch& game_flow_batch)
-{
-    for (const auto& event : source.events)
-    {
-        if (is_game_flow_event(event.kind))
-            game_flow_batch.events.push_back(event);
-        else
-            sim_batch.events.push_back(event);
-    }
-
-    move_endgame_to_back(game_flow_batch.events);
 }
 
 std::vector<og::sim::TypedReceivedMessage> poll_server_messages(
@@ -1308,7 +1261,7 @@ void GameServer::forward_event_batch(const SimEventBatch& batch)
 
     SimEventBatch sim_batch;
     SimEventBatch game_flow_batch;
-    split_event_batches(batch, sim_batch, game_flow_batch);
+    og::sim::split_event_batches(batch, sim_batch, game_flow_batch);
     if (!sim_batch.events.empty())
         sim_batch.sequence = next_sim_event_sequence_++;
     if (!game_flow_batch.events.empty())
@@ -1398,7 +1351,7 @@ void GameServer::maybe_resolve_world_events(SimEventBatch& batch,
     }
 
     batch.events = std::move(filtered);
-    move_endgame_to_back(batch.events);
+    og::sim::normalize_endgame_event_order(batch);
 
     if (!exit_request.has_value() || pending_exit_prompt_state_.has_value())
         return;
@@ -1471,7 +1424,7 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             endgame_event.b = static_cast<std::uint32_t>(
                 static_cast<std::int32_t>(snapshot.next_level));
             drained_batch->events.push_back(std::move(endgame_event));
-            move_endgame_to_back(drained_batch->events);
+            og::sim::normalize_endgame_event_order(*drained_batch);
         }
     }
 

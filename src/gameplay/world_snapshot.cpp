@@ -2291,6 +2291,61 @@ SimEventBatch deserialize_game_flow_event_batch(const std::uint8_t* data,
         data, size, kGameFlowEventBatchMessageType, "game flow event batch");
 }
 
+bool is_game_flow_event(EventKind kind) noexcept
+{
+    switch (kind)
+    {
+    case EventKind::EndGame:
+    case EventKind::SetEnd:
+    case EventKind::RequestExitConfirmation:
+    case EventKind::WithdrawToLevel:
+    case EventKind::ScoreChange:
+        return true;
+
+    case EventKind::None:
+    case EventKind::PlaySound:
+    case EventKind::Notification:
+    case EventKind::SetPalette:
+    case EventKind::RequestRedraw:
+        return false;
+    }
+
+    return false;
+}
+
+void normalize_endgame_event_order(GameFlowEventBatch& batch)
+{
+    std::stable_sort(
+        batch.events.begin(), batch.events.end(),
+        [](const Event& lhs, const Event& rhs) {
+            return lhs.kind != EventKind::EndGame &&
+                   rhs.kind == EventKind::EndGame;
+        });
+}
+
+void split_event_batches(const SimEventBatch& source,
+                         SimEventBatch& sim_batch,
+                         GameFlowEventBatch& game_flow_batch)
+{
+    sim_batch.sequence = source.sequence;
+    sim_batch.events.clear();
+    sim_batch.events.reserve(source.events.size());
+
+    game_flow_batch.sequence = source.sequence;
+    game_flow_batch.events.clear();
+    game_flow_batch.events.reserve(source.events.size());
+
+    for (const auto& event : source.events)
+    {
+        if (is_game_flow_event(event.kind))
+            game_flow_batch.events.push_back(event);
+        else
+            sim_batch.events.push_back(event);
+    }
+
+    normalize_endgame_event_order(game_flow_batch);
+}
+
 void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
 {
     ApplyingSnapshotGuard applying_guard(world);

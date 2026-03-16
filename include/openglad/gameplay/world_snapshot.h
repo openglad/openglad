@@ -491,6 +491,11 @@ SimEventBatch deserialize_sim_event_batch(const std::uint8_t* data, std::size_t 
 std::vector<std::uint8_t> serialize_game_flow_event_batch(const SimEventBatch& batch);
 SimEventBatch deserialize_game_flow_event_batch(const std::uint8_t* data,
                                                 std::size_t size);
+bool is_game_flow_event(EventKind kind) noexcept;
+void normalize_endgame_event_order(GameFlowEventBatch& batch);
+void split_event_batches(const SimEventBatch& source,
+                         SimEventBatch& sim_batch,
+                         GameFlowEventBatch& game_flow_batch);
 void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta);
 SimEventBatch drain_sim_events(SimEventLog& log);
 

@@ -176,54 +176,12 @@ void cleanup_dead_view_controls(screen& self)
     }
 }
 
-bool is_game_flow_event(og::sim::EventKind kind) noexcept
-{
-    switch (kind)
-    {
-        case og::sim::EventKind::EndGame:
-        case og::sim::EventKind::SetEnd:
-        case og::sim::EventKind::RequestExitConfirmation:
-        case og::sim::EventKind::WithdrawToLevel:
-        case og::sim::EventKind::ScoreChange:
-            return true;
-        case og::sim::EventKind::None:
-        case og::sim::EventKind::PlaySound:
-        case og::sim::EventKind::Notification:
-        case og::sim::EventKind::SetPalette:
-        case og::sim::EventKind::RequestRedraw:
-            return false;
-    }
-
-    return false;
-}
-
-void move_endgame_to_back(std::vector<og::sim::Event>& events)
-{
-    std::stable_sort(
-        events.begin(), events.end(),
-        [](const og::sim::Event& lhs, const og::sim::Event& rhs) {
-            return lhs.kind != og::sim::EventKind::EndGame &&
-                   rhs.kind == og::sim::EventKind::EndGame;
-        });
-}
-
 screen::TickWorldBatches split_screen_event_batches(
     const og::sim::SimEventBatch& source)
 {
     og::sim::SimEventBatch cosmetic_batch;
     og::sim::GameFlowEventBatch game_flow_batch;
-    cosmetic_batch.sequence = source.sequence;
-    game_flow_batch.sequence = source.sequence;
-
-    for (const auto& event : source.events)
-    {
-        if (is_game_flow_event(event.kind))
-            game_flow_batch.events.push_back(event);
-        else
-            cosmetic_batch.events.push_back(event);
-    }
-
-    move_endgame_to_back(game_flow_batch.events);
+    og::sim::split_event_batches(source, cosmetic_batch, game_flow_batch);
 
     return {std::move(cosmetic_batch), std::move(game_flow_batch)};
 }
