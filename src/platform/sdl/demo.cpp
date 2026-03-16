@@ -152,7 +152,16 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
     s->save_data.scen_num = static_cast<short>(scen_id);
     s->save_data.current_campaign = "org.openglad.gladiator";
 
-    load_saved_game("save0", s);
+    if (!s->save_data.save("save0")) {
+        throw std::runtime_error(std::format(
+            "openglad_demo failed to bootstrap save0 for scenario {}",
+            scen_id));
+    }
+    if (load_saved_game("save0", s) == 0) {
+        throw std::runtime_error(std::format(
+            "openglad_demo failed to load bootstrap save0 for scenario {}",
+            scen_id));
+    }
 
     // Spawn a random player team to fight the enemies
     spawn_random_player_team(s, rng);
