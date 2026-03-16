@@ -262,7 +262,8 @@ TEST(GameLoop, glad_init_and_game_frame_record_live_replay_to_file)
                                        player.frames().front().input));
 
     ASSERT_TRUE(og::runtime::initialize_replay_screen(*game_screen, player));
-    og::runtime::reset_local_transport_shadow(*og::runtime::current_session,
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::reset_local_transport_shadow(*og::runtime::current_game_session,
                                               *game_screen);
     auto first_frame = player.next_frame();
     ASSERT_TRUE(first_frame.has_value());
@@ -334,9 +335,10 @@ TEST(GameLoop, clear_local_transport_shadow_deactivates_session_runtime)
     ASSERT_TRUE(game_screen->save_data.save("save0"));
 
     glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
     ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
 
-    og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     EXPECT_FALSE(og::runtime::local_transport_active(*og::runtime::current_session));
 
     game_screen->world().delete_objects();
@@ -358,11 +360,12 @@ TEST(GameLoop, glad_init_uses_save_data_numplayers_for_local_transport_clients)
     ASSERT_EQ(1, game_screen->numviews);
 
     glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
     EXPECT_EQ(3u,
               og::runtime::local_transport_client_count(
-                  *og::runtime::current_session));
+                  *og::runtime::current_game_session));
 
-    og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
 
@@ -380,7 +383,8 @@ TEST(GameLoop,
     ASSERT_TRUE(game_screen->save_data.save("save0"));
 
     glad_init();
-    og::runtime::SessionState& gameplay_session = *og::runtime::current_session;
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& gameplay_session = *og::runtime::current_game_session;
     ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
 
     og::runtime::clear_local_transport_shadow(gameplay_session);
@@ -800,6 +804,7 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
     ASSERT_TRUE(game_screen->save_data.save("save0"));
 
     glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
     ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
 
     GameSpeedGuard speed_guard(0.0f);
@@ -839,7 +844,7 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
     EXPECT_EQ(og::sim::kNoPausePlayerIndex, game_screen->world().pause_player_index);
 
     picker_testing_yes_or_no_queue_clear();
-    og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
 
@@ -856,6 +861,7 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
     ASSERT_TRUE(game_screen->save_data.save("save0"));
 
     glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
     ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
 
     GameSpeedGuard speed_guard(0.0f);
@@ -892,7 +898,7 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
     EXPECT_TRUE(abort_done);
 
     picker_testing_yes_or_no_queue_clear();
-    og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
 

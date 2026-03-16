@@ -16,6 +16,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/obmap_debug_draw.h>
 #include <openglad/interface/replay_runtime.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 
 #include <algorithm>
@@ -179,9 +180,11 @@ GameFrameResult run_game_tick(screen& s,
                               const InputState& input)
 {
     og::runtime::record_replay_input(s, input);
+    og::runtime::GameSession* const gameplay_session =
+        og::runtime::current_game_session;
     const bool use_server_client_path =
-        og::runtime::current_session != nullptr &&
-        og::runtime::local_transport_active(*og::runtime::current_session);
+        gameplay_session != nullptr &&
+        og::runtime::local_transport_active(*gameplay_session);
     if (use_server_client_path)
     {
         // The per-frame order is:
@@ -189,7 +192,7 @@ GameFrameResult run_game_tick(screen& s,
         // 3-14. local_transport_shadow_finish_tick() runs the authoritative
         // server step and then drains the client mirror before render.
         og::runtime::local_transport_shadow_send_input(
-            *og::runtime::current_session,
+            *gameplay_session,
             input,
             s.world().tick_count_ + 1);
     }
@@ -201,8 +204,7 @@ GameFrameResult run_game_tick(screen& s,
         return finish_done(st);
 
     if (use_server_client_path)
-        og::runtime::local_transport_shadow_finish_tick(
-            *og::runtime::current_session);
+        og::runtime::local_transport_shadow_finish_tick(*gameplay_session);
     else
         s.act();
     s.framecount++;
@@ -263,13 +265,13 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                     og::runtime::current_session->debug_draw_obmap_ = !og::runtime::current_session->debug_draw_obmap_;
                 else if (event.key.keysym.sym == SDLK_ESCAPE)
                 {
-                    if (og::runtime::current_session != nullptr &&
+                    if (og::runtime::current_game_session != nullptr &&
                         og::runtime::local_transport_active(
-                            *og::runtime::current_session) &&
+                            *og::runtime::current_game_session) &&
                         !og::runtime::local_transport_shadow_is_paused(
-                            *og::runtime::current_session) &&
+                            *og::runtime::current_game_session) &&
                         og::runtime::local_transport_shadow_toggle_pause(
-                            *og::runtime::current_session))
+                            *og::runtime::current_game_session))
                     {
                         s.redrawme = 1;
                         break;
@@ -286,12 +288,12 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                     }
                     else
                     {
-                        if (og::runtime::current_session != nullptr &&
+                        if (og::runtime::current_game_session != nullptr &&
                             og::runtime::local_transport_active(
-                                *og::runtime::current_session))
+                                *og::runtime::current_game_session))
                         {
                             (void)og::runtime::local_transport_shadow_toggle_pause(
-                                *og::runtime::current_session);
+                                *og::runtime::current_game_session);
                         }
                         set_palette(s.ourpalette);  // restore normal palette
                         adjust_palette(s.ourpalette, s.viewob[0]->gamma);

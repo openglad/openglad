@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 
@@ -10,8 +11,11 @@ struct SDL_Surface;
 class screen;
 class options;
 class cfg_store;
+struct InputState;
 
 namespace og::runtime {
+
+struct LocalTransportRuntime;
 
 // GameSession: RAII root object for runtime state.
 //
@@ -45,6 +49,7 @@ public:
     ::screen* screen_ptr() const;
     options* prefs_ptr() const;
     const cfg_store& config() const;
+    [[nodiscard]] bool has_local_transport_runtime() const noexcept override;
 
     // Activate this session: install its globals as current.
     // Returns an RAII guard that restores the previous session on destruction.
@@ -56,6 +61,19 @@ public:
     SDL_Surface* session_surface_ = nullptr;
 
 private:
+    friend std::size_t local_transport_client_count(
+        const GameSession& session) noexcept;
+    friend bool local_transport_shadow_is_paused(
+        const GameSession& session) noexcept;
+    friend void reset_local_transport_shadow(GameSession& session,
+                                             screen& gameplay_screen);
+    friend void clear_local_transport_shadow(GameSession& session) noexcept;
+    friend bool local_transport_shadow_toggle_pause(GameSession& session);
+    friend void local_transport_shadow_send_input(GameSession& session,
+                                                  const InputState& input,
+                                                  std::uint32_t tick);
+    friend void local_transport_shadow_finish_tick(GameSession& session);
+
     Config cfg_;
 
     // Default RNG for sessions that install a global context but don't opt into a seeded RNG.
@@ -67,11 +85,13 @@ private:
     // Saved previous session pointer for constructor/destructor restore.
     SessionState* prev_session_ = nullptr;
     GameplayContext* prev_game_ = nullptr;
+    GameSession* prev_game_session_ = nullptr;
 
     // Owned runtime state.
     GameWorld world_owner_{};
     std::unique_ptr<options> prefs_owner_;
     std::unique_ptr<::screen> screen_owner_;
+    std::shared_ptr<LocalTransportRuntime> local_transport_runtime_;
 };
 
 // RAII guard: while alive, the associated session's globals are installed.
@@ -91,8 +111,11 @@ private:
     GameSession* session_ = nullptr;
     SessionState* saved_session_ = nullptr;
     GameplayContext* saved_game_ = nullptr;
+    GameSession* saved_game_session_ = nullptr;
     SDL_Surface* saved_render_surface_ = nullptr;
     bool did_swap_render_ = false;
 };
+
+extern thread_local GameSession* current_game_session;
 
 } // namespace og::runtime

@@ -30,6 +30,7 @@ extern "C" void __gcov_dump(void);
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/legacy/base.h>
 #include <openglad/platform/game_context.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/screen_lifecycle.h>
 #include <openglad/resources/gparser.h>
@@ -57,7 +58,9 @@ void reset_integration_ui_state()
     if (og::runtime::current_session == nullptr)
         return;
 
-    og::runtime::clear_local_transport_shadow(*og::runtime::current_session);
+    if (og::runtime::current_game_session != nullptr)
+        og::runtime::clear_local_transport_shadow(
+            *og::runtime::current_game_session);
     if (current_game != nullptr && current_game->sim_events != nullptr)
         current_game->sim_events->clear();
 

@@ -20,6 +20,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 
 // theprefs is now a macro defined in view.h (via game_session.h)
@@ -75,8 +76,14 @@ void glad_init(bool preserve_frame_timing)
     current_screen->redraw();
     current_screen->refresh();
     read_scenario(current_screen);
-    og::runtime::reset_local_transport_shadow(*og::runtime::current_session,
-                                              *current_screen);
+    og::runtime::GameSession* const gameplay_session =
+        og::runtime::current_game_session;
+    if (gameplay_session == nullptr)
+    {
+        LogError("glad_init_failed reason=missing_game_session\n");
+        return;
+    }
+    og::runtime::reset_local_transport_shadow(*gameplay_session, *current_screen);
     current_screen->redrawme = 1;
     current_screen->framecount = 0;
     current_screen->timerstart = query_timer_control();

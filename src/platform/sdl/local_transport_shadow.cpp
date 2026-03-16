@@ -69,32 +69,6 @@ struct LocalTransportRuntime {
 
 namespace
 {
-
-class ScopedSessionContext
-{
-public:
-    explicit ScopedSessionContext(og::runtime::SessionState& session)
-        : saved_session_(og::runtime::current_session)
-        , saved_game_(current_game)
-    {
-        og::runtime::current_session = &session;
-        current_game = &session.game_;
-    }
-
-    ~ScopedSessionContext()
-    {
-        og::runtime::current_session = saved_session_;
-        current_game = saved_game_;
-    }
-
-    ScopedSessionContext(const ScopedSessionContext&) = delete;
-    ScopedSessionContext& operator=(const ScopedSessionContext&) = delete;
-
-private:
-    og::runtime::SessionState* saved_session_ = nullptr;
-    GameplayContext* saved_game_ = nullptr;
-};
-
 class ScopedSessionGameplayActivation
 {
 public:
@@ -393,36 +367,24 @@ void render_pause_overlay(screen& gameplay_screen,
     gameplay_screen.redrawme = 1;
 }
 
-std::shared_ptr<og::runtime::LocalTransportRuntime>& session_runtime(
-    og::runtime::SessionState& session)
-{
-    return session.local_transport_runtime_;
-}
-
-const std::shared_ptr<og::runtime::LocalTransportRuntime>& session_runtime(
-    const og::runtime::SessionState& session)
-{
-    return session.local_transport_runtime_;
-}
-
 } // namespace
 
 namespace og::runtime {
 
 bool local_transport_active(const SessionState& session) noexcept
 {
-    return session_runtime(session) != nullptr;
+    return session.has_local_transport_runtime();
 }
 
-std::size_t local_transport_client_count(const SessionState& session) noexcept
+std::size_t local_transport_client_count(const GameSession& session) noexcept
 {
-    const auto runtime = session_runtime(session);
+    const auto runtime = session.local_transport_runtime_;
     return runtime != nullptr ? runtime->clients.size() : 0u;
 }
 
-bool local_transport_shadow_is_paused(const SessionState& session) noexcept
+bool local_transport_shadow_is_paused(const GameSession& session) noexcept
 {
-    const auto runtime = session_runtime(session);
+    const auto runtime = session.local_transport_runtime_;
     const og::sim::GameClient* const display_client =
         runtime != nullptr ? runtime->display_client() : nullptr;
     return display_client != nullptr &&
@@ -430,9 +392,9 @@ bool local_transport_shadow_is_paused(const SessionState& session) noexcept
         display_client->baseline()->paused;
 }
 
-bool local_transport_shadow_toggle_pause(SessionState& session)
+bool local_transport_shadow_toggle_pause(GameSession& session)
 {
-    const auto runtime = session_runtime(session);
+    const auto runtime = session.local_transport_runtime_;
     og::sim::GameClient* const display_client =
         runtime != nullptr ? runtime->display_client() : nullptr;
     if (display_client == nullptr)
@@ -453,7 +415,7 @@ bool local_transport_shadow_toggle_pause(SessionState& session)
     return true;
 }
 
-void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen)
+void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
 {
     if (current_game == nullptr || current_game->sim_events == nullptr)
     {
@@ -461,7 +423,7 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
         return;
     }
 
-    session_runtime(session).reset();
+    session.local_transport_runtime_.reset();
 
     auto runtime = std::make_shared<LocalTransportRuntime>();
     const std::size_t player_count = compute_local_player_count(gameplay_screen);
@@ -670,25 +632,25 @@ void reset_local_transport_shadow(SessionState& session, screen& gameplay_screen
         runtime->server->send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
     }
     {
-        ScopedSessionContext client_scope(session);
+        auto client_scope = session.activate();
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
             client.game_client->poll_messages();
     }
 
-    session_runtime(session) = std::move(runtime);
+    session.local_transport_runtime_ = std::move(runtime);
 }
 
-void clear_local_transport_shadow(SessionState& session) noexcept
+void clear_local_transport_shadow(GameSession& session) noexcept
 {
-    session_runtime(session).reset();
+    session.local_transport_runtime_.reset();
 }
 
-void local_transport_shadow_send_input(SessionState& session,
+void local_transport_shadow_send_input(GameSession& session,
                                        const InputState& input,
                                        std::uint32_t tick)
 {
-    const auto runtime = session_runtime(session);
+    const auto runtime = session.local_transport_runtime_;
     if (runtime == nullptr)
         return;
 
@@ -709,9 +671,9 @@ void local_transport_shadow_send_input(SessionState& session,
     }
 }
 
-void local_transport_shadow_finish_tick(SessionState& session)
+void local_transport_shadow_finish_tick(GameSession& session)
 {
-    const auto runtime = session_runtime(session);
+    const auto runtime = session.local_transport_runtime_;
     if (runtime == nullptr)
         return;
 
@@ -741,7 +703,7 @@ void local_transport_shadow_finish_tick(SessionState& session)
     // 10-14. Restore the display session, then drain snapshots/events into the
     // client mirror before rendering.
     {
-        ScopedSessionContext client_scope(session);
+        auto client_scope = session.activate();
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
         {
