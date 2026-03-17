@@ -210,6 +210,7 @@ public:
     enum class Stat { Strength, Dexterity, Constitution, Intelligence, Armor, Level };
     void increase_stat(Stat stat, int amount = 1);
     void decrease_stat(Stat stat, int amount = 1);
+    void set_team(int team_num);
 
     // Accept: validates cost, deducts gold, copies working copy -> real team member.
     // If level changed, calls upgrade_to_level(). Returns false if can't afford.

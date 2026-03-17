@@ -3,6 +3,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_ui_state.h>
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <cstring>
@@ -31,11 +32,14 @@ Sint32 return_menu(Sint32 arg);
 Sint32 name_guy(Sint32 arg);
 Sint32 edit_guy(Sint32 arg1);
 void picker_lobby_initialize_from_save();
+void picker_lobby_sync_from_save();
 void picker_reinitialize_lobby_after_game();
 void picker_lobby_shutdown();
 bool picker_lobby_request_start();
 bool picker_lobby_start_request_pending();
 extern bool g_start_game_requested;
+
+static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -299,6 +303,7 @@ TEST(PickerFuncs, how_many_with_team)
     ASSERT_EQ(2, (int)og::runtime::current_session->current_guy_->teamnum) << "team should increment";
     ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[18]->label).find("Playing on Team ") == 0) << "team label should be updated";
 
+    og::runtime::current_session->current_team_num_ = 0;
     ASSERT_EQ(4, (int)change_hire_teamnum(1)) << "change_hire_teamnum should return OK";
     ASSERT_EQ(1, (int)og::runtime::current_session->current_team_num_) << "hire team num should increment";
     ASSERT_EQ(1, (int)og::runtime::current_session->current_guy_->teamnum) << "current guy team should mirror hire team";
@@ -478,6 +483,65 @@ TEST(PickerFuncs, lobby_reinitialize_after_game_allows_second_confirmed_start)
     save.team_size = old_team_size;
     save.numplayers = old_numplayers;
     g_start_game_requested = false;
+}
+
+TEST(PickerFuncs, train_team_change_persists_after_accept)
+{
+    picker_lobby_shutdown();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const unsigned char old_team_size = save.team_size;
+    const unsigned char old_numplayers = save.numplayers;
+    std::uint32_t old_cash[4];
+    for (int i = 0; i < 4; ++i)
+        old_cash[i] = save.m_totalcash[i];
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+
+    std::unique_ptr<guy> old_current = std::move(og::runtime::current_session->current_guy_);
+    const short old_team_num = og::runtime::current_session->current_team_num_;
+    auto* old_team_button = og::runtime::current_session->allbuttons_[18];
+    auto* old_train_session = pks().train_session;
+
+    save.team_size = 1;
+    save.numplayers = 2;
+    save.m_totalcash[0] = 10000;
+    save.m_totalcash[1] = 10000;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->name = "Trainer";
+
+    og::runtime::current_session->allbuttons_[18] =
+        new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0,
+                    "team", KEYSTATE_UNKNOWN);
+
+    og::ui::TrainSession session(save);
+    pks().train_session = &session;
+    og::runtime::current_session->current_guy_ =
+        std::make_unique<guy>(session.working_copy());
+    og::runtime::current_session->current_team_num_ = session.working_copy().teamnum;
+
+    ASSERT_EQ(4, static_cast<int>(change_teamnum(1)));
+    EXPECT_EQ(1, static_cast<int>(session.working_copy().teamnum));
+    EXPECT_EQ(1, static_cast<int>(og::runtime::current_session->current_guy_->teamnum));
+
+    ASSERT_TRUE(session.accept(true));
+    picker_lobby_sync_from_save();
+    EXPECT_EQ(1, static_cast<int>(save.team_list[0]->teamnum));
+
+    picker_lobby_shutdown();
+    pks().train_session = old_train_session;
+    delete og::runtime::current_session->allbuttons_[18];
+    og::runtime::current_session->allbuttons_[18] = old_team_button;
+    og::runtime::current_session->current_guy_ = std::move(old_current);
+    og::runtime::current_session->current_team_num_ = old_team_num;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.team_size = old_team_size;
+    save.numplayers = old_numplayers;
+    for (int i = 0; i < 4; ++i)
+        save.m_totalcash[i] = old_cash[i];
 }
 
 TEST(PickerFuncs, train_session_survives_team_slot_replacement_after_accept)

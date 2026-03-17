@@ -2035,6 +2035,11 @@ Sint32 change_teamnum(Sint32 arg)
    current_team += arg;
    current_team = (current_team % 4 + 4) % 4;
 
+   og::runtime::current_session->current_team_num_ = static_cast<short>(current_team);
+
+   if (pks().train_session && !pks().train_session->empty())
+       pks().train_session->set_team(current_team);
+
    // Set our team number ..
    og::runtime::current_session->current_guy_->teamnum = static_cast<short>(current_team);
 

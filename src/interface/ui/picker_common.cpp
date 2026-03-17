@@ -759,6 +759,15 @@ void TrainSession::decrease_stat(Stat stat, int amount)
     clamp_working_stats();
 }
 
+void TrainSession::set_team(int team_num)
+{
+    if (!working_)
+        return;
+
+    working_->teamnum =
+        static_cast<short>(std::clamp(team_num, 0, static_cast<int>(SCORE_TEAM_COUNT) - 1));
+}
+
 bool TrainSession::accept(bool force)
 {
     guy* const original = original_member();
