@@ -33,6 +33,7 @@
 #include <string>
 #include <cstring>
 #include <format>
+#include <memory>
 #include <stdexcept>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
@@ -55,6 +56,15 @@ inline options* active_prefs()
 }
 
 } // namespace
+
+#if defined(__EMSCRIPTEN__) && !defined(TESTING)
+namespace {
+std::unique_ptr<og::runtime::GameSession> g_web_session;
+bool g_web_boot_started = false;
+char g_web_arg0[] = "/play.html";
+char* g_web_argv[] = {g_web_arg0, nullptr};
+} // namespace
+#endif
 
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
@@ -120,10 +130,58 @@ static inline GameLoopFrameState& g_frame_state() {
 // Forward declarations
 void glad_init(bool preserve_frame_timing = false);
 
+#ifndef TESTING
+namespace {
+og::runtime::GameSession::Config default_session_config()
+{
+    og::runtime::GameSession::Config session_cfg;
+    session_cfg.numviews = 1;
+    session_cfg.allocate_screen = true;
+    session_cfg.allocate_prefs = true;
+    session_cfg.install_legacy_globals = true;
+    return session_cfg;
+}
+
+void initialize_runtime_config(int argc, char* argv[])
+{
+    init_logging();  // Set up logging output (uses JS console on web)
+    io_init(argc, argv);
+
+    cfg.load_settings();
+    cfg.commandline(argc, argv);
+}
+
+void bootstrap_runtime(int argc, char* argv[])
+{
+#ifdef OUYA
+    OuyaControllerManager::init();
+#endif
+
+    //buffers: setting the seed
+    srand(static_cast<unsigned int>(time(nullptr)));
+
+    init_input();
+    load_player_control_settings_from_cfg(cfg);
+    save_player_control_settings_to_cfg(cfg);
+    cfg.save_settings();
+
+    // Sync overscan from config (must be after session creation since
+    // overscan_percentage is now a macro backed by current_session).
+    og::runtime::current_session->overscan_percentage_ = static_cast<float>(
+        parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
+    update_overscan_setting();
+    cfg.apply_setting("graphics", "overscan_percentage",
+        std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
+    intro_main(argc, argv);
+}
+} // namespace
+#endif
+
 #ifdef __EMSCRIPTEN__
 // Forward declarations for state handlers
 void picker_init();
 bool picker_frame();  // Returns true when should transition to game
+bool picker_check_start_requested();
 void picker_cleanup_for_game();
 void picker_reinit_after_game();
 
@@ -228,77 +286,76 @@ static void emscripten_frame_wrapper() {
 #endif
 
 #ifndef TESTING
+#ifdef __EMSCRIPTEN__
+extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
+{
+    if (g_web_boot_started) {
+        return;
+    }
+
+    g_web_boot_started = true;
+
+    try
+    {
+        initialize_runtime_config(1, g_web_argv);
+        g_web_session = std::make_unique<og::runtime::GameSession>(default_session_config());
+        bootstrap_runtime(1, g_web_argv);
+
+        // For Emscripten, initialize picker and start the unified main loop
+        picker_init();
+        Log("openglad_web_boot: After picker_init, about to check if game should start\n");
+
+        // Check if picker_init resulted in a game start request
+        if (picker_check_start_requested()) {
+            Log("openglad_web_boot: Game start was requested during picker_init, starting in PLAYING state\n");
+            g_game_state = GameState::Playing;
+            g_state_initialized = false;  // Will trigger glad_init on first frame
+        } else {
+            Log("openglad_web_boot: No game start requested, starting in PICKER state\n");
+            g_game_state = GameState::Picker;
+            g_state_initialized = true;
+        }
+
+        // Initialize timing
+        g_frame_state().last_frame_time = SDL_GetTicks();
+        g_frame_state().accumulated_time = 0;
+
+        // Browser startup uses an explicit JS-triggered bootstrap, so let the
+        // boot call return after scheduling the frame loop.
+        emscripten_set_main_loop(emscripten_frame_wrapper, 0, 0);
+    }
+    catch (const std::runtime_error& e)
+    {
+        g_web_boot_started = false;
+        g_web_session.reset();
+        LogError("Unrecoverable error: {}\n", e.what());
+    }
+}
+#endif
+
 int main(int argc, char *argv[])
 {
+#ifdef __EMSCRIPTEN__
+    (void)argc;
+    (void)argv;
+    openglad_web_boot();
+    return 0;
+#else
 	try
 	{
-		init_logging();  // Set up logging output (uses JS console on web)
-		io_init(argc, argv);
-
-		cfg.load_settings();
-		cfg.commandline(argc, argv);
+		initialize_runtime_config(argc, argv);
 
 		// GameSession is the RAII root for all runtime state.
 		// It owns the screen, prefs, and installs legacy global shims.
 		// Must be created before any macro-backed globals are accessed
 		// (overscan_percentage, player_keys, keystates, etc.).
-		og::runtime::GameSession::Config session_cfg;
-		session_cfg.numviews = 1;
-		session_cfg.allocate_screen = true;
-		session_cfg.allocate_prefs = true;
-		session_cfg.install_legacy_globals = true;
-		og::runtime::GameSession session(session_cfg);
+		og::runtime::GameSession session(default_session_config());
+		bootstrap_runtime(argc, argv);
 
-    #ifdef OUYA
-    OuyaControllerManager::init();
-    #endif
-
-		//buffers: setting the seed
-		srand(static_cast<unsigned int>(time(nullptr)));
-
-		init_input();
-		load_player_control_settings_from_cfg(cfg);
-		save_player_control_settings_to_cfg(cfg);
-		cfg.save_settings();
-
-		// Sync overscan from config (must be after session creation since
-		// overscan_percentage is now a macro backed by current_session).
-		og::runtime::current_session->overscan_percentage_ = static_cast<float>(
-		    parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
-		update_overscan_setting();
-		cfg.apply_setting("graphics", "overscan_percentage",
-		    std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
-		intro_main(argc, argv);
-
-	#ifdef __EMSCRIPTEN__
-	// For Emscripten, initialize picker and start the unified main loop
-	picker_init();
-	Log("main: After picker_init, about to check if game should start\n");
-
-	// Check if picker_init resulted in a game start request
-	extern bool picker_check_start_requested();
-	if (picker_check_start_requested()) {
-		Log("main: Game start was requested during picker_init, starting in PLAYING state\n");
-		g_game_state = GameState::Playing;
-		g_state_initialized = false;  // Will trigger glad_init on first frame
-	} else {
-		Log("main: No game start requested, starting in PICKER state\n");
-		g_game_state = GameState::Picker;
-		g_state_initialized = true;
-	}
-
-	// Initialize timing
-	g_frame_state().last_frame_time = SDL_GetTicks();
-	g_frame_state().accumulated_time = 0;
-
-		// Start the unified main loop - handles all game states
-		emscripten_set_main_loop(emscripten_frame_wrapper, 0, 1);
-	#else
 		// Native build: use traditional blocking calls
 		picker_main(argc, argv);
 		text_shutdown();
 		io_exit();
-	#endif
 
 	// Session destructor restores previous globals and frees owned resources.
 	}
@@ -309,6 +366,7 @@ int main(int argc, char *argv[])
 	}
 
 	return 0;
+#endif
 }
 #endif // TESTING
 

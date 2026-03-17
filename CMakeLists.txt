@@ -1784,7 +1784,6 @@ endif()
         -sEXIT_RUNTIME=0
         "SHELL:-sMINIFY_HTML=0"
         -lidbfs.js
-        "SHELL:-sEXPORTED_FUNCTIONS=[\"_on_idbfs_sync_done\"]"
         "SHELL:-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\"]"
         "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/web/shell.html"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/cfg@/cfg"

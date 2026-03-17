@@ -156,6 +156,14 @@ test.describe('Game Loading', () => {
     const loading = page.locator('#loading');
     await expect(loading).toBeHidden();
 
+    // The browser runtime should have invoked the exported web bootstrap exactly once.
+    const bootstrapState = await page.evaluate(() => window.__opengladWebBootstrap);
+    expect(bootstrapState).toEqual({
+      runtimeInitialized: true,
+      bootFunctionAvailable: true,
+      bootCalls: 1,
+    });
+
     // No runtime errors should have occurred
     assertNoRuntimeErrors(errors, 'post-load assertions');
   });

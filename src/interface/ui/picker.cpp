@@ -541,10 +541,6 @@ bool picker_lobby_start_request_pending()
     return g_picker_lobby_runtime && g_picker_lobby_runtime->start_request_pending();
 }
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
-
 
 #ifdef TESTING
 // Test infrastructure for picker_mainmenu_loop
