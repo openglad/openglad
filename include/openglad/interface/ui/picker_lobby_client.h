@@ -29,6 +29,8 @@ public:
     virtual bool request_start_game() = 0;
     [[nodiscard]] virtual std::optional<PickerLobbyGameStartConfig>
     build_game_start_config() const = 0;
+    [[nodiscard]] virtual std::optional<PickerLobbyGameStartConfig>
+    consume_game_start_config() = 0;
     [[nodiscard]] virtual bool start_request_pending() const noexcept = 0;
 };
 

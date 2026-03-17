@@ -52,6 +52,63 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
+namespace {
+
+class ContractPickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override
+    {
+        return false;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        std::optional<og::ui::PickerLobbyGameStartConfig> config =
+            std::move(pending_config);
+        pending_config.reset();
+        ++consume_calls;
+        return config;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+
+    std::optional<og::ui::PickerLobbyGameStartConfig> pending_config;
+    int consume_calls = 0;
+};
+
+struct ActivePickerLobbyClientGuard
+{
+    og::ui::IPickerLobbyClient* saved = nullptr;
+
+    explicit ActivePickerLobbyClientGuard(og::ui::IPickerLobbyClient* client)
+        : saved(og::ui::active_picker_lobby_client())
+    {
+        og::ui::install_active_picker_lobby_client(client);
+    }
+
+    ~ActivePickerLobbyClientGuard()
+    {
+        og::ui::install_active_picker_lobby_client(saved);
+    }
+};
+
+} // namespace
+
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 
@@ -382,6 +439,38 @@ TEST(PickerFuncs, how_many_with_team)
         og::runtime::current_session->myscreen_->save_data.team_list[i].reset(saved_team_list[i]);
     }
     og::runtime::current_session->myscreen_->save_data.team_size = saved_team_size;
+}
+
+TEST(PickerFuncs, picker_lobby_consume_game_start_config_uses_active_client_boundary)
+{
+    picker_lobby_shutdown();
+
+    ContractPickerLobbyClient client;
+    client.pending_config = og::ui::PickerLobbyGameStartConfig{
+        .save_data =
+            og::sim::LobbySaveDataEquivalent{
+                .current_campaign = "org.openglad.gladiator",
+                .scen_num = 1,
+                .numplayers = 2,
+                .allied_mode = 0,
+                .team_list = {},
+            },
+        .difficulty = 4,
+    };
+
+    {
+        ActivePickerLobbyClientGuard guard(&client);
+        const std::optional<og::ui::PickerLobbyGameStartConfig> config =
+            picker_lobby_consume_game_start_config();
+        ASSERT_TRUE(config.has_value());
+        EXPECT_EQ(2u, config->save_data.numplayers);
+        EXPECT_EQ(4, config->difficulty);
+        EXPECT_EQ(1, client.consume_calls);
+        EXPECT_FALSE(picker_lobby_consume_game_start_config().has_value());
+        EXPECT_EQ(2, client.consume_calls);
+    }
+
+    picker_lobby_shutdown();
 }
 
 TEST(PickerFuncs, lobby_sync_preserves_sparse_team_assignments)
