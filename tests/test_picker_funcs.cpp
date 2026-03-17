@@ -439,3 +439,46 @@ TEST(PickerFuncs, lobby_start_request_sets_start_flag_after_confirmation)
     save.numplayers = old_numplayers;
     g_start_game_requested = false;
 }
+
+TEST(PickerFuncs, train_session_survives_team_slot_replacement_after_accept)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const unsigned char old_team_size = save.team_size;
+    const unsigned char old_numplayers = save.numplayers;
+    std::uint32_t old_cash[4];
+    for (int i = 0; i < 4; ++i)
+        old_cash[i] = save.m_totalcash[i];
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+
+    save.team_size = 1;
+    save.numplayers = 1;
+    save.m_totalcash[0] = 10000;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->strength = 10;
+    save.team_list[0]->name = "Trainer";
+
+    og::ui::TrainSession session(save);
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 1);
+    ASSERT_TRUE(session.accept(true));
+
+    auto replacement = std::make_unique<guy>(save.team_list[0]->family);
+    replacement->id = save.team_list[0]->id;
+    og::ui::statscopy(replacement.get(), save.team_list[0].get());
+    save.team_list[0] = std::move(replacement);
+
+    EXPECT_EQ(save.team_list[0].get(), &session.original());
+    EXPECT_EQ(0u, session.current_cost());
+    EXPECT_FALSE(session.level_increased());
+    EXPECT_FALSE(session.stats_increased());
+    EXPECT_EQ(save.team_list[0]->strength, session.working_copy().strength);
+
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.team_size = old_team_size;
+    save.numplayers = old_numplayers;
+    for (int i = 0; i < 4; ++i)
+        save.m_totalcash[i] = old_cash[i];
+}

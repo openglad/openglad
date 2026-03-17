@@ -25,9 +25,10 @@
 #include <cstdint>
 #include <cctype>
 #include <optional>
-#include <format>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 void init_logging();  // Set up logging output (call early in main)
@@ -37,27 +38,108 @@ void LogImpl(const char* msg);
 void LogWarnImpl(const char* msg);
 void LogErrorImpl(const char* msg);
 
+namespace og::detail {
+
+inline void log_plain(void (*sink)(const char*), std::string_view msg)
+{
+    const std::string owned(msg);
+    sink(owned.c_str());
+}
+
+template<typename T>
+inline std::string log_value_to_string(T&& value)
+{
+    using Value = std::decay_t<T>;
+    if constexpr (std::is_same_v<Value, bool>) {
+        return value ? "true" : "false";
+    } else if constexpr (std::is_same_v<Value, std::string>) {
+        return value;
+    } else if constexpr (std::is_same_v<Value, std::string_view>) {
+        return std::string(value);
+    } else {
+        std::ostringstream stream;
+        stream << std::forward<T>(value);
+        return stream.str();
+    }
+}
+
+template<typename... Args>
+inline void log_formatted(void (*sink)(const char*),
+                          std::string_view fmt,
+                          Args&&... args)
+{
+    const std::string replacements[] = {
+        log_value_to_string(std::forward<Args>(args))...};
+    std::string owned;
+    owned.reserve(fmt.size() + sizeof...(Args) * 8);
+
+    std::size_t replacement_index = 0;
+    for (std::size_t i = 0; i < fmt.size(); ++i) {
+        if (fmt[i] == '{') {
+            if ((i + 1) < fmt.size() && fmt[i + 1] == '{') {
+                owned.push_back('{');
+                ++i;
+                continue;
+            }
+
+            const std::size_t close = fmt.find('}', i + 1);
+            if (close == std::string_view::npos) {
+                owned.push_back('{');
+                continue;
+            }
+
+            if (replacement_index < sizeof...(Args)) {
+                owned += replacements[replacement_index++];
+            } else {
+                owned.append(fmt.substr(i, close - i + 1));
+            }
+            i = close;
+            continue;
+        }
+
+        if (fmt[i] == '}' && (i + 1) < fmt.size() && fmt[i + 1] == '}') {
+            owned.push_back('}');
+            ++i;
+            continue;
+        }
+
+        owned.push_back(fmt[i]);
+    }
+
+    sink(owned.c_str());
+}
+
+} // namespace og::detail
+
 // Single-argument overloads (no formatting needed)
 inline void Log(const char* msg) { LogImpl(msg); }
 inline void LogWarn(const char* msg) { LogWarnImpl(msg); }
 inline void LogError(const char* msg) { LogErrorImpl(msg); }
 
-inline void Log(std::string_view msg) { LogImpl(std::string(msg).c_str()); }
-inline void LogWarn(std::string_view msg) { LogWarnImpl(std::string(msg).c_str()); }
-inline void LogError(std::string_view msg) { LogErrorImpl(std::string(msg).c_str()); }
+inline void Log(std::string_view msg) { og::detail::log_plain(LogImpl, msg); }
+inline void LogWarn(std::string_view msg)
+{
+    og::detail::log_plain(LogWarnImpl, msg);
+}
+inline void LogError(std::string_view msg)
+{
+    og::detail::log_plain(LogErrorImpl, msg);
+}
 
-// std::format overloads - type-safe formatting
 template<typename... Args>
-void Log(std::format_string<Args...> fmt, Args&&... args) {
-    LogImpl(std::format(fmt, std::forward<Args>(args)...).c_str());
+void Log(std::string_view fmt, Args&&... args)
+{
+    og::detail::log_formatted(LogImpl, fmt, std::forward<Args>(args)...);
 }
 template<typename... Args>
-void LogWarn(std::format_string<Args...> fmt, Args&&... args) {
-    LogWarnImpl(std::format(fmt, std::forward<Args>(args)...).c_str());
+void LogWarn(std::string_view fmt, Args&&... args)
+{
+    og::detail::log_formatted(LogWarnImpl, fmt, std::forward<Args>(args)...);
 }
 template<typename... Args>
-void LogError(std::format_string<Args...> fmt, Args&&... args) {
-    LogErrorImpl(std::format(fmt, std::forward<Args>(args)...).c_str());
+void LogError(std::string_view fmt, Args&&... args)
+{
+    og::detail::log_formatted(LogErrorImpl, fmt, std::forward<Args>(args)...);
 }
 
 void change_time(std::uint32_t new_count);

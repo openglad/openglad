@@ -228,7 +228,9 @@ private:
     SaveData& save_;
     int edit_slot_ = 0;
     std::unique_ptr<guy> working_;
-    guy* original_ = nullptr;
+
+    [[nodiscard]] guy* original_member();
+    [[nodiscard]] const guy* original_member() const;
 
     void select_current_slot();
     void clamp_working_stats();

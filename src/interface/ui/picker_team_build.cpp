@@ -829,13 +829,9 @@ Sint32 create_train_menu(Sint32 arg1)
 			og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_PLUS);
 	}
 
-	
-	auto& ourteam = og::runtime::current_session->myscreen_->save_data.team_list;
-
     og::ui::TrainSession train_session(og::runtime::current_session->myscreen_->save_data);
     pks().train_session = &train_session;
     sync_current_guy_from_train();
-    guy* here = ourteam[og::runtime::current_session->editguy_].get();
     current_cost = pks().train_session->current_cost();
 
 	grab_mouse();
@@ -874,8 +870,6 @@ Sint32 create_train_menu(Sint32 arg1)
 
             if (!og::runtime::current_session->current_guy_)
                 sync_current_guy_from_train();
-            if (here != ourteam[og::runtime::current_session->editguy_].get())
-                here = ourteam[og::runtime::current_session->editguy_].get();
             current_cost = pks().train_session->current_cost();
             retvalue = 0;
         }
@@ -905,13 +899,14 @@ Sint32 create_train_menu(Sint32 arg1)
         
         bool level_increased = pks().train_session->level_increased();
         bool stat_increased = pks().train_session->stats_increased();
+        const guy& original_guy = pks().train_session->original();
 
         struct { const char* label; short cur_val; short old_val; } train_stats[] = {
-            {"  STR:", og::runtime::current_session->current_guy_->strength,     here->strength},
-            {"  DEX:", og::runtime::current_session->current_guy_->dexterity,    here->dexterity},
-            {"  CON:", og::runtime::current_session->current_guy_->constitution, here->constitution},
-            {"  INT:", og::runtime::current_session->current_guy_->intelligence, here->intelligence},
-            {"ARMOR:", og::runtime::current_session->current_guy_->armor,        here->armor},
+            {"  STR:", og::runtime::current_session->current_guy_->strength,     original_guy.strength},
+            {"  DEX:", og::runtime::current_session->current_guy_->dexterity,    original_guy.dexterity},
+            {"  CON:", og::runtime::current_session->current_guy_->constitution, original_guy.constitution},
+            {"  INT:", og::runtime::current_session->current_guy_->intelligence, original_guy.intelligence},
+            {"ARMOR:", og::runtime::current_session->current_guy_->armor,        original_guy.armor},
         };
         for (auto& s : train_stats) {
             og::runtime::current_session->message_ = std::format("{}", s.cur_val);
@@ -1292,6 +1287,7 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 	// Sync working copy back after accept
 	sync_current_guy_from_train();
     picker_lobby_sync_from_save();
+    sync_current_guy_from_train();
 
 	// Color our team button normally
 	og::runtime::current_session->allbuttons_[18]->do_outline = 0;
