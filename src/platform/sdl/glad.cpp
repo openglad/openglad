@@ -144,7 +144,9 @@ void seed_web_test_save_if_requested()
     for (auto& member : save.team_list)
         member.reset();
 
-    for (int index = 0; index < requested_player_count; ++index)
+    for (std::size_t index = 0;
+         index < static_cast<std::size_t>(requested_player_count);
+         ++index)
     {
         auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
         soldier->name = requested_player_count == 1
