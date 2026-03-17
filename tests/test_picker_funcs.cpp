@@ -447,6 +447,36 @@ TEST(PickerFuncs, lobby_sync_preserves_single_player_team_four_assignment)
     save.numplayers = old_numplayers;
 }
 
+TEST(PickerFuncs, lobby_set_player_mode_honors_requested_positive_count)
+{
+    picker_lobby_shutdown();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const unsigned char old_team_size = save.team_size;
+    const unsigned char old_numplayers = save.numplayers;
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+
+    save.team_size = 1;
+    save.numplayers = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 3;
+
+    picker_lobby_initialize_from_save();
+
+    ASSERT_EQ(4, static_cast<int>(set_player_mode(2)));
+    EXPECT_EQ(2, static_cast<int>(save.numplayers));
+    ASSERT_TRUE(save.team_list[0]);
+    EXPECT_EQ(3, static_cast<int>(save.team_list[0]->teamnum));
+
+    picker_lobby_shutdown();
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.team_size = old_team_size;
+    save.numplayers = old_numplayers;
+}
+
 TEST(PickerFuncs, lobby_start_request_sets_start_flag_after_confirmation)
 {
     picker_lobby_shutdown();

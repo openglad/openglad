@@ -284,6 +284,11 @@ public:
 
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
         spectator_mode_ = player_count == 0;
+        if (!spectator_mode_)
+        {
+            save.numplayers = static_cast<unsigned char>(
+                std::clamp(player_count, 1, MAX_PLAYERS));
+        }
         const auto peer_teams = build_peer_team_mapping(save, spectator_mode_);
         ensure_peer_count(static_cast<int>(peer_teams.size()));
         sync_from_save();
