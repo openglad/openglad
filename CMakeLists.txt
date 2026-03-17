@@ -211,6 +211,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
     ${SRC_DIR}/gameplay/game_server.cpp
+    ${SRC_DIR}/gameplay/lobby_server.cpp
     ${SRC_DIR}/gameplay/game_client.cpp
     ${SRC_DIR}/gameplay/net_transport.cpp
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
@@ -242,6 +243,7 @@ set(OG_SIM_SOURCES
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
     ${SRC_DIR}/gameplay/game_server.cpp
+    ${SRC_DIR}/gameplay/lobby_server.cpp
     ${SRC_DIR}/gameplay/game_client.cpp
     ${SRC_DIR}/gameplay/net_transport.cpp
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
@@ -1555,6 +1557,7 @@ if(NOT EMSCRIPTEN)
         og_add_unit_group(og_unit_sim FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_loop_wrapper.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_state_net.cpp
