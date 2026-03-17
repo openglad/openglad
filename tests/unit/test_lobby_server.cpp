@@ -339,6 +339,35 @@ TEST(LobbyServer, first_connected_peer_remains_host_even_if_another_peer_joins_f
     EXPECT_EQ(1u, server.state().players[1].player_index);
 }
 
+TEST(LobbyServer, disconnecting_unjoined_host_promotes_joined_player_immediately)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.clear_sent_messages();
+
+    transport.queue_lobby_message(
+        22u,
+        make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(1u, server.state().players.size());
+    EXPECT_FALSE(server.state().players[0].is_host);
+
+    transport.clear_sent_messages();
+    server.disconnect_client(11u);
+
+    ASSERT_EQ((std::vector<og::sim::PeerId>{11u}), transport.disconnected_peers());
+    ASSERT_EQ(1u, transport.sent_messages().size());
+
+    const og::sim::LobbyState promoted = decode_lobby_state(transport.sent_messages()[0]);
+    ASSERT_EQ(1u, promoted.players.size());
+    EXPECT_EQ("Guest", promoted.players[0].name);
+    EXPECT_TRUE(promoted.players[0].is_host);
+    EXPECT_EQ(0u, promoted.players[0].player_index);
+}
+
 TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_state)
 {
     MockLobbyTransport transport;

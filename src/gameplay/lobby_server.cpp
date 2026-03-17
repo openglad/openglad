@@ -169,7 +169,7 @@ void LobbyServer::disconnect_client(PeerId peer_id)
     if (was_host)
         reassign_host_peer();
 
-    if (had_player)
+    if (had_player || was_host)
     {
         rebuild_state();
         if (state_ != previous_state)
