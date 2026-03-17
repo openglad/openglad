@@ -254,6 +254,8 @@ TEST(LobbyServer, raw_join_flow_broadcasts_state_and_populates_save_data)
     EXPECT_EQ(7, state.settings.scenario_id);
     EXPECT_EQ(2, state.settings.difficulty);
     EXPECT_EQ(0, state.settings.allied_mode);
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    expect_all_sent_states_equal(transport.sent_messages(), state);
 
     const og::sim::LobbySaveDataEquivalent equivalent =
         server.build_save_data_equivalent();
