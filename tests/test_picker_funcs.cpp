@@ -17,6 +17,7 @@ const char* get_training_cost_rating(unsigned char family, int stat);
 Sint32 how_many(Sint32 whatfamily);
 int get_scen_num_from_filename(const char* name);
 Sint32 set_difficulty();
+Sint32 set_player_mode(Sint32 howmany);
 Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
@@ -29,6 +30,11 @@ void quit(Sint32 arg1);
 Sint32 return_menu(Sint32 arg);
 Sint32 name_guy(Sint32 arg);
 Sint32 edit_guy(Sint32 arg1);
+void picker_lobby_initialize_from_save();
+void picker_lobby_shutdown();
+bool picker_lobby_request_start();
+bool picker_lobby_start_request_pending();
+extern bool g_start_game_requested;
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -363,3 +369,73 @@ TEST(PickerFuncs, how_many_with_team)
     og::runtime::current_session->myscreen_->save_data.team_size = saved_team_size;
 }
 
+TEST(PickerFuncs, lobby_player_mode_round_trip_clamps_inactive_teams)
+{
+    picker_lobby_shutdown();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const unsigned char old_team_size = save.team_size;
+    const unsigned char old_numplayers = save.numplayers;
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+
+    save.team_size = 3;
+    save.numplayers = 3;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->teamnum = 1;
+    save.team_list[2] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[2]->teamnum = 2;
+
+    picker_lobby_initialize_from_save();
+
+    ASSERT_EQ(4, static_cast<int>(set_player_mode(2)));
+    EXPECT_EQ(2, static_cast<int>(save.numplayers));
+    ASSERT_TRUE(save.team_list[0] && save.team_list[1] && save.team_list[2]);
+    EXPECT_EQ(0, static_cast<int>(save.team_list[0]->teamnum));
+    EXPECT_EQ(1, static_cast<int>(save.team_list[1]->teamnum));
+    EXPECT_EQ(1, static_cast<int>(save.team_list[2]->teamnum));
+
+    ASSERT_EQ(4, static_cast<int>(set_player_mode(0)));
+    EXPECT_EQ(0, static_cast<int>(save.numplayers));
+
+    picker_lobby_shutdown();
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.team_size = old_team_size;
+    save.numplayers = old_numplayers;
+}
+
+TEST(PickerFuncs, lobby_start_request_sets_start_flag_after_confirmation)
+{
+    picker_lobby_shutdown();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const unsigned char old_team_size = save.team_size;
+    const unsigned char old_numplayers = save.numplayers;
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+
+    save.team_size = 1;
+    save.numplayers = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+
+    g_start_game_requested = false;
+    picker_lobby_initialize_from_save();
+
+    EXPECT_FALSE(picker_lobby_start_request_pending());
+    EXPECT_TRUE(picker_lobby_request_start());
+    EXPECT_TRUE(g_start_game_requested);
+    EXPECT_FALSE(picker_lobby_start_request_pending());
+
+    picker_lobby_shutdown();
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.team_size = old_team_size;
+    save.numplayers = old_numplayers;
+    g_start_game_requested = false;
+}

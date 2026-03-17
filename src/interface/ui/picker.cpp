@@ -43,6 +43,9 @@
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_state.h>
+#include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/interface/screen_lifecycle.h>
 #include <array>
 #include <cstddef>
@@ -50,6 +53,7 @@
 #include <cctype>
 #include <format>
 #include <memory>
+#include <optional>
 #include <string>
 #include <set>
 #include <vector>
@@ -93,7 +97,16 @@ const char* family_name_copy(short family);
 
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
+bool g_start_game_requested = false;
+
 namespace {
+struct LocalLobbyPeer {
+    std::shared_ptr<og::sim::InProcessTransport> transport;
+    og::sim::PeerId peer_id = 0;
+    short team = 0;
+    std::string name;
+};
+
 void destroy_picker_pixie(pixieN* pixie)
 {
     delete pixie;
@@ -105,12 +118,425 @@ PickerPixieHandle make_picker_pixie(const PixieData& data)
     handle.reset(new pixieN(data), destroy_picker_pixie);
     return handle;
 }
+
+og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
+{
+    og::sim::LobbyCharacterData character;
+    character.guy_id = source.id;
+    character.name = source.name;
+    character.family = static_cast<std::int8_t>(source.family);
+    character.strength = source.strength;
+    character.dexterity = source.dexterity;
+    character.constitution = source.constitution;
+    character.intelligence = source.intelligence;
+    character.armor = source.armor;
+    character.exp = source.exp;
+    character.kills = source.kills;
+    character.level_kills = source.level_kills;
+    character.total_damage = source.total_damage;
+    character.total_hits = source.total_hits;
+    character.total_shots = source.total_shots;
+    character.teamnum = source.teamnum;
+    character.scen_damage = source.scen_damage;
+    character.scen_kills = source.scen_kills;
+    character.scen_damage_taken = source.scen_damage_taken;
+    character.scen_min_hp = source.scen_min_hp;
+    character.scen_shots = source.scen_shots;
+    character.scen_hits = source.scen_hits;
+    character.level = source.level;
+    return character;
+}
+
+std::unique_ptr<guy> make_guy_from_lobby_character(
+    const og::sim::LobbyCharacterData& character)
+{
+    auto result = std::make_unique<guy>(character.family);
+    result->id = character.guy_id;
+    result->name = character.name;
+    result->family = static_cast<char>(character.family);
+    result->strength = character.strength;
+    result->dexterity = character.dexterity;
+    result->constitution = character.constitution;
+    result->intelligence = character.intelligence;
+    result->armor = character.armor;
+    result->exp = character.exp;
+    result->kills = character.kills;
+    result->level_kills = character.level_kills;
+    result->total_damage = character.total_damage;
+    result->total_hits = character.total_hits;
+    result->total_shots = character.total_shots;
+    result->teamnum = character.teamnum;
+    result->scen_damage = character.scen_damage;
+    result->scen_kills = character.scen_kills;
+    result->scen_damage_taken = character.scen_damage_taken;
+    result->scen_min_hp = character.scen_min_hp;
+    result->scen_shots = character.scen_shots;
+    result->scen_hits = character.scen_hits;
+    result->level = character.level;
+    return result;
+}
+
+int highest_team_in_save(const SaveData& save)
+{
+    int highest_team = 0;
+    for (const auto& member : save.team_list)
+    {
+        if (!member)
+            continue;
+        highest_team = std::max(highest_team, static_cast<int>(member->teamnum));
+    }
+    return highest_team;
+}
+
+void clamp_team_assignments_to_active_players(SaveData& save, int active_players)
+{
+    if (active_players <= 0)
+        return;
+
+    const short max_team = static_cast<short>(active_players - 1);
+    for (auto& member : save.team_list)
+    {
+        if (member && member->teamnum > max_team)
+            member->teamnum = max_team;
+    }
+
+    if (og::runtime::current_session->current_guy_
+        && og::runtime::current_session->current_guy_->teamnum > max_team)
+    {
+        og::runtime::current_session->current_guy_->teamnum = max_team;
+    }
+
+    if (og::runtime::current_session->current_team_num_ > max_team)
+        og::runtime::current_session->current_team_num_ = max_team;
+}
+
+class PickerLobbyRuntime
+{
+public:
+    void initialize_from_save()
+    {
+        shutdown();
+
+        server_transport_ = og::sim::InProcessTransport::create_server();
+        server_transport_->accept_connections();
+        server_ = std::make_unique<og::sim::LobbyServer>(*server_transport_);
+        spectator_mode_ =
+            og::runtime::current_session->myscreen_->save_data.numplayers == 0;
+
+        const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        int joined_players = spectator_mode_
+            ? std::max(1, highest_team_in_save(save) + 1)
+            : std::max<int>(save.numplayers, highest_team_in_save(save) + 1);
+        ensure_peer_count(std::clamp(joined_players, 1, MAX_PLAYERS));
+        sync_from_save();
+    }
+
+    void shutdown()
+    {
+        if (server_)
+        {
+            for (const auto& peer : peers_)
+                server_->disconnect_client(peer.peer_id);
+        }
+
+        peers_.clear();
+        state_.reset();
+        server_.reset();
+        server_transport_.reset();
+        spectator_mode_ = false;
+        start_request_pending_ = false;
+    }
+
+    void sync_from_save()
+    {
+        if (!ensure_initialized())
+            return;
+
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        const int joined_players = std::max<int>(
+            static_cast<int>(peers_.size()),
+            highest_team_in_save(save) + 1);
+        ensure_peer_count(std::clamp(joined_players, 1, MAX_PLAYERS));
+
+        send_host_settings();
+        send_player_joins();
+        poll_messages();
+        apply_state_to_save();
+    }
+
+    void poll_and_apply()
+    {
+        if (!ensure_initialized())
+            return;
+
+        poll_messages();
+        apply_state_to_save();
+    }
+
+    void set_player_mode(int player_count)
+    {
+        if (!ensure_initialized())
+            return;
+
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        spectator_mode_ = player_count == 0;
+        if (!spectator_mode_)
+        {
+            clamp_team_assignments_to_active_players(
+                save, std::clamp(player_count, 1, MAX_PLAYERS));
+        }
+
+        const int joined_players = spectator_mode_
+            ? std::max(1, highest_team_in_save(save) + 1)
+            : std::clamp(player_count, 1, MAX_PLAYERS);
+        ensure_peer_count(joined_players);
+        sync_from_save();
+    }
+
+    bool request_start_game()
+    {
+        if (!ensure_initialized() || peers_.empty())
+            return false;
+
+        start_request_pending_ = true;
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbyStartGameMessage{.player_index = 0u};
+        peers_.front().transport->send_lobby_message(
+            peers_.front().peer_id,
+            std::make_shared<og::sim::LobbyMessage>(std::move(message)));
+        poll_messages();
+        apply_state_to_save();
+        return g_start_game_requested;
+    }
+
+    [[nodiscard]] bool start_request_pending() const noexcept
+    {
+        return start_request_pending_;
+    }
+
+    [[nodiscard]] bool spectator_mode() const noexcept
+    {
+        return spectator_mode_;
+    }
+
+private:
+    bool ensure_initialized()
+    {
+        if (server_)
+            return true;
+        if (!og::runtime::current_session || !og::runtime::current_session->myscreen_)
+            return false;
+        initialize_from_save();
+        return server_ != nullptr;
+    }
+
+    void ensure_peer_count(int target_count)
+    {
+        target_count = std::clamp(target_count, 1, MAX_PLAYERS);
+
+        while (static_cast<int>(peers_.size()) > target_count)
+        {
+            server_->disconnect_client(peers_.back().peer_id);
+            peers_.pop_back();
+        }
+
+        while (static_cast<int>(peers_.size()) < target_count)
+        {
+            auto transport = server_transport_->create_client_transport();
+            const og::sim::PeerId peer_id = transport->local_peer_id();
+            server_->connect_client(peer_id);
+            peers_.push_back(LocalLobbyPeer{
+                .transport = std::move(transport),
+                .peer_id = peer_id,
+                .team = static_cast<short>(peers_.size()),
+                .name = std::format("Player {}", peers_.size() + 1),
+            });
+        }
+    }
+
+    void send_host_settings()
+    {
+        if (peers_.empty())
+            return;
+
+        const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        og::sim::LobbySettings settings;
+        settings.campaign_id = save.current_campaign;
+        settings.scenario_id = save.scen_num;
+        settings.difficulty =
+            static_cast<std::int16_t>(og::runtime::current_session->current_difficulty_);
+        settings.allied_mode = save.allied_mode;
+
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbySettingsChangeMessage{
+            .player_index = 0u,
+            .settings = std::move(settings),
+        };
+        peers_.front().transport->send_lobby_message(
+            peers_.front().peer_id,
+            std::make_shared<og::sim::LobbyMessage>(std::move(message)));
+    }
+
+    void send_player_joins()
+    {
+        const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+        for (std::size_t peer_index = 0; peer_index < peers_.size(); ++peer_index)
+        {
+            LocalLobbyPeer& peer = peers_[peer_index];
+            peer.team = static_cast<short>(peer_index);
+            if (peer.name.empty())
+                peer.name = std::format("Player {}", peer_index + 1);
+
+            og::sim::LobbyPlayer player;
+            player.name = peer.name;
+            player.team = peer.team;
+            player.ready = false;
+            player.is_host = peer_index == 0;
+
+            for (std::size_t slot_index = 0; slot_index < save.team_list.size(); ++slot_index)
+            {
+                const auto& member = save.team_list[slot_index];
+                if (!member || member->teamnum != peer.team)
+                    continue;
+
+                player.character_slots.push_back(og::sim::LobbyCharacterSlot{
+                    .slot_index = static_cast<std::uint8_t>(slot_index),
+                    .character = make_lobby_character_data(*member),
+                });
+            }
+
+            og::sim::LobbyMessage join_message;
+            join_message.payload = og::sim::LobbyJoinMessage{
+                .player = std::move(player),
+            };
+            peer.transport->send_lobby_message(
+                peer.peer_id,
+                std::make_shared<og::sim::LobbyMessage>(std::move(join_message)));
+        }
+    }
+
+    void poll_messages()
+    {
+        server_->poll_incoming_messages();
+        for (auto& peer : peers_)
+        {
+            for (const auto& message : peer.transport->poll_typed())
+            {
+                switch (message.kind)
+                {
+                case og::sim::TypedReceivedMessageKind::LobbyState:
+                    if (message.lobby_state)
+                        state_ = *message.lobby_state;
+                    break;
+                case og::sim::TypedReceivedMessageKind::LobbyMessage:
+                    if (message.lobby_message
+                        && message.lobby_message->kind()
+                            == og::sim::LobbyMessageKind::StartGame)
+                    {
+                        start_request_pending_ = false;
+                        g_start_game_requested = true;
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+    }
+
+    void apply_state_to_save()
+    {
+        if (!state_.has_value())
+            return;
+
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        const og::sim::LobbySaveDataEquivalent equivalent =
+            server_->build_save_data_equivalent();
+
+        save.current_campaign = equivalent.current_campaign;
+        save.scen_num = equivalent.scen_num;
+        save.allied_mode = equivalent.allied_mode;
+        save.numplayers = static_cast<unsigned char>(
+            spectator_mode_ ? 0 : equivalent.numplayers);
+
+        for (auto& member : save.team_list)
+            member.reset();
+        save.team_size = 0;
+
+        for (const auto& slot : equivalent.team_list)
+        {
+            if (slot.slot_index >= save.team_list.size())
+                continue;
+            save.team_list[slot.slot_index] =
+                make_guy_from_lobby_character(slot.character);
+            save.team_size++;
+        }
+
+        og::runtime::current_session->current_difficulty_ =
+            static_cast<std::int32_t>(state_->settings.difficulty);
+    }
+
+    std::shared_ptr<og::sim::InProcessTransport> server_transport_;
+    std::unique_ptr<og::sim::LobbyServer> server_;
+    std::vector<LocalLobbyPeer> peers_;
+    std::optional<og::sim::LobbyState> state_;
+    bool spectator_mode_ = false;
+    bool start_request_pending_ = false;
+};
+
+std::unique_ptr<PickerLobbyRuntime> g_picker_lobby_runtime;
 } // namespace
+
+void picker_lobby_initialize_from_save()
+{
+    if (!g_picker_lobby_runtime)
+        g_picker_lobby_runtime = std::make_unique<PickerLobbyRuntime>();
+    g_picker_lobby_runtime->initialize_from_save();
+}
+
+void picker_lobby_shutdown()
+{
+    if (!g_picker_lobby_runtime)
+        return;
+    g_picker_lobby_runtime->shutdown();
+    g_picker_lobby_runtime.reset();
+}
+
+void picker_lobby_sync_from_save()
+{
+    if (!g_picker_lobby_runtime)
+        g_picker_lobby_runtime = std::make_unique<PickerLobbyRuntime>();
+    g_picker_lobby_runtime->sync_from_save();
+}
+
+void picker_lobby_poll()
+{
+    if (g_picker_lobby_runtime)
+        g_picker_lobby_runtime->poll_and_apply();
+}
+
+void picker_lobby_set_player_mode(int player_count)
+{
+    if (!g_picker_lobby_runtime)
+        g_picker_lobby_runtime = std::make_unique<PickerLobbyRuntime>();
+    g_picker_lobby_runtime->set_player_mode(player_count);
+}
+
+bool picker_lobby_request_start()
+{
+    if (!g_picker_lobby_runtime)
+        g_picker_lobby_runtime = std::make_unique<PickerLobbyRuntime>();
+    return g_picker_lobby_runtime->request_start_game();
+}
+
+bool picker_lobby_start_request_pending()
+{
+    return g_picker_lobby_runtime && g_picker_lobby_runtime->start_request_pending();
+}
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-// Flag to signal that game should start (for state machine)
-bool g_start_game_requested = false;
 #endif
 
 
@@ -128,12 +554,10 @@ std::atomic<int> g_test_game_epoch{0};
 std::atomic<int> g_test_game_frame_ticks{0};
 #endif
 
-#ifdef __EMSCRIPTEN__
 void picker_request_start_game()
 {
-    g_start_game_requested = true;
+    (void)picker_lobby_request_start();
 }
-#endif
 
 #ifdef TESTING
 void picker_testing_mark_game_start()
@@ -332,6 +756,7 @@ public:
         og::runtime::current_session->myscreen_->save_data.current_campaign = result.id;
         og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(
             load_campaign(result.id, og::runtime::current_session->myscreen_->save_data.current_levels, result.first_level));
+        picker_lobby_sync_from_save();
         return result.id;
     }
 
@@ -353,6 +778,7 @@ public:
     bool load_game() override
     {
         create_load_menu(0);
+        picker_lobby_initialize_from_save();
         return true;
     }
 
@@ -365,7 +791,7 @@ public:
     og::ui::PickerScreen screen_after_game() const override
     {
 #ifdef __EMSCRIPTEN__
-        if (g_start_game_requested)
+        if (g_start_game_requested || picker_lobby_start_request_pending())
             return og::ui::PickerScreen::Quit;
 #endif
         return og::ui::PickerScreen::TeamBuild;
@@ -384,6 +810,7 @@ void picker_main(Sint32 argc, char  **argv)
     picker_initialize_shared_menu_state();
     // Load the current saved game, if it exists .. (save0.gtl)
     picker_load_default_save_if_present();
+    picker_lobby_initialize_from_save();
     SdlPickerClient client;
     og::ui::run_picker(client);
 }
@@ -392,6 +819,8 @@ void picker_main(Sint32 argc, char  **argv)
 // Tests and PickerSession use this instead of duplicating cleanup logic.
 void picker_cleanup_resources()
 {
+    picker_lobby_shutdown();
+
 	for (auto& backdrop : pks().backdrops)
     {
         backdrop.reset();
@@ -1221,7 +1650,8 @@ Sint32 overscan_adjust(Sint32 arg)
 Sint32 set_player_mode(Sint32 howmany)
 {
 	Sint32 count = 0;
-	og::ui::set_player_count(og::runtime::current_session->myscreen_->save_data, howmany);
+    g_start_game_requested = false;
+    picker_lobby_set_player_mode(howmany);
 
 	while (og::runtime::current_session->allbuttons_[count])
 	{
@@ -1512,6 +1942,7 @@ Sint32 do_pick_campaign(Sint32 arg1)
         // Load new campaign
         og::runtime::current_session->myscreen_->save_data.current_campaign = result.id;
         og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(load_campaign(result.id, og::runtime::current_session->myscreen_->save_data.current_levels, result.first_level));
+        picker_lobby_sync_from_save();
    }
    return MENU_REDRAW;
 }
@@ -1543,6 +1974,7 @@ Sint32 do_set_scen_level(Sint32 arg1)
        else  // We're good
        {
            og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(templevel);
+           picker_lobby_sync_from_save();
            Log("Set level to {}\n", templevel);
        }
    }
@@ -1576,6 +2008,8 @@ Sint32 set_difficulty()
 
    //allbuttons[6]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);
+
+   picker_lobby_sync_from_save();
 
    return MENU_OK;
 }
@@ -1632,6 +2066,8 @@ Sint32 change_allied()
 
    og::runtime::current_session->allbuttons_[7]->label = og::ui::format_allied_mode_label(og::runtime::current_session->myscreen_->save_data);
 
+   picker_lobby_sync_from_save();
+
    //buffers: allbuttons[7]->vdisplay();
    //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
 
@@ -1653,7 +2089,10 @@ static void run_picker_state_machine_until_game_requested()
 // Check if game start was requested (called from main after picker_init)
 bool picker_check_start_requested()
 {
+    picker_lobby_poll();
     Log("picker_check_start_requested: g_start_game_requested={}\n", g_start_game_requested);
+    if (g_start_game_requested && og::runtime::current_session->myscreen_)
+        og::runtime::current_session->myscreen_->save_data.save("save0");
     return g_start_game_requested;
 }
 
@@ -1667,6 +2106,7 @@ void picker_init()
     picker_load_default_save_if_present();
 
     g_start_game_requested = false;
+    picker_lobby_initialize_from_save();
     run_picker_state_machine_until_game_requested();
     Log("picker_init: picker returned, g_start_game_requested={}\n", g_start_game_requested);
 }
@@ -1674,9 +2114,13 @@ void picker_init()
 // Run one frame of the picker - returns true when game should start
 bool picker_frame()
 {
+    picker_lobby_poll();
+
     // Check if game start was requested
     if (g_start_game_requested) {
         Log("picker_frame: Game start requested\n");
+        if (og::runtime::current_session->myscreen_)
+            og::runtime::current_session->myscreen_->save_data.save("save0");
         g_start_game_requested = false;
         return true;  // Signal to transition to PLAYING state
     }
@@ -1709,6 +2153,7 @@ void picker_reinit_after_game()
     picker_load_default_save_if_present();
 
     g_start_game_requested = false;
+    picker_lobby_initialize_from_save();
 
     run_picker_state_machine_until_game_requested();
     Log("picker_reinit_after_game: picker returned, g_start_game_requested={}\n", g_start_game_requested);

@@ -43,6 +43,7 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 void draw_version_number();
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 Sint32 create_team_menu(Sint32 arg1);
+void picker_lobby_sync_from_save();
 
 Sint32 leftmouse(button* buttons);
 void draw_highlight(const button& b);
@@ -238,6 +239,7 @@ bool picker_prepare_new_game_setup()
     // Reset the save data so we have a fresh, new team
 	og::ui::reset_for_new_game(game->save_data);
 	og::runtime::current_session->current_guy_ = nullptr;
+    picker_lobby_sync_from_save();
 	
 	// Clear the labeling counter
 	for (int i = 0; i < NUM_FAMILIES; i++)
