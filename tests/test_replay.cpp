@@ -228,6 +228,7 @@ void initialize_fixture_world(
     fixture.load_level();
     fixture.apply_server_snapshot(initial_snapshot);
     fixture.initial_sync();
+    fixture.expect_clients_match_server();
 }
 
 void expect_fixture_controls_match(
@@ -348,8 +349,12 @@ void run_replay_roundtrip(int player_count)
         expected_rng_states.push_back(live_world.rng_.state_);
 
         if (((tick + 1) % kCheckpointInterval) == 0)
+            live_fixture.expect_clients_match_server();
+
+        if (((tick + 1) % kCheckpointInterval) == 0)
             recorder.record_world_keyframe(live_world.tick_count_, live_world);
     }
+    live_fixture.expect_clients_match_server();
 
     const og::sim::WorldSnapshot expected_final_snapshot =
         og::sim::peek_keyframe_snapshot(live_world);
@@ -452,6 +457,9 @@ void run_replay_roundtrip(int player_count)
         EXPECT_EQ(expected_rng_states[replay_tick_index], replay_world.rng_.state_)
             << "rng divergence at replay tick " << replay_tick_index;
 
+        if (((replay_tick_index + 1) % kCheckpointInterval) == 0)
+            replay_fixture.expect_clients_match_server();
+
         const std::optional<og::sim::ReplayVerificationFailure> checkpoint_failure =
             player.verify_world(replay_world, replay_world.tick_count_, false);
         if (checkpoint_failure.has_value())
@@ -462,6 +470,7 @@ void run_replay_roundtrip(int player_count)
 
     EXPECT_EQ(expected_rng_states.size(), replay_tick_index);
     EXPECT_FALSE(player.first_divergence().has_value());
+    replay_fixture.expect_clients_match_server();
     const og::sim::WorldSnapshot actual_final_snapshot =
         og::sim::peek_keyframe_snapshot(replay_world);
     assert_snapshot_bytes_match("final snapshot",

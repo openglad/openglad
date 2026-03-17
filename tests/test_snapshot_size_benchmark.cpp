@@ -211,6 +211,7 @@ void initialize_fixture_world(
     fixture.load_level();
     fixture.apply_server_snapshot(initial_snapshot);
     fixture.initial_sync();
+    fixture.expect_clients_match_server();
 }
 
 void reset_loaded_world_for_benchmark(GameWorld& world)
@@ -442,6 +443,7 @@ TEST(SnapshotSizeBenchmark,
         ASSERT_FALSE(replay_world.game_ended)
             << "benchmark scenario should not end during replay capture";
     }
+    replay_fixture.expect_clients_match_server();
 
     const og::sim::WorldSnapshot live_snapshot =
         og::sim::capture_snapshot(replay_world);
@@ -485,6 +487,7 @@ TEST(SnapshotSizeBenchmark,
         og::sim::accumulate_snapshot_for_client(catchup_client_state,
                                                 final_tick_snapshot);
     }
+    replay_fixture.expect_clients_match_server();
     EXPECT_FALSE(player.has_next_frame())
         << "benchmark replay should be fully consumed after warmup and catchup";
     const og::sim::WorldSnapshot catchup_delta_snapshot =

@@ -1184,6 +1184,31 @@ void apply_delta_entity_list(std::vector<og::sim::EntitySnapshot>& target,
     }
 }
 
+void reorder_entity_snapshots(
+    std::vector<og::sim::EntitySnapshot>& entities,
+    const std::vector<og::sim::EntitySnapshot>& ordered_entities)
+{
+    if (entities.size() <= 1)
+        return;
+
+    std::vector<og::sim::EntitySnapshot> reordered;
+    reordered.reserve(entities.size());
+
+    for (const auto& ordered : ordered_entities)
+    {
+        if (entity_delta_is_removal(ordered))
+            continue;
+
+        og::sim::EntitySnapshot extracted;
+        if (erase_entity_snapshot(entities, ordered.entity_id, &extracted))
+            reordered.push_back(std::move(extracted));
+    }
+
+    for (auto& entity : entities)
+        reordered.push_back(std::move(entity));
+    entities = std::move(reordered);
+}
+
 class ApplyingSnapshotGuard
 {
 public:
@@ -2523,6 +2548,9 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
                             delta.fxlist, removed_entity_ids);
     apply_delta_entity_list(baseline.weaplist, baseline.oblist, baseline.fxlist,
                             delta.weaplist, removed_entity_ids);
+    reorder_entity_snapshots(baseline.oblist, delta.oblist);
+    reorder_entity_snapshots(baseline.fxlist, delta.fxlist);
+    reorder_entity_snapshots(baseline.weaplist, delta.weaplist);
     baseline.removed_entity_ids.clear();
 }
 

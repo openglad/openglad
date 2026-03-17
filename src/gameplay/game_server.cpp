@@ -131,14 +131,17 @@ std::vector<og::sim::EntitySnapshot> select_delta_entities(
         }
 
         const auto mask_it = client_state.accumulated_dirty.find(entity.entity_id);
-        if (mask_it == client_state.accumulated_dirty.end() ||
-            !dirty_mask_has_bits(mask_it->second))
+        if (mask_it != client_state.accumulated_dirty.end() &&
+            dirty_mask_has_bits(mask_it->second))
         {
-            continue;
+            delta_entity.dirty_mask[0] = mask_it->second[0];
+            delta_entity.dirty_mask[1] = mask_it->second[1];
         }
-
-        delta_entity.dirty_mask[0] = mask_it->second[0];
-        delta_entity.dirty_mask[1] = mask_it->second[1];
+        else
+        {
+            delta_entity.dirty_mask[0] = 1ULL << og::dirty::BIT_ENTITY_ID;
+            delta_entity.dirty_mask[1] = 0;
+        }
         selected.push_back(delta_entity);
     }
 

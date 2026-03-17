@@ -127,15 +127,6 @@ public:
             server_world_.world().clear_grid_dirty_tiles();
             server_world_.events.clear();
         });
-        for (auto& client : clients_)
-        {
-            client->world.with_context([&] {
-                apply_snapshot(client->world.world(), snapshot);
-                client->world.world().clear_removed_entity_ids();
-                client->world.world().clear_grid_dirty_tiles();
-                client->world.events.clear();
-            });
-        }
         bind_players();
         with_server_context([&] {
             server_world_.world().control_hp = snapshot.control_hp;

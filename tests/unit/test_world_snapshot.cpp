@@ -1749,6 +1749,7 @@ TEST(WorldSnapshot, empty_delta_roundtrip_preserves_world_state_without_entities
 
     walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, actor);
+    const std::uint32_t actor_id = actor->entity_id();
 
     og::sim::WorldSnapshot baseline = og::sim::capture_keyframe_snapshot(world);
     og::sim::PerClientState client_state;
@@ -1762,7 +1763,11 @@ TEST(WorldSnapshot, empty_delta_roundtrip_preserves_world_state_without_entities
 
     const og::sim::WorldSnapshot delta =
         og::sim::consume_delta_snapshot_for_client(client_state, current);
-    EXPECT_TRUE(delta.oblist.empty());
+    ASSERT_EQ(1u, delta.oblist.size());
+    EXPECT_EQ(actor_id, delta.oblist.front().entity_id);
+    EXPECT_EQ(1ULL << og::dirty::BIT_ENTITY_ID,
+              delta.oblist.front().dirty_mask[0]);
+    EXPECT_EQ(0ULL, delta.oblist.front().dirty_mask[1]);
     EXPECT_TRUE(delta.fxlist.empty());
     EXPECT_TRUE(delta.weaplist.empty());
     EXPECT_TRUE(delta.removed_entity_ids.empty());
@@ -1770,7 +1775,11 @@ TEST(WorldSnapshot, empty_delta_roundtrip_preserves_world_state_without_entities
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
         og::sim::deserialize_delta(bytes.data(), bytes.size());
-    EXPECT_TRUE(decoded.oblist.empty());
+    ASSERT_EQ(1u, decoded.oblist.size());
+    EXPECT_EQ(actor_id, decoded.oblist.front().entity_id);
+    EXPECT_EQ(1ULL << og::dirty::BIT_ENTITY_ID,
+              decoded.oblist.front().dirty_mask[0]);
+    EXPECT_EQ(0ULL, decoded.oblist.front().dirty_mask[1]);
     EXPECT_TRUE(decoded.fxlist.empty());
     EXPECT_TRUE(decoded.weaplist.empty());
     EXPECT_TRUE(decoded.removed_entity_ids.empty());
@@ -2212,6 +2221,83 @@ TEST(WorldSnapshot, apply_delta_removes_entity_from_baseline_on_zero_mask_sentin
     EXPECT_NE(nullptr, find_entity_snapshot(baseline.oblist, actor_id));
     EXPECT_EQ(nullptr, find_entity_snapshot(baseline.oblist, foe_id));
     EXPECT_TRUE(baseline.removed_entity_ids.empty());
+}
+
+TEST(WorldSnapshot, apply_delta_reorders_entity_lists_even_without_field_changes)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+
+    walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = source.add_ob(Order::Living, FAMILY_ORC);
+    walker* slime = source.add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(nullptr, foe);
+    ASSERT_NE(nullptr, slime);
+
+    og::sim::WorldSnapshot client_baseline =
+        og::sim::capture_keyframe_snapshot(source);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    og::sim::apply_snapshot(mirror, client_baseline);
+
+    reverse_entity_list(source.oblist);
+    source.tick_count_ = client_baseline.tick_count + 1;
+    const og::sim::WorldSnapshot delta = og::sim::capture_snapshot(source);
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_delta(bytes.data(), bytes.size());
+
+    og::sim::apply_delta(client_baseline, decoded);
+    const og::sim::WorldSnapshot source_keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    expect_world_snapshot_eq(source_keyframe, client_baseline, false);
+
+    og::sim::apply_snapshot(mirror, client_baseline);
+    const og::sim::WorldSnapshot mirror_keyframe =
+        og::sim::capture_keyframe_snapshot(mirror);
+    expect_world_snapshot_eq(source_keyframe, mirror_keyframe);
+}
+
+TEST(WorldSnapshot,
+     consume_delta_snapshot_for_client_keeps_authoritative_entity_order_when_only_order_changes)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+
+    walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = source.add_ob(Order::Living, FAMILY_ORC);
+    walker* slime = source.add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    ASSERT_NE(nullptr, actor);
+    ASSERT_NE(nullptr, foe);
+    ASSERT_NE(nullptr, slime);
+
+    og::sim::WorldSnapshot client_baseline =
+        og::sim::capture_keyframe_snapshot(source);
+    og::sim::PerClientState client_state;
+    og::sim::seed_client_snapshot_baseline(client_state, client_baseline);
+
+    og::sim::WorldSnapshot current = client_baseline;
+    current.tick_count = client_baseline.tick_count + 1;
+    std::reverse(current.oblist.begin(), current.oblist.end());
+    current.snapshot_hash = og::sim::compute_snapshot_hash(current);
+    og::sim::accumulate_snapshot_for_client(client_state, current);
+
+    const og::sim::WorldSnapshot delta =
+        og::sim::consume_delta_snapshot_for_client(client_state, current);
+    ASSERT_EQ(current.oblist.size(), delta.oblist.size());
+    EXPECT_EQ(snapshot_ids(current.oblist), snapshot_ids(delta.oblist));
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_delta(bytes.data(), bytes.size());
+
+    og::sim::apply_delta(client_baseline, decoded);
+    expect_world_snapshot_eq(current, client_baseline, false);
 }
 
 TEST(WorldSnapshot, apply_delta_accumulates_multi_tick_changes_with_spawn_and_removal)
