@@ -423,13 +423,16 @@ main() [src/glad.cpp]
 game_frame(screen& s, GameLoopFrameState& st)
   ├── SDL_PollEvent → screen::input()    Handle input events
   ├── screen::continuous_input()         Process held keys
-  ├── screen::act()                      Game logic tick
-  │   └── SimWorld::tick(level, save, ...)  Deterministic simulation
-  │       ├── for each entity in oblist:
-  │       │   └── walker::act()            AI, movement, combat, specials
-  │       ├── dead entity cleanup
-  │       ├── treasure/effect lifecycle
-  │       ├── check level completion
+  ├── local_transport_shadow_send_input()  Queue local InputState
+  ├── local_transport_shadow_finish_tick() Run server tick + client mirror sync
+  │   ├── GameWorld::tick()                Deterministic simulation
+  │   │   ├── for each entity in oblist:
+  │   │   │   └── walker::act()            AI, movement, combat, specials
+  │   │   ├── dead entity cleanup
+  │   │   ├── treasure/effect lifecycle
+  │   │   └── check level completion
+  │   ├── capture_snapshot()               Build authoritative state
+  │   └── apply_snapshot()                 Update local client mirror
   │       └── emit events → SimEventLog
   ├── dispatch_sim_events()              Play sounds, show notifications
   └── screen::redraw()                   Render frame
@@ -697,7 +700,7 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `src/data/level_data.cpp` | Level file loading and saving |
 | `src/data/save_data.cpp` | Save game serialization |
 | `src/input/input.cpp` | Keyboard/controller event handling |
-| `src/sim/sim_world.cpp` | Live game simulation tick (extracted from `screen::act()`) |
+| `src/sim/sim_world.cpp` | Live game simulation tick used by the server-authoritative runtime |
 | `src/sim/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
 | `src/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
 | `include/openglad/platform/game_session.h` | GameSession + SessionScope + Config definitions |

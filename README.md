@@ -687,7 +687,7 @@ For release 3.6j: (08/02/95)
   messages on help/scenario text boxes
 * Fixed minor bugs in Druid 'Protection'
 * Added Elven 'Forestwalk' innate ability
-* Fixed screen::act to properly delete 'fx' object when dead
+* Fixed gameplay tick to properly delete 'fx' object when dead
 * Added Druid 'Reveal' to Registered version
 * Fixed Cleric Resurrection to properly take an EXP toll
 * Added Cleric 'Turn Undead' as SHIFTER+[Raise Dead] to all
@@ -953,5 +953,4 @@ Improvements since version 1
 * improved stability (we found some bugs ;)
 * nifty cheats (try and find them)
 * more colorful palette
-
 

@@ -13,7 +13,7 @@ The core server-authoritative objects. This is the convergence point where every
 - Maintains per-client baseline snapshot for delta computation
 - **Tracks `current_palette_id`:** When a `SetPalette` event is emitted by simulation code, the server updates `current_palette_id` in the WorldSnapshot. Clients that miss the event will converge to the correct palette on the next keyframe.
 
-**Important: `screen::act()` actual order.** The current `screen::act()` calls `world_.tick()` **first** (line 905), **then** dispatches events from SimEventLog (lines 920-978). The server refactoring preserves this order: tick the world, capture the snapshot, drain events, then broadcast.
+**Important: legacy wrapper actual order.** The pre-network gameplay wrapper calls `world_.tick()` **first** (line 905), **then** dispatches events from SimEventLog (lines 920-978). The server refactoring preserves this order: tick the world, capture the snapshot, drain events, then broadcast.
 
 ## Input Jitter Policy
 
@@ -26,7 +26,7 @@ The server does NOT wait for all client inputs before ticking. If a client's inp
 
 ## Exit Prompt — Freeze-and-Ask Protocol
 
-The current `screen::act()` dispatches `RequestExitConfirmation` events by showing a **blocking UI prompt** (`screen.cpp:994` — `yes_or_no_prompt()`). The server cannot block on UI.
+The legacy gameplay wrapper dispatches `RequestExitConfirmation` events by showing a **blocking UI prompt** (`screen.cpp:994` — `yes_or_no_prompt()`). The server cannot block on UI.
 
 **Protocol:**
 1. When simulation emits `RequestExitConfirmation` (player walks onto exit tile at `treasure_family_navigation.cpp:71,91`), the server enters `pending_exit_prompt` state.
@@ -56,7 +56,7 @@ Pause in networked play uses the same freeze-broadcast pattern as exit prompts. 
 
 ## EndGame Early Return
 
-`screen::act()` currently returns immediately from `EndGame` events (`screen.cpp:951-955`), clearing remaining events. In the server/client split, the server captures ALL events for a tick before sending them — it doesn't short-circuit. The client processes `EndGame` last (or the `GameFlowEventBatch` is ordered with EndGame at the end) to ensure no events are lost.
+The legacy gameplay wrapper returns immediately from `EndGame` events (`screen.cpp:951-955`), clearing remaining events. In the server/client split, the server captures ALL events for a tick before sending them — it doesn't short-circuit. The client processes `EndGame` last (or the `GameFlowEventBatch` is ordered with EndGame at the end) to ensure no events are lost.
 
 ## Divergence Detection (Development Diagnostic)
 

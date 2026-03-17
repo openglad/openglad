@@ -119,7 +119,7 @@ SimEventLog events fall into two categories with different reliability requireme
 - `WithdrawToLevel` — triggers level withdrawal transition (`screen.cpp:966-968`)
 - `ScoreChange` — triggers score UI refresh (`screen.cpp:970-973`; score data itself is already in snapshot via `m_score[4]`)
 
-Game-flow events carry **side effects beyond state** — they trigger UI sequences, blocking prompts, and save data syncs that aren't captured by snapshot flags alone. These are sent in a separate **`GameFlowEventBatch`** message with reliable, ordered delivery (TCP/WebSocket guarantees this; for in-process transport it's automatic). The client dispatches game-flow events through a dedicated `screen::dispatch_game_flow_events()` method (see [Phase 16](phase-16-split-screen-act.md) for the `screen::act()` split).
+Game-flow events carry **side effects beyond state** — they trigger UI sequences, blocking prompts, and save data syncs that aren't captured by snapshot flags alone. These are sent in a separate **`GameFlowEventBatch`** message with reliable, ordered delivery (TCP/WebSocket guarantees this; for in-process transport it's automatic). The client dispatches game-flow events through a dedicated `screen::dispatch_game_flow_events()` method (see [Phase 16](phase-16-split-screen-act.md) for the gameplay-wrapper split).
 
 All game-flow-critical **state** (level completion, player death, game end) MUST also be derivable from `WorldSnapshot` flags (`level_done`, `game_ended`, `dead`, etc.) as a consistency guarantee. The events trigger the UI transitions; the snapshot flags are the source of truth. If a client reconnects and missed events, the snapshot flags let it recover to the correct state (though it may miss the transition animation).
 

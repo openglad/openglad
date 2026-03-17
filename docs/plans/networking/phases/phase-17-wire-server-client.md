@@ -1,8 +1,8 @@
 # Phase 17: Wire Up GameServer/GameClient Alongside Old Path
 
-> **See also:** [Phase 15 (GameServer/GameClient)](phase-15-server-client.md) | [Phase 16 (screen::act() split)](phase-16-split-screen-act.md) | [Phase 14 (InProcessTransport)](phase-14-inprocess-transport.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
+> **See also:** [Phase 15 (GameServer/GameClient)](phase-15-server-client.md) | [Phase 16 (legacy wrapper split)](phase-16-split-screen-act.md) | [Phase 14 (InProcessTransport)](phase-14-inprocess-transport.md) | [Verification Strategy](docs/plans/networking/common/verification-strategy.md)
 
-Create the GameServer/GameClient in-process wiring, running alongside the existing `screen::act()` path. Both paths work during this phase.
+Create the GameServer/GameClient in-process wiring, running alongside the existing single-process gameplay path. Both paths work during this phase.
 
 **Changes:**
 - `glad_init()` / `glad_main()` in `src/platform/sdl/glad_gameplay.cpp:35-114` create GameServer + GameClient(s) based on `save_data.numplayers`
@@ -39,6 +39,6 @@ Steps 3-9 (server) and 10-14 (client) each have their own `GameplayContextGuard`
 - Emscripten state machine in `src/platform/sdl/glad.cpp` gets equivalent routing (the `GameState::Playing` branch at lines ~173-205)
 - `screen::ready_for_battle()` (`src/interface/screen.cpp:693-720`) continues to set up viewscreens as before — the client just feeds them from snapshots instead of direct simulation
 
-**Level editor (`openscen`) compatibility:** The editor has its own main loop (`level_editor()` at `level_editor.cpp:2995`) that never calls `screen::act()`, `game_frame()`, or `world_.tick()`. It only reads `world().grid` and `world().end` for editor purposes. Removing `screen::act()` does not break the editor build or runtime. Verified: zero `OPENSCEN` preprocessor guards exist in the codebase — the editor and game share the same source but diverge at the event loop level.
+**Level editor (`openscen`) compatibility:** The editor has its own main loop (`level_editor()` at `level_editor.cpp:2995`) that never calls the gameplay wrapper, `game_frame()`, or `world_.tick()`. It only reads `world().grid` and `world().end` for editor purposes. Removing the wrapper does not break the editor build or runtime. Verified: zero `OPENSCEN` preprocessor guards exist in the codebase — the editor and game share the same source but diverge at the event loop level.
 
-**Verify:** Game plays identically to before but internally uses server/client. Old `screen::act()` wrapper still exists but is no longer called from the game loop. Performance acceptable (InProcessTransport zero-copy adds negligible overhead). Manual playtesting with 1-4 players in split-screen.
+**Verify:** Game plays identically to before but internally uses server/client. The old compatibility wrapper still exists but is no longer called from the game loop. Performance acceptable (InProcessTransport zero-copy adds negligible overhead). Manual playtesting with 1-4 players in split-screen.

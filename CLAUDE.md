@@ -125,9 +125,9 @@ Version tracking and upgrade policy in `third_party/VENDORED_LIBS.md`.
 main() → io_init → GameSession(cfg) → init_input → intro_main
   → picker_main (team selection loop)
     → glad_main → game_frame loop:
-        screen::input()  → handle events
-        screen::act()    → game logic (walker::act for each entity)
-        screen::redraw() → render frame
+        screen::input()              → handle events
+        local transport shadow tick → client input + server sim + mirror sync
+        screen::redraw()            → render frame
 ```
 
 On Emscripten: `emscripten_set_main_loop(emscripten_frame_wrapper)` drives a state machine (Picker → Playing → Picker).

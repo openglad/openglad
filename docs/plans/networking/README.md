@@ -44,9 +44,9 @@ Networked multiplayer for OpenGlad, implemented in incremental phases. Server-au
 | [Phase 13](phases/phase-13-transport-interface.md) | ITransport Interface + Protocol Framing | Abstract transport, message framing, Hello handshake, message types |
 | [Phase 14](phases/phase-14-inprocess-transport.md) | In-Process Transport | Zero-copy local transport, ValidatingInProcessTransport, NetworkTestFixture |
 | [Phase 15](phases/phase-15-server-client.md) | GameServer and GameClient | Server-authoritative core, input jitter policy, exit/pause protocols, divergence detection |
-| [Phase 16](phases/phase-16-split-screen-act.md) | Split `screen::act()` | Pure refactor into `tick_world()`, `dispatch_cosmetic_events()`, `dispatch_game_flow_events()` |
+| [Phase 16](phases/phase-16-split-screen-act.md) | Split Legacy Gameplay Wrapper | Pure refactor into `tick_world()`, `dispatch_cosmetic_events()`, `dispatch_game_flow_events()` |
 | [Phase 17](phases/phase-17-wire-server-client.md) | Wire Up GameServer/GameClient | In-process server/client wiring alongside old path |
-| [Phase 18](phases/phase-18-migrate-tests.md) | Migrate Tests and Delete Wrapper | All tests on server/client path, delete `screen::act()` wrapper |
+| [Phase 18](phases/phase-18-migrate-tests.md) | Migrate Tests and Delete Wrapper | All tests on server/client path, delete the legacy gameplay wrapper |
 | [Phase 19](phases/phase-19-visual-interpolation.md) | Client-Side Visual Interpolation | Position lerp at render framerate |
 
 ### Lobby System (Phases 20–23)

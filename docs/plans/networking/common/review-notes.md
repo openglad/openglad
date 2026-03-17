@@ -11,7 +11,7 @@ The following claims in this plan have been verified against the actual codebase
 - `SimEntity` has 19 fields (16 public + 3 protected), no `entity_id_` yet (Phase 1)
 - `add_to_list()` is private on GameWorld (Phase 1)
 - All 5 cross-reference pointers at documented locations (Phase 2)
-- `statistics::controller` stale-pointer cleanup bug confirmed — NOT cleaned in `GameWorld::tick()` lines 989-1014. The comment at lines 1017-1018 about "viewscreen control pointer cleanup" refers to `viewscreen::control` (cleaned in `screen::act()` lines 909-913), NOT `statistics::controller` — these are different pointers. (Phase 2)
+- `statistics::controller` stale-pointer cleanup bug confirmed — NOT cleaned in `GameWorld::tick()` lines 989-1014. The comment at lines 1017-1018 about "viewscreen control pointer cleanup" refers to `viewscreen::control` (cleaned in the former screen-level viewscreen-control cleanup), NOT `statistics::controller` — these are different pointers. (Phase 2)
 - `fxlist` stale-pointer cleanup bug confirmed — NOT iterated in `GameWorld::tick()` lines 989-1014 (Phase 2)
 - Entity lists are `std::list<std::unique_ptr<walker>>` (Phase 5)
 - `NUM_SPECIALS = 6` at `statistics.h:30` (Phase 5)
@@ -33,8 +33,8 @@ The following claims in this plan have been verified against the actual codebase
 - `OG_GAMEPLAY_COMPONENT_SOURCES` aggregates `OG_SIM_SOURCES` + `OG_ENTITIES_SOURCES` + other gameplay files at CMakeLists.txt:377 (Module Placement)
 - Only `weap` has extra data fields (`do_bounce` at `weap.h:44`); `living`, `treasure`, `effect` are behavior-only (Phase 5)
 - `damage_tile()` at `screen.cpp:1258-1286` directly mutates `world_.grid.data[]` — only grass tiles (PIX_GRASS1-4 -> PIX_GRASS1_DAMAGED) (Phase 5/6)
-- `screen::act()` calls `world_.tick()` first (line 905), then dispatches events (lines 920-978) (Phase 16)
-- `screen::act()` has 8 early return paths: lines 903, 955, 1017, 1031, 1036, 1043, 1066, 1068 (Phase 16)
+- The legacy gameplay wrapper calls `world_.tick()` first (line 905), then dispatches events (lines 920-978) (Phase 16)
+- The legacy gameplay wrapper has 8 early return paths: lines 903, 955, 1017, 1031, 1036, 1043, 1066, 1068 (Phase 16)
 - `game_frame_with_result()` does exactly 1 tick (`s.act()` at line 67) + 1 render (`s.redraw()` at line 81) per call (Phase 12)
 - CMake: `OG_PLATFORM_SOURCES` has exactly 4 files, `OG_SIM_SOURCES` has 2 files, `og_ext_zlib` target exists at line 746, vendored lib pattern at lines 742-776, Emscripten `-sASYNCIFY` at lines 1652-1668 (Phases 12, 23, 26)
 - `InputState` structure: `PlayerInput` with `held[16]` + `pressed[16]`, `InputState` with `players[4]` + `quit_requested` (Phase 4)
@@ -55,7 +55,7 @@ The following claims in this plan have been verified against the actual codebase
 - `GameplayContext` holds `world`, `save`, `sim_events`, `config`, `rng_override_ref`, `pathfinding` (Phase 7)
 - `GameSession` owns `world_owner_`, `prefs_owner_`, `screen_owner_` (Phase 7)
 - `transform_to()` (`walker.cpp:1234`) changes `order`/`family` in-place without changing C++ subclass — only changes family within the same Order in practice (slimes: Living->Living, waves: Weapon->Weapon) (Phase 6/7)
-- `exit_on_eat()` (`treasure_family_navigation.cpp:36-98`) emits `RequestExitConfirmation` when player walks onto exit tile — blocking `yes_or_no_prompt()` in current `screen::act()` at line 994 (Phase 15)
+- `exit_on_eat()` (`treasure_family_navigation.cpp:36-98`) emits `RequestExitConfirmation` when player walks onto exit tile — blocking `yes_or_no_prompt()` in the legacy gameplay wrapper at line 994 (Phase 15)
 - Emscripten accumulator pattern in `emscripten_frame_wrapper()` (`glad.cpp:133-223`): accumulates browser frame deltas, gates logic at target frame time, clamps anti-spiral (Phase 12)
 
 **Corrections applied during review:**
@@ -67,7 +67,7 @@ The following claims in this plan have been verified against the actual codebase
 - `fxlist` stale-pointer cleanup is missing from `GameWorld::tick()` — second pre-existing bug alongside the `controller` bug (Phase 2)
 - Death callback chain is deeper than originally documented: `effect::death()` and `weap::death()` delegate to family descriptor `on_death` callbacks that create entities (bombs -> explosions, slimes -> smaller slimes with myguy transfer). Snapshot application bypasses death entirely rather than suppressing it (Phase 7)
 - `walker::~walker()` is separate from `death()` — destructor path is safe for snapshot application (clears pointers, removes from obmap, resets render/stats — no entity creation, no events, no RNG) (Phase 7)
-- `screen::act()` EndGame early return (line 951-955) calls `events.clear()` — server must capture ALL events before the early return (Phase 15)
+- The legacy gameplay wrapper EndGame early return (line 951-955) calls `events.clear()` — server must capture ALL events before the early return (Phase 15)
 - `RequestExitConfirmation` is a blocking UI prompt that can't run on a headless server — replaced with freeze-and-ask protocol: server pauses sim, broadcasts prompt, any player can respond, timeout auto-declines (Phase 15)
 - `completed_levels` (std::set<int>) is campaign progression, belongs in InitialSetup not per-tick snapshots. Must be updated in each `InitialSetup` during level transitions (Phase 5/15)
 - `smooth.cpp:36` has a `std::rand()` fallback in `rng()` — additional migration target (Phase 0)
@@ -75,7 +75,7 @@ The following claims in this plan have been verified against the actual codebase
 - `SetEnd` event: defined in `EventKind` enum but has zero push sites in `src/gameplay/` — appears vestigial (Phase 5)
 - `current_game` thread-local is a critical implicit dependency: ~332 occurrences across 39 files, `GameWorld::tick()` silently returns if null, obmap collision code dereferences it directly. `GameplayContextGuard` RAII added to catch context-switch bugs (Phase 7)
 - `guy` fields mutate during gameplay (exp, kills, scen_damage, etc.) — must be included in snapshots for player-controlled entities (Phase 5/6)
-- `screen::act()` has 8 early return paths (not "5+" as originally noted): lines 903, 955, 1017, 1031, 1036, 1043, 1066, 1068 (Phase 16)
+- The legacy gameplay wrapper has 8 early return paths (not "5+" as originally noted): lines 903, 955, 1017, 1031, 1036, 1043, 1066, 1068 (Phase 16)
 - `viewscreen::control` cleanup (screen.cpp:909-913) is distinct from `statistics::controller` — different pointers, different cleanup locations (Phase 2)
 
 ---
@@ -105,7 +105,7 @@ The following observations come from an independent review of the plan against t
 - `statistics::controller` is NOT cleaned in that same loop — confirmed the second bug is real
 - Dead player entity condition at line 1022: `ob && ob->dead && ob->myguy == nullptr` — entities with `myguy` stay in oblist, confirmed
 - `fxlist` dead entity cleanup at lines 1035-1038 uses `std::erase_if` (just erases, doesn't move to dead_list) — different from oblist's `dead_list.push_back()` pattern
-- Level editor (`level_editor.cpp:2995-3526`) has its own event loop, never calls `screen::act()`, `game_frame()`, or `world_.tick()`. Zero `#ifdef OPENSCEN` guards exist in the codebase. Editor shares `og_game` link target but diverges at the event loop level. Deleting `screen::act()` (Phase 16) does NOT break the editor.
+- Level editor (`level_editor.cpp:2995-3526`) has its own event loop, never calls the gameplay wrapper, `game_frame()`, or `world_.tick()`. Zero `#ifdef OPENSCEN` guards exist in the codebase. Editor shares `og_game` link target but diverges at the event loop level. Deleting the wrapper (Phase 16) does NOT break the editor.
 - `obmap::add()` at `obmap.h:35` — confirmed defensive (checks `walker_to_pos` for existing entry, removes first if present). The obmap update strategy in Phase 7 is correct.
 - `GameWorld::entity_factory`, `entity_configurator`, `entity_derived_stats` are `std::function` callbacks at `game_world.h:148-150` — confirmed they are set by the platform layer and available on both SDL and headless clients
 - `SimEventLog` is owned by `GameContext` (`ctx().sim_events`), not by `GameWorld` — the suppression flag correctly belongs on `SimEventLog` itself (Phase 7 augmentation)
@@ -141,7 +141,7 @@ Spot-checked against actual source:
 - `smooth.cpp:29-37` fallback chain — confirmed: tries `gameplay_rng_override()`, then `current_game->world->rng_`, then `std::rand()`.
 - Stale-pointer cleanup at `game_world.cpp:989-1014` — confirmed iterates `oblist` and `weaplist` only. `fxlist` NOT iterated. `statistics::controller` NOT cleaned. Both bugs real.
 - `timer_wait` adjustable in-game at `view.cpp:1352-1360` — confirmed range 0-20, default 6, ±2 per keypress.
-- `screen::act()` at `screen.cpp:897-1068` — confirmed: calls `world_.tick()` first (line 905), then dispatches events (lines 920-978), then handles exit/withdraw prompts with blocking `yes_or_no_prompt()` at line 994.
+- The former gameplay wrapper at `screen.cpp:897-1068` — confirmed: calls `world_.tick()` first (line 905), then dispatches events (lines 920-978), then handles exit/withdraw prompts with blocking `yes_or_no_prompt()` at line 994.
 - `game_frame_with_result()` at `game_loop.cpp:39-168` — confirmed: does exactly 1 `s.act()` (line 67) + 1 `s.redraw()` (line 81) + `time_delay()` FPS cap (lines 152-164) per call.
 - `weap::do_bounce` at `weap.h:44` — confirmed only extra field on subclasses. `living`, `treasure`, `effect` are behavior-only.
 - `walker::~walker()` is separate from `walker::death()` — confirmed: destructor does NOT call death(). Safe for snapshot entity removal.
@@ -207,11 +207,11 @@ The following decisions were made via discussion and are reflected in inline edi
 1. **Phase 3 promoted to mandatory (post-Phase 2).** The ~477 compiler errors are mechanical and worth doing early. Eliminates `sync_ids_from_pointers()` UB risk before any snapshot code is written. Every subsequent phase benefits from enforced setter usage.
 
 2. **Phase 16 split into three sub-phases (16/17/18).** Isolates the three risks:
-   - 15: Pure refactor — split `screen::act()` into sub-methods, keep wrapper. All tests pass unchanged.
+   - 15: Pure refactor — split the legacy gameplay wrapper into sub-methods, keep the wrapper. All tests pass unchanged.
    - 16: Wire up GameServer/GameClient alongside old path. Both paths work.
    - 17: Migrate game-loop tests to server/client path, delete wrapper. No fallback.
 
-3. **Integration tests migrate to server/client path (Phase 18).** Integration tests that call `game_frame()` or `screen::act()` are updated to use `NetworkTestFixture`. Tests exercise the real networking code path as a side effect.
+3. **Integration tests migrate to server/client path (Phase 18).** Integration tests that call `game_frame()` or the legacy gameplay wrapper are updated to use `NetworkTestFixture`. Tests exercise the real networking code path as a side effect.
 
 4. **InProcessTransport is zero-copy.** Passes `shared_ptr<WorldSnapshot>` and `shared_ptr<InputState>` directly — no serialize/deserialize round-trip for local play. Serialization path exercised by unit tests and networked play only.
 
@@ -369,7 +369,7 @@ All plan claims re-verified against source via thorough codebase exploration. Sp
 - `walker_init_common` at `walker.cpp:92-126` — `path_check_counter = 5 + rand()%10` at line 121 confirmed (non-deterministic). All pointer initializations to nullptr confirmed.
 - `smooth.cpp:29-37` — Three-level RNG fallback confirmed: `gameplay_rng_override()` → `current_game->world->rng_` → `std::rand()`.
 - `game_frame_with_result()` at `game_loop.cpp:39-168` — Confirmed: 1 tick (`s.act()` line 67) + 1 render (`s.redraw()` line 81). Input poll AFTER tick (line 135).
-- `screen::act()` at `screen.cpp:897-1010+` — `world_.tick()` first (line 905), event dispatch (lines 918-978), blocking exit prompt (`yes_or_no_prompt()` line 994) confirmed.
+- The former gameplay wrapper at `screen.cpp:897-1010+` — `world_.tick()` first (line 905), event dispatch (lines 918-978), blocking exit prompt (`yes_or_no_prompt()` line 994) confirmed.
 - `SimEventLog` at `sim_event_log.h:21-58` — Accumulate/drain pattern. 9 `EventKind` types. `drain()` returns and clears.
 - Entity factory callbacks at `game_world.h:148-150` — `std::function` callbacks set by platform layer, available on both SDL and headless.
 - `obmap` at `obmap.h:28-46` — Dual data structure (`pos_to_walker` + `walker_to_pos`). `add()` is defensive (remove-then-add if exists).
