@@ -1620,12 +1620,24 @@ if(NOT EMSCRIPTEN)
             set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
         endif()
 
+        set(OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT 55)
+        set(OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT 60)
+        if(ENABLE_SANITIZERS)
+            # ASan/UBSan plus parallel load can push the headless text sim
+            # past the normal 55s script timeout without indicating a hang.
+            set(OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT 120)
+            set(OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT 180)
+        endif()
+
         add_test(NAME openglad_text_sim
-            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_client.sh $<TARGET_FILE:openglad_text>
+            COMMAND ${CMAKE_COMMAND} -E env
+                OPENGLAD_TEXT_TIMEOUT=${OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT}
+                ${CMAKE_SOURCE_DIR}/scripts/test_text_client.sh
+                $<TARGET_FILE:openglad_text>
         )
         set_tests_properties(openglad_text_sim PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            TIMEOUT 60
+            TIMEOUT ${OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT}
         )
 
         if(ENABLE_COVERAGE)
