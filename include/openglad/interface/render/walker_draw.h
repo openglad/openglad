@@ -7,6 +7,10 @@
  */
 #pragma once
 
+namespace og::sim {
+class GameClient;
+}
+
 class walker;
 class viewscreen;
 
@@ -27,3 +31,10 @@ bool draw_walker(walker& w, viewscreen* view_buf);
 bool draw_walker_tile(walker& w, viewscreen* view_buf);
 void draw_walker_path(walker& w, viewscreen* view_buf);
 void draw_small_health_bar(walker* w, viewscreen* view_buf);
+
+#ifdef TESTING
+void walker_draw_testing_set_interpolation_client(
+    const og::sim::GameClient* client);
+void walker_draw_testing_set_interpolation_alpha(float alpha);
+void walker_draw_testing_clear_interpolation_overrides();
+#endif

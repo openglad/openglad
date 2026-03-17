@@ -30,8 +30,19 @@ static bool float_eq(float a, float b)
     return (a == b || (a - 0.000001f < b && a + 0.000001f > b));
 }
 
+#ifdef TESTING
+const og::sim::GameClient* s_testing_interpolation_client = nullptr;
+bool s_testing_interpolation_alpha_enabled = false;
+float s_testing_interpolation_alpha = 1.0f;
+#endif
+
 static const og::sim::GameClient* display_game_client()
 {
+#ifdef TESTING
+    if (s_testing_interpolation_client != nullptr)
+        return s_testing_interpolation_client;
+#endif
+
     using namespace og::runtime;
     if (current_session == nullptr ||
         !local_transport_active(*current_session))
@@ -54,6 +65,11 @@ static WalkerRenderPosition current_position(const walker& w)
 
 float query_render_interpolation_alpha()
 {
+#ifdef TESTING
+    if (s_testing_interpolation_alpha_enabled)
+        return s_testing_interpolation_alpha;
+#endif
+
     const og::sim::GameClient* const client = display_game_client();
     return client != nullptr ? client->render_interpolation_alpha() : 1.0f;
 }
@@ -76,6 +92,27 @@ WalkerRenderPosition resolve_walker_render_position(const walker& w,
         .ypos = position->ypos,
     };
 }
+
+#ifdef TESTING
+void walker_draw_testing_set_interpolation_client(
+    const og::sim::GameClient* client)
+{
+    s_testing_interpolation_client = client;
+}
+
+void walker_draw_testing_set_interpolation_alpha(float alpha)
+{
+    s_testing_interpolation_alpha = alpha;
+    s_testing_interpolation_alpha_enabled = true;
+}
+
+void walker_draw_testing_clear_interpolation_overrides()
+{
+    s_testing_interpolation_client = nullptr;
+    s_testing_interpolation_alpha = 1.0f;
+    s_testing_interpolation_alpha_enabled = false;
+}
+#endif
 
 static void draw_damage_number(walker::DamageNumber& dn, viewscreen* view_buf)
 {
