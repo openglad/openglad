@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <array>
+#include <memory>
 
 namespace {
 
@@ -103,6 +104,41 @@ og::sim::SimEventBatch make_event_batch(std::uint32_t sequence)
         .text = {},
     });
     return batch;
+}
+
+og::sim::LobbyState make_lobby_state()
+{
+    og::sim::LobbyCharacterData character;
+    character.guy_id = 7;
+    character.name = "Lobby Hero";
+    character.family = 1;
+    character.strength = 14;
+    character.dexterity = 13;
+    character.constitution = 12;
+    character.intelligence = 11;
+    character.armor = 10;
+    character.exp = 900u;
+    character.level = 4;
+    character.teamnum = 2;
+
+    og::sim::LobbyPlayer player;
+    player.player_index = 1u;
+    player.name = "Lobby Host";
+    player.team = 2;
+    player.ready = true;
+    player.is_host = true;
+    player.character_slots.push_back({
+        .slot_index = 0u,
+        .character = character,
+    });
+
+    og::sim::LobbyState state;
+    state.settings.campaign_id = "org.openglad.gladiator";
+    state.settings.scenario_id = 5;
+    state.settings.difficulty = 2;
+    state.settings.allied_mode = 1;
+    state.players.push_back(player);
+    return state;
 }
 
 std::pair<short, short> find_damageable_grid_tile(const GameWorld& world)
@@ -373,6 +409,48 @@ TEST(NetTransportInProcess, validating_mode_roundtrips_all_typed_messages)
     EXPECT_EQ(19u, server_messages[0].tick);
     ASSERT_NE(nullptr, server_messages[0].input);
     expect_input_state_eq(input, *server_messages[0].input);
+}
+
+TEST(NetTransportInProcess, validating_mode_roundtrips_lobby_messages)
+{
+    const auto pair = og::sim::InProcessTransport::create_linked_pair(
+        {.validate_serialization = true});
+
+    const og::sim::LobbyState state = make_lobby_state();
+    pair.server->send_lobby_state(
+        pair.peer_id,
+        std::make_shared<og::sim::LobbyState>(state));
+
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 1u,
+        .settings =
+            {
+                .campaign_id = "org.openglad.gladiator",
+                .scenario_id = 6,
+                .difficulty = 1,
+                .allied_mode = 0,
+            },
+    };
+    pair.client->send_lobby_message(
+        pair.peer_id,
+        std::make_shared<og::sim::LobbyMessage>(message));
+
+    const std::vector<og::sim::TypedReceivedMessage> client_messages =
+        pair.client->poll_typed();
+    ASSERT_EQ(1u, client_messages.size());
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyState,
+              client_messages[0].kind);
+    ASSERT_NE(nullptr, client_messages[0].lobby_state);
+    EXPECT_EQ(state, *client_messages[0].lobby_state);
+
+    const std::vector<og::sim::TypedReceivedMessage> server_messages =
+        pair.server->poll_typed();
+    ASSERT_EQ(1u, server_messages.size());
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyMessage,
+              server_messages[0].kind);
+    ASSERT_NE(nullptr, server_messages[0].lobby_message);
+    EXPECT_EQ(message, *server_messages[0].lobby_message);
 }
 
 TEST(NetTransportInProcess,

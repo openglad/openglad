@@ -198,8 +198,9 @@ private:
     bool ok_ = true;
 };
 
-void append_initial_setup_guy(std::vector<std::uint8_t>& payload,
-                              const og::sim::InitialSetupGuyData& guy)
+template <typename GuyLike>
+void append_serialized_guy(std::vector<std::uint8_t>& payload,
+                           const GuyLike& guy)
 {
     append_i32(payload, guy.guy_id);
     append_string(payload, guy.name);
@@ -225,11 +226,12 @@ void append_initial_setup_guy(std::vector<std::uint8_t>& payload,
     append_i16(payload, guy.level);
 }
 
-constexpr std::size_t kMinSerializedInitialSetupGuySize = 59;
+constexpr std::size_t kMinSerializedGuyDataSize = 59;
 
-og::sim::InitialSetupGuyData read_initial_setup_guy(PayloadReader& reader)
+template <typename GuyLike>
+GuyLike read_serialized_guy(PayloadReader& reader)
 {
-    og::sim::InitialSetupGuyData guy;
+    GuyLike guy;
     guy.guy_id = reader.read_i32();
     guy.name = reader.read_string();
     guy.family = static_cast<std::int8_t>(reader.read_u8());
@@ -253,6 +255,93 @@ og::sim::InitialSetupGuyData read_initial_setup_guy(PayloadReader& reader)
     guy.scen_hits = reader.read_i16();
     guy.level = reader.read_i16();
     return guy;
+}
+
+void append_initial_setup_guy(std::vector<std::uint8_t>& payload,
+                              const og::sim::InitialSetupGuyData& guy)
+{
+    append_serialized_guy(payload, guy);
+}
+
+og::sim::InitialSetupGuyData read_initial_setup_guy(PayloadReader& reader)
+{
+    return read_serialized_guy<og::sim::InitialSetupGuyData>(reader);
+}
+
+void append_lobby_settings(std::vector<std::uint8_t>& payload,
+                           const og::sim::LobbySettings& settings)
+{
+    append_string(payload, settings.campaign_id);
+    append_i16(payload, settings.scenario_id);
+    append_i16(payload, settings.difficulty);
+    append_i16(payload, settings.allied_mode);
+}
+
+og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
+{
+    og::sim::LobbySettings settings;
+    settings.campaign_id = reader.read_string();
+    settings.scenario_id = reader.read_i16();
+    settings.difficulty = reader.read_i16();
+    settings.allied_mode = reader.read_i16();
+    return settings;
+}
+
+constexpr std::size_t kMinSerializedLobbyCharacterSlotSize =
+    1 + kMinSerializedGuyDataSize;
+constexpr std::size_t kMinSerializedLobbyPlayerSize = 13;
+
+void append_lobby_character_slot(std::vector<std::uint8_t>& payload,
+                                 const og::sim::LobbyCharacterSlot& slot)
+{
+    append_u8(payload, slot.slot_index);
+    append_serialized_guy(payload, slot.character);
+}
+
+og::sim::LobbyCharacterSlot read_lobby_character_slot(PayloadReader& reader)
+{
+    og::sim::LobbyCharacterSlot slot;
+    slot.slot_index = reader.read_u8();
+    slot.character = read_serialized_guy<og::sim::LobbyCharacterData>(reader);
+    return slot;
+}
+
+void append_lobby_player(std::vector<std::uint8_t>& payload,
+                         const og::sim::LobbyPlayer& player)
+{
+    append_u8(payload, player.player_index);
+    append_string(payload, player.name);
+    append_i16(payload, player.team);
+    append_bool(payload, player.ready);
+    append_bool(payload, player.is_host);
+    append_u32(payload,
+               static_cast<std::uint32_t>(player.character_slots.size()));
+    for (const auto& slot : player.character_slots)
+        append_lobby_character_slot(payload, slot);
+}
+
+og::sim::LobbyPlayer read_lobby_player(PayloadReader& reader)
+{
+    og::sim::LobbyPlayer player;
+    player.player_index = reader.read_u8();
+    player.name = reader.read_string();
+    player.team = reader.read_i16();
+    player.ready = reader.read_bool();
+    player.is_host = reader.read_bool();
+    const std::uint32_t slot_count = reader.read_u32();
+    if (!reader.ok() ||
+        slot_count >
+            reader.remaining_bytes() / kMinSerializedLobbyCharacterSlotSize)
+    {
+        reader.fail();
+        return player;
+    }
+
+    player.character_slots.clear();
+    player.character_slots.reserve(slot_count);
+    for (std::uint32_t i = 0; i < slot_count && reader.ok(); ++i)
+        player.character_slots.push_back(read_lobby_character_slot(reader));
+    return player;
 }
 
 template <typename Message>
@@ -324,7 +413,7 @@ std::optional<InitialSetupMessage> deserialize_initial_setup_message(
             const std::uint32_t guy_count = reader.read_u32();
             if (!reader.ok() ||
                 guy_count >
-                    reader.remaining_bytes() / kMinSerializedInitialSetupGuySize)
+                    reader.remaining_bytes() / kMinSerializedGuyDataSize)
             {
                 reader.fail();
                 return;
@@ -346,6 +435,147 @@ std::optional<InitialSetupMessage> deserialize_initial_setup_message(
                 message.completed_levels.push_back(reader.read_i32());
             for (std::uint32_t& entity_id : message.controlled_entity_ids)
                 entity_id = reader.read_u32();
+        });
+}
+
+std::vector<std::uint8_t> serialize_lobby_message(const LobbyMessage& message)
+{
+    std::vector<std::uint8_t> payload;
+    append_u8(payload, lobby_message_kind_value(message.kind()));
+    std::visit(
+        [&payload](const auto& lobby_message) {
+            using Message = std::decay_t<decltype(lobby_message)>;
+            if constexpr (std::is_same_v<Message, LobbyJoinMessage>)
+            {
+                append_lobby_player(payload, lobby_message.player);
+            }
+            else if constexpr (std::is_same_v<Message, LobbyLeaveMessage>)
+            {
+                append_u8(payload, lobby_message.player_index);
+            }
+            else if constexpr (std::is_same_v<Message, LobbyReadyMessage>)
+            {
+                append_u8(payload, lobby_message.player_index);
+                append_bool(payload, lobby_message.ready);
+            }
+            else if constexpr (std::is_same_v<Message, LobbyTeamChangeMessage>)
+            {
+                append_u8(payload, lobby_message.player_index);
+                append_i16(payload, lobby_message.team);
+            }
+            else if constexpr (std::is_same_v<Message, LobbyStartGameMessage>)
+            {
+                append_u8(payload, lobby_message.player_index);
+            }
+            else if constexpr (std::is_same_v<Message,
+                                              LobbySettingsChangeMessage>)
+            {
+                append_u8(payload, lobby_message.player_index);
+                append_lobby_settings(payload, lobby_message.settings);
+            }
+        },
+        message.payload);
+    return wrap_transport_message(kLobbyMessageType, payload);
+}
+
+std::optional<LobbyMessage> deserialize_lobby_message(
+    std::span<const std::uint8_t> bytes)
+{
+    return deserialize_message<LobbyMessage>(
+        bytes, kLobbyMessageType,
+        [](PayloadReader& reader, LobbyMessage& message) {
+            const LobbyMessageKind kind =
+                static_cast<LobbyMessageKind>(reader.read_u8());
+            switch (kind)
+            {
+            case LobbyMessageKind::Join:
+            {
+                LobbyJoinMessage join;
+                join.player = read_lobby_player(reader);
+                message.payload = std::move(join);
+                break;
+            }
+
+            case LobbyMessageKind::Leave:
+            {
+                LobbyLeaveMessage leave;
+                leave.player_index = reader.read_u8();
+                message.payload = leave;
+                break;
+            }
+
+            case LobbyMessageKind::Ready:
+            {
+                LobbyReadyMessage ready;
+                ready.player_index = reader.read_u8();
+                ready.ready = reader.read_bool();
+                message.payload = ready;
+                break;
+            }
+
+            case LobbyMessageKind::TeamChange:
+            {
+                LobbyTeamChangeMessage team_change;
+                team_change.player_index = reader.read_u8();
+                team_change.team = reader.read_i16();
+                message.payload = team_change;
+                break;
+            }
+
+            case LobbyMessageKind::StartGame:
+            {
+                LobbyStartGameMessage start_game;
+                start_game.player_index = reader.read_u8();
+                message.payload = start_game;
+                break;
+            }
+
+            case LobbyMessageKind::SettingsChange:
+            {
+                LobbySettingsChangeMessage settings_change;
+                settings_change.player_index = reader.read_u8();
+                settings_change.settings = read_lobby_settings(reader);
+                message.payload = std::move(settings_change);
+                break;
+            }
+
+            default:
+                reader.fail();
+                return;
+            }
+        });
+}
+
+std::vector<std::uint8_t> serialize_lobby_state_message(const LobbyState& state)
+{
+    std::vector<std::uint8_t> payload;
+    append_lobby_settings(payload, state.settings);
+    append_u32(payload, static_cast<std::uint32_t>(state.players.size()));
+    for (const auto& player : state.players)
+        append_lobby_player(payload, player);
+    return wrap_transport_message(kLobbyStateMessageType, payload);
+}
+
+std::optional<LobbyState> deserialize_lobby_state_message(
+    std::span<const std::uint8_t> bytes)
+{
+    return deserialize_message<LobbyState>(
+        bytes, kLobbyStateMessageType,
+        [](PayloadReader& reader, LobbyState& state) {
+            state.settings = read_lobby_settings(reader);
+            const std::uint32_t player_count = reader.read_u32();
+            if (!reader.ok() ||
+                player_count >
+                    reader.remaining_bytes() / kMinSerializedLobbyPlayerSize)
+            {
+                reader.fail();
+                return;
+            }
+
+            state.players.clear();
+            state.players.reserve(player_count);
+            for (std::uint32_t i = 0; i < player_count && reader.ok(); ++i)
+                state.players.push_back(read_lobby_player(reader));
         });
 }
 
@@ -558,6 +788,27 @@ void ITransport::send_game_flow_event_batch(
 
     const std::vector<std::uint8_t> bytes =
         serialize_game_flow_event_batch(*batch);
+    send(peer_id, bytes.data(), bytes.size());
+}
+
+void ITransport::send_lobby_message(PeerId peer_id,
+                                    std::shared_ptr<LobbyMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::vector<std::uint8_t> bytes = serialize_lobby_message(*message);
+    send(peer_id, bytes.data(), bytes.size());
+}
+
+void ITransport::send_lobby_state(PeerId peer_id,
+                                  std::shared_ptr<LobbyState> state)
+{
+    if (!state)
+        return;
+
+    const std::vector<std::uint8_t> bytes =
+        serialize_lobby_state_message(*state);
     send(peer_id, bytes.data(), bytes.size());
 }
 

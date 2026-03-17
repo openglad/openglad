@@ -537,6 +537,139 @@ TEST(NetTransport,
     EXPECT_EQ(hash_check, *decoded_hash_check);
 }
 
+TEST(NetTransport, lobby_state_and_messages_roundtrip)
+{
+    og::sim::LobbyCharacterData character;
+    character.guy_id = 99;
+    character.name = "Ari";
+    character.family = 2;
+    character.strength = 12;
+    character.dexterity = 13;
+    character.constitution = 14;
+    character.intelligence = 15;
+    character.armor = 16;
+    character.exp = 1234u;
+    character.kills = 8;
+    character.level_kills = 9;
+    character.total_damage = 10;
+    character.total_hits = 11;
+    character.total_shots = 12;
+    character.teamnum = 2;
+    character.scen_damage = 3.5f;
+    character.scen_kills = 4;
+    character.scen_damage_taken = 5.5f;
+    character.scen_min_hp = 6.5f;
+    character.scen_shots = 7;
+    character.scen_hits = 8;
+    character.level = 9;
+
+    og::sim::LobbyPlayer player;
+    player.player_index = 1u;
+    player.name = "Player One";
+    player.team = 2;
+    player.ready = true;
+    player.is_host = true;
+    player.character_slots.push_back({
+        .slot_index = 3u,
+        .character = character,
+    });
+
+    og::sim::LobbyState state;
+    state.settings.campaign_id = "org.openglad.gladiator";
+    state.settings.scenario_id = 7;
+    state.settings.difficulty = 2;
+    state.settings.allied_mode = 1;
+    state.players.push_back(player);
+
+    const std::vector<std::uint8_t> state_bytes =
+        og::sim::serialize_lobby_state_message(state);
+    const auto decoded_state =
+        og::sim::deserialize_lobby_state_message(state_bytes);
+    ASSERT_TRUE(decoded_state.has_value());
+    EXPECT_EQ(state, *decoded_state);
+
+    std::vector<og::sim::LobbyMessage> messages;
+
+    og::sim::LobbyMessage join;
+    join.payload = og::sim::LobbyJoinMessage{player};
+    messages.push_back(join);
+
+    og::sim::LobbyMessage leave;
+    leave.payload = og::sim::LobbyLeaveMessage{.player_index = 1u};
+    messages.push_back(leave);
+
+    og::sim::LobbyMessage ready;
+    ready.payload =
+        og::sim::LobbyReadyMessage{.player_index = 1u, .ready = false};
+    messages.push_back(ready);
+
+    og::sim::LobbyMessage team_change;
+    team_change.payload =
+        og::sim::LobbyTeamChangeMessage{.player_index = 1u, .team = 3};
+    messages.push_back(team_change);
+
+    og::sim::LobbyMessage start_game;
+    start_game.payload = og::sim::LobbyStartGameMessage{.player_index = 1u};
+    messages.push_back(start_game);
+
+    og::sim::LobbyMessage settings_change;
+    settings_change.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 1u,
+        .settings =
+            {
+                .campaign_id = "org.openglad.gladiator",
+                .scenario_id = 8,
+                .difficulty = 1,
+                .allied_mode = 0,
+            },
+    };
+    messages.push_back(settings_change);
+
+    for (const auto& message : messages)
+    {
+        const std::vector<std::uint8_t> bytes =
+            og::sim::serialize_lobby_message(message);
+        const auto decoded = og::sim::deserialize_lobby_message(bytes);
+        ASSERT_TRUE(decoded.has_value());
+        EXPECT_EQ(message.kind(), decoded->kind());
+        EXPECT_EQ(message, *decoded);
+    }
+}
+
+TEST(NetTransport,
+     deserialize_lobby_messages_rejects_unknown_kinds_and_oversized_counts)
+{
+    const auto empty_state_bytes =
+        og::sim::serialize_lobby_state_message(og::sim::LobbyState{});
+    auto oversized_player_count =
+        std::vector<std::uint8_t>(empty_state_bytes.begin(),
+                                  empty_state_bytes.end());
+    write_u32_le(oversized_player_count, 14, 0xffffffffu);
+    EXPECT_FALSE(
+        og::sim::deserialize_lobby_state_message(oversized_player_count)
+            .has_value());
+
+    og::sim::LobbyPlayer player;
+    player.player_index = 0u;
+    og::sim::LobbyState state_with_player;
+    state_with_player.players.push_back(player);
+    const auto player_state_bytes =
+        og::sim::serialize_lobby_state_message(state_with_player);
+    auto oversized_slot_count =
+        std::vector<std::uint8_t>(player_state_bytes.begin(),
+                                  player_state_bytes.end());
+    write_u32_le(oversized_slot_count, 27, 0xffffffffu);
+    EXPECT_FALSE(
+        og::sim::deserialize_lobby_state_message(oversized_slot_count)
+            .has_value());
+
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyStartGameMessage{.player_index = 0u};
+    auto bad_kind = og::sim::serialize_lobby_message(message);
+    bad_kind[og::sim::kTransportHeaderSize] = 0xffu;
+    EXPECT_FALSE(og::sim::deserialize_lobby_message(bad_kind).has_value());
+}
+
 TEST(NetTransport, game_client_dispatches_callbacks_for_runtime_state)
 {
     MockTransport transport;

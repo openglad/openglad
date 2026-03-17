@@ -920,6 +920,8 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         case TypedReceivedMessageKind::DeltaSnapshot:
         case TypedReceivedMessageKind::SimEventBatch:
         case TypedReceivedMessageKind::GameFlowEventBatch:
+        case TypedReceivedMessageKind::LobbyMessage:
+        case TypedReceivedMessageKind::LobbyState:
         case TypedReceivedMessageKind::InitialSetup:
         case TypedReceivedMessageKind::ExitPromptBroadcast:
         case TypedReceivedMessageKind::ControlChange:

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/lobby_state.h>
 
 #include <array>
 #include <cstddef>
@@ -216,6 +217,8 @@ enum class TypedReceivedMessageKind : std::uint8_t {
     Input,
     SimEventBatch,
     GameFlowEventBatch,
+    LobbyMessage,
+    LobbyState,
     InitialSetup,
     ClientReady,
     KeyframeRequest,
@@ -233,6 +236,8 @@ struct TypedReceivedMessage {
     std::shared_ptr<WorldSnapshot> snapshot;
     std::shared_ptr<InputState> input;
     std::shared_ptr<SimEventBatch> event_batch;
+    std::shared_ptr<LobbyMessage> lobby_message;
+    std::shared_ptr<LobbyState> lobby_state;
     std::shared_ptr<InitialSetupMessage> initial_setup;
     std::shared_ptr<ClientReadyMessage> client_ready;
     std::shared_ptr<KeyframeRequestMessage> keyframe_request;
@@ -248,6 +253,13 @@ struct TypedReceivedMessage {
 std::vector<std::uint8_t> serialize_initial_setup_message(
     const InitialSetupMessage& message);
 std::optional<InitialSetupMessage> deserialize_initial_setup_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_lobby_message(const LobbyMessage& message);
+std::optional<LobbyMessage> deserialize_lobby_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_lobby_state_message(
+    const LobbyState& state);
+std::optional<LobbyState> deserialize_lobby_state_message(
     std::span<const std::uint8_t> bytes);
 std::vector<std::uint8_t> serialize_client_ready_message(
     const ClientReadyMessage& message);
@@ -311,6 +323,10 @@ public:
                                       std::shared_ptr<SimEventBatch> batch);
     virtual void send_game_flow_event_batch(PeerId peer_id,
                                             std::shared_ptr<SimEventBatch> batch);
+    virtual void send_lobby_message(PeerId peer_id,
+                                    std::shared_ptr<LobbyMessage> message);
+    virtual void send_lobby_state(PeerId peer_id,
+                                  std::shared_ptr<LobbyState> state);
     virtual void send_initial_setup(PeerId peer_id,
                                     std::shared_ptr<InitialSetupMessage> message);
     virtual void send_client_ready(PeerId peer_id,

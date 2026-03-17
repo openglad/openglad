@@ -687,6 +687,10 @@ void GameClient::poll_messages()
             }
             break;
 
+        case TypedReceivedMessageKind::LobbyMessage:
+        case TypedReceivedMessageKind::LobbyState:
+            break;
+
         case TypedReceivedMessageKind::InitialSetup:
             if (message.initial_setup)
                 apply_initial_setup(*message.initial_setup);

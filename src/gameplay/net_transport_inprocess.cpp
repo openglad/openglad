@@ -539,6 +539,48 @@ void InProcessTransport::send_game_flow_event_batch(
     peer->enqueue_typed(std::move(message));
 }
 
+void InProcessTransport::send_lobby_message(
+    PeerId peer_id,
+    std::shared_ptr<LobbyMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::LobbyMessage;
+    typed_message.lobby_message = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_lobby_message,
+              deserialize_lobby_message,
+              "lobby message")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
+void InProcessTransport::send_lobby_state(
+    PeerId peer_id,
+    std::shared_ptr<LobbyState> state)
+{
+    if (!state)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::LobbyState;
+    typed_message.lobby_state = validate_serialization_
+        ? validate_message_roundtrip(
+              state,
+              serialize_lobby_state_message,
+              deserialize_lobby_state_message,
+              "lobby state")
+        : std::move(state);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
 void InProcessTransport::send_initial_setup(
     PeerId peer_id,
     std::shared_ptr<InitialSetupMessage> message)

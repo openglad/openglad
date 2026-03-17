@@ -59,6 +59,10 @@ public:
                               std::shared_ptr<SimEventBatch> batch) override;
     void send_game_flow_event_batch(PeerId peer_id,
                                     std::shared_ptr<SimEventBatch> batch) override;
+    void send_lobby_message(PeerId peer_id,
+                            std::shared_ptr<LobbyMessage> message) override;
+    void send_lobby_state(PeerId peer_id,
+                          std::shared_ptr<LobbyState> state) override;
     void send_initial_setup(PeerId peer_id,
                             std::shared_ptr<InitialSetupMessage> message) override;
     void send_client_ready(PeerId peer_id,
