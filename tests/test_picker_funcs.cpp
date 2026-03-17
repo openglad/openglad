@@ -383,7 +383,7 @@ TEST(PickerFuncs, how_many_with_team)
     og::runtime::current_session->myscreen_->save_data.team_size = saved_team_size;
 }
 
-TEST(PickerFuncs, lobby_player_mode_round_trip_clamps_inactive_teams)
+TEST(PickerFuncs, lobby_sync_preserves_sparse_team_assignments)
 {
     picker_lobby_shutdown();
 
@@ -394,26 +394,51 @@ TEST(PickerFuncs, lobby_player_mode_round_trip_clamps_inactive_teams)
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)
         old_team[i] = std::move(save.team_list[i]);
 
-    save.team_size = 3;
-    save.numplayers = 3;
+    save.team_size = 2;
+    save.numplayers = 2;
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
-    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->teamnum = 1;
     save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
-    save.team_list[1]->teamnum = 1;
-    save.team_list[2] = std::make_unique<guy>(FAMILY_ARCHER);
-    save.team_list[2]->teamnum = 2;
+    save.team_list[1]->teamnum = 3;
 
     picker_lobby_initialize_from_save();
+    picker_lobby_sync_from_save();
 
     ASSERT_EQ(4, static_cast<int>(set_player_mode(2)));
     EXPECT_EQ(2, static_cast<int>(save.numplayers));
-    ASSERT_TRUE(save.team_list[0] && save.team_list[1] && save.team_list[2]);
-    EXPECT_EQ(0, static_cast<int>(save.team_list[0]->teamnum));
-    EXPECT_EQ(1, static_cast<int>(save.team_list[1]->teamnum));
-    EXPECT_EQ(1, static_cast<int>(save.team_list[2]->teamnum));
+    ASSERT_TRUE(save.team_list[0] && save.team_list[1]);
+    EXPECT_EQ(1, static_cast<int>(save.team_list[0]->teamnum));
+    EXPECT_EQ(3, static_cast<int>(save.team_list[1]->teamnum));
 
-    ASSERT_EQ(4, static_cast<int>(set_player_mode(0)));
-    EXPECT_EQ(0, static_cast<int>(save.numplayers));
+    picker_lobby_shutdown();
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.team_size = old_team_size;
+    save.numplayers = old_numplayers;
+}
+
+TEST(PickerFuncs, lobby_sync_preserves_single_player_team_four_assignment)
+{
+    picker_lobby_shutdown();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const unsigned char old_team_size = save.team_size;
+    const unsigned char old_numplayers = save.numplayers;
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+
+    save.team_size = 1;
+    save.numplayers = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 3;
+
+    picker_lobby_initialize_from_save();
+    picker_lobby_sync_from_save();
+
+    EXPECT_EQ(1, static_cast<int>(save.numplayers));
+    ASSERT_TRUE(save.team_list[0]);
+    EXPECT_EQ(3, static_cast<int>(save.team_list[0]->teamnum));
 
     picker_lobby_shutdown();
     for (int i = 0; i < MAX_TEAM_SIZE; ++i)

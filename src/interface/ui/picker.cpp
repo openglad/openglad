@@ -176,38 +176,46 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     return result;
 }
 
-int highest_team_in_save(const SaveData& save)
+std::vector<short> collect_distinct_save_teams(const SaveData& save)
 {
-    int highest_team = 0;
+    std::vector<short> teams;
+    teams.reserve(MAX_PLAYERS);
     for (const auto& member : save.team_list)
     {
         if (!member)
             continue;
-        highest_team = std::max(highest_team, static_cast<int>(member->teamnum));
+
+        const short team = member->teamnum;
+        if (team < 0 || team >= MAX_PLAYERS)
+            continue;
+        if (std::find(teams.begin(), teams.end(), team) == teams.end())
+            teams.push_back(team);
     }
-    return highest_team;
+    return teams;
 }
 
-void clamp_team_assignments_to_active_players(SaveData& save, int active_players)
+std::vector<short> build_peer_team_mapping(const SaveData& save, bool spectator_mode)
 {
-    if (active_players <= 0)
-        return;
+    std::vector<short> teams = collect_distinct_save_teams(save);
+    const int required_players = spectator_mode
+        ? 0
+        : std::clamp<int>(save.numplayers, 1, MAX_PLAYERS);
+    const int target_count = std::max<int>(
+        required_players,
+        static_cast<int>(teams.size()));
 
-    const short max_team = static_cast<short>(active_players - 1);
-    for (auto& member : save.team_list)
+    for (short candidate = 0;
+         static_cast<int>(teams.size()) < target_count && candidate < MAX_PLAYERS;
+         ++candidate)
     {
-        if (member && member->teamnum > max_team)
-            member->teamnum = max_team;
+        if (std::find(teams.begin(), teams.end(), candidate) == teams.end())
+            teams.push_back(candidate);
     }
 
-    if (og::runtime::current_session->current_guy_
-        && og::runtime::current_session->current_guy_->teamnum > max_team)
-    {
-        og::runtime::current_session->current_guy_->teamnum = max_team;
-    }
+    if (teams.empty())
+        teams.push_back(0);
 
-    if (og::runtime::current_session->current_team_num_ > max_team)
-        og::runtime::current_session->current_team_num_ = max_team;
+    return teams;
 }
 
 class PickerLobbyRuntime
@@ -224,10 +232,8 @@ public:
             og::runtime::current_session->myscreen_->save_data.numplayers == 0;
 
         const SaveData& save = og::runtime::current_session->myscreen_->save_data;
-        int joined_players = spectator_mode_
-            ? std::max(1, highest_team_in_save(save) + 1)
-            : std::max<int>(save.numplayers, highest_team_in_save(save) + 1);
-        ensure_peer_count(std::clamp(joined_players, 1, MAX_PLAYERS));
+        const auto peer_teams = build_peer_team_mapping(save, spectator_mode_);
+        ensure_peer_count(static_cast<int>(peer_teams.size()));
         sync_from_save();
     }
 
@@ -253,13 +259,11 @@ public:
             return;
 
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
-        const int joined_players = std::max<int>(
-            static_cast<int>(peers_.size()),
-            highest_team_in_save(save) + 1);
-        ensure_peer_count(std::clamp(joined_players, 1, MAX_PLAYERS));
+        const auto peer_teams = build_peer_team_mapping(save, spectator_mode_);
+        ensure_peer_count(static_cast<int>(peer_teams.size()));
 
         send_host_settings();
-        send_player_joins();
+        send_player_joins(peer_teams);
         poll_messages();
         apply_state_to_save();
     }
@@ -280,16 +284,8 @@ public:
 
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
         spectator_mode_ = player_count == 0;
-        if (!spectator_mode_)
-        {
-            clamp_team_assignments_to_active_players(
-                save, std::clamp(player_count, 1, MAX_PLAYERS));
-        }
-
-        const int joined_players = spectator_mode_
-            ? std::max(1, highest_team_in_save(save) + 1)
-            : std::clamp(player_count, 1, MAX_PLAYERS);
-        ensure_peer_count(joined_players);
+        const auto peer_teams = build_peer_team_mapping(save, spectator_mode_);
+        ensure_peer_count(static_cast<int>(peer_teams.size()));
         sync_from_save();
     }
 
@@ -377,14 +373,16 @@ private:
             std::make_shared<og::sim::LobbyMessage>(std::move(message)));
     }
 
-    void send_player_joins()
+    void send_player_joins(const std::vector<short>& peer_teams)
     {
         const SaveData& save = og::runtime::current_session->myscreen_->save_data;
 
-        for (std::size_t peer_index = 0; peer_index < peers_.size(); ++peer_index)
+        for (std::size_t peer_index = 0;
+             peer_index < peers_.size() && peer_index < peer_teams.size();
+             ++peer_index)
         {
             LocalLobbyPeer& peer = peers_[peer_index];
-            peer.team = static_cast<short>(peer_index);
+            peer.team = peer_teams[peer_index];
             if (peer.name.empty())
                 peer.name = std::format("Player {}", peer_index + 1);
 
