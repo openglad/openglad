@@ -649,6 +649,35 @@ TEST(GameLoop, game_frame_with_result_processes_input_before_same_call_tick)
     game_screen->world().delete_objects();
 }
 
+TEST(GameLoop, game_frame_bool_wrapper_matches_typed_result)
+{
+    GameLoopFrameState typed_state;
+    GameLoopFrameState wrapped_state;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+
+    const char old_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 1;
+
+    const GameFrameResult typed =
+        game_frame_with_result(*og::runtime::current_session->myscreen_,
+                               typed_state,
+                               deps);
+    const bool wrapped =
+        game_frame(*og::runtime::current_session->myscreen_,
+                   wrapped_state,
+                   deps);
+
+    ASSERT_EQ(static_cast<int>(typed != GameFrameResult::Continue),
+              static_cast<int>(wrapped))
+        << "bool wrapper should map Continue/non-Continue exactly";
+    ASSERT_TRUE(typed_state.done);
+    ASSERT_TRUE(wrapped_state.done);
+
+    og::runtime::current_session->myscreen_->world().end = old_end;
+}
+
 
 // ---------------------------------------------------------------------------
 // Regression test: options_menu via game_frame_with_result call chain.
@@ -758,13 +787,19 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
     ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
 
     GameSpeedGuard speed_guard(0.0f);
-    const auto run_escape_frame = [&]() {
+    struct EscapeFrameOutcome {
+        GameFrameResult result = GameFrameResult::Continue;
+        bool done = false;
+        int redrawme = 0;
+    };
+    const auto run_escape_frame = [&]() -> EscapeFrameOutcome {
         EventScript script;
         SDL_Event e{};
         e.type = SDL_KEYDOWN;
         e.key.keysym.sym = SDLK_ESCAPE;
         script.events.push_back(e);
         g_script = &script;
+        game_screen->redrawme = 0;
 
         GameLoopFrameState st;
         GameLoopDeps deps;
@@ -776,20 +811,26 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
         const GameFrameResult result =
             game_frame_with_result(*game_screen, st, deps);
         g_script = nullptr;
-        return std::pair(result, st.done);
+        return {
+            .result = result,
+            .done = st.done,
+            .redrawme = static_cast<int>(game_screen->redrawme),
+        };
     };
 
-    const auto [pause_result, pause_done] = run_escape_frame();
-    EXPECT_EQ(GameFrameResult::Continue, pause_result);
-    EXPECT_FALSE(pause_done);
+    const EscapeFrameOutcome pause_frame = run_escape_frame();
+    EXPECT_EQ(GameFrameResult::Continue, pause_frame.result);
+    EXPECT_FALSE(pause_frame.done);
+    EXPECT_EQ(1, pause_frame.redrawme);
     EXPECT_TRUE(game_screen->world().paused);
     EXPECT_EQ(0u, game_screen->world().pause_player_index);
 
     picker_testing_yes_or_no_queue_clear();
     picker_testing_yes_or_no_queue_push(false);
-    const auto [resume_result, resume_done] = run_escape_frame();
-    EXPECT_EQ(GameFrameResult::Continue, resume_result);
-    EXPECT_FALSE(resume_done);
+    const EscapeFrameOutcome resume_frame = run_escape_frame();
+    EXPECT_EQ(GameFrameResult::Continue, resume_frame.result);
+    EXPECT_FALSE(resume_frame.done);
+    EXPECT_EQ(1, resume_frame.redrawme);
     EXPECT_FALSE(game_screen->world().paused);
     EXPECT_EQ(og::sim::kNoPausePlayerIndex, game_screen->world().pause_player_index);
 
@@ -815,13 +856,19 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
     ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
 
     GameSpeedGuard speed_guard(0.0f);
-    const auto run_escape_frame = [&]() {
+    struct EscapeFrameOutcome {
+        GameFrameResult result = GameFrameResult::Continue;
+        bool done = false;
+        int redrawme = 0;
+    };
+    const auto run_escape_frame = [&]() -> EscapeFrameOutcome {
         EventScript script;
         SDL_Event e{};
         e.type = SDL_KEYDOWN;
         e.key.keysym.sym = SDLK_ESCAPE;
         script.events.push_back(e);
         g_script = &script;
+        game_screen->redrawme = 0;
 
         GameLoopFrameState st;
         GameLoopDeps deps;
@@ -833,19 +880,25 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
         const GameFrameResult result =
             game_frame_with_result(*game_screen, st, deps);
         g_script = nullptr;
-        return std::pair(result, st.done);
+        return {
+            .result = result,
+            .done = st.done,
+            .redrawme = static_cast<int>(game_screen->redrawme),
+        };
     };
 
-    const auto [pause_result, pause_done] = run_escape_frame();
-    ASSERT_EQ(GameFrameResult::Continue, pause_result);
-    ASSERT_FALSE(pause_done);
+    const EscapeFrameOutcome pause_frame = run_escape_frame();
+    ASSERT_EQ(GameFrameResult::Continue, pause_frame.result);
+    ASSERT_FALSE(pause_frame.done);
+    ASSERT_EQ(1, pause_frame.redrawme);
     ASSERT_TRUE(game_screen->world().paused);
 
     picker_testing_yes_or_no_queue_clear();
     picker_testing_yes_or_no_queue_push(true);
-    const auto [abort_result, abort_done] = run_escape_frame();
-    EXPECT_EQ(GameFrameResult::AbortedMission, abort_result);
-    EXPECT_TRUE(abort_done);
+    const EscapeFrameOutcome abort_frame = run_escape_frame();
+    EXPECT_EQ(GameFrameResult::AbortedMission, abort_frame.result);
+    EXPECT_TRUE(abort_frame.done);
+    EXPECT_EQ(1, abort_frame.redrawme);
 
     picker_testing_yes_or_no_queue_clear();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
