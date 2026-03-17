@@ -6,7 +6,7 @@
 #  endif
 #endif
 
-#if !defined(__cpp_lib_format)
+#if defined(OPENGLAD_NEEDS_STD_FORMAT_SHIM)
 
 #include <iomanip>
 #include <sstream>

@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 project(OpenGlad VERSION 1.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(CheckCXXSourceCompiles)
 
 # Target C++20 (C++23 when toolchains catch up)
 set(CMAKE_CXX_STANDARD 20)
@@ -12,6 +13,17 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+check_cxx_source_compiles([=[
+    #include <format>
+    #include <string>
+
+    int main()
+    {
+        const std::string value = std::format("{} {}", "OpenGlad", 22);
+        return value == "OpenGlad 22" ? 0 : 1;
+    }
+]=] OPENGLAD_HAS_WORKING_STD_FORMAT)
 
 # Build options
 option(BUILD_TESTING "Build the test suite" OFF)
@@ -653,6 +665,10 @@ set(COMMON_DEFINITIONS
     PHYSFS_SUPPORTS_VDF=0
     YAML_DECLARE_STATIC
 )
+
+if(NOT OPENGLAD_HAS_WORKING_STD_FORMAT)
+    list(APPEND COMMON_DEFINITIONS OPENGLAD_NEEDS_STD_FORMAT_SHIM=1)
+endif()
 
 # --------------------------------------------------------------------------
 # Helper functions to configure targets with common settings
