@@ -1554,6 +1554,7 @@ if(NOT EMSCRIPTEN)
 
         og_add_unit_group(og_unit_sim FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_game_loop_wrapper.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_state_net.cpp

@@ -649,36 +649,6 @@ TEST(GameLoop, game_frame_with_result_processes_input_before_same_call_tick)
     game_screen->world().delete_objects();
 }
 
-TEST(GameLoop, game_frame_bool_wrapper_matches_typed_result)
-{
-    GameLoopFrameState typed_state;
-    GameLoopFrameState wrapped_state;
-    GameLoopDeps deps;
-    deps.enable_render = false;
-    deps.enable_event_poll = false;
-
-    const char old_end = og::runtime::current_session->myscreen_->world().end;
-    og::runtime::current_session->myscreen_->world().end = 1;
-
-    const GameFrameResult typed =
-        game_frame_with_result(*og::runtime::current_session->myscreen_,
-                               typed_state,
-                               deps);
-    const bool wrapped =
-        game_frame(*og::runtime::current_session->myscreen_,
-                   wrapped_state,
-                   deps);
-
-    ASSERT_EQ(static_cast<int>(typed != GameFrameResult::Continue),
-              static_cast<int>(wrapped))
-        << "bool wrapper should map Continue/non-Continue exactly";
-    ASSERT_TRUE(typed_state.done);
-    ASSERT_TRUE(wrapped_state.done);
-
-    og::runtime::current_session->myscreen_->world().end = old_end;
-}
-
-
 // ---------------------------------------------------------------------------
 // Regression test: options_menu via game_frame_with_result call chain.
 //

@@ -283,25 +283,25 @@ int main(int argc, char* argv[])
         if (const char* max_frames_env = std::getenv("OPENGLAD_DEMO_MAX_FRAMES")) {
             max_frames = std::max(0, std::atoi(max_frames_env));
         }
+        const bool smoke_mode = max_frames > 0;
 
-        // Detect native display resolution for fullscreen grid layout
+        // Coverage/demo smoke only needs one startup-tick-shutdown pass.
+        // Clamping to a single cell avoids stressing gcov with a 3x3 session grid.
         SDL_Init(SDL_INIT_VIDEO);
-        SDL_DisplayMode dm;
         int display_w = 0;
         int display_h = 0;
-        if (SDL_GetDesktopDisplayMode(0, &dm) != 0) {
-            if (max_frames > 0) {
-                display_w = CELL_W;
-                display_h = CELL_H;
-                LogWarn("SDL_GetDesktopDisplayMode failed in smoke mode: {}. Using {}x{} fallback.\n",
-                        SDL_GetError(), display_w, display_h);
-            } else {
+        if (smoke_mode) {
+            display_w = CELL_W;
+            display_h = CELL_H;
+        } else {
+            SDL_DisplayMode dm;
+            if (SDL_GetDesktopDisplayMode(0, &dm) != 0) {
                 LogError("SDL_GetDesktopDisplayMode failed: {}\n", SDL_GetError());
                 return 1;
+            } else {
+                display_w = dm.w;
+                display_h = dm.h;
             }
-        } else {
-            display_w = dm.w;
-            display_h = dm.h;
         }
         const int grid_cols = display_w / CELL_W;
         const int grid_rows = display_h / CELL_H;
@@ -374,7 +374,9 @@ int main(int argc, char* argv[])
         };
 
         // Initialize each session with a unique scenario (main thread).
-        std::vector<int> chosen = pick_scenarios();
+        std::vector<int> chosen = smoke_mode
+            ? std::vector<int>{1}
+            : pick_scenarios();
         E_Screen->suppress_present = true;
         for (int i = 0; i < num_sessions; i++) {
             init_session_game(demos[static_cast<size_t>(i)],
