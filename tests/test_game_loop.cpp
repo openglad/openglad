@@ -435,6 +435,55 @@ TEST(GameLoop, glad_init_uses_cached_lobby_start_config_before_level_load)
     game_screen->world().delete_objects();
 }
 
+TEST(GameLoop, glad_init_preserves_cached_spectator_lobby_start_config)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 0;
+    save.allied_mode = 1;
+
+    auto spectator_team = std::make_unique<guy>(FAMILY_SOLDIER);
+    spectator_team->name = "Spectator";
+    spectator_team->teamnum = 0;
+    save.team_list[0] = std::move(spectator_team);
+    save.team_size = 1;
+
+    picker_lobby_shutdown();
+    picker_lobby_initialize_from_save();
+    ASSERT_TRUE(picker_lobby_request_start());
+
+    // Corrupt both memory and save0 so glad_init must use the cached lobby config.
+    save.numplayers = 1;
+    save.allied_mode = 0;
+    save.team_list[0].reset();
+    save.team_size = 0;
+    ASSERT_TRUE(save.save("save0"));
+
+    game_screen->ready_for_battle(1);
+    ASSERT_EQ(1, game_screen->numviews);
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    EXPECT_EQ(0, static_cast<int>(game_screen->save_data.numplayers));
+    EXPECT_EQ(1, static_cast<int>(game_screen->save_data.allied_mode));
+    EXPECT_EQ(1u,
+              og::runtime::local_transport_client_count(
+                  *og::runtime::current_game_session));
+    ASSERT_TRUE(game_screen->save_data.team_list[0] != nullptr);
+    EXPECT_EQ("Spectator", game_screen->save_data.team_list[0]->name);
+    EXPECT_FALSE(picker_lobby_consume_game_start_config().has_value());
+
+    picker_lobby_shutdown();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
 TEST(GameLoop,
      reset_local_transport_shadow_uses_gameplay_session_for_client_palette_sync)
 {

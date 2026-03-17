@@ -572,6 +572,63 @@ TEST(PickerFuncs, lobby_start_request_captures_game_start_config)
     g_start_game_requested = false;
 }
 
+TEST(PickerFuncs, lobby_start_request_preserves_spectator_game_start_config)
+{
+    picker_lobby_shutdown();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string old_campaign = save.current_campaign;
+    const short old_scen_num = save.scen_num;
+    const unsigned char old_team_size = save.team_size;
+    const unsigned char old_numplayers = save.numplayers;
+    const short old_allied_mode = save.allied_mode;
+    const std::int32_t old_difficulty =
+        og::runtime::current_session->current_difficulty_;
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.team_size = 1;
+    save.numplayers = 0;
+    save.allied_mode = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Spectator";
+    save.team_list[0]->teamnum = 0;
+    og::runtime::current_session->current_difficulty_ = 4;
+
+    g_start_game_requested = false;
+    picker_lobby_initialize_from_save();
+
+    ASSERT_TRUE(picker_lobby_request_start());
+    ASSERT_TRUE(g_start_game_requested);
+
+    const std::optional<og::ui::PickerLobbyGameStartConfig> config =
+        picker_lobby_consume_game_start_config();
+    ASSERT_TRUE(config.has_value());
+    EXPECT_EQ(0u, config->save_data.numplayers);
+    EXPECT_EQ("org.openglad.gladiator", config->save_data.current_campaign);
+    EXPECT_EQ(1, config->save_data.scen_num);
+    EXPECT_EQ(1, config->save_data.allied_mode);
+    EXPECT_EQ(4, config->difficulty);
+    ASSERT_EQ(1u, config->save_data.team_list.size());
+    EXPECT_EQ("Spectator", config->save_data.team_list[0].character.name);
+    EXPECT_EQ(0, config->save_data.team_list[0].character.teamnum);
+    EXPECT_FALSE(picker_lobby_consume_game_start_config().has_value());
+
+    picker_lobby_shutdown();
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.current_campaign = old_campaign;
+    save.scen_num = old_scen_num;
+    save.team_size = old_team_size;
+    save.numplayers = old_numplayers;
+    save.allied_mode = old_allied_mode;
+    og::runtime::current_session->current_difficulty_ = old_difficulty;
+    g_start_game_requested = false;
+}
+
 TEST(PickerFuncs, lobby_reinitialize_after_game_allows_second_confirmed_start)
 {
     picker_lobby_shutdown();

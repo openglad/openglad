@@ -237,6 +237,11 @@ public:
 
         og::ui::PickerLobbyGameStartConfig config;
         config.save_data = server_->build_save_data_equivalent();
+        // The lobby always has at least a connected host peer, even for spectator
+        // starts. Preserve the picker's zero-player mode so gameplay stays in
+        // spectator/autoplay instead of being coerced into a 1-player start.
+        if (spectator_mode_)
+            config.save_data.numplayers = 0;
         config.difficulty =
             static_cast<std::int16_t>(server_->state().settings.difficulty);
         return config;
