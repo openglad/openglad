@@ -44,13 +44,6 @@ std::chrono::steady_clock::time_point* active_session_reset_time()
         return nullptr;
     return &current_session->reset_time_;
 }
-
-float active_session_game_speed_factor() noexcept
-{
-    return current_session != nullptr
-        ? current_session->g_game_speed_factor_
-        : 1.0f;
-}
 } // namespace og::runtime
 
 void push_test_context(GameContext* context)

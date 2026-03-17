@@ -382,21 +382,11 @@ std::size_t local_transport_client_count(const GameSession& session) noexcept
     return runtime != nullptr ? runtime->clients.size() : 0u;
 }
 
-const og::sim::GameClient* local_transport_display_client(
-    const SessionState& session) noexcept
-{
-    const auto* const game_session = dynamic_cast<const GameSession*>(&session);
-    if (game_session == nullptr)
-        return nullptr;
-
-    const auto runtime = game_session->local_transport_runtime_;
-    return runtime != nullptr ? runtime->display_client() : nullptr;
-}
-
 bool local_transport_shadow_is_paused(const GameSession& session) noexcept
 {
+    const auto runtime = session.local_transport_runtime_;
     const og::sim::GameClient* const display_client =
-        local_transport_display_client(session);
+        runtime != nullptr ? runtime->display_client() : nullptr;
     return display_client != nullptr &&
         display_client->baseline().has_value() &&
         display_client->baseline()->paused;
@@ -433,6 +423,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         return;
     }
 
+    gameplay_screen.set_render_interpolation_client(nullptr);
     session.local_transport_runtime_.reset();
 
     auto runtime = std::make_shared<LocalTransportRuntime>();
@@ -564,6 +555,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         if (client.drives_display)
         {
             og::sim::GameClient* const display_client = local_client;
+            gameplay_screen.set_render_interpolation_client(display_client);
             display_client->set_initial_setup_callback(
                 [&gameplay_screen, display_client](
                     const og::sim::InitialSetupMessage& message,
@@ -653,6 +645,8 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
 
 void clear_local_transport_shadow(GameSession& session) noexcept
 {
+    if (session.myscreen_ != nullptr)
+        session.myscreen_->set_render_interpolation_client(nullptr);
     session.local_transport_runtime_.reset();
 }
 

@@ -7,14 +7,11 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
-#include <openglad/legacy/base.h>
 #include <openglad/resources/gloader.h>
 #include <gtest/gtest.h>
 
 #include <utility>
 #include <vector>
-
-// myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace {
 
@@ -56,25 +53,38 @@ private:
     std::vector<og::sim::ReceivedMessage> sent_messages_;
 };
 
-class WalkerDrawInterpolationOverrideGuard
+class ScreenInterpolationContextGuard
 {
 public:
-    WalkerDrawInterpolationOverrideGuard(const og::sim::GameClient* client,
-                                         float alpha)
+    explicit ScreenInterpolationContextGuard(screen& game_screen)
+        : screen_(game_screen)
+        , previous_client_(game_screen.render_interpolation_client())
+        , previous_speed_factor_(
+              game_screen.render_interpolation_speed_factor())
     {
-        walker_draw_testing_set_interpolation_client(client);
-        walker_draw_testing_set_interpolation_alpha(alpha);
     }
 
-    ~WalkerDrawInterpolationOverrideGuard()
+    ~ScreenInterpolationContextGuard()
     {
-        walker_draw_testing_clear_interpolation_overrides();
+        screen_.set_render_interpolation_client(previous_client_);
+        screen_.set_render_interpolation_speed_factor(previous_speed_factor_);
     }
 
-    WalkerDrawInterpolationOverrideGuard(
-        const WalkerDrawInterpolationOverrideGuard&) = delete;
-    WalkerDrawInterpolationOverrideGuard& operator=(
-        const WalkerDrawInterpolationOverrideGuard&) = delete;
+    void set(const og::sim::GameClient* client, float speed_factor) noexcept
+    {
+        screen_.set_render_interpolation_client(client);
+        screen_.set_render_interpolation_speed_factor(speed_factor);
+    }
+
+    ScreenInterpolationContextGuard(const ScreenInterpolationContextGuard&) =
+        delete;
+    ScreenInterpolationContextGuard& operator=(
+        const ScreenInterpolationContextGuard&) = delete;
+
+private:
+    screen& screen_;
+    const og::sim::GameClient* previous_client_ = nullptr;
+    float previous_speed_factor_ = 1.0f;
 };
 
 void prepare_view_world()
@@ -172,7 +182,8 @@ TEST(ViewRedraw, resolve_walker_render_position_uses_interpolated_snapshot_state
     active->world().tick_count_ = 2u;
     sync_client_to_world(client, transport, kPeerId, active->world(), true);
 
-    const WalkerDrawInterpolationOverrideGuard interpolation_guard(&client, 0.5f);
+    ScreenInterpolationContextGuard interpolation_guard(*active);
+    interpolation_guard.set(&client, 1.0f);
     const WalkerRenderPosition draw_pos =
         resolve_walker_render_position(*actor, 0.5f);
 
@@ -208,7 +219,9 @@ TEST(ViewRedraw, redraw_uses_interpolated_control_position_for_camera_follow)
     active->world().tick_count_ = 2u;
     sync_client_to_world(client, transport, kPeerId, active->world(), true);
 
-    const WalkerDrawInterpolationOverrideGuard interpolation_guard(&client, 0.5f);
+    ScreenInterpolationContextGuard interpolation_guard(*active);
+    interpolation_guard.set(&client, 1.0f);
+    client.testing_set_render_interpolation_elapsed_ms(41.0f);
 
     vs->control = control;
     const bool result = vs->redraw(&active->level_runtime_data(), false);
@@ -227,7 +240,7 @@ TEST(ViewRedraw, redraw_uses_interpolated_control_position_for_camera_follow)
         static_cast<float>(control->ypos()) -
         static_cast<float>(vs->yview - control->sizey()) / 2.0f);
 
-    EXPECT_FLOAT_EQ(0.5f, vs->interpolation_alpha);
+    EXPECT_NEAR(0.5f, vs->interpolation_alpha, 0.02f);
     EXPECT_EQ(expected_topx, vs->topx);
     EXPECT_EQ(expected_topy, vs->topy);
     EXPECT_NE(snapped_topx, vs->topx);

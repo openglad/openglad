@@ -41,7 +41,6 @@ static auto g_app_start = std::chrono::steady_clock::now();
 
 namespace og::runtime {
 std::chrono::steady_clock::time_point* active_session_reset_time();
-float active_session_game_speed_factor() noexcept;
 }
 
 // Use the active session timer anchor when available; fallback is for
@@ -63,11 +62,6 @@ static std::uint32_t get_ticks_ms()
 }
 
 // g_game_speed_factor and set_game_speed() moved to runtime/game_session.cpp (Batch 7).
-
-float current_game_speed_factor() noexcept
-{
-    return og::runtime::active_session_game_speed_factor();
-}
 
 void init_logging()
 {

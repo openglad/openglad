@@ -24,10 +24,6 @@ class cfg_store;
 class vbutton;
 class guy;
 
-namespace og::sim {
-class GameClient;
-}
-
 namespace og::runtime {
 
 struct VButtonDeleter {
@@ -140,8 +136,6 @@ bool local_transport_active(const SessionState& session) noexcept;
 // when their thread_local current_session is still nullptr.
 extern std::atomic<SessionState*> primary_session;
 extern std::atomic<GameplayContext*> primary_game;
-const og::sim::GameClient* local_transport_display_client(
-    const SessionState& session) noexcept;
 
 // If current_session is nullptr on this thread, inherit from primary_session.
 // Call at the start of any child thread that needs session access.

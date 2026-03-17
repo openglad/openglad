@@ -4,7 +4,6 @@
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/world_snapshot.h>
-#include <openglad/legacy/base.h>
 
 #include <gtest/gtest.h>
 
@@ -92,28 +91,6 @@ private:
     std::vector<og::sim::ReceivedMessage> received_messages_;
     std::vector<og::sim::ReceivedMessage> sent_messages_;
     std::vector<og::sim::PeerId> disconnected_peers_;
-};
-
-class ScopedGameSpeed final
-{
-public:
-    ScopedGameSpeed()
-        : previous_speed_(og::runtime::current_session->g_game_speed_factor_)
-    {
-    }
-
-    ~ScopedGameSpeed()
-    {
-        set_game_speed(previous_speed_);
-    }
-
-    void set(float speed)
-    {
-        set_game_speed(speed);
-    }
-
-private:
-    float previous_speed_ = 1.0f;
 };
 
 void expect_input_state_eq(const InputState& expected, const InputState& actual)
@@ -820,19 +797,14 @@ TEST(NetTransport, game_client_render_interpolation_alpha_respects_game_speed)
     og::sim::GameClient client(transport, 7u);
     client.poll_messages();
 
-    ScopedGameSpeed speed_guard;
-
-    speed_guard.set(1.0f);
     client.testing_set_render_interpolation_elapsed_ms(20.5f);
-    EXPECT_NEAR(0.25f, client.render_interpolation_alpha(), 0.02f);
+    EXPECT_NEAR(0.25f, client.render_interpolation_alpha(1.0f), 0.02f);
 
-    speed_guard.set(2.0f);
     client.testing_set_render_interpolation_elapsed_ms(20.5f);
-    EXPECT_NEAR(0.5f, client.render_interpolation_alpha(), 0.02f);
+    EXPECT_NEAR(0.5f, client.render_interpolation_alpha(2.0f), 0.02f);
 
-    speed_guard.set(0.0f);
     client.testing_set_render_interpolation_elapsed_ms(20.5f);
-    EXPECT_FLOAT_EQ(1.0f, client.render_interpolation_alpha());
+    EXPECT_FLOAT_EQ(1.0f, client.render_interpolation_alpha(0.0f));
 }
 
 TEST(NetTransport,
@@ -850,10 +822,8 @@ TEST(NetTransport,
     og::sim::GameClient client(transport, 7u);
     client.poll_messages();
 
-    ScopedGameSpeed speed_guard;
-    speed_guard.set(1.0f);
     client.testing_set_render_interpolation_elapsed_ms(1.0f);
-    EXPECT_FLOAT_EQ(1.0f, client.render_interpolation_alpha());
+    EXPECT_FLOAT_EQ(1.0f, client.render_interpolation_alpha(1.0f));
 }
 
 TEST(NetTransport, game_client_notifies_level_transition_before_next_keyframe)

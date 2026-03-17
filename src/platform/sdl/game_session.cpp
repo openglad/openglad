@@ -164,6 +164,8 @@ GameSession::GameSession(const Config& session_cfg)
             cfg_.numviews,
             cfg_.create_display);
         myscreen_ = screen_owner_.get();
+        myscreen_->set_render_interpolation_speed_factor(
+            g_game_speed_factor_);
         game_.save = &myscreen_->save_data;
         myscreen_->level_runtime_data().set_sim_context(
             &myscreen_->save_data,
@@ -301,6 +303,11 @@ GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
 // Defined outside the namespace because base.h declares it at global scope.
 void set_game_speed(float factor)
 {
-    og::runtime::current_session->g_game_speed_factor_ =
-        (factor < 0.0f) ? 0.0f : factor;
+    const float clamped_factor = (factor < 0.0f) ? 0.0f : factor;
+    og::runtime::current_session->g_game_speed_factor_ = clamped_factor;
+    if (og::runtime::current_session->myscreen_ != nullptr)
+    {
+        og::runtime::current_session->myscreen_->
+            set_render_interpolation_speed_factor(clamped_factor);
+    }
 }

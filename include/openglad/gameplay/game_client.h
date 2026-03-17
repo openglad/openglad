@@ -128,9 +128,7 @@ public:
         return snapshot_hash_check_count_;
     }
 
-    [[nodiscard]] float render_interpolation_alpha() const;
-    [[nodiscard]] std::optional<RenderInterpolationPosition> render_position(
-        std::uint32_t entity_id) const;
+    [[nodiscard]] float render_interpolation_alpha(float speed_factor) const;
     [[nodiscard]] std::optional<RenderInterpolationPosition> render_position(
         std::uint32_t entity_id,
         float alpha) const;

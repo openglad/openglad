@@ -39,6 +39,7 @@
 
 struct InputState;
 class soundob;
+namespace og::sim { class GameClient; }
 
 class screen : public video
 {
@@ -229,6 +230,24 @@ public:
     const GameWorld& world() const { return world_; }
     LevelVisuals& level_visuals() { return level_visuals_; }
     const LevelVisuals& level_visuals() const { return level_visuals_; }
+    void set_render_interpolation_client(
+        const og::sim::GameClient* client) noexcept
+    {
+        render_interpolation_client_ = client;
+    }
+    [[nodiscard]] const og::sim::GameClient* render_interpolation_client()
+        const noexcept
+    {
+        return render_interpolation_client_;
+    }
+    void set_render_interpolation_speed_factor(float speed_factor) noexcept
+    {
+        render_interpolation_speed_factor_ = speed_factor;
+    }
+    [[nodiscard]] float render_interpolation_speed_factor() const noexcept
+    {
+        return render_interpolation_speed_factor_;
+    }
 
     // Delegated render data (preserves legacy field-style access).
     std::array<unsigned char, 768>& ourpalette;
@@ -262,6 +281,8 @@ public:
     short numviews;
     Uint32 timerstart;
     Uint32 framecount;
+    const og::sim::GameClient* render_interpolation_client_ = nullptr;
+    float render_interpolation_speed_factor_ = 1.0f;
 
 private:
     void init_common(short howmany, bool has_display);

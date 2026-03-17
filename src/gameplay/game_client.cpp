@@ -4,7 +4,6 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
-#include <openglad/core/util.h>
 
 #include <algorithm>
 #include <cmath>
@@ -35,7 +34,8 @@ float lerp(float start, float end, float alpha)
 }
 
 float render_tick_interval_ms(
-    const std::optional<og::sim::WorldSnapshot>& baseline)
+    const std::optional<og::sim::WorldSnapshot>& baseline,
+    float speed_factor)
 {
     float interval_ms = static_cast<float>(og::sim::DEFAULT_SIM_TICK_MS);
     if (baseline.has_value())
@@ -45,7 +45,6 @@ float render_tick_interval_ms(
             og::sim::TIMER_WAIT_TO_MS;
     }
 
-    const float speed_factor = current_game_speed_factor();
     if (speed_factor <= 0.0f || interval_ms <= 0.0f)
         return 0.0f;
 
@@ -216,12 +215,13 @@ std::vector<og::sim::TypedReceivedMessage> poll_client_messages(
 
 namespace og::sim {
 
-float GameClient::render_interpolation_alpha() const
+float GameClient::render_interpolation_alpha(float speed_factor) const
 {
     if (!last_snapshot_receive_time_.has_value())
         return 1.0f;
 
-    const float tick_interval_ms = render_tick_interval_ms(baseline_);
+    const float tick_interval_ms =
+        render_tick_interval_ms(baseline_, speed_factor);
     if (tick_interval_ms <= 0.0f)
         return 1.0f;
 
@@ -229,12 +229,6 @@ float GameClient::render_interpolation_alpha() const
         std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(
             InterpolationClock::now() - *last_snapshot_receive_time_);
     return clamp_alpha(elapsed.count() / tick_interval_ms);
-}
-
-std::optional<RenderInterpolationPosition> GameClient::render_position(
-    std::uint32_t entity_id) const
-{
-    return render_position(entity_id, render_interpolation_alpha());
 }
 
 std::optional<RenderInterpolationPosition> GameClient::render_position(

@@ -781,6 +781,8 @@ void screen::init_common(short howmany, bool has_display)
 
 	timerstart = query_timer_control();
 	framecount = 0;
+    render_interpolation_client_ = nullptr;
+    render_interpolation_speed_factor_ = 1.0f;
 
 	world_.control_hp = 0;
 

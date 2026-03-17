@@ -74,7 +74,6 @@ void time_delay(std::int32_t);
 // g_game_speed_factor moved into GameSession; macro defined in base.h.
 // set_game_speed() declared in base.h, defined in game_session.cpp.
 // (Kept as comment here so searchers find the new location.)
-float current_game_speed_factor() noexcept;
 
 // Zardus: add: lowercase func
 void lowercase(char *);
