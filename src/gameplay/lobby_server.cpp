@@ -215,6 +215,19 @@ std::int16_t LobbyServer::resolve_team(
     return current_team.value_or(static_cast<std::int16_t>(-1));
 }
 
+std::size_t LobbyServer::remaining_team_capacity(PeerId peer_id) const noexcept
+{
+    std::size_t used_slots = 0;
+    for (const auto& [other_peer_id, peer] : peers_)
+    {
+        if (other_peer_id == peer_id || !peer.player.has_value())
+            continue;
+        used_slots += peer.player->character_slots.size();
+    }
+
+    return used_slots >= kMaxLobbyTeamSize ? 0 : kMaxLobbyTeamSize - used_slots;
+}
+
 void LobbyServer::reassign_host_peer()
 {
     host_peer_id_ = std::nullopt;
@@ -347,6 +360,9 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
         player.is_host = false;
         player.character_slots =
             sanitize_character_slots(join.player.character_slots, team);
+        const std::size_t capacity = remaining_team_capacity(peer_id);
+        if (player.character_slots.size() > capacity)
+            player.character_slots.resize(capacity);
         peer_it->second.player = std::move(player);
         rebuild_needed = true;
         break;
@@ -452,6 +468,12 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
         }
     }
 
+    if (ordered_slots.size() > kMaxLobbyTeamSize)
+    {
+        throw std::runtime_error(
+            "LobbyServer exceeded the SaveData-equivalent 24-slot team limit");
+    }
+
     std::sort(ordered_slots.begin(), ordered_slots.end(),
               [](const OrderedLobbySlot& lhs, const OrderedLobbySlot& rhs) {
                   if (lhs.slot_index != rhs.slot_index)
@@ -460,9 +482,6 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
                       return lhs.player_order < rhs.player_order;
                   return lhs.slot_order < rhs.slot_order;
               });
-
-    ordered_slots.resize(std::min<std::size_t>(
-        ordered_slots.size(), kMaxLobbyTeamSize));
 
     const bool slots_are_dense = std::all_of(
         ordered_slots.begin(), ordered_slots.end(),

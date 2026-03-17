@@ -147,6 +147,24 @@ og::sim::LobbyMessage make_join_message(
     return message;
 }
 
+std::vector<og::sim::LobbyCharacterSlot> make_slots(std::uint8_t first_slot_index,
+                                                    std::size_t count,
+                                                    std::int32_t first_guy_id,
+                                                    std::int8_t family)
+{
+    std::vector<og::sim::LobbyCharacterSlot> slots;
+    slots.reserve(count);
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        slots.push_back(make_slot(
+            static_cast<std::uint8_t>(first_slot_index + index),
+            first_guy_id + static_cast<std::int32_t>(index),
+            "Guy",
+            family));
+    }
+    return slots;
+}
+
 og::sim::LobbyState decode_lobby_state(
     const og::sim::ReceivedMessage& message)
 {
@@ -511,6 +529,34 @@ TEST(LobbyServer, slot_sanitization_and_save_data_mapping_compact_sparse_slots)
     EXPECT_EQ(1u, equivalent.team_list[1].slot_index);
     EXPECT_EQ("First", equivalent.team_list[0].character.name);
     EXPECT_EQ("Second", equivalent.team_list[1].character.name);
+}
+
+TEST(LobbyServer, join_trims_total_character_count_to_save_data_limit)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.clear_sent_messages();
+
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, make_slots(0u, 20u, 100, FAMILY_SOLDIER)));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, make_slots(20u, 10u, 200, FAMILY_ARCHER)));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ(20u, server.state().players[0].character_slots.size());
+    EXPECT_EQ(4u, server.state().players[1].character_slots.size());
+    EXPECT_EQ(20u, server.state().players[1].character_slots[0].slot_index);
+    EXPECT_EQ(23u, server.state().players[1].character_slots[3].slot_index);
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    ASSERT_EQ(24u, equivalent.team_list.size());
+    EXPECT_EQ(0u, equivalent.team_list.front().slot_index);
+    EXPECT_EQ(23u, equivalent.team_list.back().slot_index);
+    EXPECT_EQ(1, equivalent.team_list.back().character.teamnum);
 }
 
 TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_state)

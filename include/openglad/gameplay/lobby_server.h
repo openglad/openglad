@@ -54,6 +54,7 @@ private:
         PeerId peer_id,
         std::int16_t requested_team,
         std::optional<std::int16_t> current_team) const noexcept;
+    [[nodiscard]] std::size_t remaining_team_capacity(PeerId peer_id) const noexcept;
     void rebuild_state();
     void send_state(PeerId peer_id) const;
     void broadcast_state() const;
