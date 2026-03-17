@@ -9,6 +9,7 @@
 #include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/replay_runtime.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -26,6 +27,12 @@
 
 short load_saved_game(const char* filename, screen* scr);
 void glad_init(bool preserve_frame_timing = false);
+void glad_init(
+    bool preserve_frame_timing,
+    const og::ui::PickerLobbyGameStartConfig* lobby_config);
+void ready_screen_for_game_start(
+    screen& current_screen,
+    const og::ui::PickerLobbyGameStartConfig* lobby_config);
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_yes_or_no_queue_push(bool value);
 
@@ -379,7 +386,7 @@ TEST(GameLoop, glad_init_uses_save_data_numplayers_for_local_transport_clients)
     game_screen->world().delete_objects();
 }
 
-TEST(GameLoop, glad_init_uses_cached_lobby_start_config_before_level_load)
+TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
@@ -387,8 +394,8 @@ TEST(GameLoop, glad_init_uses_cached_lobby_start_config_before_level_load)
     SaveData& save = game_screen->save_data;
     save.reset();
     save.current_campaign = "org.openglad.gladiator";
-    save.current_levels[save.current_campaign] = 1;
-    save.scen_num = 1;
+    save.current_levels[save.current_campaign] = 2;
+    save.scen_num = 2;
     save.numplayers = 2;
     save.allied_mode = 0;
 
@@ -401,26 +408,47 @@ TEST(GameLoop, glad_init_uses_cached_lobby_start_config_before_level_load)
     save.team_list[0] = std::move(leader);
     save.team_list[1] = std::move(scout);
     save.team_size = 2;
+    og::runtime::current_session->current_difficulty_ = 3;
 
     picker_lobby_shutdown();
     picker_lobby_initialize_from_save();
     ASSERT_TRUE(picker_lobby_request_start());
+    std::optional<og::ui::PickerLobbyGameStartConfig> lobby_config =
+        picker_lobby_consume_game_start_config();
+    ASSERT_TRUE(lobby_config.has_value());
+    EXPECT_EQ("org.openglad.gladiator", lobby_config->save_data.current_campaign);
+    EXPECT_EQ(2, lobby_config->save_data.scen_num);
+    EXPECT_EQ(3, lobby_config->difficulty);
+    picker_lobby_shutdown();
 
-    // Corrupt both memory and save0 so glad_init must use the cached lobby config.
+    // Corrupt both memory and save0 so glad_init must use the explicit lobby
+    // config instead of the stale save state.
+    save.current_campaign = "definitely.not.a.campaign";
+    save.current_levels.clear();
+    save.current_levels[save.current_campaign] = 9999;
+    save.scen_num = 9999;
     save.numplayers = 1;
     save.allied_mode = 1;
     save.team_list[0].reset();
     save.team_list[1].reset();
     save.team_size = 0;
+    og::runtime::current_session->current_difficulty_ = 0;
     ASSERT_TRUE(save.save("save0"));
 
     game_screen->ready_for_battle(1);
     ASSERT_EQ(1, game_screen->numviews);
 
-    glad_init();
+    glad_init(false, &*lobby_config);
     ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    EXPECT_EQ("org.openglad.gladiator", game_screen->save_data.current_campaign);
+    EXPECT_EQ(2, static_cast<int>(game_screen->save_data.scen_num));
     EXPECT_EQ(2, static_cast<int>(game_screen->save_data.numplayers));
     EXPECT_EQ(0, static_cast<int>(game_screen->save_data.allied_mode));
+    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign());
+    EXPECT_EQ(2, game_screen->world().id);
+    EXPECT_EQ(3, og::runtime::current_session->current_difficulty_);
+    EXPECT_EQ(og::ui::difficulty_percent(3),
+              static_cast<int>(game_screen->world().difficulty));
     EXPECT_EQ(2u,
               og::runtime::local_transport_client_count(
                   *og::runtime::current_game_session));
@@ -428,11 +456,27 @@ TEST(GameLoop, glad_init_uses_cached_lobby_start_config_before_level_load)
     ASSERT_TRUE(game_screen->save_data.team_list[1] != nullptr);
     EXPECT_EQ("Leader", game_screen->save_data.team_list[0]->name);
     EXPECT_EQ("Scout", game_screen->save_data.team_list[1]->name);
-    EXPECT_FALSE(picker_lobby_consume_game_start_config().has_value());
 
-    picker_lobby_shutdown();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, ready_screen_for_game_start_uses_lobby_player_count_for_numviews)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.numplayers = 1;
+    game_screen->ready_for_battle(1);
+    ASSERT_EQ(1, game_screen->numviews);
+
+    og::ui::PickerLobbyGameStartConfig config;
+    config.save_data.numplayers = 3;
+
+    ready_screen_for_game_start(*game_screen, &config);
+
+    EXPECT_EQ(3, game_screen->numviews);
 }
 
 TEST(GameLoop, glad_init_preserves_cached_spectator_lobby_start_config)

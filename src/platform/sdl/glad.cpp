@@ -97,8 +97,19 @@ EM_JS(void, publish_web_game_state_js, (int state), {
     window.__opengladGameState = state;
 });
 
+EM_JS(void, publish_web_numviews_js, (int numviews), {
+    window.__opengladNumViews = numviews;
+});
+
 EM_JS(int, should_seed_web_test_save_js, (), {
-    return window.__opengladSeedSinglePlayerTeam ? 1 : 0;
+    const hasPlayerCount = Number.isFinite(window.__opengladSeedPlayerCount);
+    return (window.__opengladSeedSinglePlayerTeam || hasPlayerCount) ? 1 : 0;
+});
+
+EM_JS(int, web_test_seed_player_count_js, (), {
+    return Number.isFinite(window.__opengladSeedPlayerCount)
+        ? Number(window.__opengladSeedPlayerCount)
+        : 1;
 });
 
 EM_JS(int, should_skip_web_intro_js, (), {
@@ -108,6 +119,8 @@ EM_JS(int, should_skip_web_intro_js, (), {
 void publish_web_game_state()
 {
     publish_web_game_state_js(static_cast<int>(g_game_state));
+    const screen* const current_screen = active_screen();
+    publish_web_numviews_js(current_screen != nullptr ? current_screen->numviews : 0);
 }
 
 void seed_web_test_save_if_requested()
@@ -120,21 +133,32 @@ void seed_web_test_save_if_requested()
         return;
 
     SaveData& save = current_screen->save_data;
+    const int requested_player_count =
+        std::clamp(web_test_seed_player_count_js(), 1, MAX_PLAYERS);
     save.reset();
-    save.numplayers = 1;
+    save.numplayers = static_cast<unsigned char>(requested_player_count);
     save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
     save.scen_num = 1;
 
-    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
-    soldier->name = "Web Soldier";
-    soldier->teamnum = 0;
-    soldier->strength = 200;
-    soldier->dexterity = 200;
-    soldier->constitution = 200;
-    soldier->intelligence = 200;
-    soldier->armor = 200;
-    save.team_list[0] = std::move(soldier);
-    save.team_size = 1;
+    for (auto& member : save.team_list)
+        member.reset();
+
+    for (int index = 0; index < requested_player_count; ++index)
+    {
+        auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+        soldier->name = requested_player_count == 1
+            ? "Web Soldier"
+            : std::format("Web Soldier {}", index + 1);
+        soldier->teamnum = static_cast<short>(index);
+        soldier->strength = 200;
+        soldier->dexterity = 200;
+        soldier->constitution = 200;
+        soldier->intelligence = 200;
+        soldier->armor = 200;
+        save.team_list[index] = std::move(soldier);
+    }
+    save.team_size = static_cast<unsigned char>(requested_player_count);
     save.save("save0");
 }
 
@@ -180,6 +204,24 @@ void glad_main(screen *scr, Sint32 playermode);
 // Frame state lives in GameSession::frame_state_
 static inline GameLoopFrameState& g_frame_state() {
     return og::runtime::current_session->frame_state_;
+}
+
+short gameplay_numviews_for_start(
+    const screen& current_screen,
+    const og::ui::PickerLobbyGameStartConfig* lobby_config)
+{
+    const std::uint8_t player_count = lobby_config != nullptr
+        ? lobby_config->save_data.numplayers
+        : current_screen.save_data.numplayers;
+    return static_cast<short>(player_count == 0 ? 1 : player_count);
+}
+
+void ready_screen_for_game_start(
+    screen& current_screen,
+    const og::ui::PickerLobbyGameStartConfig* lobby_config)
+{
+    current_screen.ready_for_battle(
+        gameplay_numviews_for_start(current_screen, lobby_config));
 }
 
 // Forward declarations
@@ -303,17 +345,12 @@ static void emscripten_frame_wrapper() {
 						break;
 					}
 					{
-					const short numviews = g_web_game_start_config.has_value()
-					    ? static_cast<short>(
-					          g_web_game_start_config->save_data.numplayers == 0
-					              ? 1
-					              : g_web_game_start_config->save_data.numplayers)
-					    : static_cast<short>(
-					          current_screen->save_data.numplayers == 0
-					              ? 1
-					              : current_screen->save_data.numplayers);
-					current_screen->ready_for_battle(numviews);
-				}
+					ready_screen_for_game_start(
+					    *current_screen,
+					    g_web_game_start_config.has_value()
+					        ? &*g_web_game_start_config
+					        : nullptr);
+					}
 					og::runtime::current_session->gameplay_active_ = true;
 					glad_init(
 					    true,

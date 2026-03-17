@@ -259,6 +259,46 @@ test.describe('Game Interaction', () => {
     await expect(page.locator('#loading')).toBeHidden();
   });
 
+  test('lobby-backed picker start uses lobby player count for gameplay views', async ({ page }) => {
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await page.addInitScript(() => {
+      window.__opengladSeedPlayerCount = 3;
+      window.__opengladSkipIntroForTests = true;
+    });
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+
+    await page.waitForTimeout(5_000);
+    assertNoRuntimeErrors(errors, 'seeded picker before multi-view start');
+
+    await clickCanvasGameCoord(page, 150, 85);
+    await page.waitForTimeout(1_000);
+    assertNoRuntimeErrors(errors, 'continue game click');
+
+    await clickCanvasGameCoord(page, 250, 107);
+    await page.waitForTimeout(1_000);
+    assertNoRuntimeErrors(errors, 'go click');
+
+    await page.waitForFunction(
+      () => window.__opengladGameState === 2,
+      null,
+      { timeout: 15_000 },
+    );
+    await focusCanvas(page);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => window.__opengladNumViews === 3, null, {
+      timeout: 15_000,
+    });
+    await waitForRenderedFrames(page, 4);
+    assertNoRuntimeErrors(errors, 'picker-to-game multi-view transition');
+
+    await expect(page.locator('#canvas')).toBeVisible();
+    await expect(page.locator('#loading')).toBeHidden();
+    await expect.poll(async () => page.evaluate(() => window.__opengladNumViews)).toBe(3);
+  });
+
   test('keyboard input does not crash the game', async ({ page }) => {
     const errors = [];
     attachRuntimeErrorCollectors(page, errors);
