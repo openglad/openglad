@@ -38,10 +38,10 @@ float render_tick_interval_ms(
     const std::optional<og::sim::WorldSnapshot>& baseline)
 {
     float interval_ms = static_cast<float>(og::sim::DEFAULT_SIM_TICK_MS);
-    if (baseline.has_value() && baseline->timer_wait > 0)
+    if (baseline.has_value())
     {
         interval_ms =
-            static_cast<float>(baseline->timer_wait) *
+            static_cast<float>(std::max<int>(baseline->timer_wait, 0)) *
             og::sim::TIMER_WAIT_TO_MS;
     }
 
