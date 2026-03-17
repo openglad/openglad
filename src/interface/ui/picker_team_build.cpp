@@ -199,6 +199,7 @@ Sint32 create_team_menu(Sint32 arg1)
 	
 	while ( !(retvalue & MENU_EXIT) )
 	{
+        picker_lobby_poll();
 	    // Input
 		if(leftmouse(buttons))
 			retvalue = og::runtime::current_session->localbuttons_->leftclick();
@@ -266,6 +267,7 @@ Sint32 create_view_menu(Sint32 arg1)
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
+        picker_lobby_poll();
 	    // Input
 		if(leftmouse(buttons))
 			retvalue = og::runtime::current_session->localbuttons_->leftclick();
@@ -381,6 +383,7 @@ Sint32 create_progress_menu(Sint32 arg1)
 
     while (!(retvalue & MENU_EXIT))
     {
+        picker_lobby_poll();
         // Input
         if (leftmouse(buttons))
             retvalue = og::runtime::current_session->localbuttons_->leftclick();
@@ -394,6 +397,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         const int my = static_cast<int>(mymouse.y);
         if (clicked) {
             while (mymouse.left) {
+                picker_lobby_poll();
                 og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
@@ -619,6 +623,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
+        picker_lobby_poll();
 	    // Input
 		clickvalue = leftmouse(buttons);
 		if (clickvalue == 1)
@@ -843,6 +848,7 @@ Sint32 create_train_menu(Sint32 arg1)
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
+        picker_lobby_poll();
 	    // Input
 		clickvalue = leftmouse(buttons);
 		if (clickvalue == 1)
@@ -1034,6 +1040,7 @@ static Sint32 create_slot_menu(button* buttons, int num_buttons, const char* tit
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
+        picker_lobby_poll();
 	    // Input
 		if(leftmouse(buttons))
         {

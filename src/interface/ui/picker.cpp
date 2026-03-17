@@ -702,6 +702,11 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
 class SdlPickerClient final : public og::ui::IPickerClient
 {
 public:
+    void poll_updates() override
+    {
+        picker_lobby_poll();
+    }
+
     const og::ui::PickerMenuItem* present_menu(og::ui::PickerMenuId menu_id) override
     {
 #ifdef TESTING
@@ -1508,6 +1513,7 @@ Sint32 main_controls_options()
     Sint32 retvalue = 0;
 	while(!(retvalue & MENU_EXIT))
 	{
+        picker_lobby_poll();
         if(leftmouse(buttons))
         {
             const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
@@ -1579,6 +1585,7 @@ Sint32 main_options()
     Sint32 retvalue = 0;
 	while(!(retvalue & MENU_EXIT))
 	{
+        picker_lobby_poll();
 	    // Input
 		if(leftmouse(buttons))
         {
@@ -1821,16 +1828,8 @@ void render_family_abilities(text& mytext, const guy* g) {
 
 Sint32 create_detail_menu(guy *arg1)
 {
-	(void)arg1;
-
    Sint32 retvalue = 0;
-   guy *thisguy;
    Sint32 start_time = query_timer();
-
-   if (arg1)
-       thisguy = arg1;
-   else
-       thisguy = og::runtime::current_session->myscreen_->save_data.team_list[og::runtime::current_session->editguy_].get();
 
    release_mouse();
 
@@ -1839,11 +1838,6 @@ Sint32 create_detail_menu(guy *arg1)
 	button* buttons = picker_details_buttons();
 	int num_buttons = picker_details_button_count();
 	int highlighted_button = 0;
-	
-	{
-	    const auto* fd = get_family_descriptor(thisguy->family);
-	    buttons[1].hidden = !(fd && fd->promotes_to >= 0 && thisguy->level >= fd->promotion_level_req);
-	}
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
    //leftmouse(buttons);
@@ -1851,6 +1845,16 @@ Sint32 create_detail_menu(guy *arg1)
 
    while ( !(retvalue & MENU_EXIT) )
    {
+       picker_lobby_poll();
+       guy* thisguy = arg1;
+       if (!thisguy)
+           thisguy = og::runtime::current_session->myscreen_->save_data.team_list[og::runtime::current_session->editguy_].get();
+       if (!thisguy)
+           return MENU_REDRAW;
+
+       const auto* fd = get_family_descriptor(thisguy->family);
+       buttons[1].hidden = !(fd && fd->promotes_to >= 0 && thisguy->level >= fd->promotion_level_req);
+
        show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
     
        bool pressed = handle_menu_nav(buttons, highlighted_button, retvalue);
@@ -1868,7 +1872,6 @@ Sint32 create_detail_menu(guy *arg1)
                    detailmouse.y <= 66) || (pressed && highlighted_button == 1));
        if(do_promote)
        {
-           const auto* fd = get_family_descriptor(thisguy->family);
            if (fd && fd->promotes_to >= 0 && thisguy->level >= fd->promotion_level_req)
            {
                short new_level = fd->promotion_new_level ? fd->promotion_new_level(thisguy->level) : 1;

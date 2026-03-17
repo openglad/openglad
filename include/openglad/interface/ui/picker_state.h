@@ -88,6 +88,10 @@ public:
         (void)item;
     }
 
+    // Allow platform clients to pump asynchronous lobby/runtime updates while
+    // the shared state machine is between blocking menu screens.
+    virtual void poll_updates() {}
+
     // Display campaign selection. Returns selected campaign ID or empty on cancel.
     virtual std::string show_campaign_select() = 0;
 

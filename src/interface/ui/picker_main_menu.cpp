@@ -43,6 +43,7 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 void draw_version_number();
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 Sint32 create_team_menu(Sint32 arg1);
+void picker_lobby_poll();
 void picker_lobby_sync_from_save();
 
 Sint32 leftmouse(button* buttons);
@@ -177,6 +178,7 @@ Sint32 mainmenu(Sint32 arg1)
 
 	while(!(retvalue & MENU_EXIT))
 	{
+        picker_lobby_poll();
 	    // Input
 		{
 			Sint32 click = leftmouse(buttons);

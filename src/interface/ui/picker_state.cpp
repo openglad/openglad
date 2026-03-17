@@ -59,6 +59,7 @@ void run_picker(IPickerClient& client)
     PickerScreen screen = PickerScreen::MainMenu;
 
     while (screen != PickerScreen::Quit) {
+        client.poll_updates();
         PickerTransition transition{screen, false};
         switch (screen) {
         case PickerScreen::MainMenu: {
