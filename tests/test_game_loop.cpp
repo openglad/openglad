@@ -7,9 +7,11 @@
 
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/replay.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
@@ -373,6 +375,62 @@ TEST(GameLoop, glad_init_uses_save_data_numplayers_for_local_transport_clients)
               og::runtime::local_transport_client_count(
                   *og::runtime::current_game_session));
 
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, glad_init_uses_cached_lobby_start_config_before_level_load)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    auto scout = std::make_unique<guy>(FAMILY_ARCHER);
+    scout->name = "Scout";
+    scout->teamnum = 1;
+    save.team_list[0] = std::move(leader);
+    save.team_list[1] = std::move(scout);
+    save.team_size = 2;
+
+    picker_lobby_shutdown();
+    picker_lobby_initialize_from_save();
+    ASSERT_TRUE(picker_lobby_request_start());
+
+    // Corrupt both memory and save0 so glad_init must use the cached lobby config.
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.team_list[0].reset();
+    save.team_list[1].reset();
+    save.team_size = 0;
+    ASSERT_TRUE(save.save("save0"));
+
+    game_screen->ready_for_battle(1);
+    ASSERT_EQ(1, game_screen->numviews);
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    EXPECT_EQ(2, static_cast<int>(game_screen->save_data.numplayers));
+    EXPECT_EQ(0, static_cast<int>(game_screen->save_data.allied_mode));
+    EXPECT_EQ(2u,
+              og::runtime::local_transport_client_count(
+                  *og::runtime::current_game_session));
+    ASSERT_TRUE(game_screen->save_data.team_list[0] != nullptr);
+    ASSERT_TRUE(game_screen->save_data.team_list[1] != nullptr);
+    EXPECT_EQ("Leader", game_screen->save_data.team_list[0]->name);
+    EXPECT_EQ("Scout", game_screen->save_data.team_list[1]->name);
+    EXPECT_FALSE(picker_lobby_consume_game_start_config().has_value());
+
+    picker_lobby_shutdown();
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }

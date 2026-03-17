@@ -32,6 +32,9 @@ struct OrderedLobbySlot {
     const og::sim::LobbyCharacterSlot* slot = nullptr;
 };
 
+std::optional<og::ui::PickerLobbyGameStartConfig>
+g_pending_picker_lobby_game_start_config;
+
 og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
 {
     og::sim::LobbyCharacterData character;
@@ -164,6 +167,7 @@ public:
         server_transport_.reset();
         spectator_mode_ = false;
         start_request_pending_ = false;
+        g_pending_picker_lobby_game_start_config.reset();
     }
 
     void sync_from_save() override
@@ -211,6 +215,7 @@ public:
         if (!ensure_initialized() || peers_.empty())
             return false;
 
+        g_pending_picker_lobby_game_start_config.reset();
         start_request_pending_ = true;
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbyStartGameMessage{.player_index = 0u};
@@ -219,7 +224,22 @@ public:
             std::make_shared<og::sim::LobbyMessage>(std::move(message)));
         poll_messages();
         apply_state_to_save();
+        if (g_start_game_requested)
+            g_pending_picker_lobby_game_start_config = build_game_start_config();
         return g_start_game_requested;
+    }
+
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        if (!server_)
+            return std::nullopt;
+
+        og::ui::PickerLobbyGameStartConfig config;
+        config.save_data = server_->build_save_data_equivalent();
+        config.difficulty =
+            static_cast<std::int16_t>(server_->state().settings.difficulty);
+        return config;
     }
 
     [[nodiscard]] bool start_request_pending() const noexcept override
@@ -363,6 +383,8 @@ private:
                     {
                         start_request_pending_ = false;
                         g_start_game_requested = true;
+                        g_pending_picker_lobby_game_start_config =
+                            build_game_start_config();
                     }
                     break;
                 default:
@@ -547,6 +569,15 @@ void picker_lobby_set_player_mode(int player_count)
 bool picker_lobby_request_start()
 {
     return resolve_picker_lobby_client().request_start_game();
+}
+
+std::optional<og::ui::PickerLobbyGameStartConfig>
+picker_lobby_consume_game_start_config()
+{
+    std::optional<og::ui::PickerLobbyGameStartConfig> config =
+        std::move(g_pending_picker_lobby_game_start_config);
+    g_pending_picker_lobby_game_start_config.reset();
+    return config;
 }
 
 bool picker_lobby_start_request_pending()

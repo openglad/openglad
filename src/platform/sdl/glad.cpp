@@ -35,11 +35,13 @@
 #include <cstring>
 #include <format>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
 #include <openglad/resources/io.h>
 #include <openglad/interface/render/text.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/platform/game_context.h>
 // theprefs is now a macro defined in view.h (via game_session.h)
@@ -58,10 +60,11 @@ inline options* active_prefs()
 
 } // namespace
 
-#if defined(__EMSCRIPTEN__) && !defined(TESTING)
+#ifdef __EMSCRIPTEN__
 namespace {
 std::unique_ptr<og::runtime::GameSession> g_web_session;
 bool g_web_boot_started = false;
+std::optional<og::ui::PickerLobbyGameStartConfig> g_web_game_start_config;
 char g_web_arg0[] = "/play.html";
 char* g_web_argv[] = {g_web_arg0, nullptr};
 } // namespace
@@ -181,6 +184,8 @@ static inline GameLoopFrameState& g_frame_state() {
 
 // Forward declarations
 void glad_init(bool preserve_frame_timing = false);
+void glad_init(bool preserve_frame_timing,
+               const og::ui::PickerLobbyGameStartConfig* lobby_config);
 
 #ifndef TESTING
 namespace {
@@ -278,6 +283,7 @@ static void emscripten_frame_wrapper() {
 				if (picker_frame()) {
 					// Transition to playing state
 					Log("Transitioning from PICKER to PLAYING\n");
+					g_web_game_start_config = picker_lobby_consume_game_start_config();
 					picker_cleanup_for_game();
 					g_game_state = GameState::Playing;
 					g_state_initialized = false;
@@ -297,11 +303,24 @@ static void emscripten_frame_wrapper() {
 						break;
 					}
 					{
-					short numviews = (current_screen->save_data.numplayers == 0) ? 1 : current_screen->save_data.numplayers;
+					const short numviews = g_web_game_start_config.has_value()
+					    ? static_cast<short>(
+					          g_web_game_start_config->save_data.numplayers == 0
+					              ? 1
+					              : g_web_game_start_config->save_data.numplayers)
+					    : static_cast<short>(
+					          current_screen->save_data.numplayers == 0
+					              ? 1
+					              : current_screen->save_data.numplayers);
 					current_screen->ready_for_battle(numviews);
 				}
 					og::runtime::current_session->gameplay_active_ = true;
-					glad_init(true);
+					glad_init(
+					    true,
+					    g_web_game_start_config.has_value()
+					        ? &*g_web_game_start_config
+					        : nullptr);
+					g_web_game_start_config.reset();
 					g_frame_state().done = false;
 					g_frame_state().currentcycle = 0;
 					g_frame_state().cycletime = 3;
@@ -317,6 +336,7 @@ static void emscripten_frame_wrapper() {
 					og::runtime::current_session->gameplay_active_ = false;
 					clear_keyboard();
 					current_screen->world().delete_objects();
+					g_web_game_start_config.reset();
 					g_game_state = GameState::Picker;
 					g_state_initialized = false;
 				}
@@ -368,10 +388,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
         // Check if picker_init resulted in a game start request
         if (picker_check_start_requested()) {
             Log("openglad_web_boot: Game start was requested during picker_init, starting in PLAYING state\n");
+            g_web_game_start_config = picker_lobby_consume_game_start_config();
             g_game_state = GameState::Playing;
             g_state_initialized = false;  // Will trigger glad_init on first frame
         } else {
             Log("openglad_web_boot: No game start requested, starting in PICKER state\n");
+            g_web_game_start_config.reset();
             g_game_state = GameState::Picker;
             g_state_initialized = true;
         }

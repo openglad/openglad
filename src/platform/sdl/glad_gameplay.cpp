@@ -12,6 +12,8 @@
 #include <openglad/platform/game_loop.h>
 
 #include <openglad/core/util.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_server.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
@@ -20,8 +22,11 @@
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
+
+#include <optional>
 
 // theprefs is now a macro defined in view.h (via game_session.h)
 
@@ -35,8 +40,94 @@ static inline GameLoopFrameState& g_frame_state() {
 bool g_test_remove_exits = false;
 #endif
 
+namespace
+{
+
+std::unique_ptr<guy> make_guy_from_lobby_character(
+    const og::sim::LobbyCharacterData& character)
+{
+    auto result = std::make_unique<guy>(character.family);
+    result->id = character.guy_id;
+    result->name = character.name;
+    result->family = static_cast<char>(character.family);
+    result->strength = character.strength;
+    result->dexterity = character.dexterity;
+    result->constitution = character.constitution;
+    result->intelligence = character.intelligence;
+    result->armor = character.armor;
+    result->exp = character.exp;
+    result->kills = character.kills;
+    result->level_kills = character.level_kills;
+    result->total_damage = character.total_damage;
+    result->total_hits = character.total_hits;
+    result->total_shots = character.total_shots;
+    result->teamnum = character.teamnum;
+    result->scen_damage = character.scen_damage;
+    result->scen_kills = character.scen_kills;
+    result->scen_damage_taken = character.scen_damage_taken;
+    result->scen_min_hp = character.scen_min_hp;
+    result->scen_shots = character.scen_shots;
+    result->scen_hits = character.scen_hits;
+    result->level = character.level;
+    return result;
+}
+
+void apply_lobby_game_start_config(
+    screen& current_screen,
+    const og::ui::PickerLobbyGameStartConfig& lobby_config)
+{
+    SaveData& save = current_screen.save_data;
+    const og::sim::LobbySaveDataEquivalent& config_save =
+        lobby_config.save_data;
+
+    save.current_campaign = config_save.current_campaign.empty()
+        ? std::string("org.openglad.gladiator")
+        : config_save.current_campaign;
+    save.scen_num = config_save.scen_num > 0 ? config_save.scen_num : 1;
+    save.current_levels[save.current_campaign] = save.scen_num;
+    save.numplayers = config_save.numplayers;
+    save.allied_mode = static_cast<short>(config_save.allied_mode);
+
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_size = 0;
+
+    for (const auto& slot : config_save.team_list)
+    {
+        if (slot.slot_index >= save.team_list.size())
+            continue;
+
+        save.team_list[slot.slot_index] =
+            make_guy_from_lobby_character(slot.character);
+        ++save.team_size;
+    }
+
+    if (og::runtime::current_session != nullptr)
+    {
+        og::runtime::current_session->current_difficulty_ =
+            static_cast<std::int32_t>(lobby_config.difficulty);
+    }
+
+    if (!save.save("save0"))
+        LogError("glad_init_lobby_save_failed reason=save0_write_failed\n");
+}
+
+} // namespace
+
+void glad_init(bool preserve_frame_timing,
+               const og::ui::PickerLobbyGameStartConfig* lobby_config);
+
 // Initialize the game for playing (called before game loop starts).
 void glad_init(bool preserve_frame_timing)
+{
+    const std::optional<og::ui::PickerLobbyGameStartConfig> lobby_config =
+        picker_lobby_consume_game_start_config();
+    glad_init(preserve_frame_timing,
+              lobby_config.has_value() ? &*lobby_config : nullptr);
+}
+
+void glad_init(bool preserve_frame_timing,
+               const og::ui::PickerLobbyGameStartConfig* lobby_config)
 {
     screen* current_screen = og::runtime::current_session->myscreen_;
     if (current_screen == nullptr)
@@ -49,8 +140,11 @@ void glad_init(bool preserve_frame_timing)
     current_screen->fadeblack(0);
     current_screen->clearbuffer();
 
-    // Load the default saved-game.
-    load_saved_game("save0", current_screen);
+    if (lobby_config != nullptr)
+        apply_lobby_game_start_config(*current_screen, *lobby_config);
+
+    // Load the default saved-game, or the lobby-supplied in-memory config.
+    load_saved_game(lobby_config != nullptr ? "" : "save0", current_screen);
     current_screen->world().tick_count_ = 0;
     current_screen->world().reset_level_progress();
     current_screen->world().clear_removed_entity_ids();
