@@ -109,6 +109,56 @@ void expect_input_state_eq(const InputState& expected, const InputState& actual)
     }
 }
 
+og::sim::LobbyPlayer make_lobby_player_for_test()
+{
+    og::sim::LobbyCharacterData character;
+    character.guy_id = 42;
+    character.name = "Ari";
+    character.family = 2;
+    character.strength = 12;
+    character.dexterity = 13;
+    character.constitution = 14;
+    character.intelligence = 15;
+    character.armor = 16;
+    character.exp = 1234u;
+    character.kills = 8;
+    character.level_kills = 9;
+    character.total_damage = 10;
+    character.total_hits = 11;
+    character.total_shots = 12;
+    character.teamnum = 2;
+    character.scen_damage = 3.5f;
+    character.scen_kills = 4;
+    character.scen_damage_taken = 5.5f;
+    character.scen_min_hp = 6.5f;
+    character.scen_shots = 7;
+    character.scen_hits = 8;
+    character.level = 9;
+
+    og::sim::LobbyPlayer player;
+    player.player_index = 1u;
+    player.name = "Player One";
+    player.team = 2;
+    player.ready = true;
+    player.is_host = true;
+    player.character_slots.push_back({
+        .slot_index = 3u,
+        .character = character,
+    });
+    return player;
+}
+
+og::sim::LobbyState make_lobby_state_for_test()
+{
+    og::sim::LobbyState state;
+    state.settings.campaign_id = "org.openglad.gladiator";
+    state.settings.scenario_id = 7;
+    state.settings.difficulty = 2;
+    state.settings.allied_mode = 1;
+    state.players.push_back(make_lobby_player_for_test());
+    return state;
+}
+
 TEST(NetTransport, header_helpers_roundtrip_envelope)
 {
     std::vector<std::uint8_t> bytes;
@@ -322,6 +372,44 @@ TEST(NetTransport,
     EXPECT_EQ(14u, message.tick);
     ASSERT_NE(nullptr, message.input);
     expect_input_state_eq(input, *message.input);
+}
+
+TEST(NetTransport,
+     game_server_polls_raw_lobby_messages_when_typed_path_is_unavailable)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    og::sim::LobbyMessage lobby_message;
+    lobby_message.payload =
+        og::sim::LobbyJoinMessage{make_lobby_player_for_test()};
+    const og::sim::LobbyState lobby_state = make_lobby_state_for_test();
+
+    transport.queue_received(
+        5u, og::sim::serialize_lobby_message(lobby_message));
+    transport.queue_received(
+        5u, og::sim::serialize_lobby_state_message(lobby_state));
+
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.last_polled_messages().size());
+
+    const og::sim::TypedReceivedMessage& decoded_message =
+        server.last_polled_messages()[0];
+    EXPECT_EQ(5u, decoded_message.peer_id);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyMessage,
+              decoded_message.kind);
+    ASSERT_NE(nullptr, decoded_message.lobby_message);
+    EXPECT_EQ(lobby_message, *decoded_message.lobby_message);
+
+    const og::sim::TypedReceivedMessage& decoded_state =
+        server.last_polled_messages()[1];
+    EXPECT_EQ(5u, decoded_state.peer_id);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyState,
+              decoded_state.kind);
+    ASSERT_NE(nullptr, decoded_state.lobby_state);
+    EXPECT_EQ(lobby_state, *decoded_state.lobby_state);
 }
 
 TEST(NetTransport, game_server_broadcast_current_state_uses_raw_fallback)
@@ -539,47 +627,8 @@ TEST(NetTransport,
 
 TEST(NetTransport, lobby_state_and_messages_roundtrip)
 {
-    og::sim::LobbyCharacterData character;
-    character.guy_id = 99;
-    character.name = "Ari";
-    character.family = 2;
-    character.strength = 12;
-    character.dexterity = 13;
-    character.constitution = 14;
-    character.intelligence = 15;
-    character.armor = 16;
-    character.exp = 1234u;
-    character.kills = 8;
-    character.level_kills = 9;
-    character.total_damage = 10;
-    character.total_hits = 11;
-    character.total_shots = 12;
-    character.teamnum = 2;
-    character.scen_damage = 3.5f;
-    character.scen_kills = 4;
-    character.scen_damage_taken = 5.5f;
-    character.scen_min_hp = 6.5f;
-    character.scen_shots = 7;
-    character.scen_hits = 8;
-    character.level = 9;
-
-    og::sim::LobbyPlayer player;
-    player.player_index = 1u;
-    player.name = "Player One";
-    player.team = 2;
-    player.ready = true;
-    player.is_host = true;
-    player.character_slots.push_back({
-        .slot_index = 3u,
-        .character = character,
-    });
-
-    og::sim::LobbyState state;
-    state.settings.campaign_id = "org.openglad.gladiator";
-    state.settings.scenario_id = 7;
-    state.settings.difficulty = 2;
-    state.settings.allied_mode = 1;
-    state.players.push_back(player);
+    const og::sim::LobbyPlayer player = make_lobby_player_for_test();
+    const og::sim::LobbyState state = make_lobby_state_for_test();
 
     const std::vector<std::uint8_t> state_bytes =
         og::sim::serialize_lobby_state_message(state);
@@ -1143,6 +1192,43 @@ TEST(NetTransport, game_client_polls_raw_messages_when_typed_path_is_unavailable
               client.game_flow_event_batches().front().sequence);
     EXPECT_EQ(game_flow_batch.events,
               client.game_flow_event_batches().front().events);
+}
+
+TEST(NetTransport,
+     game_client_polls_raw_lobby_messages_when_typed_path_is_unavailable)
+{
+    MockTransport transport;
+
+    og::sim::LobbyMessage lobby_message;
+    lobby_message.payload =
+        og::sim::LobbyJoinMessage{make_lobby_player_for_test()};
+    const og::sim::LobbyState lobby_state = make_lobby_state_for_test();
+
+    transport.queue_received(
+        7u, og::sim::serialize_lobby_message(lobby_message));
+    transport.queue_received(
+        7u, og::sim::serialize_lobby_state_message(lobby_state));
+
+    og::sim::GameClient client(transport, 7u);
+    client.poll_messages();
+
+    ASSERT_EQ(2u, client.last_polled_messages().size());
+
+    const og::sim::TypedReceivedMessage& decoded_message =
+        client.last_polled_messages()[0];
+    EXPECT_EQ(7u, decoded_message.peer_id);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyMessage,
+              decoded_message.kind);
+    ASSERT_NE(nullptr, decoded_message.lobby_message);
+    EXPECT_EQ(lobby_message, *decoded_message.lobby_message);
+
+    const og::sim::TypedReceivedMessage& decoded_state =
+        client.last_polled_messages()[1];
+    EXPECT_EQ(7u, decoded_state.peer_id);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyState,
+              decoded_state.kind);
+    ASSERT_NE(nullptr, decoded_state.lobby_state);
+    EXPECT_EQ(lobby_state, *decoded_state.lobby_state);
 }
 
 } // namespace

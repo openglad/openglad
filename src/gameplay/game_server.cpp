@@ -284,6 +284,36 @@ std::vector<og::sim::TypedReceivedMessage> poll_server_messages(
         typed_message.peer_id = message.peer_id;
         switch (envelope.message_type)
         {
+        case og::sim::kLobbyMessageType:
+        {
+            const auto decoded =
+                og::sim::deserialize_lobby_message(message.data);
+            if (!decoded.has_value())
+            {
+                throw std::runtime_error(
+                    "GameServer failed to deserialize lobby message");
+            }
+            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyMessage;
+            typed_message.lobby_message =
+                std::make_shared<og::sim::LobbyMessage>(*decoded);
+            break;
+        }
+
+        case og::sim::kLobbyStateMessageType:
+        {
+            const auto decoded =
+                og::sim::deserialize_lobby_state_message(message.data);
+            if (!decoded.has_value())
+            {
+                throw std::runtime_error(
+                    "GameServer failed to deserialize lobby state");
+            }
+            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
+            typed_message.lobby_state =
+                std::make_shared<og::sim::LobbyState>(*decoded);
+            break;
+        }
+
         case og::sim::kInputMessageType:
         {
             const auto decoded = og::sim::deserialize_input_message(message.data);
