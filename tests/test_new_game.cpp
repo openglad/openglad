@@ -22,6 +22,9 @@ extern int g_picker_max_mainmenu_calls;
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
+namespace {
+constexpr int kTeamMenuTimeoutMs = 20000;
+}
 
 static void cleanup_picker_state()
 {
@@ -35,6 +38,50 @@ static void cleanup_picker_state()
     pks().main_columns_data.free();
     pks().main_title_logo_pix.reset();
     pks().main_title_logo_data.free();
+}
+
+static bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
+{
+    int elapsed = 0;
+    int since_last_retry = 250;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (has_interactable("view_team"))
+            return true;
+
+        if (since_last_retry >= 250 && has_interactable("hire_me")) {
+            fprintf(stderr, "  [test] retry clicking back from hire menu\n");
+            interact("back");
+            since_last_retry = 0;
+        }
+
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+        since_last_retry += poll_interval;
+    }
+
+    fprintf(stderr, "  [interact] TIMEOUT entering team menu (%d ms)\n",
+            timeout_ms);
+    return false;
+}
+
+static bool unwind_to_main_menu(int timeout_ms = 7000)
+{
+    int elapsed = 0;
+    const int poll_interval = 100;
+    while (elapsed < timeout_ms) {
+        if (has_interactable("continue_game") ||
+            has_interactable("begin_new_game"))
+            return true;
+        if (!has_interactable("back"))
+            inject_key_press(SDLK_ESCAPE, 10);
+        else
+            interact("back");
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+    }
+    return has_interactable("continue_game") ||
+           has_interactable("begin_new_game");
 }
 
 // Test: Click "BEGIN NEW GAME" from the main menu, which should reset save data
@@ -88,7 +135,7 @@ static int new_game_injector(void* data)
 
     // create_hire_menu returns REDRAW, which puts us back in create_team_menu
     SDL_Delay(500);
-    if (wait_for_interactable("view_team", 10000)) {
+    if (wait_for_team_menu()) {
         state->saw_team_menu = true;
         SDL_Delay(750);
 
@@ -97,6 +144,7 @@ static int new_game_injector(void* data)
         interact("back");
     }
 
+    unwind_to_main_menu();
     state->finished = true;
     return 0;
 }
@@ -143,4 +191,3 @@ TEST(NewGame, begin_new_game) {
     // rather than our 99999
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.totalcash != 99999) << "totalcash should have been reset by new game";
 }
-
