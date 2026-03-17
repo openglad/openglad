@@ -172,6 +172,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/picker_accessible_levels.cpp
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
     ${SRC_DIR}/interface/ui/picker_state.cpp
     ${SRC_DIR}/interface/render/pixie.cpp
@@ -386,6 +387,7 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/interface/ui/picker_main_menu.cpp
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
     ${SRC_DIR}/interface/ui/picker_state.cpp
     ${SRC_DIR}/interface/ui/results_screen.cpp

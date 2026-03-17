@@ -117,7 +117,8 @@ void glad_main(Sint32 playermode);
 void statscopy(guy *dest, guy *source);
 void picker_lobby_initialize_from_save();
 void picker_reinitialize_lobby_after_game();
-void picker_lobby_sync_from_save();
+void picker_lobby_sync_roster_from_save();
+void picker_lobby_sync_settings_from_save();
 void picker_lobby_poll();
 bool picker_lobby_request_start();
 bool picker_lobby_start_request_pending();
@@ -436,7 +437,7 @@ Sint32 create_progress_menu(Sint32 arg1)
                         my >= row_y && my <= row_y + row_height) {
                         // Set current level and exit
                         og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(lp.id);
-                        picker_lobby_sync_from_save();
+                        picker_lobby_sync_settings_from_save();
                         og::runtime::current_session->myscreen_->clearbuffer();
                         return MENU_REDRAW;
                     }
@@ -1271,7 +1272,7 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 
 	// Sync current_guy from the session's next recruit
 	sync_current_guy_from_hire();
-    picker_lobby_sync_from_save();
+    picker_lobby_sync_roster_from_save();
 
 	return MENU_OK;
 }
@@ -1294,7 +1295,7 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 
 	// Sync working copy back after accept
 	sync_current_guy_from_train();
-    picker_lobby_sync_from_save();
+    picker_lobby_sync_roster_from_save();
     sync_current_guy_from_train();
 
 	// Color our team button normally
@@ -1423,7 +1424,7 @@ Sint32 delete_all()
     }
     
     og::runtime::current_session->myscreen_->save_data.team_size = 0;
-    picker_lobby_sync_from_save();
+    picker_lobby_sync_roster_from_save();
 
 	return counter;
 }
@@ -1445,7 +1446,8 @@ Sint32 go_menu(Sint32 arg1)
     }
 
 #ifdef __EMSCRIPTEN__
-    picker_lobby_sync_from_save();
+    picker_lobby_sync_settings_from_save();
+    picker_lobby_sync_roster_from_save();
     og::runtime::current_session->myscreen_->save_data.save("save0");
     og::runtime::current_session->current_guy_.reset();
     g_start_game_requested = false;
@@ -1453,7 +1455,8 @@ Sint32 go_menu(Sint32 arg1)
     Log("go_menu: Lobby start requested, returning MENU_EXIT\n");
     return MENU_EXIT;  // This will unwind all menu loops back to picker_main/picker_frame
 #else
-    picker_lobby_sync_from_save();
+    picker_lobby_sync_settings_from_save();
+    picker_lobby_sync_roster_from_save();
     g_start_game_requested = false;
     if (!picker_lobby_request_start())
     {
