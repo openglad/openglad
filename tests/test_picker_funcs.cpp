@@ -31,6 +31,7 @@ Sint32 return_menu(Sint32 arg);
 Sint32 name_guy(Sint32 arg);
 Sint32 edit_guy(Sint32 arg1);
 void picker_lobby_initialize_from_save();
+void picker_reinitialize_lobby_after_game();
 void picker_lobby_shutdown();
 bool picker_lobby_request_start();
 bool picker_lobby_start_request_pending();
@@ -428,6 +429,45 @@ TEST(PickerFuncs, lobby_start_request_sets_start_flag_after_confirmation)
     picker_lobby_initialize_from_save();
 
     EXPECT_FALSE(picker_lobby_start_request_pending());
+    EXPECT_TRUE(picker_lobby_request_start());
+    EXPECT_TRUE(g_start_game_requested);
+    EXPECT_FALSE(picker_lobby_start_request_pending());
+
+    picker_lobby_shutdown();
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.team_size = old_team_size;
+    save.numplayers = old_numplayers;
+    g_start_game_requested = false;
+}
+
+TEST(PickerFuncs, lobby_reinitialize_after_game_allows_second_confirmed_start)
+{
+    picker_lobby_shutdown();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const unsigned char old_team_size = save.team_size;
+    const unsigned char old_numplayers = save.numplayers;
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+
+    save.team_size = 1;
+    save.numplayers = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+
+    g_start_game_requested = false;
+    picker_lobby_initialize_from_save();
+
+    EXPECT_TRUE(picker_lobby_request_start());
+    EXPECT_TRUE(g_start_game_requested);
+    EXPECT_FALSE(picker_lobby_start_request_pending());
+
+    picker_reinitialize_lobby_after_game();
+    EXPECT_FALSE(g_start_game_requested);
+    EXPECT_FALSE(picker_lobby_start_request_pending());
+
     EXPECT_TRUE(picker_lobby_request_start());
     EXPECT_TRUE(g_start_game_requested);
     EXPECT_FALSE(picker_lobby_start_request_pending());

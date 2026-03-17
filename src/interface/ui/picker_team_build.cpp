@@ -116,6 +116,7 @@ Sint32 create_detail_menu(guy *arg1);
 void glad_main(Sint32 playermode);
 void statscopy(guy *dest, guy *source);
 void picker_lobby_initialize_from_save();
+void picker_reinitialize_lobby_after_game();
 void picker_lobby_sync_from_save();
 void picker_lobby_poll();
 bool picker_lobby_request_start();
@@ -1523,6 +1524,8 @@ Sint32 go_menu(Sint32 arg1)
         }
     }
     while(og::runtime::current_session->myscreen_->world().retry);
+
+    picker_reinitialize_lobby_after_game();
 
 	return button_action_id(ButtonAction::CreateTeamMenu);
 #endif

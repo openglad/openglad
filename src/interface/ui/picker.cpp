@@ -510,6 +510,12 @@ void picker_lobby_sync_from_save()
     g_picker_lobby_runtime->sync_from_save();
 }
 
+void picker_reinitialize_lobby_after_game()
+{
+    g_start_game_requested = false;
+    picker_lobby_initialize_from_save();
+}
+
 void picker_lobby_poll()
 {
     if (g_picker_lobby_runtime)
@@ -2152,8 +2158,7 @@ void picker_reinit_after_game()
     // Reload save data
     picker_load_default_save_if_present();
 
-    g_start_game_requested = false;
-    picker_lobby_initialize_from_save();
+    picker_reinitialize_lobby_after_game();
 
     run_picker_state_machine_until_game_requested();
     Log("picker_reinit_after_game: picker returned, g_start_game_requested={}\n", g_start_game_requested);
