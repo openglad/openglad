@@ -9,6 +9,7 @@
 #include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/platform/game_context.h>
@@ -42,8 +43,9 @@ struct NetworkTestConfig {
     std::uint32_t tick_count = 0;
     bool validate_serialization =
         kInProcessTransportValidateSerializationDefault;
+    std::vector<short> player_teams = {};
     std::function<InputState(std::size_t client_index, std::uint32_t tick)>
-        input_sequence;
+        input_sequence = {};
 };
 
 class NetworkTestFixture
@@ -96,12 +98,7 @@ public:
                 << "client level load should succeed";
         }
 
-        for (std::size_t index = 0; index < clients_.size(); ++index)
-        {
-            server_->bind_player(clients_[index]->peer_id(),
-                                 index,
-                                 server_world_.world().my_team);
-        }
+        bind_players();
 
         level_loaded_ = true;
     }
@@ -114,14 +111,48 @@ public:
         with_server_context([&] {
             server_->send_initial_snapshots(SnapshotCaptureMode::Peek);
         });
+        poll_all_clients();
+
+        initial_sync_complete_ = true;
+    }
+
+    void apply_server_snapshot(const WorldSnapshot& snapshot)
+    {
+        ensure_level_loaded();
+        ASSERT_FALSE(initial_sync_complete_);
+
+        with_server_context([&] {
+            apply_snapshot(server_world_.world(), snapshot);
+            server_world_.world().clear_removed_entity_ids();
+            server_world_.world().clear_grid_dirty_tiles();
+            server_world_.events.clear();
+        });
         for (auto& client : clients_)
         {
             client->world.with_context([&] {
-                client->game_client->poll_messages();
+                apply_snapshot(client->world.world(), snapshot);
+                client->world.world().clear_removed_entity_ids();
+                client->world.world().clear_grid_dirty_tiles();
+                client->world.events.clear();
             });
         }
+        bind_players();
+        with_server_context([&] {
+            server_world_.world().control_hp = snapshot.control_hp;
+        });
+    }
 
-        initial_sync_complete_ = true;
+    void step_tick(const InputState& input)
+    {
+        ensure_initial_sync();
+
+        const std::uint32_t next_tick =
+            server_world_.world().tick_count_ + 1;
+        send_explicit_input(input, next_tick);
+        with_server_context([&] {
+            server_->step();
+        });
+        poll_all_clients();
     }
 
     void step_ticks(std::uint32_t tick_count)
@@ -136,13 +167,7 @@ public:
             with_server_context([&] {
                 server_->step();
             });
-
-            for (auto& client : clients_)
-            {
-                client->world.with_context([&] {
-                    client->game_client->poll_messages();
-                });
-            }
+            poll_all_clients();
         }
     }
 
@@ -313,6 +338,29 @@ private:
         }
     }
 
+    void bind_players()
+    {
+        with_server_context([&] {
+            clear_control_claims(server_world_.world());
+            for (std::size_t index = 0; index < clients_.size(); ++index)
+            {
+                server_->bind_player(clients_[index]->peer_id(),
+                                     index,
+                                     player_team(index));
+            }
+        });
+    }
+
+    void poll_all_clients()
+    {
+        for (auto& client : clients_)
+        {
+            client->world.with_context([&] {
+                client->game_client->poll_messages();
+            });
+        }
+    }
+
     void send_client_inputs(std::uint32_t tick)
     {
         for (std::size_t index = 0; index < clients_.size(); ++index)
@@ -324,6 +372,51 @@ private:
                 config_.input_sequence(index, tick),
                 tick);
         }
+    }
+
+    void send_explicit_input(const InputState& input, std::uint32_t tick)
+    {
+        for (std::size_t index = 0; index < clients_.size(); ++index)
+        {
+            clients_[index]->game_client->send_input(
+                input_for_client(input, index),
+                tick);
+        }
+    }
+
+    static InputState input_for_client(const InputState& input,
+                                       std::size_t client_index)
+    {
+        InputState client_input;
+        client_input.quit_requested = input.quit_requested;
+        client_input.timer_wait_request = input.timer_wait_request;
+        if (client_index < static_cast<std::size_t>(MAX_PLAYERS))
+        {
+            client_input.players[client_index] =
+                input.players[client_index];
+        }
+        return client_input;
+    }
+
+    short player_team(std::size_t player_index)
+    {
+        if (player_index < config_.player_teams.size())
+            return config_.player_teams[player_index];
+        return server_world_.world().my_team;
+    }
+
+    static void clear_control_claims(GameWorld& world)
+    {
+        for (auto& uptr : world.oblist)
+        {
+            walker* const entity = uptr.get();
+            if (entity == nullptr || entity->user() == -1)
+                continue;
+
+            entity->set_user(-1);
+            entity->restore_act_type();
+        }
+        world.control_hp = 0.0f;
     }
 
     NetworkTestConfig config_;

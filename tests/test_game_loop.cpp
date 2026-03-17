@@ -178,7 +178,10 @@ TEST(GameLoop, game_frame_toggles_debug_hotkeys)
     deps.enable_event_poll = true;
     deps.poll_event = scripted_poll_adapter;
 
-    (void)game_frame(*og::runtime::current_session->myscreen_, st, deps);
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*og::runtime::current_session->myscreen_,
+                                     st,
+                                     deps));
 
     ASSERT_TRUE(og::runtime::current_session->debug_draw_paths_) << "F11 should toggle debug_draw_paths";
     ASSERT_TRUE(og::runtime::current_session->debug_draw_obmap_) << "F12 should toggle debug_draw_obmap";
@@ -647,26 +650,6 @@ TEST(GameLoop, game_frame_with_result_processes_input_before_same_call_tick)
 }
 
 
-TEST(GameLoop, game_frame_bool_wrapper_matches_typed_result)
-{
-    GameLoopFrameState st;
-    GameLoopDeps deps;
-    deps.enable_render = false;
-    deps.enable_event_poll = false;
-
-    const char old_end = og::runtime::current_session->myscreen_->world().end;
-    og::runtime::current_session->myscreen_->world().end = 1;
-
-    const GameFrameResult typed = game_frame_with_result(*og::runtime::current_session->myscreen_, st, deps);
-    st.done = false;
-    const bool wrapped = game_frame(*og::runtime::current_session->myscreen_, st, deps);
-
-    ASSERT_EQ(static_cast<int>(typed != GameFrameResult::Continue), static_cast<int>(wrapped)) << "bool wrapper should map Continue/non-Continue exactly";
-
-    og::runtime::current_session->myscreen_->world().end = old_end;
-}
-
-
 // ---------------------------------------------------------------------------
 // Regression test: options_menu via game_frame_with_result call chain.
 //
@@ -742,7 +725,10 @@ TEST(GameLoop, game_frame_options_menu_via_key_prefs_completes)
 
     // This call chain goes through the std::function indirection in
     // game_frame_with_result() and must not hang.
-    (void)game_frame(*og::runtime::current_session->myscreen_, st, deps);
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*og::runtime::current_session->myscreen_,
+                                     st,
+                                     deps));
 
     esc_thread.join();
 

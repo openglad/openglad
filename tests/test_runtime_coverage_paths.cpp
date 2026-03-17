@@ -18,6 +18,8 @@
 #include <gtest/gtest.h>
 #include <SDL.h>
 
+#include "test_network_fixture.h"
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 short new_score_panel(screen* s, short do_it);
 void picker_testing_yes_or_no_queue_clear();
@@ -612,8 +614,31 @@ TEST(RuntimeCoveragePaths, screen_withdraw_aborts_when_autosave_load_fails)
                               "Withdraw to Level 4?", 4, 1);
     sim_events.push(og::sim::EventKind::WithdrawToLevel, 4, 0);
 
-    ASSERT_TRUE(
-        s->dispatch_sim_event_batch(og::sim::drain_sim_events(sim_events)))
+    og::sim::test::NetworkTestConfig config;
+    config.level_id = 1;
+    config.tick_count = 1;
+    og::sim::test::NetworkTestFixture fixture(config);
+    fixture.run();
+
+    bool saw_game_flow_batch = false;
+    bool dispatch_result = false;
+    const auto dispatch_batch = &screen::dispatch_sim_event_batch;
+    fixture.client(0).set_game_flow_event_batch_callback(
+        [&dispatch_batch, &saw_game_flow_batch, &dispatch_result, s](
+            const og::sim::SimEventBatch& batch) {
+            saw_game_flow_batch = true;
+            dispatch_result = (s->*dispatch_batch)(batch);
+        });
+
+    const og::sim::SimEventBatch batch = og::sim::drain_sim_events(sim_events);
+    fixture.with_server_context([&] {
+        fixture.server().forward_event_batch(batch);
+    });
+    fixture.poll_client_messages(0);
+
+    ASSERT_TRUE(saw_game_flow_batch)
+        << "network fixture should deliver the withdraw batch";
+    ASSERT_TRUE(dispatch_result)
         << "dispatch should continue after failed withdraw load";
     ASSERT_EQ(7, static_cast<int>(s->save_data.scen_num)) << "failed withdraw load should not change scen_num";
     ASSERT_EQ(7, static_cast<int>(s->world_.current_scenario)) << "failed withdraw load should keep world scenario unchanged";

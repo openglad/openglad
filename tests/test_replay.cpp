@@ -9,7 +9,6 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_session.h>
-#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/io_common.h>
 
 #include <array>
@@ -20,6 +19,8 @@
 #include <optional>
 #include <string_view>
 #include <vector>
+
+#include "test_network_fixture.h"
 
 short load_saved_game(const char* filename, screen* scr);
 
@@ -182,6 +183,26 @@ std::vector<std::uint32_t> capture_view_control_ids(screen& game_screen,
     return control_ids;
 }
 
+std::vector<short> capture_view_teams(screen& game_screen, int player_count)
+{
+    std::vector<short> teams;
+    teams.reserve(static_cast<std::size_t>(player_count));
+
+    for (int player = 0; player < player_count; ++player)
+    {
+        if (game_screen.viewob[player] == nullptr)
+        {
+            ADD_FAILURE() << "missing view for player " << player;
+            teams.push_back(0);
+            continue;
+        }
+
+        teams.push_back(game_screen.viewob[player]->my_team);
+    }
+
+    return teams;
+}
+
 void poison_replay_input_debounce(screen& game_screen)
 {
     InputState input{};
@@ -189,33 +210,38 @@ void poison_replay_input_debounce(screen& game_screen)
     game_screen.process_input(input);
 }
 
-void reset_network_shadow(screen& game_screen)
+og::sim::test::NetworkTestConfig make_replay_fixture_config(
+    int player_count,
+    const std::vector<short>& player_teams)
 {
-    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
-    ASSERT_TRUE(game_screen.save_data.save("save0"))
-        << "local transport shadow bootstrap save should succeed";
-    og::runtime::reset_local_transport_shadow(
-        *og::runtime::current_game_session,
-        game_screen);
-    ASSERT_TRUE(og::runtime::local_transport_active(
-        *og::runtime::current_game_session));
+    og::sim::test::NetworkTestConfig config;
+    config.player_count = static_cast<std::size_t>(player_count);
+    config.level_id = kReplayLevel;
+    config.player_teams = player_teams;
+    return config;
 }
 
-void advance_network_tick(screen& game_screen, const InputState& input)
+void initialize_fixture_world(
+    og::sim::test::NetworkTestFixture& fixture,
+    const og::sim::WorldSnapshot& initial_snapshot)
 {
-    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
-    ASSERT_TRUE(og::runtime::local_transport_active(
-        *og::runtime::current_game_session));
-    og::runtime::local_transport_shadow_send_input(
-        *og::runtime::current_game_session,
-        input,
-        game_screen.world().tick_count_ + 1);
-    game_screen.process_input(input);
-    game_screen.continuous_input();
-    og::runtime::local_transport_shadow_finish_tick(
-        *og::runtime::current_game_session);
-    ASSERT_FALSE(game_screen.world().game_ended)
-        << "replay test should not end the game early";
+    fixture.load_level();
+    fixture.apply_server_snapshot(initial_snapshot);
+    fixture.initial_sync();
+}
+
+void expect_fixture_controls_match(
+    og::sim::test::NetworkTestFixture& fixture,
+    const std::vector<std::uint32_t>& expected_control_ids)
+{
+    for (std::size_t index = 0; index < expected_control_ids.size(); ++index)
+    {
+        ASSERT_NE(nullptr, fixture.server_control(index))
+            << "fixture should bind a control for player " << index;
+        EXPECT_EQ(expected_control_ids[index],
+                  fixture.server_control(index)->entity_id())
+            << "fixture control binding diverged for player " << index;
+    }
 }
 
 void reset_loaded_world_for_replay(GameWorld& world)
@@ -272,14 +298,26 @@ void run_replay_roundtrip(int player_count)
     ASSERT_TRUE(load_saved_game(save_name.c_str(), &game_screen) != 0)
         << "initial replay load should succeed";
 
-    GameWorld& live_world = game_screen.world();
-    reset_loaded_world_for_replay(live_world);
-    reset_network_shadow(game_screen);
-    ASSERT_EQ(kReplayLevel, live_world.id);
-    ASSERT_TRUE(live_world.grid.valid());
+    GameWorld& live_screen_world = game_screen.world();
+    reset_loaded_world_for_replay(live_screen_world);
+    ASSERT_EQ(kReplayLevel, live_screen_world.id);
+    ASSERT_TRUE(live_screen_world.grid.valid());
     ASSERT_EQ(player_count, game_screen.numviews);
     const std::vector<std::uint32_t> expected_control_ids =
         capture_view_control_ids(game_screen, player_count);
+    const std::vector<short> player_teams =
+        capture_view_teams(game_screen, player_count);
+    const og::sim::WorldSnapshot seeded_snapshot =
+        og::sim::peek_keyframe_snapshot(live_screen_world);
+
+    og::sim::test::NetworkTestFixture live_fixture(
+        make_replay_fixture_config(player_count, player_teams));
+    initialize_fixture_world(live_fixture, seeded_snapshot);
+    expect_fixture_controls_match(live_fixture, expected_control_ids);
+
+    GameWorld& live_world = live_fixture.server_world();
+    ASSERT_EQ(kReplayLevel, live_world.id);
+    ASSERT_TRUE(live_world.grid.valid());
 
     og::sim::ReplayRecorder recorder({
         .version = og::sim::kReplayFormatVersion,
@@ -304,7 +342,9 @@ void run_replay_roundtrip(int player_count)
     {
         populate_chaotic_input(input, tick, player_count);
         recorder.record_input(live_world.tick_count_ + 1, input);
-        advance_network_tick(game_screen, input);
+        live_fixture.step_tick(input);
+        ASSERT_FALSE(live_world.game_ended)
+            << "replay test should not end the game early";
         expected_rng_states.push_back(live_world.rng_.state_);
 
         if (((tick + 1) % kCheckpointInterval) == 0)
@@ -358,21 +398,21 @@ void run_replay_roundtrip(int player_count)
     ASSERT_TRUE(og::runtime::initialize_replay_screen(game_screen, player))
         << "replay runtime should seed RNG and load the replay world";
 
-    GameWorld& replay_world = game_screen.world();
-    reset_loaded_world_for_replay(replay_world);
-    reset_network_shadow(game_screen);
-    ASSERT_EQ(player.header().level_id, replay_world.id);
-    ASSERT_EQ(player.header().player_count, static_cast<std::uint8_t>(game_screen.numviews));
-    ASSERT_EQ(player.header().timer_wait, replay_world.timer_wait);
+    GameWorld& replay_screen_world = game_screen.world();
+    reset_loaded_world_for_replay(replay_screen_world);
+    ASSERT_EQ(player.header().level_id, replay_screen_world.id);
+    ASSERT_EQ(player.header().player_count,
+              static_cast<std::uint8_t>(game_screen.numviews));
+    ASSERT_EQ(player.header().timer_wait, replay_screen_world.timer_wait);
     ASSERT_EQ(player.header().my_team, game_screen.save_data.my_team);
     ASSERT_EQ(player.header().allied_mode, game_screen.save_data.allied_mode);
-    ASSERT_EQ(player.header().difficulty, replay_world.difficulty);
+    ASSERT_EQ(player.header().difficulty, replay_screen_world.difficulty);
     ASSERT_EQ(0, game_screen.save_data.team_size);
     EXPECT_EQ(expected_control_ids,
               capture_view_control_ids(game_screen, player_count));
 
     const og::sim::WorldSnapshot actual_initial_snapshot =
-        og::sim::peek_keyframe_snapshot(replay_world);
+        og::sim::peek_keyframe_snapshot(replay_screen_world);
     assert_snapshot_bytes_match("initial snapshot payload",
                                 player.initial_snapshot(),
                                 actual_initial_snapshot);
@@ -381,12 +421,20 @@ void run_replay_roundtrip(int player_count)
                                 actual_initial_snapshot);
 
     if (const std::optional<og::sim::ReplayVerificationFailure> initial_checkpoint_failure =
-            player.verify_world(replay_world, replay_world.tick_count_, false);
+            player.verify_world(replay_screen_world,
+                                replay_screen_world.tick_count_,
+                                false);
         initial_checkpoint_failure.has_value())
     {
         FAIL() << "initial checkpoint divergence: "
                << format_failure(*initial_checkpoint_failure);
     }
+
+    og::sim::test::NetworkTestFixture replay_fixture(
+        make_replay_fixture_config(player_count, player_teams));
+    initialize_fixture_world(replay_fixture, player.initial_snapshot());
+    expect_fixture_controls_match(replay_fixture, expected_control_ids);
+    GameWorld& replay_world = replay_fixture.server_world();
 
     std::size_t replay_tick_index = 0;
     while (true)
@@ -396,7 +444,9 @@ void run_replay_roundtrip(int player_count)
             break;
 
         ASSERT_EQ(replay_world.tick_count_ + 1, frame->tick);
-        advance_network_tick(game_screen, frame->input);
+        replay_fixture.step_tick(frame->input);
+        ASSERT_FALSE(replay_world.game_ended)
+            << "replay playback should not end the game early";
         ASSERT_EQ(frame->tick, replay_world.tick_count_);
         ASSERT_LT(replay_tick_index, expected_rng_states.size());
         EXPECT_EQ(expected_rng_states[replay_tick_index], replay_world.rng_.state_)
@@ -412,14 +462,13 @@ void run_replay_roundtrip(int player_count)
 
     EXPECT_EQ(expected_rng_states.size(), replay_tick_index);
     EXPECT_FALSE(player.first_divergence().has_value());
-
     const og::sim::WorldSnapshot actual_final_snapshot =
         og::sim::peek_keyframe_snapshot(replay_world);
     assert_snapshot_bytes_match("final snapshot",
                                 expected_final_snapshot,
                                 actual_final_snapshot);
 
-    replay_world.delete_objects();
+    replay_screen_world.delete_objects();
     std::filesystem::remove(replay_path, ec);
     og::runtime::current_session->current_difficulty_ = saved_difficulty;
 }

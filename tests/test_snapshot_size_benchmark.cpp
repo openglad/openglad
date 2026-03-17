@@ -7,10 +7,9 @@
 #include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/world_snapshot.h>
-#include <openglad/interface/replay_runtime.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_session.h>
-#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/resources/io_common.h>
 
 #include <array>
@@ -23,6 +22,7 @@
 #include <string_view>
 #include <vector>
 
+#include "test_network_fixture.h"
 #include "zlib.h"
 
 short load_saved_game(const char* filename, screen* scr);
@@ -174,33 +174,43 @@ void populate_chaotic_input(InputState& input, int tick)
     }
 }
 
-void reset_network_shadow(screen& game_screen)
+std::vector<short> capture_view_teams(screen& game_screen, int player_count)
 {
-    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
-    ASSERT_TRUE(game_screen.save_data.save("save0"))
-        << "local transport shadow bootstrap save should succeed";
-    og::runtime::reset_local_transport_shadow(
-        *og::runtime::current_game_session,
-        game_screen);
-    ASSERT_TRUE(og::runtime::local_transport_active(
-        *og::runtime::current_game_session));
+    std::vector<short> teams;
+    teams.reserve(static_cast<std::size_t>(player_count));
+
+    for (int player = 0; player < player_count; ++player)
+    {
+        if (game_screen.viewob[player] == nullptr)
+        {
+            ADD_FAILURE() << "missing view for player " << player;
+            teams.push_back(0);
+            continue;
+        }
+
+        teams.push_back(game_screen.viewob[player]->my_team);
+    }
+
+    return teams;
 }
 
-void advance_network_tick(screen& game_screen, const InputState& input)
+og::sim::test::NetworkTestConfig make_benchmark_fixture_config(
+    const std::vector<short>& player_teams)
 {
-    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
-    ASSERT_TRUE(og::runtime::local_transport_active(
-        *og::runtime::current_game_session));
-    og::runtime::local_transport_shadow_send_input(
-        *og::runtime::current_game_session,
-        input,
-        game_screen.world().tick_count_ + 1);
-    game_screen.process_input(input);
-    game_screen.continuous_input();
-    og::runtime::local_transport_shadow_finish_tick(
-        *og::runtime::current_game_session);
-    ASSERT_FALSE(game_screen.world().game_ended)
-        << "benchmark scenario should not end during replay capture";
+    og::sim::test::NetworkTestConfig config;
+    config.player_count = 4;
+    config.level_id = kBenchmarkLevel;
+    config.player_teams = player_teams;
+    return config;
+}
+
+void initialize_fixture_world(
+    og::sim::test::NetworkTestFixture& fixture,
+    const og::sim::WorldSnapshot& initial_snapshot)
+{
+    fixture.load_level();
+    fixture.apply_server_snapshot(initial_snapshot);
+    fixture.initial_sync();
 }
 
 void reset_loaded_world_for_benchmark(GameWorld& world)
@@ -407,6 +417,7 @@ TEST(SnapshotSizeBenchmark,
     ASSERT_EQ(4, game_screen.numviews);
     for (int i = 0; i < 4; ++i)
         ASSERT_NE(nullptr, game_screen.viewob[i]);
+    const std::vector<short> player_teams = capture_view_teams(game_screen, 4);
 
     const RecordedBenchmarkReplay recorded = record_benchmark_replay(game_screen);
 
@@ -417,27 +428,19 @@ TEST(SnapshotSizeBenchmark,
     ASSERT_EQ(static_cast<std::size_t>(kWarmupTicks + kCatchupDeltaTicks),
               player.frame_count());
 
-    ASSERT_EQ(CampaignPackageIoError::None,
-              unmount_campaign_package_with_error(get_mounted_campaign()));
-    game_screen.save_data.reset();
-    game_screen.save_data.current_campaign = "wrong.campaign";
-    game_screen.save_data.scen_num = -1;
-    ASSERT_TRUE(og::runtime::initialize_replay_screen(game_screen, player))
-        << "benchmark should measure replay-driven world state from .ogr";
-
-    GameWorld& replay_world = game_screen.world();
-    reset_loaded_world_for_benchmark(replay_world);
-    reset_network_shadow(game_screen);
-    ASSERT_EQ(4, game_screen.numviews);
-    for (int i = 0; i < 4; ++i)
-        ASSERT_NE(nullptr, game_screen.viewob[i]);
+    og::sim::test::NetworkTestFixture replay_fixture(
+        make_benchmark_fixture_config(player_teams));
+    initialize_fixture_world(replay_fixture, player.initial_snapshot());
+    GameWorld& replay_world = replay_fixture.server_world();
 
     for (int tick = 0; tick < kWarmupTicks; ++tick)
     {
         const std::optional<og::sim::InputStateMessage> frame = player.next_frame();
         ASSERT_TRUE(frame.has_value()) << "benchmark replay should include warmup ticks";
         ASSERT_EQ(replay_world.tick_count_ + 1u, frame->tick);
-        advance_network_tick(game_screen, frame->input);
+        replay_fixture.step_tick(frame->input);
+        ASSERT_FALSE(replay_world.game_ended)
+            << "benchmark scenario should not end during replay capture";
     }
 
     const og::sim::WorldSnapshot live_snapshot =
@@ -465,7 +468,9 @@ TEST(SnapshotSizeBenchmark,
         const std::optional<og::sim::InputStateMessage> frame = player.next_frame();
         ASSERT_TRUE(frame.has_value()) << "benchmark replay should include catchup ticks";
         ASSERT_EQ(replay_world.tick_count_ + 1u, frame->tick);
-        advance_network_tick(game_screen, frame->input);
+        replay_fixture.step_tick(frame->input);
+        ASSERT_FALSE(replay_world.game_ended)
+            << "benchmark scenario should not end during replay capture";
 
         final_tick_snapshot = og::sim::capture_snapshot(replay_world);
         if (tick == 0)
@@ -482,7 +487,6 @@ TEST(SnapshotSizeBenchmark,
     }
     EXPECT_FALSE(player.has_next_frame())
         << "benchmark replay should be fully consumed after warmup and catchup";
-
     const og::sim::WorldSnapshot catchup_delta_snapshot =
         og::sim::consume_delta_snapshot_for_client(catchup_client_state,
                                                    final_tick_snapshot);
@@ -566,5 +570,4 @@ TEST(SnapshotSizeBenchmark,
 
     std::error_code ec;
     std::filesystem::remove(recorded.path, ec);
-    replay_world.delete_objects();
 }
