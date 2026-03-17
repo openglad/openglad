@@ -101,6 +101,13 @@ endif()
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
 
+set(OG_NETWORK_SOURCES)
+if(NOT EMSCRIPTEN)
+    list(APPEND OG_NETWORK_SOURCES
+        ${SRC_DIR}/platform/sdl/net_transport_websocket_server.cpp
+    )
+endif()
+
 # Main game C++ sources
 set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/glad.cpp
@@ -109,6 +116,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
     ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
+    ${OG_NETWORK_SOURCES}
     ${SRC_DIR}/interface/score_panel.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
@@ -445,6 +453,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
 
 set(OG_PLATFORM_SDL_COMPONENT_SOURCES
     ${OG_PLATFORM_SOURCES}
+    ${OG_NETWORK_SOURCES}
     ${SRC_DIR}/platform/sdl/game.cpp
     ${SRC_DIR}/platform/game_context.cpp
     ${SRC_DIR}/platform/sdl/game_loop.cpp
@@ -672,6 +681,26 @@ if(NOT OPENGLAD_HAS_WORKING_STD_FORMAT)
     list(APPEND COMMON_DEFINITIONS OPENGLAD_NEEDS_STD_FORMAT_SHIM=1)
 endif()
 
+set(OG_SANITIZER_TEST_ENVIRONMENT)
+if(ENABLE_SANITIZERS)
+    list(FIND SANITIZERS "address" OG_HAS_ASAN)
+    list(FIND SANITIZERS "undefined" OG_HAS_UBSAN)
+    list(FIND SANITIZERS "thread" OG_HAS_TSAN)
+
+    if(NOT OG_HAS_ASAN EQUAL -1)
+        list(APPEND OG_SANITIZER_TEST_ENVIRONMENT
+            "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1")
+    endif()
+    if(NOT OG_HAS_UBSAN EQUAL -1)
+        list(APPEND OG_SANITIZER_TEST_ENVIRONMENT
+            "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+    endif()
+    if(NOT OG_HAS_TSAN EQUAL -1)
+        list(APPEND OG_SANITIZER_TEST_ENVIRONMENT
+            "TSAN_OPTIONS=halt_on_error=1")
+    endif()
+endif()
+
 # --------------------------------------------------------------------------
 # Helper functions to configure targets with common settings
 # --------------------------------------------------------------------------
@@ -894,6 +923,9 @@ if(NOT EMSCRIPTEN)
         og_resources
         og_interface
     )
+    if(NOT EMSCRIPTEN)
+        target_link_libraries(og_platform_sdl PUBLIC ixwebsocket)
+    endif()
     add_dependencies(og_platform_sdl check_vendor_leaks)
 
     # Aggregate target for executables/tests.
@@ -1045,6 +1077,16 @@ if(NOT EMSCRIPTEN)
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
+
+    if(NOT EMSCRIPTEN)
+        install(TARGETS ixwebsocket
+            EXPORT OpenGladTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ixwebsocket
+        )
+    endif()
 
     if(BUILD_EDITOR)
         install(TARGETS openscen
@@ -1307,9 +1349,9 @@ if(NOT EMSCRIPTEN)
                 TIMEOUT 180
                 LABELS "integration"
             )
-            if(ENABLE_SANITIZERS)
+            if(OG_SANITIZER_TEST_ENVIRONMENT)
                 set_tests_properties(${NAME} PROPERTIES ENVIRONMENT
-                    "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1"
+                    "${OG_SANITIZER_TEST_ENVIRONMENT}"
                 )
             endif()
         endfunction()
@@ -1340,9 +1382,9 @@ if(NOT EMSCRIPTEN)
                 TIMEOUT 180
                 LABELS "unit"
             )
-            if(ENABLE_SANITIZERS)
+            if(OG_SANITIZER_TEST_ENVIRONMENT)
                 set_tests_properties(${NAME} PROPERTIES ENVIRONMENT
-                    "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1"
+                    "${OG_SANITIZER_TEST_ENVIRONMENT}"
                 )
             endif()
         endfunction()
@@ -1357,6 +1399,9 @@ if(NOT EMSCRIPTEN)
         target_include_directories(og_game_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
         target_compile_definitions(og_game_test PRIVATE TESTING)
         target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
+        if(NOT EMSCRIPTEN)
+            target_link_libraries(og_game_test PUBLIC ixwebsocket)
+        endif()
         add_dependencies(og_game_test check_vendor_leaks)
 
         enable_testing()
@@ -1591,6 +1636,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_state_net.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_replay.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
