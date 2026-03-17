@@ -134,6 +134,7 @@ public:
     [[nodiscard]] std::optional<RenderInterpolationPosition> render_position(
         std::uint32_t entity_id,
         float alpha) const;
+    void testing_set_render_interpolation_elapsed_ms(float elapsed_ms);
 
 private:
     struct EntityInterpolationState {

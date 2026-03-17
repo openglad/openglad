@@ -4,8 +4,10 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
+#include <openglad/core/util.h>
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -30,6 +32,29 @@ float clamp_alpha(float alpha)
 float lerp(float start, float end, float alpha)
 {
     return start + (end - start) * alpha;
+}
+
+float render_tick_interval_ms(
+    const std::optional<og::sim::WorldSnapshot>& baseline)
+{
+    float interval_ms = static_cast<float>(og::sim::DEFAULT_SIM_TICK_MS);
+    if (baseline.has_value() && baseline->timer_wait > 0)
+    {
+        interval_ms =
+            static_cast<float>(baseline->timer_wait) *
+            og::sim::TIMER_WAIT_TO_MS;
+    }
+
+    const float speed_factor = current_game_speed_factor();
+    if (speed_factor <= 0.0f || interval_ms <= 0.0f)
+        return 0.0f;
+
+    interval_ms /= speed_factor;
+    if (interval_ms <= 0.0f)
+        return 0.0f;
+
+    return static_cast<float>(std::max<std::uint32_t>(
+        1u, static_cast<std::uint32_t>(std::lround(interval_ms))));
 }
 
 void apply_initial_setup_to_world(GameWorld& world,
@@ -196,13 +221,7 @@ float GameClient::render_interpolation_alpha() const
     if (!last_snapshot_receive_time_.has_value())
         return 1.0f;
 
-    float tick_interval_ms = static_cast<float>(DEFAULT_SIM_TICK_MS);
-    if (baseline_.has_value() && baseline_->timer_wait > 0)
-    {
-        tick_interval_ms =
-            static_cast<float>(baseline_->timer_wait) * TIMER_WAIT_TO_MS;
-    }
-
+    const float tick_interval_ms = render_tick_interval_ms(baseline_);
     if (tick_interval_ms <= 0.0f)
         return 1.0f;
 
@@ -234,6 +253,15 @@ std::optional<RenderInterpolationPosition> GameClient::render_position(
     position.xpos = lerp(state.prev.xpos, state.curr.xpos, clamped_alpha);
     position.ypos = lerp(state.prev.ypos, state.curr.ypos, clamped_alpha);
     return position;
+}
+
+void GameClient::testing_set_render_interpolation_elapsed_ms(float elapsed_ms)
+{
+    last_snapshot_receive_time_ =
+        InterpolationClock::now() -
+        std::chrono::duration_cast<InterpolationClock::duration>(
+            std::chrono::duration<float, std::milli>(
+                std::max(elapsed_ms, 0.0f)));
 }
 
 GameClient::GameClient(ITransport& transport,
