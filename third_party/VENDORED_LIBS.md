@@ -32,6 +32,12 @@ sanitizers/tests to catch real issues.
     config.h and zipconf.h are manually maintained for Linux. zip_err_str.c is auto-generated
     from zip.h/zipint.h error definitions.
 
+- IXWebSocket (`third_party/ixwebsocket`)
+  - Version: 11.4.6 (`third_party/ixwebsocket/ixwebsocket/IXWebSocketVersion.h`: `IX_WEBSOCKET_VERSION`)
+  - Upstream: https://github.com/machinezone/IXWebSocket
+  - Notes: BSD-3-Clause WebSocket client/server library vendored for native networking phases.
+    Built via upstream CMake with TLS, zlib, demos, and install rules disabled in OpenGlad.
+
 - libyaml (`third_party/libyaml`)
   - Version: 0.2.5 (`third_party/libyaml/src/config.h`: `YAML_VERSION_STRING`)
   - Upstream: https://github.com/yaml/libyaml

@@ -785,6 +785,19 @@ if(NOT EMSCRIPTEN)
     # System/runtime link deps (kept as a target so we can control ordering).
     add_library(og_runtime_deps INTERFACE)
     target_link_libraries(og_runtime_deps INTERFACE PkgConfig::SDL2 m pthread)
+
+    # Native-only WebSocket dependency. Emscripten uses the browser WebSocket API.
+    set(BUILD_DEMO OFF)
+    set(USE_TLS OFF)
+    set(USE_ZLIB OFF)
+    set(IXWEBSOCKET_INSTALL OFF)
+    add_subdirectory(${THIRD_PARTY_DIR}/ixwebsocket EXCLUDE_FROM_ALL)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(ixwebsocket PRIVATE -w)
+    endif()
+
+    add_library(og_ext_ixwebsocket INTERFACE)
+    target_link_libraries(og_ext_ixwebsocket INTERFACE ixwebsocket)
 endif()
 
 add_library(og_ext_yaml STATIC ${LIBYAML_SOURCES})
