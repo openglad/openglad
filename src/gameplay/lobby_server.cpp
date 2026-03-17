@@ -147,6 +147,8 @@ void LobbyServer::connect_client(PeerId peer_id)
         it->second.connection_order = it->second.connection_order == 0
             ? next_connection_order_++
             : it->second.connection_order;
+    if (!host_peer_id_.has_value())
+        host_peer_id_ = peer_id;
 
     send_state(peer_id);
 }
@@ -162,7 +164,10 @@ void LobbyServer::disconnect_client(PeerId peer_id)
 
     const LobbyState previous_state = state_;
     const bool had_player = peer_it->second.player.has_value();
+    const bool was_host = host_peer_id_.has_value() && *host_peer_id_ == peer_id;
     peers_.erase(peer_it);
+    if (was_host)
+        reassign_host_peer();
 
     if (had_player)
     {
@@ -210,6 +215,26 @@ std::int16_t LobbyServer::resolve_team(
     return current_team.value_or(static_cast<std::int16_t>(-1));
 }
 
+void LobbyServer::reassign_host_peer()
+{
+    host_peer_id_ = std::nullopt;
+    for (const auto& [peer_id, peer] : peers_)
+    {
+        if (!host_peer_id_.has_value())
+        {
+            host_peer_id_ = peer_id;
+            continue;
+        }
+
+        const auto current_host = peers_.find(*host_peer_id_);
+        if (current_host != peers_.end() &&
+            peer.connection_order < current_host->second.connection_order)
+        {
+            host_peer_id_ = peer_id;
+        }
+    }
+}
+
 void LobbyServer::rebuild_state()
 {
     std::vector<std::pair<PeerId, ConnectedPeerState*>> ordered_peers;
@@ -229,9 +254,10 @@ void LobbyServer::rebuild_state()
     state_.players.reserve(ordered_peers.size());
     for (std::size_t index = 0; index < ordered_peers.size(); ++index)
     {
+        const PeerId peer_id = ordered_peers[index].first;
         LobbyPlayer& player = *ordered_peers[index].second->player;
         player.player_index = static_cast<std::uint8_t>(index);
-        player.is_host = (index == 0);
+        player.is_host = host_peer_id_.has_value() && *host_peer_id_ == peer_id;
         if (player.name.empty())
             player.name = default_player_name(index + 1);
         state_.players.push_back(player);
@@ -360,16 +386,18 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
         break;
 
     case LobbyMessageKind::StartGame:
-        if (peer_it->second.player.has_value() && peer_it->second.player->is_host)
+        if (host_peer_id_.has_value() && *host_peer_id_ == peer_id)
         {
             lobby_locked_ = true;
             start_game_requested_ = true;
-            accepted_start_player_index = peer_it->second.player->player_index;
+            accepted_start_player_index = peer_it->second.player.has_value()
+                ? std::optional<std::uint8_t>(peer_it->second.player->player_index)
+                : std::optional<std::uint8_t>(0xffu);
         }
         break;
 
     case LobbyMessageKind::SettingsChange:
-        if (peer_it->second.player.has_value() && peer_it->second.player->is_host)
+        if (host_peer_id_.has_value() && *host_peer_id_ == peer_id)
         {
             const auto& settings_change =
                 std::get<LobbySettingsChangeMessage>(message.payload);

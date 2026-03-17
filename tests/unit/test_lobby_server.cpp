@@ -288,6 +288,57 @@ TEST(LobbyServer, typed_messages_reject_non_host_settings_and_migrate_host_on_di
     EXPECT_EQ(1, migrated.players[0].team);
 }
 
+TEST(LobbyServer, first_connected_peer_remains_host_even_if_another_peer_joins_first)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.clear_sent_messages();
+
+    transport.queue_lobby_message(
+        22u,
+        make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(1u, server.state().players.size());
+    EXPECT_EQ("Guest", server.state().players[0].name);
+    EXPECT_FALSE(server.state().players[0].is_host);
+    EXPECT_EQ(0u, server.state().players[0].player_index);
+
+    transport.clear_sent_messages();
+    og::sim::LobbySettings settings = server.state().settings;
+    settings.scenario_id = 9;
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = settings,
+    };
+    transport.queue_lobby_message(22u, settings_message);
+
+    og::sim::LobbyMessage start_message;
+    start_message.payload = og::sim::LobbyStartGameMessage{.player_index = 0u};
+    transport.queue_lobby_message(22u, start_message);
+    server.poll_incoming_messages();
+
+    EXPECT_EQ(1, server.state().settings.scenario_id);
+    EXPECT_FALSE(server.start_game_requested());
+    EXPECT_TRUE(transport.sent_messages().empty());
+
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ("Host", server.state().players[0].name);
+    EXPECT_TRUE(server.state().players[0].is_host);
+    EXPECT_EQ(0u, server.state().players[0].player_index);
+    EXPECT_EQ("Guest", server.state().players[1].name);
+    EXPECT_FALSE(server.state().players[1].is_host);
+    EXPECT_EQ(1u, server.state().players[1].player_index);
+}
+
 TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_state)
 {
     MockLobbyTransport transport;
