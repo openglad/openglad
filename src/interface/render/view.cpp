@@ -569,7 +569,7 @@ void viewscreen::set_display_text(std::string_view newtext, short numcycles)
 	Sint32 i;
 
 	i = 0;
-	while (!textlist[i].empty() && i < MAX_MESSAGES)
+	while (i < MAX_MESSAGES && !textlist[i].empty())
 		i++;
 	if (i >= MAX_MESSAGES) // no room, need to scroll messages
 	{

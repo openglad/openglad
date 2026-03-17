@@ -41,6 +41,9 @@ constexpr int kFairyDeathTimeoutMs = 60000;
 constexpr int kGameAbortTimeoutMs = 20000;
 constexpr short kFairyFragileConstitution = -20;
 constexpr short kFairyFragileArmor = -100;
+constexpr short kEscortDurableStat = 3000;
+constexpr float kFairyObserveSpeed = 4.0f;
+constexpr int kFairyPollMs = 10;
 }
 
 // Picker globals that can leak across integration tests and affect menu start state
@@ -89,6 +92,7 @@ struct FairyState {
     bool started;
     bool finished;
     float original_speed;
+    const char* failure_message = nullptr;
 };
 
 enum class FairyLifeState {
@@ -117,6 +121,45 @@ static FairyLifeState query_hired_fairy_life_state()
     }
 
     return FairyLifeState::NotSpawned;
+}
+
+static void unwind_picker_after_failure(FairyState* state)
+{
+    set_game_speed(state->original_speed);
+    picker_testing_yes_or_no_queue_clear();
+
+    if (g_test_in_game.load(std::memory_order_acquire)) {
+        picker_testing_yes_or_no_queue_push(true);
+        inject_key_press(SDLK_ESCAPE);
+        SDL_Delay(kUiSettleMs);
+        inject_key_press(SDLK_ESCAPE);
+
+        int waited_ms = 0;
+        while (g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kGameAbortTimeoutMs) {
+            SDL_Delay(kFairyPollMs);
+            waited_ms += kFairyPollMs;
+        }
+        picker_testing_yes_or_no_queue_clear();
+    }
+
+    for (int step = 0; step < 2; ++step) {
+        if (wait_for_interactable("begin_new_game", 1000))
+            return;
+        if (!wait_for_interactable("back", 2000))
+            return;
+        SDL_Delay(kUiSettleMs);
+        interact("back");
+        SDL_Delay(kUiSettleMs);
+    }
+}
+
+static int fail_fairy_run(FairyState* state, const char* message)
+{
+    fprintf(stderr, "  [test] ERROR: %s\n", message);
+    state->failure_message = message;
+    unwind_picker_after_failure(state);
+    return 0;
 }
 
 static int fairy_injector(void* data)
@@ -173,9 +216,8 @@ static int fairy_injector(void* data)
     SDL_Delay(kUiSettleMs);
 
     if (og::runtime::current_session->myscreen_->save_data.team_size < 2) {
-        fprintf(stderr, "  [test] ERROR: expected fairy and escort before starting level\n");
-        set_game_speed(state->original_speed);
-        return 0;
+        return fail_fairy_run(state,
+                              "expected fairy and escort before starting level");
     }
 
     guy* fairy = nullptr;
@@ -192,20 +234,19 @@ static int fairy_injector(void* data)
         }
     }
     if (fairy == nullptr || escort == nullptr) {
-        fprintf(stderr, "  [test] ERROR: failed to locate fairy and escort\n");
-        set_game_speed(state->original_speed);
-        return 0;
+        return fail_fairy_run(state, "failed to locate fairy and escort");
     }
 
     fairy->constitution = kFairyFragileConstitution;
     fairy->armor = kFairyFragileArmor;
     escort->strength = 200;
     escort->dexterity = 200;
-    escort->constitution = 200;
-    escort->armor = 200;
+    escort->intelligence = 200;
+    escort->constitution = kEscortDurableStat;
+    escort->armor = kEscortDurableStat;
 
     og::runtime::current_session->myscreen_->save_data.scen_num = 4;
-    set_game_speed(0.0f);
+    set_game_speed(kFairyObserveSpeed);
 
     fprintf(stderr, "  [test] clicking go\n");
     int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
@@ -216,56 +257,54 @@ static int fairy_injector(void* data)
     fprintf(stderr, "  [test] waiting for fairy to die...\n");
     {
         int waited_ms = 0;
-        const int poll_ms = 50;
         while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before
                && waited_ms < kGameStartTimeoutMs) {
-            SDL_Delay(poll_ms);
-            waited_ms += poll_ms;
+            SDL_Delay(kFairyPollMs);
+            waited_ms += kFairyPollMs;
         }
         if (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before) {
-            fprintf(stderr, "  [test] ERROR: game never started (epoch unchanged)\n");
-            set_game_speed(state->original_speed);
-            return 0;
+            return fail_fairy_run(state, "game never started (epoch unchanged)");
         }
 
         bool saw_fairy_alive = false;
         waited_ms = 0;
-        while (g_test_in_game.load(std::memory_order_acquire)
-               && waited_ms < kFairyDeathTimeoutMs) {
+        while (waited_ms < kFairyDeathTimeoutMs) {
             const FairyLifeState fairy_state = query_hired_fairy_life_state();
             if (fairy_state == FairyLifeState::Alive)
                 saw_fairy_alive = true;
             if (saw_fairy_alive && fairy_state != FairyLifeState::Alive)
                 break;
-            SDL_Delay(poll_ms);
-            waited_ms += poll_ms;
+            if (!g_test_in_game.load(std::memory_order_acquire))
+                break;
+            SDL_Delay(kFairyPollMs);
+            waited_ms += kFairyPollMs;
         }
         if (!saw_fairy_alive ||
-            !g_test_in_game.load(std::memory_order_acquire) ||
             query_hired_fairy_life_state() == FairyLifeState::Alive) {
-            fprintf(stderr, "  [test] ERROR: fairy never died within timeout\n");
-            set_game_speed(state->original_speed);
-            return 0;
+            return fail_fairy_run(state, "fairy never died within timeout");
         }
 
-        fprintf(stderr, "  [test] fairy died, pausing then aborting mission through UI\n");
-        inject_key_press(SDLK_ESCAPE);
-        SDL_Delay(kUiSettleMs);
-        picker_testing_yes_or_no_queue_clear();
-        picker_testing_yes_or_no_queue_push(true);
-        inject_key_press(SDLK_ESCAPE);
-
-        waited_ms = 0;
-        while (g_test_in_game.load(std::memory_order_acquire)
-               && waited_ms < kGameAbortTimeoutMs) {
-            SDL_Delay(poll_ms);
-            waited_ms += poll_ms;
-        }
         if (g_test_in_game.load(std::memory_order_acquire)) {
             fprintf(stderr,
-                    "  [test] ERROR: game did not exit after abort prompt\n");
-            set_game_speed(state->original_speed);
-            return 0;
+                    "  [test] fairy died, pausing then aborting mission through UI\n");
+            inject_key_press(SDLK_ESCAPE);
+            SDL_Delay(kUiSettleMs);
+            picker_testing_yes_or_no_queue_clear();
+            picker_testing_yes_or_no_queue_push(true);
+            inject_key_press(SDLK_ESCAPE);
+
+            waited_ms = 0;
+            while (g_test_in_game.load(std::memory_order_acquire)
+                   && waited_ms < kGameAbortTimeoutMs) {
+                SDL_Delay(kFairyPollMs);
+                waited_ms += kFairyPollMs;
+            }
+            if (g_test_in_game.load(std::memory_order_acquire))
+                return fail_fairy_run(state,
+                                      "game did not exit after abort prompt");
+        } else {
+            fprintf(stderr,
+                    "  [test] fairy died and the mission already ended; unwinding picker\n");
         }
     }
 
@@ -301,7 +340,10 @@ TEST(FairyDeath, fairy_death) {
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
 
-    FairyState state = { false, false, og::runtime::current_session->g_game_speed_factor_ };
+    FairyState state = { false,
+                         false,
+                         og::runtime::current_session->g_game_speed_factor_,
+                         nullptr };
     SDL_Thread* thread = SDL_CreateThread(fairy_injector, "fairy_injector", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -317,7 +359,10 @@ TEST(FairyDeath, fairy_death) {
     cleanup_picker_state();
     g_picker_max_mainmenu_calls = 0;
 
-    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.finished)
+        << (state.failure_message != nullptr
+                ? state.failure_message
+                : "injector thread should have completed");
 
     // We lost — level 4 should NOT be marked completed
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_data.is_level_completed(4)) << "level 4 should NOT be completed (fairy should have died)";
