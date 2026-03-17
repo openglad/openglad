@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -74,6 +75,12 @@ public:
 
         received_raw_.push_back(
             {peer_id, og::sim::serialize_lobby_message(message)});
+    }
+
+    void queue_raw_message(og::sim::PeerId peer_id,
+                           std::vector<std::uint8_t> data)
+    {
+        received_raw_.push_back({peer_id, std::move(data)});
     }
 
     void clear_sent_messages()
@@ -248,6 +255,67 @@ TEST(LobbyServer, raw_join_flow_broadcasts_state_and_populates_save_data)
     EXPECT_EQ(1, equivalent.team_list[2].character.teamnum);
 }
 
+TEST(LobbyServer, ready_team_change_and_leave_update_state_and_broadcasts)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.clear_sent_messages();
+
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    transport.clear_sent_messages();
+    og::sim::LobbyMessage ready_message;
+    ready_message.payload = og::sim::LobbyReadyMessage{
+        .player_index = 1u,
+        .ready = true,
+    };
+    transport.queue_lobby_message(22u, ready_message);
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_TRUE(server.state().players[1].ready);
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    expect_all_sent_states_equal(transport.sent_messages(), server.state());
+
+    transport.clear_sent_messages();
+    og::sim::LobbyMessage team_change;
+    team_change.payload = og::sim::LobbyTeamChangeMessage{
+        .player_index = 1u,
+        .team = 2,
+    };
+    transport.queue_lobby_message(22u, team_change);
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ(2, server.state().players[1].team);
+    ASSERT_EQ(1u, server.state().players[1].character_slots.size());
+    EXPECT_EQ(2, server.state().players[1].character_slots[0].character.teamnum);
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    expect_all_sent_states_equal(transport.sent_messages(), server.state());
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    ASSERT_EQ(2u, equivalent.team_list.size());
+    EXPECT_EQ(2, equivalent.team_list[1].character.teamnum);
+
+    transport.clear_sent_messages();
+    og::sim::LobbyMessage leave_message;
+    leave_message.payload = og::sim::LobbyLeaveMessage{.player_index = 1u};
+    transport.queue_lobby_message(22u, leave_message);
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(1u, server.state().players.size());
+    EXPECT_EQ("Host", server.state().players[0].name);
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    expect_all_sent_states_equal(transport.sent_messages(), server.state());
+}
+
 TEST(LobbyServer, typed_messages_reject_non_host_settings_and_migrate_host_on_disconnect)
 {
     MockLobbyTransport transport(true);
@@ -339,6 +407,52 @@ TEST(LobbyServer, first_connected_peer_remains_host_even_if_another_peer_joins_f
     EXPECT_EQ(1u, server.state().players[1].player_index);
 }
 
+TEST(LobbyServer, malformed_lobby_message_throws)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+
+    std::vector<std::uint8_t> malformed = og::sim::serialize_lobby_message(
+        make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    malformed.pop_back();
+    transport.queue_raw_message(11u, std::move(malformed));
+
+    EXPECT_THROW(server.poll_incoming_messages(), std::runtime_error);
+}
+
+TEST(LobbyServer, fifth_join_is_rejected_when_lobby_is_full)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    for (og::sim::PeerId peer_id = 1u; peer_id <= 5u; ++peer_id)
+        server.connect_client(peer_id);
+    transport.clear_sent_messages();
+
+    for (og::sim::PeerId peer_id = 1u; peer_id <= 4u; ++peer_id)
+    {
+        transport.queue_lobby_message(
+            peer_id,
+            make_join_message("Player", static_cast<std::int16_t>(peer_id - 1u),
+                              {make_slot(static_cast<std::uint8_t>(peer_id - 1u),
+                                         static_cast<std::int32_t>(100 + peer_id),
+                                         "Guy",
+                                         FAMILY_SOLDIER)}));
+    }
+    server.poll_incoming_messages();
+
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(
+        5u,
+        make_join_message("Overflow", 3, {make_slot(4u, 500, "Extra Guy", FAMILY_MAGE)}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(4u, server.state().players.size());
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(5u, transport.sent_messages()[0].peer_id);
+    EXPECT_EQ(server.state(), decode_lobby_state(transport.sent_messages()[0]));
+}
+
 TEST(LobbyServer, disconnecting_unjoined_host_promotes_joined_player_immediately)
 {
     MockLobbyTransport transport(true);
@@ -366,6 +480,37 @@ TEST(LobbyServer, disconnecting_unjoined_host_promotes_joined_player_immediately
     EXPECT_EQ("Guest", promoted.players[0].name);
     EXPECT_TRUE(promoted.players[0].is_host);
     EXPECT_EQ(0u, promoted.players[0].player_index);
+}
+
+TEST(LobbyServer, slot_sanitization_and_save_data_mapping_compact_sparse_slots)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.clear_sent_messages();
+
+    transport.queue_lobby_message(
+        11u,
+        make_join_message(
+            "Host",
+            0,
+            {make_slot(5u, 100, "First", FAMILY_SOLDIER),
+             make_slot(5u, 101, "Duplicate", FAMILY_MAGE),
+             make_slot(9u, 102, "Second", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(1u, server.state().players.size());
+    ASSERT_EQ(2u, server.state().players[0].character_slots.size());
+    EXPECT_EQ("First", server.state().players[0].character_slots[0].character.name);
+    EXPECT_EQ("Second", server.state().players[0].character_slots[1].character.name);
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    ASSERT_EQ(2u, equivalent.team_list.size());
+    EXPECT_EQ(0u, equivalent.team_list[0].slot_index);
+    EXPECT_EQ(1u, equivalent.team_list[1].slot_index);
+    EXPECT_EQ("First", equivalent.team_list[0].character.name);
+    EXPECT_EQ("Second", equivalent.team_list[1].character.name);
 }
 
 TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_state)
