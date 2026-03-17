@@ -4,6 +4,7 @@
 #include <openglad/gameplay/world_snapshot.h>
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -13,6 +14,13 @@
 class GameWorld;
 
 namespace og::sim {
+
+struct RenderInterpolationPosition {
+    float worldx = 0.0f;
+    float worldy = 0.0f;
+    float xpos = 0.0f;
+    float ypos = 0.0f;
+};
 
 class GameClient
 {
@@ -120,10 +128,27 @@ public:
         return snapshot_hash_check_count_;
     }
 
+    [[nodiscard]] float render_interpolation_alpha() const;
+    [[nodiscard]] std::optional<RenderInterpolationPosition> render_position(
+        std::uint32_t entity_id) const;
+    [[nodiscard]] std::optional<RenderInterpolationPosition> render_position(
+        std::uint32_t entity_id,
+        float alpha) const;
+
 private:
+    struct EntityInterpolationState {
+        RenderInterpolationPosition prev = {};
+        RenderInterpolationPosition curr = {};
+    };
+
+    using InterpolationClock = std::chrono::steady_clock;
+
     void apply_full_snapshot(const WorldSnapshot& snapshot);
     void apply_delta_snapshot(const WorldSnapshot& snapshot);
     void apply_initial_setup(const InitialSetupMessage& message);
+    void reset_render_interpolation();
+    void update_render_interpolation(const WorldSnapshot& snapshot,
+                                     bool reset_history);
     void note_event_batch_gap(std::uint32_t expected,
                               std::uint32_t actual,
                               const char* label) const;
@@ -151,6 +176,10 @@ private:
     std::unordered_map<std::int32_t, InitialSetupGuyData> initial_setup_guys_;
     std::optional<ExitPromptBroadcastMessage> last_exit_prompt_ = std::nullopt;
     std::optional<PauseBroadcastMessage> last_pause_broadcast_ = std::nullopt;
+    std::unordered_map<std::uint32_t, EntityInterpolationState>
+        render_interpolation_;
+    std::optional<InterpolationClock::time_point>
+        last_snapshot_receive_time_ = std::nullopt;
     std::uint32_t last_seen_server_tick_ = 0;
     std::uint32_t last_sim_event_sequence_ = 0;
     std::uint32_t last_game_flow_event_sequence_ = 0;

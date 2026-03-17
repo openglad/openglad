@@ -138,6 +138,7 @@ class viewscreen
 			short radarstart; //has the radar been started yet?
 			Sint32 xview;
 			Sint32 yview;
+			float interpolation_alpha = 1.0f;
 
 	protected:
 		options *prefsob;

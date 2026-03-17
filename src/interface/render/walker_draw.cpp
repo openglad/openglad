@@ -11,6 +11,7 @@
 
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/base.h>
+#include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/interface/render/view.h>
@@ -27,6 +28,53 @@
 static bool float_eq(float a, float b)
 {
     return (a == b || (a - 0.000001f < b && a + 0.000001f > b));
+}
+
+static const og::sim::GameClient* display_game_client()
+{
+    using namespace og::runtime;
+    if (current_session == nullptr ||
+        !local_transport_active(*current_session))
+    {
+        return nullptr;
+    }
+
+    return local_transport_display_client(*current_session);
+}
+
+static WalkerRenderPosition current_position(const walker& w)
+{
+    return {
+        .worldx = w.worldx(),
+        .worldy = w.worldy(),
+        .xpos = static_cast<float>(w.xpos()),
+        .ypos = static_cast<float>(w.ypos()),
+    };
+}
+
+float query_render_interpolation_alpha()
+{
+    const og::sim::GameClient* const client = display_game_client();
+    return client != nullptr ? client->render_interpolation_alpha() : 1.0f;
+}
+
+WalkerRenderPosition resolve_walker_render_position(const walker& w,
+                                                    float alpha)
+{
+    const og::sim::GameClient* const client = display_game_client();
+    if (client == nullptr || w.entity_id() == 0u)
+        return current_position(w);
+
+    const auto position = client->render_position(w.entity_id(), alpha);
+    if (!position.has_value())
+        return current_position(w);
+
+    return {
+        .worldx = position->worldx,
+        .worldy = position->worldy,
+        .xpos = position->xpos,
+        .ypos = position->ypos,
+    };
 }
 
 static void draw_damage_number(walker::DamageNumber& dn, viewscreen* view_buf)
@@ -58,8 +106,11 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
         return;
     }
 
-	Sint32 xscreen = static_cast<Sint32>(w->xpos() - view_buf->topx + view_buf->xloc);
-	Sint32 yscreen = static_cast<Sint32>(w->ypos() - view_buf->topy + view_buf->yloc);
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(*w, view_buf->interpolation_alpha);
+
+	Sint32 xscreen = static_cast<Sint32>(draw_pos.xpos - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc));
+	Sint32 yscreen = static_cast<Sint32>(draw_pos.ypos - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc));
 
     const Sint32 walkerstartx = xscreen;
     const Sint32 walkerstarty = yscreen;
@@ -128,8 +179,10 @@ bool draw_walker(walker& w, viewscreen* view_buf)
     const bool show_damage_numbers = cfg.is_on("effects", "damage_numbers");
     const bool show_heal_numbers = cfg.is_on("effects", "heal_numbers");
 
-    const short draw_x = static_cast<short>(w.worldx());
-    const short draw_y = static_cast<short>(w.worldy());
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(w, view_buf->interpolation_alpha);
+    const short draw_x = static_cast<short>(draw_pos.worldx);
+    const short draw_y = static_cast<short>(draw_pos.worldy);
 
 	Sint32 xscreen, yscreen;
 
@@ -140,11 +193,18 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	}
 	w.set_drawcycle(static_cast<unsigned char>(w.drawcycle() + 1));
 
-    if (!show_hit_anim && w.query_order() == Order::FX && w.family() == FAMILY_HIT)
+    if (!show_hit_anim && w.query_order() == Order::FX &&
+        w.family() == FAMILY_HIT)
+    {
         return true;
+    }
 
-	xscreen = static_cast<Sint32>(draw_x - view_buf->topx + view_buf->xloc);
-	yscreen = static_cast<Sint32>(draw_y - view_buf->topy + view_buf->yloc);
+	xscreen = static_cast<Sint32>(
+        draw_pos.worldx - static_cast<float>(view_buf->topx) +
+        static_cast<float>(view_buf->xloc));
+	yscreen = static_cast<Sint32>(
+        draw_pos.worldy - static_cast<float>(view_buf->topy) +
+        static_cast<float>(view_buf->yloc));
 
 		if(show_attack_lunge && w.attack_lunge() > 0.0f)
 	    {
@@ -279,8 +339,10 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
     }
 
 	Sint32 xscreen, yscreen;
-    const short draw_x = static_cast<short>(w.worldx());
-    const short draw_y = static_cast<short>(w.worldy());
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(w, view_buf->interpolation_alpha);
+    const short draw_x = static_cast<short>(draw_pos.worldx);
+    const short draw_y = static_cast<short>(draw_pos.worldy);
 
 	if (w.dead())
 	{
@@ -289,8 +351,8 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 	}
 	w.set_drawcycle(static_cast<unsigned char>(w.drawcycle() + 1));
 
-	xscreen = static_cast<Sint32>(draw_x - view_buf->topx + view_buf->xloc);
-	yscreen = static_cast<Sint32>(draw_y - view_buf->topy + view_buf->yloc);
+	xscreen = static_cast<Sint32>(draw_pos.worldx - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc));
+	yscreen = static_cast<Sint32>(draw_pos.worldy - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc));
 
 	w.compute_outline(view_buf->control);
 

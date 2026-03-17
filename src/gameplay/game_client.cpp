@@ -5,6 +5,7 @@
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -19,6 +20,16 @@ void clear_transport_only_world_state(GameWorld& world)
 {
     world.clear_removed_entity_ids();
     world.clear_grid_dirty_tiles();
+}
+
+float clamp_alpha(float alpha)
+{
+    return std::clamp(alpha, 0.0f, 1.0f);
+}
+
+float lerp(float start, float end, float alpha)
+{
+    return start + (end - start) * alpha;
 }
 
 void apply_initial_setup_to_world(GameWorld& world,
@@ -179,6 +190,51 @@ std::vector<og::sim::TypedReceivedMessage> poll_client_messages(
 } // namespace
 
 namespace og::sim {
+
+float GameClient::render_interpolation_alpha() const
+{
+    if (!last_snapshot_receive_time_.has_value())
+        return 1.0f;
+
+    float tick_interval_ms = static_cast<float>(DEFAULT_SIM_TICK_MS);
+    if (baseline_.has_value() && baseline_->timer_wait > 0)
+    {
+        tick_interval_ms =
+            static_cast<float>(baseline_->timer_wait) * TIMER_WAIT_TO_MS;
+    }
+
+    if (tick_interval_ms <= 0.0f)
+        return 1.0f;
+
+    const auto elapsed =
+        std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(
+            InterpolationClock::now() - *last_snapshot_receive_time_);
+    return clamp_alpha(elapsed.count() / tick_interval_ms);
+}
+
+std::optional<RenderInterpolationPosition> GameClient::render_position(
+    std::uint32_t entity_id) const
+{
+    return render_position(entity_id, render_interpolation_alpha());
+}
+
+std::optional<RenderInterpolationPosition> GameClient::render_position(
+    std::uint32_t entity_id,
+    float alpha) const
+{
+    const auto it = render_interpolation_.find(entity_id);
+    if (it == render_interpolation_.end())
+        return std::nullopt;
+
+    const EntityInterpolationState& state = it->second;
+    const float clamped_alpha = clamp_alpha(alpha);
+    RenderInterpolationPosition position;
+    position.worldx = lerp(state.prev.worldx, state.curr.worldx, clamped_alpha);
+    position.worldy = lerp(state.prev.worldy, state.curr.worldy, clamped_alpha);
+    position.xpos = lerp(state.prev.xpos, state.curr.xpos, clamped_alpha);
+    position.ypos = lerp(state.prev.ypos, state.curr.ypos, clamped_alpha);
+    return position;
+}
 
 GameClient::GameClient(ITransport& transport,
                        PeerId server_peer_id,
@@ -384,6 +440,65 @@ void GameClient::notify_palette_sync(std::uint8_t palette_id)
         palette_sync_callback_(palette_id);
 }
 
+void GameClient::reset_render_interpolation()
+{
+    render_interpolation_.clear();
+    last_snapshot_receive_time_.reset();
+}
+
+void GameClient::update_render_interpolation(const WorldSnapshot& snapshot,
+                                             bool reset_history)
+{
+    std::unordered_map<std::uint32_t, EntityInterpolationState> next_state;
+    next_state.reserve(snapshot.oblist.size() + snapshot.fxlist.size() +
+                       snapshot.weaplist.size());
+
+    const auto capture_position =
+        [](const EntitySnapshot& entity_snapshot) -> RenderInterpolationPosition {
+        return {
+            .worldx = entity_snapshot.worldx,
+            .worldy = entity_snapshot.worldy,
+            .xpos = static_cast<float>(entity_snapshot.xpos),
+            .ypos = static_cast<float>(entity_snapshot.ypos),
+        };
+    };
+
+    const auto update_entities =
+        [this, &next_state, reset_history, &capture_position](
+            const std::vector<EntitySnapshot>& entities) {
+            for (const EntitySnapshot& entity_snapshot : entities)
+            {
+                if (entity_snapshot.entity_id == 0u || entity_snapshot.dead != 0)
+                    continue;
+
+                EntityInterpolationState state;
+                state.curr = capture_position(entity_snapshot);
+
+                if (!reset_history)
+                {
+                    const auto existing =
+                        render_interpolation_.find(entity_snapshot.entity_id);
+                    state.prev = existing != render_interpolation_.end()
+                        ? existing->second.curr
+                        : state.curr;
+                }
+                else
+                {
+                    state.prev = state.curr;
+                }
+
+                next_state[entity_snapshot.entity_id] = state;
+            }
+        };
+
+    update_entities(snapshot.oblist);
+    update_entities(snapshot.fxlist);
+    update_entities(snapshot.weaplist);
+
+    render_interpolation_ = std::move(next_state);
+    last_snapshot_receive_time_ = InterpolationClock::now();
+}
+
 void GameClient::apply_initial_setup(const InitialSetupMessage& message)
 {
     const bool is_level_transition = baseline_.has_value();
@@ -397,6 +512,7 @@ void GameClient::apply_initial_setup(const InitialSetupMessage& message)
         apply_initial_setup_to_world(*world_, message);
 
     baseline_.reset();
+    reset_render_interpolation();
     last_seen_server_tick_ = 0;
     waiting_for_keyframe_ = false;
     client_ready_sent_ = false;
@@ -410,7 +526,9 @@ void GameClient::apply_initial_setup(const InitialSetupMessage& message)
 
 void GameClient::apply_full_snapshot(const WorldSnapshot& snapshot)
 {
+    const bool reset_history = !baseline_.has_value() || waiting_for_keyframe_;
     baseline_ = snapshot;
+    update_render_interpolation(*baseline_, reset_history);
     if (world_ != nullptr)
     {
         apply_snapshot(*world_, *baseline_);
@@ -448,6 +566,7 @@ void GameClient::apply_delta_snapshot(const WorldSnapshot& snapshot)
     }
 
     apply_delta(*baseline_, snapshot);
+    update_render_interpolation(*baseline_, false);
     if (world_ != nullptr)
     {
         apply_snapshot(*world_, *baseline_);

@@ -263,13 +263,20 @@ bool viewscreen::redraw()
 	PixieData& gridp = active_screen()->world().grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
+    interpolation_alpha = query_render_interpolation_alpha();
 
 	// check if we are partially into a grid square and require
 	//   extra row
 	if (controlob)
 	{
-		topx = controlob->xpos() - (xview - controlob->sizex())/2;
-		topy = controlob->ypos() - (yview - controlob->sizey())/2;
+        const WalkerRenderPosition control_pos =
+            resolve_walker_render_position(*controlob, interpolation_alpha);
+		topx = static_cast<Sint32>(
+            control_pos.xpos -
+            static_cast<float>(xview - controlob->sizex()) / 2.0f);
+		topy = static_cast<Sint32>(
+            control_pos.ypos -
+            static_cast<float>(yview - controlob->sizey()) / 2.0f);
 	}
 	else // no control object now ..
 	{
@@ -324,13 +331,20 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	PixieData& gridp = data->world().grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
+    interpolation_alpha = query_render_interpolation_alpha();
 
 	// check if we are partially into a grid square and require
 	//   extra row
 	if (controlob)
 	{
-		topx = controlob->xpos() - (xview - controlob->sizex())/2;
-		topy = controlob->ypos() - (yview - controlob->sizey())/2;
+        const WalkerRenderPosition control_pos =
+            resolve_walker_render_position(*controlob, interpolation_alpha);
+		topx = static_cast<Sint32>(
+            control_pos.xpos -
+            static_cast<float>(xview - controlob->sizex()) / 2.0f);
+		topy = static_cast<Sint32>(
+            control_pos.ypos -
+            static_cast<float>(yview - controlob->sizey()) / 2.0f);
 	}
 	else // no control object now ..
 	{

@@ -63,6 +63,8 @@ public:
 private:
     friend std::size_t local_transport_client_count(
         const GameSession& session) noexcept;
+    friend const og::sim::GameClient* local_transport_display_client(
+        const SessionState& session) noexcept;
     friend bool local_transport_shadow_is_paused(
         const GameSession& session) noexcept;
     friend void reset_local_transport_shadow(GameSession& session,

@@ -382,11 +382,21 @@ std::size_t local_transport_client_count(const GameSession& session) noexcept
     return runtime != nullptr ? runtime->clients.size() : 0u;
 }
 
+const og::sim::GameClient* local_transport_display_client(
+    const SessionState& session) noexcept
+{
+    const auto* const game_session = dynamic_cast<const GameSession*>(&session);
+    if (game_session == nullptr)
+        return nullptr;
+
+    const auto runtime = game_session->local_transport_runtime_;
+    return runtime != nullptr ? runtime->display_client() : nullptr;
+}
+
 bool local_transport_shadow_is_paused(const GameSession& session) noexcept
 {
-    const auto runtime = session.local_transport_runtime_;
     const og::sim::GameClient* const display_client =
-        runtime != nullptr ? runtime->display_client() : nullptr;
+        local_transport_display_client(session);
     return display_client != nullptr &&
         display_client->baseline().has_value() &&
         display_client->baseline()->paused;
