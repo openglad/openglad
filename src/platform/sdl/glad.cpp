@@ -16,6 +16,7 @@
  */
 
 #include <openglad/core/version.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
@@ -85,6 +86,57 @@ enum class GameState {
 };
 static GameState g_game_state = GameState::Intro;
 static bool g_state_initialized = false;
+
+#ifndef TESTING
+namespace {
+
+EM_JS(void, publish_web_game_state_js, (int state), {
+    window.__opengladGameState = state;
+});
+
+EM_JS(int, should_seed_web_test_save_js, (), {
+    return window.__opengladSeedSinglePlayerTeam ? 1 : 0;
+});
+
+EM_JS(int, should_skip_web_intro_js, (), {
+    return window.__opengladSkipIntroForTests ? 1 : 0;
+});
+
+void publish_web_game_state()
+{
+    publish_web_game_state_js(static_cast<int>(g_game_state));
+}
+
+void seed_web_test_save_if_requested()
+{
+    if (!should_seed_web_test_save_js())
+        return;
+
+    screen* const current_screen = active_screen();
+    if (current_screen == nullptr)
+        return;
+
+    SaveData& save = current_screen->save_data;
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->name = "Web Soldier";
+    soldier->teamnum = 0;
+    soldier->strength = 200;
+    soldier->dexterity = 200;
+    soldier->constitution = 200;
+    soldier->intelligence = 200;
+    soldier->armor = 200;
+    save.team_list[0] = std::move(soldier);
+    save.team_size = 1;
+    save.save("save0");
+}
+
+} // namespace
+#endif
 #endif
 
 
@@ -172,6 +224,10 @@ void bootstrap_runtime(int argc, char* argv[])
     update_overscan_setting();
     cfg.apply_setting("graphics", "overscan_percentage",
         std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
+#if defined(__EMSCRIPTEN__) && !defined(TESTING)
+    if (should_skip_web_intro_js())
+        return;
+#endif
     intro_main(argc, argv);
 }
 } // namespace
@@ -282,6 +338,9 @@ static void emscripten_frame_wrapper() {
 			g_frame_state().accumulated_time = 0;
 		}
 	}
+#ifndef TESTING
+    publish_web_game_state();
+#endif
 }
 #endif
 
@@ -300,6 +359,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
         initialize_runtime_config(1, g_web_argv);
         g_web_session = std::make_unique<og::runtime::GameSession>(default_session_config());
         bootstrap_runtime(1, g_web_argv);
+        seed_web_test_save_if_requested();
 
         // For Emscripten, initialize picker and start the unified main loop
         picker_init();
@@ -319,6 +379,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
         // Initialize timing
         g_frame_state().last_frame_time = SDL_GetTicks();
         g_frame_state().accumulated_time = 0;
+        publish_web_game_state();
 
         // Browser startup uses an explicit JS-triggered bootstrap, so let the
         // boot call return after scheduling the frame loop.
@@ -328,6 +389,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
     {
         g_web_boot_started = false;
         g_web_session.reset();
+        publish_web_game_state();
         LogError("Unrecoverable error: {}\n", e.what());
     }
 }

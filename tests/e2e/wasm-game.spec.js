@@ -104,6 +104,21 @@ async function focusCanvas(page) {
   await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'canvas');
 }
 
+async function clickCanvasGameCoord(page, gameX, gameY, holdMs = 150) {
+  const canvas = page.locator('#canvas');
+  const box = await canvas.boundingBox();
+  if (!box) {
+    throw new Error('Canvas bounding box is unavailable');
+  }
+
+  const cssX = box.x + (gameX * box.width) / 320;
+  const cssY = box.y + (gameY * box.height) / 200;
+  await page.mouse.move(cssX, cssY);
+  await page.mouse.down();
+  await page.waitForTimeout(holdMs);
+  await page.mouse.up();
+}
+
 // Helper: capture a snapshot of canvas pixel data via screenshot
 // (WebGL canvases don't support getImageData via 2d context)
 async function getCanvasScreenshot(page) {
@@ -206,6 +221,44 @@ test.describe('Game Loading', () => {
 });
 
 test.describe('Game Interaction', () => {
+  test('lobby-backed picker start transitions from picker to gameplay', async ({ page }) => {
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await page.addInitScript(() => {
+      window.__opengladSeedSinglePlayerTeam = true;
+      window.__opengladSkipIntroForTests = true;
+    });
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+
+    // Skipping the intro avoids the splash sequence, but the picker still
+    // needs a few seconds to finish drawing the main menu after the loading
+    // overlay disappears.
+    await page.waitForTimeout(5_000);
+    assertNoRuntimeErrors(errors, 'seeded picker before start input');
+
+    await clickCanvasGameCoord(page, 150, 85);
+    await page.waitForTimeout(1_000);
+    assertNoRuntimeErrors(errors, 'continue game click');
+
+    await clickCanvasGameCoord(page, 250, 107);
+    await page.waitForTimeout(1_000);
+    assertNoRuntimeErrors(errors, 'go click');
+
+    await page.waitForFunction(
+      () => window.__opengladGameState === 2,
+      null,
+      { timeout: 15_000 },
+    );
+    await waitForRenderedFrames(page, 4);
+    assertNoRuntimeErrors(errors, 'picker-to-game transition');
+
+    const canvas = page.locator('#canvas');
+    await expect(canvas).toBeVisible();
+    await expect(page.locator('#loading')).toBeHidden();
+  });
+
   test('keyboard input does not crash the game', async ({ page }) => {
     const errors = [];
     attachRuntimeErrorCollectors(page, errors);

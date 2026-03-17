@@ -1639,6 +1639,10 @@ if(NOT EMSCRIPTEN)
             set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
         endif()
         if(ENABLE_SANITIZERS)
+            # Reserve the full 4-core GitHub runner for og_test_game_core.
+            # Under ASan/UBSan it can time out only when CTest schedules it
+            # beside other heavyweight integration binaries.
+            set_tests_properties(og_test_game_core PROPERTIES PROCESSORS 4)
             # The replay/benchmark binary now exercises honest end-to-end
             # client sync, which remains correct under ASan/UBSan but slows
             # down enough on GitHub's 4-core runners to trip the generic
