@@ -1619,6 +1619,17 @@ if(NOT EMSCRIPTEN)
             # the cost enough that the default 180s CTest budget is too tight.
             set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
         endif()
+        if(ENABLE_SANITIZERS)
+            # The replay/benchmark binary now exercises honest end-to-end
+            # client sync, which remains correct under ASan/UBSan but slows
+            # down enough on GitHub's 4-core runners to trip the generic
+            # 180-second test budget when scheduled alongside other heavy
+            # integration binaries.
+            set_tests_properties(og_test_snapshot_benchmark PROPERTIES
+                PROCESSORS 3
+                TIMEOUT 420
+            )
+        endif()
 
         set(OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT 55)
         set(OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT 60)
