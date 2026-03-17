@@ -1,4 +1,5 @@
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/net_constants.h>
 #include <openglad/platform/net_transport_websocket_server.h>
 
 #include <gtest/gtest.h>
@@ -20,6 +21,8 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+#include "../test_network_fixture.h"
 
 namespace {
 
@@ -381,6 +384,32 @@ TEST(NetTransportWebSocketServer,
         client->stop();
 
     ASSERT_TRUE(poll_until_peer_count(transport, 0u));
+}
+
+TEST(NetTransportWebSocketServer,
+     network_fixture_keeps_four_clients_in_sync_over_loopback_websocket_at_12hz)
+{
+    constexpr std::uint32_t kStressTicks =
+        static_cast<std::uint32_t>(og::sim::DEFAULT_SIM_TICKS_PER_SEC * 5);
+
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 4,
+        .level_id = 1,
+        .tick_count = kStressTicks,
+        .validate_serialization = false,
+        .player_teams = {},
+        .input_sequence =
+            [](std::size_t, std::uint32_t) {
+                InputState input{};
+                return input;
+            },
+        .transport_backend =
+            og::sim::test::NetworkTransportBackend::WebSocketLoopback,
+        .network_timeout = 10s,
+    });
+
+    fixture.run();
+    fixture.expect_clients_match_server();
 }
 
 } // namespace

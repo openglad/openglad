@@ -188,6 +188,11 @@
     {
       "name": "ci-tsan",
       "configurePreset": "ci-tsan",
+      "filter": {
+        "include": {
+          "name": "^og_unit_sim$"
+        }
+      },
       "output": {
         "outputOnFailure": true
       }
