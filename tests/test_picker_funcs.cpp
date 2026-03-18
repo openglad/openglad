@@ -86,6 +86,10 @@ public:
     {
         return false;
     }
+    [[nodiscard]] bool has_game_start_config() const noexcept override
+    {
+        return pending_config.has_value();
+    }
 
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_config;
     int consume_calls = 0;
@@ -836,6 +840,136 @@ TEST(PickerFuncs, go_menu_starts_via_lobby_confirmation_and_reinitializes_for_re
     EXPECT_FALSE(g_test_in_game.load(std::memory_order_acquire));
     EXPECT_FALSE(g_start_game_requested);
     EXPECT_FALSE(picker_lobby_start_request_pending());
+
+    picker_lobby_shutdown();
+    save.reset();
+    save.save_name = old_save_name;
+    save.current_campaign = old_campaign;
+    save.scen_num = old_scen_num;
+    save.completed_levels = old_completed_levels;
+    save.current_levels = old_current_levels;
+    save.score = old_score;
+    save.totalcash = old_totalcash;
+    save.totalscore = old_totalscore;
+    save.my_team = old_my_team;
+    for (int i = 0; i < 4; ++i)
+    {
+        save.m_score[i] = old_m_score[i];
+        save.m_totalcash[i] = old_m_totalcash[i];
+        save.m_totalscore[i] = old_m_totalscore[i];
+    }
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.team_size = old_team_size;
+    save.numplayers = old_numplayers;
+    save.allied_mode = old_allied_mode;
+#ifdef TESTING
+    g_test_remove_exits = old_remove_exits;
+    og::sim::g_test_level_tick_limit_override = old_tick_limit;
+#endif
+    set_game_speed(old_speed);
+    g_start_game_requested = false;
+}
+
+TEST(PickerFuncs, go_menu_honors_preexisting_remote_start_request)
+{
+    picker_lobby_shutdown();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string old_save_name = save.save_name;
+    const std::string old_campaign = save.current_campaign;
+    const short old_scen_num = save.scen_num;
+    const auto old_completed_levels = save.completed_levels;
+    const auto old_current_levels = save.current_levels;
+    const std::uint32_t old_score = save.score;
+    const std::uint32_t old_totalcash = save.totalcash;
+    const std::uint32_t old_totalscore = save.totalscore;
+    const short old_my_team = save.my_team;
+    std::uint32_t old_m_score[4];
+    std::uint32_t old_m_totalcash[4];
+    std::uint32_t old_m_totalscore[4];
+    for (int i = 0; i < 4; ++i)
+    {
+        old_m_score[i] = save.m_score[i];
+        old_m_totalcash[i] = save.m_totalcash[i];
+        old_m_totalscore[i] = save.m_totalscore[i];
+    }
+    const unsigned char old_team_size = save.team_size;
+    const unsigned char old_numplayers = save.numplayers;
+    const short old_allied_mode = save.allied_mode;
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+    const float old_speed = og::runtime::current_session->g_game_speed_factor_;
+#ifdef TESTING
+    const bool old_remove_exits = g_test_remove_exits;
+    const std::int32_t old_tick_limit = og::sim::g_test_level_tick_limit_override;
+#endif
+
+    save.reset();
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->teamnum = 0;
+    soldier->strength = 200;
+    soldier->dexterity = 200;
+    soldier->constitution = 200;
+    soldier->intelligence = 200;
+    soldier->armor = 200;
+    save.team_list[0] = std::move(soldier);
+    save.team_size = 1;
+
+    ContractPickerLobbyClient remote_client;
+    remote_client.pending_config = og::ui::PickerLobbyGameStartConfig{};
+    remote_client.pending_config->save_data.current_campaign =
+        save.current_campaign;
+    remote_client.pending_config->save_data.scen_num =
+        static_cast<std::int16_t>(save.scen_num);
+    remote_client.pending_config->save_data.numplayers = 1;
+    remote_client.pending_config->save_data.team_list.push_back(
+        og::sim::LobbyCharacterSlot{
+            .slot_index = 0,
+            .character = og::sim::LobbyCharacterData{
+                .guy_id = save.team_list[0]->id,
+                .name = save.team_list[0]->name,
+                .family = static_cast<std::int8_t>(save.team_list[0]->family),
+                .strength = save.team_list[0]->strength,
+                .dexterity = save.team_list[0]->dexterity,
+                .constitution = save.team_list[0]->constitution,
+                .intelligence = save.team_list[0]->intelligence,
+                .armor = save.team_list[0]->armor,
+                .exp = save.team_list[0]->exp,
+                .kills = save.team_list[0]->kills,
+                .level_kills = save.team_list[0]->level_kills,
+                .total_damage = save.team_list[0]->total_damage,
+                .total_hits = save.team_list[0]->total_hits,
+                .total_shots = save.team_list[0]->total_shots,
+                .teamnum = save.team_list[0]->teamnum,
+                .scen_damage = save.team_list[0]->scen_damage,
+                .scen_kills = save.team_list[0]->scen_kills,
+                .scen_damage_taken = save.team_list[0]->scen_damage_taken,
+                .scen_min_hp = save.team_list[0]->scen_min_hp,
+                .scen_shots = save.team_list[0]->scen_shots,
+                .scen_hits = save.team_list[0]->scen_hits,
+                .level = save.team_list[0]->level,
+            },
+        });
+    ActivePickerLobbyClientGuard active_guard(&remote_client);
+    g_start_game_requested = true;
+#ifdef TESTING
+    g_test_remove_exits = true;
+    og::sim::g_test_level_tick_limit_override = 15;
+#endif
+    set_game_speed(0.0f);
+
+    const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
+    ASSERT_EQ(button_action_id(ButtonAction::CreateTeamMenu), go_menu(0));
+    EXPECT_GT(g_test_game_epoch.load(std::memory_order_acquire), epoch_before);
+    EXPECT_EQ(1, remote_client.consume_calls);
+    EXPECT_FALSE(g_test_in_game.load(std::memory_order_acquire));
+    EXPECT_FALSE(g_start_game_requested);
 
     picker_lobby_shutdown();
     save.reset();

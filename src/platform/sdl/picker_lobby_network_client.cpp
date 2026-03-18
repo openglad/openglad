@@ -909,6 +909,11 @@ public:
         return start_request_pending_;
     }
 
+    [[nodiscard]] bool has_game_start_config() const noexcept override
+    {
+        return pending_game_start_config_.has_value();
+    }
+
     [[nodiscard]] std::vector<std::string> status_lines() const override
     {
         return status_lines_;
@@ -1256,6 +1261,11 @@ public:
     [[nodiscard]] bool start_request_pending() const noexcept override
     {
         return start_request_pending_;
+    }
+
+    [[nodiscard]] bool has_game_start_config() const noexcept override
+    {
+        return pending_game_start_config_.has_value();
     }
 
     [[nodiscard]] std::vector<std::string> status_lines() const override

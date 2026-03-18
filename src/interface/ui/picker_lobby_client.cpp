@@ -264,6 +264,11 @@ public:
         return start_request_pending_;
     }
 
+    [[nodiscard]] bool has_game_start_config() const noexcept override
+    {
+        return pending_game_start_config_.has_value();
+    }
+
 private:
     bool ensure_initialized()
     {
@@ -605,6 +610,13 @@ bool picker_lobby_start_request_pending()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
         return client->start_request_pending();
+    return false;
+}
+
+bool picker_lobby_has_game_start_config()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->has_game_start_config();
     return false;
 }
 

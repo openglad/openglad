@@ -5,6 +5,8 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <gtest/gtest.h>
 #include <SDL.h>
 #include "test_input_helpers.h"
@@ -30,6 +32,7 @@ extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 Sint32 create_view_menu(Sint32 arg1);
 Sint32 create_team_menu(Sint32 arg1);
+extern bool g_start_game_requested;
 #ifdef TESTING
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
@@ -40,6 +43,66 @@ namespace og::sim { extern std::int32_t g_test_level_tick_limit_override; }
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
+namespace {
+
+class AutoStartPickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override
+    {
+        ++poll_calls;
+        g_start_game_requested = true;
+    }
+    void set_player_mode(int) override {}
+    bool request_start_game() override
+    {
+        return false;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool has_game_start_config() const noexcept override
+    {
+        return true;
+    }
+
+    int poll_calls = 0;
+};
+
+struct ActivePickerLobbyClientGuard
+{
+    og::ui::IPickerLobbyClient* saved = nullptr;
+
+    explicit ActivePickerLobbyClientGuard(og::ui::IPickerLobbyClient* client)
+        : saved(og::ui::active_picker_lobby_client())
+    {
+        og::ui::install_active_picker_lobby_client(client);
+    }
+
+    ~ActivePickerLobbyClientGuard()
+    {
+        og::ui::install_active_picker_lobby_client(saved);
+    }
+};
+
+} // namespace
 
 
 static void cleanup_picker_state()
@@ -490,6 +553,35 @@ TEST(ViewTeam, create_team_menu_direct_back)
     ASSERT_TRUE(state.finished) << "direct team-menu injector should complete";
     ASSERT_TRUE(state.clicked_target) << "direct team-menu injector should click back";
     ASSERT_TRUE(ret & 1) << "create_team_menu(back) should propagate EXIT";
+}
+
+TEST(ViewTeam, create_team_menu_remote_start_exits_as_start_game)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+
+    AutoStartPickerLobbyClient client;
+    ActivePickerLobbyClientGuard guard(&client);
+    g_start_game_requested = false;
+    pks().selected_menu_item = nullptr;
+
+    const Sint32 ret = create_team_menu(0);
+    const og::ui::PickerMenuItem* const selected = pks().selected_menu_item;
+    cleanup_picker_state();
+
+    EXPECT_GT(client.poll_calls, 0);
+    ASSERT_TRUE(ret & 1);
+    ASSERT_NE(nullptr, selected);
+    EXPECT_EQ(og::ui::PickerMenuCommand::StartGame, selected->command);
+
+    g_start_game_requested = false;
 }
 
 

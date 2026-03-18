@@ -37,6 +37,7 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/interface/ui/menu_model.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -125,6 +126,18 @@ bool picker_lobby_request_start();
 bool picker_lobby_start_request_pending();
 extern bool g_start_game_requested;
 
+static bool team_build_remote_start_requested(Sint32& retvalue)
+{
+    if (!g_start_game_requested || !picker_lobby_has_game_start_config())
+        return false;
+
+    pks().selected_menu_item = og::ui::find_picker_menu_item(
+        og::ui::PickerMenuId::TeamBuild,
+        og::ui::PickerMenuCommand::StartGame);
+    retvalue = MENU_EXIT;
+    return true;
+}
+
 // Per-session picker message buffer: access via current_session->message_.
 
 #define STAT_NUM_OFFSET 42
@@ -202,6 +215,8 @@ Sint32 create_team_menu(Sint32 arg1)
 	while ( !(retvalue & MENU_EXIT) )
 	{
         picker_lobby_poll();
+        if (team_build_remote_start_requested(retvalue))
+            break;
 	    // Input
 		if(leftmouse(buttons))
 			retvalue = og::runtime::current_session->localbuttons_->leftclick();
@@ -291,6 +306,8 @@ Sint32 create_view_menu(Sint32 arg1)
 	while ( !(retvalue & MENU_EXIT) )
 	{
         picker_lobby_poll();
+        if (team_build_remote_start_requested(retvalue))
+            break;
 	    // Input
 		if(leftmouse(buttons))
 			retvalue = og::runtime::current_session->localbuttons_->leftclick();
@@ -407,6 +424,8 @@ Sint32 create_progress_menu(Sint32 arg1)
     while (!(retvalue & MENU_EXIT))
     {
         picker_lobby_poll();
+        if (team_build_remote_start_requested(retvalue))
+            break;
         // Input
         if (leftmouse(buttons))
             retvalue = og::runtime::current_session->localbuttons_->leftclick();
@@ -421,6 +440,8 @@ Sint32 create_progress_menu(Sint32 arg1)
         if (clicked) {
             while (mymouse.left) {
                 picker_lobby_poll();
+                if (team_build_remote_start_requested(retvalue))
+                    return retvalue;
                 og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
@@ -647,6 +668,8 @@ Sint32 create_hire_menu(Sint32 arg1)
 	while ( !(retvalue & MENU_EXIT) )
 	{
         picker_lobby_poll();
+        if (team_build_remote_start_requested(retvalue))
+            break;
 	    // Input
 		clickvalue = leftmouse(buttons);
 		if (clickvalue == 1)
@@ -872,6 +895,8 @@ Sint32 create_train_menu(Sint32 arg1)
 	while ( !(retvalue & MENU_EXIT) )
 	{
         picker_lobby_poll();
+        if (team_build_remote_start_requested(retvalue))
+            break;
 	    // Input
 		clickvalue = leftmouse(buttons);
 		if (clickvalue == 1)
@@ -1064,6 +1089,8 @@ static Sint32 create_slot_menu(button* buttons, int num_buttons, const char* tit
 	while ( !(retvalue & MENU_EXIT) )
 	{
         picker_lobby_poll();
+        if (team_build_remote_start_requested(retvalue))
+            break;
 	    // Input
 		if(leftmouse(buttons))
         {
@@ -1479,8 +1506,11 @@ Sint32 go_menu(Sint32 arg1)
 #else
     picker_lobby_sync_settings_from_save();
     picker_lobby_sync_roster_from_save();
-    g_start_game_requested = false;
-    if (!picker_lobby_request_start())
+    const bool start_already_requested =
+        g_start_game_requested && picker_lobby_has_game_start_config();
+    if (!start_already_requested)
+        g_start_game_requested = false;
+    if (!start_already_requested && !picker_lobby_request_start())
     {
         while (!g_start_game_requested && picker_lobby_start_request_pending())
         {
