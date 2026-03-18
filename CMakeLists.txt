@@ -1323,6 +1323,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_guy_calcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_network_client.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_screen_funcs.cpp
@@ -1660,6 +1661,10 @@ if(NOT EMSCRIPTEN)
             test_menu_model.cpp
         )
 
+        og_add_test_group(og_test_picker_network FILES
+            test_picker_network_client.cpp
+        )
+
         og_add_test_group(og_test_menu_ui FILES
             test_back_to_mainmenu.cpp
             test_menu.cpp
@@ -1849,13 +1854,26 @@ if(NOT EMSCRIPTEN)
                 og_test_game_core
                 og_test_view
                 og_test_picker
+                og_test_picker_network
                 og_test_menu_ui
                 PROPERTIES PROCESSORS 3
             )
+            # The game-core integration binary also needs isolation in the
+            # coverage lane. Running it beside even one other process on GitHub's
+            # 4-core runners can trigger flaky asset/campaign test failures.
+            set_tests_properties(og_test_game_core PROPERTIES PROCESSORS 4)
+            # The coverage-instrumented unit-sim binary now includes live
+            # WebSocket and relay transport tests; on 4-core CI runners it can
+            # exceed the generic 180s timeout only when scheduled beside other
+            # heavyweight coverage binaries.
+            set_tests_properties(og_unit_sim PROPERTIES PROCESSORS 2)
             # Menu UI coverage still runs substantially slower on GitHub's
             # 4-core runners than it does locally, so match the dedicated
             # coverage workflow budget instead of leaving CTest at 300s here.
             set_tests_properties(og_test_menu_ui PROPERTIES TIMEOUT 420)
+            set_tests_properties(og_test_picker PROPERTIES TIMEOUT 420)
+            set_tests_properties(og_test_picker_network PROPERTIES TIMEOUT 420)
+            set_tests_properties(og_unit_sim PROPERTIES TIMEOUT 420)
         endif()
 
         if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
@@ -1869,6 +1887,21 @@ if(NOT EMSCRIPTEN)
             # Under ASan/UBSan it can time out only when CTest schedules it
             # beside other heavyweight integration binaries.
             set_tests_properties(og_test_game_core PROPERTIES PROCESSORS 4)
+            # The picker suite now exercises live WebSocket lobby setup and
+            # end-to-end host/join handoff paths. Under ASan/UBSan it can hit
+            # GitHub's generic 180-second budget when scheduled beside the
+            # rest of the UI-heavy integration binaries.
+            set_tests_properties(og_test_picker PROPERTIES
+                PROCESSORS 3
+                TIMEOUT 420
+            )
+            # The dedicated picker-network suite uses live WebSocket/relay
+            # transports to cover the host/join lobby client paths and needs
+            # the same relaxed timeout budget under ASan/UBSan.
+            set_tests_properties(og_test_picker_network PROPERTIES
+                PROCESSORS 2
+                TIMEOUT 420
+            )
             # The replay/benchmark binary now exercises honest end-to-end
             # client sync, which remains correct under ASan/UBSan but slows
             # down enough on GitHub's 4-core runners to trip the generic
