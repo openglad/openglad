@@ -1848,6 +1848,19 @@ if(NOT EMSCRIPTEN)
             TIMEOUT ${OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT}
         )
 
+        if(TARGET openglad_server)
+            add_test(NAME openglad_server_cli
+                COMMAND ${CMAKE_COMMAND} -E env
+                    bash
+                    ${CMAKE_SOURCE_DIR}/scripts/test_headless_server_cli.sh
+                    $<TARGET_FILE:openglad_server>
+            )
+            set_tests_properties(openglad_server_cli PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                TIMEOUT 60
+            )
+        endif()
+
         if(ENABLE_COVERAGE)
             add_test(NAME openglad_demo_smoke
                 COMMAND ${CMAKE_COMMAND} -E env

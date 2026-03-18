@@ -114,7 +114,13 @@ bool parse_int_arg(const char* text, int& out)
     return true;
 }
 
-bool parse_args(int argc, char* argv[], ServerArgs& args)
+enum class ParseArgsResult {
+    Ok,
+    HelpRequested,
+    InvalidUsage,
+};
+
+ParseArgsResult parse_args(int argc, char* argv[], ServerArgs& args)
 {
     for (int index = 1; index < argc; ++index)
     {
@@ -124,7 +130,8 @@ bool parse_args(int argc, char* argv[], ServerArgs& args)
             if (index + 1 >= argc)
             {
                 std::fprintf(stderr, "--host requires a value\n");
-                return false;
+                print_usage();
+                return ParseArgsResult::InvalidUsage;
             }
             args.host = argv[++index];
             continue;
@@ -137,7 +144,8 @@ bool parse_args(int argc, char* argv[], ServerArgs& args)
                 args.port <= 0)
             {
                 std::fprintf(stderr, "--port requires a positive integer\n");
-                return false;
+                print_usage();
+                return ParseArgsResult::InvalidUsage;
             }
             ++index;
             continue;
@@ -150,7 +158,8 @@ bool parse_args(int argc, char* argv[], ServerArgs& args)
                 args.lobby_poll_ms < 0)
             {
                 std::fprintf(stderr, "--lobby-poll-ms requires a non-negative integer\n");
-                return false;
+                print_usage();
+                return ParseArgsResult::InvalidUsage;
             }
             ++index;
             continue;
@@ -159,16 +168,17 @@ bool parse_args(int argc, char* argv[], ServerArgs& args)
         if (arg == "--help" || arg == "-h")
         {
             print_usage();
-            return false;
+            return ParseArgsResult::HelpRequested;
         }
 
         std::fprintf(stderr, "Unknown argument: %.*s\n",
                      static_cast<int>(arg.size()),
                      arg.data());
-        return false;
+        print_usage();
+        return ParseArgsResult::InvalidUsage;
     }
 
-    return true;
+    return ParseArgsResult::Ok;
 }
 
 int difficulty_percent_from_setting(int difficulty) noexcept
@@ -622,8 +632,15 @@ private:
 int main(int argc, char* argv[])
 {
     ServerArgs args;
-    if (!parse_args(argc, argv, args))
-        return 0;
+    switch (parse_args(argc, argv, args))
+    {
+    case ParseArgsResult::Ok:
+        break;
+    case ParseArgsResult::HelpRequested:
+        return EXIT_SUCCESS;
+    case ParseArgsResult::InvalidUsage:
+        return EXIT_FAILURE;
+    }
 
     std::signal(SIGINT, request_shutdown);
 #ifdef SIGTERM
