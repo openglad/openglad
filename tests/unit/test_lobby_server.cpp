@@ -56,7 +56,12 @@ public:
 
     [[nodiscard]] std::vector<og::sim::PeerId> connected_peers() const override
     {
-        return {};
+        return connected_peers_;
+    }
+
+    void set_connected_peers(std::vector<og::sim::PeerId> peers)
+    {
+        connected_peers_ = std::move(peers);
     }
 
     void queue_lobby_message(og::sim::PeerId peer_id,
@@ -105,6 +110,7 @@ private:
     std::vector<og::sim::ReceivedMessage> sent_messages_;
     std::vector<og::sim::ReceivedMessage> received_raw_;
     std::vector<og::sim::TypedReceivedMessage> received_typed_;
+    std::vector<og::sim::PeerId> connected_peers_;
     std::vector<og::sim::PeerId> disconnected_peers_;
 };
 
@@ -191,6 +197,35 @@ void expect_all_sent_states_equal(
 }
 
 } // namespace
+
+TEST(LobbyServer, poll_registers_connected_transport_peers)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+
+    transport.set_connected_peers({11u});
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_EQ(11u, transport.sent_messages().front().peer_id);
+    EXPECT_EQ(server.state(), decode_lobby_state(transport.sent_messages().front()));
+}
+
+TEST(LobbyServer, poll_disconnects_removed_transport_peers)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+
+    transport.set_connected_peers({11u});
+    server.poll_incoming_messages();
+    transport.clear_sent_messages();
+
+    transport.set_connected_peers({});
+    server.poll_incoming_messages();
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{11u}), transport.disconnected_peers());
+    EXPECT_TRUE(transport.sent_messages().empty());
+}
 
 TEST(LobbyServer, raw_join_flow_broadcasts_state_and_populates_save_data)
 {

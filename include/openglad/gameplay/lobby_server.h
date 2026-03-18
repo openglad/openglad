@@ -43,6 +43,9 @@ public:
     [[nodiscard]] LobbySaveDataEquivalent build_save_data_equivalent() const;
 
 private:
+    void synchronize_transport_peers(
+        const std::vector<std::pair<PeerId, LobbyMessage>>& messages);
+    void apply_transport_disconnects();
     struct ConnectedPeerState {
         std::uint64_t connection_order = 0;
         std::optional<LobbyPlayer> player = std::nullopt;
@@ -64,6 +67,8 @@ private:
 
     ITransport& transport_;
     LobbyState state_;
+    std::vector<PeerId> connected_transport_peers_;
+    std::vector<PeerId> pending_transport_disconnects_;
     std::unordered_map<PeerId, ConnectedPeerState> peers_;
     std::optional<PeerId> host_peer_id_ = std::nullopt;
     std::uint64_t next_connection_order_ = 1;

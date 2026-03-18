@@ -759,6 +759,9 @@ private:
             }
 
             client->peer_id_value = wait_for_next_websocket_peer();
+            with_server_context([&] {
+                server_->poll_incoming_messages();
+            });
             client->websocket_transport->set_remote_peer_id(client->peer_id());
             client->game_client = std::make_unique<GameClient>(
                 *client->transport,
@@ -774,40 +777,21 @@ private:
         with_server_context([&] {
             server_->step();
         });
-
-        if (uses_websocket_transport())
-            synchronize_websocket_server_peers(false);
     }
 
 #if !defined(__EMSCRIPTEN__)
-    std::vector<PeerId> synchronize_websocket_server_peers(bool poll_transport)
+    std::vector<PeerId> poll_websocket_server_peers()
     {
         if (!uses_websocket_transport())
             return {};
 
-        if (poll_transport)
-            (void)server_transport_->poll();
+        (void)server_transport_->poll();
 
         std::vector<PeerId> current_peers = server_transport_->connected_peers();
         std::vector<PeerId> added_peers;
-        std::vector<PeerId> removed_peers;
         std::set_difference(current_peers.begin(), current_peers.end(),
                             connected_server_peers_.begin(), connected_server_peers_.end(),
                             std::back_inserter(added_peers));
-        std::set_difference(connected_server_peers_.begin(), connected_server_peers_.end(),
-                            current_peers.begin(), current_peers.end(),
-                            std::back_inserter(removed_peers));
-
-        if (!added_peers.empty() || !removed_peers.empty())
-        {
-            with_server_context([&] {
-                for (const PeerId peer_id : added_peers)
-                    server_->connect_client(peer_id);
-                for (const PeerId peer_id : removed_peers)
-                    server_->disconnect_client(peer_id);
-            });
-        }
-
         connected_server_peers_ = std::move(current_peers);
         return added_peers;
     }
@@ -817,7 +801,7 @@ private:
         std::vector<PeerId> added_peers;
         const bool connected = wait_until(
             [&] {
-                added_peers = synchronize_websocket_server_peers(true);
+                added_peers = poll_websocket_server_peers();
                 return !added_peers.empty();
             },
             config_.network_timeout);
@@ -832,7 +816,7 @@ private:
         return added_peers.front();
     }
 #else
-    std::vector<PeerId> synchronize_websocket_server_peers(bool)
+    std::vector<PeerId> poll_websocket_server_peers()
     {
         return {};
     }

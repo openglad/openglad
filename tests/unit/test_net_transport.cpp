@@ -80,6 +80,11 @@ public:
         return sent_messages_;
     }
 
+    void clear_sent_messages()
+    {
+        sent_messages_.clear();
+    }
+
     const std::vector<og::sim::PeerId>& disconnected_peers() const noexcept
     {
         return disconnected_peers_;
@@ -410,6 +415,40 @@ TEST(NetTransport,
               decoded_state.kind);
     ASSERT_NE(nullptr, decoded_state.lobby_state);
     EXPECT_EQ(lobby_state, *decoded_state.lobby_state);
+}
+
+TEST(NetTransport, game_server_registers_connected_transport_peers_on_poll)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u});
+
+    server.poll_incoming_messages();
+    server.send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
+
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    EXPECT_EQ(7u, transport.sent_messages()[0].peer_id);
+    EXPECT_EQ(7u, transport.sent_messages()[1].peer_id);
+}
+
+TEST(NetTransport, game_server_disconnects_removed_transport_peers_on_poll)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u});
+    server.poll_incoming_messages();
+    transport.clear_sent_messages();
+
+    transport.set_connected_peers({});
+    server.poll_incoming_messages();
+    server.send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
+    EXPECT_TRUE(transport.sent_messages().empty());
 }
 
 TEST(NetTransport, game_server_broadcast_current_state_uses_raw_fallback)

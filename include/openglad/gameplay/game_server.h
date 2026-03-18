@@ -147,6 +147,8 @@ public:
     std::function<bool(int destination)> on_withdraw_accepted;
 
 private:
+    void synchronize_transport_peers();
+    void apply_transport_disconnects();
     [[nodiscard]] bool apply_polled_inputs(std::uint32_t expected_tick);
     void process_non_input_messages(std::uint32_t expected_tick);
     void update_timeouts();
@@ -175,6 +177,8 @@ private:
     GameWorld& world_;
     SimEventLog& events_;
     ITransport& transport_;
+    std::vector<PeerId> connected_transport_peers_;
+    std::vector<PeerId> pending_transport_disconnects_;
     std::unordered_map<PeerId, ConnectedClientState> clients_;
     std::array<walker*, MAX_PLAYERS> player_controls_ = {};
     std::array<SimInputDebounce, MAX_PLAYERS> player_input_debounce_ = {};

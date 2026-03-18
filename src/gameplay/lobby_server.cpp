@@ -73,6 +73,32 @@ std::string default_player_name(std::size_t ordinal)
     return std::format("Player {}", ordinal);
 }
 
+void insert_peer_id_sorted(std::vector<og::sim::PeerId>& peers,
+                           og::sim::PeerId peer_id)
+{
+    const auto it = std::lower_bound(peers.begin(), peers.end(), peer_id);
+    if (it == peers.end() || *it != peer_id)
+        peers.insert(it, peer_id);
+}
+
+void erase_peer_id_sorted(std::vector<og::sim::PeerId>& peers,
+                          og::sim::PeerId peer_id)
+{
+    const auto it = std::lower_bound(peers.begin(), peers.end(), peer_id);
+    if (it != peers.end() && *it == peer_id)
+        peers.erase(it);
+}
+
+bool lobby_messages_include_peer(
+    const std::vector<std::pair<og::sim::PeerId, og::sim::LobbyMessage>>& messages,
+    og::sim::PeerId peer_id)
+{
+    return std::any_of(messages.begin(), messages.end(),
+                       [peer_id](const auto& message) {
+                           return message.first == peer_id;
+                       });
+}
+
 std::vector<std::pair<og::sim::PeerId, og::sim::LobbyMessage>>
 poll_lobby_messages(og::sim::ITransport& transport)
 {
@@ -141,6 +167,7 @@ bool LobbyServer::consume_start_game_requested() noexcept
 
 void LobbyServer::connect_client(PeerId peer_id)
 {
+    erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
     const auto [it, inserted] = peers_.emplace(
         peer_id, ConnectedPeerState{.connection_order = next_connection_order_++});
     if (!inserted)
@@ -155,6 +182,8 @@ void LobbyServer::connect_client(PeerId peer_id)
 
 void LobbyServer::disconnect_client(PeerId peer_id)
 {
+    erase_peer_id_sorted(connected_transport_peers_, peer_id);
+    erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
     const auto peer_it = peers_.find(peer_id);
     if (peer_it == peers_.end())
     {
@@ -434,8 +463,54 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
 
 void LobbyServer::poll_incoming_messages()
 {
-    for (const auto& [peer_id, message] : poll_lobby_messages(transport_))
+    apply_transport_disconnects();
+
+    const auto messages = poll_lobby_messages(transport_);
+    synchronize_transport_peers(messages);
+    for (const auto& [peer_id, message] : messages)
         process_lobby_message(peer_id, message);
+    apply_transport_disconnects();
+}
+
+void LobbyServer::synchronize_transport_peers(
+    const std::vector<std::pair<PeerId, LobbyMessage>>& messages)
+{
+    const std::vector<PeerId> current_peers = transport_.connected_peers();
+
+    std::vector<PeerId> added_peers;
+    std::vector<PeerId> removed_peers;
+    std::set_difference(current_peers.begin(), current_peers.end(),
+                        connected_transport_peers_.begin(),
+                        connected_transport_peers_.end(),
+                        std::back_inserter(added_peers));
+    std::set_difference(connected_transport_peers_.begin(),
+                        connected_transport_peers_.end(),
+                        current_peers.begin(), current_peers.end(),
+                        std::back_inserter(removed_peers));
+
+    for (const PeerId peer_id : added_peers)
+    {
+        if (peers_.find(peer_id) == peers_.end())
+            connect_client(peer_id);
+    }
+
+    connected_transport_peers_ = current_peers;
+
+    for (const PeerId peer_id : removed_peers)
+    {
+        if (lobby_messages_include_peer(messages, peer_id))
+            insert_peer_id_sorted(pending_transport_disconnects_, peer_id);
+        else
+            disconnect_client(peer_id);
+    }
+}
+
+void LobbyServer::apply_transport_disconnects()
+{
+    std::vector<PeerId> disconnected_peers = std::move(pending_transport_disconnects_);
+    pending_transport_disconnects_.clear();
+    for (const PeerId peer_id : disconnected_peers)
+        disconnect_client(peer_id);
 }
 
 LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const

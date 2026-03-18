@@ -36,6 +36,32 @@ void erase_entity_id(std::vector<std::uint32_t>& ids, std::uint32_t entity_id)
     ids.erase(std::remove(ids.begin(), ids.end(), entity_id), ids.end());
 }
 
+void insert_peer_id_sorted(std::vector<og::sim::PeerId>& peers,
+                           og::sim::PeerId peer_id)
+{
+    const auto it = std::lower_bound(peers.begin(), peers.end(), peer_id);
+    if (it == peers.end() || *it != peer_id)
+        peers.insert(it, peer_id);
+}
+
+void erase_peer_id_sorted(std::vector<og::sim::PeerId>& peers,
+                          og::sim::PeerId peer_id)
+{
+    const auto it = std::lower_bound(peers.begin(), peers.end(), peer_id);
+    if (it != peers.end() && *it == peer_id)
+        peers.erase(it);
+}
+
+bool typed_messages_include_peer(
+    const std::vector<og::sim::TypedReceivedMessage>& messages,
+    og::sim::PeerId peer_id)
+{
+    return std::any_of(messages.begin(), messages.end(),
+                       [peer_id](const og::sim::TypedReceivedMessage& message) {
+                           return message.peer_id == peer_id;
+                       });
+}
+
 bool dirty_mask_has_bits(const og::sim::EntitySnapshotDirtyMask& mask) noexcept
 {
     return mask[0] != 0 || mask[1] != 0;
@@ -674,6 +700,7 @@ std::uint64_t GameServer::now_ms() const
 
 void GameServer::connect_client(PeerId peer_id)
 {
+    erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
     ConnectedClientState& client = clients_[peer_id];
     client.last_received_input_ms = now_ms();
     if (!host_peer_id_.has_value())
@@ -682,6 +709,8 @@ void GameServer::connect_client(PeerId peer_id)
 
 void GameServer::disconnect_client(PeerId peer_id)
 {
+    erase_peer_id_sorted(connected_transport_peers_, peer_id);
+    erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
     const bool was_host = host_peer_id_.has_value() && *host_peer_id_ == peer_id;
     const auto it = clients_.find(peer_id);
     if (it != clients_.end())
@@ -813,9 +842,51 @@ void GameServer::send_initial_setup(PeerId peer_id)
         std::make_shared<InitialSetupMessage>(std::move(message)));
 }
 
+void GameServer::synchronize_transport_peers()
+{
+    const std::vector<PeerId> current_peers = transport_.connected_peers();
+
+    std::vector<PeerId> added_peers;
+    std::vector<PeerId> removed_peers;
+    std::set_difference(current_peers.begin(), current_peers.end(),
+                        connected_transport_peers_.begin(),
+                        connected_transport_peers_.end(),
+                        std::back_inserter(added_peers));
+    std::set_difference(connected_transport_peers_.begin(),
+                        connected_transport_peers_.end(),
+                        current_peers.begin(), current_peers.end(),
+                        std::back_inserter(removed_peers));
+
+    for (const PeerId peer_id : added_peers)
+    {
+        if (clients_.find(peer_id) == clients_.end())
+            connect_client(peer_id);
+    }
+
+    connected_transport_peers_ = current_peers;
+
+    for (const PeerId peer_id : removed_peers)
+    {
+        if (typed_messages_include_peer(last_polled_messages_, peer_id))
+            insert_peer_id_sorted(pending_transport_disconnects_, peer_id);
+        else
+            disconnect_client(peer_id);
+    }
+}
+
+void GameServer::apply_transport_disconnects()
+{
+    std::vector<PeerId> disconnected_peers = std::move(pending_transport_disconnects_);
+    pending_transport_disconnects_.clear();
+    for (const PeerId peer_id : disconnected_peers)
+        disconnect_client(peer_id);
+}
+
 void GameServer::poll_incoming_messages()
 {
+    apply_transport_disconnects();
     last_polled_messages_ = poll_server_messages(transport_);
+    synchronize_transport_peers();
 }
 
 PlayerInput GameServer::select_effective_input(ConnectedClientState& client,
@@ -960,6 +1031,7 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         }
     }
 
+    apply_transport_disconnects();
     (void)expected_tick;
     update_timeouts();
 }
