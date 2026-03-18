@@ -260,31 +260,37 @@ static int fairy_injector(void* data)
         }
 
         bool saw_fairy_alive = false;
-        bool game_exited_before_observed_death = false;
         waited_ms = 0;
         while (g_test_in_game.load(std::memory_order_acquire) &&
                waited_ms < kFairyDeathTimeoutMs) {
-            const FairyLifeState fairy_state = query_hired_fairy_life_state();
-            if (fairy_state == FairyLifeState::Alive)
+            if (query_hired_fairy_life_state() == FairyLifeState::Alive) {
                 saw_fairy_alive = true;
-            if (saw_fairy_alive && fairy_state != FairyLifeState::Alive)
                 break;
+            }
             SDL_Delay(kFairyPollMs);
             waited_ms += kFairyPollMs;
         }
 
-        if (!g_test_in_game.load(std::memory_order_acquire) && !saw_fairy_alive)
-            game_exited_before_observed_death = true;
+        if (!saw_fairy_alive) {
+            return fail_fairy_run(state, "fairy never spawned alive in-world");
+        }
 
-        if ((!saw_fairy_alive && !game_exited_before_observed_death) ||
-            (g_test_in_game.load(std::memory_order_acquire) &&
-             query_hired_fairy_life_state() == FairyLifeState::Alive)) {
+        waited_ms = 0;
+        while (g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kFairyDeathTimeoutMs) {
+            if (query_hired_fairy_life_state() != FairyLifeState::Alive) {
+                state->observed_natural_death = true;
+                break;
+            }
+            SDL_Delay(kFairyPollMs);
+            waited_ms += kFairyPollMs;
+        }
+
+        if (g_test_in_game.load(std::memory_order_acquire) &&
+            !state->observed_natural_death) {
             return fail_fairy_run(state, "fairy never died within timeout");
         }
 
-        state->observed_natural_death =
-            saw_fairy_alive &&
-            query_hired_fairy_life_state() != FairyLifeState::Alive;
         state->saw_generic_defeat =
             trace_contains("popup", "YOUR MEN ARE CRUSHED");
 
