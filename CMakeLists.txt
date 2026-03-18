@@ -208,6 +208,7 @@ set(GAME_SOURCES
 	    ${SRC_DIR}/platform/sdl/sai2x.cpp
 		    ${SRC_DIR}/core/util.cpp
 		    ${SRC_DIR}/resources/platform_io.cpp
+            ${THIRD_PARTY_DIR}/physfs/extras/physfsrwops.c
 		    ${SRC_DIR}/resources/io/platform_io_common.cpp
 		    ${SRC_DIR}/resources/io/filesystem.cpp
 		    ${SRC_DIR}/resources/io/physfs_api.cpp
@@ -407,8 +408,12 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/interface/ui/results_screen.cpp
 )
 
-set(OG_IO_SOURCES
+set(OG_IO_SDL_SOURCES
     ${SRC_DIR}/resources/platform_io.cpp
+    ${THIRD_PARTY_DIR}/physfs/extras/physfsrwops.c
+)
+
+set(OG_IO_SOURCES
     ${SRC_DIR}/resources/io/platform_io_common.cpp
     ${SRC_DIR}/resources/io/filesystem.cpp
     ${SRC_DIR}/resources/io/physfs_api.cpp
@@ -459,7 +464,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
 
 set(OG_PLATFORM_SDL_COMPONENT_SOURCES
     ${OG_PLATFORM_SOURCES}
-    ${OG_NETWORK_SOURCES}
+    ${OG_IO_SDL_SOURCES}
     ${SRC_DIR}/platform/sdl/game.cpp
     ${SRC_DIR}/platform/game_context.cpp
     ${SRC_DIR}/platform/sdl/game_loop.cpp
@@ -508,7 +513,6 @@ set(PHYSFS_SOURCES
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_posix.c
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_unix.c
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_windows.c
-    ${THIRD_PARTY_DIR}/physfs/extras/physfsrwops.c
 )
 
 # External C sources - zlib
@@ -735,7 +739,7 @@ function(configure_component_library target include_root)
 endfunction()
 
 function(configure_openglad_sdl_target target)
-    if(NOT EMSCRIPTEN)
+    if(NOT EMSCRIPTEN AND OG_NATIVE_SDL_AVAILABLE)
         # Opt-in SDL wiring: keeps gameplay-only targets free from platform deps.
         target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
     endif()
@@ -766,7 +770,7 @@ endfunction()
 
 function(configure_openglad_external_target target)
     target_include_directories(${target} PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
-    if(NOT EMSCRIPTEN)
+    if(NOT EMSCRIPTEN AND OG_NATIVE_SDL_AVAILABLE)
         target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
     endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
@@ -814,12 +818,35 @@ add_custom_target(check_vendor_leaks
 # --------------------------------------------------------------------------
 
 if(NOT EMSCRIPTEN)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2 SDL2_mixer)
+    find_package(PkgConfig QUIET)
+
+    set(OG_NATIVE_SDL_AVAILABLE OFF)
+    set(OG_NATIVE_SDL_REQUESTED ON)
+    if(CMAKE_DISABLE_FIND_PACKAGE_SDL2 OR
+       CMAKE_DISABLE_FIND_PACKAGE_SDL2_MIXER OR
+       CMAKE_DISABLE_FIND_PACKAGE_SDL2_mixer)
+        set(OG_NATIVE_SDL_REQUESTED OFF)
+    endif()
+    if(OG_NATIVE_SDL_REQUESTED AND PkgConfig_FOUND)
+        pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2 SDL2_mixer)
+        if(SDL2_FOUND)
+            set(OG_NATIVE_SDL_AVAILABLE ON)
+        else()
+            message(STATUS "SDL2/SDL2_mixer not found; SDL-native targets require SDL to build")
+        endif()
+    elseif(OG_NATIVE_SDL_REQUESTED)
+        message(STATUS "PkgConfig not found; SDL-native targets require SDL to build")
+    else()
+        message(STATUS "SDL2 lookup disabled; configuring headless/native non-SDL targets")
+    endif()
 
     # System/runtime link deps (kept as a target so we can control ordering).
     add_library(og_runtime_deps INTERFACE)
-    target_link_libraries(og_runtime_deps INTERFACE PkgConfig::SDL2 m pthread)
+    if(OG_NATIVE_SDL_AVAILABLE)
+        target_link_libraries(og_runtime_deps INTERFACE PkgConfig::SDL2 m pthread)
+    else()
+        target_link_libraries(og_runtime_deps INTERFACE m pthread)
+    endif()
 
     # Native-only WebSocket dependency. Emscripten uses the browser WebSocket API.
     set(BUILD_DEMO OFF)
@@ -912,7 +939,6 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_resources STATIC ${OG_RESOURCES_COMPONENT_SOURCES})
     configure_component_library(og_resources "${OG_RESOURCES_INCLUDE_ROOT}")
-    configure_openglad_sdl_target(og_resources)
     target_include_directories(og_resources PRIVATE
         ${THIRD_PARTY_DIR}/yam
         ${THIRD_PARTY_DIR}/libyaml/include
@@ -936,18 +962,31 @@ if(NOT EMSCRIPTEN)
         og_resources
     )
 
+    if(OG_NETWORK_SOURCES)
+        add_library(og_platform_ws_transport STATIC ${OG_NETWORK_SOURCES})
+        configure_component_library(og_platform_ws_transport "${OG_PUBLIC_INCLUDE_DIR}")
+        if(NOT EMSCRIPTEN)
+            target_link_libraries(og_platform_ws_transport PUBLIC og_ext_ixwebsocket)
+        endif()
+        add_dependencies(og_platform_ws_transport check_vendor_leaks)
+    endif()
+
     add_library(og_platform_sdl STATIC ${OG_PLATFORM_SDL_COMPONENT_SOURCES})
     configure_component_library(og_platform_sdl "${OG_PUBLIC_INCLUDE_DIR}")
     configure_openglad_sdl_target(og_platform_sdl)
+    target_include_directories(og_platform_sdl PRIVATE
+        ${THIRD_PARTY_DIR}/yam
+        ${THIRD_PARTY_DIR}/libyaml/include
+        ${THIRD_PARTY_DIR}/physfs
+        ${THIRD_PARTY_DIR}/physfs/extras
+        ${THIRD_PARTY_DIR}/libzip
+    )
     target_link_libraries(og_platform_sdl PUBLIC
         og_core
         og_gameplay
         og_resources
         og_interface
     )
-    if(NOT EMSCRIPTEN)
-        target_link_libraries(og_platform_sdl PUBLIC ixwebsocket)
-    endif()
     add_dependencies(og_platform_sdl check_vendor_leaks)
 
     add_library(og_platform_emscripten_transport STATIC
@@ -1062,6 +1101,17 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/stats.cpp
     )
 
+    set(HEADLESS_SERVER_SOURCES
+        ${SRC_DIR}/server/server_main.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+
     add_executable(openglad_text ${HEADLESS_SOURCES})
     target_include_directories(openglad_text PUBLIC
         $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
@@ -1087,6 +1137,22 @@ if(NOT EMSCRIPTEN)
         pthread
     )
     add_runtime_assets_dependency(openglad_text)
+
+    if(TARGET og_platform_ws_transport)
+        add_executable(openglad_server ${HEADLESS_SERVER_SOURCES})
+        configure_openglad_library(openglad_server)
+        target_link_libraries(openglad_server PRIVATE
+            og_core
+            og_gameplay
+            og_resources
+            og_platform_ws_transport
+            og_ext_micropather
+            ${OG_IO_EXTERNAL_LIBS}
+            m
+            pthread
+        )
+        add_runtime_assets_dependency(openglad_server)
+    endif()
 
     install(TARGETS
         project_warnings
@@ -1116,6 +1182,15 @@ if(NOT EMSCRIPTEN)
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
             PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ixwebsocket
+        )
+    endif()
+
+    if(TARGET og_platform_ws_transport)
+        install(TARGETS openglad_server
+            EXPORT OpenGladTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         )
     endif()
 
@@ -1681,6 +1756,9 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
         )
         target_link_libraries(og_unit_sim PRIVATE og_platform_emscripten_transport)
+        if(TARGET og_platform_ws_transport)
+            target_link_libraries(og_unit_sim PRIVATE og_platform_ws_transport)
+        endif()
         target_include_directories(og_unit_sim PRIVATE ${SRC_DIR}/platform/emscripten)
 
         og_add_unit_group(og_unit_families FILES

@@ -20,6 +20,14 @@ struct LobbySaveDataEquivalent {
     bool operator==(const LobbySaveDataEquivalent&) const = default;
 };
 
+struct LobbyPlayerBinding {
+    PeerId peer_id = 0;
+    std::uint8_t player_index = 0xff;
+    std::int16_t team = 0;
+
+    bool operator==(const LobbyPlayerBinding&) const = default;
+};
+
 class LobbyServer
 {
 public:
@@ -41,6 +49,7 @@ public:
 
     [[nodiscard]] bool consume_start_game_requested() noexcept;
     [[nodiscard]] LobbySaveDataEquivalent build_save_data_equivalent() const;
+    [[nodiscard]] std::vector<LobbyPlayerBinding> build_player_bindings() const;
 
 private:
     void synchronize_transport_peers(

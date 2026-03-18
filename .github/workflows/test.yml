@@ -62,6 +62,36 @@ jobs:
       - name: Build native binaries
         run: cmake --build --preset dev-release --target openglad openscen -j"$(nproc)"
 
+  headless-server:
+    name: Headless Server SDL-Off Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply third-party build fixes
+        run: git apply third_party/build-fixes.patch
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libpng-dev cmake ninja-build
+
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: headless-server
+
+      - name: Configure headless server build
+        run: >
+          cmake -S . -B build/headless-server -GNinja
+          -DCMAKE_DISABLE_FIND_PACKAGE_SDL2=ON
+          -DCMAKE_DISABLE_FIND_PACKAGE_SDL2_mixer=ON
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build headless server target
+        run: cmake --build build/headless-server --target openglad_server -j"$(nproc)"
+
   asan:
     name: ASan+UBSan
     runs-on: ubuntu-latest

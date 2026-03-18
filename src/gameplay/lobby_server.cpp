@@ -582,4 +582,31 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     return equivalent;
 }
 
+std::vector<LobbyPlayerBinding> LobbyServer::build_player_bindings() const
+{
+    std::vector<LobbyPlayerBinding> bindings;
+    bindings.reserve(peers_.size());
+
+    for (const auto& [peer_id, peer] : peers_)
+    {
+        if (!peer.player.has_value())
+            continue;
+
+        bindings.push_back(LobbyPlayerBinding{
+            .peer_id = peer_id,
+            .player_index = peer.player->player_index,
+            .team = peer.player->team,
+        });
+    }
+
+    std::sort(bindings.begin(), bindings.end(),
+              [](const LobbyPlayerBinding& lhs, const LobbyPlayerBinding& rhs) {
+                  if (lhs.player_index != rhs.player_index)
+                      return lhs.player_index < rhs.player_index;
+                  return lhs.peer_id < rhs.peer_id;
+              });
+
+    return bindings;
+}
+
 } // namespace og::sim
