@@ -439,6 +439,7 @@ set(OG_PLATFORM_SOURCES
 set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${OG_SIM_SOURCES}
     ${OG_ENTITIES_SOURCES}
+    ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
@@ -455,6 +456,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${OG_INPUT_SOURCES}
     ${OG_RENDER_SOURCES}
     ${OG_UI_SOURCES}
+    ${SRC_DIR}/platform/sdl/picker_lobby_network_client.cpp
     ${SRC_DIR}/interface/score_panel.cpp
     ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/interface/platform_bridge.cpp
@@ -476,8 +478,6 @@ set(OG_PLATFORM_SDL_COMPONENT_SOURCES
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
     ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
-    ${SRC_DIR}/platform/sdl/picker_lobby_network_client.cpp
-    ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
 )
@@ -932,7 +932,7 @@ if(NOT EMSCRIPTEN)
     prepare_component_include_root(OG_RESOURCES_INCLUDE_ROOT resources
         core gameplay resources)
     prepare_component_include_root(OG_INTERFACE_INCLUDE_ROOT interface
-        core gameplay resources interface)
+        core gameplay resources interface platform)
 
     add_library(og_core STATIC ${OG_CORE_SOURCES})
     configure_component_library(og_core "${OG_CORE_INCLUDE_ROOT}")
@@ -971,9 +971,10 @@ if(NOT EMSCRIPTEN)
         add_library(og_platform_ws_transport STATIC ${OG_NETWORK_SOURCES})
         configure_component_library(og_platform_ws_transport "${OG_PUBLIC_INCLUDE_DIR}")
         if(NOT EMSCRIPTEN)
-            target_link_libraries(og_platform_ws_transport PUBLIC og_ext_ixwebsocket)
+            target_link_libraries(og_platform_ws_transport PUBLIC ixwebsocket)
         endif()
         add_dependencies(og_platform_ws_transport check_vendor_leaks)
+        target_link_libraries(og_interface PUBLIC og_platform_ws_transport)
     endif()
 
     add_library(og_platform_sdl STATIC ${OG_PLATFORM_SDL_COMPONENT_SOURCES})
@@ -1026,10 +1027,6 @@ if(NOT EMSCRIPTEN)
             og_runtime_deps
         )
     endif()
-    if(TARGET og_platform_ws_transport)
-        target_link_libraries(og_game INTERFACE og_platform_ws_transport)
-    endif()
-
     # Stage runtime assets into the build tree so tests and local runs do not
     # depend on pre-existing user data.
     add_custom_target(stage_runtime_assets
@@ -1202,6 +1199,13 @@ if(NOT EMSCRIPTEN)
     endif()
 
     if(TARGET og_platform_ws_transport)
+        install(TARGETS og_platform_ws_transport
+            EXPORT OpenGladTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+
         install(TARGETS openglad_server
             EXPORT OpenGladTargets
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
