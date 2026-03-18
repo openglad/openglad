@@ -1658,6 +1658,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
+            ${CMAKE_SOURCE_DIR}/src/platform/emscripten/net_transport_emscripten_ws.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_emscripten_ws.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_client.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_state_net.cpp
@@ -1670,6 +1672,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
         )
+        target_include_directories(og_unit_sim PRIVATE ${SRC_DIR})
 
         og_add_unit_group(og_unit_families FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp

@@ -1,7 +1,5 @@
 #include "net_transport_emscripten_ws.h"
 
-#include <emscripten/websocket.h>
-
 #include <deque>
 #include <format>
 #include <limits>
@@ -16,29 +14,202 @@ namespace {
 
 constexpr unsigned short kWebSocketReadyStateOpen = 1;
 
-const char* emscripten_result_name(EMSCRIPTEN_RESULT result) noexcept
+#ifdef __EMSCRIPTEN__
+void default_init_create_attributes(
+    detail::WebSocketCreateAttributes* attributes)
+{
+    emscripten_websocket_init_create_attributes(attributes);
+}
+
+detail::EmscriptenBool default_is_supported()
+{
+    return emscripten_websocket_is_supported();
+}
+
+detail::WebSocketHandle default_create(
+    detail::WebSocketCreateAttributes* attributes)
+{
+    return emscripten_websocket_new(attributes);
+}
+
+detail::EmscriptenResult default_set_onopen(
+    detail::WebSocketHandle socket,
+    void* user_data,
+    detail::WebSocketOpenCallback callback)
+{
+    return emscripten_websocket_set_onopen_callback(
+        socket, user_data, callback);
+}
+
+detail::EmscriptenResult default_set_onmessage(
+    detail::WebSocketHandle socket,
+    void* user_data,
+    detail::WebSocketMessageCallback callback)
+{
+    return emscripten_websocket_set_onmessage_callback(
+        socket, user_data, callback);
+}
+
+detail::EmscriptenResult default_set_onerror(
+    detail::WebSocketHandle socket,
+    void* user_data,
+    detail::WebSocketErrorCallback callback)
+{
+    return emscripten_websocket_set_onerror_callback(
+        socket, user_data, callback);
+}
+
+detail::EmscriptenResult default_set_onclose(
+    detail::WebSocketHandle socket,
+    void* user_data,
+    detail::WebSocketCloseCallback callback)
+{
+    return emscripten_websocket_set_onclose_callback(
+        socket, user_data, callback);
+}
+
+detail::EmscriptenResult default_get_ready_state(
+    detail::WebSocketHandle socket,
+    unsigned short* ready_state)
+{
+    return emscripten_websocket_get_ready_state(socket, ready_state);
+}
+
+detail::EmscriptenResult default_send_binary(
+    detail::WebSocketHandle socket,
+    void* binary_data,
+    std::uint32_t data_length)
+{
+    return emscripten_websocket_send_binary(socket, binary_data, data_length);
+}
+
+detail::EmscriptenResult default_close(detail::WebSocketHandle socket,
+                                       unsigned short code,
+                                       const char* reason)
+{
+    return emscripten_websocket_close(socket, code, reason);
+}
+
+detail::EmscriptenResult default_destroy(detail::WebSocketHandle socket)
+{
+    return emscripten_websocket_delete(socket);
+}
+#else
+void default_init_create_attributes(
+    detail::WebSocketCreateAttributes* attributes)
+{
+    if (attributes != nullptr)
+        *attributes = detail::WebSocketCreateAttributes{};
+}
+
+detail::EmscriptenBool default_is_supported()
+{
+    return detail::kFalse;
+}
+
+detail::WebSocketHandle default_create(
+    detail::WebSocketCreateAttributes*)
+{
+    return detail::kResultNotSupported;
+}
+
+detail::EmscriptenResult default_set_onopen(detail::WebSocketHandle,
+                                            void*,
+                                            detail::WebSocketOpenCallback)
+{
+    return detail::kResultNotSupported;
+}
+
+detail::EmscriptenResult default_set_onmessage(
+    detail::WebSocketHandle,
+    void*,
+    detail::WebSocketMessageCallback)
+{
+    return detail::kResultNotSupported;
+}
+
+detail::EmscriptenResult default_set_onerror(detail::WebSocketHandle,
+                                             void*,
+                                             detail::WebSocketErrorCallback)
+{
+    return detail::kResultNotSupported;
+}
+
+detail::EmscriptenResult default_set_onclose(detail::WebSocketHandle,
+                                             void*,
+                                             detail::WebSocketCloseCallback)
+{
+    return detail::kResultNotSupported;
+}
+
+detail::EmscriptenResult default_get_ready_state(
+    detail::WebSocketHandle,
+    unsigned short*)
+{
+    return detail::kResultNotSupported;
+}
+
+detail::EmscriptenResult default_send_binary(detail::WebSocketHandle,
+                                             void*,
+                                             std::uint32_t)
+{
+    return detail::kResultNotSupported;
+}
+
+detail::EmscriptenResult default_close(detail::WebSocketHandle,
+                                       unsigned short,
+                                       const char*)
+{
+    return detail::kResultNotSupported;
+}
+
+detail::EmscriptenResult default_destroy(detail::WebSocketHandle)
+{
+    return detail::kResultNotSupported;
+}
+#endif
+
+const detail::EmscriptenWebSocketApi kDefaultWebSocketApi = {
+    .init_create_attributes = &default_init_create_attributes,
+    .is_supported = &default_is_supported,
+    .create = &default_create,
+    .set_onopen = &default_set_onopen,
+    .set_onmessage = &default_set_onmessage,
+    .set_onerror = &default_set_onerror,
+    .set_onclose = &default_set_onclose,
+    .get_ready_state = &default_get_ready_state,
+    .send_binary = &default_send_binary,
+    .close = &default_close,
+    .destroy = &default_destroy,
+};
+
+#if defined(TESTING)
+const detail::EmscriptenWebSocketApi* g_websocket_api_override = nullptr;
+#endif
+
+const char* emscripten_result_name(detail::EmscriptenResult result) noexcept
 {
     switch (result)
     {
-    case EMSCRIPTEN_RESULT_SUCCESS:
+    case detail::kResultSuccess:
         return "EMSCRIPTEN_RESULT_SUCCESS";
-    case EMSCRIPTEN_RESULT_DEFERRED:
+    case detail::kResultDeferred:
         return "EMSCRIPTEN_RESULT_DEFERRED";
-    case EMSCRIPTEN_RESULT_NOT_SUPPORTED:
+    case detail::kResultNotSupported:
         return "EMSCRIPTEN_RESULT_NOT_SUPPORTED";
-    case EMSCRIPTEN_RESULT_FAILED_NOT_DEFERRED:
+    case detail::kResultFailedNotDeferred:
         return "EMSCRIPTEN_RESULT_FAILED_NOT_DEFERRED";
-    case EMSCRIPTEN_RESULT_INVALID_TARGET:
+    case detail::kResultInvalidTarget:
         return "EMSCRIPTEN_RESULT_INVALID_TARGET";
-    case EMSCRIPTEN_RESULT_UNKNOWN_TARGET:
+    case detail::kResultUnknownTarget:
         return "EMSCRIPTEN_RESULT_UNKNOWN_TARGET";
-    case EMSCRIPTEN_RESULT_INVALID_PARAM:
+    case detail::kResultInvalidParam:
         return "EMSCRIPTEN_RESULT_INVALID_PARAM";
-    case EMSCRIPTEN_RESULT_FAILED:
+    case detail::kResultFailed:
         return "EMSCRIPTEN_RESULT_FAILED";
-    case EMSCRIPTEN_RESULT_NO_DATA:
+    case detail::kResultNoData:
         return "EMSCRIPTEN_RESULT_NO_DATA";
-    case EMSCRIPTEN_RESULT_TIMED_OUT:
+    case detail::kResultTimedOut:
         return "EMSCRIPTEN_RESULT_TIMED_OUT";
     default:
         return "EMSCRIPTEN_RESULT_UNKNOWN";
@@ -46,7 +217,7 @@ const char* emscripten_result_name(EMSCRIPTEN_RESULT result) noexcept
 }
 
 [[noreturn]] void throw_emscripten_error(std::string_view operation,
-                                         EMSCRIPTEN_RESULT result)
+                                         detail::EmscriptenResult result)
 {
     throw std::runtime_error(std::format(
         "EmscriptenWebSocketTransport {} failed: {} ({})",
@@ -56,16 +227,39 @@ const char* emscripten_result_name(EMSCRIPTEN_RESULT result) noexcept
 }
 
 void throw_if_emscripten_failed(std::string_view operation,
-                                EMSCRIPTEN_RESULT result)
+                                detail::EmscriptenResult result)
 {
-    if (result != EMSCRIPTEN_RESULT_SUCCESS)
+    if (result != detail::kResultSuccess)
         throw_emscripten_error(operation, result);
 }
 
 } // namespace
 
+namespace detail {
+
+const EmscriptenWebSocketApi& emscripten_websocket_api() noexcept
+{
+#if defined(TESTING)
+    if (g_websocket_api_override != nullptr)
+        return *g_websocket_api_override;
+#endif
+    return kDefaultWebSocketApi;
+}
+
+#if defined(TESTING)
+void set_emscripten_websocket_api_for_testing(
+    const EmscriptenWebSocketApi* api) noexcept
+{
+    g_websocket_api_override = api;
+}
+#endif
+
+} // namespace detail
+
 struct EmscriptenWebSocketTransport::Impl
 {
+    using WebSocketHandle = detail::WebSocketHandle;
+
     enum class QueueEntryKind : std::uint8_t {
         Connect,
         Message,
@@ -74,7 +268,7 @@ struct EmscriptenWebSocketTransport::Impl
 
     struct QueueEntry {
         QueueEntryKind kind = QueueEntryKind::Message;
-        EMSCRIPTEN_WEBSOCKET_T socket = 0;
+        WebSocketHandle socket = 0;
         std::vector<std::uint8_t> payload;
     };
 
@@ -107,7 +301,9 @@ struct EmscriptenWebSocketTransport::Impl
         if (started)
             return;
 
-        if (!emscripten_websocket_is_supported())
+        const detail::EmscriptenWebSocketApi& api =
+            detail::emscripten_websocket_api();
+        if (api.is_supported == nullptr || api.is_supported() == detail::kFalse)
         {
             throw std::runtime_error(
                 "EmscriptenWebSocketTransport requires browser WebSocket support");
@@ -116,14 +312,13 @@ struct EmscriptenWebSocketTransport::Impl
         clear_queue();
         connected = false;
 
-        EmscriptenWebSocketCreateAttributes create_attributes;
-        emscripten_websocket_init_create_attributes(&create_attributes);
+        detail::WebSocketCreateAttributes create_attributes{};
+        api.init_create_attributes(&create_attributes);
         create_attributes.url = url.c_str();
         create_attributes.protocols =
             options.protocols.empty() ? nullptr : options.protocols.c_str();
 
-        const EMSCRIPTEN_WEBSOCKET_T new_socket =
-            emscripten_websocket_new(&create_attributes);
+        const WebSocketHandle new_socket = api.create(&create_attributes);
         if (new_socket <= 0)
         {
             throw std::runtime_error(std::format(
@@ -138,20 +333,16 @@ struct EmscriptenWebSocketTransport::Impl
         {
             throw_if_emscripten_failed(
                 "setting onopen callback",
-                emscripten_websocket_set_onopen_callback(
-                    socket, this, &Impl::on_open));
+                api.set_onopen(socket, this, &Impl::on_open));
             throw_if_emscripten_failed(
                 "setting onmessage callback",
-                emscripten_websocket_set_onmessage_callback(
-                    socket, this, &Impl::on_message));
+                api.set_onmessage(socket, this, &Impl::on_message));
             throw_if_emscripten_failed(
                 "setting onerror callback",
-                emscripten_websocket_set_onerror_callback(
-                    socket, this, &Impl::on_error));
+                api.set_onerror(socket, this, &Impl::on_error));
             throw_if_emscripten_failed(
                 "setting onclose callback",
-                emscripten_websocket_set_onclose_callback(
-                    socket, this, &Impl::on_close));
+                api.set_onclose(socket, this, &Impl::on_close));
         }
         catch (...)
         {
@@ -181,10 +372,12 @@ struct EmscriptenWebSocketTransport::Impl
         if (peer_id != options.remote_peer_id || !connected || socket <= 0)
             return;
 
+        const detail::EmscriptenWebSocketApi& api =
+            detail::emscripten_websocket_api();
         unsigned short ready_state = 0;
-        const EMSCRIPTEN_RESULT ready_state_result =
-            emscripten_websocket_get_ready_state(socket, &ready_state);
-        if (ready_state_result != EMSCRIPTEN_RESULT_SUCCESS ||
+        const detail::EmscriptenResult ready_state_result =
+            api.get_ready_state(socket, &ready_state);
+        if (ready_state_result != detail::kResultSuccess ||
             ready_state != kWebSocketReadyStateOpen)
         {
             enqueue_disconnect(socket);
@@ -195,9 +388,9 @@ struct EmscriptenWebSocketTransport::Impl
         std::uint8_t empty_payload = 0;
         void* payload = len == 0 ? static_cast<void*>(&empty_payload)
                                  : const_cast<std::uint8_t*>(data);
-        const EMSCRIPTEN_RESULT send_result = emscripten_websocket_send_binary(
-            socket, payload, static_cast<std::uint32_t>(len));
-        if (send_result != EMSCRIPTEN_RESULT_SUCCESS)
+        const detail::EmscriptenResult send_result =
+            api.send_binary(socket, payload, static_cast<std::uint32_t>(len));
+        if (send_result != detail::kResultSuccess)
         {
             enqueue_disconnect(socket);
             request_close_socket(socket);
@@ -275,54 +468,55 @@ struct EmscriptenWebSocketTransport::Impl
     }
 
 private:
-    static EM_BOOL on_open(int,
-                           const EmscriptenWebSocketOpenEvent* websocket_event,
-                           void* user_data)
+    static detail::EmscriptenBool on_open(
+        int,
+        const detail::WebSocketOpenEvent* websocket_event,
+        void* user_data)
     {
         if (websocket_event == nullptr || user_data == nullptr)
-            return EM_FALSE;
+            return detail::kFalse;
 
         static_cast<Impl*>(user_data)->handle_connect(websocket_event->socket);
-        return EM_TRUE;
+        return detail::kTrue;
     }
 
-    static EM_BOOL on_message(
+    static detail::EmscriptenBool on_message(
         int,
-        const EmscriptenWebSocketMessageEvent* websocket_event,
+        const detail::WebSocketMessageEvent* websocket_event,
         void* user_data)
     {
         if (websocket_event == nullptr || user_data == nullptr)
-            return EM_FALSE;
+            return detail::kFalse;
 
         static_cast<Impl*>(user_data)->handle_message(websocket_event);
-        return EM_TRUE;
+        return detail::kTrue;
     }
 
-    static EM_BOOL on_error(
+    static detail::EmscriptenBool on_error(
         int,
-        const EmscriptenWebSocketErrorEvent* websocket_event,
+        const detail::WebSocketErrorEvent* websocket_event,
         void* user_data)
     {
         if (websocket_event == nullptr || user_data == nullptr)
-            return EM_FALSE;
+            return detail::kFalse;
 
         static_cast<Impl*>(user_data)->handle_disconnect(websocket_event->socket);
-        return EM_TRUE;
+        return detail::kTrue;
     }
 
-    static EM_BOOL on_close(
+    static detail::EmscriptenBool on_close(
         int,
-        const EmscriptenWebSocketCloseEvent* websocket_event,
+        const detail::WebSocketCloseEvent* websocket_event,
         void* user_data)
     {
         if (websocket_event == nullptr || user_data == nullptr)
-            return EM_FALSE;
+            return detail::kFalse;
 
         static_cast<Impl*>(user_data)->handle_disconnect(websocket_event->socket);
-        return EM_TRUE;
+        return detail::kTrue;
     }
 
-    void handle_connect(EMSCRIPTEN_WEBSOCKET_T socket_handle)
+    void handle_connect(WebSocketHandle socket_handle)
     {
         if (socket_handle != socket)
             return;
@@ -333,11 +527,11 @@ private:
         enqueue(std::move(entry));
     }
 
-    void handle_message(const EmscriptenWebSocketMessageEvent* websocket_event)
+    void handle_message(const detail::WebSocketMessageEvent* websocket_event)
     {
         if (websocket_event == nullptr ||
             websocket_event->socket != socket ||
-            websocket_event->isText)
+            websocket_event->isText != detail::kFalse)
         {
             return;
         }
@@ -357,7 +551,7 @@ private:
         enqueue(std::move(entry));
     }
 
-    void handle_disconnect(EMSCRIPTEN_WEBSOCKET_T socket_handle)
+    void handle_disconnect(WebSocketHandle socket_handle)
     {
         if (socket_handle != socket)
             return;
@@ -365,7 +559,7 @@ private:
         enqueue_disconnect(socket_handle);
     }
 
-    void enqueue_disconnect(EMSCRIPTEN_WEBSOCKET_T socket_handle)
+    void enqueue_disconnect(WebSocketHandle socket_handle)
     {
         QueueEntry entry;
         entry.kind = QueueEntryKind::Disconnect;
@@ -373,12 +567,15 @@ private:
         enqueue(std::move(entry));
     }
 
-    void request_close_socket(EMSCRIPTEN_WEBSOCKET_T socket_handle) const noexcept
+    void request_close_socket(WebSocketHandle socket_handle) const noexcept
     {
         if (socket_handle <= 0)
             return;
 
-        (void)emscripten_websocket_close(socket_handle, 1000, nullptr);
+        const detail::EmscriptenWebSocketApi& api =
+            detail::emscripten_websocket_api();
+        if (api.close != nullptr)
+            (void)api.close(socket_handle, 1000, nullptr);
     }
 
     void dispose_socket() noexcept
@@ -386,10 +583,14 @@ private:
         if (socket <= 0)
             return;
 
-        const EMSCRIPTEN_WEBSOCKET_T retiring_socket = socket;
+        const WebSocketHandle retiring_socket = socket;
         socket = 0;
         request_close_socket(retiring_socket);
-        (void)emscripten_websocket_delete(retiring_socket);
+
+        const detail::EmscriptenWebSocketApi& api =
+            detail::emscripten_websocket_api();
+        if (api.destroy != nullptr)
+            (void)api.destroy(retiring_socket);
     }
 
     void clear_queue()
@@ -406,7 +607,7 @@ private:
 
     std::string url;
     Options options;
-    EMSCRIPTEN_WEBSOCKET_T socket = 0;
+    WebSocketHandle socket = 0;
     bool started = false;
     bool connected = false;
 
