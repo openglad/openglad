@@ -1,4 +1,4 @@
-#include "platform/emscripten/net_transport_emscripten_ws.h"
+#include <openglad/platform/net_transport_emscripten_ws.h>
 
 #include <gtest/gtest.h>
 

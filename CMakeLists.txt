@@ -950,6 +950,15 @@ if(NOT EMSCRIPTEN)
     endif()
     add_dependencies(og_platform_sdl check_vendor_leaks)
 
+    add_library(og_platform_emscripten_transport STATIC
+        ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp
+    )
+    configure_openglad_library(og_platform_emscripten_transport)
+    if(BUILD_TESTING)
+        target_compile_definitions(og_platform_emscripten_transport PRIVATE TESTING)
+    endif()
+    add_dependencies(og_platform_emscripten_transport check_vendor_leaks)
+
     # Aggregate target for executables/tests.
     add_library(og_game INTERFACE)
     if(CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED)
@@ -1658,7 +1667,6 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
-            ${CMAKE_SOURCE_DIR}/src/platform/emscripten/net_transport_emscripten_ws.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_emscripten_ws.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_client.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_server.cpp
@@ -1672,7 +1680,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
         )
-        target_include_directories(og_unit_sim PRIVATE ${SRC_DIR})
+        target_link_libraries(og_unit_sim PRIVATE og_platform_emscripten_transport)
 
         og_add_unit_group(og_unit_families FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
