@@ -930,7 +930,8 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                 const auto hash_it =
                     snapshot_hashes_by_tick_.find(message.snapshot_hash_check->tick);
                 if (hash_it != snapshot_hashes_by_tick_.end() &&
-                    hash_it->second != message.snapshot_hash_check->snapshot_hash)
+                    hash_it->second.find(message.snapshot_hash_check->snapshot_hash) ==
+                        hash_it->second.end())
                 {
                     ++snapshot_hash_mismatch_count_;
                     client.force_keyframe = true;
@@ -938,7 +939,7 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                         "snapshot_hash_mismatch peer={} tick={} server={} client={} entities={}\n",
                         message.peer_id,
                         message.snapshot_hash_check->tick,
-                        hash_it->second,
+                        hash_it->second.empty() ? 0u : *hash_it->second.begin(),
                         message.snapshot_hash_check->snapshot_hash,
                         world_.oblist.size() + world_.fxlist.size() +
                             world_.weaplist.size());
@@ -1324,7 +1325,7 @@ void GameServer::forward_event_batch(const SimEventBatch& batch)
 
 void GameServer::remember_snapshot_hash(const WorldSnapshot& snapshot)
 {
-    snapshot_hashes_by_tick_[snapshot.tick_count] = snapshot.snapshot_hash;
+    snapshot_hashes_by_tick_[snapshot.tick_count].insert(snapshot.snapshot_hash);
     const std::uint32_t oldest_tick =
         snapshot.tick_count > (KEYFRAME_INTERVAL_TICKS * 2)
             ? snapshot.tick_count - (KEYFRAME_INTERVAL_TICKS * 2)

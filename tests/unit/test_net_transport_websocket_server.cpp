@@ -409,6 +409,7 @@ TEST(NetTransportWebSocketServer,
     });
 
     fixture.run();
+    EXPECT_EQ(0u, fixture.server().snapshot_hash_mismatch_count());
     fixture.expect_clients_match_server();
 }
 
