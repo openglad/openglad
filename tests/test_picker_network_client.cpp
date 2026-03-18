@@ -343,6 +343,44 @@ og::runtime::GameSession* active_game_session()
     return dynamic_cast<og::runtime::GameSession*>(og::runtime::current_session);
 }
 
+bool install_gameplay_runtime_from_handoff(og::ui::IPickerLobbyClient& client)
+{
+    og::runtime::GameSession* const session = active_game_session();
+    if (session == nullptr || session->myscreen_ == nullptr)
+        return false;
+
+    const std::optional<og::ui::PickerGameplayRuntimeHandoff> handoff =
+        client.consume_gameplay_runtime_handoff();
+    if (!handoff.has_value())
+        return false;
+
+    switch (handoff->kind)
+    {
+    case og::ui::PickerGameplayRuntimeKind::NetworkHost:
+        if (!handoff->transport || !handoff->local_client_transport)
+            return false;
+        og::runtime::reset_network_host_transport_shadow(
+            *session,
+            *session->myscreen_,
+            handoff->transport,
+            handoff->local_client_transport,
+            handoff->player_bindings);
+        return true;
+
+    case og::ui::PickerGameplayRuntimeKind::NetworkClient:
+        if (!handoff->transport)
+            return false;
+        og::runtime::reset_network_client_transport_shadow(
+            *session,
+            *session->myscreen_,
+            handoff->transport,
+            handoff->server_peer_id);
+        return true;
+    }
+
+    return false;
+}
+
 class FakeRelayServer
 {
 public:
@@ -698,8 +736,7 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     auto host_client = og::ui::create_host_picker_lobby_client(options);
     ASSERT_NE(nullptr, active_game_session());
     ASSERT_NE(nullptr, active_game_session()->myscreen_);
-    EXPECT_FALSE(host_client->install_gameplay_runtime(*active_game_session(),
-                                                       *active_game_session()->myscreen_));
+    EXPECT_FALSE(host_client->consume_gameplay_runtime_handoff().has_value());
     host_client->initialize_from_save();
 
     EXPECT_EQ(2, save.my_team);
@@ -735,8 +772,7 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     EXPECT_FALSE(host_client->consume_game_start_config().has_value());
 
     ASSERT_TRUE(save.save("save0"));
-    ASSERT_TRUE(host_client->install_gameplay_runtime(*active_game_session(),
-                                                      *active_game_session()->myscreen_));
+    ASSERT_TRUE(install_gameplay_runtime_from_handoff(*host_client));
     EXPECT_TRUE(og::runtime::local_transport_active(*active_game_session()));
     EXPECT_EQ(1u, og::runtime::local_transport_client_count(*active_game_session()));
     og::runtime::clear_local_transport_shadow(*active_game_session());
@@ -895,8 +931,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     auto join_client = og::ui::create_join_picker_lobby_client(options);
     ASSERT_NE(nullptr, active_game_session());
     ASSERT_NE(nullptr, active_game_session()->myscreen_);
-    EXPECT_FALSE(join_client->install_gameplay_runtime(*active_game_session(),
-                                                       *active_game_session()->myscreen_));
+    EXPECT_FALSE(join_client->consume_gameplay_runtime_handoff().has_value());
     join_client->initialize_from_save();
 
     ASSERT_TRUE(wait_until([&] {
@@ -950,8 +985,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     EXPECT_EQ(7, start_config->difficulty);
     ASSERT_EQ(2u, start_config->save_data.team_list.size());
 
-    ASSERT_TRUE(join_client->install_gameplay_runtime(*active_game_session(),
-                                                      *active_game_session()->myscreen_));
+    ASSERT_TRUE(install_gameplay_runtime_from_handoff(*join_client));
     EXPECT_TRUE(og::runtime::local_transport_active(*active_game_session()));
     EXPECT_EQ(1u, og::runtime::local_transport_client_count(*active_game_session()));
     og::runtime::clear_local_transport_shadow(*active_game_session());
@@ -1078,8 +1112,7 @@ TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)
     EXPECT_EQ(1, start_config->difficulty);
 
     ASSERT_NE(nullptr, active_game_session());
-    ASSERT_TRUE(join_client->install_gameplay_runtime(*active_game_session(),
-                                                      *active_game_session()->myscreen_));
+    ASSERT_TRUE(install_gameplay_runtime_from_handoff(*join_client));
     EXPECT_TRUE(og::runtime::local_transport_active(*active_game_session()));
     EXPECT_EQ(1u, og::runtime::local_transport_client_count(*active_game_session()));
     og::runtime::clear_local_transport_shadow(*active_game_session());

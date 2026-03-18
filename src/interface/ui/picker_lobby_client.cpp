@@ -16,12 +16,6 @@
 
 extern bool g_start_game_requested;
 
-namespace og::runtime {
-class GameSession;
-extern thread_local GameSession* current_game_session;
-void clear_local_transport_shadow(GameSession& session) noexcept;
-}
-
 namespace {
 
 struct LocalLobbyPeer {
@@ -592,11 +586,6 @@ void picker_lobby_sync_settings_from_save()
 void picker_reinitialize_lobby_after_game()
 {
     g_start_game_requested = false;
-    if (og::runtime::current_game_session != nullptr)
-    {
-        og::runtime::clear_local_transport_shadow(
-            *og::runtime::current_game_session);
-    }
     picker_lobby_initialize_from_save();
 }
 
@@ -645,10 +634,10 @@ std::vector<std::string> picker_lobby_status_lines()
     return {};
 }
 
-bool picker_lobby_install_gameplay_runtime(og::runtime::GameSession& session,
-                                           screen& gameplay_screen)
+std::optional<og::ui::PickerGameplayRuntimeHandoff>
+picker_lobby_consume_gameplay_runtime_handoff()
 {
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
-        return client->install_gameplay_runtime(session, gameplay_screen);
-    return false;
+        return client->consume_gameplay_runtime_handoff();
+    return std::nullopt;
 }

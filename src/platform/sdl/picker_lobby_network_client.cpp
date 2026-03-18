@@ -1,12 +1,11 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_state.h>
+#include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/net_transport_multiplex.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
-#include <openglad/platform/game_session.h>
-#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/net_transport_relay_ws.h>
 
 #ifdef __EMSCRIPTEN__
@@ -988,6 +987,7 @@ public:
     void shutdown() override
     {
         pending_game_start_config_.reset();
+        gameplay_runtime_handoff_pending_ = false;
         player_bindings_.clear();
         state_.reset();
         status_lines_.clear();
@@ -1056,6 +1056,7 @@ public:
             return false;
 
         pending_game_start_config_.reset();
+        gameplay_runtime_handoff_pending_ = false;
         start_request_pending_ = true;
 
         og::sim::LobbyMessage message;
@@ -1072,6 +1073,7 @@ public:
         {
             player_bindings_ = server_->build_player_bindings();
             pending_game_start_config_ = build_game_start_config();
+            gameplay_runtime_handoff_pending_ = true;
         }
         return g_start_game_requested;
     }
@@ -1122,21 +1124,23 @@ public:
             !remote_owned_save_slots_[slot_index];
     }
 
-    bool install_gameplay_runtime(og::runtime::GameSession& session,
-                                  screen& gameplay_screen) override
+    [[nodiscard]] std::optional<og::ui::PickerGameplayRuntimeHandoff>
+    consume_gameplay_runtime_handoff() override
     {
-        if (!combined_transport_ || !local_client_transport_)
-            return false;
+        if (!gameplay_runtime_handoff_pending_ || !combined_transport_ ||
+            !local_client_transport_)
+        {
+            return std::nullopt;
+        }
 
         if (player_bindings_.empty() && server_ != nullptr)
             player_bindings_ = server_->build_player_bindings();
 
-        og::runtime::reset_network_host_transport_shadow(
-            session,
-            gameplay_screen,
-            combined_transport_,
-            local_client_transport_,
-            player_bindings_);
+        og::ui::PickerGameplayRuntimeHandoff handoff;
+        handoff.kind = og::ui::PickerGameplayRuntimeKind::NetworkHost;
+        handoff.transport = combined_transport_;
+        handoff.local_client_transport = local_client_transport_;
+        handoff.player_bindings = player_bindings_;
 
         server_.reset();
         combined_transport_.reset();
@@ -1148,7 +1152,8 @@ public:
         player_bindings_.clear();
         start_request_pending_ = false;
         pending_game_start_config_.reset();
-        return true;
+        gameplay_runtime_handoff_pending_ = false;
+        return handoff;
     }
 
 private:
@@ -1210,6 +1215,7 @@ private:
                 if (server_ != nullptr)
                     player_bindings_ = server_->build_player_bindings();
                 pending_game_start_config_ = build_game_start_config();
+                gameplay_runtime_handoff_pending_ = true;
             }
             break;
 
@@ -1276,6 +1282,7 @@ private:
     bool spectator_mode_ = false;
     short local_team_ = 0;
     bool start_request_pending_ = false;
+    bool gameplay_runtime_handoff_pending_ = false;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
     std::string relay_room_code_;
     std::string relay_status_message_;
@@ -1341,6 +1348,7 @@ public:
     void shutdown() override
     {
         pending_game_start_config_.reset();
+        gameplay_runtime_handoff_pending_ = false;
         state_.reset();
         status_lines_.clear();
         transport_.reset();
@@ -1429,6 +1437,7 @@ public:
             return false;
 
         pending_game_start_config_.reset();
+        gameplay_runtime_handoff_pending_ = false;
         start_request_pending_ = true;
 
         og::sim::LobbyMessage message;
@@ -1442,7 +1451,10 @@ public:
 
         poll_and_apply();
         if (g_start_game_requested)
+        {
             pending_game_start_config_ = build_game_start_config();
+            gameplay_runtime_handoff_pending_ = true;
+        }
         return g_start_game_requested;
     }
 
@@ -1493,22 +1505,22 @@ public:
             !remote_owned_save_slots_[slot_index];
     }
 
-    bool install_gameplay_runtime(og::runtime::GameSession& session,
-                                  screen& gameplay_screen) override
+    [[nodiscard]] std::optional<og::ui::PickerGameplayRuntimeHandoff>
+    consume_gameplay_runtime_handoff() override
     {
-        if (!transport_)
-            return false;
+        if (!gameplay_runtime_handoff_pending_ || !transport_)
+            return std::nullopt;
 
-        og::runtime::reset_network_client_transport_shadow(
-            session,
-            gameplay_screen,
-            transport_,
-            server_peer_id_);
+        og::ui::PickerGameplayRuntimeHandoff handoff;
+        handoff.kind = og::ui::PickerGameplayRuntimeKind::NetworkClient;
+        handoff.transport = transport_;
+        handoff.server_peer_id = server_peer_id_;
         transport_.reset();
         state_.reset();
         start_request_pending_ = false;
         pending_game_start_config_.reset();
-        return true;
+        gameplay_runtime_handoff_pending_ = false;
+        return handoff;
     }
 
 private:
@@ -1577,6 +1589,7 @@ private:
                 start_request_pending_ = false;
                 g_start_game_requested = true;
                 pending_game_start_config_ = build_game_start_config();
+                gameplay_runtime_handoff_pending_ = true;
             }
             break;
 
@@ -1656,6 +1669,7 @@ private:
     bool spectator_mode_ = false;
     short local_team_ = 0;
     bool start_request_pending_ = false;
+    bool gameplay_runtime_handoff_pending_ = false;
     bool join_message_sent_ = false;
     bool settings_dirty_ = false;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;

@@ -112,6 +112,49 @@ void apply_lobby_game_start_config(
         LogError("glad_init_lobby_save_failed reason=save0_write_failed\n");
 }
 
+void install_picker_lobby_gameplay_runtime(
+    og::runtime::GameSession& session,
+    screen& gameplay_screen)
+{
+    const std::optional<og::ui::PickerGameplayRuntimeHandoff> handoff =
+        picker_lobby_consume_gameplay_runtime_handoff();
+    if (!handoff.has_value())
+    {
+        og::runtime::reset_local_transport_shadow(session, gameplay_screen);
+        return;
+    }
+
+    switch (handoff->kind)
+    {
+    case og::ui::PickerGameplayRuntimeKind::NetworkHost:
+        if (handoff->transport && handoff->local_client_transport)
+        {
+            og::runtime::reset_network_host_transport_shadow(
+                session,
+                gameplay_screen,
+                handoff->transport,
+                handoff->local_client_transport,
+                handoff->player_bindings);
+            return;
+        }
+        break;
+
+    case og::ui::PickerGameplayRuntimeKind::NetworkClient:
+        if (handoff->transport)
+        {
+            og::runtime::reset_network_client_transport_shadow(
+                session,
+                gameplay_screen,
+                handoff->transport,
+                handoff->server_peer_id);
+            return;
+        }
+        break;
+    }
+
+    og::runtime::reset_local_transport_shadow(session, gameplay_screen);
+}
+
 } // namespace
 
 void glad_init(bool preserve_frame_timing,
@@ -177,12 +220,7 @@ void glad_init(bool preserve_frame_timing,
         LogError("glad_init_failed reason=missing_game_session\n");
         return;
     }
-    if (!picker_lobby_install_gameplay_runtime(
-            *gameplay_session, *current_screen))
-    {
-        og::runtime::reset_local_transport_shadow(
-            *gameplay_session, *current_screen);
-    }
+    install_picker_lobby_gameplay_runtime(*gameplay_session, *current_screen);
     current_screen->redrawme = 1;
     current_screen->framecount = 0;
     current_screen->timerstart = query_timer_control();

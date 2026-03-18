@@ -8,10 +8,8 @@
 #include <string>
 #include <vector>
 
-class screen;
-
-namespace og::runtime {
-class GameSession;
+namespace og::sim {
+class InProcessTransport;
 }
 
 namespace og::ui {
@@ -20,6 +18,21 @@ struct PickerLobbyGameStartConfig
 {
     og::sim::LobbySaveDataEquivalent save_data;
     std::int16_t difficulty = 1;
+};
+
+enum class PickerGameplayRuntimeKind : std::uint8_t
+{
+    NetworkHost,
+    NetworkClient,
+};
+
+struct PickerGameplayRuntimeHandoff
+{
+    PickerGameplayRuntimeKind kind = PickerGameplayRuntimeKind::NetworkClient;
+    std::shared_ptr<og::sim::ITransport> transport;
+    std::shared_ptr<og::sim::InProcessTransport> local_client_transport;
+    std::vector<og::sim::LobbyPlayerBinding> player_bindings;
+    og::sim::PeerId server_peer_id = 0;
 };
 
 class IPickerLobbyClient
@@ -54,12 +67,10 @@ public:
         (void)slot_index;
         return true;
     }
-    virtual bool install_gameplay_runtime(og::runtime::GameSession& session,
-                                          screen& gameplay_screen)
+    [[nodiscard]] virtual std::optional<PickerGameplayRuntimeHandoff>
+    consume_gameplay_runtime_handoff()
     {
-        (void)session;
-        (void)gameplay_screen;
-        return false;
+        return std::nullopt;
     }
 };
 
@@ -94,5 +105,5 @@ inline bool picker_lobby_save_slot_editable(int slot_index)
         return og::ui::g_picker_save_slot_editable_callback(slot_index);
     return true;
 }
-bool picker_lobby_install_gameplay_runtime(og::runtime::GameSession& session,
-                                           screen& gameplay_screen);
+std::optional<og::ui::PickerGameplayRuntimeHandoff>
+picker_lobby_consume_gameplay_runtime_handoff();
