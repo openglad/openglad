@@ -116,3 +116,18 @@ TEST(MenuModel, relay_room_code_and_join_mode_helpers_support_relay_flow)
               og::ui::normalize_relay_base_url("https://relay.example/"));
     EXPECT_FALSE(og::ui::default_relay_base_url().empty());
 }
+
+TEST(MenuModel, host_picker_lobby_client_accepts_direct_only_and_relay_options)
+{
+    og::ui::PickerHostGameOptions direct_only;
+    direct_only.port = 12345;
+    auto direct_client = og::ui::create_host_picker_lobby_client(direct_only);
+    EXPECT_TRUE(direct_client != nullptr);
+
+    og::ui::PickerHostGameOptions with_relay;
+    with_relay.port = 23456;
+    with_relay.enable_relay = true;
+    with_relay.relay_base_url = "https://relay.example";
+    auto relay_client = og::ui::create_host_picker_lobby_client(with_relay);
+    EXPECT_TRUE(relay_client != nullptr);
+}

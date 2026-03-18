@@ -360,23 +360,6 @@ public:
 
     bool host_game() override
     {
-#ifdef __EMSCRIPTEN__
-        try
-        {
-            og::ui::PickerHostGameOptions options;
-            options.enable_relay = true;
-            options.relay_required = true;
-            options.relay_base_url = og::ui::default_relay_base_url();
-            return replace_lobby_client(
-                og::ui::create_host_picker_lobby_client(options),
-                "HOST GAME");
-        }
-        catch (const std::exception& error)
-        {
-            popup_dialog("HOST GAME", error.what());
-            return false;
-        }
-#else
         std::string port_text = "12345";
         if (!prompt_for_string("HOST PORT", port_text))
             return false;
@@ -392,11 +375,16 @@ public:
         {
             og::ui::PickerHostGameOptions options;
             options.port = *port;
+#ifdef __EMSCRIPTEN__
+            const bool default_enable_relay = true;
+#else
+            const bool default_enable_relay = false;
+#endif
             options.enable_relay = yes_or_no_prompt(
                 "HOST GAME",
                 "Create a relay room code too?\n"
                 "Choose YES for NAT-friendly hosting.",
-                false);
+                default_enable_relay);
             if (options.enable_relay)
                 options.relay_base_url = og::ui::default_relay_base_url();
             return replace_lobby_client(
@@ -408,7 +396,6 @@ public:
             popup_dialog("HOST GAME", error.what());
             return false;
         }
-#endif
     }
 
     bool join_game() override

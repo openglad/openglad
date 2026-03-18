@@ -18,7 +18,6 @@ struct PickerHostGameOptions
 {
     int port = 12345;
     bool enable_relay = false;
-    bool relay_required = false;
     std::string relay_base_url;
 };
 

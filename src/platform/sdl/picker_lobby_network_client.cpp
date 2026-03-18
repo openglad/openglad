@@ -154,6 +154,16 @@ EM_ASYNC_JS(char*, relay_http_post_text_js, (const char* url_cstr), {
         return stringToNewUTF8('ERR\n0\n' + message);
     }
 });
+
+EM_JS(char*, current_browser_hostname_js, (), {
+    const host =
+        (typeof window !== 'undefined' && window.location &&
+         typeof window.location.hostname === 'string' &&
+         window.location.hostname.length > 0)
+            ? window.location.hostname
+            : '127.0.0.1';
+    return stringToNewUTF8(host);
+});
 #endif
 
 std::string url_encode_component(std::string_view text)
@@ -670,9 +680,19 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
     return typed_messages;
 }
 
-#if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))
 std::string detect_lan_ipv4_address()
 {
+#ifdef __EMSCRIPTEN__
+    char* const hostname = current_browser_hostname_js();
+    if (hostname == nullptr)
+        return "127.0.0.1";
+
+    std::string value = hostname;
+    std::free(hostname);
+    if (value.empty())
+        return "127.0.0.1";
+    return value;
+#elif defined(__unix__) || defined(__APPLE__)
     ifaddrs* ifaddr = nullptr;
     if (getifaddrs(&ifaddr) != 0 || ifaddr == nullptr)
         return "127.0.0.1";
@@ -699,13 +719,10 @@ std::string detect_lan_ipv4_address()
 
     freeifaddrs(ifaddr);
     return result;
-}
 #else
-std::string detect_lan_ipv4_address()
-{
     return "127.0.0.1";
-}
 #endif
+}
 
 class HostPickerLobbyClient final : public og::ui::IPickerLobbyClient
 {
@@ -756,8 +773,6 @@ public:
                 relay_room_code_.clear();
                 relay_transport_.reset();
                 relay_status_message_ = error.what();
-                if (options_.relay_required)
-                    throw;
             }
         }
 
@@ -1035,13 +1050,10 @@ private:
     void rebuild_status_lines()
     {
         status_lines_.clear();
-        if (websocket_server_transport_)
-        {
-            status_lines_.push_back(
-                std::format("LAN: {}:{}",
-                            detect_lan_ipv4_address(),
-                            options_.port));
-        }
+        status_lines_.push_back(
+            std::format("LAN: {}:{}",
+                        detect_lan_ipv4_address(),
+                        options_.port));
         if (!relay_room_code_.empty())
             status_lines_.push_back(std::format("Relay: {}", relay_room_code_));
         else if (!relay_status_message_.empty())
@@ -1439,11 +1451,6 @@ create_host_picker_lobby_client(const PickerHostGameOptions& options)
 {
     if (options.port <= 0 || options.port > 65535)
         throw std::invalid_argument("Host port must be in the range 1-65535");
-    if (options.relay_required && !options.enable_relay)
-    {
-        throw std::invalid_argument(
-            "Browser hosting requires relay support to be enabled");
-    }
     return std::make_unique<HostPickerLobbyClient>(options);
 }
 
