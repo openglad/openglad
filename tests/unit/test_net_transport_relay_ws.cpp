@@ -104,53 +104,57 @@ private:
 
     void handle_open(const std::string& connection_id, ix::WebSocket& websocket)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
         const std::shared_ptr<ix::WebSocket> socket = resolve_socket(websocket);
         if (!socket)
             return;
 
-        const og::sim::PeerId peer_id = next_peer_id_++;
-        peers_.emplace(connection_id,
-                       PeerState{
-                           .peer_id = peer_id,
-                           .socket = socket,
-                       });
-        if (!host_peer_id_.has_value())
-            host_peer_id_ = peer_id;
-
-        send_text(
-            socket,
-            std::format(
-                "{{\"type\":\"joined\",\"peer_id\":{},\"host\":{}}}",
-                peer_id,
-                *host_peer_id_));
-        send_peer_list(socket);
-
-        for (const auto& [other_connection_id, other_peer] : peers_)
+        og::sim::PeerId peer_id = 0;
+        og::sim::PeerId host_peer_id = 0;
+        std::vector<og::sim::PeerId> peer_ids;
+        std::vector<std::shared_ptr<ix::WebSocket>> peer_joined_targets;
         {
-            if (other_connection_id == connection_id)
-                continue;
+            std::lock_guard<std::mutex> lock(mutex_);
+            peer_id = next_peer_id_++;
+            peers_.emplace(connection_id,
+                           PeerState{
+                               .peer_id = peer_id,
+                               .socket = socket,
+                           });
+            if (!host_peer_id_.has_value())
+                host_peer_id_ = peer_id;
+            host_peer_id = *host_peer_id_;
 
-            if (const std::shared_ptr<ix::WebSocket> other_socket =
-                    other_peer.socket.lock())
+            peer_ids.reserve(peers_.size());
+            for (const auto& [other_connection_id, other_peer] : peers_)
             {
-                send_text(
-                    other_socket,
-                    std::format(
-                        "{{\"type\":\"peer_joined\",\"peer_id\":{},\"is_host\":{}}}",
-                        peer_id,
-                        peer_id == *host_peer_id_ ? "true" : "false"));
+                peer_ids.push_back(other_peer.peer_id);
+                if (other_connection_id == connection_id)
+                    continue;
+
+                if (const std::shared_ptr<ix::WebSocket> other_socket =
+                        other_peer.socket.lock())
+                {
+                    peer_joined_targets.push_back(other_socket);
+                }
             }
+        }
+
+        std::sort(peer_ids.begin(), peer_ids.end());
+        send_text(socket, make_joined_text(peer_id, host_peer_id));
+        send_text(socket, make_peer_list_text(peer_ids, host_peer_id));
+
+        const std::string peer_joined_text =
+            make_peer_joined_text(peer_id, host_peer_id);
+        for (const auto& other_socket : peer_joined_targets)
+        {
+            send_text(other_socket, peer_joined_text);
         }
     }
 
     void handle_binary(const std::string& connection_id, const std::string& payload)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        const auto peer_it = peers_.find(connection_id);
-        if (peer_it == peers_.end())
-            return;
-
+        og::sim::PeerId source_peer_id = 0;
+        std::shared_ptr<ix::WebSocket> target_socket;
         const std::span<const std::uint8_t> bytes(
             reinterpret_cast<const std::uint8_t*>(payload.data()),
             payload.size());
@@ -163,69 +167,122 @@ private:
             (static_cast<og::sim::PeerId>(bytes[3]) << 16) |
             (static_cast<og::sim::PeerId>(bytes[4]) << 24);
 
-        const auto target_it = std::find_if(
-            peers_.begin(),
-            peers_.end(),
-            [target_peer_id](const auto& entry) {
-                return entry.second.peer_id == target_peer_id;
-            });
-        if (target_it == peers_.end())
-            return;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            const auto peer_it = peers_.find(connection_id);
+            if (peer_it == peers_.end())
+                return;
+            source_peer_id = peer_it->second.peer_id;
 
-        const std::shared_ptr<ix::WebSocket> target_socket =
-            target_it->second.socket.lock();
+            const auto target_it = std::find_if(
+                peers_.begin(),
+                peers_.end(),
+                [target_peer_id](const auto& entry) {
+                    return entry.second.peer_id == target_peer_id;
+                });
+            if (target_it == peers_.end())
+                return;
+
+            target_socket = target_it->second.socket.lock();
+        }
         if (!target_socket)
             return;
 
         std::string outbound;
         outbound.reserve(payload.size());
         outbound.push_back(static_cast<char>(kReceiveFromPeerTag));
-        append_peer_id(outbound, peer_it->second.peer_id);
+        append_peer_id(outbound, source_peer_id);
         outbound.append(payload.begin() + 5, payload.end());
         (void)target_socket->sendBinary(outbound);
     }
 
     void handle_close(const std::string& connection_id)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        const auto peer_it = peers_.find(connection_id);
-        if (peer_it == peers_.end())
-            return;
-
-        const og::sim::PeerId peer_id = peer_it->second.peer_id;
-        const bool was_host =
-            host_peer_id_.has_value() && *host_peer_id_ == peer_id;
-        peers_.erase(peer_it);
-
-        broadcast_text(std::format(
-            "{{\"type\":\"peer_left\",\"peer_id\":{}}}",
-            peer_id));
-
-        if (was_host)
+        og::sim::PeerId peer_id = 0;
+        bool was_host = false;
+        std::optional<og::sim::PeerId> new_host_peer_id;
+        std::vector<std::shared_ptr<ix::WebSocket>> recipients;
         {
-            host_peer_id_.reset();
+            std::lock_guard<std::mutex> lock(mutex_);
+            const auto peer_it = peers_.find(connection_id);
+            if (peer_it == peers_.end())
+                return;
+
+            peer_id = peer_it->second.peer_id;
+            was_host =
+                host_peer_id_.has_value() && *host_peer_id_ == peer_id;
+            peers_.erase(peer_it);
+
+            if (was_host)
+            {
+                host_peer_id_.reset();
+                for (const auto& [_, peer] : peers_)
+                {
+                    if (!host_peer_id_.has_value() ||
+                        peer.peer_id < *host_peer_id_)
+                    {
+                        host_peer_id_ = peer.peer_id;
+                    }
+                }
+                new_host_peer_id = host_peer_id_;
+            }
+
+            recipients.reserve(peers_.size());
             for (const auto& [_, peer] : peers_)
             {
-                if (!host_peer_id_.has_value() || peer.peer_id < *host_peer_id_)
-                    host_peer_id_ = peer.peer_id;
+                if (const std::shared_ptr<ix::WebSocket> socket =
+                        peer.socket.lock())
+                {
+                    recipients.push_back(socket);
+                }
             }
-            if (host_peer_id_.has_value())
-            {
-                broadcast_text(std::format(
-                    "{{\"type\":\"host_changed\",\"new_host\":{}}}",
-                    *host_peer_id_));
-            }
+        }
+
+        send_text_to_sockets(recipients, make_peer_left_text(peer_id));
+        if (was_host && new_host_peer_id.has_value())
+        {
+            send_text_to_sockets(
+                recipients,
+                make_host_changed_text(*new_host_peer_id));
         }
     }
 
-    void send_peer_list(const std::shared_ptr<ix::WebSocket>& socket)
+    static std::string make_joined_text(og::sim::PeerId peer_id,
+                                        og::sim::PeerId host_peer_id)
     {
-        std::vector<og::sim::PeerId> peer_ids;
-        peer_ids.reserve(peers_.size());
-        for (const auto& [_, peer] : peers_)
-            peer_ids.push_back(peer.peer_id);
-        std::sort(peer_ids.begin(), peer_ids.end());
+        return std::format(
+            "{{\"type\":\"joined\",\"peer_id\":{},\"host\":{}}}",
+            peer_id,
+            host_peer_id);
+    }
 
+    static std::string make_peer_joined_text(og::sim::PeerId peer_id,
+                                             og::sim::PeerId host_peer_id)
+    {
+        return std::format(
+            "{{\"type\":\"peer_joined\",\"peer_id\":{},\"is_host\":{}}}",
+            peer_id,
+            peer_id == host_peer_id ? "true" : "false");
+    }
+
+    static std::string make_peer_left_text(og::sim::PeerId peer_id)
+    {
+        return std::format(
+            "{{\"type\":\"peer_left\",\"peer_id\":{}}}",
+            peer_id);
+    }
+
+    static std::string make_host_changed_text(og::sim::PeerId host_peer_id)
+    {
+        return std::format(
+            "{{\"type\":\"host_changed\",\"new_host\":{}}}",
+            host_peer_id);
+    }
+
+    static std::string make_peer_list_text(
+        const std::vector<og::sim::PeerId>& peer_ids,
+        og::sim::PeerId host_peer_id)
+    {
         std::string peers_json = "[";
         for (std::size_t index = 0; index < peer_ids.size(); ++index)
         {
@@ -235,24 +292,18 @@ private:
         }
         peers_json.push_back(']');
 
-        send_text(
-            socket,
-            std::format(
-                "{{\"type\":\"peer_list\",\"peers\":{},\"host\":{}}}",
-                peers_json,
-                host_peer_id_.value_or(0)));
+        return std::format(
+            "{{\"type\":\"peer_list\",\"peers\":{},\"host\":{}}}",
+            peers_json,
+            host_peer_id);
     }
 
-    void broadcast_text(const std::string& text)
+    static void send_text_to_sockets(
+        const std::vector<std::shared_ptr<ix::WebSocket>>& sockets,
+        const std::string& text)
     {
-        for (const auto& [_, peer] : peers_)
-        {
-            if (const std::shared_ptr<ix::WebSocket> socket =
-                    peer.socket.lock())
-            {
-                send_text(socket, text);
-            }
-        }
+        for (const auto& socket : sockets)
+            send_text(socket, text);
     }
 
     static void send_text(const std::shared_ptr<ix::WebSocket>& socket,
