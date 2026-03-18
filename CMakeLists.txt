@@ -1881,6 +1881,15 @@ if(NOT EMSCRIPTEN)
             # Validation mode round-trips every message and sanitizers magnify
             # the cost enough that the default 180s CTest budget is too tight.
             set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
+            # The simulation unit binary now includes the WebSocket, relay,
+            # and multiplex transport suites. Serialization validation
+            # round-trips every message there too, which can push CI's
+            # generic 180s budget over the edge when CTest schedules it
+            # beside the heavyweight integration binaries.
+            set_tests_properties(og_unit_sim PROPERTIES
+                PROCESSORS 2
+                TIMEOUT 420
+            )
         endif()
         if(ENABLE_SANITIZERS)
             # Reserve the full 4-core GitHub runner for og_test_game_core.
