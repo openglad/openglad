@@ -770,9 +770,6 @@ endfunction()
 
 function(configure_openglad_external_target target)
     target_include_directories(${target} PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
-    if(NOT EMSCRIPTEN AND OG_NATIVE_SDL_AVAILABLE)
-        target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
-    endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         # Vendored third-party code: keep warnings actionable in OpenGlad code by silencing
@@ -1151,8 +1148,6 @@ if(NOT EMSCRIPTEN)
             og_gameplay
             og_resources
             og_platform_ws_transport
-            og_ext_micropather
-            ${OG_IO_EXTERNAL_LIBS}
             m
             pthread
         )
@@ -1811,9 +1806,7 @@ if(NOT EMSCRIPTEN)
             og_core
             og_gameplay
             og_resources
-            og_ext_micropather
             GTest::gtest
-            ${OG_IO_EXTERNAL_LIBS}
             m
             pthread
         )
@@ -1900,6 +1893,19 @@ if(NOT EMSCRIPTEN)
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 TIMEOUT 60
             )
+
+            if(CMAKE_GENERATOR MATCHES "Ninja")
+                add_test(NAME openglad_server_link_no_sdl
+                    COMMAND ${CMAKE_COMMAND} -E env
+                        bash
+                        ${CMAKE_SOURCE_DIR}/scripts/test_headless_server_native_link.sh
+                        ${CMAKE_BINARY_DIR}
+                )
+                set_tests_properties(openglad_server_link_no_sdl PROPERTIES
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                    TIMEOUT 60
+                )
+            endif()
         endif()
 
         if(ENABLE_COVERAGE)

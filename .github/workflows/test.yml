@@ -31,6 +31,9 @@ jobs:
       - name: Build all test binaries
         run: cmake --build --preset ci-test -j"$(nproc)"
 
+      - name: Verify headless server link is SDL-free
+        run: bash scripts/test_headless_server_native_link.sh build/ci-test
+
       - name: Run tests (parallel, excluding menu UI)
         run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 180 -E og_test_menu_ui
 
@@ -60,7 +63,10 @@ jobs:
         run: cmake --preset dev-release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build native binaries
-        run: cmake --build --preset dev-release --target openglad openscen -j"$(nproc)"
+        run: cmake --build --preset dev-release --target openglad openscen openglad_server -j"$(nproc)"
+
+      - name: Verify release headless server link is SDL-free
+        run: bash scripts/test_headless_server_native_link.sh build/dev-release
 
   headless-server:
     name: Headless Server SDL-Off Build
