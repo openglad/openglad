@@ -319,6 +319,47 @@ bool picker_replace_lobby_client(
     return true;
 }
 
+bool picker_join_game(
+    std::unique_ptr<og::ui::IPickerLobbyClient>& current_client)
+{
+    og::ui::PickerJoinGameOptions options;
+    const bool direct_connect = yes_or_no_prompt(
+        "JOIN GAME",
+        "Direct connect?\nChoose NO for a relay room code.",
+        true);
+
+    try
+    {
+        if (direct_connect)
+        {
+            std::string endpoint = "127.0.0.1:12345";
+            if (!prompt_for_string("CONNECT TO IP:PORT", endpoint))
+                return false;
+            options.mode = og::ui::PickerJoinMode::Direct;
+            options.direct_endpoint = endpoint;
+        }
+        else
+        {
+            std::string room_code = "GLAD-XXXX";
+            if (!prompt_for_string("RELAY ROOM CODE", room_code))
+                return false;
+            options.mode = og::ui::PickerJoinMode::Relay;
+            options.room_code = room_code;
+            options.relay_base_url = og::ui::default_relay_base_url();
+        }
+
+        return picker_replace_lobby_client(
+            current_client,
+            og::ui::create_join_picker_lobby_client(options),
+            "JOIN GAME");
+    }
+    catch (const std::exception& error)
+    {
+        popup_dialog("JOIN GAME", error.what());
+        return false;
+    }
+}
+
 class SdlPickerClient final : public og::ui::IPickerClient
 {
 public:
@@ -423,41 +464,7 @@ public:
 
     bool join_game() override
     {
-        og::ui::PickerJoinGameOptions options;
-        const bool direct_connect = yes_or_no_prompt(
-            "JOIN GAME",
-            "Direct connect?\nChoose NO for a relay room code.",
-            true);
-
-        if (direct_connect)
-        {
-            std::string endpoint = "127.0.0.1:12345";
-            if (!prompt_for_string("CONNECT TO IP:PORT", endpoint))
-                return false;
-            options.mode = og::ui::PickerJoinMode::Direct;
-            options.direct_endpoint = endpoint;
-        }
-        else
-        {
-            std::string room_code = "GLAD-XXXX";
-            if (!prompt_for_string("RELAY ROOM CODE", room_code))
-                return false;
-            options.mode = og::ui::PickerJoinMode::Relay;
-            options.room_code = room_code;
-            options.relay_base_url = og::ui::default_relay_base_url();
-        }
-
-        try
-        {
-            return replace_lobby_client(
-                og::ui::create_join_picker_lobby_client(options),
-                "JOIN GAME");
-        }
-        catch (const std::exception& error)
-        {
-            popup_dialog("JOIN GAME", error.what());
-            return false;
-        }
+        return picker_join_game(lobby_client_);
     }
 
     std::string show_campaign_select() override

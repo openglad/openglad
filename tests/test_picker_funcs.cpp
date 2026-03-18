@@ -47,6 +47,12 @@ bool picker_replace_lobby_client(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
     std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
     const char* popup_title);
+bool picker_join_game(
+    std::unique_ptr<og::ui::IPickerLobbyClient>& current_client);
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
+void level_editor_testing_prompt_queue_clear();
+void level_editor_testing_prompt_queue_push(const char* s);
 extern bool g_start_game_requested;
 #ifdef TESTING
 extern bool g_test_remove_exits;
@@ -122,6 +128,46 @@ struct PickerLobbyClientTrace
 {
     int initialize_calls = 0;
     int shutdown_calls = 0;
+};
+
+class ScopedEnvVar
+{
+public:
+    explicit ScopedEnvVar(const char* name)
+        : name_(name)
+    {
+        const char* const current = std::getenv(name_);
+        if (current != nullptr)
+        {
+            had_value_ = true;
+            old_value_ = current;
+        }
+    }
+
+    ~ScopedEnvVar()
+    {
+        if (had_value_)
+        {
+#ifdef _WIN32
+            _putenv_s(name_, old_value_.c_str());
+#else
+            setenv(name_, old_value_.c_str(), 1);
+#endif
+        }
+        else
+        {
+#ifdef _WIN32
+            _putenv_s(name_, "");
+#else
+            unsetenv(name_);
+#endif
+        }
+    }
+
+private:
+    const char* name_;
+    bool had_value_ = false;
+    std::string old_value_;
 };
 
 class TraceablePickerLobbyClient final : public og::ui::IPickerLobbyClient
@@ -599,6 +645,36 @@ TEST(PickerFuncs, picker_replace_lobby_client_swaps_active_client_after_success)
     EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
     EXPECT_EQ(1, current_trace->shutdown_calls);
     EXPECT_EQ(1, next_trace->initialize_calls);
+}
+
+TEST(PickerFuncs, picker_join_game_catches_invalid_relay_base_url)
+{
+    ScopedEnvVar relay_env("OPENGLAD_RELAY_BASE_URL");
+#ifdef _WIN32
+    _putenv_s("OPENGLAD_RELAY_BASE_URL", "ftp://relay.invalid");
+#else
+    setenv("OPENGLAD_RELAY_BASE_URL", "ftp://relay.invalid", 1);
+#endif
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(false);
+    level_editor_testing_prompt_queue_clear();
+    level_editor_testing_prompt_queue_push("GLAD-XKCD");
+
+    auto current_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        std::make_unique<TraceablePickerLobbyClient>(current_trace);
+    auto* const current_raw =
+        static_cast<TraceablePickerLobbyClient*>(current_client.get());
+    ActivePickerLobbyClientGuard guard(current_raw);
+
+    EXPECT_FALSE(picker_join_game(current_client));
+    EXPECT_EQ(current_raw, current_client.get());
+    EXPECT_EQ(current_raw, og::ui::active_picker_lobby_client());
+    EXPECT_EQ(0, current_trace->shutdown_calls);
+
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
 }
 
 TEST(PickerFuncs, lobby_sync_preserves_sparse_team_assignments)
