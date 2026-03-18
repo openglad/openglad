@@ -180,9 +180,9 @@ std::string url_encode_component(std::string_view text)
 
     std::string encoded;
     encoded.reserve(text.size());
-    for (const unsigned char ch :
-         std::string(text.begin(), text.end()))
+    for (const char raw_ch : text)
     {
+        const unsigned char ch = static_cast<unsigned char>(raw_ch);
         if (std::isalnum(ch) || ch == '-' || ch == '_' ||
             ch == '.' || ch == '~')
         {
