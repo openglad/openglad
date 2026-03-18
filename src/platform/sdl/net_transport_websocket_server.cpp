@@ -1,6 +1,7 @@
 #include <openglad/platform/net_transport_websocket_server.h>
 
-#include <ixwebsocket/IXNetSystem.h>
+#include "net_transport_websocket_common.h"
+
 #include <ixwebsocket/IXWebSocketServer.h>
 
 #include <algorithm>
@@ -13,47 +14,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-namespace {
-
-class IxNetSystemGuard
-{
-public:
-    IxNetSystemGuard()
-    {
-        std::lock_guard<std::mutex> lock(mutex());
-        if (ref_count()++ == 0 && !ix::initNetSystem())
-        {
-            ref_count() = 0;
-            throw std::runtime_error("IXWebSocket failed to initialize the network system");
-        }
-    }
-
-    ~IxNetSystemGuard()
-    {
-        std::lock_guard<std::mutex> lock(mutex());
-        if (ref_count() == 0)
-            return;
-
-        if (--ref_count() == 0)
-            (void)ix::uninitNetSystem();
-    }
-
-private:
-    static std::mutex& mutex()
-    {
-        static std::mutex value;
-        return value;
-    }
-
-    static std::size_t& ref_count()
-    {
-        static std::size_t value = 0;
-        return value;
-    }
-};
-
-} // namespace
 
 namespace og::sim {
 
@@ -311,7 +271,7 @@ private:
         return {};
     }
 
-    IxNetSystemGuard net_system_guard;
+    detail::IxNetSystemGuard net_system_guard;
     Options options;
     int port = 0;
     ix::WebSocketServer server;

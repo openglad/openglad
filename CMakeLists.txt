@@ -104,6 +104,7 @@ set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
 set(OG_NETWORK_SOURCES)
 if(NOT EMSCRIPTEN)
     list(APPEND OG_NETWORK_SOURCES
+        ${SRC_DIR}/platform/sdl/net_transport_websocket_client.cpp
         ${SRC_DIR}/platform/sdl/net_transport_websocket_server.cpp
     )
 endif()
@@ -1652,6 +1653,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_client.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_state_net.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_replay.cpp
