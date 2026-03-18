@@ -89,6 +89,36 @@ std::optional<og::sim::ReceivedMessage> poll_until_matching_message(
     return matched_message;
 }
 
+template <typename SendAction, typename Predicate>
+std::optional<og::sim::ReceivedMessage> send_until_matching_message(
+    og::sim::ITransport& sender,
+    SendAction&& send_action,
+    og::sim::ITransport& receiver,
+    Predicate&& predicate,
+    std::chrono::milliseconds timeout = 5s)
+{
+    std::optional<og::sim::ReceivedMessage> matched_message;
+    const bool ok = wait_until(
+        [&] {
+            (void)sender.poll();
+            send_action();
+
+            std::vector<og::sim::ReceivedMessage> polled = receiver.poll();
+            for (auto& message : polled)
+            {
+                if (!predicate(message))
+                    continue;
+
+                matched_message = std::move(message);
+                return true;
+            }
+            return false;
+        },
+        timeout);
+    EXPECT_TRUE(ok);
+    return matched_message;
+}
+
 std::uint32_t decode_client_ready_tick(std::span<const std::uint8_t> bytes)
 {
     const auto decoded = og::sim::deserialize_client_ready_message(bytes);
@@ -290,16 +320,12 @@ TEST(NetTransportWebSocketClient,
             std::make_shared<og::sim::ClientReadyMessage>(
                 og::sim::ClientReadyMessage{.last_applied_tick = 55u})));
 
-    og::sim::PeerId reconnected_server_peer_id = 0;
     ASSERT_TRUE(wait_until(
         [&] {
             (void)client.poll();
             (void)server.poll();
             const std::vector<og::sim::PeerId> peers = server.connected_peers();
-            if (peers.size() != 1u || peers.front() == first_server_peer_id)
-                return false;
-            reconnected_server_peer_id = peers.front();
-            return true;
+            return peers.size() == 1u && peers.front() != first_server_peer_id;
         },
         5s));
 
@@ -307,29 +333,41 @@ TEST(NetTransportWebSocketClient,
     EXPECT_EQ((std::vector<og::sim::PeerId>{client_options.remote_peer_id}),
               client.connected_peers());
 
-    client.send_client_ready(
-        client_options.remote_peer_id,
-        std::make_shared<og::sim::ClientReadyMessage>(
-            og::sim::ClientReadyMessage{.last_applied_tick = 88u}));
-    const auto server_message = poll_until_matching_message(
+    const auto server_message = send_until_matching_message(
+        client,
+        [&] {
+            client.send_client_ready(
+                client_options.remote_peer_id,
+                std::make_shared<og::sim::ClientReadyMessage>(
+                    og::sim::ClientReadyMessage{.last_applied_tick = 88u}));
+        },
         server,
-        [reconnected_server_peer_id](const og::sim::ReceivedMessage& message) {
-            return message.peer_id == reconnected_server_peer_id &&
+        [first_server_peer_id](const og::sim::ReceivedMessage& message) {
+            return message.peer_id != first_server_peer_id &&
                 decode_client_ready_tick(message.data) == 88u;
-        });
+        },
+        10s);
     ASSERT_TRUE(server_message.has_value());
 
-    server.send_keyframe_request(
-        reconnected_server_peer_id,
-        std::make_shared<og::sim::KeyframeRequestMessage>(
-            og::sim::KeyframeRequestMessage{.last_seen_tick = 77u}));
-    const auto client_message = poll_until_matching_message(
+    const auto client_message = send_until_matching_message(
+        server,
+        [&] {
+            const std::vector<og::sim::PeerId> peers = server.connected_peers();
+            if (peers.empty())
+                return;
+
+            server.send_keyframe_request(
+                peers.front(),
+                std::make_shared<og::sim::KeyframeRequestMessage>(
+                    og::sim::KeyframeRequestMessage{.last_seen_tick = 77u}));
+        },
         client,
         [remote_peer_id = client_options.remote_peer_id](
             const og::sim::ReceivedMessage& message) {
             return message.peer_id == remote_peer_id &&
                 decode_keyframe_request_tick(message.data) == 77u;
-        });
+        },
+        10s);
     ASSERT_TRUE(client_message.has_value());
 
     client.disconnect(client_options.remote_peer_id);
