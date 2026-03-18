@@ -40,7 +40,6 @@
 #include <openglad/core/sound_ids.h>
 // pixieN include not needed here; render bridge is in walker_render_bridge.cpp
 #include <algorithm>
-#include <atomic>
 #include <cassert>
 #include <cstdlib>
 #include <format>
@@ -61,10 +60,6 @@
 extern std::int32_t calculate_level(std::uint32_t temp_exp);
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
-
-#ifdef TESTING
-std::atomic<bool> g_test_friendly_fairy_died{false};
-#endif
 
 namespace
 {
@@ -1481,11 +1476,6 @@ bool walker::death()
 	    : nullptr;
 	if (active != nullptr)
 		active->remove(this);
-
-#ifdef TESTING
-	if (team_num() == 0 && myguy != nullptr && myguy->family == FAMILY_FAERIE)
-		g_test_friendly_fairy_died.store(true, std::memory_order_release);
-#endif
 
 	if (myguy) // were we a real character?  Then make a heart ..
 	{

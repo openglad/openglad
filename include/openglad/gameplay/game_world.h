@@ -52,7 +52,6 @@ public:
 
 #ifdef TESTING
 extern std::int32_t g_test_level_tick_limit_override;
-extern std::int32_t g_test_force_friendly_fairy_death_after_level_tick;
 #endif
 
 } // namespace og::sim
