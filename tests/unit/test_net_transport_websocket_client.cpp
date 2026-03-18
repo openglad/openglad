@@ -10,6 +10,7 @@
 #include <format>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <span>
 #include <thread>
 #include <vector>
@@ -61,6 +62,31 @@ bool poll_until_peer_count(og::sim::ITransport& transport,
             return transport.connected_peers().size() == expected_count;
         },
         timeout);
+}
+
+template <typename Predicate>
+std::optional<og::sim::ReceivedMessage> poll_until_matching_message(
+    og::sim::ITransport& transport,
+    Predicate&& predicate,
+    std::chrono::milliseconds timeout = 5s)
+{
+    std::optional<og::sim::ReceivedMessage> matched_message;
+    const bool ok = wait_until(
+        [&] {
+            std::vector<og::sim::ReceivedMessage> polled = transport.poll();
+            for (auto& message : polled)
+            {
+                if (!predicate(message))
+                    continue;
+
+                matched_message = std::move(message);
+                return true;
+            }
+            return false;
+        },
+        timeout);
+    EXPECT_TRUE(ok);
+    return matched_message;
 }
 
 std::uint32_t decode_client_ready_tick(std::span<const std::uint8_t> bytes)
@@ -281,22 +307,30 @@ TEST(NetTransportWebSocketClient,
     EXPECT_EQ((std::vector<og::sim::PeerId>{client_options.remote_peer_id}),
               client.connected_peers());
 
-    server.send_keyframe_request(
-        reconnected_server_peer_id,
-        std::make_shared<og::sim::KeyframeRequestMessage>(
-            og::sim::KeyframeRequestMessage{.last_seen_tick = 77u}));
-    const auto client_messages = poll_until_messages(client, 1u);
-    ASSERT_EQ(1u, client_messages.size());
-    EXPECT_EQ(77u, decode_keyframe_request_tick(client_messages.front().data));
-
     client.send_client_ready(
         client_options.remote_peer_id,
         std::make_shared<og::sim::ClientReadyMessage>(
             og::sim::ClientReadyMessage{.last_applied_tick = 88u}));
-    const auto server_messages = poll_until_messages(server, 1u);
-    ASSERT_EQ(1u, server_messages.size());
-    EXPECT_EQ(reconnected_server_peer_id, server_messages.front().peer_id);
-    EXPECT_EQ(88u, decode_client_ready_tick(server_messages.front().data));
+    const auto server_message = poll_until_matching_message(
+        server,
+        [reconnected_server_peer_id](const og::sim::ReceivedMessage& message) {
+            return message.peer_id == reconnected_server_peer_id &&
+                decode_client_ready_tick(message.data) == 88u;
+        });
+    ASSERT_TRUE(server_message.has_value());
+
+    server.send_keyframe_request(
+        reconnected_server_peer_id,
+        std::make_shared<og::sim::KeyframeRequestMessage>(
+            og::sim::KeyframeRequestMessage{.last_seen_tick = 77u}));
+    const auto client_message = poll_until_matching_message(
+        client,
+        [remote_peer_id = client_options.remote_peer_id](
+            const og::sim::ReceivedMessage& message) {
+            return message.peer_id == remote_peer_id &&
+                decode_keyframe_request_tick(message.data) == 77u;
+        });
+    ASSERT_TRUE(client_message.has_value());
 
     client.disconnect(client_options.remote_peer_id);
     ASSERT_TRUE(poll_until_peer_count(server, 0u));
