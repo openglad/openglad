@@ -30,14 +30,10 @@ namespace
 {
 
 struct LocalTransportClient {
-    std::shared_ptr<og::sim::InProcessTransport> transport;
+    std::shared_ptr<og::sim::ITransport> transport;
+    og::sim::PeerId server_peer_id = 0;
     std::unique_ptr<og::sim::GameClient> game_client;
     bool drives_display = false;
-
-    [[nodiscard]] og::sim::PeerId peer_id() const
-    {
-        return transport ? transport->local_peer_id() : 0u;
-    }
 };
 
 } // namespace
@@ -45,8 +41,14 @@ struct LocalTransportClient {
 namespace og::runtime {
 
 struct LocalTransportRuntime {
+    enum class Mode : std::uint8_t {
+        Authoritative,
+        ClientOnly,
+    };
+
+    Mode mode = Mode::Authoritative;
     std::unique_ptr<og::runtime::GameSession> server_session;
-    std::shared_ptr<og::sim::InProcessTransport> server_transport;
+    std::shared_ptr<og::sim::ITransport> server_transport;
     std::unique_ptr<og::sim::GameServer> server;
     std::vector<LocalTransportClient> clients;
     std::size_t display_client_index = 0;
@@ -62,6 +64,12 @@ struct LocalTransportRuntime {
         if (display_client_index >= clients.size())
             return nullptr;
         return clients[display_client_index].game_client.get();
+    }
+
+    [[nodiscard]] bool authoritative_mode() const noexcept
+    {
+        return mode == Mode::Authoritative && server_session != nullptr &&
+            server != nullptr && server_transport != nullptr;
     }
 };
 
@@ -287,27 +295,6 @@ walker* resolve_control_from_entity_id(GameWorld& world, std::uint32_t entity_id
     return entity_id != 0u ? world.find_by_id(entity_id) : nullptr;
 }
 
-void sync_display_controls(screen& gameplay_screen,
-                           const std::array<std::uint32_t, MAX_PLAYERS>&
-                               controlled_entity_ids,
-                           GameWorld* world)
-{
-    if (world == nullptr)
-        return;
-
-    const std::size_t player_count = compute_local_player_count(gameplay_screen);
-    for (std::size_t index = 0; index < player_count; ++index)
-    {
-        viewscreen* const view = gameplay_screen.viewob[index].get();
-        if (view == nullptr)
-            continue;
-
-        const std::uint32_t entity_id = controlled_entity_ids[index];
-        view->control =
-            entity_id != 0u ? world->find_by_id(entity_id) : nullptr;
-    }
-}
-
 void dispatch_display_event_batch(screen& gameplay_screen,
                                   const og::sim::SimEventBatch& batch)
 {
@@ -365,6 +352,134 @@ void render_pause_overlay(screen& gameplay_screen,
         view->set_display_text(text, 1);
     }
     gameplay_screen.redrawme = 1;
+}
+
+void configure_background_game_client(og::sim::GameClient& game_client)
+{
+    game_client.set_initial_setup_callback(
+        [&game_client](
+            const og::sim::InitialSetupMessage&,
+            bool is_level_transition) {
+            if (is_level_transition)
+                game_client.send_client_ready();
+        });
+}
+
+walker* find_control_for_view(viewscreen* view,
+                              std::size_t fallback_index,
+                              const std::array<std::uint32_t, MAX_PLAYERS>&
+                                  controlled_entity_ids,
+                              GameWorld* world)
+{
+    if (view == nullptr || world == nullptr)
+        return nullptr;
+
+    for (const std::uint32_t entity_id : controlled_entity_ids)
+    {
+        walker* const entity = resolve_control_from_entity_id(*world, entity_id);
+        if (entity != nullptr && entity->team_num() == view->my_team)
+            return entity;
+    }
+
+    if (fallback_index < controlled_entity_ids.size())
+    {
+        return resolve_control_from_entity_id(
+            *world,
+            controlled_entity_ids[fallback_index]);
+    }
+    return nullptr;
+}
+
+void sync_display_controls(screen& gameplay_screen,
+                           const std::array<std::uint32_t, MAX_PLAYERS>&
+                               controlled_entity_ids,
+                           GameWorld* world)
+{
+    if (world == nullptr)
+        return;
+
+    const std::size_t player_count = compute_local_player_count(gameplay_screen);
+    for (std::size_t index = 0; index < player_count; ++index)
+    {
+        viewscreen* const view = gameplay_screen.viewob[index].get();
+        if (view == nullptr)
+            continue;
+
+        view->control =
+            find_control_for_view(view, index, controlled_entity_ids, world);
+    }
+}
+
+void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
+                                   screen& gameplay_screen,
+                                   og::sim::GameClient& display_client)
+{
+    gameplay_screen.set_render_interpolation_client(&display_client);
+    display_client.set_initial_setup_callback(
+        [&gameplay_screen, display_client_ptr = &display_client](
+            const og::sim::InitialSetupMessage& message,
+            bool is_level_transition) {
+            if (!is_level_transition)
+                return;
+
+            if (!prepare_display_level_for_initial_setup(
+                    gameplay_screen, message))
+            {
+                return;
+            }
+
+            display_client_ptr->send_client_ready();
+        });
+    display_client.set_control_mapping_callback(
+        [&gameplay_screen](
+            const std::array<std::uint32_t, MAX_PLAYERS>& controlled_entity_ids,
+            GameWorld* world) {
+            sync_display_controls(
+                gameplay_screen, controlled_entity_ids, world);
+        });
+    display_client.set_sim_event_batch_callback(
+        [&gameplay_screen](const og::sim::SimEventBatch& batch) {
+            dispatch_display_event_batch(gameplay_screen, batch);
+        });
+    display_client.set_game_flow_event_batch_callback(
+        [&gameplay_screen, runtime_ptr = &runtime](
+            const og::sim::SimEventBatch& batch) {
+            dispatch_display_event_batch(gameplay_screen, batch);
+            if (runtime_ptr != nullptr &&
+                (gameplay_screen.world().end != 0 ||
+                 batch_ends_display_session(batch)))
+            {
+                runtime_ptr->display_session_finished = true;
+            }
+        });
+    display_client.set_message_processing_break_callback(
+        [&gameplay_screen]() {
+            return gameplay_screen.world().end != 0;
+        });
+    display_client.set_exit_prompt_callback(
+        [&gameplay_screen, display_client_ptr = &display_client](
+            const og::sim::ExitPromptBroadcastMessage& prompt) {
+            respond_to_exit_prompt(
+                gameplay_screen, *display_client_ptr, prompt);
+        });
+    display_client.set_pause_broadcast_callback(
+        [&gameplay_screen](const og::sim::PauseBroadcastMessage& pause) {
+            const std::string text = pause_overlay_text(&pause);
+            for (int view_index = 0; view_index < gameplay_screen.numviews;
+                 ++view_index)
+            {
+                viewscreen* const view =
+                    gameplay_screen.viewob[view_index].get();
+                if (view == nullptr)
+                    continue;
+                view->set_display_text(text, 1);
+            }
+            gameplay_screen.redrawme = 1;
+        });
+    display_client.set_palette_sync_callback(
+        [&gameplay_screen](std::uint8_t palette_id) {
+            apply_palette_id(gameplay_screen, palette_id);
+        });
 }
 
 } // namespace
@@ -448,6 +563,11 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
     runtime->server_session = std::make_unique<GameSession>(server_cfg);
     runtime->server_transport = og::sim::InProcessTransport::create_server();
     runtime->server_transport->accept_connections();
+    const auto inprocess_server_transport =
+        std::dynamic_pointer_cast<og::sim::InProcessTransport>(
+            runtime->server_transport);
+    if (!inprocess_server_transport)
+        return;
 
     {
         auto server_scope = runtime->server_session->activate();
@@ -528,10 +648,14 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
     for (std::size_t index = 0; index < player_count; ++index)
     {
         LocalTransportClient client;
-        client.transport = runtime->server_transport->create_client_transport();
+        client.transport = inprocess_server_transport->create_client_transport();
+        client.server_peer_id =
+            std::dynamic_pointer_cast<og::sim::InProcessTransport>(
+                client.transport)
+                ->local_peer_id();
         client.drives_display = (index == 0);
 
-        const og::sim::PeerId peer_id = client.peer_id();
+        const og::sim::PeerId peer_id = client.server_peer_id;
         runtime->server->connect_client(peer_id);
         walker* const initial_control = resolve_control_from_entity_id(
             server_screen->world(), control_entity_ids[index]);
@@ -545,85 +669,9 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             peer_id,
             client.drives_display ? &gameplay_screen.world() : nullptr);
         og::sim::GameClient* const local_client = client.game_client.get();
-        local_client->set_initial_setup_callback(
-            [local_client](
-                const og::sim::InitialSetupMessage&,
-                bool is_level_transition) {
-                if (is_level_transition)
-                    local_client->send_client_ready();
-            });
+        configure_background_game_client(*local_client);
         if (client.drives_display)
-        {
-            og::sim::GameClient* const display_client = local_client;
-            gameplay_screen.set_render_interpolation_client(display_client);
-            display_client->set_initial_setup_callback(
-                [&gameplay_screen, display_client](
-                    const og::sim::InitialSetupMessage& message,
-                    bool is_level_transition) {
-                    if (!is_level_transition)
-                        return;
-
-                    if (!prepare_display_level_for_initial_setup(
-                            gameplay_screen, message))
-                    {
-                        return;
-                    }
-
-                    display_client->send_client_ready();
-                });
-            display_client->set_control_mapping_callback(
-                [&gameplay_screen](
-                    const std::array<std::uint32_t, MAX_PLAYERS>&
-                        controlled_entity_ids,
-                    GameWorld* world) {
-                    sync_display_controls(
-                        gameplay_screen, controlled_entity_ids, world);
-                });
-            display_client->set_sim_event_batch_callback(
-                [&gameplay_screen](const og::sim::SimEventBatch& batch) {
-                    dispatch_display_event_batch(gameplay_screen, batch);
-                });
-            display_client->set_game_flow_event_batch_callback(
-                [&gameplay_screen, runtime_ptr = runtime.get()](
-                    const og::sim::SimEventBatch& batch) {
-                    dispatch_display_event_batch(gameplay_screen, batch);
-                    if (runtime_ptr != nullptr &&
-                        (gameplay_screen.world().end != 0 ||
-                         batch_ends_display_session(batch)))
-                    {
-                        runtime_ptr->display_session_finished = true;
-                    }
-                });
-            display_client->set_message_processing_break_callback(
-                [&gameplay_screen]() {
-                    return gameplay_screen.world().end != 0;
-                });
-            display_client->set_exit_prompt_callback(
-                [&gameplay_screen, display_client](
-                    const og::sim::ExitPromptBroadcastMessage& prompt) {
-                    respond_to_exit_prompt(
-                        gameplay_screen, *display_client, prompt);
-                });
-            display_client->set_pause_broadcast_callback(
-                [&gameplay_screen](
-                    const og::sim::PauseBroadcastMessage& pause) {
-                    const std::string text = pause_overlay_text(&pause);
-                    for (int view_index = 0; view_index < gameplay_screen.numviews;
-                         ++view_index)
-                    {
-                        viewscreen* const view =
-                            gameplay_screen.viewob[view_index].get();
-                        if (view == nullptr)
-                            continue;
-                        view->set_display_text(text, 1);
-                    }
-                    gameplay_screen.redrawme = 1;
-                });
-            display_client->set_palette_sync_callback(
-                [&gameplay_screen](std::uint8_t palette_id) {
-                    apply_palette_id(gameplay_screen, palette_id);
-                });
-        }
+            configure_display_game_client(*runtime, gameplay_screen, *local_client);
         runtime->clients.push_back(std::move(client));
     }
 
@@ -638,6 +686,195 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
             client.game_client->poll_messages();
+    }
+
+    session.local_transport_runtime_ = std::move(runtime);
+}
+
+void reset_network_host_transport_shadow(
+    GameSession& session,
+    screen& gameplay_screen,
+    std::shared_ptr<og::sim::ITransport> server_transport,
+    std::shared_ptr<og::sim::InProcessTransport> local_client_transport,
+    const std::vector<og::sim::LobbyPlayerBinding>& player_bindings)
+{
+    if (current_game == nullptr || current_game->sim_events == nullptr ||
+        !server_transport || !local_client_transport)
+    {
+        clear_local_transport_shadow(session);
+        return;
+    }
+
+    gameplay_screen.set_render_interpolation_client(nullptr);
+    session.local_transport_runtime_.reset();
+
+    auto runtime = std::make_shared<LocalTransportRuntime>();
+    runtime->mode = LocalTransportRuntime::Mode::Authoritative;
+    runtime->server_transport = std::move(server_transport);
+    runtime->server_transport->accept_connections();
+
+    GameSession::Config server_cfg;
+    server_cfg.numviews = gameplay_screen.numviews;
+    server_cfg.create_display = false;
+    server_cfg.install_legacy_globals = false;
+    runtime->server_session = std::make_unique<GameSession>(server_cfg);
+
+    const short display_team =
+        gameplay_screen.viewob[0] != nullptr
+            ? gameplay_screen.viewob[0]->my_team
+            : gameplay_screen.world().my_team;
+    const std::uint32_t display_control_entity_id =
+        gameplay_screen.viewob[0] != nullptr &&
+            gameplay_screen.viewob[0]->control != nullptr
+        ? gameplay_screen.viewob[0]->control->entity_id()
+        : 0u;
+
+    {
+        auto server_scope = runtime->server_session->activate();
+        GameplayContextGuard server_gameplay_scope(
+            &runtime->server_session->game_);
+        screen* const server_screen = runtime->server_screen();
+        if (server_screen == nullptr ||
+            load_saved_game("save0", server_screen) == 0)
+        {
+            return;
+        }
+
+        prepare_server_session_for_gameplay(*runtime->server_session);
+        og::sim::apply_snapshot(
+            server_screen->world(),
+            og::sim::capture_keyframe_snapshot(gameplay_screen.world()));
+        if (server_screen->viewob[0] != nullptr)
+        {
+            server_screen->viewob[0]->my_team = display_team;
+            server_screen->viewob[0]->control = resolve_control_from_entity_id(
+                server_screen->world(), display_control_entity_id);
+        }
+    }
+
+    screen* const server_screen = runtime->server_screen();
+    if (server_screen == nullptr)
+        return;
+
+    runtime->server = std::make_unique<og::sim::GameServer>(
+        server_screen->world(),
+        *runtime->server_session->game_.sim_events,
+        *runtime->server_transport);
+    runtime->server->on_save_sync = [server_screen] {
+        server_screen->sync_save_data_from_world();
+    };
+    runtime->server->on_level_transition =
+        [server_screen,
+         display_screen = &gameplay_screen,
+         server_session = runtime->server_session.get()](
+            int level_id) {
+            auto server_scope = server_session->activate();
+            GameplayContextGuard server_gameplay_scope(&server_session->game_);
+            server_screen->framecount = display_screen->framecount;
+            if (!complete_level_and_load_next(*server_screen, level_id))
+                return false;
+
+            prepare_server_session_for_gameplay(*server_session);
+            return true;
+        };
+    runtime->server->on_exit_accepted =
+        [server_screen,
+         display_screen = &gameplay_screen,
+         server_session = runtime->server_session.get()](
+            int destination) {
+            auto server_scope = server_session->activate();
+            GameplayContextGuard server_gameplay_scope(&server_session->game_);
+            server_screen->framecount = display_screen->framecount;
+            if (!complete_level_and_load_next(*server_screen, destination))
+                return false;
+
+            prepare_server_session_for_gameplay(*server_session);
+            return true;
+        };
+    runtime->server->on_withdraw_accepted =
+        [server_screen, server_session = runtime->server_session.get()](
+            int destination) {
+            auto server_scope = server_session->activate();
+            GameplayContextGuard server_gameplay_scope(&server_session->game_);
+            if (!withdraw_and_load_level(*server_screen, destination))
+                return false;
+
+            prepare_server_session_for_gameplay(*server_session);
+            return true;
+        };
+
+    for (const og::sim::LobbyPlayerBinding& binding : player_bindings)
+    {
+        runtime->server->connect_client(binding.peer_id);
+        runtime->server->bind_player(
+            binding.peer_id,
+            binding.player_index,
+            binding.team,
+            nullptr);
+    }
+
+    LocalTransportClient client;
+    client.transport = local_client_transport;
+    client.server_peer_id = local_client_transport->local_peer_id();
+    client.drives_display = true;
+    client.game_client = std::make_unique<og::sim::GameClient>(
+        *client.transport,
+        client.server_peer_id,
+        &gameplay_screen.world());
+    configure_background_game_client(*client.game_client);
+    configure_display_game_client(*runtime, gameplay_screen, *client.game_client);
+    runtime->clients.push_back(std::move(client));
+
+    {
+        auto server_scope = runtime->server_session->activate();
+        GameplayContextGuard server_gameplay_scope(
+            &runtime->server_session->game_);
+        runtime->server->send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
+    }
+    {
+        auto client_scope = session.activate();
+        GameplayContextGuard client_gameplay_scope(&session.game_);
+        for (auto& local_client : runtime->clients)
+            local_client.game_client->poll_messages();
+    }
+
+    session.local_transport_runtime_ = std::move(runtime);
+}
+
+void reset_network_client_transport_shadow(
+    GameSession& session,
+    screen& gameplay_screen,
+    std::shared_ptr<og::sim::ITransport> client_transport,
+    og::sim::PeerId server_peer_id)
+{
+    if (!client_transport || server_peer_id == 0)
+    {
+        clear_local_transport_shadow(session);
+        return;
+    }
+
+    gameplay_screen.set_render_interpolation_client(nullptr);
+    session.local_transport_runtime_.reset();
+
+    auto runtime = std::make_shared<LocalTransportRuntime>();
+    runtime->mode = LocalTransportRuntime::Mode::ClientOnly;
+
+    LocalTransportClient client;
+    client.transport = std::move(client_transport);
+    client.server_peer_id = server_peer_id;
+    client.drives_display = true;
+    client.game_client = std::make_unique<og::sim::GameClient>(
+        *client.transport,
+        client.server_peer_id,
+        &gameplay_screen.world());
+    configure_background_game_client(*client.game_client);
+    configure_display_game_client(*runtime, gameplay_screen, *client.game_client);
+    runtime->clients.push_back(std::move(client));
+
+    {
+        auto client_scope = session.activate();
+        GameplayContextGuard client_gameplay_scope(&session.game_);
+        runtime->clients.front().game_client->poll_messages();
     }
 
     session.local_transport_runtime_ = std::move(runtime);
@@ -681,11 +918,8 @@ void local_transport_shadow_finish_tick(GameSession& session)
     if (runtime == nullptr)
         return;
 
-    if (session.myscreen_ == nullptr || runtime->server == nullptr ||
-        runtime->server_session == nullptr)
-    {
+    if (session.myscreen_ == nullptr)
         return;
-    }
 
     if (runtime->display_session_finished || session.myscreen_->world().end != 0)
     {
@@ -694,9 +928,10 @@ void local_transport_shadow_finish_tick(GameSession& session)
         return;
     }
 
-    // Single-thread in-process order:
-    //  3-9. Install the server session/context and run one authoritative step.
+    if (runtime->authoritative_mode())
     {
+        // Single-thread authoritative order:
+        //  3-9. Install the server session/context and run one authoritative step.
         auto server_scope = runtime->server_session->activate();
         GameplayContextGuard server_gameplay_scope(
             &runtime->server_session->game_);

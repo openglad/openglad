@@ -40,6 +40,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
+#include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_state.h>
@@ -49,6 +50,7 @@
 #include <cstddef>
 #include <cstring>
 #include <cctype>
+#include <exception>
 #include <format>
 #include <memory>
 #include <optional>
@@ -245,6 +247,14 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Help);
             break;
+        case ButtonAction::HostGame:
+            menu_item = og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::HostGame);
+            break;
+        case ButtonAction::JoinGame:
+            menu_item = og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::JoinGame);
+            break;
         case ButtonAction::QuitMenu:
             menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Quit);
@@ -268,6 +278,23 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     }
     return false;
 }
+
+namespace {
+
+std::string join_status_lines(const std::vector<std::string>& lines)
+{
+    std::string message;
+    for (const std::string& line : lines) {
+        if (line.empty())
+            continue;
+        if (!message.empty())
+            message.append("\n");
+        message.append(line);
+    }
+    return message;
+}
+
+} // namespace
 
 class SdlPickerClient final : public og::ui::IPickerClient
 {
@@ -331,6 +358,86 @@ public:
         return true;
     }
 
+    bool host_game() override
+    {
+#ifdef __EMSCRIPTEN__
+        popup_dialog("HOST GAME",
+                     "Browser hosting needs relay support.\n"
+                     "Direct hosting is unavailable here.");
+        return false;
+#else
+        std::string port_text = "12345";
+        if (!prompt_for_string("HOST PORT", port_text))
+            return false;
+
+        const std::optional<int> port = parse_int_strict(port_text);
+        if (!port.has_value() || *port <= 0 || *port > 65535)
+        {
+            popup_dialog("HOST GAME", "Please enter a port from 1 to 65535.");
+            return false;
+        }
+
+        try
+        {
+            og::ui::PickerHostGameOptions options;
+            options.port = *port;
+            return replace_lobby_client(
+                og::ui::create_host_picker_lobby_client(options),
+                "HOST GAME");
+        }
+        catch (const std::exception& error)
+        {
+            popup_dialog("HOST GAME", error.what());
+            return false;
+        }
+#endif
+    }
+
+    bool join_game() override
+    {
+        og::ui::PickerJoinGameOptions options;
+        const bool direct_connect = yes_or_no_prompt(
+            "JOIN GAME",
+            "Direct connect?\nChoose NO for a relay room code.",
+            true);
+
+        if (direct_connect)
+        {
+            std::string endpoint = "127.0.0.1:12345";
+            if (!prompt_for_string("CONNECT TO IP:PORT", endpoint))
+                return false;
+            options.mode = og::ui::PickerJoinMode::Direct;
+            options.direct_endpoint = endpoint;
+        }
+        else
+        {
+            std::string room_code = "GLAD-XXXX";
+            if (!prompt_for_string("RELAY ROOM CODE", room_code))
+                return false;
+            options.mode = og::ui::PickerJoinMode::Relay;
+            options.room_code = room_code;
+            if (!og::ui::picker_join_mode_supported(options.mode))
+            {
+                popup_dialog(
+                    "JOIN GAME",
+                    "Relay room codes require the Phase 32 relay transport.");
+                return false;
+            }
+        }
+
+        try
+        {
+            return replace_lobby_client(
+                og::ui::create_join_picker_lobby_client(options),
+                "JOIN GAME");
+        }
+        catch (const std::exception& error)
+        {
+            popup_dialog("JOIN GAME", error.what());
+            return false;
+        }
+    }
+
     std::string show_campaign_select() override
     {
 #ifdef TESTING
@@ -387,6 +494,27 @@ public:
     }
 
 private:
+    bool replace_lobby_client(std::unique_ptr<og::ui::IPickerLobbyClient> client,
+                              const char* popup_title)
+    {
+        if (!client)
+            return false;
+
+        if (lobby_client_)
+            lobby_client_->shutdown();
+        if (og::ui::active_picker_lobby_client() == lobby_client_.get())
+            og::ui::install_active_picker_lobby_client(nullptr);
+
+        lobby_client_ = std::move(client);
+        og::ui::install_active_picker_lobby_client(lobby_client_.get());
+        picker_lobby_initialize_from_save();
+
+        const std::string message = join_status_lines(picker_lobby_status_lines());
+        if (!message.empty())
+            popup_dialog(popup_title, message.c_str());
+        return true;
+    }
+
     bool start_team_build_in_hire_menu_ = false;
     std::unique_ptr<og::ui::IPickerLobbyClient> lobby_client_;
 };
@@ -468,12 +596,14 @@ static const button k_mainmenu_buttons[] =
         button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=3, .down=7}),
 
         button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=9, .left=7}),
+        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
+        button("host_game", "HOST GAME", KEYSTATE_UNKNOWN, 80, 172, 68, 10, button_action_id(ButtonAction::HostGame), -1, MenuNav{.up=7, .down=11, .right=10}),
+        button("join_game", "JOIN GAME", KEYSTATE_UNKNOWN, 152, 172, 68, 10, button_action_id(ButtonAction::JoinGame), -1, MenuNav{.up=8, .down=11, .left=9}),
 
-        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 20, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=7, .left=10}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 20, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=7, .right=9})
+        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 182, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=9, .left=12}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=9, .right=11})
     };
-#define OPTIONS_BUTTON_INDEX 10
+#define OPTIONS_BUTTON_INDEX 12
 
 #else // Native build
 static const button k_mainmenu_buttons[] =
@@ -489,12 +619,14 @@ static const button k_mainmenu_buttons[] =
         button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=3, .down=7}),
 
         button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=9, .left=7}),
+        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
+        button("host_game", "HOST GAME", KEYSTATE_UNKNOWN, 80, 172, 68, 10, button_action_id(ButtonAction::HostGame), -1, MenuNav{.up=7, .down=11, .right=10}),
+        button("join_game", "JOIN GAME", KEYSTATE_UNKNOWN, 152, 172, 68, 10, button_action_id(ButtonAction::JoinGame), -1, MenuNav{.up=8, .down=11, .left=9}),
 
-        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, button_action_id(ButtonAction::QuitMenu), 0 , MenuNav{.up=7, .left=10}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 20, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=7, .right=9})
+        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 182, 60, 15, button_action_id(ButtonAction::QuitMenu), 0 , MenuNav{.up=9, .left=12}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=9, .right=11})
     };
-#define OPTIONS_BUTTON_INDEX 10
+#define OPTIONS_BUTTON_INDEX 12
 #endif // __EMSCRIPTEN__
 
 #else // DISABLE_MULTIPLAYER
@@ -503,28 +635,32 @@ static const button k_mainmenu_buttons[] =
 // Web build without multiplayer: Replace QUIT with HELP
 static const button k_mainmenu_buttons[] =
     {
-        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 70, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
-        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 95, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
+        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
+        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
 
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 120, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=1, .down=3}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 137, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
-        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 154, 60, 20, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=3, .left=5}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 154, 20, 20, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
+        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=1, .down=3}),
+        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
+        button("host_game", "HOST GAME", KEYSTATE_UNKNOWN, 80, 136, 140, 15, button_action_id(ButtonAction::HostGame), -1, MenuNav{.up=3, .down=5}),
+        button("join_game", "JOIN GAME", KEYSTATE_UNKNOWN, 80, 154, 140, 15, button_action_id(ButtonAction::JoinGame), -1, MenuNav{.up=4, .down=6}),
+        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=5, .left=7}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=5, .right=6})
     };
-#define OPTIONS_BUTTON_INDEX 5
+#define OPTIONS_BUTTON_INDEX 7
 
 #else // Native build without multiplayer
 static const button k_mainmenu_buttons[] =
     {
-        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 70, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
-        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 95, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
+        button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
+        button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
 
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 120, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=1, .down=3}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 137, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
-        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 154, 60, 20, button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up=3, .left=5}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 154, 20, 20, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
+        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=1, .down=3}),
+        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
+        button("host_game", "HOST GAME", KEYSTATE_UNKNOWN, 80, 136, 140, 15, button_action_id(ButtonAction::HostGame), -1, MenuNav{.up=3, .down=5}),
+        button("join_game", "JOIN GAME", KEYSTATE_UNKNOWN, 80, 154, 140, 15, button_action_id(ButtonAction::JoinGame), -1, MenuNav{.up=4, .down=6}),
+        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15, button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up=5, .left=7}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=5, .right=6})
     };
-#define OPTIONS_BUTTON_INDEX 5
+#define OPTIONS_BUTTON_INDEX 7
 #endif // __EMSCRIPTEN__
 
 #endif // DISABLE_MULTIPLAYER

@@ -13,6 +13,8 @@ public:
     size_t main_menu_index = 0;
 
     bool prepare_new_game_result = true;
+    bool host_game_result = true;
+    bool join_game_result = true;
     std::string campaign_result = "org.openglad.gladiator";
     og::ui::TeamBuildAction team_build_result = og::ui::TeamBuildAction::BackToMainMenu;
     bool load_result = true;
@@ -21,6 +23,8 @@ public:
 
     int show_main_menu_calls = 0;
     int prepare_new_game_calls = 0;
+    int host_game_calls = 0;
+    int join_game_calls = 0;
     int show_campaign_select_calls = 0;
     int show_team_build_calls = 0;
     int load_game_calls = 0;
@@ -41,6 +45,18 @@ public:
     {
         ++prepare_new_game_calls;
         return prepare_new_game_result;
+    }
+
+    bool host_game() override
+    {
+        ++host_game_calls;
+        return host_game_result;
+    }
+
+    bool join_game() override
+    {
+        ++join_game_calls;
+        return join_game_result;
     }
 
     og::ui::TeamBuildAction show_team_build() override
@@ -140,6 +156,37 @@ TEST(PickerStateMachine, picker_state_save_fail_routes_to_team_build)
     ASSERT_EQ(2, client.show_main_menu_calls) << "flow should return to main menu after team build";
 }
 
+TEST(PickerStateMachine, picker_state_host_game_success_routes_to_team_build)
+{
+    ScriptedPickerClient client;
+    client.main_menu_actions = {
+        og::ui::MainMenuAction::HostGame,
+        og::ui::MainMenuAction::Quit
+    };
+
+    og::ui::run_picker(client);
+
+    ASSERT_EQ(1, client.host_game_calls) << "host game should be attempted once";
+    ASSERT_EQ(1, client.show_team_build_calls) << "successful host should open team build";
+    ASSERT_EQ(2, client.show_main_menu_calls) << "flow should return to main menu after team build";
+}
+
+TEST(PickerStateMachine, picker_state_join_game_cancel_returns_to_main_menu)
+{
+    ScriptedPickerClient client;
+    client.main_menu_actions = {
+        og::ui::MainMenuAction::JoinGame,
+        og::ui::MainMenuAction::Quit
+    };
+    client.join_game_result = false;
+
+    og::ui::run_picker(client);
+
+    ASSERT_EQ(1, client.join_game_calls) << "join game should be attempted once";
+    ASSERT_EQ(0, client.show_team_build_calls) << "failed join should stay on main menu";
+    ASSERT_EQ(2, client.show_main_menu_calls) << "state machine should continue at main menu";
+}
+
 
 TEST(PickerStateMachine, picker_state_screen_after_game_routes_through_help)
 {
@@ -215,6 +262,28 @@ TEST(PickerStateMachine, picker_state_show_team_build_play_and_back)
     client.present_calls = 0;
     client.scripted_results = {&back};
     ASSERT_EQ(static_cast<int>(og::ui::TeamBuildAction::BackToMainMenu), static_cast<int>(client.show_team_build())) << "back command should return BackToMainMenu";
+}
+
+TEST(PickerStateMachine, picker_state_show_main_menu_maps_host_and_join_commands)
+{
+    MenuOnlyPickerClient client;
+    static const og::ui::PickerMenuItem host{
+        "host_game", "Host Game", og::ui::PickerMenuCommand::HostGame, 0
+    };
+    static const og::ui::PickerMenuItem join{
+        "join_game", "Join Game", og::ui::PickerMenuCommand::JoinGame, 0
+    };
+
+    client.scripted_results = {&host};
+    ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::HostGame),
+              static_cast<int>(client.show_main_menu()))
+        << "host command should map to HostGame";
+
+    client.present_calls = 0;
+    client.scripted_results = {&join};
+    ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::JoinGame),
+              static_cast<int>(client.show_main_menu()))
+        << "join command should map to JoinGame";
 }
 
 
@@ -417,4 +486,3 @@ TEST(PickerStateMachine, picker_state_round10_continue_game_to_quit_transition)
     ASSERT_EQ(1, client.run_game_calls) << "continue game should execute one game run";
     ASSERT_EQ(1, client.show_main_menu_calls) << "screen_after_game=Quit should exit picker without re-entering main menu";
 }
-

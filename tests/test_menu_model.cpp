@@ -1,4 +1,5 @@
 #include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <gtest/gtest.h>
 
 TEST(MenuModel, main_definition_and_lookup)
@@ -7,11 +8,19 @@ TEST(MenuModel, main_definition_and_lookup)
     const PickerMenuDefinition& def = picker_menu_definition(PickerMenuId::Main);
 
     ASSERT_EQ(static_cast<int>(PickerMenuId::Main), static_cast<int>(def.id)) << "main menu definition should report main id";
-    ASSERT_TRUE(def.items.size() >= 10) << "main menu should expose expected item count";
+    ASSERT_TRUE(def.items.size() >= 12) << "main menu should expose expected item count";
 
     const PickerMenuItem* begin = find_picker_menu_item(PickerMenuId::Main, "begin_new_game");
     ASSERT_TRUE(begin != nullptr) << "begin_new_game id should resolve";
     ASSERT_EQ(static_cast<int>(PickerMenuCommand::BeginNewGame), static_cast<int>(begin->command)) << "begin_new_game should map to BeginNewGame command";
+
+    const PickerMenuItem* host = find_picker_menu_item(PickerMenuId::Main, "host_game");
+    ASSERT_TRUE(host != nullptr) << "host_game id should resolve";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::HostGame), static_cast<int>(host->command)) << "host_game should map to HostGame command";
+
+    const PickerMenuItem* join = find_picker_menu_item(PickerMenuId::Main, "join_game");
+    ASSERT_TRUE(join != nullptr) << "join_game id should resolve";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::JoinGame), static_cast<int>(join->command)) << "join_game should map to JoinGame command";
 
     const PickerMenuItem* p4 = find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 4);
     ASSERT_TRUE(p4 != nullptr) << "set player mode with arg=4 should resolve";
@@ -87,3 +96,12 @@ TEST(MenuModel, round10_set_player_mode_arg_variants_and_invalid_command_lookup)
     ASSERT_TRUE(invalid_cmd == nullptr) << "invalid menu id plus unmatched command should return nullptr via fallback lookup";
 }
 
+TEST(MenuModel, normalize_direct_websocket_url_accepts_plain_endpoints_and_ws_urls)
+{
+    EXPECT_EQ("ws://192.168.1.5:12345",
+              og::ui::normalize_direct_websocket_url("192.168.1.5:12345"));
+    EXPECT_EQ("ws://127.0.0.1:12345",
+              og::ui::normalize_direct_websocket_url(" 127.0.0.1:12345 "));
+    EXPECT_EQ("wss://relay.example/room",
+              og::ui::normalize_direct_websocket_url("wss://relay.example/room"));
+}

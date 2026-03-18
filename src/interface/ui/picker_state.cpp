@@ -22,6 +22,10 @@ MainMenuAction IPickerClient::show_main_menu()
             return MainMenuAction::NewGame;
         case PickerMenuCommand::ContinueGame:
             return MainMenuAction::ViewTeam;
+        case PickerMenuCommand::HostGame:
+            return MainMenuAction::HostGame;
+        case PickerMenuCommand::JoinGame:
+            return MainMenuAction::JoinGame;
         case PickerMenuCommand::Options:
             return MainMenuAction::Options;
         case PickerMenuCommand::Help:
@@ -71,6 +75,16 @@ void run_picker(IPickerClient& client)
             case MainMenuAction::NewGame:
                 transition.next_screen = client.prepare_new_game()
                     ? PickerScreen::CampaignSelect
+                    : PickerScreen::MainMenu;
+                break;
+            case MainMenuAction::HostGame:
+                transition.next_screen = client.host_game()
+                    ? PickerScreen::TeamBuild
+                    : PickerScreen::MainMenu;
+                break;
+            case MainMenuAction::JoinGame:
+                transition.next_screen = client.join_game()
+                    ? PickerScreen::TeamBuild
                     : PickerScreen::MainMenu;
                 break;
             case MainMenuAction::LoadGame:

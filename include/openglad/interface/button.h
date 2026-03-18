@@ -231,6 +231,8 @@ enum class ButtonAction : Sint32
     OpenControlSettings = 48,
     ToggleControlMode = 49,
     EditPlayerKeymap = 50,
+    HostGame = 51,
+    JoinGame = 52,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

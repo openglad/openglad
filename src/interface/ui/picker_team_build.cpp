@@ -36,6 +36,7 @@
 
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -228,6 +229,27 @@ Sint32 create_team_menu(Sint32 arg1)
 		og::runtime::current_session->myscreen_->clearbuffer();
         draw_backdrop();
         draw_buttons(buttons, num_buttons);
+
+        const std::vector<std::string> lobby_status = picker_lobby_status_lines();
+        for (std::size_t line_index = 0;
+             line_index < lobby_status.size() && line_index < 2;
+             ++line_index)
+        {
+            const std::string& line = lobby_status[line_index];
+            if (line.empty())
+                continue;
+
+            const int status_y = 8 + static_cast<int>(line_index) * 10;
+            const int status_w = static_cast<int>(line.size()) * 6;
+            og::runtime::current_session->myscreen_->draw_rect_filled(
+                10,
+                status_y - 1,
+                status_w + 4,
+                8,
+                PURE_BLACK,
+                150);
+            mytext.write_xy(12, status_y, WHITE, "%s", line.c_str());
+        }
         
         // Level name
         int len = static_cast<int>(og::runtime::current_session->myscreen_->world().title.size());

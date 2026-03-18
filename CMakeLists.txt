@@ -117,6 +117,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
     ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
+    ${SRC_DIR}/platform/sdl/picker_lobby_network_client.cpp
     ${OG_NETWORK_SOURCES}
     ${SRC_DIR}/interface/score_panel.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
@@ -237,6 +238,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/lobby_server.cpp
     ${SRC_DIR}/gameplay/game_client.cpp
     ${SRC_DIR}/gameplay/net_transport.cpp
+    ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
@@ -350,6 +352,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
     ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
+    ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/interface/score_panel.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/interface/screen.cpp
@@ -471,6 +474,8 @@ set(OG_PLATFORM_SDL_COMPONENT_SOURCES
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
     ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
+    ${SRC_DIR}/platform/sdl/picker_lobby_network_client.cpp
+    ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
 )
@@ -1012,6 +1017,9 @@ if(NOT EMSCRIPTEN)
             og_platform_sdl
             og_runtime_deps
         )
+    endif()
+    if(TARGET og_platform_ws_transport)
+        target_link_libraries(og_game INTERFACE og_platform_ws_transport)
     endif()
 
     # Stage runtime assets into the build tree so tests and local runs do not
@@ -1742,6 +1750,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_multiplex.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_emscripten_ws.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_client.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_server.cpp
@@ -2021,6 +2030,7 @@ endif()
         -sASYNCIFY_STACK_SIZE=65536
         -sEXIT_RUNTIME=0
         "SHELL:-sMINIFY_HTML=0"
+        -lwebsocket.js
         -lidbfs.js
         "SHELL:-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\"]"
         "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/web/shell.html"

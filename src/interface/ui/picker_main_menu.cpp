@@ -29,9 +29,9 @@
 #include <memory>
 
 #ifndef DISABLE_MULTIPLAYER
-constexpr int OPTIONS_BUTTON_INDEX = 10;
+constexpr int OPTIONS_BUTTON_INDEX = 12;
 #else
-constexpr int OPTIONS_BUTTON_INDEX = 5;
+constexpr int OPTIONS_BUTTON_INDEX = 7;
 #endif
 
 #include "picker_sdl_defs.h"

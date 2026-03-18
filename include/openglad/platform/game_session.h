@@ -13,6 +13,13 @@ class options;
 class cfg_store;
 struct InputState;
 
+namespace og::sim {
+class ITransport;
+class InProcessTransport;
+struct LobbyPlayerBinding;
+using PeerId = std::uint32_t;
+}
+
 namespace og::runtime {
 
 struct LocalTransportRuntime;
@@ -67,6 +74,17 @@ private:
         const GameSession& session) noexcept;
     friend void reset_local_transport_shadow(GameSession& session,
                                              screen& gameplay_screen);
+    friend void reset_network_host_transport_shadow(
+        GameSession& session,
+        screen& gameplay_screen,
+        std::shared_ptr<og::sim::ITransport> server_transport,
+        std::shared_ptr<og::sim::InProcessTransport> local_client_transport,
+        const std::vector<og::sim::LobbyPlayerBinding>& player_bindings);
+    friend void reset_network_client_transport_shadow(
+        GameSession& session,
+        screen& gameplay_screen,
+        std::shared_ptr<og::sim::ITransport> client_transport,
+        og::sim::PeerId server_peer_id);
     friend void clear_local_transport_shadow(GameSession& session) noexcept;
     friend bool local_transport_shadow_toggle_pause(GameSession& session);
     friend void local_transport_shadow_send_input(GameSession& session,

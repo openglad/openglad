@@ -5,6 +5,14 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <vector>
+
+class screen;
+
+namespace og::runtime {
+class GameSession;
+}
 
 namespace og::ui {
 
@@ -32,6 +40,17 @@ public:
     [[nodiscard]] virtual std::optional<PickerLobbyGameStartConfig>
     consume_game_start_config() = 0;
     [[nodiscard]] virtual bool start_request_pending() const noexcept = 0;
+    [[nodiscard]] virtual std::vector<std::string> status_lines() const
+    {
+        return {};
+    }
+    virtual bool install_gameplay_runtime(og::runtime::GameSession& session,
+                                          screen& gameplay_screen)
+    {
+        (void)session;
+        (void)gameplay_screen;
+        return false;
+    }
 };
 
 std::unique_ptr<IPickerLobbyClient> create_local_picker_lobby_client();
@@ -52,3 +71,6 @@ bool picker_lobby_request_start();
 std::optional<og::ui::PickerLobbyGameStartConfig>
 picker_lobby_consume_game_start_config();
 bool picker_lobby_start_request_pending();
+std::vector<std::string> picker_lobby_status_lines();
+bool picker_lobby_install_gameplay_runtime(og::runtime::GameSession& session,
+                                           screen& gameplay_screen);

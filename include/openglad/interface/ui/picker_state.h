@@ -36,6 +36,8 @@ enum class MainMenuAction : std::int32_t
 {
     ContinueGame,       // Resume with current team
     NewGame,            // Start fresh
+    HostGame,           // Host a networked lobby
+    JoinGame,           // Join a networked lobby
     LoadGame,           // Load a save file
     SaveGame,           // Save current team
     ViewTeam,           // View team roster
@@ -73,6 +75,12 @@ public:
     // Prepare local save/team state for starting a new game.
     // Return false to cancel and go back to the main menu.
     virtual bool prepare_new_game() { return true; }
+
+    // Prepare a hosted network lobby from the current save.
+    virtual bool host_game() { return false; }
+
+    // Join a network lobby from the current save.
+    virtual bool join_game() { return false; }
 
     // Display team building menu.
     virtual TeamBuildAction show_team_build();
