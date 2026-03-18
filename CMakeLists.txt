@@ -1681,6 +1681,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
         )
         target_link_libraries(og_unit_sim PRIVATE og_platform_emscripten_transport)
+        target_include_directories(og_unit_sim PRIVATE ${SRC_DIR}/platform/emscripten)
 
         og_add_unit_group(og_unit_families FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp

@@ -1,5 +1,7 @@
 #include <openglad/platform/net_transport_emscripten_ws.h>
 
+#include "net_transport_emscripten_ws_detail.h"
+
 #include <deque>
 #include <format>
 #include <limits>
