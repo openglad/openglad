@@ -48,6 +48,12 @@ public:
     {
         return {};
     }
+    [[nodiscard]] virtual bool is_save_slot_editable(
+        std::size_t slot_index) const noexcept
+    {
+        (void)slot_index;
+        return true;
+    }
     virtual bool install_gameplay_runtime(og::runtime::GameSession& session,
                                           screen& gameplay_screen)
     {
@@ -60,6 +66,9 @@ public:
 std::unique_ptr<IPickerLobbyClient> create_local_picker_lobby_client();
 void install_active_picker_lobby_client(IPickerLobbyClient* client) noexcept;
 IPickerLobbyClient* active_picker_lobby_client() noexcept;
+using PickerSaveSlotEditableCallback = bool (*)(int);
+inline PickerSaveSlotEditableCallback g_picker_save_slot_editable_callback =
+    nullptr;
 
 } // namespace og::ui
 
@@ -77,5 +86,13 @@ picker_lobby_consume_game_start_config();
 bool picker_lobby_start_request_pending();
 bool picker_lobby_has_game_start_config();
 std::vector<std::string> picker_lobby_status_lines();
+inline bool picker_lobby_save_slot_editable(int slot_index)
+{
+    if (slot_index < 0)
+        return false;
+    if (og::ui::g_picker_save_slot_editable_callback)
+        return og::ui::g_picker_save_slot_editable_callback(slot_index);
+    return true;
+}
 bool picker_lobby_install_gameplay_runtime(og::runtime::GameSession& session,
                                            screen& gameplay_screen);

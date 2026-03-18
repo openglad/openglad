@@ -6,6 +6,7 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <gtest/gtest.h>
+#include <array>
 #include <atomic>
 #include <cstdlib>
 #include <cstdint>
@@ -103,9 +104,18 @@ public:
     {
         return pending_config.has_value();
     }
+    [[nodiscard]] bool is_save_slot_editable(
+        std::size_t slot_index) const noexcept override
+    {
+        if (!restrict_editable_slots)
+            return true;
+        return slot_index < editable_slots.size() && editable_slots[slot_index];
+    }
 
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_config;
     int consume_calls = 0;
+    bool restrict_editable_slots = false;
+    std::array<bool, MAX_TEAM_SIZE> editable_slots{};
 };
 
 struct ActivePickerLobbyClientGuard
@@ -1258,6 +1268,50 @@ TEST(PickerFuncs, train_team_change_persists_after_accept)
     save.numplayers = old_numplayers;
     for (int i = 0; i < 4; ++i)
         save.m_totalcash[i] = old_cash[i];
+}
+
+TEST(PickerFuncs, change_teamnum_ignores_non_editable_lobby_slot)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const unsigned char old_team_size = save.team_size;
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+
+    std::unique_ptr<guy> old_current =
+        std::move(og::runtime::current_session->current_guy_);
+    const short old_team_num = og::runtime::current_session->current_team_num_;
+    const int old_editguy = og::runtime::current_session->editguy_;
+    auto* old_team_button = og::runtime::current_session->allbuttons_[18];
+
+    save.team_size = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    og::runtime::current_session->current_guy_ =
+        std::make_unique<guy>(*save.team_list[0]);
+    og::runtime::current_session->current_team_num_ = 0;
+    og::runtime::current_session->editguy_ = 0;
+    og::runtime::current_session->allbuttons_[18] =
+        new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0,
+                    "team", KEYSTATE_UNKNOWN);
+
+    ContractPickerLobbyClient client;
+    client.restrict_editable_slots = true;
+    client.editable_slots.fill(true);
+    client.editable_slots[0] = false;
+    ActivePickerLobbyClientGuard guard(&client);
+
+    ASSERT_EQ(0, static_cast<int>(change_teamnum(1)));
+    EXPECT_EQ(0, static_cast<int>(og::runtime::current_session->current_guy_->teamnum));
+
+    delete og::runtime::current_session->allbuttons_[18];
+    og::runtime::current_session->allbuttons_[18] = old_team_button;
+    og::runtime::current_session->current_guy_ = std::move(old_current);
+    og::runtime::current_session->current_team_num_ = old_team_num;
+    og::runtime::current_session->editguy_ = old_editguy;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.team_size = old_team_size;
 }
 
 TEST(PickerFuncs, train_session_survives_team_slot_replacement_after_accept)

@@ -1763,6 +1763,8 @@ Sint32 change_teamnum(Sint32 arg)
    // What is our current team number?
    if (!og::runtime::current_session->current_guy_)
        return 0;
+   if (!picker_lobby_save_slot_editable(og::runtime::current_session->editguy_))
+       return 0;
    current_team = og::runtime::current_session->current_guy_->teamnum;
 
    // We can be from team 0 (default) to team 3 .. make sure

@@ -19,6 +19,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <chrono>
@@ -50,6 +51,13 @@ struct OrderedLobbySlot {
     std::uint8_t slot_index = 0;
     std::size_t player_order = 0;
     std::size_t slot_order = 0;
+    const og::sim::LobbyPlayer* player = nullptr;
+    const og::sim::LobbyCharacterSlot* slot = nullptr;
+};
+
+struct AppliedLobbySlot {
+    std::uint8_t save_slot_index = 0;
+    const og::sim::LobbyPlayer* player = nullptr;
     const og::sim::LobbyCharacterSlot* slot = nullptr;
 };
 
@@ -422,7 +430,8 @@ short resolve_initial_local_team(const SaveData& save)
 
 og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
                                               std::string_view player_name,
-                                              short local_team)
+                                              short local_team,
+                                              const std::array<bool, MAX_TEAM_SIZE>* excluded_slots = nullptr)
 {
     og::sim::LobbyPlayer player;
     player.name = std::string(player_name);
@@ -432,6 +441,9 @@ og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
 
     for (std::size_t slot_index = 0; slot_index < save.team_list.size(); ++slot_index)
     {
+        if (excluded_slots != nullptr && (*excluded_slots)[slot_index])
+            continue;
+
         const auto& member = save.team_list[slot_index];
         if (member == nullptr || member->teamnum != local_team)
             continue;
@@ -443,6 +455,61 @@ og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
     }
 
     return player;
+}
+
+std::vector<AppliedLobbySlot> collect_applied_lobby_slots(
+    const og::sim::LobbyState& state)
+{
+    std::vector<OrderedLobbySlot> ordered_slots;
+    for (std::size_t player_index = 0; player_index < state.players.size();
+         ++player_index)
+    {
+        const og::sim::LobbyPlayer& player = state.players[player_index];
+        for (std::size_t slot_order = 0;
+             slot_order < player.character_slots.size();
+             ++slot_order)
+        {
+            ordered_slots.push_back(OrderedLobbySlot{
+                .slot_index = player.character_slots[slot_order].slot_index,
+                .player_order = player_index,
+                .slot_order = slot_order,
+                .player = &player,
+                .slot = &player.character_slots[slot_order],
+            });
+        }
+    }
+
+    std::sort(ordered_slots.begin(), ordered_slots.end(),
+              [](const OrderedLobbySlot& lhs, const OrderedLobbySlot& rhs) {
+                  if (lhs.slot_index != rhs.slot_index)
+                      return lhs.slot_index < rhs.slot_index;
+                  if (lhs.player_order != rhs.player_order)
+                      return lhs.player_order < rhs.player_order;
+                  return lhs.slot_order < rhs.slot_order;
+              });
+
+    const bool slots_are_dense = std::all_of(
+        ordered_slots.begin(), ordered_slots.end(),
+        [&ordered_slots](const OrderedLobbySlot& slot) {
+            return static_cast<std::size_t>(slot.slot_index) ==
+                static_cast<std::size_t>(&slot - ordered_slots.data());
+        });
+
+    std::vector<AppliedLobbySlot> applied_slots;
+    applied_slots.reserve(ordered_slots.size());
+    for (std::size_t index = 0; index < ordered_slots.size(); ++index)
+    {
+        std::uint8_t save_slot_index = ordered_slots[index].slot_index;
+        if (!slots_are_dense)
+            save_slot_index = static_cast<std::uint8_t>(index);
+        applied_slots.push_back(AppliedLobbySlot{
+            .save_slot_index = save_slot_index,
+            .player = ordered_slots[index].player,
+            .slot = ordered_slots[index].slot,
+        });
+    }
+
+    return applied_slots;
 }
 
 const og::sim::LobbyPlayer* find_local_player(
@@ -471,49 +538,33 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     equivalent.numplayers = spectator_mode ? 0u : 1u;
     equivalent.allied_mode = state.settings.allied_mode;
 
-    std::vector<OrderedLobbySlot> ordered_slots;
-    for (std::size_t player_index = 0; player_index < state.players.size();
-         ++player_index)
+    for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
     {
-        const og::sim::LobbyPlayer& player = state.players[player_index];
-        for (std::size_t slot_order = 0;
-             slot_order < player.character_slots.size();
-             ++slot_order)
-        {
-            ordered_slots.push_back(OrderedLobbySlot{
-                .slot_index = player.character_slots[slot_order].slot_index,
-                .player_order = player_index,
-                .slot_order = slot_order,
-                .slot = &player.character_slots[slot_order],
-            });
-        }
-    }
-
-    std::sort(ordered_slots.begin(), ordered_slots.end(),
-              [](const OrderedLobbySlot& lhs, const OrderedLobbySlot& rhs) {
-                  if (lhs.slot_index != rhs.slot_index)
-                      return lhs.slot_index < rhs.slot_index;
-                  if (lhs.player_order != rhs.player_order)
-                      return lhs.player_order < rhs.player_order;
-                  return lhs.slot_order < rhs.slot_order;
-              });
-
-    const bool slots_are_dense = std::all_of(
-        ordered_slots.begin(), ordered_slots.end(),
-        [&ordered_slots](const OrderedLobbySlot& slot) {
-            return static_cast<std::size_t>(slot.slot_index) ==
-                static_cast<std::size_t>(&slot - ordered_slots.data());
-        });
-
-    for (std::size_t index = 0; index < ordered_slots.size(); ++index)
-    {
-        og::sim::LobbyCharacterSlot compacted = *ordered_slots[index].slot;
-        if (!slots_are_dense)
-            compacted.slot_index = static_cast<std::uint8_t>(index);
+        og::sim::LobbyCharacterSlot compacted = *slot.slot;
+        compacted.slot_index = slot.save_slot_index;
         equivalent.team_list.push_back(std::move(compacted));
     }
 
     return equivalent;
+}
+
+std::array<bool, MAX_TEAM_SIZE> build_remote_owned_slot_mask(
+    const og::sim::LobbyState& state,
+    std::string_view local_player_name)
+{
+    std::array<bool, MAX_TEAM_SIZE> remote_slots{};
+    remote_slots.fill(false);
+
+    for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
+    {
+        if (slot.save_slot_index >= remote_slots.size())
+            continue;
+        if (slot.player == nullptr || slot.player->name == local_player_name)
+            continue;
+        remote_slots[slot.save_slot_index] = true;
+    }
+
+    return remote_slots;
 }
 
 void apply_lobby_state_to_save(const og::sim::LobbyState& state,
@@ -531,54 +582,17 @@ void apply_lobby_state_to_save(const og::sim::LobbyState& state,
     save.numplayers = static_cast<unsigned char>(spectator_mode ? 0 : 1);
     save.my_team = local_team;
 
-    std::vector<OrderedLobbySlot> ordered_slots;
-    for (std::size_t player_index = 0; player_index < state.players.size();
-         ++player_index)
-    {
-        const og::sim::LobbyPlayer& player = state.players[player_index];
-        for (std::size_t slot_order = 0;
-             slot_order < player.character_slots.size();
-             ++slot_order)
-        {
-            ordered_slots.push_back(OrderedLobbySlot{
-                .slot_index = player.character_slots[slot_order].slot_index,
-                .player_order = player_index,
-                .slot_order = slot_order,
-                .slot = &player.character_slots[slot_order],
-            });
-        }
-    }
-
-    std::sort(ordered_slots.begin(), ordered_slots.end(),
-              [](const OrderedLobbySlot& lhs, const OrderedLobbySlot& rhs) {
-                  if (lhs.slot_index != rhs.slot_index)
-                      return lhs.slot_index < rhs.slot_index;
-                  if (lhs.player_order != rhs.player_order)
-                      return lhs.player_order < rhs.player_order;
-                  return lhs.slot_order < rhs.slot_order;
-              });
-
-    const bool slots_are_dense = std::all_of(
-        ordered_slots.begin(), ordered_slots.end(),
-        [&ordered_slots](const OrderedLobbySlot& slot) {
-            return static_cast<std::size_t>(slot.slot_index) ==
-                static_cast<std::size_t>(&slot - ordered_slots.data());
-        });
-
     for (auto& member : save.team_list)
         member.reset();
     save.team_size = 0;
 
-    for (std::size_t index = 0; index < ordered_slots.size(); ++index)
+    for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
     {
-        std::uint8_t slot_index = ordered_slots[index].slot_index;
-        if (!slots_are_dense)
-            slot_index = static_cast<std::uint8_t>(index);
-        if (slot_index >= save.team_list.size())
+        if (slot.save_slot_index >= save.team_list.size())
             continue;
 
-        save.team_list[slot_index] =
-            make_guy_from_lobby_character(ordered_slots[index].slot->character);
+        save.team_list[slot.save_slot_index] =
+            make_guy_from_lobby_character(slot.slot->character);
         ++save.team_size;
     }
 
@@ -600,11 +614,16 @@ void send_lobby_message(og::sim::ITransport& transport,
 
 og::sim::LobbyMessage make_join_message(const SaveData& save,
                                         std::string_view player_name,
-                                        short local_team)
+                                        short local_team,
+                                        const std::array<bool, MAX_TEAM_SIZE>* excluded_slots = nullptr)
 {
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbyJoinMessage{
-        .player = build_local_lobby_player(save, player_name, local_team),
+        .player = build_local_lobby_player(
+            save,
+            player_name,
+            local_team,
+            excluded_slots),
     };
     return message;
 }
@@ -805,6 +824,7 @@ public:
         local_team_ = resolve_initial_local_team(*save);
         save->numplayers = static_cast<unsigned char>(spectator_mode_ ? 0 : 1);
         save->my_team = local_team_;
+        direct_address_ = detect_lan_ipv4_address();
 
         local_server_transport_ = og::sim::InProcessTransport::create_server();
         local_server_transport_->accept_connections();
@@ -879,7 +899,11 @@ public:
         send_lobby_message(
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
-            make_join_message(*save, player_name_, local_team_));
+            make_join_message(
+                *save,
+                player_name_,
+                local_team_,
+                &remote_owned_save_slots_));
 
         poll_messages();
         apply_state_to_current_save();
@@ -901,6 +925,8 @@ public:
         spectator_mode_ = false;
         local_team_ = 0;
         start_request_pending_ = false;
+        remote_owned_save_slots_.fill(false);
+        direct_address_.clear();
         relay_room_code_.clear();
         relay_status_message_.clear();
         direct_status_message_.clear();
@@ -1014,6 +1040,13 @@ public:
         return status_lines_;
     }
 
+    [[nodiscard]] bool is_save_slot_editable(
+        std::size_t slot_index) const noexcept override
+    {
+        return slot_index < remote_owned_save_slots_.size() &&
+            !remote_owned_save_slots_[slot_index];
+    }
+
     bool install_gameplay_runtime(og::runtime::GameSession& session,
                                   screen& gameplay_screen) override
     {
@@ -1069,7 +1102,11 @@ private:
         send_lobby_message(
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
-            make_join_message(*save, player_name_, local_team_));
+            make_join_message(
+                *save,
+                player_name_,
+                local_team_,
+                &remote_owned_save_slots_));
     }
 
     void handle_typed_message(const og::sim::TypedReceivedMessage& message)
@@ -1126,12 +1163,14 @@ private:
             return;
 
         apply_lobby_state_to_save(*state_, *save, spectator_mode_, local_team_);
+        remote_owned_save_slots_ =
+            build_remote_owned_slot_mask(*state_, player_name_);
     }
 
     void rebuild_status_lines()
     {
         status_lines_ = og::ui::build_host_picker_status_lines(
-            detect_lan_ipv4_address(),
+            direct_address_,
             static_cast<bool>(websocket_server_transport_),
             options_.port,
             direct_status_message_,
@@ -1144,6 +1183,7 @@ private:
 
     og::ui::PickerHostGameOptions options_;
     std::string player_name_;
+    std::string direct_address_;
     std::shared_ptr<og::sim::InProcessTransport> local_server_transport_;
     std::shared_ptr<og::sim::InProcessTransport> local_client_transport_;
     std::shared_ptr<og::sim::ITransport> combined_transport_;
@@ -1153,6 +1193,7 @@ private:
     std::optional<og::sim::LobbyState> state_;
     std::vector<og::sim::LobbyPlayerBinding> player_bindings_;
     std::vector<std::string> status_lines_;
+    std::array<bool, MAX_TEAM_SIZE> remote_owned_save_slots_{};
     bool spectator_mode_ = false;
     short local_team_ = 0;
     bool start_request_pending_ = false;
@@ -1229,6 +1270,7 @@ public:
         spectator_mode_ = false;
         local_team_ = 0;
         start_request_pending_ = false;
+        remote_owned_save_slots_.fill(false);
         join_message_sent_ = false;
         settings_dirty_ = false;
     }
@@ -1360,6 +1402,13 @@ public:
         return status_lines_;
     }
 
+    [[nodiscard]] bool is_save_slot_editable(
+        std::size_t slot_index) const noexcept override
+    {
+        return slot_index < remote_owned_save_slots_.size() &&
+            !remote_owned_save_slots_[slot_index];
+    }
+
     bool install_gameplay_runtime(og::runtime::GameSession& session,
                                   screen& gameplay_screen) override
     {
@@ -1413,7 +1462,11 @@ private:
         send_lobby_message(
             *transport_,
             server_peer_id_,
-            make_join_message(*save, player_name_, local_team_));
+            make_join_message(
+                *save,
+                player_name_,
+                local_team_,
+                &remote_owned_save_slots_));
     }
 
     void handle_typed_message(const og::sim::TypedReceivedMessage& message)
@@ -1479,6 +1532,8 @@ private:
             return;
 
         apply_lobby_state_to_save(*state_, *save, spectator_mode_, local_team_);
+        remote_owned_save_slots_ =
+            build_remote_owned_slot_mask(*state_, player_name_);
     }
 
     void rebuild_status_lines()
@@ -1509,6 +1564,7 @@ private:
     og::sim::PeerId server_peer_id_ = 1;
     std::optional<og::sim::LobbyState> state_;
     std::vector<std::string> status_lines_;
+    std::array<bool, MAX_TEAM_SIZE> remote_owned_save_slots_{};
     bool spectator_mode_ = false;
     short local_team_ = 0;
     bool start_request_pending_ = false;

@@ -1276,6 +1276,9 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	text& nametext = og::runtime::current_session->myscreen_->text_normal;
 	guy *someguy;
 
+	if (arg && !picker_lobby_save_slot_editable(og::runtime::current_session->editguy_))
+		return MENU_REDRAW;
+
 	if (arg)
 		someguy = og::runtime::current_session->myscreen_->save_data.team_list[og::runtime::current_session->editguy_].get();
 	else
@@ -1331,6 +1334,8 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 {
 	if (!pks().train_session || pks().train_session->empty())
 		return -1;
+	if (!picker_lobby_save_slot_editable(pks().train_session->current_slot()))
+		return MENU_OK;
 
 	// SDL-specific: cheat mode (hold right mouse → free changes)
 	bool force = false;

@@ -522,6 +522,24 @@ og::ui::IPickerLobbyClient* maybe_picker_lobby_client() noexcept
     return g_standalone_picker_lobby_client.get();
 }
 
+bool active_picker_lobby_slot_editable_callback(int slot_index)
+{
+    if (slot_index < 0 || slot_index >= MAX_TEAM_SIZE)
+        return false;
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+    {
+        return client->is_save_slot_editable(
+            static_cast<std::size_t>(slot_index));
+    }
+    return true;
+}
+
+const bool g_picker_save_slot_editable_callback_registered = [] {
+    og::ui::g_picker_save_slot_editable_callback =
+        &active_picker_lobby_slot_editable_callback;
+    return true;
+}();
+
 } // namespace
 
 namespace og::ui {

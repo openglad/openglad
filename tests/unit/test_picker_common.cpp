@@ -1,12 +1,72 @@
 #include <gtest/gtest.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <array>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <vector>
+
+namespace {
+
+class EditableSlotPickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override
+    {
+        return false;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool is_save_slot_editable(
+        std::size_t slot_index) const noexcept override
+    {
+        return slot_index < editable_slots.size() && editable_slots[slot_index];
+    }
+
+    std::array<bool, MAX_TEAM_SIZE> editable_slots{};
+};
+
+struct ActivePickerLobbyClientGuard
+{
+    og::ui::IPickerLobbyClient* saved = nullptr;
+
+    explicit ActivePickerLobbyClientGuard(og::ui::IPickerLobbyClient* client)
+        : saved(og::ui::active_picker_lobby_client())
+    {
+        og::ui::install_active_picker_lobby_client(client);
+    }
+
+    ~ActivePickerLobbyClientGuard()
+    {
+        og::ui::install_active_picker_lobby_client(saved);
+    }
+};
+
+} // namespace
 
 // --- calculate_hire_cost ---
 
@@ -130,6 +190,31 @@ TEST(PickerCommon, add_recruit_to_team)
     int slot3 = og::ui::add_recruit_to_team(save, std::move(recruit3), 0);
     ASSERT_TRUE(slot3 == 0);
     ASSERT_TRUE(save.team_size == 2);
+}
+
+TEST(PickerCommon, train_session_skips_non_editable_lobby_slots)
+{
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Remote";
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->name = "Local";
+    save.team_size = 2;
+
+    EditableSlotPickerLobbyClient client;
+    client.editable_slots.fill(false);
+    client.editable_slots[1] = true;
+    ActivePickerLobbyClientGuard guard(&client);
+
+    og::ui::TrainSession session(save);
+    ASSERT_FALSE(session.empty());
+    EXPECT_EQ(1, session.current_slot());
+    EXPECT_EQ("Local", session.original().name);
+
+    session.next_member();
+    EXPECT_EQ(1, session.current_slot());
+    session.prev_member();
+    EXPECT_EQ(1, session.current_slot());
 }
 
 // --- create_recruit ---

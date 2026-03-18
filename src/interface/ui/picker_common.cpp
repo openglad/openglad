@@ -5,6 +5,7 @@
  */
 
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -630,9 +631,10 @@ TrainSession::TrainSession(SaveData& save)
     if (save_.team_size < 1)
         return;
 
-    // Find first non-null team slot
+    // Find first editable team slot. Network lobbies render remote players in
+    // the shared save view, but only the local player's slots may be trained.
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        if (save_.team_list[i]) {
+        if (save_.team_list[i] && picker_lobby_save_slot_editable(i)) {
             edit_slot_ = i;
             break;
         }
@@ -656,7 +658,9 @@ void TrainSession::next_member()
         edit_slot_++;
         if (edit_slot_ >= MAX_TEAM_SIZE)
             edit_slot_ = 0;
-    } while (!save_.team_list[edit_slot_] && edit_slot_ != start);
+    } while ((!save_.team_list[edit_slot_] ||
+              !picker_lobby_save_slot_editable(edit_slot_)) &&
+             edit_slot_ != start);
 
     select_current_slot();
 }
@@ -671,7 +675,9 @@ void TrainSession::prev_member()
         edit_slot_--;
         if (edit_slot_ < 0)
             edit_slot_ = MAX_TEAM_SIZE - 1;
-    } while (!save_.team_list[edit_slot_] && edit_slot_ != start);
+    } while ((!save_.team_list[edit_slot_] ||
+              !picker_lobby_save_slot_editable(edit_slot_)) &&
+             edit_slot_ != start);
 
     select_current_slot();
 }
@@ -863,12 +869,16 @@ guy* TrainSession::original_member()
 {
     if (edit_slot_ < 0 || edit_slot_ >= MAX_TEAM_SIZE)
         return nullptr;
+    if (!picker_lobby_save_slot_editable(edit_slot_))
+        return nullptr;
     return save_.team_list[edit_slot_].get();
 }
 
 const guy* TrainSession::original_member() const
 {
     if (edit_slot_ < 0 || edit_slot_ >= MAX_TEAM_SIZE)
+        return nullptr;
+    if (!picker_lobby_save_slot_editable(edit_slot_))
         return nullptr;
     return save_.team_list[edit_slot_].get();
 }
