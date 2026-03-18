@@ -36,9 +36,9 @@
 
 #if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))
 #include <arpa/inet.h>
-#include <ifaddrs.h>
-#include <net/if.h>
+#include <netdb.h>
 #include <sys/socket.h>
+#include <unistd.h>
 #endif
 
 extern bool g_start_game_requested;
@@ -428,10 +428,15 @@ short resolve_initial_local_team(const SaveData& save)
     return 0;
 }
 
-og::sim::LobbyPlayer build_local_lobby_player(const SaveData& save,
-                                              std::string_view player_name,
-                                              short local_team,
-                                              const std::array<bool, MAX_TEAM_SIZE>* excluded_slots = nullptr)
+} // namespace
+
+namespace og::ui::detail {
+
+og::sim::LobbyPlayer build_local_lobby_player(
+    const SaveData& save,
+    std::string_view player_name,
+    short local_team,
+    const std::array<bool, MAX_TEAM_SIZE>* excluded_slots = nullptr)
 {
     og::sim::LobbyPlayer player;
     player.name = std::string(player_name);
@@ -648,6 +653,10 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
     return message;
 }
 
+} // namespace og::ui::detail
+
+namespace {
+
 std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
     og::sim::ITransport& transport)
 {
@@ -712,32 +721,98 @@ std::string detect_lan_ipv4_address()
         return "127.0.0.1";
     return value;
 #elif defined(__unix__) || defined(__APPLE__)
-    ifaddrs* ifaddr = nullptr;
-    if (getifaddrs(&ifaddr) != 0 || ifaddr == nullptr)
-        return "127.0.0.1";
+    const auto is_usable_ipv4 = [](const in_addr& address) {
+        const std::uint32_t host_order = ntohl(address.s_addr);
+        return host_order != 0 && (host_order >> 24) != 127;
+    };
 
-    std::string result = "127.0.0.1";
-    for (ifaddrs* current = ifaddr; current != nullptr; current = current->ifa_next)
-    {
-        if (current->ifa_addr == nullptr ||
-            current->ifa_addr->sa_family != AF_INET ||
-            (current->ifa_flags & IFF_LOOPBACK) != 0)
-        {
-            continue;
-        }
+    const auto to_ipv4_string = [&](const in_addr& address)
+        -> std::optional<std::string> {
+        if (!is_usable_ipv4(address))
+            return std::nullopt;
 
         char buffer[INET_ADDRSTRLEN] = {};
-        const sockaddr_in* const address =
-            reinterpret_cast<const sockaddr_in*>(current->ifa_addr);
-        if (inet_ntop(AF_INET, &address->sin_addr, buffer, sizeof(buffer)))
-        {
-            result = buffer;
-            break;
-        }
-    }
+        if (inet_ntop(AF_INET, &address, buffer, sizeof(buffer)) == nullptr)
+            return std::nullopt;
+        return std::string(buffer);
+    };
 
-    freeifaddrs(ifaddr);
-    return result;
+    const auto detect_via_udp_socket = [&]() -> std::optional<std::string> {
+        const int descriptor = socket(AF_INET, SOCK_DGRAM, 0);
+        if (descriptor < 0)
+            return std::nullopt;
+
+        sockaddr_in remote = {};
+        remote.sin_family = AF_INET;
+        remote.sin_port = htons(9);
+        if (inet_pton(AF_INET, "198.18.0.1", &remote.sin_addr) != 1)
+        {
+            close(descriptor);
+            return std::nullopt;
+        }
+
+        const int connect_result = connect(
+            descriptor,
+            reinterpret_cast<const sockaddr*>(&remote),
+            sizeof(remote));
+        if (connect_result != 0)
+        {
+            close(descriptor);
+            return std::nullopt;
+        }
+
+        sockaddr_in local = {};
+        socklen_t local_size = sizeof(local);
+        const int name_result = getsockname(
+            descriptor,
+            reinterpret_cast<sockaddr*>(&local),
+            &local_size);
+        close(descriptor);
+        if (name_result != 0 || local.sin_family != AF_INET)
+            return std::nullopt;
+
+        return to_ipv4_string(local.sin_addr);
+    };
+
+    const auto detect_via_hostname = [&]() -> std::optional<std::string> {
+        char hostname[256] = {};
+        if (gethostname(hostname, sizeof(hostname)) != 0 || hostname[0] == '\0')
+            return std::nullopt;
+
+        addrinfo hints = {};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+
+        addrinfo* results = nullptr;
+        if (getaddrinfo(hostname, nullptr, &hints, &results) != 0 ||
+            results == nullptr)
+        {
+            return std::nullopt;
+        }
+
+        std::optional<std::string> detected_address;
+        for (addrinfo* current = results; current != nullptr;
+             current = current->ai_next)
+        {
+            if (current->ai_addr == nullptr || current->ai_addrlen < sizeof(sockaddr_in))
+                continue;
+
+            const auto* const address =
+                reinterpret_cast<const sockaddr_in*>(current->ai_addr);
+            detected_address = to_ipv4_string(address->sin_addr);
+            if (detected_address.has_value())
+                break;
+        }
+
+        freeaddrinfo(results);
+        return detected_address;
+    };
+
+    if (const auto address = detect_via_udp_socket(); address.has_value())
+        return *address;
+    if (const auto address = detect_via_hostname(); address.has_value())
+        return *address;
+    return "127.0.0.1";
 #else
     return "127.0.0.1";
 #endif
@@ -892,14 +967,14 @@ public:
         combined_transport_->accept_connections();
         server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
 
-        send_lobby_message(
+        og::ui::detail::send_lobby_message(
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
-            make_settings_message(*save));
-        send_lobby_message(
+            og::ui::detail::make_settings_message(*save));
+        og::ui::detail::send_lobby_message(
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
-            make_join_message(
+            og::ui::detail::make_join_message(
                 *save,
                 player_name_,
                 local_team_,
@@ -976,7 +1051,7 @@ public:
             return false;
 
         const og::sim::LobbyPlayer* const local_player =
-            find_local_player(*state_, player_name_);
+            og::ui::detail::find_local_player(*state_, player_name_);
         if (local_player == nullptr || !local_player->is_host)
             return false;
 
@@ -987,7 +1062,7 @@ public:
         message.payload = og::sim::LobbyStartGameMessage{
             .player_index = local_player->player_index,
         };
-        send_lobby_message(
+        og::ui::detail::send_lobby_message(
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
             std::move(message));
@@ -1085,10 +1160,10 @@ private:
         if (save == nullptr)
             return;
 
-        send_lobby_message(
+        og::ui::detail::send_lobby_message(
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
-            make_settings_message(*save));
+            og::ui::detail::make_settings_message(*save));
     }
 
     void send_join_from_save()
@@ -1099,10 +1174,10 @@ private:
         if (save == nullptr)
             return;
 
-        send_lobby_message(
+        og::ui::detail::send_lobby_message(
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
-            make_join_message(
+            og::ui::detail::make_join_message(
                 *save,
                 player_name_,
                 local_team_,
@@ -1118,7 +1193,7 @@ private:
             {
                 state_ = *message.lobby_state;
                 if (const og::sim::LobbyPlayer* const local_player =
-                        find_local_player(*state_, player_name_))
+                        og::ui::detail::find_local_player(*state_, player_name_))
                 {
                     local_team_ = local_player->team;
                 }
@@ -1162,9 +1237,13 @@ private:
         if (save == nullptr || !state_.has_value())
             return;
 
-        apply_lobby_state_to_save(*state_, *save, spectator_mode_, local_team_);
+        og::ui::detail::apply_lobby_state_to_save(
+            *state_,
+            *save,
+            spectator_mode_,
+            local_team_);
         remote_owned_save_slots_ =
-            build_remote_owned_slot_mask(*state_, player_name_);
+            og::ui::detail::build_remote_owned_slot_mask(*state_, player_name_);
     }
 
     void rebuild_status_lines()
@@ -1345,7 +1424,7 @@ public:
             return false;
 
         const og::sim::LobbyPlayer* const local_player =
-            find_local_player(*state_, player_name_);
+            og::ui::detail::find_local_player(*state_, player_name_);
         if (local_player == nullptr)
             return false;
 
@@ -1356,7 +1435,10 @@ public:
         message.payload = og::sim::LobbyStartGameMessage{
             .player_index = local_player->player_index,
         };
-        send_lobby_message(*transport_, server_peer_id_, std::move(message));
+        og::ui::detail::send_lobby_message(
+            *transport_,
+            server_peer_id_,
+            std::move(message));
 
         poll_and_apply();
         if (g_start_game_requested)
@@ -1372,7 +1454,9 @@ public:
 
         og::ui::PickerLobbyGameStartConfig config;
         config.save_data =
-            build_save_data_equivalent_from_state(*state_, spectator_mode_);
+            og::ui::detail::build_save_data_equivalent_from_state(
+                *state_,
+                spectator_mode_);
         config.difficulty =
             static_cast<std::int16_t>(state_->settings.difficulty);
         return config;
@@ -1433,7 +1517,7 @@ private:
         if (!state_.has_value())
             return false;
         const og::sim::LobbyPlayer* const local_player =
-            find_local_player(*state_, player_name_);
+            og::ui::detail::find_local_player(*state_, player_name_);
         return local_player != nullptr && local_player->is_host;
     }
 
@@ -1445,10 +1529,10 @@ private:
         if (save == nullptr)
             return;
 
-        send_lobby_message(
+        og::ui::detail::send_lobby_message(
             *transport_,
             server_peer_id_,
-            make_settings_message(*save));
+            og::ui::detail::make_settings_message(*save));
     }
 
     void send_join_from_save()
@@ -1459,10 +1543,10 @@ private:
         if (save == nullptr)
             return;
 
-        send_lobby_message(
+        og::ui::detail::send_lobby_message(
             *transport_,
             server_peer_id_,
-            make_join_message(
+            og::ui::detail::make_join_message(
                 *save,
                 player_name_,
                 local_team_,
@@ -1478,7 +1562,7 @@ private:
             {
                 state_ = *message.lobby_state;
                 if (const og::sim::LobbyPlayer* const local_player =
-                        find_local_player(*state_, player_name_))
+                        og::ui::detail::find_local_player(*state_, player_name_))
                 {
                     local_team_ = local_player->team;
                 }
@@ -1531,9 +1615,13 @@ private:
         if (save == nullptr || !state_.has_value())
             return;
 
-        apply_lobby_state_to_save(*state_, *save, spectator_mode_, local_team_);
+        og::ui::detail::apply_lobby_state_to_save(
+            *state_,
+            *save,
+            spectator_mode_,
+            local_team_);
         remote_owned_save_slots_ =
-            build_remote_owned_slot_mask(*state_, player_name_);
+            og::ui::detail::build_remote_owned_slot_mask(*state_, player_name_);
     }
 
     void rebuild_status_lines()

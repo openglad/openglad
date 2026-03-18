@@ -19,6 +19,7 @@
 #include <ixwebsocket/IXWebSocket.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <format>
@@ -49,21 +50,23 @@ std::vector<std::string> build_host_picker_status_lines(
 
 } // namespace og::ui
 
+namespace og::ui::detail {
+
+std::array<bool, MAX_TEAM_SIZE> build_remote_owned_slot_mask(
+    const og::sim::LobbyState& state,
+    std::string_view local_player_name);
+
+og::sim::LobbyMessage make_join_message(
+    const SaveData& save,
+    std::string_view player_name,
+    short local_team,
+    const std::array<bool, MAX_TEAM_SIZE>* excluded_slots);
+
+} // namespace og::ui::detail
+
 namespace {
 
 using namespace std::chrono_literals;
-
-#if defined(__SANITIZE_THREAD__)
-inline constexpr bool kThreadSanitizerEnabled = true;
-#elif defined(__has_feature)
-#if __has_feature(thread_sanitizer)
-inline constexpr bool kThreadSanitizerEnabled = true;
-#else
-inline constexpr bool kThreadSanitizerEnabled = false;
-#endif
-#else
-inline constexpr bool kThreadSanitizerEnabled = false;
-#endif
 
 class IxNetSystemScope
 {
@@ -168,19 +171,6 @@ bool status_lines_contain_exact(const std::vector<std::string>& lines,
         });
 }
 
-int find_team_slot_by_name(const SaveData& save, std::string_view name)
-{
-    for (int slot_index = 0; slot_index < MAX_TEAM_SIZE; ++slot_index)
-    {
-        if (save.team_list[slot_index] &&
-            save.team_list[slot_index]->name == name)
-        {
-            return slot_index;
-        }
-    }
-    return -1;
-}
-
 void prepare_single_member_network_save(SaveData& save,
                                         short team,
                                         const char* name,
@@ -257,6 +247,19 @@ og::sim::LobbyPlayer make_lobby_player(const SaveData& save,
     return player;
 }
 
+og::sim::LobbyCharacterSlot make_lobby_slot(std::uint8_t slot_index,
+                                            std::string_view name,
+                                            short team)
+{
+    guy member(FAMILY_SOLDIER);
+    member.name = std::string(name);
+    member.teamnum = team;
+    return og::sim::LobbyCharacterSlot{
+        .slot_index = slot_index,
+        .character = make_lobby_character_data(member),
+    };
+}
+
 void send_lobby_message(og::sim::ITransport& transport,
                         og::sim::PeerId peer_id,
                         og::sim::LobbyMessage message)
@@ -319,45 +322,6 @@ const og::sim::LobbyPlayer* find_player(const og::sim::LobbyState& state,
             return player.name == name;
         });
     return it != state.players.end() ? &*it : nullptr;
-}
-
-std::optional<og::sim::LobbyState> drain_latest_lobby_state(
-    og::sim::ITransport& transport)
-{
-    std::optional<og::sim::LobbyState> latest_state;
-
-    if (transport.supports_typed_messages())
-    {
-        for (const og::sim::TypedReceivedMessage& message :
-             transport.poll_typed())
-        {
-            if (message.kind == og::sim::TypedReceivedMessageKind::LobbyState &&
-                message.lobby_state)
-            {
-                latest_state = *message.lobby_state;
-            }
-        }
-        return latest_state;
-    }
-
-    for (const og::sim::ReceivedMessage& message : transport.poll())
-    {
-        og::sim::TransportEnvelope envelope;
-        if (!og::sim::decode_transport_envelope(message.data, envelope) ||
-            envelope.message_type != og::sim::kLobbyStateMessageType)
-        {
-            continue;
-        }
-
-        if (const auto state =
-                og::sim::deserialize_lobby_state_message(message.data);
-            state.has_value())
-        {
-            latest_state = *state;
-        }
-    }
-
-    return latest_state;
 }
 
 bool wait_until_host_owns_room(og::sim::RelayWebSocketTransport& transport,
@@ -832,81 +796,54 @@ TEST(PickerNetworkClient, host_status_builder_reports_direct_and_relay_errors)
 
 TEST(PickerNetworkClient, host_sync_roster_ignores_remote_owned_slots)
 {
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    PickerSaveStateGuard save_guard(save);
-    PickerRuntimeGuard runtime_guard;
+    SaveData save;
     prepare_single_member_network_save(save, 0, "Host");
+    auto remote_member = std::make_unique<guy>(FAMILY_SOLDIER);
+    remote_member->name = "Remote Joiner";
+    remote_member->teamnum = 1;
+    save.team_list[1] = std::move(remote_member);
+    save.team_size = 2;
 
-    og::ui::PickerHostGameOptions options;
-    options.port = ix::getFreePort();
-    auto host_client = og::ui::create_host_picker_lobby_client(options);
-    host_client->initialize_from_save();
+    og::sim::LobbyState state;
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0u,
+        .name = "host-player",
+        .team = 0,
+        .character_slots = {make_lobby_slot(0u, "Host", 0)},
+        .ready = false,
+        .is_host = true,
+    });
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 1u,
+        .name = "remote-player",
+        .team = 1,
+        .character_slots = {make_lobby_slot(0u, "Remote Joiner", 1)},
+        .ready = false,
+        .is_host = false,
+    });
 
-    og::sim::WebSocketClientTransport remote_joiner(
-        std::format("ws://127.0.0.1:{}", options.port));
-    remote_joiner.accept_connections();
-    ASSERT_TRUE(wait_until([&] {
-        (void)remote_joiner.poll();
-        host_client->poll_and_apply();
-        return !remote_joiner.connected_peers().empty();
-    })) << "remote joiner should connect to the hosted lobby";
+    const auto excluded_slots =
+        og::ui::detail::build_remote_owned_slot_mask(state, "host-player");
+    EXPECT_FALSE(excluded_slots[0]);
+    EXPECT_TRUE(excluded_slots[1]);
 
-    const og::sim::PeerId server_peer_id = remote_joiner.connected_peers().front();
-    SaveData remote_joiner_save;
-    prepare_single_member_network_save(remote_joiner_save, 1, "Remote Joiner");
-    send_join_message(remote_joiner,
-                      server_peer_id,
-                      remote_joiner_save,
-                      "Remote Joiner",
-                      1);
+    save.team_list[0]->name = "Host Prime";
+    save.team_list[1]->teamnum = 0;
+    save.team_list[1]->name = "Stolen";
 
-    std::optional<og::sim::LobbyState> latest_state;
-    ASSERT_TRUE(wait_until([&] {
-        host_client->poll_and_apply();
-        if (const auto state = drain_latest_lobby_state(remote_joiner);
-            state.has_value())
-        {
-            latest_state = *state;
-        }
-        return latest_state.has_value() && latest_state->players.size() == 2u &&
-            find_team_slot_by_name(save, "Remote Joiner") >= 0;
-    })) << "host picker should render the remote joiner into the lobby roster";
+    const og::sim::LobbyMessage message = og::ui::detail::make_join_message(
+        save,
+        "host-player",
+        0,
+        &excluded_slots);
 
-    const int remote_slot = find_team_slot_by_name(save, "Remote Joiner");
-    ASSERT_GE(remote_slot, 0);
-    save.team_list[remote_slot]->teamnum = 0;
-    save.team_list[remote_slot]->name = "Stolen";
-    host_client->sync_roster_from_save();
-
-    ASSERT_TRUE(wait_until([&] {
-        host_client->poll_and_apply();
-        if (const auto state = drain_latest_lobby_state(remote_joiner);
-            state.has_value())
-        {
-            latest_state = *state;
-        }
-
-        if (!latest_state.has_value())
-            return false;
-
-        const auto host_it = std::find_if(
-            latest_state->players.begin(),
-            latest_state->players.end(),
-            [](const og::sim::LobbyPlayer& player) {
-                return player.is_host;
-            });
-        const auto* const remote_player =
-            find_player(*latest_state, "Remote Joiner");
-        return host_it != latest_state->players.end() &&
-            remote_player != nullptr &&
-            host_it->character_slots.size() == 1u &&
-            host_it->character_slots[0].character.name == "Host" &&
-            remote_player->character_slots.size() == 1u &&
-            remote_player->character_slots[0].character.name == "Remote Joiner";
-    },
-    10s)) << "host roster sync should ignore remote-owned save slots";
-
-    host_client->shutdown();
+    ASSERT_EQ(og::sim::LobbyMessageKind::Join, message.kind());
+    const auto& join = std::get<og::sim::LobbyJoinMessage>(message.payload);
+    EXPECT_EQ("host-player", join.player.name);
+    EXPECT_EQ(0, join.player.team);
+    ASSERT_EQ(1u, join.player.character_slots.size());
+    EXPECT_EQ(0u, join.player.character_slots[0].slot_index);
+    EXPECT_EQ("Host Prime", join.player.character_slots[0].character.name);
 }
 
 TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_roster)
@@ -1028,89 +965,55 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
 
 TEST(PickerNetworkClient, join_sync_roster_ignores_remote_owned_slots)
 {
-    if constexpr (kThreadSanitizerEnabled)
-        GTEST_SKIP() << "live direct-join websocket timing is covered in ci-test";
+    SaveData save;
+    prepare_single_member_network_save(save, 1, "Joiner", 1);
+    auto remote_member = std::make_unique<guy>(FAMILY_SOLDIER);
+    remote_member->name = "Remote Host";
+    remote_member->teamnum = 0;
+    save.team_list[0] = std::move(remote_member);
+    save.team_size = 2;
+    save.my_team = 1;
 
-    SaveData& save = og::runtime::current_session->myscreen_->save_data;
-    PickerSaveStateGuard save_guard(save);
-    PickerRuntimeGuard runtime_guard;
-    prepare_single_member_network_save(save, 1, "Joiner");
+    og::sim::LobbyState state;
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0u,
+        .name = "host-player",
+        .team = 0,
+        .character_slots = {make_lobby_slot(0u, "Remote Host", 0)},
+        .ready = false,
+        .is_host = true,
+    });
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 1u,
+        .name = "join-player",
+        .team = 1,
+        .character_slots = {make_lobby_slot(0u, "Joiner", 1)},
+        .ready = false,
+        .is_host = false,
+    });
 
-    const int port = ix::getFreePort();
-    auto server_transport =
-        std::make_shared<og::sim::WebSocketServerTransport>(port);
-    server_transport->accept_connections();
-    og::sim::LobbyServer lobby_server(*server_transport);
+    const auto excluded_slots =
+        og::ui::detail::build_remote_owned_slot_mask(state, "join-player");
+    EXPECT_TRUE(excluded_slots[0]);
+    EXPECT_FALSE(excluded_slots[1]);
 
-    og::sim::WebSocketClientTransport remote_host(
-        std::format("ws://127.0.0.1:{}", port));
-    remote_host.accept_connections();
-    ASSERT_TRUE(wait_until([&] {
-        lobby_server.poll_incoming_messages();
-        (void)remote_host.poll();
-        return !remote_host.connected_peers().empty();
-    })) << "remote host should connect to the direct lobby server";
+    save.team_list[0]->teamnum = 1;
+    save.team_list[0]->name = "Stolen";
+    save.team_list[1]->name = "Joiner Prime";
 
-    const og::sim::PeerId server_peer_id = remote_host.connected_peers().front();
-    SaveData remote_host_save;
-    prepare_single_member_network_save(remote_host_save, 0, "Remote Host");
-    send_join_message(remote_host,
-                      server_peer_id,
-                      remote_host_save,
-                      "Remote Host",
-                      0);
+    const og::sim::LobbyMessage message = og::ui::detail::make_join_message(
+        save,
+        "join-player",
+        1,
+        &excluded_slots);
 
-    ASSERT_TRUE(wait_until([&] {
-        lobby_server.poll_incoming_messages();
-        (void)remote_host.poll();
-        const auto* const host_player =
-            find_player(lobby_server.state(), "Remote Host");
-        return host_player != nullptr && host_player->is_host;
-    })) << "remote host should own the lobby before the join client connects";
-
-    og::ui::PickerJoinGameOptions options;
-    options.mode = og::ui::PickerJoinMode::Direct;
-    options.direct_endpoint = std::format("127.0.0.1:{}", port);
-    auto join_client = og::ui::create_join_picker_lobby_client(options);
-    join_client->initialize_from_save();
-
-    ASSERT_TRUE(wait_until([&] {
-        lobby_server.poll_incoming_messages();
-        (void)remote_host.poll();
-        join_client->poll_and_apply();
-        return lobby_server.state().players.size() == 2u &&
-            find_team_slot_by_name(save, "Remote Host") >= 0;
-    })) << "join picker should render the remote host into the local save roster";
-
-    const int remote_slot = find_team_slot_by_name(save, "Remote Host");
-    ASSERT_GE(remote_slot, 0);
-    save.team_list[remote_slot]->teamnum = save.my_team;
-    save.team_list[remote_slot]->name = "Stolen";
-    join_client->sync_roster_from_save();
-
-    ASSERT_TRUE(wait_until([&] {
-        lobby_server.poll_incoming_messages();
-        (void)remote_host.poll();
-        join_client->poll_and_apply();
-
-        const auto* const host_player =
-            find_player(lobby_server.state(), "Remote Host");
-        const auto join_it = std::find_if(
-            lobby_server.state().players.begin(),
-            lobby_server.state().players.end(),
-            [](const og::sim::LobbyPlayer& player) {
-                return !player.is_host;
-            });
-        return host_player != nullptr &&
-            join_it != lobby_server.state().players.end() &&
-            host_player->character_slots.size() == 1u &&
-            host_player->character_slots[0].character.name == "Remote Host" &&
-            join_it->character_slots.size() == 1u &&
-            join_it->character_slots[0].character.name == "Joiner";
-    },
-    10s)) << "join roster sync should ignore remote-owned save slots";
-
-    join_client->shutdown();
+    ASSERT_EQ(og::sim::LobbyMessageKind::Join, message.kind());
+    const auto& join = std::get<og::sim::LobbyJoinMessage>(message.payload);
+    EXPECT_EQ("join-player", join.player.name);
+    EXPECT_EQ(1, join.player.team);
+    ASSERT_EQ(1u, join.player.character_slots.size());
+    EXPECT_EQ(1u, join.player.character_slots[0].slot_index);
+    EXPECT_EQ("Joiner Prime", join.player.character_slots[0].character.name);
 }
 
 TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)
