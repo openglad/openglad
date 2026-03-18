@@ -188,7 +188,11 @@ TEST_F(HeadlessServerRuntimeTest,
     lobby_save.numplayers = 1;
     initialize_from_lobby(lobby_save);
 
+    const std::uint32_t initial_total_cash = active_save_.m_totalcash[0];
+    ASSERT_EQ(initial_total_cash, checkpoint_save_.m_totalcash[0]);
+
     level_data_->world().m_score[0] = 7;
+    level_data_->world().time_bonus_limit = 0;
     ASSERT_TRUE(with_context([&] {
         return og::server::complete_headless_level_and_load_next(
             *level_data_,
@@ -199,13 +203,17 @@ TEST_F(HeadlessServerRuntimeTest,
             2);
     }));
 
+    const std::uint32_t expected_total_cash = initial_total_cash + 14u;
     EXPECT_EQ(2, active_save_.scen_num);
     EXPECT_EQ(2, checkpoint_save_.scen_num);
     EXPECT_TRUE(active_save_.is_level_completed(1));
     EXPECT_TRUE(checkpoint_save_.is_level_completed(1));
     EXPECT_EQ(0u, active_save_.m_score[0]);
     EXPECT_EQ(7u, active_save_.m_totalscore[0]);
-    EXPECT_GE(active_save_.m_totalcash[0], 14u);
+    EXPECT_EQ(expected_total_cash, active_save_.m_totalcash[0]);
+    EXPECT_EQ(expected_total_cash, checkpoint_save_.m_totalcash[0]);
+    EXPECT_EQ(expected_total_cash, active_save_.totalcash);
+    EXPECT_EQ(expected_total_cash, checkpoint_save_.totalcash);
     EXPECT_EQ(2, level_data_->world().id);
     EXPECT_EQ(2, level_data_->world().current_scenario);
     EXPECT_EQ(0u, level_data_->world().tick_count_);
