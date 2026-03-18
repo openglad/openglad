@@ -304,13 +304,31 @@ bool picker_replace_lobby_client(
     if (!next_client)
         return false;
 
-    next_client->initialize_from_save();
-    const std::string message = join_status_lines(next_client->status_lines());
-
-    if (current_client)
-        current_client->shutdown();
-    if (og::ui::active_picker_lobby_client() == current_client.get())
+    std::unique_ptr<og::ui::IPickerLobbyClient> previous_client =
+        std::move(current_client);
+    const bool previous_was_active =
+        og::ui::active_picker_lobby_client() == previous_client.get();
+    if (previous_was_active)
         og::ui::install_active_picker_lobby_client(nullptr);
+
+    if (previous_client)
+        previous_client->shutdown();
+
+    std::string message;
+    try
+    {
+        next_client->initialize_from_save();
+        message = join_status_lines(next_client->status_lines());
+    }
+    catch (...)
+    {
+        current_client = std::move(previous_client);
+        if (previous_was_active)
+            og::ui::install_active_picker_lobby_client(current_client.get());
+        if (current_client)
+            current_client->initialize_from_save();
+        throw;
+    }
 
     current_client = std::move(next_client);
     og::ui::install_active_picker_lobby_client(current_client.get());

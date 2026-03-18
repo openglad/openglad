@@ -144,6 +144,11 @@ struct PickerLobbyClientTrace
     int shutdown_calls = 0;
 };
 
+struct ExclusiveLobbyBinding
+{
+    bool in_use = false;
+};
+
 class ScopedEnvVar
 {
 public:
@@ -239,6 +244,66 @@ public:
     std::shared_ptr<PickerLobbyClientTrace> trace_;
     std::vector<std::string> status_lines_;
     bool throw_on_initialize = false;
+};
+
+class ExclusiveResourcePickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    explicit ExclusiveResourcePickerLobbyClient(ExclusiveLobbyBinding& binding)
+        : binding_(binding)
+    {
+    }
+
+    void initialize_from_save() override
+    {
+        ++initialize_calls;
+        if (binding_.in_use)
+            throw std::runtime_error("resource already in use");
+        binding_.in_use = true;
+        owns_binding_ = true;
+    }
+
+    void shutdown() override
+    {
+        ++shutdown_calls;
+        if (owns_binding_)
+        {
+            binding_.in_use = false;
+            owns_binding_ = false;
+        }
+    }
+
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+
+    ExclusiveLobbyBinding& binding_;
+    bool owns_binding_ = false;
+    int initialize_calls = 0;
+    int shutdown_calls = 0;
 };
 
 } // namespace
@@ -615,6 +680,7 @@ TEST(PickerFuncs, picker_replace_lobby_client_is_transactional_on_initialize_fai
         current_trace);
     auto* const current_raw =
         static_cast<TraceablePickerLobbyClient*>(current_client.get());
+    current_raw->initialize_from_save();
     ActivePickerLobbyClientGuard guard(current_raw);
 
     auto next_trace = std::make_shared<PickerLobbyClientTrace>();
@@ -631,7 +697,8 @@ TEST(PickerFuncs, picker_replace_lobby_client_is_transactional_on_initialize_fai
         std::runtime_error);
     EXPECT_EQ(current_raw, current_client.get());
     EXPECT_EQ(current_raw, og::ui::active_picker_lobby_client());
-    EXPECT_EQ(0, current_trace->shutdown_calls);
+    EXPECT_EQ(2, current_trace->initialize_calls);
+    EXPECT_EQ(1, current_trace->shutdown_calls);
     EXPECT_EQ(1, next_trace->initialize_calls);
 }
 
@@ -659,6 +726,32 @@ TEST(PickerFuncs, picker_replace_lobby_client_swaps_active_client_after_success)
     EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
     EXPECT_EQ(1, current_trace->shutdown_calls);
     EXPECT_EQ(1, next_trace->initialize_calls);
+}
+
+TEST(PickerFuncs, picker_replace_lobby_client_releases_old_host_before_new_init)
+{
+    ExclusiveLobbyBinding binding;
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        std::make_unique<ExclusiveResourcePickerLobbyClient>(binding);
+    auto* const current_raw =
+        static_cast<ExclusiveResourcePickerLobbyClient*>(current_client.get());
+    current_raw->initialize_from_save();
+    ASSERT_TRUE(binding.in_use);
+    ActivePickerLobbyClientGuard guard(current_raw);
+
+    std::unique_ptr<og::ui::IPickerLobbyClient> next_client =
+        std::make_unique<ExclusiveResourcePickerLobbyClient>(binding);
+    auto* const next_raw =
+        static_cast<ExclusiveResourcePickerLobbyClient*>(next_client.get());
+
+    ASSERT_TRUE(picker_replace_lobby_client(current_client,
+                                            std::move(next_client),
+                                            "HOST GAME"));
+    EXPECT_EQ(next_raw, current_client.get());
+    EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
+    EXPECT_TRUE(binding.in_use);
+    EXPECT_EQ(1, current_raw->shutdown_calls);
+    EXPECT_EQ(1, next_raw->initialize_calls);
 }
 
 TEST(PickerFuncs, picker_join_game_catches_invalid_relay_base_url)
