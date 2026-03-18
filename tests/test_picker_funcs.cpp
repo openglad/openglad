@@ -38,6 +38,7 @@ void quit(Sint32 arg1);
 Sint32 return_menu(Sint32 arg);
 Sint32 name_guy(Sint32 arg);
 Sint32 edit_guy(Sint32 arg1);
+void picker_prepare_async_team_build_start_request();
 void picker_lobby_initialize_from_save();
 void picker_lobby_sync_from_save();
 void picker_reinitialize_lobby_after_game();
@@ -80,7 +81,8 @@ public:
     void set_player_mode(int) override {}
     bool request_start_game() override
     {
-        return false;
+        ++request_start_calls;
+        return request_start_result;
     }
     [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
     build_game_start_config() const override
@@ -114,6 +116,8 @@ public:
 
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_config;
     int consume_calls = 0;
+    int request_start_calls = 0;
+    bool request_start_result = false;
     bool restrict_editable_slots = false;
     std::array<bool, MAX_TEAM_SIZE> editable_slots{};
 };
@@ -1078,6 +1082,25 @@ TEST(PickerFuncs, go_menu_starts_via_lobby_confirmation_and_reinitializes_for_re
     og::sim::g_test_level_tick_limit_override = old_tick_limit;
 #endif
     set_game_speed(old_speed);
+    g_start_game_requested = false;
+}
+
+TEST(PickerFuncs, async_team_build_start_preserves_preexisting_remote_start_request)
+{
+    picker_lobby_shutdown();
+
+    ContractPickerLobbyClient remote_client;
+    remote_client.pending_config = og::ui::PickerLobbyGameStartConfig{};
+    ActivePickerLobbyClientGuard active_guard(&remote_client);
+    g_start_game_requested = true;
+
+    picker_prepare_async_team_build_start_request();
+
+    EXPECT_TRUE(g_start_game_requested);
+    EXPECT_EQ(0, remote_client.request_start_calls);
+    EXPECT_TRUE(remote_client.pending_config.has_value());
+
+    picker_lobby_shutdown();
     g_start_game_requested = false;
 }
 

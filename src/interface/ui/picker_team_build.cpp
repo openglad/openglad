@@ -126,6 +126,24 @@ bool picker_lobby_request_start();
 bool picker_lobby_start_request_pending();
 extern bool g_start_game_requested;
 
+void picker_prepare_async_team_build_start_request()
+{
+    picker_lobby_sync_settings_from_save();
+    picker_lobby_sync_roster_from_save();
+
+    const bool start_already_requested =
+        g_start_game_requested && picker_lobby_has_game_start_config();
+    if (start_already_requested)
+        return;
+
+    g_start_game_requested = false;
+#ifdef __EMSCRIPTEN__
+    picker_request_start_game();
+#else
+    (void)picker_lobby_request_start();
+#endif
+}
+
 static bool team_build_remote_start_requested(Sint32& retvalue)
 {
     if (!g_start_game_requested || !picker_lobby_has_game_start_config())
@@ -1500,12 +1518,9 @@ Sint32 go_menu(Sint32 arg1)
     }
 
 #ifdef __EMSCRIPTEN__
-    picker_lobby_sync_settings_from_save();
-    picker_lobby_sync_roster_from_save();
+    picker_prepare_async_team_build_start_request();
     og::runtime::current_session->myscreen_->save_data.save("save0");
     og::runtime::current_session->current_guy_.reset();
-    g_start_game_requested = false;
-    picker_request_start_game();
     Log("go_menu: Lobby start requested, returning MENU_EXIT\n");
     return MENU_EXIT;  // This will unwind all menu loops back to picker_main/picker_frame
 #else
