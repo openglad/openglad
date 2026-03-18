@@ -649,3 +649,40 @@ TEST(LobbyServer, host_only_start_broadcasts_confirmation_and_freezes_lobby_stat
     ASSERT_EQ(2u, server.state().players.size());
     EXPECT_EQ(1, server.state().players[1].team);
 }
+
+TEST(LobbyServer,
+     build_player_bindings_follow_final_player_indices_and_exclude_unjoined_peers)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    server.connect_client(33u);
+    transport.clear_sent_messages();
+
+    transport.queue_lobby_message(
+        22u,
+        make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    const std::vector<og::sim::LobbyPlayerBinding> bindings =
+        server.build_player_bindings();
+    ASSERT_EQ(2u, bindings.size());
+    EXPECT_EQ((og::sim::LobbyPlayerBinding{
+                  .peer_id = 11u,
+                  .player_index = 0u,
+                  .team = 0,
+              }),
+              bindings[0]);
+    EXPECT_EQ((og::sim::LobbyPlayerBinding{
+                  .peer_id = 22u,
+                  .player_index = 1u,
+                  .team = 1,
+              }),
+              bindings[1]);
+}

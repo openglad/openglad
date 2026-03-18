@@ -1101,8 +1101,8 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/stats.cpp
     )
 
-    set(HEADLESS_SERVER_SOURCES
-        ${SRC_DIR}/server/server_main.cpp
+    set(HEADLESS_SERVER_RUNTIME_SOURCES
+        ${SRC_DIR}/server/headless_server_runtime.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
@@ -1110,6 +1110,11 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
         ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+
+    set(HEADLESS_SERVER_SOURCES
+        ${SRC_DIR}/server/server_main.cpp
+        ${HEADLESS_SERVER_RUNTIME_SOURCES}
     )
 
     add_executable(openglad_text ${HEADLESS_SOURCES})
@@ -1789,6 +1794,42 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
         )
+
+        add_executable(og_unit_server
+            ${CMAKE_SOURCE_DIR}/tests/unit/headless_unit_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_headless_server_runtime.cpp
+            ${CMAKE_SOURCE_DIR}/src/test_trace.cpp
+            ${HEADLESS_SERVER_RUNTIME_SOURCES}
+        )
+        configure_openglad_library(og_unit_server)
+        target_compile_definitions(og_unit_server PRIVATE TESTING)
+        target_include_directories(og_unit_server PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests
+            ${OG_THIRD_PARTY_INCLUDE_DIRS}
+        )
+        target_link_libraries(og_unit_server PRIVATE
+            og_core
+            og_gameplay
+            og_resources
+            og_ext_micropather
+            GTest::gtest
+            ${OG_IO_EXTERNAL_LIBS}
+            m
+            pthread
+        )
+        configure_openglad_runtime_target(og_unit_server)
+        add_runtime_assets_dependency(og_unit_server)
+        add_test(NAME og_unit_server COMMAND og_unit_server)
+        set_tests_properties(og_unit_server PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 180
+            LABELS "unit"
+        )
+        if(OG_SANITIZER_TEST_ENVIRONMENT)
+            set_tests_properties(og_unit_server PROPERTIES ENVIRONMENT
+                "${OG_SANITIZER_TEST_ENVIRONMENT}"
+            )
+        endif()
 
         if(ENABLE_COVERAGE)
             # Coverage-instrumented UI-heavy binaries can time out on 4-core CI

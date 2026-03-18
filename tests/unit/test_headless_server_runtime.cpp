@@ -1,0 +1,277 @@
+#include <openglad/core/constants.h>
+#include <openglad/core/irandom.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/lobby_server.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/session_state.h>
+#include <openglad/platform/game_context.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/save_data.h>
+#include <openglad/server/headless_server_runtime.h>
+
+#include <gtest/gtest.h>
+
+#include <cstdint>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+#include "test_gameplay_context_scope.h"
+
+namespace {
+
+og::sim::LobbyCharacterSlot make_slot(std::uint8_t slot_index,
+                                      std::int32_t guy_id,
+                                      const char* name,
+                                      std::int8_t family,
+                                      std::int16_t team)
+{
+    og::sim::LobbyCharacterData character;
+    character.guy_id = guy_id;
+    character.name = name;
+    character.family = family;
+    character.strength = 10;
+    character.dexterity = 11;
+    character.constitution = 12;
+    character.intelligence = 13;
+    character.armor = 14;
+    character.level = 3;
+    character.teamnum = team;
+
+    return {
+        .slot_index = slot_index,
+        .character = character,
+    };
+}
+
+walker* find_team_member(GameWorld& world, std::int32_t guy_id)
+{
+    for (const auto& entry : world.oblist)
+    {
+        walker* const entity = entry.get();
+        if (entity == nullptr || entity->myguy == nullptr)
+            continue;
+        if (entity->myguy->id == guy_id)
+            return entity;
+    }
+    return nullptr;
+}
+
+class HeadlessServerRuntimeTest : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        restore_default_campaigns();
+        restore_default_settings();
+        ASSERT_EQ(CampaignPackageIoError::None,
+                  mount_campaign_package_with_error("org.openglad.gladiator"));
+        og::runtime::current_session->current_difficulty_ = 1;
+    }
+
+    void TearDown() override
+    {
+        level_data_.reset();
+    }
+
+    template <typename Fn>
+    auto with_context(Fn&& fn) -> std::invoke_result_t<Fn&>
+    {
+        if (level_data_ == nullptr)
+            throw std::logic_error("level runtime data is not initialized");
+        ScopedGameplayContext gameplay(*level_data_, active_save_, events_, cfg);
+        GameContext gc;
+        gc.rng = &rng_;
+        push_test_context(&gc);
+        struct PopGuard {
+            ~PopGuard() { pop_test_context(); }
+        } pop_guard;
+        using Result = std::invoke_result_t<Fn&>;
+        if constexpr (std::is_void_v<Result>)
+        {
+            std::forward<Fn>(fn)();
+        }
+        else
+        {
+            return std::forward<Fn>(fn)();
+        }
+    }
+
+    void create_level_runtime_data(short level_id)
+    {
+        level_data_ = std::make_unique<LevelRuntimeData>(
+            level_id,
+            true,
+            &headless_level_data_hooks());
+        level_data_->set_sim_context(
+            &active_save_,
+            &level_data_->world().enemy_freeze,
+            &events_,
+            &rng_,
+            &cfg);
+    }
+
+    void initialize_from_lobby(const og::sim::LobbySaveDataEquivalent& config_save,
+                               int difficulty_setting = 1)
+    {
+        og::server::apply_headless_lobby_game_start_config(active_save_, config_save);
+        og::server::copy_headless_server_save_data(checkpoint_save_, active_save_);
+        create_level_runtime_data(active_save_.scen_num);
+        ASSERT_TRUE(with_context([&] {
+            return og::server::load_headless_level_from_save(
+                *level_data_,
+                active_save_,
+                difficulty_setting,
+                events_);
+        }));
+    }
+
+    SaveData active_save_;
+    SaveData checkpoint_save_;
+    og::sim::SimEventLog events_;
+    FixedRandom rng_{0};
+    std::unique_ptr<LevelRuntimeData> level_data_;
+};
+
+TEST_F(HeadlessServerRuntimeTest,
+       lobby_save_handoff_loads_level_and_spawns_headless_team)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 2;
+    lobby_save.allied_mode = 0;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
+        make_slot(3u, 200, "Guest Guy", FAMILY_ARCHER, 1),
+    };
+
+    initialize_from_lobby(lobby_save);
+
+    EXPECT_EQ("org.openglad.gladiator", active_save_.current_campaign);
+    EXPECT_EQ(1, active_save_.scen_num);
+    EXPECT_EQ(1, active_save_.current_levels[active_save_.current_campaign]);
+    EXPECT_EQ(2u, active_save_.numplayers);
+    EXPECT_EQ(0, active_save_.allied_mode);
+    EXPECT_EQ(2, active_save_.team_size);
+    EXPECT_EQ(1, level_data_->world().id);
+    EXPECT_EQ(1, level_data_->world().current_scenario);
+    EXPECT_TRUE(events_.empty());
+
+    walker* const host = find_team_member(level_data_->world(), 100);
+    walker* const guest = find_team_member(level_data_->world(), 200);
+    ASSERT_NE(nullptr, host);
+    ASSERT_NE(nullptr, guest);
+    EXPECT_EQ("Host Guy", host->myguy->name);
+    EXPECT_EQ("Guest Guy", guest->myguy->name);
+    EXPECT_EQ(0, host->team_num());
+    EXPECT_EQ(1, guest->team_num());
+    EXPECT_FALSE(host->has_render());
+    EXPECT_FALSE(guest->has_render());
+}
+
+TEST_F(HeadlessServerRuntimeTest,
+       complete_level_updates_save_and_loads_next_level_for_exit_flow)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Lead", FAMILY_SOLDIER, 0),
+    };
+    lobby_save.numplayers = 1;
+    initialize_from_lobby(lobby_save);
+
+    level_data_->world().m_score[0] = 7;
+    ASSERT_TRUE(with_context([&] {
+        return og::server::complete_headless_level_and_load_next(
+            *level_data_,
+            active_save_,
+            checkpoint_save_,
+            1,
+            events_,
+            2);
+    }));
+
+    EXPECT_EQ(2, active_save_.scen_num);
+    EXPECT_EQ(2, checkpoint_save_.scen_num);
+    EXPECT_TRUE(active_save_.is_level_completed(1));
+    EXPECT_TRUE(checkpoint_save_.is_level_completed(1));
+    EXPECT_EQ(0u, active_save_.m_score[0]);
+    EXPECT_EQ(7u, active_save_.m_totalscore[0]);
+    EXPECT_GE(active_save_.m_totalcash[0], 14u);
+    EXPECT_EQ(2, level_data_->world().id);
+    EXPECT_EQ(2, level_data_->world().current_scenario);
+    EXPECT_EQ(0u, level_data_->world().tick_count_);
+    EXPECT_TRUE(events_.empty());
+
+    walker* const lead = find_team_member(level_data_->world(), 100);
+    ASSERT_NE(nullptr, lead);
+    EXPECT_FALSE(lead->has_render());
+}
+
+TEST_F(HeadlessServerRuntimeTest,
+       withdraw_restores_checkpoint_state_before_loading_destination_level)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Lead", FAMILY_SOLDIER, 0),
+    };
+    lobby_save.numplayers = 1;
+    initialize_from_lobby(lobby_save);
+
+    level_data_->world().m_score[0] = 5;
+    ASSERT_TRUE(with_context([&] {
+        return og::server::complete_headless_level_and_load_next(
+            *level_data_,
+            active_save_,
+            checkpoint_save_,
+            1,
+            events_,
+            2);
+    }));
+
+    const std::string checkpoint_name = checkpoint_save_.team_list[0]->name;
+    const std::uint32_t checkpoint_total_score = checkpoint_save_.m_totalscore[0];
+    const std::uint32_t checkpoint_total_cash = checkpoint_save_.m_totalcash[0];
+
+    active_save_.team_list[0]->name = "Corrupted";
+    active_save_.m_totalscore[0] = 999u;
+    active_save_.m_totalcash[0] = 888u;
+    active_save_.m_score[0] = 777u;
+    level_data_->world().m_score[0] = 333u;
+
+    ASSERT_TRUE(with_context([&] {
+        return og::server::withdraw_headless_level(
+            *level_data_,
+            active_save_,
+            checkpoint_save_,
+            1,
+            events_,
+            1);
+    }));
+
+    EXPECT_EQ(1, active_save_.scen_num);
+    EXPECT_EQ(1, checkpoint_save_.scen_num);
+    EXPECT_TRUE(active_save_.is_level_completed(1));
+    ASSERT_NE(nullptr, active_save_.team_list[0]);
+    EXPECT_EQ(checkpoint_name, active_save_.team_list[0]->name);
+    EXPECT_EQ(checkpoint_total_score, active_save_.m_totalscore[0]);
+    EXPECT_EQ(checkpoint_total_cash, active_save_.m_totalcash[0]);
+    EXPECT_EQ(0u, active_save_.m_score[0]);
+    EXPECT_EQ(1, level_data_->world().id);
+    EXPECT_EQ(1, level_data_->world().current_scenario);
+    EXPECT_TRUE(events_.empty());
+
+    walker* const lead = find_team_member(level_data_->world(), 100);
+    ASSERT_NE(nullptr, lead);
+    EXPECT_FALSE(lead->has_render());
+}
+
+} // namespace
