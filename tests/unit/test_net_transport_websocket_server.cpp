@@ -414,4 +414,59 @@ TEST(NetTransportWebSocketServer,
     fixture.expect_clients_match_server();
 }
 
+TEST(NetTransportWebSocketServer,
+     websocket_initial_sync_matches_authoritative_tick_zero_hash)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 4,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = false,
+        .player_teams = {},
+        .input_sequence = {},
+        .transport_backend =
+            og::sim::test::NetworkTransportBackend::WebSocketLoopback,
+        .network_timeout = 10s,
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    const og::sim::WorldSnapshot server_snapshot = fixture.with_server_context([&] {
+        return og::sim::capture_keyframe_snapshot(fixture.server_world());
+    });
+    const std::uint32_t server_hash = server_snapshot.snapshot_hash;
+
+    for (std::size_t index = 0; index < 4; ++index)
+    {
+        const auto& baseline = fixture.client(index).baseline();
+        ASSERT_TRUE(baseline.has_value());
+        EXPECT_EQ(server_hash, baseline->snapshot_hash) << "client " << index;
+
+        const og::sim::WorldSnapshot client_snapshot =
+            fixture.with_client_context(index, [&] {
+                return og::sim::capture_keyframe_snapshot(
+                    fixture.client_world(index));
+            });
+        EXPECT_EQ(server_hash, client_snapshot.snapshot_hash) << "client " << index;
+    }
+
+    fixture.with_server_context([&] {
+        fixture.server().poll_incoming_messages();
+    });
+
+    std::size_t snapshot_hash_checks = 0;
+    for (const auto& message : fixture.server_inbox())
+    {
+        if (!message.snapshot_hash_check)
+            continue;
+
+        ++snapshot_hash_checks;
+        EXPECT_EQ(0u, message.snapshot_hash_check->tick);
+        EXPECT_EQ(server_hash, message.snapshot_hash_check->snapshot_hash)
+            << "peer " << message.peer_id;
+    }
+    EXPECT_EQ(4u, snapshot_hash_checks);
+}
+
 } // namespace

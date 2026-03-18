@@ -92,3 +92,31 @@ jobs:
 
       - name: Run menu UI test with sanitizer timeout
         run: ctest --test-dir build/ci-asan --output-on-failure --timeout 420 -R og_test_menu_ui
+
+  tsan:
+    name: TSan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply third-party build fixes
+        run: git apply third_party/build-fixes.patch
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
+
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-tsan
+
+      - name: Configure (ci-tsan preset)
+        run: cmake --preset ci-tsan -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build TSan unit binary
+        run: cmake --build --preset ci-tsan --target og_unit_sim -j"$(nproc)"
+
+      - name: Run TSan unit tests
+        run: ctest --preset ci-tsan

@@ -7,11 +7,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 class GameWorld;
@@ -66,6 +66,9 @@ WorldSnapshot consume_delta_snapshot_for_client(PerClientState& client_state,
 
 struct ConnectedClientState {
     PerClientState snapshot_state;
+    // Keep hashes in send order so same-tick keyframe resends remain strict.
+    std::unordered_map<std::uint32_t, std::deque<std::uint32_t>>
+        expected_snapshot_hashes;
     std::size_t player_index = 0;
     short team_num = 0;
     walker* control = nullptr;
@@ -160,7 +163,8 @@ private:
     void handle_pause_response();
     void prepare_clients_for_loaded_level();
     void rebind_players_for_loaded_level();
-    void remember_snapshot_hash(const WorldSnapshot& snapshot);
+    void remember_snapshot_hash(ConnectedClientState& client,
+                               const WorldSnapshot& snapshot);
     [[nodiscard]] std::size_t infer_exit_triggering_player_index() const noexcept;
     void maybe_send_control_change(std::size_t player_index, walker* control);
     void maybe_resolve_world_events(SimEventBatch& batch, WorldSnapshot& snapshot);
@@ -187,8 +191,6 @@ private:
     std::optional<PendingExitPromptState> pending_exit_prompt_state_ =
         std::nullopt;
     std::optional<PendingPauseState> pending_pause_state_ = std::nullopt;
-    std::unordered_map<std::uint32_t, std::unordered_set<std::uint32_t>>
-        snapshot_hashes_by_tick_;
     std::size_t snapshot_hash_mismatch_count_ = 0;
     std::uint32_t next_sim_event_sequence_ = 1;
     std::uint32_t next_game_flow_event_sequence_ = 1;

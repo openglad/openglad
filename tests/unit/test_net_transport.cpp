@@ -451,6 +451,93 @@ TEST(NetTransport, game_server_disconnects_removed_transport_peers_on_poll)
     EXPECT_TRUE(transport.sent_messages().empty());
 }
 
+TEST(NetTransport, game_server_snapshot_hash_check_is_strict_per_peer_per_tick)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u, 11u});
+    server.poll_incoming_messages();
+
+    server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+    ASSERT_GE(transport.sent_messages().size(), 2u);
+    const og::sim::WorldSnapshot first_snapshot =
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data.data(),
+                                      transport.sent_messages()[1].data.size());
+    transport.clear_sent_messages();
+
+    fixture.world().current_palette_id = 1;
+    server.send_initial_snapshot(11u, og::sim::SnapshotCaptureMode::Peek);
+    ASSERT_GE(transport.sent_messages().size(), 2u);
+    const og::sim::WorldSnapshot second_snapshot =
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data.data(),
+                                      transport.sent_messages()[1].data.size());
+    ASSERT_EQ(first_snapshot.tick_count, second_snapshot.tick_count);
+    ASSERT_NE(first_snapshot.snapshot_hash, second_snapshot.snapshot_hash);
+
+    transport.queue_received(
+        7u,
+        og::sim::serialize_snapshot_hash_check_message({
+            .tick = first_snapshot.tick_count,
+            .snapshot_hash = first_snapshot.snapshot_hash,
+        }));
+    server.step();
+    EXPECT_EQ(0u, server.snapshot_hash_mismatch_count());
+
+    transport.queue_received(
+        7u,
+        og::sim::serialize_snapshot_hash_check_message({
+            .tick = first_snapshot.tick_count,
+            .snapshot_hash = second_snapshot.snapshot_hash,
+        }));
+    server.step();
+    EXPECT_EQ(1u, server.snapshot_hash_mismatch_count());
+}
+
+TEST(NetTransport, game_server_snapshot_hash_check_preserves_same_peer_same_tick_order)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    server.connect_client(7u);
+
+    server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+    ASSERT_GE(transport.sent_messages().size(), 2u);
+    const og::sim::WorldSnapshot first_snapshot =
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data.data(),
+                                      transport.sent_messages()[1].data.size());
+    transport.clear_sent_messages();
+
+    fixture.world().current_palette_id = 1;
+    server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+    ASSERT_GE(transport.sent_messages().size(), 2u);
+    const og::sim::WorldSnapshot second_snapshot =
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data.data(),
+                                      transport.sent_messages()[1].data.size());
+    ASSERT_EQ(first_snapshot.tick_count, second_snapshot.tick_count);
+    ASSERT_NE(first_snapshot.snapshot_hash, second_snapshot.snapshot_hash);
+
+    transport.queue_received(
+        7u,
+        og::sim::serialize_snapshot_hash_check_message({
+            .tick = first_snapshot.tick_count,
+            .snapshot_hash = first_snapshot.snapshot_hash,
+        }));
+    server.step();
+    EXPECT_EQ(0u, server.snapshot_hash_mismatch_count());
+
+    transport.queue_received(
+        7u,
+        og::sim::serialize_snapshot_hash_check_message({
+            .tick = second_snapshot.tick_count,
+            .snapshot_hash = second_snapshot.snapshot_hash,
+        }));
+    server.step();
+    EXPECT_EQ(0u, server.snapshot_hash_mismatch_count());
+}
+
 TEST(NetTransport, game_server_broadcast_current_state_uses_raw_fallback)
 {
     TestGameWorld fixture;

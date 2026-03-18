@@ -998,11 +998,10 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         case TypedReceivedMessageKind::SnapshotHashCheck:
             if (message.snapshot_hash_check)
             {
-                const auto hash_it =
-                    snapshot_hashes_by_tick_.find(message.snapshot_hash_check->tick);
-                if (hash_it != snapshot_hashes_by_tick_.end() &&
-                    hash_it->second.find(message.snapshot_hash_check->snapshot_hash) ==
-                        hash_it->second.end())
+                auto hash_it =
+                    client.expected_snapshot_hashes.find(message.snapshot_hash_check->tick);
+                if (hash_it == client.expected_snapshot_hashes.end() ||
+                    hash_it->second.empty())
                 {
                     ++snapshot_hash_mismatch_count_;
                     client.force_keyframe = true;
@@ -1010,10 +1009,33 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                         "snapshot_hash_mismatch peer={} tick={} server={} client={} entities={}\n",
                         message.peer_id,
                         message.snapshot_hash_check->tick,
-                        hash_it->second.empty() ? 0u : *hash_it->second.begin(),
+                        0u,
                         message.snapshot_hash_check->snapshot_hash,
                         world_.oblist.size() + world_.fxlist.size() +
                             world_.weaplist.size());
+                }
+                else
+                {
+                    const std::uint32_t expected_hash = hash_it->second.front();
+                    if (expected_hash != message.snapshot_hash_check->snapshot_hash)
+                    {
+                        ++snapshot_hash_mismatch_count_;
+                        client.force_keyframe = true;
+                        LogError(
+                            "snapshot_hash_mismatch peer={} tick={} server={} client={} entities={}\n",
+                            message.peer_id,
+                            message.snapshot_hash_check->tick,
+                            expected_hash,
+                            message.snapshot_hash_check->snapshot_hash,
+                            world_.oblist.size() + world_.fxlist.size() +
+                                world_.weaplist.size());
+                    }
+                    else
+                    {
+                        hash_it->second.pop_front();
+                        if (hash_it->second.empty())
+                            client.expected_snapshot_hashes.erase(hash_it);
+                    }
                 }
             }
             break;
@@ -1146,7 +1168,6 @@ void GameServer::prepare_clients_for_loaded_level()
     events_.clear();
     world_.clear_removed_entity_ids();
     world_.clear_grid_dirty_tiles();
-    snapshot_hashes_by_tick_.clear();
     next_sim_event_sequence_ = 1;
     next_game_flow_event_sequence_ = 1;
     player_controls_.fill(nullptr);
@@ -1162,6 +1183,7 @@ void GameServer::prepare_clients_for_loaded_level()
         client.client_ready = false;
         client.force_keyframe = true;
         client.pending_inputs.clear();
+        client.expected_snapshot_hashes.clear();
         client.last_known_input = {};
         client.last_received_input_tick = 0;
         client.last_received_input_ms = now;
@@ -1332,7 +1354,7 @@ void GameServer::send_initial_snapshot(PeerId peer_id,
     client.has_initial_snapshot = true;
     client.client_ready = false;
     client.force_keyframe = false;
-    remember_snapshot_hash(keyframe);
+    remember_snapshot_hash(client, keyframe);
     transport_.send_snapshot(peer_id,
                              std::make_shared<WorldSnapshot>(std::move(keyframe)));
 }
@@ -1395,18 +1417,20 @@ void GameServer::forward_event_batch(const SimEventBatch& batch)
     }
 }
 
-void GameServer::remember_snapshot_hash(const WorldSnapshot& snapshot)
+void GameServer::remember_snapshot_hash(ConnectedClientState& client,
+                                        const WorldSnapshot& snapshot)
 {
-    snapshot_hashes_by_tick_[snapshot.tick_count].insert(snapshot.snapshot_hash);
+    client.expected_snapshot_hashes[snapshot.tick_count].push_back(
+        snapshot.snapshot_hash);
     const std::uint32_t oldest_tick =
         snapshot.tick_count > (KEYFRAME_INTERVAL_TICKS * 2)
             ? snapshot.tick_count - (KEYFRAME_INTERVAL_TICKS * 2)
             : 0U;
-    for (auto it = snapshot_hashes_by_tick_.begin();
-         it != snapshot_hashes_by_tick_.end();)
+    for (auto it = client.expected_snapshot_hashes.begin();
+         it != client.expected_snapshot_hashes.end();)
     {
         if (it->first < oldest_tick)
-            it = snapshot_hashes_by_tick_.erase(it);
+            it = client.expected_snapshot_hashes.erase(it);
         else
             ++it;
     }
@@ -1545,7 +1569,6 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
         return *keyframe;
     };
     snapshot.snapshot_hash = ensure_keyframe().snapshot_hash;
-    remember_snapshot_hash(snapshot);
 
     for (auto& [peer_id, client] : clients_)
     {
@@ -1564,6 +1587,7 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             seed_client_snapshot_baseline(client.snapshot_state, full);
             client.has_initial_snapshot = true;
             client.force_keyframe = false;
+            remember_snapshot_hash(client, full);
             transport_.send_snapshot(
                 peer_id,
                 std::make_shared<WorldSnapshot>(std::move(full)));
@@ -1578,6 +1602,7 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             WorldSnapshot full = ensure_keyframe();
             seed_client_snapshot_baseline(client.snapshot_state, full);
             client.force_keyframe = false;
+            remember_snapshot_hash(client, full);
             transport_.send_snapshot(
                 peer_id,
                 std::make_shared<WorldSnapshot>(std::move(full)));
@@ -1588,6 +1613,7 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
         WorldSnapshot delta =
             consume_delta_snapshot_for_client(client.snapshot_state, snapshot);
         client.force_keyframe = false;
+        remember_snapshot_hash(client, delta);
         transport_.send_delta_snapshot(
             peer_id,
             std::make_shared<WorldSnapshot>(std::move(delta)));
