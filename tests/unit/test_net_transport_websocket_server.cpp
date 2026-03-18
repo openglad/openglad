@@ -270,6 +270,7 @@ TEST(NetTransportWebSocketServer,
     EXPECT_EQ(33u, decode_keyframe_request_tick(client_messages.front()));
 
     client.stop();
+    EXPECT_EQ((std::vector<og::sim::PeerId>{peer_id}), transport.connected_peers());
     ASSERT_TRUE(poll_until_peer_count(transport, 0u));
     EXPECT_TRUE(transport.connected_peers().empty());
 }

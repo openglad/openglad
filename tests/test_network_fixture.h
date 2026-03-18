@@ -383,9 +383,7 @@ public:
         const std::uint32_t next_tick =
             server_world_.world().tick_count_ + 1;
         send_explicit_input(input, next_tick);
-        with_server_context([&] {
-            server_->step();
-        });
+        step_server_once();
         poll_clients_for_server_tick();
     }
 
@@ -398,9 +396,7 @@ public:
             const std::uint32_t next_tick =
                 server_world_.world().tick_count_ + 1;
             send_client_inputs(next_tick);
-            with_server_context([&] {
-                server_->step();
-            });
+            step_server_once();
             poll_clients_for_server_tick();
         }
     }
@@ -764,7 +760,6 @@ private:
 
             client->peer_id_value = wait_for_next_websocket_peer();
             client->websocket_transport->set_remote_peer_id(client->peer_id());
-            server_->connect_client(client->peer_id());
             client->game_client = std::make_unique<GameClient>(
                 *client->transport,
                 client->peer_id(),
@@ -774,37 +769,72 @@ private:
 #endif
     }
 
+    void step_server_once()
+    {
+        with_server_context([&] {
+            server_->step();
+        });
+
+        if (uses_websocket_transport())
+            synchronize_websocket_server_peers(false);
+    }
+
 #if !defined(__EMSCRIPTEN__)
+    std::vector<PeerId> synchronize_websocket_server_peers(bool poll_transport)
+    {
+        if (!uses_websocket_transport())
+            return {};
+
+        if (poll_transport)
+            (void)server_transport_->poll();
+
+        std::vector<PeerId> current_peers = server_transport_->connected_peers();
+        std::vector<PeerId> added_peers;
+        std::vector<PeerId> removed_peers;
+        std::set_difference(current_peers.begin(), current_peers.end(),
+                            connected_server_peers_.begin(), connected_server_peers_.end(),
+                            std::back_inserter(added_peers));
+        std::set_difference(connected_server_peers_.begin(), connected_server_peers_.end(),
+                            current_peers.begin(), current_peers.end(),
+                            std::back_inserter(removed_peers));
+
+        if (!added_peers.empty() || !removed_peers.empty())
+        {
+            with_server_context([&] {
+                for (const PeerId peer_id : added_peers)
+                    server_->connect_client(peer_id);
+                for (const PeerId peer_id : removed_peers)
+                    server_->disconnect_client(peer_id);
+            });
+        }
+
+        connected_server_peers_ = std::move(current_peers);
+        return added_peers;
+    }
+
     PeerId wait_for_next_websocket_peer()
     {
-        const std::size_t expected_count = connected_server_peers_.size() + 1;
-        std::vector<PeerId> peers;
+        std::vector<PeerId> added_peers;
         const bool connected = wait_until(
             [&] {
-                (void)server_transport_->poll();
-                peers = server_transport_->connected_peers();
-                return peers.size() >= expected_count;
+                added_peers = synchronize_websocket_server_peers(true);
+                return !added_peers.empty();
             },
             config_.network_timeout);
         if (!connected)
         {
             throw std::runtime_error(std::format(
-                "NetworkTestFixture timed out waiting for websocket peer {}",
-                expected_count));
+                "NetworkTestFixture timed out waiting for next websocket peer"));
         }
 
-        const auto new_peer = std::find_if(
-            peers.begin(), peers.end(),
-            [this](PeerId peer_id) {
-                return std::find(connected_server_peers_.begin(),
-                                 connected_server_peers_.end(),
-                                 peer_id) == connected_server_peers_.end();
-            });
-        if (new_peer == peers.end())
+        if (added_peers.size() != 1u)
             throw std::runtime_error("NetworkTestFixture failed to identify websocket peer");
-
-        connected_server_peers_ = std::move(peers);
-        return *new_peer;
+        return added_peers.front();
+    }
+#else
+    std::vector<PeerId> synchronize_websocket_server_peers(bool)
+    {
+        return {};
     }
 #endif
 

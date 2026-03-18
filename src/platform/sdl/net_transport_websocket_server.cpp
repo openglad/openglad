@@ -282,10 +282,7 @@ struct WebSocketServerTransport::Impl
         std::vector<PeerId> result;
         result.reserve(peers.size());
         for (const auto& [peer_id, peer] : peers)
-        {
-            if (!peer.socket.expired())
-                result.push_back(peer_id);
-        }
+            result.push_back(peer_id);
         std::sort(result.begin(), result.end());
         return result;
     }
