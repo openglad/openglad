@@ -2,6 +2,23 @@
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <gtest/gtest.h>
 
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace og::ui {
+
+std::vector<std::string> build_host_picker_status_lines(
+    const std::string& direct_address,
+    bool has_direct_transport,
+    int port,
+    const std::string& direct_status_message,
+    const std::string& relay_room_code,
+    const std::string& relay_status_message,
+    std::optional<std::size_t> player_count);
+
+} // namespace og::ui
+
 TEST(MenuModel, main_definition_and_lookup)
 {
     using namespace og::ui;
@@ -130,4 +147,35 @@ TEST(MenuModel, host_picker_lobby_client_accepts_direct_only_and_relay_options)
     with_relay.relay_base_url = "https://relay.example";
     auto relay_client = og::ui::create_host_picker_lobby_client(with_relay);
     EXPECT_TRUE(relay_client != nullptr);
+}
+
+TEST(MenuModel, host_status_lines_show_lan_only_for_real_direct_transport)
+{
+    const std::vector<std::string> direct_lines =
+        og::ui::build_host_picker_status_lines(
+            "192.168.1.5",
+            true,
+            12345,
+            "ignored",
+            {},
+            {},
+            1u);
+    ASSERT_EQ(2u, direct_lines.size());
+    EXPECT_EQ("LAN: 192.168.1.5:12345", direct_lines[0]);
+    EXPECT_EQ("Lobby: 1 player", direct_lines[1]);
+
+    const std::vector<std::string> fallback_lines =
+        og::ui::build_host_picker_status_lines(
+            "192.168.1.5",
+            false,
+            12345,
+            "Direct hosting is unavailable in browser builds.",
+            "GLAD-XKCD",
+            {},
+            2u);
+    ASSERT_EQ(3u, fallback_lines.size());
+    EXPECT_EQ("Direct: Direct hosting is unavailable in browser builds.",
+              fallback_lines[0]);
+    EXPECT_EQ("Relay: GLAD-XKCD", fallback_lines[1]);
+    EXPECT_EQ("Lobby: 2 players", fallback_lines[2]);
 }

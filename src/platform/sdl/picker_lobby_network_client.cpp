@@ -724,6 +724,66 @@ std::string detect_lan_ipv4_address()
 #endif
 }
 
+std::string build_host_transport_failure_message(
+    std::string_view direct_status_message,
+    std::string_view relay_status_message)
+{
+    if (!direct_status_message.empty() && !relay_status_message.empty())
+    {
+        return std::format("Direct: {}\nRelay: {}",
+                           direct_status_message,
+                           relay_status_message);
+    }
+    if (!direct_status_message.empty())
+        return std::string(direct_status_message);
+    if (!relay_status_message.empty())
+        return std::string(relay_status_message);
+    return "Unable to host a network lobby.";
+}
+
+} // namespace
+
+namespace og::ui {
+
+std::vector<std::string> build_host_picker_status_lines(
+    const std::string& direct_address,
+    bool has_direct_transport,
+    int port,
+    const std::string& direct_status_message,
+    const std::string& relay_room_code,
+    const std::string& relay_status_message,
+    std::optional<std::size_t> player_count)
+{
+    std::vector<std::string> lines;
+    if (has_direct_transport)
+    {
+        lines.push_back(
+            std::format("LAN: {}:{}",
+                        direct_address,
+                        port));
+    }
+    else if (!direct_status_message.empty())
+    {
+        lines.push_back(std::format("Direct: {}", direct_status_message));
+    }
+    if (!relay_room_code.empty())
+        lines.push_back(std::format("Relay: {}", relay_room_code));
+    else if (!relay_status_message.empty())
+        lines.push_back(std::format("Relay: {}", relay_status_message));
+    if (player_count.has_value())
+    {
+        lines.push_back(
+            std::format("Lobby: {} player{}",
+                        *player_count,
+                        *player_count == 1 ? "" : "s"));
+    }
+    return lines;
+}
+
+} // namespace og::ui
+
+namespace {
+
 class HostPickerLobbyClient final : public og::ui::IPickerLobbyClient
 {
 public:
@@ -752,6 +812,7 @@ public:
 
         relay_room_code_.clear();
         relay_status_message_.clear();
+        direct_status_message_.clear();
 
         if (options_.enable_relay)
         {
@@ -776,10 +837,28 @@ public:
             }
         }
 
-#ifndef __EMSCRIPTEN__
-        websocket_server_transport_ =
-            std::make_shared<og::sim::WebSocketServerTransport>(options_.port);
+#ifdef __EMSCRIPTEN__
+        direct_status_message_ =
+            "Direct hosting is unavailable in browser builds.";
+#else
+        try
+        {
+            websocket_server_transport_ =
+                std::make_shared<og::sim::WebSocketServerTransport>(options_.port);
+        }
+        catch (const std::exception& error)
+        {
+            websocket_server_transport_.reset();
+            direct_status_message_ = error.what();
+        }
 #endif
+
+        if (!websocket_server_transport_ && !relay_transport_)
+        {
+            throw std::runtime_error(build_host_transport_failure_message(
+                direct_status_message_,
+                relay_status_message_));
+        }
 
         std::vector<std::shared_ptr<og::sim::ITransport>> transports;
         transports.push_back(local_server_transport_);
@@ -824,6 +903,7 @@ public:
         start_request_pending_ = false;
         relay_room_code_.clear();
         relay_status_message_.clear();
+        direct_status_message_.clear();
     }
 
     void sync_from_save() override
@@ -953,6 +1033,7 @@ public:
         server_.reset();
         combined_transport_.reset();
         websocket_server_transport_.reset();
+        relay_transport_.reset();
         local_client_transport_.reset();
         local_server_transport_.reset();
         state_.reset();
@@ -1049,23 +1130,16 @@ private:
 
     void rebuild_status_lines()
     {
-        status_lines_.clear();
-        status_lines_.push_back(
-            std::format("LAN: {}:{}",
-                        detect_lan_ipv4_address(),
-                        options_.port));
-        if (!relay_room_code_.empty())
-            status_lines_.push_back(std::format("Relay: {}", relay_room_code_));
-        else if (!relay_status_message_.empty())
-            status_lines_.push_back(
-                std::format("Relay: {}", relay_status_message_));
-        if (state_.has_value())
-        {
-            status_lines_.push_back(
-                std::format("Lobby: {} player{}",
-                            state_->players.size(),
-                            state_->players.size() == 1 ? "" : "s"));
-        }
+        status_lines_ = og::ui::build_host_picker_status_lines(
+            detect_lan_ipv4_address(),
+            static_cast<bool>(websocket_server_transport_),
+            options_.port,
+            direct_status_message_,
+            relay_room_code_,
+            relay_status_message_,
+            state_.has_value()
+                ? std::optional<std::size_t>(state_->players.size())
+                : std::nullopt);
     }
 
     og::ui::PickerHostGameOptions options_;
@@ -1085,6 +1159,7 @@ private:
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
     std::string relay_room_code_;
     std::string relay_status_message_;
+    std::string direct_status_message_;
 };
 
 class JoinPickerLobbyClient final : public og::ui::IPickerLobbyClient

@@ -11,7 +11,10 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 // Forward declarations from picker.cpp
 std::string get_class_description(unsigned char family);
@@ -40,6 +43,10 @@ void picker_reinitialize_lobby_after_game();
 void picker_lobby_shutdown();
 bool picker_lobby_request_start();
 bool picker_lobby_start_request_pending();
+bool picker_replace_lobby_client(
+    std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
+    std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
+    const char* popup_title);
 extern bool g_start_game_requested;
 #ifdef TESTING
 extern bool g_test_remove_exits;
@@ -109,6 +116,69 @@ struct ActivePickerLobbyClientGuard
     {
         og::ui::install_active_picker_lobby_client(saved);
     }
+};
+
+struct PickerLobbyClientTrace
+{
+    int initialize_calls = 0;
+    int shutdown_calls = 0;
+};
+
+class TraceablePickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    explicit TraceablePickerLobbyClient(std::shared_ptr<PickerLobbyClientTrace> trace)
+        : trace_(std::move(trace))
+    {
+    }
+
+    void initialize_from_save() override
+    {
+        ++trace_->initialize_calls;
+        if (throw_on_initialize)
+            throw std::runtime_error("simulated init failure");
+    }
+
+    void shutdown() override
+    {
+        ++trace_->shutdown_calls;
+    }
+
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+
+    [[nodiscard]] std::vector<std::string> status_lines() const override
+    {
+        return status_lines_;
+    }
+
+    std::shared_ptr<PickerLobbyClientTrace> trace_;
+    std::vector<std::string> status_lines_;
+    bool throw_on_initialize = false;
 };
 
 } // namespace
@@ -475,6 +545,60 @@ TEST(PickerFuncs, picker_lobby_consume_game_start_config_uses_active_client_boun
     }
 
     picker_lobby_shutdown();
+}
+
+TEST(PickerFuncs, picker_replace_lobby_client_is_transactional_on_initialize_failure)
+{
+    auto current_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        std::make_unique<TraceablePickerLobbyClient>(
+        current_trace);
+    auto* const current_raw =
+        static_cast<TraceablePickerLobbyClient*>(current_client.get());
+    ActivePickerLobbyClientGuard guard(current_raw);
+
+    auto next_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> next_client =
+        std::make_unique<TraceablePickerLobbyClient>(
+        next_trace);
+    static_cast<TraceablePickerLobbyClient*>(next_client.get())
+        ->throw_on_initialize = true;
+
+    EXPECT_THROW(
+        picker_replace_lobby_client(current_client,
+                                    std::move(next_client),
+                                    "HOST GAME"),
+        std::runtime_error);
+    EXPECT_EQ(current_raw, current_client.get());
+    EXPECT_EQ(current_raw, og::ui::active_picker_lobby_client());
+    EXPECT_EQ(0, current_trace->shutdown_calls);
+    EXPECT_EQ(1, next_trace->initialize_calls);
+}
+
+TEST(PickerFuncs, picker_replace_lobby_client_swaps_active_client_after_success)
+{
+    auto current_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        std::make_unique<TraceablePickerLobbyClient>(
+        current_trace);
+    ActivePickerLobbyClientGuard guard(current_client.get());
+
+    auto next_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> next_client =
+        std::make_unique<TraceablePickerLobbyClient>(
+        next_trace);
+    static_cast<TraceablePickerLobbyClient*>(next_client.get())->status_lines_ =
+        {"Relay: GLAD-XKCD"};
+    auto* const next_raw =
+        static_cast<TraceablePickerLobbyClient*>(next_client.get());
+
+    ASSERT_TRUE(picker_replace_lobby_client(current_client,
+                                            std::move(next_client),
+                                            "HOST GAME"));
+    EXPECT_EQ(next_raw, current_client.get());
+    EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
+    EXPECT_EQ(1, current_trace->shutdown_calls);
+    EXPECT_EQ(1, next_trace->initialize_calls);
 }
 
 TEST(PickerFuncs, lobby_sync_preserves_sparse_team_assignments)

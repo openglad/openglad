@@ -296,6 +296,29 @@ std::string join_status_lines(const std::vector<std::string>& lines)
 
 } // namespace
 
+bool picker_replace_lobby_client(
+    std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
+    std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
+    const char* popup_title)
+{
+    if (!next_client)
+        return false;
+
+    next_client->initialize_from_save();
+    const std::string message = join_status_lines(next_client->status_lines());
+
+    if (current_client)
+        current_client->shutdown();
+    if (og::ui::active_picker_lobby_client() == current_client.get())
+        og::ui::install_active_picker_lobby_client(nullptr);
+
+    current_client = std::move(next_client);
+    og::ui::install_active_picker_lobby_client(current_client.get());
+    if (!message.empty())
+        popup_dialog(popup_title, message.c_str());
+    return true;
+}
+
 class SdlPickerClient final : public og::ui::IPickerClient
 {
 public:
@@ -496,22 +519,10 @@ private:
     bool replace_lobby_client(std::unique_ptr<og::ui::IPickerLobbyClient> client,
                               const char* popup_title)
     {
-        if (!client)
-            return false;
-
-        if (lobby_client_)
-            lobby_client_->shutdown();
-        if (og::ui::active_picker_lobby_client() == lobby_client_.get())
-            og::ui::install_active_picker_lobby_client(nullptr);
-
-        lobby_client_ = std::move(client);
-        og::ui::install_active_picker_lobby_client(lobby_client_.get());
-        picker_lobby_initialize_from_save();
-
-        const std::string message = join_status_lines(picker_lobby_status_lines());
-        if (!message.empty())
-            popup_dialog(popup_title, message.c_str());
-        return true;
+        return picker_replace_lobby_client(
+            lobby_client_,
+            std::move(client),
+            popup_title);
     }
 
     bool start_team_build_in_hire_menu_ = false;
