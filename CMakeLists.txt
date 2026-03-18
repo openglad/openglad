@@ -253,6 +253,11 @@ set(GAME_SOURCES
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
 list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/platform/sdl/glad.cpp)
+if(EMSCRIPTEN)
+    list(APPEND GAME_SOURCES_NO_MAIN
+        ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp
+    )
+endif()
 
 # Internal module decomposition (Phase 1 architecture foundations).
 # Keep these lists in sync with GAME_SOURCES_NO_MAIN so targets remain behaviorally equivalent.
