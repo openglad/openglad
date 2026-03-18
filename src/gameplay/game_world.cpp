@@ -10,6 +10,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/statistics.h>
@@ -90,6 +91,7 @@ void refresh_self_reference_ids(walker& entity)
 namespace og::sim {
 // Test hook to shorten mission timeout checks in deterministic harnesses.
 std::int32_t g_test_level_tick_limit_override = 0;
+std::int32_t g_test_force_friendly_fairy_death_after_level_tick = 0;
 } // namespace og::sim
 
 GameWorld::GameWorld(std::uint32_t seed)
@@ -1384,6 +1386,29 @@ void GameWorld::tick()
         current_palette_id = 0;
         events.push(og::sim::EventKind::SetPalette, 0, 0);
     }
+
+#ifdef TESTING
+    if (og::sim::g_test_force_friendly_fairy_death_after_level_tick > 0 &&
+        level_tick_count_ >= static_cast<std::uint32_t>(
+            og::sim::g_test_force_friendly_fairy_death_after_level_tick))
+    {
+        og::sim::g_test_force_friendly_fairy_death_after_level_tick = 0;
+        for (auto& uptr : oblist)
+        {
+            walker* const entity = uptr.get();
+            if (entity == nullptr || entity->dead() || entity->myguy == nullptr)
+                continue;
+            if (entity->team_num() != 0 || entity->myguy->family != FAMILY_FAERIE)
+                continue;
+
+            if (statistics* const stats = entity->stats(); stats != nullptr)
+                stats->set_hitpoints(0);
+            entity->set_dead(1);
+            entity->death();
+            break;
+        }
+    }
+#endif
 
     // --- Entity act phase ---
     bool printed_time = false;

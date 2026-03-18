@@ -42,6 +42,10 @@ extern int g_picker_max_mainmenu_calls;
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
+extern std::atomic<bool> g_test_friendly_fairy_died;
+namespace og::sim {
+extern std::int32_t g_test_force_friendly_fairy_death_after_level_tick;
+}
 void picker_testing_yes_or_no_queue_clear();
 void picker_testing_set_force_real_dialogs(bool enabled);
 #endif
@@ -153,6 +157,8 @@ void reset_integration_ui_state()
     g_test_remove_exits = false;
     g_test_in_game.store(false, std::memory_order_release);
     g_test_game_epoch.store(0, std::memory_order_release);
+    g_test_friendly_fairy_died.store(false, std::memory_order_release);
+    og::sim::g_test_force_friendly_fairy_death_after_level_tick = 0;
     picker_testing_yes_or_no_queue_clear();
     picker_testing_set_force_real_dialogs(false);
 #endif

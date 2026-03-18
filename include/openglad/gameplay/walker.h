@@ -24,6 +24,7 @@
 
 #include <openglad/gameplay/sim_entity.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <atomic>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -42,6 +43,10 @@ class IRenderComponent;
 // States are encoded grid coordinates (not real pointers), but the
 // micropather library API requires void*.
 using MicroPatherState = void*;
+
+#ifdef TESTING
+extern std::atomic<bool> g_test_friendly_fairy_died;
+#endif
 
 class walker : public og::sim::SimEntity
 {

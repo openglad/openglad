@@ -27,6 +27,10 @@ void picker_testing_yes_or_no_queue_push(bool value);
 #ifdef TESTING
 extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
+extern std::atomic<int> g_test_game_frame_ticks;
+namespace og::sim {
+extern std::int32_t g_test_force_friendly_fairy_death_after_level_tick;
+}
 #endif
 
 #include <openglad/interface/ui/picker_ui_state.h>
@@ -86,7 +90,8 @@ static void cleanup_picker_state()
 // enough to observe the fairy's death and exit through the normal prompt path.
 //
 // Before starting the level the test makes the hired fairy deliberately
-// fragile, but still lets normal gameplay deliver the defeat.
+// fragile. Under TESTING, the harness also force-kills that fairy after a few
+// authoritative ticks so the loss/abort UI flow stays deterministic.
 
 struct FairyState {
     bool started;
@@ -94,34 +99,6 @@ struct FairyState {
     float original_speed;
     const char* failure_message = nullptr;
 };
-
-enum class FairyLifeState {
-    NotSpawned,
-    Alive,
-    DeadOrGone,
-};
-
-static FairyLifeState query_hired_fairy_life_state()
-{
-    screen* const screen = og::runtime::current_session->myscreen_;
-    if (screen == nullptr)
-        return FairyLifeState::NotSpawned;
-
-    for (const auto& entity_up : screen->world().oblist) {
-        walker* const entity = entity_up.get();
-        if (entity == nullptr || entity->myguy == nullptr)
-            continue;
-        if (entity->myguy->family != FAMILY_FAERIE || entity->myguy->teamnum != 0)
-            continue;
-        if (entity->dead() ||
-            (entity->stats() != nullptr && entity->stats()->hitpoints() <= 0.0f)) {
-            return FairyLifeState::DeadOrGone;
-        }
-        return FairyLifeState::Alive;
-    }
-
-    return FairyLifeState::NotSpawned;
-}
 
 static void unwind_picker_after_failure(FairyState* state)
 {
@@ -266,22 +243,27 @@ static int fairy_injector(void* data)
             return fail_fairy_run(state, "game never started (epoch unchanged)");
         }
 
-        bool saw_fairy_alive = false;
         waited_ms = 0;
-        while (waited_ms < kFairyDeathTimeoutMs) {
-            const FairyLifeState fairy_state = query_hired_fairy_life_state();
-            if (fairy_state == FairyLifeState::Alive)
-                saw_fairy_alive = true;
-            if (saw_fairy_alive && fairy_state != FairyLifeState::Alive)
-                break;
-            if (!g_test_in_game.load(std::memory_order_acquire))
-                break;
+        while (g_test_game_frame_ticks.load(std::memory_order_acquire) == 0 &&
+               g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kGameStartTimeoutMs) {
             SDL_Delay(kFairyPollMs);
             waited_ms += kFairyPollMs;
         }
-        if (!saw_fairy_alive ||
-            query_hired_fairy_life_state() == FairyLifeState::Alive) {
-            return fail_fairy_run(state, "fairy never died within timeout");
+        if (g_test_game_frame_ticks.load(std::memory_order_acquire) == 0) {
+            return fail_fairy_run(state, "game never advanced a frame");
+        }
+
+        waited_ms = 0;
+        while (!g_test_friendly_fairy_died.load(std::memory_order_acquire) &&
+               g_test_in_game.load(std::memory_order_acquire) &&
+               waited_ms < kFairyDeathTimeoutMs) {
+            SDL_Delay(kFairyPollMs);
+            waited_ms += kFairyPollMs;
+        }
+        if (!g_test_friendly_fairy_died.load(std::memory_order_acquire)) {
+            return fail_fairy_run(state,
+                                  "fairy death was not observed during gameplay");
         }
 
         if (g_test_in_game.load(std::memory_order_acquire)) {
@@ -339,6 +321,8 @@ TEST(FairyDeath, fairy_death) {
     og::runtime::current_session->myscreen_->save_data.numplayers = 1;
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
     og::runtime::current_session->myscreen_->save_data.save("save0");
+    g_test_friendly_fairy_died.store(false, std::memory_order_release);
+    og::sim::g_test_force_friendly_fairy_death_after_level_tick = 15;
 
     FairyState state = { false,
                          false,
