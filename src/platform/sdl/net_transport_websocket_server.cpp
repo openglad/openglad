@@ -159,27 +159,22 @@ struct WebSocketServerTransport::Impl
 
     void send(PeerId peer_id, const std::uint8_t* data, std::size_t len)
     {
-        const auto peer_it = peers.find(peer_id);
-        if (peer_it == peers.end())
-        {
-            throw std::runtime_error(std::format(
-                "WebSocketServerTransport peer {} is not connected",
-                peer_id));
-        }
-
-        const std::shared_ptr<ix::WebSocket> socket = peer_it->second.socket.lock();
-        if (!socket)
-        {
-            throw std::runtime_error(std::format(
-                "WebSocketServerTransport peer {} socket expired",
-                peer_id));
-        }
-
         if (data == nullptr && len != 0)
         {
             throw std::runtime_error(std::format(
                 "WebSocketServerTransport peer {} send buffer is null",
                 peer_id));
+        }
+
+        const auto peer_it = peers.find(peer_id);
+        if (peer_it == peers.end())
+            return;
+
+        const std::shared_ptr<ix::WebSocket> socket = peer_it->second.socket.lock();
+        if (!socket)
+        {
+            enqueue_disconnect(peer_it->second.connection_id);
+            return;
         }
 
         const char* bytes = reinterpret_cast<const char*>(data);
@@ -189,10 +184,8 @@ struct WebSocketServerTransport::Impl
         const ix::WebSocketSendInfo send_info = socket->sendBinary(payload);
         if (!send_info.success)
         {
-            throw std::runtime_error(std::format(
-                "WebSocketServerTransport failed to send {} bytes to peer {}",
-                len,
-                peer_id));
+            enqueue_disconnect(peer_it->second.connection_id);
+            socket->close();
         }
     }
 
@@ -294,6 +287,14 @@ struct WebSocketServerTransport::Impl
     }
 
 private:
+    void enqueue_disconnect(const std::string& connection_id)
+    {
+        QueueEntry entry;
+        entry.kind = QueueEntryKind::Disconnect;
+        entry.connection_id = connection_id;
+        enqueue(std::move(entry));
+    }
+
     void enqueue(QueueEntry entry)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);

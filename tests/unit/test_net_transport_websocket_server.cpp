@@ -85,6 +85,14 @@ public:
         }) && open_;
     }
 
+    bool wait_until_closed(std::chrono::milliseconds timeout = 5s)
+    {
+        std::unique_lock<std::mutex> lock(mutex_);
+        return condition_.wait_for(lock, timeout, [this] {
+            return !open_;
+        });
+    }
+
     bool wait_for_binary_message_count(std::size_t expected_count,
                                        std::chrono::milliseconds timeout = 5s)
     {
@@ -145,7 +153,12 @@ private:
             }
             break;
 
+        case ix::WebSocketMessageType::Close:
+            open_ = false;
+            break;
+
         case ix::WebSocketMessageType::Error:
+            open_ = false;
             error_ = message->errorInfo.reason;
             break;
 
@@ -385,6 +398,40 @@ TEST(NetTransportWebSocketServer,
         client->stop();
 
     ASSERT_TRUE(poll_until_peer_count(transport, 0u));
+}
+
+TEST(NetTransportWebSocketServer,
+     send_to_peer_with_pending_disconnect_is_ignored_until_poll_removes_it)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    og::sim::WebSocketServerTransport::Options options;
+    options.host = "127.0.0.1";
+
+    og::sim::WebSocketServerTransport transport(port, options);
+    transport.accept_connections();
+
+    WebSocketClientProbe client(std::format("ws://127.0.0.1:{}", port));
+    client.start();
+    ASSERT_TRUE(client.wait_until_open()) << client.error();
+
+    ASSERT_TRUE(poll_until_peer_count(transport, 1u));
+    const std::vector<og::sim::PeerId> peers = transport.connected_peers();
+    ASSERT_EQ(1u, peers.size());
+    const og::sim::PeerId peer_id = peers.front();
+
+    client.stop();
+    ASSERT_TRUE(client.wait_until_closed());
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{peer_id}), transport.connected_peers());
+    EXPECT_NO_THROW(
+        transport.send_keyframe_request(
+            peer_id,
+            std::make_shared<og::sim::KeyframeRequestMessage>(
+                og::sim::KeyframeRequestMessage{.last_seen_tick = 99u})));
+
+    ASSERT_TRUE(poll_until_peer_count(transport, 0u));
+    EXPECT_TRUE(transport.connected_peers().empty());
 }
 
 TEST(NetTransportWebSocketServer,

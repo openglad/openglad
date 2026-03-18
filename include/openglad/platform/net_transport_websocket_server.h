@@ -21,7 +21,9 @@ public:
 
     // IXWebSocket invokes callbacks on background I/O threads. Those callbacks
     // only enqueue connection/message/disconnection events here; all peer state
-    // updates happen later on the game thread from poll().
+    // updates happen later on the game thread from poll(). A send to a peer
+    // whose disconnect is still deferred is treated as a no-op and queues a
+    // disconnect for the next poll instead of throwing from the game thread.
     explicit WebSocketServerTransport(int port);
     WebSocketServerTransport(int port, Options options);
     ~WebSocketServerTransport() override;
