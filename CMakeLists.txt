@@ -821,6 +821,22 @@ if(NOT EMSCRIPTEN)
     set(USE_ZLIB OFF)
     set(IXWEBSOCKET_INSTALL OFF)
     add_subdirectory(${THIRD_PARTY_DIR}/ixwebsocket)
+    get_target_property(IXWEBSOCKET_PUBLIC_HEADERS ixwebsocket PUBLIC_HEADER)
+    if(IXWEBSOCKET_PUBLIC_HEADERS)
+        set(IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE)
+        foreach(ixwebsocket_header IN LISTS IXWEBSOCKET_PUBLIC_HEADERS)
+            if(IS_ABSOLUTE "${ixwebsocket_header}")
+                list(APPEND IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE "${ixwebsocket_header}")
+            else()
+                list(APPEND IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE
+                    "${THIRD_PARTY_DIR}/ixwebsocket/${ixwebsocket_header}"
+                )
+            endif()
+        endforeach()
+        set_target_properties(ixwebsocket PROPERTIES
+            PUBLIC_HEADER "${IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE}"
+        )
+    endif()
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(ixwebsocket PRIVATE -w)
     endif()
