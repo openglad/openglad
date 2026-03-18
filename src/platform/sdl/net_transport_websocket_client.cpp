@@ -4,6 +4,7 @@
 
 #include <ixwebsocket/IXWebSocket.h>
 
+#include <cstdint>
 #include <deque>
 #include <format>
 #include <memory>
@@ -25,6 +26,7 @@ struct WebSocketClientTransport::Impl
 
     struct QueueEntry {
         QueueEntryKind kind = QueueEntryKind::Message;
+        std::uint64_t generation = 0;
         std::vector<std::uint8_t> payload;
     };
 
@@ -43,21 +45,6 @@ struct WebSocketClientTransport::Impl
             throw std::invalid_argument(
                 "WebSocketClientTransport remote peer id must be non-zero");
         }
-
-        websocket.setUrl(url);
-        if (options.automatic_reconnection)
-            websocket.enableAutomaticReconnection();
-        else
-            websocket.disableAutomaticReconnection();
-
-        websocket.setMinWaitBetweenReconnectionRetries(
-            options.min_reconnect_wait_ms);
-        websocket.setMaxWaitBetweenReconnectionRetries(
-            options.max_reconnect_wait_ms);
-        websocket.setOnMessageCallback(
-            [this](const ix::WebSocketMessagePtr& message) {
-                handle_message(message);
-            });
     }
 
     static Options normalize_options(Options options)
@@ -70,7 +57,8 @@ struct WebSocketClientTransport::Impl
         return options;
     }
 
-    void handle_message(const ix::WebSocketMessagePtr& message)
+    void handle_message(std::uint64_t generation,
+                        const ix::WebSocketMessagePtr& message)
     {
         if (!message)
             return;
@@ -81,6 +69,7 @@ struct WebSocketClientTransport::Impl
         {
             QueueEntry entry;
             entry.kind = QueueEntryKind::Connect;
+            entry.generation = generation;
             enqueue(std::move(entry));
             break;
         }
@@ -92,6 +81,7 @@ struct WebSocketClientTransport::Impl
 
             QueueEntry entry;
             entry.kind = QueueEntryKind::Message;
+            entry.generation = generation;
             entry.payload.assign(message->str.begin(), message->str.end());
             enqueue(std::move(entry));
             break;
@@ -102,6 +92,7 @@ struct WebSocketClientTransport::Impl
         {
             QueueEntry entry;
             entry.kind = QueueEntryKind::Disconnect;
+            entry.generation = generation;
             enqueue(std::move(entry));
             break;
         }
@@ -116,7 +107,11 @@ struct WebSocketClientTransport::Impl
         if (started)
             return;
 
-        websocket.start();
+        clear_queue();
+        connected = false;
+        active_generation = next_generation++;
+        websocket = make_websocket(active_generation);
+        websocket->start();
         started = true;
     }
 
@@ -129,18 +124,18 @@ struct WebSocketClientTransport::Impl
                 peer_id));
         }
 
-        if (peer_id != options.remote_peer_id || !connected)
+        if (peer_id != options.remote_peer_id || !connected || !websocket)
             return;
 
         const char* bytes = reinterpret_cast<const char*>(data);
         const std::string payload =
             (bytes == nullptr || len == 0) ? std::string()
                                            : std::string(bytes, bytes + len);
-        const ix::WebSocketSendInfo send_info = websocket.sendBinary(payload);
+        const ix::WebSocketSendInfo send_info = websocket->sendBinary(payload);
         if (!send_info.success)
         {
-            enqueue_disconnect();
-            websocket.close();
+            enqueue_disconnect(active_generation);
+            websocket->close();
         }
     }
 
@@ -162,6 +157,9 @@ struct WebSocketClientTransport::Impl
         drained_messages.reserve(queued_entries.size());
         for (auto& entry : queued_entries)
         {
+            if (entry.generation != active_generation)
+                continue;
+
             switch (entry.kind)
             {
             case QueueEntryKind::Connect:
@@ -190,12 +188,17 @@ struct WebSocketClientTransport::Impl
         if (peer_id != options.remote_peer_id)
             return;
 
+        active_generation = 0;
         connected = false;
+        clear_queue();
         if (!started)
             return;
 
-        websocket.stop();
         started = false;
+        std::unique_ptr<ix::WebSocket> retiring_websocket = std::move(websocket);
+        if (retiring_websocket)
+            retiring_websocket->stop();
+        clear_queue();
     }
 
     std::vector<PeerId> connected_peers() const
@@ -208,15 +211,47 @@ struct WebSocketClientTransport::Impl
     ~Impl()
     {
         if (started)
-            websocket.stop();
+        {
+            active_generation = 0;
+            std::unique_ptr<ix::WebSocket> retiring_websocket = std::move(websocket);
+            if (retiring_websocket)
+                retiring_websocket->stop();
+        }
     }
 
 private:
-    void enqueue_disconnect()
+    std::unique_ptr<ix::WebSocket> make_websocket(std::uint64_t generation)
+    {
+        auto socket = std::make_unique<ix::WebSocket>();
+        socket->setUrl(url);
+        if (options.automatic_reconnection)
+            socket->enableAutomaticReconnection();
+        else
+            socket->disableAutomaticReconnection();
+
+        socket->setMinWaitBetweenReconnectionRetries(
+            options.min_reconnect_wait_ms);
+        socket->setMaxWaitBetweenReconnectionRetries(
+            options.max_reconnect_wait_ms);
+        socket->setOnMessageCallback(
+            [this, generation](const ix::WebSocketMessagePtr& message) {
+                handle_message(generation, message);
+            });
+        return socket;
+    }
+
+    void enqueue_disconnect(std::uint64_t generation)
     {
         QueueEntry entry;
         entry.kind = QueueEntryKind::Disconnect;
+        entry.generation = generation;
         enqueue(std::move(entry));
+    }
+
+    void clear_queue()
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+        queue.clear();
     }
 
     void enqueue(QueueEntry entry)
@@ -228,7 +263,9 @@ private:
     detail::IxNetSystemGuard net_system_guard;
     std::string url;
     Options options;
-    ix::WebSocket websocket;
+    std::unique_ptr<ix::WebSocket> websocket;
+    std::uint64_t next_generation = 1;
+    std::uint64_t active_generation = 0;
     bool started = false;
     bool connected = false;
 
