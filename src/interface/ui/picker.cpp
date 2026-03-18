@@ -361,10 +361,21 @@ public:
     bool host_game() override
     {
 #ifdef __EMSCRIPTEN__
-        popup_dialog("HOST GAME",
-                     "Browser hosting needs relay support.\n"
-                     "Direct hosting is unavailable here.");
-        return false;
+        try
+        {
+            og::ui::PickerHostGameOptions options;
+            options.enable_relay = true;
+            options.relay_required = true;
+            options.relay_base_url = og::ui::default_relay_base_url();
+            return replace_lobby_client(
+                og::ui::create_host_picker_lobby_client(options),
+                "HOST GAME");
+        }
+        catch (const std::exception& error)
+        {
+            popup_dialog("HOST GAME", error.what());
+            return false;
+        }
 #else
         std::string port_text = "12345";
         if (!prompt_for_string("HOST PORT", port_text))
@@ -381,6 +392,13 @@ public:
         {
             og::ui::PickerHostGameOptions options;
             options.port = *port;
+            options.enable_relay = yes_or_no_prompt(
+                "HOST GAME",
+                "Create a relay room code too?\n"
+                "Choose YES for NAT-friendly hosting.",
+                false);
+            if (options.enable_relay)
+                options.relay_base_url = og::ui::default_relay_base_url();
             return replace_lobby_client(
                 og::ui::create_host_picker_lobby_client(options),
                 "HOST GAME");
@@ -416,13 +434,7 @@ public:
                 return false;
             options.mode = og::ui::PickerJoinMode::Relay;
             options.room_code = room_code;
-            if (!og::ui::picker_join_mode_supported(options.mode))
-            {
-                popup_dialog(
-                    "JOIN GAME",
-                    "Relay room codes require the Phase 32 relay transport.");
-                return false;
-            }
+            options.relay_base_url = og::ui::default_relay_base_url();
         }
 
         try

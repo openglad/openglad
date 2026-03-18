@@ -105,3 +105,14 @@ TEST(MenuModel, normalize_direct_websocket_url_accepts_plain_endpoints_and_ws_ur
     EXPECT_EQ("wss://relay.example/room",
               og::ui::normalize_direct_websocket_url("wss://relay.example/room"));
 }
+
+TEST(MenuModel, relay_room_code_and_join_mode_helpers_support_relay_flow)
+{
+    EXPECT_TRUE(og::ui::picker_join_mode_supported(og::ui::PickerJoinMode::Direct));
+    EXPECT_TRUE(og::ui::picker_join_mode_supported(og::ui::PickerJoinMode::Relay));
+    EXPECT_EQ("GLAD-XKCD",
+              og::ui::normalize_relay_room_code(" glad-xkcd "));
+    EXPECT_EQ("https://relay.example",
+              og::ui::normalize_relay_base_url("https://relay.example/"));
+    EXPECT_FALSE(og::ui::default_relay_base_url().empty());
+}

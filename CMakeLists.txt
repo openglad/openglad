@@ -106,6 +106,7 @@ if(NOT EMSCRIPTEN)
     list(APPEND OG_NETWORK_SOURCES
         ${SRC_DIR}/platform/sdl/net_transport_websocket_client.cpp
         ${SRC_DIR}/platform/sdl/net_transport_websocket_server.cpp
+        ${SRC_DIR}/platform/sdl/net_transport_relay_ws.cpp
     )
 endif()
 
@@ -259,6 +260,7 @@ list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/platform/sdl/glad.cpp)
 if(EMSCRIPTEN)
     list(APPEND GAME_SOURCES_NO_MAIN
         ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp
+        ${SRC_DIR}/platform/emscripten/net_transport_relay_ws.cpp
     )
 endif()
 
@@ -664,6 +666,7 @@ set(EXTERNAL_C_SOURCES
 
 set(OG_PUBLIC_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
 set(OG_THIRD_PARTY_INCLUDE_DIRS
+    ${THIRD_PARTY_DIR}/ixwebsocket
     ${THIRD_PARTY_DIR}/micropather
     ${THIRD_PARTY_DIR}/yam
     ${THIRD_PARTY_DIR}/libyaml/include
@@ -977,6 +980,7 @@ if(NOT EMSCRIPTEN)
     configure_component_library(og_platform_sdl "${OG_PUBLIC_INCLUDE_DIR}")
     configure_openglad_sdl_target(og_platform_sdl)
     target_include_directories(og_platform_sdl PRIVATE
+        ${OG_THIRD_PARTY_INCLUDE_DIRS}
         ${THIRD_PARTY_DIR}/yam
         ${THIRD_PARTY_DIR}/libyaml/include
         ${THIRD_PARTY_DIR}/physfs
@@ -989,10 +993,14 @@ if(NOT EMSCRIPTEN)
         og_resources
         og_interface
     )
+    if(NOT EMSCRIPTEN)
+        target_link_libraries(og_platform_sdl PRIVATE ixwebsocket)
+    endif()
     add_dependencies(og_platform_sdl check_vendor_leaks)
 
     add_library(og_platform_emscripten_transport STATIC
         ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp
+        $<$<BOOL:${EMSCRIPTEN}>:${SRC_DIR}/platform/emscripten/net_transport_relay_ws.cpp>
     )
     configure_openglad_library(og_platform_emscripten_transport)
     if(BUILD_TESTING)
@@ -1752,6 +1760,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_multiplex.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_emscripten_ws.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_relay_ws.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_client.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_server.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_state_net.cpp

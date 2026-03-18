@@ -7,18 +7,23 @@
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
+#include <openglad/platform/net_transport_relay_ws.h>
 
 #ifdef __EMSCRIPTEN__
+#include <emscripten.h>
 #include <openglad/platform/net_transport_emscripten_ws.h>
 #else
+#include <ixwebsocket/IXHttpClient.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
 #endif
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <charconv>
+#include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <memory>
 #include <optional>
@@ -127,6 +132,248 @@ std::string trim_copy(std::string value)
     if (first >= last)
         return {};
     return std::string(first, last);
+}
+
+constexpr std::string_view kDefaultRelayBaseUrl =
+    "https://relay.openglad.example";
+
+#ifdef __EMSCRIPTEN__
+EM_ASYNC_JS(char*, relay_http_post_text_js, (const char* url_cstr), {
+    try {
+        const url = UTF8ToString(url_cstr);
+        const response = await fetch(url, { method: 'POST' });
+        const text = await response.text();
+        return stringToNewUTF8(
+            (response.ok ? 'OK\n' : 'ERR\n') +
+            String(response.status) +
+            '\n' +
+            text);
+    } catch (error) {
+        const message =
+            (error && error.message) ? error.message : String(error);
+        return stringToNewUTF8('ERR\n0\n' + message);
+    }
+});
+#endif
+
+std::string url_encode_component(std::string_view text)
+{
+    constexpr char hex_digits[] = "0123456789ABCDEF";
+
+    std::string encoded;
+    encoded.reserve(text.size());
+    for (const unsigned char ch :
+         std::string(text.begin(), text.end()))
+    {
+        if (std::isalnum(ch) || ch == '-' || ch == '_' ||
+            ch == '.' || ch == '~')
+        {
+            encoded.push_back(static_cast<char>(ch));
+            continue;
+        }
+
+        encoded.push_back('%');
+        encoded.push_back(hex_digits[(ch >> 4) & 0x0f]);
+        encoded.push_back(hex_digits[ch & 0x0f]);
+    }
+    return encoded;
+}
+
+std::string relay_api_base_url(std::string base_url)
+{
+    base_url = trim_copy(std::move(base_url));
+    while (!base_url.empty() && base_url.back() == '/')
+        base_url.pop_back();
+    if (base_url.size() >= 4 &&
+        base_url.substr(base_url.size() - 4) == "/api")
+    {
+        return base_url;
+    }
+    return base_url + "/api";
+}
+
+std::optional<std::size_t> find_json_field_value(std::string_view text,
+                                                 std::string_view key)
+{
+    const std::string needle = std::format("\"{}\"", key);
+    const std::size_t key_pos = text.find(needle);
+    if (key_pos == std::string_view::npos)
+        return std::nullopt;
+
+    std::size_t colon_pos = text.find(':', key_pos + needle.size());
+    if (colon_pos == std::string_view::npos)
+        return std::nullopt;
+    ++colon_pos;
+
+    while (colon_pos < text.size() &&
+           std::isspace(static_cast<unsigned char>(text[colon_pos])))
+    {
+        ++colon_pos;
+    }
+    if (colon_pos >= text.size())
+        return std::nullopt;
+    return colon_pos;
+}
+
+std::optional<std::string> extract_json_string_field(std::string_view text,
+                                                     std::string_view key)
+{
+    const auto value_pos = find_json_field_value(text, key);
+    if (!value_pos.has_value() || text[*value_pos] != '"')
+        return std::nullopt;
+
+    std::string value;
+    bool escape = false;
+    for (std::size_t index = *value_pos + 1; index < text.size(); ++index)
+    {
+        const char ch = text[index];
+        if (escape)
+        {
+            value.push_back(ch);
+            escape = false;
+            continue;
+        }
+        if (ch == '\\')
+        {
+            escape = true;
+            continue;
+        }
+        if (ch == '"')
+            return value;
+        value.push_back(ch);
+    }
+
+    return std::nullopt;
+}
+
+std::string relay_base_url_or_default(std::string configured_url)
+{
+    configured_url = trim_copy(std::move(configured_url));
+    if (!configured_url.empty())
+        return configured_url;
+
+    if (const char* env_value = std::getenv("OPENGLAD_RELAY_BASE_URL");
+        env_value != nullptr && env_value[0] != '\0')
+    {
+        return env_value;
+    }
+
+    return std::string(kDefaultRelayBaseUrl);
+}
+
+std::string build_relay_room_websocket_url(std::string base_url,
+                                           std::string_view room_code)
+{
+    base_url = relay_api_base_url(std::move(base_url));
+    if (base_url.rfind("https://", 0) == 0)
+        base_url.replace(0, 8, "wss://");
+    else if (base_url.rfind("http://", 0) == 0)
+        base_url.replace(0, 7, "ws://");
+    return std::format("{}/room/{}", base_url, room_code);
+}
+
+std::string build_relay_room_create_url(std::string base_url,
+                                        std::string_view campaign_tag)
+{
+    base_url = relay_api_base_url(std::move(base_url));
+    if (base_url.rfind("ws://", 0) == 0)
+        base_url.replace(0, 5, "http://");
+    else if (base_url.rfind("wss://", 0) == 0)
+        base_url.replace(0, 6, "https://");
+
+    std::string url = base_url + "/create";
+    const std::string encoded_tag = url_encode_component(campaign_tag);
+    if (!encoded_tag.empty())
+        url.append(std::format("?campaign={}", encoded_tag));
+    return url;
+}
+
+std::string extract_room_code_from_create_response(std::string_view body)
+{
+    const std::string trimmed = trim_copy(std::string(body));
+    if (trimmed.empty())
+        throw std::runtime_error("Relay room creation returned an empty response");
+
+    if (trimmed.front() == '{')
+    {
+        if (const auto code = extract_json_string_field(trimmed, "code");
+            code.has_value())
+        {
+            return *code;
+        }
+        if (const auto code =
+                extract_json_string_field(trimmed, "room_code");
+            code.has_value())
+        {
+            return *code;
+        }
+    }
+
+    return trimmed;
+}
+
+std::string create_relay_room_code(std::string_view base_url,
+                                   std::string_view campaign_tag)
+{
+    const std::string create_url = build_relay_room_create_url(
+        std::string(base_url),
+        campaign_tag);
+
+#ifdef __EMSCRIPTEN__
+    std::unique_ptr<char, decltype(&std::free)> response_text(
+        relay_http_post_text_js(create_url.c_str()),
+        &std::free);
+    const std::string response =
+        response_text ? std::string(response_text.get()) : std::string();
+    const std::size_t first_newline = response.find('\n');
+    const std::size_t second_newline =
+        first_newline == std::string::npos
+            ? std::string::npos
+            : response.find('\n', first_newline + 1);
+    if (first_newline == std::string::npos ||
+        second_newline == std::string::npos)
+    {
+        throw std::runtime_error("Relay room creation returned an invalid response");
+    }
+
+    const std::string status = response.substr(0, first_newline);
+    const std::string status_code =
+        response.substr(first_newline + 1,
+                        second_newline - first_newline - 1);
+    const std::string body = response.substr(second_newline + 1);
+    if (status != "OK")
+    {
+        throw std::runtime_error(std::format(
+            "Relay room creation failed (status {}): {}",
+            status_code,
+            trim_copy(body)));
+    }
+    return extract_room_code_from_create_response(body);
+#else
+    ix::HttpClient client;
+    ix::HttpRequestArgsPtr args = client.createRequest(create_url, ix::HttpClient::kPost);
+    args->connectTimeout = 5;
+    args->transferTimeout = 10;
+    args->followRedirects = true;
+    const ix::HttpResponsePtr response = client.post(create_url, std::string(), args);
+    if (!response)
+        throw std::runtime_error("Relay room creation failed: no HTTP response");
+    if (response->statusCode < 200 || response->statusCode >= 300)
+    {
+        throw std::runtime_error(std::format(
+            "Relay room creation failed (HTTP {}): {}",
+            response->statusCode,
+            trim_copy(response->body)));
+    }
+    return extract_room_code_from_create_response(response->body);
+#endif
+}
+
+std::string current_campaign_tag()
+{
+    if (SaveData* const save = current_picker_save(); save != nullptr)
+        return save->current_campaign;
+    return std::string(kDefaultCampaignId);
 }
 
 std::string make_network_player_name()
@@ -372,6 +619,57 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
     return message;
 }
 
+std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
+    og::sim::ITransport& transport)
+{
+    if (transport.supports_typed_messages())
+        return transport.poll_typed();
+
+    std::vector<og::sim::TypedReceivedMessage> typed_messages;
+    for (const auto& message : transport.poll())
+    {
+        og::sim::TransportEnvelope envelope;
+        if (!og::sim::decode_transport_envelope(message.data, envelope))
+            continue;
+
+        og::sim::TypedReceivedMessage typed_message;
+        typed_message.peer_id = message.peer_id;
+        switch (envelope.message_type)
+        {
+        case og::sim::kLobbyMessageType:
+        {
+            const auto decoded =
+                og::sim::deserialize_lobby_message(message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyMessage;
+            typed_message.lobby_message =
+                std::make_shared<og::sim::LobbyMessage>(*decoded);
+            break;
+        }
+
+        case og::sim::kLobbyStateMessageType:
+        {
+            const auto decoded =
+                og::sim::deserialize_lobby_state_message(message.data);
+            if (!decoded.has_value())
+                continue;
+            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
+            typed_message.lobby_state =
+                std::make_shared<og::sim::LobbyState>(*decoded);
+            break;
+        }
+
+        default:
+            continue;
+        }
+
+        typed_messages.push_back(std::move(typed_message));
+    }
+
+    return typed_messages;
+}
+
 #if !defined(__EMSCRIPTEN__) && (defined(__unix__) || defined(__APPLE__))
 std::string detect_lan_ipv4_address()
 {
@@ -434,17 +732,49 @@ public:
         local_server_transport_ = og::sim::InProcessTransport::create_server();
         local_server_transport_->accept_connections();
         local_client_transport_ = local_server_transport_->create_client_transport();
-#ifdef __EMSCRIPTEN__
-        throw std::runtime_error("Browser hosting requires relay support");
-#else
+
+        relay_room_code_.clear();
+        relay_status_message_.clear();
+
+        if (options_.enable_relay)
+        {
+            try
+            {
+                const std::string relay_base_url =
+                    relay_base_url_or_default(options_.relay_base_url);
+                relay_room_code_ = og::ui::normalize_relay_room_code(
+                    create_relay_room_code(relay_base_url,
+                                           current_campaign_tag()));
+                relay_transport_ =
+                    std::make_shared<og::sim::RelayWebSocketTransport>(
+                        build_relay_room_websocket_url(relay_base_url,
+                                                       relay_room_code_));
+                relay_transport_->accept_connections();
+            }
+            catch (const std::exception& error)
+            {
+                relay_room_code_.clear();
+                relay_transport_.reset();
+                relay_status_message_ = error.what();
+                if (options_.relay_required)
+                    throw;
+            }
+        }
+
+#ifndef __EMSCRIPTEN__
         websocket_server_transport_ =
             std::make_shared<og::sim::WebSocketServerTransport>(options_.port);
 #endif
+
+        std::vector<std::shared_ptr<og::sim::ITransport>> transports;
+        transports.push_back(local_server_transport_);
+        if (websocket_server_transport_)
+            transports.push_back(websocket_server_transport_);
+        if (relay_transport_)
+            transports.push_back(relay_transport_);
+
         combined_transport_ = std::make_shared<og::sim::MultiplexTransport>(
-            std::vector<std::shared_ptr<og::sim::ITransport>>{
-                local_server_transport_,
-                websocket_server_transport_,
-            });
+            std::move(transports));
         combined_transport_->accept_connections();
         server_ = std::make_unique<og::sim::LobbyServer>(*combined_transport_);
 
@@ -471,11 +801,14 @@ public:
         server_.reset();
         combined_transport_.reset();
         websocket_server_transport_.reset();
+        relay_transport_.reset();
         local_client_transport_.reset();
         local_server_transport_.reset();
         spectator_mode_ = false;
         local_team_ = 0;
         start_request_pending_ = false;
+        relay_room_code_.clear();
+        relay_status_message_.clear();
     }
 
     void sync_from_save() override
@@ -679,7 +1012,7 @@ private:
 
         server_->poll_incoming_messages();
         for (const og::sim::TypedReceivedMessage& message :
-             local_client_transport_->poll_typed())
+             poll_lobby_transport_messages(*local_client_transport_))
         {
             handle_typed_message(message);
         }
@@ -697,8 +1030,18 @@ private:
     void rebuild_status_lines()
     {
         status_lines_.clear();
-        status_lines_.push_back(
-            std::format("LAN: {}:{}", detect_lan_ipv4_address(), options_.port));
+        if (websocket_server_transport_)
+        {
+            status_lines_.push_back(
+                std::format("LAN: {}:{}",
+                            detect_lan_ipv4_address(),
+                            options_.port));
+        }
+        if (!relay_room_code_.empty())
+            status_lines_.push_back(std::format("Relay: {}", relay_room_code_));
+        else if (!relay_status_message_.empty())
+            status_lines_.push_back(
+                std::format("Relay: {}", relay_status_message_));
         if (state_.has_value())
         {
             status_lines_.push_back(
@@ -714,6 +1057,7 @@ private:
     std::shared_ptr<og::sim::InProcessTransport> local_client_transport_;
     std::shared_ptr<og::sim::ITransport> combined_transport_;
     std::shared_ptr<og::sim::ITransport> websocket_server_transport_;
+    std::shared_ptr<og::sim::RelayWebSocketTransport> relay_transport_;
     std::unique_ptr<og::sim::LobbyServer> server_;
     std::optional<og::sim::LobbyState> state_;
     std::vector<og::sim::LobbyPlayerBinding> player_bindings_;
@@ -722,6 +1066,8 @@ private:
     short local_team_ = 0;
     bool start_request_pending_ = false;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
+    std::string relay_room_code_;
+    std::string relay_status_message_;
 };
 
 class JoinPickerLobbyClient final : public og::ui::IPickerLobbyClient
@@ -746,18 +1092,33 @@ public:
         save->numplayers = static_cast<unsigned char>(spectator_mode_ ? 0 : 1);
         save->my_team = local_team_;
 
-        if (options_.mode != og::ui::PickerJoinMode::Direct)
-            throw std::runtime_error("Relay room codes require Phase 32");
+        server_peer_id_ = 1;
+        relay_room_code_.clear();
+        direct_url_.clear();
 
-        direct_url_ = og::ui::normalize_direct_websocket_url(
-            options_.direct_endpoint);
+        if (options_.mode == og::ui::PickerJoinMode::Direct)
+        {
+            direct_url_ = og::ui::normalize_direct_websocket_url(
+                options_.direct_endpoint);
 #ifdef __EMSCRIPTEN__
-        transport_ =
-            std::make_shared<og::sim::EmscriptenWebSocketTransport>(direct_url_);
+            transport_ =
+                std::make_shared<og::sim::EmscriptenWebSocketTransport>(
+                    direct_url_);
 #else
-        transport_ =
-            std::make_shared<og::sim::WebSocketClientTransport>(direct_url_);
+            transport_ =
+                std::make_shared<og::sim::WebSocketClientTransport>(direct_url_);
 #endif
+        }
+        else
+        {
+            relay_room_code_ = og::ui::normalize_relay_room_code(
+                options_.room_code);
+            transport_ = std::make_shared<og::sim::RelayWebSocketTransport>(
+                build_relay_room_websocket_url(
+                    relay_base_url_or_default(options_.relay_base_url),
+                    relay_room_code_));
+        }
+
         transport_->accept_connections();
         join_message_sent_ = false;
         settings_dirty_ = true;
@@ -772,6 +1133,7 @@ public:
         status_lines_.clear();
         transport_.reset();
         direct_url_.clear();
+        relay_room_code_.clear();
         spectator_mode_ = false;
         local_team_ = 0;
         start_request_pending_ = false;
@@ -807,6 +1169,7 @@ public:
         }
 
         drain_messages();
+        update_server_peer_id();
         if (transport_->connected_peers().empty())
         {
             join_message_sent_ = false;
@@ -993,8 +1356,23 @@ private:
         if (!transport_)
             return;
 
-        for (const og::sim::TypedReceivedMessage& message : transport_->poll_typed())
+        for (const og::sim::TypedReceivedMessage& message :
+             poll_lobby_transport_messages(*transport_))
             handle_typed_message(message);
+    }
+
+    void update_server_peer_id()
+    {
+        const auto* const relay_transport =
+            dynamic_cast<og::sim::RelayWebSocketTransport*>(transport_.get());
+        if (relay_transport == nullptr)
+            return;
+
+        if (const auto host_peer_id = relay_transport->host_peer_id();
+            host_peer_id.has_value() && *host_peer_id != 0)
+        {
+            server_peer_id_ = *host_peer_id;
+        }
     }
 
     void apply_state_to_current_save()
@@ -1011,6 +1389,8 @@ private:
         status_lines_.clear();
         if (!direct_url_.empty())
             status_lines_.push_back(std::format("Direct: {}", direct_url_));
+        if (!relay_room_code_.empty())
+            status_lines_.push_back(std::format("Relay: {}", relay_room_code_));
         status_lines_.push_back(
             transport_ && !transport_->connected_peers().empty()
                 ? "Status: connected"
@@ -1027,6 +1407,7 @@ private:
     og::ui::PickerJoinGameOptions options_;
     std::string player_name_;
     std::string direct_url_;
+    std::string relay_room_code_;
     std::shared_ptr<og::sim::ITransport> transport_;
     og::sim::PeerId server_peer_id_ = 1;
     std::optional<og::sim::LobbyState> state_;
@@ -1048,22 +1429,33 @@ create_host_picker_lobby_client(const PickerHostGameOptions& options)
 {
     if (options.port <= 0 || options.port > 65535)
         throw std::invalid_argument("Host port must be in the range 1-65535");
+    if (options.relay_required && !options.enable_relay)
+    {
+        throw std::invalid_argument(
+            "Browser hosting requires relay support to be enabled");
+    }
     return std::make_unique<HostPickerLobbyClient>(options);
 }
 
 std::unique_ptr<IPickerLobbyClient>
 create_join_picker_lobby_client(const PickerJoinGameOptions& options)
 {
-    if (options.mode == PickerJoinMode::Relay)
-        throw std::invalid_argument("Relay room codes require Phase 32");
-    if (trim_copy(options.direct_endpoint).empty())
+    if (options.mode == PickerJoinMode::Direct &&
+        trim_copy(options.direct_endpoint).empty())
+    {
         throw std::invalid_argument("Direct connect requires an IP:port");
+    }
+    if (options.mode == PickerJoinMode::Relay &&
+        trim_copy(options.room_code).empty())
+    {
+        throw std::invalid_argument("Relay join requires a room code");
+    }
     return std::make_unique<JoinPickerLobbyClient>(options);
 }
 
 bool picker_join_mode_supported(PickerJoinMode mode) noexcept
 {
-    return mode == PickerJoinMode::Direct;
+    return mode == PickerJoinMode::Direct || mode == PickerJoinMode::Relay;
 }
 
 std::string normalize_direct_websocket_url(const std::string& endpoint)
@@ -1080,6 +1472,60 @@ std::string normalize_direct_websocket_url(const std::string& endpoint)
             "Direct connect URLs must use ws:// or wss://");
     }
     return std::string("ws://") + trimmed;
+}
+
+std::string normalize_relay_room_code(const std::string& room_code)
+{
+    std::string normalized = trim_copy(room_code);
+    if (normalized.empty())
+        throw std::invalid_argument("Relay room code must not be empty");
+
+    std::transform(
+        normalized.begin(),
+        normalized.end(),
+        normalized.begin(),
+        [](unsigned char ch) {
+            return static_cast<char>(std::toupper(ch));
+        });
+
+    const bool valid = std::all_of(
+        normalized.begin(),
+        normalized.end(),
+        [](unsigned char ch) {
+            return std::isalnum(ch) || ch == '-';
+        });
+    if (!valid)
+        throw std::invalid_argument("Relay room codes may only use A-Z, 0-9, and -");
+    return normalized;
+}
+
+std::string normalize_relay_base_url(const std::string& base_url)
+{
+    std::string normalized = relay_base_url_or_default(base_url);
+    normalized = trim_copy(std::move(normalized));
+    while (!normalized.empty() && normalized.back() == '/')
+        normalized.pop_back();
+
+    if (normalized.empty())
+        throw std::invalid_argument("Relay base URL must not be empty");
+
+    const bool supported_scheme =
+        normalized.rfind("http://", 0) == 0 ||
+        normalized.rfind("https://", 0) == 0 ||
+        normalized.rfind("ws://", 0) == 0 ||
+        normalized.rfind("wss://", 0) == 0;
+    if (!supported_scheme)
+    {
+        throw std::invalid_argument(
+            "Relay base URL must use http://, https://, ws://, or wss://");
+    }
+
+    return normalized;
+}
+
+std::string default_relay_base_url()
+{
+    return normalize_relay_base_url({});
 }
 
 } // namespace og::ui
