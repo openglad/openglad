@@ -12,12 +12,20 @@
 namespace og::sim {
 namespace {
 
-std::optional<TypedReceivedMessage> decode_raw_typed_message(
+TypedReceivedMessage malformed_typed_message(og::sim::PeerId peer_id)
+{
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::Malformed;
+    return typed_message;
+}
+
+TypedReceivedMessage decode_raw_typed_message(
     const ReceivedMessage& message)
 {
     TransportEnvelope envelope;
     if (!decode_transport_envelope(message.data, envelope))
-        return std::nullopt;
+        return malformed_typed_message(message.peer_id);
 
     TypedReceivedMessage typed_message;
     typed_message.peer_id = message.peer_id;
@@ -43,7 +51,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
             const std::optional<InputStateMessage> decoded =
                 deserialize_input_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::Input;
             typed_message.input = std::make_shared<InputState>(decoded->input);
@@ -68,7 +76,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
         {
             const auto decoded = deserialize_lobby_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::LobbyMessage;
             typed_message.lobby_message =
@@ -80,7 +88,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
         {
             const auto decoded = deserialize_lobby_state_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::LobbyState;
             typed_message.lobby_state =
@@ -92,7 +100,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
         {
             const auto decoded = deserialize_initial_setup_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::InitialSetup;
             typed_message.initial_setup =
@@ -104,7 +112,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
         {
             const auto decoded = deserialize_hello_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::Hello;
             typed_message.hello =
@@ -116,7 +124,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
         {
             const auto decoded = deserialize_client_ready_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::ClientReady;
             typed_message.client_ready =
@@ -128,7 +136,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
         {
             const auto decoded = deserialize_keyframe_request_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::KeyframeRequest;
             typed_message.keyframe_request =
@@ -140,7 +148,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
         {
             const auto decoded = deserialize_heartbeat_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::Heartbeat;
             typed_message.heartbeat =
@@ -153,7 +161,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
             const auto decoded =
                 deserialize_exit_prompt_broadcast_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::ExitPromptBroadcast;
             typed_message.exit_prompt_broadcast =
@@ -166,7 +174,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
             const auto decoded =
                 deserialize_exit_prompt_response_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::ExitPromptResponse;
             typed_message.exit_prompt_response =
@@ -178,7 +186,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
         {
             const auto decoded = deserialize_pause_broadcast_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::PauseBroadcast;
             typed_message.pause_broadcast =
@@ -190,7 +198,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
         {
             const auto decoded = deserialize_pause_response_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::PauseResponse;
             typed_message.pause_response =
@@ -202,7 +210,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
         {
             const auto decoded = deserialize_control_change_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::ControlChange;
             typed_message.control_change =
@@ -215,7 +223,7 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
             const auto decoded =
                 deserialize_snapshot_hash_check_message(message.data);
             if (!decoded.has_value())
-                return std::nullopt;
+                return malformed_typed_message(message.peer_id);
 
             typed_message.kind = TypedReceivedMessageKind::SnapshotHashCheck;
             typed_message.snapshot_hash_check =
@@ -224,12 +232,12 @@ std::optional<TypedReceivedMessage> decode_raw_typed_message(
         }
 
         default:
-            return std::nullopt;
+            return malformed_typed_message(message.peer_id);
         }
     }
     catch (const std::exception&)
     {
-        return std::nullopt;
+        return malformed_typed_message(message.peer_id);
     }
 }
 
@@ -574,14 +582,10 @@ std::vector<TypedReceivedMessage> MultiplexTransport::poll_typed()
             if (message.peer_id == 0)
                 continue;
 
-            std::optional<TypedReceivedMessage> typed_message =
-                decode_raw_typed_message(message);
-            if (!typed_message.has_value())
-                continue;
-
-            typed_message->peer_id =
-                ensure_public_peer(endpoint, typed_message->peer_id);
-            messages.push_back(std::move(*typed_message));
+            TypedReceivedMessage typed_message = decode_raw_typed_message(message);
+            typed_message.peer_id =
+                ensure_public_peer(endpoint, typed_message.peer_id);
+            messages.push_back(std::move(typed_message));
         }
         sync_endpoint_peers(endpoint);
     }

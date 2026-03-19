@@ -303,7 +303,21 @@ ServerPollResult poll_server_messages(
     ServerPollResult result;
     if (transport.supports_typed_messages())
     {
-        result.messages = transport.poll_typed();
+        std::unordered_set<og::sim::PeerId> malformed_peers;
+        for (og::sim::TypedReceivedMessage& message : transport.poll_typed())
+        {
+            if (message.kind == og::sim::TypedReceivedMessageKind::Malformed)
+            {
+                malformed_peers.insert(message.peer_id);
+                continue;
+            }
+            if (malformed_peers.contains(message.peer_id))
+                continue;
+
+            result.messages.push_back(std::move(message));
+        }
+        result.malformed_peers.assign(malformed_peers.begin(), malformed_peers.end());
+        std::sort(result.malformed_peers.begin(), result.malformed_peers.end());
         return result;
     }
 
@@ -1429,6 +1443,9 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                     }
                 }
             }
+            break;
+
+        case TypedReceivedMessageKind::Malformed:
             break;
 
         case TypedReceivedMessageKind::Snapshot:

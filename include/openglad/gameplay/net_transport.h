@@ -240,6 +240,7 @@ enum class TypedReceivedMessageKind : std::uint8_t {
     PauseResponse,
     ControlChange,
     SnapshotHashCheck,
+    Malformed,
 };
 
 struct TypedReceivedMessage {

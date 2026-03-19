@@ -1,3 +1,5 @@
+#include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/net_transport_multiplex.h>
@@ -12,6 +14,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "../test_game_world_fixture.h"
 
 namespace {
 
@@ -84,6 +88,7 @@ public:
 
     void disconnect(og::sim::PeerId peer_id) override
     {
+        disconnected_peers_.push_back(peer_id);
         peers_.erase(std::remove(peers_.begin(), peers_.end(), peer_id),
                      peers_.end());
     }
@@ -93,10 +98,17 @@ public:
         return peers_;
     }
 
+    [[nodiscard]] const std::vector<og::sim::PeerId>&
+    disconnected_peers() const noexcept
+    {
+        return disconnected_peers_;
+    }
+
 private:
     std::vector<og::sim::PeerId> peers_;
     std::vector<og::sim::ReceivedMessage> received_messages_;
     std::vector<og::sim::ReceivedMessage> sent_messages_;
+    std::vector<og::sim::PeerId> disconnected_peers_;
 };
 
 } // namespace
@@ -275,6 +287,66 @@ TEST(NetTransportMultiplex, poll_typed_decodes_raw_messages_from_untyped_child)
 
     EXPECT_TRUE(saw_local_join);
     EXPECT_TRUE(saw_remote_input);
+}
+
+TEST(NetTransportMultiplex,
+     poll_typed_surfaces_malformed_raw_messages_from_untyped_child)
+{
+    auto raw_transport = std::make_shared<FakeRawTransport>();
+    raw_transport->connect_peer(77u);
+    const std::array<std::uint8_t, 3> malformed = {0x01, 0x02, 0x03};
+
+    og::sim::MultiplexTransport transport({raw_transport});
+
+    raw_transport->enqueue_raw(77u, malformed);
+
+    const std::vector<og::sim::TypedReceivedMessage> messages =
+        transport.poll_typed();
+    ASSERT_EQ(1u, messages.size());
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Malformed,
+              messages.front().kind);
+    EXPECT_NE(0u, messages.front().peer_id);
+}
+
+TEST(NetTransportMultiplex,
+     game_server_disconnects_peer_that_sends_malformed_raw_message_via_multiplex)
+{
+    TestGameWorld fixture;
+    auto raw_transport = std::make_shared<FakeRawTransport>();
+    raw_transport->connect_peer(77u);
+    const std::array<std::uint8_t, 3> malformed = {0x01, 0x02, 0x03};
+
+    og::sim::MultiplexTransport transport({raw_transport});
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    raw_transport->enqueue_raw(77u, malformed);
+
+    server.poll_incoming_messages();
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{77u}),
+              raw_transport->disconnected_peers());
+    EXPECT_TRUE(server.last_polled_messages().empty());
+}
+
+TEST(NetTransportMultiplex,
+     game_client_disconnects_when_server_sends_malformed_raw_message_via_multiplex)
+{
+    auto raw_transport = std::make_shared<FakeRawTransport>();
+    raw_transport->connect_peer(77u);
+    const std::array<std::uint8_t, 3> malformed = {0x01, 0x02, 0x03};
+
+    og::sim::MultiplexTransport transport({raw_transport});
+    const std::vector<og::sim::PeerId> peers = transport.connected_peers();
+    ASSERT_EQ(1u, peers.size());
+
+    og::sim::GameClient client(transport, peers.front());
+    raw_transport->enqueue_raw(77u, malformed);
+
+    client.poll_messages();
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{77u}),
+              raw_transport->disconnected_peers());
+    EXPECT_TRUE(client.last_polled_messages().empty());
 }
 
 TEST(NetTransportMultiplex, typed_send_routes_to_untyped_underlying_transport)

@@ -88,7 +88,16 @@ ClientPollResult poll_client_messages(
     ClientPollResult result;
     if (transport.supports_typed_messages())
     {
-        result.messages = transport.poll_typed();
+        for (og::sim::TypedReceivedMessage& message : transport.poll_typed())
+        {
+            if (message.kind == og::sim::TypedReceivedMessageKind::Malformed)
+            {
+                result.malformed_server_message = true;
+                break;
+            }
+
+            result.messages.push_back(std::move(message));
+        }
         return result;
     }
 
@@ -921,6 +930,7 @@ void GameClient::poll_messages()
         case TypedReceivedMessageKind::ExitPromptResponse:
         case TypedReceivedMessageKind::PauseResponse:
         case TypedReceivedMessageKind::SnapshotHashCheck:
+        case TypedReceivedMessageKind::Malformed:
             break;
         }
 

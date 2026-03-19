@@ -108,6 +108,11 @@ poll_lobby_messages(og::sim::ITransport& transport)
     {
         for (const auto& typed_message : transport.poll_typed())
         {
+            if (typed_message.kind == og::sim::TypedReceivedMessageKind::Malformed)
+            {
+                throw std::runtime_error(
+                    "LobbyServer received malformed transport header");
+            }
             if (typed_message.kind != og::sim::TypedReceivedMessageKind::LobbyMessage ||
                 !typed_message.lobby_message)
             {
