@@ -128,6 +128,48 @@ async function waitForAlarmScheduled(stub: DurableObjectStub): Promise<void> {
   });
 }
 
+async function replacePeerSocketWithThrowingSend(
+  stub: DurableObjectStub,
+  peerId: number,
+): Promise<void> {
+  await runInDurableObject(stub, (instance) => {
+    const room = instance as unknown as {
+      peers: Map<number, WebSocket>;
+    };
+    const original = room.peers.get(peerId);
+    if (!original) {
+      throw new Error(`Missing peer ${peerId}`);
+    }
+
+    const attachment = original.deserializeAttachment();
+    room.peers.set(peerId, {
+      send() {
+        throw new Error("simulated send failure");
+      },
+      close() {},
+      deserializeAttachment() {
+        return attachment;
+      },
+    } as unknown as WebSocket);
+  });
+}
+
+async function readRoomPeerState(stub: DurableObjectStub): Promise<{
+  hostPeerId: number | null;
+  peerIds: number[];
+}> {
+  return runInDurableObject(stub, (instance) => {
+    const room = instance as unknown as {
+      peers: Map<number, WebSocket>;
+      stateData: { host_peer_id: number | null } | null;
+    };
+    return {
+      hostPeerId: room.stateData?.host_peer_id ?? null,
+      peerIds: [...room.peers.keys()].sort((left, right) => left - right),
+    };
+  });
+}
+
 function decodeFrame(data: ArrayBuffer): number[] {
   return [...new Uint8Array(data)];
 }
@@ -469,5 +511,88 @@ describe("OpenGlad relay worker", () => {
     hostSocket.send(new Uint8Array([1, 99, 0, 0, 0, 7]).buffer);
     const hostCloseEvent = await hostClosePromise;
     expect(hostCloseEvent.code).toBe(1008);
+  });
+
+  it("cleans up relay send failures through normal peer removal and host migration", async () => {
+    const roomCode = await createRoom({ campaign: "campaign.send-failure" });
+    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(roomCode));
+
+    const hostSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    await waitForMessage(hostSocket, "send failure host joined");
+    await waitForMessage(hostSocket, "send failure host peer list");
+
+    const hostPeerJoinedPromise = waitForMessages(
+      hostSocket,
+      1,
+      "send failure host peer joined",
+    );
+    const guestSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    await waitForMessage(guestSocket, "send failure guest joined");
+    await waitForMessage(guestSocket, "send failure guest peer list");
+    await hostPeerJoinedPromise;
+
+    await replacePeerSocketWithThrowingSend(roomStub, 1);
+
+    const guestCleanupPromise = waitForMessages(
+      guestSocket,
+      2,
+      "send failure cleanup updates",
+    );
+    guestSocket.send(new Uint8Array([RELAY_BROADCAST_TAG, 7, 8, 9]).buffer);
+
+    const guestCleanupMessages = await guestCleanupPromise;
+    expect(JSON.parse(guestCleanupMessages[0] as string)).toEqual({
+      type: "peer_left",
+      peer_id: 1,
+    });
+    expect(JSON.parse(guestCleanupMessages[1] as string)).toEqual({
+      type: "host_changed",
+      new_host: 2,
+    });
+
+    await waitForCondition("room index after relay send failure", async () => {
+      const response = await SELF.fetch("https://relay.test/api/rooms");
+      const rooms = (await response.json()) as Array<{
+        code: string;
+        player_count: number;
+      }>;
+      return rooms.some((room) => room.code === roomCode && room.player_count === 1);
+    });
+
+    await expect(readRoomPeerState(roomStub)).resolves.toEqual({
+      hostPeerId: 2,
+      peerIds: [2],
+    });
+  });
+
+  it("cleans up notification send failures through normal peer removal", async () => {
+    const roomCode = await createRoom({ campaign: "campaign.broadcast-failure" });
+    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(roomCode));
+
+    const hostSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    await waitForMessage(hostSocket, "broadcast failure host joined");
+    await waitForMessage(hostSocket, "broadcast failure host peer list");
+
+    const hostPeerJoinedPromise = waitForMessages(
+      hostSocket,
+      1,
+      "broadcast failure host peer joined",
+    );
+    const guestSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    await waitForMessage(guestSocket, "broadcast failure guest joined");
+    await waitForMessage(guestSocket, "broadcast failure guest peer list");
+    await hostPeerJoinedPromise;
+
+    await replacePeerSocketWithThrowingSend(roomStub, 2);
+
+    hostSocket.close(1000, "host left");
+    await waitForAlarmScheduled(roomStub);
+
+    const hiddenRoomList = await SELF.fetch("https://relay.test/api/rooms");
+    await expect(hiddenRoomList.json()).resolves.toEqual([]);
+    await expect(readRoomPeerState(roomStub)).resolves.toEqual({
+      hostPeerId: null,
+      peerIds: [],
+    });
   });
 });

@@ -118,7 +118,7 @@ export class GameRoom extends DurableObject {
       peers: [...this.peers.keys()].sort((left, right) => left - right),
       host: this.stateData.host_peer_id,
     });
-    this.broadcastJson(
+    await this.broadcastJson(
       {
         type: "peer_joined",
         peer_id: peerId,
@@ -166,7 +166,7 @@ export class GameRoom extends DurableObject {
           ws.close(1009, "Relay payload too large");
           return;
         }
-        this.forwardPayload(peerId, bytes.subarray(1));
+        await this.forwardPayload(peerId, bytes.subarray(1));
         return;
 
       case RELAY_TARGET_TAG:
@@ -179,7 +179,7 @@ export class GameRoom extends DurableObject {
           return;
         }
 
-        this.forwardPayload(peerId, bytes.subarray(5), readPeerId(bytes, 1));
+        await this.forwardPayload(peerId, bytes.subarray(5), readPeerId(bytes, 1));
         return;
 
       default:
@@ -255,17 +255,20 @@ export class GameRoom extends DurableObject {
     }
   }
 
-  private forwardPayload(
+  private async forwardPayload(
     fromPeerId: number,
     payload: Uint8Array,
     targetPeerId?: number,
-  ): void {
+  ): Promise<void> {
     const frame = makeRelayFrame(fromPeerId, payload);
+    const failedPeerIds: number[] = [];
+
     if (targetPeerId !== undefined) {
       const socket = this.peers.get(targetPeerId);
       if (socket && !this.trySend(socket, frame)) {
-        this.peers.delete(targetPeerId);
+        failedPeerIds.push(targetPeerId);
       }
+      await this.removeFailedPeers(failedPeerIds);
       return;
     }
 
@@ -274,9 +277,11 @@ export class GameRoom extends DurableObject {
         continue;
       }
       if (!this.trySend(socket, frame)) {
-        this.peers.delete(peerId);
+        failedPeerIds.push(peerId);
       }
     }
+
+    await this.removeFailedPeers(failedPeerIds);
   }
 
   private async removePeer(peerId: number): Promise<void> {
@@ -285,7 +290,7 @@ export class GameRoom extends DurableObject {
     }
     this.messageRateLimits.delete(peerId);
 
-    this.broadcastJson({
+    await this.broadcastJson({
       type: "peer_left",
       peer_id: peerId,
     });
@@ -295,7 +300,7 @@ export class GameRoom extends DurableObject {
         [...this.peers.keys()].sort((left, right) => left - right)[0] ?? null;
       this.stateData.host_peer_id = nextHostPeerId;
       if (nextHostPeerId !== null) {
-        this.broadcastJson({
+        await this.broadcastJson({
           type: "host_changed",
           new_host: nextHostPeerId,
         });
@@ -310,16 +315,23 @@ export class GameRoom extends DurableObject {
     }
   }
 
-  private broadcastJson(payload: unknown, excludedPeerId?: number): void {
+  private async broadcastJson(
+    payload: unknown,
+    excludedPeerId?: number,
+  ): Promise<void> {
     const encoded = JSON.stringify(payload);
+    const failedPeerIds: number[] = [];
+
     for (const [peerId, socket] of this.peers) {
       if (peerId === excludedPeerId) {
         continue;
       }
       if (!this.trySend(socket, encoded)) {
-        this.peers.delete(peerId);
+        failedPeerIds.push(peerId);
       }
     }
+
+    await this.removeFailedPeers(failedPeerIds);
   }
 
   private sendJson(socket: WebSocket, payload: unknown): void {
@@ -332,6 +344,13 @@ export class GameRoom extends DurableObject {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  private async removeFailedPeers(peerIds: Iterable<number>): Promise<void> {
+    const uniquePeerIds = [...new Set(peerIds)];
+    for (const peerId of uniquePeerIds) {
+      await this.removePeer(peerId);
     }
   }
 
