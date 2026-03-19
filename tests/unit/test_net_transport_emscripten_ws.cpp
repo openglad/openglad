@@ -1,4 +1,5 @@
 #include <openglad/platform/net_transport_emscripten_ws.h>
+#include <openglad/platform/net_transport_relay_ws.h>
 
 #include "net_transport_emscripten_ws_detail.h"
 
@@ -17,6 +18,7 @@ namespace {
 
 using og::sim::EmscriptenWebSocketTransport;
 using og::sim::PeerId;
+using og::sim::RelayWebSocketTransport;
 using og::sim::detail::EmscriptenBool;
 using og::sim::detail::EmscriptenResult;
 using og::sim::detail::EmscriptenWebSocketApi;
@@ -378,13 +380,15 @@ protected:
         set_emscripten_websocket_api_for_testing(nullptr);
     }
 
-    WebSocketHandle accept_transport(EmscriptenWebSocketTransport& transport)
+    template <typename Transport>
+    WebSocketHandle accept_transport(Transport& transport)
     {
         transport.accept_connections();
         return backend_.accept_socket();
     }
 
-    WebSocketHandle connect_transport(EmscriptenWebSocketTransport& transport)
+    template <typename Transport>
+    WebSocketHandle connect_transport(Transport& transport)
     {
         const WebSocketHandle socket = accept_transport(transport);
         EXPECT_TRUE(backend_.emit_open(socket));
@@ -400,8 +404,23 @@ protected:
         return options;
     }
 
+    static RelayWebSocketTransport::Options make_relay_options()
+    {
+        RelayWebSocketTransport::Options options;
+        options.protocols = "og-relay";
+        return options;
+    }
+
     FakeWebSocketBackend backend_;
 };
+
+std::span<const std::uint8_t> as_bytes(std::string_view text)
+{
+    return {
+        reinterpret_cast<const std::uint8_t*>(text.data()),
+        text.size(),
+    };
+}
 
 TEST_F(EmscriptenWebSocketTransportTest,
        poll_defers_connect_state_until_game_thread_and_delivers_binary_frames)
@@ -568,6 +587,108 @@ TEST_F(EmscriptenWebSocketTransportTest,
     EXPECT_THROW(transport.accept_connections(), std::runtime_error);
     EXPECT_GE(backend_.close_calls(backend_.last_created_socket), 1);
     EXPECT_EQ(1, backend_.destroy_calls(backend_.last_created_socket));
+}
+
+TEST_F(EmscriptenWebSocketTransportTest,
+       relay_transport_processes_control_messages_and_binary_frames)
+{
+    RelayWebSocketTransport transport(
+        "ws://relay.example/api/room/GLAD-TEST",
+        make_relay_options());
+
+    const WebSocketHandle socket = connect_transport(transport);
+    EXPECT_EQ("ws://relay.example/api/room/GLAD-TEST", backend_.last_url);
+    EXPECT_EQ("og-relay", backend_.last_protocols);
+
+    const std::string joined =
+        R"({"type":"joined","peer_id":7,"host":7})";
+    const std::string peer_list =
+        R"({"type":"peer_list","peers":[7,9],"host":7})";
+    const std::string peer_joined =
+        R"({"type":"peer_joined","peer_id":11,"is_host":false})";
+    const std::string host_changed =
+        R"({"type":"host_changed","new_host":11})";
+    const std::string peer_left =
+        R"({"type":"peer_left","peer_id":9})";
+    const std::array<std::uint8_t, 7> inbound_binary{
+        2u, 9u, 0u, 0u, 0u, 0x10u, 0x20u,
+    };
+
+    ASSERT_TRUE(backend_.emit_message(socket, as_bytes(joined), true));
+    ASSERT_TRUE(backend_.emit_message(socket, as_bytes(peer_list), true));
+    ASSERT_TRUE(backend_.emit_message(socket, inbound_binary));
+    ASSERT_TRUE(backend_.emit_message(socket, as_bytes(peer_joined), true));
+
+    const std::vector<og::sim::ReceivedMessage> received = transport.poll();
+    ASSERT_EQ(1u, received.size());
+    EXPECT_EQ(9u, received.front().peer_id);
+    EXPECT_EQ((std::vector<std::uint8_t>{0x10u, 0x20u}), received.front().data);
+    EXPECT_EQ(std::optional<PeerId>(7u), transport.local_peer_id());
+    EXPECT_EQ(std::optional<PeerId>(7u), transport.host_peer_id());
+    EXPECT_EQ((std::vector<PeerId>{9u, 11u}), transport.connected_peers());
+
+    ASSERT_TRUE(backend_.emit_message(socket, as_bytes(host_changed), true));
+    ASSERT_TRUE(backend_.emit_message(socket, as_bytes(peer_left), true));
+    EXPECT_TRUE(transport.poll().empty());
+    EXPECT_EQ(std::optional<PeerId>(11u), transport.host_peer_id());
+    EXPECT_EQ((std::vector<PeerId>{11u}), transport.connected_peers());
+}
+
+TEST_F(EmscriptenWebSocketTransportTest,
+       relay_transport_wraps_targeted_and_broadcast_payloads_for_browser_socket)
+{
+    RelayWebSocketTransport transport(
+        "ws://relay.example/api/room/GLAD-TEST",
+        make_relay_options());
+
+    const WebSocketHandle socket = connect_transport(transport);
+    const std::string joined =
+        R"({"type":"joined","peer_id":7,"host":7})";
+    const std::string peer_list =
+        R"({"type":"peer_list","peers":[7,9,11],"host":7})";
+    ASSERT_TRUE(backend_.emit_message(socket, as_bytes(joined), true));
+    ASSERT_TRUE(backend_.emit_message(socket, as_bytes(peer_list), true));
+    EXPECT_TRUE(transport.poll().empty());
+
+    const std::array<std::uint8_t, 3> targeted_payload{0x01u, 0x02u, 0x03u};
+    transport.send(9u, targeted_payload.data(), targeted_payload.size());
+
+    const std::array<std::uint8_t, 2> broadcast_payload{0x04u, 0x05u};
+    transport.broadcast(broadcast_payload.data(), broadcast_payload.size());
+
+    ASSERT_EQ(2u, backend_.sent_payloads(socket).size());
+    EXPECT_EQ((std::vector<std::uint8_t>{1u, 9u, 0u, 0u, 0u, 0x01u, 0x02u, 0x03u}),
+              backend_.sent_payloads(socket)[0]);
+    EXPECT_EQ((std::vector<std::uint8_t>{3u, 0x04u, 0x05u}),
+              backend_.sent_payloads(socket)[1]);
+}
+
+TEST_F(EmscriptenWebSocketTransportTest,
+       relay_broadcast_send_failure_disconnects_browser_transport_after_poll)
+{
+    RelayWebSocketTransport transport(
+        "ws://relay.example/api/room/GLAD-TEST",
+        make_relay_options());
+
+    const WebSocketHandle socket = connect_transport(transport);
+    const std::string joined =
+        R"({"type":"joined","peer_id":7,"host":7})";
+    const std::string peer_list =
+        R"({"type":"peer_list","peers":[7,9],"host":7})";
+    ASSERT_TRUE(backend_.emit_message(socket, as_bytes(joined), true));
+    ASSERT_TRUE(backend_.emit_message(socket, as_bytes(peer_list), true));
+    EXPECT_TRUE(transport.poll().empty());
+
+    backend_.socket_state(socket).send_result = kResultFailed;
+    const std::array<std::uint8_t, 2> payload{0x55u, 0x66u};
+    transport.broadcast(payload.data(), payload.size());
+
+    EXPECT_TRUE(transport.poll().empty());
+    EXPECT_TRUE(transport.connected_peers().empty());
+    EXPECT_FALSE(transport.local_peer_id().has_value());
+    EXPECT_FALSE(transport.host_peer_id().has_value());
+    EXPECT_GE(backend_.close_calls(socket), 1);
+    EXPECT_EQ(1, backend_.destroy_calls(socket));
 }
 
 } // namespace

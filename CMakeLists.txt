@@ -1005,7 +1005,7 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_platform_emscripten_transport STATIC
         ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp
-        $<$<BOOL:${EMSCRIPTEN}>:${SRC_DIR}/platform/emscripten/net_transport_relay_ws.cpp>
+        ${SRC_DIR}/platform/emscripten/net_transport_relay_ws.cpp
     )
     configure_openglad_library(og_platform_emscripten_transport)
     if(BUILD_TESTING)
@@ -1772,7 +1772,6 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_multiplex.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_emscripten_ws.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_relay_ws.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_client.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_server.cpp
@@ -1786,11 +1785,19 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
         )
-        target_link_libraries(og_unit_sim PRIVATE og_platform_emscripten_transport)
         if(TARGET og_platform_ws_transport)
             target_link_libraries(og_unit_sim PRIVATE og_platform_ws_transport)
         endif()
-        target_include_directories(og_unit_sim PRIVATE ${SRC_DIR}/platform/emscripten)
+
+        og_add_unit_group(og_unit_emscripten_transport FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_emscripten_ws.cpp
+        )
+        target_link_libraries(og_unit_emscripten_transport PRIVATE
+            og_platform_emscripten_transport
+        )
+        target_include_directories(og_unit_emscripten_transport PRIVATE
+            ${SRC_DIR}/platform/emscripten
+        )
 
         og_add_unit_group(og_unit_families FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
