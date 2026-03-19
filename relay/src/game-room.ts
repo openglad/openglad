@@ -160,28 +160,31 @@ export class GameRoom extends DurableObject {
     if (bytes.byteLength === 0) {
       return;
     }
-    if (bytes.byteLength > MAX_RELAY_PAYLOAD_BYTES + 5) {
-      ws.close(1009, "Relay payload too large");
-      return;
-    }
-
-    if (bytes[0] === RELAY_BROADCAST_TAG) {
-      this.forwardPayload(peerId, bytes.subarray(1));
-      return;
-    }
-
-    if (bytes[0] === RELAY_TARGET_TAG) {
-      if (bytes.byteLength < 5) {
-        ws.close(1003, "Malformed relay frame");
+    switch (bytes[0]) {
+      case RELAY_BROADCAST_TAG:
+        if (bytes.byteLength - 1 > MAX_RELAY_PAYLOAD_BYTES) {
+          ws.close(1009, "Relay payload too large");
+          return;
+        }
+        this.forwardPayload(peerId, bytes.subarray(1));
         return;
-      }
 
-      const targetPeerId = readPeerId(bytes, 1);
-      this.forwardPayload(peerId, bytes.subarray(5), targetPeerId);
-      return;
+      case RELAY_TARGET_TAG:
+        if (bytes.byteLength < 5) {
+          ws.close(1003, "Malformed relay frame");
+          return;
+        }
+        if (bytes.byteLength - 5 > MAX_RELAY_PAYLOAD_BYTES) {
+          ws.close(1009, "Relay payload too large");
+          return;
+        }
+
+        this.forwardPayload(peerId, bytes.subarray(5), readPeerId(bytes, 1));
+        return;
+
+      default:
+        ws.close(1003, "Unsupported relay frame");
     }
-
-    ws.close(1003, "Unsupported relay frame");
   }
 
   override async webSocketClose(ws: WebSocket): Promise<void> {

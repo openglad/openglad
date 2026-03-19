@@ -1,3 +1,4 @@
+#include <openglad/gameplay/game_client.h>
 #include <openglad/platform/net_transport_relay_ws.h>
 
 #include <gtest/gtest.h>
@@ -21,6 +22,8 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+#include "../test_game_world_fixture.h"
 
 namespace {
 
@@ -64,10 +67,25 @@ public:
         server_.stop();
     }
 
+    void drop_next_forwarded_frame(og::sim::PeerId from_peer_id,
+                                   std::optional<og::sim::PeerId> target_peer_id)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        drop_next_forwarded_frame_ = DropRule{
+            .from_peer_id = from_peer_id,
+            .target_peer_id = target_peer_id,
+        };
+    }
+
 private:
     struct PeerState {
         og::sim::PeerId peer_id = 0;
         std::weak_ptr<ix::WebSocket> socket;
+    };
+
+    struct DropRule {
+        og::sim::PeerId from_peer_id = 0;
+        std::optional<og::sim::PeerId> target_peer_id;
     };
 
     static constexpr std::uint8_t kSendToPeerTag = 1u;
@@ -184,6 +202,9 @@ private:
                 }
             }
 
+            if (should_drop_binary(source_peer_id, std::nullopt))
+                return;
+
             std::string outbound;
             outbound.reserve(payload.size() + 4u);
             outbound.push_back(static_cast<char>(kReceiveFromPeerTag));
@@ -223,6 +244,9 @@ private:
             target_socket = target_it->second.socket.lock();
         }
         if (!target_socket)
+            return;
+
+        if (should_drop_binary(source_peer_id, target_peer_id))
             return;
 
         std::string outbound;
@@ -369,10 +393,29 @@ private:
         return {};
     }
 
+    bool should_drop_binary(og::sim::PeerId from_peer_id,
+                            std::optional<og::sim::PeerId> target_peer_id)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!drop_next_forwarded_frame_.has_value())
+            return false;
+
+        const DropRule& rule = *drop_next_forwarded_frame_;
+        if (rule.from_peer_id != from_peer_id ||
+            rule.target_peer_id != target_peer_id)
+        {
+            return false;
+        }
+
+        drop_next_forwarded_frame_.reset();
+        return true;
+    }
+
     ix::WebSocketServer server_;
     std::mutex mutex_;
     og::sim::PeerId next_peer_id_ = 1;
     std::optional<og::sim::PeerId> host_peer_id_;
+    std::optional<DropRule> drop_next_forwarded_frame_;
     std::map<std::string, PeerState> peers_;
 };
 
@@ -445,6 +488,16 @@ std::uint32_t decode_keyframe_request_tick(std::span<const std::uint8_t> bytes)
     const auto decoded = og::sim::deserialize_keyframe_request_message(bytes);
     EXPECT_TRUE(decoded.has_value());
     return decoded ? decoded->last_seen_tick : 0u;
+}
+
+og::sim::InitialSetupMessage make_initial_setup_for_test()
+{
+    og::sim::InitialSetupMessage message;
+    message.level_id = 1;
+    message.level_title = "Relay Recovery";
+    message.current_scenario = 1;
+    message.my_team = 1;
+    return message;
 }
 
 TEST(NetTransportRelayWs,
@@ -541,6 +594,126 @@ TEST(NetTransportRelayWs, relay_broadcast_reaches_all_other_connected_peers)
     EXPECT_EQ(host.local_peer_id(), std::optional<og::sim::PeerId>(client_two_messages.front().peer_id));
     EXPECT_EQ(41u, decode_client_ready_tick(client_one_messages.front().data));
     EXPECT_EQ(41u, decode_client_ready_tick(client_two_messages.front().data));
+}
+
+TEST(NetTransportRelayWs,
+     dropped_relay_delta_triggers_keyframe_request_and_client_recovery)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    FakeRelayServer server(port);
+
+    og::sim::RelayWebSocketTransport host(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-TEST", port));
+    og::sim::RelayWebSocketTransport client_transport(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-TEST", port));
+    host.accept_connections();
+
+    ASSERT_TRUE(wait_until_host_owns_room(host));
+    client_transport.accept_connections();
+
+    ASSERT_TRUE(poll_until_peer_count(host, 1u));
+    ASSERT_TRUE(poll_until_peer_count(client_transport, 1u));
+
+    const og::sim::PeerId host_peer_id = *host.local_peer_id();
+    const og::sim::PeerId client_peer_id = *client_transport.local_peer_id();
+
+    og::sim::GameClient client(client_transport, host_peer_id);
+
+    host.send_initial_setup(
+        client_peer_id,
+        std::make_shared<og::sim::InitialSetupMessage>(
+            make_initial_setup_for_test()));
+
+    TestGameWorld fixture;
+    fixture.world().timer_wait = 4;
+    fixture.world().current_palette_id = 0;
+    fixture.world().tick_count_ = 1u;
+    const og::sim::WorldSnapshot initial_snapshot =
+        og::sim::capture_keyframe_snapshot(fixture.world());
+    host.send_snapshot(
+        client_peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(initial_snapshot));
+
+    bool saw_client_ready = false;
+    ASSERT_TRUE(wait_until(
+        [&] {
+            client.poll_messages();
+            for (const auto& message : host.poll_typed())
+            {
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::ClientReady &&
+                    message.client_ready != nullptr)
+                {
+                    saw_client_ready = true;
+                }
+            }
+            return saw_client_ready && client.baseline().has_value() &&
+                client.baseline()->tick_count == initial_snapshot.tick_count;
+        },
+        5s));
+    EXPECT_FALSE(client.waiting_for_keyframe());
+
+    server.drop_next_forwarded_frame(host_peer_id, client_peer_id);
+
+    fixture.world().current_palette_id = 1;
+    fixture.world().tick_count_ = 2u;
+    const og::sim::WorldSnapshot dropped_delta =
+        og::sim::capture_snapshot(fixture.world());
+    host.send_delta_snapshot(
+        client_peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(dropped_delta));
+
+    fixture.world().current_palette_id = 2;
+    fixture.world().tick_count_ = 3u;
+    const og::sim::WorldSnapshot late_delta =
+        og::sim::capture_snapshot(fixture.world());
+    host.send_delta_snapshot(
+        client_peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(late_delta));
+
+    std::optional<std::uint32_t> requested_tick;
+    ASSERT_TRUE(wait_until(
+        [&] {
+            client.poll_messages();
+            for (const auto& message : host.poll_typed())
+            {
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::KeyframeRequest &&
+                    message.keyframe_request != nullptr)
+                {
+                    requested_tick = message.keyframe_request->last_seen_tick;
+                    return true;
+                }
+            }
+            return false;
+        },
+        5s));
+
+    EXPECT_TRUE(client.waiting_for_keyframe());
+    EXPECT_EQ(1u, client.keyframe_request_count());
+    ASSERT_TRUE(requested_tick.has_value());
+    EXPECT_EQ(initial_snapshot.tick_count, *requested_tick);
+
+    const og::sim::WorldSnapshot recovery_snapshot =
+        og::sim::capture_keyframe_snapshot(fixture.world());
+    host.send_snapshot(
+        client_peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(recovery_snapshot));
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            client.poll_messages();
+            (void)host.poll_typed();
+            return !client.waiting_for_keyframe() &&
+                client.baseline().has_value() &&
+                client.baseline()->tick_count == recovery_snapshot.tick_count;
+        },
+        5s));
+
+    ASSERT_TRUE(client.baseline().has_value());
+    EXPECT_EQ(recovery_snapshot.current_palette_id,
+              client.baseline()->current_palette_id);
 }
 
 TEST(NetTransportRelayWs, host_disconnect_reassigns_host_and_updates_peer_sets)

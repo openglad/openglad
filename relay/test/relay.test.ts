@@ -1,6 +1,11 @@
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  MAX_RELAY_PAYLOAD_BYTES,
+  RELAY_BROADCAST_TAG,
+} from "../src/shared";
+
 const openSockets: WebSocket[] = [];
 
 interface CreateRoomOptions {
@@ -312,7 +317,9 @@ describe("OpenGlad relay worker", () => {
     expect(overCapacity.status).toBe(409);
 
     const closePromise = waitForClose(sockets[0]);
-    sockets[0].send(new Uint8Array(64 * 1024 + 6).buffer);
+    const oversizedBroadcast = new Uint8Array(MAX_RELAY_PAYLOAD_BYTES + 2);
+    oversizedBroadcast[0] = RELAY_BROADCAST_TAG;
+    sockets[0].send(oversizedBroadcast.buffer);
     const closeEvent = await closePromise;
     expect(closeEvent.code).toBe(1009);
 
