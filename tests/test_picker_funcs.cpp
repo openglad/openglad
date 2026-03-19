@@ -142,6 +142,9 @@ struct PickerLobbyClientTrace
 {
     int initialize_calls = 0;
     int shutdown_calls = 0;
+    int sync_from_save_calls = 0;
+    int sync_roster_calls = 0;
+    int sync_settings_calls = 0;
 };
 
 struct ExclusiveLobbyBinding
@@ -215,9 +218,18 @@ public:
         ++trace_->shutdown_calls;
     }
 
-    void sync_from_save() override {}
-    void sync_roster_from_save() override {}
-    void sync_settings_from_save() override {}
+    void sync_from_save() override
+    {
+        ++trace_->sync_from_save_calls;
+    }
+    void sync_roster_from_save() override
+    {
+        ++trace_->sync_roster_calls;
+    }
+    void sync_settings_from_save() override
+    {
+        ++trace_->sync_settings_calls;
+    }
     void poll_and_apply() override {}
     void set_player_mode(int) override {}
     bool request_start_game() override
@@ -796,6 +808,63 @@ TEST(PickerFuncs, picker_join_game_catches_invalid_relay_base_url)
 
     picker_testing_yes_or_no_queue_clear();
     level_editor_testing_prompt_queue_clear();
+}
+
+TEST(PickerFuncs, do_load_syncs_active_lobby_client_without_reinitializing)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string old_save_name = save.save_name;
+    const std::string old_campaign = save.current_campaign;
+    const short old_scen_num = save.scen_num;
+    const unsigned char old_team_size = save.team_size;
+    const unsigned char old_numplayers = save.numplayers;
+    const short old_allied_mode = save.allied_mode;
+    const short old_my_team = save.my_team;
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+
+    save.save_name = "NETWORK LOAD";
+    save.current_campaign = "org.openglad.gladiator";
+    save.scen_num = 1;
+    save.team_size = 1;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+    save.my_team = 0;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Loader";
+    save.team_list[0]->teamnum = 0;
+    for (int i = 1; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i].reset();
+
+    ASSERT_TRUE(save.save("save1"));
+
+    save.scen_num = 2;
+    save.team_list[0]->name = "Modified";
+
+    auto trace = std::make_shared<PickerLobbyClientTrace>();
+    TraceablePickerLobbyClient client(trace);
+    ActivePickerLobbyClientGuard guard(&client);
+
+    ASSERT_EQ(2, do_load(1));
+    EXPECT_EQ(0, trace->initialize_calls);
+    EXPECT_EQ(0, trace->shutdown_calls);
+    EXPECT_EQ(1, trace->sync_from_save_calls);
+    EXPECT_EQ(0, trace->sync_roster_calls);
+    EXPECT_EQ(0, trace->sync_settings_calls);
+    EXPECT_EQ(1, save.scen_num);
+    ASSERT_TRUE(save.team_list[0] != nullptr);
+    EXPECT_EQ("Loader", save.team_list[0]->name);
+
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.save_name = old_save_name;
+    save.current_campaign = old_campaign;
+    save.scen_num = old_scen_num;
+    save.team_size = old_team_size;
+    save.numplayers = old_numplayers;
+    save.allied_mode = old_allied_mode;
+    save.my_team = old_my_team;
 }
 
 TEST(PickerFuncs, lobby_sync_preserves_sparse_team_assignments)

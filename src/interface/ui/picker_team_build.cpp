@@ -1414,7 +1414,7 @@ Sint32 do_load(Sint32 arg1)
 	if(og::runtime::current_session->myscreen_->save_data.load(newname))
     {
         timed_dialog("GAME LOADED");
-        picker_lobby_initialize_from_save();
+        picker_lobby_sync_from_save();
     }
     else
     {

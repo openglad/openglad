@@ -521,7 +521,6 @@ public:
     bool load_game() override
     {
         create_load_menu(0);
-        picker_lobby_initialize_from_save();
         return true;
     }
 
