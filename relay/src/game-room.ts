@@ -22,6 +22,15 @@ import type { Env, StoredRoomState, WebSocketAttachment } from "./types";
 
 const ROOM_STATE_KEY = "room_state";
 
+interface InitializeRoomPayload {
+  code?: string;
+  campaign_hash?: string;
+  campaign_name?: string;
+  host_name?: string;
+  created_at?: number;
+  owner_token?: string;
+}
+
 export class GameRoom extends DurableObject {
   private readonly peers = new Map<number, WebSocket>();
   private readonly messageRateLimits = new Map<
@@ -68,6 +77,10 @@ export class GameRoom extends DurableObject {
   override async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === "/internal/initialize") {
+      return this.initializeRoom(request);
+    }
+
     if (url.pathname === "/internal/metadata") {
       if (!this.stateData) {
         return new Response("Room not initialized", { status: 404 });
@@ -87,29 +100,7 @@ export class GameRoom extends DurableObject {
     }
 
     if (!this.stateData) {
-      const hostOwnerToken = request.headers.get("x-openglad-room-owner-token") ?? "";
-      const seededRoom = makeRoomInfo({
-        code: roomCode,
-        campaign_hash:
-          request.headers.get("x-openglad-campaign-hash") ?? "",
-        campaign_name:
-          request.headers.get("x-openglad-campaign-name") ?? "",
-        host_name: request.headers.get("x-openglad-host-name") ?? "",
-        created_at: Number(request.headers.get("x-openglad-created-at")) || Date.now(),
-        player_count: 0,
-      });
-      this.stateData = {
-        code: seededRoom.code,
-        campaign_hash: seededRoom.campaign_hash,
-        campaign_name: seededRoom.campaign_name,
-        host_name: seededRoom.host_name,
-        created_at: seededRoom.created_at,
-        next_peer_id: hostOwnerToken ? 2 : 1,
-        host_peer_id: null,
-        owner_peer_id: hostOwnerToken ? 1 : null,
-        host_owner_token: hostOwnerToken,
-      };
-      await this.persistState();
+      return new Response("Room not found", { status: 404 });
     }
 
     const isHostOwner = this.isHostOwnerRequest(request);
@@ -249,6 +240,56 @@ export class GameRoom extends DurableObject {
       await this.ctx.storage.delete(ROOM_STATE_KEY);
       this.stateData = null;
     }
+  }
+
+  private async initializeRoom(request: Request): Promise<Response> {
+    if (request.method !== "POST") {
+      return new Response("Method not allowed", { status: 405 });
+    }
+    if (this.stateData) {
+      return new Response("Room already initialized", { status: 409 });
+    }
+
+    let payload: InitializeRoomPayload | null = null;
+    try {
+      payload = (await request.json()) as InitializeRoomPayload;
+    } catch {
+      return new Response("Malformed room initialization payload", { status: 400 });
+    }
+
+    const roomCode = typeof payload?.code === "string" ? payload.code : "";
+    if (!isValidRoomCode(roomCode)) {
+      return new Response("Invalid room code", { status: 400 });
+    }
+
+    const seededRoom = makeRoomInfo({
+      code: roomCode,
+      campaign_hash:
+        typeof payload?.campaign_hash === "string" ? payload.campaign_hash : "",
+      campaign_name:
+        typeof payload?.campaign_name === "string" ? payload.campaign_name : "",
+      host_name:
+        typeof payload?.host_name === "string" ? payload.host_name : "",
+      created_at:
+        typeof payload?.created_at === "number" ? payload.created_at : Date.now(),
+      player_count: 0,
+    });
+    const ownerToken =
+      typeof payload?.owner_token === "string" ? payload.owner_token : "";
+
+    this.stateData = {
+      code: seededRoom.code,
+      campaign_hash: seededRoom.campaign_hash,
+      campaign_name: seededRoom.campaign_name,
+      host_name: seededRoom.host_name,
+      created_at: seededRoom.created_at,
+      next_peer_id: ownerToken ? 2 : 1,
+      host_peer_id: null,
+      owner_peer_id: ownerToken ? 1 : null,
+      host_owner_token: ownerToken,
+    };
+    await this.persistState();
+    return Response.json(roomInfoFromStoredState(this.stateData, 0));
   }
 
   private restoreHibernatedSockets(): void {

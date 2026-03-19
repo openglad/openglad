@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   MAX_RELAY_PAYLOAD_BYTES,
   RELAY_BROADCAST_TAG,
+  roomIndexKey,
+  roomOwnerKey,
 } from "../src/shared";
 
 const openSockets: WebSocket[] = [];
@@ -542,6 +544,61 @@ describe("OpenGlad relay worker", () => {
 
     const expiredResponse = await SELF.fetch(websocketRequest(roomSocketPath(room)));
     expect(expiredResponse.status).toBe(404);
+  });
+
+  it("connects newly created rooms even if the KV index is not yet visible", async () => {
+    const room = await createRoom({ campaign: "campaign.kv-lag" });
+
+    await env.ROOM_INDEX.delete(roomIndexKey(room.code));
+    await env.ROOM_INDEX.delete(roomOwnerKey(room.code));
+
+    const hostSocket = await openRoomSocket(roomSocketPath(room, true));
+    const hostJoined = JSON.parse((await waitForMessage(hostSocket, "kv-lag host joined")) as string) as {
+      peer_id: number;
+      host: number;
+    };
+    const hostPeerList = JSON.parse((await waitForMessage(hostSocket, "kv-lag host peer list")) as string) as {
+      peers: number[];
+      host: number;
+    };
+    expect(hostJoined).toEqual(expect.objectContaining({
+      peer_id: 1,
+      host: 1,
+    }));
+    expect(hostPeerList).toEqual(expect.objectContaining({
+      peers: [1],
+      host: 1,
+    }));
+
+    const hostPeerJoinedPromise = waitForMessages(
+      hostSocket,
+      1,
+      "kv-lag host peer joined",
+    );
+    const guestSocket = await openRoomSocket(roomSocketPath(room));
+    const guestJoined = JSON.parse((await waitForMessage(guestSocket, "kv-lag guest joined")) as string) as {
+      peer_id: number;
+      host: number;
+    };
+    const guestPeerList = JSON.parse((await waitForMessage(guestSocket, "kv-lag guest peer list")) as string) as {
+      peers: number[];
+      host: number;
+    };
+    const [hostPeerJoinedRaw] = await hostPeerJoinedPromise;
+
+    expect(guestJoined).toEqual(expect.objectContaining({
+      peer_id: 2,
+      host: 1,
+    }));
+    expect(guestPeerList).toEqual(expect.objectContaining({
+      peers: [1, 2],
+      host: 1,
+    }));
+    expect(JSON.parse(hostPeerJoinedRaw as string)).toEqual({
+      type: "peer_joined",
+      peer_id: 2,
+      is_host: false,
+    });
   });
 
   it("reclaims the host peer id when the owner reconnects before the old socket closes", async () => {

@@ -25,6 +25,15 @@ interface CreateRateLimitState {
   window_started_at: number;
 }
 
+interface InitializeRoomPayload {
+  code: string;
+  campaign_hash: string;
+  campaign_name: string;
+  host_name: string;
+  created_at: number;
+  owner_token: string;
+}
+
 function parseCreateRateLimitState(raw: string | null): CreateRateLimitState | null {
   if (!raw) {
     return null;
@@ -111,6 +120,21 @@ async function createRoom(env: Env, request: Request): Promise<Response> {
       player_count: 0,
     });
 
+    const initialized = await initializeRoomDurableObject(
+      env,
+      {
+        code: roomInfo.code,
+        campaign_hash: roomInfo.campaign_hash,
+        campaign_name: roomInfo.campaign_name,
+        host_name: roomInfo.host_name,
+        created_at: roomInfo.created_at,
+        owner_token: ownerToken,
+      },
+    );
+    if (!initialized) {
+      continue;
+    }
+
     await env.ROOM_INDEX.put(key, JSON.stringify(roomInfo), {
       expirationTtl: ROOM_INDEX_TTL_SECONDS,
     });
@@ -128,6 +152,34 @@ async function createRoom(env: Env, request: Request): Promise<Response> {
   return textResponse("Unable to allocate a room code", {
     status: 503,
   });
+}
+
+async function initializeRoomDurableObject(
+  env: Env,
+  payload: InitializeRoomPayload,
+): Promise<boolean> {
+  const id = env.GAME_ROOM.idFromName(payload.code);
+  const room = env.GAME_ROOM.get(id);
+  const response = await room.fetch(
+    new Request("https://relay.internal/internal/initialize", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify(payload),
+    }),
+  );
+
+  if (response.ok) {
+    return true;
+  }
+  if (response.status === 409) {
+    return false;
+  }
+
+  throw new Error(
+    `Failed to initialize room ${payload.code} (${response.status})`,
+  );
 }
 
 async function listRooms(env: Env, request: Request): Promise<Response> {
@@ -168,24 +220,12 @@ async function connectRoom(env: Env, request: Request, code: string): Promise<Re
     return textResponse("Invalid room code", { status: 400 });
   }
 
-  const roomInfo = parseRoomInfo(
-    await env.ROOM_INDEX.get(roomIndexKey(normalizedCode)),
-  );
-  if (!roomInfo) {
-    return textResponse("Room not found", { status: 404 });
-  }
-  const ownerToken = (await env.ROOM_INDEX.get(roomOwnerKey(normalizedCode))) ?? "";
   const requestOwnerToken = url.searchParams.get("owner_token") ?? "";
 
   const id = env.GAME_ROOM.idFromName(normalizedCode);
   const room = env.GAME_ROOM.get(id);
   const headers = new Headers(request.headers);
-  headers.set("x-openglad-room-code", roomInfo.code);
-  headers.set("x-openglad-campaign-hash", roomInfo.campaign_hash);
-  headers.set("x-openglad-campaign-name", roomInfo.campaign_name);
-  headers.set("x-openglad-host-name", roomInfo.host_name);
-  headers.set("x-openglad-created-at", roomInfo.created_at.toString());
-  headers.set("x-openglad-room-owner-token", ownerToken);
+  headers.set("x-openglad-room-code", normalizedCode);
   headers.set("x-openglad-connecting-owner-token", requestOwnerToken);
 
   return room.fetch(new Request(request, { headers }));
