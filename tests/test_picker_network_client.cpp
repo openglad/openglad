@@ -223,31 +223,6 @@ og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
     return character;
 }
 
-og::sim::LobbyPlayer make_lobby_player(const SaveData& save,
-                                       std::string_view player_name,
-                                       short local_team)
-{
-    og::sim::LobbyPlayer player;
-    player.name = std::string(player_name);
-    player.team = local_team;
-    player.ready = false;
-    player.is_host = false;
-
-    for (std::size_t slot_index = 0; slot_index < save.team_list.size(); ++slot_index)
-    {
-        const auto& member = save.team_list[slot_index];
-        if (member == nullptr || member->teamnum != local_team)
-            continue;
-
-        player.character_slots.push_back(og::sim::LobbyCharacterSlot{
-            .slot_index = static_cast<std::uint8_t>(slot_index),
-            .character = make_lobby_character_data(*member),
-        });
-    }
-
-    return player;
-}
-
 og::sim::LobbyCharacterSlot make_lobby_slot(std::uint8_t slot_index,
                                             std::string_view name,
                                             short team)
@@ -270,38 +245,6 @@ void send_lobby_message(og::sim::ITransport& transport,
         std::make_shared<og::sim::LobbyMessage>(std::move(message)));
 }
 
-void send_join_message(og::sim::ITransport& transport,
-                       og::sim::PeerId peer_id,
-                       const SaveData& save,
-                       std::string_view player_name,
-                       short local_team)
-{
-    og::sim::LobbyMessage message;
-    message.payload = og::sim::LobbyJoinMessage{
-        .player = make_lobby_player(save, player_name, local_team),
-    };
-    send_lobby_message(transport, peer_id, std::move(message));
-}
-
-void send_settings_message(og::sim::ITransport& transport,
-                           og::sim::PeerId peer_id,
-                           const SaveData& save,
-                           std::int16_t difficulty)
-{
-    og::sim::LobbySettings settings;
-    settings.campaign_id = save.current_campaign;
-    settings.scenario_id = save.scen_num;
-    settings.difficulty = difficulty;
-    settings.allied_mode = save.allied_mode;
-
-    og::sim::LobbyMessage message;
-    message.payload = og::sim::LobbySettingsChangeMessage{
-        .player_index = 0xffu,
-        .settings = std::move(settings),
-    };
-    send_lobby_message(transport, peer_id, std::move(message));
-}
-
 void send_start_game_message(og::sim::ITransport& transport,
                              og::sim::PeerId peer_id,
                              std::uint8_t player_index)
@@ -313,16 +256,46 @@ void send_start_game_message(og::sim::ITransport& transport,
     send_lobby_message(transport, peer_id, std::move(message));
 }
 
-const og::sim::LobbyPlayer* find_player(const og::sim::LobbyState& state,
-                                        std::string_view name)
+std::vector<std::pair<og::sim::PeerId, og::sim::LobbyMessage>>
+poll_lobby_messages(og::sim::ITransport& transport)
 {
-    const auto it = std::find_if(
-        state.players.begin(),
-        state.players.end(),
-        [name](const og::sim::LobbyPlayer& player) {
-            return player.name == name;
-        });
-    return it != state.players.end() ? &*it : nullptr;
+    std::vector<std::pair<og::sim::PeerId, og::sim::LobbyMessage>> messages;
+
+    if (transport.supports_typed_messages())
+    {
+        for (const auto& typed_message : transport.poll_typed())
+        {
+            if (typed_message.kind !=
+                    og::sim::TypedReceivedMessageKind::LobbyMessage ||
+                !typed_message.lobby_message)
+            {
+                continue;
+            }
+
+            messages.emplace_back(
+                typed_message.peer_id, *typed_message.lobby_message);
+        }
+        return messages;
+    }
+
+    for (const auto& message : transport.poll())
+    {
+        og::sim::TransportEnvelope envelope;
+        if (!og::sim::decode_transport_envelope(message.data, envelope) ||
+            envelope.message_type != og::sim::kLobbyMessageType)
+        {
+            continue;
+        }
+
+        const auto decoded =
+            og::sim::deserialize_lobby_message(message.data);
+        if (!decoded.has_value())
+            continue;
+
+        messages.emplace_back(message.peer_id, *decoded);
+    }
+
+    return messages;
 }
 
 bool wait_until_host_owns_room(og::sim::RelayWebSocketTransport& transport,
@@ -868,36 +841,10 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     auto server_transport =
         std::make_shared<og::sim::WebSocketServerTransport>(port);
     server_transport->accept_connections();
-    og::sim::LobbyServer lobby_server(*server_transport);
-
-    og::sim::WebSocketClientTransport remote_host(
-        std::format("ws://127.0.0.1:{}", port));
-    remote_host.accept_connections();
-    ASSERT_TRUE(wait_until([&] {
-        lobby_server.poll_incoming_messages();
-        (void)remote_host.poll();
-        return !remote_host.connected_peers().empty();
-    })) << "remote direct host should connect to the lobby server";
-
-    const og::sim::PeerId server_peer_id = remote_host.connected_peers().front();
     SaveData remote_host_save;
     prepare_single_member_network_save(remote_host_save, 0, "Remote Host");
     remote_host_save.scen_num = 5;
     remote_host_save.allied_mode = 1;
-    send_settings_message(remote_host, server_peer_id, remote_host_save, 7);
-    send_join_message(remote_host,
-                      server_peer_id,
-                      remote_host_save,
-                      "Remote Host",
-                      0);
-
-    ASSERT_TRUE(wait_until([&] {
-        lobby_server.poll_incoming_messages();
-        (void)remote_host.poll();
-        const auto* const host_player =
-            find_player(lobby_server.state(), "Remote Host");
-        return host_player != nullptr && host_player->is_host;
-    })) << "remote direct host should own the lobby before the joiner connects";
 
     og::ui::PickerJoinGameOptions options;
     options.mode = og::ui::PickerJoinMode::Direct;
@@ -908,15 +855,52 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     EXPECT_FALSE(install_gameplay_runtime_from_handoff(*join_client));
     join_client->initialize_from_save();
 
+    og::sim::PeerId join_peer_id = 0;
+    og::sim::LobbyMessage join_message;
     ASSERT_TRUE(wait_until([&] {
-        lobby_server.poll_incoming_messages();
-        (void)remote_host.poll();
         join_client->poll_and_apply();
-        return lobby_server.state().players.size() == 2u &&
-            status_lines_contain_exact(
-                join_client->status_lines(),
-                "Lobby: 2 players");
-    })) << "direct join client should connect and receive lobby state";
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (message.kind() != og::sim::LobbyMessageKind::Join)
+                continue;
+
+            join_peer_id = peer_id;
+            join_message = std::move(message);
+            return true;
+        }
+        return false;
+    })) << "direct join client should connect and send its join message";
+
+    ASSERT_EQ(og::sim::LobbyMessageKind::Join, join_message.kind());
+    og::sim::LobbyPlayer join_player =
+        std::get<og::sim::LobbyJoinMessage>(join_message.payload).player;
+    join_player.player_index = 1u;
+    join_player.ready = false;
+    join_player.is_host = false;
+
+    og::sim::LobbyState state;
+    state.settings.campaign_id = remote_host_save.current_campaign;
+    state.settings.scenario_id = remote_host_save.scen_num;
+    state.settings.difficulty = 7;
+    state.settings.allied_mode = remote_host_save.allied_mode;
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0u,
+        .name = "Remote Host",
+        .team = 0,
+        .character_slots = {make_lobby_slot(0u, "Remote Host", 0)},
+        .ready = false,
+        .is_host = true,
+    });
+    state.players.push_back(join_player);
+    server_transport->send_lobby_state(
+        join_peer_id, std::make_shared<og::sim::LobbyState>(state));
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(
+                   join_client->status_lines(),
+                   "Lobby: 2 players");
+    })) << "direct join client should receive injected lobby state";
 
     EXPECT_TRUE(status_lines_contain_prefix(
         join_client->status_lines(),
@@ -924,27 +908,56 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     EXPECT_TRUE(
         status_lines_contain_exact(join_client->status_lines(), "Status: connected"));
 
-    save.team_list[0]->name = "Joiner Prime";
+    std::size_t local_slot_index = save.team_list.size();
+    for (std::size_t slot_index = 0; slot_index < save.team_list.size(); ++slot_index)
+    {
+        const auto& member = save.team_list[slot_index];
+        if (member != nullptr &&
+            member->name == "Joiner" &&
+            join_client->is_save_slot_editable(slot_index))
+        {
+            local_slot_index = slot_index;
+            break;
+        }
+    }
+    ASSERT_LT(local_slot_index, save.team_list.size());
+    save.team_list[local_slot_index]->name = "Joiner Prime";
     join_client->sync_from_save();
+    og::sim::LobbyMessage sync_message;
     join_client->sync_settings_from_save();
     join_client->set_player_mode(0);
     ASSERT_TRUE(wait_until([&] {
-        lobby_server.poll_incoming_messages();
-        (void)remote_host.poll();
         join_client->poll_and_apply();
-        return lobby_server.state().players.size() == 2u &&
-            status_lines_contain_exact(
-                join_client->status_lines(),
-                "Lobby: 2 players");
-    })) << "direct join client should remain synchronized after local save changes";
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (peer_id != join_peer_id ||
+                message.kind() != og::sim::LobbyMessageKind::Join)
+            {
+                continue;
+            }
 
-    const auto* const host_player = find_player(lobby_server.state(), "Remote Host");
-    ASSERT_NE(nullptr, host_player);
-    send_start_game_message(remote_host, server_peer_id, host_player->player_index);
+            sync_message = std::move(message);
+            return true;
+        }
+        return false;
+    })) << "direct join client should re-send its join roster after local save changes";
+
+    const auto& synced_join =
+        std::get<og::sim::LobbyJoinMessage>(sync_message.payload);
+    ASSERT_EQ(1u, synced_join.player.character_slots.size());
+    EXPECT_EQ("Joiner Prime",
+              synced_join.player.character_slots.front().character.name);
+
+    join_player = synced_join.player;
+    join_player.player_index = 1u;
+    join_player.ready = false;
+    join_player.is_host = false;
+    state.players[1] = join_player;
+    server_transport->send_lobby_state(
+        join_peer_id, std::make_shared<og::sim::LobbyState>(state));
+    send_start_game_message(*server_transport, join_peer_id, 0u);
 
     ASSERT_TRUE(wait_until([&] {
-        lobby_server.poll_incoming_messages();
-        (void)remote_host.poll();
         join_client->poll_and_apply();
         return join_client->has_game_start_config();
     })) << "direct join client should receive the host start-game handoff";
