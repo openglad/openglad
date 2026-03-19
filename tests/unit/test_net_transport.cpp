@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <utility>
@@ -449,6 +450,29 @@ TEST(NetTransport, game_server_disconnects_removed_transport_peers_on_poll)
     server.send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
 
     EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
+    EXPECT_TRUE(transport.sent_messages().empty());
+}
+
+TEST(NetTransport, game_server_disconnects_all_clients_when_host_peer_is_removed)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u, 11u, 13u});
+    server.poll_incoming_messages();
+    server.send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
+    transport.clear_sent_messages();
+
+    transport.set_connected_peers({11u, 13u});
+    server.poll_incoming_messages();
+    server.send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
+
+    std::vector<og::sim::PeerId> disconnected_peers =
+        transport.disconnected_peers();
+    std::sort(disconnected_peers.begin(), disconnected_peers.end());
+    EXPECT_EQ((std::vector<og::sim::PeerId>{7u, 11u, 13u}),
+              disconnected_peers);
     EXPECT_TRUE(transport.sent_messages().empty());
 }
 

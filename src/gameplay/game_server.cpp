@@ -709,42 +709,60 @@ void GameServer::connect_client(PeerId peer_id)
 
 void GameServer::disconnect_client(PeerId peer_id)
 {
-    erase_peer_id_sorted(connected_transport_peers_, peer_id);
-    erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
     const bool was_host = host_peer_id_.has_value() && *host_peer_id_ == peer_id;
-    const auto it = clients_.find(peer_id);
-    if (it != clients_.end())
+    std::vector<PeerId> peers_to_disconnect;
+    if (was_host)
     {
-        const ConnectedClientState& client = it->second;
-        if (client.has_player_binding && client.control != nullptr &&
-            client.control->user() == static_cast<int>(client.player_index))
+        peers_to_disconnect.reserve(clients_.size());
+        for (const auto& [other_peer_id, client] : clients_)
         {
-            client.control->set_user(-1);
-            client.control->restore_act_type();
+            (void)client;
+            if (other_peer_id != peer_id)
+                peers_to_disconnect.push_back(other_peer_id);
         }
-
-        if (pending_pause_state_.has_value() &&
-            pending_pause_state_->player_index == client.player_index)
-        {
-            clear_pause_state();
-        }
-        if (pending_exit_prompt_state_.has_value() &&
-            pending_exit_prompt_state_->triggering_player_index == client.player_index)
-        {
-            clear_pending_exit_prompt();
-        }
-
-        clients_.erase(it);
+        host_peer_id_.reset();
     }
+
+    const auto disconnect_one = [this](PeerId disconnected_peer_id) {
+        erase_peer_id_sorted(connected_transport_peers_, disconnected_peer_id);
+        erase_peer_id_sorted(pending_transport_disconnects_, disconnected_peer_id);
+
+        const auto it = clients_.find(disconnected_peer_id);
+        if (it != clients_.end())
+        {
+            const ConnectedClientState& client = it->second;
+            if (client.has_player_binding && client.control != nullptr &&
+                client.control->user() == static_cast<int>(client.player_index))
+            {
+                client.control->set_user(-1);
+                client.control->restore_act_type();
+            }
+
+            if (pending_pause_state_.has_value() &&
+                pending_pause_state_->player_index == client.player_index)
+            {
+                clear_pause_state();
+            }
+            if (pending_exit_prompt_state_.has_value() &&
+                pending_exit_prompt_state_->triggering_player_index ==
+                    client.player_index)
+            {
+                clear_pending_exit_prompt();
+            }
+
+            clients_.erase(it);
+        }
+
+        transport_.disconnect(disconnected_peer_id);
+    };
+
+    disconnect_one(peer_id);
 
     if (was_host)
     {
-        host_peer_id_ = clients_.empty()
-            ? std::nullopt
-            : std::optional<PeerId>(clients_.begin()->first);
+        for (const PeerId other_peer_id : peers_to_disconnect)
+            disconnect_one(other_peer_id);
     }
-
-    transport_.disconnect(peer_id);
 }
 
 void GameServer::bind_player(PeerId peer_id,
