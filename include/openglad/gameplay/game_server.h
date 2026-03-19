@@ -76,12 +76,25 @@ struct ConnectedClientState {
     bool has_initial_snapshot = false;
     bool initial_setup_sent = false;
     bool client_ready = false;
+    bool allow_initial_keyframe_without_ready = false;
+    bool budget_pending_keyframe = false;
     bool force_keyframe = false;
+    SessionToken session_token = kZeroSessionToken;
     std::unordered_map<std::uint32_t, PlayerInput> pending_inputs;
     PlayerInput last_known_input = {};
     std::uint32_t last_received_input_tick = 0;
     std::uint64_t last_received_input_ms = 0;
     std::uint64_t last_pause_request_ms = 0;
+};
+
+struct DisconnectedPlayer {
+    SessionToken session_token = kZeroSessionToken;
+    std::size_t player_index = 0;
+    short team_num = 0;
+    walker* control = nullptr;
+    PlayerInput repeated_input = {};
+    std::uint64_t disconnected_at_ms = 0;
+    bool ai_control_enabled = false;
 };
 
 struct PendingExitPromptState {
@@ -152,15 +165,20 @@ public:
 private:
     void synchronize_transport_peers();
     void apply_transport_disconnects();
+    void handle_transport_disconnect(PeerId peer_id, bool close_transport);
     [[nodiscard]] bool apply_polled_inputs(std::uint32_t expected_tick);
     void process_non_input_messages(std::uint32_t expected_tick);
     void update_timeouts();
+    void update_disconnected_players(std::uint64_t now_ms);
+    [[nodiscard]] bool process_disconnected_players(std::uint32_t expected_tick);
     void clear_pending_exit_prompt();
     void clear_pause_state();
     void handle_exit_prompt_response(bool accepted);
     void handle_level_transition(std::int16_t next_level);
     void handle_pause_request(PeerId peer_id);
     void handle_pause_response();
+    void handle_hello(PeerId peer_id, const HelloMessage& message);
+    void handle_heartbeat(PeerId peer_id);
     void prepare_clients_for_loaded_level();
     void rebind_players_for_loaded_level();
     void remember_snapshot_hash(ConnectedClientState& client,
@@ -169,6 +187,7 @@ private:
     void maybe_send_control_change(std::size_t player_index, walker* control);
     void maybe_resolve_world_events(SimEventBatch& batch, WorldSnapshot& snapshot);
     void maybe_broadcast_special_state();
+    [[nodiscard]] SessionToken allocate_session_token();
     [[nodiscard]] std::uint64_t now_ms() const;
     [[nodiscard]] InitialSetupMessage build_initial_setup(PeerId peer_id) const;
     void send_initial_setup(PeerId peer_id);
@@ -184,6 +203,7 @@ private:
     std::vector<PeerId> connected_transport_peers_;
     std::vector<PeerId> pending_transport_disconnects_;
     std::unordered_map<PeerId, ConnectedClientState> clients_;
+    std::vector<DisconnectedPlayer> disconnected_players_;
     std::array<walker*, MAX_PLAYERS> player_controls_ = {};
     std::array<SimInputDebounce, MAX_PLAYERS> player_input_debounce_ = {};
     std::string special_names_[NUM_FAMILIES][NUM_SPECIALS] = {};
@@ -194,6 +214,7 @@ private:
     std::size_t snapshot_hash_mismatch_count_ = 0;
     std::uint32_t next_sim_event_sequence_ = 1;
     std::uint32_t next_game_flow_event_sequence_ = 1;
+    std::uint64_t next_session_token_seed_ = 1;
     std::optional<PeerId> host_peer_id_ = std::nullopt;
     std::function<std::uint64_t()> wall_clock_ms_source_;
 };

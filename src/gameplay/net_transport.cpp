@@ -599,6 +599,25 @@ std::optional<ClientReadyMessage> deserialize_client_ready_message(
         });
 }
 
+std::vector<std::uint8_t> serialize_heartbeat_message(
+    const HeartbeatMessage& message)
+{
+    (void)message;
+    return wrap_transport_message(kHeartbeatMessageType, {});
+}
+
+std::optional<HeartbeatMessage> deserialize_heartbeat_message(
+    std::span<const std::uint8_t> bytes)
+{
+    return deserialize_message<HeartbeatMessage>(
+        bytes, kHeartbeatMessageType,
+        [](PayloadReader& reader, HeartbeatMessage& message) {
+            (void)message;
+            if (reader.remaining_bytes() != 0)
+                reader.fail();
+        });
+}
+
 std::vector<std::uint8_t> serialize_keyframe_request_message(
     const KeyframeRequestMessage& message)
 {
@@ -825,6 +844,16 @@ void ITransport::send_initial_setup(PeerId peer_id,
     send(peer_id, bytes.data(), bytes.size());
 }
 
+void ITransport::send_hello(PeerId peer_id,
+                            std::shared_ptr<HelloMessage> message)
+{
+    if (!message)
+        return;
+
+    const auto bytes = serialize_hello(*message);
+    send(peer_id, bytes.data(), bytes.size());
+}
+
 void ITransport::send_client_ready(PeerId peer_id,
                                    std::shared_ptr<ClientReadyMessage> message)
 {
@@ -845,6 +874,18 @@ void ITransport::send_keyframe_request(
 
     const std::vector<std::uint8_t> bytes =
         serialize_keyframe_request_message(*message);
+    send(peer_id, bytes.data(), bytes.size());
+}
+
+void ITransport::send_heartbeat(
+    PeerId peer_id,
+    std::shared_ptr<HeartbeatMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::vector<std::uint8_t> bytes =
+        serialize_heartbeat_message(*message);
     send(peer_id, bytes.data(), bytes.size());
 }
 

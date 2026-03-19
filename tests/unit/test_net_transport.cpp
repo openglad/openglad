@@ -435,7 +435,7 @@ TEST(NetTransport, game_server_registers_connected_transport_peers_on_poll)
     EXPECT_EQ(7u, transport.sent_messages()[1].peer_id);
 }
 
-TEST(NetTransport, game_server_disconnects_removed_transport_peers_on_poll)
+TEST(NetTransport, game_server_drops_removed_transport_peers_on_poll)
 {
     TestGameWorld fixture;
     MockTransport transport;
@@ -449,11 +449,11 @@ TEST(NetTransport, game_server_disconnects_removed_transport_peers_on_poll)
     server.poll_incoming_messages();
     server.send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
 
-    EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
+    EXPECT_TRUE(transport.disconnected_peers().empty());
     EXPECT_TRUE(transport.sent_messages().empty());
 }
 
-TEST(NetTransport, game_server_disconnects_all_clients_when_host_peer_is_removed)
+TEST(NetTransport, game_server_keeps_remaining_clients_when_host_peer_is_removed)
 {
     TestGameWorld fixture;
     MockTransport transport;
@@ -468,12 +468,16 @@ TEST(NetTransport, game_server_disconnects_all_clients_when_host_peer_is_removed
     server.poll_incoming_messages();
     server.send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
 
-    std::vector<og::sim::PeerId> disconnected_peers =
-        transport.disconnected_peers();
-    std::sort(disconnected_peers.begin(), disconnected_peers.end());
-    EXPECT_EQ((std::vector<og::sim::PeerId>{7u, 11u, 13u}),
-              disconnected_peers);
-    EXPECT_TRUE(transport.sent_messages().empty());
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+
+    ASSERT_EQ(4u, transport.sent_messages().size());
+    std::vector<og::sim::PeerId> recipients;
+    recipients.reserve(transport.sent_messages().size());
+    for (const auto& sent : transport.sent_messages())
+        recipients.push_back(sent.peer_id);
+    std::sort(recipients.begin(), recipients.end());
+    EXPECT_EQ((std::vector<og::sim::PeerId>{11u, 11u, 13u, 13u}),
+              recipients);
 }
 
 TEST(NetTransport, game_server_snapshot_hash_check_is_strict_per_peer_per_tick)
@@ -1380,6 +1384,36 @@ TEST(NetTransport,
               decoded_state.kind);
     ASSERT_NE(nullptr, decoded_state.lobby_state);
     EXPECT_EQ(lobby_state, *decoded_state.lobby_state);
+}
+
+TEST(NetTransport, game_server_disconnects_peers_that_send_malformed_messages)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u});
+    server.poll_incoming_messages();
+
+    transport.queue_received(7u, {0x01, 0x06, 0x01});
+    server.poll_incoming_messages();
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
+    EXPECT_TRUE(server.last_polled_messages().empty());
+}
+
+TEST(NetTransport, game_client_disconnects_when_server_message_is_malformed)
+{
+    MockTransport transport;
+    og::sim::GameClient client(transport, 7u);
+
+    transport.set_connected_peers({7u});
+    transport.queue_received(7u, {0x01, 0x02, 0x01, 0x00, 0xff});
+
+    client.poll_messages();
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
+    EXPECT_TRUE(client.last_polled_messages().empty());
 }
 
 } // namespace

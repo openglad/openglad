@@ -602,6 +602,30 @@ void InProcessTransport::send_initial_setup(
     peer->enqueue_typed(std::move(typed_message));
 }
 
+void InProcessTransport::send_hello(
+    PeerId peer_id,
+    std::shared_ptr<HelloMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::Hello;
+    typed_message.hello = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              [](const HelloMessage& value) {
+                  const auto bytes = serialize_hello(value);
+                  return std::vector<std::uint8_t>(bytes.begin(), bytes.end());
+              },
+              deserialize_hello_message,
+              "hello")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
 void InProcessTransport::send_client_ready(
     PeerId peer_id,
     std::shared_ptr<ClientReadyMessage> message)
@@ -640,6 +664,27 @@ void InProcessTransport::send_keyframe_request(
               serialize_keyframe_request_message,
               deserialize_keyframe_request_message,
               "keyframe request")
+        : std::move(message);
+    peer->enqueue_typed(std::move(typed_message));
+}
+
+void InProcessTransport::send_heartbeat(
+    PeerId peer_id,
+    std::shared_ptr<HeartbeatMessage> message)
+{
+    if (!message)
+        return;
+
+    const std::shared_ptr<InProcessTransport> peer = resolve_peer(peer_id);
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = TypedReceivedMessageKind::Heartbeat;
+    typed_message.heartbeat = validate_serialization_
+        ? validate_message_roundtrip(
+              message,
+              serialize_heartbeat_message,
+              deserialize_heartbeat_message,
+              "heartbeat")
         : std::move(message);
     peer->enqueue_typed(std::move(typed_message));
 }

@@ -1099,8 +1099,124 @@ TEST(NetTransportInProcess, network_fixture_disconnects_client_after_input_timeo
     });
 
     EXPECT_TRUE(fixture.server_transport().connected_peers().empty());
+    EXPECT_EQ(0, static_cast<int>(control->user()));
+    EXPECT_EQ(ACT_CONTROL, control->act_type());
+
+    now_ms += static_cast<std::uint64_t>(og::sim::DISCONNECT_TIMEOUT_MS) + 1u;
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+
     EXPECT_EQ(-1, static_cast<int>(control->user()));
     EXPECT_NE(ACT_CONTROL, control->act_type());
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_reconnects_with_session_token_and_reclaims_control)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    std::uint64_t now_ms = 1000;
+    fixture.server().set_wall_clock_ms_source([&] { return now_ms; });
+
+    walker* const control = fixture.server_control(0);
+    ASSERT_NE(nullptr, control);
+    const std::uint32_t control_id = control->entity_id();
+    const og::sim::SessionToken session_token = fixture.client(0).session_token();
+    ASSERT_FALSE(og::sim::is_zero_session_token(session_token));
+
+    const og::sim::PeerId disconnected_peer =
+        fixture.client_transport(0).local_peer_id();
+    fixture.client_transport(0).disconnect(disconnected_peer);
+    fixture.with_server_context([&] {
+        fixture.server().poll_incoming_messages();
+        fixture.server().poll_incoming_messages();
+    });
+
+    EXPECT_TRUE(fixture.server_transport().connected_peers().empty());
+    EXPECT_EQ(0, static_cast<int>(control->user()));
+    EXPECT_EQ(ACT_CONTROL, control->act_type());
+
+    now_ms += static_cast<std::uint64_t>(og::sim::DISCONNECT_TIMEOUT_MS) + 1u;
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+
+    EXPECT_EQ(-1, static_cast<int>(control->user()));
+    EXPECT_NE(ACT_CONTROL, control->act_type());
+
+    auto reconnect_transport = fixture.server_transport().create_client_transport();
+    const og::sim::PeerId reconnect_peer = reconnect_transport->local_peer_id();
+    fixture.with_server_context([&] {
+        fixture.server().poll_incoming_messages();
+    });
+
+    og::sim::HelloMessage hello;
+    hello.session_token = session_token;
+    reconnect_transport->send_hello(
+        reconnect_peer,
+        std::make_shared<og::sim::HelloMessage>(hello));
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+
+    const std::vector<og::sim::TypedReceivedMessage> reconnected_messages =
+        reconnect_transport->poll_typed();
+
+    const auto hello_it = std::find_if(
+        reconnected_messages.begin(),
+        reconnected_messages.end(),
+        [](const og::sim::TypedReceivedMessage& message) {
+            return message.kind == og::sim::TypedReceivedMessageKind::Hello &&
+                message.hello != nullptr;
+        });
+    ASSERT_NE(reconnected_messages.end(), hello_it);
+    EXPECT_EQ(session_token, hello_it->hello->session_token);
+
+    const auto initial_setup_it = std::find_if(
+        reconnected_messages.begin(),
+        reconnected_messages.end(),
+        [](const og::sim::TypedReceivedMessage& message) {
+            return message.kind == og::sim::TypedReceivedMessageKind::InitialSetup &&
+                message.initial_setup != nullptr;
+        });
+    ASSERT_NE(reconnected_messages.end(), initial_setup_it);
+    EXPECT_EQ(control_id, initial_setup_it->initial_setup->controlled_entity_ids[0]);
+
+    const auto control_change_it = std::find_if(
+        reconnected_messages.begin(),
+        reconnected_messages.end(),
+        [](const og::sim::TypedReceivedMessage& message) {
+            return message.kind == og::sim::TypedReceivedMessageKind::ControlChange &&
+                message.control_change != nullptr;
+        });
+    ASSERT_NE(reconnected_messages.end(), control_change_it);
+    EXPECT_EQ(0u, control_change_it->control_change->player_index);
+    EXPECT_EQ(control_id, control_change_it->control_change->entity_id);
+
+    const auto snapshot_it = std::find_if(
+        reconnected_messages.begin(),
+        reconnected_messages.end(),
+        [](const og::sim::TypedReceivedMessage& message) {
+            return message.kind == og::sim::TypedReceivedMessageKind::Snapshot &&
+                message.snapshot != nullptr;
+        });
+    ASSERT_NE(reconnected_messages.end(), snapshot_it);
+    EXPECT_GE(snapshot_it->snapshot->tick_count, 1u);
+
+    EXPECT_EQ(0, static_cast<int>(control->user()));
+    EXPECT_EQ(ACT_CONTROL, control->act_type());
 }
 
 TEST(NetTransportInProcess,

@@ -51,6 +51,10 @@ inline constexpr std::size_t kTransportHeaderSize = 4;
 inline constexpr std::size_t kSessionTokenSize = 16;
 using SessionToken = std::array<std::uint8_t, kSessionTokenSize>;
 inline constexpr SessionToken kZeroSessionToken = {};
+inline bool is_zero_session_token(const SessionToken& token) noexcept
+{
+    return token == kZeroSessionToken;
+}
 inline constexpr std::size_t kSerializedHelloPayloadSize =
     3 + kSessionTokenSize + sizeof(std::uint32_t);
 inline constexpr std::size_t kSerializedHelloMessageSize =
@@ -105,6 +109,8 @@ struct HelloMessage {
     std::uint8_t snapshot_format_version = 0;
     SessionToken session_token = {};
     std::uint32_t campaign_content_hash = 0;
+
+    bool operator==(const HelloMessage&) const = default;
 };
 
 struct InitialSetupGuyData {
@@ -165,6 +171,10 @@ struct KeyframeRequestMessage {
     bool operator==(const KeyframeRequestMessage&) const = default;
 };
 
+struct HeartbeatMessage {
+    bool operator==(const HeartbeatMessage&) const = default;
+};
+
 struct ExitPromptBroadcastMessage {
     std::int16_t destination_level = -1;
     bool withdraw_prompt = false;
@@ -220,8 +230,10 @@ enum class TypedReceivedMessageKind : std::uint8_t {
     LobbyMessage,
     LobbyState,
     InitialSetup,
+    Hello,
     ClientReady,
     KeyframeRequest,
+    Heartbeat,
     ExitPromptBroadcast,
     ExitPromptResponse,
     PauseBroadcast,
@@ -239,8 +251,10 @@ struct TypedReceivedMessage {
     std::shared_ptr<LobbyMessage> lobby_message;
     std::shared_ptr<LobbyState> lobby_state;
     std::shared_ptr<InitialSetupMessage> initial_setup;
+    std::shared_ptr<HelloMessage> hello;
     std::shared_ptr<ClientReadyMessage> client_ready;
     std::shared_ptr<KeyframeRequestMessage> keyframe_request;
+    std::shared_ptr<HeartbeatMessage> heartbeat;
     std::shared_ptr<ExitPromptBroadcastMessage> exit_prompt_broadcast;
     std::shared_ptr<ExitPromptResponseMessage> exit_prompt_response;
     std::shared_ptr<PauseBroadcastMessage> pause_broadcast;
@@ -264,6 +278,10 @@ std::optional<LobbyState> deserialize_lobby_state_message(
 std::vector<std::uint8_t> serialize_client_ready_message(
     const ClientReadyMessage& message);
 std::optional<ClientReadyMessage> deserialize_client_ready_message(
+    std::span<const std::uint8_t> bytes);
+std::vector<std::uint8_t> serialize_heartbeat_message(
+    const HeartbeatMessage& message);
+std::optional<HeartbeatMessage> deserialize_heartbeat_message(
     std::span<const std::uint8_t> bytes);
 std::vector<std::uint8_t> serialize_keyframe_request_message(
     const KeyframeRequestMessage& message);
@@ -329,11 +347,16 @@ public:
                                   std::shared_ptr<LobbyState> state);
     virtual void send_initial_setup(PeerId peer_id,
                                     std::shared_ptr<InitialSetupMessage> message);
+    virtual void send_hello(PeerId peer_id,
+                            std::shared_ptr<HelloMessage> message);
     virtual void send_client_ready(PeerId peer_id,
                                    std::shared_ptr<ClientReadyMessage> message);
     virtual void send_keyframe_request(
         PeerId peer_id,
         std::shared_ptr<KeyframeRequestMessage> message);
+    virtual void send_heartbeat(
+        PeerId peer_id,
+        std::shared_ptr<HeartbeatMessage> message);
     virtual void send_exit_prompt_broadcast(
         PeerId peer_id,
         std::shared_ptr<ExitPromptBroadcastMessage> message);

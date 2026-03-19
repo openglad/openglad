@@ -12,6 +12,8 @@
 
 namespace {
 
+constexpr auto kHeartbeatInterval = std::chrono::seconds(2);
+
 void clear_transport_only_snapshot_state(og::sim::WorldSnapshot& snapshot)
 {
     snapshot.removed_entity_ids.clear();
@@ -75,170 +77,225 @@ void apply_initial_setup_to_world(GameWorld& world,
         world.completed_levels.insert(level_id);
 }
 
-std::vector<og::sim::TypedReceivedMessage> poll_client_messages(
+struct ClientPollResult {
+    std::vector<og::sim::TypedReceivedMessage> messages;
+    bool malformed_server_message = false;
+};
+
+ClientPollResult poll_client_messages(
     og::sim::ITransport& transport)
 {
+    ClientPollResult result;
     if (transport.supports_typed_messages())
-        return transport.poll_typed();
+    {
+        result.messages = transport.poll_typed();
+        return result;
+    }
 
-    std::vector<og::sim::TypedReceivedMessage> typed_messages;
     for (const auto& message : transport.poll())
     {
         og::sim::TransportEnvelope envelope;
         if (!og::sim::decode_transport_envelope(message.data, envelope))
         {
-            throw std::runtime_error(
-                "GameClient received malformed transport header");
+            result.malformed_server_message = true;
+            break;
         }
 
         og::sim::TypedReceivedMessage typed_message;
         typed_message.peer_id = message.peer_id;
-        switch (envelope.message_type)
+        try
         {
-        case og::sim::kSnapshotMessageType:
-            typed_message.kind = og::sim::TypedReceivedMessageKind::Snapshot;
-            typed_message.snapshot = std::make_shared<og::sim::WorldSnapshot>(
-                og::sim::deserialize_snapshot(message.data.data(),
-                                              message.data.size()));
-            break;
-
-        case og::sim::kDeltaSnapshotMessageType:
-            typed_message.kind = og::sim::TypedReceivedMessageKind::DeltaSnapshot;
-            typed_message.snapshot = std::make_shared<og::sim::WorldSnapshot>(
-                og::sim::deserialize_delta(message.data.data(),
-                                           message.data.size()));
-            break;
-
-        case og::sim::kSimEventBatchMessageType:
-            typed_message.kind = og::sim::TypedReceivedMessageKind::SimEventBatch;
-            typed_message.event_batch = std::make_shared<og::sim::SimEventBatch>(
-                og::sim::deserialize_sim_event_batch(message.data.data(),
-                                                     message.data.size()));
-            break;
-
-        case og::sim::kGameFlowEventBatchMessageType:
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::GameFlowEventBatch;
-            typed_message.event_batch = std::make_shared<og::sim::SimEventBatch>(
-                og::sim::deserialize_game_flow_event_batch(message.data.data(),
-                                                           message.data.size()));
-            break;
-
-        case og::sim::kLobbyMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_lobby_message(message.data);
-            if (!decoded.has_value())
+            switch (envelope.message_type)
             {
-                throw std::runtime_error(
-                    "GameClient failed to deserialize lobby message");
-            }
-            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyMessage;
-            typed_message.lobby_message =
-                std::make_shared<og::sim::LobbyMessage>(*decoded);
-            break;
-        }
+            case og::sim::kSnapshotMessageType:
+                typed_message.kind = og::sim::TypedReceivedMessageKind::Snapshot;
+                typed_message.snapshot = std::make_shared<og::sim::WorldSnapshot>(
+                    og::sim::deserialize_snapshot(message.data.data(),
+                                                  message.data.size()));
+                break;
 
-        case og::sim::kLobbyStateMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_lobby_state_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kDeltaSnapshotMessageType:
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::DeltaSnapshot;
+                typed_message.snapshot = std::make_shared<og::sim::WorldSnapshot>(
+                    og::sim::deserialize_delta(message.data.data(),
+                                               message.data.size()));
+                break;
+
+            case og::sim::kSimEventBatchMessageType:
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::SimEventBatch;
+                typed_message.event_batch =
+                    std::make_shared<og::sim::SimEventBatch>(
+                        og::sim::deserialize_sim_event_batch(message.data.data(),
+                                                             message.data.size()));
+                break;
+
+            case og::sim::kGameFlowEventBatchMessageType:
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::GameFlowEventBatch;
+                typed_message.event_batch =
+                    std::make_shared<og::sim::SimEventBatch>(
+                        og::sim::deserialize_game_flow_event_batch(
+                            message.data.data(),
+                            message.data.size()));
+                break;
+
+            case og::sim::kLobbyMessageType:
             {
-                throw std::runtime_error(
-                    "GameClient failed to deserialize lobby state");
+                const auto decoded =
+                    og::sim::deserialize_lobby_message(message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::LobbyMessage;
+                typed_message.lobby_message =
+                    std::make_shared<og::sim::LobbyMessage>(*decoded);
+                break;
             }
-            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
-            typed_message.lobby_state =
-                std::make_shared<og::sim::LobbyState>(*decoded);
-            break;
-        }
 
-        case og::sim::kInputMessageType:
-        {
-            const std::optional<og::sim::InputStateMessage> decoded =
-                og::sim::deserialize_input_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kLobbyStateMessageType:
             {
-                throw std::runtime_error(
-                    "GameClient failed to deserialize input message");
+                const auto decoded =
+                    og::sim::deserialize_lobby_state_message(message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
+                typed_message.lobby_state =
+                    std::make_shared<og::sim::LobbyState>(*decoded);
+                break;
             }
-            typed_message.kind = og::sim::TypedReceivedMessageKind::Input;
-            typed_message.input = std::make_shared<InputState>(decoded->input);
-            typed_message.tick = decoded->tick;
-            break;
-        }
 
-        case og::sim::kInitialSetupMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_initial_setup_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kInputMessageType:
             {
-                throw std::runtime_error(
-                    "GameClient failed to deserialize initial setup");
+                const std::optional<og::sim::InputStateMessage> decoded =
+                    og::sim::deserialize_input_message(message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind = og::sim::TypedReceivedMessageKind::Input;
+                typed_message.input = std::make_shared<InputState>(decoded->input);
+                typed_message.tick = decoded->tick;
+                break;
             }
-            typed_message.kind = og::sim::TypedReceivedMessageKind::InitialSetup;
-            typed_message.initial_setup =
-                std::make_shared<og::sim::InitialSetupMessage>(*decoded);
-            break;
-        }
 
-        case og::sim::kExitPromptBroadcastMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_exit_prompt_broadcast_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kInitialSetupMessageType:
             {
-                throw std::runtime_error(
-                    "GameClient failed to deserialize exit prompt broadcast");
+                const auto decoded =
+                    og::sim::deserialize_initial_setup_message(message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::InitialSetup;
+                typed_message.initial_setup =
+                    std::make_shared<og::sim::InitialSetupMessage>(*decoded);
+                break;
             }
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::ExitPromptBroadcast;
-            typed_message.exit_prompt_broadcast =
-                std::make_shared<og::sim::ExitPromptBroadcastMessage>(*decoded);
-            break;
-        }
 
-        case og::sim::kPauseBroadcastMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_pause_broadcast_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kHelloMessageType:
             {
-                throw std::runtime_error(
-                    "GameClient failed to deserialize pause broadcast");
+                const auto decoded = og::sim::deserialize_hello_message(message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind = og::sim::TypedReceivedMessageKind::Hello;
+                typed_message.hello =
+                    std::make_shared<og::sim::HelloMessage>(*decoded);
+                break;
             }
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::PauseBroadcast;
-            typed_message.pause_broadcast =
-                std::make_shared<og::sim::PauseBroadcastMessage>(*decoded);
-            break;
-        }
 
-        case og::sim::kControlChangeMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_control_change_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kHeartbeatMessageType:
             {
-                throw std::runtime_error(
-                    "GameClient failed to deserialize control change");
+                const auto decoded =
+                    og::sim::deserialize_heartbeat_message(message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind = og::sim::TypedReceivedMessageKind::Heartbeat;
+                typed_message.heartbeat =
+                    std::make_shared<og::sim::HeartbeatMessage>(*decoded);
+                break;
             }
-            typed_message.kind = og::sim::TypedReceivedMessageKind::ControlChange;
-            typed_message.control_change =
-                std::make_shared<og::sim::ControlChangeMessage>(*decoded);
+
+            case og::sim::kExitPromptBroadcastMessageType:
+            {
+                const auto decoded =
+                    og::sim::deserialize_exit_prompt_broadcast_message(message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::ExitPromptBroadcast;
+                typed_message.exit_prompt_broadcast =
+                    std::make_shared<og::sim::ExitPromptBroadcastMessage>(*decoded);
+                break;
+            }
+
+            case og::sim::kPauseBroadcastMessageType:
+            {
+                const auto decoded =
+                    og::sim::deserialize_pause_broadcast_message(message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::PauseBroadcast;
+                typed_message.pause_broadcast =
+                    std::make_shared<og::sim::PauseBroadcastMessage>(*decoded);
+                break;
+            }
+
+            case og::sim::kControlChangeMessageType:
+            {
+                const auto decoded =
+                    og::sim::deserialize_control_change_message(message.data);
+                if (!decoded.has_value())
+                {
+                    result.malformed_server_message = true;
+                    break;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::ControlChange;
+                typed_message.control_change =
+                    std::make_shared<og::sim::ControlChangeMessage>(*decoded);
+                break;
+            }
+
+            default:
+                continue;
+            }
+        }
+        catch (const std::exception&)
+        {
+            result.malformed_server_message = true;
+        }
+
+        if (result.malformed_server_message)
             break;
-        }
 
-        default:
-            continue;
-        }
-
-        typed_messages.push_back(std::move(typed_message));
+        result.messages.push_back(std::move(typed_message));
     }
 
-    return typed_messages;
+    return result;
 }
 
 } // namespace
@@ -348,6 +405,9 @@ void GameClient::set_message_processing_break_callback(
 
 void GameClient::send_input(const InputState& input, std::uint32_t tick)
 {
+    update_transport_connection_state();
+    maybe_send_hello_if_needed();
+    note_outbound_activity();
     transport_.send_input(server_peer_id_,
                           std::make_shared<InputState>(input),
                           tick);
@@ -355,51 +415,66 @@ void GameClient::send_input(const InputState& input, std::uint32_t tick)
 
 void GameClient::send_client_ready()
 {
+    update_transport_connection_state();
+    maybe_send_hello_if_needed();
     ClientReadyMessage message;
     message.last_applied_tick =
         baseline_.has_value() ? baseline_->tick_count : last_seen_server_tick_;
     transport_.send_client_ready(
         server_peer_id_,
         std::make_shared<ClientReadyMessage>(message));
+    note_outbound_activity();
     client_ready_sent_ = true;
     ++client_ready_count_;
 }
 
 void GameClient::send_keyframe_request(std::uint32_t last_seen_tick)
 {
+    update_transport_connection_state();
+    maybe_send_hello_if_needed();
     KeyframeRequestMessage message;
     message.last_seen_tick =
         last_seen_tick != 0 ? last_seen_tick : last_seen_server_tick_;
     transport_.send_keyframe_request(
         server_peer_id_,
         std::make_shared<KeyframeRequestMessage>(message));
+    note_outbound_activity();
     waiting_for_keyframe_ = true;
     ++keyframe_request_count_;
 }
 
 void GameClient::send_exit_prompt_response(bool accepted)
 {
+    update_transport_connection_state();
+    maybe_send_hello_if_needed();
     ExitPromptResponseMessage message;
     message.accepted = accepted;
     transport_.send_exit_prompt_response(
         server_peer_id_,
         std::make_shared<ExitPromptResponseMessage>(message));
+    note_outbound_activity();
 }
 
 void GameClient::send_pause_request()
 {
+    update_transport_connection_state();
+    maybe_send_hello_if_needed();
     transport_.send_pause_broadcast(
         server_peer_id_,
         std::make_shared<PauseBroadcastMessage>());
+    note_outbound_activity();
 }
 
 void GameClient::send_pause_response()
 {
+    update_transport_connection_state();
+    maybe_send_hello_if_needed();
     PauseResponseMessage message;
     message.resume = true;
     transport_.send_pause_response(
         server_peer_id_,
         std::make_shared<PauseResponseMessage>(message));
+    note_outbound_activity();
 }
 
 std::uint32_t GameClient::compute_local_snapshot_hash() const
@@ -420,13 +495,70 @@ void GameClient::send_snapshot_hash_check()
     if (!baseline_.has_value() && world_ == nullptr)
         return;
 
+    update_transport_connection_state();
+    maybe_send_hello_if_needed();
     SnapshotHashCheckMessage message;
     message.tick = baseline_.has_value() ? baseline_->tick_count : last_seen_server_tick_;
     message.snapshot_hash = compute_local_snapshot_hash();
     transport_.send_snapshot_hash_check(
         server_peer_id_,
         std::make_shared<SnapshotHashCheckMessage>(message));
+    note_outbound_activity();
     ++snapshot_hash_check_count_;
+}
+
+void GameClient::update_transport_connection_state()
+{
+    const std::vector<PeerId> peers = transport_.connected_peers();
+    const bool connected = std::find(peers.begin(), peers.end(), server_peer_id_) !=
+        peers.end();
+    if (!connected && transport_connected_)
+    {
+        waiting_for_keyframe_ = true;
+        hello_sent_for_connection_ = false;
+        hello_acknowledged_ = false;
+    }
+    transport_connected_ = connected;
+}
+
+void GameClient::maybe_send_hello_if_needed()
+{
+    if (!transport_connected_ || hello_sent_for_connection_)
+        return;
+
+    HelloMessage message;
+    message.session_token = session_token_;
+    transport_.send_hello(
+        server_peer_id_,
+        std::make_shared<HelloMessage>(message));
+    note_outbound_activity();
+    hello_sent_for_connection_ = true;
+}
+
+void GameClient::maybe_send_heartbeat_if_needed()
+{
+    if (!transport_connected_)
+        return;
+
+    const auto now = InterpolationClock::now();
+    const auto last_activity =
+        last_outbound_activity_time_.value_or(InterpolationClock::time_point{});
+    if (last_outbound_activity_time_.has_value() &&
+        now - last_activity < kHeartbeatInterval)
+    {
+        return;
+    }
+
+    HeartbeatMessage message;
+    transport_.send_heartbeat(
+        server_peer_id_,
+        std::make_shared<HeartbeatMessage>(message));
+    note_outbound_activity();
+}
+
+void GameClient::note_outbound_activity()
+{
+    last_outbound_activity_time_ = InterpolationClock::now();
 }
 
 void GameClient::maybe_send_client_ready()
@@ -553,7 +685,11 @@ void GameClient::update_render_interpolation(const WorldSnapshot& snapshot,
 
 void GameClient::apply_initial_setup(const InitialSetupMessage& message)
 {
-    const bool is_level_transition = baseline_.has_value();
+    const bool is_level_transition =
+        baseline_.has_value() &&
+        (!initial_setup_.has_value() ||
+         initial_setup_->level_id != message.level_id ||
+         initial_setup_->current_scenario != message.current_scenario);
     initial_setup_ = message;
     controlled_entity_ids_ = message.controlled_entity_ids;
     initial_setup_guys_.clear();
@@ -643,7 +779,23 @@ void GameClient::note_event_batch_gap(std::uint32_t expected,
 
 void GameClient::poll_messages()
 {
-    last_polled_messages_ = poll_client_messages(transport_);
+    update_transport_connection_state();
+    maybe_send_hello_if_needed();
+    maybe_send_heartbeat_if_needed();
+
+    const ClientPollResult poll_result = poll_client_messages(transport_);
+    if (poll_result.malformed_server_message)
+    {
+        LogError("game_client_malformed_message peer={}\n", server_peer_id_);
+        transport_.disconnect(server_peer_id_);
+        last_polled_messages_.clear();
+        sim_event_batches_.clear();
+        game_flow_event_batches_.clear();
+        update_transport_connection_state();
+        return;
+    }
+
+    last_polled_messages_ = poll_result.messages;
     sim_event_batches_.clear();
     game_flow_event_batches_.clear();
 
@@ -726,12 +878,23 @@ void GameClient::poll_messages()
                 apply_initial_setup(*message.initial_setup);
             break;
 
+        case TypedReceivedMessageKind::Hello:
+            if (message.hello)
+            {
+                session_token_ = message.hello->session_token;
+                hello_acknowledged_ = !is_zero_session_token(session_token_);
+            }
+            break;
+
         case TypedReceivedMessageKind::ExitPromptBroadcast:
             if (message.exit_prompt_broadcast)
             {
                 last_exit_prompt_ = *message.exit_prompt_broadcast;
                 notify_exit_prompt(*message.exit_prompt_broadcast);
             }
+            break;
+
+        case TypedReceivedMessageKind::Heartbeat:
             break;
 
         case TypedReceivedMessageKind::PauseBroadcast:

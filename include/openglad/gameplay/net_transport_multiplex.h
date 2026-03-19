@@ -36,12 +36,18 @@ public:
     void send_initial_setup(
         PeerId peer_id,
         std::shared_ptr<InitialSetupMessage> message) override;
+    void send_hello(
+        PeerId peer_id,
+        std::shared_ptr<HelloMessage> message) override;
     void send_client_ready(
         PeerId peer_id,
         std::shared_ptr<ClientReadyMessage> message) override;
     void send_keyframe_request(
         PeerId peer_id,
         std::shared_ptr<KeyframeRequestMessage> message) override;
+    void send_heartbeat(
+        PeerId peer_id,
+        std::shared_ptr<HeartbeatMessage> message) override;
     void send_exit_prompt_broadcast(
         PeerId peer_id,
         std::shared_ptr<ExitPromptBroadcastMessage> message) override;

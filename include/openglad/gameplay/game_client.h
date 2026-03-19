@@ -128,6 +128,11 @@ public:
         return snapshot_hash_check_count_;
     }
 
+    [[nodiscard]] const SessionToken& session_token() const noexcept
+    {
+        return session_token_;
+    }
+
     [[nodiscard]] float render_interpolation_alpha(float speed_factor) const;
     [[nodiscard]] std::optional<RenderInterpolationPosition> render_position(
         std::uint32_t entity_id,
@@ -160,6 +165,10 @@ private:
     void notify_pause_broadcast(const PauseBroadcastMessage& message);
     void notify_palette_sync(std::uint8_t palette_id);
     std::uint32_t compute_local_snapshot_hash() const;
+    void update_transport_connection_state();
+    void maybe_send_hello_if_needed();
+    void maybe_send_heartbeat_if_needed();
+    void note_outbound_activity();
     void maybe_send_client_ready();
     void maybe_send_snapshot_hash_check(bool force = false);
 
@@ -179,11 +188,17 @@ private:
         render_interpolation_;
     std::optional<InterpolationClock::time_point>
         last_snapshot_receive_time_ = std::nullopt;
+    std::optional<InterpolationClock::time_point>
+        last_outbound_activity_time_ = std::nullopt;
     std::uint32_t last_seen_server_tick_ = 0;
     std::uint32_t last_sim_event_sequence_ = 0;
     std::uint32_t last_game_flow_event_sequence_ = 0;
     bool has_sim_event_sequence_ = false;
     bool has_game_flow_event_sequence_ = false;
+    SessionToken session_token_ = kZeroSessionToken;
+    bool transport_connected_ = false;
+    bool hello_sent_for_connection_ = false;
+    bool hello_acknowledged_ = false;
     bool waiting_for_keyframe_ = false;
     bool client_ready_sent_ = false;
     std::uint32_t client_ready_count_ = 0;

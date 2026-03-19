@@ -25,6 +25,13 @@ namespace
 using EntityListKind = og::sim::SnapshotEntityListKind;
 using PendingRemovedEntity = og::sim::PendingRemovedEntity;
 
+constexpr std::size_t kMaxKeyframesPerTick = 2;
+
+struct ServerPollResult {
+    std::vector<og::sim::TypedReceivedMessage> messages;
+    std::vector<og::sim::PeerId> malformed_peers;
+};
+
 bool contains_entity_id(const std::vector<std::uint32_t>& ids,
                         std::uint32_t entity_id)
 {
@@ -290,174 +297,226 @@ void apply_authoritative_event_state(GameWorld& world,
     }
 }
 
-std::vector<og::sim::TypedReceivedMessage> poll_server_messages(
+ServerPollResult poll_server_messages(
     og::sim::ITransport& transport)
 {
+    ServerPollResult result;
     if (transport.supports_typed_messages())
-        return transport.poll_typed();
+    {
+        result.messages = transport.poll_typed();
+        return result;
+    }
 
-    std::vector<og::sim::TypedReceivedMessage> typed_messages;
+    std::unordered_set<og::sim::PeerId> malformed_peers;
     for (const auto& message : transport.poll())
     {
+        if (malformed_peers.contains(message.peer_id))
+            continue;
+
         og::sim::TransportEnvelope envelope;
         if (!og::sim::decode_transport_envelope(message.data, envelope))
         {
-            throw std::runtime_error(
-                "GameServer received malformed transport header");
+            malformed_peers.insert(message.peer_id);
+            continue;
         }
 
         og::sim::TypedReceivedMessage typed_message;
         typed_message.peer_id = message.peer_id;
-        switch (envelope.message_type)
+        try
         {
-        case og::sim::kLobbyMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_lobby_message(message.data);
-            if (!decoded.has_value())
+            switch (envelope.message_type)
             {
-                throw std::runtime_error(
-                    "GameServer failed to deserialize lobby message");
-            }
-            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyMessage;
-            typed_message.lobby_message =
-                std::make_shared<og::sim::LobbyMessage>(*decoded);
-            break;
-        }
-
-        case og::sim::kLobbyStateMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_lobby_state_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kLobbyMessageType:
             {
-                throw std::runtime_error(
-                    "GameServer failed to deserialize lobby state");
-            }
-            typed_message.kind = og::sim::TypedReceivedMessageKind::LobbyState;
-            typed_message.lobby_state =
-                std::make_shared<og::sim::LobbyState>(*decoded);
-            break;
-        }
-
-        case og::sim::kInputMessageType:
-        {
-            const auto decoded = og::sim::deserialize_input_message(message.data);
-            if (!decoded.has_value())
-            {
-                throw std::runtime_error(
-                    "GameServer failed to deserialize input");
+                const auto decoded =
+                    og::sim::deserialize_lobby_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::LobbyMessage;
+                typed_message.lobby_message =
+                    std::make_shared<og::sim::LobbyMessage>(*decoded);
+                break;
             }
 
-            typed_message.kind = og::sim::TypedReceivedMessageKind::Input;
-            typed_message.input = std::make_shared<InputState>(decoded->input);
-            typed_message.tick = decoded->tick;
-            break;
-        }
-
-        case og::sim::kClientReadyMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_client_ready_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kLobbyStateMessageType:
             {
-                throw std::runtime_error(
-                    "GameServer failed to deserialize client ready");
+                const auto decoded =
+                    og::sim::deserialize_lobby_state_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::LobbyState;
+                typed_message.lobby_state =
+                    std::make_shared<og::sim::LobbyState>(*decoded);
+                break;
             }
-            typed_message.kind = og::sim::TypedReceivedMessageKind::ClientReady;
-            typed_message.client_ready =
-                std::make_shared<og::sim::ClientReadyMessage>(*decoded);
-            break;
-        }
 
-        case og::sim::kKeyframeRequestMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_keyframe_request_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kInputMessageType:
             {
-                throw std::runtime_error(
-                    "GameServer failed to deserialize keyframe request");
-            }
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::KeyframeRequest;
-            typed_message.keyframe_request =
-                std::make_shared<og::sim::KeyframeRequestMessage>(*decoded);
-            break;
-        }
+                const auto decoded =
+                    og::sim::deserialize_input_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
 
-        case og::sim::kExitPromptResponseMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_exit_prompt_response_message(message.data);
-            if (!decoded.has_value())
+                typed_message.kind = og::sim::TypedReceivedMessageKind::Input;
+                typed_message.input = std::make_shared<InputState>(decoded->input);
+                typed_message.tick = decoded->tick;
+                break;
+            }
+
+            case og::sim::kHelloMessageType:
             {
-                throw std::runtime_error(
-                    "GameServer failed to deserialize exit prompt response");
+                const auto decoded =
+                    og::sim::deserialize_hello_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
+                typed_message.kind = og::sim::TypedReceivedMessageKind::Hello;
+                typed_message.hello =
+                    std::make_shared<og::sim::HelloMessage>(*decoded);
+                break;
             }
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::ExitPromptResponse;
-            typed_message.exit_prompt_response =
-                std::make_shared<og::sim::ExitPromptResponseMessage>(*decoded);
-            break;
-        }
 
-        case og::sim::kPauseBroadcastMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_pause_broadcast_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kClientReadyMessageType:
             {
-                throw std::runtime_error(
-                    "GameServer failed to deserialize pause broadcast");
+                const auto decoded =
+                    og::sim::deserialize_client_ready_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::ClientReady;
+                typed_message.client_ready =
+                    std::make_shared<og::sim::ClientReadyMessage>(*decoded);
+                break;
             }
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::PauseBroadcast;
-            typed_message.pause_broadcast =
-                std::make_shared<og::sim::PauseBroadcastMessage>(*decoded);
-            break;
-        }
 
-        case og::sim::kPauseResponseMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_pause_response_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kKeyframeRequestMessageType:
             {
-                throw std::runtime_error(
-                    "GameServer failed to deserialize pause response");
+                const auto decoded =
+                    og::sim::deserialize_keyframe_request_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::KeyframeRequest;
+                typed_message.keyframe_request =
+                    std::make_shared<og::sim::KeyframeRequestMessage>(*decoded);
+                break;
             }
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::PauseResponse;
-            typed_message.pause_response =
-                std::make_shared<og::sim::PauseResponseMessage>(*decoded);
-            break;
-        }
 
-        case og::sim::kSnapshotHashCheckMessageType:
-        {
-            const auto decoded =
-                og::sim::deserialize_snapshot_hash_check_message(message.data);
-            if (!decoded.has_value())
+            case og::sim::kHeartbeatMessageType:
             {
-                throw std::runtime_error(
-                    "GameServer failed to deserialize snapshot hash check");
+                const auto decoded =
+                    og::sim::deserialize_heartbeat_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::Heartbeat;
+                typed_message.heartbeat =
+                    std::make_shared<og::sim::HeartbeatMessage>(*decoded);
+                break;
             }
-            typed_message.kind =
-                og::sim::TypedReceivedMessageKind::SnapshotHashCheck;
-            typed_message.snapshot_hash_check =
-                std::make_shared<og::sim::SnapshotHashCheckMessage>(*decoded);
-            break;
-        }
 
-        default:
+            case og::sim::kExitPromptResponseMessageType:
+            {
+                const auto decoded =
+                    og::sim::deserialize_exit_prompt_response_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::ExitPromptResponse;
+                typed_message.exit_prompt_response =
+                    std::make_shared<og::sim::ExitPromptResponseMessage>(*decoded);
+                break;
+            }
+
+            case og::sim::kPauseBroadcastMessageType:
+            {
+                const auto decoded =
+                    og::sim::deserialize_pause_broadcast_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::PauseBroadcast;
+                typed_message.pause_broadcast =
+                    std::make_shared<og::sim::PauseBroadcastMessage>(*decoded);
+                break;
+            }
+
+            case og::sim::kPauseResponseMessageType:
+            {
+                const auto decoded =
+                    og::sim::deserialize_pause_response_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::PauseResponse;
+                typed_message.pause_response =
+                    std::make_shared<og::sim::PauseResponseMessage>(*decoded);
+                break;
+            }
+
+            case og::sim::kSnapshotHashCheckMessageType:
+            {
+                const auto decoded =
+                    og::sim::deserialize_snapshot_hash_check_message(message.data);
+                if (!decoded.has_value())
+                {
+                    malformed_peers.insert(message.peer_id);
+                    continue;
+                }
+                typed_message.kind =
+                    og::sim::TypedReceivedMessageKind::SnapshotHashCheck;
+                typed_message.snapshot_hash_check =
+                    std::make_shared<og::sim::SnapshotHashCheckMessage>(*decoded);
+                break;
+            }
+
+            default:
+                continue;
+            }
+        }
+        catch (const std::exception&)
+        {
+            malformed_peers.insert(message.peer_id);
             continue;
         }
 
-        typed_messages.push_back(std::move(typed_message));
+        result.messages.push_back(std::move(typed_message));
     }
 
-    return typed_messages;
+    result.malformed_peers.assign(malformed_peers.begin(), malformed_peers.end());
+    std::sort(result.malformed_peers.begin(), result.malformed_peers.end());
+    return result;
 }
 
 og::sim::WorldSnapshot capture_server_snapshot(GameWorld& world,
@@ -544,6 +603,14 @@ void clear_pressed(PlayerInput& input)
 {
     for (bool& pressed : input.pressed)
         pressed = false;
+}
+
+std::uint64_t splitmix64(std::uint64_t value) noexcept
+{
+    value += 0x9e3779b97f4a7c15ULL;
+    value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+    return value ^ (value >> 31);
 }
 
 } // namespace
@@ -698,13 +765,98 @@ std::uint64_t GameServer::now_ms() const
     return wall_clock_ms_source_ ? wall_clock_ms_source_() : 0;
 }
 
+SessionToken GameServer::allocate_session_token()
+{
+    SessionToken token = kZeroSessionToken;
+    while (is_zero_session_token(token))
+    {
+        const std::uint64_t lo =
+            splitmix64(next_session_token_seed_++ ^ now_ms());
+        const std::uint64_t hi =
+            splitmix64(next_session_token_seed_++ ^
+                       (now_ms() + 0x9e3779b97f4a7c15ULL));
+        for (std::size_t index = 0; index < 8; ++index)
+        {
+            token[index] =
+                static_cast<std::uint8_t>((lo >> (index * 8)) & 0xffu);
+            token[8 + index] =
+                static_cast<std::uint8_t>((hi >> (index * 8)) & 0xffu);
+        }
+    }
+    return token;
+}
+
 void GameServer::connect_client(PeerId peer_id)
 {
     erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
     ConnectedClientState& client = clients_[peer_id];
     client.last_received_input_ms = now_ms();
-    if (!host_peer_id_.has_value())
+    if (!host_peer_id_.has_value() && clients_.size() == 1u)
         host_peer_id_ = peer_id;
+}
+
+void GameServer::handle_transport_disconnect(PeerId peer_id, bool close_transport)
+{
+    erase_peer_id_sorted(connected_transport_peers_, peer_id);
+    erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
+    if (host_peer_id_.has_value() && *host_peer_id_ == peer_id)
+        host_peer_id_.reset();
+
+    const auto it = clients_.find(peer_id);
+    if (it == clients_.end())
+    {
+        if (close_transport)
+            transport_.disconnect(peer_id);
+        return;
+    }
+
+    const ConnectedClientState client = it->second;
+    if (pending_pause_state_.has_value() &&
+        pending_pause_state_->player_index == client.player_index)
+    {
+        clear_pause_state();
+    }
+    if (pending_exit_prompt_state_.has_value() &&
+        pending_exit_prompt_state_->triggering_player_index == client.player_index)
+    {
+        clear_pending_exit_prompt();
+    }
+
+    if (client.has_player_binding && !is_zero_session_token(client.session_token))
+    {
+        const auto existing = std::find_if(
+            disconnected_players_.begin(),
+            disconnected_players_.end(),
+            [&client](const DisconnectedPlayer& disconnected) {
+                return disconnected.player_index == client.player_index ||
+                    disconnected.session_token == client.session_token;
+            });
+
+        DisconnectedPlayer replacement;
+        replacement.session_token = client.session_token;
+        replacement.player_index = client.player_index;
+        replacement.team_num = client.team_num;
+        replacement.control = client.control;
+        replacement.repeated_input = client.last_known_input;
+        clear_pressed(replacement.repeated_input);
+        replacement.disconnected_at_ms = now_ms();
+        replacement.ai_control_enabled = false;
+
+        if (existing != disconnected_players_.end())
+            *existing = replacement;
+        else
+            disconnected_players_.push_back(replacement);
+    }
+    else if (client.has_player_binding && client.control != nullptr &&
+             client.control->user() == static_cast<int>(client.player_index))
+    {
+        client.control->set_user(-1);
+        client.control->restore_act_type();
+    }
+
+    clients_.erase(it);
+    if (close_transport)
+        transport_.disconnect(peer_id);
 }
 
 void GameServer::disconnect_client(PeerId peer_id)
@@ -727,10 +879,13 @@ void GameServer::disconnect_client(PeerId peer_id)
         erase_peer_id_sorted(connected_transport_peers_, disconnected_peer_id);
         erase_peer_id_sorted(pending_transport_disconnects_, disconnected_peer_id);
 
+        std::optional<std::size_t> disconnected_player_index = std::nullopt;
         const auto it = clients_.find(disconnected_peer_id);
         if (it != clients_.end())
         {
             const ConnectedClientState& client = it->second;
+            if (client.has_player_binding)
+                disconnected_player_index = client.player_index;
             if (client.has_player_binding && client.control != nullptr &&
                 client.control->user() == static_cast<int>(client.player_index))
             {
@@ -751,6 +906,19 @@ void GameServer::disconnect_client(PeerId peer_id)
             }
 
             clients_.erase(it);
+        }
+
+        if (disconnected_player_index.has_value())
+        {
+            disconnected_players_.erase(
+                std::remove_if(
+                    disconnected_players_.begin(),
+                    disconnected_players_.end(),
+                    [player_index = *disconnected_player_index](
+                        const DisconnectedPlayer& disconnected) {
+                        return disconnected.player_index == player_index;
+                    }),
+                disconnected_players_.end());
         }
 
         transport_.disconnect(disconnected_peer_id);
@@ -791,6 +959,8 @@ void GameServer::bind_player(PeerId peer_id,
     }
     client.control = control;
     client.has_player_binding = true;
+    if (is_zero_session_token(client.session_token))
+        client.session_token = allocate_session_token();
     player_controls_[player_index] = control;
     if (control != nullptr && control->stats() != nullptr)
         world_.control_hp = control->stats()->hitpoints();
@@ -860,6 +1030,180 @@ void GameServer::send_initial_setup(PeerId peer_id)
         std::make_shared<InitialSetupMessage>(std::move(message)));
 }
 
+void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
+{
+    const auto client_it = clients_.find(peer_id);
+    if (client_it == clients_.end())
+        return;
+
+    ConnectedClientState& client = client_it->second;
+    client.last_received_input_ms = now_ms();
+
+    HelloMessage response;
+    response.protocol_version = kNetworkProtocolVersion;
+    response.min_protocol_version = kNetworkProtocolVersion;
+
+    if (client.has_player_binding)
+    {
+        if (!is_zero_session_token(client.session_token) &&
+            !is_zero_session_token(message.session_token) &&
+            message.session_token != client.session_token)
+        {
+            disconnect_client(peer_id);
+            return;
+        }
+
+        if (is_zero_session_token(client.session_token))
+            client.session_token = allocate_session_token();
+        response.session_token = client.session_token;
+        transport_.send_hello(peer_id, std::make_shared<HelloMessage>(response));
+        return;
+    }
+
+    if (is_zero_session_token(message.session_token))
+    {
+        disconnect_client(peer_id);
+        return;
+    }
+
+    const auto disconnected_it = std::find_if(
+        disconnected_players_.begin(),
+        disconnected_players_.end(),
+        [&message](const DisconnectedPlayer& disconnected) {
+            return disconnected.session_token == message.session_token;
+        });
+    if (disconnected_it == disconnected_players_.end())
+    {
+        disconnect_client(peer_id);
+        return;
+    }
+
+    client.session_token = disconnected_it->session_token;
+    bind_player(peer_id,
+                disconnected_it->player_index,
+                disconnected_it->team_num,
+                disconnected_it->control);
+
+    ConnectedClientState& reconnected = clients_[peer_id];
+    reconnected.session_token = disconnected_it->session_token;
+    reconnected.initial_setup_sent = false;
+    reconnected.has_initial_snapshot = false;
+    reconnected.client_ready = false;
+    reconnected.allow_initial_keyframe_without_ready = true;
+    reconnected.budget_pending_keyframe = true;
+    reconnected.force_keyframe = true;
+    reconnected.pending_inputs.clear();
+    reconnected.expected_snapshot_hashes.clear();
+    reconnected.last_known_input = disconnected_it->repeated_input;
+    clear_pressed(reconnected.last_known_input);
+    reconnected.last_received_input_ms = now_ms();
+    reset_client_snapshot_state(reconnected.snapshot_state);
+
+    if (reconnected.control != nullptr && !reconnected.control->dead() &&
+        reconnected.control->user() == -1)
+    {
+        reconnected.control->set_user(
+            static_cast<signed char>(reconnected.player_index));
+        reconnected.control->set_act_type(ACT_CONTROL);
+        if (reconnected.control->stats() != nullptr)
+            reconnected.control->stats()->clear_command();
+    }
+
+    player_controls_[reconnected.player_index] = reconnected.control;
+    send_initial_setup(peer_id);
+    maybe_send_control_change(reconnected.player_index, reconnected.control);
+
+    response.session_token = reconnected.session_token;
+    transport_.send_hello(peer_id, std::make_shared<HelloMessage>(response));
+    disconnected_players_.erase(disconnected_it);
+}
+
+void GameServer::handle_heartbeat(PeerId peer_id)
+{
+    const auto client_it = clients_.find(peer_id);
+    if (client_it == clients_.end())
+        return;
+    client_it->second.last_received_input_ms = now_ms();
+}
+
+void GameServer::update_disconnected_players(std::uint64_t now)
+{
+    for (auto it = disconnected_players_.begin();
+         it != disconnected_players_.end();)
+    {
+        const bool expired =
+            now >= it->disconnected_at_ms &&
+            now - it->disconnected_at_ms >= PAUSE_TIMEOUT_MS;
+        if (expired)
+        {
+            it = disconnected_players_.erase(it);
+            continue;
+        }
+
+        const bool grace_expired =
+            !it->ai_control_enabled &&
+            now >= it->disconnected_at_ms &&
+            now - it->disconnected_at_ms >= DISCONNECT_TIMEOUT_MS;
+        if (grace_expired)
+        {
+            if (it->control != nullptr && !it->control->dead() &&
+                it->control->user() == static_cast<int>(it->player_index))
+            {
+                it->control->set_user(-1);
+                it->control->restore_act_type();
+                if (it->control->stats() != nullptr)
+                    it->control->stats()->clear_command();
+            }
+            it->ai_control_enabled = true;
+        }
+
+        ++it;
+    }
+}
+
+bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
+{
+    bool should_tick_world = true;
+    (void)expected_tick;
+
+    for (auto& disconnected : disconnected_players_)
+    {
+        if (disconnected.ai_control_enabled || disconnected.control == nullptr ||
+            disconnected.control->dead() ||
+            disconnected.player_index >= static_cast<std::size_t>(MAX_PLAYERS))
+        {
+            continue;
+        }
+
+        walker* const previous_control = disconnected.control;
+        const SimInputResult result = sim_process_player_input(
+            disconnected.repeated_input,
+            disconnected.control,
+            world_,
+            static_cast<short>(disconnected.player_index),
+            disconnected.team_num,
+            player_input_debounce_[disconnected.player_index],
+            special_names_,
+            &events_);
+
+        player_controls_[disconnected.player_index] = disconnected.control;
+        if (disconnected.control != previous_control)
+            maybe_send_control_change(disconnected.player_index, disconnected.control);
+        if (result.control_hp_changed)
+            world_.control_hp = result.control_hp;
+        if (result.endgame_requested)
+        {
+            world_.ending = result.endgame_type;
+            emit_event(&events_, EventKind::EndGame,
+                       static_cast<std::uint32_t>(result.endgame_type),
+                       static_cast<std::uint32_t>(-1));
+            should_tick_world = false;
+        }
+    }
+
+    return should_tick_world;
+}
+
 void GameServer::synchronize_transport_peers()
 {
     const std::vector<PeerId> current_peers = transport_.connected_peers();
@@ -888,7 +1232,7 @@ void GameServer::synchronize_transport_peers()
         if (typed_messages_include_peer(last_polled_messages_, peer_id))
             insert_peer_id_sorted(pending_transport_disconnects_, peer_id);
         else
-            disconnect_client(peer_id);
+            handle_transport_disconnect(peer_id, false);
     }
 }
 
@@ -897,13 +1241,19 @@ void GameServer::apply_transport_disconnects()
     std::vector<PeerId> disconnected_peers = std::move(pending_transport_disconnects_);
     pending_transport_disconnects_.clear();
     for (const PeerId peer_id : disconnected_peers)
-        disconnect_client(peer_id);
+        handle_transport_disconnect(peer_id, false);
 }
 
 void GameServer::poll_incoming_messages()
 {
     apply_transport_disconnects();
-    last_polled_messages_ = poll_server_messages(transport_);
+    const ServerPollResult poll_result = poll_server_messages(transport_);
+    last_polled_messages_ = poll_result.messages;
+    for (const PeerId peer_id : poll_result.malformed_peers)
+    {
+        LogError("game_server_malformed_message peer={}\n", peer_id);
+        disconnect_client(peer_id);
+    }
     synchronize_transport_peers();
 }
 
@@ -990,13 +1340,25 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
             client.last_received_input_ms = now_ms();
             break;
 
+        case TypedReceivedMessageKind::Hello:
+            if (message.hello)
+                handle_hello(message.peer_id, *message.hello);
+            break;
+
         case TypedReceivedMessageKind::ClientReady:
             client.client_ready = true;
+            client.allow_initial_keyframe_without_ready = false;
+            client.budget_pending_keyframe = false;
             client.force_keyframe = true;
             break;
 
         case TypedReceivedMessageKind::KeyframeRequest:
+            client.budget_pending_keyframe = true;
             client.force_keyframe = true;
+            break;
+
+        case TypedReceivedMessageKind::Heartbeat:
+            handle_heartbeat(message.peer_id);
             break;
 
         case TypedReceivedMessageKind::ExitPromptResponse:
@@ -1022,6 +1384,7 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                     hash_it->second.empty())
                 {
                     ++snapshot_hash_mismatch_count_;
+                    client.budget_pending_keyframe = true;
                     client.force_keyframe = true;
                     LogError(
                         "snapshot_hash_mismatch peer={} tick={} server={} client={} entities={}\n",
@@ -1038,6 +1401,7 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                     if (expected_hash != message.snapshot_hash_check->snapshot_hash)
                     {
                         ++snapshot_hash_mismatch_count_;
+                        client.budget_pending_keyframe = true;
                         client.force_keyframe = true;
                         LogError(
                             "snapshot_hash_mismatch peer={} tick={} server={} client={} entities={}\n",
@@ -1078,6 +1442,8 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
 
 void GameServer::update_timeouts()
 {
+    const bool suspended_for_ui =
+        pending_exit_prompt_state_.has_value() || pending_pause_state_.has_value();
     if (pending_exit_prompt_state_.has_value() &&
         pending_exit_prompt_state_->triggering_player_index <
             static_cast<std::size_t>(MAX_PLAYERS))
@@ -1092,6 +1458,7 @@ void GameServer::update_timeouts()
     }
 
     const std::uint64_t now = now_ms();
+    update_disconnected_players(now);
     if (pending_exit_prompt_state_.has_value() &&
         now >= pending_exit_prompt_state_->opened_at_ms &&
         now - pending_exit_prompt_state_->opened_at_ms >= EXIT_PROMPT_TIMEOUT_MS)
@@ -1106,6 +1473,9 @@ void GameServer::update_timeouts()
         clear_pause_state();
     }
 
+    if (suspended_for_ui)
+        return;
+
     std::vector<PeerId> timed_out_peers;
     timed_out_peers.reserve(clients_.size());
     for (const auto& [peer_id, client] : clients_)
@@ -1118,7 +1488,7 @@ void GameServer::update_timeouts()
     }
 
     for (const PeerId peer_id : timed_out_peers)
-        disconnect_client(peer_id);
+        handle_transport_disconnect(peer_id, true);
 }
 
 void GameServer::clear_pending_exit_prompt()
@@ -1188,6 +1558,7 @@ void GameServer::prepare_clients_for_loaded_level()
     world_.clear_grid_dirty_tiles();
     next_sim_event_sequence_ = 1;
     next_game_flow_event_sequence_ = 1;
+    disconnected_players_.clear();
     player_controls_.fill(nullptr);
     player_input_debounce_ = {};
     world_.control_hp = 0.0f;
@@ -1199,6 +1570,8 @@ void GameServer::prepare_clients_for_loaded_level()
         client.initial_setup_sent = false;
         client.has_initial_snapshot = false;
         client.client_ready = false;
+        client.allow_initial_keyframe_without_ready = false;
+        client.budget_pending_keyframe = false;
         client.force_keyframe = true;
         client.pending_inputs.clear();
         client.expected_snapshot_hashes.clear();
@@ -1371,6 +1744,8 @@ void GameServer::send_initial_snapshot(PeerId peer_id,
     seed_client_snapshot_baseline(client.snapshot_state, keyframe);
     client.has_initial_snapshot = true;
     client.client_ready = false;
+    client.allow_initial_keyframe_without_ready = false;
+    client.budget_pending_keyframe = false;
     client.force_keyframe = false;
     remember_snapshot_hash(client, keyframe);
     transport_.send_snapshot(peer_id,
@@ -1588,48 +1963,88 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
     };
     snapshot.snapshot_hash = ensure_keyframe().snapshot_hash;
 
-    for (auto& [peer_id, client] : clients_)
+    std::vector<PeerId> ordered_peers;
+    ordered_peers.reserve(clients_.size());
+    for (const auto& [peer_id, client] : clients_)
     {
+        (void)client;
+        ordered_peers.push_back(peer_id);
+    }
+    std::sort(ordered_peers.begin(), ordered_peers.end());
+
+    std::size_t keyframe_budget_remaining = kMaxKeyframesPerTick;
+    for (const PeerId peer_id : ordered_peers)
+    {
+        ConnectedClientState& client = clients_.at(peer_id);
         if (!client.initial_setup_sent)
         {
+            if (!client.has_player_binding)
+                continue;
             send_initial_snapshot(peer_id, SnapshotCaptureMode::Peek);
             continue;
         }
 
         if (!client.has_initial_snapshot)
         {
-            if (!client.client_ready)
+            if (!client.client_ready && !client.allow_initial_keyframe_without_ready)
                 continue;
+            const bool budgeted_initial_keyframe =
+                client.allow_initial_keyframe_without_ready ||
+                client.budget_pending_keyframe;
+            if (budgeted_initial_keyframe && keyframe_budget_remaining == 0)
+            {
+                client.force_keyframe = true;
+                continue;
+            }
 
             WorldSnapshot full = ensure_keyframe();
             seed_client_snapshot_baseline(client.snapshot_state, full);
             client.has_initial_snapshot = true;
+            client.client_ready = false;
+            client.allow_initial_keyframe_without_ready = false;
+            client.budget_pending_keyframe = false;
             client.force_keyframe = false;
             remember_snapshot_hash(client, full);
             transport_.send_snapshot(
                 peer_id,
                 std::make_shared<WorldSnapshot>(std::move(full)));
+            if (budgeted_initial_keyframe && keyframe_budget_remaining > 0)
+                --keyframe_budget_remaining;
             continue;
         }
 
         if (!should_send_to_client(client))
             continue;
 
-        if (should_send_keyframe(client, snapshot))
+        const bool keyframe_required = should_send_keyframe(client, snapshot);
+        const bool budgeted_keyframe =
+            client.allow_initial_keyframe_without_ready ||
+            (client.force_keyframe && client.budget_pending_keyframe);
+        if (keyframe_required)
         {
+            if (budgeted_keyframe && keyframe_budget_remaining == 0)
+            {
+                client.force_keyframe = true;
+                continue;
+            }
             WorldSnapshot full = ensure_keyframe();
             seed_client_snapshot_baseline(client.snapshot_state, full);
+            client.allow_initial_keyframe_without_ready = false;
+            client.budget_pending_keyframe = false;
             client.force_keyframe = false;
             remember_snapshot_hash(client, full);
             transport_.send_snapshot(
                 peer_id,
                 std::make_shared<WorldSnapshot>(std::move(full)));
+            if (budgeted_keyframe && keyframe_budget_remaining > 0)
+                --keyframe_budget_remaining;
             continue;
         }
 
         accumulate_snapshot_for_client(client.snapshot_state, snapshot);
         WorldSnapshot delta =
             consume_delta_snapshot_for_client(client.snapshot_state, snapshot);
+        client.budget_pending_keyframe = false;
         client.force_keyframe = false;
         remember_snapshot_hash(client, delta);
         transport_.send_delta_snapshot(
@@ -1655,6 +2070,8 @@ void GameServer::step()
         !pending_exit_prompt_state_.has_value() && !pending_pause_state_.has_value();
     if (should_tick_world)
         should_tick_world = apply_polled_inputs(next_tick);
+    if (should_tick_world)
+        should_tick_world = process_disconnected_players(next_tick);
     if (should_tick_world)
         world_.tick();
 
