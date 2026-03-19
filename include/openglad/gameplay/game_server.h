@@ -96,6 +96,7 @@ struct DisconnectedPlayer {
     std::uint64_t grace_started_at_ms = 0;
     std::uint64_t disconnected_at_ms = 0;
     bool ai_control_enabled = false;
+    bool was_host = false;
 };
 
 struct PendingExitPromptState {

@@ -817,7 +817,8 @@ void GameServer::handle_transport_disconnect(
 {
     erase_peer_id_sorted(connected_transport_peers_, peer_id);
     erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
-    if (host_peer_id_.has_value() && *host_peer_id_ == peer_id)
+    const bool was_host = host_peer_id_.has_value() && *host_peer_id_ == peer_id;
+    if (was_host)
         host_peer_id_.reset();
 
     const auto it = clients_.find(peer_id);
@@ -870,6 +871,7 @@ void GameServer::handle_transport_disconnect(
             grace_started_at_ms.value_or(now_ms());
         replacement.disconnected_at_ms = now_ms();
         replacement.ai_control_enabled = false;
+        replacement.was_host = was_host;
 
         if (existing != disconnected_players_.end())
             *existing = replacement;
@@ -1114,6 +1116,8 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
                 disconnected_it->control);
 
     ConnectedClientState& reconnected = clients_[peer_id];
+    if (disconnected_it->was_host)
+        host_peer_id_ = peer_id;
     reconnected.session_token = disconnected_it->session_token;
     reconnected.initial_setup_sent = false;
     reconnected.has_initial_snapshot = false;

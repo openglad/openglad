@@ -1212,6 +1212,76 @@ TEST(NetTransportInProcess,
 }
 
 TEST(NetTransportInProcess,
+     network_fixture_reconnected_host_retains_timer_wait_authority)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    fixture.server_world().timer_wait = 6;
+
+    const og::sim::SessionToken session_token = fixture.client(0).session_token();
+    ASSERT_FALSE(og::sim::is_zero_session_token(session_token));
+
+    const og::sim::PeerId disconnected_peer =
+        fixture.client_transport(0).local_peer_id();
+    fixture.client_transport(0).disconnect(disconnected_peer);
+    fixture.with_server_context([&] {
+        fixture.server().poll_incoming_messages();
+        fixture.server().poll_incoming_messages();
+    });
+
+    auto reconnect_transport = fixture.server_transport().create_client_transport();
+    const og::sim::PeerId reconnect_peer = reconnect_transport->local_peer_id();
+    fixture.with_server_context([&] {
+        fixture.server().poll_incoming_messages();
+    });
+
+    og::sim::HelloMessage hello;
+    hello.session_token = session_token;
+    reconnect_transport->send_hello(
+        reconnect_peer,
+        std::make_shared<og::sim::HelloMessage>(hello));
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+
+    const std::vector<og::sim::TypedReceivedMessage> reconnected_messages =
+        reconnect_transport->poll_typed();
+    EXPECT_FALSE(reconnected_messages.empty());
+
+    InputState reconnected_host_input{};
+    reconnected_host_input.timer_wait_request = 3;
+    std::uint32_t tick = fixture.server_world().tick_count_ + 1;
+    reconnect_transport->send_input(
+        reconnect_peer,
+        std::make_shared<InputState>(reconnected_host_input),
+        tick);
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    EXPECT_EQ(3, fixture.server_world().timer_wait);
+
+    InputState guest_only_input{};
+    guest_only_input.timer_wait_request = 11;
+    tick = fixture.server_world().tick_count_ + 1;
+    fixture.client(1).send_input(guest_only_input, tick);
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    EXPECT_EQ(3, fixture.server_world().timer_wait);
+}
+
+TEST(NetTransportInProcess,
      network_fixture_rejects_unknown_session_token_reconnect_during_game)
 {
     og::sim::test::NetworkTestFixture fixture({
