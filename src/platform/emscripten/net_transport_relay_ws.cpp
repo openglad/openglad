@@ -315,7 +315,7 @@ struct RelayWebSocketTransport::Impl
         try
         {
             const auto set_or_throw =
-                [&api](std::string_view label, detail::EmscriptenResult result) {
+                [](std::string_view label, detail::EmscriptenResult result) {
                     if (result != detail::kResultSuccess)
                     {
                         throw std::runtime_error(std::format(
