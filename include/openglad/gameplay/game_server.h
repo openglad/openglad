@@ -93,6 +93,7 @@ struct DisconnectedPlayer {
     short team_num = 0;
     walker* control = nullptr;
     PlayerInput repeated_input = {};
+    std::uint64_t grace_started_at_ms = 0;
     std::uint64_t disconnected_at_ms = 0;
     bool ai_control_enabled = false;
 };
@@ -170,7 +171,10 @@ public:
 private:
     void synchronize_transport_peers();
     void apply_transport_disconnects();
-    void handle_transport_disconnect(PeerId peer_id, bool close_transport);
+    void handle_transport_disconnect(
+        PeerId peer_id,
+        bool close_transport,
+        std::optional<std::uint64_t> grace_started_at_ms = std::nullopt);
     [[nodiscard]] bool apply_polled_inputs(std::uint32_t expected_tick);
     void process_non_input_messages(std::uint32_t expected_tick);
     void update_timeouts();

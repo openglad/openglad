@@ -810,7 +810,10 @@ void GameServer::connect_client(PeerId peer_id)
         host_peer_id_ = peer_id;
 }
 
-void GameServer::handle_transport_disconnect(PeerId peer_id, bool close_transport)
+void GameServer::handle_transport_disconnect(
+    PeerId peer_id,
+    bool close_transport,
+    std::optional<std::uint64_t> grace_started_at_ms)
 {
     erase_peer_id_sorted(connected_transport_peers_, peer_id);
     erase_peer_id_sorted(pending_transport_disconnects_, peer_id);
@@ -863,6 +866,8 @@ void GameServer::handle_transport_disconnect(PeerId peer_id, bool close_transpor
             }
         }
         clear_pressed(replacement.repeated_input);
+        replacement.grace_started_at_ms =
+            grace_started_at_ms.value_or(now_ms());
         replacement.disconnected_at_ms = now_ms();
         replacement.ai_control_enabled = false;
 
@@ -1166,8 +1171,8 @@ void GameServer::update_disconnected_players(std::uint64_t now)
 
         const bool grace_expired =
             !it->ai_control_enabled &&
-            now >= it->disconnected_at_ms &&
-            now - it->disconnected_at_ms >= DISCONNECT_TIMEOUT_MS;
+            now >= it->grace_started_at_ms &&
+            now - it->grace_started_at_ms >= DISCONNECT_TIMEOUT_MS;
         if (grace_expired)
         {
             if (it->control != nullptr && !it->control->dead() &&
@@ -1485,7 +1490,6 @@ void GameServer::update_timeouts()
     }
 
     const std::uint64_t now = now_ms();
-    update_disconnected_players(now);
     if (pending_exit_prompt_state_.has_value() &&
         now >= pending_exit_prompt_state_->opened_at_ms &&
         now - pending_exit_prompt_state_->opened_at_ms >= EXIT_PROMPT_TIMEOUT_MS)
@@ -1501,9 +1505,12 @@ void GameServer::update_timeouts()
     }
 
     if (suspended_for_ui)
+    {
+        update_disconnected_players(now);
         return;
+    }
 
-    std::vector<PeerId> timed_out_peers;
+    std::vector<std::pair<PeerId, std::uint64_t>> timed_out_peers;
     timed_out_peers.reserve(clients_.size());
     for (const auto& [peer_id, client] : clients_)
     {
@@ -1511,11 +1518,13 @@ void GameServer::update_timeouts()
             continue;
 
         if (now - client.last_received_input_ms >= DISCONNECT_TIMEOUT_MS)
-            timed_out_peers.push_back(peer_id);
+            timed_out_peers.push_back({peer_id, client.last_received_input_ms});
     }
 
-    for (const PeerId peer_id : timed_out_peers)
-        handle_transport_disconnect(peer_id, true);
+    for (const auto& [peer_id, grace_start_ms] : timed_out_peers)
+        handle_transport_disconnect(peer_id, true, grace_start_ms);
+
+    update_disconnected_players(now);
 }
 
 void GameServer::clear_pending_exit_prompt()

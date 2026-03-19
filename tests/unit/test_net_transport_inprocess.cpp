@@ -1099,14 +1099,6 @@ TEST(NetTransportInProcess, network_fixture_disconnects_client_after_input_timeo
     });
 
     EXPECT_TRUE(fixture.server_transport().connected_peers().empty());
-    EXPECT_EQ(0, static_cast<int>(control->user()));
-    EXPECT_EQ(ACT_CONTROL, control->act_type());
-
-    now_ms += static_cast<std::uint64_t>(og::sim::DISCONNECT_TIMEOUT_MS) + 1u;
-    fixture.with_server_context([&] {
-        fixture.server().step();
-    });
-
     EXPECT_EQ(-1, static_cast<int>(control->user()));
     EXPECT_NE(ACT_CONTROL, control->act_type());
 }
@@ -1217,6 +1209,114 @@ TEST(NetTransportInProcess,
 
     EXPECT_EQ(0, static_cast<int>(control->user()));
     EXPECT_EQ(ACT_CONTROL, control->act_type());
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_rejects_unknown_session_token_reconnect_during_game)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    og::sim::SessionToken invalid_token = fixture.client(0).session_token();
+    ASSERT_FALSE(og::sim::is_zero_session_token(invalid_token));
+    invalid_token[0] ^= 0xffu;
+    if (og::sim::is_zero_session_token(invalid_token))
+        invalid_token[0] = 1u;
+
+    auto rejected_transport = fixture.server_transport().create_client_transport();
+    const og::sim::PeerId rejected_peer = rejected_transport->local_peer_id();
+    fixture.with_server_context([&] {
+        fixture.server().poll_incoming_messages();
+    });
+
+    og::sim::HelloMessage hello;
+    hello.session_token = invalid_token;
+    rejected_transport->send_hello(
+        rejected_peer,
+        std::make_shared<og::sim::HelloMessage>(hello));
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+
+    EXPECT_TRUE(rejected_transport->connected_peers().empty());
+    EXPECT_TRUE(rejected_transport->poll_typed().empty());
+    EXPECT_EQ(1u, fixture.server_transport().connected_peers().size());
+}
+
+TEST(NetTransportInProcess,
+     network_fixture_rejects_expired_session_token_reconnect)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    std::uint64_t now_ms = 1000;
+    fixture.server().set_wall_clock_ms_source([&] { return now_ms; });
+
+    walker* const control = fixture.server_control(0);
+    ASSERT_NE(nullptr, control);
+    const og::sim::SessionToken session_token = fixture.client(0).session_token();
+    ASSERT_FALSE(og::sim::is_zero_session_token(session_token));
+
+    const og::sim::PeerId disconnected_peer =
+        fixture.client_transport(0).local_peer_id();
+    fixture.client_transport(0).disconnect(disconnected_peer);
+    fixture.with_server_context([&] {
+        fixture.server().poll_incoming_messages();
+        fixture.server().poll_incoming_messages();
+    });
+
+    ASSERT_EQ(1u, fixture.server().disconnected_players().size());
+
+    now_ms += static_cast<std::uint64_t>(og::sim::DISCONNECT_TIMEOUT_MS) + 1u;
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    EXPECT_EQ(-1, static_cast<int>(control->user()));
+
+    now_ms += static_cast<std::uint64_t>(og::sim::PAUSE_TIMEOUT_MS) + 1u;
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+
+    EXPECT_TRUE(fixture.server().disconnected_players().empty());
+
+    auto reconnect_transport = fixture.server_transport().create_client_transport();
+    const og::sim::PeerId reconnect_peer = reconnect_transport->local_peer_id();
+    fixture.with_server_context([&] {
+        fixture.server().poll_incoming_messages();
+    });
+
+    og::sim::HelloMessage hello;
+    hello.session_token = session_token;
+    reconnect_transport->send_hello(
+        reconnect_peer,
+        std::make_shared<og::sim::HelloMessage>(hello));
+
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+
+    EXPECT_TRUE(reconnect_transport->connected_peers().empty());
+    EXPECT_TRUE(reconnect_transport->poll_typed().empty());
 }
 
 TEST(NetTransportInProcess,
