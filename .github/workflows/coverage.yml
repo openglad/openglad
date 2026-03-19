@@ -32,10 +32,20 @@ jobs:
       - name: Apply third-party build fixes
         run: git apply third_party/build-fixes.patch
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
+
+      - name: Install relay npm dependencies
+        working-directory: relay
+        run: npm ci
 
       - name: Install coverage tools
         run: python3 -m pip install gcovr
@@ -55,6 +65,14 @@ jobs:
 
       - name: Run tests (parallel, excluding menu UI)
         run: ctest --test-dir build/ci-coverage --parallel $(nproc) --output-on-failure --timeout 180 -E og_test_menu_ui
+
+      - name: Typecheck relay worker
+        working-directory: relay
+        run: npm run typecheck
+
+      - name: Run relay worker tests
+        working-directory: relay
+        run: npm test
 
       - name: Generate HTML coverage report
         run: |

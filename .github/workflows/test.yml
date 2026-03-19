@@ -13,6 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+
       - name: Apply third-party build fixes
         run: git apply third_party/build-fixes.patch
 
@@ -20,6 +26,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
+
+      - name: Install relay npm dependencies
+        working-directory: relay
+        run: npm ci
 
       - uses: hendrikmuhs/ccache-action@v1
         with:
@@ -39,6 +49,14 @@ jobs:
 
       - name: Run menu UI test with extended timeout
         run: ctest --test-dir build/ci-test --output-on-failure --timeout 300 -R og_test_menu_ui
+
+      - name: Typecheck relay worker
+        working-directory: relay
+        run: npm run typecheck
+
+      - name: Run relay worker tests
+        working-directory: relay
+        run: npm test
 
   build:
     name: Native Build
