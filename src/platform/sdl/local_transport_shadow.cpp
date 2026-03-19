@@ -540,6 +540,8 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
 
     gameplay_screen.set_render_interpolation_client(nullptr);
     session.local_transport_runtime_.reset();
+    session.relay_transport_active_ = false;
+    session.relay_speed_warning_shown_ = false;
 
     auto runtime = std::make_shared<LocalTransportRuntime>();
     const std::size_t player_count = compute_local_player_count(gameplay_screen);
@@ -885,6 +887,8 @@ void clear_local_transport_shadow(GameSession& session) noexcept
     if (session.myscreen_ != nullptr)
         session.myscreen_->set_render_interpolation_client(nullptr);
     session.local_transport_runtime_.reset();
+    session.relay_transport_active_ = false;
+    session.relay_speed_warning_shown_ = false;
 }
 
 void local_transport_shadow_send_input(GameSession& session,

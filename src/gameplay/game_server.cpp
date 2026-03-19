@@ -2032,6 +2032,23 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
     }
     std::sort(ordered_peers.begin(), ordered_peers.end());
 
+    bool can_broadcast_keyframe = !ordered_peers.empty();
+    for (const PeerId peer_id : ordered_peers)
+    {
+        const ConnectedClientState& client = clients_.at(peer_id);
+        if (!client.initial_setup_sent ||
+            !client.has_initial_snapshot ||
+            !should_send_to_client(client) ||
+            !should_send_keyframe(client, snapshot) ||
+            client.allow_initial_keyframe_without_ready ||
+            client.budget_pending_keyframe)
+        {
+            can_broadcast_keyframe = false;
+            break;
+        }
+    }
+
+    bool broadcast_keyframe_sent = false;
     std::size_t keyframe_budget_remaining = kMaxKeyframesPerTick;
     for (const PeerId peer_id : ordered_peers)
     {
@@ -2082,6 +2099,24 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             (client.force_keyframe && client.budget_pending_keyframe);
         if (keyframe_required)
         {
+            if (can_broadcast_keyframe)
+            {
+                const WorldSnapshot& full = ensure_keyframe();
+                if (!broadcast_keyframe_sent)
+                {
+                    const std::vector<std::uint8_t> bytes =
+                        serialize_snapshot(full);
+                    transport_.broadcast(bytes.data(), bytes.size());
+                    broadcast_keyframe_sent = true;
+                }
+                seed_client_snapshot_baseline(client.snapshot_state, full);
+                client.allow_initial_keyframe_without_ready = false;
+                client.budget_pending_keyframe = false;
+                client.force_keyframe = false;
+                remember_snapshot_hash(client, full);
+                continue;
+            }
+
             if (budgeted_keyframe && keyframe_budget_remaining == 0)
             {
                 client.force_keyframe = true;

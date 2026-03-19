@@ -30,9 +30,12 @@ public:
     RelayWebSocketTransport(RelayWebSocketTransport&&) = delete;
     RelayWebSocketTransport& operator=(RelayWebSocketTransport&&) = delete;
 
+    using ITransport::broadcast;
+
     void send(PeerId peer_id,
               const std::uint8_t* data,
               std::size_t len) override;
+    void broadcast(const std::uint8_t* data, std::size_t len) override;
     [[nodiscard]] std::vector<ReceivedMessage> poll() override;
     void accept_connections() override;
     void disconnect(PeerId peer_id) override;

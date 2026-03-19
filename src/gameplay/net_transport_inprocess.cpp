@@ -826,8 +826,17 @@ std::vector<ReceivedMessage> InProcessTransport::poll()
 std::vector<TypedReceivedMessage> InProcessTransport::poll_typed()
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    std::vector<TypedReceivedMessage> drained = std::move(typed_messages_);
+    std::vector<TypedReceivedMessage> drained;
+    drained.reserve(typed_messages_.size() + raw_messages_.size());
+    for (const ReceivedMessage& message : raw_messages_)
+        drained.push_back(decode_received_message(message));
+    raw_messages_.clear();
+
+    std::vector<TypedReceivedMessage> typed_drained = std::move(typed_messages_);
     typed_messages_.clear();
+    drained.insert(drained.end(),
+                   std::make_move_iterator(typed_drained.begin()),
+                   std::make_move_iterator(typed_drained.end()));
     return drained;
 }
 

@@ -65,6 +65,11 @@ public:
         return sent_messages_;
     }
 
+    [[nodiscard]] std::size_t broadcast_call_count() const noexcept
+    {
+        return broadcast_call_count_;
+    }
+
     void send(og::sim::PeerId peer_id,
               const std::uint8_t* data,
               std::size_t len) override
@@ -74,6 +79,13 @@ public:
         if (data != nullptr && len != 0)
             message.data.assign(data, data + len);
         sent_messages_.push_back(std::move(message));
+    }
+
+    void broadcast(const std::uint8_t* data, std::size_t len) override
+    {
+        ++broadcast_call_count_;
+        for (const og::sim::PeerId peer_id : peers_)
+            send(peer_id, data, len);
     }
 
     [[nodiscard]] std::vector<og::sim::ReceivedMessage> poll() override
@@ -109,6 +121,7 @@ private:
     std::vector<og::sim::ReceivedMessage> received_messages_;
     std::vector<og::sim::ReceivedMessage> sent_messages_;
     std::vector<og::sim::PeerId> disconnected_peers_;
+    std::size_t broadcast_call_count_ = 0;
 };
 
 } // namespace
@@ -411,4 +424,27 @@ TEST(NetTransportMultiplex, typed_send_routes_to_untyped_underlying_transport)
         og::sim::deserialize_lobby_state_message(raw_transport->sent_messages().front().data);
     ASSERT_TRUE(decoded.has_value());
     EXPECT_EQ("campaign-remote", decoded->settings.campaign_id);
+}
+
+TEST(NetTransportMultiplex, broadcast_calls_each_underlying_transport_once)
+{
+    auto raw_a = std::make_shared<FakeRawTransport>();
+    auto raw_b = std::make_shared<FakeRawTransport>();
+    raw_a->connect_peer(11u);
+    raw_a->connect_peer(12u);
+    raw_b->connect_peer(21u);
+
+    og::sim::MultiplexTransport transport({raw_a, raw_b});
+    const std::array<std::uint8_t, 2> payload = {0xaa, 0x55};
+
+    transport.broadcast(payload);
+
+    EXPECT_EQ(1u, raw_a->broadcast_call_count());
+    EXPECT_EQ(1u, raw_b->broadcast_call_count());
+    ASSERT_EQ(2u, raw_a->sent_messages().size());
+    ASSERT_EQ(1u, raw_b->sent_messages().size());
+    EXPECT_EQ((std::vector<std::uint8_t>{0xaa, 0x55}),
+              raw_a->sent_messages().front().data);
+    EXPECT_EQ((std::vector<std::uint8_t>{0xaa, 0x55}),
+              raw_b->sent_messages().front().data);
 }

@@ -25,6 +25,7 @@ namespace {
 constexpr unsigned short kWebSocketReadyStateOpen = 1;
 constexpr std::uint8_t kRelaySendToPeerTag = 1u;
 constexpr std::uint8_t kRelayReceiveFromPeerTag = 2u;
+constexpr std::uint8_t kRelayBroadcastTag = 3u;
 constexpr std::size_t kRelayPeerHeaderSize = 5u;
 
 std::string trim_copy(std::string_view text)
@@ -223,6 +224,18 @@ std::vector<std::uint8_t> encode_targeted_relay_payload(
     return payload;
 }
 
+std::vector<std::uint8_t> encode_broadcast_relay_payload(
+    const std::uint8_t* data,
+    std::size_t len)
+{
+    std::vector<std::uint8_t> payload;
+    payload.reserve(1u + len);
+    payload.push_back(kRelayBroadcastTag);
+    if (data != nullptr && len != 0)
+        payload.insert(payload.end(), data, data + len);
+    return payload;
+}
+
 std::optional<ReceivedMessage> decode_incoming_relay_payload(
     std::span<const std::uint8_t> bytes)
 {
@@ -380,6 +393,49 @@ struct RelayWebSocketTransport::Impl
 
         const std::vector<std::uint8_t> payload =
             encode_targeted_relay_payload(peer_id, data, len);
+        std::uint8_t empty_payload = 0;
+        void* bytes = payload.empty() ? static_cast<void*>(&empty_payload)
+                                      : const_cast<std::uint8_t*>(payload.data());
+        const detail::EmscriptenResult send_result = api.send_binary(
+            socket, bytes, static_cast<std::uint32_t>(payload.size()));
+        if (send_result != detail::kResultSuccess)
+        {
+            enqueue_disconnect(socket);
+            request_close_socket(socket);
+        }
+    }
+
+    void broadcast(const std::uint8_t* data, std::size_t len)
+    {
+        if (data == nullptr && len != 0)
+        {
+            throw std::runtime_error(
+                "RelayWebSocketTransport broadcast buffer is null");
+        }
+        if (len > std::numeric_limits<std::uint32_t>::max())
+        {
+            throw std::runtime_error(std::format(
+                "RelayWebSocketTransport broadcast payload is too large: {}",
+                len));
+        }
+        if (!connected || socket <= 0 || remote_peers.empty())
+            return;
+
+        const detail::EmscriptenWebSocketApi& api =
+            detail::emscripten_websocket_api();
+        unsigned short ready_state = 0;
+        const detail::EmscriptenResult ready_state_result =
+            api.get_ready_state(socket, &ready_state);
+        if (ready_state_result != detail::kResultSuccess ||
+            ready_state != kWebSocketReadyStateOpen)
+        {
+            enqueue_disconnect(socket);
+            request_close_socket(socket);
+            return;
+        }
+
+        const std::vector<std::uint8_t> payload =
+            encode_broadcast_relay_payload(data, len);
         std::uint8_t empty_payload = 0;
         void* bytes = payload.empty() ? static_cast<void*>(&empty_payload)
                                       : const_cast<std::uint8_t*>(payload.data());
@@ -749,6 +805,12 @@ void RelayWebSocketTransport::send(PeerId peer_id,
                                    std::size_t len)
 {
     impl_->send(peer_id, data, len);
+}
+
+void RelayWebSocketTransport::broadcast(const std::uint8_t* data,
+                                        std::size_t len)
+{
+    impl_->broadcast(data, len);
 }
 
 std::vector<ReceivedMessage> RelayWebSocketTransport::poll()

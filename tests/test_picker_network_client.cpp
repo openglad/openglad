@@ -334,10 +334,12 @@ public:
     explicit FakeRelayServer(int port,
                              int create_status_code = 200,
                              std::string create_response_body =
-                                 R"({"room_code":"glad-xkcd"})")
+                                 R"({"room_code":"glad-xkcd"})",
+                             std::string room_list_response_body = "[]")
         : server_(port, "127.0.0.1", 5, 16)
         , create_status_code_(create_status_code)
         , create_response_body_(std::move(create_response_body))
+        , room_list_response_body_(std::move(room_list_response_body))
     {
         server_.setOnConnectionCallback(
             [this](const ix::HttpRequestPtr& request,
@@ -358,6 +360,18 @@ public:
                         ix::HttpErrorCode::Ok,
                         headers,
                         create_response_body_);
+                }
+                if (request && request->method == "GET" &&
+                    request->uri.rfind("/api/rooms", 0) == 0)
+                {
+                    ix::WebSocketHttpHeaders headers;
+                    headers["Content-Type"] = "application/json";
+                    return std::make_shared<ix::HttpResponse>(
+                        200,
+                        "OK",
+                        ix::HttpErrorCode::Ok,
+                        headers,
+                        room_list_response_body_);
                 }
 
                 return std::make_shared<ix::HttpResponse>(
@@ -398,6 +412,7 @@ private:
 
     static constexpr std::uint8_t kSendToPeerTag = 1u;
     static constexpr std::uint8_t kReceiveFromPeerTag = 2u;
+    static constexpr std::uint8_t kBroadcastTag = 3u;
 
     void handle_client_message(
         const std::shared_ptr<ix::ConnectionState>& connection_state,
@@ -478,13 +493,49 @@ private:
     void handle_binary(const std::string& connection_id, const std::string& payload)
     {
         og::sim::PeerId source_peer_id = 0;
-        std::shared_ptr<ix::WebSocket> target_socket;
         const std::span<const std::uint8_t> bytes(
             reinterpret_cast<const std::uint8_t*>(payload.data()),
             payload.size());
+        if (bytes.empty())
+            return;
+
+        if (bytes[0] == kBroadcastTag)
+        {
+            std::vector<std::shared_ptr<ix::WebSocket>> target_sockets;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                const auto peer_it = peers_.find(connection_id);
+                if (peer_it == peers_.end())
+                    return;
+                source_peer_id = peer_it->second.peer_id;
+
+                target_sockets.reserve(peers_.size());
+                for (const auto& [other_connection_id, other_peer] : peers_)
+                {
+                    if (other_connection_id == connection_id)
+                        continue;
+                    if (const std::shared_ptr<ix::WebSocket> socket =
+                            other_peer.socket.lock())
+                    {
+                        target_sockets.push_back(socket);
+                    }
+                }
+            }
+
+            std::string outbound;
+            outbound.reserve(payload.size() + 4u);
+            outbound.push_back(static_cast<char>(kReceiveFromPeerTag));
+            append_peer_id(outbound, source_peer_id);
+            outbound.append(payload.begin() + 1, payload.end());
+            for (const auto& socket : target_sockets)
+                (void)socket->sendBinary(outbound);
+            return;
+        }
+
         if (bytes.size() < 5u || bytes[0] != kSendToPeerTag)
             return;
 
+        std::shared_ptr<ix::WebSocket> target_socket;
         const og::sim::PeerId target_peer_id =
             static_cast<og::sim::PeerId>(bytes[1]) |
             (static_cast<og::sim::PeerId>(bytes[2]) << 8) |
@@ -663,6 +714,7 @@ private:
     std::map<std::string, PeerState> peers_;
     int create_status_code_ = 200;
     std::string create_response_body_;
+    std::string room_list_response_body_;
     std::string last_create_uri_;
 };
 
@@ -760,6 +812,29 @@ TEST(PickerNetworkClient, host_relay_flow_creates_room_code_and_encodes_campaign
     EXPECT_NE(std::string::npos, create_uri.find("%2F"));
 
     host_client->shutdown();
+}
+
+TEST(PickerNetworkClient, relay_room_listing_fetches_matching_rooms)
+{
+    IxNetSystemScope net_system;
+
+    const int relay_port = ix::getFreePort();
+    FakeRelayServer relay_server(
+        relay_port,
+        200,
+        R"({"code":"glad-xkcd"})",
+        R"([{"code":"glad-xkcd","campaign_hash":"org.openglad.gladiator","campaign_name":"org.openglad.gladiator","host_name":"Host","player_count":2,"created_at":1234}])");
+
+    const auto rooms = og::ui::list_relay_rooms(
+        std::format("http://127.0.0.1:{}", relay_port),
+        "org.openglad.gladiator");
+
+    ASSERT_EQ(1u, rooms.size());
+    EXPECT_EQ("GLAD-XKCD", rooms.front().code);
+    EXPECT_EQ("org.openglad.gladiator", rooms.front().campaign_hash);
+    EXPECT_EQ("Host", rooms.front().host_name);
+    EXPECT_EQ(2u, rooms.front().player_count);
+    EXPECT_EQ(1234, rooms.front().created_at_ms);
 }
 
 TEST(PickerNetworkClient, host_status_builder_reports_direct_and_relay_errors)

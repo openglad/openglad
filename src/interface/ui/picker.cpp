@@ -358,12 +358,39 @@ bool picker_join_game(
         }
         else
         {
+            const std::string relay_base_url =
+                og::ui::default_relay_base_url();
+            std::string campaign_tag;
+            if (og::runtime::current_session != nullptr &&
+                og::runtime::current_session->myscreen_ != nullptr)
+            {
+                campaign_tag =
+                    og::runtime::current_session->myscreen_->save_data.current_campaign;
+            }
+
+            std::vector<og::ui::PickerRelayRoomInfo> active_rooms;
+            std::string room_list_error;
+            try
+            {
+                active_rooms =
+                    og::ui::list_relay_rooms(relay_base_url, campaign_tag);
+            }
+            catch (const std::exception& error)
+            {
+                room_list_error = error.what();
+            }
+
             std::string room_code = "GLAD-XXXX";
-            if (!prompt_for_string("RELAY ROOM CODE", room_code))
+            if (!prompt_for_string(
+                    og::ui::build_relay_room_prompt_message(
+                        active_rooms,
+                        campaign_tag,
+                        room_list_error),
+                    room_code))
                 return false;
             options.mode = og::ui::PickerJoinMode::Relay;
             options.room_code = room_code;
-            options.relay_base_url = og::ui::default_relay_base_url();
+            options.relay_base_url = relay_base_url;
         }
 
         return picker_replace_lobby_client(

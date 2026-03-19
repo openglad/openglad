@@ -72,6 +72,7 @@ private:
 
     static constexpr std::uint8_t kSendToPeerTag = 1u;
     static constexpr std::uint8_t kReceiveFromPeerTag = 2u;
+    static constexpr std::uint8_t kBroadcastTag = 3u;
 
     void handle_client_message(
         const std::shared_ptr<ix::ConnectionState>& connection_state,
@@ -154,13 +155,49 @@ private:
     void handle_binary(const std::string& connection_id, const std::string& payload)
     {
         og::sim::PeerId source_peer_id = 0;
-        std::shared_ptr<ix::WebSocket> target_socket;
         const std::span<const std::uint8_t> bytes(
             reinterpret_cast<const std::uint8_t*>(payload.data()),
             payload.size());
+        if (bytes.empty())
+            return;
+
+        if (bytes[0] == kBroadcastTag)
+        {
+            std::vector<std::shared_ptr<ix::WebSocket>> target_sockets;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                const auto peer_it = peers_.find(connection_id);
+                if (peer_it == peers_.end())
+                    return;
+                source_peer_id = peer_it->second.peer_id;
+
+                target_sockets.reserve(peers_.size());
+                for (const auto& [other_connection_id, other_peer] : peers_)
+                {
+                    if (other_connection_id == connection_id)
+                        continue;
+                    if (const std::shared_ptr<ix::WebSocket> socket =
+                            other_peer.socket.lock())
+                    {
+                        target_sockets.push_back(socket);
+                    }
+                }
+            }
+
+            std::string outbound;
+            outbound.reserve(payload.size() + 4u);
+            outbound.push_back(static_cast<char>(kReceiveFromPeerTag));
+            append_peer_id(outbound, source_peer_id);
+            outbound.append(payload.begin() + 1, payload.end());
+            for (const auto& socket : target_sockets)
+                (void)socket->sendBinary(outbound);
+            return;
+        }
+
         if (bytes.size() < 5u || bytes[0] != kSendToPeerTag)
             return;
 
+        std::shared_ptr<ix::WebSocket> target_socket;
         const og::sim::PeerId target_peer_id =
             static_cast<og::sim::PeerId>(bytes[1]) |
             (static_cast<og::sim::PeerId>(bytes[2]) << 8) |
@@ -459,6 +496,51 @@ TEST(NetTransportRelayWs,
     ASSERT_EQ(1u, client_messages.size());
     EXPECT_EQ(1u, client_messages.front().peer_id);
     EXPECT_EQ(33u, decode_keyframe_request_tick(client_messages.front().data));
+}
+
+TEST(NetTransportRelayWs, relay_broadcast_reaches_all_other_connected_peers)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    FakeRelayServer server(port);
+
+    og::sim::RelayWebSocketTransport host(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-TEST", port));
+    og::sim::RelayWebSocketTransport client_one(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-TEST", port));
+    og::sim::RelayWebSocketTransport client_two(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-TEST", port));
+    host.accept_connections();
+
+    ASSERT_TRUE(wait_until_host_owns_room(host));
+    client_one.accept_connections();
+    client_two.accept_connections();
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            (void)host.poll();
+            (void)client_one.poll();
+            (void)client_two.poll();
+            return host.connected_peers().size() == 2u &&
+                client_one.connected_peers().size() == 2u &&
+                client_two.connected_peers().size() == 2u;
+        },
+        5s));
+
+    const std::vector<std::uint8_t> broadcast_payload =
+        og::sim::serialize_client_ready_message(
+            og::sim::ClientReadyMessage{.last_applied_tick = 41u});
+    host.broadcast(broadcast_payload);
+
+    const auto client_one_messages = poll_until_messages(client_one, 1u);
+    const auto client_two_messages = poll_until_messages(client_two, 1u);
+
+    ASSERT_EQ(1u, client_one_messages.size());
+    ASSERT_EQ(1u, client_two_messages.size());
+    EXPECT_EQ(host.local_peer_id(), std::optional<og::sim::PeerId>(client_one_messages.front().peer_id));
+    EXPECT_EQ(host.local_peer_id(), std::optional<og::sim::PeerId>(client_two_messages.front().peer_id));
+    EXPECT_EQ(41u, decode_client_ready_tick(client_one_messages.front().data));
+    EXPECT_EQ(41u, decode_client_ready_tick(client_two_messages.front().data));
 }
 
 TEST(NetTransportRelayWs, host_disconnect_reassigns_host_and_updates_peer_sets)

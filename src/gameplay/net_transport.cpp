@@ -199,6 +199,14 @@ private:
     bool ok_ = true;
 };
 
+og::sim::TypedReceivedMessage malformed_typed_message(og::sim::PeerId peer_id)
+{
+    og::sim::TypedReceivedMessage typed_message;
+    typed_message.peer_id = peer_id;
+    typed_message.kind = og::sim::TypedReceivedMessageKind::Malformed;
+    return typed_message;
+}
+
 template <typename GuyLike>
 void append_serialized_guy(std::vector<std::uint8_t>& payload,
                            const GuyLike& guy)
@@ -760,6 +768,12 @@ bool ITransport::supports_typed_messages() const noexcept
     return false;
 }
 
+void ITransport::broadcast(const std::uint8_t* data, std::size_t len)
+{
+    for (const PeerId peer_id : connected_peers())
+        send(peer_id, data, len);
+}
+
 void ITransport::send_snapshot(PeerId peer_id,
                                std::shared_ptr<WorldSnapshot> snapshot)
 {
@@ -962,9 +976,232 @@ void ITransport::send_snapshot_hash_check(
     send(peer_id, bytes.data(), bytes.size());
 }
 
+TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
+{
+    TransportEnvelope envelope;
+    if (!decode_transport_envelope(message.data, envelope))
+        return malformed_typed_message(message.peer_id);
+
+    TypedReceivedMessage typed_message;
+    typed_message.peer_id = message.peer_id;
+
+    try
+    {
+        switch (envelope.message_type)
+        {
+        case kSnapshotMessageType:
+            typed_message.kind = TypedReceivedMessageKind::Snapshot;
+            typed_message.snapshot = std::make_shared<WorldSnapshot>(
+                deserialize_snapshot(message.data.data(), message.data.size()));
+            return typed_message;
+
+        case kDeltaSnapshotMessageType:
+            typed_message.kind = TypedReceivedMessageKind::DeltaSnapshot;
+            typed_message.snapshot = std::make_shared<WorldSnapshot>(
+                deserialize_delta(message.data.data(), message.data.size()));
+            return typed_message;
+
+        case kInputMessageType:
+        {
+            const std::optional<InputStateMessage> decoded =
+                deserialize_input_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::Input;
+            typed_message.input = std::make_shared<InputState>(decoded->input);
+            typed_message.tick = decoded->tick;
+            return typed_message;
+        }
+
+        case kSimEventBatchMessageType:
+            typed_message.kind = TypedReceivedMessageKind::SimEventBatch;
+            typed_message.event_batch = std::make_shared<SimEventBatch>(
+                deserialize_sim_event_batch(message.data.data(), message.data.size()));
+            return typed_message;
+
+        case kGameFlowEventBatchMessageType:
+            typed_message.kind = TypedReceivedMessageKind::GameFlowEventBatch;
+            typed_message.event_batch = std::make_shared<SimEventBatch>(
+                deserialize_game_flow_event_batch(message.data.data(),
+                                                  message.data.size()));
+            return typed_message;
+
+        case kLobbyMessageType:
+        {
+            const auto decoded = deserialize_lobby_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::LobbyMessage;
+            typed_message.lobby_message =
+                std::make_shared<LobbyMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kLobbyStateMessageType:
+        {
+            const auto decoded = deserialize_lobby_state_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::LobbyState;
+            typed_message.lobby_state =
+                std::make_shared<LobbyState>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kInitialSetupMessageType:
+        {
+            const auto decoded = deserialize_initial_setup_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::InitialSetup;
+            typed_message.initial_setup =
+                std::make_shared<InitialSetupMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kHelloMessageType:
+        {
+            const auto decoded = deserialize_hello_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::Hello;
+            typed_message.hello =
+                std::make_shared<HelloMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kClientReadyMessageType:
+        {
+            const auto decoded = deserialize_client_ready_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::ClientReady;
+            typed_message.client_ready =
+                std::make_shared<ClientReadyMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kKeyframeRequestMessageType:
+        {
+            const auto decoded = deserialize_keyframe_request_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::KeyframeRequest;
+            typed_message.keyframe_request =
+                std::make_shared<KeyframeRequestMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kHeartbeatMessageType:
+        {
+            const auto decoded = deserialize_heartbeat_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::Heartbeat;
+            typed_message.heartbeat =
+                std::make_shared<HeartbeatMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kExitPromptBroadcastMessageType:
+        {
+            const auto decoded =
+                deserialize_exit_prompt_broadcast_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::ExitPromptBroadcast;
+            typed_message.exit_prompt_broadcast =
+                std::make_shared<ExitPromptBroadcastMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kExitPromptResponseMessageType:
+        {
+            const auto decoded =
+                deserialize_exit_prompt_response_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::ExitPromptResponse;
+            typed_message.exit_prompt_response =
+                std::make_shared<ExitPromptResponseMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kPauseBroadcastMessageType:
+        {
+            const auto decoded = deserialize_pause_broadcast_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::PauseBroadcast;
+            typed_message.pause_broadcast =
+                std::make_shared<PauseBroadcastMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kPauseResponseMessageType:
+        {
+            const auto decoded = deserialize_pause_response_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::PauseResponse;
+            typed_message.pause_response =
+                std::make_shared<PauseResponseMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kControlChangeMessageType:
+        {
+            const auto decoded = deserialize_control_change_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::ControlChange;
+            typed_message.control_change =
+                std::make_shared<ControlChangeMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        case kSnapshotHashCheckMessageType:
+        {
+            const auto decoded =
+                deserialize_snapshot_hash_check_message(message.data);
+            if (!decoded.has_value())
+                return malformed_typed_message(message.peer_id);
+
+            typed_message.kind = TypedReceivedMessageKind::SnapshotHashCheck;
+            typed_message.snapshot_hash_check =
+                std::make_shared<SnapshotHashCheckMessage>(std::move(*decoded));
+            return typed_message;
+        }
+
+        default:
+            return malformed_typed_message(message.peer_id);
+        }
+    }
+    catch (const std::exception&)
+    {
+        return malformed_typed_message(message.peer_id);
+    }
+}
+
 std::vector<TypedReceivedMessage> ITransport::poll_typed()
 {
-    return {};
+    std::vector<TypedReceivedMessage> typed_messages;
+    for (const auto& message : poll())
+        typed_messages.push_back(decode_received_message(message));
+    return typed_messages;
 }
 
 } // namespace og::sim

@@ -26,6 +26,7 @@ namespace {
 
 constexpr std::uint8_t kRelaySendToPeerTag = 1u;
 constexpr std::uint8_t kRelayReceiveFromPeerTag = 2u;
+constexpr std::uint8_t kRelayBroadcastTag = 3u;
 constexpr std::size_t kRelayPeerHeaderSize = 5u;
 
 std::string trim_copy(std::string_view text)
@@ -224,6 +225,18 @@ std::vector<std::uint8_t> encode_targeted_relay_payload(
     return payload;
 }
 
+std::vector<std::uint8_t> encode_broadcast_relay_payload(
+    const std::uint8_t* data,
+    std::size_t len)
+{
+    std::vector<std::uint8_t> payload;
+    payload.reserve(1u + len);
+    payload.push_back(kRelayBroadcastTag);
+    if (data != nullptr && len != 0)
+        payload.insert(payload.end(), data, data + len);
+    return payload;
+}
+
 std::optional<ReceivedMessage> decode_incoming_relay_payload(
     std::span<const std::uint8_t> bytes)
 {
@@ -353,6 +366,29 @@ struct RelayWebSocketTransport::Impl
 
         const std::vector<std::uint8_t> payload =
             encode_targeted_relay_payload(peer_id, data, len);
+        const char* bytes = reinterpret_cast<const char*>(payload.data());
+        const std::string binary(bytes, bytes + payload.size());
+        const ix::WebSocketSendInfo send_info = websocket->sendBinary(binary);
+        if (!send_info.success)
+        {
+            enqueue_disconnect(active_generation);
+            websocket->close();
+        }
+    }
+
+    void broadcast(const std::uint8_t* data, std::size_t len)
+    {
+        if (data == nullptr && len != 0)
+        {
+            throw std::runtime_error(
+                "RelayWebSocketTransport broadcast buffer is null");
+        }
+
+        if (!connected || !websocket || remote_peers.empty())
+            return;
+
+        const std::vector<std::uint8_t> payload =
+            encode_broadcast_relay_payload(data, len);
         const char* bytes = reinterpret_cast<const char*>(payload.data());
         const std::string binary(bytes, bytes + payload.size());
         const ix::WebSocketSendInfo send_info = websocket->sendBinary(binary);
@@ -625,6 +661,12 @@ void RelayWebSocketTransport::send(PeerId peer_id,
                                    std::size_t len)
 {
     impl_->send(peer_id, data, len);
+}
+
+void RelayWebSocketTransport::broadcast(const std::uint8_t* data,
+                                        std::size_t len)
+{
+    impl_->broadcast(data, len);
 }
 
 std::vector<ReceivedMessage> RelayWebSocketTransport::poll()

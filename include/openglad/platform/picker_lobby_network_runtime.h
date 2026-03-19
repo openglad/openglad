@@ -1,14 +1,12 @@
 #pragma once
 
+#include <openglad/interface/ui/picker_lobby_network_client.h>
+
 #include <memory>
+#include <string>
+#include <vector>
 
 class screen;
-
-namespace og::ui {
-class IPickerLobbyClient;
-struct PickerHostGameOptions;
-struct PickerJoinGameOptions;
-}
 
 namespace og::runtime {
 class GameSession;
@@ -23,6 +21,10 @@ create_platform_host_picker_lobby_client(
 std::unique_ptr<og::ui::IPickerLobbyClient>
 create_platform_join_picker_lobby_client(
     const og::ui::PickerJoinGameOptions& options);
+
+std::vector<og::ui::PickerRelayRoomInfo> list_platform_relay_rooms(
+    const std::string& base_url,
+    const std::string& campaign_tag);
 
 bool install_picker_lobby_gameplay_runtime(
     og::ui::IPickerLobbyClient* client,

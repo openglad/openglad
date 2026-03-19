@@ -312,6 +312,7 @@ std::vector<std::uint8_t> serialize_snapshot_hash_check_message(
     const SnapshotHashCheckMessage& message);
 std::optional<SnapshotHashCheckMessage> deserialize_snapshot_hash_check_message(
     std::span<const std::uint8_t> bytes);
+TypedReceivedMessage decode_received_message(const ReceivedMessage& message);
 
 class ITransport {
 public:
@@ -320,10 +321,16 @@ public:
     virtual void send(PeerId peer_id,
                       const std::uint8_t* data,
                       std::size_t len) = 0;
+    virtual void broadcast(const std::uint8_t* data, std::size_t len);
 
     void send(PeerId peer_id, std::span<const std::uint8_t> bytes)
     {
         send(peer_id, bytes.data(), bytes.size());
+    }
+
+    void broadcast(std::span<const std::uint8_t> bytes)
+    {
+        broadcast(bytes.data(), bytes.size());
     }
 
     [[nodiscard]] virtual bool supports_typed_messages() const noexcept;

@@ -69,6 +69,12 @@ PlatformBridge make_sdl_platform_bridge()
             return og::platform::create_platform_join_picker_lobby_client(
                 options);
         };
+    bridge.list_relay_rooms =
+        [](const std::string& base_url, const std::string& campaign_tag) {
+            return og::platform::list_platform_relay_rooms(
+                base_url,
+                campaign_tag);
+        };
 
     return bridge;
 }

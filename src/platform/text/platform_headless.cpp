@@ -341,6 +341,10 @@ void io_init(int argc, char* argv[])
     bridge.play_music = [](const char*) {};
     bridge.stop_music = [] {};
     bridge.create_surface = [](int, int) -> video* { return nullptr; };
+    bridge.list_relay_rooms =
+        [](const std::string&, const std::string&) {
+            return std::vector<og::ui::PickerRelayRoomInfo>{};
+        };
     set_platform_bridge(std::move(bridge));
 
     // Create user directory tree

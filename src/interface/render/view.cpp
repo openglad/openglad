@@ -80,7 +80,9 @@ const int key1[] = {
                  KEYCODE_LSHIFT,                        // Shifter
                  KEYCODE_2,                                 // Options menu
                  KEYCODE_F5,                                 // Cheat key
-             };
+};
+
+void timed_dialog(const char* message, float delay_seconds = 3.0f);
              
 const int key2[] = {
                  KEYCODE_KP_8, KEYCODE_KP_9, KEYCODE_KP_6, KEYCODE_KP_3,  // movements
@@ -1390,6 +1392,17 @@ Sint32 viewscreen::change_speed(Sint32 whichway)
     {
         og::runtime::current_session->pending_timer_wait_request_ =
             active_screen()->world().timer_wait;
+        if (og::runtime::current_session->relay_transport_active_ &&
+            active_screen()->world().timer_wait < 4 &&
+            !og::runtime::current_session->relay_speed_warning_shown_)
+        {
+            timed_dialog("High game speed increases relay usage.", 2.5f);
+            og::runtime::current_session->relay_speed_warning_shown_ = true;
+        }
+        else if (active_screen()->world().timer_wait >= 4)
+        {
+            og::runtime::current_session->relay_speed_warning_shown_ = false;
+        }
     }
 	return static_cast<Sint32>((20-active_screen()->world().timer_wait)/2+1);
 }

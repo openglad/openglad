@@ -165,6 +165,23 @@ EM_ASYNC_JS(char*, relay_http_post_text_js, (const char* url_cstr), {
     }
 });
 
+EM_ASYNC_JS(char*, relay_http_get_text_js, (const char* url_cstr), {
+    try {
+        const url = UTF8ToString(url_cstr);
+        const response = await fetch(url, { method: 'GET' });
+        const text = await response.text();
+        return stringToNewUTF8(
+            (response.ok ? 'OK\n' : 'ERR\n') +
+            String(response.status) +
+            '\n' +
+            text);
+    } catch (error) {
+        const message =
+            (error && error.message) ? error.message : String(error);
+        return stringToNewUTF8('ERR\n0\n' + message);
+    }
+});
+
 EM_JS(char*, current_browser_hostname_js, (), {
     const host =
         (typeof window !== 'undefined' && window.location &&
@@ -266,6 +283,58 @@ std::optional<std::string> extract_json_string_field(std::string_view text,
     return std::nullopt;
 }
 
+std::optional<std::uint32_t> extract_json_u32_field(std::string_view text,
+                                                    std::string_view key)
+{
+    const auto value_pos = find_json_field_value(text, key);
+    if (!value_pos.has_value())
+        return std::nullopt;
+
+    std::size_t end = *value_pos;
+    while (end < text.size() &&
+           std::isdigit(static_cast<unsigned char>(text[end])))
+    {
+        ++end;
+    }
+    if (end == *value_pos)
+        return std::nullopt;
+
+    std::uint32_t value = 0;
+    const auto [ptr, ec] = std::from_chars(
+        text.data() + *value_pos,
+        text.data() + end,
+        value);
+    if (ec != std::errc{} || ptr != text.data() + end)
+        return std::nullopt;
+    return value;
+}
+
+std::optional<std::int64_t> extract_json_i64_field(std::string_view text,
+                                                   std::string_view key)
+{
+    const auto value_pos = find_json_field_value(text, key);
+    if (!value_pos.has_value())
+        return std::nullopt;
+
+    std::size_t end = *value_pos;
+    while (end < text.size() &&
+           std::isdigit(static_cast<unsigned char>(text[end])))
+    {
+        ++end;
+    }
+    if (end == *value_pos)
+        return std::nullopt;
+
+    std::int64_t value = 0;
+    const auto [ptr, ec] = std::from_chars(
+        text.data() + *value_pos,
+        text.data() + end,
+        value);
+    if (ec != std::errc{} || ptr != text.data() + end)
+        return std::nullopt;
+    return value;
+}
+
 std::string relay_base_url_or_default(std::string configured_url)
 {
     configured_url = trim_copy(std::move(configured_url));
@@ -302,6 +371,22 @@ std::string build_relay_room_create_url(std::string base_url,
         base_url.replace(0, 6, "https://");
 
     std::string url = base_url + "/create";
+    const std::string encoded_tag = url_encode_component(campaign_tag);
+    if (!encoded_tag.empty())
+        url.append(std::format("?campaign={}", encoded_tag));
+    return url;
+}
+
+std::string build_relay_room_list_url(std::string base_url,
+                                      std::string_view campaign_tag)
+{
+    base_url = relay_api_base_url(std::move(base_url));
+    if (base_url.rfind("ws://", 0) == 0)
+        base_url.replace(0, 5, "http://");
+    else if (base_url.rfind("wss://", 0) == 0)
+        base_url.replace(0, 6, "https://");
+
+    std::string url = base_url + "/rooms";
     const std::string encoded_tag = url_encode_component(campaign_tag);
     if (!encoded_tag.empty())
         url.append(std::format("?campaign={}", encoded_tag));
@@ -428,6 +513,157 @@ short resolve_initial_local_team(const SaveData& save)
     }
 
     return 0;
+}
+
+std::vector<std::string> split_top_level_json_objects(std::string_view text)
+{
+    std::vector<std::string> objects;
+    const std::string trimmed = trim_copy(std::string(text));
+    if (trimmed.empty())
+        return objects;
+
+    std::string_view array_view = trimmed;
+    if (trimmed.front() == '{')
+    {
+        const auto value_pos = find_json_field_value(trimmed, "rooms");
+        if (!value_pos.has_value() || trimmed[*value_pos] != '[')
+            return objects;
+        array_view = trimmed.substr(*value_pos);
+    }
+
+    if (array_view.empty() || array_view.front() != '[')
+        return objects;
+
+    bool in_string = false;
+    bool escape = false;
+    int depth = 0;
+    std::size_t object_start = std::string_view::npos;
+    for (std::size_t index = 0; index < array_view.size(); ++index)
+    {
+        const char ch = array_view[index];
+        if (escape)
+        {
+            escape = false;
+            continue;
+        }
+        if (in_string)
+        {
+            if (ch == '\\')
+                escape = true;
+            else if (ch == '"')
+                in_string = false;
+            continue;
+        }
+        if (ch == '"')
+        {
+            in_string = true;
+            continue;
+        }
+        if (ch == '{')
+        {
+            if (depth == 0)
+                object_start = index;
+            ++depth;
+            continue;
+        }
+        if (ch == '}')
+        {
+            --depth;
+            if (depth == 0 && object_start != std::string_view::npos)
+            {
+                objects.emplace_back(array_view.substr(
+                    object_start,
+                    index - object_start + 1));
+                object_start = std::string_view::npos;
+            }
+        }
+    }
+
+    return objects;
+}
+
+std::vector<og::ui::PickerRelayRoomInfo> parse_relay_room_list(
+    std::string_view body)
+{
+    std::vector<og::ui::PickerRelayRoomInfo> rooms;
+    for (const std::string& object : split_top_level_json_objects(body))
+    {
+        const auto code = extract_json_string_field(object, "code");
+        if (!code.has_value())
+            continue;
+
+        og::ui::PickerRelayRoomInfo room;
+        room.code = og::ui::normalize_relay_room_code(*code);
+        room.campaign_hash =
+            extract_json_string_field(object, "campaign_hash").value_or("");
+        room.campaign_name =
+            extract_json_string_field(object, "campaign_name").value_or("");
+        room.host_name =
+            extract_json_string_field(object, "host_name").value_or("");
+        room.player_count =
+            extract_json_u32_field(object, "player_count").value_or(0u);
+        room.created_at_ms =
+            extract_json_i64_field(object, "created_at").value_or(0);
+        rooms.push_back(std::move(room));
+    }
+    return rooms;
+}
+
+std::string fetch_relay_room_list_body(std::string_view base_url,
+                                       std::string_view campaign_tag)
+{
+    const std::string list_url = build_relay_room_list_url(
+        std::string(base_url),
+        campaign_tag);
+
+#ifdef __EMSCRIPTEN__
+    std::unique_ptr<char, decltype(&std::free)> response_text(
+        relay_http_get_text_js(list_url.c_str()),
+        &std::free);
+    const std::string response =
+        response_text ? std::string(response_text.get()) : std::string();
+    const std::size_t first_newline = response.find('\n');
+    const std::size_t second_newline =
+        first_newline == std::string::npos
+            ? std::string::npos
+            : response.find('\n', first_newline + 1);
+    if (first_newline == std::string::npos ||
+        second_newline == std::string::npos)
+    {
+        throw std::runtime_error("Relay room listing returned an invalid response");
+    }
+
+    const std::string status = response.substr(0, first_newline);
+    const std::string status_code =
+        response.substr(first_newline + 1,
+                        second_newline - first_newline - 1);
+    const std::string body = response.substr(second_newline + 1);
+    if (status != "OK")
+    {
+        throw std::runtime_error(std::format(
+            "Relay room listing failed (status {}): {}",
+            status_code,
+            trim_copy(body)));
+    }
+    return body;
+#else
+    ix::HttpClient client;
+    ix::HttpRequestArgsPtr args = client.createRequest(list_url, ix::HttpClient::kGet);
+    args->connectTimeout = 5;
+    args->transferTimeout = 10;
+    args->followRedirects = true;
+    const ix::HttpResponsePtr response = client.get(list_url, args);
+    if (!response)
+        throw std::runtime_error("Relay room listing failed: no HTTP response");
+    if (response->statusCode < 200 || response->statusCode >= 300)
+    {
+        throw std::runtime_error(std::format(
+            "Relay room listing failed (HTTP {}): {}",
+            response->statusCode,
+            trim_copy(response->body)));
+    }
+    return response->body;
+#endif
 }
 
 } // namespace
@@ -1150,6 +1386,10 @@ public:
         if (!combined_transport_ || !local_client_transport_)
             return false;
 
+        const bool using_relay = static_cast<bool>(relay_transport_);
+        session.relay_transport_active_ = using_relay;
+        session.relay_speed_warning_shown_ = false;
+
         if (player_bindings_.empty() && server_ != nullptr)
             player_bindings_ = server_->build_player_bindings();
 
@@ -1526,6 +1766,12 @@ public:
         if (!transport_)
             return false;
 
+        const bool using_relay =
+            dynamic_cast<og::sim::RelayWebSocketTransport*>(transport_.get()) !=
+            nullptr;
+        session.relay_transport_active_ = using_relay;
+        session.relay_speed_warning_shown_ = false;
+
         og::runtime::reset_network_client_transport_shadow(
             session,
             gameplay_screen,
@@ -1689,6 +1935,14 @@ private:
 } // namespace
 
 namespace og::platform {
+
+std::vector<og::ui::PickerRelayRoomInfo> list_platform_relay_rooms(
+    const std::string& base_url,
+    const std::string& campaign_tag)
+{
+    return parse_relay_room_list(
+        fetch_relay_room_list_body(base_url, campaign_tag));
+}
 
 std::unique_ptr<og::ui::IPickerLobbyClient>
 create_platform_host_picker_lobby_client(

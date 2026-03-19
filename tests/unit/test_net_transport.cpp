@@ -182,6 +182,41 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     EXPECT_EQ(0x2211u, envelope.payload_length);
 }
 
+TEST(NetTransport, default_broadcast_sends_payload_to_all_connected_peers)
+{
+    MockTransport transport;
+    transport.set_connected_peers({3u, 7u, 11u});
+
+    const std::array<std::uint8_t, 3> payload = {0x10, 0x20, 0x30};
+    transport.broadcast(payload);
+
+    ASSERT_EQ(3u, transport.sent_messages().size());
+    EXPECT_EQ(3u, transport.sent_messages()[0].peer_id);
+    EXPECT_EQ(7u, transport.sent_messages()[1].peer_id);
+    EXPECT_EQ(11u, transport.sent_messages()[2].peer_id);
+    EXPECT_EQ((std::vector<std::uint8_t>{0x10, 0x20, 0x30}),
+              transport.sent_messages()[0].data);
+}
+
+TEST(NetTransport, default_poll_typed_decodes_raw_messages)
+{
+    MockTransport transport;
+
+    transport.queue_received(
+        9u,
+        og::sim::serialize_client_ready_message(
+            og::sim::ClientReadyMessage{.last_applied_tick = 42u}));
+
+    const std::vector<og::sim::TypedReceivedMessage> messages =
+        transport.poll_typed();
+    ASSERT_EQ(1u, messages.size());
+    EXPECT_EQ(9u, messages.front().peer_id);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::ClientReady,
+              messages.front().kind);
+    ASSERT_TRUE(messages.front().client_ready != nullptr);
+    EXPECT_EQ(42u, messages.front().client_ready->last_applied_tick);
+}
+
 TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 {
     og::sim::HelloMessage message;

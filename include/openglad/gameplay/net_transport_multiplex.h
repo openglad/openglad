@@ -13,10 +13,13 @@ class MultiplexTransport final : public ITransport
 public:
     explicit MultiplexTransport(std::vector<std::shared_ptr<ITransport>> transports);
 
+    using ITransport::broadcast;
+
     [[nodiscard]] bool supports_typed_messages() const noexcept override;
     void send(PeerId peer_id,
               const std::uint8_t* data,
               std::size_t len) override;
+    void broadcast(const std::uint8_t* data, std::size_t len) override;
     void send_snapshot(PeerId peer_id,
                        std::shared_ptr<WorldSnapshot> snapshot) override;
     void send_delta_snapshot(PeerId peer_id,

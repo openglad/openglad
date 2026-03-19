@@ -4,9 +4,11 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <format>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -40,6 +42,20 @@ std::string relay_base_url_or_default(std::string configured_url)
     }
 
     return std::string(kDefaultRelayBaseUrl);
+}
+
+std::string join_lines(const std::vector<std::string>& lines)
+{
+    std::string text;
+    for (const std::string& line : lines)
+    {
+        if (line.empty())
+            continue;
+        if (!text.empty())
+            text.push_back('\n');
+        text.append(line);
+    }
+    return text;
 }
 
 } // namespace
@@ -137,6 +153,68 @@ std::string normalize_relay_base_url(const std::string& base_url)
 std::string default_relay_base_url()
 {
     return normalize_relay_base_url({});
+}
+
+std::vector<PickerRelayRoomInfo> list_relay_rooms(
+    const std::string& base_url,
+    const std::string& campaign_tag)
+{
+    const PlatformBridge& bridge = platform_bridge();
+    if (!bridge.list_relay_rooms)
+        return {};
+    return bridge.list_relay_rooms(
+        normalize_relay_base_url(base_url),
+        campaign_tag);
+}
+
+std::string build_relay_room_prompt_message(
+    const std::vector<PickerRelayRoomInfo>& rooms,
+    const std::string& campaign_tag,
+    const std::string& list_error)
+{
+    std::vector<std::string> lines;
+    lines.push_back("ENTER RELAY ROOM CODE");
+    lines.push_back("Type a code manually or choose an active room.");
+
+    if (!list_error.empty())
+    {
+        lines.push_back(std::format("Room list unavailable: {}", list_error));
+        return join_lines(lines);
+    }
+
+    if (rooms.empty())
+    {
+        lines.push_back(
+            campaign_tag.empty()
+                ? "No active relay rooms found."
+                : "No active relay rooms match this campaign.");
+        return join_lines(lines);
+    }
+
+    lines.push_back("Active rooms:");
+    const std::size_t display_count = std::min<std::size_t>(rooms.size(), 5u);
+    for (std::size_t index = 0; index < display_count; ++index)
+    {
+        const PickerRelayRoomInfo& room = rooms[index];
+        std::string line = std::format(
+            "{}  {} player{}",
+            room.code,
+            room.player_count,
+            room.player_count == 1 ? "" : "s");
+        if (!room.host_name.empty())
+            line.append(std::format("  {}", room.host_name));
+        else if (!room.campaign_name.empty() && campaign_tag.empty())
+            line.append(std::format("  {}", room.campaign_name));
+        lines.push_back(std::move(line));
+    }
+    if (rooms.size() > display_count)
+    {
+        lines.push_back(std::format(
+            "+{} more room{}",
+            rooms.size() - display_count,
+            rooms.size() - display_count == 1 ? "" : "s"));
+    }
+    return join_lines(lines);
 }
 
 } // namespace og::ui
