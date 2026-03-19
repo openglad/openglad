@@ -1049,7 +1049,7 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
             !is_zero_session_token(message.session_token) &&
             message.session_token != client.session_token)
         {
-            disconnect_client(peer_id);
+            handle_transport_disconnect(peer_id, true);
             return;
         }
 
@@ -1062,7 +1062,7 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
 
     if (is_zero_session_token(message.session_token))
     {
-        disconnect_client(peer_id);
+        handle_transport_disconnect(peer_id, true);
         return;
     }
 
@@ -1074,7 +1074,7 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
         });
     if (disconnected_it == disconnected_players_.end())
     {
-        disconnect_client(peer_id);
+        handle_transport_disconnect(peer_id, true);
         return;
     }
 
@@ -1252,7 +1252,7 @@ void GameServer::poll_incoming_messages()
     for (const PeerId peer_id : poll_result.malformed_peers)
     {
         LogError("game_server_malformed_message peer={}\n", peer_id);
-        disconnect_client(peer_id);
+        handle_transport_disconnect(peer_id, true);
     }
     synchronize_transport_peers();
 }

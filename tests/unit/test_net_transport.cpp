@@ -2,6 +2,7 @@
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/input_state_net.h>
+#include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/world_snapshot.h>
 
@@ -478,6 +479,93 @@ TEST(NetTransport, game_server_keeps_remaining_clients_when_host_peer_is_removed
     std::sort(recipients.begin(), recipients.end());
     EXPECT_EQ((std::vector<og::sim::PeerId>{11u, 11u, 13u, 13u}),
               recipients);
+}
+
+TEST(NetTransport,
+     game_server_malformed_host_peer_does_not_disconnect_other_clients)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u, 11u, 13u});
+    server.poll_incoming_messages();
+    transport.clear_sent_messages();
+
+    transport.queue_received(7u, {0x01, 0x06, 0x01});
+    server.poll_incoming_messages();
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
+
+    transport.set_connected_peers({11u, 13u});
+    transport.clear_sent_messages();
+    server.poll_incoming_messages();
+    server.send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
+
+    std::vector<og::sim::PeerId> recipients;
+    recipients.reserve(transport.sent_messages().size());
+    for (const auto& sent : transport.sent_messages())
+        recipients.push_back(sent.peer_id);
+    std::sort(recipients.begin(), recipients.end());
+    EXPECT_EQ((std::vector<og::sim::PeerId>{11u, 11u, 13u, 13u}),
+              recipients);
+}
+
+TEST(NetTransport,
+     game_server_invalid_host_hello_does_not_disconnect_other_clients)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u, 11u, 13u});
+    server.poll_incoming_messages();
+    transport.clear_sent_messages();
+
+    const auto invalid_hello = og::sim::serialize_hello(og::sim::HelloMessage{});
+    transport.queue_received(
+        7u,
+        std::vector<std::uint8_t>(invalid_hello.begin(), invalid_hello.end()));
+    server.step();
+    server.send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
+
+    std::vector<og::sim::PeerId> recipients;
+    recipients.reserve(transport.sent_messages().size());
+    for (const auto& sent : transport.sent_messages())
+        recipients.push_back(sent.peer_id);
+    std::sort(recipients.begin(), recipients.end());
+    EXPECT_EQ((std::vector<og::sim::PeerId>{11u, 11u, 13u, 13u}),
+              recipients);
+}
+
+TEST(NetTransport, heartbeat_resets_server_input_timeout)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    std::uint64_t now_ms = 1000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+
+    transport.set_connected_peers({7u});
+    server.poll_incoming_messages();
+
+    now_ms += static_cast<std::uint64_t>(og::sim::DISCONNECT_TIMEOUT_MS) - 1u;
+    transport.queue_received(
+        7u,
+        og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{}));
+    server.step();
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+
+    now_ms += static_cast<std::uint64_t>(og::sim::DISCONNECT_TIMEOUT_MS) - 1u;
+    server.step();
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+
+    now_ms += 2u;
+    server.step();
+    EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
 }
 
 TEST(NetTransport, game_server_snapshot_hash_check_is_strict_per_peer_per_tick)
