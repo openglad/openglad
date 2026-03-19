@@ -792,7 +792,10 @@ TEST(PickerNetworkClient, host_relay_flow_creates_room_code_and_encodes_campaign
     g_start_game_requested = false;
 
     const int relay_port = ix::getFreePort();
-    FakeRelayServer relay_server(relay_port, 200, R"({"code":"glad-xkcd"})");
+    FakeRelayServer relay_server(
+        relay_port,
+        200,
+        R"({"code":"glad-xkcd","owner_token":"owner-secret-token"})");
 
     og::ui::PickerHostGameOptions options;
     options.port = ix::getFreePort();
@@ -814,6 +817,19 @@ TEST(PickerNetworkClient, host_relay_flow_creates_room_code_and_encodes_campaign
     EXPECT_NE(std::string::npos, create_uri.find("&host=Host"));
     EXPECT_NE(std::string::npos, create_uri.find("%20"));
     EXPECT_NE(std::string::npos, create_uri.find("%2F"));
+    const auto parsed_create =
+        og::ui::detail::parse_relay_room_create_response(
+            R"({"code":"glad-xkcd","owner_token":"owner-secret-token"})");
+    EXPECT_EQ("glad-xkcd", parsed_create.room_code);
+    EXPECT_EQ("owner-secret-token", parsed_create.owner_token);
+    EXPECT_EQ(
+        std::format(
+            "ws://127.0.0.1:{}/api/room/GLAD-XKCD?owner_token=owner-secret-token",
+            relay_port),
+        og::ui::detail::build_relay_room_websocket_url(
+            std::format("ws://127.0.0.1:{}", relay_port),
+            "GLAD-XKCD",
+            "owner-secret-token"));
 
     host_client->shutdown();
 }

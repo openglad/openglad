@@ -15,12 +15,24 @@ interface CreateRoomOptions {
   clientIp?: string;
 }
 
+interface CreatedRoom {
+  code: string;
+  ownerToken: string;
+}
+
 function websocketRequest(path: string, headers?: HeadersInit): Request {
   const requestHeaders = new Headers(headers);
   requestHeaders.set("Upgrade", "websocket");
   return new Request(`https://relay.test${path}`, {
     headers: requestHeaders,
   });
+}
+
+function roomSocketPath(room: CreatedRoom, asOwner = false): string {
+  if (!asOwner || !room.ownerToken) {
+    return `/api/room/${room.code}`;
+  }
+  return `/api/room/${room.code}?owner_token=${encodeURIComponent(room.ownerToken)}`;
 }
 
 async function openRoomSocket(path: string, headers?: HeadersInit): Promise<WebSocket> {
@@ -105,6 +117,39 @@ function waitForClose(socket: WebSocket): Promise<CloseEvent> {
   });
 }
 
+function waitForSilence(
+  socket: WebSocket,
+  label: string,
+  timeoutMs = 100,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onMessage = (event: MessageEvent) => {
+      cleanup();
+      reject(
+        new Error(
+          `Unexpected WebSocket message while waiting for silence (${label}): ${String(event.data)}`,
+        ),
+      );
+    };
+    const onClose = () => {
+      cleanup();
+      reject(new Error(`WebSocket closed while waiting for silence: ${label}`));
+    };
+    const cleanup = () => {
+      clearTimeout(timeout);
+      socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("close", onClose);
+    };
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, timeoutMs);
+
+    socket.addEventListener("message", onMessage);
+    socket.addEventListener("close", onClose, { once: true });
+  });
+}
+
 async function waitForCondition(
   label: string,
   predicate: () => Promise<boolean>,
@@ -174,7 +219,7 @@ function decodeFrame(data: ArrayBuffer): number[] {
   return [...new Uint8Array(data)];
 }
 
-async function createRoom(options: CreateRoomOptions = {}): Promise<string> {
+async function createRoom(options: CreateRoomOptions = {}): Promise<CreatedRoom> {
   const params = new URLSearchParams();
   params.set("campaign", options.campaign ?? "org.openglad.gladiator");
   if (options.campaignName) {
@@ -197,9 +242,14 @@ async function createRoom(options: CreateRoomOptions = {}): Promise<string> {
     },
   );
   expect(response.status).toBe(200);
-  const payload = (await response.json()) as { code: string };
+  const payload = (await response.json()) as { code: string; owner_token?: string };
   expect(payload.code).toMatch(/^GLAD-[A-Z0-9]{4}$/);
-  return payload.code;
+  expect(typeof payload.owner_token).toBe("string");
+  expect(payload.owner_token).toMatch(/^[0-9a-f]{32}$/);
+  return {
+    code: payload.code,
+    ownerToken: payload.owner_token ?? "",
+  };
 }
 
 afterEach(async () => {
@@ -218,7 +268,7 @@ afterEach(async () => {
 });
 
 describe("OpenGlad relay worker", () => {
-  it("supports room listing, frame relay, host migration, and room limits", async () => {
+  it("supports room listing, frame relay, stable host reclaim, and room limits", async () => {
     const alphaRoom = await createRoom({
       campaign: "campaign.alpha",
       campaignName: "Alpha Campaign",
@@ -234,7 +284,7 @@ describe("OpenGlad relay worker", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([]);
 
-    const hostSocket = await openRoomSocket(`/api/room/${alphaRoom}`);
+    const hostSocket = await openRoomSocket(roomSocketPath(alphaRoom, true));
     const hostJoined = JSON.parse((await waitForMessage(hostSocket, "host joined")) as string) as {
       peer_id: number;
       host: number;
@@ -253,7 +303,7 @@ describe("OpenGlad relay worker", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual([
       expect.objectContaining({
-        code: alphaRoom,
+        code: alphaRoom.code,
         campaign_hash: "campaign.alpha",
         campaign_name: "Alpha Campaign",
         host_name: "Host Alpha",
@@ -266,7 +316,7 @@ describe("OpenGlad relay worker", () => {
     await expect(response.json()).resolves.toEqual([]);
 
     const hostPeerJoinedPromise = waitForMessages(hostSocket, 1, "host peer joined");
-    const guestSocket = await openRoomSocket(`/api/room/${alphaRoom}`);
+    const guestSocket = await openRoomSocket(roomSocketPath(alphaRoom));
     const guestJoined = JSON.parse((await waitForMessage(guestSocket, "guest joined")) as string) as {
       peer_id: number;
       host: number;
@@ -319,43 +369,96 @@ describe("OpenGlad relay worker", () => {
       6,
     ]);
 
-    const guestCloseMessagesPromise = waitForMessages(
+    const guestPeerLeftPromise = waitForMessage(
       guestSocket,
-      2,
-      "guest close updates",
+      "guest close update",
     );
     hostSocket.close(1000, "host left");
 
-    const guestCloseMessages = await guestCloseMessagesPromise;
-    expect(JSON.parse(guestCloseMessages[0] as string)).toEqual({
+    expect(JSON.parse((await guestPeerLeftPromise) as string)).toEqual({
       type: "peer_left",
       peer_id: 1,
-    });
-    expect(JSON.parse(guestCloseMessages[1] as string)).toEqual({
-      type: "host_changed",
-      new_host: 2,
     });
 
     const roomListResponse = await SELF.fetch("https://relay.test/api/rooms");
     await expect(roomListResponse.json()).resolves.toEqual([
       expect.objectContaining({
-        code: alphaRoom,
+        code: alphaRoom.code,
         player_count: 1,
       }),
     ]);
 
-    guestSocket.close(1000, "done");
+    await expect(
+      readRoomPeerState(env.GAME_ROOM.get(env.GAME_ROOM.idFromName(alphaRoom.code))),
+    ).resolves.toEqual({
+      hostPeerId: 1,
+      peerIds: [2],
+    });
 
-    const roomCode = await createRoom({ campaign: "campaign.capacity" });
+    const guestHostReturnPromise = waitForMessage(
+      guestSocket,
+      "guest host return",
+    );
+    const reconnectedHostSocket = await openRoomSocket(roomSocketPath(alphaRoom, true));
+    const reconnectedHostJoined = JSON.parse(
+      (await waitForMessage(reconnectedHostSocket, "reconnected host joined")) as string,
+    ) as {
+      peer_id: number;
+      host: number;
+    };
+    const reconnectedHostPeerList = JSON.parse(
+      (await waitForMessage(reconnectedHostSocket, "reconnected host peer list")) as string,
+    ) as {
+      peers: number[];
+      host: number;
+    };
+    expect(reconnectedHostJoined).toEqual(expect.objectContaining({
+      peer_id: 1,
+      host: 1,
+    }));
+    expect(reconnectedHostPeerList).toEqual(expect.objectContaining({
+      peers: [1, 2],
+      host: 1,
+    }));
+    expect(JSON.parse((await guestHostReturnPromise) as string)).toEqual({
+      type: "peer_joined",
+      peer_id: 1,
+      is_host: true,
+    });
+
+    const hostRelayAgainPromise = waitForMessage(
+      reconnectedHostSocket,
+      "host relay after reconnect",
+    );
+    guestSocket.send(
+      new Uint8Array([1, 1, 0, 0, 0, 3, 2, 1]).buffer,
+    );
+    expect(decodeFrame((await hostRelayAgainPromise) as ArrayBuffer)).toEqual([
+      2,
+      2,
+      0,
+      0,
+      0,
+      3,
+      2,
+      1,
+    ]);
+
+    guestSocket.close(1000, "done");
+    reconnectedHostSocket.close(1000, "done");
+
+    const room = await createRoom({ campaign: "campaign.capacity" });
     const sockets: WebSocket[] = [];
     for (let index = 0; index < 4; ++index) {
-      const socket = await openRoomSocket(`/api/room/${roomCode}`);
+      const socket = await openRoomSocket(
+        index === 0 ? roomSocketPath(room, true) : roomSocketPath(room),
+      );
       sockets.push(socket);
       await waitForMessage(socket, "capacity joined");
       await waitForMessage(socket, "capacity peer list");
     }
 
-    const overCapacity = await SELF.fetch(websocketRequest(`/api/room/${roomCode}`));
+    const overCapacity = await SELF.fetch(websocketRequest(roomSocketPath(room)));
     expect(overCapacity.status).toBe(409);
 
     const closePromise = waitForClose(sockets[0]);
@@ -371,10 +474,10 @@ describe("OpenGlad relay worker", () => {
   });
 
   it("keeps empty rooms reconnectable during the grace window and expires them after the alarm", async () => {
-    const roomCode = await createRoom({ campaign: "campaign.reconnect" });
-    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(roomCode));
+    const room = await createRoom({ campaign: "campaign.reconnect" });
+    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room.code));
 
-    const hostSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    const hostSocket = await openRoomSocket(roomSocketPath(room, true));
     const hostJoined = JSON.parse((await waitForMessage(hostSocket, "host joined")) as string) as {
       peer_id: number;
       host: number;
@@ -398,7 +501,7 @@ describe("OpenGlad relay worker", () => {
     const hiddenDuringGrace = await SELF.fetch("https://relay.test/api/rooms");
     await expect(hiddenDuringGrace.json()).resolves.toEqual([]);
 
-    const reconnectSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    const reconnectSocket = await openRoomSocket(roomSocketPath(room, true));
     const reconnectJoined = JSON.parse(
       (await waitForMessage(reconnectSocket, "reconnect joined")) as string,
     ) as {
@@ -412,12 +515,12 @@ describe("OpenGlad relay worker", () => {
       host: number;
     };
     expect(reconnectJoined).toEqual(expect.objectContaining({
-      peer_id: 2,
-      host: 2,
+      peer_id: 1,
+      host: 1,
     }));
     expect(reconnectPeerList).toEqual(expect.objectContaining({
-      peers: [2],
-      host: 2,
+      peers: [1],
+      host: 1,
     }));
 
     reconnectSocket.close(1000, "grace reconnect left");
@@ -425,8 +528,80 @@ describe("OpenGlad relay worker", () => {
 
     await expect(runDurableObjectAlarm(roomStub)).resolves.toBe(true);
 
-    const expiredResponse = await SELF.fetch(websocketRequest(`/api/room/${roomCode}`));
+    const expiredResponse = await SELF.fetch(websocketRequest(roomSocketPath(room)));
     expect(expiredResponse.status).toBe(404);
+  });
+
+  it("reclaims the host peer id when the owner reconnects before the old socket closes", async () => {
+    const room = await createRoom({ campaign: "campaign.overlap-reconnect" });
+    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room.code));
+
+    const hostSocket = await openRoomSocket(roomSocketPath(room, true));
+    await waitForMessage(hostSocket, "overlap host joined");
+    await waitForMessage(hostSocket, "overlap host peer list");
+
+    const hostPeerJoinedPromise = waitForMessages(
+      hostSocket,
+      1,
+      "overlap host peer joined",
+    );
+    const guestSocket = await openRoomSocket(roomSocketPath(room));
+    await waitForMessage(guestSocket, "overlap guest joined");
+    await waitForMessage(guestSocket, "overlap guest peer list");
+    await hostPeerJoinedPromise;
+
+    const hostClosePromise = waitForClose(hostSocket);
+    const replacementHostSocket = await openRoomSocket(roomSocketPath(room, true));
+    const replacementJoined = JSON.parse(
+      (await waitForMessage(replacementHostSocket, "replacement host joined")) as string,
+    ) as {
+      peer_id: number;
+      host: number;
+    };
+    const replacementPeerList = JSON.parse(
+      (await waitForMessage(replacementHostSocket, "replacement host peer list")) as string,
+    ) as {
+      peers: number[];
+      host: number;
+    };
+
+    expect(replacementJoined).toEqual(expect.objectContaining({
+      peer_id: 1,
+      host: 1,
+    }));
+    expect(replacementPeerList).toEqual(expect.objectContaining({
+      peers: [1, 2],
+      host: 1,
+    }));
+
+    const hostCloseEvent = await hostClosePromise;
+    expect(hostCloseEvent.code).toBe(1012);
+
+    await waitForSilence(guestSocket, "owner reconnect replacement");
+
+    const hostRelayPromise = waitForMessage(
+      replacementHostSocket,
+      "overlap relay after replacement",
+    );
+    guestSocket.send(
+      new Uint8Array([1, 1, 0, 0, 0, 4, 3, 2, 1]).buffer,
+    );
+    expect(decodeFrame((await hostRelayPromise) as ArrayBuffer)).toEqual([
+      2,
+      2,
+      0,
+      0,
+      0,
+      4,
+      3,
+      2,
+      1,
+    ]);
+
+    await expect(readRoomPeerState(roomStub)).resolves.toEqual({
+      hostPeerId: 1,
+      peerIds: [1, 2],
+    });
   });
 
   it("enforces per-ip create limits and per-connection websocket message limits", async () => {
@@ -449,12 +624,12 @@ describe("OpenGlad relay worker", () => {
     );
     expect(limitedCreateResponse.status).toBe(429);
 
-    const roomCode = await createRoom({
+    const room = await createRoom({
       campaign: "campaign.limit",
       clientIp: "203.0.113.11",
     });
 
-    const floodSocket = await openRoomSocket(`/api/room/${roomCode}`, {
+    const floodSocket = await openRoomSocket(roomSocketPath(room, true), {
       "cf-connecting-ip": "198.51.100.42",
     });
     await waitForMessage(floodSocket, "flood joined");
@@ -474,7 +649,7 @@ describe("OpenGlad relay worker", () => {
   });
 
   it("does not share websocket rate limits across peers behind the same nat", async () => {
-    const roomCode = await createRoom({
+    const room = await createRoom({
       campaign: "campaign.nat",
       clientIp: "203.0.113.12",
     });
@@ -482,12 +657,12 @@ describe("OpenGlad relay worker", () => {
       "cf-connecting-ip": "198.51.100.77",
     };
 
-    const hostSocket = await openRoomSocket(`/api/room/${roomCode}`, sharedIpHeaders);
+    const hostSocket = await openRoomSocket(roomSocketPath(room, true), sharedIpHeaders);
     await waitForMessage(hostSocket, "nat host joined");
     await waitForMessage(hostSocket, "nat host peer list");
 
     const hostPeerJoinedPromise = waitForMessages(hostSocket, 1, "nat host peer joined");
-    const guestSocket = await openRoomSocket(`/api/room/${roomCode}`, sharedIpHeaders);
+    const guestSocket = await openRoomSocket(roomSocketPath(room), sharedIpHeaders);
     await waitForMessage(guestSocket, "nat guest joined");
     await waitForMessage(guestSocket, "nat guest peer list");
     await hostPeerJoinedPromise;
@@ -513,11 +688,11 @@ describe("OpenGlad relay worker", () => {
     expect(hostCloseEvent.code).toBe(1008);
   });
 
-  it("cleans up relay send failures through normal peer removal and host migration", async () => {
-    const roomCode = await createRoom({ campaign: "campaign.send-failure" });
-    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(roomCode));
+  it("cleans up relay send failures without promoting a replacement host", async () => {
+    const room = await createRoom({ campaign: "campaign.send-failure" });
+    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room.code));
 
-    const hostSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    const hostSocket = await openRoomSocket(roomSocketPath(room, true));
     await waitForMessage(hostSocket, "send failure host joined");
     await waitForMessage(hostSocket, "send failure host peer list");
 
@@ -526,28 +701,22 @@ describe("OpenGlad relay worker", () => {
       1,
       "send failure host peer joined",
     );
-    const guestSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    const guestSocket = await openRoomSocket(roomSocketPath(room));
     await waitForMessage(guestSocket, "send failure guest joined");
     await waitForMessage(guestSocket, "send failure guest peer list");
     await hostPeerJoinedPromise;
 
     await replacePeerSocketWithThrowingSend(roomStub, 1);
 
-    const guestCleanupPromise = waitForMessages(
+    const guestCleanupPromise = waitForMessage(
       guestSocket,
-      2,
-      "send failure cleanup updates",
+      "send failure cleanup update",
     );
     guestSocket.send(new Uint8Array([RELAY_BROADCAST_TAG, 7, 8, 9]).buffer);
 
-    const guestCleanupMessages = await guestCleanupPromise;
-    expect(JSON.parse(guestCleanupMessages[0] as string)).toEqual({
+    expect(JSON.parse((await guestCleanupPromise) as string)).toEqual({
       type: "peer_left",
       peer_id: 1,
-    });
-    expect(JSON.parse(guestCleanupMessages[1] as string)).toEqual({
-      type: "host_changed",
-      new_host: 2,
     });
 
     await waitForCondition("room index after relay send failure", async () => {
@@ -556,20 +725,20 @@ describe("OpenGlad relay worker", () => {
         code: string;
         player_count: number;
       }>;
-      return rooms.some((room) => room.code === roomCode && room.player_count === 1);
+      return rooms.some((entry) => entry.code === room.code && entry.player_count === 1);
     });
 
     await expect(readRoomPeerState(roomStub)).resolves.toEqual({
-      hostPeerId: 2,
+      hostPeerId: 1,
       peerIds: [2],
     });
   });
 
   it("cleans up notification send failures through normal peer removal", async () => {
-    const roomCode = await createRoom({ campaign: "campaign.broadcast-failure" });
-    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(roomCode));
+    const room = await createRoom({ campaign: "campaign.broadcast-failure" });
+    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room.code));
 
-    const hostSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    const hostSocket = await openRoomSocket(roomSocketPath(room, true));
     await waitForMessage(hostSocket, "broadcast failure host joined");
     await waitForMessage(hostSocket, "broadcast failure host peer list");
 
@@ -578,7 +747,7 @@ describe("OpenGlad relay worker", () => {
       1,
       "broadcast failure host peer joined",
     );
-    const guestSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    const guestSocket = await openRoomSocket(roomSocketPath(room));
     await waitForMessage(guestSocket, "broadcast failure guest joined");
     await waitForMessage(guestSocket, "broadcast failure guest peer list");
     await hostPeerJoinedPromise;
@@ -591,7 +760,7 @@ describe("OpenGlad relay worker", () => {
     const hiddenRoomList = await SELF.fetch("https://relay.test/api/rooms");
     await expect(hiddenRoomList.json()).resolves.toEqual([]);
     await expect(readRoomPeerState(roomStub)).resolves.toEqual({
-      hostPeerId: null,
+      hostPeerId: 1,
       peerIds: [],
     });
   });

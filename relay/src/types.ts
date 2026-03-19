@@ -20,9 +20,11 @@ export interface StoredRoomState {
   created_at: number;
   next_peer_id: number;
   host_peer_id: number | null;
+  host_owner_token: string;
 }
 
 export interface WebSocketAttachment {
   peerId: number;
   clientIp: string;
+  isHostOwner: boolean;
 }

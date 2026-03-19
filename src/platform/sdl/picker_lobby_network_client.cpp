@@ -350,15 +350,22 @@ std::string relay_base_url_or_default(std::string configured_url)
     return std::string(kDefaultRelayBaseUrl);
 }
 
-std::string build_relay_room_websocket_url(std::string base_url,
-                                           std::string_view room_code)
+std::string build_relay_room_websocket_url_impl(std::string base_url,
+                                                std::string_view room_code,
+                                                std::string_view owner_token)
 {
     base_url = relay_api_base_url(std::move(base_url));
     if (base_url.rfind("https://", 0) == 0)
         base_url.replace(0, 8, "wss://");
     else if (base_url.rfind("http://", 0) == 0)
         base_url.replace(0, 7, "ws://");
-    return std::format("{}/room/{}", base_url, room_code);
+
+    std::string url = std::format("{}/room/{}", base_url, room_code);
+    const std::string encoded_owner_token =
+        url_encode_component(owner_token);
+    if (!encoded_owner_token.empty())
+        url.append(std::format("?owner_token={}", encoded_owner_token));
+    return url;
 }
 
 std::string build_relay_room_create_url(std::string base_url,
@@ -409,7 +416,8 @@ std::string build_relay_room_list_url(std::string base_url,
     return url;
 }
 
-std::string extract_room_code_from_create_response(std::string_view body)
+og::ui::detail::RelayRoomCreateInfo
+parse_relay_room_create_response_impl(std::string_view body)
 {
     const std::string trimmed = trim_copy(std::string(body));
     if (trimmed.empty())
@@ -420,23 +428,35 @@ std::string extract_room_code_from_create_response(std::string_view body)
         if (const auto code = extract_json_string_field(trimmed, "code");
             code.has_value())
         {
-            return *code;
+            return {
+                .room_code = *code,
+                .owner_token = extract_json_string_field(trimmed, "owner_token")
+                    .value_or(""),
+            };
         }
         if (const auto code =
                 extract_json_string_field(trimmed, "room_code");
             code.has_value())
         {
-            return *code;
+            return {
+                .room_code = *code,
+                .owner_token = extract_json_string_field(trimmed, "owner_token")
+                    .value_or(""),
+            };
         }
     }
 
-    return trimmed;
+    return {
+        .room_code = trimmed,
+        .owner_token = {},
+    };
 }
 
-std::string create_relay_room_code(std::string_view base_url,
-                                   std::string_view campaign_tag,
-                                   std::string_view campaign_name,
-                                   std::string_view host_name)
+og::ui::detail::RelayRoomCreateInfo create_relay_room(
+    std::string_view base_url,
+    std::string_view campaign_tag,
+    std::string_view campaign_name,
+    std::string_view host_name)
 {
     const std::string create_url = build_relay_room_create_url(
         std::string(base_url),
@@ -473,7 +493,7 @@ std::string create_relay_room_code(std::string_view base_url,
             status_code,
             trim_copy(body)));
     }
-    return extract_room_code_from_create_response(body);
+    return parse_relay_room_create_response_impl(body);
 #else
     ix::HttpClient client;
     ix::HttpRequestArgsPtr args = client.createRequest(create_url, ix::HttpClient::kPost);
@@ -490,7 +510,7 @@ std::string create_relay_room_code(std::string_view base_url,
             response->statusCode,
             trim_copy(response->body)));
     }
-    return extract_room_code_from_create_response(response->body);
+    return parse_relay_room_create_response_impl(response->body);
 #endif
 }
 
@@ -723,6 +743,21 @@ std::string fetch_relay_room_list_body(std::string_view base_url,
 } // namespace
 
 namespace og::ui::detail {
+
+std::string build_relay_room_websocket_url(std::string base_url,
+                                           std::string_view room_code,
+                                           std::string_view owner_token)
+{
+    return build_relay_room_websocket_url_impl(
+        std::move(base_url),
+        room_code,
+        owner_token);
+}
+
+RelayRoomCreateInfo parse_relay_room_create_response(std::string_view body)
+{
+    return parse_relay_room_create_response_impl(body);
+}
 
 og::sim::LobbyPlayer build_local_lobby_player(
     const SaveData& save,
@@ -1217,15 +1252,20 @@ public:
             {
                 const std::string relay_base_url =
                     relay_base_url_or_default(options_.relay_base_url);
+                const og::ui::detail::RelayRoomCreateInfo relay_room =
+                    create_relay_room(
+                    relay_base_url,
+                    current_campaign_tag(),
+                    current_campaign_name(),
+                    current_host_name(local_team_));
                 relay_room_code_ = og::ui::normalize_relay_room_code(
-                    create_relay_room_code(relay_base_url,
-                                           current_campaign_tag(),
-                                           current_campaign_name(),
-                                           current_host_name(local_team_)));
+                    relay_room.room_code);
                 relay_transport_ =
                     std::make_shared<og::sim::RelayWebSocketTransport>(
-                        build_relay_room_websocket_url(relay_base_url,
-                                                       relay_room_code_));
+                        og::ui::detail::build_relay_room_websocket_url(
+                            relay_base_url,
+                            relay_room_code_,
+                            relay_room.owner_token));
                 relay_transport_->accept_connections();
             }
             catch (const std::exception& error)
@@ -1644,7 +1684,7 @@ public:
             relay_room_code_ = og::ui::normalize_relay_room_code(
                 options_.room_code);
             transport_ = std::make_shared<og::sim::RelayWebSocketTransport>(
-                build_relay_room_websocket_url(
+                og::ui::detail::build_relay_room_websocket_url(
                     relay_base_url_or_default(options_.relay_base_url),
                     relay_room_code_));
         }

@@ -1,6 +1,7 @@
 import type { RoomInfo, StoredRoomState } from "./types";
 
 export const ROOM_INDEX_PREFIX = "room:";
+export const ROOM_OWNER_PREFIX = "room-owner:";
 export const CREATE_RATE_LIMIT_PREFIX = "rate:create:";
 export const ROOM_INDEX_TTL_SECONDS = 60 * 60;
 export const EMPTY_ROOM_GRACE_MS = 30_000;
@@ -24,6 +25,10 @@ export function roomIndexKey(code: string): string {
 
 export function createRateLimitKey(clientIp: string): string {
   return `${CREATE_RATE_LIMIT_PREFIX}${encodeURIComponent(clientIp)}`;
+}
+
+export function roomOwnerKey(code: string): string {
+  return `${ROOM_OWNER_PREFIX}${code}`;
 }
 
 export function normalizeRoomCode(code: string): string {
@@ -60,6 +65,15 @@ export function generateRoomCode(): string {
   return `GLAD-${suffix}`;
 }
 
+export function generateOwnerToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  let token = "";
+  for (const value of bytes) {
+    token += value.toString(16).padStart(2, "0");
+  }
+  return token;
+}
+
 export function makeRoomInfo(init: {
   code: string;
   campaign_hash?: string;
@@ -88,6 +102,7 @@ export function makeStoredRoomState(room: RoomInfo): StoredRoomState {
     created_at: room.created_at,
     next_peer_id: 1,
     host_peer_id: null,
+    host_owner_token: "",
   };
 }
 

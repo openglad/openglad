@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace og::ui {
@@ -57,5 +58,20 @@ std::string build_relay_room_prompt_message(
     const std::vector<PickerRelayRoomInfo>& rooms,
     const std::string& campaign_tag,
     const std::string& list_error = {});
+
+namespace detail {
+
+struct RelayRoomCreateInfo
+{
+    std::string room_code;
+    std::string owner_token;
+};
+
+std::string build_relay_room_websocket_url(std::string base_url,
+                                           std::string_view room_code,
+                                           std::string_view owner_token = {});
+RelayRoomCreateInfo parse_relay_room_create_response(std::string_view body);
+
+} // namespace detail
 
 } // namespace og::ui

@@ -15,6 +15,7 @@ import {
   makeRoomInfo,
   readPeerId,
   roomIndexKey,
+  roomOwnerKey,
   roomInfoFromStoredState,
 } from "./shared";
 import type { Env, StoredRoomState, WebSocketAttachment } from "./types";
@@ -35,8 +36,22 @@ export class GameRoom extends DurableObject {
     this.appEnv = env;
 
     this.ctx.blockConcurrencyWhile(async () => {
-      this.stateData =
-        (await this.ctx.storage.get<StoredRoomState>(ROOM_STATE_KEY)) ?? null;
+      const stored =
+        (await this.ctx.storage.get<Partial<StoredRoomState>>(ROOM_STATE_KEY)) ?? null;
+      this.stateData = stored
+        ? {
+            code: stored.code ?? "",
+            campaign_hash: stored.campaign_hash ?? "",
+            campaign_name: stored.campaign_name ?? "",
+            host_name: stored.host_name ?? "",
+            created_at: stored.created_at ?? Date.now(),
+            next_peer_id: stored.next_peer_id ?? 1,
+            host_peer_id:
+              typeof stored.host_peer_id === "number" ? stored.host_peer_id : null,
+            host_owner_token:
+              typeof stored.host_owner_token === "string" ? stored.host_owner_token : "",
+          }
+        : null;
       this.restoreHibernatedSockets();
     });
   }
@@ -63,6 +78,7 @@ export class GameRoom extends DurableObject {
     }
 
     if (!this.stateData) {
+      const hostOwnerToken = request.headers.get("x-openglad-room-owner-token") ?? "";
       const seededRoom = makeRoomInfo({
         code: roomCode,
         campaign_hash:
@@ -79,11 +95,15 @@ export class GameRoom extends DurableObject {
         campaign_name: seededRoom.campaign_name,
         host_name: seededRoom.host_name,
         created_at: seededRoom.created_at,
-        next_peer_id: 1,
-        host_peer_id: null,
+        next_peer_id: hostOwnerToken ? 2 : 1,
+        host_peer_id: hostOwnerToken ? 1 : null,
+        host_owner_token: hostOwnerToken,
       };
       await this.persistState();
     }
+
+    const isHostOwner = this.isHostOwnerRequest(request);
+    const replacedHostConnection = this.replaceExistingHostConnectionIfNeeded(isHostOwner);
 
     if (this.peers.size >= MAX_ROOM_PEERS) {
       return new Response("Room is full", { status: 409 });
@@ -94,16 +114,16 @@ export class GameRoom extends DurableObject {
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
-    const peerId = this.stateData.next_peer_id++;
+    const peerId = this.assignPeerId(isHostOwner);
     const clientIp = clientIpFromRequest(request);
 
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ peerId, clientIp } satisfies WebSocketAttachment);
+    server.serializeAttachment({
+      peerId,
+      clientIp,
+      isHostOwner,
+    } satisfies WebSocketAttachment);
     this.peers.set(peerId, server);
-
-    if (this.stateData.host_peer_id === null) {
-      this.stateData.host_peer_id = peerId;
-    }
 
     await this.persistState();
     await this.persistRoomIndex();
@@ -118,14 +138,16 @@ export class GameRoom extends DurableObject {
       peers: [...this.peers.keys()].sort((left, right) => left - right),
       host: this.stateData.host_peer_id,
     });
-    await this.broadcastJson(
-      {
-        type: "peer_joined",
-        peer_id: peerId,
-        is_host: peerId === this.stateData.host_peer_id,
-      },
-      peerId,
-    );
+    if (!replacedHostConnection) {
+      await this.broadcastJson(
+        {
+          type: "peer_joined",
+          peer_id: peerId,
+          is_host: peerId === this.stateData.host_peer_id,
+        },
+        peerId,
+      );
+    }
 
     return new Response(null, {
       status: 101,
@@ -143,6 +165,10 @@ export class GameRoom extends DurableObject {
     const peerId = attachment?.peerId;
     if (!peerId) {
       ws.close(1011, "Missing peer metadata");
+      return;
+    }
+    if (this.peers.get(peerId) !== ws) {
+      this.tryClose(ws, 1000, "Superseded connection");
       return;
     }
 
@@ -195,6 +221,9 @@ export class GameRoom extends DurableObject {
     if (!peerId) {
       return;
     }
+    if (this.peers.get(peerId) !== ws) {
+      return;
+    }
 
     await this.removePeer(peerId);
   }
@@ -206,6 +235,7 @@ export class GameRoom extends DurableObject {
   override async alarm(): Promise<void> {
     if (this.peers.size === 0 && this.stateData) {
       await this.appEnv.ROOM_INDEX.delete(roomIndexKey(this.stateData.code));
+      await this.appEnv.ROOM_INDEX.delete(roomOwnerKey(this.stateData.code));
       await this.ctx.storage.delete(ROOM_STATE_KEY);
       this.stateData = null;
     }
@@ -296,14 +326,8 @@ export class GameRoom extends DurableObject {
     });
 
     if (this.stateData.host_peer_id === peerId) {
-      const nextHostPeerId =
-        [...this.peers.keys()].sort((left, right) => left - right)[0] ?? null;
-      this.stateData.host_peer_id = nextHostPeerId;
-      if (nextHostPeerId !== null) {
-        await this.broadcastJson({
-          type: "host_changed",
-          new_host: nextHostPeerId,
-        });
+      if (!this.stateData.host_owner_token) {
+        this.stateData.host_peer_id = null;
       }
     }
 
@@ -344,6 +368,18 @@ export class GameRoom extends DurableObject {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  private tryClose(
+    socket: WebSocket,
+    code: number,
+    reason: string,
+  ): void {
+    try {
+      socket.close(code, reason);
+    } catch {
+      // Ignore sockets that are already closing or closed.
     }
   }
 
@@ -393,5 +429,72 @@ export class GameRoom extends DurableObject {
 
     budget.count += 1;
     return true;
+  }
+
+  private replaceExistingHostConnectionIfNeeded(isHostOwner: boolean): boolean {
+    if (!isHostOwner || !this.stateData || this.stateData.host_peer_id === null) {
+      return false;
+    }
+
+    const existingSocket = this.peers.get(this.stateData.host_peer_id);
+    if (!existingSocket) {
+      return false;
+    }
+
+    this.peers.delete(this.stateData.host_peer_id);
+    this.messageRateLimits.delete(this.stateData.host_peer_id);
+    this.tryClose(existingSocket, 1012, "Superseded by reconnect");
+    return true;
+  }
+
+  private assignPeerId(isHostOwner: boolean): number {
+    if (!this.stateData) {
+      throw new Error("Room state must exist before assigning a peer id");
+    }
+
+    if (
+      isHostOwner &&
+      this.stateData.host_peer_id !== null &&
+      !this.peers.has(this.stateData.host_peer_id)
+    ) {
+      const peerId = this.stateData.host_peer_id;
+      if (peerId >= this.stateData.next_peer_id) {
+        this.stateData.next_peer_id = peerId + 1;
+      }
+      return peerId;
+    }
+
+    while (
+      this.peers.has(this.stateData.next_peer_id) ||
+      this.stateData.next_peer_id === this.stateData.host_peer_id
+    ) {
+      this.stateData.next_peer_id += 1;
+    }
+
+    const peerId = this.stateData.next_peer_id;
+    this.stateData.next_peer_id += 1;
+
+    if (this.stateData.host_peer_id === null && isHostOwner) {
+      this.stateData.host_peer_id = peerId;
+    }
+
+    return peerId;
+  }
+
+  private isHostOwnerRequest(request: Request): boolean {
+    if (!this.stateData) {
+      return false;
+    }
+
+    if (!this.stateData.host_owner_token) {
+      return this.stateData.host_peer_id === null;
+    }
+
+    const connectingOwnerToken =
+      request.headers.get("x-openglad-connecting-owner-token") ?? "";
+    return (
+      connectingOwnerToken.length > 0 &&
+      connectingOwnerToken === this.stateData.host_owner_token
+    );
   }
 }

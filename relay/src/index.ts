@@ -7,6 +7,7 @@ import {
   clientIpFromRequest,
   createRateLimitKey,
   emptyResponse,
+  generateOwnerToken,
   generateRoomCode,
   isValidRoomCode,
   jsonResponse,
@@ -14,6 +15,7 @@ import {
   normalizeRoomCode,
   parseRoomInfo,
   roomIndexKey,
+  roomOwnerKey,
   textResponse,
 } from "./shared";
 import type { Env, RoomInfo } from "./types";
@@ -99,6 +101,7 @@ async function createRoom(env: Env, request: Request): Promise<Response> {
     if (await env.ROOM_INDEX.get(key)) {
       continue;
     }
+    const ownerToken = generateOwnerToken();
 
     const roomInfo = makeRoomInfo({
       code,
@@ -111,9 +114,13 @@ async function createRoom(env: Env, request: Request): Promise<Response> {
     await env.ROOM_INDEX.put(key, JSON.stringify(roomInfo), {
       expirationTtl: ROOM_INDEX_TTL_SECONDS,
     });
+    await env.ROOM_INDEX.put(roomOwnerKey(code), ownerToken, {
+      expirationTtl: ROOM_INDEX_TTL_SECONDS,
+    });
 
     return jsonResponse({
       code,
+      owner_token: ownerToken,
       room: roomInfo,
     });
   }
@@ -155,6 +162,7 @@ async function connectRoom(env: Env, request: Request, code: string): Promise<Re
   if (request.method !== "GET") {
     return textResponse("Method not allowed", { status: 405 });
   }
+  const url = new URL(request.url);
   const normalizedCode = normalizeRoomCode(code);
   if (!isValidRoomCode(normalizedCode)) {
     return textResponse("Invalid room code", { status: 400 });
@@ -166,6 +174,8 @@ async function connectRoom(env: Env, request: Request, code: string): Promise<Re
   if (!roomInfo) {
     return textResponse("Room not found", { status: 404 });
   }
+  const ownerToken = (await env.ROOM_INDEX.get(roomOwnerKey(normalizedCode))) ?? "";
+  const requestOwnerToken = url.searchParams.get("owner_token") ?? "";
 
   const id = env.GAME_ROOM.idFromName(normalizedCode);
   const room = env.GAME_ROOM.get(id);
@@ -175,6 +185,8 @@ async function connectRoom(env: Env, request: Request, code: string): Promise<Re
   headers.set("x-openglad-campaign-name", roomInfo.campaign_name);
   headers.set("x-openglad-host-name", roomInfo.host_name);
   headers.set("x-openglad-created-at", roomInfo.created_at.toString());
+  headers.set("x-openglad-room-owner-token", ownerToken);
+  headers.set("x-openglad-connecting-owner-token", requestOwnerToken);
 
   return room.fetch(new Request(request, { headers }));
 }
