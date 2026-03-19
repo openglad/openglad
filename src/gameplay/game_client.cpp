@@ -290,7 +290,8 @@ ClientPollResult poll_client_messages(
             }
 
             default:
-                continue;
+                result.malformed_server_message = true;
+                break;
             }
         }
         catch (const std::exception&)

@@ -516,6 +516,7 @@ ServerPollResult poll_server_messages(
             }
 
             default:
+                malformed_peers.insert(message.peer_id);
                 continue;
             }
         }

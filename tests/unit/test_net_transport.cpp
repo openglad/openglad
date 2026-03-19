@@ -1561,6 +1561,26 @@ TEST(NetTransport, game_server_disconnects_peers_that_send_malformed_messages)
     EXPECT_TRUE(server.last_polled_messages().empty());
 }
 
+TEST(NetTransport, game_server_disconnects_peers_that_send_unknown_raw_message_types)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u});
+    server.poll_incoming_messages();
+
+    std::vector<std::uint8_t> unknown_type =
+        og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{});
+    unknown_type[1] = 0xffu;
+    transport.queue_received(7u, std::move(unknown_type));
+
+    server.poll_incoming_messages();
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
+    EXPECT_TRUE(server.last_polled_messages().empty());
+}
+
 TEST(NetTransport, game_client_disconnects_when_server_message_is_malformed)
 {
     MockTransport transport;
@@ -1568,6 +1588,23 @@ TEST(NetTransport, game_client_disconnects_when_server_message_is_malformed)
 
     transport.set_connected_peers({7u});
     transport.queue_received(7u, {0x01, 0x02, 0x01, 0x00, 0xff});
+
+    client.poll_messages();
+
+    EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
+    EXPECT_TRUE(client.last_polled_messages().empty());
+}
+
+TEST(NetTransport, game_client_disconnects_when_server_message_type_is_unknown)
+{
+    MockTransport transport;
+    og::sim::GameClient client(transport, 7u);
+
+    transport.set_connected_peers({7u});
+    std::vector<std::uint8_t> unknown_type =
+        og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{});
+    unknown_type[1] = 0xffu;
+    transport.queue_received(7u, std::move(unknown_type));
 
     client.poll_messages();
 
