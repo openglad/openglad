@@ -21,6 +21,7 @@ import {
 import type { Env, StoredRoomState, WebSocketAttachment } from "./types";
 
 const ROOM_STATE_KEY = "room_state";
+const ROOM_EXPIRATION_MS = ROOM_INDEX_TTL_SECONDS * 1_000;
 
 interface InitializeRoomPayload {
   code?: string;
@@ -106,11 +107,13 @@ export class GameRoom extends DurableObject {
     const isHostOwner = this.isHostOwnerRequest(request);
     const replacedOwnerConnection = this.replaceExistingOwnerConnectionIfNeeded(isHostOwner);
 
+    if (this.isRoomExpired()) {
+      return new Response("Room not found", { status: 404 });
+    }
+
     if (this.peers.size >= MAX_ROOM_PEERS) {
       return new Response("Room is full", { status: 409 });
     }
-
-    await this.ctx.storage.deleteAlarm();
 
     const pair = new WebSocketPair();
     const client = pair[0];
@@ -128,6 +131,7 @@ export class GameRoom extends DurableObject {
 
     await this.persistState();
     await this.persistRoomIndex();
+    await this.scheduleNextAlarm();
 
     this.sendJson(server, {
       type: "joined",
@@ -234,12 +238,23 @@ export class GameRoom extends DurableObject {
   }
 
   override async alarm(): Promise<void> {
-    if (this.peers.size === 0 && this.stateData) {
-      await this.appEnv.ROOM_INDEX.delete(roomIndexKey(this.stateData.code));
-      await this.appEnv.ROOM_INDEX.delete(roomOwnerKey(this.stateData.code));
-      await this.ctx.storage.delete(ROOM_STATE_KEY);
-      this.stateData = null;
+    if (!this.stateData) {
+      return;
     }
+
+    if (this.isRoomExpired()) {
+      if (this.peers.size === 0) {
+        await this.deleteRoomState();
+      }
+      return;
+    }
+
+    if (this.peers.size === 0) {
+      await this.deleteRoomState();
+      return;
+    }
+
+    await this.scheduleNextAlarm();
   }
 
   private async initializeRoom(request: Request): Promise<Response> {
@@ -289,6 +304,7 @@ export class GameRoom extends DurableObject {
       host_owner_token: ownerToken,
     };
     await this.persistState();
+    await this.scheduleNextAlarm();
     return Response.json(roomInfoFromStoredState(this.stateData, 0));
   }
 
@@ -390,10 +406,7 @@ export class GameRoom extends DurableObject {
 
     await this.persistState();
     await this.persistRoomIndex();
-
-    if (this.peers.size === 0) {
-      await this.ctx.storage.setAlarm(Date.now() + EMPTY_ROOM_GRACE_MS);
-    }
+    await this.scheduleNextAlarm();
   }
 
   private async broadcastJson(
@@ -467,6 +480,56 @@ export class GameRoom extends DurableObject {
         expirationTtl: ROOM_INDEX_TTL_SECONDS,
       },
     );
+  }
+
+  private async deleteRoomState(): Promise<void> {
+    if (!this.stateData) {
+      return;
+    }
+    await this.appEnv.ROOM_INDEX.delete(roomIndexKey(this.stateData.code));
+    await this.appEnv.ROOM_INDEX.delete(roomOwnerKey(this.stateData.code));
+    await this.ctx.storage.delete(ROOM_STATE_KEY);
+    await this.ctx.storage.deleteAlarm();
+    this.stateData = null;
+  }
+
+  private roomExpiresAt(): number | null {
+    if (!this.stateData) {
+      return null;
+    }
+    return this.stateData.created_at + ROOM_EXPIRATION_MS;
+  }
+
+  private isRoomExpired(now = Date.now()): boolean {
+    const expiresAt = this.roomExpiresAt();
+    return expiresAt !== null && now >= expiresAt;
+  }
+
+  private async scheduleNextAlarm(now = Date.now()): Promise<void> {
+    if (!this.stateData) {
+      return;
+    }
+
+    let nextAlarmAt: number | null = null;
+    const expiresAt = this.roomExpiresAt();
+    if (expiresAt !== null && expiresAt > now) {
+      nextAlarmAt = expiresAt;
+    } else if (this.peers.size === 0) {
+      nextAlarmAt = now;
+    }
+
+    if (this.peers.size === 0) {
+      const emptyRoomDeadline = now + EMPTY_ROOM_GRACE_MS;
+      nextAlarmAt =
+        nextAlarmAt === null ? emptyRoomDeadline : Math.min(nextAlarmAt, emptyRoomDeadline);
+    }
+
+    if (nextAlarmAt === null) {
+      await this.ctx.storage.deleteAlarm();
+      return;
+    }
+
+    await this.ctx.storage.setAlarm(nextAlarmAt);
   }
 
   private consumeMessageRateBudget(peerId: number): boolean {

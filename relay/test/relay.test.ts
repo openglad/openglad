@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   MAX_RELAY_PAYLOAD_BYTES,
+  ROOM_INDEX_TTL_SECONDS,
   RELAY_BROADCAST_TAG,
   roomIndexKey,
   roomOwnerKey,
@@ -198,6 +199,23 @@ async function replacePeerSocketWithThrowingSend(
         return attachment;
       },
     } as unknown as WebSocket);
+  });
+}
+
+async function ageRoomPastExpiry(stub: DurableObjectStub): Promise<void> {
+  await runInDurableObject(stub, async (instance, state) => {
+    const room = instance as unknown as {
+      stateData: { created_at: number } | null;
+      persistState(): Promise<void>;
+    };
+    if (!room.stateData) {
+      throw new Error("Room state is not initialized");
+    }
+
+    room.stateData.created_at =
+      Date.now() - (ROOM_INDEX_TTL_SECONDS * 1_000 + 1);
+    await room.persistState();
+    await state.storage.setAlarm(Date.now());
   });
 }
 
@@ -599,6 +617,25 @@ describe("OpenGlad relay worker", () => {
       peer_id: 2,
       is_host: false,
     });
+  });
+
+  it("expires abandoned rooms after the one-hour code lifetime", async () => {
+    const room = await createRoom({ campaign: "campaign.expire" });
+    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room.code));
+
+    await ageRoomPastExpiry(roomStub);
+    await runDurableObjectAlarm(roomStub);
+    await waitForCondition("expired room cleanup", async () => {
+      return (
+        (await env.ROOM_INDEX.get(roomIndexKey(room.code))) === null &&
+        (await env.ROOM_INDEX.get(roomOwnerKey(room.code))) === null
+      );
+    });
+
+    const expiredResponse = await SELF.fetch(websocketRequest(roomSocketPath(room)));
+    expect(expiredResponse.status).toBe(404);
+    await expect(env.ROOM_INDEX.get(roomIndexKey(room.code))).resolves.toBeNull();
+    await expect(env.ROOM_INDEX.get(roomOwnerKey(room.code))).resolves.toBeNull();
   });
 
   it("reclaims the host peer id when the owner reconnects before the old socket closes", async () => {
