@@ -184,6 +184,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
+    ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
     ${SRC_DIR}/interface/ui/picker_state.cpp
     ${SRC_DIR}/interface/render/pixie.cpp
@@ -408,6 +409,7 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
+    ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
     ${SRC_DIR}/interface/ui/picker_state.cpp
     ${SRC_DIR}/interface/ui/results_screen.cpp
@@ -456,7 +458,6 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${OG_INPUT_SOURCES}
     ${OG_RENDER_SOURCES}
     ${OG_UI_SOURCES}
-    ${SRC_DIR}/platform/sdl/picker_lobby_network_client.cpp
     ${SRC_DIR}/interface/score_panel.cpp
     ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/interface/platform_bridge.cpp
@@ -478,6 +479,7 @@ set(OG_PLATFORM_SDL_COMPONENT_SOURCES
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
     ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
+    ${SRC_DIR}/platform/sdl/picker_lobby_network_client.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
 )
@@ -932,7 +934,7 @@ if(NOT EMSCRIPTEN)
     prepare_component_include_root(OG_RESOURCES_INCLUDE_ROOT resources
         core gameplay resources)
     prepare_component_include_root(OG_INTERFACE_INCLUDE_ROOT interface
-        core gameplay resources interface platform)
+        core gameplay resources interface)
 
     add_library(og_core STATIC ${OG_CORE_SOURCES})
     configure_component_library(og_core "${OG_CORE_INCLUDE_ROOT}")
@@ -974,7 +976,6 @@ if(NOT EMSCRIPTEN)
             target_link_libraries(og_platform_ws_transport PUBLIC ixwebsocket)
         endif()
         add_dependencies(og_platform_ws_transport check_vendor_leaks)
-        target_link_libraries(og_interface PUBLIC og_platform_ws_transport)
     endif()
 
     add_library(og_platform_sdl STATIC ${OG_PLATFORM_SDL_COMPONENT_SOURCES})
@@ -994,6 +995,9 @@ if(NOT EMSCRIPTEN)
         og_resources
         og_interface
     )
+    if(TARGET og_platform_ws_transport)
+        target_link_libraries(og_platform_sdl PUBLIC og_platform_ws_transport)
+    endif()
     if(NOT EMSCRIPTEN)
         target_link_libraries(og_platform_sdl PRIVATE ixwebsocket)
     endif()

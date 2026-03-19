@@ -633,11 +633,3 @@ std::vector<std::string> picker_lobby_status_lines()
         return client->status_lines();
     return {};
 }
-
-std::optional<og::ui::PickerGameplayRuntimeHandoff>
-picker_lobby_consume_gameplay_runtime_handoff()
-{
-    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
-        return client->consume_gameplay_runtime_handoff();
-    return std::nullopt;
-}

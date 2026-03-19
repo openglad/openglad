@@ -6,7 +6,10 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
+#include <openglad/platform/game_session.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/net_transport_relay_ws.h>
+#include <openglad/platform/picker_lobby_network_runtime.h>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -987,7 +990,6 @@ public:
     void shutdown() override
     {
         pending_game_start_config_.reset();
-        gameplay_runtime_handoff_pending_ = false;
         player_bindings_.clear();
         state_.reset();
         status_lines_.clear();
@@ -1056,7 +1058,6 @@ public:
             return false;
 
         pending_game_start_config_.reset();
-        gameplay_runtime_handoff_pending_ = false;
         start_request_pending_ = true;
 
         og::sim::LobbyMessage message;
@@ -1073,7 +1074,6 @@ public:
         {
             player_bindings_ = server_->build_player_bindings();
             pending_game_start_config_ = build_game_start_config();
-            gameplay_runtime_handoff_pending_ = true;
         }
         return g_start_game_requested;
     }
@@ -1124,23 +1124,21 @@ public:
             !remote_owned_save_slots_[slot_index];
     }
 
-    [[nodiscard]] std::optional<og::ui::PickerGameplayRuntimeHandoff>
-    consume_gameplay_runtime_handoff() override
+    bool install_gameplay_runtime(og::runtime::GameSession& session,
+                                  screen& gameplay_screen)
     {
-        if (!gameplay_runtime_handoff_pending_ || !combined_transport_ ||
-            !local_client_transport_)
-        {
-            return std::nullopt;
-        }
+        if (!combined_transport_ || !local_client_transport_)
+            return false;
 
         if (player_bindings_.empty() && server_ != nullptr)
             player_bindings_ = server_->build_player_bindings();
 
-        og::ui::PickerGameplayRuntimeHandoff handoff;
-        handoff.kind = og::ui::PickerGameplayRuntimeKind::NetworkHost;
-        handoff.transport = combined_transport_;
-        handoff.local_client_transport = local_client_transport_;
-        handoff.player_bindings = player_bindings_;
+        og::runtime::reset_network_host_transport_shadow(
+            session,
+            gameplay_screen,
+            combined_transport_,
+            local_client_transport_,
+            player_bindings_);
 
         server_.reset();
         combined_transport_.reset();
@@ -1152,8 +1150,7 @@ public:
         player_bindings_.clear();
         start_request_pending_ = false;
         pending_game_start_config_.reset();
-        gameplay_runtime_handoff_pending_ = false;
-        return handoff;
+        return true;
     }
 
 private:
@@ -1215,7 +1212,6 @@ private:
                 if (server_ != nullptr)
                     player_bindings_ = server_->build_player_bindings();
                 pending_game_start_config_ = build_game_start_config();
-                gameplay_runtime_handoff_pending_ = true;
             }
             break;
 
@@ -1282,7 +1278,6 @@ private:
     bool spectator_mode_ = false;
     short local_team_ = 0;
     bool start_request_pending_ = false;
-    bool gameplay_runtime_handoff_pending_ = false;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
     std::string relay_room_code_;
     std::string relay_status_message_;
@@ -1348,7 +1343,6 @@ public:
     void shutdown() override
     {
         pending_game_start_config_.reset();
-        gameplay_runtime_handoff_pending_ = false;
         state_.reset();
         status_lines_.clear();
         transport_.reset();
@@ -1437,7 +1431,6 @@ public:
             return false;
 
         pending_game_start_config_.reset();
-        gameplay_runtime_handoff_pending_ = false;
         start_request_pending_ = true;
 
         og::sim::LobbyMessage message;
@@ -1451,10 +1444,7 @@ public:
 
         poll_and_apply();
         if (g_start_game_requested)
-        {
             pending_game_start_config_ = build_game_start_config();
-            gameplay_runtime_handoff_pending_ = true;
-        }
         return g_start_game_requested;
     }
 
@@ -1505,22 +1495,22 @@ public:
             !remote_owned_save_slots_[slot_index];
     }
 
-    [[nodiscard]] std::optional<og::ui::PickerGameplayRuntimeHandoff>
-    consume_gameplay_runtime_handoff() override
+    bool install_gameplay_runtime(og::runtime::GameSession& session,
+                                  screen& gameplay_screen)
     {
-        if (!gameplay_runtime_handoff_pending_ || !transport_)
-            return std::nullopt;
+        if (!transport_)
+            return false;
 
-        og::ui::PickerGameplayRuntimeHandoff handoff;
-        handoff.kind = og::ui::PickerGameplayRuntimeKind::NetworkClient;
-        handoff.transport = transport_;
-        handoff.server_peer_id = server_peer_id_;
+        og::runtime::reset_network_client_transport_shadow(
+            session,
+            gameplay_screen,
+            transport_,
+            server_peer_id_);
         transport_.reset();
         state_.reset();
         start_request_pending_ = false;
         pending_game_start_config_.reset();
-        gameplay_runtime_handoff_pending_ = false;
-        return handoff;
+        return true;
     }
 
 private:
@@ -1589,7 +1579,6 @@ private:
                 start_request_pending_ = false;
                 g_start_game_requested = true;
                 pending_game_start_config_ = build_game_start_config();
-                gameplay_runtime_handoff_pending_ = true;
             }
             break;
 
@@ -1669,7 +1658,6 @@ private:
     bool spectator_mode_ = false;
     short local_team_ = 0;
     bool start_request_pending_ = false;
-    bool gameplay_runtime_handoff_pending_ = false;
     bool join_message_sent_ = false;
     bool settings_dirty_ = false;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
@@ -1677,25 +1665,27 @@ private:
 
 } // namespace
 
-namespace og::ui {
+namespace og::platform {
 
-std::unique_ptr<IPickerLobbyClient>
-create_host_picker_lobby_client(const PickerHostGameOptions& options)
+std::unique_ptr<og::ui::IPickerLobbyClient>
+create_platform_host_picker_lobby_client(
+    const og::ui::PickerHostGameOptions& options)
 {
     if (options.port <= 0 || options.port > 65535)
         throw std::invalid_argument("Host port must be in the range 1-65535");
     return std::make_unique<HostPickerLobbyClient>(options);
 }
 
-std::unique_ptr<IPickerLobbyClient>
-create_join_picker_lobby_client(const PickerJoinGameOptions& options)
+std::unique_ptr<og::ui::IPickerLobbyClient>
+create_platform_join_picker_lobby_client(
+    const og::ui::PickerJoinGameOptions& options)
 {
-    if (options.mode == PickerJoinMode::Direct &&
+    if (options.mode == og::ui::PickerJoinMode::Direct &&
         trim_copy(options.direct_endpoint).empty())
     {
         throw std::invalid_argument("Direct connect requires an IP:port");
     }
-    if (options.mode == PickerJoinMode::Relay &&
+    if (options.mode == og::ui::PickerJoinMode::Relay &&
         trim_copy(options.room_code).empty())
     {
         throw std::invalid_argument("Relay join requires a room code");
@@ -1703,79 +1693,16 @@ create_join_picker_lobby_client(const PickerJoinGameOptions& options)
     return std::make_unique<JoinPickerLobbyClient>(options);
 }
 
-bool picker_join_mode_supported(PickerJoinMode mode) noexcept
+bool install_picker_lobby_gameplay_runtime(
+    og::ui::IPickerLobbyClient* client,
+    og::runtime::GameSession& session,
+    screen& gameplay_screen)
 {
-    return mode == PickerJoinMode::Direct || mode == PickerJoinMode::Relay;
+    if (auto* const host_client = dynamic_cast<HostPickerLobbyClient*>(client))
+        return host_client->install_gameplay_runtime(session, gameplay_screen);
+    if (auto* const join_client = dynamic_cast<JoinPickerLobbyClient*>(client))
+        return join_client->install_gameplay_runtime(session, gameplay_screen);
+    return false;
 }
 
-std::string normalize_direct_websocket_url(const std::string& endpoint)
-{
-    const std::string trimmed = trim_copy(endpoint);
-    if (trimmed.empty())
-        throw std::invalid_argument("Direct connect requires an IP:port");
-
-    if (trimmed.rfind("ws://", 0) == 0 || trimmed.rfind("wss://", 0) == 0)
-        return trimmed;
-    if (trimmed.find("://") != std::string::npos)
-    {
-        throw std::invalid_argument(
-            "Direct connect URLs must use ws:// or wss://");
-    }
-    return std::string("ws://") + trimmed;
-}
-
-std::string normalize_relay_room_code(const std::string& room_code)
-{
-    std::string normalized = trim_copy(room_code);
-    if (normalized.empty())
-        throw std::invalid_argument("Relay room code must not be empty");
-
-    std::transform(
-        normalized.begin(),
-        normalized.end(),
-        normalized.begin(),
-        [](unsigned char ch) {
-            return static_cast<char>(std::toupper(ch));
-        });
-
-    const bool valid = std::all_of(
-        normalized.begin(),
-        normalized.end(),
-        [](unsigned char ch) {
-            return std::isalnum(ch) || ch == '-';
-        });
-    if (!valid)
-        throw std::invalid_argument("Relay room codes may only use A-Z, 0-9, and -");
-    return normalized;
-}
-
-std::string normalize_relay_base_url(const std::string& base_url)
-{
-    std::string normalized = relay_base_url_or_default(base_url);
-    normalized = trim_copy(std::move(normalized));
-    while (!normalized.empty() && normalized.back() == '/')
-        normalized.pop_back();
-
-    if (normalized.empty())
-        throw std::invalid_argument("Relay base URL must not be empty");
-
-    const bool supported_scheme =
-        normalized.rfind("http://", 0) == 0 ||
-        normalized.rfind("https://", 0) == 0 ||
-        normalized.rfind("ws://", 0) == 0 ||
-        normalized.rfind("wss://", 0) == 0;
-    if (!supported_scheme)
-    {
-        throw std::invalid_argument(
-            "Relay base URL must use http://, https://, ws://, or wss://");
-    }
-
-    return normalized;
-}
-
-std::string default_relay_base_url()
-{
-    return normalize_relay_base_url({});
-}
-
-} // namespace og::ui
+} // namespace og::platform

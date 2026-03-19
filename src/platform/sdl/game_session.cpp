@@ -23,6 +23,8 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/picker_lobby_network_client.h>
+#include <openglad/platform/picker_lobby_network_runtime.h>
 #include "SDL.h"
 
 // Defined in view.cpp — loads allkeys from defaults + keyprefs.dat.
@@ -56,6 +58,17 @@ PlatformBridge make_sdl_platform_bridge()
     bridge.create_surface = [](int, int) -> video* {
         return new sdl_video(true);
     };
+
+    bridge.create_host_picker_lobby_client =
+        [](const og::ui::PickerHostGameOptions& options) {
+            return og::platform::create_platform_host_picker_lobby_client(
+                options);
+        };
+    bridge.create_join_picker_lobby_client =
+        [](const og::ui::PickerJoinGameOptions& options) {
+            return og::platform::create_platform_join_picker_lobby_client(
+                options);
+        };
 
     return bridge;
 }
