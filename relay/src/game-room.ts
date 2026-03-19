@@ -286,14 +286,11 @@ export class GameRoom extends DurableObject {
     }
 
     await this.persistState();
+    await this.persistRoomIndex();
 
     if (this.peers.size === 0) {
-      await this.appEnv.ROOM_INDEX.delete(roomIndexKey(this.stateData.code));
       await this.ctx.storage.setAlarm(Date.now() + EMPTY_ROOM_GRACE_MS);
-      return;
     }
-
-    await this.persistRoomIndex();
   }
 
   private broadcastJson(payload: unknown, excludedPeerId?: number): void {

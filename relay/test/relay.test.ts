@@ -1,4 +1,4 @@
-import { env, SELF } from "cloudflare:test";
+import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 
 const openSockets: WebSocket[] = [];
@@ -89,6 +89,29 @@ function waitForClose(socket: WebSocket): Promise<CloseEvent> {
       "close",
       (event) => resolve(event),
       { once: true },
+    );
+  });
+}
+
+async function waitForCondition(
+  label: string,
+  predicate: () => Promise<boolean>,
+): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (Date.now() < deadline) {
+    if (await predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for condition: ${label}`);
+}
+
+async function waitForAlarmScheduled(stub: DurableObjectStub): Promise<void> {
+  await waitForCondition("durable object alarm", async () => {
+    return (
+      (await runInDurableObject(stub, (_instance, state) => state.storage.getAlarm())) !==
+      null
     );
   });
 }
@@ -264,5 +287,64 @@ describe("OpenGlad relay worker", () => {
     for (const socket of sockets.slice(1)) {
       socket.close(1000, "done");
     }
+  });
+
+  it("keeps empty rooms reconnectable during the grace window and expires them after the alarm", async () => {
+    const roomCode = await createRoom("campaign.reconnect");
+    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(roomCode));
+
+    const hostSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    const hostJoined = JSON.parse((await waitForMessage(hostSocket, "host joined")) as string) as {
+      peer_id: number;
+      host: number;
+    };
+    const hostPeerList = JSON.parse((await waitForMessage(hostSocket, "host peer list")) as string) as {
+      peers: number[];
+      host: number;
+    };
+    expect(hostJoined).toEqual(expect.objectContaining({
+      peer_id: 1,
+      host: 1,
+    }));
+    expect(hostPeerList).toEqual(expect.objectContaining({
+      peers: [1],
+      host: 1,
+    }));
+
+    hostSocket.close(1000, "host left");
+    await waitForAlarmScheduled(roomStub);
+
+    const hiddenDuringGrace = await SELF.fetch("https://relay.test/api/rooms");
+    await expect(hiddenDuringGrace.json()).resolves.toEqual([]);
+
+    const reconnectSocket = await openRoomSocket(`/api/room/${roomCode}`);
+    const reconnectJoined = JSON.parse(
+      (await waitForMessage(reconnectSocket, "reconnect joined")) as string,
+    ) as {
+      peer_id: number;
+      host: number;
+    };
+    const reconnectPeerList = JSON.parse(
+      (await waitForMessage(reconnectSocket, "reconnect peer list")) as string,
+    ) as {
+      peers: number[];
+      host: number;
+    };
+    expect(reconnectJoined).toEqual(expect.objectContaining({
+      peer_id: 2,
+      host: 2,
+    }));
+    expect(reconnectPeerList).toEqual(expect.objectContaining({
+      peers: [2],
+      host: 2,
+    }));
+
+    reconnectSocket.close(1000, "grace reconnect left");
+    await waitForAlarmScheduled(roomStub);
+
+    await expect(runDurableObjectAlarm(roomStub)).resolves.toBe(true);
+
+    const expiredResponse = await SELF.fetch(websocketRequest(`/api/room/${roomCode}`));
+    expect(expiredResponse.status).toBe(404);
   });
 });
