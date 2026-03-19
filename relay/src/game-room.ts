@@ -4,9 +4,12 @@ import {
   EMPTY_ROOM_GRACE_MS,
   MAX_RELAY_PAYLOAD_BYTES,
   MAX_ROOM_PEERS,
+  MESSAGE_RATE_LIMIT_MAX_MESSAGES,
+  MESSAGE_RATE_LIMIT_WINDOW_MS,
   ROOM_INDEX_TTL_SECONDS,
   RELAY_BROADCAST_TAG,
   RELAY_TARGET_TAG,
+  clientIpFromRequest,
   isValidRoomCode,
   makeRelayFrame,
   makeRoomInfo,
@@ -20,6 +23,10 @@ const ROOM_STATE_KEY = "room_state";
 
 export class GameRoom extends DurableObject {
   private readonly peers = new Map<number, WebSocket>();
+  private readonly messageRateLimits = new Map<
+    string,
+    { count: number; windowStartedAt: number }
+  >();
   private readonly appEnv: Env;
   private stateData: StoredRoomState | null = null;
 
@@ -88,9 +95,10 @@ export class GameRoom extends DurableObject {
     const client = pair[0];
     const server = pair[1];
     const peerId = this.stateData.next_peer_id++;
+    const clientIp = clientIpFromRequest(request);
 
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ peerId } satisfies WebSocketAttachment);
+    server.serializeAttachment({ peerId, clientIp } satisfies WebSocketAttachment);
     this.peers.set(peerId, server);
 
     if (this.stateData.host_peer_id === null) {
@@ -133,8 +141,14 @@ export class GameRoom extends DurableObject {
       | WebSocketAttachment
       | undefined;
     const peerId = attachment?.peerId;
-    if (!peerId) {
+    const clientIp = attachment?.clientIp;
+    if (!peerId || !clientIp) {
       ws.close(1011, "Missing peer metadata");
+      return;
+    }
+
+    if (!this.consumeMessageRateBudget(clientIp)) {
+      ws.close(1008, "Rate limit exceeded");
       return;
     }
 
@@ -264,8 +278,18 @@ export class GameRoom extends DurableObject {
   }
 
   private async removePeer(peerId: number): Promise<void> {
+    const socket = this.peers.get(peerId);
+    const attachment = socket?.deserializeAttachment() as
+      | WebSocketAttachment
+      | undefined;
+    const clientIp = attachment?.clientIp ?? null;
+
     if (!this.peers.delete(peerId) || !this.stateData) {
       return;
+    }
+
+    if (clientIp && !this.hasPeerForClientIp(clientIp)) {
+      this.messageRateLimits.delete(clientIp);
     }
 
     this.broadcastJson({
@@ -338,5 +362,36 @@ export class GameRoom extends DurableObject {
         expirationTtl: ROOM_INDEX_TTL_SECONDS,
       },
     );
+  }
+
+  private consumeMessageRateBudget(clientIp: string): boolean {
+    const now = Date.now();
+    const budget = this.messageRateLimits.get(clientIp);
+    if (!budget || now - budget.windowStartedAt >= MESSAGE_RATE_LIMIT_WINDOW_MS) {
+      this.messageRateLimits.set(clientIp, {
+        count: 1,
+        windowStartedAt: now,
+      });
+      return true;
+    }
+
+    if (budget.count >= MESSAGE_RATE_LIMIT_MAX_MESSAGES) {
+      return false;
+    }
+
+    budget.count += 1;
+    return true;
+  }
+
+  private hasPeerForClientIp(clientIp: string): boolean {
+    for (const socket of this.peers.values()) {
+      const attachment = socket.deserializeAttachment() as
+        | WebSocketAttachment
+        | undefined;
+      if (attachment?.clientIp === clientIp) {
+        return true;
+      }
+    }
+    return false;
   }
 }

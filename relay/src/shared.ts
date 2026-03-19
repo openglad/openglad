@@ -1,10 +1,15 @@
 import type { RoomInfo, StoredRoomState } from "./types";
 
 export const ROOM_INDEX_PREFIX = "room:";
+export const CREATE_RATE_LIMIT_PREFIX = "rate:create:";
 export const ROOM_INDEX_TTL_SECONDS = 60 * 60;
 export const EMPTY_ROOM_GRACE_MS = 30_000;
 export const MAX_ROOM_PEERS = 4;
 export const MAX_RELAY_PAYLOAD_BYTES = 64 * 1024;
+export const CREATE_RATE_LIMIT_MAX_ROOMS = 10;
+export const CREATE_RATE_LIMIT_WINDOW_SECONDS = 60 * 60;
+export const MESSAGE_RATE_LIMIT_MAX_MESSAGES = 100;
+export const MESSAGE_RATE_LIMIT_WINDOW_MS = 1_000;
 
 export const RELAY_TARGET_TAG = 1;
 export const RELAY_FROM_PEER_TAG = 2;
@@ -17,8 +22,29 @@ export function roomIndexKey(code: string): string {
   return `${ROOM_INDEX_PREFIX}${code}`;
 }
 
+export function createRateLimitKey(clientIp: string): string {
+  return `${CREATE_RATE_LIMIT_PREFIX}${encodeURIComponent(clientIp)}`;
+}
+
 export function normalizeRoomCode(code: string): string {
   return code.trim().toUpperCase();
+}
+
+export function clientIpFromRequest(request: Request): string {
+  const cfConnectingIp = request.headers.get("cf-connecting-ip")?.trim();
+  if (cfConnectingIp) {
+    return cfConnectingIp;
+  }
+
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    const firstForwarded = forwardedFor.split(",")[0]?.trim();
+    if (firstForwarded) {
+      return firstForwarded;
+    }
+  }
+
+  return "0.0.0.0";
 }
 
 export function isValidRoomCode(code: string): boolean {

@@ -24,4 +24,5 @@ export interface StoredRoomState {
 
 export interface WebSocketAttachment {
   peerId: number;
+  clientIp: string;
 }

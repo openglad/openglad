@@ -362,7 +362,9 @@ std::string build_relay_room_websocket_url(std::string base_url,
 }
 
 std::string build_relay_room_create_url(std::string base_url,
-                                        std::string_view campaign_tag)
+                                        std::string_view campaign_tag,
+                                        std::string_view campaign_name,
+                                        std::string_view host_name)
 {
     base_url = relay_api_base_url(std::move(base_url));
     if (base_url.rfind("ws://", 0) == 0)
@@ -371,9 +373,23 @@ std::string build_relay_room_create_url(std::string base_url,
         base_url.replace(0, 6, "https://");
 
     std::string url = base_url + "/create";
-    const std::string encoded_tag = url_encode_component(campaign_tag);
-    if (!encoded_tag.empty())
-        url.append(std::format("?campaign={}", encoded_tag));
+    bool has_query = false;
+    const auto append_query = [&url, &has_query](
+                                  std::string_view key,
+                                  std::string_view value) {
+        const std::string encoded_value = url_encode_component(value);
+        if (encoded_value.empty())
+            return;
+
+        url.push_back(has_query ? '&' : '?');
+        has_query = true;
+        url.append(key);
+        url.push_back('=');
+        url.append(encoded_value);
+    };
+    append_query("campaign", campaign_tag);
+    append_query("campaign_name", campaign_name);
+    append_query("host", host_name);
     return url;
 }
 
@@ -418,11 +434,15 @@ std::string extract_room_code_from_create_response(std::string_view body)
 }
 
 std::string create_relay_room_code(std::string_view base_url,
-                                   std::string_view campaign_tag)
+                                   std::string_view campaign_tag,
+                                   std::string_view campaign_name,
+                                   std::string_view host_name)
 {
     const std::string create_url = build_relay_room_create_url(
         std::string(base_url),
-        campaign_tag);
+        campaign_tag,
+        campaign_name,
+        host_name);
 
 #ifdef __EMSCRIPTEN__
     std::unique_ptr<char, decltype(&std::free)> response_text(
@@ -479,6 +499,40 @@ std::string current_campaign_tag()
     if (SaveData* const save = current_picker_save(); save != nullptr)
         return save->current_campaign;
     return std::string(kDefaultCampaignId);
+}
+
+std::string current_campaign_name()
+{
+    return current_campaign_tag();
+}
+
+std::string current_host_name(short local_team)
+{
+    SaveData* const save = current_picker_save();
+    if (save == nullptr)
+        return {};
+
+    for (const auto& member : save->team_list)
+    {
+        if (member != nullptr && member->teamnum == local_team)
+        {
+            const std::string name = trim_copy(member->name);
+            if (!name.empty())
+                return name;
+        }
+    }
+
+    for (const auto& member : save->team_list)
+    {
+        if (member == nullptr)
+            continue;
+
+        const std::string name = trim_copy(member->name);
+        if (!name.empty())
+            return name;
+    }
+
+    return {};
 }
 
 std::string make_network_player_name()
@@ -1165,7 +1219,9 @@ public:
                     relay_base_url_or_default(options_.relay_base_url);
                 relay_room_code_ = og::ui::normalize_relay_room_code(
                     create_relay_room_code(relay_base_url,
-                                           current_campaign_tag()));
+                                           current_campaign_tag(),
+                                           current_campaign_name(),
+                                           current_host_name(local_team_)));
                 relay_transport_ =
                     std::make_shared<og::sim::RelayWebSocketTransport>(
                         build_relay_room_websocket_url(relay_base_url,

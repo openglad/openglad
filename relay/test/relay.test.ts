@@ -3,16 +3,23 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const openSockets: WebSocket[] = [];
 
-function websocketRequest(path: string): Request {
+interface CreateRoomOptions {
+  campaign?: string;
+  campaignName?: string;
+  hostName?: string;
+  clientIp?: string;
+}
+
+function websocketRequest(path: string, headers?: HeadersInit): Request {
+  const requestHeaders = new Headers(headers);
+  requestHeaders.set("Upgrade", "websocket");
   return new Request(`https://relay.test${path}`, {
-    headers: {
-      Upgrade: "websocket",
-    },
+    headers: requestHeaders,
   });
 }
 
-async function openRoomSocket(path: string): Promise<WebSocket> {
-  const response = await SELF.fetch(websocketRequest(path));
+async function openRoomSocket(path: string, headers?: HeadersInit): Promise<WebSocket> {
+  const response = await SELF.fetch(websocketRequest(path, headers));
   expect(response.status).toBe(101);
   const socket = response.webSocket;
   if (!socket) {
@@ -120,11 +127,26 @@ function decodeFrame(data: ArrayBuffer): number[] {
   return [...new Uint8Array(data)];
 }
 
-async function createRoom(campaign = "org.openglad.gladiator"): Promise<string> {
+async function createRoom(options: CreateRoomOptions = {}): Promise<string> {
+  const params = new URLSearchParams();
+  params.set("campaign", options.campaign ?? "org.openglad.gladiator");
+  if (options.campaignName) {
+    params.set("campaign_name", options.campaignName);
+  }
+  if (options.hostName) {
+    params.set("host", options.hostName);
+  }
+
+  const headers = new Headers();
+  if (options.clientIp) {
+    headers.set("cf-connecting-ip", options.clientIp);
+  }
+
   const response = await SELF.fetch(
-    `https://relay.test/api/create?campaign=${encodeURIComponent(campaign)}`,
+    `https://relay.test/api/create?${params.toString()}`,
     {
       method: "POST",
+      headers,
     },
   );
   expect(response.status).toBe(200);
@@ -142,7 +164,7 @@ afterEach(async () => {
     }
   }
   await new Promise((resolve) => setTimeout(resolve, 25));
-  const list = await env.ROOM_INDEX.list({ prefix: "room:" });
+  const list = await env.ROOM_INDEX.list();
   await Promise.all(
     list.keys.map(({ name }: { name: string }) => env.ROOM_INDEX.delete(name)),
   );
@@ -150,8 +172,16 @@ afterEach(async () => {
 
 describe("OpenGlad relay worker", () => {
   it("supports room listing, frame relay, host migration, and room limits", async () => {
-    const alphaRoom = await createRoom("campaign.alpha");
-    const betaRoom = await createRoom("campaign.beta");
+    const alphaRoom = await createRoom({
+      campaign: "campaign.alpha",
+      campaignName: "Alpha Campaign",
+      hostName: "Host Alpha",
+    });
+    const betaRoom = await createRoom({
+      campaign: "campaign.beta",
+      campaignName: "Beta Campaign",
+      hostName: "Host Beta",
+    });
 
     let response = await SELF.fetch("https://relay.test/api/rooms");
     expect(response.status).toBe(200);
@@ -178,6 +208,8 @@ describe("OpenGlad relay worker", () => {
       expect.objectContaining({
         code: alphaRoom,
         campaign_hash: "campaign.alpha",
+        campaign_name: "Alpha Campaign",
+        host_name: "Host Alpha",
         player_count: 1,
       }),
     ]);
@@ -267,7 +299,7 @@ describe("OpenGlad relay worker", () => {
 
     guestSocket.close(1000, "done");
 
-    const roomCode = await createRoom("campaign.capacity");
+    const roomCode = await createRoom({ campaign: "campaign.capacity" });
     const sockets: WebSocket[] = [];
     for (let index = 0; index < 4; ++index) {
       const socket = await openRoomSocket(`/api/room/${roomCode}`);
@@ -290,7 +322,7 @@ describe("OpenGlad relay worker", () => {
   });
 
   it("keeps empty rooms reconnectable during the grace window and expires them after the alarm", async () => {
-    const roomCode = await createRoom("campaign.reconnect");
+    const roomCode = await createRoom({ campaign: "campaign.reconnect" });
     const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(roomCode));
 
     const hostSocket = await openRoomSocket(`/api/room/${roomCode}`);
@@ -346,5 +378,49 @@ describe("OpenGlad relay worker", () => {
 
     const expiredResponse = await SELF.fetch(websocketRequest(`/api/room/${roomCode}`));
     expect(expiredResponse.status).toBe(404);
+  });
+
+  it("enforces per-ip create limits and websocket message limits", async () => {
+    const limitedIp = "203.0.113.10";
+    for (let index = 0; index < 10; ++index) {
+      await createRoom({
+        campaign: "campaign.limit",
+        clientIp: limitedIp,
+      });
+    }
+
+    const limitedCreateResponse = await SELF.fetch(
+      "https://relay.test/api/create?campaign=campaign.limit",
+      {
+        method: "POST",
+        headers: {
+          "cf-connecting-ip": limitedIp,
+        },
+      },
+    );
+    expect(limitedCreateResponse.status).toBe(429);
+
+    const roomCode = await createRoom({
+      campaign: "campaign.limit",
+      clientIp: "203.0.113.11",
+    });
+
+    const floodSocket = await openRoomSocket(`/api/room/${roomCode}`, {
+      "cf-connecting-ip": "198.51.100.42",
+    });
+    await waitForMessage(floodSocket, "flood joined");
+    await waitForMessage(floodSocket, "flood peer list");
+
+    const closePromise = waitForClose(floodSocket);
+    for (let index = 0; index < 110; ++index) {
+      try {
+        floodSocket.send(new Uint8Array([3, 1, 2, 3]).buffer);
+      } catch {
+        break;
+      }
+    }
+
+    const closeEvent = await closePromise;
+    expect(closeEvent.code).toBe(1008);
   });
 });

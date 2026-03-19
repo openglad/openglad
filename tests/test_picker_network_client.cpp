@@ -808,6 +808,10 @@ TEST(PickerNetworkClient, host_relay_flow_creates_room_code_and_encodes_campaign
 
     const std::string create_uri = relay_server.last_create_uri();
     EXPECT_NE(std::string::npos, create_uri.find("/api/create?campaign="));
+    EXPECT_NE(
+        std::string::npos,
+        create_uri.find("&campaign_name=relay%20test%2Fspace"));
+    EXPECT_NE(std::string::npos, create_uri.find("&host=Host"));
     EXPECT_NE(std::string::npos, create_uri.find("%20"));
     EXPECT_NE(std::string::npos, create_uri.find("%2F"));
 
