@@ -82,6 +82,7 @@ std::optional<std::span<const std::uint8_t>> payload_span(
 {
     og::sim::TransportEnvelope envelope;
     if (!og::sim::decode_transport_envelope(bytes, envelope) ||
+        envelope.protocol_version != og::sim::kNetworkProtocolVersion ||
         envelope.message_type != expected_type ||
         bytes.size() != og::sim::kTransportHeaderSize + envelope.payload_length)
     {

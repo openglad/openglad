@@ -156,6 +156,11 @@ public:
     {
         return last_polled_messages_;
     }
+    [[nodiscard]] const std::vector<DisconnectedPlayer>&
+    disconnected_players() const noexcept
+    {
+        return disconnected_players_;
+    }
 
     std::function<bool(int level_id)> on_level_transition;
     std::function<void()> on_save_sync;

@@ -838,6 +838,15 @@ void GameServer::handle_transport_disconnect(PeerId peer_id, bool close_transpor
         replacement.team_num = client.team_num;
         replacement.control = client.control;
         replacement.repeated_input = client.last_known_input;
+        std::optional<std::uint32_t> newest_pending_tick = std::nullopt;
+        for (const auto& [tick, pending_input] : client.pending_inputs)
+        {
+            if (!newest_pending_tick.has_value() || tick > *newest_pending_tick)
+            {
+                newest_pending_tick = tick;
+                replacement.repeated_input = pending_input;
+            }
+        }
         clear_pressed(replacement.repeated_input);
         replacement.disconnected_at_ms = now_ms();
         replacement.ai_control_enabled = false;

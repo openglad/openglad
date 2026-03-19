@@ -302,6 +302,39 @@ TEST(NetTransport, deserialize_hello_rejects_wrong_size_version_type_and_range)
         og::sim::deserialize_hello_message(bad_version_range).has_value());
 }
 
+TEST(NetTransport,
+     non_hello_deserializers_reject_wrong_transport_header_version)
+{
+    const auto bad_version = [](std::vector<std::uint8_t> bytes) {
+        bytes[0] = static_cast<std::uint8_t>(
+            og::sim::kNetworkProtocolVersion + 1);
+        return bytes;
+    };
+
+    const auto initial_setup = bad_version(
+        og::sim::serialize_initial_setup_message(og::sim::InitialSetupMessage{}));
+    EXPECT_FALSE(
+        og::sim::deserialize_initial_setup_message(initial_setup).has_value());
+
+    const auto client_ready = bad_version(
+        og::sim::serialize_client_ready_message({.last_applied_tick = 7u}));
+    EXPECT_FALSE(
+        og::sim::deserialize_client_ready_message(client_ready).has_value());
+
+    const auto heartbeat = bad_version(
+        og::sim::serialize_heartbeat_message(og::sim::HeartbeatMessage{}));
+    EXPECT_FALSE(
+        og::sim::deserialize_heartbeat_message(heartbeat).has_value());
+
+    const auto control_change = bad_version(
+        og::sim::serialize_control_change_message({
+            .player_index = 1u,
+            .entity_id = 42u,
+        }));
+    EXPECT_FALSE(
+        og::sim::deserialize_control_change_message(control_change).has_value());
+}
+
 TEST(NetTransport, interface_is_mockable_and_preserves_message_buffers)
 {
     MockTransport transport;
@@ -566,6 +599,44 @@ TEST(NetTransport, heartbeat_resets_server_input_timeout)
     now_ms += 2u;
     server.step();
     EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
+}
+
+TEST(NetTransport,
+     disconnect_grace_uses_last_pending_held_input_from_removed_peer)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u});
+    server.poll_incoming_messages();
+
+    walker* const control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(32, 48);
+    control->set_user(0);
+    control->set_act_type(ACT_CONTROL);
+    server.bind_player(7u, 0u, fixture.world().my_team, control);
+
+    InputState move_right;
+    move_right.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
+    const auto input_bytes = og::sim::serialize_input(1u, move_right);
+    transport.queue_received(
+        7u,
+        std::vector<std::uint8_t>(input_bytes.begin(), input_bytes.end()));
+    transport.set_connected_peers({});
+
+    server.step();
+
+    EXPECT_EQ(0, static_cast<int>(control->user()));
+    ASSERT_EQ(1u, server.disconnected_players().size());
+
+    const PlayerInput& repeated_input =
+        server.disconnected_players().front().repeated_input;
+    EXPECT_TRUE(repeated_input.held[static_cast<int>(InputAction::MoveRight)]);
+    EXPECT_FALSE(
+        repeated_input.pressed[static_cast<int>(InputAction::MoveRight)]);
 }
 
 TEST(NetTransport, game_server_snapshot_hash_check_is_strict_per_peer_per_tick)
