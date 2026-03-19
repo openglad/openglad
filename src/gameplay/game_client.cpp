@@ -805,6 +805,10 @@ void GameClient::poll_messages()
         return;
     }
 
+    update_transport_connection_state();
+    maybe_send_hello_if_needed();
+    maybe_send_heartbeat_if_needed();
+
     last_polled_messages_ = poll_result.messages;
     sim_event_batches_.clear();
     game_flow_event_batches_.clear();

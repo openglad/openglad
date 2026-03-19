@@ -203,7 +203,7 @@ struct WebSocketClientTransport::Impl
 
     std::vector<PeerId> connected_peers() const
     {
-        if (!connected)
+        if (!connected || has_pending_connection_transition())
             return {};
         return {options.remote_peer_id};
     }
@@ -220,6 +220,24 @@ struct WebSocketClientTransport::Impl
     }
 
 private:
+    bool has_pending_connection_transition() const
+    {
+        std::lock_guard<std::mutex> lock(queue_mutex);
+        for (const QueueEntry& entry : queue)
+        {
+            if (entry.generation != active_generation)
+                continue;
+
+            if (entry.kind == QueueEntryKind::Connect ||
+                entry.kind == QueueEntryKind::Disconnect)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     std::unique_ptr<ix::WebSocket> make_websocket(std::uint64_t generation)
     {
         auto socket = std::make_unique<ix::WebSocket>();
@@ -269,8 +287,8 @@ private:
     bool started = false;
     bool connected = false;
 
-    std::mutex queue_mutex;
-    std::deque<QueueEntry> queue;
+    mutable std::mutex queue_mutex;
+    mutable std::deque<QueueEntry> queue;
 };
 
 WebSocketClientTransport::WebSocketClientTransport(std::string url)

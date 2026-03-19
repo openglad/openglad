@@ -1,3 +1,6 @@
+#include <openglad/gameplay/game_client.h>
+#include <openglad/gameplay/game_server.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
 
@@ -5,6 +8,7 @@
 
 #include <ixwebsocket/IXGetFreePort.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <format>
@@ -14,6 +18,8 @@
 #include <span>
 #include <thread>
 #include <vector>
+
+#include "../test_game_world_fixture.h"
 
 namespace {
 
@@ -372,6 +378,166 @@ TEST(NetTransportWebSocketClient,
 
     client.disconnect(client_options.remote_peer_id);
     ASSERT_TRUE(poll_until_peer_count(server, 0u));
+}
+
+TEST(NetTransportWebSocketClient,
+     game_client_resends_hello_after_websocket_auto_reconnect)
+{
+    const int port = ix::getFreePort();
+
+    og::sim::WebSocketServerTransport::Options server_options;
+    server_options.host = "127.0.0.1";
+    og::sim::WebSocketServerTransport server_transport(port, server_options);
+    server_transport.accept_connections();
+
+    og::sim::WebSocketClientTransport::Options client_options;
+    client_options.remote_peer_id = 1u;
+    client_options.automatic_reconnection = true;
+    client_options.min_reconnect_wait_ms = 1u;
+    client_options.max_reconnect_wait_ms = 20u;
+    og::sim::WebSocketClientTransport client_transport(
+        std::format("ws://127.0.0.1:{}", port),
+        client_options);
+    client_transport.accept_connections();
+
+    ASSERT_TRUE(poll_until_peer_count(client_transport, 1u));
+
+    TestGameWorld fixture;
+    og::sim::GameServer server(fixture.world(), fixture.events, server_transport);
+    og::sim::GameClient client(client_transport, client_options.remote_peer_id);
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            server.poll_incoming_messages();
+            return server_transport.connected_peers().size() == 1u;
+        },
+        5s));
+
+    const og::sim::PeerId first_server_peer_id =
+        server_transport.connected_peers().front();
+
+    walker* const available_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, available_control);
+    available_control->set_team_num(
+        static_cast<unsigned char>(fixture.world().my_team));
+    available_control->set_real_team_num(255);
+    available_control->set_dead(0);
+    available_control->set_user(-1);
+    available_control->set_act_type(ACT_RANDOM);
+    available_control->setxy(32, 48);
+
+    server.bind_player(first_server_peer_id, 0u, fixture.world().my_team);
+    ASSERT_EQ(available_control, server.player_control(0u));
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            client.poll_messages();
+            server.step();
+            client.poll_messages();
+            return !og::sim::is_zero_session_token(client.session_token()) &&
+                client.initial_setup().has_value() &&
+                client.baseline().has_value();
+        },
+        5s));
+
+    const og::sim::SessionToken session_token = client.session_token();
+    ASSERT_FALSE(og::sim::is_zero_session_token(session_token));
+
+    server_transport.disconnect(first_server_peer_id);
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            server.poll_incoming_messages();
+            const std::vector<og::sim::PeerId> peers =
+                server_transport.connected_peers();
+            return peers.size() == 1u &&
+                peers.front() != first_server_peer_id &&
+                server.disconnected_players().size() == 1u;
+        },
+        10s));
+
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    EXPECT_EQ(session_token, server.disconnected_players().front().session_token);
+    EXPECT_EQ(available_control, server.player_control(0u));
+
+    bool saw_reconnect_hello = false;
+    bool saw_reconnect_initial_setup = false;
+    bool saw_reconnect_control_change = false;
+    bool saw_reconnect_snapshot = false;
+    const auto note_reconnect_messages =
+        [&client,
+         &session_token,
+         available_control,
+         &saw_reconnect_hello,
+         &saw_reconnect_initial_setup,
+         &saw_reconnect_control_change,
+         &saw_reconnect_snapshot]() {
+            for (const og::sim::TypedReceivedMessage& message :
+                 client.last_polled_messages())
+            {
+                if (message.kind == og::sim::TypedReceivedMessageKind::Hello &&
+                    message.hello != nullptr &&
+                    message.hello->session_token == session_token)
+                {
+                    saw_reconnect_hello = true;
+                }
+
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::InitialSetup &&
+                    message.initial_setup != nullptr &&
+                    message.initial_setup->controlled_entity_ids[0] ==
+                        available_control->entity_id())
+                {
+                    saw_reconnect_initial_setup = true;
+                }
+
+                if (message.kind ==
+                        og::sim::TypedReceivedMessageKind::ControlChange &&
+                    message.control_change != nullptr &&
+                    message.control_change->player_index == 0u &&
+                    message.control_change->entity_id ==
+                        available_control->entity_id())
+                {
+                    saw_reconnect_control_change = true;
+                }
+
+                if (message.kind == og::sim::TypedReceivedMessageKind::Snapshot &&
+                    message.snapshot != nullptr)
+                {
+                    saw_reconnect_snapshot = true;
+                }
+            }
+        };
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            client.poll_messages();
+            note_reconnect_messages();
+            server.step();
+            client.poll_messages();
+            note_reconnect_messages();
+            return server.disconnected_players().empty() &&
+                saw_reconnect_hello &&
+                saw_reconnect_initial_setup &&
+                saw_reconnect_control_change &&
+                saw_reconnect_snapshot;
+        },
+        10s));
+
+    EXPECT_TRUE(server.disconnected_players().empty());
+    EXPECT_EQ(session_token, client.session_token());
+    EXPECT_EQ(available_control, server.player_control(0u));
+    EXPECT_EQ(0, static_cast<int>(available_control->user()));
+    EXPECT_EQ(ACT_CONTROL, available_control->act_type());
+
+    client_transport.disconnect(client_options.remote_peer_id);
+    ASSERT_TRUE(wait_until(
+        [&] {
+            server.poll_incoming_messages();
+            return server_transport.connected_peers().empty();
+        },
+        5s));
 }
 
 } // namespace
