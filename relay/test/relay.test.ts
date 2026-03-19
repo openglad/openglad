@@ -638,6 +638,44 @@ describe("OpenGlad relay worker", () => {
     await expect(env.ROOM_INDEX.get(roomOwnerKey(room.code))).resolves.toBeNull();
   });
 
+  it("stops advertising expired rooms after later join or leave updates", async () => {
+    const room = await createRoom({ campaign: "campaign.expire-listing" });
+    const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room.code));
+
+    const hostSocket = await openRoomSocket(roomSocketPath(room, true));
+    await waitForMessage(hostSocket, "expire-listing host joined");
+    await waitForMessage(hostSocket, "expire-listing host peer list");
+
+    const hostPeerJoinedPromise = waitForMessages(
+      hostSocket,
+      1,
+      "expire-listing host peer joined",
+    );
+    const guestSocket = await openRoomSocket(roomSocketPath(room));
+    await waitForMessage(guestSocket, "expire-listing guest joined");
+    await waitForMessage(guestSocket, "expire-listing guest peer list");
+    await hostPeerJoinedPromise;
+
+    await ageRoomPastExpiry(roomStub);
+
+    const guestCloseUpdates = waitForMessages(
+      guestSocket,
+      2,
+      "expire-listing close updates",
+    );
+    hostSocket.close(1000, "host left");
+    await guestCloseUpdates;
+
+    await waitForCondition("expired room removed from listing", async () => {
+      const response = await SELF.fetch("https://relay.test/api/rooms");
+      const rooms = (await response.json()) as Array<{ code: string }>;
+      return !rooms.some((entry) => entry.code === room.code);
+    });
+
+    const expiredJoin = await SELF.fetch(websocketRequest(roomSocketPath(room)));
+    expect(expiredJoin.status).toBe(404);
+  });
+
   it("reclaims the host peer id when the owner reconnects before the old socket closes", async () => {
     const room = await createRoom({ campaign: "campaign.overlap-reconnect" });
     const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room.code));

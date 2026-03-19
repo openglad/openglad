@@ -34,6 +34,10 @@ interface InitializeRoomPayload {
   owner_token: string;
 }
 
+function roomKvExpiration(createdAtMs: number): number {
+  return Math.ceil(createdAtMs / 1_000) + ROOM_INDEX_TTL_SECONDS;
+}
+
 function parseCreateRateLimitState(raw: string | null): CreateRateLimitState | null {
   if (!raw) {
     return null;
@@ -136,10 +140,10 @@ async function createRoom(env: Env, request: Request): Promise<Response> {
     }
 
     await env.ROOM_INDEX.put(key, JSON.stringify(roomInfo), {
-      expirationTtl: ROOM_INDEX_TTL_SECONDS,
+      expiration: roomKvExpiration(roomInfo.created_at),
     });
     await env.ROOM_INDEX.put(roomOwnerKey(code), ownerToken, {
-      expirationTtl: ROOM_INDEX_TTL_SECONDS,
+      expiration: roomKvExpiration(roomInfo.created_at),
     });
 
     return jsonResponse({

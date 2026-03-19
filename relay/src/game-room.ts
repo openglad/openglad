@@ -472,12 +472,18 @@ export class GameRoom extends DurableObject {
       return;
     }
 
+    if (this.isRoomExpired()) {
+      await this.appEnv.ROOM_INDEX.delete(roomIndexKey(this.stateData.code));
+      await this.appEnv.ROOM_INDEX.delete(roomOwnerKey(this.stateData.code));
+      return;
+    }
+
     const roomInfo = roomInfoFromStoredState(this.stateData, this.peers.size);
     await this.appEnv.ROOM_INDEX.put(
       roomIndexKey(roomInfo.code),
       JSON.stringify(roomInfo),
       {
-        expirationTtl: ROOM_INDEX_TTL_SECONDS,
+        expiration: this.roomKvExpiration(),
       },
     );
   }
@@ -498,6 +504,13 @@ export class GameRoom extends DurableObject {
       return null;
     }
     return this.stateData.created_at + ROOM_EXPIRATION_MS;
+  }
+
+  private roomKvExpiration(): number {
+    if (!this.stateData) {
+      throw new Error("Room state must exist before computing KV expiration");
+    }
+    return Math.ceil(this.stateData.created_at / 1_000) + ROOM_INDEX_TTL_SECONDS;
   }
 
   private isRoomExpired(now = Date.now()): boolean {
