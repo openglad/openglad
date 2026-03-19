@@ -263,6 +263,11 @@ public:
         return pending_game_start_config_.has_value();
     }
 
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return true;
+    }
+
 private:
     bool ensure_initialized()
     {
@@ -632,4 +637,11 @@ std::vector<std::string> picker_lobby_status_lines()
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
         return client->status_lines();
     return {};
+}
+
+bool picker_lobby_host_controls_visible()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->host_controls_visible();
+    return true;
 }

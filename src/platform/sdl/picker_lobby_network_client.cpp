@@ -528,8 +528,18 @@ const og::sim::LobbyPlayer* find_local_player(
         state.players.end(),
         [player_name](const og::sim::LobbyPlayer& player) {
             return player.name == player_name;
-        });
+    });
     return it != state.players.end() ? &*it : nullptr;
+}
+
+bool local_player_is_host(const og::sim::LobbyState& state,
+                          std::string_view player_name) noexcept
+{
+    const og::sim::LobbyPlayer* const local_player =
+        find_local_player(state, player_name);
+    return local_player != nullptr &&
+        (local_player->is_host ||
+         local_player->player_index == state.host_player_id);
 }
 
 og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
@@ -1049,12 +1059,15 @@ public:
 
     bool request_start_game() override
     {
-        if (!local_client_transport_ || !state_.has_value())
+        if (!local_client_transport_ || !state_.has_value() ||
+            !og::ui::detail::local_player_is_host(*state_, player_name_))
+        {
             return false;
+        }
 
         const og::sim::LobbyPlayer* const local_player =
             og::ui::detail::find_local_player(*state_, player_name_);
-        if (local_player == nullptr || !local_player->is_host)
+        if (local_player == nullptr)
             return false;
 
         pending_game_start_config_.reset();
@@ -1115,6 +1128,13 @@ public:
     [[nodiscard]] std::vector<std::string> status_lines() const override
     {
         return status_lines_;
+    }
+
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        if (!state_.has_value())
+            return server_ != nullptr;
+        return og::ui::detail::local_player_is_host(*state_, player_name_);
     }
 
     [[nodiscard]] bool is_save_slot_editable(
@@ -1488,6 +1508,11 @@ public:
         return status_lines_;
     }
 
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return local_player_is_host();
+    }
+
     [[nodiscard]] bool is_save_slot_editable(
         std::size_t slot_index) const noexcept override
     {
@@ -1518,9 +1543,7 @@ private:
     {
         if (!state_.has_value())
             return false;
-        const og::sim::LobbyPlayer* const local_player =
-            og::ui::detail::find_local_player(*state_, player_name_);
-        return local_player != nullptr && local_player->is_host;
+        return og::ui::detail::local_player_is_host(*state_, player_name_);
     }
 
     void send_settings_from_save()

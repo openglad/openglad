@@ -160,6 +160,7 @@ og::sim::LobbyState make_lobby_state_for_test()
     state.settings.scenario_id = 7;
     state.settings.difficulty = 2;
     state.settings.allied_mode = 1;
+    state.host_player_id = 1u;
     state.players.push_back(make_lobby_player_for_test());
     return state;
 }
@@ -819,7 +820,7 @@ TEST(NetTransport,
     auto oversized_player_count =
         std::vector<std::uint8_t>(empty_state_bytes.begin(),
                                   empty_state_bytes.end());
-    write_u32_le(oversized_player_count, 14, 0xffffffffu);
+    write_u32_le(oversized_player_count, 15, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_player_count)
             .has_value());
@@ -833,7 +834,7 @@ TEST(NetTransport,
     auto oversized_slot_count =
         std::vector<std::uint8_t>(player_state_bytes.begin(),
                                   player_state_bytes.end());
-    write_u32_le(oversized_slot_count, 27, 0xffffffffu);
+    write_u32_le(oversized_slot_count, 28, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_slot_count)
             .has_value());

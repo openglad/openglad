@@ -156,6 +156,78 @@ static bool team_build_remote_start_requested(Sint32& retvalue)
     return true;
 }
 
+constexpr int kTeamBuildGoButtonIndex = 5;
+constexpr int kTeamBuildSetLevelButtonIndex = 8;
+constexpr int kTeamBuildSetCampaignButtonIndex = 9;
+constexpr int kViewTeamGoButtonIndex = 0;
+
+void sync_button_hidden_state(const button* buttons, int button_index)
+{
+    if (buttons == nullptr || button_index < 0)
+        return;
+    if (og::runtime::current_session->allbuttons_[button_index] == nullptr)
+        return;
+
+    og::runtime::current_session->allbuttons_[button_index]->hidden =
+        buttons[button_index].hidden;
+}
+
+void ensure_highlighted_button_visible(const button* buttons,
+                                       int num_buttons,
+                                       int& highlighted_button)
+{
+    if (buttons == nullptr || num_buttons <= 0)
+        return;
+
+    if (highlighted_button >= 0 && highlighted_button < num_buttons &&
+        !buttons[highlighted_button].hidden)
+    {
+        return;
+    }
+
+    for (int index = 0; index < num_buttons; ++index)
+    {
+        if (!buttons[index].hidden)
+        {
+            highlighted_button = index;
+            return;
+        }
+    }
+
+    highlighted_button = 0;
+}
+
+void sync_team_build_host_control_visibility(button* buttons,
+                                             int num_buttons,
+                                             int& highlighted_button)
+{
+    if (buttons == nullptr || num_buttons <= kTeamBuildSetCampaignButtonIndex)
+        return;
+
+    const bool host_controls_visible = picker_lobby_host_controls_visible();
+    buttons[kTeamBuildGoButtonIndex].hidden = !host_controls_visible;
+    buttons[kTeamBuildSetLevelButtonIndex].hidden = !host_controls_visible;
+    buttons[kTeamBuildSetCampaignButtonIndex].hidden = !host_controls_visible;
+
+    sync_button_hidden_state(buttons, kTeamBuildGoButtonIndex);
+    sync_button_hidden_state(buttons, kTeamBuildSetLevelButtonIndex);
+    sync_button_hidden_state(buttons, kTeamBuildSetCampaignButtonIndex);
+    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
+}
+
+void sync_view_team_host_control_visibility(button* buttons,
+                                            int num_buttons,
+                                            int& highlighted_button)
+{
+    if (buttons == nullptr || num_buttons <= kViewTeamGoButtonIndex)
+        return;
+
+    buttons[kViewTeamGoButtonIndex].hidden =
+        !picker_lobby_host_controls_visible();
+    sync_button_hidden_state(buttons, kViewTeamGoButtonIndex);
+    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
+}
+
 // Per-session picker message buffer: access via current_session->message_.
 
 #define STAT_NUM_OFFSET 42
@@ -222,6 +294,8 @@ Sint32 create_team_menu(Sint32 arg1)
 	button* buttons = picker_createmenu_buttons();
 	int num_buttons = picker_createmenu_button_count();
 	int highlighted_button = 1;
+    sync_team_build_host_control_visibility(
+        buttons, num_buttons, highlighted_button);
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 	draw_backdrop();
 	draw_buttons(buttons, num_buttons);
@@ -233,6 +307,8 @@ Sint32 create_team_menu(Sint32 arg1)
 	while ( !(retvalue & MENU_EXIT) )
 	{
         picker_lobby_poll();
+        sync_team_build_host_control_visibility(
+            buttons, num_buttons, highlighted_button);
         if (team_build_remote_start_requested(retvalue))
             break;
 	    // Input
@@ -319,11 +395,15 @@ Sint32 create_view_menu(Sint32 arg1)
 	button* buttons = picker_viewteam_buttons();
 	int num_buttons = picker_viewteam_button_count();
 	int highlighted_button = 1;
+    sync_view_team_host_control_visibility(
+        buttons, num_buttons, highlighted_button);
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
         picker_lobby_poll();
+        sync_view_team_host_control_visibility(
+            buttons, num_buttons, highlighted_button);
         if (team_build_remote_start_requested(retvalue))
             break;
 	    // Input

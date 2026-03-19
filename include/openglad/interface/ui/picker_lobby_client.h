@@ -42,6 +42,10 @@ public:
     {
         return {};
     }
+    [[nodiscard]] virtual bool host_controls_visible() const noexcept
+    {
+        return true;
+    }
     [[nodiscard]] virtual bool is_save_slot_editable(
         std::size_t slot_index) const noexcept
     {
@@ -73,6 +77,7 @@ picker_lobby_consume_game_start_config();
 bool picker_lobby_start_request_pending();
 bool picker_lobby_has_game_start_config();
 std::vector<std::string> picker_lobby_status_lines();
+bool picker_lobby_host_controls_visible();
 inline bool picker_lobby_save_slot_editable(int slot_index)
 {
     if (slot_index < 0)

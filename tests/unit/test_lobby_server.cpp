@@ -249,6 +249,7 @@ TEST(LobbyServer, raw_join_flow_broadcasts_state_and_populates_save_data)
     EXPECT_EQ("Host", state.players[0].name);
     EXPECT_EQ(0u, state.players[0].player_index);
     EXPECT_TRUE(state.players[0].is_host);
+    EXPECT_EQ(0u, state.host_player_id);
     EXPECT_EQ(0, state.players[0].team);
     ASSERT_EQ(2u, transport.sent_messages().size());
     expect_all_sent_states_equal(transport.sent_messages(), state);
@@ -408,6 +409,7 @@ TEST(LobbyServer, typed_messages_reject_non_host_settings_and_migrate_host_on_di
     EXPECT_EQ("Guest", migrated.players[0].name);
     EXPECT_TRUE(migrated.players[0].is_host);
     EXPECT_EQ(0u, migrated.players[0].player_index);
+    EXPECT_EQ(0u, migrated.host_player_id);
     EXPECT_EQ(1, migrated.players[0].team);
 }
 
@@ -428,6 +430,7 @@ TEST(LobbyServer, first_connected_peer_remains_host_even_if_another_peer_joins_f
     EXPECT_EQ("Guest", server.state().players[0].name);
     EXPECT_FALSE(server.state().players[0].is_host);
     EXPECT_EQ(0u, server.state().players[0].player_index);
+    EXPECT_EQ(0xffu, server.state().host_player_id);
 
     transport.clear_sent_messages();
     og::sim::LobbySettings settings = server.state().settings;
@@ -457,6 +460,7 @@ TEST(LobbyServer, first_connected_peer_remains_host_even_if_another_peer_joins_f
     EXPECT_EQ("Host", server.state().players[0].name);
     EXPECT_TRUE(server.state().players[0].is_host);
     EXPECT_EQ(0u, server.state().players[0].player_index);
+    EXPECT_EQ(0u, server.state().host_player_id);
     EXPECT_EQ("Guest", server.state().players[1].name);
     EXPECT_FALSE(server.state().players[1].is_host);
     EXPECT_EQ(1u, server.state().players[1].player_index);
@@ -523,6 +527,7 @@ TEST(LobbyServer, disconnecting_unjoined_host_promotes_joined_player_immediately
 
     ASSERT_EQ(1u, server.state().players.size());
     EXPECT_FALSE(server.state().players[0].is_host);
+    EXPECT_EQ(0xffu, server.state().host_player_id);
 
     transport.clear_sent_messages();
     server.disconnect_client(11u);
@@ -535,6 +540,7 @@ TEST(LobbyServer, disconnecting_unjoined_host_promotes_joined_player_immediately
     EXPECT_EQ("Guest", promoted.players[0].name);
     EXPECT_TRUE(promoted.players[0].is_host);
     EXPECT_EQ(0u, promoted.players[0].player_index);
+    EXPECT_EQ(0u, promoted.host_player_id);
 }
 
 TEST(LobbyServer, slot_sanitization_and_save_data_mapping_compact_sparse_slots)

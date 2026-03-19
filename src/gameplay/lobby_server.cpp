@@ -293,6 +293,7 @@ void LobbyServer::rebuild_state()
               });
 
     state_.players.clear();
+    state_.host_player_id = 0xff;
     state_.players.reserve(ordered_peers.size());
     for (std::size_t index = 0; index < ordered_peers.size(); ++index)
     {
@@ -300,6 +301,8 @@ void LobbyServer::rebuild_state()
         LobbyPlayer& player = *ordered_peers[index].second->player;
         player.player_index = static_cast<std::uint8_t>(index);
         player.is_host = host_peer_id_.has_value() && *host_peer_id_ == peer_id;
+        if (player.is_host)
+            state_.host_player_id = player.player_index;
         if (player.name.empty())
             player.name = default_player_name(index + 1);
         state_.players.push_back(player);

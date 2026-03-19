@@ -550,6 +550,7 @@ std::vector<std::uint8_t> serialize_lobby_state_message(const LobbyState& state)
 {
     std::vector<std::uint8_t> payload;
     append_lobby_settings(payload, state.settings);
+    append_u8(payload, state.host_player_id);
     append_u32(payload, static_cast<std::uint32_t>(state.players.size()));
     for (const auto& player : state.players)
         append_lobby_player(payload, player);
@@ -563,6 +564,7 @@ std::optional<LobbyState> deserialize_lobby_state_message(
         bytes, kLobbyStateMessageType,
         [](PayloadReader& reader, LobbyState& state) {
             state.settings = read_lobby_settings(reader);
+            state.host_player_id = reader.read_u8();
             const std::uint32_t player_count = reader.read_u32();
             if (!reader.ok() ||
                 player_count >

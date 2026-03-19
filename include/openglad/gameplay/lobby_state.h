@@ -65,6 +65,7 @@ struct LobbySettings {
 
 struct LobbyState {
     LobbySettings settings;
+    std::uint8_t host_player_id = 0xff;
     std::vector<LobbyPlayer> players;
 
     bool operator==(const LobbyState&) const = default;

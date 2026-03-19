@@ -692,6 +692,7 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     EXPECT_TRUE(status_lines_contain_prefix(host_client->status_lines(), "LAN: "));
     EXPECT_TRUE(
         status_lines_contain_exact(host_client->status_lines(), "Lobby: 1 player"));
+    EXPECT_TRUE(host_client->host_controls_visible());
 
     save.scen_num = 2;
     save.allied_mode = 1;
@@ -902,6 +903,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
                    "Lobby: 2 players");
     })) << "direct join client should receive injected lobby state";
 
+    EXPECT_FALSE(join_client->host_controls_visible());
     EXPECT_TRUE(status_lines_contain_prefix(
         join_client->status_lines(),
         std::format("Direct: ws://127.0.0.1:{}", port)));
@@ -1077,6 +1079,10 @@ TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)
                 "Status: connected");
     })) << "relay join client should connect and become the first lobby player";
 
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return join_client->host_controls_visible();
+    })) << "relay join client should become the visible host once the lobby state arrives";
     join_client->sync_roster_from_save();
     join_client->set_player_mode(0);
 

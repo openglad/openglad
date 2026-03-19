@@ -106,6 +106,10 @@ public:
     {
         return pending_config.has_value();
     }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return host_controls_visible_result;
+    }
     [[nodiscard]] bool is_save_slot_editable(
         std::size_t slot_index) const noexcept override
     {
@@ -118,6 +122,7 @@ public:
     int consume_calls = 0;
     int request_start_calls = 0;
     bool request_start_result = false;
+    bool host_controls_visible_result = true;
     bool restrict_editable_slots = false;
     std::array<bool, MAX_TEAM_SIZE> editable_slots{};
 };
@@ -689,6 +694,22 @@ TEST(PickerFuncs, picker_lobby_consume_game_start_config_uses_active_client_boun
         EXPECT_EQ(2, client.consume_calls);
     }
 
+    picker_lobby_shutdown();
+}
+
+TEST(PickerFuncs, picker_lobby_host_controls_visible_follows_active_client_boundary)
+{
+    picker_lobby_shutdown();
+    EXPECT_TRUE(picker_lobby_host_controls_visible());
+
+    ContractPickerLobbyClient client;
+    client.host_controls_visible_result = false;
+    {
+        ActivePickerLobbyClientGuard guard(&client);
+        EXPECT_FALSE(picker_lobby_host_controls_visible());
+    }
+
+    EXPECT_TRUE(picker_lobby_host_controls_visible());
     picker_lobby_shutdown();
 }
 
