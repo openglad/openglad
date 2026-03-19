@@ -24,7 +24,7 @@ const ROOM_STATE_KEY = "room_state";
 export class GameRoom extends DurableObject {
   private readonly peers = new Map<number, WebSocket>();
   private readonly messageRateLimits = new Map<
-    string,
+    number,
     { count: number; windowStartedAt: number }
   >();
   private readonly appEnv: Env;
@@ -141,13 +141,12 @@ export class GameRoom extends DurableObject {
       | WebSocketAttachment
       | undefined;
     const peerId = attachment?.peerId;
-    const clientIp = attachment?.clientIp;
-    if (!peerId || !clientIp) {
+    if (!peerId) {
       ws.close(1011, "Missing peer metadata");
       return;
     }
 
-    if (!this.consumeMessageRateBudget(clientIp)) {
+    if (!this.consumeMessageRateBudget(peerId)) {
       ws.close(1008, "Rate limit exceeded");
       return;
     }
@@ -278,19 +277,10 @@ export class GameRoom extends DurableObject {
   }
 
   private async removePeer(peerId: number): Promise<void> {
-    const socket = this.peers.get(peerId);
-    const attachment = socket?.deserializeAttachment() as
-      | WebSocketAttachment
-      | undefined;
-    const clientIp = attachment?.clientIp ?? null;
-
     if (!this.peers.delete(peerId) || !this.stateData) {
       return;
     }
-
-    if (clientIp && !this.hasPeerForClientIp(clientIp)) {
-      this.messageRateLimits.delete(clientIp);
-    }
+    this.messageRateLimits.delete(peerId);
 
     this.broadcastJson({
       type: "peer_left",
@@ -364,11 +354,11 @@ export class GameRoom extends DurableObject {
     );
   }
 
-  private consumeMessageRateBudget(clientIp: string): boolean {
+  private consumeMessageRateBudget(peerId: number): boolean {
     const now = Date.now();
-    const budget = this.messageRateLimits.get(clientIp);
+    const budget = this.messageRateLimits.get(peerId);
     if (!budget || now - budget.windowStartedAt >= MESSAGE_RATE_LIMIT_WINDOW_MS) {
-      this.messageRateLimits.set(clientIp, {
+      this.messageRateLimits.set(peerId, {
         count: 1,
         windowStartedAt: now,
       });
@@ -381,17 +371,5 @@ export class GameRoom extends DurableObject {
 
     budget.count += 1;
     return true;
-  }
-
-  private hasPeerForClientIp(clientIp: string): boolean {
-    for (const socket of this.peers.values()) {
-      const attachment = socket.deserializeAttachment() as
-        | WebSocketAttachment
-        | undefined;
-      if (attachment?.clientIp === clientIp) {
-        return true;
-      }
-    }
-    return false;
   }
 }

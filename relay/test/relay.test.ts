@@ -380,7 +380,7 @@ describe("OpenGlad relay worker", () => {
     expect(expiredResponse.status).toBe(404);
   });
 
-  it("enforces per-ip create limits and websocket message limits", async () => {
+  it("enforces per-ip create limits and per-connection websocket message limits", async () => {
     const limitedIp = "203.0.113.10";
     for (let index = 0; index < 10; ++index) {
       await createRoom({
@@ -422,5 +422,45 @@ describe("OpenGlad relay worker", () => {
 
     const closeEvent = await closePromise;
     expect(closeEvent.code).toBe(1008);
+  });
+
+  it("does not share websocket rate limits across peers behind the same nat", async () => {
+    const roomCode = await createRoom({
+      campaign: "campaign.nat",
+      clientIp: "203.0.113.12",
+    });
+    const sharedIpHeaders = {
+      "cf-connecting-ip": "198.51.100.77",
+    };
+
+    const hostSocket = await openRoomSocket(`/api/room/${roomCode}`, sharedIpHeaders);
+    await waitForMessage(hostSocket, "nat host joined");
+    await waitForMessage(hostSocket, "nat host peer list");
+
+    const hostPeerJoinedPromise = waitForMessages(hostSocket, 1, "nat host peer joined");
+    const guestSocket = await openRoomSocket(`/api/room/${roomCode}`, sharedIpHeaders);
+    await waitForMessage(guestSocket, "nat guest joined");
+    await waitForMessage(guestSocket, "nat guest peer list");
+    await hostPeerJoinedPromise;
+
+    for (let index = 0; index < 100; ++index) {
+      hostSocket.send(new Uint8Array([1, 99, 0, 0, 0, 7]).buffer);
+    }
+
+    const hostRelayPromise = waitForMessage(hostSocket, "nat guest relay");
+    guestSocket.send(new Uint8Array([1, 1, 0, 0, 0, 9]).buffer);
+    expect(decodeFrame((await hostRelayPromise) as ArrayBuffer)).toEqual([
+      2,
+      2,
+      0,
+      0,
+      0,
+      9,
+    ]);
+
+    const hostClosePromise = waitForClose(hostSocket);
+    hostSocket.send(new Uint8Array([1, 99, 0, 0, 0, 7]).buffer);
+    const hostCloseEvent = await hostClosePromise;
+    expect(hostCloseEvent.code).toBe(1008);
   });
 });
