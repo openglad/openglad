@@ -46,7 +46,7 @@ namespace ix
         _ws.setOnCloseCallback(
             [this](uint16_t code, const std::string& reason, size_t wireSize, bool remote)
             {
-                _onMessageCallback(
+                invokeOnMessageCallback(
                     ix::make_unique<WebSocketMessage>(WebSocketMessageType::Close,
                                                       emptyMsg,
                                                       wireSize,
@@ -236,7 +236,7 @@ namespace ix
             return status;
         }
 
-        _onMessageCallback(ix::make_unique<WebSocketMessage>(
+        invokeOnMessageCallback(ix::make_unique<WebSocketMessage>(
             WebSocketMessageType::Open,
             emptyMsg,
             0,
@@ -271,7 +271,7 @@ namespace ix
             return status;
         }
 
-        _onMessageCallback(
+        invokeOnMessageCallback(
             ix::make_unique<WebSocketMessage>(WebSocketMessageType::Open,
                                               emptyMsg,
                                               0,
@@ -359,12 +359,13 @@ namespace ix
                 connectErr.reason = status.errorStr;
                 connectErr.http_status = status.http_status;
 
-                _onMessageCallback(ix::make_unique<WebSocketMessage>(WebSocketMessageType::Error,
-                                                                     emptyMsg,
-                                                                     0,
-                                                                     connectErr,
-                                                                     WebSocketOpenInfo(),
-                                                                     WebSocketCloseInfo()));
+                invokeOnMessageCallback(
+                    ix::make_unique<WebSocketMessage>(WebSocketMessageType::Error,
+                                                      emptyMsg,
+                                                      0,
+                                                      connectErr,
+                                                      WebSocketOpenInfo(),
+                                                      WebSocketCloseInfo()));
             }
         }
     }
@@ -439,26 +440,43 @@ namespace ix
 
                     bool binary = messageKind == WebSocketTransport::MessageKind::MSG_BINARY;
 
-                    _onMessageCallback(ix::make_unique<WebSocketMessage>(webSocketMessageType,
-                                                                         msg,
-                                                                         wireSize,
-                                                                         webSocketErrorInfo,
-                                                                         WebSocketOpenInfo(),
-                                                                         WebSocketCloseInfo(),
-                                                                         binary));
+                    invokeOnMessageCallback(
+                        ix::make_unique<WebSocketMessage>(webSocketMessageType,
+                                                          msg,
+                                                          wireSize,
+                                                          webSocketErrorInfo,
+                                                          WebSocketOpenInfo(),
+                                                          WebSocketCloseInfo(),
+                                                          binary));
 
                     WebSocket::invokeTrafficTrackerCallback(wireSize, true);
                 });
         }
     }
 
+    void WebSocket::invokeOnMessageCallback(WebSocketMessagePtr message)
+    {
+        OnMessageCallback callback;
+        {
+            std::lock_guard<std::mutex> lock(_onMessageCallbackMutex);
+            callback = _onMessageCallback;
+        }
+
+        if (callback)
+        {
+            callback(message);
+        }
+    }
+
     void WebSocket::setOnMessageCallback(const OnMessageCallback& callback)
     {
+        std::lock_guard<std::mutex> lock(_onMessageCallbackMutex);
         _onMessageCallback = callback;
     }
 
     bool WebSocket::isOnMessageCallbackRegistered() const
     {
+        std::lock_guard<std::mutex> lock(_onMessageCallbackMutex);
         return _onMessageCallback != nullptr;
     }
 

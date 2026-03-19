@@ -1,5 +1,6 @@
-#include <memory>
 #include <array>
+#include <algorithm>
+#include <memory>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
@@ -84,6 +85,52 @@ public:
     }
 
     int poll_calls = 0;
+};
+
+class HostVisibilityPickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    explicit HostVisibilityPickerLobbyClient(bool host_controls_visible)
+        : host_controls_visible_(host_controls_visible)
+    {
+    }
+
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override
+    {
+        return false;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool has_game_start_config() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return host_controls_visible_;
+    }
+
+private:
+    bool host_controls_visible_ = true;
 };
 
 struct ActivePickerLobbyClientGuard
@@ -496,6 +543,52 @@ static int direct_menu_click_injector(void* data)
     return 0;
 }
 
+struct DirectMenuVisibilityState {
+    bool finished;
+    bool saw_menu;
+    bool go_visible;
+    bool set_level_visible;
+    bool set_campaign_visible;
+    int min_y;
+    std::atomic<bool>* menu_done;
+};
+
+static int direct_menu_visibility_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<DirectMenuVisibilityState*>(data);
+
+    const auto in_menu_band = [state](const Interactable& item) {
+        return item.y >= state->min_y;
+    };
+
+    while (!state->menu_done->load(std::memory_order_acquire)) {
+        const auto interactables = get_interactables();
+        const auto visible = [&](const char* id) {
+            return std::any_of(
+                interactables.begin(),
+                interactables.end(),
+                [id, &in_menu_band](const Interactable& item) {
+                    return item.id == id && !item.hidden && in_menu_band(item);
+                });
+        };
+
+        if (visible("back")) {
+            state->saw_menu = true;
+            state->go_visible = visible("go");
+            state->set_level_visible = visible("set_level");
+            state->set_campaign_visible = visible("set_campaign");
+            interact_match("back", in_menu_band);
+            break;
+        }
+
+        SDL_Delay(50);
+    }
+
+    state->finished = true;
+    return 0;
+}
+
 TEST(ViewTeam, create_view_menu_direct_back)
 {
     trace_clear();
@@ -582,6 +675,90 @@ TEST(ViewTeam, create_team_menu_remote_start_exits_as_start_game)
     EXPECT_EQ(og::ui::PickerMenuCommand::StartGame, selected->command);
 
     g_start_game_requested = false;
+}
+
+TEST(ViewTeam, create_team_menu_hides_host_only_controls_for_non_host_client)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+
+    HostVisibilityPickerLobbyClient client(false);
+    ActivePickerLobbyClientGuard guard(&client);
+    std::atomic<bool> menu_done{false};
+    DirectMenuVisibilityState state{
+        .finished = false,
+        .saw_menu = false,
+        .go_visible = false,
+        .set_level_visible = false,
+        .set_campaign_visible = false,
+        .min_y = 100,
+        .menu_done = &menu_done,
+    };
+    SDL_Thread* thread =
+        SDL_CreateThread(direct_menu_visibility_injector, "direct_team_visibility", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create team-menu visibility injector thread";
+
+    const Sint32 ret = create_team_menu(0);
+    menu_done.store(true, std::memory_order_release);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "team-menu visibility injector should complete";
+    ASSERT_TRUE(state.saw_menu) << "team menu should become visible";
+    EXPECT_FALSE(state.go_visible);
+    EXPECT_FALSE(state.set_level_visible);
+    EXPECT_FALSE(state.set_campaign_visible);
+    ASSERT_TRUE(ret & 1) << "create_team_menu(back) should propagate EXIT";
+}
+
+TEST(ViewTeam, create_view_menu_hides_go_for_non_host_client)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+
+    HostVisibilityPickerLobbyClient client(false);
+    ActivePickerLobbyClientGuard guard(&client);
+    std::atomic<bool> menu_done{false};
+    DirectMenuVisibilityState state{
+        .finished = false,
+        .saw_menu = false,
+        .go_visible = false,
+        .set_level_visible = false,
+        .set_campaign_visible = false,
+        .min_y = 160,
+        .menu_done = &menu_done,
+    };
+    SDL_Thread* thread =
+        SDL_CreateThread(direct_menu_visibility_injector, "direct_view_visibility", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create view-menu visibility injector thread";
+
+    const Sint32 ret = create_view_menu(0);
+    menu_done.store(true, std::memory_order_release);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "view-menu visibility injector should complete";
+    ASSERT_TRUE(state.saw_menu) << "view menu should become visible";
+    EXPECT_FALSE(state.go_visible);
+    ASSERT_TRUE(ret & 2) << "create_view_menu(back) should return REDRAW";
 }
 
 

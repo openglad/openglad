@@ -125,6 +125,7 @@ namespace ix
         WebSocketSendInfo sendMessage(const IXWebSocketSendData& message,
                                       SendMessageKind sendMessageKind,
                                       const OnProgressCallback& callback = nullptr);
+        void invokeOnMessageCallback(WebSocketMessagePtr message);
 
         bool isConnected() const;
         bool isClosing() const;
@@ -149,6 +150,7 @@ namespace ix
         mutable std::mutex _configMutex; // protect all config variables access
 
         OnMessageCallback _onMessageCallback;
+        mutable std::mutex _onMessageCallbackMutex;
         static OnTrafficTrackerCallback _onTrafficTrackerCallback;
 
         std::atomic<bool> _stop;
