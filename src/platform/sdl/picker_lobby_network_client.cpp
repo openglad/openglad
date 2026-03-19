@@ -1968,12 +1968,11 @@ private:
             dynamic_cast<og::sim::RelayWebSocketTransport*>(transport_.get());
         if (relay_transport == nullptr)
             return;
+        (void)relay_transport;
 
-        if (const auto host_peer_id = relay_transport->host_peer_id();
-            host_peer_id.has_value() && *host_peer_id != 0)
-        {
-            server_peer_id_ = *host_peer_id;
-        }
+        // Relay room host migration is a room-management concept. The
+        // authoritative lobby/game server still lives on the original host
+        // peer id, which remains pinned for relay clients.
     }
 
     void apply_state_to_current_save()

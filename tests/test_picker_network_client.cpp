@@ -1212,6 +1212,74 @@ TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)
     join_client->shutdown();
 }
 
+TEST(PickerNetworkClient,
+     join_relay_flow_keeps_authoritative_peer_when_room_host_migrates)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Relay Joiner");
+
+    const int port = ix::getFreePort();
+    FakeRelayServer relay_server(port);
+    const std::string relay_url =
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-XKCD", port);
+
+    auto relay_host_transport =
+        std::make_unique<og::sim::RelayWebSocketTransport>(relay_url);
+    relay_host_transport->accept_connections();
+    ASSERT_TRUE(wait_until_host_owns_room(*relay_host_transport));
+
+    og::sim::RelayWebSocketTransport migrated_host_transport(relay_url);
+    migrated_host_transport.accept_connections();
+    ASSERT_TRUE(wait_until([&] {
+        (void)relay_host_transport->poll();
+        (void)migrated_host_transport.poll();
+        return migrated_host_transport.local_peer_id().has_value() &&
+            migrated_host_transport.connected_peers() ==
+                std::vector<og::sim::PeerId>{1u};
+    })) << "second relay peer should see the original host before migration";
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Relay;
+    options.room_code = "glad-xkcd";
+    options.relay_base_url = std::format("http://127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+
+    ASSERT_TRUE(wait_until([&] {
+        (void)relay_host_transport->poll();
+        (void)migrated_host_transport.poll();
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(
+            join_client->status_lines(),
+            "Status: connected");
+    })) << "relay join client should connect before host migration";
+
+    relay_host_transport.reset();
+    ASSERT_TRUE(wait_until([&] {
+        (void)migrated_host_transport.poll();
+        join_client->poll_and_apply();
+        return migrated_host_transport.local_peer_id().has_value() &&
+            migrated_host_transport.host_peer_id() ==
+                migrated_host_transport.local_peer_id();
+    })) << "remaining relay peer should become the room host after the original host leaves";
+
+    save.team_list[0]->name = "Relay Joiner Prime";
+    join_client->sync_roster_from_save();
+    join_client->poll_and_apply();
+
+    const bool migrated_host_received_join = wait_until([&] {
+        return !poll_lobby_messages(migrated_host_transport).empty();
+    }, 500ms);
+    EXPECT_FALSE(migrated_host_received_join)
+        << "join client should stay targeted at the original authoritative peer";
+
+    join_client->shutdown();
+}
+
 TEST(PickerNetworkClient, host_initialization_reports_direct_and_relay_failures)
 {
     IxNetSystemScope net_system;

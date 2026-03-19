@@ -201,15 +201,20 @@ async function replacePeerSocketWithThrowingSend(
 
 async function readRoomPeerState(stub: DurableObjectStub): Promise<{
   hostPeerId: number | null;
+  ownerPeerId: number | null;
   peerIds: number[];
 }> {
   return runInDurableObject(stub, (instance) => {
     const room = instance as unknown as {
       peers: Map<number, WebSocket>;
-      stateData: { host_peer_id: number | null } | null;
+      stateData: {
+        host_peer_id: number | null;
+        owner_peer_id: number | null;
+      } | null;
     };
     return {
       hostPeerId: room.stateData?.host_peer_id ?? null,
+      ownerPeerId: room.stateData?.owner_peer_id ?? null,
       peerIds: [...room.peers.keys()].sort((left, right) => left - right),
     };
   });
@@ -268,7 +273,7 @@ afterEach(async () => {
 });
 
 describe("OpenGlad relay worker", () => {
-  it("supports room listing, frame relay, stable host reclaim, and room limits", async () => {
+  it("supports room listing, frame relay, host migration, owner reclaim, and room limits", async () => {
     const alphaRoom = await createRoom({
       campaign: "campaign.alpha",
       campaignName: "Alpha Campaign",
@@ -369,15 +374,21 @@ describe("OpenGlad relay worker", () => {
       6,
     ]);
 
-    const guestPeerLeftPromise = waitForMessage(
+    const guestCloseMessagesPromise = waitForMessages(
       guestSocket,
-      "guest close update",
+      2,
+      "guest close updates",
     );
     hostSocket.close(1000, "host left");
 
-    expect(JSON.parse((await guestPeerLeftPromise) as string)).toEqual({
+    const guestCloseMessages = await guestCloseMessagesPromise;
+    expect(JSON.parse(guestCloseMessages[0] as string)).toEqual({
       type: "peer_left",
       peer_id: 1,
+    });
+    expect(JSON.parse(guestCloseMessages[1] as string)).toEqual({
+      type: "host_changed",
+      new_host: 2,
     });
 
     const roomListResponse = await SELF.fetch("https://relay.test/api/rooms");
@@ -391,7 +402,8 @@ describe("OpenGlad relay worker", () => {
     await expect(
       readRoomPeerState(env.GAME_ROOM.get(env.GAME_ROOM.idFromName(alphaRoom.code))),
     ).resolves.toEqual({
-      hostPeerId: 1,
+      hostPeerId: 2,
+      ownerPeerId: 1,
       peerIds: [2],
     });
 
@@ -414,16 +426,16 @@ describe("OpenGlad relay worker", () => {
     };
     expect(reconnectedHostJoined).toEqual(expect.objectContaining({
       peer_id: 1,
-      host: 1,
+      host: 2,
     }));
     expect(reconnectedHostPeerList).toEqual(expect.objectContaining({
       peers: [1, 2],
-      host: 1,
+      host: 2,
     }));
     expect(JSON.parse((await guestHostReturnPromise) as string)).toEqual({
       type: "peer_joined",
       peer_id: 1,
-      is_host: true,
+      is_host: false,
     });
 
     const hostRelayAgainPromise = waitForMessage(
@@ -600,6 +612,7 @@ describe("OpenGlad relay worker", () => {
 
     await expect(readRoomPeerState(roomStub)).resolves.toEqual({
       hostPeerId: 1,
+      ownerPeerId: 1,
       peerIds: [1, 2],
     });
   });
@@ -688,7 +701,7 @@ describe("OpenGlad relay worker", () => {
     expect(hostCloseEvent.code).toBe(1008);
   });
 
-  it("cleans up relay send failures without promoting a replacement host", async () => {
+  it("cleans up relay send failures and migrates the room host", async () => {
     const room = await createRoom({ campaign: "campaign.send-failure" });
     const roomStub = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room.code));
 
@@ -708,15 +721,21 @@ describe("OpenGlad relay worker", () => {
 
     await replacePeerSocketWithThrowingSend(roomStub, 1);
 
-    const guestCleanupPromise = waitForMessage(
+    const guestCleanupPromise = waitForMessages(
       guestSocket,
-      "send failure cleanup update",
+      2,
+      "send failure cleanup updates",
     );
     guestSocket.send(new Uint8Array([RELAY_BROADCAST_TAG, 7, 8, 9]).buffer);
 
-    expect(JSON.parse((await guestCleanupPromise) as string)).toEqual({
+    const guestCleanupMessages = await guestCleanupPromise;
+    expect(JSON.parse(guestCleanupMessages[0] as string)).toEqual({
       type: "peer_left",
       peer_id: 1,
+    });
+    expect(JSON.parse(guestCleanupMessages[1] as string)).toEqual({
+      type: "host_changed",
+      new_host: 2,
     });
 
     await waitForCondition("room index after relay send failure", async () => {
@@ -729,7 +748,8 @@ describe("OpenGlad relay worker", () => {
     });
 
     await expect(readRoomPeerState(roomStub)).resolves.toEqual({
-      hostPeerId: 1,
+      hostPeerId: 2,
+      ownerPeerId: 1,
       peerIds: [2],
     });
   });
@@ -760,7 +780,8 @@ describe("OpenGlad relay worker", () => {
     const hiddenRoomList = await SELF.fetch("https://relay.test/api/rooms");
     await expect(hiddenRoomList.json()).resolves.toEqual([]);
     await expect(readRoomPeerState(roomStub)).resolves.toEqual({
-      hostPeerId: 1,
+      hostPeerId: null,
+      ownerPeerId: 1,
       peerIds: [],
     });
   });

@@ -102,6 +102,7 @@ export function makeStoredRoomState(room: RoomInfo): StoredRoomState {
     created_at: room.created_at,
     next_peer_id: 1,
     host_peer_id: null,
+    owner_peer_id: null,
     host_owner_token: "",
   };
 }

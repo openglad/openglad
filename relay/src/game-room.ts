@@ -48,6 +48,15 @@ export class GameRoom extends DurableObject {
             next_peer_id: stored.next_peer_id ?? 1,
             host_peer_id:
               typeof stored.host_peer_id === "number" ? stored.host_peer_id : null,
+            owner_peer_id:
+              typeof stored.owner_peer_id === "number"
+                ? stored.owner_peer_id
+                : typeof stored.host_owner_token === "string" &&
+                    stored.host_owner_token.length > 0
+                  ? 1
+                  : typeof stored.host_peer_id === "number"
+                    ? stored.host_peer_id
+                    : null,
             host_owner_token:
               typeof stored.host_owner_token === "string" ? stored.host_owner_token : "",
           }
@@ -96,14 +105,15 @@ export class GameRoom extends DurableObject {
         host_name: seededRoom.host_name,
         created_at: seededRoom.created_at,
         next_peer_id: hostOwnerToken ? 2 : 1,
-        host_peer_id: hostOwnerToken ? 1 : null,
+        host_peer_id: null,
+        owner_peer_id: hostOwnerToken ? 1 : null,
         host_owner_token: hostOwnerToken,
       };
       await this.persistState();
     }
 
     const isHostOwner = this.isHostOwnerRequest(request);
-    const replacedHostConnection = this.replaceExistingHostConnectionIfNeeded(isHostOwner);
+    const replacedOwnerConnection = this.replaceExistingOwnerConnectionIfNeeded(isHostOwner);
 
     if (this.peers.size >= MAX_ROOM_PEERS) {
       return new Response("Room is full", { status: 409 });
@@ -138,7 +148,7 @@ export class GameRoom extends DurableObject {
       peers: [...this.peers.keys()].sort((left, right) => left - right),
       host: this.stateData.host_peer_id,
     });
-    if (!replacedHostConnection) {
+    if (!replacedOwnerConnection) {
       await this.broadcastJson(
         {
           type: "peer_joined",
@@ -326,8 +336,14 @@ export class GameRoom extends DurableObject {
     });
 
     if (this.stateData.host_peer_id === peerId) {
-      if (!this.stateData.host_owner_token) {
-        this.stateData.host_peer_id = null;
+      const nextHostPeerId =
+        [...this.peers.keys()].sort((left, right) => left - right)[0] ?? null;
+      this.stateData.host_peer_id = nextHostPeerId;
+      if (nextHostPeerId !== null) {
+        await this.broadcastJson({
+          type: "host_changed",
+          new_host: nextHostPeerId,
+        });
       }
     }
 
@@ -431,18 +447,18 @@ export class GameRoom extends DurableObject {
     return true;
   }
 
-  private replaceExistingHostConnectionIfNeeded(isHostOwner: boolean): boolean {
-    if (!isHostOwner || !this.stateData || this.stateData.host_peer_id === null) {
+  private replaceExistingOwnerConnectionIfNeeded(isHostOwner: boolean): boolean {
+    if (!isHostOwner || !this.stateData || this.stateData.owner_peer_id === null) {
       return false;
     }
 
-    const existingSocket = this.peers.get(this.stateData.host_peer_id);
+    const existingSocket = this.peers.get(this.stateData.owner_peer_id);
     if (!existingSocket) {
       return false;
     }
 
-    this.peers.delete(this.stateData.host_peer_id);
-    this.messageRateLimits.delete(this.stateData.host_peer_id);
+    this.peers.delete(this.stateData.owner_peer_id);
+    this.messageRateLimits.delete(this.stateData.owner_peer_id);
     this.tryClose(existingSocket, 1012, "Superseded by reconnect");
     return true;
   }
@@ -454,19 +470,22 @@ export class GameRoom extends DurableObject {
 
     if (
       isHostOwner &&
-      this.stateData.host_peer_id !== null &&
-      !this.peers.has(this.stateData.host_peer_id)
+      this.stateData.owner_peer_id !== null &&
+      !this.peers.has(this.stateData.owner_peer_id)
     ) {
-      const peerId = this.stateData.host_peer_id;
+      const peerId = this.stateData.owner_peer_id;
       if (peerId >= this.stateData.next_peer_id) {
         this.stateData.next_peer_id = peerId + 1;
+      }
+      if (this.stateData.host_peer_id === null) {
+        this.stateData.host_peer_id = peerId;
       }
       return peerId;
     }
 
     while (
       this.peers.has(this.stateData.next_peer_id) ||
-      this.stateData.next_peer_id === this.stateData.host_peer_id
+      this.stateData.next_peer_id === this.stateData.owner_peer_id
     ) {
       this.stateData.next_peer_id += 1;
     }
@@ -474,7 +493,11 @@ export class GameRoom extends DurableObject {
     const peerId = this.stateData.next_peer_id;
     this.stateData.next_peer_id += 1;
 
-    if (this.stateData.host_peer_id === null && isHostOwner) {
+    if (this.stateData.owner_peer_id === null && isHostOwner) {
+      this.stateData.owner_peer_id = peerId;
+    }
+
+    if (this.stateData.host_peer_id === null) {
       this.stateData.host_peer_id = peerId;
     }
 
@@ -487,7 +510,7 @@ export class GameRoom extends DurableObject {
     }
 
     if (!this.stateData.host_owner_token) {
-      return this.stateData.host_peer_id === null;
+      return this.stateData.owner_peer_id === null;
     }
 
     const connectingOwnerToken =

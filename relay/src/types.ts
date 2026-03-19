@@ -20,6 +20,7 @@ export interface StoredRoomState {
   created_at: number;
   next_peer_id: number;
   host_peer_id: number | null;
+  owner_peer_id: number | null;
   host_owner_token: string;
 }
 
