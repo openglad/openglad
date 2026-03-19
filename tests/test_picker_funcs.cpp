@@ -149,6 +149,12 @@ struct ExclusiveLobbyBinding
     bool in_use = false;
 };
 
+struct ExclusiveResourcePickerLobbyStats
+{
+    int initialize_calls = 0;
+    int shutdown_calls = 0;
+};
+
 class ScopedEnvVar
 {
 public:
@@ -249,14 +255,17 @@ public:
 class ExclusiveResourcePickerLobbyClient final : public og::ui::IPickerLobbyClient
 {
 public:
-    explicit ExclusiveResourcePickerLobbyClient(ExclusiveLobbyBinding& binding)
+    ExclusiveResourcePickerLobbyClient(
+        ExclusiveLobbyBinding& binding,
+        std::shared_ptr<ExclusiveResourcePickerLobbyStats> stats)
         : binding_(binding)
+        , stats_(std::move(stats))
     {
     }
 
     void initialize_from_save() override
     {
-        ++initialize_calls;
+        ++stats_->initialize_calls;
         if (binding_.in_use)
             throw std::runtime_error("resource already in use");
         binding_.in_use = true;
@@ -265,7 +274,7 @@ public:
 
     void shutdown() override
     {
-        ++shutdown_calls;
+        ++stats_->shutdown_calls;
         if (owns_binding_)
         {
             binding_.in_use = false;
@@ -301,9 +310,8 @@ public:
     }
 
     ExclusiveLobbyBinding& binding_;
+    std::shared_ptr<ExclusiveResourcePickerLobbyStats> stats_;
     bool owns_binding_ = false;
-    int initialize_calls = 0;
-    int shutdown_calls = 0;
 };
 
 } // namespace
@@ -731,16 +739,22 @@ TEST(PickerFuncs, picker_replace_lobby_client_swaps_active_client_after_success)
 TEST(PickerFuncs, picker_replace_lobby_client_releases_old_host_before_new_init)
 {
     ExclusiveLobbyBinding binding;
+    auto current_stats = std::make_shared<ExclusiveResourcePickerLobbyStats>();
     std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
-        std::make_unique<ExclusiveResourcePickerLobbyClient>(binding);
+        std::make_unique<ExclusiveResourcePickerLobbyClient>(
+            binding,
+            current_stats);
     auto* const current_raw =
         static_cast<ExclusiveResourcePickerLobbyClient*>(current_client.get());
     current_raw->initialize_from_save();
     ASSERT_TRUE(binding.in_use);
     ActivePickerLobbyClientGuard guard(current_raw);
 
+    auto next_stats = std::make_shared<ExclusiveResourcePickerLobbyStats>();
     std::unique_ptr<og::ui::IPickerLobbyClient> next_client =
-        std::make_unique<ExclusiveResourcePickerLobbyClient>(binding);
+        std::make_unique<ExclusiveResourcePickerLobbyClient>(
+            binding,
+            next_stats);
     auto* const next_raw =
         static_cast<ExclusiveResourcePickerLobbyClient*>(next_client.get());
 
@@ -750,8 +764,8 @@ TEST(PickerFuncs, picker_replace_lobby_client_releases_old_host_before_new_init)
     EXPECT_EQ(next_raw, current_client.get());
     EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
     EXPECT_TRUE(binding.in_use);
-    EXPECT_EQ(1, current_raw->shutdown_calls);
-    EXPECT_EQ(1, next_raw->initialize_calls);
+    EXPECT_EQ(1, current_stats->shutdown_calls);
+    EXPECT_EQ(1, next_stats->initialize_calls);
 }
 
 TEST(PickerFuncs, picker_join_game_catches_invalid_relay_base_url)
