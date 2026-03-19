@@ -79,6 +79,7 @@ struct ConnectedClientState {
     bool allow_initial_keyframe_without_ready = false;
     bool budget_pending_keyframe = false;
     bool force_keyframe = false;
+    bool resume_in_dead_state = false;
     SessionToken session_token = kZeroSessionToken;
     std::unordered_map<std::uint32_t, PlayerInput> pending_inputs;
     PlayerInput last_known_input = {};

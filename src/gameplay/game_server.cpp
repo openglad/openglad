@@ -1125,6 +1125,8 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
     reconnected.allow_initial_keyframe_without_ready = true;
     reconnected.budget_pending_keyframe = true;
     reconnected.force_keyframe = true;
+    reconnected.resume_in_dead_state =
+        reconnected.control != nullptr && reconnected.control->dead();
     reconnected.pending_inputs.clear();
     reconnected.expected_snapshot_hashes.clear();
     reconnected.last_known_input = disconnected_it->repeated_input;
@@ -1132,8 +1134,17 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
     reconnected.last_received_input_ms = now_ms();
     reset_client_snapshot_state(reconnected.snapshot_state);
 
-    if (reconnected.control != nullptr && !reconnected.control->dead() &&
-        reconnected.control->user() == -1)
+    if (reconnected.resume_in_dead_state)
+    {
+        if (reconnected.control->user() ==
+            static_cast<int>(reconnected.player_index))
+        {
+            reconnected.control->set_user(-1);
+            reconnected.control->restore_act_type();
+        }
+    }
+    else if (reconnected.control != nullptr &&
+             reconnected.control->user() == -1)
     {
         reconnected.control->set_user(
             static_cast<signed char>(reconnected.player_index));
@@ -1613,6 +1624,7 @@ void GameServer::prepare_clients_for_loaded_level()
         client.allow_initial_keyframe_without_ready = false;
         client.budget_pending_keyframe = false;
         client.force_keyframe = true;
+        client.resume_in_dead_state = false;
         client.pending_inputs.clear();
         client.expected_snapshot_hashes.clear();
         client.last_known_input = {};
@@ -1746,6 +1758,14 @@ bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
 
         const std::size_t player_index = client.player_index;
         walker* const previous_control = client.control;
+        if (client.resume_in_dead_state && client.control != nullptr &&
+            client.control->dead())
+        {
+            player_controls_[player_index] = client.control;
+            continue;
+        }
+
+        client.resume_in_dead_state = false;
         const PlayerInput input = select_effective_input(client, expected_tick);
         const SimInputResult result = sim_process_player_input(
             input,
