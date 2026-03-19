@@ -355,6 +355,15 @@ void GameClient::testing_set_render_interpolation_elapsed_ms(float elapsed_ms)
                 std::max(elapsed_ms, 0.0f)));
 }
 
+void GameClient::testing_set_last_outbound_activity_elapsed_ms(float elapsed_ms)
+{
+    last_outbound_activity_time_ =
+        InterpolationClock::now() -
+        std::chrono::duration_cast<InterpolationClock::duration>(
+            std::chrono::duration<float, std::milli>(
+                std::max(elapsed_ms, 0.0f)));
+}
+
 GameClient::GameClient(ITransport& transport,
                        PeerId server_peer_id,
                        GameWorld* world)

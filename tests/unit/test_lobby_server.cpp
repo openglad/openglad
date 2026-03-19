@@ -88,6 +88,14 @@ public:
         received_raw_.push_back({peer_id, std::move(data)});
     }
 
+    void queue_malformed_typed_message(og::sim::PeerId peer_id)
+    {
+        og::sim::TypedReceivedMessage typed_message;
+        typed_message.peer_id = peer_id;
+        typed_message.kind = og::sim::TypedReceivedMessageKind::Malformed;
+        received_typed_.push_back(std::move(typed_message));
+    }
+
     void clear_sent_messages()
     {
         sent_messages_.clear();
@@ -476,6 +484,18 @@ TEST(LobbyServer, malformed_lobby_message_throws)
         make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
     malformed.pop_back();
     transport.queue_raw_message(11u, std::move(malformed));
+
+    EXPECT_THROW(server.poll_incoming_messages(), std::runtime_error);
+}
+
+TEST(LobbyServer, malformed_typed_message_throws)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.clear_sent_messages();
+
+    transport.queue_malformed_typed_message(11u);
 
     EXPECT_THROW(server.poll_incoming_messages(), std::runtime_error);
 }

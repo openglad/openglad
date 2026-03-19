@@ -601,6 +601,33 @@ TEST(NetTransport, heartbeat_resets_server_input_timeout)
     EXPECT_EQ((std::vector<og::sim::PeerId>{7u}), transport.disconnected_peers());
 }
 
+TEST(NetTransport, game_client_sends_automatic_heartbeats_when_idle)
+{
+    MockTransport transport;
+    og::sim::GameClient client(transport, 7u);
+
+    transport.set_connected_peers({7u});
+    client.poll_messages();
+
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_TRUE(
+        og::sim::deserialize_hello_message(transport.sent_messages()[0].data)
+            .has_value());
+
+    transport.clear_sent_messages();
+    client.testing_set_last_outbound_activity_elapsed_ms(2100.0f);
+    client.poll_messages();
+
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    EXPECT_TRUE(
+        og::sim::deserialize_heartbeat_message(transport.sent_messages()[0].data)
+            .has_value());
+
+    transport.clear_sent_messages();
+    client.poll_messages();
+    EXPECT_TRUE(transport.sent_messages().empty());
+}
+
 TEST(NetTransport,
      disconnect_grace_uses_last_pending_held_input_from_removed_peer)
 {
