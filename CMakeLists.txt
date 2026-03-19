@@ -1871,17 +1871,18 @@ if(NOT EMSCRIPTEN)
             # 4-core runners can trigger flaky asset/campaign test failures.
             set_tests_properties(og_test_game_core PROPERTIES PROCESSORS 4)
             # The coverage-instrumented unit-sim binary now includes live
-            # WebSocket and relay transport tests; on 4-core CI runners it can
-            # exceed the generic 180s timeout only when scheduled beside other
-            # heavyweight coverage binaries.
-            set_tests_properties(og_unit_sim PROPERTIES PROCESSORS 2)
+            # WebSocket and relay transport tests. On GitHub's 4-core runners
+            # it can exceed the coverage workflow timeout budget when CTest
+            # schedules it beside other heavyweight binaries, so give it full
+            # runner isolation in that lane.
+            set_tests_properties(og_unit_sim PROPERTIES PROCESSORS 4)
             # Menu UI coverage still runs substantially slower on GitHub's
             # 4-core runners than it does locally, so match the dedicated
             # coverage workflow budget instead of leaving CTest at 300s here.
             set_tests_properties(og_test_menu_ui PROPERTIES TIMEOUT 420)
             set_tests_properties(og_test_picker PROPERTIES TIMEOUT 420)
             set_tests_properties(og_test_picker_network PROPERTIES TIMEOUT 420)
-            set_tests_properties(og_unit_sim PROPERTIES TIMEOUT 420)
+            set_tests_properties(og_unit_sim PROPERTIES TIMEOUT 600)
         endif()
 
         if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)

@@ -31,6 +31,8 @@ void write_u32_le(std::vector<std::uint8_t>& bytes,
 class MockTransport final : public og::sim::ITransport
 {
 public:
+    using og::sim::ITransport::broadcast;
+
     void send(og::sim::PeerId peer_id,
               const std::uint8_t* data,
               std::size_t len) override
@@ -55,6 +57,12 @@ public:
     void disconnect(og::sim::PeerId peer_id) override
     {
         disconnected_peers_.push_back(peer_id);
+    }
+
+    void broadcast(const std::uint8_t* data, std::size_t len) override
+    {
+        broadcast_messages_.emplace_back(data, data + len);
+        og::sim::ITransport::broadcast(data, len);
     }
 
     std::vector<og::sim::PeerId> connected_peers() const override
@@ -87,6 +95,17 @@ public:
         sent_messages_.clear();
     }
 
+    const std::vector<std::vector<std::uint8_t>>&
+    broadcast_messages() const noexcept
+    {
+        return broadcast_messages_;
+    }
+
+    void clear_broadcast_messages()
+    {
+        broadcast_messages_.clear();
+    }
+
     const std::vector<og::sim::PeerId>& disconnected_peers() const noexcept
     {
         return disconnected_peers_;
@@ -97,6 +116,7 @@ private:
     std::vector<og::sim::PeerId> connected_peers_;
     std::vector<og::sim::ReceivedMessage> received_messages_;
     std::vector<og::sim::ReceivedMessage> sent_messages_;
+    std::vector<std::vector<std::uint8_t>> broadcast_messages_;
     std::vector<og::sim::PeerId> disconnected_peers_;
 };
 
@@ -188,7 +208,7 @@ TEST(NetTransport, default_broadcast_sends_payload_to_all_connected_peers)
     transport.set_connected_peers({3u, 7u, 11u});
 
     const std::array<std::uint8_t, 3> payload = {0x10, 0x20, 0x30};
-    transport.broadcast(payload);
+    transport.broadcast(payload.data(), payload.size());
 
     ASSERT_EQ(3u, transport.sent_messages().size());
     EXPECT_EQ(3u, transport.sent_messages()[0].peer_id);
@@ -929,6 +949,57 @@ TEST(NetTransport, game_server_forward_event_batch_uses_ready_raw_fallback)
     EXPECT_EQ(og::sim::EventKind::EndGame, game_flow_batch.events[0].kind);
     EXPECT_EQ(1u, game_flow_batch.events[0].a);
     EXPECT_EQ(2u, game_flow_batch.events[0].b);
+}
+
+TEST(NetTransport,
+     game_server_broadcast_current_state_uses_transport_broadcast_for_shared_keyframes)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u, 11u});
+    server.connect_client(7u);
+    server.connect_client(11u);
+    server.bind_player(7u, 0u, fixture.world().my_team);
+    server.bind_player(11u, 1u, fixture.world().my_team);
+    server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+    server.send_initial_snapshot(11u, og::sim::SnapshotCaptureMode::Peek);
+    transport.clear_sent_messages();
+    transport.clear_broadcast_messages();
+
+    const og::sim::ClientReadyMessage ready{
+        .last_applied_tick = fixture.world().tick_count_,
+    };
+    transport.queue_received(
+        7u, og::sim::serialize_client_ready_message(ready));
+    transport.queue_received(
+        11u, og::sim::serialize_client_ready_message(ready));
+    server.step();
+    transport.clear_sent_messages();
+    transport.clear_broadcast_messages();
+
+    fixture.world().tick_count_ = og::sim::KEYFRAME_INTERVAL_TICKS;
+    fixture.world().current_palette_id = 3;
+
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+
+    ASSERT_EQ(1u, transport.broadcast_messages().size());
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    EXPECT_EQ(7u, transport.sent_messages()[0].peer_id);
+    EXPECT_EQ(11u, transport.sent_messages()[1].peer_id);
+    EXPECT_EQ(transport.broadcast_messages().front(),
+              transport.sent_messages()[0].data);
+    EXPECT_EQ(transport.broadcast_messages().front(),
+              transport.sent_messages()[1].data);
+
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::deserialize_snapshot(
+            transport.broadcast_messages().front().data(),
+            transport.broadcast_messages().front().size());
+    EXPECT_EQ(og::sim::KEYFRAME_INTERVAL_TICKS, snapshot.tick_count);
+    EXPECT_EQ(3, snapshot.current_palette_id);
 }
 
 TEST(NetTransport,
