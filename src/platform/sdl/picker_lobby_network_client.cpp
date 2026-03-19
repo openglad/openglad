@@ -2,6 +2,7 @@
 #include <openglad/gameplay/lobby_state.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/net_transport_multiplex.h>
+#include <openglad/core/zlib_api.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -10,6 +11,7 @@
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/net_transport_relay_ws.h>
 #include <openglad/platform/picker_lobby_network_runtime.h>
+#include <openglad/resources/io_common.h>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -25,8 +27,10 @@
 #include <cctype>
 #include <charconv>
 #include <chrono>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <format>
 #include <memory>
 #include <optional>
@@ -229,6 +233,61 @@ std::string relay_api_base_url(std::string base_url)
     return base_url + "/api";
 }
 
+std::filesystem::path campaign_archive_path(std::string_view campaign_id)
+{
+    return std::filesystem::path(get_user_path()) / "campaigns" /
+        (std::string(campaign_id) + ".glad");
+}
+
+std::optional<std::string> crc32_hex_for_file(const std::filesystem::path& path)
+{
+    std::FILE* const file = std::fopen(path.string().c_str(), "rb");
+    if (file == nullptr)
+        return std::nullopt;
+
+    std::array<unsigned char, 4096> buffer{};
+    uLong crc = 0;
+    while (true)
+    {
+        const std::size_t read =
+            std::fread(buffer.data(), 1, buffer.size(), file);
+        if (read > 0)
+        {
+            crc = crc32(
+                crc,
+                reinterpret_cast<const Bytef*>(buffer.data()),
+                static_cast<uInt>(read));
+        }
+
+        if (read < buffer.size())
+        {
+            if (std::ferror(file) != 0)
+            {
+                std::fclose(file);
+                return std::nullopt;
+            }
+            break;
+        }
+    }
+
+    std::fclose(file);
+    return std::format("{:08x}", static_cast<std::uint32_t>(crc));
+}
+
+std::string campaign_content_hash(std::string_view campaign_id)
+{
+    if (campaign_id.empty())
+        return {};
+
+    if (const auto hash = crc32_hex_for_file(campaign_archive_path(campaign_id));
+        hash.has_value())
+    {
+        return *hash;
+    }
+
+    return {};
+}
+
 std::optional<std::size_t> find_json_field_value(std::string_view text,
                                                  std::string_view key)
 {
@@ -369,7 +428,7 @@ std::string build_relay_room_websocket_url_impl(std::string base_url,
 }
 
 std::string build_relay_room_create_url(std::string base_url,
-                                        std::string_view campaign_tag,
+                                        std::string_view campaign_hash,
                                         std::string_view campaign_name,
                                         std::string_view host_name)
 {
@@ -394,14 +453,14 @@ std::string build_relay_room_create_url(std::string base_url,
         url.push_back('=');
         url.append(encoded_value);
     };
-    append_query("campaign", campaign_tag);
+    append_query("campaign", campaign_hash);
     append_query("campaign_name", campaign_name);
     append_query("host", host_name);
     return url;
 }
 
 std::string build_relay_room_list_url(std::string base_url,
-                                      std::string_view campaign_tag)
+                                      std::string_view campaign_hash)
 {
     base_url = relay_api_base_url(std::move(base_url));
     if (base_url.rfind("ws://", 0) == 0)
@@ -410,7 +469,7 @@ std::string build_relay_room_list_url(std::string base_url,
         base_url.replace(0, 6, "https://");
 
     std::string url = base_url + "/rooms";
-    const std::string encoded_tag = url_encode_component(campaign_tag);
+    const std::string encoded_tag = url_encode_component(campaign_hash);
     if (!encoded_tag.empty())
         url.append(std::format("?campaign={}", encoded_tag));
     return url;
@@ -454,13 +513,13 @@ parse_relay_room_create_response_impl(std::string_view body)
 
 og::ui::detail::RelayRoomCreateInfo create_relay_room(
     std::string_view base_url,
-    std::string_view campaign_tag,
+    std::string_view campaign_hash,
     std::string_view campaign_name,
     std::string_view host_name)
 {
     const std::string create_url = build_relay_room_create_url(
         std::string(base_url),
-        campaign_tag,
+        campaign_hash,
         campaign_name,
         host_name);
 
@@ -514,16 +573,18 @@ og::ui::detail::RelayRoomCreateInfo create_relay_room(
 #endif
 }
 
-std::string current_campaign_tag()
+std::string current_campaign_hash()
 {
     if (SaveData* const save = current_picker_save(); save != nullptr)
-        return save->current_campaign;
-    return std::string(kDefaultCampaignId);
+        return campaign_content_hash(save->current_campaign);
+    return campaign_content_hash(kDefaultCampaignId);
 }
 
 std::string current_campaign_name()
 {
-    return current_campaign_tag();
+    if (SaveData* const save = current_picker_save(); save != nullptr)
+        return save->current_campaign;
+    return std::string(kDefaultCampaignId);
 }
 
 std::string current_host_name(short local_team)
@@ -684,11 +745,11 @@ std::vector<og::ui::PickerRelayRoomInfo> parse_relay_room_list(
 }
 
 std::string fetch_relay_room_list_body(std::string_view base_url,
-                                       std::string_view campaign_tag)
+                                       std::string_view campaign_hash)
 {
     const std::string list_url = build_relay_room_list_url(
         std::string(base_url),
-        campaign_tag);
+        campaign_hash);
 
 #ifdef __EMSCRIPTEN__
     std::unique_ptr<char, decltype(&std::free)> response_text(
@@ -1255,7 +1316,7 @@ public:
                 const og::ui::detail::RelayRoomCreateInfo relay_room =
                     create_relay_room(
                     relay_base_url,
-                    current_campaign_tag(),
+                    current_campaign_hash(),
                     current_campaign_name(),
                     current_host_name(local_team_));
                 relay_room_code_ = og::ui::normalize_relay_room_code(
@@ -2036,7 +2097,9 @@ std::vector<og::ui::PickerRelayRoomInfo> list_platform_relay_rooms(
     const std::string& campaign_tag)
 {
     return parse_relay_room_list(
-        fetch_relay_room_list_body(base_url, campaign_tag));
+        fetch_relay_room_list_body(
+            base_url,
+            campaign_content_hash(campaign_tag)));
 }
 
 std::unique_ptr<og::ui::IPickerLobbyClient>

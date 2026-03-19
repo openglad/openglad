@@ -2,6 +2,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/core/zlib_api.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
@@ -11,6 +12,7 @@
 #include <openglad/platform/net_transport_relay_ws.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
+#include <openglad/resources/io_common.h>
 
 #include <gtest/gtest.h>
 
@@ -22,7 +24,9 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <format>
 #include <map>
 #include <memory>
@@ -328,6 +332,99 @@ bool install_gameplay_runtime_from_handoff(og::ui::IPickerLobbyClient& client)
         *session->myscreen_);
 }
 
+std::filesystem::path campaign_archive_path_for_testing(
+    std::string_view campaign_id)
+{
+    return std::filesystem::path(get_user_path()) / "campaigns" /
+        (std::string(campaign_id) + ".glad");
+}
+
+std::string crc32_hex_for_bytes(std::string_view bytes)
+{
+    const auto* const data =
+        reinterpret_cast<const Bytef*>(bytes.data());
+    const uLong crc = crc32(0UL, data, static_cast<uInt>(bytes.size()));
+    return std::format("{:08x}", static_cast<std::uint32_t>(crc));
+}
+
+std::optional<std::string> extract_query_param(std::string_view uri,
+                                               std::string_view key)
+{
+    const std::size_t query_pos = uri.find('?');
+    if (query_pos == std::string_view::npos)
+        return std::nullopt;
+
+    const std::string needle = std::format("{}=", key);
+    std::size_t value_pos = uri.find(needle, query_pos + 1);
+    if (value_pos == std::string_view::npos)
+        return std::nullopt;
+    value_pos += needle.size();
+
+    const std::size_t value_end = uri.find('&', value_pos);
+    return std::string(uri.substr(
+        value_pos,
+        value_end == std::string_view::npos
+            ? std::string_view::npos
+            : value_end - value_pos));
+}
+
+class ScopedCampaignArchive
+{
+public:
+    explicit ScopedCampaignArchive(std::string campaign_id)
+        : archive_path_(campaign_archive_path_for_testing(campaign_id))
+        , campaigns_root_(std::filesystem::path(get_user_path()) / "campaigns")
+    {
+    }
+
+    ~ScopedCampaignArchive()
+    {
+        std::error_code ec;
+        std::filesystem::remove(archive_path_, ec);
+
+        std::filesystem::path current = archive_path_.parent_path();
+        while (!current.empty() && current != campaigns_root_)
+        {
+            if (!std::filesystem::remove(current, ec))
+                break;
+            current = current.parent_path();
+        }
+    }
+
+    void write(std::string_view bytes) const
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(archive_path_.parent_path(), ec);
+
+        std::FILE* const file = std::fopen(archive_path_.string().c_str(), "wb");
+        if (file == nullptr)
+        {
+            throw std::runtime_error(std::format(
+                "failed to create campaign archive fixture at {}",
+                archive_path_.string()));
+        }
+
+        if (!bytes.empty())
+        {
+            const std::size_t written =
+                std::fwrite(bytes.data(), 1, bytes.size(), file);
+            if (written != bytes.size())
+            {
+                std::fclose(file);
+                throw std::runtime_error(std::format(
+                    "failed to write campaign archive fixture at {}",
+                    archive_path_.string()));
+            }
+        }
+
+        std::fclose(file);
+    }
+
+private:
+    std::filesystem::path archive_path_;
+    std::filesystem::path campaigns_root_;
+};
+
 class FakeRelayServer
 {
 public:
@@ -364,6 +461,9 @@ public:
                 if (request && request->method == "GET" &&
                     request->uri.rfind("/api/rooms", 0) == 0)
                 {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    last_room_list_uri_ = request->uri;
+
                     ix::WebSocketHttpHeaders headers;
                     headers["Content-Type"] = "application/json";
                     return std::make_shared<ix::HttpResponse>(
@@ -402,6 +502,12 @@ public:
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return last_create_uri_;
+    }
+
+    [[nodiscard]] std::string last_room_list_uri() const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return last_room_list_uri_;
     }
 
 private:
@@ -716,6 +822,7 @@ private:
     std::string create_response_body_;
     std::string room_list_response_body_;
     std::string last_create_uri_;
+    std::string last_room_list_uri_;
 };
 
 } // namespace
@@ -780,7 +887,7 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     host_client->shutdown();
 }
 
-TEST(PickerNetworkClient, host_relay_flow_creates_room_code_and_encodes_campaign_tag)
+TEST(PickerNetworkClient, host_relay_flow_uses_campaign_content_hash)
 {
     IxNetSystemScope net_system;
 
@@ -789,6 +896,8 @@ TEST(PickerNetworkClient, host_relay_flow_creates_room_code_and_encodes_campaign
     PickerRuntimeGuard runtime_guard;
     prepare_single_member_network_save(save, 0, "Host");
     save.current_campaign = "relay test/space";
+    ScopedCampaignArchive archive(save.current_campaign);
+    archive.write("relay hash fixture v1");
     g_start_game_requested = false;
 
     const int relay_port = ix::getFreePort();
@@ -810,7 +919,10 @@ TEST(PickerNetworkClient, host_relay_flow_creates_room_code_and_encodes_campaign
     EXPECT_TRUE(status_lines_contain_exact(status, "Lobby: 1 player"));
 
     const std::string create_uri = relay_server.last_create_uri();
-    EXPECT_NE(std::string::npos, create_uri.find("/api/create?campaign="));
+    ASSERT_NE(std::string::npos, create_uri.find("/api/create?campaign="));
+    const auto first_campaign_hash = extract_query_param(create_uri, "campaign");
+    ASSERT_TRUE(first_campaign_hash.has_value());
+    EXPECT_EQ(crc32_hex_for_bytes("relay hash fixture v1"), *first_campaign_hash);
     EXPECT_NE(
         std::string::npos,
         create_uri.find("&campaign_name=relay%20test%2Fspace"));
@@ -832,26 +944,55 @@ TEST(PickerNetworkClient, host_relay_flow_creates_room_code_and_encodes_campaign
             "owner-secret-token"));
 
     host_client->shutdown();
+
+    archive.write("relay hash fixture v2");
+    auto host_client_restarted = og::ui::create_host_picker_lobby_client(options);
+    host_client_restarted->initialize_from_save();
+
+    ASSERT_TRUE(wait_until([&] {
+        return relay_server.last_create_uri() != create_uri;
+    }));
+
+    const auto second_campaign_hash =
+        extract_query_param(relay_server.last_create_uri(), "campaign");
+    ASSERT_TRUE(second_campaign_hash.has_value());
+    EXPECT_EQ(crc32_hex_for_bytes("relay hash fixture v2"), *second_campaign_hash);
+    EXPECT_NE(*first_campaign_hash, *second_campaign_hash);
+
+    host_client_restarted->shutdown();
 }
 
 TEST(PickerNetworkClient, relay_room_listing_fetches_matching_rooms)
 {
     IxNetSystemScope net_system;
 
+    const std::string campaign_id = "relay/filter hash";
+    ScopedCampaignArchive archive(campaign_id);
+    archive.write("relay room listing fixture");
+    const std::string expected_hash =
+        crc32_hex_for_bytes("relay room listing fixture");
+
     const int relay_port = ix::getFreePort();
     FakeRelayServer relay_server(
         relay_port,
         200,
         R"({"code":"glad-xkcd"})",
-        R"([{"code":"glad-xkcd","campaign_hash":"org.openglad.gladiator","campaign_name":"org.openglad.gladiator","host_name":"Host","player_count":2,"created_at":1234}])");
+        std::format(
+            R"([{{"code":"glad-xkcd","campaign_hash":"{}","campaign_name":"Relay Filter","host_name":"Host","player_count":2,"created_at":1234}}])",
+            expected_hash));
 
     const auto rooms = og::ui::list_relay_rooms(
         std::format("http://127.0.0.1:{}", relay_port),
-        "org.openglad.gladiator");
+        campaign_id);
+
+    const auto requested_hash =
+        extract_query_param(relay_server.last_room_list_uri(), "campaign");
+    ASSERT_TRUE(requested_hash.has_value());
+    EXPECT_EQ(expected_hash, *requested_hash);
 
     ASSERT_EQ(1u, rooms.size());
     EXPECT_EQ("GLAD-XKCD", rooms.front().code);
-    EXPECT_EQ("org.openglad.gladiator", rooms.front().campaign_hash);
+    EXPECT_EQ(expected_hash, rooms.front().campaign_hash);
     EXPECT_EQ("Host", rooms.front().host_name);
     EXPECT_EQ(2u, rooms.front().player_count);
     EXPECT_EQ(1234, rooms.front().created_at_ms);
