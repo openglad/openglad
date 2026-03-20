@@ -425,6 +425,7 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
     save.scen_num = 2;
     save.numplayers = 2;
     save.allied_mode = 0;
+    save.my_team = 0;
 
     auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
     leader->name = "Leader";
@@ -462,8 +463,8 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
     og::runtime::current_session->current_difficulty_ = 0;
     ASSERT_TRUE(save.save("save0"));
 
-    game_screen->ready_for_battle(1);
-    ASSERT_EQ(1, game_screen->numviews);
+    ready_screen_for_game_start(*game_screen, &*lobby_config);
+    ASSERT_EQ(2, game_screen->numviews);
 
     glad_init(false, &*lobby_config);
     ASSERT_TRUE(og::runtime::current_game_session != nullptr);
@@ -481,8 +482,12 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
                   *og::runtime::current_game_session));
     ASSERT_TRUE(game_screen->save_data.team_list[0] != nullptr);
     ASSERT_TRUE(game_screen->save_data.team_list[1] != nullptr);
+    ASSERT_TRUE(game_screen->viewob[0] != nullptr);
+    ASSERT_TRUE(game_screen->viewob[1] != nullptr);
     EXPECT_EQ("Leader", game_screen->save_data.team_list[0]->name);
     EXPECT_EQ("Scout", game_screen->save_data.team_list[1]->name);
+    EXPECT_EQ(0, static_cast<int>(game_screen->viewob[0]->my_team));
+    EXPECT_EQ(1, static_cast<int>(game_screen->viewob[1]->my_team));
 
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();

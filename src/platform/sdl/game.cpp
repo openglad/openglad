@@ -185,6 +185,21 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			view_teams.push_back(team_guy->teamnum);
 	}
 
+	const short preferred_team = screenp->save_data.my_team;
+	const bool has_preferred_team = std::any_of(
+		screenp->save_data.team_list.begin(),
+		screenp->save_data.team_list.end(),
+		[preferred_team](const std::unique_ptr<guy>& member) {
+			return member != nullptr && member->teamnum == preferred_team;
+		});
+	if (has_preferred_team)
+	{
+		view_teams.erase(
+			std::remove(view_teams.begin(), view_teams.end(), preferred_team),
+			view_teams.end());
+		view_teams.insert(view_teams.begin(), preferred_team);
+	}
+
 	// Have we already done this scenario?
 	if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num))
 	{
