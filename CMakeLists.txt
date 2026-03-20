@@ -1923,11 +1923,13 @@ if(NOT EMSCRIPTEN)
                 TIMEOUT 420
             )
             # The dedicated picker-network suite uses live WebSocket/relay
-            # transports to cover the host/join lobby client paths and needs
-            # the same relaxed timeout budget under ASan/UBSan.
+            # transports to cover the host/join lobby client paths. Under
+            # ASan/UBSan it can stall only when CTest overlaps it with the
+            # rest of the integration batch, so isolate it in that lane.
             set_tests_properties(og_test_picker_network PROPERTIES
                 PROCESSORS 2
                 TIMEOUT 420
+                RUN_SERIAL TRUE
             )
             # The replay/benchmark binary now exercises honest end-to-end
             # client sync, which remains correct under ASan/UBSan but slows
