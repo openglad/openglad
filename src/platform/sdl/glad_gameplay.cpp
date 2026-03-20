@@ -238,6 +238,9 @@ void glad_main(Sint32 playermode)
         game_frame(*current_screen, g_frame_state());
     }
 
+    if (og::runtime::current_game_session != nullptr)
+        og::runtime::clear_local_transport_shadow(
+            *og::runtime::current_game_session);
     clear_keyboard();
     current_screen->world().delete_objects();
 #endif

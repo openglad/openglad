@@ -23,6 +23,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/screen_lifecycle.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -373,6 +374,9 @@ static void emscripten_frame_wrapper() {
 				if (g_frame_state().done) {
 					Log("Game done, transitioning back to PICKER\n");
 					og::runtime::current_session->gameplay_active_ = false;
+					if (og::runtime::current_game_session != nullptr)
+						og::runtime::clear_local_transport_shadow(
+						    *og::runtime::current_game_session);
 					clear_keyboard();
 					current_screen->world().delete_objects();
 					g_web_game_start_config.reset();

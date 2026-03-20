@@ -4,10 +4,13 @@
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/core/zlib_api.h>
+#include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
+#include <openglad/legacy/base.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/picker_lobby_network_runtime.h>
@@ -43,6 +46,12 @@
 #include <vector>
 
 extern bool g_start_game_requested;
+#ifdef TESTING
+extern bool g_test_remove_exits;
+namespace og::sim { extern std::int32_t g_test_level_tick_limit_override; }
+#endif
+
+Sint32 go_menu(Sint32 arg1);
 
 namespace og::ui {
 
@@ -139,6 +148,41 @@ struct PickerRuntimeGuard
         g_start_game_requested = start_requested;
         if (og::runtime::current_session != nullptr)
             og::runtime::current_session->current_difficulty_ = difficulty;
+    }
+};
+
+struct ActivePickerLobbyClientGuard
+{
+    og::ui::IPickerLobbyClient* saved = og::ui::active_picker_lobby_client();
+
+    explicit ActivePickerLobbyClientGuard(og::ui::IPickerLobbyClient* client)
+    {
+        og::ui::install_active_picker_lobby_client(client);
+    }
+
+    ~ActivePickerLobbyClientGuard()
+    {
+        og::ui::install_active_picker_lobby_client(saved);
+    }
+};
+
+struct GameplayRunGuard
+{
+    float speed = og::runtime::current_session != nullptr
+        ? og::runtime::current_session->g_game_speed_factor_
+        : 1.0f;
+#ifdef TESTING
+    bool remove_exits = g_test_remove_exits;
+    std::int32_t tick_limit = og::sim::g_test_level_tick_limit_override;
+#endif
+
+    ~GameplayRunGuard()
+    {
+        set_game_speed(speed);
+#ifdef TESTING
+        g_test_remove_exits = remove_exits;
+        og::sim::g_test_level_tick_limit_override = tick_limit;
+#endif
     }
 };
 
@@ -962,6 +1006,35 @@ TEST(PickerNetworkClient, host_relay_flow_uses_campaign_content_hash)
     EXPECT_NE(*first_campaign_hash, *second_campaign_hash);
 
     host_client_restarted->shutdown();
+}
+
+TEST(PickerNetworkClient,
+     go_menu_host_handoff_reinitializes_host_lobby_without_port_conflict)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    GameplayRunGuard gameplay_guard;
+    prepare_single_member_network_save(save, 0, "Host");
+    g_start_game_requested = false;
+#ifdef TESTING
+    g_test_remove_exits = true;
+    og::sim::g_test_level_tick_limit_override = 15;
+#endif
+    set_game_speed(0.0f);
+
+    og::ui::PickerHostGameOptions options;
+    options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(options);
+    ActivePickerLobbyClientGuard active_guard(host_client.get());
+
+    host_client->initialize_from_save();
+    ASSERT_EQ(button_action_id(ButtonAction::CreateTeamMenu), go_menu(0));
+    EXPECT_FALSE(og::runtime::local_transport_active(*active_game_session()));
+    EXPECT_TRUE(
+        status_lines_contain_prefix(host_client->status_lines(), "LAN: "));
+
+    host_client->shutdown();
 }
 
 TEST(PickerNetworkClient, relay_room_listing_fetches_matching_rooms)
