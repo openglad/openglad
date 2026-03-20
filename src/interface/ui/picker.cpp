@@ -564,6 +564,8 @@ public:
         std::vector<button> buttons(
             std::begin(k_networking_menu_buttons),
             std::end(k_networking_menu_buttons));
+        const auto instruction_lines =
+            og::ui::networking_menu_instruction_lines();
         const int num_buttons = static_cast<int>(buttons.size());
         int highlighted_button = 1;
         og::runtime::current_session->localbuttons_ =
@@ -666,16 +668,17 @@ public:
             mytext.write_xy(44, 91, DARK_BLUE, "PORT");
             mytext.write_xy(44, 115, DARK_BLUE, "ROOM CODE");
             mytext.write_xy(44, 139, DARK_BLUE, "ROOM VALUE");
-            mytext.write_xy(
-                44,
-                150,
-                DARK_BLUE,
-                "HOST uses PORT only. JOIN uses IP + PORT.");
-            mytext.write_xy(
-                44,
-                158,
-                DARK_BLUE,
-                "ROOM CODE ON: HOST creates one. JOIN uses ROOM VALUE.");
+            for (std::size_t line_index = 0;
+                 line_index < instruction_lines.size();
+                 ++line_index)
+            {
+                mytext.write_xy(
+                    44,
+                    150 + static_cast<Sint32>(line_index * 8),
+                    DARK_BLUE,
+                    "%s",
+                    std::string(instruction_lines[line_index]).c_str());
+            }
 
             draw_highlight(buttons[highlighted_button]);
             og::runtime::current_session->myscreen_->buffer_to_screen(

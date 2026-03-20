@@ -2,6 +2,7 @@
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdlib>
 #include <format>
@@ -14,6 +15,10 @@ namespace {
 
 constexpr std::string_view kDefaultRelayBaseUrl =
     "https://relay.openglad.example";
+constexpr std::array<std::string_view, 2> kNetworkingMenuInstructionLines{{
+    "HOST uses current save. JOIN uses IP/ROOM.",
+    "Fresh run? BEGIN NEW GAME, then HOST.",
+}};
 
 std::string trim_copy(std::string value)
 {
@@ -153,6 +158,11 @@ std::string normalize_relay_base_url(const std::string& base_url)
 std::string default_relay_base_url()
 {
     return normalize_relay_base_url({});
+}
+
+std::span<const std::string_view> networking_menu_instruction_lines()
+{
+    return kNetworkingMenuInstructionLines;
 }
 
 std::vector<PickerRelayRoomInfo> list_relay_rooms(

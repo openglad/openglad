@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -51,6 +52,7 @@ std::string normalize_direct_websocket_url(const std::string& endpoint);
 std::string normalize_relay_room_code(const std::string& room_code);
 std::string normalize_relay_base_url(const std::string& base_url);
 std::string default_relay_base_url();
+std::span<const std::string_view> networking_menu_instruction_lines();
 std::vector<PickerRelayRoomInfo> list_relay_rooms(
     const std::string& base_url,
     const std::string& campaign_tag = {});

@@ -162,6 +162,15 @@ TEST(MenuModel, relay_room_code_and_join_mode_helpers_support_relay_flow)
     EXPECT_NE(std::string::npos, prompt.find("GLAD-ABCD"));
 }
 
+TEST(MenuModel, networking_menu_instructions_explain_fresh_host_flow)
+{
+    const auto lines = og::ui::networking_menu_instruction_lines();
+    ASSERT_EQ(2u, lines.size());
+    EXPECT_NE(std::string_view::npos, lines[0].find("HOST uses current save"));
+    EXPECT_NE(std::string_view::npos, lines[1].find("BEGIN NEW GAME"));
+    EXPECT_NE(std::string_view::npos, lines[1].find("HOST"));
+}
+
 TEST(MenuModel, host_picker_lobby_client_accepts_direct_only_and_relay_options)
 {
     og::ui::PickerHostGameOptions direct_only;
