@@ -674,11 +674,60 @@ TEST(GameLoop, local_transport_shadow_invalid_reset_paths_clear_runtime)
         gameplay_session,
         *game_screen,
         nullptr,
+        0u,
         0u);
     EXPECT_FALSE(og::runtime::local_transport_active(gameplay_session));
     EXPECT_FALSE(gameplay_session.relay_transport_active_);
 
     game_screen->world().delete_objects();
+}
+
+TEST(GameLoop,
+     select_control_for_view_prefers_explicit_player_index_before_same_team_fallback)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(game_screen->viewob[0] != nullptr);
+
+    GameWorld& world = game_screen->world();
+    world.delete_objects();
+
+    auto make_player = [&world](int family, short team) {
+        walker* const actor = world.add_ob(Order::Living, family);
+        actor->set_owned_myguy(std::make_unique<guy>(family));
+        actor->myguy->teamnum = team;
+        actor->set_team_num(static_cast<unsigned char>(team));
+        actor->set_real_team_num(255);
+        return actor;
+    };
+
+    walker* const host_control = make_player(FAMILY_SOLDIER, 0);
+    walker* const guest_control = make_player(FAMILY_ARCHER, 0);
+    ASSERT_NE(nullptr, host_control);
+    ASSERT_NE(nullptr, guest_control);
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    view->my_team = 0;
+
+    std::array<std::uint32_t, MAX_PLAYERS> controlled_entity_ids = {};
+    controlled_entity_ids[0] = host_control->entity_id();
+    controlled_entity_ids[1] = guest_control->entity_id();
+
+    EXPECT_EQ(
+        guest_control,
+        og::runtime::detail::select_control_for_view(
+            view,
+            controlled_entity_ids,
+            &world,
+            1u));
+    EXPECT_EQ(
+        host_control,
+        og::runtime::detail::select_control_for_view(
+            view,
+            controlled_entity_ids,
+            &world));
+
+    world.delete_objects();
 }
 
 TEST(GameLoop, local_transport_shadow_send_input_and_finish_tick_cover_active_paths)

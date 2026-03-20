@@ -38,6 +38,8 @@ struct LocalTransportClient {
 
 constexpr char kPauseOverlayEscHint[] = "ESC again: Quit?";
 
+walker* resolve_control_from_entity_id(GameWorld& world, std::uint32_t entity_id);
+
 } // namespace
 
 namespace og::runtime {
@@ -76,6 +78,38 @@ struct LocalTransportRuntime {
 };
 
 } // namespace og::runtime
+
+namespace og::runtime::detail {
+
+walker* select_control_for_view(
+    viewscreen* view,
+    const std::array<std::uint32_t, MAX_PLAYERS>& controlled_entity_ids,
+    GameWorld* world,
+    std::optional<std::size_t> player_index)
+{
+    if (view == nullptr || world == nullptr)
+        return nullptr;
+
+    if (player_index.has_value() &&
+        *player_index < controlled_entity_ids.size())
+    {
+        walker* const mapped =
+            resolve_control_from_entity_id(*world, controlled_entity_ids[*player_index]);
+        if (mapped != nullptr)
+            return mapped;
+    }
+
+    for (const std::uint32_t entity_id : controlled_entity_ids)
+    {
+        walker* const entity = resolve_control_from_entity_id(*world, entity_id);
+        if (entity != nullptr && entity->team_num() == view->my_team)
+            return entity;
+    }
+
+    return nullptr;
+}
+
+} // namespace og::runtime::detail
 
 namespace
 {
@@ -374,34 +408,20 @@ void configure_background_game_client(og::sim::GameClient& game_client)
 }
 
 walker* find_control_for_view(viewscreen* view,
-                              std::size_t fallback_index,
+                              std::optional<std::size_t> player_index,
                               const std::array<std::uint32_t, MAX_PLAYERS>&
                                   controlled_entity_ids,
                               GameWorld* world)
 {
-    if (view == nullptr || world == nullptr)
-        return nullptr;
-
-    for (const std::uint32_t entity_id : controlled_entity_ids)
-    {
-        walker* const entity = resolve_control_from_entity_id(*world, entity_id);
-        if (entity != nullptr && entity->team_num() == view->my_team)
-            return entity;
-    }
-
-    if (fallback_index < controlled_entity_ids.size())
-    {
-        return resolve_control_from_entity_id(
-            *world,
-            controlled_entity_ids[fallback_index]);
-    }
-    return nullptr;
+    return og::runtime::detail::select_control_for_view(
+        view, controlled_entity_ids, world, player_index);
 }
 
 void sync_display_controls(screen& gameplay_screen,
                            const std::array<std::uint32_t, MAX_PLAYERS>&
                                controlled_entity_ids,
-                           GameWorld* world)
+                           GameWorld* world,
+                           std::optional<std::size_t> display_player_index)
 {
     if (world == nullptr)
         return;
@@ -413,14 +433,20 @@ void sync_display_controls(screen& gameplay_screen,
         if (view == nullptr)
             continue;
 
+        std::optional<std::size_t> player_index = index;
+        if (player_count == 1 && display_player_index.has_value())
+            player_index = display_player_index;
+
         view->control =
-            find_control_for_view(view, index, controlled_entity_ids, world);
+            find_control_for_view(
+                view, player_index, controlled_entity_ids, world);
     }
 }
 
 void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
                                    screen& gameplay_screen,
-                                   og::sim::GameClient& display_client)
+                                   og::sim::GameClient& display_client,
+                                   std::optional<std::size_t> display_player_index)
 {
     gameplay_screen.set_render_interpolation_client(&display_client);
     display_client.set_initial_setup_callback(
@@ -439,11 +465,14 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
             display_client_ptr->send_client_ready();
         });
     display_client.set_control_mapping_callback(
-        [&gameplay_screen](
+        [&gameplay_screen, display_player_index](
             const std::array<std::uint32_t, MAX_PLAYERS>& controlled_entity_ids,
             GameWorld* world) {
             sync_display_controls(
-                gameplay_screen, controlled_entity_ids, world);
+                gameplay_screen,
+                controlled_entity_ids,
+                world,
+                display_player_index);
         });
     display_client.set_sim_event_batch_callback(
         [&gameplay_screen](const og::sim::SimEventBatch& batch) {
@@ -681,7 +710,8 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         og::sim::GameClient* const local_client = client.game_client.get();
         configure_background_game_client(*local_client);
         if (client.drives_display)
-            configure_display_game_client(*runtime, gameplay_screen, *local_client);
+            configure_display_game_client(
+                *runtime, gameplay_screen, *local_client, std::nullopt);
         runtime->clients.push_back(std::move(client));
     }
 
@@ -831,8 +861,22 @@ void reset_network_host_transport_shadow(
         *client.transport,
         client.server_peer_id,
         &gameplay_screen.world());
+    std::optional<std::size_t> display_player_index = std::nullopt;
+    const auto binding_it = std::find_if(
+        player_bindings.begin(),
+        player_bindings.end(),
+        [peer_id = client.server_peer_id](
+            const og::sim::LobbyPlayerBinding& binding) {
+            return binding.peer_id == peer_id;
+        });
+    if (binding_it != player_bindings.end())
+        display_player_index = binding_it->player_index;
     configure_background_game_client(*client.game_client);
-    configure_display_game_client(*runtime, gameplay_screen, *client.game_client);
+    configure_display_game_client(
+        *runtime,
+        gameplay_screen,
+        *client.game_client,
+        display_player_index);
     runtime->clients.push_back(std::move(client));
 
     {
@@ -855,7 +899,8 @@ void reset_network_client_transport_shadow(
     GameSession& session,
     screen& gameplay_screen,
     std::shared_ptr<og::sim::ITransport> client_transport,
-    og::sim::PeerId server_peer_id)
+    og::sim::PeerId server_peer_id,
+    std::size_t local_player_index)
 {
     if (!client_transport || server_peer_id == 0)
     {
@@ -878,7 +923,11 @@ void reset_network_client_transport_shadow(
         client.server_peer_id,
         &gameplay_screen.world());
     configure_background_game_client(*client.game_client);
-    configure_display_game_client(*runtime, gameplay_screen, *client.game_client);
+    configure_display_game_client(
+        *runtime,
+        gameplay_screen,
+        *client.game_client,
+        local_player_index);
     runtime->clients.push_back(std::move(client));
 
     {

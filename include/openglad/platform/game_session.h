@@ -84,7 +84,8 @@ private:
         GameSession& session,
         screen& gameplay_screen,
         std::shared_ptr<og::sim::ITransport> client_transport,
-        og::sim::PeerId server_peer_id);
+        og::sim::PeerId server_peer_id,
+        std::size_t local_player_index);
     friend void clear_local_transport_shadow(GameSession& session) noexcept;
     friend bool local_transport_shadow_toggle_pause(GameSession& session);
     friend void local_transport_shadow_send_input(GameSession& session,

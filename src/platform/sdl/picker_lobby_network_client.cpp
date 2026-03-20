@@ -1929,11 +1929,22 @@ public:
         session.relay_transport_active_ = using_relay;
         session.relay_speed_warning_shown_ = false;
 
+        std::size_t local_player_index = 0;
+        if (state_.has_value())
+        {
+            if (const og::sim::LobbyPlayer* const local_player =
+                    og::ui::detail::find_local_player(*state_, player_name_))
+            {
+                local_player_index = local_player->player_index;
+            }
+        }
+
         og::runtime::reset_network_client_transport_shadow(
             session,
             gameplay_screen,
             transport_,
-            server_peer_id_);
+            server_peer_id_,
+            local_player_index);
         transport_.reset();
         state_.reset();
         start_request_pending_ = false;
