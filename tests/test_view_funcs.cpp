@@ -161,9 +161,10 @@ TEST(ViewFuncs, viewscreen_set_display_text_overflow)
     ASSERT_TRUE(vs != nullptr) << "viewscreen 0 should exist";
 
     vs->clear_text();
-    // Fill all slots plus one more
+    // Fill all slots plus one more with distinct messages so the overflow
+    // path is exercised rather than same-text refresh coalescing.
     for (int i = 0; i < MAX_MESSAGES + 1; i++) {
-        vs->set_display_text("Msg", 10);
+        vs->set_display_text("Msg " + std::to_string(i), 10);
     }
     // Should have shifted text up, last slot should have the overflow message
     ASSERT_TRUE(!vs->textlist[MAX_MESSAGES-1].empty()) << "last slot should have overflow text";

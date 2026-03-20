@@ -364,7 +364,7 @@ TEST(ViewRedraw, view_display_text_with_cycles)
     // Smoke-test the text draw path with a finite-duration message.
 }
 
-TEST(ViewRedraw, view_display_text_lasts_for_the_current_tick_across_multiple_redraws)
+TEST(ViewRedraw, view_display_text_refreshes_matching_overlay_within_same_tick)
 {
     screen* const active = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, active);
@@ -380,10 +380,18 @@ TEST(ViewRedraw, view_display_text_lasts_for_the_current_tick_across_multiple_re
 
     vs->display_text();
     ASSERT_EQ(std::string("PAUSED"), vs->textlist[0]);
+    ASSERT_TRUE(vs->textlist[1].empty());
 
-    // Multiple redraws during the same sim tick should not consume the message.
+    // Re-issuing the same overlay during a frozen tick should refresh the
+    // existing slot instead of queueing a duplicate line.
+    vs->set_display_text("PAUSED", 1);
+    EXPECT_EQ(std::string("PAUSED"), vs->textlist[0]);
+    EXPECT_TRUE(vs->textlist[1].empty());
+
+    // Multiple redraws during the same sim tick should still keep it visible.
     vs->display_text();
     EXPECT_EQ(std::string("PAUSED"), vs->textlist[0]);
+    EXPECT_TRUE(vs->textlist[1].empty());
 
     active->world().tick_count_ = 42u;
     vs->display_text();

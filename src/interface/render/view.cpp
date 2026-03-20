@@ -591,13 +591,26 @@ void viewscreen::set_display_text(std::string_view newtext, short numcycles)
 	const std::uint32_t current_tick = active_screen()->world().tick_count_;
 	Sint32 i;
 
-	i = 0;
-	while (i < MAX_MESSAGES && !textlist[i].empty())
-		i++;
-	if (i >= MAX_MESSAGES) // no room, need to scroll messages
+	i = -1;
+	for (Sint32 slot = 0; slot < MAX_MESSAGES; ++slot)
 	{
-		shift_text(0); // shift up, starting at 0
-		i = MAX_MESSAGES - 1;
+		if (textlist[slot] == newtext)
+		{
+			i = slot;
+			break;
+		}
+	}
+
+	if (i < 0)
+	{
+		i = 0;
+		while (i < MAX_MESSAGES && !textlist[i].empty())
+			i++;
+		if (i >= MAX_MESSAGES) // no room, need to scroll messages
+		{
+			shift_text(0); // shift up, starting at 0
+			i = MAX_MESSAGES - 1;
+		}
 	}
 	//strcpy(infotext, newtext);
 	textlist[i] = newtext;
