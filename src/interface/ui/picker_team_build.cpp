@@ -126,6 +126,20 @@ bool picker_lobby_request_start();
 bool picker_lobby_start_request_pending();
 extern bool g_start_game_requested;
 
+static void show_need_team_to_train_popup()
+{
+    popup_dialog("NEED A TEAM!", "You need to\nhire a team\nto train");
+}
+
+static bool save_has_trainable_team_member(const SaveData& save)
+{
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+        if (save.team_list[i] && picker_lobby_save_slot_editable(i))
+            return true;
+    }
+    return false;
+}
+
 void picker_prepare_async_team_build_start_request()
 {
     picker_lobby_sync_settings_from_save();
@@ -936,6 +950,7 @@ Sint32 create_train_menu(Sint32 arg1)
 	Sint32 start_time = query_timer();
 	Uint32 current_cost;
 	Sint32 clickvalue;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
 	
     UiRect stat_box = {38, 66, 82, 94};
     UiRect stat_box_inner = {stat_box.x + 4, stat_box.y + 4, stat_box.w - 8, stat_box.h - 8};
@@ -947,10 +962,10 @@ Sint32 create_train_menu(Sint32 arg1)
 	if (arg1)
 		arg1 = 1;
 
-	// Make sure we have a valid team
-	if (og::runtime::current_session->myscreen_->save_data.team_size < 1)
+	// Make sure we have a local team member we can train.
+	if (save.team_size < 1 || !save_has_trainable_team_member(save))
 	{
-		popup_dialog("NEED A TEAM!", "You need to\nhire a team\nto train");
+        show_need_team_to_train_popup();
 		
 		return MENU_OK;
 	}
@@ -979,9 +994,14 @@ Sint32 create_train_menu(Sint32 arg1)
 			og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_PLUS);
 	}
 
-    og::ui::TrainSession train_session(og::runtime::current_session->myscreen_->save_data);
+    og::ui::TrainSession train_session(save);
     pks().train_session = &train_session;
     sync_current_guy_from_train();
+    if (pks().train_session->empty()) {
+        pks().train_session = nullptr;
+        show_need_team_to_train_popup();
+        return MENU_OK;
+    }
     current_cost = pks().train_session->current_cost();
 
 	grab_mouse();

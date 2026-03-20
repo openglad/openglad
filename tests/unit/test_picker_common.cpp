@@ -217,6 +217,21 @@ TEST(PickerCommon, train_session_skips_non_editable_lobby_slots)
     EXPECT_EQ(1, session.current_slot());
 }
 
+TEST(PickerCommon, train_session_empty_when_no_editable_lobby_slots)
+{
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Remote";
+    save.team_size = 1;
+
+    EditableSlotPickerLobbyClient client;
+    client.editable_slots.fill(false);
+    ActivePickerLobbyClientGuard guard(&client);
+
+    og::ui::TrainSession session(save);
+    EXPECT_TRUE(session.empty());
+}
+
 // --- create_recruit ---
 
 TEST(PickerCommon, create_recruit_unique_name)

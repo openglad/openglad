@@ -1,5 +1,6 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -38,6 +39,7 @@ void quit(Sint32 arg1);
 Sint32 return_menu(Sint32 arg);
 Sint32 name_guy(Sint32 arg);
 Sint32 edit_guy(Sint32 arg1);
+Sint32 create_train_menu(Sint32 arg1);
 void picker_prepare_async_team_build_start_request();
 void picker_lobby_initialize_from_save();
 void picker_lobby_sync_from_save();
@@ -1488,6 +1490,46 @@ TEST(PickerFuncs, train_team_change_persists_after_accept)
     save.numplayers = old_numplayers;
     for (int i = 0; i < 4; ++i)
         save.m_totalcash[i] = old_cash[i];
+}
+
+TEST(PickerFuncs, create_train_menu_rejects_team_without_editable_local_slots)
+{
+    trace_clear();
+    picker_lobby_shutdown();
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const unsigned char old_team_size = save.team_size;
+    const unsigned char old_numplayers = save.numplayers;
+    std::unique_ptr<guy> old_team[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        old_team[i] = std::move(save.team_list[i]);
+
+    std::unique_ptr<guy> old_current =
+        std::move(og::runtime::current_session->current_guy_);
+    auto* old_train_session = pks().train_session;
+
+    save.team_size = 1;
+    save.numplayers = 2;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[0]->name = "Remote Host";
+
+    ContractPickerLobbyClient client;
+    client.restrict_editable_slots = true;
+    client.editable_slots.fill(false);
+    ActivePickerLobbyClientGuard guard(&client);
+
+    EXPECT_EQ(static_cast<Sint32>(4), create_train_menu(0));
+    EXPECT_TRUE(trace_contains("popup", "NEED A TEAM"));
+    EXPECT_EQ(old_train_session, pks().train_session);
+
+    picker_lobby_shutdown();
+    og::runtime::current_session->current_guy_ = std::move(old_current);
+    pks().train_session = old_train_session;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(old_team[i]);
+    save.team_size = old_team_size;
+    save.numplayers = old_numplayers;
 }
 
 TEST(PickerFuncs, change_teamnum_ignores_non_editable_lobby_slot)
