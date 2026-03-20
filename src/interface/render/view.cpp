@@ -591,26 +591,13 @@ void viewscreen::set_display_text(std::string_view newtext, short numcycles)
 	const std::uint32_t current_tick = active_screen()->world().tick_count_;
 	Sint32 i;
 
-	i = -1;
-	for (Sint32 slot = 0; slot < MAX_MESSAGES; ++slot)
+	i = 0;
+	while (i < MAX_MESSAGES && !textlist[i].empty())
+		i++;
+	if (i >= MAX_MESSAGES) // no room, need to scroll messages
 	{
-		if (textlist[slot] == newtext)
-		{
-			i = slot;
-			break;
-		}
-	}
-
-	if (i < 0)
-	{
-		i = 0;
-		while (i < MAX_MESSAGES && !textlist[i].empty())
-			i++;
-		if (i >= MAX_MESSAGES) // no room, need to scroll messages
-		{
-			shift_text(0); // shift up, starting at 0
-			i = MAX_MESSAGES - 1;
-		}
+		shift_text(0); // shift up, starting at 0
+		i = MAX_MESSAGES - 1;
 	}
 	//strcpy(infotext, newtext);
 	textlist[i] = newtext;
@@ -626,6 +613,32 @@ void viewscreen::set_display_text(std::string_view newtext, short numcycles)
 		textcycles[i] = 0;
 		text_expire_ticks[i] = current_tick;
 	}
+}
+
+void viewscreen::refresh_display_text(std::string_view newtext, short numcycles)
+{
+	for (Sint32 slot = 0; slot < MAX_MESSAGES; ++slot)
+	{
+		if (textlist[slot] != newtext)
+			continue;
+
+		const std::uint32_t current_tick =
+		    active_screen()->world().tick_count_;
+		if (numcycles > 0)
+		{
+			textcycles[slot] = numcycles;
+			text_expire_ticks[slot] =
+			    current_tick + static_cast<std::uint32_t>(numcycles - 1);
+		}
+		else
+		{
+			textcycles[slot] = 0;
+			text_expire_ticks[slot] = current_tick;
+		}
+		return;
+	}
+
+	set_display_text(newtext, numcycles);
 }
 
 // Blanks the screen text

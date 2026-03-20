@@ -349,7 +349,7 @@ void render_pause_overlay(screen& gameplay_screen,
         if (view == nullptr)
             continue;
 
-        view->set_display_text(text, 1);
+        view->refresh_display_text(text, 1);
     }
     gameplay_screen.redrawme = 1;
 }

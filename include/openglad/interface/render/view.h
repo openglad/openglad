@@ -104,6 +104,7 @@ class viewscreen
 		short continuous_input();
 		void process_input(const InputState& input_state);
 		void set_display_text(std::string_view newtext, short numcycles);
+		void refresh_display_text(std::string_view newtext, short numcycles);
 		void display_text(); // put the text to the buffer, if there
 		void shift_text(Sint32 row); // cycle text upward
 		void clear_text(void); // clear all text in buffer
