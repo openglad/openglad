@@ -361,7 +361,36 @@ TEST(ViewRedraw, view_display_text_with_cycles)
 
     vs->set_display_text("Display me", 5);
     vs->display_text();
-    // textcycles should decrement
+    // Smoke-test the text draw path with a finite-duration message.
+}
+
+TEST(ViewRedraw, view_display_text_lasts_for_the_current_tick_across_multiple_redraws)
+{
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    const std::uint32_t saved_tick = active->world().tick_count_;
+
+    active->world().tick_count_ = 41u;
+    vs->clear_text();
+    vs->set_display_text("PAUSED", 1);
+
+    vs->display_text();
+    ASSERT_EQ(std::string("PAUSED"), vs->textlist[0]);
+
+    // Multiple redraws during the same sim tick should not consume the message.
+    vs->display_text();
+    EXPECT_EQ(std::string("PAUSED"), vs->textlist[0]);
+
+    active->world().tick_count_ = 42u;
+    vs->display_text();
+    EXPECT_TRUE(vs->textlist[0].empty());
+
+    active->world().tick_count_ = saved_tick;
+    vs->clear_text();
 }
 
 

@@ -20,6 +20,7 @@
 
 #include <openglad/interface/base.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -122,7 +123,8 @@ class viewscreen
 		Sint32 gamma; // for gamma correction
 
 		std::string textlist[MAX_MESSAGES];
-		short textcycles[MAX_MESSAGES];  // cycles to display screen-text
+		short textcycles[MAX_MESSAGES];  // duration in sim ticks
+		std::uint32_t text_expire_ticks[MAX_MESSAGES];
 		
 		char infotext[80]; // text to display
 		short mynum;     // # to id the viewscreen, 0, 1, 2 ...

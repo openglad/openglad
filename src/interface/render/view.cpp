@@ -232,6 +232,7 @@ viewscreen::viewscreen(short x, short y, short width,
 	for (i=0; i < MAX_MESSAGES; i++)
 	{
 		textcycles[i] = 0;
+		text_expire_ticks[i] = 0;
 		textlist[i].clear(); // null message
 	}
 
@@ -391,13 +392,15 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 
 void viewscreen::display_text()
 {
+	const std::uint32_t current_tick = active_screen()->world().tick_count_;
 	Sint32 i;
 
 	for (i=0; i < MAX_MESSAGES; i++)
 	{
-		if (textcycles[i] > 0)  // Display text if there's any there ..
+		if (textcycles[i] > 0 &&
+		    !textlist[i].empty() &&
+		    current_tick <= text_expire_ticks[i])
 		{
-			textcycles[i]--;
 			active_screen()->text_normal.write_xy( (xview-static_cast<int>(textlist[i].size())*6)/2,
 			                      30+i*6, textlist[i].c_str(), YELLOW, this );
 		}
@@ -405,7 +408,8 @@ void viewscreen::display_text()
 
 	// Clean up any empty slots
 	for (i=0; i < MAX_MESSAGES; i++)
-		if (textcycles[i] < 1 && !textlist[i].empty() )
+		if (!textlist[i].empty() &&
+		    (textcycles[i] < 1 || current_tick > text_expire_ticks[i]))
 			shift_text(i); // shift text up, starting at position i
 }
 
@@ -417,9 +421,11 @@ void viewscreen::shift_text(Sint32 row)
 	{
 		textlist[i] = textlist[i+1];
 		textcycles[i] = textcycles[i+1];
+		text_expire_ticks[i] = text_expire_ticks[i+1];
 	}
 	textlist[MAX_MESSAGES-1].clear();
 	textcycles[MAX_MESSAGES-1] = 0;
+	text_expire_ticks[MAX_MESSAGES-1] = 0;
 }
 
 bool viewscreen::refresh()
@@ -582,6 +588,7 @@ void viewscreen::process_input(const InputState& input_state)
 
 void viewscreen::set_display_text(std::string_view newtext, short numcycles)
 {
+	const std::uint32_t current_tick = active_screen()->world().tick_count_;
 	Sint32 i;
 
 	i = 0;
@@ -596,9 +603,16 @@ void viewscreen::set_display_text(std::string_view newtext, short numcycles)
 	textlist[i] = newtext;
 
 	if (numcycles > 0)
+	{
 		textcycles[i] = numcycles;
+		text_expire_ticks[i] =
+		    current_tick + static_cast<std::uint32_t>(numcycles - 1);
+	}
 	else
+	{
 		textcycles[i] = 0;
+		text_expire_ticks[i] = current_tick;
+	}
 }
 
 // Blanks the screen text
@@ -606,7 +620,11 @@ void viewscreen::clear_text()
 {
 	Sint32 i;
 	for (i=0; i < MAX_MESSAGES; i++)
+	{
 		textlist[i].clear();
+		textcycles[i] = 0;
+		text_expire_ticks[i] = 0;
+	}
 }
 
 bool viewscreen::draw_obs()
