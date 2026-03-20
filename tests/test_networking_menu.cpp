@@ -702,7 +702,7 @@ TEST(NetworkingMenu, host_flow_enters_team_build_and_returns_to_main_menu)
     ASSERT_TRUE(state.updated_port);
     ASSERT_TRUE(state.entered_team_menu);
     ASSERT_TRUE(state.returned_to_main_menu);
-    ASSERT_TRUE(trace_contains("popup", "Lobby: 1 player"))
-        << "successful hosting should surface the lobby status message";
+    ASSERT_EQ(0, trace_count("popup"))
+        << "successful hosting should enter the lobby directly without an intermediate status popup";
 }
 #endif

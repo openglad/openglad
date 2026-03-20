@@ -51,7 +51,8 @@ bool picker_lobby_start_request_pending();
 bool picker_replace_lobby_client(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
     std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
-    const char* popup_title);
+    const char* popup_title,
+    bool show_success_popup = true);
 bool picker_join_game(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client);
 void picker_testing_yes_or_no_queue_clear();
@@ -758,6 +759,7 @@ TEST(PickerFuncs, picker_replace_lobby_client_is_transactional_on_initialize_fai
 
 TEST(PickerFuncs, picker_replace_lobby_client_swaps_active_client_after_success)
 {
+    trace_clear();
     auto current_trace = std::make_shared<PickerLobbyClientTrace>();
     std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
         std::make_unique<TraceablePickerLobbyClient>(
@@ -780,6 +782,36 @@ TEST(PickerFuncs, picker_replace_lobby_client_swaps_active_client_after_success)
     EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
     EXPECT_EQ(1, current_trace->shutdown_calls);
     EXPECT_EQ(1, next_trace->initialize_calls);
+    EXPECT_TRUE(trace_contains("popup", "Relay: GLAD-XKCD"));
+}
+
+TEST(PickerFuncs, picker_replace_lobby_client_can_skip_success_popup)
+{
+    trace_clear();
+    auto current_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        std::make_unique<TraceablePickerLobbyClient>(
+        current_trace);
+    ActivePickerLobbyClientGuard guard(current_client.get());
+
+    auto next_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> next_client =
+        std::make_unique<TraceablePickerLobbyClient>(
+        next_trace);
+    static_cast<TraceablePickerLobbyClient*>(next_client.get())->status_lines_ =
+        {"LAN: 192.168.1.5:12345", "Lobby: 1 player"};
+    auto* const next_raw =
+        static_cast<TraceablePickerLobbyClient*>(next_client.get());
+
+    ASSERT_TRUE(picker_replace_lobby_client(current_client,
+                                            std::move(next_client),
+                                            "HOST GAME",
+                                            false));
+    EXPECT_EQ(next_raw, current_client.get());
+    EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
+    EXPECT_EQ(1, current_trace->shutdown_calls);
+    EXPECT_EQ(1, next_trace->initialize_calls);
+    EXPECT_EQ(0, trace_count("popup"));
 }
 
 TEST(PickerFuncs, picker_replace_lobby_client_releases_old_host_before_new_init)

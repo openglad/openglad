@@ -102,7 +102,8 @@ bool g_start_game_requested = false;
 bool picker_replace_lobby_client(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
     std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
-    const char* popup_title);
+    const char* popup_title,
+    bool show_success_popup = true);
 
 namespace {
 void destroy_picker_pixie(pixieN* pixie)
@@ -346,7 +347,8 @@ bool picker_host_game(
         return picker_replace_lobby_client(
             current_client,
             og::ui::create_host_picker_lobby_client(options),
-            popup_title);
+            popup_title,
+            false);
     }
     catch (const std::exception& error)
     {
@@ -379,7 +381,8 @@ bool picker_join_game(
 bool picker_replace_lobby_client(
     std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
     std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
-    const char* popup_title)
+    const char* popup_title,
+    bool show_success_popup)
 {
     if (!next_client)
         return false;
@@ -398,7 +401,8 @@ bool picker_replace_lobby_client(
     try
     {
         next_client->initialize_from_save();
-        message = join_status_lines(next_client->status_lines());
+        if (show_success_popup)
+            message = join_status_lines(next_client->status_lines());
     }
     catch (...)
     {
@@ -412,7 +416,7 @@ bool picker_replace_lobby_client(
 
     current_client = std::move(next_client);
     og::ui::install_active_picker_lobby_client(current_client.get());
-    if (!message.empty())
+    if (show_success_popup && !message.empty())
         popup_dialog(popup_title, message.c_str());
     return true;
 }
