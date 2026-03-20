@@ -146,6 +146,11 @@ void glad_init(bool preserve_frame_timing,
 
     // Load the default saved-game, or the lobby-supplied in-memory config.
     load_saved_game(lobby_config != nullptr ? "" : "save0", current_screen);
+    for (short view_index = 0; view_index < current_screen->numviews; ++view_index)
+    {
+        if (current_screen->viewob[view_index] != nullptr)
+            current_screen->viewob[view_index]->clear_text();
+    }
     current_screen->world().tick_count_ = 0;
     current_screen->world().reset_level_progress();
     current_screen->world().clear_removed_entity_ids();

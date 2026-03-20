@@ -339,6 +339,33 @@ TEST(GameLoop, glad_init_preserves_existing_timing_when_requested)
     game_screen->world().delete_objects();
 }
 
+TEST(GameLoop, glad_init_clears_stale_view_text_when_tick_count_restarts)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    ASSERT_TRUE(view != nullptr);
+    view->set_display_text("stale pause text", 10);
+    ASSERT_EQ(std::string("stale pause text"), view->textlist[0]);
+
+    glad_init();
+
+    ASSERT_TRUE(game_screen->viewob[0] != nullptr);
+    EXPECT_TRUE(game_screen->viewob[0]->textlist[0].empty());
+
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
 TEST(GameLoop, clear_local_transport_shadow_deactivates_session_runtime)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
