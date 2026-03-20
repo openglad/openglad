@@ -2,9 +2,11 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/net_transport.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/core/zlib_api.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
@@ -1219,6 +1221,155 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     EXPECT_TRUE(
         status_lines_contain_exact(join_client->status_lines(), "Status: connecting"));
 
+    join_client->shutdown();
+}
+
+TEST(PickerNetworkClient,
+     join_runtime_install_keeps_non_host_control_slot_after_runtime_handoff)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Joiner");
+    g_start_game_requested = false;
+
+    const int port = ix::getFreePort();
+    auto server_transport =
+        std::make_shared<og::sim::WebSocketServerTransport>(port);
+    server_transport->accept_connections();
+    SaveData remote_host_save;
+    prepare_single_member_network_save(remote_host_save, 0, "Remote Host");
+    remote_host_save.scen_num = 1;
+    remote_host_save.allied_mode = 1;
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+
+    og::sim::PeerId join_peer_id = 0;
+    og::sim::LobbyMessage join_message;
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (message.kind() != og::sim::LobbyMessageKind::Join)
+                continue;
+
+            join_peer_id = peer_id;
+            join_message = std::move(message);
+            return true;
+        }
+        return false;
+    })) << "join client should connect and send its join message";
+
+    ASSERT_EQ(og::sim::LobbyMessageKind::Join, join_message.kind());
+    og::sim::LobbyPlayer join_player =
+        std::get<og::sim::LobbyJoinMessage>(join_message.payload).player;
+    join_player.player_index = 1u;
+    join_player.ready = false;
+    join_player.is_host = false;
+
+    og::sim::LobbyState state;
+    state.settings.campaign_id = remote_host_save.current_campaign;
+    state.settings.scenario_id = remote_host_save.scen_num;
+    state.settings.difficulty = 3;
+    state.settings.allied_mode = remote_host_save.allied_mode;
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0u,
+        .name = "Remote Host",
+        .team = 0,
+        .character_slots = {make_lobby_slot(0u, "Remote Host", 0)},
+        .ready = false,
+        .is_host = true,
+    });
+    state.players.push_back(join_player);
+    server_transport->send_lobby_state(
+        join_peer_id, std::make_shared<og::sim::LobbyState>(state));
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(
+            join_client->status_lines(),
+            "Lobby: 2 players");
+    })) << "join client should receive lobby state before runtime handoff";
+
+    send_start_game_message(*server_transport, join_peer_id, 0u);
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return join_client->has_game_start_config();
+    })) << "join client should receive the host start-game handoff";
+
+    ASSERT_NE(nullptr, active_game_session());
+    ASSERT_TRUE(install_gameplay_runtime_from_handoff(*join_client));
+    ASSERT_TRUE(og::runtime::local_transport_active(*active_game_session()));
+    ASSERT_EQ(1u, og::runtime::local_transport_client_count(*active_game_session()));
+
+    screen* const gameplay_screen = active_game_session()->myscreen_;
+    ASSERT_NE(nullptr, gameplay_screen);
+    ASSERT_NE(nullptr, gameplay_screen->viewob[0]);
+    gameplay_screen->world().end = 0;
+    gameplay_screen->viewob[0]->my_team = 0;
+
+    auto make_same_team_control = [&gameplay_screen](int family,
+                                                     std::string_view name) {
+        walker* const actor =
+            gameplay_screen->world().add_ob(Order::Living, family);
+        actor->set_owned_myguy(std::make_unique<guy>(family));
+        actor->myguy->name = std::string(name);
+        actor->myguy->teamnum = 0;
+        actor->set_team_num(0);
+        actor->set_real_team_num(255);
+        return actor;
+    };
+
+    walker* const host_control =
+        make_same_team_control(FAMILY_SOLDIER, "Host Control");
+    walker* const guest_control =
+        make_same_team_control(FAMILY_ARCHER, "Guest Control");
+    walker* const switched_control =
+        make_same_team_control(FAMILY_MAGE, "Guest Switched");
+    ASSERT_NE(nullptr, host_control);
+    ASSERT_NE(nullptr, guest_control);
+    ASSERT_NE(nullptr, switched_control);
+
+    gameplay_screen->world().tick_count_ = 1u;
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::capture_keyframe_snapshot(gameplay_screen->world());
+    server_transport->send_snapshot(
+        join_peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(snapshot));
+
+    auto send_control_change = [&](std::uint8_t player_index,
+                                   std::uint32_t entity_id) {
+        og::sim::ControlChangeMessage message;
+        message.player_index = player_index;
+        message.entity_id = entity_id;
+        server_transport->send_control_change(
+            join_peer_id,
+            std::make_shared<og::sim::ControlChangeMessage>(message));
+    };
+
+    send_control_change(0u, host_control->entity_id());
+    send_control_change(1u, guest_control->entity_id());
+
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(*active_game_session());
+        return gameplay_screen->viewob[0]->control != nullptr &&
+            gameplay_screen->viewob[0]->control->entity_id() ==
+                guest_control->entity_id();
+    })) << "non-host client should keep its own control slot after runtime install";
+
+    send_control_change(1u, switched_control->entity_id());
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(*active_game_session());
+        return gameplay_screen->viewob[0]->control != nullptr &&
+            gameplay_screen->viewob[0]->control->entity_id() ==
+                switched_control->entity_id();
+    })) << "non-host client should follow its own switched control slot";
+
+    og::runtime::clear_local_transport_shadow(*active_game_session());
     join_client->shutdown();
 }
 
