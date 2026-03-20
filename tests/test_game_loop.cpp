@@ -927,8 +927,6 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
-    viewscreen* const primary_view = game_screen->viewob[0].get();
-    ASSERT_TRUE(primary_view != nullptr);
 
     game_screen->save_data.reset();
     game_screen->save_data.current_campaign = "org.openglad.gladiator";
@@ -940,6 +938,9 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
     glad_init();
     ASSERT_TRUE(og::runtime::current_game_session != nullptr);
     ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
+    viewscreen* const primary_view =
+        og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(primary_view != nullptr);
 
     GameSpeedGuard speed_guard(0.0f);
     primary_view->clear_text();
