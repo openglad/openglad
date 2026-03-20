@@ -8,6 +8,7 @@
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/input_state.h>
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/game_loop.h>
@@ -609,6 +610,108 @@ TEST(GameLoop,
                             [](unsigned char value) { return value == 0u; }));
 
     og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, local_transport_shadow_guard_paths_without_runtime)
+{
+    og::runtime::GameSession::Config session_cfg;
+    session_cfg.allocate_screen = false;
+    session_cfg.allocate_prefs = false;
+    session_cfg.install_legacy_globals = false;
+    og::runtime::GameSession session(session_cfg);
+
+    EXPECT_EQ(0u, og::runtime::local_transport_client_count(session));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_is_paused(session));
+    EXPECT_FALSE(og::runtime::local_transport_shadow_toggle_pause(session));
+
+    InputState input{};
+    input.quit_requested = true;
+    input.timer_wait_request = 3;
+    input.players[0].pressed[static_cast<int>(InputKey::Fire)] = true;
+    og::runtime::local_transport_shadow_send_input(session, input, 7u);
+    og::runtime::local_transport_shadow_finish_tick(session);
+
+    og::runtime::clear_local_transport_shadow(session);
+    EXPECT_FALSE(og::runtime::local_transport_active(session));
+}
+
+TEST(GameLoop, local_transport_shadow_invalid_reset_paths_clear_runtime)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& gameplay_session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+
+    auto* const saved_sim_events = gameplay_session.game_.sim_events;
+    gameplay_session.game_.sim_events = nullptr;
+    og::runtime::reset_local_transport_shadow(gameplay_session, *game_screen);
+    EXPECT_FALSE(og::runtime::local_transport_active(gameplay_session));
+    gameplay_session.game_.sim_events = saved_sim_events;
+
+    gameplay_session.relay_transport_active_ = true;
+    og::runtime::reset_network_host_transport_shadow(
+        gameplay_session,
+        *game_screen,
+        nullptr,
+        nullptr,
+        {});
+    EXPECT_FALSE(og::runtime::local_transport_active(gameplay_session));
+    EXPECT_FALSE(gameplay_session.relay_transport_active_);
+
+    gameplay_session.relay_transport_active_ = true;
+    og::runtime::reset_network_client_transport_shadow(
+        gameplay_session,
+        *game_screen,
+        nullptr,
+        0u);
+    EXPECT_FALSE(og::runtime::local_transport_active(gameplay_session));
+    EXPECT_FALSE(gameplay_session.relay_transport_active_);
+
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, local_transport_shadow_send_input_and_finish_tick_cover_active_paths)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& gameplay_session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+    ASSERT_EQ(1u, og::runtime::local_transport_client_count(gameplay_session));
+
+    InputState input{};
+    input.quit_requested = true;
+    input.timer_wait_request = 4;
+    input.players[0].held[static_cast<int>(InputKey::Right)] = true;
+    input.players[0].pressed[static_cast<int>(InputKey::Fire)] = true;
+    og::runtime::local_transport_shadow_send_input(gameplay_session, input, 9u);
+
+    game_screen->world().end = 1;
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    EXPECT_EQ(1, static_cast<int>(game_screen->world().end));
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().end = 0;
     game_screen->world().delete_objects();
 }
 
