@@ -696,22 +696,30 @@ public:
         }
 
         networking_settings_.port_text = port_text;
-        og::ui::PickerHostGameOptions options;
-        options.port = *port;
+        try
+        {
+            og::ui::PickerHostGameOptions options;
+            options.port = *port;
 #ifdef __EMSCRIPTEN__
-        const bool default_enable_relay = true;
+            const bool default_enable_relay = true;
 #else
-        const bool default_enable_relay = false;
+            const bool default_enable_relay = false;
 #endif
-        options.enable_relay = yes_or_no_prompt(
-            "HOST GAME",
-            "Create a relay room code too?\n"
-            "Choose YES for NAT-friendly hosting.",
-            default_enable_relay);
-        networking_settings_.use_room_code = options.enable_relay;
-        if (options.enable_relay)
-            options.relay_base_url = og::ui::default_relay_base_url();
-        return picker_host_game(lobby_client_, options, "HOST GAME");
+            options.enable_relay = yes_or_no_prompt(
+                "HOST GAME",
+                "Create a relay room code too?\n"
+                "Choose YES for NAT-friendly hosting.",
+                default_enable_relay);
+            networking_settings_.use_room_code = options.enable_relay;
+            if (options.enable_relay)
+                options.relay_base_url = og::ui::default_relay_base_url();
+            return picker_host_game(lobby_client_, options, "HOST GAME");
+        }
+        catch (const std::exception& error)
+        {
+            popup_dialog("HOST GAME", error.what());
+            return false;
+        }
     }
 
     bool join_game() override
@@ -776,52 +784,68 @@ public:
 private:
     bool submit_network_host()
     {
-        const std::optional<int> port =
-            parse_network_port(networking_settings_.port_text);
-        if (!port.has_value())
+        try
         {
-            popup_dialog("HOST GAME", "Please enter a port from 1 to 65535.");
+            const std::optional<int> port =
+                parse_network_port(networking_settings_.port_text);
+            if (!port.has_value())
+            {
+                popup_dialog("HOST GAME", "Please enter a port from 1 to 65535.");
+                return false;
+            }
+
+            og::ui::PickerHostGameOptions options;
+            options.port = *port;
+            options.enable_relay = networking_settings_.use_room_code;
+            if (options.enable_relay)
+                options.relay_base_url = og::ui::default_relay_base_url();
+            return picker_host_game(lobby_client_, options, "HOST GAME");
+        }
+        catch (const std::exception& error)
+        {
+            popup_dialog("HOST GAME", error.what());
             return false;
         }
-
-        og::ui::PickerHostGameOptions options;
-        options.port = *port;
-        options.enable_relay = networking_settings_.use_room_code;
-        if (options.enable_relay)
-            options.relay_base_url = og::ui::default_relay_base_url();
-        return picker_host_game(lobby_client_, options, "HOST GAME");
     }
 
     bool submit_network_join()
     {
-        og::ui::PickerJoinGameOptions options;
-        if (networking_settings_.use_room_code)
+        try
         {
-            options.mode = og::ui::PickerJoinMode::Relay;
-            options.room_code = networking_settings_.room_code;
-            options.relay_base_url = og::ui::default_relay_base_url();
+            og::ui::PickerJoinGameOptions options;
+            if (networking_settings_.use_room_code)
+            {
+                options.mode = og::ui::PickerJoinMode::Relay;
+                options.room_code = networking_settings_.room_code;
+                options.relay_base_url = og::ui::default_relay_base_url();
+                return picker_join_game(lobby_client_, options, "JOIN GAME");
+            }
+
+            const std::optional<int> port =
+                parse_network_port(networking_settings_.port_text);
+            if (!port.has_value())
+            {
+                popup_dialog("JOIN GAME", "Please enter a port from 1 to 65535.");
+                return false;
+            }
+            if (is_blank_text(networking_settings_.ip_address))
+            {
+                popup_dialog("JOIN GAME", "Please enter an IP address or hostname.");
+                return false;
+            }
+
+            options.mode = og::ui::PickerJoinMode::Direct;
+            options.direct_endpoint = std::format(
+                "{}:{}",
+                networking_settings_.ip_address,
+                *port);
             return picker_join_game(lobby_client_, options, "JOIN GAME");
         }
-
-        const std::optional<int> port =
-            parse_network_port(networking_settings_.port_text);
-        if (!port.has_value())
+        catch (const std::exception& error)
         {
-            popup_dialog("JOIN GAME", "Please enter a port from 1 to 65535.");
+            popup_dialog("JOIN GAME", error.what());
             return false;
         }
-        if (is_blank_text(networking_settings_.ip_address))
-        {
-            popup_dialog("JOIN GAME", "Please enter an IP address or hostname.");
-            return false;
-        }
-
-        options.mode = og::ui::PickerJoinMode::Direct;
-        options.direct_endpoint = std::format(
-            "{}:{}",
-            networking_settings_.ip_address,
-            *port);
-        return picker_join_game(lobby_client_, options, "JOIN GAME");
     }
 
     bool replace_lobby_client(std::unique_ptr<og::ui::IPickerLobbyClient> client,

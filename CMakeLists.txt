@@ -1302,6 +1302,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_save_load_team.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_team.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_options_menu.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_networking_menu.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_layout.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_help.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_load_levels.cpp
@@ -1683,6 +1684,7 @@ if(NOT EMSCRIPTEN)
             test_save_menu.cpp
             test_save_load_team.cpp
             test_options_menu.cpp
+            test_networking_menu.cpp
             test_difficulty.cpp
             test_help.cpp
             test_help_parsing.cpp

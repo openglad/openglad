@@ -2,6 +2,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/legacy/base.h>
+#include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
@@ -142,6 +143,16 @@ struct ActivePickerLobbyClientGuard
     ~ActivePickerLobbyClientGuard()
     {
         og::ui::install_active_picker_lobby_client(saved);
+    }
+};
+
+struct PlatformBridgeGuard
+{
+    PlatformBridge saved = platform_bridge();
+
+    ~PlatformBridgeGuard()
+    {
+        set_platform_bridge(std::move(saved));
     }
 };
 
@@ -801,6 +812,201 @@ TEST(PickerFuncs, picker_replace_lobby_client_releases_old_host_before_new_init)
     EXPECT_TRUE(binding.in_use);
     EXPECT_EQ(1, current_stats->shutdown_calls);
     EXPECT_EQ(1, next_stats->initialize_calls);
+}
+
+TEST(PickerFuncs, picker_join_game_direct_prompt_catches_factory_error)
+{
+    trace_clear();
+    PlatformBridgeGuard bridge_guard;
+    PlatformBridge bridge = platform_bridge();
+    bridge.create_join_picker_lobby_client =
+        [](const og::ui::PickerJoinGameOptions&)
+            -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+        throw std::runtime_error("simulated join failure");
+    };
+    set_platform_bridge(std::move(bridge));
+
+    auto current_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        std::make_unique<TraceablePickerLobbyClient>(current_trace);
+    auto* const current_raw =
+        static_cast<TraceablePickerLobbyClient*>(current_client.get());
+    ActivePickerLobbyClientGuard guard(current_raw);
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+    level_editor_testing_prompt_queue_clear();
+    level_editor_testing_prompt_queue_push("127.0.0.1:24567");
+
+    EXPECT_FALSE(picker_join_game(current_client));
+    EXPECT_EQ(current_raw, current_client.get());
+    EXPECT_EQ(current_raw, og::ui::active_picker_lobby_client());
+    EXPECT_EQ(0, current_trace->shutdown_calls);
+    EXPECT_TRUE(trace_contains("popup", "simulated join failure"));
+
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+}
+
+TEST(PickerFuncs, picker_join_game_direct_prompt_replaces_client)
+{
+    PlatformBridgeGuard bridge_guard;
+    PlatformBridge bridge = platform_bridge();
+    std::optional<og::ui::PickerJoinGameOptions> captured_options;
+    auto next_trace = std::make_shared<PickerLobbyClientTrace>();
+    auto* next_raw = static_cast<TraceablePickerLobbyClient*>(nullptr);
+    bridge.create_join_picker_lobby_client =
+        [&](const og::ui::PickerJoinGameOptions& options)
+            -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+        captured_options = options;
+        auto next_client =
+            std::make_unique<TraceablePickerLobbyClient>(next_trace);
+        next_raw = next_client.get();
+        return next_client;
+    };
+    set_platform_bridge(std::move(bridge));
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+    level_editor_testing_prompt_queue_clear();
+    level_editor_testing_prompt_queue_push("198.51.100.24:24567");
+
+    auto current_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        std::make_unique<TraceablePickerLobbyClient>(current_trace);
+    auto* const current_raw =
+        static_cast<TraceablePickerLobbyClient*>(current_client.get());
+    ActivePickerLobbyClientGuard guard(current_raw);
+
+    EXPECT_TRUE(picker_join_game(current_client));
+    ASSERT_TRUE(captured_options.has_value());
+    EXPECT_EQ(og::ui::PickerJoinMode::Direct, captured_options->mode);
+    EXPECT_EQ("198.51.100.24:24567", captured_options->direct_endpoint);
+    EXPECT_EQ("", captured_options->room_code);
+    EXPECT_EQ(next_raw, current_client.get());
+    EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
+    EXPECT_EQ(1, current_trace->shutdown_calls);
+    EXPECT_EQ(1, next_trace->initialize_calls);
+
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+}
+
+TEST(PickerFuncs, picker_join_game_relay_prompt_replaces_client)
+{
+    PlatformBridgeGuard bridge_guard;
+    PlatformBridge bridge = platform_bridge();
+    std::optional<og::ui::PickerJoinGameOptions> captured_options;
+    std::string listed_base_url;
+    std::string listed_campaign_tag;
+    auto next_trace = std::make_shared<PickerLobbyClientTrace>();
+    auto* next_raw = static_cast<TraceablePickerLobbyClient*>(nullptr);
+    bridge.list_relay_rooms =
+        [&](const std::string& base_url, const std::string& campaign_tag) {
+        listed_base_url = base_url;
+        listed_campaign_tag = campaign_tag;
+        og::ui::PickerRelayRoomInfo alpha;
+        alpha.code = "GLAD-ALPHA";
+        alpha.host_name = "Alpha";
+        alpha.player_count = 2;
+
+        og::ui::PickerRelayRoomInfo beta;
+        beta.code = "GLAD-BETA";
+        beta.host_name = "Beta";
+        beta.player_count = 1;
+
+        return std::vector<og::ui::PickerRelayRoomInfo>{alpha, beta};
+    };
+    bridge.create_join_picker_lobby_client =
+        [&](const og::ui::PickerJoinGameOptions& options)
+            -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+        captured_options = options;
+        auto next_client =
+            std::make_unique<TraceablePickerLobbyClient>(next_trace);
+        next_raw = next_client.get();
+        return next_client;
+    };
+    set_platform_bridge(std::move(bridge));
+
+    auto& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string old_campaign = save.current_campaign;
+    save.current_campaign = "org.openglad.gladiator";
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(false);
+    level_editor_testing_prompt_queue_clear();
+    level_editor_testing_prompt_queue_push("GLAD-BETA");
+
+    auto current_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        std::make_unique<TraceablePickerLobbyClient>(current_trace);
+    auto* const current_raw =
+        static_cast<TraceablePickerLobbyClient*>(current_client.get());
+    ActivePickerLobbyClientGuard guard(current_raw);
+
+    EXPECT_TRUE(picker_join_game(current_client));
+    ASSERT_TRUE(captured_options.has_value());
+    EXPECT_EQ(og::ui::PickerJoinMode::Relay, captured_options->mode);
+    EXPECT_EQ("GLAD-BETA", captured_options->room_code);
+    EXPECT_FALSE(captured_options->relay_base_url.empty());
+    EXPECT_EQ(captured_options->relay_base_url, listed_base_url);
+    EXPECT_EQ("org.openglad.gladiator", listed_campaign_tag);
+    EXPECT_EQ(next_raw, current_client.get());
+    EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
+    EXPECT_EQ(1, current_trace->shutdown_calls);
+    EXPECT_EQ(1, next_trace->initialize_calls);
+
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+    save.current_campaign = old_campaign;
+}
+
+TEST(PickerFuncs, picker_join_game_relay_prompt_uses_room_list_error_message)
+{
+    PlatformBridgeGuard bridge_guard;
+    PlatformBridge bridge = platform_bridge();
+    std::optional<og::ui::PickerJoinGameOptions> captured_options;
+    auto next_trace = std::make_shared<PickerLobbyClientTrace>();
+    auto* next_raw = static_cast<TraceablePickerLobbyClient*>(nullptr);
+    bridge.list_relay_rooms =
+        [](const std::string&, const std::string&)
+            -> std::vector<og::ui::PickerRelayRoomInfo> {
+        throw std::runtime_error("simulated room list failure");
+    };
+    bridge.create_join_picker_lobby_client =
+        [&](const og::ui::PickerJoinGameOptions& options)
+            -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+        captured_options = options;
+        auto next_client =
+            std::make_unique<TraceablePickerLobbyClient>(next_trace);
+        next_raw = next_client.get();
+        return next_client;
+    };
+    set_platform_bridge(std::move(bridge));
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(false);
+    level_editor_testing_prompt_queue_clear();
+    level_editor_testing_prompt_queue_push("GLAD-ROOM");
+
+    auto current_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        std::make_unique<TraceablePickerLobbyClient>(current_trace);
+    auto* const current_raw =
+        static_cast<TraceablePickerLobbyClient*>(current_client.get());
+    ActivePickerLobbyClientGuard guard(current_raw);
+
+    EXPECT_TRUE(picker_join_game(current_client));
+    ASSERT_TRUE(captured_options.has_value());
+    EXPECT_EQ(og::ui::PickerJoinMode::Relay, captured_options->mode);
+    EXPECT_EQ("GLAD-ROOM", captured_options->room_code);
+    EXPECT_EQ(next_raw, current_client.get());
+    EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
+    EXPECT_EQ(1, current_trace->shutdown_calls);
+    EXPECT_EQ(1, next_trace->initialize_calls);
+
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
 }
 
 TEST(PickerFuncs, picker_join_game_catches_invalid_relay_base_url)
