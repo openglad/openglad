@@ -485,6 +485,133 @@ TEST(ViewTeam, go_starts_level) {
 }
 
 
+struct TrainViewTeamGoState {
+    bool started;
+    bool finished;
+    bool saw_train_menu;
+    bool saw_view_menu;
+    bool game_started;
+    bool game_finished;
+    float original_speed;
+};
+
+static int train_view_team_go_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<TrainViewTeamGoState*>(data);
+    state->started = true;
+
+    if (!enter_team_menu_from_main_menu(20000)) {
+        unwind_to_main_menu();
+        state->finished = true;
+        return 0;
+    }
+
+    interact("train_team");
+    if (!wait_for_interactable("inc_str", 10000)) {
+        unwind_to_main_menu();
+        state->finished = true;
+        return 0;
+    }
+    state->saw_train_menu = true;
+
+    interact("view_team");
+
+    const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
+    if (!wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
+        unwind_to_main_menu();
+        state->finished = true;
+        return 0;
+    }
+    state->saw_view_menu = true;
+    SDL_Delay(100);
+
+    g_test_remove_exits = true;
+    og::sim::g_test_level_tick_limit_override = 15;
+    set_game_speed(0.0f);
+
+    const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
+    state->game_started = start_game_from_view_menu(
+        epoch_before, kGameStartTimeoutMs, is_view_menu_go);
+
+    int waited_ms = 0;
+    const int poll_ms = 50;
+    while (g_test_in_game.load(std::memory_order_acquire)
+           && waited_ms < kGameFinishTimeoutMs) {
+        SDL_Delay(poll_ms);
+        waited_ms += poll_ms;
+    }
+    state->game_finished = !g_test_in_game.load(std::memory_order_acquire);
+
+    set_game_speed(state->original_speed);
+    g_test_remove_exits = false;
+    og::sim::g_test_level_tick_limit_override = 0;
+
+    unwind_to_main_menu(9000);
+
+    state->finished = true;
+    return 0;
+}
+
+TEST(ViewTeam, go_from_train_menu_starts_level)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign =
+        "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.totalcash = 50000;
+
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    auto archer = std::make_unique<guy>(FAMILY_ARCHER);
+    soldier->strength = soldier->dexterity = soldier->constitution =
+        soldier->intelligence = soldier->armor = 200;
+    archer->strength = archer->dexterity = archer->constitution =
+        archer->intelligence = archer->armor = 200;
+    og::runtime::current_session->myscreen_->save_data.team_list[0] =
+        std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_list[1] =
+        std::move(archer);
+    og::runtime::current_session->myscreen_->save_data.team_size = 2;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
+
+    TrainViewTeamGoState state = {
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        og::runtime::current_session->g_game_speed_factor_,
+    };
+    SDL_Thread* thread = SDL_CreateThread(
+        train_view_team_go_injector,
+        "train_view_team_go",
+        &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_train_menu) << "should have entered the train menu";
+    ASSERT_TRUE(state.saw_view_menu) << "should have entered the nested view menu";
+    ASSERT_TRUE(state.game_started)
+        << "GO from train menu view team should start the game";
+    ASSERT_TRUE(state.game_finished) << "started game should return to picker";
+}
+
+
 struct DirectMenuClickState {
     bool finished;
     bool clicked_target;

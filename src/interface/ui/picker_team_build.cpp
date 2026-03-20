@@ -170,6 +170,13 @@ static bool team_build_remote_start_requested(Sint32& retvalue)
     return true;
 }
 
+static bool team_build_start_selected()
+{
+    return pks().selected_menu_item != nullptr
+        && pks().selected_menu_item->command ==
+            og::ui::PickerMenuCommand::StartGame;
+}
+
 constexpr int kTeamBuildGoButtonIndex = 5;
 constexpr int kTeamBuildSetLevelButtonIndex = 8;
 constexpr int kTeamBuildSetCampaignButtonIndex = 9;
@@ -1023,6 +1030,11 @@ Sint32 create_train_menu(Sint32 arg1)
 			retvalue = og::runtime::current_session->localbuttons_->rightclick();
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
+
+        // Nested menus can replace the global button array before returning.
+        // Once a submenu requests EXIT, stop drawing this menu immediately.
+        if (retvalue & MENU_EXIT)
+            break;
         
         // Reset buttons
         if(og::runtime::current_session->localbuttons_ && (retvalue == MENU_OK || retvalue == MENU_REDRAW))
@@ -1188,6 +1200,10 @@ Sint32 create_train_menu(Sint32 arg1)
 	pks().train_session = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();
 	//myscreen->clearscreen();
+    if ((retvalue & MENU_EXIT) && team_build_start_selected())
+    {
+        return MENU_EXIT;
+    }
 	return MENU_REDRAW;
 }
 
