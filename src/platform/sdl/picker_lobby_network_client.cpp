@@ -1233,6 +1233,26 @@ std::string build_host_transport_failure_message(
     return "Unable to host a network lobby.";
 }
 
+void clear_active_gameplay_shadow() noexcept
+{
+    // The picker can resume on the same client object after gameplay hands
+    // its transports into the local shadow runtime. Tear that runtime down
+    // before any reconnect or direct-listener rebind.
+    if (og::runtime::current_game_session != nullptr)
+    {
+        og::runtime::clear_local_transport_shadow(
+            *og::runtime::current_game_session);
+        return;
+    }
+
+    if (auto* const session =
+            dynamic_cast<og::runtime::GameSession*>(
+                og::runtime::current_session))
+    {
+        og::runtime::clear_local_transport_shadow(*session);
+    }
+}
+
 } // namespace
 
 namespace og::ui {
@@ -1288,6 +1308,7 @@ public:
     void initialize_from_save() override
     {
         shutdown();
+        clear_active_gameplay_shadow();
 
         SaveData* const save = current_picker_save();
         if (save == nullptr)
@@ -1713,6 +1734,7 @@ public:
     void initialize_from_save() override
     {
         shutdown();
+        clear_active_gameplay_shadow();
 
         SaveData* const save = current_picker_save();
         if (save == nullptr)

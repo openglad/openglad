@@ -1037,6 +1037,34 @@ TEST(PickerNetworkClient,
     host_client->shutdown();
 }
 
+TEST(PickerNetworkClient,
+     picker_reinitialize_after_game_clears_host_transport_shadow_before_rebinding_port)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions options;
+    options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(options);
+    ActivePickerLobbyClientGuard active_guard(host_client.get());
+
+    host_client->initialize_from_save();
+    ASSERT_TRUE(install_gameplay_runtime_from_handoff(*host_client));
+    ASSERT_NE(nullptr, active_game_session());
+    EXPECT_TRUE(og::runtime::local_transport_active(*active_game_session()));
+
+    EXPECT_NO_THROW(picker_reinitialize_lobby_after_game());
+    EXPECT_FALSE(og::runtime::local_transport_active(*active_game_session()));
+    EXPECT_TRUE(
+        status_lines_contain_prefix(host_client->status_lines(), "LAN: "));
+    EXPECT_FALSE(picker_lobby_start_request_pending());
+
+    host_client->shutdown();
+}
+
 TEST(PickerNetworkClient, relay_room_listing_fetches_matching_rooms)
 {
     IxNetSystemScope net_system;
