@@ -927,6 +927,8 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
+    viewscreen* const primary_view = game_screen->viewob[0].get();
+    ASSERT_TRUE(primary_view != nullptr);
 
     game_screen->save_data.reset();
     game_screen->save_data.current_campaign = "org.openglad.gladiator";
@@ -940,6 +942,7 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
     ASSERT_TRUE(og::runtime::local_transport_active(*og::runtime::current_session));
 
     GameSpeedGuard speed_guard(0.0f);
+    primary_view->clear_text();
     struct EscapeFrameOutcome {
         GameFrameResult result = GameFrameResult::Continue;
         bool done = false;
@@ -977,6 +980,9 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
     EXPECT_EQ(1, pause_frame.redrawme);
     EXPECT_TRUE(game_screen->world().paused);
     EXPECT_EQ(0u, game_screen->world().pause_player_index);
+    ASSERT_FALSE(primary_view->textlist[0].empty());
+    EXPECT_EQ(0, primary_view->textlist[0].compare(0, 6, "PAUSED"));
+    EXPECT_EQ(std::string("ESC again: Quit?"), primary_view->textlist[1]);
 
     picker_testing_yes_or_no_queue_clear();
     picker_testing_yes_or_no_queue_push(false);

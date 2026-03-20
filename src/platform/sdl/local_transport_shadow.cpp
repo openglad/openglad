@@ -36,6 +36,8 @@ struct LocalTransportClient {
     bool drives_display = false;
 };
 
+constexpr char kPauseOverlayEscHint[] = "ESC again: Quit?";
+
 } // namespace
 
 namespace og::runtime {
@@ -330,6 +332,12 @@ std::string pause_overlay_text(const og::sim::PauseBroadcastMessage* pause)
     return "PAUSED by " + pause->player_name;
 }
 
+void refresh_pause_overlay_text(viewscreen& view, const std::string& text)
+{
+    view.refresh_display_text(text, 1);
+    view.refresh_display_text(kPauseOverlayEscHint, 1);
+}
+
 void render_pause_overlay(screen& gameplay_screen,
                           const og::sim::GameClient& game_client)
 {
@@ -349,7 +357,7 @@ void render_pause_overlay(screen& gameplay_screen,
         if (view == nullptr)
             continue;
 
-        view->refresh_display_text(text, 1);
+        refresh_pause_overlay_text(*view, text);
     }
     gameplay_screen.redrawme = 1;
 }
@@ -472,7 +480,7 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
                     gameplay_screen.viewob[view_index].get();
                 if (view == nullptr)
                     continue;
-                view->set_display_text(text, 1);
+                refresh_pause_overlay_text(*view, text);
             }
             gameplay_screen.redrawme = 1;
         });
