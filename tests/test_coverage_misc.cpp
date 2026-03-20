@@ -406,6 +406,7 @@ public:
     og::ui::TeamBuildAction team_build_action = og::ui::TeamBuildAction::BackToMainMenu;
     std::string campaign_result;
     bool new_game_ok = true;
+    bool networking_ok = true;
     bool load_ok = true;
     bool save_ok = true;
     og::ui::PickerScreen after_game = og::ui::PickerScreen::MainMenu;
@@ -416,6 +417,7 @@ public:
     int options_calls = 0;
     int help_calls = 0;
     int run_game_calls = 0;
+    int networking_calls = 0;
     int load_calls = 0;
     int save_calls = 0;
     int prep_calls = 0;
@@ -444,6 +446,12 @@ public:
     {
         ++prep_calls;
         return new_game_ok;
+    }
+
+    bool configure_networking() override
+    {
+        ++networking_calls;
+        return networking_ok;
     }
 
     void show_options() override
@@ -606,6 +614,7 @@ TEST(CoverageMisc, coverage_r18_picker_show_main_and_team_build_mappings)
     static const og::ui::PickerMenuItem unknown{"noop", "noop", og::ui::PickerMenuCommand::SetDifficulty, 0};
     static const og::ui::PickerMenuItem new_game{"new", "new", og::ui::PickerMenuCommand::BeginNewGame, 0};
     static const og::ui::PickerMenuItem cont{"continue", "continue", og::ui::PickerMenuCommand::ContinueGame, 0};
+    static const og::ui::PickerMenuItem networking{"networking", "networking", og::ui::PickerMenuCommand::Networking, 0};
     static const og::ui::PickerMenuItem options{"options", "options", og::ui::PickerMenuCommand::Options, 0};
     static const og::ui::PickerMenuItem help{"help", "help", og::ui::PickerMenuCommand::Help, 0};
     static const og::ui::PickerMenuItem quit{"quit", "quit", og::ui::PickerMenuCommand::Quit, 0};
@@ -620,6 +629,10 @@ TEST(CoverageMisc, coverage_r18_picker_show_main_and_team_build_mappings)
     client.scripted = {&cont};
     client.present_calls = 0;
     ASSERT_TRUE(client.show_main_menu() == og::ui::MainMenuAction::ViewTeam);
+
+    client.scripted = {&networking};
+    client.present_calls = 0;
+    ASSERT_TRUE(client.show_main_menu() == og::ui::MainMenuAction::Networking);
 
     client.scripted = {&options};
     client.present_calls = 0;
@@ -657,6 +670,7 @@ TEST(CoverageMisc, coverage_r18_picker_run_picker_state_switches)
     ScriptedPickerClient a;
     a.main_actions = {
         og::ui::MainMenuAction::NewGame,
+        og::ui::MainMenuAction::Networking,
         og::ui::MainMenuAction::LoadGame,
         og::ui::MainMenuAction::SaveGame,
         og::ui::MainMenuAction::Options,
@@ -668,11 +682,12 @@ TEST(CoverageMisc, coverage_r18_picker_run_picker_state_switches)
     og::ui::run_picker(a);
     ASSERT_TRUE(a.prep_calls == 1);
     ASSERT_TRUE(a.show_campaign_calls == 1);
+    ASSERT_TRUE(a.networking_calls == 1);
     ASSERT_TRUE(a.load_calls == 1);
     ASSERT_TRUE(a.save_calls == 1);
     ASSERT_TRUE(a.options_calls == 1);
     ASSERT_TRUE(a.help_calls == 1);
-    ASSERT_TRUE(a.show_team_build_calls == 1);
+    ASSERT_TRUE(a.show_team_build_calls == 2);
     ASSERT_TRUE(a.run_game_calls == 0);
 
     ScriptedPickerClient b;

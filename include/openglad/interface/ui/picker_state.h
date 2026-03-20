@@ -36,6 +36,7 @@ enum class MainMenuAction : std::int32_t
 {
     ContinueGame,       // Resume with current team
     NewGame,            // Start fresh
+    Networking,         // Open network configuration submenu
     HostGame,           // Host a networked lobby
     JoinGame,           // Join a networked lobby
     LoadGame,           // Load a save file
@@ -75,6 +76,9 @@ public:
     // Prepare local save/team state for starting a new game.
     // Return false to cancel and go back to the main menu.
     virtual bool prepare_new_game() { return true; }
+
+    // Open the networking submenu and return true if it produced a lobby.
+    virtual bool configure_networking() { return false; }
 
     // Prepare a hosted network lobby from the current save.
     virtual bool host_game() { return false; }

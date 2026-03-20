@@ -13,11 +13,10 @@
 namespace og::ui {
 namespace {
 
-constexpr std::array<PickerMenuItem, 13> kMainMenuItems = {{
+constexpr std::array<PickerMenuItem, 12> kMainMenuItems = {{
     {"begin_new_game", "Begin New Game", PickerMenuCommand::BeginNewGame},
     {"continue_game", "Continue Game", PickerMenuCommand::ContinueGame},
-    {"host_game", "Host Game", PickerMenuCommand::HostGame},
-    {"join_game", "Join Game", PickerMenuCommand::JoinGame},
+    {"networking", "Networking", PickerMenuCommand::Networking},
     {"4_player", "4 Player", PickerMenuCommand::SetPlayerMode, 4},
     {"3_player", "3 Player", PickerMenuCommand::SetPlayerMode, 3},
     {"2_player", "2 Player", PickerMenuCommand::SetPlayerMode, 2},

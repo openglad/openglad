@@ -119,6 +119,12 @@ public:
         return true;
     }
 
+    bool configure_networking() override
+    {
+        std::printf("Networking setup is not available in the headless text client.\n");
+        return false;
+    }
+
     std::string show_campaign_select() override
     {
         std::list<std::string> campaigns = list_campaigns();

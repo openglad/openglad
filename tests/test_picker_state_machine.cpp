@@ -13,6 +13,7 @@ public:
     size_t main_menu_index = 0;
 
     bool prepare_new_game_result = true;
+    bool configure_networking_result = true;
     bool host_game_result = true;
     bool join_game_result = true;
     std::string campaign_result = "org.openglad.gladiator";
@@ -23,6 +24,7 @@ public:
 
     int show_main_menu_calls = 0;
     int prepare_new_game_calls = 0;
+    int configure_networking_calls = 0;
     int host_game_calls = 0;
     int join_game_calls = 0;
     int show_campaign_select_calls = 0;
@@ -45,6 +47,12 @@ public:
     {
         ++prepare_new_game_calls;
         return prepare_new_game_result;
+    }
+
+    bool configure_networking() override
+    {
+        ++configure_networking_calls;
+        return configure_networking_result;
     }
 
     bool host_game() override
@@ -156,19 +164,35 @@ TEST(PickerStateMachine, picker_state_save_fail_routes_to_team_build)
     ASSERT_EQ(2, client.show_main_menu_calls) << "flow should return to main menu after team build";
 }
 
-TEST(PickerStateMachine, picker_state_host_game_success_routes_to_team_build)
+TEST(PickerStateMachine, picker_state_networking_success_routes_to_team_build)
 {
     ScriptedPickerClient client;
     client.main_menu_actions = {
-        og::ui::MainMenuAction::HostGame,
+        og::ui::MainMenuAction::Networking,
         og::ui::MainMenuAction::Quit
     };
 
     og::ui::run_picker(client);
 
-    ASSERT_EQ(1, client.host_game_calls) << "host game should be attempted once";
-    ASSERT_EQ(1, client.show_team_build_calls) << "successful host should open team build";
+    ASSERT_EQ(1, client.configure_networking_calls) << "networking submenu should be attempted once";
+    ASSERT_EQ(1, client.show_team_build_calls) << "successful networking flow should open team build";
     ASSERT_EQ(2, client.show_main_menu_calls) << "flow should return to main menu after team build";
+}
+
+TEST(PickerStateMachine, picker_state_networking_cancel_returns_to_main_menu)
+{
+    ScriptedPickerClient client;
+    client.main_menu_actions = {
+        og::ui::MainMenuAction::Networking,
+        og::ui::MainMenuAction::Quit
+    };
+    client.configure_networking_result = false;
+
+    og::ui::run_picker(client);
+
+    ASSERT_EQ(1, client.configure_networking_calls) << "networking submenu should be attempted once";
+    ASSERT_EQ(0, client.show_team_build_calls) << "cancelled networking should stay on the main menu";
+    ASSERT_EQ(2, client.show_main_menu_calls) << "flow should return to the main menu and then quit";
 }
 
 TEST(PickerStateMachine, picker_state_join_game_cancel_returns_to_main_menu)
@@ -267,6 +291,9 @@ TEST(PickerStateMachine, picker_state_show_team_build_play_and_back)
 TEST(PickerStateMachine, picker_state_show_main_menu_maps_host_and_join_commands)
 {
     MenuOnlyPickerClient client;
+    static const og::ui::PickerMenuItem networking{
+        "networking", "Networking", og::ui::PickerMenuCommand::Networking, 0
+    };
     static const og::ui::PickerMenuItem host{
         "host_game", "Host Game", og::ui::PickerMenuCommand::HostGame, 0
     };
@@ -274,6 +301,12 @@ TEST(PickerStateMachine, picker_state_show_main_menu_maps_host_and_join_commands
         "join_game", "Join Game", og::ui::PickerMenuCommand::JoinGame, 0
     };
 
+    client.scripted_results = {&networking};
+    ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::Networking),
+              static_cast<int>(client.show_main_menu()))
+        << "networking command should map to Networking";
+
+    client.present_calls = 0;
     client.scripted_results = {&host};
     ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::HostGame),
               static_cast<int>(client.show_main_menu()))

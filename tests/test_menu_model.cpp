@@ -31,13 +31,15 @@ TEST(MenuModel, main_definition_and_lookup)
     ASSERT_TRUE(begin != nullptr) << "begin_new_game id should resolve";
     ASSERT_EQ(static_cast<int>(PickerMenuCommand::BeginNewGame), static_cast<int>(begin->command)) << "begin_new_game should map to BeginNewGame command";
 
+    const PickerMenuItem* networking = find_picker_menu_item(PickerMenuId::Main, "networking");
+    ASSERT_TRUE(networking != nullptr) << "networking id should resolve";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::Networking), static_cast<int>(networking->command)) << "networking should map to Networking command";
+
     const PickerMenuItem* host = find_picker_menu_item(PickerMenuId::Main, "host_game");
-    ASSERT_TRUE(host != nullptr) << "host_game id should resolve";
-    ASSERT_EQ(static_cast<int>(PickerMenuCommand::HostGame), static_cast<int>(host->command)) << "host_game should map to HostGame command";
+    ASSERT_TRUE(host == nullptr) << "host_game id should no longer appear in the main menu";
 
     const PickerMenuItem* join = find_picker_menu_item(PickerMenuId::Main, "join_game");
-    ASSERT_TRUE(join != nullptr) << "join_game id should resolve";
-    ASSERT_EQ(static_cast<int>(PickerMenuCommand::JoinGame), static_cast<int>(join->command)) << "join_game should map to JoinGame command";
+    ASSERT_TRUE(join == nullptr) << "join_game id should no longer appear in the main menu";
 
     const PickerMenuItem* p4 = find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 4);
     ASSERT_TRUE(p4 != nullptr) << "set player mode with arg=4 should resolve";

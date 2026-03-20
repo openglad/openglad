@@ -99,6 +99,11 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 
 bool g_start_game_requested = false;
 
+bool picker_replace_lobby_client(
+    std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
+    std::unique_ptr<og::ui::IPickerLobbyClient> next_client,
+    const char* popup_title);
+
 namespace {
 void destroy_picker_pixie(pixieN* pixie)
 {
@@ -247,6 +252,10 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Help);
             break;
+        case ButtonAction::Networking:
+            menu_item = og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Networking);
+            break;
         case ButtonAction::HostGame:
             menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::HostGame);
@@ -292,6 +301,77 @@ std::string join_status_lines(const std::vector<std::string>& lines)
         message.append(line);
     }
     return message;
+}
+
+constexpr bool picker_default_network_room_code_enabled()
+{
+#ifdef __EMSCRIPTEN__
+    return true;
+#else
+    return false;
+#endif
+}
+
+struct PickerNetworkingSettings
+{
+    std::string ip_address = "127.0.0.1";
+    std::string port_text = "12345";
+    bool use_room_code = picker_default_network_room_code_enabled();
+    std::string room_code = "GLAD-XXXX";
+};
+
+bool is_blank_text(std::string_view value)
+{
+    return std::all_of(
+        value.begin(),
+        value.end(),
+        [](unsigned char c) { return std::isspace(c) != 0; });
+}
+
+std::optional<int> parse_network_port(std::string_view port_text)
+{
+    const std::optional<int> port = parse_int_strict(port_text);
+    if (!port.has_value() || *port <= 0 || *port > 65535)
+        return std::nullopt;
+    return port;
+}
+
+bool picker_host_game(
+    std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
+    const og::ui::PickerHostGameOptions& options,
+    const char* popup_title)
+{
+    try
+    {
+        return picker_replace_lobby_client(
+            current_client,
+            og::ui::create_host_picker_lobby_client(options),
+            popup_title);
+    }
+    catch (const std::exception& error)
+    {
+        popup_dialog(popup_title, error.what());
+        return false;
+    }
+}
+
+bool picker_join_game(
+    std::unique_ptr<og::ui::IPickerLobbyClient>& current_client,
+    const og::ui::PickerJoinGameOptions& options,
+    const char* popup_title)
+{
+    try
+    {
+        return picker_replace_lobby_client(
+            current_client,
+            og::ui::create_join_picker_lobby_client(options),
+            popup_title);
+    }
+    catch (const std::exception& error)
+    {
+        popup_dialog(popup_title, error.what());
+        return false;
+    }
 }
 
 } // namespace
@@ -393,10 +473,7 @@ bool picker_join_game(
             options.relay_base_url = relay_base_url;
         }
 
-        return picker_replace_lobby_client(
-            current_client,
-            og::ui::create_join_picker_lobby_client(options),
-            "JOIN GAME");
+        return picker_join_game(current_client, options, "JOIN GAME");
     }
     catch (const std::exception& error)
     {
@@ -467,44 +544,174 @@ public:
         return true;
     }
 
+    bool configure_networking() override
+    {
+        static const button k_networking_menu_buttons[] = {
+            button("network_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.down=1, .right=5}),
+            button("network_ip", "", KEYSTATE_UNKNOWN, 120, 60, 140, 15, button_action_id(ButtonAction::EditNetworkAddress), -1, MenuNav{.up=0, .down=2}),
+            button("network_port", "", KEYSTATE_UNKNOWN, 120, 84, 140, 15, button_action_id(ButtonAction::EditNetworkPort), -1, MenuNav{.up=1, .down=3}),
+            button("network_room_toggle", "", KEYSTATE_UNKNOWN, 120, 108, 140, 15, button_action_id(ButtonAction::ToggleNetworkRoomCode), -1, MenuNav{.up=2, .down=4}),
+            button("network_room_value", "", KEYSTATE_UNKNOWN, 120, 132, 140, 15, button_action_id(ButtonAction::EditNetworkRoomCode), -1, MenuNav{.up=3, .down=5}),
+            button("network_host", "HOST", KEYSTATE_UNKNOWN, 76, 162, 74, 16, button_action_id(ButtonAction::SubmitNetworkHost), -1, MenuNav{.up=4, .right=6}),
+            button("network_join", "JOIN", KEYSTATE_UNKNOWN, 170, 162, 74, 16, button_action_id(ButtonAction::SubmitNetworkJoin), -1, MenuNav{.up=4, .left=5}),
+        };
+
+        text& mytext = og::runtime::current_session->myscreen_->text_normal;
+        std::vector<button> buttons(
+            std::begin(k_networking_menu_buttons),
+            std::end(k_networking_menu_buttons));
+        const int num_buttons = static_cast<int>(buttons.size());
+        int highlighted_button = 1;
+        og::runtime::current_session->localbuttons_ =
+            init_buttons(buttons.data(), num_buttons);
+        clear_keyboard();
+
+        auto sync_button_labels = [&]() {
+            buttons[1].label = networking_settings_.ip_address.empty()
+                ? "(enter address)"
+                : networking_settings_.ip_address;
+            buttons[2].label = networking_settings_.port_text.empty()
+                ? "(enter port)"
+                : networking_settings_.port_text;
+            buttons[3].label = networking_settings_.use_room_code
+                ? "ROOM CODE: ON"
+                : "ROOM CODE: OFF";
+            buttons[4].label = networking_settings_.room_code.empty()
+                ? "(enter room code)"
+                : networking_settings_.room_code;
+
+            for (int i = 1; i <= 4; ++i)
+            {
+                if (og::runtime::current_session->allbuttons_[i] != nullptr)
+                    og::runtime::current_session->allbuttons_[i]->label =
+                        buttons[i].label;
+            }
+        };
+
+        auto reinitialize_buttons = [&]() {
+            og::runtime::current_session->localbuttons_ =
+                init_buttons(buttons.data(), num_buttons);
+            clear_keyboard();
+        };
+
+        sync_button_labels();
+
+        Sint32 retvalue = 0;
+        while (!(retvalue & MENU_EXIT))
+        {
+            picker_lobby_poll();
+            if (leftmouse(buttons.data()))
+                retvalue =
+                    og::runtime::current_session->localbuttons_->leftclick(
+                        buttons.data());
+
+            handle_menu_nav(buttons.data(), highlighted_button, retvalue);
+            if (retvalue == MENU_EXIT)
+                break;
+
+            switch (static_cast<ButtonAction>(retvalue))
+            {
+            case ButtonAction::EditNetworkAddress:
+                (void)prompt_for_string(
+                    "JOIN IP / HOSTNAME",
+                    networking_settings_.ip_address);
+                reinitialize_buttons();
+                break;
+            case ButtonAction::EditNetworkPort:
+                (void)prompt_for_string(
+                    "NETWORK PORT",
+                    networking_settings_.port_text);
+                reinitialize_buttons();
+                break;
+            case ButtonAction::ToggleNetworkRoomCode:
+                networking_settings_.use_room_code =
+                    !networking_settings_.use_room_code;
+                reinitialize_buttons();
+                break;
+            case ButtonAction::EditNetworkRoomCode:
+                (void)prompt_for_string(
+                    "JOIN ROOM CODE",
+                    networking_settings_.room_code);
+                reinitialize_buttons();
+                break;
+            case ButtonAction::SubmitNetworkHost:
+                if (submit_network_host())
+                    return true;
+                reinitialize_buttons();
+                break;
+            case ButtonAction::SubmitNetworkJoin:
+                if (submit_network_join())
+                    return true;
+                reinitialize_buttons();
+                break;
+            default:
+                break;
+            }
+            retvalue = 0;
+            sync_button_labels();
+
+            draw_backdrop();
+            og::runtime::current_session->myscreen_->draw_button(
+                26, 34, 294, 188, 1, 1);
+            og::runtime::current_session->myscreen_->draw_button_inverted(
+                32, 40, 288, 182);
+            draw_buttons(buttons.data(), num_buttons);
+
+            mytext.write_xy_center(160, 48, RED, "NETWORKING");
+            mytext.write_xy(44, 67, DARK_BLUE, "JOIN IP / HOST");
+            mytext.write_xy(44, 91, DARK_BLUE, "PORT");
+            mytext.write_xy(44, 115, DARK_BLUE, "ROOM CODE");
+            mytext.write_xy(44, 139, DARK_BLUE, "ROOM VALUE");
+            mytext.write_xy(
+                44,
+                150,
+                DARK_BLUE,
+                "HOST uses PORT only. JOIN uses IP + PORT.");
+            mytext.write_xy(
+                44,
+                158,
+                DARK_BLUE,
+                "ROOM CODE ON: HOST creates one. JOIN uses ROOM VALUE.");
+
+            draw_highlight(buttons[highlighted_button]);
+            og::runtime::current_session->myscreen_->buffer_to_screen(
+                0, 0, 320, 200);
+            og::input_native::sleep_ms(10);
+        }
+
+        return false;
+    }
+
     bool host_game() override
     {
-        std::string port_text = "12345";
+        std::string port_text = networking_settings_.port_text;
         if (!prompt_for_string("HOST PORT", port_text))
             return false;
 
-        const std::optional<int> port = parse_int_strict(port_text);
-        if (!port.has_value() || *port <= 0 || *port > 65535)
+        const std::optional<int> port = parse_network_port(port_text);
+        if (!port.has_value())
         {
             popup_dialog("HOST GAME", "Please enter a port from 1 to 65535.");
             return false;
         }
 
-        try
-        {
-            og::ui::PickerHostGameOptions options;
-            options.port = *port;
+        networking_settings_.port_text = port_text;
+        og::ui::PickerHostGameOptions options;
+        options.port = *port;
 #ifdef __EMSCRIPTEN__
-            const bool default_enable_relay = true;
+        const bool default_enable_relay = true;
 #else
-            const bool default_enable_relay = false;
+        const bool default_enable_relay = false;
 #endif
-            options.enable_relay = yes_or_no_prompt(
-                "HOST GAME",
-                "Create a relay room code too?\n"
-                "Choose YES for NAT-friendly hosting.",
-                default_enable_relay);
-            if (options.enable_relay)
-                options.relay_base_url = og::ui::default_relay_base_url();
-            return replace_lobby_client(
-                og::ui::create_host_picker_lobby_client(options),
-                "HOST GAME");
-        }
-        catch (const std::exception& error)
-        {
-            popup_dialog("HOST GAME", error.what());
-            return false;
-        }
+        options.enable_relay = yes_or_no_prompt(
+            "HOST GAME",
+            "Create a relay room code too?\n"
+            "Choose YES for NAT-friendly hosting.",
+            default_enable_relay);
+        networking_settings_.use_room_code = options.enable_relay;
+        if (options.enable_relay)
+            options.relay_base_url = og::ui::default_relay_base_url();
+        return picker_host_game(lobby_client_, options, "HOST GAME");
     }
 
     bool join_game() override
@@ -567,6 +774,56 @@ public:
     }
 
 private:
+    bool submit_network_host()
+    {
+        const std::optional<int> port =
+            parse_network_port(networking_settings_.port_text);
+        if (!port.has_value())
+        {
+            popup_dialog("HOST GAME", "Please enter a port from 1 to 65535.");
+            return false;
+        }
+
+        og::ui::PickerHostGameOptions options;
+        options.port = *port;
+        options.enable_relay = networking_settings_.use_room_code;
+        if (options.enable_relay)
+            options.relay_base_url = og::ui::default_relay_base_url();
+        return picker_host_game(lobby_client_, options, "HOST GAME");
+    }
+
+    bool submit_network_join()
+    {
+        og::ui::PickerJoinGameOptions options;
+        if (networking_settings_.use_room_code)
+        {
+            options.mode = og::ui::PickerJoinMode::Relay;
+            options.room_code = networking_settings_.room_code;
+            options.relay_base_url = og::ui::default_relay_base_url();
+            return picker_join_game(lobby_client_, options, "JOIN GAME");
+        }
+
+        const std::optional<int> port =
+            parse_network_port(networking_settings_.port_text);
+        if (!port.has_value())
+        {
+            popup_dialog("JOIN GAME", "Please enter a port from 1 to 65535.");
+            return false;
+        }
+        if (is_blank_text(networking_settings_.ip_address))
+        {
+            popup_dialog("JOIN GAME", "Please enter an IP address or hostname.");
+            return false;
+        }
+
+        options.mode = og::ui::PickerJoinMode::Direct;
+        options.direct_endpoint = std::format(
+            "{}:{}",
+            networking_settings_.ip_address,
+            *port);
+        return picker_join_game(lobby_client_, options, "JOIN GAME");
+    }
+
     bool replace_lobby_client(std::unique_ptr<og::ui::IPickerLobbyClient> client,
                               const char* popup_title)
     {
@@ -577,6 +834,7 @@ private:
     }
 
     bool start_team_build_in_hire_menu_ = false;
+    PickerNetworkingSettings networking_settings_;
     std::unique_ptr<og::ui::IPickerLobbyClient> lobby_client_;
 };
 
@@ -657,14 +915,13 @@ static const button k_mainmenu_buttons[] =
         button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=3, .down=7}),
 
         button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
-        button("host_game", "HOST GAME", KEYSTATE_UNKNOWN, 80, 172, 68, 10, button_action_id(ButtonAction::HostGame), -1, MenuNav{.up=7, .down=11, .right=10}),
-        button("join_game", "JOIN GAME", KEYSTATE_UNKNOWN, 152, 172, 68, 10, button_action_id(ButtonAction::JoinGame), -1, MenuNav{.up=8, .down=11, .left=9}),
+        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=9, .left=7}),
+        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 80, 172, 140, 10, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=7, .down=10, .left=7, .right=8}),
 
-        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 182, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=9, .left=12}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=9, .right=11})
+        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 182, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=9, .left=11}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=9, .right=10})
     };
-#define OPTIONS_BUTTON_INDEX 12
+#define OPTIONS_BUTTON_INDEX 11
 
 #else // Native build
 static const button k_mainmenu_buttons[] =
@@ -680,14 +937,13 @@ static const button k_mainmenu_buttons[] =
         button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=3, .down=7}),
 
         button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
-        button("host_game", "HOST GAME", KEYSTATE_UNKNOWN, 80, 172, 68, 10, button_action_id(ButtonAction::HostGame), -1, MenuNav{.up=7, .down=11, .right=10}),
-        button("join_game", "JOIN GAME", KEYSTATE_UNKNOWN, 152, 172, 68, 10, button_action_id(ButtonAction::JoinGame), -1, MenuNav{.up=8, .down=11, .left=9}),
+        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=9, .left=7}),
+        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 80, 172, 140, 10, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=7, .down=10, .left=7, .right=8}),
 
-        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 182, 60, 15, button_action_id(ButtonAction::QuitMenu), 0 , MenuNav{.up=9, .left=12}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=9, .right=11})
+        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 182, 60, 15, button_action_id(ButtonAction::QuitMenu), 0 , MenuNav{.up=9, .left=11}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=9, .right=10})
     };
-#define OPTIONS_BUTTON_INDEX 12
+#define OPTIONS_BUTTON_INDEX 11
 #endif // __EMSCRIPTEN__
 
 #else // DISABLE_MULTIPLAYER
@@ -701,12 +957,11 @@ static const button k_mainmenu_buttons[] =
 
         button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=1, .down=3}),
         button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
-        button("host_game", "HOST GAME", KEYSTATE_UNKNOWN, 80, 136, 140, 15, button_action_id(ButtonAction::HostGame), -1, MenuNav{.up=3, .down=5}),
-        button("join_game", "JOIN GAME", KEYSTATE_UNKNOWN, 80, 154, 140, 15, button_action_id(ButtonAction::JoinGame), -1, MenuNav{.up=4, .down=6}),
-        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=5, .left=7}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=5, .right=6})
+        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 80, 136, 140, 15, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=3, .down=5}),
+        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=4, .left=6}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=4, .right=5})
     };
-#define OPTIONS_BUTTON_INDEX 7
+#define OPTIONS_BUTTON_INDEX 6
 
 #else // Native build without multiplayer
 static const button k_mainmenu_buttons[] =
@@ -716,12 +971,11 @@ static const button k_mainmenu_buttons[] =
 
         button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=1, .down=3}),
         button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
-        button("host_game", "HOST GAME", KEYSTATE_UNKNOWN, 80, 136, 140, 15, button_action_id(ButtonAction::HostGame), -1, MenuNav{.up=3, .down=5}),
-        button("join_game", "JOIN GAME", KEYSTATE_UNKNOWN, 80, 154, 140, 15, button_action_id(ButtonAction::JoinGame), -1, MenuNav{.up=4, .down=6}),
-        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15, button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up=5, .left=7}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=5, .right=6})
+        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 80, 136, 140, 15, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=3, .down=5}),
+        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15, button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up=4, .left=6}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=4, .right=5})
     };
-#define OPTIONS_BUTTON_INDEX 7
+#define OPTIONS_BUTTON_INDEX 6
 #endif // __EMSCRIPTEN__
 
 #endif // DISABLE_MULTIPLAYER
