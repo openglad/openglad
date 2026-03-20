@@ -1049,9 +1049,22 @@ TEST(PickerNetworkClient,
     og::ui::PickerHostGameOptions options;
     options.port = ix::getFreePort();
     auto host_client = og::ui::create_host_picker_lobby_client(options);
+    struct TestCleanupGuard
+    {
+        og::ui::IPickerLobbyClient* client = nullptr;
+
+        ~TestCleanupGuard()
+        {
+            if (og::runtime::GameSession* const session = active_game_session())
+                og::runtime::clear_local_transport_shadow(*session);
+            if (client != nullptr)
+                client->shutdown();
+        }
+    } cleanup{host_client.get()};
     ActivePickerLobbyClientGuard active_guard(host_client.get());
 
     host_client->initialize_from_save();
+    ASSERT_TRUE(save.save("save0"));
     ASSERT_TRUE(install_gameplay_runtime_from_handoff(*host_client));
     ASSERT_NE(nullptr, active_game_session());
     EXPECT_TRUE(og::runtime::local_transport_active(*active_game_session()));
@@ -1061,8 +1074,6 @@ TEST(PickerNetworkClient,
     EXPECT_TRUE(
         status_lines_contain_prefix(host_client->status_lines(), "LAN: "));
     EXPECT_FALSE(picker_lobby_start_request_pending());
-
-    host_client->shutdown();
 }
 
 TEST(PickerNetworkClient, relay_room_listing_fetches_matching_rooms)
