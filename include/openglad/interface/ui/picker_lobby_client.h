@@ -14,6 +14,7 @@ struct PickerLobbyGameStartConfig
 {
     og::sim::LobbySaveDataEquivalent save_data;
     std::int16_t difficulty = 1;
+    std::int16_t my_team = 0;
 };
 
 class IPickerLobbyClient

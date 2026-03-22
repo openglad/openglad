@@ -88,6 +88,10 @@ void apply_lobby_game_start_config(
     save.current_levels[save.current_campaign] = save.scen_num;
     save.numplayers = config_save.numplayers;
     save.allied_mode = static_cast<short>(config_save.allied_mode);
+    save.my_team = lobby_config.my_team >= 0 &&
+            lobby_config.my_team < MAX_PLAYERS
+        ? lobby_config.my_team
+        : 0;
 
     for (auto& member : save.team_list)
         member.reset();

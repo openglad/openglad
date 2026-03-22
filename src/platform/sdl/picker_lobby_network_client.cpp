@@ -1517,6 +1517,7 @@ public:
         config.difficulty = state_.has_value()
             ? static_cast<std::int16_t>(state_->settings.difficulty)
             : static_cast<std::int16_t>(server_->state().settings.difficulty);
+        config.my_team = local_team_;
         return config;
     }
 
@@ -1900,6 +1901,7 @@ public:
                 spectator_mode_);
         config.difficulty =
             static_cast<std::int16_t>(state_->settings.difficulty);
+        config.my_team = local_team_;
         return config;
     }
 

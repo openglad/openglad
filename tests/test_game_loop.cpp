@@ -448,6 +448,7 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
     EXPECT_EQ("org.openglad.gladiator", lobby_config->save_data.current_campaign);
     EXPECT_EQ(2, lobby_config->save_data.scen_num);
     EXPECT_EQ(3, lobby_config->difficulty);
+    EXPECT_EQ(0, lobby_config->my_team);
     picker_lobby_shutdown();
 
     // Corrupt both memory and save0 so glad_init must use the explicit lobby
@@ -458,6 +459,7 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
     save.scen_num = 9999;
     save.numplayers = 1;
     save.allied_mode = 1;
+    save.my_team = 1;
     save.team_list[0].reset();
     save.team_list[1].reset();
     save.team_size = 0;
@@ -473,6 +475,7 @@ TEST(GameLoop, glad_init_applies_lobby_start_config_before_level_load)
     EXPECT_EQ(2, static_cast<int>(game_screen->save_data.scen_num));
     EXPECT_EQ(2, static_cast<int>(game_screen->save_data.numplayers));
     EXPECT_EQ(0, static_cast<int>(game_screen->save_data.allied_mode));
+    EXPECT_EQ(0, static_cast<int>(game_screen->save_data.my_team));
     EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign());
     EXPECT_EQ(2, game_screen->world().id);
     EXPECT_EQ(3, og::runtime::current_session->current_difficulty_);

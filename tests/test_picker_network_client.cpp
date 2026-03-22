@@ -1185,7 +1185,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     PickerSaveStateGuard save_guard(save);
     PickerRuntimeGuard runtime_guard;
-    prepare_single_member_network_save(save, 1, "Joiner");
+    prepare_single_member_network_save(save, 0, "Joiner");
     g_start_game_requested = false;
 
     const int port = ix::getFreePort();
@@ -1226,6 +1226,9 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     og::sim::LobbyPlayer join_player =
         std::get<og::sim::LobbyJoinMessage>(join_message.payload).player;
     join_player.player_index = 1u;
+    join_player.team = 1;
+    for (auto& slot : join_player.character_slots)
+        slot.character.teamnum = 1;
     join_player.ready = false;
     join_player.is_host = false;
 
@@ -1253,6 +1256,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
                    "Lobby: 2 players");
     })) << "direct join client should receive injected lobby state";
 
+    EXPECT_EQ(1, save.my_team);
     EXPECT_FALSE(join_client->host_controls_visible());
     EXPECT_TRUE(status_lines_contain_prefix(
         join_client->status_lines(),
@@ -1322,6 +1326,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     EXPECT_EQ(5, start_config->save_data.scen_num);
     EXPECT_EQ(0u, start_config->save_data.numplayers);
     EXPECT_EQ(7, start_config->difficulty);
+    EXPECT_EQ(1, start_config->my_team);
     ASSERT_EQ(2u, start_config->save_data.team_list.size());
 
     ASSERT_TRUE(install_gameplay_runtime_from_handoff(*join_client));
