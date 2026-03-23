@@ -94,7 +94,6 @@ void prepare_view_world()
 {
     screen* const active = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, active);
-    clear_damage_number_render_state(active);
     active->world().create_new_grid();
     active->world().delete_objects();
     active->world().clear_removed_entity_ids();
@@ -459,7 +458,6 @@ TEST(ViewRedraw, damage_numbers_advance_once_per_sim_tick)
         "effects",
         "damage_numbers",
         previous_damage_numbers.empty() ? "off" : previous_damage_numbers);
-    clear_damage_number_render_state(active);
 }
 
 TEST(ViewRedraw, damage_number_cache_prunes_removed_walkers)
@@ -519,7 +517,6 @@ TEST(ViewRedraw, damage_number_cache_prunes_removed_walkers)
         "effects",
         "damage_numbers",
         previous_damage_numbers.empty() ? "off" : previous_damage_numbers);
-    clear_damage_number_render_state(active);
 }
 
 

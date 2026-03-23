@@ -868,6 +868,8 @@ screen::screen(GameWorld& world, std::unique_ptr<video> video_impl, short howman
     , world_(world)
     , myloader(nullptr)
     , level_runtime_data_(1, false, &sdl_level_data_hooks(), &level_visuals_)
+    , damage_number_render_context_(
+          std::make_unique<DamageNumberRenderContext>())
 {
     init_common(howmany, has_display);
 }
@@ -877,6 +879,17 @@ screen::~screen()
 	release_timer();
 	soundp.reset();
 	cleanup(1); //make sure we've cleaned up
+}
+
+DamageNumberRenderContext& screen::damage_number_render_context() noexcept
+{
+    return *damage_number_render_context_;
+}
+
+const DamageNumberRenderContext& screen::damage_number_render_context() const
+    noexcept
+{
+    return *damage_number_render_context_;
 }
 
 void screen::initialize_views()
@@ -919,7 +932,6 @@ void screen::cleanup(short howmany)
 	Sint32 i;
 
     numviews = howmany; // # of viewscreens
-    clear_damage_number_render_state(this);
     for (i=0; i < MAX_VIEWS; i++)
     {
         viewob[i].reset();

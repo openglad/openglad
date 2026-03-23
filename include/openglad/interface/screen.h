@@ -39,6 +39,7 @@
 
 struct InputState;
 class soundob;
+class DamageNumberRenderContext;
 namespace og::sim { class GameClient; }
 
 class screen : public video
@@ -248,6 +249,9 @@ public:
     {
         return render_interpolation_speed_factor_;
     }
+    DamageNumberRenderContext& damage_number_render_context() noexcept;
+    const DamageNumberRenderContext& damage_number_render_context() const
+        noexcept;
 
     // Delegated render data (preserves legacy field-style access).
     std::array<unsigned char, 768>& ourpalette;
@@ -283,6 +287,7 @@ public:
     Uint32 framecount;
     const og::sim::GameClient* render_interpolation_client_ = nullptr;
     float render_interpolation_speed_factor_ = 1.0f;
+    std::unique_ptr<DamageNumberRenderContext> damage_number_render_context_;
 
 private:
     void init_common(short howmany, bool has_display);
