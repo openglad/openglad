@@ -47,7 +47,6 @@ TEST(SimInputHandler, sim_find_next_control_player_first)
     player->myguy = reinterpret_cast<guy*>(1); // non-null sentinel
 
     // Transfer ownership to oblist
-    walker* npc_ptr = npc.get();
     walker* player_ptr = player.get();
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(npc));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(player));
@@ -632,6 +631,24 @@ TEST(SimInputHandler, sim_find_next_control_fallback_any_team_player)
     teardown();
 }
 
+TEST(SimInputHandler, sim_find_next_control_skips_claimed_fallback_player)
+{
+    teardown();
+    auto claimed_other_team_player = make_living(1, 2);
+    ASSERT_TRUE(claimed_other_team_player != nullptr)
+        << "claimed other-team player should be created";
+    claimed_other_team_player->myguy = reinterpret_cast<guy*>(1);
+    og::runtime::current_session->myscreen_->world().oblist.push_back(
+        std::move(claimed_other_team_player));
+
+    walker* found = sim_find_next_control(
+        og::runtime::current_session->myscreen_->world(), 0);
+    ASSERT_TRUE(found == nullptr)
+        << "claimed fallback characters should not be reassigned";
+
+    teardown();
+}
+
 
 TEST(SimInputHandler, sim_input_switch_char_wraparound_forward_and_reverse)
 {
@@ -1091,4 +1108,3 @@ TEST(SimInputHandler, sim_input_bonus_rounds_walks_when_last_vector_nonzero)
 
     teardown();
 }
-

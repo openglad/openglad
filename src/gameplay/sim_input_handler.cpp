@@ -60,6 +60,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
         walker* w = uptr.get();
         if (w && !w->dead() &&
             w->query_order() == Order::Living &&
+            w->user() == -1 &&
             w->myguy)
         {
             TRACE("sim_input", "found fallback character '%s'", w->stats()->name.c_str());

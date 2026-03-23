@@ -68,7 +68,8 @@ SimInputResult sim_process_player_input(
     [[maybe_unused]] og::sim::SimEventLog* sim_events);
 
 // Find the next available control walker for a player.
-// Searches level_data.oblist for: player chars, team members, then any alive.
+// Searches level_data.oblist for: player chars, team members, then any
+// unclaimed alive player character.
 walker* sim_find_next_control(GameWorld& level, short my_team);
 
 // Cycle through the oblist starting after `current`, wrapping around,
