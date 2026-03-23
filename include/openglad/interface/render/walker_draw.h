@@ -7,6 +7,7 @@
  */
 #pragma once
 
+class screen;
 class walker;
 class viewscreen;
 
@@ -27,3 +28,4 @@ bool draw_walker(walker& w, viewscreen* view_buf);
 bool draw_walker_tile(walker& w, viewscreen* view_buf);
 void draw_walker_path(walker& w, viewscreen* view_buf);
 void draw_small_health_bar(walker* w, viewscreen* view_buf);
+void clear_damage_number_render_state(const screen* screen_ctx);

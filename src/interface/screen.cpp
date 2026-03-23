@@ -36,6 +36,7 @@
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/smooth.h>
+#include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
@@ -918,6 +919,7 @@ void screen::cleanup(short howmany)
 	Sint32 i;
 
     numviews = howmany; // # of viewscreens
+    clear_damage_number_render_state(this);
     for (i=0; i < MAX_VIEWS; i++)
     {
         viewob[i].reset();
