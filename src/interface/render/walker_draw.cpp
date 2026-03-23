@@ -315,6 +315,8 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 
     if (show_damage_numbers || show_heal_numbers)
     {
+        const std::uint32_t current_tick =
+            og::runtime::current_session->myscreen_->world().tick_count_;
 	    for(auto e = w.damage_numbers.begin(); e != w.damage_numbers.end();)
         {
             const bool is_heal = (e->color == 56);
@@ -325,14 +327,22 @@ bool draw_walker(walker& w, viewscreen* view_buf)
                 continue;
             }
 
-            e->t -= 0.05f;
+            // UI-only damage/heal numbers should advance once per simulation
+            // tick so repeated redraws do not make them flicker or expire early.
+            if (e->needs_first_advance || e->last_advance_tick != current_tick)
+            {
+                e->needs_first_advance = false;
+                e->last_advance_tick = current_tick;
+                e->t -= 0.05f;
+                e->y -= 1.5f;
+            }
+
             if(e->t < 0)
             {
                 e = w.damage_numbers.erase(e);
                 continue;
             }
 
-            e->y -= 1.5f;
             if(view_buf->control == &w)
                 draw_damage_number(*e, view_buf);
             e++;

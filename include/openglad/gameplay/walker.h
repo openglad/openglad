@@ -222,6 +222,8 @@ class walker : public og::sim::SimEntity
             float value;
 
             unsigned char color;
+            bool needs_first_advance = true;
+            std::uint32_t last_advance_tick = 0;
 
 	            DamageNumber(float x_, float y_, float value_, unsigned char color_);
 		};

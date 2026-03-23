@@ -7,11 +7,14 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/resources/gloader.h>
 #include <gtest/gtest.h>
 
 #include <utility>
 #include <vector>
+
+extern cfg_store cfg;
 
 namespace {
 
@@ -399,6 +402,64 @@ TEST(ViewRedraw, view_refresh_display_text_refreshes_matching_overlay_within_sam
 
     active->world().tick_count_ = saved_tick;
     vs->clear_text();
+}
+
+TEST(ViewRedraw, damage_numbers_advance_once_per_sim_tick)
+{
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    const std::uint32_t saved_tick = active->world().tick_count_;
+
+    active->world().create_new_grid();
+    active->world().mysmoother.set_target(active->world().grid);
+
+    std::unique_ptr<walker> w(make_guy(FAMILY_SOLDIER, 0));
+    ASSERT_NE(nullptr, w);
+
+    const std::string previous_damage_numbers =
+        cfg.get_setting("effects", "damage_numbers");
+    cfg.apply_setting("effects", "damage_numbers", "on");
+
+    vs->control = w.get();
+    w->damage_numbers.emplace_back(
+        static_cast<float>(w->xpos()),
+        static_cast<float>(w->ypos()),
+        12.0f,
+        RED);
+
+    const float initial_t = w->damage_numbers.front().t;
+    const float initial_y = w->damage_numbers.front().y;
+
+    active->world().tick_count_ = 50u;
+    (void)draw_walker(*w, vs);
+    ASSERT_FALSE(w->damage_numbers.empty());
+
+    const float after_first_draw_t = w->damage_numbers.front().t;
+    const float after_first_draw_y = w->damage_numbers.front().y;
+    EXPECT_LT(after_first_draw_t, initial_t);
+    EXPECT_LT(after_first_draw_y, initial_y);
+
+    (void)draw_walker(*w, vs);
+    ASSERT_FALSE(w->damage_numbers.empty());
+    EXPECT_FLOAT_EQ(after_first_draw_t, w->damage_numbers.front().t);
+    EXPECT_FLOAT_EQ(after_first_draw_y, w->damage_numbers.front().y);
+
+    active->world().tick_count_ = 51u;
+    (void)draw_walker(*w, vs);
+    ASSERT_FALSE(w->damage_numbers.empty());
+    EXPECT_LT(w->damage_numbers.front().t, after_first_draw_t);
+    EXPECT_LT(w->damage_numbers.front().y, after_first_draw_y);
+
+    vs->control = nullptr;
+    active->world().tick_count_ = saved_tick;
+    cfg.apply_setting(
+        "effects",
+        "damage_numbers",
+        previous_damage_numbers.empty() ? "off" : previous_damage_numbers);
 }
 
 
