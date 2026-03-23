@@ -222,6 +222,16 @@ bool status_lines_contain_exact(const std::vector<std::string>& lines,
         });
 }
 
+bool save_contains_named_member(const SaveData& save, std::string_view name)
+{
+    return std::any_of(
+        save.team_list.begin(),
+        save.team_list.end(),
+        [name](const std::unique_ptr<guy>& member) {
+            return member != nullptr && member->name == name;
+        });
+}
+
 void prepare_single_member_network_save(SaveData& save,
                                         short team,
                                         const char* name,
@@ -1337,6 +1347,90 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     join_client->poll_and_apply();
     EXPECT_TRUE(
         status_lines_contain_exact(join_client->status_lines(), "Status: connecting"));
+
+    join_client->shutdown();
+}
+
+TEST(PickerNetworkClient,
+     join_direct_flow_preserves_loaded_team_until_server_echoes_local_player)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Joiner", 4);
+    g_start_game_requested = false;
+
+    const int port = ix::getFreePort();
+    auto server_transport =
+        std::make_shared<og::sim::WebSocketServerTransport>(port);
+    server_transport->accept_connections();
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+
+    og::sim::PeerId join_peer_id = 0;
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (message.kind() != og::sim::LobbyMessageKind::Join)
+                continue;
+
+            join_peer_id = peer_id;
+            return true;
+        }
+        return false;
+    })) << "join client should connect and transmit its pending loaded team";
+
+    og::sim::LobbyState host_only_state;
+    host_only_state.settings.campaign_id = save.current_campaign;
+    host_only_state.settings.scenario_id = 3;
+    host_only_state.settings.difficulty = 2;
+    host_only_state.settings.allied_mode = save.allied_mode;
+    host_only_state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0u,
+        .name = "Remote Host",
+        .team = 0,
+        .character_slots = {make_lobby_slot(0u, "Remote Host", 0)},
+        .ready = false,
+        .is_host = true,
+    });
+    server_transport->send_lobby_state(
+        join_peer_id,
+        std::make_shared<og::sim::LobbyState>(host_only_state));
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(
+            join_client->status_lines(),
+            "Lobby: 1 player");
+    })) << "join client should apply the host-only lobby snapshot";
+
+    EXPECT_EQ(1, save.my_team);
+    EXPECT_EQ(2u, save.team_size);
+    EXPECT_TRUE(save_contains_named_member(save, "Remote Host"));
+    EXPECT_TRUE(save_contains_named_member(save, "Joiner"));
+
+    std::size_t host_slot_index = save.team_list.size();
+    std::size_t joiner_slot_index = save.team_list.size();
+    for (std::size_t slot_index = 0; slot_index < save.team_list.size(); ++slot_index)
+    {
+        const auto& member = save.team_list[slot_index];
+        if (member == nullptr)
+            continue;
+        if (member->name == "Remote Host")
+            host_slot_index = slot_index;
+        if (member->name == "Joiner")
+            joiner_slot_index = slot_index;
+    }
+
+    ASSERT_LT(host_slot_index, save.team_list.size());
+    ASSERT_LT(joiner_slot_index, save.team_list.size());
+    EXPECT_FALSE(join_client->is_save_slot_editable(host_slot_index));
+    EXPECT_TRUE(join_client->is_save_slot_editable(joiner_slot_index));
 
     join_client->shutdown();
 }

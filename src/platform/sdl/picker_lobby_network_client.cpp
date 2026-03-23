@@ -1106,6 +1106,75 @@ std::vector<og::sim::TypedReceivedMessage> poll_lobby_transport_messages(
     return typed_messages;
 }
 
+short resolve_pending_local_team(const og::sim::LobbyState& state,
+                                 short requested_team,
+                                 std::string_view local_player_name) noexcept
+{
+    const auto team_available = [&state, local_player_name](short team) {
+        if (team < 0 || team >= MAX_PLAYERS)
+            return false;
+
+        return std::none_of(
+            state.players.begin(),
+            state.players.end(),
+            [team, local_player_name](const og::sim::LobbyPlayer& player) {
+                return player.name != local_player_name && player.team == team;
+            });
+    };
+
+    if (team_available(requested_team))
+        return requested_team;
+
+    for (short candidate = 0; candidate < MAX_PLAYERS; ++candidate)
+    {
+        if (team_available(candidate))
+            return candidate;
+    }
+
+    return requested_team;
+}
+
+struct PendingLocalLobbyState {
+    og::sim::LobbyState state;
+    short local_team = 0;
+};
+
+PendingLocalLobbyState build_pending_local_lobby_state(
+    const og::sim::LobbyState& state,
+    const og::sim::LobbyPlayer& pending_local_player,
+    short requested_local_team,
+    std::string_view local_player_name)
+{
+    PendingLocalLobbyState merged{
+        .state = state,
+        .local_team = requested_local_team,
+    };
+
+    if (pending_local_player.character_slots.empty() ||
+        merged.state.players.size() >= static_cast<std::size_t>(MAX_PLAYERS) ||
+        og::ui::detail::find_local_player(merged.state, local_player_name) !=
+            nullptr)
+    {
+        return merged;
+    }
+
+    merged.local_team = resolve_pending_local_team(
+        merged.state,
+        requested_local_team,
+        local_player_name);
+
+    og::sim::LobbyPlayer local_player = pending_local_player;
+    local_player.player_index = 0xffu;
+    local_player.team = merged.local_team;
+    local_player.ready = false;
+    local_player.is_host = false;
+    for (auto& slot : local_player.character_slots)
+        slot.character.teamnum = merged.local_team;
+
+    merged.state.players.push_back(std::move(local_player));
+    return merged;
+}
+
 std::string detect_lan_ipv4_address()
 {
 #ifdef __EMSCRIPTEN__
@@ -1745,6 +1814,11 @@ public:
         local_team_ = resolve_initial_local_team(*save);
         save->numplayers = static_cast<unsigned char>(spectator_mode_ ? 0 : 1);
         save->my_team = local_team_;
+        pending_local_player_ = og::ui::detail::build_local_lobby_player(
+            *save,
+            player_name_,
+            local_team_,
+            &remote_owned_save_slots_);
 
         server_peer_id_ = 1;
         relay_room_code_.clear();
@@ -1794,6 +1868,7 @@ public:
         remote_owned_save_slots_.fill(false);
         join_message_sent_ = false;
         settings_dirty_ = false;
+        pending_local_player_.reset();
     }
 
     void sync_from_save() override
@@ -2006,14 +2081,20 @@ private:
         if (save == nullptr)
             return;
 
+        pending_local_player_ = og::ui::detail::build_local_lobby_player(
+            *save,
+            player_name_,
+            local_team_,
+            &remote_owned_save_slots_);
+
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbyJoinMessage{
+            .player = *pending_local_player_,
+        };
         og::ui::detail::send_lobby_message(
             *transport_,
             server_peer_id_,
-            og::ui::detail::make_join_message(
-                *save,
-                player_name_,
-                local_team_,
-                &remote_owned_save_slots_));
+            std::move(message));
     }
 
     void handle_typed_message(const og::sim::TypedReceivedMessage& message)
@@ -2027,6 +2108,7 @@ private:
                 if (const og::sim::LobbyPlayer* const local_player =
                         og::ui::detail::find_local_player(*state_, player_name_))
                 {
+                    pending_local_player_ = *local_player;
                     local_team_ = local_player->team;
                 }
             }
@@ -2077,13 +2159,34 @@ private:
         if (save == nullptr || !state_.has_value())
             return;
 
+        const og::sim::LobbyState* applied_state = &*state_;
+        std::optional<og::sim::LobbyState> pending_merged_state;
+        if (const og::sim::LobbyPlayer* const local_player =
+                og::ui::detail::find_local_player(*state_, player_name_))
+        {
+            local_team_ = local_player->team;
+        }
+        else if (pending_local_player_.has_value())
+        {
+            PendingLocalLobbyState merged = build_pending_local_lobby_state(
+                *state_,
+                *pending_local_player_,
+                local_team_,
+                player_name_);
+            local_team_ = merged.local_team;
+            pending_merged_state = std::move(merged.state);
+            applied_state = &*pending_merged_state;
+        }
+
         og::ui::detail::apply_lobby_state_to_save(
-            *state_,
+            *applied_state,
             *save,
             spectator_mode_,
             local_team_);
         remote_owned_save_slots_ =
-            og::ui::detail::build_remote_owned_slot_mask(*state_, player_name_);
+            og::ui::detail::build_remote_owned_slot_mask(
+                *applied_state,
+                player_name_);
     }
 
     void rebuild_status_lines()
@@ -2120,6 +2223,7 @@ private:
     bool start_request_pending_ = false;
     bool join_message_sent_ = false;
     bool settings_dirty_ = false;
+    std::optional<og::sim::LobbyPlayer> pending_local_player_;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
 };
 
