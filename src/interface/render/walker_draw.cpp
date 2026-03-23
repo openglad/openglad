@@ -33,7 +33,6 @@ namespace
 
 struct DamageNumberRenderState
 {
-    const walker* owner = nullptr;
     float x = 0.0f;
     float y = 0.0f;
     float t = 0.0f;
@@ -43,18 +42,18 @@ struct DamageNumberRenderState
         std::numeric_limits<std::uint32_t>::max();
 };
 
-using ScreenDamageNumberState =
+using WalkerDamageNumberState =
     std::unordered_map<const walker::DamageNumber*, DamageNumberRenderState>;
+using ScreenDamageNumberState =
+    std::unordered_map<std::uint32_t, WalkerDamageNumberState>;
 
 std::unordered_map<const screen*, ScreenDamageNumberState>
     g_damage_number_render_state;
 
 bool damage_number_state_matches(const DamageNumberRenderState& state,
-                                 const walker& owner,
                                  const walker::DamageNumber& number)
 {
-    return state.owner == &owner &&
-           state.x == number.x &&
+    return state.x == number.x &&
            state.y == number.y &&
            state.t == number.t &&
            state.value == number.value &&
@@ -62,10 +61,8 @@ bool damage_number_state_matches(const DamageNumberRenderState& state,
 }
 
 void snapshot_damage_number_state(DamageNumberRenderState& state,
-                                  const walker& owner,
                                   const walker::DamageNumber& number)
 {
-    state.owner = &owner;
     state.x = number.x;
     state.y = number.y;
     state.t = number.t;
@@ -74,21 +71,49 @@ void snapshot_damage_number_state(DamageNumberRenderState& state,
 }
 
 void reset_damage_number_render_state(DamageNumberRenderState& state,
-                                      const walker& owner,
                                       const walker::DamageNumber& number)
 {
-    snapshot_damage_number_state(state, owner, number);
+    snapshot_damage_number_state(state, number);
     state.last_advance_tick = std::numeric_limits<std::uint32_t>::max();
 }
 
-void prune_damage_number_render_state(const screen& screen_ctx,
-                                      const walker& owner)
+void prune_dead_damage_number_render_state(screen& screen_ctx)
 {
     const auto screen_it = g_damage_number_render_state.find(&screen_ctx);
     if (screen_it == g_damage_number_render_state.end())
         return;
 
-    auto& state_by_number = screen_it->second;
+    auto& state_by_owner = screen_it->second;
+    GameWorld& world = screen_ctx.world();
+    for (auto owner_it = state_by_owner.begin();
+         owner_it != state_by_owner.end();)
+    {
+        if (world.find_by_id(owner_it->first) == nullptr)
+            owner_it = state_by_owner.erase(owner_it);
+        else
+            ++owner_it;
+    }
+
+    if (state_by_owner.empty())
+        g_damage_number_render_state.erase(screen_it);
+}
+
+void prune_damage_number_render_state(const screen& screen_ctx,
+                                      const walker& owner)
+{
+    if (owner.entity_id() == 0u)
+        return;
+
+    const auto screen_it = g_damage_number_render_state.find(&screen_ctx);
+    if (screen_it == g_damage_number_render_state.end())
+        return;
+
+    auto& state_by_owner = screen_it->second;
+    const auto owner_it = state_by_owner.find(owner.entity_id());
+    if (owner_it == state_by_owner.end())
+        return;
+
+    auto& state_by_number = owner_it->second;
     std::unordered_set<const walker::DamageNumber*> live_numbers;
     live_numbers.reserve(owner.damage_numbers.size());
     for (const auto& number : owner.damage_numbers)
@@ -96,8 +121,7 @@ void prune_damage_number_render_state(const screen& screen_ctx,
 
     for (auto it = state_by_number.begin(); it != state_by_number.end();)
     {
-        if (it->second.owner == &owner &&
-            !live_numbers.contains(it->first))
+        if (!live_numbers.contains(it->first))
         {
             it = state_by_number.erase(it);
         }
@@ -108,29 +132,44 @@ void prune_damage_number_render_state(const screen& screen_ctx,
     }
 
     if (state_by_number.empty())
+        state_by_owner.erase(owner_it);
+
+    if (state_by_owner.empty())
         g_damage_number_render_state.erase(screen_it);
 }
 
 DamageNumberRenderState& damage_number_render_state(screen& screen_ctx,
-                                                    const walker& owner,
+                                                    std::uint32_t owner_entity_id,
                                                     const walker::DamageNumber& number)
 {
-    auto& state = g_damage_number_render_state[&screen_ctx][&number];
-    if (!damage_number_state_matches(state, owner, number))
-        reset_damage_number_render_state(state, owner, number);
+    auto& state =
+        g_damage_number_render_state[&screen_ctx][owner_entity_id][&number];
+    if (!damage_number_state_matches(state, number))
+        reset_damage_number_render_state(state, number);
     return state;
 }
 
 void erase_damage_number_render_state(const screen& screen_ctx,
+                                      std::uint32_t owner_entity_id,
                                       const walker::DamageNumber& number)
 {
+    if (owner_entity_id == 0u)
+        return;
+
     const auto screen_it = g_damage_number_render_state.find(&screen_ctx);
     if (screen_it == g_damage_number_render_state.end())
         return;
 
-    auto& state_by_number = screen_it->second;
+    auto& state_by_owner = screen_it->second;
+    const auto owner_it = state_by_owner.find(owner_entity_id);
+    if (owner_it == state_by_owner.end())
+        return;
+
+    auto& state_by_number = owner_it->second;
     state_by_number.erase(&number);
     if (state_by_number.empty())
+        state_by_owner.erase(owner_it);
+    if (state_by_owner.empty())
         g_damage_number_render_state.erase(screen_it);
 }
 
@@ -154,6 +193,26 @@ void clear_damage_number_render_state(const screen* screen_ctx)
         return;
     g_damage_number_render_state.erase(screen_ctx);
 }
+
+#ifdef TESTING
+std::size_t damage_number_render_state_count(const screen* screen_ctx)
+{
+    if (screen_ctx == nullptr)
+        return 0u;
+
+    const auto screen_it = g_damage_number_render_state.find(screen_ctx);
+    if (screen_it == g_damage_number_render_state.end())
+        return 0u;
+
+    std::size_t count = 0u;
+    for (const auto& owner_state : screen_it->second)
+    {
+        const auto& state_by_number = owner_state.second;
+        count += state_by_number.size();
+    }
+    return count;
+}
+#endif
 
 static const og::sim::GameClient* display_game_client()
 {
@@ -433,15 +492,19 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 
     screen* const game_screen = active_game_screen();
     if (game_screen != nullptr)
+    {
+        prune_dead_damage_number_render_state(*game_screen);
         prune_damage_number_render_state(*game_screen, w);
+    }
 
     if (show_damage_numbers || show_heal_numbers)
     {
         if (game_screen == nullptr)
             return 1;
 
+        const std::uint32_t owner_entity_id = w.entity_id();
         const std::uint32_t current_tick = game_screen->world().tick_count_;
-	    for(auto e = w.damage_numbers.begin(); e != w.damage_numbers.end();)
+        for (auto e = w.damage_numbers.begin(); e != w.damage_numbers.end();)
         {
             const bool is_heal = (e->color == 56);
             const bool should_render = is_heal ? show_heal_numbers : show_damage_numbers;
@@ -453,27 +516,39 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 
             // UI-only damage/heal numbers should advance once per simulation
             // tick so repeated redraws do not make them flicker or expire early.
-            DamageNumberRenderState& render_state =
-                damage_number_render_state(*game_screen, w, *e);
-            if (render_state.last_advance_tick != current_tick)
+            const bool use_render_cache = owner_entity_id != 0u;
+            DamageNumberRenderState* render_state = nullptr;
+            if (use_render_cache)
+                render_state =
+                    &damage_number_render_state(*game_screen,
+                                                owner_entity_id,
+                                                *e);
+
+            if (!use_render_cache || render_state->last_advance_tick != current_tick)
             {
                 e->t -= 0.05f;
                 e->y -= 1.5f;
-                render_state.last_advance_tick = current_tick;
-                snapshot_damage_number_state(render_state, w, *e);
+                if (render_state != nullptr)
+                {
+                    render_state->last_advance_tick = current_tick;
+                    snapshot_damage_number_state(*render_state, *e);
+                }
             }
 
-            if(e->t < 0)
+            if (e->t < 0)
             {
-                erase_damage_number_render_state(*game_screen, *e);
+                erase_damage_number_render_state(*game_screen,
+                                                 owner_entity_id,
+                                                 *e);
                 e = w.damage_numbers.erase(e);
                 continue;
             }
 
-            if(view_buf->control == &w)
+            if (view_buf->control == &w)
                 draw_damage_number(*e, view_buf);
-            snapshot_damage_number_state(render_state, w, *e);
-            e++;
+            if (render_state != nullptr)
+                snapshot_damage_number_state(*render_state, *e);
+            ++e;
         }
     }
 

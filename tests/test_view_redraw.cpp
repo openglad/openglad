@@ -94,6 +94,7 @@ void prepare_view_world()
 {
     screen* const active = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, active);
+    clear_damage_number_render_state(active);
     active->world().create_new_grid();
     active->world().delete_objects();
     active->world().clear_removed_entity_ids();
@@ -414,17 +415,15 @@ TEST(ViewRedraw, damage_numbers_advance_once_per_sim_tick)
 
     const std::uint32_t saved_tick = active->world().tick_count_;
 
-    active->world().create_new_grid();
-    active->world().mysmoother.set_target(active->world().grid);
-
-    std::unique_ptr<walker> w(make_guy(FAMILY_SOLDIER, 0));
+    prepare_view_world();
+    walker* const w = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, w);
 
     const std::string previous_damage_numbers =
         cfg.get_setting("effects", "damage_numbers");
     cfg.apply_setting("effects", "damage_numbers", "on");
 
-    vs->control = w.get();
+    vs->control = w;
     w->damage_numbers.emplace_back(
         static_cast<float>(w->xpos()),
         static_cast<float>(w->ypos()),
@@ -460,6 +459,67 @@ TEST(ViewRedraw, damage_numbers_advance_once_per_sim_tick)
         "effects",
         "damage_numbers",
         previous_damage_numbers.empty() ? "off" : previous_damage_numbers);
+    clear_damage_number_render_state(active);
+}
+
+TEST(ViewRedraw, damage_number_cache_prunes_removed_walkers)
+{
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    const std::uint32_t saved_tick = active->world().tick_count_;
+
+    prepare_view_world();
+
+    const std::string previous_damage_numbers =
+        cfg.get_setting("effects", "damage_numbers");
+    cfg.apply_setting("effects", "damage_numbers", "on");
+
+    walker* const first = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, first);
+    vs->control = first;
+    first->damage_numbers.emplace_back(
+        static_cast<float>(first->xpos()),
+        static_cast<float>(first->ypos()),
+        12.0f,
+        RED);
+
+    active->world().tick_count_ = 60u;
+    (void)draw_walker(*first, vs);
+    EXPECT_EQ(1u, damage_number_render_state_count(active));
+
+    const std::uint32_t first_entity_id = first->entity_id();
+    ASSERT_NE(0u, first_entity_id);
+    ASSERT_TRUE(active->world().remove_ob(first));
+    EXPECT_EQ(nullptr, active->world().find_by_id(first_entity_id));
+
+    walker* const second = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, second);
+    vs->control = second;
+    second->damage_numbers.emplace_back(
+        static_cast<float>(second->xpos()),
+        static_cast<float>(second->ypos()),
+        21.0f,
+        RED);
+
+    const float initial_t = second->damage_numbers.front().t;
+    active->world().tick_count_ = 61u;
+    (void)draw_walker(*second, vs);
+
+    ASSERT_FALSE(second->damage_numbers.empty());
+    EXPECT_LT(second->damage_numbers.front().t, initial_t);
+    EXPECT_EQ(1u, damage_number_render_state_count(active));
+
+    vs->control = nullptr;
+    active->world().tick_count_ = saved_tick;
+    cfg.apply_setting(
+        "effects",
+        "damage_numbers",
+        previous_damage_numbers.empty() ? "off" : previous_damage_numbers);
+    clear_damage_number_render_state(active);
 }
 
 
