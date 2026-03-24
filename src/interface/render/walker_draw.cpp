@@ -56,6 +56,23 @@ void snapshot_damage_number_state(DamageNumberRenderContext::Entry& state,
     state.snapshot = damage_number_snapshot(number);
 }
 
+std::uint32_t damage_number_advance_steps(
+    const DamageNumberRenderContext::Entry* state,
+    std::uint32_t current_tick)
+{
+    if (state == nullptr)
+        return 1u;
+
+    const std::uint32_t last_advance_tick = state->last_advance_tick;
+    if (last_advance_tick == std::numeric_limits<std::uint32_t>::max() ||
+        last_advance_tick > current_tick)
+    {
+        return 1u;
+    }
+
+    return current_tick - last_advance_tick;
+}
+
 } // namespace
 
 DamageNumberRenderContext::Entry&
@@ -471,7 +488,8 @@ bool draw_walker(walker& w, viewscreen* view_buf)
             }
 
             // UI-only damage/heal numbers should advance once per simulation
-            // tick so repeated redraws do not make them flicker or expire early.
+            // tick. Repeated redraws in the same tick should not re-advance,
+            // and delayed redraws must catch up for every elapsed sim tick.
             DamageNumberRenderContext::Entry* render_state = nullptr;
             if (use_render_context)
                 render_state =
@@ -479,11 +497,14 @@ bool draw_walker(walker& w, viewscreen* view_buf)
                                                    damage_number_index,
                                                    damage_number_snapshot(*e));
 
-            if (!use_render_context ||
-                render_state->last_advance_tick != current_tick)
+            const std::uint32_t advance_steps =
+                damage_number_advance_steps(render_state, current_tick);
+            if (advance_steps > 0u)
             {
-                e->t -= 0.05f;
-                e->y -= 1.5f;
+                const float advance_amount =
+                    static_cast<float>(advance_steps);
+                e->t -= 0.05f * advance_amount;
+                e->y -= 1.5f * advance_amount;
                 if (render_state != nullptr)
                 {
                     render_state->last_advance_tick = current_tick;
