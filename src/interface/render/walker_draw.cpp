@@ -431,8 +431,6 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	// Draw me
 		if(show_hit_flash && w.hurt_flash())
 	    {
-	        w.set_hurt_flash(false);
-
         auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())};
         og::runtime::current_session->myscreen_->walkputbuffer_flash(xscreen, yscreen, w.sizex(), w.sizey(),
                                    view_buf->xloc, view_buf->yloc,

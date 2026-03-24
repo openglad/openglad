@@ -1935,7 +1935,15 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
     }
 
     if (consume_dirty_state)
+    {
         entity.clear_dirty();
+
+        // Hurt flash is a one-snapshot visual transient. Consume it on the
+        // authoritative side so headless servers do not resend the same flash
+        // forever, but leave the dirty bit set so the next delta clears it.
+        if (entity.hurt_flash())
+            entity.set_hurt_flash(false);
+    }
     return snapshot;
 }
 

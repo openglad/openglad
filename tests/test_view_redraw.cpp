@@ -615,6 +615,40 @@ TEST(ViewRedraw, damage_number_cache_prunes_removed_walkers)
         previous_damage_numbers.empty() ? "off" : previous_damage_numbers);
 }
 
+TEST(ViewRedraw, hit_flash_persists_across_repeated_redraws_in_same_tick)
+{
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    active->world().create_new_grid();
+    active->world().mysmoother.set_target(active->world().grid);
+
+    std::unique_ptr<walker> w(make_guy(FAMILY_SOLDIER, 0));
+    ASSERT_NE(nullptr, w);
+
+    const std::string previous_hit_flash =
+        cfg.get_setting("effects", "hit_flash");
+    cfg.apply_setting("effects", "hit_flash", "on");
+
+    w->set_hurt_flash(true);
+    vs->control = w.get();
+
+    (void)draw_walker(*w, vs);
+    EXPECT_TRUE(w->hurt_flash());
+
+    (void)draw_walker(*w, vs);
+    EXPECT_TRUE(w->hurt_flash());
+
+    vs->control = nullptr;
+    cfg.apply_setting(
+        "effects",
+        "hit_flash",
+        previous_hit_flash.empty() ? "off" : previous_hit_flash);
+}
+
 
 // ---------------------------------------------------------------------------
 // viewscreen::change_gamma
