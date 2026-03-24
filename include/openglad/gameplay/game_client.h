@@ -139,6 +139,7 @@ public:
         std::uint32_t entity_id,
         float alpha) const;
     void testing_set_render_interpolation_elapsed_ms(float elapsed_ms);
+    void testing_set_next_snapshot_prior_alpha(float alpha);
     void testing_set_last_outbound_activity_elapsed_ms(float elapsed_ms);
 
 private:
@@ -177,6 +178,7 @@ private:
     void note_outbound_activity();
     void maybe_send_client_ready();
     void maybe_send_snapshot_hash_check(bool force = false);
+    float consume_prior_interpolation_alpha(bool reset_history);
 
     ITransport& transport_;
     PeerId server_peer_id_ = 0;
@@ -211,6 +213,7 @@ private:
     std::uint32_t keyframe_request_count_ = 0;
     std::uint32_t snapshot_hash_check_count_ = 0;
     mutable float render_interpolation_speed_factor_ = 1.0f;
+    std::optional<float> testing_next_snapshot_prior_alpha_ = std::nullopt;
     std::function<void(const std::array<std::uint32_t, MAX_PLAYERS>&,
                        GameWorld*)> control_mapping_callback_;
     std::function<void(const InitialSetupMessage&, bool)> initial_setup_callback_;

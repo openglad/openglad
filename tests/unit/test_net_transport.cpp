@@ -1541,7 +1541,7 @@ TEST(NetTransport,
     transport.queue_received(7u, og::sim::serialize_delta(first_delta));
 
     client.poll_messages();
-    client.testing_set_render_interpolation_elapsed_ms(41.0f);
+    client.testing_set_next_snapshot_prior_alpha(0.5f);
 
     actor->setxy(128, 144);
     fixture.world().tick_count_ = 3u;

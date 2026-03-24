@@ -354,6 +354,11 @@ void GameClient::testing_set_render_interpolation_elapsed_ms(float elapsed_ms)
                 std::max(elapsed_ms, 0.0f)));
 }
 
+void GameClient::testing_set_next_snapshot_prior_alpha(float alpha)
+{
+    testing_next_snapshot_prior_alpha_ = clamp_alpha(alpha);
+}
+
 void GameClient::testing_set_last_outbound_activity_elapsed_ms(float elapsed_ms)
 {
     last_outbound_activity_time_ =
@@ -599,6 +604,24 @@ void GameClient::maybe_send_snapshot_hash_check(bool force)
     send_snapshot_hash_check();
 }
 
+float GameClient::consume_prior_interpolation_alpha(bool reset_history)
+{
+    if (reset_history)
+    {
+        testing_next_snapshot_prior_alpha_.reset();
+        return 1.0f;
+    }
+
+    if (testing_next_snapshot_prior_alpha_.has_value())
+    {
+        const float alpha = *testing_next_snapshot_prior_alpha_;
+        testing_next_snapshot_prior_alpha_.reset();
+        return alpha;
+    }
+
+    return render_interpolation_alpha(render_interpolation_speed_factor_);
+}
+
 void GameClient::notify_control_mapping_changed()
 {
     if (control_mapping_callback_)
@@ -646,6 +669,7 @@ void GameClient::reset_render_interpolation()
 {
     render_interpolation_.clear();
     last_snapshot_receive_time_.reset();
+    testing_next_snapshot_prior_alpha_.reset();
 }
 
 RenderInterpolationPosition GameClient::interpolate_position(
@@ -747,9 +771,7 @@ void GameClient::apply_initial_setup(const InitialSetupMessage& message)
 void GameClient::apply_full_snapshot(const WorldSnapshot& snapshot)
 {
     const bool reset_history = !baseline_.has_value() || waiting_for_keyframe_;
-    const float prior_alpha = reset_history
-        ? 1.0f
-        : render_interpolation_alpha(render_interpolation_speed_factor_);
+    const float prior_alpha = consume_prior_interpolation_alpha(reset_history);
     baseline_ = snapshot;
     update_render_interpolation(*baseline_, reset_history, prior_alpha);
     if (world_ != nullptr)
@@ -788,8 +810,7 @@ void GameClient::apply_delta_snapshot(const WorldSnapshot& snapshot)
         return;
     }
 
-    const float prior_alpha =
-        render_interpolation_alpha(render_interpolation_speed_factor_);
+    const float prior_alpha = consume_prior_interpolation_alpha(false);
     apply_delta(*baseline_, snapshot);
     update_render_interpolation(*baseline_, false, prior_alpha);
     if (world_ != nullptr)
