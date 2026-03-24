@@ -312,6 +312,12 @@ ClientPollResult poll_client_messages(
 
 namespace og::sim {
 
+void GameClient::set_render_interpolation_speed_factor(float speed_factor) const
+    noexcept
+{
+    render_interpolation_speed_factor_ = std::max(speed_factor, 0.0f);
+}
+
 float GameClient::render_interpolation_alpha(float speed_factor) const
 {
     if (!last_snapshot_receive_time_.has_value())
@@ -336,14 +342,7 @@ std::optional<RenderInterpolationPosition> GameClient::render_position(
     if (it == render_interpolation_.end())
         return std::nullopt;
 
-    const EntityInterpolationState& state = it->second;
-    const float clamped_alpha = clamp_alpha(alpha);
-    RenderInterpolationPosition position;
-    position.worldx = lerp(state.prev.worldx, state.curr.worldx, clamped_alpha);
-    position.worldy = lerp(state.prev.worldy, state.curr.worldy, clamped_alpha);
-    position.xpos = lerp(state.prev.xpos, state.curr.xpos, clamped_alpha);
-    position.ypos = lerp(state.prev.ypos, state.curr.ypos, clamped_alpha);
-    return position;
+    return interpolate_position(it->second, alpha);
 }
 
 void GameClient::testing_set_render_interpolation_elapsed_ms(float elapsed_ms)
@@ -649,8 +648,22 @@ void GameClient::reset_render_interpolation()
     last_snapshot_receive_time_.reset();
 }
 
+RenderInterpolationPosition GameClient::interpolate_position(
+    const EntityInterpolationState& state,
+    float alpha) noexcept
+{
+    const float clamped_alpha = clamp_alpha(alpha);
+    RenderInterpolationPosition position;
+    position.worldx = lerp(state.prev.worldx, state.curr.worldx, clamped_alpha);
+    position.worldy = lerp(state.prev.worldy, state.curr.worldy, clamped_alpha);
+    position.xpos = lerp(state.prev.xpos, state.curr.xpos, clamped_alpha);
+    position.ypos = lerp(state.prev.ypos, state.curr.ypos, clamped_alpha);
+    return position;
+}
+
 void GameClient::update_render_interpolation(const WorldSnapshot& snapshot,
-                                             bool reset_history)
+                                             bool reset_history,
+                                             float prior_alpha)
 {
     std::unordered_map<std::uint32_t, EntityInterpolationState> next_state;
     next_state.reserve(snapshot.oblist.size() + snapshot.fxlist.size() +
@@ -667,7 +680,7 @@ void GameClient::update_render_interpolation(const WorldSnapshot& snapshot,
     };
 
     const auto update_entities =
-        [this, &next_state, reset_history, &capture_position](
+        [this, &next_state, reset_history, prior_alpha, &capture_position](
             const std::vector<EntitySnapshot>& entities) {
             for (const EntitySnapshot& entity_snapshot : entities)
             {
@@ -682,7 +695,7 @@ void GameClient::update_render_interpolation(const WorldSnapshot& snapshot,
                     const auto existing =
                         render_interpolation_.find(entity_snapshot.entity_id);
                     state.prev = existing != render_interpolation_.end()
-                        ? existing->second.curr
+                        ? interpolate_position(existing->second, prior_alpha)
                         : state.curr;
                 }
                 else
@@ -734,8 +747,11 @@ void GameClient::apply_initial_setup(const InitialSetupMessage& message)
 void GameClient::apply_full_snapshot(const WorldSnapshot& snapshot)
 {
     const bool reset_history = !baseline_.has_value() || waiting_for_keyframe_;
+    const float prior_alpha = reset_history
+        ? 1.0f
+        : render_interpolation_alpha(render_interpolation_speed_factor_);
     baseline_ = snapshot;
-    update_render_interpolation(*baseline_, reset_history);
+    update_render_interpolation(*baseline_, reset_history, prior_alpha);
     if (world_ != nullptr)
     {
         apply_snapshot(*world_, *baseline_);
@@ -772,8 +788,10 @@ void GameClient::apply_delta_snapshot(const WorldSnapshot& snapshot)
         return;
     }
 
+    const float prior_alpha =
+        render_interpolation_alpha(render_interpolation_speed_factor_);
     apply_delta(*baseline_, snapshot);
-    update_render_interpolation(*baseline_, false);
+    update_render_interpolation(*baseline_, false, prior_alpha);
     if (world_ != nullptr)
     {
         apply_snapshot(*world_, *baseline_);

@@ -232,19 +232,13 @@ public:
     LevelVisuals& level_visuals() { return level_visuals_; }
     const LevelVisuals& level_visuals() const { return level_visuals_; }
     void set_render_interpolation_client(
-        const og::sim::GameClient* client) noexcept
-    {
-        render_interpolation_client_ = client;
-    }
+        const og::sim::GameClient* client) noexcept;
     [[nodiscard]] const og::sim::GameClient* render_interpolation_client()
         const noexcept
     {
         return render_interpolation_client_;
     }
-    void set_render_interpolation_speed_factor(float speed_factor) noexcept
-    {
-        render_interpolation_speed_factor_ = speed_factor;
-    }
+    void set_render_interpolation_speed_factor(float speed_factor) noexcept;
     [[nodiscard]] float render_interpolation_speed_factor() const noexcept
     {
         return render_interpolation_speed_factor_;

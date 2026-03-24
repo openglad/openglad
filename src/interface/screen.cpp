@@ -26,6 +26,7 @@
 
 #include <openglad/interface/game_context.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/game_client.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/gameplay/statistics.h>
@@ -743,6 +744,27 @@ void screen::fade_between24(void* surface, const Uint8* from, const Uint8* to,
                             int amount)
 {
     video_impl_->fade_between24(surface, from, to, amount);
+}
+
+void screen::set_render_interpolation_client(
+    const og::sim::GameClient* client) noexcept
+{
+    render_interpolation_client_ = client;
+    if (render_interpolation_client_ != nullptr)
+    {
+        render_interpolation_client_->set_render_interpolation_speed_factor(
+            render_interpolation_speed_factor_);
+    }
+}
+
+void screen::set_render_interpolation_speed_factor(float speed_factor) noexcept
+{
+    render_interpolation_speed_factor_ = std::max(speed_factor, 0.0f);
+    if (render_interpolation_client_ != nullptr)
+    {
+        render_interpolation_client_->set_render_interpolation_speed_factor(
+            render_interpolation_speed_factor_);
+    }
 }
 
 int screen::fade_between(void* old_surface, void* new_surface, void* dest_surface)

@@ -133,6 +133,7 @@ public:
         return session_token_;
     }
 
+    void set_render_interpolation_speed_factor(float speed_factor) const noexcept;
     [[nodiscard]] float render_interpolation_alpha(float speed_factor) const;
     [[nodiscard]] std::optional<RenderInterpolationPosition> render_position(
         std::uint32_t entity_id,
@@ -153,7 +154,11 @@ private:
     void apply_initial_setup(const InitialSetupMessage& message);
     void reset_render_interpolation();
     void update_render_interpolation(const WorldSnapshot& snapshot,
-                                     bool reset_history);
+                                     bool reset_history,
+                                     float prior_alpha);
+    [[nodiscard]] static RenderInterpolationPosition interpolate_position(
+        const EntityInterpolationState& state,
+        float alpha) noexcept;
     void note_event_batch_gap(std::uint32_t expected,
                               std::uint32_t actual,
                               const char* label) const;
@@ -205,6 +210,7 @@ private:
     std::uint32_t client_ready_count_ = 0;
     std::uint32_t keyframe_request_count_ = 0;
     std::uint32_t snapshot_hash_check_count_ = 0;
+    mutable float render_interpolation_speed_factor_ = 1.0f;
     std::function<void(const std::array<std::uint32_t, MAX_PLAYERS>&,
                        GameWorld*)> control_mapping_callback_;
     std::function<void(const InitialSetupMessage&, bool)> initial_setup_callback_;

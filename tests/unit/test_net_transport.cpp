@@ -1516,6 +1516,56 @@ TEST(NetTransport,
     EXPECT_FLOAT_EQ(1.0f, client.render_interpolation_alpha(1.0f));
 }
 
+TEST(NetTransport,
+     game_client_continues_interpolation_from_current_rendered_position)
+{
+    MockTransport transport;
+    TestGameWorld fixture;
+
+    walker* const actor = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+    actor->setxy(32, 48);
+    fixture.world().tick_count_ = 1u;
+
+    const og::sim::WorldSnapshot initial =
+        og::sim::capture_keyframe_snapshot(fixture.world());
+    transport.queue_received(7u, og::sim::serialize_snapshot(initial));
+
+    og::sim::GameClient client(transport, 7u);
+    client.poll_messages();
+
+    actor->setxy(80, 96);
+    fixture.world().tick_count_ = 2u;
+    const og::sim::WorldSnapshot first_delta =
+        og::sim::capture_snapshot(fixture.world());
+    transport.queue_received(7u, og::sim::serialize_delta(first_delta));
+
+    client.poll_messages();
+    client.testing_set_render_interpolation_elapsed_ms(41.0f);
+
+    actor->setxy(128, 144);
+    fixture.world().tick_count_ = 3u;
+    const og::sim::WorldSnapshot second_delta =
+        og::sim::capture_snapshot(fixture.world());
+    transport.queue_received(7u, og::sim::serialize_delta(second_delta));
+
+    client.poll_messages();
+
+    const auto start = client.render_position(actor->entity_id(), 0.0f);
+    const auto middle = client.render_position(actor->entity_id(), 0.5f);
+    ASSERT_TRUE(start.has_value());
+    ASSERT_TRUE(middle.has_value());
+
+    EXPECT_NEAR(56.0f, start->worldx, 0.1f);
+    EXPECT_NEAR(72.0f, start->worldy, 0.1f);
+    EXPECT_NEAR(56.0f, start->xpos, 0.1f);
+    EXPECT_NEAR(72.0f, start->ypos, 0.1f);
+    EXPECT_NEAR(92.0f, middle->worldx, 0.1f);
+    EXPECT_NEAR(108.0f, middle->worldy, 0.1f);
+    EXPECT_NEAR(92.0f, middle->xpos, 0.1f);
+    EXPECT_NEAR(108.0f, middle->ypos, 0.1f);
+}
+
 TEST(NetTransport, game_client_notifies_level_transition_before_next_keyframe)
 {
     MockTransport transport;
