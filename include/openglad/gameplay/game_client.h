@@ -54,6 +54,7 @@ public:
         std::function<void(const PauseBroadcastMessage&)> callback);
     void set_palette_sync_callback(
         std::function<void(std::uint8_t palette_id)> callback);
+    void set_connection_lost_callback(std::function<void()> callback);
     void set_message_processing_break_callback(
         std::function<bool()> callback);
 
@@ -140,6 +141,7 @@ public:
         float alpha) const;
     void testing_set_render_interpolation_elapsed_ms(float elapsed_ms);
     void testing_set_last_outbound_activity_elapsed_ms(float elapsed_ms);
+    void testing_set_transport_disconnect_elapsed_ms(float elapsed_ms);
 
 private:
     struct EntityInterpolationState {
@@ -175,6 +177,7 @@ private:
     void update_transport_connection_state();
     void maybe_send_hello_if_needed();
     void maybe_send_heartbeat_if_needed();
+    void maybe_notify_connection_lost();
     void note_outbound_activity();
     void maybe_send_client_ready();
     void maybe_send_snapshot_hash_check(bool force = false);
@@ -196,6 +199,8 @@ private:
         last_snapshot_receive_time_ = std::nullopt;
     std::optional<InterpolationClock::time_point>
         last_outbound_activity_time_ = std::nullopt;
+    std::optional<InterpolationClock::time_point>
+        transport_disconnect_time_ = std::nullopt;
     std::uint32_t last_seen_server_tick_ = 0;
     std::uint32_t last_sim_event_sequence_ = 0;
     std::uint32_t last_game_flow_event_sequence_ = 0;
@@ -203,8 +208,10 @@ private:
     bool has_game_flow_event_sequence_ = false;
     SessionToken session_token_ = kZeroSessionToken;
     bool transport_connected_ = false;
+    bool transport_ever_connected_ = false;
     bool hello_sent_for_connection_ = false;
     bool hello_acknowledged_ = false;
+    bool connection_lost_notified_ = false;
     bool waiting_for_keyframe_ = false;
     bool client_ready_sent_ = false;
     std::uint32_t client_ready_count_ = 0;
@@ -218,6 +225,7 @@ private:
     std::function<void(const ExitPromptBroadcastMessage&)> exit_prompt_callback_;
     std::function<void(const PauseBroadcastMessage&)> pause_broadcast_callback_;
     std::function<void(std::uint8_t)> palette_sync_callback_;
+    std::function<void()> connection_lost_callback_;
     std::function<bool()> message_processing_break_callback_;
 };
 

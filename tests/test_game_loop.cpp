@@ -5,6 +5,7 @@
 #include <thread>
 #include <vector>
 
+#include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/guy.h>
@@ -102,6 +103,39 @@ struct GameSpeedGuard
 struct EventScript {
     std::vector<SDL_Event> events;
     size_t idx = 0;
+};
+
+class ToggleConnectedTransport final : public og::sim::ITransport
+{
+public:
+    void send(og::sim::PeerId, const std::uint8_t*, std::size_t) override {}
+
+    std::vector<og::sim::ReceivedMessage> poll() override
+    {
+        return {};
+    }
+
+    void accept_connections() override {}
+
+    void disconnect(og::sim::PeerId) override
+    {
+        connected_ = false;
+    }
+
+    std::vector<og::sim::PeerId> connected_peers() const override
+    {
+        return connected_ ? std::vector<og::sim::PeerId>{kPeerId}
+                          : std::vector<og::sim::PeerId>{};
+    }
+
+    void set_connected(bool connected) noexcept
+    {
+        connected_ = connected;
+    }
+
+private:
+    static constexpr og::sim::PeerId kPeerId = 7u;
+    bool connected_ = true;
 };
 
 static int scripted_poll(void* userdata, SDL_Event* out)
@@ -759,6 +793,52 @@ TEST(GameLoop, local_transport_shadow_send_input_and_finish_tick_cover_active_pa
     og::runtime::local_transport_shadow_send_input(gameplay_session, input, 9u);
 
     game_screen->world().end = 1;
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    EXPECT_EQ(1, static_cast<int>(game_screen->world().end));
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, network_client_shadow_ends_session_after_connection_loss_timeout)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    game_screen->save_data.reset();
+    game_screen->save_data.current_campaign = "org.openglad.gladiator";
+    game_screen->save_data.current_levels[game_screen->save_data.current_campaign] = 1;
+    game_screen->save_data.scen_num = 1;
+    game_screen->save_data.numplayers = 1;
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& gameplay_session = *og::runtime::current_game_session;
+
+    auto transport = std::make_shared<ToggleConnectedTransport>();
+    og::runtime::clear_local_transport_shadow(gameplay_session);
+    og::runtime::reset_network_client_transport_shadow(
+        gameplay_session,
+        *game_screen,
+        transport,
+        7u,
+        0u);
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+
+    transport->set_connected(false);
+    game_screen->world().end = 0;
+    og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+    EXPECT_EQ(0, static_cast<int>(game_screen->world().end));
+
+    const og::sim::GameClient* const display_client =
+        game_screen->render_interpolation_client();
+    ASSERT_NE(nullptr, display_client);
+    const_cast<og::sim::GameClient*>(display_client)
+        ->testing_set_transport_disconnect_elapsed_ms(
+            static_cast<float>(og::sim::CLIENT_CONNECTION_LOST_TIMEOUT_MS + 1u));
+
     og::runtime::local_transport_shadow_finish_tick(gameplay_session);
     EXPECT_EQ(1, static_cast<int>(game_screen->world().end));
 

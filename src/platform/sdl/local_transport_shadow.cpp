@@ -25,6 +25,7 @@
 short load_saved_game(const char* filename, screen* scr);
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 Uint32 get_time_bonus(int playernum);
+void popup_dialog(const char* title, const char* message);
 
 namespace
 {
@@ -534,6 +535,14 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
     display_client.set_palette_sync_callback(
         [&gameplay_screen](std::uint8_t palette_id) {
             apply_palette_id(gameplay_screen, palette_id);
+        });
+    display_client.set_connection_lost_callback(
+        [&gameplay_screen, runtime_ptr = &runtime]() {
+            popup_dialog("Connection Lost",
+                         "Lost connection to the server.");
+            gameplay_screen.redrawme = 1;
+            if (runtime_ptr != nullptr)
+                runtime_ptr->display_session_finished = true;
         });
 }
 

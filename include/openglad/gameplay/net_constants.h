@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace og::sim {
 
@@ -13,6 +14,7 @@ inline constexpr signed char MAX_TIMER_WAIT = 20;
 inline constexpr int KEYFRAME_INTERVAL_TICKS = DEFAULT_SIM_TICKS_PER_SEC * 5;
 inline constexpr int MAX_LATE_PRESS_TICKS = 2;
 inline constexpr std::uint64_t DISCONNECT_TIMEOUT_MS = 10'000;
+inline constexpr std::uint64_t CLIENT_CONNECTION_LOST_TIMEOUT_MS = 30'000;
 inline constexpr std::uint64_t EXIT_PROMPT_TIMEOUT_MS = 15'000;
 inline constexpr std::uint64_t PAUSE_TIMEOUT_MS = 60'000;
 inline constexpr std::uint64_t PAUSE_RATE_LIMIT_MS = 5'000;

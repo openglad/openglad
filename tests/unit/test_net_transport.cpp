@@ -695,6 +695,32 @@ TEST(NetTransport, game_client_sends_automatic_heartbeats_when_idle)
     EXPECT_TRUE(transport.sent_messages().empty());
 }
 
+TEST(NetTransport, game_client_notifies_when_server_is_gone_for_too_long)
+{
+    MockTransport transport;
+    og::sim::GameClient client(transport, 7u);
+
+    int connection_lost_count = 0;
+    client.set_connection_lost_callback([&connection_lost_count] {
+        ++connection_lost_count;
+    });
+
+    transport.set_connected_peers({7u});
+    client.poll_messages();
+
+    transport.set_connected_peers({});
+    client.poll_messages();
+    EXPECT_EQ(0, connection_lost_count);
+
+    client.testing_set_transport_disconnect_elapsed_ms(
+        static_cast<float>(og::sim::CLIENT_CONNECTION_LOST_TIMEOUT_MS + 1u));
+    client.poll_messages();
+    EXPECT_EQ(1, connection_lost_count);
+
+    client.poll_messages();
+    EXPECT_EQ(1, connection_lost_count);
+}
+
 TEST(NetTransport,
      disconnect_grace_uses_last_pending_held_input_from_removed_peer)
 {

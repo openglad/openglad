@@ -367,6 +367,17 @@ void GameClient::testing_set_last_outbound_activity_elapsed_ms(float elapsed_ms)
                 std::max(elapsed_ms, 0.0f)));
 }
 
+void GameClient::testing_set_transport_disconnect_elapsed_ms(float elapsed_ms)
+{
+    transport_ever_connected_ = true;
+    connection_lost_notified_ = false;
+    transport_disconnect_time_ =
+        InterpolationClock::now() -
+        std::chrono::duration_cast<InterpolationClock::duration>(
+            std::chrono::duration<float, std::milli>(
+                std::max(elapsed_ms, 0.0f)));
+}
+
 GameClient::GameClient(ITransport& transport,
                        PeerId server_peer_id,
                        GameWorld* world)
@@ -417,6 +428,11 @@ void GameClient::set_palette_sync_callback(
     std::function<void(std::uint8_t)> callback)
 {
     palette_sync_callback_ = std::move(callback);
+}
+
+void GameClient::set_connection_lost_callback(std::function<void()> callback)
+{
+    connection_lost_callback_ = std::move(callback);
 }
 
 void GameClient::set_message_processing_break_callback(
@@ -534,11 +550,22 @@ void GameClient::update_transport_connection_state()
     const std::vector<PeerId> peers = transport_.connected_peers();
     const bool connected = std::find(peers.begin(), peers.end(), server_peer_id_) !=
         peers.end();
-    if (!connected && transport_connected_)
+    if (connected)
+    {
+        transport_ever_connected_ = true;
+        transport_disconnect_time_.reset();
+        connection_lost_notified_ = false;
+    }
+    else if (transport_connected_)
     {
         waiting_for_keyframe_ = true;
         hello_sent_for_connection_ = false;
         hello_acknowledged_ = false;
+        transport_disconnect_time_ = InterpolationClock::now();
+    }
+    else if (transport_ever_connected_ && !transport_disconnect_time_.has_value())
+    {
+        transport_disconnect_time_ = InterpolationClock::now();
     }
     transport_connected_ = connected;
 }
@@ -576,6 +603,24 @@ void GameClient::maybe_send_heartbeat_if_needed()
         server_peer_id_,
         std::make_shared<HeartbeatMessage>(message));
     note_outbound_activity();
+}
+
+void GameClient::maybe_notify_connection_lost()
+{
+    if (transport_connected_ || !transport_ever_connected_ ||
+        connection_lost_notified_ || !transport_disconnect_time_.has_value())
+    {
+        return;
+    }
+
+    const auto timeout =
+        std::chrono::milliseconds(CLIENT_CONNECTION_LOST_TIMEOUT_MS);
+    if (InterpolationClock::now() - *transport_disconnect_time_ < timeout)
+        return;
+
+    connection_lost_notified_ = true;
+    if (connection_lost_callback_)
+        connection_lost_callback_();
 }
 
 void GameClient::note_outbound_activity()
@@ -984,6 +1029,8 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha)
             break;
         }
     }
+
+    maybe_notify_connection_lost();
 }
 
 } // namespace og::sim
