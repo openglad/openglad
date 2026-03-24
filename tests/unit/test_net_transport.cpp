@@ -1541,7 +1541,6 @@ TEST(NetTransport,
     transport.queue_received(7u, og::sim::serialize_delta(first_delta));
 
     client.poll_messages();
-    client.testing_set_next_snapshot_prior_alpha(0.5f);
 
     actor->setxy(128, 144);
     fixture.world().tick_count_ = 3u;
@@ -1549,7 +1548,7 @@ TEST(NetTransport,
         og::sim::capture_snapshot(fixture.world());
     transport.queue_received(7u, og::sim::serialize_delta(second_delta));
 
-    client.poll_messages();
+    client.poll_messages(0.5f);
 
     const auto start = client.render_position(actor->entity_id(), 0.0f);
     const auto middle = client.render_position(actor->entity_id(), 0.5f);
@@ -1564,6 +1563,59 @@ TEST(NetTransport,
     EXPECT_NEAR(108.0f, middle->worldy, 0.1f);
     EXPECT_NEAR(92.0f, middle->xpos, 0.1f);
     EXPECT_NEAR(108.0f, middle->ypos, 0.1f);
+}
+
+TEST(NetTransport, game_client_consumes_explicit_render_alpha_once_per_poll)
+{
+    MockTransport transport;
+    TestGameWorld fixture;
+
+    walker* const actor = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+    actor->setxy(32, 48);
+    fixture.world().tick_count_ = 1u;
+
+    const og::sim::WorldSnapshot initial =
+        og::sim::capture_keyframe_snapshot(fixture.world());
+    transport.queue_received(7u, og::sim::serialize_snapshot(initial));
+
+    og::sim::GameClient client(transport, 7u);
+    client.poll_messages();
+
+    actor->setxy(80, 96);
+    fixture.world().tick_count_ = 2u;
+    transport.queue_received(
+        7u,
+        og::sim::serialize_delta(og::sim::capture_snapshot(fixture.world())));
+    client.poll_messages();
+
+    actor->setxy(128, 144);
+    fixture.world().tick_count_ = 3u;
+    transport.queue_received(
+        7u,
+        og::sim::serialize_delta(og::sim::capture_snapshot(fixture.world())));
+
+    actor->setxy(176, 192);
+    fixture.world().tick_count_ = 4u;
+    transport.queue_received(
+        7u,
+        og::sim::serialize_delta(og::sim::capture_snapshot(fixture.world())));
+
+    client.poll_messages(0.5f);
+
+    const auto start = client.render_position(actor->entity_id(), 0.0f);
+    const auto middle = client.render_position(actor->entity_id(), 0.5f);
+    ASSERT_TRUE(start.has_value());
+    ASSERT_TRUE(middle.has_value());
+
+    EXPECT_NEAR(56.0f, start->worldx, 0.1f);
+    EXPECT_NEAR(72.0f, start->worldy, 0.1f);
+    EXPECT_NEAR(56.0f, start->xpos, 0.1f);
+    EXPECT_NEAR(72.0f, start->ypos, 0.1f);
+    EXPECT_NEAR(116.0f, middle->worldx, 0.1f);
+    EXPECT_NEAR(132.0f, middle->worldy, 0.1f);
+    EXPECT_NEAR(116.0f, middle->xpos, 0.1f);
+    EXPECT_NEAR(132.0f, middle->ypos, 0.1f);
 }
 
 TEST(NetTransport, game_client_notifies_level_transition_before_next_keyframe)

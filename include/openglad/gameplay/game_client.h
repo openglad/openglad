@@ -37,6 +37,7 @@ public:
     void send_pause_response();
     void send_snapshot_hash_check();
     void poll_messages();
+    void poll_messages(float current_render_alpha);
     void set_control_mapping_callback(
         std::function<void(const std::array<std::uint32_t, MAX_PLAYERS>&,
                            GameWorld*)> callback);
@@ -133,13 +134,11 @@ public:
         return session_token_;
     }
 
-    void set_render_interpolation_speed_factor(float speed_factor) const noexcept;
     [[nodiscard]] float render_interpolation_alpha(float speed_factor) const;
     [[nodiscard]] std::optional<RenderInterpolationPosition> render_position(
         std::uint32_t entity_id,
         float alpha) const;
     void testing_set_render_interpolation_elapsed_ms(float elapsed_ms);
-    void testing_set_next_snapshot_prior_alpha(float alpha);
     void testing_set_last_outbound_activity_elapsed_ms(float elapsed_ms);
 
 private:
@@ -150,9 +149,10 @@ private:
 
     using InterpolationClock = std::chrono::steady_clock;
 
-    void apply_full_snapshot(const WorldSnapshot& snapshot);
-    void apply_delta_snapshot(const WorldSnapshot& snapshot);
+    void apply_full_snapshot(const WorldSnapshot& snapshot, float prior_alpha);
+    void apply_delta_snapshot(const WorldSnapshot& snapshot, float prior_alpha);
     void apply_initial_setup(const InitialSetupMessage& message);
+    void poll_messages_impl(float first_snapshot_prior_alpha);
     void reset_render_interpolation();
     void update_render_interpolation(const WorldSnapshot& snapshot,
                                      bool reset_history,
@@ -178,8 +178,6 @@ private:
     void note_outbound_activity();
     void maybe_send_client_ready();
     void maybe_send_snapshot_hash_check(bool force = false);
-    float consume_prior_interpolation_alpha(bool reset_history);
-
     ITransport& transport_;
     PeerId server_peer_id_ = 0;
     GameWorld* world_ = nullptr;
@@ -212,8 +210,6 @@ private:
     std::uint32_t client_ready_count_ = 0;
     std::uint32_t keyframe_request_count_ = 0;
     std::uint32_t snapshot_hash_check_count_ = 0;
-    mutable float render_interpolation_speed_factor_ = 1.0f;
-    std::optional<float> testing_next_snapshot_prior_alpha_ = std::nullopt;
     std::function<void(const std::array<std::uint32_t, MAX_PLAYERS>&,
                        GameWorld*)> control_mapping_callback_;
     std::function<void(const InitialSetupMessage&, bool)> initial_setup_callback_;

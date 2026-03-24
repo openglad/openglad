@@ -312,10 +312,14 @@ ClientPollResult poll_client_messages(
 
 namespace og::sim {
 
-void GameClient::set_render_interpolation_speed_factor(float speed_factor) const
-    noexcept
+void GameClient::poll_messages()
 {
-    render_interpolation_speed_factor_ = std::max(speed_factor, 0.0f);
+    poll_messages_impl(render_interpolation_alpha(1.0f));
+}
+
+void GameClient::poll_messages(float current_render_alpha)
+{
+    poll_messages_impl(clamp_alpha(current_render_alpha));
 }
 
 float GameClient::render_interpolation_alpha(float speed_factor) const
@@ -352,11 +356,6 @@ void GameClient::testing_set_render_interpolation_elapsed_ms(float elapsed_ms)
         std::chrono::duration_cast<InterpolationClock::duration>(
             std::chrono::duration<float, std::milli>(
                 std::max(elapsed_ms, 0.0f)));
-}
-
-void GameClient::testing_set_next_snapshot_prior_alpha(float alpha)
-{
-    testing_next_snapshot_prior_alpha_ = clamp_alpha(alpha);
 }
 
 void GameClient::testing_set_last_outbound_activity_elapsed_ms(float elapsed_ms)
@@ -604,24 +603,6 @@ void GameClient::maybe_send_snapshot_hash_check(bool force)
     send_snapshot_hash_check();
 }
 
-float GameClient::consume_prior_interpolation_alpha(bool reset_history)
-{
-    if (reset_history)
-    {
-        testing_next_snapshot_prior_alpha_.reset();
-        return 1.0f;
-    }
-
-    if (testing_next_snapshot_prior_alpha_.has_value())
-    {
-        const float alpha = *testing_next_snapshot_prior_alpha_;
-        testing_next_snapshot_prior_alpha_.reset();
-        return alpha;
-    }
-
-    return render_interpolation_alpha(render_interpolation_speed_factor_);
-}
-
 void GameClient::notify_control_mapping_changed()
 {
     if (control_mapping_callback_)
@@ -669,7 +650,6 @@ void GameClient::reset_render_interpolation()
 {
     render_interpolation_.clear();
     last_snapshot_receive_time_.reset();
-    testing_next_snapshot_prior_alpha_.reset();
 }
 
 RenderInterpolationPosition GameClient::interpolate_position(
@@ -768,12 +748,13 @@ void GameClient::apply_initial_setup(const InitialSetupMessage& message)
     notify_control_mapping_changed();
 }
 
-void GameClient::apply_full_snapshot(const WorldSnapshot& snapshot)
+void GameClient::apply_full_snapshot(const WorldSnapshot& snapshot,
+                                     float prior_alpha)
 {
     const bool reset_history = !baseline_.has_value() || waiting_for_keyframe_;
-    const float prior_alpha = consume_prior_interpolation_alpha(reset_history);
     baseline_ = snapshot;
-    update_render_interpolation(*baseline_, reset_history, prior_alpha);
+    update_render_interpolation(
+        *baseline_, reset_history, reset_history ? 1.0f : prior_alpha);
     if (world_ != nullptr)
     {
         apply_snapshot(*world_, *baseline_);
@@ -788,7 +769,8 @@ void GameClient::apply_full_snapshot(const WorldSnapshot& snapshot)
     maybe_send_snapshot_hash_check(true);
 }
 
-void GameClient::apply_delta_snapshot(const WorldSnapshot& snapshot)
+void GameClient::apply_delta_snapshot(const WorldSnapshot& snapshot,
+                                      float prior_alpha)
 {
     if (waiting_for_keyframe_)
         return;
@@ -810,7 +792,6 @@ void GameClient::apply_delta_snapshot(const WorldSnapshot& snapshot)
         return;
     }
 
-    const float prior_alpha = consume_prior_interpolation_alpha(false);
     apply_delta(*baseline_, snapshot);
     update_render_interpolation(*baseline_, false, prior_alpha);
     if (world_ != nullptr)
@@ -835,7 +816,7 @@ void GameClient::note_event_batch_gap(std::uint32_t expected,
              actual);
 }
 
-void GameClient::poll_messages()
+void GameClient::poll_messages_impl(float first_snapshot_prior_alpha)
 {
     update_transport_connection_state();
     maybe_send_hello_if_needed();
@@ -876,8 +857,9 @@ void GameClient::poll_messages()
                 }
             }
             return false;
-        };
+    };
 
+    float next_snapshot_prior_alpha = clamp_alpha(first_snapshot_prior_alpha);
     for (std::size_t index = 0; index < last_polled_messages_.size(); ++index)
     {
         const auto& message = last_polled_messages_[index];
@@ -888,12 +870,20 @@ void GameClient::poll_messages()
         {
         case TypedReceivedMessageKind::Snapshot:
             if (message.snapshot)
-                apply_full_snapshot(*message.snapshot);
+            {
+                apply_full_snapshot(*message.snapshot,
+                                    next_snapshot_prior_alpha);
+                next_snapshot_prior_alpha = 0.0f;
+            }
             break;
 
         case TypedReceivedMessageKind::DeltaSnapshot:
             if (message.snapshot)
-                apply_delta_snapshot(*message.snapshot);
+            {
+                apply_delta_snapshot(*message.snapshot,
+                                     next_snapshot_prior_alpha);
+                next_snapshot_prior_alpha = 0.0f;
+            }
             break;
 
         case TypedReceivedMessageKind::SimEventBatch:

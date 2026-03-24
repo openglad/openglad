@@ -177,6 +177,24 @@ void apply_palette_id(screen& gameplay_screen, std::uint8_t palette_id)
     gameplay_screen.redrawme = 1;
 }
 
+void poll_local_transport_client(screen& gameplay_screen,
+                                 LocalTransportClient& client)
+{
+    if (!client.game_client)
+        return;
+
+    if (client.drives_display)
+    {
+        const float current_render_alpha =
+            client.game_client->render_interpolation_alpha(
+                gameplay_screen.render_interpolation_speed_factor());
+        client.game_client->poll_messages(current_render_alpha);
+        return;
+    }
+
+    client.game_client->poll_messages();
+}
+
 void release_screen_control_claims(screen& gameplay_screen)
 {
     for (auto& uptr : gameplay_screen.world().oblist)
@@ -725,7 +743,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         auto client_scope = session.activate();
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
-            client.game_client->poll_messages();
+            poll_local_transport_client(gameplay_screen, client);
     }
 
     session.local_transport_runtime_ = std::move(runtime);
@@ -889,7 +907,7 @@ void reset_network_host_transport_shadow(
         auto client_scope = session.activate();
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& local_client : runtime->clients)
-            local_client.game_client->poll_messages();
+            poll_local_transport_client(gameplay_screen, local_client);
     }
 
     session.local_transport_runtime_ = std::move(runtime);
@@ -933,7 +951,7 @@ void reset_network_client_transport_shadow(
     {
         auto client_scope = session.activate();
         GameplayContextGuard client_gameplay_scope(&session.game_);
-        runtime->clients.front().game_client->poll_messages();
+        poll_local_transport_client(gameplay_screen, runtime->clients.front());
     }
 
     session.local_transport_runtime_ = std::move(runtime);
@@ -1007,7 +1025,7 @@ void local_transport_shadow_finish_tick(GameSession& session)
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
         {
-            client.game_client->poll_messages();
+            poll_local_transport_client(*session.myscreen_, client);
             if (runtime->display_session_finished ||
                 session.myscreen_->world().end != 0)
             {
