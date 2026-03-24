@@ -423,16 +423,17 @@ TEST(ViewRedraw, damage_numbers_advance_once_per_sim_tick)
     cfg.apply_setting("effects", "damage_numbers", "on");
 
     vs->control = w;
+    active->world().tick_count_ = 50u;
     w->damage_numbers.emplace_back(
         static_cast<float>(w->xpos()),
         static_cast<float>(w->ypos()),
         12.0f,
-        RED);
+        RED,
+        active->world().tick_count_);
 
     const float initial_t = w->damage_numbers.front().t;
     const float initial_y = w->damage_numbers.front().y;
 
-    active->world().tick_count_ = 50u;
     (void)draw_walker(*w, vs);
     ASSERT_FALSE(w->damage_numbers.empty());
 
@@ -479,13 +480,14 @@ TEST(ViewRedraw, damage_numbers_catch_up_across_batched_sim_ticks)
     cfg.apply_setting("effects", "damage_numbers", "on");
 
     vs->control = w;
+    active->world().tick_count_ = 50u;
     w->damage_numbers.emplace_back(
         static_cast<float>(w->xpos()),
         static_cast<float>(w->ypos()),
         12.0f,
-        RED);
+        RED,
+        active->world().tick_count_);
 
-    active->world().tick_count_ = 50u;
     (void)draw_walker(*w, vs);
     ASSERT_FALSE(w->damage_numbers.empty());
 
@@ -498,6 +500,51 @@ TEST(ViewRedraw, damage_numbers_catch_up_across_batched_sim_ticks)
 
     EXPECT_FLOAT_EQ(after_first_draw_t - 0.15f, w->damage_numbers.front().t);
     EXPECT_FLOAT_EQ(after_first_draw_y - 4.5f, w->damage_numbers.front().y);
+
+    vs->control = nullptr;
+    active->world().tick_count_ = saved_tick;
+    cfg.apply_setting(
+        "effects",
+        "damage_numbers",
+        previous_damage_numbers.empty() ? "off" : previous_damage_numbers);
+}
+
+TEST(ViewRedraw, damage_numbers_catch_up_on_first_draw_after_batched_sim_ticks)
+{
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+
+    viewscreen* const vs = active->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    const std::uint32_t saved_tick = active->world().tick_count_;
+
+    prepare_view_world();
+    walker* const w = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+
+    const std::string previous_damage_numbers =
+        cfg.get_setting("effects", "damage_numbers");
+    cfg.apply_setting("effects", "damage_numbers", "on");
+
+    vs->control = w;
+    active->world().tick_count_ = 50u;
+    w->damage_numbers.emplace_back(
+        static_cast<float>(w->xpos()),
+        static_cast<float>(w->ypos()),
+        12.0f,
+        RED,
+        active->world().tick_count_);
+
+    const float initial_t = w->damage_numbers.front().t;
+    const float initial_y = w->damage_numbers.front().y;
+
+    active->world().tick_count_ = 53u;
+    (void)draw_walker(*w, vs);
+    ASSERT_FALSE(w->damage_numbers.empty());
+
+    EXPECT_FLOAT_EQ(initial_t - 0.20f, w->damage_numbers.front().t);
+    EXPECT_FLOAT_EQ(initial_y - 6.0f, w->damage_numbers.front().y);
 
     vs->control = nullptr;
     active->world().tick_count_ = saved_tick;
@@ -526,13 +573,14 @@ TEST(ViewRedraw, damage_number_cache_prunes_removed_walkers)
     walker* const first = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, first);
     vs->control = first;
+    active->world().tick_count_ = 60u;
     first->damage_numbers.emplace_back(
         static_cast<float>(first->xpos()),
         static_cast<float>(first->ypos()),
         12.0f,
-        RED);
+        RED,
+        active->world().tick_count_);
 
-    active->world().tick_count_ = 60u;
     (void)draw_walker(*first, vs);
     EXPECT_EQ(1u, damage_number_render_state_count(active));
 
@@ -544,14 +592,15 @@ TEST(ViewRedraw, damage_number_cache_prunes_removed_walkers)
     walker* const second = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, second);
     vs->control = second;
+    active->world().tick_count_ = 61u;
     second->damage_numbers.emplace_back(
         static_cast<float>(second->xpos()),
         static_cast<float>(second->ypos()),
         21.0f,
-        RED);
+        RED,
+        active->world().tick_count_);
 
     const float initial_t = second->damage_numbers.front().t;
-    active->world().tick_count_ = 61u;
     (void)draw_walker(*second, vs);
 
     ASSERT_FALSE(second->damage_numbers.empty());

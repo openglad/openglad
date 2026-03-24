@@ -93,17 +93,37 @@ static void award_score(unsigned char team_num, std::uint32_t points)
 void walker::do_heal_effects(walker* healer, walker* target, short amount)
 {
     if(healer)
-        healer->damage_numbers.push_back(DamageNumber(target->xpos() + target->sizex()/2, target->ypos(), amount, 56));
-    target->damage_numbers.push_back(DamageNumber(target->xpos() + target->sizex()/2, target->ypos(), amount, 56));
+        healer->damage_numbers.push_back(
+            DamageNumber(target->xpos() + target->sizex()/2,
+                         target->ypos(),
+                         amount,
+                         56,
+                         current_game->world->tick_count_));
+    target->damage_numbers.push_back(
+        DamageNumber(target->xpos() + target->sizex()/2,
+                     target->ypos(),
+                     amount,
+                     56,
+                     current_game->world->tick_count_));
 }
 
 void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 {
     // Orange numbers for the attacker to see
     if(attacker)
-        attacker->damage_numbers.push_back(DamageNumber(target->xpos() + target->sizex()/2, target->ypos(), tempdamage, 235));
+        attacker->damage_numbers.push_back(
+            DamageNumber(target->xpos() + target->sizex()/2,
+                         target->ypos(),
+                         tempdamage,
+                         235,
+                         current_game->world->tick_count_));
     // RED numbers for the target to see
-    target->damage_numbers.push_back(DamageNumber(target->xpos() + target->sizex()/2, target->ypos(), tempdamage, RED));
+    target->damage_numbers.push_back(
+        DamageNumber(target->xpos() + target->sizex()/2,
+                     target->ypos(),
+                     tempdamage,
+                     RED,
+                     current_game->world->tick_count_));
     if (target->stats()->hitpoints() < 0)
         tempdamage = static_cast<short>(static_cast<float>(tempdamage) + target->stats()->hitpoints());
 

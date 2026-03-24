@@ -220,10 +220,15 @@ class walker : public og::sim::SimEntity
             float x, y;
             float t;
             float value;
+            std::uint32_t created_tick = 0u; // Simulation tick when this number was spawned.
 
             unsigned char color;
 
-	            DamageNumber(float x_, float y_, float value_, unsigned char color_);
+	            DamageNumber(float x_,
+                         float y_,
+                         float value_,
+                         unsigned char color_,
+                         std::uint32_t created_tick_ = 0u);
 		};
 
 		void compute_outline(const walker* viewer_control);

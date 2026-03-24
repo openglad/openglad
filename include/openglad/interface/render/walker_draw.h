@@ -31,6 +31,7 @@ struct DamageNumberRenderSnapshot
     float y = 0.0f;
     float t = 0.0f;
     float value = 0.0f;
+    std::uint32_t created_tick = 0u;
     unsigned char color = 0;
 };
 

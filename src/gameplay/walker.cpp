@@ -692,8 +692,17 @@ bool float_eq(float a, float b)
     return (a == b || (a - 0.000001f < b && a + 0.000001f > b));
 }
 
-walker::DamageNumber::DamageNumber(float x_, float y_, float value_, unsigned char color_)
-    : x(x_), y(y_), t(1.0f), value(value_), color(color_)
+walker::DamageNumber::DamageNumber(float x_,
+                                   float y_,
+                                   float value_,
+                                   unsigned char color_,
+                                   std::uint32_t created_tick_)
+    : x(x_)
+    , y(y_)
+    , t(1.0f)
+    , value(value_)
+    , created_tick(created_tick_)
+    , color(color_)
 {}
 
 void walker::compute_outline(const walker* viewer_control)

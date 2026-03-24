@@ -35,6 +35,7 @@ bool damage_number_snapshot_matches(const DamageNumberRenderSnapshot& lhs,
            lhs.y == rhs.y &&
            lhs.t == rhs.t &&
            lhs.value == rhs.value &&
+           lhs.created_tick == rhs.created_tick &&
            lhs.color == rhs.color;
 }
 
@@ -46,6 +47,7 @@ DamageNumberRenderSnapshot damage_number_snapshot(
         .y = number.y,
         .t = number.t,
         .value = number.value,
+        .created_tick = number.created_tick,
         .color = number.color,
     };
 }
@@ -58,14 +60,22 @@ void snapshot_damage_number_state(DamageNumberRenderContext::Entry& state,
 
 std::uint32_t damage_number_advance_steps(
     const DamageNumberRenderContext::Entry* state,
+    const walker::DamageNumber& number,
     std::uint32_t current_tick)
 {
     if (state == nullptr)
         return 1u;
 
     const std::uint32_t last_advance_tick = state->last_advance_tick;
-    if (last_advance_tick == std::numeric_limits<std::uint32_t>::max() ||
-        last_advance_tick > current_tick)
+    if (last_advance_tick == std::numeric_limits<std::uint32_t>::max())
+    {
+        if (number.created_tick > current_tick)
+            return 1u;
+
+        return current_tick - number.created_tick + 1u;
+    }
+
+    if (last_advance_tick > current_tick)
     {
         return 1u;
     }
@@ -498,7 +508,7 @@ bool draw_walker(walker& w, viewscreen* view_buf)
                                                    damage_number_snapshot(*e));
 
             const std::uint32_t advance_steps =
-                damage_number_advance_steps(render_state, current_tick);
+                damage_number_advance_steps(render_state, *e, current_tick);
             if (advance_steps > 0u)
             {
                 const float advance_amount =

@@ -165,7 +165,13 @@ bool living::act()
 	{
 		set_flight_left(static_cast<short>(flight_left() + 1));
 		stats_->set_hitpoints(	stats_->hitpoints() - 1);
-		damage_numbers.push_back(DamageNumber(xpos() + sizex()/2, ypos(), 1, RED));
+		damage_numbers.push_back(
+            DamageNumber(
+                xpos() + sizex()/2,
+                ypos(),
+                1,
+                RED,
+                current_game->world->tick_count_));
 		
 		if (stats_->hitpoints() <= 0)
 		{
