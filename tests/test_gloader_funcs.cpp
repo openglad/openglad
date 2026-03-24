@@ -207,7 +207,9 @@ TEST(GloaderFuncs, gloader_invalid_family_clamp_paths)
     auto weapon_w = l->create_walker_owned(Order::Weapon, NUM_FAMILIES + 5);
     ASSERT_TRUE(weapon_w != nullptr) << "invalid weapon family should clamp to 0 and still construct";
     if (weapon_w)
+    {
         ASSERT_EQ(0, (int)weapon_w->family()) << "invalid non-living family should clamp to family 0";
+    }
 
     l->set_derived_stats(living_w.get(), Order::Living, NUM_FAMILIES + 9);
     ASSERT_TRUE(living_w->normal_stepsize() >= 0.0f) << "set_derived_stats should clamp invalid family safely";
@@ -228,7 +230,9 @@ TEST(GloaderFuncs, gloader_order_special_and_invalid_graphics_paths)
     auto special = l->create_walker_owned(Order::Special, FAMILY_RESERVED_TEAM);
     ASSERT_TRUE(special != nullptr) << "special order should build generic walker when graphics exist";
     if (special)
+    {
         ASSERT_TRUE(special->query_order() == Order::Special) << "special walker should keep special order";
+    }
 
     // Cover the "invalid graphics -> popup + nullptr" branch deterministically.
     const int idx = PIX(Order::Special, FAMILY_RESERVED_TEAM);
@@ -241,7 +245,9 @@ TEST(GloaderFuncs, gloader_order_special_and_invalid_graphics_paths)
     auto neg_living = l->create_walker_owned(Order::Living, -4);
     ASSERT_TRUE(neg_living != nullptr) << "negative living family should clamp to soldier";
     if (neg_living)
+    {
         ASSERT_EQ((int)FAMILY_SOLDIER, (int)neg_living->family()) << "negative living family should map to soldier";
+    }
 }
 
 

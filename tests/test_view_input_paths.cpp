@@ -95,7 +95,6 @@ TEST(ViewInputPaths, view_input_switch_control_forward_and_reverse)
 
     walker* w1p = w1.get();
     walker* w2p = w2.get();
-    walker* w3p = w3.get();
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w1));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w2));

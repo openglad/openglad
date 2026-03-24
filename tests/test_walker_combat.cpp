@@ -1320,7 +1320,9 @@ TEST(WalkerCombat, round8_attack_early_return_guards)
     walker* treasure_target = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_GOLD_BAR);
     ASSERT_TRUE(treasure_target != nullptr) << "treasure target created";
     if (treasure_target)
+    {
         ASSERT_TRUE(!attacker->attack(treasure_target)) << "attack should fail against treasure targets";
+    }
 
     // Invincible target guard via bit flag.
     living_target->stats()->set_bit_flags(BIT_INVINCIBLE, 1);

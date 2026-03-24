@@ -638,7 +638,9 @@ TEST(LivingCombat, living_act_command_execution_and_autoattackable_edges)
     if (non_auto_weap)
         (void)walkerIsAutoAttackable(non_auto_weap);
     if (non_attackable)
+    {
         ASSERT_TRUE(!walkerIsAutoAttackable(non_attackable)) << "non-living non-generator non-weapon should not be auto-attackable";
+    }
 }
 
 
@@ -717,7 +719,7 @@ TEST(LivingCombat, living_round8_dead_outline_forestwalk_and_offmap_walk_paths)
     ASSERT_TRUE(lv->stepsize() <= normal + 0.1f) << "high dex forestwalk branch should clamp temp and avoid negative speed penalty";
 
     // Off-map walk rejection branch.
-    w->set_curdir(lv->facing(-1000, 0));
+    w->set_curdir(static_cast<signed char>(lv->facing(-1000, 0)));
     ASSERT_TRUE(!lv->walk(-1000, 0)) << "walk should reject off-map target coordinates";
 }
 

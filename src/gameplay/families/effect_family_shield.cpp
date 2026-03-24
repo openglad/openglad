@@ -72,9 +72,10 @@ static bool boomerang_on_act(effect* self)
         return true;
     }
     orbit_offset(self->drawcycle(), xd, yd);
-    xd *= (self->drawcycle()+4);
+    const float orbit_scale = static_cast<float>(self->drawcycle() + 4);
+    xd *= orbit_scale;
     xd /= 48;
-    yd *= (self->drawcycle()+4);
+    yd *= orbit_scale;
     yd /= 48;
     self->center_on(self->owner());
     self->setworldxy(self->worldx()+xd, self->worldy()+yd);

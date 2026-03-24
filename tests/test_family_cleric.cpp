@@ -253,12 +253,12 @@ TEST(FamilyCleric, r11_resurrect_friendly_and_hostile_paths)
     ASSERT_TRUE(!desc.do_special(cleric));
 
     // friendly blood resurrect path + exp penalty floor branch
-    walker* friendly_stain = add_stain(fx, 88, 80, 0, FAMILY_SOLDIER);
+    (void)add_stain(fx, 88, 80, 0, FAMILY_SOLDIER);
     cleric->myguy->exp = 0;
     (void)desc.do_special(cleric);
 
     // hostile blood branch summons ghost
-    walker* hostile_stain = add_stain(fx, 86, 84, 1, FAMILY_ORC);
+    (void)add_stain(fx, 86, 84, 1, FAMILY_ORC);
     (void)desc.do_special(cleric);
 }
 } // namespace detail_family_cleric_r11

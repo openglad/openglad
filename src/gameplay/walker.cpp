@@ -773,8 +773,11 @@ void walker::compute_outline(const walker* viewer_control)
 	    next_outline = 0;
 	}
 
-    if(next_outline == 0 && user() != -1 && viewer_control && this != viewer_control && this->team_num() == viewer_control->team_num())
+    if (next_outline == 0 && user() != -1 && viewer_control && this != viewer_control
+        && this->team_num() == viewer_control->team_num())
+    {
         next_outline = query_team_color();
+    }
 	set_outline(next_outline);
 }
 
@@ -1103,19 +1106,17 @@ walker  *walker::create_weapon()
 
 bool walker::query_next_to()
 {
-	short newx, newy;
-
-	newx = xpos();
-	newy = ypos();
+	float newx = static_cast<float>(xpos());
+	float newy = static_cast<float>(ypos());
 
 	if (lastx() > 0.0f)
-		newx += sizex();
+		newx += static_cast<float>(sizex());
 	else if (lastx() < 0.0f)
-		newx += -sizex();
+		newx -= static_cast<float>(sizex());
 	if (lasty() > 0.0f)
-		newy += sizey();
+		newy += static_cast<float>(sizey());
 	else //if (lasty < 0)
-		newy += -sizey();
+		newy -= static_cast<float>(sizey());
 
 	if (!current_game->world->query_object_passable(newx, newy, this))
 	{
@@ -1131,9 +1132,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 {
 	walker  *weapon = nullptr;
 	//  short newx=0, newy=0;
-	short i, loops;
-	short xdir = 0;
-	short ydir = 0;
+	short i;
 	std::int32_t distance;
 	short targetdir;
 
@@ -1183,12 +1182,6 @@ bool walker::fire_check(short xdelta, short ydelta)
 		weapon->set_dead(1);
 		return 0;
 	}
-
-		if (xdelta != 0)
-			xdir = (xdelta > 0) ? 1 : -1;
-
-		if (ydelta != 0)
-			ydir = (ydelta > 0) ? 1 : -1;
 
 	// Run weapon through where it would go if all went well ..
 	for (i=0; i < weapon->lineofsight(); i++)
@@ -1364,7 +1357,10 @@ short walker::spaces_clear()
 	for (i=-1; i < 2; i++)
 		for (j=-1; j < 2; j++)
 			if (i || j) // don't check our own location
-				if (current_game->world->query_passable(xpos()+(i*sizex()), ypos()+(j*sizey()), this) )
+				if (current_game->world->query_passable(
+				        static_cast<float>(xpos() + (i * sizex())),
+				        static_cast<float>(ypos() + (j * sizey())),
+				        this))
 					count++;
 
 	return count;
@@ -1608,15 +1604,9 @@ bool walker::check_special()
 // Center us on target walker
 void walker::center_on(walker  *target)
 {
-	short newx, newy;
-
 	// First get the center of our target ..
-	newx = target->xpos() + target->sizex()/2;
-	newy = target->ypos() + target->sizey()/2;
-
-	// Now adjust for our position ..
-	newx -= sizex()/2;
-	newy -= sizey()/2;
+	const std::int32_t newx = target->xpos() + target->sizex()/2 - sizex()/2;
+	const std::int32_t newy = target->ypos() + target->sizey()/2 - sizey()/2;
 
 	// Now set our position ..
 	setxy(newx, newy);

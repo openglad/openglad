@@ -101,7 +101,7 @@ int read_handler(void* data, unsigned char* buffer, std::size_t size, std::size_
     return 1;
 }
 
-int write_handler(void* data, unsigned char* buffer, std::size_t size)
+[[maybe_unused]] int write_handler(void* data, unsigned char* buffer, std::size_t size)
 {
     auto* out = static_cast<std::vector<unsigned char>*>(data);
     out->insert(out->end(), buffer, buffer + size);

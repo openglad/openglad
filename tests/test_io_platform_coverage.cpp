@@ -884,7 +884,9 @@ TEST(IoPlatformCoverage, og_file_round6_physfs_zero_size_and_stdio_seek_failure_
     auto in_stdio = og::io::og_open_read((tmp_dir.string() + "/").c_str(), "seek_fail.bin");
     ASSERT_TRUE(in_stdio != nullptr) << "open stdio seek-fail file";
     if (in_stdio)
+    {
         ASSERT_EQ(-1, (int)in_stdio->seek(-1, 0)) << "stdio seek should fail for negative SET offset";
+    }
 }
 
 
@@ -942,4 +944,3 @@ TEST(IoPlatformCoverage, zip_platform_round8_open_archive_and_mount_error_paths)
     ASSERT_EQ(-2, load_campaign("definitely.not.a.campaign", current_levels, 5)) << "load_campaign should map mount failure to -2";
     set_mounted_campaign_for_testing(prev);
 }
-

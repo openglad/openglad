@@ -1496,7 +1496,7 @@ TEST(FamilyBehaviors, cleric_turn_undead_special2_and_3_shifter_notification_pat
     cleric->set_busy(0);
     cleric->stats()->set_level(6);
     ConstRandomFamily rng2(0);
-    const int exp_before_2 = cleric->myguy ? cleric->myguy->exp : 0;
+    const std::uint32_t exp_before_2 = cleric->myguy ? cleric->myguy->exp : 0u;
     bool ok = fd->do_special(cleric);
     ASSERT_TRUE(ok) << "turn undead special2 shifter path should succeed";
     ASSERT_TRUE(cleric->myguy && cleric->myguy->exp >= exp_before_2) << "turn undead special2 should run exp/notification block when generic is positive";
@@ -1520,7 +1520,7 @@ TEST(FamilyBehaviors, cleric_turn_undead_special2_and_3_shifter_notification_pat
     cleric->set_busy(0);
     cleric->stats()->set_level(6);
     ConstRandomFamily rng3(0);
-    const int exp_before_3 = cleric->myguy ? cleric->myguy->exp : 0;
+    const std::uint32_t exp_before_3 = cleric->myguy ? cleric->myguy->exp : 0u;
     ok = fd->do_special(cleric);
     ASSERT_TRUE(ok) << "turn undead special3 shifter path should succeed";
     ASSERT_TRUE(cleric->myguy && cleric->myguy->exp >= exp_before_3) << "turn undead special3 should run exp/notification block when generic is positive";
@@ -1550,7 +1550,7 @@ TEST(FamilyBehaviors, cleric_resurrect_penalty_underflow_clamps_to_zero)
 
     bool ok = fd->do_special(cleric);
     ASSERT_TRUE(ok) << "resurrect should succeed for nearby friendly blood";
-    ASSERT_TRUE(cleric->myguy->exp >= 0) << "resurrect path should leave non-negative experience";
+    ASSERT_EQ(90u, cleric->myguy->exp) << "resurrect should clamp the penalty at zero before awarding the fixed resurrect XP";
 }
 
 
@@ -1836,7 +1836,9 @@ TEST(FamilyBehaviors, druid_batch3_special_branches)
     float hp_before = existing_circle ? existing_circle->stats()->hitpoints() : 0.0f;
     ASSERT_TRUE(fd->do_special(druid)) << "second protection cast should refresh existing circle";
     if (existing_circle)
+    {
         ASSERT_TRUE(existing_circle->stats()->hitpoints() >= hp_before) << "existing circle HP should not decrease on refresh";
+    }
 }
 
 
@@ -2043,7 +2045,9 @@ TEST(FamilyBehaviors, family_batch4_druid_refresh_oblist_and_failure_branches)
     druid->set_busy(0);
     ASSERT_TRUE(fd->do_special(druid)) << "protection should succeed with multiple allies";
     if (existing)
+    {
         ASSERT_TRUE(existing->stats()->hitpoints() >= 5.0f) << "existing protection HP should be refreshed";
+    }
 }
 
 
@@ -2422,7 +2426,9 @@ TEST(FamilyBehaviors, family_round6_mage_thief_soldier_guard_branches)
     thief->set_foe(add_living_to_level(FAMILY_SOLDIER, 1, 200, 100));
     ASSERT_TRUE(thief->foe() != nullptr) << "thief foe created";
     if (thief->foe())
+    {
         ASSERT_TRUE(!thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief bomb AI should reject when foe distance is in drop-bomb window";
+    }
     thief->set_foe(nullptr);
     ASSERT_TRUE(!thief_fd->check_special_ai(static_cast<living*>(thief))) << "thief bomb AI should reject when too few foes are nearby";
     thief->set_current_special(5);

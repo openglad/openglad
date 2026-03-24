@@ -119,7 +119,6 @@ TEST(PickerCommon, calculate_train_cost_delta)
     ASSERT_TRUE(cost == 0);
 
     // Increase strength — positive cost
-    auto* fd = get_family_descriptor(FAMILY_SOLDIER);
     trained.strength = static_cast<short>(original.strength + 5);
     cost = og::ui::calculate_train_cost(trained, original);
     ASSERT_TRUE(cost > 0);
@@ -816,8 +815,14 @@ TEST(PickerCommon, for_each_team_member)
     og::ui::for_each_team_member(save, [&](int slot, const guy& member) {
         count++;
         slots.push_back(slot);
-        if (slot == 0) ASSERT_TRUE(member.name == "Alpha");
-        if (slot == 2) ASSERT_TRUE(member.name == "Beta");
+        if (slot == 0)
+        {
+            ASSERT_TRUE(member.name == "Alpha");
+        }
+        if (slot == 2)
+        {
+            ASSERT_TRUE(member.name == "Beta");
+        }
     });
 
     ASSERT_TRUE(count == 2);

@@ -892,7 +892,7 @@ TEST(WalkerCoreMore, walker_round7b_base_act_guard_random_and_death_paths)
     }
 
     // Save-all early-return event branch in living death path.
-    const short old_type = og::runtime::current_session->myscreen_->world().type;
+    const char old_type = og::runtime::current_session->myscreen_->world().type;
     og::runtime::current_session->myscreen_->world().type = static_cast<short>(SCEN_TYPE_SAVE_ALL);
     walker* named = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_TRUE(named != nullptr) << "named living created";
@@ -1187,7 +1187,9 @@ TEST(WalkerCoreMore, walker_round17_query_next_to_and_fire_check_early_branches)
     walker* gen = og::runtime::current_session->myscreen_->world().add_ob(Order::Generator, FAMILY_TOWER);
     ASSERT_TRUE(gen != nullptr) << "generator created";
     if (gen)
+    {
         ASSERT_TRUE(gen->fire_check(1, 0)) << "generator fire_check should short-circuit true";
+    }
 
     // fire_check no-foe early return path (walker.cpp:955-959).
     actor->set_foe(nullptr);

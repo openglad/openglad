@@ -482,8 +482,8 @@ void statistics::hit_response(walker  *who)
 	if (who->dead() || controller_->dead())
 		return;
 
-		if (controller_->act_type() == ACT_CONTROL)
-			return;
+	if (controller_->act_type() == ACT_CONTROL)
+		return;
 
 	if (controller_->query_order() != Order::Living)
 		return;

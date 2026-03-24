@@ -209,7 +209,7 @@ void set_at(PixieData& pd, int x, int y, unsigned char v)
     pd.data[x + y * pd.w] = v;
 }
 
-unsigned char get_at(const PixieData& pd, int x, int y)
+[[maybe_unused]] unsigned char get_at(const PixieData& pd, int x, int y)
 {
     return pd.data[x + y * pd.w];
 }
@@ -583,8 +583,8 @@ PixieData make_grid(unsigned char fill, int w = 9, int h = 9)
 {
     PixieData pd;
     pd.frames = 1;
-    pd.w = w;
-    pd.h = h;
+    pd.w = static_cast<unsigned char>(w);
+    pd.h = static_cast<unsigned char>(h);
     pd.data = std::make_unique<unsigned char[]>(static_cast<std::size_t>(w * h));
     for (int i = 0; i < w * h; ++i)
         pd.data[i] = fill;

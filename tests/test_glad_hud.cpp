@@ -95,8 +95,6 @@ TEST(GladHud, glad_remaining_counts)
     ASSERT_TRUE(control && ally && foe1 && foe2) << "walkers should be created";
 
     walker* controlp = control.get();
-    walker* allyp = ally.get();
-    walker* foe1p = foe1.get();
     walker* foe2p = foe2.get();
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control));

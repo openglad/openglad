@@ -768,7 +768,9 @@ TEST(LevelDataLoadVersions, level_data_load_version6plus_named_objects_treasure_
     ASSERT_TRUE(!data.world().fxlist.empty()) << "treasure object should be routed into fxlist";
     ASSERT_TRUE(!data.world().weaplist.empty()) << "door object should be routed into weaplist";
     if (!data.world().fxlist.empty())
+    {
         ASSERT_TRUE(data.world().fxlist.front()->stats()->query_bit_flags(BIT_NAMED) != 0) << "name length > 1 should set BIT_NAMED";
+    }
 
     bool saw_door = false;
     for (auto& uptr : data.world().weaplist)

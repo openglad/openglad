@@ -307,8 +307,10 @@ void SimpleButton::draw(screen* s)
 
 bool SimpleButton::contains(int x, int y) const
 {
-    return (area.x <= x && x < area.x + area.w
-            && area.y <= y && y < area.y + area.h);
+    const int max_x = area.x + static_cast<int>(area.w);
+    const int max_y = area.y + static_cast<int>(area.h);
+    return (area.x <= x && x < max_x
+            && area.y <= y && y < max_y);
 }
 
 void SimpleButton::set_colors_normal()
@@ -1338,12 +1340,12 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	static char livings[NUM_FAMILIES][20] = {};
 	static bool livings_init = false;
 	if (!livings_init) {
-	    for (int i = 0; i < NUM_FAMILIES; i++) {
-	        const auto* fd = get_family_descriptor(i);
+	    for (int family_index = 0; family_index < NUM_FAMILIES; family_index++) {
+	        const auto* fd = get_family_descriptor(family_index);
 	        if (fd && fd->name)
-	            snprintf(livings[i], 20, "%s", fd->name);
+	            snprintf(livings[family_index], 20, "%s", fd->name);
 	        else
-	            snprintf(livings[i], 20, "BEAST");
+	            snprintf(livings[family_index], 20, "BEAST");
 	    }
 	    livings_init = true;
 	}

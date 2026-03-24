@@ -11,7 +11,14 @@
 
 #include <openglad/resources/io_common.h> // ArchiveIoError values
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#endif
 #include "zip.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include <array>
 #include <cstdio>

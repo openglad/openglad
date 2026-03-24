@@ -248,7 +248,9 @@ TEST(LevelDataCoverage, level_data_load_clamps_invalid_team_ids_to_score_range)
     walker* loaded = data.world().oblist.empty() ? nullptr : data.world().oblist.front().get();
     ASSERT_TRUE(loaded != nullptr) << "loaded walker should exist";
     if (loaded)
+    {
         ASSERT_EQ(0, (int)loaded->team_num()) << "invalid team id should clamp to 0";
+    }
     data.delete_objects();
 }
 
@@ -1300,7 +1302,9 @@ TEST(LevelDataCoverage, level_data_round14_find_helper_exclusion_branches)
     auto foes = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->world().oblist, 32, &howmany, actor);
     ASSERT_EQ(1, (int)foes.size()) << "find_foes_in_range should keep one alive enemy in range";
     if (!foes.empty())
+    {
         ASSERT_TRUE(foes.front() == hidden_foe) << "find_foes_in_range should exclude dead and friendly walkers";
+    }
 
     auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 32, &howmany, actor);
     ASSERT_TRUE(foe_weapons.empty()) << "find_foe_weapons_in_range should exclude enemy-team weapons";

@@ -43,11 +43,11 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
     // view controls (other tests may clear them).
     struct ScreenGuard
     {
-        int old_numviews;
+        short old_numviews;
         walker* old_c0;
         walker* old_c1;
-        int old_yo0;
-        int old_yo1;
+        short old_yo0;
+        short old_yo1;
         explicit ScreenGuard(screen* s)
             : old_numviews(s->numviews)
             , old_c0(nullptr)
@@ -122,4 +122,3 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
         }
     }
 }
-

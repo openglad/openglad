@@ -11,7 +11,14 @@
 
 #include <unistd.h>
 #include <physfs.h>
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
+#endif
 #include "zip.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 static bool write_file_bytes(const std::string& path, const std::string& contents)
 {
@@ -307,4 +314,3 @@ TEST(IoZipUnzip, io_unzip_reports_output_write_failure)
     fs::remove_all(base, ec);
 #endif
 }
-
