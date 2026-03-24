@@ -297,6 +297,28 @@ void apply_authoritative_event_state(GameWorld& world,
     }
 }
 
+template <typename EntityList>
+void consume_hurt_flash_in_entities(const EntityList& entities)
+{
+    for (const auto& entry : entities)
+    {
+        walker* const entity = entry.get();
+        if (entity != nullptr && entity->hurt_flash())
+            entity->set_hurt_flash(false);
+    }
+}
+
+void consume_authoritative_visual_transients(GameWorld& world,
+                                             og::sim::SnapshotCaptureMode mode)
+{
+    if (mode != og::sim::SnapshotCaptureMode::Consume)
+        return;
+
+    consume_hurt_flash_in_entities(world.oblist);
+    consume_hurt_flash_in_entities(world.fxlist);
+    consume_hurt_flash_in_entities(world.weaplist);
+}
+
 ServerPollResult poll_server_messages(
     og::sim::ITransport& transport)
 {
@@ -2146,6 +2168,8 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             peer_id,
             std::make_shared<WorldSnapshot>(std::move(delta)));
     }
+
+    consume_authoritative_visual_transients(world_, capture_mode);
 
     if (drained_batch.has_value())
         forward_event_batch(*drained_batch);

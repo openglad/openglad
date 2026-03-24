@@ -281,8 +281,7 @@ void expect_entity_snapshot_matches(
     const walker& live,
     const og::sim::EntitySnapshot& snapshot,
     const std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>&
-        expected_dirty_mask,
-    int expected_hurt_flash = -1)
+        expected_dirty_mask)
 {
     SCOPED_TRACE(::testing::Message() << "entity_id=" << live.entity_id());
 
@@ -343,11 +342,7 @@ void expect_entity_snapshot_matches(
     EXPECT_EQ(live.yo_delay(), snapshot.yo_delay);
     EXPECT_EQ(live.skip_exit(), snapshot.skip_exit);
     EXPECT_EQ(live.outline(), snapshot.outline);
-    EXPECT_EQ(
-        expected_hurt_flash >= 0
-            ? static_cast<std::uint8_t>(expected_hurt_flash)
-            : snapshot_bool(live.hurt_flash()),
-        snapshot.hurt_flash);
+    EXPECT_EQ(snapshot_bool(live.hurt_flash()), snapshot.hurt_flash);
     EXPECT_EQ(live.lifetime(), snapshot.lifetime);
     EXPECT_FLOAT_EQ(live.speed_bonus(), snapshot.speed_bonus);
     EXPECT_EQ(live.speed_bonus_left(), snapshot.speed_bonus_left);
@@ -1056,8 +1051,7 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
     EXPECT_EQ(collide->entity_id(), actor_snapshot->collide_ob_id);
     EXPECT_EQ(controller->entity_id(), actor_snapshot->controller_id);
 
-    expect_entity_snapshot_matches(
-        *actor, *actor_snapshot, actor_expected_dirty, 1);
+    expect_entity_snapshot_matches(*actor, *actor_snapshot, actor_expected_dirty);
     expect_entity_snapshot_matches(*weapon, *weapon_snapshot,
                                    clean_expected_dirty);
     expect_entity_snapshot_matches(*fx_entity, *fx_snapshot,
@@ -1069,11 +1063,8 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
                         removed_id));
     EXPECT_TRUE(world.removed_entity_ids().empty());
 
-    std::array<std::uint64_t, og::sim::kEntitySnapshotDirtyMaskWords>
-        actor_post_capture_dirty = {};
-    set_mask_bit(actor_post_capture_dirty, og::dirty::BIT_HURT_FLASH);
-    EXPECT_EQ(actor_post_capture_dirty[0], actor->dirty_mask_word(0));
-    EXPECT_EQ(actor_post_capture_dirty[1], actor->dirty_mask_word(1));
+    EXPECT_EQ(0ULL, actor->dirty_mask_word(0));
+    EXPECT_EQ(0ULL, actor->dirty_mask_word(1));
     EXPECT_EQ(0ULL, weapon->dirty_mask_word(0));
     EXPECT_EQ(0ULL, weapon->dirty_mask_word(1));
     EXPECT_EQ(0ULL, fx_entity->dirty_mask_word(0));
@@ -1117,7 +1108,7 @@ TEST(WorldSnapshot, keyframe_capture_marks_all_fields_and_sends_full_grid)
     EXPECT_EQ(0ULL, actor->dirty_mask_word(1));
 }
 
-TEST(WorldSnapshot, capture_snapshot_consumes_hurt_flash_after_serializing_it)
+TEST(WorldSnapshot, capture_snapshot_preserves_hurt_flash_state)
 {
     TestGameWorld fx;
     GameWorld& world = fx.world();
@@ -1132,18 +1123,7 @@ TEST(WorldSnapshot, capture_snapshot_consumes_hurt_flash_after_serializing_it)
         find_entity_snapshot(first.oblist, actor->entity_id());
     ASSERT_NE(nullptr, first_actor);
     EXPECT_EQ(1u, first_actor->hurt_flash);
-    EXPECT_FALSE(actor->hurt_flash());
-    EXPECT_NE(
-        0ULL,
-        actor->dirty_mask_word(og::dirty::BIT_HURT_FLASH / 64) &
-            (1ULL << (og::dirty::BIT_HURT_FLASH % 64)));
-
-    const og::sim::WorldSnapshot second = og::sim::capture_snapshot(world);
-    const og::sim::EntitySnapshot* second_actor =
-        find_entity_snapshot(second.oblist, actor->entity_id());
-    ASSERT_NE(nullptr, second_actor);
-    EXPECT_EQ(0u, second_actor->hurt_flash);
-    EXPECT_FALSE(actor->hurt_flash());
+    EXPECT_TRUE(actor->hurt_flash());
     EXPECT_EQ(0ULL, actor->dirty_mask_word(0));
     EXPECT_EQ(0ULL, actor->dirty_mask_word(1));
 }

@@ -187,6 +187,18 @@ og::sim::LobbyState make_lobby_state_for_test()
     return state;
 }
 
+const og::sim::EntitySnapshot* find_entity_snapshot(
+    const std::vector<og::sim::EntitySnapshot>& entities,
+    std::uint32_t entity_id)
+{
+    const auto it = std::find_if(
+        entities.begin(), entities.end(),
+        [entity_id](const og::sim::EntitySnapshot& snapshot) {
+            return snapshot.entity_id == entity_id;
+        });
+    return it == entities.end() ? nullptr : &*it;
+}
+
 TEST(NetTransport, header_helpers_roundtrip_envelope)
 {
     std::vector<std::uint8_t> bytes;
@@ -1000,6 +1012,55 @@ TEST(NetTransport,
             transport.broadcast_messages().front().size());
     EXPECT_EQ(og::sim::KEYFRAME_INTERVAL_TICKS, snapshot.tick_count);
     EXPECT_EQ(3, snapshot.current_palette_id);
+}
+
+TEST(NetTransport,
+     game_server_keyframe_preserves_hurt_flash_before_authoritative_consumption)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    walker* const actor = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+
+    transport.set_connected_peers({7u});
+    server.poll_incoming_messages();
+    server.bind_player(7u, 0u, fixture.world().my_team);
+    server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+    transport.clear_sent_messages();
+    transport.clear_broadcast_messages();
+
+    const og::sim::ClientReadyMessage ready{
+        .last_applied_tick = fixture.world().tick_count_,
+    };
+    transport.queue_received(
+        7u, og::sim::serialize_client_ready_message(ready));
+    server.step();
+    transport.clear_sent_messages();
+    transport.clear_broadcast_messages();
+
+    fixture.world().tick_count_ = og::sim::KEYFRAME_INTERVAL_TICKS;
+    actor->set_hurt_flash(true);
+
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Consume,
+                                   og::sim::EventDeliveryMode::Skip);
+
+    ASSERT_EQ(1u, transport.broadcast_messages().size());
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::deserialize_snapshot(
+            transport.broadcast_messages().front().data(),
+            transport.broadcast_messages().front().size());
+    const og::sim::EntitySnapshot* actor_snapshot =
+        find_entity_snapshot(snapshot.oblist, actor->entity_id());
+    ASSERT_NE(nullptr, actor_snapshot);
+    EXPECT_EQ(1u, actor_snapshot->hurt_flash);
+    EXPECT_FALSE(actor->hurt_flash());
+    EXPECT_NE(
+        0ULL,
+        actor->dirty_mask_word(og::dirty::BIT_HURT_FLASH / 64) &
+            (1ULL << (og::dirty::BIT_HURT_FLASH % 64)));
 }
 
 TEST(NetTransport,
