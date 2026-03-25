@@ -32,6 +32,11 @@ struct OrderedLobbySlot {
     const og::sim::LobbyCharacterSlot* slot = nullptr;
 };
 
+struct PreservedSaveSlot {
+    std::uint8_t slot_index = 0;
+    std::unique_ptr<guy> member;
+};
+
 og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
 {
     og::sim::LobbyCharacterData character;
@@ -113,9 +118,10 @@ std::vector<short> build_peer_team_mapping(const SaveData& save, bool spectator_
     const int required_players = spectator_mode
         ? 0
         : std::clamp<int>(save.numplayers, 1, MAX_PLAYERS);
-    const int target_count = std::max<int>(
-        required_players,
-        static_cast<int>(teams.size()));
+    const int target_count = required_players;
+
+    if (static_cast<int>(teams.size()) > target_count)
+        teams.resize(static_cast<std::size_t>(target_count));
 
     for (short candidate = 0;
          static_cast<int>(teams.size()) < target_count && candidate < MAX_PLAYERS;
@@ -129,6 +135,72 @@ std::vector<short> build_peer_team_mapping(const SaveData& save, bool spectator_
         teams.push_back(0);
 
     return teams;
+}
+
+std::vector<short> collect_active_player_teams(const og::sim::LobbyState& state)
+{
+    std::vector<short> teams;
+    teams.reserve(state.players.size());
+    for (const og::sim::LobbyPlayer& player : state.players)
+    {
+        const short team = static_cast<short>(player.team);
+        if (std::find(teams.begin(), teams.end(), team) == teams.end())
+            teams.push_back(team);
+    }
+    return teams;
+}
+
+std::vector<PreservedSaveSlot> take_preserved_save_slots(
+    SaveData& save,
+    const std::vector<short>& active_teams)
+{
+    std::vector<PreservedSaveSlot> preserved;
+    for (std::size_t slot_index = 0; slot_index < save.team_list.size(); ++slot_index)
+    {
+        if (!save.team_list[slot_index])
+            continue;
+
+        const short team = save.team_list[slot_index]->teamnum;
+        if (std::find(active_teams.begin(), active_teams.end(), team) != active_teams.end())
+            continue;
+
+        preserved.push_back(PreservedSaveSlot{
+            .slot_index = static_cast<std::uint8_t>(slot_index),
+            .member = std::move(save.team_list[slot_index]),
+        });
+    }
+    return preserved;
+}
+
+void restore_preserved_save_slots(
+    SaveData& save,
+    std::vector<PreservedSaveSlot> preserved)
+{
+    for (PreservedSaveSlot& preserved_slot : preserved)
+    {
+        if (!preserved_slot.member)
+            continue;
+
+        std::size_t restore_index = preserved_slot.slot_index;
+        if (restore_index >= save.team_list.size() || save.team_list[restore_index])
+        {
+            restore_index = save.team_list.size();
+            for (std::size_t candidate = 0; candidate < save.team_list.size(); ++candidate)
+            {
+                if (!save.team_list[candidate])
+                {
+                    restore_index = candidate;
+                    break;
+                }
+            }
+        }
+
+        if (restore_index >= save.team_list.size())
+            continue;
+
+        save.team_list[restore_index] = std::move(preserved_slot.member);
+        save.team_size++;
+    }
 }
 
 class LocalPickerLobbyClient final : public og::ui::IPickerLobbyClient
@@ -421,6 +493,11 @@ private:
             return;
 
         SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        const std::vector<short> active_teams =
+            collect_active_player_teams(*state_);
+        std::vector<PreservedSaveSlot> preserved_slots =
+            take_preserved_save_slots(save, active_teams);
+
         save.current_campaign = state_->settings.campaign_id.empty()
             ? std::string("org.openglad.gladiator")
             : state_->settings.campaign_id;
@@ -488,6 +565,8 @@ private:
 
         og::runtime::current_session->current_difficulty_ =
             static_cast<std::int32_t>(state_->settings.difficulty);
+
+        restore_preserved_save_slots(save, std::move(preserved_slots));
     }
 
     std::shared_ptr<og::sim::InProcessTransport> server_transport_;
