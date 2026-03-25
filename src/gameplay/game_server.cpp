@@ -1893,8 +1893,12 @@ void GameServer::forward_event_batch(const SimEventBatch& batch)
 }
 
 void GameServer::remember_snapshot_hash(ConnectedClientState& client,
-                                        const WorldSnapshot& snapshot)
+                                        const WorldSnapshot& snapshot,
+                                        bool expect_client_hash_check)
 {
+    if (!expect_client_hash_check)
+        return;
+
     client.expected_snapshot_hashes[snapshot.tick_count].push_back(
         snapshot.snapshot_hash);
     const std::uint32_t oldest_tick =
@@ -2163,7 +2167,15 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             consume_delta_snapshot_for_client(client.snapshot_state, snapshot);
         client.budget_pending_keyframe = false;
         client.force_keyframe = false;
-        remember_snapshot_hash(client, delta);
+        // Clients only auto-send hash checks for full snapshots and periodic
+        // delta ticks. Skipping non-periodic deltas avoids same-tick pause or
+        // exit keyframes being compared against an earlier delta hash for the
+        // same authoritative tick.
+        remember_snapshot_hash(
+            client,
+            delta,
+            delta.tick_count != 0 &&
+                (delta.tick_count % KEYFRAME_INTERVAL_TICKS) == 0);
         transport_.send_delta_snapshot(
             peer_id,
             std::make_shared<WorldSnapshot>(std::move(delta)));

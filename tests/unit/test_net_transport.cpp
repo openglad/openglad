@@ -846,6 +846,75 @@ TEST(NetTransport, game_server_snapshot_hash_check_preserves_same_peer_same_tick
     EXPECT_EQ(0u, server.snapshot_hash_mismatch_count());
 }
 
+TEST(NetTransport,
+     game_server_snapshot_hash_check_ignores_superseded_same_tick_delta_on_pause)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u});
+    server.connect_client(7u);
+    server.bind_player(7u, 0u, fixture.world().my_team);
+    server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+    transport.clear_sent_messages();
+
+    transport.queue_received(
+        7u,
+        og::sim::serialize_client_ready_message({
+            .last_applied_tick = fixture.world().tick_count_,
+        }));
+    server.step();
+    transport.clear_sent_messages();
+
+    const std::uint32_t paused_tick = fixture.world().tick_count_ + 1u;
+    fixture.world().tick_count_ = paused_tick;
+    fixture.world().current_palette_id = 1;
+
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    og::sim::TransportEnvelope envelope;
+    ASSERT_TRUE(og::sim::decode_transport_envelope(
+        transport.sent_messages().front().data,
+        envelope));
+    EXPECT_EQ(og::sim::kDeltaSnapshotMessageType, envelope.message_type);
+    transport.clear_sent_messages();
+
+    transport.queue_received(
+        7u, og::sim::serialize_pause_broadcast_message({}));
+    server.step();
+
+    const auto paused_snapshot_it = std::find_if(
+        transport.sent_messages().begin(),
+        transport.sent_messages().end(),
+        [](const og::sim::ReceivedMessage& message) {
+            og::sim::TransportEnvelope message_envelope;
+            return og::sim::decode_transport_envelope(message.data,
+                                                      message_envelope) &&
+                message_envelope.message_type == og::sim::kSnapshotMessageType;
+        });
+    ASSERT_NE(transport.sent_messages().end(), paused_snapshot_it);
+
+    const og::sim::WorldSnapshot paused_snapshot =
+        og::sim::deserialize_snapshot(paused_snapshot_it->data.data(),
+                                      paused_snapshot_it->data.size());
+    EXPECT_EQ(paused_tick, paused_snapshot.tick_count);
+    EXPECT_TRUE(paused_snapshot.paused);
+    EXPECT_EQ(0u, paused_snapshot.pause_player_index);
+
+    transport.queue_received(
+        7u,
+        og::sim::serialize_snapshot_hash_check_message({
+            .tick = paused_snapshot.tick_count,
+            .snapshot_hash = paused_snapshot.snapshot_hash,
+        }));
+    server.step();
+
+    EXPECT_EQ(0u, server.snapshot_hash_mismatch_count());
+}
+
 TEST(NetTransport, game_server_broadcast_current_state_uses_raw_fallback)
 {
     TestGameWorld fixture;

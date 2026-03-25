@@ -193,7 +193,8 @@ private:
     void prepare_clients_for_loaded_level();
     void rebind_players_for_loaded_level();
     void remember_snapshot_hash(ConnectedClientState& client,
-                               const WorldSnapshot& snapshot);
+                                const WorldSnapshot& snapshot,
+                                bool expect_client_hash_check = true);
     [[nodiscard]] std::size_t infer_exit_triggering_player_index() const noexcept;
     void maybe_send_control_change(std::size_t player_index, walker* control);
     void maybe_resolve_world_events(SimEventBatch& batch, WorldSnapshot& snapshot);

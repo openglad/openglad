@@ -731,6 +731,7 @@ TEST(NetTransportInProcess, network_fixture_pause_broadcast_freezes_and_resumes)
     fixture.poll_client_messages(0);
     fixture.poll_client_messages(1);
     EXPECT_EQ(frozen_tick, fixture.server_world().tick_count_);
+    EXPECT_EQ(0u, fixture.server().snapshot_hash_mismatch_count());
 
     fixture.client(1).send_pause_response();
     fixture.with_server_context([&] {
