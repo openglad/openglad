@@ -210,8 +210,12 @@ static WalkerRenderPosition current_position(const walker& w)
     return {
         .worldx = w.worldx(),
         .worldy = w.worldy(),
-        .xpos = static_cast<float>(w.xpos()),
-        .ypos = static_cast<float>(w.ypos()),
+        // Keep render-time anchors on the authoritative float position even
+        // when no interpolation client is active. Mixing float world coords
+        // for the sprite with snapped integer anchors for camera/UI makes slow
+        // movement look like it buzzes against attached render elements.
+        .xpos = w.worldx(),
+        .ypos = w.worldy(),
     };
 }
 

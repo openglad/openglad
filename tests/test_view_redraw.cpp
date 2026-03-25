@@ -196,6 +196,28 @@ TEST(ViewRedraw, resolve_walker_render_position_uses_interpolated_snapshot_state
     EXPECT_FLOAT_EQ(72.0f, draw_pos.ypos);
 }
 
+TEST(ViewRedraw,
+     resolve_walker_render_position_keeps_local_render_anchors_on_world_position)
+{
+    prepare_view_world();
+
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+
+    walker* const actor = active->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+    actor->setworldxy(32.25f, 48.75f);
+
+    active->set_render_interpolation_client(nullptr);
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(*actor, 1.0f);
+
+    EXPECT_FLOAT_EQ(32.25f, draw_pos.worldx);
+    EXPECT_FLOAT_EQ(48.75f, draw_pos.worldy);
+    EXPECT_FLOAT_EQ(32.25f, draw_pos.xpos);
+    EXPECT_FLOAT_EQ(48.75f, draw_pos.ypos);
+}
+
 TEST(ViewRedraw, redraw_uses_interpolated_control_position_for_camera_follow)
 {
     viewscreen* const vs =
