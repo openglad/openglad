@@ -723,8 +723,10 @@ void GameClient::update_render_interpolation(const WorldSnapshot& snapshot,
         return {
             .worldx = entity_snapshot.worldx,
             .worldy = entity_snapshot.worldy,
-            .xpos = static_cast<float>(entity_snapshot.xpos),
-            .ypos = static_cast<float>(entity_snapshot.ypos),
+            // Render-time anchors should follow the authoritative float
+            // position, not the snapshot-snapped integer grid coordinates.
+            .xpos = entity_snapshot.worldx,
+            .ypos = entity_snapshot.worldy,
         };
     };
 

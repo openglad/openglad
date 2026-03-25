@@ -1457,6 +1457,41 @@ TEST(NetTransport, game_client_tracks_interpolated_positions_across_snapshots)
 }
 
 TEST(NetTransport,
+     game_client_keeps_render_anchors_on_fractional_world_positions)
+{
+    MockTransport transport;
+    TestGameWorld fixture;
+
+    walker* const actor = fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+    actor->setworldxy(32.25f, 48.75f);
+    fixture.world().tick_count_ = 1u;
+
+    const og::sim::WorldSnapshot initial =
+        og::sim::capture_keyframe_snapshot(fixture.world());
+    transport.queue_received(7u, og::sim::serialize_snapshot(initial));
+
+    og::sim::GameClient client(transport, 7u);
+    client.poll_messages();
+
+    actor->setworldxy(33.75f, 50.25f);
+    fixture.world().tick_count_ = 2u;
+    const og::sim::WorldSnapshot delta =
+        og::sim::capture_snapshot(fixture.world());
+    transport.queue_received(7u, og::sim::serialize_delta(delta));
+
+    client.poll_messages();
+
+    const auto middle = client.render_position(actor->entity_id(), 0.5f);
+    ASSERT_TRUE(middle.has_value());
+
+    EXPECT_FLOAT_EQ(33.0f, middle->worldx);
+    EXPECT_FLOAT_EQ(49.5f, middle->worldy);
+    EXPECT_FLOAT_EQ(middle->worldx, middle->xpos);
+    EXPECT_FLOAT_EQ(middle->worldy, middle->ypos);
+}
+
+TEST(NetTransport,
      game_client_snaps_spawn_positions_and_suppresses_dead_entity_interpolation)
 {
     MockTransport transport;
