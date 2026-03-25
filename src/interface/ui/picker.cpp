@@ -550,26 +550,13 @@ public:
 
     bool configure_networking() override
     {
-        static const button k_networking_menu_buttons[] = {
-            button("network_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.down=1, .right=5}),
-            button("network_ip", "", KEYSTATE_UNKNOWN, 120, 60, 140, 15, button_action_id(ButtonAction::EditNetworkAddress), -1, MenuNav{.up=0, .down=2}),
-            button("network_port", "", KEYSTATE_UNKNOWN, 120, 84, 140, 15, button_action_id(ButtonAction::EditNetworkPort), -1, MenuNav{.up=1, .down=3}),
-            button("network_room_toggle", "", KEYSTATE_UNKNOWN, 120, 108, 140, 15, button_action_id(ButtonAction::ToggleNetworkRoomCode), -1, MenuNav{.up=2, .down=4}),
-            button("network_room_value", "", KEYSTATE_UNKNOWN, 120, 132, 140, 15, button_action_id(ButtonAction::EditNetworkRoomCode), -1, MenuNav{.up=3, .down=5}),
-            button("network_host", "HOST", KEYSTATE_UNKNOWN, 76, 162, 74, 16, button_action_id(ButtonAction::SubmitNetworkHost), -1, MenuNav{.up=4, .right=6}),
-            button("network_join", "JOIN", KEYSTATE_UNKNOWN, 170, 162, 74, 16, button_action_id(ButtonAction::SubmitNetworkJoin), -1, MenuNav{.up=4, .left=5}),
-        };
-
         text& mytext = og::runtime::current_session->myscreen_->text_normal;
-        std::vector<button> buttons(
-            std::begin(k_networking_menu_buttons),
-            std::end(k_networking_menu_buttons));
+        button* buttons = picker_networking_buttons();
         const auto instruction_lines =
             og::ui::networking_menu_instruction_lines();
-        const int num_buttons = static_cast<int>(buttons.size());
+        const int num_buttons = picker_networking_button_count();
         int highlighted_button = 1;
-        og::runtime::current_session->localbuttons_ =
-            init_buttons(buttons.data(), num_buttons);
+        og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
         clear_keyboard();
 
         auto sync_button_labels = [&]() {
@@ -596,7 +583,7 @@ public:
 
         auto reinitialize_buttons = [&]() {
             og::runtime::current_session->localbuttons_ =
-                init_buttons(buttons.data(), num_buttons);
+                init_buttons(buttons, num_buttons);
             clear_keyboard();
         };
 
@@ -606,12 +593,12 @@ public:
         while (!(retvalue & MENU_EXIT))
         {
             picker_lobby_poll();
-            if (leftmouse(buttons.data()))
+            if (leftmouse(buttons))
                 retvalue =
                     og::runtime::current_session->localbuttons_->leftclick(
-                        buttons.data());
+                        buttons);
 
-            handle_menu_nav(buttons.data(), highlighted_button, retvalue);
+            handle_menu_nav(buttons, highlighted_button, retvalue);
             if (retvalue == MENU_EXIT)
                 break;
 
@@ -661,23 +648,49 @@ public:
                 26, 34, 294, 188, 1, 1);
             og::runtime::current_session->myscreen_->draw_button_inverted(
                 32, 40, 288, 182);
-            draw_buttons(buttons.data(), num_buttons);
+            draw_buttons(buttons, num_buttons);
 
             mytext.write_xy_center(160, 48, RED, "NETWORKING");
-            mytext.write_xy(44, 67, DARK_BLUE, "JOIN IP / HOST");
-            mytext.write_xy(44, 91, DARK_BLUE, "PORT");
-            mytext.write_xy(44, 115, DARK_BLUE, "ROOM CODE");
-            mytext.write_xy(44, 139, DARK_BLUE, "ROOM VALUE");
+            static constexpr std::array<std::string_view, 4> k_field_labels{{
+                "JOIN IP / HOST",
+                "PORT",
+                "ROOM CODE",
+                "ROOM VALUE",
+            }};
+            for (std::size_t field_index = 0;
+                 field_index < k_field_labels.size();
+                 ++field_index)
+            {
+                const button& field = buttons[field_index + 1];
+                const std::string_view label = k_field_labels[field_index];
+                const Sint32 label_x =
+                    field.x - mytext.query_width(label) -
+                    PICKER_NETWORKING_LABEL_GAP;
+                const Sint32 label_y =
+                    field.y + (field.sizey - mytext.sizey) / 2;
+                mytext.write_xy(label_x, label_y, label, DARK_BLUE);
+            }
+
+            const Sint32 instruction_pitch = mytext.sizey + 1;
+            const Sint32 instruction_height =
+                instruction_lines.empty()
+                    ? 0
+                    : mytext.sizey +
+                        static_cast<Sint32>(instruction_lines.size() - 1) *
+                            instruction_pitch;
+            const Sint32 instruction_y =
+                buttons[5].y - PICKER_NETWORKING_INSTRUCTION_GAP -
+                instruction_height;
             for (std::size_t line_index = 0;
                  line_index < instruction_lines.size();
                  ++line_index)
             {
                 mytext.write_xy(
                     44,
-                    150 + static_cast<Sint32>(line_index * 8),
-                    DARK_BLUE,
-                    "%s",
-                    std::string(instruction_lines[line_index]).c_str());
+                    instruction_y +
+                        static_cast<Sint32>(line_index) * instruction_pitch,
+                    instruction_lines[line_index],
+                    DARK_BLUE);
             }
 
             draw_highlight(buttons[highlighted_button]);
@@ -915,6 +928,7 @@ void picker_cleanup_resources()
     pks().details_buttons.clear();
     pks().trainmenu_buttons.clear();
     pks().hiremenu_buttons.clear();
+    pks().networking_buttons.clear();
 }
 
 void picker_quit()
@@ -1131,6 +1145,17 @@ static const button k_hiremenu_buttons[] =
 
     };
 
+static const button k_networking_menu_buttons[] =
+    {
+        button("network_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.down=1, .right=5}),
+        button("network_ip", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::EditNetworkAddress), -1, MenuNav{.up=0, .down=2}),
+        button("network_port", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y + PICKER_NETWORKING_FIELD_PITCH, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::EditNetworkPort), -1, MenuNav{.up=1, .down=3}),
+        button("network_room_toggle", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y + 2 * PICKER_NETWORKING_FIELD_PITCH, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::ToggleNetworkRoomCode), -1, MenuNav{.up=2, .down=4}),
+        button("network_room_value", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y + 3 * PICKER_NETWORKING_FIELD_PITCH, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::EditNetworkRoomCode), -1, MenuNav{.up=3, .down=5}),
+        button("network_host", "HOST", KEYSTATE_UNKNOWN, 76, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkHost), -1, MenuNav{.up=4, .right=6}),
+        button("network_join", "JOIN", KEYSTATE_UNKNOWN, 170, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkJoin), -1, MenuNav{.up=4, .left=5}),
+    };
+
 
 static const button k_saveteam_buttons[] =
     {
@@ -1281,6 +1306,17 @@ button* picker_hiremenu_buttons()
 int picker_hiremenu_button_count()
 {
     return static_cast<int>(pks().hiremenu_buttons.size());
+}
+
+button* picker_networking_buttons()
+{
+    reset_mutable_button_layout(pks().networking_buttons, k_networking_menu_buttons);
+    return pks().networking_buttons.data();
+}
+
+int picker_networking_button_count()
+{
+    return static_cast<int>(pks().networking_buttons.size());
 }
 
 

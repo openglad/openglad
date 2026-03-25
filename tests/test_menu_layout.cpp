@@ -1,5 +1,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_lobby_network_client.h>
 #include "../src/interface/ui/picker_sdl_defs.h"
 #include <gtest/gtest.h>
 #include <SDL.h>
@@ -58,6 +60,19 @@ static bool button_in_bounds(const button& b)
     return b.x >= 0 && b.y >= 0
         && b.x + b.sizex <= SCREEN_W
         && b.y + b.sizey <= SCREEN_H;
+}
+
+static bool rects_overlap(
+    int ax,
+    int ay,
+    int aw,
+    int ah,
+    int bx,
+    int by,
+    int bw,
+    int bh)
+{
+    return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
 static void check_no_overlaps(button* buttons, int count, const char* menu_name)
@@ -169,6 +184,100 @@ TEST(MenuLayout, control_options_nav_indices_in_range)
     check_nav_in_range(buttons, count, "control_options");
 }
 
+TEST(MenuLayout, networking_buttons_no_overlap)
+{
+    button* buttons = picker_networking_buttons();
+    const int count = picker_networking_button_count();
+    check_no_overlaps(buttons, count, "networking");
+    check_bounds(buttons, count, "networking");
+    check_nav_in_range(buttons, count, "networking");
+}
+
+TEST(MenuLayout, networking_text_does_not_overlap_buttons)
+{
+    button* buttons = picker_networking_buttons();
+    const int count = picker_networking_button_count();
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+
+    static constexpr std::array<std::string_view, 4> kFieldLabels{{
+        "JOIN IP / HOST",
+        "PORT",
+        "ROOM CODE",
+        "ROOM VALUE",
+    }};
+
+    for (std::size_t field_index = 0; field_index < kFieldLabels.size(); ++field_index)
+    {
+        const button& field = buttons[field_index + 1];
+        const std::string_view label = kFieldLabels[field_index];
+        const int label_w = mytext.query_width(label);
+        const int label_h = mytext.sizey;
+        const int label_x = field.x - label_w - PICKER_NETWORKING_LABEL_GAP;
+        const int label_y = field.y + (field.sizey - mytext.sizey) / 2;
+
+        ASSERT_GE(label_x, 0) << "field label should remain on-screen";
+        ASSERT_LE(label_x + label_w, SCREEN_W) << "field label should remain on-screen";
+
+        for (int button_index = 0; button_index < count; ++button_index)
+        {
+            const button& other = buttons[button_index];
+            if (other.hidden)
+                continue;
+            ASSERT_FALSE(rects_overlap(
+                label_x,
+                label_y,
+                label_w,
+                label_h,
+                other.x,
+                other.y,
+                other.sizex,
+                other.sizey))
+                << "networking field label '" << label
+                << "' overlaps button '" << other.id << "'";
+        }
+    }
+
+    const auto instruction_lines = og::ui::networking_menu_instruction_lines();
+    const int instruction_pitch = mytext.sizey + 1;
+    const int instruction_height = instruction_lines.empty()
+        ? 0
+        : mytext.sizey +
+            static_cast<int>(instruction_lines.size() - 1) * instruction_pitch;
+    const int instruction_y =
+        buttons[5].y - PICKER_NETWORKING_INSTRUCTION_GAP - instruction_height;
+
+    ASSERT_GE(instruction_y, 0) << "instruction copy should remain on-screen";
+
+    for (std::size_t line_index = 0; line_index < instruction_lines.size(); ++line_index)
+    {
+        const std::string_view line = instruction_lines[line_index];
+        const int line_w = mytext.query_width(line);
+        const int line_h = mytext.sizey;
+        const int line_x = 44;
+        const int line_y = instruction_y + static_cast<int>(line_index) * instruction_pitch;
+
+        ASSERT_LE(line_x + line_w, SCREEN_W) << "instruction copy should remain on-screen";
+
+        for (int button_index = 0; button_index < count; ++button_index)
+        {
+            const button& other = buttons[button_index];
+            if (other.hidden)
+                continue;
+            ASSERT_FALSE(rects_overlap(
+                line_x,
+                line_y,
+                line_w,
+                line_h,
+                other.x,
+                other.y,
+                other.sizex,
+                other.sizey))
+                << "networking instruction line '" << line
+                << "' overlaps button '" << other.id << "'";
+        }
+    }
+}
+
 
 TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_formats)
 {
@@ -260,4 +369,3 @@ TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
     ASSERT_TRUE(remap_summary[1].find("Y:E") != std::string::npos) << "remap summary second line should contain action keys";
     ASSERT_TRUE(remap_summary[1].find("SW:`") != std::string::npos) << "remap summary second line should display backtick character";
 }
-

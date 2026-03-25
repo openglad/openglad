@@ -7,6 +7,14 @@ inline constexpr int32_t MENU_REDRAW = 2;
 inline constexpr int32_t MENU_OK     = 4;
 
 inline constexpr int32_t BUTTON_HEIGHT = 15;
+inline constexpr int32_t PICKER_NETWORKING_FIELD_X = 128;
+inline constexpr int32_t PICKER_NETWORKING_FIELD_WIDTH = 132;
+inline constexpr int32_t PICKER_NETWORKING_FIELD_Y = 58;
+inline constexpr int32_t PICKER_NETWORKING_FIELD_PITCH = 22;
+inline constexpr int32_t PICKER_NETWORKING_ACTION_Y = 166;
+inline constexpr int32_t PICKER_NETWORKING_ACTION_WIDTH = 74;
+inline constexpr int32_t PICKER_NETWORKING_LABEL_GAP = 8;
+inline constexpr int32_t PICKER_NETWORKING_INSTRUCTION_GAP = 3;
 
 // Forward declare button for menu descriptor arrays.
 struct button;
@@ -31,3 +39,5 @@ button* picker_trainmenu_buttons();
 int picker_trainmenu_button_count();
 button* picker_hiremenu_buttons();
 int picker_hiremenu_button_count();
+button* picker_networking_buttons();
+int picker_networking_button_count();
