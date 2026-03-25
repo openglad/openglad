@@ -137,6 +137,35 @@ bool wait_for_interactable_label_contains(const std::string& id,
     return interactable_label_contains(id, expected_substring);
 }
 
+bool interact_until_label_contains(const std::string& id,
+                                   const std::string& expected_substring,
+                                   int timeout_ms = 10000)
+{
+    const Uint32 deadline = SDL_GetTicks() + static_cast<Uint32>(timeout_ms);
+    while (SDL_GetTicks() < deadline)
+    {
+        if (interactable_label_contains(id, expected_substring))
+            return true;
+
+        if (!wait_for_interactable(id, 250))
+        {
+            SDL_Delay(100);
+            continue;
+        }
+
+        interact(id);
+        if (wait_for_interactable_label_contains(
+                id, expected_substring, 1000))
+        {
+            return true;
+        }
+
+        SDL_Delay(100);
+    }
+
+    return interactable_label_contains(id, expected_substring);
+}
+
 struct NetworkingJoinState
 {
     bool started = false;
@@ -174,25 +203,20 @@ int networking_join_injector(void* data)
     state->saw_networking_menu = true;
     SDL_Delay(150);
 
-    interact("network_ip");
-    state->updated_ip = wait_for_interactable_label_contains(
-        "network_ip", "10.24.8.16", 5000);
+    state->updated_ip = interact_until_label_contains(
+        "network_ip", "10.24.8.16");
 
     SDL_Delay(100);
-    interact("network_port");
-    state->updated_port = wait_for_interactable_label_contains(
-        "network_port", "24567", 5000);
+    state->updated_port = interact_until_label_contains(
+        "network_port", "24567");
 
     SDL_Delay(100);
-    if (!interactable_label_contains("network_room_toggle", "ON"))
-        interact("network_room_toggle");
-    state->enabled_room_code = wait_for_interactable_label_contains(
-        "network_room_toggle", "ON", 5000);
+    state->enabled_room_code = interact_until_label_contains(
+        "network_room_toggle", "ON");
 
     SDL_Delay(100);
-    interact("network_room_value");
-    state->updated_room_code = wait_for_interactable_label_contains(
-        "network_room_value", "glad-xkcd", 5000);
+    state->updated_room_code = interact_until_label_contains(
+        "network_room_value", "glad-xkcd");
 
     SDL_Delay(150);
     interact("network_join");
@@ -272,9 +296,8 @@ int networking_validation_injector(void* data)
     state->saw_networking_menu = true;
     SDL_Delay(150);
 
-    interact("network_port");
-    state->set_invalid_port = wait_for_interactable_label_contains(
-        "network_port", "70000", 5000);
+    state->set_invalid_port = interact_until_label_contains(
+        "network_port", "70000");
 
     SDL_Delay(150);
     interact("network_host");
@@ -289,21 +312,17 @@ int networking_validation_injector(void* data)
         has_interactable("network_join") && has_interactable("network_back");
 
     SDL_Delay(150);
-    interact("network_port");
-    state->set_valid_port = wait_for_interactable_label_contains(
-        "network_port", "24567", 5000);
+    state->set_valid_port = interact_until_label_contains(
+        "network_port", "24567");
 
     SDL_Delay(150);
-    interact("network_ip");
-    state->cleared_ip = wait_for_interactable_label_contains(
-        "network_ip", "(enter address)", 5000);
+    state->cleared_ip = interact_until_label_contains(
+        "network_ip", "(enter address)");
 
     if (interactable_label_contains("network_room_toggle", "ON"))
     {
         SDL_Delay(100);
-        interact("network_room_toggle");
-        (void)wait_for_interactable_label_contains(
-            "network_room_toggle", "OFF", 5000);
+        (void)interact_until_label_contains("network_room_toggle", "OFF");
     }
 
     SDL_Delay(150);
@@ -315,10 +334,9 @@ int networking_validation_injector(void* data)
     if (!interactable_label_contains("network_room_toggle", "ON"))
     {
         SDL_Delay(100);
-        interact("network_room_toggle");
     }
-    state->enabled_room_code = wait_for_interactable_label_contains(
-        "network_room_toggle", "ON", 5000);
+    state->enabled_room_code = interact_until_label_contains(
+        "network_room_toggle", "ON");
 
     SDL_Delay(150);
     interact("network_host");
@@ -392,9 +410,8 @@ int networking_host_factory_error_injector(void* data)
     state->saw_networking_menu = true;
     SDL_Delay(150);
 
-    interact("network_port");
-    state->updated_port = wait_for_interactable_label_contains(
-        "network_port", "24567", 5000);
+    state->updated_port = interact_until_label_contains(
+        "network_port", "24567");
 
     SDL_Delay(150);
     interact("network_host");
@@ -470,16 +487,13 @@ int networking_host_injector(void* data)
     state->saw_networking_menu = true;
     SDL_Delay(150);
 
-    interact("network_port");
-    state->updated_port = wait_for_interactable_label_contains(
-        "network_port", std::to_string(state->port), 5000);
+    state->updated_port = interact_until_label_contains(
+        "network_port", std::to_string(state->port));
 
     if (interactable_label_contains("network_room_toggle", "ON"))
     {
         SDL_Delay(100);
-        interact("network_room_toggle");
-        (void)wait_for_interactable_label_contains(
-            "network_room_toggle", "OFF", 5000);
+        (void)interact_until_label_contains("network_room_toggle", "OFF");
     }
 
     SDL_Delay(150);
