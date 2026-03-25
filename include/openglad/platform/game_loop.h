@@ -45,6 +45,14 @@ enum class GameFrameResult {
     AbortedMission
 };
 
+namespace og::runtime::detail {
+
+// Shared with tests so the production redraw/present sequence stays covered
+// even though the TESTING build skips full rendering in game_frame_with_result().
+void render_pending_redraw(screen& s, bool enable_render);
+
+} // namespace og::runtime::detail
+
 GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps = {});
 
 // Runs one frame of the main game loop. Returns true when the mission is done.

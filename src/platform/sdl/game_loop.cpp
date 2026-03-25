@@ -242,6 +242,27 @@ GameFrameResult run_game_tick(screen& s,
 }
 } // namespace
 
+namespace og::runtime::detail {
+
+void render_pending_redraw(screen& s, bool enable_render)
+{
+    if (!s.redrawme)
+        return;
+
+    if (enable_render)
+    {
+        s.draw_panels(s.numviews);
+        score_panel(&s, 1);
+        // Present once after the HUD overlay has been redrawn; otherwise
+        // the overlay visibly flashes off for the intermediate frame.
+        s.buffer_to_screen(0, 0, 320, 200);
+    }
+
+    s.redrawme = 0;
+}
+
+} // namespace og::runtime::detail
+
 GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
 {
     const std::function<int(SDL_Event*)> poll_event =
@@ -252,13 +273,10 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     if (s.redrawme)
     {
 #ifndef TESTING
-        if (deps.enable_render) {
-            s.draw_panels(s.numviews);
-            score_panel(&s, 1);
-            s.buffer_to_screen(0, 0, 320, 200);
-        }
-#endif
+        og::runtime::detail::render_pending_redraw(s, deps.enable_render);
+#else
         s.redrawme = 0;
+#endif
     }
 
     if (s.world().end || st.done)

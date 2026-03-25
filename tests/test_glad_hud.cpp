@@ -7,6 +7,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/platform/game_loop.h>
 #include <openglad/platform/video_sdl.h>
 #include <gtest/gtest.h>
 #include <memory>
@@ -72,6 +73,22 @@ static std::unique_ptr<walker> make_living(unsigned char family, unsigned char t
     w->set_user(-1);
     w->setxy(120, 100);
     return w;
+}
+
+static std::array<unsigned char, 64000> capture_rendered_frame(screen& scr)
+{
+    std::array<unsigned char, 64000> frame{};
+    for (int y = 0; y < 200; ++y)
+    {
+        for (int x = 0; x < 320; ++x)
+        {
+            int color_index = 0;
+            scr.get_pixel(x, y, &color_index);
+            frame[static_cast<std::size_t>(y * 320 + x)] =
+                static_cast<unsigned char>(color_index);
+        }
+    }
+    return frame;
 }
 
 TEST(GladHud, glad_remaining_counts)
@@ -253,7 +270,7 @@ TEST(GladHud, RedrawmeFlickerNoUnpaintedPresent)
     s->redrawme = 0;
 }
 
-TEST(GladHud, draw_panels_does_not_present_overlayless_intermediate_frame)
+TEST(GladHud, render_pending_redraw_presents_hud_overlay_in_single_frame)
 {
     class SpyScreen final : public screen
     {
@@ -273,6 +290,8 @@ TEST(GladHud, draw_panels_does_not_present_overlayless_intermediate_frame)
             last_viewstarty = viewstarty;
             last_viewwidth = viewwidth;
             last_viewheight = viewheight;
+            presented_frame = capture_rendered_frame(*this);
+            presented_frame_captured = true;
         }
 
         int buffer_to_screen_calls = 0;
@@ -280,20 +299,67 @@ TEST(GladHud, draw_panels_does_not_present_overlayless_intermediate_frame)
         Sint32 last_viewstarty = -1;
         Sint32 last_viewwidth = -1;
         Sint32 last_viewheight = -1;
+        bool presented_frame_captured = false;
+        std::array<unsigned char, 64000> presented_frame{};
     };
 
-    screen* const saved_screen = og::runtime::current_session->myscreen_;
+    struct ScreenRestoreGuard
+    {
+        screen*& current_screen;
+        screen* saved_screen;
+
+        ~ScreenRestoreGuard()
+        {
+            current_screen = saved_screen;
+        }
+    };
+
+    screen*& session_screen = og::runtime::current_session->myscreen_;
+    ScreenRestoreGuard restore_guard{session_screen, session_screen};
     GameWorld world;
     {
         SpyScreen spy_screen(world, std::make_unique<sdl_video>(false));
+        viewscreen* const view = spy_screen.viewob[0].get();
+        ASSERT_TRUE(view != nullptr);
+
+        view->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+        view->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+        view->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+        view->prefs[PREF_FOES] = PREF_FOES_OFF;
+
+        auto control = make_player(0);
+        ASSERT_TRUE(control != nullptr);
+        walker* const controlp = control.get();
+        controlp->set_user(0);
+        controlp->set_team_num(0);
+        controlp->set_dead(0);
+        controlp->stats()->set_level(7);
+        controlp->stats()->set_hitpoints(55);
+        controlp->stats()->set_max_hitpoints(100);
+        controlp->stats()->set_magicpoints(33);
+        controlp->stats()->set_max_magicpoints(80);
+        view->control = controlp;
+        spy_screen.world().oblist.push_back(std::move(control));
+
         ASSERT_EQ(0, spy_screen.buffer_to_screen_calls);
 
-        // draw_panels() rebuilds the panel chrome and the view contents. It
-        // must not publish that intermediate frame; the caller presents once
-        // after score_panel() redraws the HUD overlays.
         spy_screen.draw_panels(1);
+        const auto overlayless_frame = capture_rendered_frame(spy_screen);
 
-        EXPECT_EQ(0, spy_screen.buffer_to_screen_calls);
+        spy_screen.redrawme = 1;
+        og::runtime::detail::render_pending_redraw(spy_screen, true);
+
+        ASSERT_EQ(1, spy_screen.buffer_to_screen_calls);
+        EXPECT_TRUE(spy_screen.presented_frame_captured);
+        EXPECT_EQ(0, spy_screen.last_viewstartx);
+        EXPECT_EQ(0, spy_screen.last_viewstarty);
+        EXPECT_EQ(320, spy_screen.last_viewwidth);
+        EXPECT_EQ(200, spy_screen.last_viewheight);
+        EXPECT_EQ(0, spy_screen.redrawme);
+        EXPECT_NE(overlayless_frame, spy_screen.presented_frame);
+
+        spy_screen.draw_panels(1);
+        score_panel(&spy_screen, 1);
+        EXPECT_EQ(capture_rendered_frame(spy_screen), spy_screen.presented_frame);
     }
-    og::runtime::current_session->myscreen_ = saved_screen;
 }
