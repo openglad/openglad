@@ -7,6 +7,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/platform/video_sdl.h>
 #include <gtest/gtest.h>
 #include <memory>
 
@@ -250,4 +251,49 @@ TEST(GladHud, RedrawmeFlickerNoUnpaintedPresent)
     v->control = control_pointer_is_live(s->level_runtime_data(), old_control)
         ? old_control : nullptr;
     s->redrawme = 0;
+}
+
+TEST(GladHud, draw_panels_does_not_present_overlayless_intermediate_frame)
+{
+    class SpyScreen final : public screen
+    {
+    public:
+        SpyScreen(GameWorld& world, std::unique_ptr<video> video_impl)
+            : screen(world, std::move(video_impl), 1, false)
+        {
+        }
+
+        void buffer_to_screen(Sint32 viewstartx,
+                              Sint32 viewstarty,
+                              Sint32 viewwidth,
+                              Sint32 viewheight) override
+        {
+            ++buffer_to_screen_calls;
+            last_viewstartx = viewstartx;
+            last_viewstarty = viewstarty;
+            last_viewwidth = viewwidth;
+            last_viewheight = viewheight;
+        }
+
+        int buffer_to_screen_calls = 0;
+        Sint32 last_viewstartx = -1;
+        Sint32 last_viewstarty = -1;
+        Sint32 last_viewwidth = -1;
+        Sint32 last_viewheight = -1;
+    };
+
+    screen* const saved_screen = og::runtime::current_session->myscreen_;
+    GameWorld world;
+    {
+        SpyScreen spy_screen(world, std::make_unique<sdl_video>(false));
+        ASSERT_EQ(0, spy_screen.buffer_to_screen_calls);
+
+        // draw_panels() rebuilds the panel chrome and the view contents. It
+        // must not publish that intermediate frame; the caller presents once
+        // after score_panel() redraws the HUD overlays.
+        spy_screen.draw_panels(1);
+
+        EXPECT_EQ(0, spy_screen.buffer_to_screen_calls);
+    }
+    og::runtime::current_session->myscreen_ = saved_screen;
 }
