@@ -370,21 +370,70 @@ static std::string controlled_entity_name(const og::sim::GameClient& client,
         : std::string();
 }
 
-struct StaleAlliedClaimObservation
+struct AlliedClaimObservation
 {
     walker* alpha = nullptr;
     walker* bravo = nullptr;
     walker* charlie = nullptr;
     walker* orphaned = nullptr;
     std::set<std::uint32_t> mapped_ids;
-    std::vector<std::uint32_t> claimed_ids;
+    std::set<std::uint32_t> claimed_ids;
 };
 
-static StaleAlliedClaimObservation observe_stale_allied_claim(
+static std::string named_entity_label(const walker* entity)
+{
+    if (entity == nullptr)
+        return "missing";
+    if (entity->myguy == nullptr)
+        return std::to_string(entity->entity_id());
+    return entity->myguy->name + "(" + std::to_string(entity->entity_id()) + ")";
+}
+
+static std::string world_entity_label(GameWorld& world, std::uint32_t entity_id)
+{
+    if (entity_id == 0u)
+        return "0";
+
+    walker* const entity = world.find_by_id(entity_id);
+    if (entity == nullptr || entity->myguy == nullptr)
+        return std::to_string(entity_id);
+    return entity->myguy->name + "(" + std::to_string(entity_id) + ")";
+}
+
+static std::string format_entity_id_set(GameWorld& world,
+                                        const std::set<std::uint32_t>& ids)
+{
+    std::string text = "{";
+    bool first = true;
+    for (const std::uint32_t entity_id : ids)
+    {
+        if (!first)
+            text += ", ";
+        first = false;
+        text += world_entity_label(world, entity_id);
+    }
+    text += "}";
+    return text;
+}
+
+static std::string claim_mapping_details(screen& gameplay_screen,
+                                         const AlliedClaimObservation& observation)
+{
+    return "Alpha=" + named_entity_label(observation.alpha) +
+        " Bravo=" + named_entity_label(observation.bravo) +
+        " Charlie=" + named_entity_label(observation.charlie) +
+        " claimed=" +
+        format_entity_id_set(gameplay_screen.world(), observation.claimed_ids) +
+        " mapped=" +
+        format_entity_id_set(gameplay_screen.world(), observation.mapped_ids) +
+        " orphaned=" + named_entity_label(observation.orphaned);
+}
+
+static AlliedClaimObservation observe_allied_claim_mapping(
     screen& gameplay_screen,
     const og::sim::GameClient& display_client)
 {
-    StaleAlliedClaimObservation observation;
+    AlliedClaimObservation observation;
     observation.alpha =
         find_named_team_member(gameplay_screen.world(), "Alpha");
     observation.bravo =
@@ -403,9 +452,12 @@ static StaleAlliedClaimObservation observe_stale_allied_claim(
             continue;
         }
 
-        observation.claimed_ids.push_back(entity->entity_id());
-        if (!observation.mapped_ids.contains(entity->entity_id()))
+        observation.claimed_ids.insert(entity->entity_id());
+        if (observation.orphaned == nullptr &&
+            !observation.mapped_ids.contains(entity->entity_id()))
+        {
             observation.orphaned = entity;
+        }
     }
 
     return observation;
@@ -993,7 +1045,7 @@ TEST(GameLoop, local_transport_shadow_invalid_reset_paths_clear_runtime)
 }
 
 TEST(GameLoop,
-     network_host_runtime_reproduces_extra_stale_preclaimed_allied_soldier_on_level1)
+     network_host_runtime_clears_stale_preclaimed_allied_claim_before_binding_players)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_NE(nullptr, game_screen);
@@ -1085,79 +1137,98 @@ TEST(GameLoop,
         game_screen->render_interpolation_client();
     ASSERT_NE(nullptr, display_client);
     ASSERT_NE(nullptr, game_screen->viewob[0]);
-    const StaleAlliedClaimObservation observation =
-        observe_stale_allied_claim(*game_screen, *display_client);
+    const AlliedClaimObservation observation =
+        observe_allied_claim_mapping(*game_screen, *display_client);
     ASSERT_NE(nullptr, observation.alpha);
     ASSERT_NE(nullptr, observation.bravo);
     ASSERT_NE(nullptr, observation.charlie);
-    ASSERT_NE(nullptr, observation.orphaned);
+    ASSERT_EQ(observation.claimed_ids, observation.mapped_ids)
+        << claim_mapping_details(*game_screen, observation);
+    EXPECT_EQ(nullptr, observation.orphaned)
+        << claim_mapping_details(*game_screen, observation);
+    const std::uint32_t alpha_id = observation.alpha->entity_id();
     const std::uint32_t bravo_id = observation.bravo->entity_id();
-    const std::uint32_t charlie_id = observation.charlie->entity_id();
     const std::set<std::uint32_t> expected_mapped_ids = {
+        alpha_id,
         bravo_id,
-        charlie_id,
     };
-    ASSERT_EQ(3u, observation.claimed_ids.size());
-    EXPECT_EQ(observation.alpha, observation.orphaned);
     EXPECT_EQ(expected_mapped_ids, observation.mapped_ids);
-    EXPECT_EQ(bravo_id,
+    EXPECT_EQ(alpha_id,
               display_client->controlled_entity_ids()[0]);
-    EXPECT_EQ(charlie_id,
+    EXPECT_EQ(bravo_id,
               display_client->controlled_entity_ids()[1]);
-    EXPECT_EQ("Bravo",
+    EXPECT_EQ("Alpha",
               controlled_entity_name(
                   *display_client,
                   display_client->controlled_entity_ids()[0]));
-    EXPECT_EQ("Charlie",
+    EXPECT_EQ("Bravo",
               controlled_entity_name(
                   *display_client,
                   display_client->controlled_entity_ids()[1]));
-    EXPECT_EQ(bravo_id,
+    EXPECT_EQ(alpha_id,
               remote_client.controlled_entity_ids()[0]);
-    EXPECT_EQ(charlie_id,
+    EXPECT_EQ(bravo_id,
               remote_client.controlled_entity_ids()[1]);
-    EXPECT_EQ("Bravo",
+    EXPECT_EQ("Alpha",
               controlled_entity_name(
                   remote_client,
                   remote_client.controlled_entity_ids()[0]));
-    EXPECT_EQ("Charlie",
+    EXPECT_EQ("Bravo",
               controlled_entity_name(
                   remote_client,
                   remote_client.controlled_entity_ids()[1]));
-
-    observation.orphaned->set_outline(0);
-    observation.orphaned->compute_outline(game_screen->viewob[0]->control);
-    EXPECT_EQ(observation.orphaned->query_team_color(),
-              observation.orphaned->outline());
 
     std::uint32_t next_tick = std::max(display_client->last_seen_server_tick(),
                                        remote_client.last_seen_server_tick()) +
         1u;
     ASSERT_TRUE(drive_bounded_switch_char_attempt(
         gameplay_session, remote_client, true, false, next_tick));
-    ASSERT_TRUE(drive_bounded_switch_char_attempt(
-        gameplay_session, remote_client, false, true, next_tick));
 
     const og::sim::GameClient* const display_client_after_switch =
         game_screen->render_interpolation_client();
     ASSERT_NE(nullptr, display_client_after_switch);
-    const StaleAlliedClaimObservation observation_after_switch =
-        observe_stale_allied_claim(*game_screen, *display_client_after_switch);
+    const AlliedClaimObservation observation_after_switch =
+        observe_allied_claim_mapping(*game_screen, *display_client_after_switch);
     ASSERT_NE(nullptr, observation_after_switch.alpha);
     ASSERT_NE(nullptr, observation_after_switch.bravo);
     ASSERT_NE(nullptr, observation_after_switch.charlie);
     ASSERT_NE(nullptr, game_screen->viewob[0]);
     ASSERT_NE(nullptr, game_screen->viewob[0]->control);
-    EXPECT_NE(0u, display_client_after_switch->controlled_entity_ids()[0]);
-    EXPECT_NE(0u, display_client_after_switch->controlled_entity_ids()[1]);
-    EXPECT_NE(display_client_after_switch->controlled_entity_ids()[0],
-              display_client_after_switch->controlled_entity_ids()[1]);
+    ASSERT_EQ(observation_after_switch.claimed_ids,
+              observation_after_switch.mapped_ids)
+        << claim_mapping_details(*game_screen, observation_after_switch);
+    EXPECT_EQ(nullptr, observation_after_switch.orphaned)
+        << claim_mapping_details(*game_screen, observation_after_switch);
+    const std::uint32_t charlie_id =
+        observation_after_switch.charlie->entity_id();
+    const std::set<std::uint32_t> expected_ids_after_switch = {
+        bravo_id,
+        charlie_id,
+    };
+    EXPECT_EQ(expected_ids_after_switch, observation_after_switch.mapped_ids);
+    EXPECT_EQ(charlie_id, display_client_after_switch->controlled_entity_ids()[0]);
+    EXPECT_EQ(bravo_id, display_client_after_switch->controlled_entity_ids()[1]);
     EXPECT_EQ(display_client_after_switch->controlled_entity_ids()[0],
               game_screen->viewob[0]->control->entity_id());
-    EXPECT_FALSE(non_zero_controlled_entity_ids(*display_client_after_switch)
-                     .contains(observation_after_switch.alpha->entity_id()));
-    EXPECT_FALSE(non_zero_controlled_entity_ids(remote_client)
-                     .contains(observation_after_switch.alpha->entity_id()));
+    EXPECT_EQ("Charlie",
+              controlled_entity_name(
+                  *display_client_after_switch,
+                  display_client_after_switch->controlled_entity_ids()[0]));
+    EXPECT_EQ("Bravo",
+              controlled_entity_name(
+                  *display_client_after_switch,
+                  display_client_after_switch->controlled_entity_ids()[1]));
+    EXPECT_EQ(charlie_id, remote_client.controlled_entity_ids()[0]);
+    EXPECT_EQ(bravo_id, remote_client.controlled_entity_ids()[1]);
+    EXPECT_EQ("Charlie",
+              controlled_entity_name(
+                  remote_client,
+                  remote_client.controlled_entity_ids()[0]));
+    EXPECT_EQ("Bravo",
+              controlled_entity_name(
+                  remote_client,
+                  remote_client.controlled_entity_ids()[1]));
+    EXPECT_FALSE(observation_after_switch.mapped_ids.contains(alpha_id));
 
     og::runtime::clear_local_transport_shadow(gameplay_session);
     game_screen->world().delete_objects();

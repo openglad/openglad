@@ -196,9 +196,9 @@ void poll_local_transport_client(screen& gameplay_screen,
     client.game_client->poll_messages();
 }
 
-void release_screen_control_claims(screen& gameplay_screen)
+void release_world_control_claims(GameWorld& world)
 {
-    for (auto& uptr : gameplay_screen.world().oblist)
+    for (auto& uptr : world.oblist)
     {
         walker* const entity = uptr.get();
         if (entity == nullptr || entity->user() == -1)
@@ -208,13 +208,19 @@ void release_screen_control_claims(screen& gameplay_screen)
         entity->restore_act_type();
     }
 
+    world.control_hp = 0.0f;
+}
+
+void release_screen_control_claims(screen& gameplay_screen)
+{
+    release_world_control_claims(gameplay_screen.world());
+
     for (auto& view : gameplay_screen.viewob)
     {
         if (view == nullptr)
             continue;
         view->control = nullptr;
     }
-    gameplay_screen.world().control_hp = 0.0f;
 }
 
 bool save_shadow_save_data(screen& gameplay_screen, const char* action)
@@ -847,6 +853,7 @@ void reset_network_host_transport_shadow(
         og::sim::apply_snapshot(
             server_screen->world(),
             og::sim::capture_keyframe_snapshot(gameplay_screen.world()));
+        release_world_control_claims(server_screen->world());
         if (server_screen->viewob[0] != nullptr)
         {
             server_screen->viewob[0]->my_team = display_team;

@@ -451,21 +451,70 @@ std::string controlled_entity_name(const og::sim::GameClient& client,
         : std::string();
 }
 
-struct StaleAlliedClaimObservation
+struct AlliedClaimObservation
 {
     walker* alpha = nullptr;
     walker* bravo = nullptr;
     walker* charlie = nullptr;
     walker* orphaned = nullptr;
     std::set<std::uint32_t> mapped_ids;
-    std::vector<std::uint32_t> claimed_ids;
+    std::set<std::uint32_t> claimed_ids;
 };
 
-StaleAlliedClaimObservation observe_stale_allied_claim(
+std::string named_entity_label(const walker* entity)
+{
+    if (entity == nullptr)
+        return "missing";
+    if (entity->myguy == nullptr)
+        return std::to_string(entity->entity_id());
+    return entity->myguy->name + "(" + std::to_string(entity->entity_id()) + ")";
+}
+
+std::string world_entity_label(GameWorld& world, std::uint32_t entity_id)
+{
+    if (entity_id == 0u)
+        return "0";
+
+    walker* const entity = world.find_by_id(entity_id);
+    if (entity == nullptr || entity->myguy == nullptr)
+        return std::to_string(entity_id);
+    return entity->myguy->name + "(" + std::to_string(entity_id) + ")";
+}
+
+std::string format_entity_id_set(GameWorld& world,
+                                 const std::set<std::uint32_t>& ids)
+{
+    std::string text = "{";
+    bool first = true;
+    for (const std::uint32_t entity_id : ids)
+    {
+        if (!first)
+            text += ", ";
+        first = false;
+        text += world_entity_label(world, entity_id);
+    }
+    text += "}";
+    return text;
+}
+
+std::string claim_mapping_details(screen& gameplay_screen,
+                                  const AlliedClaimObservation& observation)
+{
+    return "Alpha=" + named_entity_label(observation.alpha) +
+        " Bravo=" + named_entity_label(observation.bravo) +
+        " Charlie=" + named_entity_label(observation.charlie) +
+        " claimed=" +
+        format_entity_id_set(gameplay_screen.world(), observation.claimed_ids) +
+        " mapped=" +
+        format_entity_id_set(gameplay_screen.world(), observation.mapped_ids) +
+        " orphaned=" + named_entity_label(observation.orphaned);
+}
+
+AlliedClaimObservation observe_allied_claim_mapping(
     screen& gameplay_screen,
     const og::sim::GameClient& display_client)
 {
-    StaleAlliedClaimObservation observation;
+    AlliedClaimObservation observation;
     observation.alpha =
         find_named_team_member(gameplay_screen.world(), "Alpha");
     observation.bravo =
@@ -484,9 +533,12 @@ StaleAlliedClaimObservation observe_stale_allied_claim(
             continue;
         }
 
-        observation.claimed_ids.push_back(entity->entity_id());
-        if (!observation.mapped_ids.contains(entity->entity_id()))
+        observation.claimed_ids.insert(entity->entity_id());
+        if (observation.orphaned == nullptr &&
+            !observation.mapped_ids.contains(entity->entity_id()))
+        {
             observation.orphaned = entity;
+        }
     }
 
     return observation;
@@ -2200,7 +2252,7 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
 }
 
 TEST(PickerNetworkClient,
-     host_and_join_allied_level1_reproduce_stale_preclaimed_allied_soldier)
+     host_and_join_allied_level1_clear_stale_preclaim_and_keep_free_soldier_switchable)
 {
     IxNetSystemScope net_system;
 
@@ -2208,6 +2260,18 @@ TEST(PickerNetworkClient,
     PickerSaveStateGuard host_save_guard(host_save);
     PickerRuntimeGuard runtime_guard;
     prepare_allied_host_network_save(host_save);
+    ASSERT_EQ("org.openglad.gladiator", host_save.current_campaign);
+    ASSERT_EQ(1, host_save.scen_num);
+    ASSERT_EQ(1, static_cast<int>(host_save.numplayers));
+    ASSERT_EQ(1, host_save.allied_mode);
+    ASSERT_EQ(0, host_save.my_team);
+    ASSERT_EQ(2, static_cast<int>(host_save.team_size));
+    ASSERT_NE(nullptr, host_save.team_list[0]);
+    ASSERT_NE(nullptr, host_save.team_list[1]);
+    EXPECT_EQ("Alpha", host_save.team_list[0]->name);
+    EXPECT_EQ(0, host_save.team_list[0]->teamnum);
+    EXPECT_EQ("Bravo", host_save.team_list[1]->name);
+    EXPECT_EQ(0, host_save.team_list[1]->teamnum);
     g_start_game_requested = false;
 
     og::ui::PickerHostGameOptions host_options;
@@ -2220,6 +2284,23 @@ TEST(PickerNetworkClient,
     join_cfg.install_legacy_globals = false;
     og::runtime::GameSession join_session(join_cfg);
     prepare_allied_join_network_save(join_session.myscreen_->save_data);
+    {
+        auto join_scope = join_session.activate();
+        SaveData& join_save = join_session.myscreen_->save_data;
+        ASSERT_EQ("org.openglad.gladiator", join_save.current_campaign);
+        ASSERT_EQ(1, join_save.scen_num);
+        ASSERT_EQ(1, static_cast<int>(join_save.numplayers));
+        ASSERT_EQ(1, join_save.allied_mode);
+        ASSERT_EQ(1, join_save.my_team);
+        ASSERT_EQ(1, static_cast<int>(join_save.team_size));
+        ASSERT_EQ(nullptr, join_save.team_list[0]);
+        ASSERT_EQ(nullptr, join_save.team_list[1]);
+        ASSERT_NE(nullptr, join_save.team_list[2]);
+        EXPECT_EQ("Charlie", join_save.team_list[2]->name);
+        EXPECT_EQ(1, join_save.team_list[2]->teamnum);
+        EXPECT_FALSE(save_contains_named_member(join_save, "Alpha"));
+        EXPECT_FALSE(save_contains_named_member(join_save, "Bravo"));
+    }
 
     og::ui::PickerJoinGameOptions join_options;
     join_options.mode = og::ui::PickerJoinMode::Direct;
@@ -2363,24 +2444,24 @@ TEST(PickerNetworkClient,
     })) << "both runtimes should receive their first gameplay snapshots";
 
     const og::sim::GameClient* host_display_client = nullptr;
-    StaleAlliedClaimObservation host_observation;
+    AlliedClaimObservation host_observation;
     {
         auto host_scope = cleanup.host_session->activate();
         host_display_client =
             cleanup.host_session->myscreen_->render_interpolation_client();
         ASSERT_NE(nullptr, host_display_client);
-        host_observation = observe_stale_allied_claim(
+        host_observation = observe_allied_claim_mapping(
             *cleanup.host_session->myscreen_,
             *host_display_client);
     }
 
     const og::sim::GameClient* join_display_client = nullptr;
-    StaleAlliedClaimObservation join_observation;
+    AlliedClaimObservation join_observation;
     {
         auto join_scope = join_session.activate();
         join_display_client = join_session.myscreen_->render_interpolation_client();
         ASSERT_NE(nullptr, join_display_client);
-        join_observation = observe_stale_allied_claim(
+        join_observation = observe_allied_claim_mapping(
             *join_session.myscreen_,
             *join_display_client);
     }
@@ -2388,47 +2469,52 @@ TEST(PickerNetworkClient,
     ASSERT_NE(nullptr, host_observation.alpha);
     ASSERT_NE(nullptr, host_observation.bravo);
     ASSERT_NE(nullptr, host_observation.charlie);
-    ASSERT_NE(nullptr, host_observation.orphaned);
     ASSERT_NE(nullptr, join_observation.alpha);
     ASSERT_NE(nullptr, join_observation.bravo);
     ASSERT_NE(nullptr, join_observation.charlie);
-    ASSERT_NE(nullptr, join_observation.orphaned);
 
     const std::uint32_t alpha_id = host_observation.alpha->entity_id();
     const std::uint32_t bravo_id = host_observation.bravo->entity_id();
     const std::uint32_t charlie_id = host_observation.charlie->entity_id();
-    const std::set<std::uint32_t> expected_mapped_ids = {
+    const std::set<std::uint32_t> expected_initial_ids = {
+        alpha_id,
         bravo_id,
-        charlie_id,
     };
 
     EXPECT_EQ(alpha_id, join_observation.alpha->entity_id());
     EXPECT_EQ(bravo_id, join_observation.bravo->entity_id());
     EXPECT_EQ(charlie_id, join_observation.charlie->entity_id());
 
-    ASSERT_EQ(3u, host_observation.claimed_ids.size());
-    ASSERT_EQ(3u, join_observation.claimed_ids.size());
-    EXPECT_EQ(host_observation.alpha, host_observation.orphaned);
-    EXPECT_EQ(join_observation.alpha, join_observation.orphaned);
-    EXPECT_EQ(expected_mapped_ids, host_observation.mapped_ids);
-    EXPECT_EQ(expected_mapped_ids, join_observation.mapped_ids);
-    EXPECT_EQ(bravo_id, host_display_client->controlled_entity_ids()[0]);
-    EXPECT_EQ(charlie_id, host_display_client->controlled_entity_ids()[1]);
-    EXPECT_EQ(bravo_id, join_display_client->controlled_entity_ids()[0]);
-    EXPECT_EQ(charlie_id, join_display_client->controlled_entity_ids()[1]);
-    EXPECT_EQ("Bravo",
+    ASSERT_EQ(host_observation.claimed_ids, host_observation.mapped_ids)
+        << claim_mapping_details(*cleanup.host_session->myscreen_,
+                                 host_observation);
+    ASSERT_EQ(join_observation.claimed_ids, join_observation.mapped_ids)
+        << claim_mapping_details(*join_session.myscreen_, join_observation);
+    EXPECT_EQ(expected_initial_ids, host_observation.mapped_ids);
+    EXPECT_EQ(expected_initial_ids, join_observation.mapped_ids);
+    EXPECT_EQ(host_observation.mapped_ids, join_observation.mapped_ids);
+    EXPECT_EQ(nullptr, host_observation.orphaned)
+        << claim_mapping_details(*cleanup.host_session->myscreen_,
+                                 host_observation);
+    EXPECT_EQ(nullptr, join_observation.orphaned)
+        << claim_mapping_details(*join_session.myscreen_, join_observation);
+    EXPECT_EQ(alpha_id, host_display_client->controlled_entity_ids()[0]);
+    EXPECT_EQ(bravo_id, host_display_client->controlled_entity_ids()[1]);
+    EXPECT_EQ(alpha_id, join_display_client->controlled_entity_ids()[0]);
+    EXPECT_EQ(bravo_id, join_display_client->controlled_entity_ids()[1]);
+    EXPECT_EQ("Alpha",
               controlled_entity_name(
                   *host_display_client,
                   host_display_client->controlled_entity_ids()[0]));
-    EXPECT_EQ("Charlie",
+    EXPECT_EQ("Bravo",
               controlled_entity_name(
                   *host_display_client,
                   host_display_client->controlled_entity_ids()[1]));
-    EXPECT_EQ("Bravo",
+    EXPECT_EQ("Alpha",
               controlled_entity_name(
                   *join_display_client,
                   join_display_client->controlled_entity_ids()[0]));
-    EXPECT_EQ("Charlie",
+    EXPECT_EQ("Bravo",
               controlled_entity_name(
                   *join_display_client,
                   join_display_client->controlled_entity_ids()[1]));
@@ -2436,20 +2522,15 @@ TEST(PickerNetworkClient,
     {
         auto host_scope = cleanup.host_session->activate();
         ASSERT_NE(nullptr, cleanup.host_session->myscreen_->viewob[0]);
-        host_observation.alpha->set_outline(0);
-        host_observation.alpha->compute_outline(
-            cleanup.host_session->myscreen_->viewob[0]->control);
-        EXPECT_EQ(host_observation.alpha->query_team_color(),
-                  host_observation.alpha->outline());
+        ASSERT_NE(nullptr, cleanup.host_session->myscreen_->viewob[0]->control);
+        EXPECT_EQ(alpha_id,
+                  cleanup.host_session->myscreen_->viewob[0]->control->entity_id());
     }
     {
         auto join_scope = join_session.activate();
         ASSERT_NE(nullptr, join_session.myscreen_->viewob[0]);
-        join_observation.alpha->set_outline(0);
-        join_observation.alpha->compute_outline(
-            join_session.myscreen_->viewob[0]->control);
-        EXPECT_EQ(join_observation.alpha->query_team_color(),
-                  join_observation.alpha->outline());
+        ASSERT_NE(nullptr, join_session.myscreen_->viewob[0]->control);
+        EXPECT_EQ(bravo_id, join_session.myscreen_->viewob[0]->control->entity_id());
     }
 
     std::uint32_t next_tick =
@@ -2462,20 +2543,14 @@ TEST(PickerNetworkClient,
         true,
         false,
         next_tick));
-    ASSERT_TRUE(drive_bounded_switch_char_attempt(
-        *cleanup.host_session,
-        join_session,
-        false,
-        true,
-        next_tick));
 
     {
         auto host_scope = cleanup.host_session->activate();
         host_display_client =
             cleanup.host_session->myscreen_->render_interpolation_client();
         ASSERT_NE(nullptr, host_display_client);
-        const StaleAlliedClaimObservation host_after_switch =
-            observe_stale_allied_claim(
+        const AlliedClaimObservation host_after_switch =
+            observe_allied_claim_mapping(
                 *cleanup.host_session->myscreen_,
                 *host_display_client);
         ASSERT_NE(nullptr, host_after_switch.alpha);
@@ -2483,24 +2558,39 @@ TEST(PickerNetworkClient,
         ASSERT_NE(nullptr, host_after_switch.charlie);
         ASSERT_NE(nullptr, cleanup.host_session->myscreen_->viewob[0]);
         ASSERT_NE(nullptr, cleanup.host_session->myscreen_->viewob[0]->control);
-        EXPECT_NE(0u, host_display_client->controlled_entity_ids()[0]);
-        EXPECT_NE(0u, host_display_client->controlled_entity_ids()[1]);
-        EXPECT_NE(host_display_client->controlled_entity_ids()[0],
-                  host_display_client->controlled_entity_ids()[1]);
+        ASSERT_EQ(host_after_switch.claimed_ids, host_after_switch.mapped_ids)
+            << claim_mapping_details(*cleanup.host_session->myscreen_,
+                                     host_after_switch);
+        EXPECT_EQ(nullptr, host_after_switch.orphaned)
+            << claim_mapping_details(*cleanup.host_session->myscreen_,
+                                     host_after_switch);
+        const std::set<std::uint32_t> expected_after_switch = {
+            bravo_id,
+            charlie_id,
+        };
+        EXPECT_EQ(expected_after_switch, host_after_switch.mapped_ids);
+        EXPECT_EQ(charlie_id, host_display_client->controlled_entity_ids()[0]);
+        EXPECT_EQ(bravo_id, host_display_client->controlled_entity_ids()[1]);
         EXPECT_EQ(host_display_client->controlled_entity_ids()[0],
                   cleanup.host_session->myscreen_->viewob[0]
                       ->control->entity_id());
-        EXPECT_FALSE(
-            non_zero_controlled_entity_ids(*host_display_client)
-                .contains(host_after_switch.alpha->entity_id()));
+        EXPECT_EQ("Charlie",
+                  controlled_entity_name(
+                      *host_display_client,
+                      host_display_client->controlled_entity_ids()[0]));
+        EXPECT_EQ("Bravo",
+                  controlled_entity_name(
+                      *host_display_client,
+                      host_display_client->controlled_entity_ids()[1]));
+        EXPECT_FALSE(host_after_switch.mapped_ids.contains(alpha_id));
     }
 
     {
         auto join_scope = join_session.activate();
         join_display_client = join_session.myscreen_->render_interpolation_client();
         ASSERT_NE(nullptr, join_display_client);
-        const StaleAlliedClaimObservation join_after_switch =
-            observe_stale_allied_claim(
+        const AlliedClaimObservation join_after_switch =
+            observe_allied_claim_mapping(
                 *join_session.myscreen_,
                 *join_display_client);
         ASSERT_NE(nullptr, join_after_switch.alpha);
@@ -2508,15 +2598,30 @@ TEST(PickerNetworkClient,
         ASSERT_NE(nullptr, join_after_switch.charlie);
         ASSERT_NE(nullptr, join_session.myscreen_->viewob[0]);
         ASSERT_NE(nullptr, join_session.myscreen_->viewob[0]->control);
-        EXPECT_NE(0u, join_display_client->controlled_entity_ids()[0]);
-        EXPECT_NE(0u, join_display_client->controlled_entity_ids()[1]);
-        EXPECT_NE(join_display_client->controlled_entity_ids()[0],
-                  join_display_client->controlled_entity_ids()[1]);
+        ASSERT_EQ(join_after_switch.claimed_ids, join_after_switch.mapped_ids)
+            << claim_mapping_details(*join_session.myscreen_,
+                                     join_after_switch);
+        EXPECT_EQ(nullptr, join_after_switch.orphaned)
+            << claim_mapping_details(*join_session.myscreen_,
+                                     join_after_switch);
+        const std::set<std::uint32_t> expected_after_switch = {
+            bravo_id,
+            charlie_id,
+        };
+        EXPECT_EQ(expected_after_switch, join_after_switch.mapped_ids);
+        EXPECT_EQ(charlie_id, join_display_client->controlled_entity_ids()[0]);
+        EXPECT_EQ(bravo_id, join_display_client->controlled_entity_ids()[1]);
         EXPECT_EQ(join_display_client->controlled_entity_ids()[1],
                   join_session.myscreen_->viewob[0]->control->entity_id());
-        EXPECT_FALSE(
-            non_zero_controlled_entity_ids(*join_display_client)
-                .contains(join_after_switch.alpha->entity_id()));
+        EXPECT_EQ("Charlie",
+                  controlled_entity_name(
+                      *join_display_client,
+                      join_display_client->controlled_entity_ids()[0]));
+        EXPECT_EQ("Bravo",
+                  controlled_entity_name(
+                      *join_display_client,
+                      join_display_client->controlled_entity_ids()[1]));
+        EXPECT_FALSE(join_after_switch.mapped_ids.contains(alpha_id));
     }
 }
 
