@@ -1,4 +1,5 @@
 #include <openglad/gameplay/family_descriptor.h>
+#include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/net_transport.h>
@@ -1582,6 +1583,178 @@ TEST(PickerNetworkClient,
 
     og::runtime::clear_local_transport_shadow(*active_game_session());
     join_client->shutdown();
+}
+
+TEST(PickerNetworkClient, host_abort_level_signals_join_runtime_to_end_session)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(join_session.myscreen_->save_data,
+                                       1,
+                                       "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* host_session = nullptr;
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                og::runtime::clear_local_transport_shadow(*join_session);
+                if (join_client != nullptr)
+                    join_client->shutdown();
+                if (join_session->myscreen_ != nullptr)
+                    join_session->myscreen_->world().delete_objects();
+            }
+
+            if (host_session != nullptr)
+            {
+                og::runtime::clear_local_transport_shadow(*host_session);
+                if (host_client != nullptr)
+                    host_client->shutdown();
+                if (host_session->myscreen_ != nullptr)
+                    host_session->myscreen_->world().delete_objects();
+            }
+        }
+    } cleanup;
+
+    cleanup.host_session = active_game_session();
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    ASSERT_NE(nullptr, cleanup.host_session);
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+
+        bool join_lobby_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_lobby_ready = status_lines_contain_exact(
+                join_client->status_lines(),
+                "Lobby: 2 players");
+        }
+
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            join_lobby_ready;
+    })) << "host and join clients should converge on the same two-player lobby";
+
+    screen* const host_gameplay_screen = cleanup.host_session->myscreen_;
+    ASSERT_NE(nullptr, host_gameplay_screen);
+    walker* const host_friendly =
+        host_gameplay_screen->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const host_enemy =
+        host_gameplay_screen->world().add_ob(Order::Living, FAMILY_ARCHER);
+    ASSERT_NE(nullptr, host_friendly);
+    ASSERT_NE(nullptr, host_enemy);
+    host_friendly->set_team_num(0);
+    host_friendly->set_real_team_num(255);
+    host_enemy->set_team_num(1);
+    host_enemy->set_real_team_num(255);
+    host_gameplay_screen->world().end = 0;
+    host_gameplay_screen->world().game_ended = false;
+    host_gameplay_screen->world().next_level = -1;
+
+    ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(host_client->request_start_game());
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+
+        bool join_has_handoff = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_has_handoff = join_client->has_game_start_config();
+        }
+
+        return host_client->has_game_start_config() && join_has_handoff;
+    })) << "both peers should receive the gameplay handoff before runtime install";
+
+    ASSERT_TRUE(og::platform::install_picker_lobby_gameplay_runtime(
+        host_client.get(),
+        *cleanup.host_session,
+        *cleanup.host_session->myscreen_));
+    {
+        auto join_scope = join_session.activate();
+        ASSERT_TRUE(og::platform::install_picker_lobby_gameplay_runtime(
+            join_client.get(),
+            join_session,
+            *join_session.myscreen_));
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(*cleanup.host_session);
+
+        bool join_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            og::runtime::local_transport_shadow_finish_tick(join_session);
+            const og::sim::GameClient* const display_client =
+                join_session.myscreen_->render_interpolation_client();
+            join_ready =
+                display_client != nullptr && display_client->baseline().has_value();
+        }
+
+        return join_ready;
+    })) << "join runtime should receive its initial gameplay snapshot";
+
+    {
+        auto join_scope = join_session.activate();
+        const og::sim::GameClient* const display_client =
+            join_session.myscreen_->render_interpolation_client();
+        ASSERT_NE(nullptr, display_client);
+        ASSERT_TRUE(display_client->baseline().has_value());
+        const_cast<og::sim::GameClient*>(display_client)->send_client_ready();
+        join_session.myscreen_->world().end = 0;
+    }
+
+    og::runtime::local_transport_shadow_finish_tick(*cleanup.host_session);
+    og::runtime::local_transport_shadow_abort_level(*cleanup.host_session);
+
+    ASSERT_TRUE(wait_until([&] {
+        auto join_scope = join_session.activate();
+        og::runtime::local_transport_shadow_finish_tick(join_session);
+        return join_session.myscreen_->world().end != 0;
+    })) << "remote gameplay runtime should abort after the host/server aborts";
+
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_EQ(1, static_cast<int>(join_session.myscreen_->world().end));
+    }
 }
 
 TEST(PickerNetworkClient, join_sync_roster_ignores_remote_owned_slots)

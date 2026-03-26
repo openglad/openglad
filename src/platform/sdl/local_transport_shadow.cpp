@@ -594,6 +594,27 @@ bool local_transport_shadow_toggle_pause(GameSession& session)
     return true;
 }
 
+void local_transport_shadow_abort_level(GameSession& session)
+{
+    const auto runtime = session.local_transport_runtime_;
+    if (runtime == nullptr || !runtime->authoritative_mode() ||
+        runtime->server == nullptr)
+    {
+        return;
+    }
+
+    screen* const server_screen = runtime->server_screen();
+    if (server_screen == nullptr)
+        return;
+
+    auto server_scope = runtime->server_session->activate();
+    GameplayContextGuard server_gameplay_scope(&runtime->server_session->game_);
+    server_screen->world().end = 1;
+    runtime->server->broadcast_current_state(
+        og::sim::SnapshotCaptureMode::Peek,
+        og::sim::EventDeliveryMode::Skip);
+}
+
 void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
 {
     if (current_game == nullptr || current_game->sim_events == nullptr)

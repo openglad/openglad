@@ -88,6 +88,7 @@ private:
         std::size_t local_player_index);
     friend void clear_local_transport_shadow(GameSession& session) noexcept;
     friend bool local_transport_shadow_toggle_pause(GameSession& session);
+    friend void local_transport_shadow_abort_level(GameSession& session);
     friend void local_transport_shadow_send_input(GameSession& session,
                                                   const InputState& input,
                                                   std::uint32_t tick);

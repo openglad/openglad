@@ -51,6 +51,7 @@ void reset_network_client_transport_shadow(
     std::size_t local_player_index);
 void clear_local_transport_shadow(GameSession& session) noexcept;
 bool local_transport_shadow_toggle_pause(GameSession& session);
+void local_transport_shadow_abort_level(GameSession& session);
 void local_transport_shadow_send_input(GameSession& session,
                                        const InputState& input,
                                        std::uint32_t tick);
