@@ -291,8 +291,6 @@ void GameWorld::EntityList::prepare_remove(walker* entity)
 
     if (owner_ != nullptr && participates_in_id_index_ && entity->entity_id() != 0)
         owner_->removed_entity_ids_.push_back(entity->entity_id());
-
-    entity->owning_world_ = nullptr;
 }
 
 void GameWorld::EntityList::prepare_insert(Storage& entities)

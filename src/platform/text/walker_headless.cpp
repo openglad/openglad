@@ -65,18 +65,23 @@ void walker::set_direct_frame(short whichframe)
 
 walker::~walker()
 {
-	owning_world_ = nullptr;
 	set_foe(nullptr);
 	set_leader(nullptr);
 	set_owner(nullptr);
 	set_collide_ob(nullptr);
 	set_dead(1);
 
-	obmap* active = (current_game != nullptr && current_game->world != nullptr)
-	    ? current_game->world->myobmap.get()
-	    : nullptr;
+	GameWorld* const owning_world = owning_world_;
+	obmap* active = (owning_world != nullptr) ? owning_world->myobmap.get() : nullptr;
+	if (active == nullptr &&
+	    current_game != nullptr &&
+	    current_game->world != nullptr)
+	{
+		active = current_game->world->myobmap.get();
+	}
 	if (active != nullptr)
 		active->remove(this);
+	owning_world_ = nullptr;
 
 	stats_.reset();
 	render_.reset();
