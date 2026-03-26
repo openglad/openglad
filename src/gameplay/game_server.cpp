@@ -627,9 +627,10 @@ bool has_living_member_for_any_bound_team(
     const std::unordered_map<og::sim::PeerId, og::sim::ConnectedClientState>& clients,
     const std::vector<og::sim::DisconnectedPlayer>& disconnected_players) noexcept
 {
-    std::array<bool, MAX_PLAYERS> tracked_teams = {};
+    std::array<bool, MAX_TEAM + 1> tracked_teams = {};
     auto track_team = [&tracked_teams](short team_num) {
-        if (team_num >= 0 && team_num < MAX_PLAYERS)
+        if (team_num >= 0 &&
+            team_num < static_cast<short>(tracked_teams.size()))
         {
             tracked_teams[static_cast<std::size_t>(team_num)] = true;
         }

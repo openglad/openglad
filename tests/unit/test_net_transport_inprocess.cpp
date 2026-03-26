@@ -337,6 +337,7 @@ TEST(NetTransportInProcess,
 TEST(NetTransportInProcess,
      game_server_shared_team_last_survivor_does_not_trigger_false_endgame)
 {
+    constexpr short kSharedTeam = 5;
     TestGameWorld fixture;
     auto server_transport = og::sim::InProcessTransport::create_server();
     server_transport->accept_connections();
@@ -344,13 +345,13 @@ TEST(NetTransportInProcess,
     auto client_two = server_transport->create_client_transport();
 
     walker* const first =
-        add_network_player_character(fixture.world(), FAMILY_SOLDIER, 0,
+        add_network_player_character(fixture.world(), FAMILY_SOLDIER, kSharedTeam,
                                      "Alexander One");
     walker* const second =
-        add_network_player_character(fixture.world(), FAMILY_SOLDIER, 0,
+        add_network_player_character(fixture.world(), FAMILY_SOLDIER, kSharedTeam,
                                      "Alexander Two");
     walker* const spare =
-        add_network_player_character(fixture.world(), FAMILY_SOLDIER, 0,
+        add_network_player_character(fixture.world(), FAMILY_SOLDIER, kSharedTeam,
                                      "Alexander Spare");
     ASSERT_NE(nullptr, first);
     ASSERT_NE(nullptr, second);
@@ -360,8 +361,8 @@ TEST(NetTransportInProcess,
                                *server_transport);
     server.connect_client(client_one->local_peer_id());
     server.connect_client(client_two->local_peer_id());
-    server.bind_player(client_one->local_peer_id(), 0u, 0);
-    server.bind_player(client_two->local_peer_id(), 1u, 0);
+    server.bind_player(client_one->local_peer_id(), 0u, kSharedTeam);
+    server.bind_player(client_two->local_peer_id(), 1u, kSharedTeam);
 
     ASSERT_EQ(first, server.player_control(0));
     ASSERT_EQ(second, server.player_control(1));
