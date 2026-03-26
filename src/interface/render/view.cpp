@@ -211,6 +211,7 @@ viewscreen::viewscreen(short x, short y, short width,
 
 	// Key entries ..
 	mynum = whatnum;              // what viewscreen am I?
+	my_team = 0;
 	mykeys = allkeys()[mynum]; // assign keyboard mappings
 
 	// Set preferences to default values

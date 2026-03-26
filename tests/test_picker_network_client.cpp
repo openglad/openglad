@@ -1620,6 +1620,119 @@ TEST(PickerNetworkClient,
     join_client->shutdown();
 }
 
+TEST(PickerNetworkClient,
+     join_runtime_install_applies_local_team_to_view_after_handoff)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 1, "Joiner");
+    save.allied_mode = 0;
+    g_start_game_requested = false;
+
+    const int port = ix::getFreePort();
+    auto server_transport =
+        std::make_shared<og::sim::WebSocketServerTransport>(port);
+    server_transport->accept_connections();
+
+    SaveData remote_host_save;
+    prepare_single_member_network_save(remote_host_save, 0, "Remote Host");
+    remote_host_save.scen_num = 1;
+    remote_host_save.allied_mode = 0;
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Direct;
+    options.direct_endpoint = std::format("127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+
+    og::sim::PeerId join_peer_id = 0;
+    og::sim::LobbyMessage join_message;
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        for (auto& [peer_id, message] : poll_lobby_messages(*server_transport))
+        {
+            if (message.kind() != og::sim::LobbyMessageKind::Join)
+                continue;
+
+            join_peer_id = peer_id;
+            join_message = std::move(message);
+            return true;
+        }
+        return false;
+    })) << "join client should connect and send its join message";
+
+    ASSERT_EQ(og::sim::LobbyMessageKind::Join, join_message.kind());
+    og::sim::LobbyPlayer join_player =
+        std::get<og::sim::LobbyJoinMessage>(join_message.payload).player;
+    join_player.player_index = 1u;
+    join_player.ready = false;
+    join_player.is_host = false;
+    join_player.team = 1;
+    for (auto& slot : join_player.character_slots)
+        slot.character.teamnum = 1;
+
+    og::sim::LobbyState state;
+    state.settings.campaign_id = remote_host_save.current_campaign;
+    state.settings.scenario_id = remote_host_save.scen_num;
+    state.settings.difficulty = 2;
+    state.settings.allied_mode = 0;
+    state.players.push_back(og::sim::LobbyPlayer{
+        .player_index = 0u,
+        .name = "Remote Host",
+        .team = 0,
+        .character_slots = {make_lobby_slot(0u, "Remote Host", 0)},
+        .ready = false,
+        .is_host = true,
+    });
+    state.players.push_back(join_player);
+    server_transport->send_lobby_state(
+        join_peer_id, std::make_shared<og::sim::LobbyState>(state));
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(
+            join_client->status_lines(),
+            "Lobby: 2 players");
+    })) << "join client should receive lobby state before runtime handoff";
+
+    send_start_game_message(*server_transport, join_peer_id, 0u);
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return join_client->has_game_start_config();
+    })) << "join client should receive the host start-game handoff";
+
+    ASSERT_NE(nullptr, active_game_session());
+    ASSERT_TRUE(install_gameplay_runtime_from_handoff(*join_client));
+    ASSERT_TRUE(og::runtime::local_transport_active(*active_game_session()));
+
+    screen* const gameplay_screen = active_game_session()->myscreen_;
+    ASSERT_NE(nullptr, gameplay_screen);
+    ASSERT_NE(nullptr, gameplay_screen->viewob[0]);
+
+    og::sim::InitialSetupMessage initial_setup;
+    initial_setup.level_id = 1;
+    initial_setup.current_scenario = 1;
+    initial_setup.my_team = 1;
+    initial_setup.allied_mode = 0;
+    server_transport->send_initial_setup(
+        join_peer_id,
+        std::make_shared<og::sim::InitialSetupMessage>(initial_setup));
+
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(*active_game_session());
+        return gameplay_screen->world().my_team == 1;
+    })) << "client runtime should apply the authoritative initial setup";
+
+    EXPECT_EQ(1, gameplay_screen->world().my_team);
+    EXPECT_EQ(1, gameplay_screen->viewob[0]->my_team)
+        << "client-only runtime should mirror the authoritative team onto the "
+           "display view after initial setup";
+
+    og::runtime::clear_local_transport_shadow(*active_game_session());
+    join_client->shutdown();
+}
+
 TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
 {
     IxNetSystemScope net_system;

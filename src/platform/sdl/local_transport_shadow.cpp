@@ -320,6 +320,14 @@ void apply_initial_setup_to_client_save(
         completed.insert(level_id);
 }
 
+void sync_single_display_team_from_save(screen& gameplay_screen)
+{
+    if (gameplay_screen.numviews != 1 || gameplay_screen.viewob[0] == nullptr)
+        return;
+
+    gameplay_screen.viewob[0]->my_team = gameplay_screen.save_data.my_team;
+}
+
 bool prepare_display_level_for_initial_setup(
     screen& gameplay_screen,
     const og::sim::InitialSetupMessage& message)
@@ -341,6 +349,7 @@ bool prepare_display_level_for_initial_setup(
     gameplay_screen.world().reset_level_progress();
     gameplay_screen.world().clear_removed_entity_ids();
     gameplay_screen.world().clear_grid_dirty_tiles();
+    sync_single_display_team_from_save(gameplay_screen);
     gameplay_screen.redrawme = 1;
     return true;
 }
@@ -472,8 +481,14 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
         [&gameplay_screen, display_client_ptr = &display_client](
             const og::sim::InitialSetupMessage& message,
             bool is_level_transition) {
+            apply_initial_setup_to_client_save(gameplay_screen, message);
+
             if (!is_level_transition)
+            {
+                sync_single_display_team_from_save(gameplay_screen);
+                gameplay_screen.redrawme = 1;
                 return;
+            }
 
             if (!prepare_display_level_for_initial_setup(
                     gameplay_screen, message))
