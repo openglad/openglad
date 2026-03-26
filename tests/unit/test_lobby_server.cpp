@@ -333,6 +333,19 @@ TEST(LobbyServer, ready_team_change_and_leave_update_state_and_broadcasts)
         22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
     server.poll_incoming_messages();
 
+    og::sim::LobbySettings enemy_settings;
+    enemy_settings.campaign_id = "org.openglad.gladiator";
+    enemy_settings.scenario_id = 1;
+    enemy_settings.difficulty = 1;
+    enemy_settings.allied_mode = 0;
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = std::move(enemy_settings),
+    };
+    transport.queue_lobby_message(11u, settings_message);
+    server.poll_incoming_messages();
+
     transport.clear_sent_messages();
     og::sim::LobbyMessage ready_message;
     ready_message.payload = og::sim::LobbyReadyMessage{
@@ -608,6 +621,19 @@ TEST(LobbyServer, join_trims_total_character_count_to_save_data_limit)
         22u, make_join_message("Guest", 1, make_slots(20u, 10u, 200, FAMILY_ARCHER)));
     server.poll_incoming_messages();
 
+    og::sim::LobbySettings enemy_settings;
+    enemy_settings.campaign_id = "org.openglad.gladiator";
+    enemy_settings.scenario_id = 1;
+    enemy_settings.difficulty = 1;
+    enemy_settings.allied_mode = 0;
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = std::move(enemy_settings),
+    };
+    transport.queue_lobby_message(11u, settings_message);
+    server.poll_incoming_messages();
+
     ASSERT_EQ(2u, server.state().players.size());
     EXPECT_EQ(20u, server.state().players[0].character_slots.size());
     EXPECT_EQ(4u, server.state().players[1].character_slots.size());
@@ -696,6 +722,19 @@ TEST(LobbyServer,
         make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
     server.poll_incoming_messages();
 
+    og::sim::LobbySettings enemy_settings;
+    enemy_settings.campaign_id = "org.openglad.gladiator";
+    enemy_settings.scenario_id = 1;
+    enemy_settings.difficulty = 1;
+    enemy_settings.allied_mode = 0;
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = std::move(enemy_settings),
+    };
+    transport.queue_lobby_message(11u, settings_message);
+    server.poll_incoming_messages();
+
     const std::vector<og::sim::LobbyPlayerBinding> bindings =
         server.build_player_bindings();
     ASSERT_EQ(2u, bindings.size());
@@ -711,4 +750,53 @@ TEST(LobbyServer,
                   .team = 1,
               }),
               bindings[1]);
+}
+
+TEST(LobbyServer, allied_mode_normalizes_game_start_teams_to_team_zero)
+{
+    MockLobbyTransport transport(true);
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+    transport.clear_sent_messages();
+
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 2, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    transport.queue_lobby_message(
+        22u,
+        make_join_message("Guest", 3, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    og::sim::LobbySettings allied_settings;
+    allied_settings.campaign_id = "org.openglad.gladiator";
+    allied_settings.scenario_id = 1;
+    allied_settings.difficulty = 1;
+    allied_settings.allied_mode = 1;
+    og::sim::LobbyMessage settings_message;
+    settings_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = std::move(allied_settings),
+    };
+    transport.queue_lobby_message(11u, settings_message);
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ(2, server.state().players[0].team);
+    EXPECT_EQ(3, server.state().players[1].team);
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    ASSERT_EQ(2u, equivalent.team_list.size());
+    EXPECT_EQ(1, equivalent.allied_mode);
+    EXPECT_EQ(0, equivalent.team_list[0].character.teamnum);
+    EXPECT_EQ(0, equivalent.team_list[1].character.teamnum);
+
+    const std::vector<og::sim::LobbyPlayerBinding> bindings =
+        server.build_player_bindings();
+    ASSERT_EQ(2u, bindings.size());
+    EXPECT_EQ(0, bindings[0].team);
+    EXPECT_EQ(0, bindings[1].team);
 }

@@ -16,6 +16,7 @@ constexpr std::string_view kDefaultCampaignId = "org.openglad.gladiator";
 constexpr std::int16_t kDefaultScenarioId = 1;
 constexpr std::int16_t kDefaultDifficulty = 1;
 constexpr std::int16_t kDefaultAlliedMode = 1;
+constexpr std::int16_t kSharedAlliedGameplayTeam = 0;
 constexpr std::size_t kMaxLobbyTeamSize = 24;
 
 og::sim::LobbySettings make_default_lobby_settings()
@@ -66,6 +67,12 @@ std::vector<og::sim::LobbyCharacterSlot> sanitize_character_slots(
     }
 
     return sanitized;
+}
+
+std::int16_t gameplay_team_for_mode(std::int16_t allied_mode,
+                                    std::int16_t team) noexcept
+{
+    return allied_mode != 0 ? kSharedAlliedGameplayTeam : team;
 }
 
 std::string default_player_name(std::size_t ordinal)
@@ -576,7 +583,13 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     if (slots_are_dense)
     {
         for (const OrderedLobbySlot& slot : ordered_slots)
-            equivalent.team_list.push_back(*slot.slot);
+        {
+            LobbyCharacterSlot gameplay_slot = *slot.slot;
+            gameplay_slot.character.teamnum = gameplay_team_for_mode(
+                equivalent.allied_mode,
+                gameplay_slot.character.teamnum);
+            equivalent.team_list.push_back(std::move(gameplay_slot));
+        }
         return equivalent;
     }
 
@@ -584,6 +597,9 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     {
         LobbyCharacterSlot compacted = *ordered_slots[index].slot;
         compacted.slot_index = static_cast<std::uint8_t>(index);
+        compacted.character.teamnum = gameplay_team_for_mode(
+            equivalent.allied_mode,
+            compacted.character.teamnum);
         equivalent.team_list.push_back(std::move(compacted));
     }
 
@@ -603,7 +619,8 @@ std::vector<LobbyPlayerBinding> LobbyServer::build_player_bindings() const
         bindings.push_back(LobbyPlayerBinding{
             .peer_id = peer_id,
             .player_index = peer.player->player_index,
-            .team = peer.player->team,
+            .team = gameplay_team_for_mode(state_.settings.allied_mode,
+                                           peer.player->team),
         });
     }
 

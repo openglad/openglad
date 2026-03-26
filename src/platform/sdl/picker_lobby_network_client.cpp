@@ -650,6 +650,11 @@ short resolve_initial_local_team(const SaveData& save)
     return 0;
 }
 
+short gameplay_start_team(short allied_mode, short requested_team) noexcept
+{
+    return allied_mode != 0 ? 0 : requested_team;
+}
+
 std::vector<std::string> split_top_level_json_objects(std::string_view text)
 {
     std::vector<std::string> objects;
@@ -945,6 +950,9 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     {
         og::sim::LobbyCharacterSlot compacted = *slot.slot;
         compacted.slot_index = slot.save_slot_index;
+        compacted.character.teamnum = gameplay_start_team(
+            state.settings.allied_mode,
+            compacted.character.teamnum);
         equivalent.team_list.push_back(std::move(compacted));
     }
 
@@ -1586,7 +1594,8 @@ public:
         config.difficulty = state_.has_value()
             ? static_cast<std::int16_t>(state_->settings.difficulty)
             : static_cast<std::int16_t>(server_->state().settings.difficulty);
-        config.my_team = local_team_;
+        config.my_team = gameplay_start_team(config.save_data.allied_mode,
+                                             local_team_);
         return config;
     }
 
@@ -1976,7 +1985,8 @@ public:
                 spectator_mode_);
         config.difficulty =
             static_cast<std::int16_t>(state_->settings.difficulty);
-        config.my_team = local_team_;
+        config.my_team = gameplay_start_team(config.save_data.allied_mode,
+                                             local_team_);
         return config;
     }
 

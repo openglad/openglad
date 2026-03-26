@@ -962,8 +962,10 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     EXPECT_EQ(0u, start_config->save_data.numplayers);
     EXPECT_EQ(1, start_config->save_data.allied_mode);
     EXPECT_EQ(6, start_config->difficulty);
+    EXPECT_EQ(0, start_config->my_team);
     ASSERT_EQ(1u, start_config->save_data.team_list.size());
     EXPECT_EQ("Host Prime", start_config->save_data.team_list[0].character.name);
+    EXPECT_EQ(0, start_config->save_data.team_list[0].character.teamnum);
     EXPECT_FALSE(host_client->consume_game_start_config().has_value());
 
     ASSERT_TRUE(save.save("save0"));
@@ -1368,8 +1370,10 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     EXPECT_EQ(5, start_config->save_data.scen_num);
     EXPECT_EQ(0u, start_config->save_data.numplayers);
     EXPECT_EQ(7, start_config->difficulty);
-    EXPECT_EQ(1, start_config->my_team);
+    EXPECT_EQ(0, start_config->my_team);
     ASSERT_EQ(2u, start_config->save_data.team_list.size());
+    EXPECT_EQ(0, start_config->save_data.team_list[0].character.teamnum);
+    EXPECT_EQ(0, start_config->save_data.team_list[1].character.teamnum);
 
     ASSERT_TRUE(install_gameplay_runtime_from_handoff(*join_client));
     EXPECT_TRUE(og::runtime::local_transport_active(*active_game_session()));

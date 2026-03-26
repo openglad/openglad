@@ -37,6 +37,11 @@ struct PreservedSaveSlot {
     std::unique_ptr<guy> member;
 };
 
+short gameplay_start_team(short allied_mode, short requested_team) noexcept
+{
+    return allied_mode != 0 ? 0 : requested_team;
+}
+
 og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
 {
     og::sim::LobbyCharacterData character;
@@ -313,7 +318,9 @@ public:
             config.save_data.numplayers = 0;
         config.difficulty =
             static_cast<std::int16_t>(server_->state().settings.difficulty);
-        config.my_team = !peers_.empty() ? peers_.front().team : 0;
+        config.my_team = gameplay_start_team(
+            config.save_data.allied_mode,
+            !peers_.empty() ? peers_.front().team : 0);
         return config;
     }
 
