@@ -12,6 +12,7 @@
 #endif
 
 #include <cstdlib>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -137,6 +138,46 @@ bool wait_for_interactable_label_contains(const std::string& id,
     return interactable_label_contains(id, expected_substring);
 }
 
+bool wait_for_trace_contains(const char* category,
+                             const char* substring,
+                             int timeout_ms = 5000)
+{
+    int elapsed = 0;
+    constexpr int poll_interval_ms = 50;
+    while (elapsed < timeout_ms)
+    {
+        if (trace_contains(category, substring))
+            return true;
+        SDL_Delay(poll_interval_ms);
+        elapsed += poll_interval_ms;
+    }
+    return trace_contains(category, substring);
+}
+
+bool wait_for_any_interactable(std::initializer_list<const char*> ids,
+                               int timeout_ms = 5000)
+{
+    int elapsed = 0;
+    constexpr int poll_interval_ms = 50;
+    while (elapsed < timeout_ms)
+    {
+        for (const char* id : ids)
+        {
+            if (has_interactable(id))
+                return true;
+        }
+        SDL_Delay(poll_interval_ms);
+        elapsed += poll_interval_ms;
+    }
+
+    for (const char* id : ids)
+    {
+        if (has_interactable(id))
+            return true;
+    }
+    return false;
+}
+
 bool interact_until_label_contains(const std::string& id,
                                    const std::string& expected_substring,
                                    int timeout_ms = 10000)
@@ -164,6 +205,59 @@ bool interact_until_label_contains(const std::string& id,
     }
 
     return interactable_label_contains(id, expected_substring);
+}
+
+bool interact_until_trace_contains(const std::string& id,
+                                   const char* category,
+                                   const char* substring,
+                                   int timeout_ms = 10000)
+{
+    const Uint32 deadline = SDL_GetTicks() + static_cast<Uint32>(timeout_ms);
+    while (SDL_GetTicks() < deadline)
+    {
+        if (trace_contains(category, substring))
+            return true;
+
+        if (!has_interactable(id))
+        {
+            SDL_Delay(100);
+            continue;
+        }
+
+        interact(id);
+        if (wait_for_trace_contains(category, substring, 1500))
+            return true;
+
+        SDL_Delay(100);
+    }
+
+    return trace_contains(category, substring);
+}
+
+bool interact_until_any_interactable(const std::string& id,
+                                     std::initializer_list<const char*> ids,
+                                     int timeout_ms = 10000)
+{
+    const Uint32 deadline = SDL_GetTicks() + static_cast<Uint32>(timeout_ms);
+    while (SDL_GetTicks() < deadline)
+    {
+        if (wait_for_any_interactable(ids, 0))
+            return true;
+
+        if (!has_interactable(id))
+        {
+            SDL_Delay(100);
+            continue;
+        }
+
+        interact(id);
+        if (wait_for_any_interactable(ids, 1500))
+            return true;
+
+        SDL_Delay(100);
+    }
+
+    return wait_for_any_interactable(ids, 0);
 }
 
 struct NetworkingJoinState
@@ -414,8 +508,8 @@ int networking_host_factory_error_injector(void* data)
         "network_port", "24567");
 
     SDL_Delay(150);
-    interact("network_host");
-    SDL_Delay(250);
+    (void)interact_until_trace_contains(
+        "network_host", "popup", "simulated host failure");
     state->stayed_in_submenu_after_host_error =
         has_interactable("network_host") && has_interactable("network_back");
 
@@ -497,10 +591,9 @@ int networking_host_injector(void* data)
     }
 
     SDL_Delay(150);
-    interact("network_host");
+    state->entered_team_menu = interact_until_any_interactable(
+        "network_host", {"view_team", "go", "back"}, 15000);
 
-    state->entered_team_menu =
-        wait_for_interactable("view_team", 10000) || wait_for_interactable("go", 250);
     if (state->entered_team_menu && wait_for_interactable("back", 5000))
     {
         SDL_Delay(150);
@@ -521,6 +614,13 @@ int networking_host_injector(void* data)
         if (wait_for_interactable("back", 150))
         {
             interact("back");
+            SDL_Delay(150);
+            continue;
+        }
+
+        if (wait_for_interactable("network_back", 150))
+        {
+            interact("network_back");
             SDL_Delay(150);
             continue;
         }
