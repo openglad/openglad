@@ -201,6 +201,9 @@ int main(int argc, char** argv)
 #endif
     std::signal(SIGINT, handle_test_signal);
     std::signal(SIGTERM, handle_test_signal);
+#ifdef SIGPIPE
+    std::signal(SIGPIPE, SIG_IGN);
+#endif
 
     ::testing::InitGoogleTest(&argc, argv);
 

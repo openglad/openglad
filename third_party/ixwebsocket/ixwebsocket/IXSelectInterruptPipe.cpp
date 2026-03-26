@@ -34,14 +34,22 @@ namespace ix
 
     SelectInterruptPipe::~SelectInterruptPipe()
     {
-        if (-1 != _fildes[kPipeReadIndex]) {
-            ::close(_fildes[kPipeReadIndex]);
+        int readFd = -1;
+        int writeFd = -1;
+        {
+            std::lock_guard<std::mutex> lock(_fildesMutex);
+            readFd = _fildes[kPipeReadIndex];
+            writeFd = _fildes[kPipeWriteIndex];
+            _fildes[kPipeReadIndex] = -1;
+            _fildes[kPipeWriteIndex] = -1;
         }
-        if (-1 != _fildes[kPipeWriteIndex]) {
-            ::close(_fildes[kPipeWriteIndex]);
+
+        if (-1 != writeFd) {
+            ::close(writeFd);
         }
-        _fildes[kPipeReadIndex] = -1;
-        _fildes[kPipeWriteIndex] = -1;
+        if (-1 != readFd) {
+            ::close(readFd);
+        }
     }
 
     bool SelectInterruptPipe::init(std::string& errorMsg)
