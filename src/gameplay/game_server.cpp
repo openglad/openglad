@@ -622,6 +622,46 @@ std::vector<og::sim::InitialSetupGuyData> collect_initial_setup_guys(
     return guys;
 }
 
+bool has_living_member_for_any_bound_team(
+    const GameWorld& world,
+    const std::unordered_map<og::sim::PeerId, og::sim::ConnectedClientState>& clients,
+    const std::vector<og::sim::DisconnectedPlayer>& disconnected_players) noexcept
+{
+    std::array<bool, MAX_PLAYERS> tracked_teams = {};
+    auto track_team = [&tracked_teams](short team_num) {
+        if (team_num >= 0 && team_num < MAX_PLAYERS)
+        {
+            tracked_teams[static_cast<std::size_t>(team_num)] = true;
+        }
+    };
+
+    for (const auto& [peer_id, client] : clients)
+    {
+        (void)peer_id;
+        if (client.has_player_binding)
+            track_team(client.team_num);
+    }
+
+    for (const og::sim::DisconnectedPlayer& disconnected : disconnected_players)
+        track_team(disconnected.team_num);
+
+    for (const auto& uptr : world.oblist)
+    {
+        const walker* const entity = uptr.get();
+        if (entity == nullptr || entity->dead() ||
+            entity->query_order() != Order::Living)
+        {
+            continue;
+        }
+
+        const unsigned char team_num = entity->team_num();
+        if (team_num < tracked_teams.size() && tracked_teams[team_num])
+            return true;
+    }
+
+    return false;
+}
+
 std::string player_name_from_control(const walker* control,
                                      std::size_t player_index)
 {
@@ -1259,6 +1299,12 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
             world_.control_hp = result.control_hp;
         if (result.endgame_requested)
         {
+            if (has_living_member_for_any_bound_team(
+                    world_, clients_, disconnected_players_))
+            {
+                continue;
+            }
+
             world_.ending = result.endgame_type;
             emit_event(&events_, EventKind::EndGame,
                        static_cast<std::uint32_t>(result.endgame_type),
@@ -1806,6 +1852,12 @@ bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
             world_.control_hp = result.control_hp;
         if (result.endgame_requested)
         {
+            if (has_living_member_for_any_bound_team(
+                    world_, clients_, disconnected_players_))
+            {
+                continue;
+            }
+
             world_.ending = result.endgame_type;
             emit_event(&events_, EventKind::EndGame,
                        static_cast<std::uint32_t>(result.endgame_type),

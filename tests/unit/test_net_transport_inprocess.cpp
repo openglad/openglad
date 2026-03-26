@@ -2,6 +2,7 @@
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 
@@ -173,6 +174,30 @@ unsigned char read_grid_tile(const GameWorld& world, short x, short y)
     return world.grid.data[static_cast<std::size_t>(y) * world.grid.w + x];
 }
 
+walker* add_network_player_character(GameWorld& world,
+                                     int family,
+                                     short team,
+                                     const char* name)
+{
+    walker* const actor = world.add_ob(Order::Living, family);
+    if (actor == nullptr)
+        return nullptr;
+
+    auto member = std::make_unique<guy>(family);
+    member->name = name;
+    member->teamnum = team;
+    actor->set_owned_myguy(std::move(member));
+    actor->set_team_num(static_cast<unsigned char>(team));
+    actor->set_real_team_num(255);
+    actor->set_user(-1);
+    actor->set_act_type(ACT_RANDOM);
+    actor->set_dead(0);
+    if (actor->stats() != nullptr)
+        actor->stats()->set_level(actor->myguy->level);
+    actor->myguy->update_derived_stats(actor);
+    return actor;
+}
+
 } // namespace
 
 TEST(NetTransportInProcess, linked_pair_preserves_raw_send_receive)
@@ -307,6 +332,65 @@ TEST(NetTransportInProcess,
 
     expect_snapshot_eq(*first_client_messages[1].snapshot,
                        *second_client_messages[1].snapshot);
+}
+
+TEST(NetTransportInProcess,
+     game_server_shared_team_last_survivor_does_not_trigger_false_endgame)
+{
+    TestGameWorld fixture;
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    server_transport->accept_connections();
+    auto client_one = server_transport->create_client_transport();
+    auto client_two = server_transport->create_client_transport();
+
+    walker* const first =
+        add_network_player_character(fixture.world(), FAMILY_SOLDIER, 0,
+                                     "Alexander One");
+    walker* const second =
+        add_network_player_character(fixture.world(), FAMILY_SOLDIER, 0,
+                                     "Alexander Two");
+    walker* const spare =
+        add_network_player_character(fixture.world(), FAMILY_SOLDIER, 0,
+                                     "Alexander Spare");
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+    ASSERT_NE(nullptr, spare);
+
+    og::sim::GameServer server(fixture.world(), fixture.events,
+                               *server_transport);
+    server.connect_client(client_one->local_peer_id());
+    server.connect_client(client_two->local_peer_id());
+    server.bind_player(client_one->local_peer_id(), 0u, 0);
+    server.bind_player(client_two->local_peer_id(), 1u, 0);
+
+    ASSERT_EQ(first, server.player_control(0));
+    ASSERT_EQ(second, server.player_control(1));
+
+    first->set_dead(1);
+    second->set_dead(1);
+    fixture.world().ending = 0;
+    fixture.world().game_ended = false;
+    fixture.world().end = 0;
+
+    server.step();
+
+    EXPECT_EQ(0, fixture.world().ending)
+        << "a surviving allied character should prevent multiplayer endgame";
+    EXPECT_EQ(1u, fixture.world().tick_count_)
+        << "the authoritative world should keep ticking when a teammate survives";
+
+    const std::array<walker*, 2> controls = {
+        server.player_control(0),
+        server.player_control(1),
+    };
+    EXPECT_EQ(
+        1,
+        std::count(controls.begin(), controls.end(), spare))
+        << "exactly one player should be reassigned to the spare survivor";
+    EXPECT_EQ(
+        1,
+        std::count(controls.begin(), controls.end(), nullptr))
+        << "the other player should be left without a direct control instead of ending the match";
 }
 
 TEST(NetTransportInProcess,
