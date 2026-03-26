@@ -1,7 +1,11 @@
 #include "SDL.h"
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <filesystem>
+#include <set>
+#include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -192,6 +196,275 @@ static void expect_snapshot_bytes_match(const og::sim::WorldSnapshot& expected,
                 ? divergence->field + " expected=" + divergence->expected_value +
                       " actual=" + divergence->actual_value
                 : "snapshot bytes diverged");
+}
+
+using namespace std::chrono_literals;
+
+template <typename Predicate>
+bool wait_until(Predicate&& predicate,
+                std::chrono::milliseconds timeout = 2s,
+                std::chrono::milliseconds poll_interval =
+                    std::chrono::milliseconds(5))
+{
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline)
+    {
+        if (predicate())
+            return true;
+        std::this_thread::sleep_for(poll_interval);
+    }
+    return predicate();
+}
+
+static std::unique_ptr<guy> make_named_soldier(std::string_view name, short team)
+{
+    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+    member->name = std::string(name);
+    member->teamnum = team;
+    return member;
+}
+
+static og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
+{
+    og::sim::LobbyCharacterData character;
+    character.guy_id = source.id;
+    character.name = source.name;
+    character.family = static_cast<std::int8_t>(source.family);
+    character.strength = source.strength;
+    character.dexterity = source.dexterity;
+    character.constitution = source.constitution;
+    character.intelligence = source.intelligence;
+    character.armor = source.armor;
+    character.exp = source.exp;
+    character.kills = source.kills;
+    character.level_kills = source.level_kills;
+    character.total_damage = source.total_damage;
+    character.total_hits = source.total_hits;
+    character.total_shots = source.total_shots;
+    character.teamnum = source.teamnum;
+    character.scen_damage = source.scen_damage;
+    character.scen_kills = source.scen_kills;
+    character.scen_damage_taken = source.scen_damage_taken;
+    character.scen_min_hp = source.scen_min_hp;
+    character.scen_shots = source.scen_shots;
+    character.scen_hits = source.scen_hits;
+    character.level = source.level;
+    return character;
+}
+
+static void prepare_dense_allied_alpha_bravo_charlie_save(SaveData& save)
+{
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels.clear();
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_list[0] = make_named_soldier("Alpha", 0);
+    save.team_list[1] = make_named_soldier("Bravo", 0);
+    save.team_list[2] = make_named_soldier("Charlie", 0);
+    save.team_size = 3;
+}
+
+static og::ui::PickerLobbyGameStartConfig make_one_view_lobby_start_config(
+    const SaveData& save)
+{
+    og::ui::PickerLobbyGameStartConfig config;
+    config.difficulty = 1;
+    config.my_team = 0;
+    config.save_data.current_campaign = save.current_campaign;
+    config.save_data.scen_num = save.scen_num;
+    config.save_data.numplayers = save.numplayers;
+    config.save_data.allied_mode = save.allied_mode;
+
+    for (std::size_t slot_index = 0; slot_index < save.team_list.size(); ++slot_index)
+    {
+        const auto& member = save.team_list[slot_index];
+        if (member == nullptr)
+            continue;
+        config.save_data.team_list.push_back(og::sim::LobbyCharacterSlot{
+            .slot_index = static_cast<std::uint8_t>(slot_index),
+            .character = make_lobby_character_data(*member),
+        });
+    }
+
+    return config;
+}
+
+static walker* find_named_team_member(GameWorld& world,
+                                      std::string_view name,
+                                      short team = 0)
+{
+    for (auto& uptr : world.oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity == nullptr || entity->dead() ||
+            entity->query_order() != Order::Living || entity->myguy == nullptr)
+        {
+            continue;
+        }
+        if (entity->team_num() == team && entity->myguy->name == name)
+            return entity;
+    }
+
+    return nullptr;
+}
+
+static std::set<std::uint32_t> non_zero_controlled_entity_ids(
+    const og::sim::GameClient& client)
+{
+    std::set<std::uint32_t> ids;
+    for (const std::uint32_t entity_id : client.controlled_entity_ids())
+    {
+        if (entity_id != 0u)
+            ids.insert(entity_id);
+    }
+    return ids;
+}
+
+static const og::sim::EntitySnapshot* find_snapshot_entity(
+    const og::sim::WorldSnapshot& snapshot,
+    std::uint32_t entity_id)
+{
+    const auto find_in = [entity_id](const auto& entities)
+        -> const og::sim::EntitySnapshot* {
+        const auto it = std::find_if(
+            entities.begin(),
+            entities.end(),
+            [entity_id](const og::sim::EntitySnapshot& entity) {
+                return entity.entity_id == entity_id;
+            });
+        return it != entities.end() ? &*it : nullptr;
+    };
+
+    if (const auto* entity = find_in(snapshot.oblist); entity != nullptr)
+        return entity;
+    if (const auto* entity = find_in(snapshot.fxlist); entity != nullptr)
+        return entity;
+    return find_in(snapshot.weaplist);
+}
+
+static std::string controlled_entity_name(const og::sim::GameClient& client,
+                                          std::uint32_t entity_id)
+{
+    if (entity_id == 0u || !client.baseline().has_value())
+        return {};
+
+    const og::sim::EntitySnapshot* const entity =
+        find_snapshot_entity(*client.baseline(), entity_id);
+    if (entity == nullptr || entity->guy_id == og::sim::kNoGuyId)
+        return {};
+
+    const auto guy_it = std::find_if(
+        client.baseline()->guy_snapshots.begin(),
+        client.baseline()->guy_snapshots.end(),
+        [guy_id = entity->guy_id](const og::sim::GuySnapshot& guy) {
+            return guy.guy_id == guy_id;
+        });
+    return guy_it != client.baseline()->guy_snapshots.end()
+        ? guy_it->name
+        : std::string();
+}
+
+struct StaleAlliedClaimObservation
+{
+    walker* alpha = nullptr;
+    walker* bravo = nullptr;
+    walker* charlie = nullptr;
+    walker* orphaned = nullptr;
+    std::set<std::uint32_t> mapped_ids;
+    std::vector<std::uint32_t> claimed_ids;
+};
+
+static StaleAlliedClaimObservation observe_stale_allied_claim(
+    screen& gameplay_screen,
+    const og::sim::GameClient& display_client)
+{
+    StaleAlliedClaimObservation observation;
+    observation.alpha =
+        find_named_team_member(gameplay_screen.world(), "Alpha");
+    observation.bravo =
+        find_named_team_member(gameplay_screen.world(), "Bravo");
+    observation.charlie =
+        find_named_team_member(gameplay_screen.world(), "Charlie");
+    observation.mapped_ids = non_zero_controlled_entity_ids(display_client);
+
+    for (auto& uptr : gameplay_screen.world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity == nullptr || entity->dead() ||
+            entity->query_order() != Order::Living || entity->myguy == nullptr ||
+            entity->team_num() != 0 || entity->user() == -1)
+        {
+            continue;
+        }
+
+        observation.claimed_ids.push_back(entity->entity_id());
+        if (!observation.mapped_ids.contains(entity->entity_id()))
+            observation.orphaned = entity;
+    }
+
+    return observation;
+}
+
+static InputState make_switch_char_input(std::size_t player_index)
+{
+    InputState input{};
+    if (player_index < static_cast<std::size_t>(MAX_PLAYERS))
+    {
+        input.players[player_index]
+            .held[static_cast<int>(InputAction::SwitchChar)] = true;
+        input.players[player_index]
+            .pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    }
+    return input;
+}
+
+static bool drive_host_and_remote_tick(og::runtime::GameSession& session,
+                                       og::sim::GameClient& remote_client,
+                                       const InputState& host_input,
+                                       const InputState& remote_input,
+                                       std::uint32_t tick)
+{
+    og::runtime::local_transport_shadow_send_input(session, host_input, tick);
+    remote_client.send_input(remote_input, tick);
+    return wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(session);
+        remote_client.poll_messages();
+        const og::sim::GameClient* const display_client =
+            session.myscreen_ != nullptr
+                ? session.myscreen_->render_interpolation_client()
+                : nullptr;
+        return display_client != nullptr &&
+            display_client->last_seen_server_tick() >= tick &&
+            remote_client.last_seen_server_tick() >= tick;
+    });
+}
+
+static bool drive_bounded_switch_char_attempt(
+    og::runtime::GameSession& session,
+    og::sim::GameClient& remote_client,
+    bool host_switch,
+    bool remote_switch,
+    std::uint32_t& next_tick)
+{
+    const InputState host_input =
+        host_switch ? make_switch_char_input(0u) : InputState{};
+    const InputState remote_input =
+        remote_switch ? make_switch_char_input(1u) : InputState{};
+    if (!drive_host_and_remote_tick(
+            session, remote_client, host_input, remote_input, next_tick++))
+    {
+        return false;
+    }
+
+    const InputState neutral{};
+    return drive_host_and_remote_tick(
+        session, remote_client, neutral, neutral, next_tick++);
 }
 
 TEST(GameLoop, game_frame_toggles_debug_hotkeys)
@@ -716,6 +989,177 @@ TEST(GameLoop, local_transport_shadow_invalid_reset_paths_clear_runtime)
     EXPECT_FALSE(og::runtime::local_transport_active(gameplay_session));
     EXPECT_FALSE(gameplay_session.relay_transport_active_);
 
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop,
+     network_host_runtime_reproduces_extra_stale_preclaimed_allied_soldier_on_level1)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    prepare_dense_allied_alpha_bravo_charlie_save(save);
+    ASSERT_EQ(3, static_cast<int>(save.team_size));
+    ASSERT_EQ(1, static_cast<int>(save.numplayers));
+    ASSERT_EQ(1, static_cast<int>(save.allied_mode));
+    ASSERT_TRUE(save.save("save0"));
+
+    const og::ui::PickerLobbyGameStartConfig start_config =
+        make_one_view_lobby_start_config(save);
+    ASSERT_EQ(save.current_campaign, start_config.save_data.current_campaign);
+    ASSERT_EQ(save.scen_num, start_config.save_data.scen_num);
+    ASSERT_EQ(save.numplayers, start_config.save_data.numplayers);
+    ASSERT_EQ(save.allied_mode, start_config.save_data.allied_mode);
+    ASSERT_EQ(3u, start_config.save_data.team_list.size());
+    EXPECT_EQ("Alpha", start_config.save_data.team_list[0].character.name);
+    EXPECT_EQ("Bravo", start_config.save_data.team_list[1].character.name);
+    EXPECT_EQ("Charlie", start_config.save_data.team_list[2].character.name);
+
+    ready_screen_for_game_start(*game_screen, &start_config);
+    ASSERT_EQ(1, game_screen->numviews);
+
+    glad_init(false, &start_config);
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& gameplay_session =
+        *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(gameplay_session));
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+
+    walker* const pre_runtime_alpha =
+        find_named_team_member(game_screen->world(), "Alpha");
+    walker* const pre_runtime_bravo =
+        find_named_team_member(game_screen->world(), "Bravo");
+    walker* const pre_runtime_charlie =
+        find_named_team_member(game_screen->world(), "Charlie");
+    ASSERT_NE(nullptr, pre_runtime_alpha);
+    ASSERT_NE(nullptr, pre_runtime_bravo);
+    ASSERT_NE(nullptr, pre_runtime_charlie);
+    ASSERT_EQ(pre_runtime_alpha, game_screen->viewob[0]->control);
+    EXPECT_EQ(0, static_cast<int>(pre_runtime_alpha->user()));
+    EXPECT_EQ(-1, static_cast<int>(pre_runtime_bravo->user()));
+    EXPECT_EQ(-1, static_cast<int>(pre_runtime_charlie->user()));
+
+    auto server_transport = og::sim::InProcessTransport::create_server();
+    auto host_local_client_transport =
+        server_transport->create_client_transport();
+    auto remote_player_transport =
+        server_transport->create_client_transport();
+    std::vector<og::sim::LobbyPlayerBinding> player_bindings;
+    player_bindings.push_back(og::sim::LobbyPlayerBinding{
+        .peer_id = host_local_client_transport->local_peer_id(),
+        .player_index = 0u,
+        .team = 0,
+    });
+    player_bindings.push_back(og::sim::LobbyPlayerBinding{
+        .peer_id = remote_player_transport->local_peer_id(),
+        .player_index = 1u,
+        .team = 0,
+    });
+
+    og::sim::GameClient remote_client(
+        *remote_player_transport,
+        remote_player_transport->local_peer_id());
+
+    og::runtime::reset_network_host_transport_shadow(
+        gameplay_session,
+        *game_screen,
+        server_transport,
+        host_local_client_transport,
+        player_bindings);
+
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(gameplay_session);
+        remote_client.poll_messages();
+        const og::sim::GameClient* const display_client =
+            game_screen->render_interpolation_client();
+        return display_client != nullptr &&
+            display_client->initial_setup().has_value() &&
+            display_client->baseline().has_value() &&
+            remote_client.initial_setup().has_value() &&
+            remote_client.baseline().has_value();
+    })) << "host display and test-owned remote client should receive the "
+           "initial network handoff";
+
+    const og::sim::GameClient* const display_client =
+        game_screen->render_interpolation_client();
+    ASSERT_NE(nullptr, display_client);
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+    const StaleAlliedClaimObservation observation =
+        observe_stale_allied_claim(*game_screen, *display_client);
+    ASSERT_NE(nullptr, observation.alpha);
+    ASSERT_NE(nullptr, observation.bravo);
+    ASSERT_NE(nullptr, observation.charlie);
+    ASSERT_NE(nullptr, observation.orphaned);
+    const std::uint32_t bravo_id = observation.bravo->entity_id();
+    const std::uint32_t charlie_id = observation.charlie->entity_id();
+    const std::set<std::uint32_t> expected_mapped_ids = {
+        bravo_id,
+        charlie_id,
+    };
+    ASSERT_EQ(3u, observation.claimed_ids.size());
+    EXPECT_EQ(observation.alpha, observation.orphaned);
+    EXPECT_EQ(expected_mapped_ids, observation.mapped_ids);
+    EXPECT_EQ(bravo_id,
+              display_client->controlled_entity_ids()[0]);
+    EXPECT_EQ(charlie_id,
+              display_client->controlled_entity_ids()[1]);
+    EXPECT_EQ("Bravo",
+              controlled_entity_name(
+                  *display_client,
+                  display_client->controlled_entity_ids()[0]));
+    EXPECT_EQ("Charlie",
+              controlled_entity_name(
+                  *display_client,
+                  display_client->controlled_entity_ids()[1]));
+    EXPECT_EQ(bravo_id,
+              remote_client.controlled_entity_ids()[0]);
+    EXPECT_EQ(charlie_id,
+              remote_client.controlled_entity_ids()[1]);
+    EXPECT_EQ("Bravo",
+              controlled_entity_name(
+                  remote_client,
+                  remote_client.controlled_entity_ids()[0]));
+    EXPECT_EQ("Charlie",
+              controlled_entity_name(
+                  remote_client,
+                  remote_client.controlled_entity_ids()[1]));
+
+    observation.orphaned->set_outline(0);
+    observation.orphaned->compute_outline(game_screen->viewob[0]->control);
+    EXPECT_EQ(observation.orphaned->query_team_color(),
+              observation.orphaned->outline());
+
+    std::uint32_t next_tick = std::max(display_client->last_seen_server_tick(),
+                                       remote_client.last_seen_server_tick()) +
+        1u;
+    ASSERT_TRUE(drive_bounded_switch_char_attempt(
+        gameplay_session, remote_client, true, false, next_tick));
+    ASSERT_TRUE(drive_bounded_switch_char_attempt(
+        gameplay_session, remote_client, false, true, next_tick));
+
+    const og::sim::GameClient* const display_client_after_switch =
+        game_screen->render_interpolation_client();
+    ASSERT_NE(nullptr, display_client_after_switch);
+    const StaleAlliedClaimObservation observation_after_switch =
+        observe_stale_allied_claim(*game_screen, *display_client_after_switch);
+    ASSERT_NE(nullptr, observation_after_switch.alpha);
+    ASSERT_NE(nullptr, observation_after_switch.bravo);
+    ASSERT_NE(nullptr, observation_after_switch.charlie);
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+    ASSERT_NE(nullptr, game_screen->viewob[0]->control);
+    EXPECT_NE(0u, display_client_after_switch->controlled_entity_ids()[0]);
+    EXPECT_NE(0u, display_client_after_switch->controlled_entity_ids()[1]);
+    EXPECT_NE(display_client_after_switch->controlled_entity_ids()[0],
+              display_client_after_switch->controlled_entity_ids()[1]);
+    EXPECT_EQ(display_client_after_switch->controlled_entity_ids()[0],
+              game_screen->viewob[0]->control->entity_id());
+    EXPECT_FALSE(non_zero_controlled_entity_ids(*display_client_after_switch)
+                     .contains(observation_after_switch.alpha->entity_id()));
+    EXPECT_FALSE(non_zero_controlled_entity_ids(remote_client)
+                     .contains(observation_after_switch.alpha->entity_id()));
+
+    og::runtime::clear_local_transport_shadow(gameplay_session);
     game_screen->world().delete_objects();
 }
 

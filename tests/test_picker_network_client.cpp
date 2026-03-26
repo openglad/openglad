@@ -41,6 +41,7 @@
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -287,6 +288,53 @@ void prepare_single_member_network_save(SaveData& save,
         std::move(member);
 }
 
+void prepare_allied_host_network_save(SaveData& save)
+{
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels.clear();
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = static_cast<unsigned char>(1);
+    save.allied_mode = static_cast<short>(1);
+    save.my_team = 0;
+    for (auto& member : save.team_list)
+        member.reset();
+
+    auto alpha = std::make_unique<guy>(FAMILY_SOLDIER);
+    alpha->name = "Alpha";
+    alpha->teamnum = 0;
+    save.team_list[0] = std::move(alpha);
+
+    auto bravo = std::make_unique<guy>(FAMILY_SOLDIER);
+    bravo->name = "Bravo";
+    bravo->teamnum = 0;
+    save.team_list[1] = std::move(bravo);
+
+    save.team_size = static_cast<unsigned char>(2);
+}
+
+void prepare_allied_join_network_save(SaveData& save)
+{
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels.clear();
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = static_cast<unsigned char>(1);
+    save.allied_mode = static_cast<short>(1);
+    save.my_team = 1;
+    for (auto& member : save.team_list)
+        member.reset();
+
+    auto charlie = std::make_unique<guy>(FAMILY_SOLDIER);
+    charlie->name = "Charlie";
+    charlie->teamnum = 1;
+    save.team_list[2] = std::move(charlie);
+
+    save.team_size = static_cast<unsigned char>(1);
+}
+
 og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
 {
     og::sim::LobbyCharacterData character;
@@ -326,6 +374,197 @@ og::sim::LobbyCharacterSlot make_lobby_slot(std::uint8_t slot_index,
         .slot_index = slot_index,
         .character = make_lobby_character_data(member),
     };
+}
+
+walker* find_named_team_member(GameWorld& world,
+                               std::string_view name,
+                               short team = 0)
+{
+    for (auto& uptr : world.oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity == nullptr || entity->dead() ||
+            entity->query_order() != Order::Living || entity->myguy == nullptr)
+        {
+            continue;
+        }
+        if (entity->team_num() == team && entity->myguy->name == name)
+            return entity;
+    }
+
+    return nullptr;
+}
+
+std::set<std::uint32_t> non_zero_controlled_entity_ids(
+    const og::sim::GameClient& client)
+{
+    std::set<std::uint32_t> ids;
+    for (const std::uint32_t entity_id : client.controlled_entity_ids())
+    {
+        if (entity_id != 0u)
+            ids.insert(entity_id);
+    }
+    return ids;
+}
+
+const og::sim::EntitySnapshot* find_snapshot_entity(
+    const og::sim::WorldSnapshot& snapshot,
+    std::uint32_t entity_id)
+{
+    const auto find_in = [entity_id](const auto& entities)
+        -> const og::sim::EntitySnapshot* {
+        const auto it = std::find_if(
+            entities.begin(),
+            entities.end(),
+            [entity_id](const og::sim::EntitySnapshot& entity) {
+                return entity.entity_id == entity_id;
+            });
+        return it != entities.end() ? &*it : nullptr;
+    };
+
+    if (const auto* entity = find_in(snapshot.oblist); entity != nullptr)
+        return entity;
+    if (const auto* entity = find_in(snapshot.fxlist); entity != nullptr)
+        return entity;
+    return find_in(snapshot.weaplist);
+}
+
+std::string controlled_entity_name(const og::sim::GameClient& client,
+                                   std::uint32_t entity_id)
+{
+    if (entity_id == 0u || !client.baseline().has_value())
+        return {};
+
+    const og::sim::EntitySnapshot* const entity =
+        find_snapshot_entity(*client.baseline(), entity_id);
+    if (entity == nullptr || entity->guy_id == og::sim::kNoGuyId)
+        return {};
+
+    const auto guy_it = std::find_if(
+        client.baseline()->guy_snapshots.begin(),
+        client.baseline()->guy_snapshots.end(),
+        [guy_id = entity->guy_id](const og::sim::GuySnapshot& guy) {
+            return guy.guy_id == guy_id;
+        });
+    return guy_it != client.baseline()->guy_snapshots.end()
+        ? guy_it->name
+        : std::string();
+}
+
+struct StaleAlliedClaimObservation
+{
+    walker* alpha = nullptr;
+    walker* bravo = nullptr;
+    walker* charlie = nullptr;
+    walker* orphaned = nullptr;
+    std::set<std::uint32_t> mapped_ids;
+    std::vector<std::uint32_t> claimed_ids;
+};
+
+StaleAlliedClaimObservation observe_stale_allied_claim(
+    screen& gameplay_screen,
+    const og::sim::GameClient& display_client)
+{
+    StaleAlliedClaimObservation observation;
+    observation.alpha =
+        find_named_team_member(gameplay_screen.world(), "Alpha");
+    observation.bravo =
+        find_named_team_member(gameplay_screen.world(), "Bravo");
+    observation.charlie =
+        find_named_team_member(gameplay_screen.world(), "Charlie");
+    observation.mapped_ids = non_zero_controlled_entity_ids(display_client);
+
+    for (auto& uptr : gameplay_screen.world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity == nullptr || entity->dead() ||
+            entity->query_order() != Order::Living || entity->myguy == nullptr ||
+            entity->team_num() != 0 || entity->user() == -1)
+        {
+            continue;
+        }
+
+        observation.claimed_ids.push_back(entity->entity_id());
+        if (!observation.mapped_ids.contains(entity->entity_id()))
+            observation.orphaned = entity;
+    }
+
+    return observation;
+}
+
+InputState make_single_local_switch_char_input()
+{
+    InputState input{};
+    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    return input;
+}
+
+bool drive_host_and_join_tick(og::runtime::GameSession& host_session,
+                              og::runtime::GameSession& join_session,
+                              const InputState& host_input,
+                              const InputState& join_input,
+                              std::uint32_t tick)
+{
+    {
+        auto host_scope = host_session.activate();
+        og::runtime::local_transport_shadow_send_input(
+            host_session,
+            host_input,
+            tick);
+    }
+    {
+        auto join_scope = join_session.activate();
+        og::runtime::local_transport_shadow_send_input(
+            join_session,
+            join_input,
+            tick);
+    }
+
+    return wait_until([&] {
+        bool host_ready = false;
+        {
+            auto host_scope = host_session.activate();
+            og::runtime::local_transport_shadow_finish_tick(host_session);
+            const og::sim::GameClient* const display_client =
+                host_session.myscreen_->render_interpolation_client();
+            host_ready = display_client != nullptr &&
+                display_client->last_seen_server_tick() >= tick;
+        }
+
+        bool join_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            og::runtime::local_transport_shadow_finish_tick(join_session);
+            const og::sim::GameClient* const display_client =
+                join_session.myscreen_->render_interpolation_client();
+            join_ready = display_client != nullptr &&
+                display_client->last_seen_server_tick() >= tick;
+        }
+
+        return host_ready && join_ready;
+    });
+}
+
+bool drive_bounded_switch_char_attempt(og::runtime::GameSession& host_session,
+                                       og::runtime::GameSession& join_session,
+                                       bool host_switch,
+                                       bool join_switch,
+                                       std::uint32_t& next_tick)
+{
+    const InputState host_input =
+        host_switch ? make_single_local_switch_char_input() : InputState{};
+    const InputState join_input =
+        join_switch ? make_single_local_switch_char_input() : InputState{};
+    if (!drive_host_and_join_tick(
+            host_session, join_session, host_input, join_input, next_tick++))
+    {
+        return false;
+    }
+
+    const InputState neutral{};
+    return drive_host_and_join_tick(
+        host_session, join_session, neutral, neutral, next_tick++);
 }
 
 void send_lobby_message(og::sim::ITransport& transport,
@@ -1957,6 +2196,327 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
     {
         auto join_scope = join_session.activate();
         EXPECT_EQ(1, static_cast<int>(join_session.myscreen_->world().end));
+    }
+}
+
+TEST(PickerNetworkClient,
+     host_and_join_allied_level1_reproduce_stale_preclaimed_allied_soldier)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_allied_host_network_save(host_save);
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_allied_join_network_save(join_session.myscreen_->save_data);
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* host_session = nullptr;
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                og::runtime::clear_local_transport_shadow(*join_session);
+                if (join_client != nullptr)
+                    join_client->shutdown();
+                if (join_session->myscreen_ != nullptr)
+                {
+                    for (auto& view : join_session->myscreen_->viewob)
+                    {
+                        if (view != nullptr)
+                            view->control = nullptr;
+                    }
+                    join_session->myscreen_->world().delete_objects();
+                }
+            }
+
+            if (host_session != nullptr)
+            {
+                og::runtime::clear_local_transport_shadow(*host_session);
+                if (host_client != nullptr)
+                    host_client->shutdown();
+                if (host_session->myscreen_ != nullptr)
+                {
+                    for (auto& view : host_session->myscreen_->viewob)
+                    {
+                        if (view != nullptr)
+                            view->control = nullptr;
+                    }
+                    host_session->myscreen_->world().delete_objects();
+                }
+            }
+        }
+    } cleanup;
+
+    cleanup.host_session = active_game_session();
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    ASSERT_NE(nullptr, cleanup.host_session);
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+
+        bool join_lobby_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_lobby_ready = status_lines_contain_exact(
+                join_client->status_lines(),
+                "Lobby: 2 players");
+        }
+
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            join_lobby_ready;
+    })) << "host and join clients should converge on the same allied lobby";
+
+    ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(host_client->request_start_game());
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+
+        bool join_has_handoff = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_has_handoff = join_client->has_game_start_config();
+        }
+
+        return host_client->has_game_start_config() && join_has_handoff;
+    })) << "both peers should receive the gameplay handoff before runtime install";
+
+    const auto host_start_config = host_client->consume_game_start_config();
+    ASSERT_TRUE(host_start_config.has_value());
+    {
+        auto host_scope = cleanup.host_session->activate();
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        ready_screen_for_game_start(
+            *cleanup.host_session->myscreen_,
+            &*host_start_config);
+        glad_init(false, &*host_start_config);
+    }
+
+    std::optional<og::ui::PickerLobbyGameStartConfig> join_start_config;
+    {
+        auto join_scope = join_session.activate();
+        join_start_config = join_client->consume_game_start_config();
+        ASSERT_TRUE(join_start_config.has_value());
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        ready_screen_for_game_start(*join_session.myscreen_, &*join_start_config);
+        glad_init(false, &*join_start_config);
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        bool host_ready = false;
+        {
+            auto host_scope = cleanup.host_session->activate();
+            og::runtime::local_transport_shadow_finish_tick(*cleanup.host_session);
+            const og::sim::GameClient* const display_client =
+                cleanup.host_session->myscreen_->render_interpolation_client();
+            host_ready = display_client != nullptr &&
+                display_client->initial_setup().has_value() &&
+                display_client->baseline().has_value();
+        }
+
+        bool join_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            og::runtime::local_transport_shadow_finish_tick(join_session);
+            const og::sim::GameClient* const display_client =
+                join_session.myscreen_->render_interpolation_client();
+            join_ready = display_client != nullptr &&
+                display_client->initial_setup().has_value() &&
+                display_client->baseline().has_value();
+        }
+
+        return host_ready && join_ready;
+    })) << "both runtimes should receive their first gameplay snapshots";
+
+    const og::sim::GameClient* host_display_client = nullptr;
+    StaleAlliedClaimObservation host_observation;
+    {
+        auto host_scope = cleanup.host_session->activate();
+        host_display_client =
+            cleanup.host_session->myscreen_->render_interpolation_client();
+        ASSERT_NE(nullptr, host_display_client);
+        host_observation = observe_stale_allied_claim(
+            *cleanup.host_session->myscreen_,
+            *host_display_client);
+    }
+
+    const og::sim::GameClient* join_display_client = nullptr;
+    StaleAlliedClaimObservation join_observation;
+    {
+        auto join_scope = join_session.activate();
+        join_display_client = join_session.myscreen_->render_interpolation_client();
+        ASSERT_NE(nullptr, join_display_client);
+        join_observation = observe_stale_allied_claim(
+            *join_session.myscreen_,
+            *join_display_client);
+    }
+
+    ASSERT_NE(nullptr, host_observation.alpha);
+    ASSERT_NE(nullptr, host_observation.bravo);
+    ASSERT_NE(nullptr, host_observation.charlie);
+    ASSERT_NE(nullptr, host_observation.orphaned);
+    ASSERT_NE(nullptr, join_observation.alpha);
+    ASSERT_NE(nullptr, join_observation.bravo);
+    ASSERT_NE(nullptr, join_observation.charlie);
+    ASSERT_NE(nullptr, join_observation.orphaned);
+
+    const std::uint32_t alpha_id = host_observation.alpha->entity_id();
+    const std::uint32_t bravo_id = host_observation.bravo->entity_id();
+    const std::uint32_t charlie_id = host_observation.charlie->entity_id();
+    const std::set<std::uint32_t> expected_mapped_ids = {
+        bravo_id,
+        charlie_id,
+    };
+
+    EXPECT_EQ(alpha_id, join_observation.alpha->entity_id());
+    EXPECT_EQ(bravo_id, join_observation.bravo->entity_id());
+    EXPECT_EQ(charlie_id, join_observation.charlie->entity_id());
+
+    ASSERT_EQ(3u, host_observation.claimed_ids.size());
+    ASSERT_EQ(3u, join_observation.claimed_ids.size());
+    EXPECT_EQ(host_observation.alpha, host_observation.orphaned);
+    EXPECT_EQ(join_observation.alpha, join_observation.orphaned);
+    EXPECT_EQ(expected_mapped_ids, host_observation.mapped_ids);
+    EXPECT_EQ(expected_mapped_ids, join_observation.mapped_ids);
+    EXPECT_EQ(bravo_id, host_display_client->controlled_entity_ids()[0]);
+    EXPECT_EQ(charlie_id, host_display_client->controlled_entity_ids()[1]);
+    EXPECT_EQ(bravo_id, join_display_client->controlled_entity_ids()[0]);
+    EXPECT_EQ(charlie_id, join_display_client->controlled_entity_ids()[1]);
+    EXPECT_EQ("Bravo",
+              controlled_entity_name(
+                  *host_display_client,
+                  host_display_client->controlled_entity_ids()[0]));
+    EXPECT_EQ("Charlie",
+              controlled_entity_name(
+                  *host_display_client,
+                  host_display_client->controlled_entity_ids()[1]));
+    EXPECT_EQ("Bravo",
+              controlled_entity_name(
+                  *join_display_client,
+                  join_display_client->controlled_entity_ids()[0]));
+    EXPECT_EQ("Charlie",
+              controlled_entity_name(
+                  *join_display_client,
+                  join_display_client->controlled_entity_ids()[1]));
+
+    {
+        auto host_scope = cleanup.host_session->activate();
+        ASSERT_NE(nullptr, cleanup.host_session->myscreen_->viewob[0]);
+        host_observation.alpha->set_outline(0);
+        host_observation.alpha->compute_outline(
+            cleanup.host_session->myscreen_->viewob[0]->control);
+        EXPECT_EQ(host_observation.alpha->query_team_color(),
+                  host_observation.alpha->outline());
+    }
+    {
+        auto join_scope = join_session.activate();
+        ASSERT_NE(nullptr, join_session.myscreen_->viewob[0]);
+        join_observation.alpha->set_outline(0);
+        join_observation.alpha->compute_outline(
+            join_session.myscreen_->viewob[0]->control);
+        EXPECT_EQ(join_observation.alpha->query_team_color(),
+                  join_observation.alpha->outline());
+    }
+
+    std::uint32_t next_tick =
+        std::max(host_display_client->last_seen_server_tick(),
+                 join_display_client->last_seen_server_tick()) +
+        1u;
+    ASSERT_TRUE(drive_bounded_switch_char_attempt(
+        *cleanup.host_session,
+        join_session,
+        true,
+        false,
+        next_tick));
+    ASSERT_TRUE(drive_bounded_switch_char_attempt(
+        *cleanup.host_session,
+        join_session,
+        false,
+        true,
+        next_tick));
+
+    {
+        auto host_scope = cleanup.host_session->activate();
+        host_display_client =
+            cleanup.host_session->myscreen_->render_interpolation_client();
+        ASSERT_NE(nullptr, host_display_client);
+        const StaleAlliedClaimObservation host_after_switch =
+            observe_stale_allied_claim(
+                *cleanup.host_session->myscreen_,
+                *host_display_client);
+        ASSERT_NE(nullptr, host_after_switch.alpha);
+        ASSERT_NE(nullptr, host_after_switch.bravo);
+        ASSERT_NE(nullptr, host_after_switch.charlie);
+        ASSERT_NE(nullptr, cleanup.host_session->myscreen_->viewob[0]);
+        ASSERT_NE(nullptr, cleanup.host_session->myscreen_->viewob[0]->control);
+        EXPECT_NE(0u, host_display_client->controlled_entity_ids()[0]);
+        EXPECT_NE(0u, host_display_client->controlled_entity_ids()[1]);
+        EXPECT_NE(host_display_client->controlled_entity_ids()[0],
+                  host_display_client->controlled_entity_ids()[1]);
+        EXPECT_EQ(host_display_client->controlled_entity_ids()[0],
+                  cleanup.host_session->myscreen_->viewob[0]
+                      ->control->entity_id());
+        EXPECT_FALSE(
+            non_zero_controlled_entity_ids(*host_display_client)
+                .contains(host_after_switch.alpha->entity_id()));
+    }
+
+    {
+        auto join_scope = join_session.activate();
+        join_display_client = join_session.myscreen_->render_interpolation_client();
+        ASSERT_NE(nullptr, join_display_client);
+        const StaleAlliedClaimObservation join_after_switch =
+            observe_stale_allied_claim(
+                *join_session.myscreen_,
+                *join_display_client);
+        ASSERT_NE(nullptr, join_after_switch.alpha);
+        ASSERT_NE(nullptr, join_after_switch.bravo);
+        ASSERT_NE(nullptr, join_after_switch.charlie);
+        ASSERT_NE(nullptr, join_session.myscreen_->viewob[0]);
+        ASSERT_NE(nullptr, join_session.myscreen_->viewob[0]->control);
+        EXPECT_NE(0u, join_display_client->controlled_entity_ids()[0]);
+        EXPECT_NE(0u, join_display_client->controlled_entity_ids()[1]);
+        EXPECT_NE(join_display_client->controlled_entity_ids()[0],
+                  join_display_client->controlled_entity_ids()[1]);
+        EXPECT_EQ(join_display_client->controlled_entity_ids()[1],
+                  join_session.myscreen_->viewob[0]->control->entity_id());
+        EXPECT_FALSE(
+            non_zero_controlled_entity_ids(*join_display_client)
+                .contains(join_after_switch.alpha->entity_id()));
     }
 }
 
