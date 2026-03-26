@@ -12,6 +12,7 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/legacy/base.h>
+#include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/picker_lobby_network_runtime.h>
@@ -53,6 +54,8 @@ namespace og::sim { extern std::int32_t g_test_level_tick_limit_override; }
 #endif
 
 Sint32 go_menu(Sint32 arg1);
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
 
 namespace og::ui {
 
@@ -186,6 +189,29 @@ struct GameplayRunGuard
 #endif
     }
 };
+
+struct EventScript
+{
+    std::vector<SDL_Event> events;
+    std::size_t idx = 0;
+};
+
+int scripted_poll(void* userdata, SDL_Event* out)
+{
+    auto* const script = static_cast<EventScript*>(userdata);
+    if (script == nullptr || script->idx >= script->events.size())
+        return 0;
+
+    *out = script->events[script->idx++];
+    return 1;
+}
+
+EventScript* g_script = nullptr;
+
+int scripted_poll_adapter(SDL_Event* out)
+{
+    return scripted_poll(g_script, out);
+}
 
 template <typename Predicate>
 bool wait_until(Predicate&& predicate,
@@ -1585,7 +1611,7 @@ TEST(PickerNetworkClient,
     join_client->shutdown();
 }
 
-TEST(PickerNetworkClient, host_abort_level_signals_join_runtime_to_end_session)
+TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
 {
     IxNetSystemScope net_system;
 
@@ -1742,8 +1768,57 @@ TEST(PickerNetworkClient, host_abort_level_signals_join_runtime_to_end_session)
         join_session.myscreen_->world().end = 0;
     }
 
-    og::runtime::local_transport_shadow_finish_tick(*cleanup.host_session);
-    og::runtime::local_transport_shadow_abort_level(*cleanup.host_session);
+    struct EscapeFrameOutcome
+    {
+        GameFrameResult result = GameFrameResult::Continue;
+        bool done = false;
+        int redrawme = 0;
+    };
+
+    picker_testing_yes_or_no_queue_clear();
+    {
+        auto host_scope = cleanup.host_session->activate();
+        GameplayRunGuard gameplay_run_guard;
+        set_game_speed(0.0f);
+
+        const auto run_host_escape_frame = [&]() -> EscapeFrameOutcome {
+            EventScript script;
+            SDL_Event event{};
+            event.type = SDL_KEYDOWN;
+            event.key.keysym.sym = SDLK_ESCAPE;
+            script.events.push_back(event);
+            g_script = &script;
+            host_gameplay_screen->redrawme = 0;
+
+            GameLoopFrameState st;
+            GameLoopDeps deps;
+            deps.enable_render = false;
+            deps.enable_event_poll = true;
+            deps.enable_frame_timing = false;
+            deps.poll_event = scripted_poll_adapter;
+
+            const GameFrameResult result =
+                game_frame_with_result(*host_gameplay_screen, st, deps);
+            g_script = nullptr;
+            return {
+                .result = result,
+                .done = st.done,
+                .redrawme = static_cast<int>(host_gameplay_screen->redrawme),
+            };
+        };
+
+        const EscapeFrameOutcome pause_frame = run_host_escape_frame();
+        ASSERT_EQ(GameFrameResult::Continue, pause_frame.result);
+        ASSERT_FALSE(pause_frame.done);
+        ASSERT_EQ(1, pause_frame.redrawme);
+        ASSERT_TRUE(host_gameplay_screen->world().paused);
+
+        picker_testing_yes_or_no_queue_push(true);
+        const EscapeFrameOutcome abort_frame = run_host_escape_frame();
+        EXPECT_EQ(GameFrameResult::AbortedMission, abort_frame.result);
+        EXPECT_TRUE(abort_frame.done);
+    }
+    picker_testing_yes_or_no_queue_clear();
 
     ASSERT_TRUE(wait_until([&] {
         auto join_scope = join_session.activate();
