@@ -159,6 +159,24 @@ TEST(MenuLayout, main_options_buttons_no_overlap)
     check_bounds(buttons, count, "main_options");
 }
 
+TEST(MenuLayout, mainmenu_buttons_no_overlap)
+{
+    button* buttons = picker_mainmenu_buttons();
+    const int count = picker_mainmenu_button_count();
+    check_no_overlaps(buttons, count, "mainmenu");
+    check_bounds(buttons, count, "mainmenu");
+    check_nav_in_range(buttons, count, "mainmenu");
+}
+
+TEST(MenuLayout, createmenu_buttons_no_overlap)
+{
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    check_no_overlaps(buttons, count, "createmenu");
+    check_bounds(buttons, count, "createmenu");
+    check_nav_in_range(buttons, count, "createmenu");
+}
+
 
 TEST(MenuLayout, control_options_buttons_no_overlap)
 {

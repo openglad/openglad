@@ -350,6 +350,9 @@ private:
             std::printf("Current campaign progress: campaign=%s level=%d.\n",
                 config_.campaign.c_str(), config_.level);
             break;
+        case PickerMenuCommand::Networking:
+            (void)configure_networking();
+            break;
         case PickerMenuCommand::SetLevel:
             set_level();
             break;

@@ -253,18 +253,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Help);
             break;
-        case ButtonAction::Networking:
-            menu_item = og::ui::find_picker_menu_item(
-                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Networking);
-            break;
-        case ButtonAction::HostGame:
-            menu_item = og::ui::find_picker_menu_item(
-                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::HostGame);
-            break;
-        case ButtonAction::JoinGame:
-            menu_item = og::ui::find_picker_menu_item(
-                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::JoinGame);
-            break;
         case ButtonAction::QuitMenu:
             menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Quit);
@@ -282,6 +270,12 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         if (action == ButtonAction::GoMenu) {
             pks().selected_menu_item = og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::TeamBuild, og::ui::PickerMenuCommand::StartGame);
+            retvalue = MENU_EXIT;
+            return true;
+        }
+        if (action == ButtonAction::Networking) {
+            pks().selected_menu_item = og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::TeamBuild, og::ui::PickerMenuCommand::Networking);
             retvalue = MENU_EXIT;
             return true;
         }
@@ -960,13 +954,12 @@ static const button k_mainmenu_buttons[] =
         button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=3, .down=7}),
 
         button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=9, .left=7}),
-        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 80, 172, 140, 10, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=7, .down=10, .left=7, .right=8}),
+        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
 
-        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 182, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=9, .left=11}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=9, .right=10})
+        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 182, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=7, .left=10}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=8, .right=9})
     };
-#define OPTIONS_BUTTON_INDEX 11
+#define OPTIONS_BUTTON_INDEX 10
 
 #else // Native build
 static const button k_mainmenu_buttons[] =
@@ -982,13 +975,12 @@ static const button k_mainmenu_buttons[] =
         button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=3, .down=7}),
 
         button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
-        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=9, .left=7}),
-        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 80, 172, 140, 10, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=7, .down=10, .left=7, .right=8}),
+        button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
 
-        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 182, 60, 15, button_action_id(ButtonAction::QuitMenu), 0 , MenuNav{.up=9, .left=11}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=9, .right=10})
+        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 182, 60, 15, button_action_id(ButtonAction::QuitMenu), 0 , MenuNav{.up=7, .left=10}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=8, .right=9})
     };
-#define OPTIONS_BUTTON_INDEX 11
+#define OPTIONS_BUTTON_INDEX 10
 #endif // __EMSCRIPTEN__
 
 #else // DISABLE_MULTIPLAYER
@@ -1002,11 +994,10 @@ static const button k_mainmenu_buttons[] =
 
         button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=1, .down=3}),
         button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
-        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 80, 136, 140, 15, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=3, .down=5}),
-        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=4, .left=6}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=4, .right=5})
+        button("help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=3, .left=5}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
     };
-#define OPTIONS_BUTTON_INDEX 6
+#define OPTIONS_BUTTON_INDEX 5
 
 #else // Native build without multiplayer
 static const button k_mainmenu_buttons[] =
@@ -1016,11 +1007,10 @@ static const button k_mainmenu_buttons[] =
 
         button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=1, .down=3}),
         button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
-        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 80, 136, 140, 15, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=3, .down=5}),
-        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15, button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up=4, .left=6}),
-        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=4, .right=5})
+        button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15, button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up=3, .left=5}),
+        button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
     };
-#define OPTIONS_BUTTON_INDEX 6
+#define OPTIONS_BUTTON_INDEX 5
 #endif // __EMSCRIPTEN__
 
 #endif // DISABLE_MULTIPLAYER
@@ -1089,9 +1079,10 @@ static const button k_createmenu_buttons[] =
         button("go", "GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, button_action_id(ButtonAction::GoMenu), -1, MenuNav{.up=2, .down=8, .left=4}),
 
         button("back", "BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=3, .right=7}),
-        button("progress", "PROGRESS", KEYSTATE_UNKNOWN, 120, 140, 80, 20, button_action_id(ButtonAction::CreateProgressMenu), -1, MenuNav{.up=4, .left=6, .right=8}),
-        button("set_level", "SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, button_action_id(ButtonAction::DoSetScenLevel), MENU_EXIT, MenuNav{.up=5, .down=9, .left=7}),
-        button("set_campaign", "SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, button_action_id(ButtonAction::DoPickCampaign), MENU_EXIT, MenuNav{.up=8, .left=7}),
+        button("progress", "PROGRESS", KEYSTATE_UNKNOWN, 120, 140, 80, 20, button_action_id(ButtonAction::CreateProgressMenu), -1, MenuNav{.up=4, .down=9, .left=6, .right=8}),
+        button("set_level", "SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, button_action_id(ButtonAction::DoSetScenLevel), MENU_EXIT, MenuNav{.up=5, .down=10, .left=7}),
+        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 120, 170, 80, 20, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=7, .left=6, .right=10}),
+        button("set_campaign", "SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, button_action_id(ButtonAction::DoPickCampaign), MENU_EXIT, MenuNav{.up=8, .left=9}),
 
     };
 

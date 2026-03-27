@@ -13,10 +13,9 @@
 namespace og::ui {
 namespace {
 
-constexpr std::array<PickerMenuItem, 12> kMainMenuItems = {{
+constexpr std::array<PickerMenuItem, 11> kMainMenuItems = {{
     {"begin_new_game", "Begin New Game", PickerMenuCommand::BeginNewGame},
     {"continue_game", "Continue Game", PickerMenuCommand::ContinueGame},
-    {"networking", "Networking", PickerMenuCommand::Networking},
     {"4_player", "4 Player", PickerMenuCommand::SetPlayerMode, 4},
     {"3_player", "3 Player", PickerMenuCommand::SetPlayerMode, 3},
     {"2_player", "2 Player", PickerMenuCommand::SetPlayerMode, 2},
@@ -32,7 +31,7 @@ constexpr std::array<PickerMenuItem, 12> kMainMenuItems = {{
 #endif
 }};
 
-constexpr std::array<PickerMenuItem, 10> kTeamBuildItems = {{
+constexpr std::array<PickerMenuItem, 11> kTeamBuildItems = {{
     {"view_team", "View Team", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},
     {"hire_troops", "Hire Troops", PickerMenuCommand::HireTroops},
@@ -42,6 +41,7 @@ constexpr std::array<PickerMenuItem, 10> kTeamBuildItems = {{
     {"back", "Back", PickerMenuCommand::Back},
     {"progress", "Progress", PickerMenuCommand::ShowProgress},
     {"set_level", "Set Level", PickerMenuCommand::SetLevel},
+    {"networking", "Networking", PickerMenuCommand::Networking},
     {"set_campaign", "Set Campaign", PickerMenuCommand::SetCampaign},
 }};
 

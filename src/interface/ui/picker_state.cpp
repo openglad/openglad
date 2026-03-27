@@ -53,6 +53,9 @@ TeamBuildAction IPickerClient::show_team_build()
             return TeamBuildAction::PlayGame;
         case PickerMenuCommand::Back:
             return TeamBuildAction::BackToMainMenu;
+        case PickerMenuCommand::Networking:
+            (void)configure_networking();
+            break;
         default:
             handle_menu_item(PickerMenuId::TeamBuild, *item);
             break;

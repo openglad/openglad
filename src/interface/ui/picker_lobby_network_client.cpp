@@ -16,8 +16,8 @@ namespace {
 constexpr std::string_view kDefaultRelayBaseUrl =
     "https://relay.openglad.example";
 constexpr std::array<std::string_view, 2> kNetworkingMenuInstructionLines{{
-    "HOST uses current save. JOIN uses IP/ROOM.",
-    "Fresh run? BEGIN NEW GAME, then HOST.",
+    "HOST or JOIN from the current team setup.",
+    "Pick BEGIN NEW GAME or CONTINUE GAME first.",
 }};
 
 std::string trim_copy(std::string value)

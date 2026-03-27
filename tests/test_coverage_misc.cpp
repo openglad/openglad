@@ -377,6 +377,7 @@ public:
     std::vector<const og::ui::PickerMenuItem*> scripted;
     int present_calls = 0;
     int handle_calls = 0;
+    int networking_calls = 0;
 
     const og::ui::PickerMenuItem* present_menu(og::ui::PickerMenuId) override
     {
@@ -388,6 +389,12 @@ public:
     void handle_menu_item(og::ui::PickerMenuId, const og::ui::PickerMenuItem&) override
     {
         ++handle_calls;
+    }
+
+    bool configure_networking() override
+    {
+        ++networking_calls;
+        return false;
     }
 
     std::string show_campaign_select() override { return {}; }
@@ -659,6 +666,12 @@ TEST(CoverageMisc, coverage_r18_picker_show_main_and_team_build_mappings)
     client.scripted = {&back};
     client.present_calls = 0;
     ASSERT_TRUE(client.show_team_build() == og::ui::TeamBuildAction::BackToMainMenu);
+
+    client.scripted = {&networking, &back};
+    client.present_calls = 0;
+    const int old_networking_calls = client.networking_calls;
+    ASSERT_TRUE(client.show_team_build() == og::ui::TeamBuildAction::BackToMainMenu);
+    ASSERT_TRUE(client.networking_calls == old_networking_calls + 1);
 
     client.scripted = {nullptr};
     client.present_calls = 0;

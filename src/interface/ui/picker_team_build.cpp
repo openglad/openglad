@@ -178,8 +178,9 @@ static bool team_build_start_selected()
 }
 
 constexpr int kTeamBuildGoButtonIndex = 5;
+constexpr int kTeamBuildProgressButtonIndex = 7;
 constexpr int kTeamBuildSetLevelButtonIndex = 8;
-constexpr int kTeamBuildSetCampaignButtonIndex = 9;
+constexpr int kTeamBuildSetCampaignButtonIndex = 10;
 constexpr int kViewTeamGoButtonIndex = 0;
 
 void sync_button_hidden_state(const button* buttons, int button_index)
@@ -383,12 +384,41 @@ Sint32 create_team_menu(Sint32 arg1)
         
         // Level name
         int len = static_cast<int>(og::runtime::current_session->myscreen_->world().title.size());
-        og::runtime::current_session->myscreen_->draw_rect_filled(buttons[7].x + buttons[7].sizex - 6*len - 2, buttons[7].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
-        mytext.write_xy(buttons[7].x + buttons[7].sizex - 6*len, buttons[7].y - 8, WHITE, "%s", og::runtime::current_session->myscreen_->world().title.c_str());
+        og::runtime::current_session->myscreen_->draw_rect_filled(
+            buttons[kTeamBuildProgressButtonIndex].x +
+                buttons[kTeamBuildProgressButtonIndex].sizex - 6 * len - 2,
+            buttons[kTeamBuildProgressButtonIndex].y - 8 - 1,
+            6 * len + 4,
+            8,
+            PURE_BLACK,
+            150);
+        mytext.write_xy(
+            buttons[kTeamBuildProgressButtonIndex].x +
+                buttons[kTeamBuildProgressButtonIndex].sizex - 6 * len,
+            buttons[kTeamBuildProgressButtonIndex].y - 8,
+            WHITE,
+            "%s",
+            og::runtime::current_session->myscreen_->world().title.c_str());
         // Campaign name
         len = static_cast<int>(og::runtime::current_session->myscreen_->save_data.current_campaign.size());
-        og::runtime::current_session->myscreen_->draw_rect_filled(buttons[8].x + buttons[8].sizex - 6*len - 2, buttons[8].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
-        mytext.write_xy(buttons[8].x + buttons[8].sizex - 6*static_cast<int>(og::runtime::current_session->myscreen_->save_data.current_campaign.size()), buttons[8].y - 8, WHITE, "%s", og::runtime::current_session->myscreen_->save_data.current_campaign.c_str());
+        og::runtime::current_session->myscreen_->draw_rect_filled(
+            buttons[kTeamBuildSetLevelButtonIndex].x +
+                buttons[kTeamBuildSetLevelButtonIndex].sizex - 6 * len - 2,
+            buttons[kTeamBuildSetLevelButtonIndex].y - 8 - 1,
+            6 * len + 4,
+            8,
+            PURE_BLACK,
+            150);
+        mytext.write_xy(
+            buttons[kTeamBuildSetLevelButtonIndex].x +
+                buttons[kTeamBuildSetLevelButtonIndex].sizex -
+                6 * static_cast<int>(
+                        og::runtime::current_session
+                            ->myscreen_->save_data.current_campaign.size()),
+            buttons[kTeamBuildSetLevelButtonIndex].y - 8,
+            WHITE,
+            "%s",
+            og::runtime::current_session->myscreen_->save_data.current_campaign.c_str());
         
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);

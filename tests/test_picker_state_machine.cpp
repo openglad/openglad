@@ -235,6 +235,8 @@ public:
     std::vector<const og::ui::PickerMenuItem*> scripted_results;
     int present_calls = 0;
     int handle_calls = 0;
+    int configure_networking_calls = 0;
+    bool configure_networking_result = false;
 
     const og::ui::PickerMenuItem* present_menu(og::ui::PickerMenuId) override
     {
@@ -246,6 +248,12 @@ public:
     void handle_menu_item(og::ui::PickerMenuId, const og::ui::PickerMenuItem&) override
     {
         ++handle_calls;
+    }
+
+    bool configure_networking() override
+    {
+        ++configure_networking_calls;
+        return configure_networking_result;
     }
 
     std::string show_campaign_select() override { return {}; }
@@ -286,6 +294,26 @@ TEST(PickerStateMachine, picker_state_show_team_build_play_and_back)
     client.present_calls = 0;
     client.scripted_results = {&back};
     ASSERT_EQ(static_cast<int>(og::ui::TeamBuildAction::BackToMainMenu), static_cast<int>(client.show_team_build())) << "back command should return BackToMainMenu";
+}
+
+TEST(PickerStateMachine, picker_state_show_team_build_networking_reopens_team_build)
+{
+    MenuOnlyPickerClient client;
+    static const og::ui::PickerMenuItem networking{
+        "networking", "Networking", og::ui::PickerMenuCommand::Networking, 0
+    };
+    static const og::ui::PickerMenuItem back{
+        "back", "Back", og::ui::PickerMenuCommand::Back, 0
+    };
+
+    client.configure_networking_result = true;
+    client.scripted_results = {&networking, &back};
+
+    ASSERT_EQ(static_cast<int>(og::ui::TeamBuildAction::BackToMainMenu),
+              static_cast<int>(client.show_team_build()))
+        << "networking in team build should reopen the menu until a terminal choice";
+    ASSERT_EQ(1, client.configure_networking_calls)
+        << "team build networking command should invoke configure_networking";
 }
 
 TEST(PickerStateMachine, picker_state_show_main_menu_maps_host_and_join_commands)

@@ -178,6 +178,16 @@ bool wait_for_any_interactable(std::initializer_list<const char*> ids,
     return false;
 }
 
+bool enter_team_build_from_continue_game(int timeout_ms = 10000)
+{
+    if (!wait_for_interactable("continue_game", timeout_ms))
+        return false;
+
+    SDL_Delay(300);
+    interact("continue_game");
+    return wait_for_interactable("networking", timeout_ms);
+}
+
 bool interact_until_label_contains(const std::string& id,
                                    const std::string& expected_substring,
                                    int timeout_ms = 10000)
@@ -279,7 +289,7 @@ int networking_join_injector(void* data)
     auto* const state = static_cast<NetworkingJoinState*>(data);
     state->started = true;
 
-    if (!wait_for_interactable("networking", 5000))
+    if (!enter_team_build_from_continue_game())
     {
         state->finished = true;
         return 0;
@@ -342,6 +352,13 @@ int networking_join_injector(void* data)
             continue;
         }
 
+        if (wait_for_interactable("back", 150))
+        {
+            interact("back");
+            SDL_Delay(150);
+            continue;
+        }
+
         inject_key_press(SDLK_ESCAPE, 10);
         SDL_Delay(50);
     }
@@ -372,7 +389,7 @@ int networking_validation_injector(void* data)
     auto* const state = static_cast<NetworkingValidationState*>(data);
     state->started = true;
 
-    if (!wait_for_interactable("networking", 5000))
+    if (!enter_team_build_from_continue_game())
     {
         state->finished = true;
         return 0;
@@ -462,6 +479,13 @@ int networking_validation_injector(void* data)
             continue;
         }
 
+        if (wait_for_interactable("back", 150))
+        {
+            interact("back");
+            SDL_Delay(150);
+            continue;
+        }
+
         inject_key_press(SDLK_ESCAPE, 10);
         SDL_Delay(50);
     }
@@ -486,7 +510,7 @@ int networking_host_factory_error_injector(void* data)
     auto* const state = static_cast<NetworkingHostFactoryErrorState*>(data);
     state->started = true;
 
-    if (!wait_for_interactable("networking", 5000))
+    if (!enter_team_build_from_continue_game())
     {
         state->finished = true;
         return 0;
@@ -537,6 +561,13 @@ int networking_host_factory_error_injector(void* data)
             continue;
         }
 
+        if (wait_for_interactable("back", 150))
+        {
+            interact("back");
+            SDL_Delay(150);
+            continue;
+        }
+
         inject_key_press(SDLK_ESCAPE, 10);
         SDL_Delay(50);
     }
@@ -563,7 +594,7 @@ int networking_host_injector(void* data)
     auto* const state = static_cast<NetworkingHostState*>(data);
     state->started = true;
 
-    if (!wait_for_interactable("networking", 5000))
+    if (!enter_team_build_from_continue_game())
     {
         state->finished = true;
         return 0;

@@ -25,15 +25,14 @@ TEST(MenuModel, main_definition_and_lookup)
     const PickerMenuDefinition& def = picker_menu_definition(PickerMenuId::Main);
 
     ASSERT_EQ(static_cast<int>(PickerMenuId::Main), static_cast<int>(def.id)) << "main menu definition should report main id";
-    ASSERT_TRUE(def.items.size() >= 12) << "main menu should expose expected item count";
+    ASSERT_TRUE(def.items.size() >= 11) << "main menu should expose expected item count";
 
     const PickerMenuItem* begin = find_picker_menu_item(PickerMenuId::Main, "begin_new_game");
     ASSERT_TRUE(begin != nullptr) << "begin_new_game id should resolve";
     ASSERT_EQ(static_cast<int>(PickerMenuCommand::BeginNewGame), static_cast<int>(begin->command)) << "begin_new_game should map to BeginNewGame command";
 
     const PickerMenuItem* networking = find_picker_menu_item(PickerMenuId::Main, "networking");
-    ASSERT_TRUE(networking != nullptr) << "networking id should resolve";
-    ASSERT_EQ(static_cast<int>(PickerMenuCommand::Networking), static_cast<int>(networking->command)) << "networking should map to Networking command";
+    ASSERT_TRUE(networking == nullptr) << "networking should now live in the team build menu";
 
     const PickerMenuItem* host = find_picker_menu_item(PickerMenuId::Main, "host_game");
     ASSERT_TRUE(host == nullptr) << "host_game id should no longer appear in the main menu";
@@ -56,7 +55,7 @@ TEST(MenuModel, team_build_lookup)
     const PickerMenuDefinition& def = picker_menu_definition(PickerMenuId::TeamBuild);
 
     ASSERT_EQ(static_cast<int>(PickerMenuId::TeamBuild), static_cast<int>(def.id)) << "team build definition should report team build id";
-    ASSERT_TRUE(def.items.size() >= 9) << "team build should expose expected item count";
+    ASSERT_TRUE(def.items.size() >= 11) << "team build should expose expected item count";
 
     const PickerMenuItem* start = find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::StartGame);
     ASSERT_TRUE(start != nullptr) << "start game command should resolve in team build";
@@ -65,6 +64,12 @@ TEST(MenuModel, team_build_lookup)
     const PickerMenuItem* back = find_picker_menu_item(PickerMenuId::TeamBuild, "back");
     ASSERT_TRUE(back != nullptr) << "back id should resolve in team build";
     ASSERT_EQ(static_cast<int>(PickerMenuCommand::Back), static_cast<int>(back->command)) << "back item should map to Back command";
+
+    const PickerMenuItem* networking =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "networking");
+    ASSERT_TRUE(networking != nullptr) << "networking id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::Networking), static_cast<int>(networking->command))
+        << "team build networking item should map to Networking command";
 
     const PickerMenuItem* wrong_arg = find_picker_menu_item(
         PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 99);
@@ -166,9 +171,10 @@ TEST(MenuModel, networking_menu_instructions_explain_fresh_host_flow)
 {
     const auto lines = og::ui::networking_menu_instruction_lines();
     ASSERT_EQ(2u, lines.size());
-    EXPECT_NE(std::string_view::npos, lines[0].find("HOST uses current save"));
+    EXPECT_NE(std::string_view::npos, lines[0].find("HOST or JOIN"));
+    EXPECT_NE(std::string_view::npos, lines[0].find("team setup"));
     EXPECT_NE(std::string_view::npos, lines[1].find("BEGIN NEW GAME"));
-    EXPECT_NE(std::string_view::npos, lines[1].find("HOST"));
+    EXPECT_NE(std::string_view::npos, lines[1].find("CONTINUE GAME"));
 }
 
 TEST(MenuModel, host_picker_lobby_client_accepts_direct_only_and_relay_options)
