@@ -299,13 +299,8 @@ static void draw_derived_stats_block(text& mytext, const og::ui::DerivedStats& d
 
 Sint32 create_team_menu(Sint32 arg1)
 {
+    (void)arg1;
 	Sint32 retvalue=0;
-
-	if (arg1 == 1)
-    {
-        // Go straight to the hiring screen if we just started a new game.
-        retvalue = create_hire_menu(arg1);
-    }
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 

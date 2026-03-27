@@ -43,7 +43,7 @@ static void cleanup_picker_state()
 // the hire menu loads, character cycling works, and we can exit cleanly.
 //
 // Flow: Main Menu -> Begin New Game -> (dismiss campaign intro) ->
-//       (dismiss popup OK) -> NEXT -> NEXT -> PREV -> Back -> Back
+//       Team Build -> Hire Troops -> NEXT -> NEXT -> PREV -> Back -> Back
 
 struct HireState {
     bool started;
@@ -70,9 +70,13 @@ static int hire_injector(void* data)
     fprintf(stderr, "  [test] dismissing campaign intro with Escape\n");
     inject_key_press(SDLK_ESCAPE);
 
-    // In TESTING builds, popup_dialog() is a no-op, so no "ok" button exists.
+    // New games now land on team build first, then enter hire explicitly.
+    SDL_Delay(500);
+    wait_for_interactable("hire_troops", 10000);
+    SDL_Delay(300);
+    fprintf(stderr, "  [test] clicking hire_troops\n");
+    interact("hire_troops");
 
-    // Now in hire menu - cycle through characters
     SDL_Delay(500);
     if (wait_for_interactable("hire_me", 10000)) {
         state->saw_hire_menu = true;
@@ -139,4 +143,3 @@ TEST(HireTeam, hire_menu_browsing) {
     ASSERT_TRUE(state.saw_hire_menu) << "should have seen the hire menu";
     ASSERT_TRUE(state.cycles_completed >= 3) << "should have cycled through characters 3 times";
 }
-

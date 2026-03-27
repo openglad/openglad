@@ -120,8 +120,11 @@ static int op_injector(void* data)
     fprintf(stderr, "  [test] dismissing campaign intro\n");
     inject_key_press(SDLK_ESCAPE);
 
-    // popup_dialog("HIRE TROOPS") returns immediately under TESTING,
-    // so the hire menu opens right away.
+    // New games now land on team build first, then enter hire explicitly.
+    SDL_Delay(kUiSettleMs);
+    wait_for_interactable("hire_troops", 10000);
+    SDL_Delay(kUiSettleMs);
+    interact("hire_troops");
     SDL_Delay(kUiSettleMs);
     wait_for_interactable("hire_me", 10000);
     SDL_Delay(kUiSettleMs);

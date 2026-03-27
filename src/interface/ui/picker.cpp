@@ -525,9 +525,8 @@ public:
         }
 
         set_intercept_scope(PickerInterceptScope::TeamBuild);
-        create_team_menu(start_team_build_in_hire_menu_ ? 1 : 0);
+        create_team_menu(0);
         set_intercept_scope(PickerInterceptScope::None);
-        start_team_build_in_hire_menu_ = false;
         if (pks().selected_menu_item)
             return pks().selected_menu_item;
         return og::ui::find_picker_menu_item(
@@ -538,7 +537,6 @@ public:
     {
         if (!picker_prepare_new_game_setup())
             return false;
-        start_team_build_in_hire_menu_ = true;
         return true;
     }
 
@@ -871,7 +869,6 @@ private:
             popup_title);
     }
 
-    bool start_team_build_in_hire_menu_ = false;
     PickerNetworkingSettings networking_settings_;
     std::unique_ptr<og::ui::IPickerLobbyClient> lobby_client_;
 };

@@ -256,5 +256,5 @@ Sint32 beginmenu(Sint32 arg1)
     if (!picker_prepare_new_game_setup())
         return MENU_REDRAW;
 
-    return create_team_menu(1);
+    return create_team_menu(0);
 }
