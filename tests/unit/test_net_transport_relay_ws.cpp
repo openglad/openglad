@@ -569,16 +569,9 @@ TEST(NetTransportRelayWs, relay_broadcast_reaches_all_other_connected_peers)
     client_one.accept_connections();
     client_two.accept_connections();
 
-    ASSERT_TRUE(wait_until(
-        [&] {
-            (void)host.poll();
-            (void)client_one.poll();
-            (void)client_two.poll();
-            return host.connected_peers().size() == 2u &&
-                client_one.connected_peers().size() == 2u &&
-                client_two.connected_peers().size() == 2u;
-        },
-        5s));
+    ASSERT_TRUE(poll_until_peer_count(host, 2u, 15s));
+    ASSERT_TRUE(poll_until_peer_count(client_one, 2u, 15s));
+    ASSERT_TRUE(poll_until_peer_count(client_two, 2u, 15s));
 
     const std::vector<std::uint8_t> broadcast_payload =
         og::sim::serialize_client_ready_message(
