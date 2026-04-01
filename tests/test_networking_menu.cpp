@@ -373,9 +373,13 @@ struct NetworkingValidationState
     bool finished = false;
     bool saw_networking_menu = false;
     bool set_invalid_port = false;
+    bool saw_host_invalid_port_popup = false;
+    bool saw_join_invalid_port_popup = false;
     bool set_valid_port = false;
     bool cleared_ip = false;
     bool enabled_room_code = false;
+    bool saw_blank_ip_popup = false;
+    bool saw_host_relay_error_popup = false;
     bool stayed_after_host_invalid_port = false;
     bool stayed_after_join_invalid_port = false;
     bool stayed_after_blank_ip = false;
@@ -411,14 +415,18 @@ int networking_validation_injector(void* data)
         "network_port", "70000");
 
     SDL_Delay(150);
-    interact("network_host");
-    SDL_Delay(250);
+    state->saw_host_invalid_port_popup = interact_until_trace_contains(
+        "network_host",
+        "popup",
+        "HOST GAME: Please enter a port from 1 to 65535.");
     state->stayed_after_host_invalid_port =
         has_interactable("network_host") && has_interactable("network_back");
 
     SDL_Delay(150);
-    interact("network_join");
-    SDL_Delay(250);
+    state->saw_join_invalid_port_popup = interact_until_trace_contains(
+        "network_join",
+        "popup",
+        "JOIN GAME: Please enter a port from 1 to 65535.");
     state->stayed_after_join_invalid_port =
         has_interactable("network_join") && has_interactable("network_back");
 
@@ -437,8 +445,10 @@ int networking_validation_injector(void* data)
     }
 
     SDL_Delay(150);
-    interact("network_join");
-    SDL_Delay(250);
+    state->saw_blank_ip_popup = interact_until_trace_contains(
+        "network_join",
+        "popup",
+        "JOIN GAME: Please enter an IP address or hostname.");
     state->stayed_after_blank_ip =
         has_interactable("network_join") && has_interactable("network_back");
 
@@ -450,8 +460,10 @@ int networking_validation_injector(void* data)
         "network_room_toggle", "ON");
 
     SDL_Delay(150);
-    interact("network_host");
-    SDL_Delay(250);
+    state->saw_host_relay_error_popup = interact_until_trace_contains(
+        "network_host",
+        "popup",
+        "HOST GAME: Relay base URL must use");
     state->stayed_after_host_relay_error =
         has_interactable("network_host") && has_interactable("network_back");
 
@@ -747,17 +759,18 @@ TEST(NetworkingMenu, submenu_validation_errors_stay_in_place)
     ASSERT_TRUE(state.finished);
     ASSERT_TRUE(state.saw_networking_menu);
     ASSERT_TRUE(state.set_invalid_port);
+    ASSERT_TRUE(state.saw_host_invalid_port_popup);
+    ASSERT_TRUE(state.saw_join_invalid_port_popup);
     ASSERT_TRUE(state.set_valid_port);
     ASSERT_TRUE(state.cleared_ip);
     ASSERT_TRUE(state.enabled_room_code);
+    ASSERT_TRUE(state.saw_blank_ip_popup);
+    ASSERT_TRUE(state.saw_host_relay_error_popup);
     ASSERT_TRUE(state.stayed_after_host_invalid_port);
     ASSERT_TRUE(state.stayed_after_join_invalid_port);
     ASSERT_TRUE(state.stayed_after_blank_ip);
     ASSERT_TRUE(state.stayed_after_host_relay_error);
     ASSERT_TRUE(state.returned_to_main_menu);
-    ASSERT_TRUE(trace_contains("popup", "Please enter a port from 1 to 65535."));
-    ASSERT_TRUE(trace_contains("popup", "Please enter an IP address or hostname."));
-    ASSERT_TRUE(trace_contains("popup", "Relay base URL must use"));
 }
 
 TEST(NetworkingMenu, host_factory_error_stays_in_submenu)
