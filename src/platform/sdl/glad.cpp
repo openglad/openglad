@@ -856,10 +856,7 @@ static void emscripten_frame_wrapper() {
 				break;
 			{
 				const Uint32 current_time = SDL_GetTicks();
-				const short timer_wait =
-					current_screen->world().timer_wait > 0
-						? current_screen->world().timer_wait
-						: 6;
+				const short timer_wait = current_screen->world().timer_wait;
 				const float speed_factor =
 					og::runtime::current_session->g_game_speed_factor_;
 				og::runtime::BrowserFramePacingResult pacing;

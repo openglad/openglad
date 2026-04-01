@@ -1597,6 +1597,20 @@ TEST(GameLoopJitter, browser_wrapper_and_shared_render_interval_match)
     EXPECT_FLOAT_EQ(82.0f, og::runtime::render_tick_interval_ms(6, 1.0f));
 }
 
+TEST(GameLoopJitter, browser_wrapper_honors_zero_timer_wait_fast_mode)
+{
+    EXPECT_EQ(0u, og::runtime::browser_frame_target_interval_ms(0, 1.0f));
+    EXPECT_FLOAT_EQ(0.0f, og::runtime::render_tick_interval_ms(0, 1.0f));
+
+    const og::runtime::BrowserFramePacingResult immediate =
+        og::runtime::step_browser_frame_pacing(33u, 16u, 0, 1.0f);
+    EXPECT_EQ(0u, immediate.target_interval_ms);
+    EXPECT_TRUE(immediate.should_run_frame);
+    EXPECT_FALSE(immediate.should_present_frame);
+    EXPECT_EQ(49u, immediate.accumulated_after_add_ms);
+    EXPECT_EQ(0u, immediate.accumulated_after_step_ms);
+}
+
 TEST(GameLoopJitter, game_frame_accumulator_uses_injected_now_ms)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;

@@ -96,8 +96,8 @@ function roundedRenderTickIntervalMs(timerWait, speedFactor) {
 }
 
 function browserWrapperTargetIntervalMs(timerWait, speedFactor) {
-  const effectiveTimerWait = timerWait > 0 ? timerWait : 6;
-  if (speedFactor === 0) {
+  const effectiveTimerWait = Number(timerWait) || 0;
+  if (speedFactor === 0 || effectiveTimerWait <= 0) {
     return 0;
   }
   let target = Math.trunc((effectiveTimerWait * 13.6) / speedFactor);

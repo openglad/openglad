@@ -1868,6 +1868,19 @@ if(NOT EMSCRIPTEN)
             )
         endif()
 
+        # The picker and menu UI suites include the live networking menu/client
+        # coverage, and the picker-network integration/unit-sim binaries both
+        # initialize IXWebSocket's native net system and transports. On Linux
+        # they can trip EBADF/netlink failures when CTest overlaps them in
+        # separate processes, so serialize just that shared resource.
+        set_tests_properties(
+            og_test_picker
+            og_test_menu_ui
+            og_test_picker_network
+            og_unit_sim
+            PROPERTIES RESOURCE_LOCK native_network_stack
+        )
+
         if(ENABLE_COVERAGE)
             # Coverage-instrumented UI-heavy binaries can time out on 4-core CI
             # runners when CTest schedules them all at once.

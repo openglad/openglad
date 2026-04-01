@@ -6,9 +6,6 @@
 namespace og::runtime {
 
 namespace {
-
-inline constexpr short kDefaultTimerWait = 6;
-
 } // namespace
 
 float render_tick_interval_ms(short timer_wait, float speed_factor)
@@ -20,10 +17,8 @@ std::uint32_t browser_frame_target_interval_ms(
     short timer_wait,
     float speed_factor)
 {
-    const short effective_timer_wait =
-        timer_wait > 0 ? timer_wait : kDefaultTimerWait;
     const float target_interval_ms =
-        render_tick_interval_ms(effective_timer_wait, speed_factor);
+        render_tick_interval_ms(timer_wait, speed_factor);
     if (target_interval_ms <= 0.0f)
         return 0u;
 
@@ -40,6 +35,14 @@ BrowserFramePacingResult step_browser_frame_pacing(
     BrowserFramePacingResult result;
     result.target_interval_ms =
         browser_frame_target_interval_ms(timer_wait, speed_factor);
+    if (result.target_interval_ms == 0u)
+    {
+        result.should_run_frame = true;
+        result.accumulated_after_add_ms = accumulated_time_ms + delta_ms;
+        result.accumulated_after_step_ms = 0u;
+        return result;
+    }
+
     result.accumulated_after_add_ms = accumulated_time_ms + delta_ms;
     result.should_run_frame =
         result.target_interval_ms > 0u &&
