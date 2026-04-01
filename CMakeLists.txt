@@ -1918,6 +1918,15 @@ if(NOT EMSCRIPTEN)
             # Under ASan/UBSan it can time out only when CTest schedules it
             # beside other heavyweight integration binaries.
             set_tests_properties(og_test_game_core PROPERTIES PROCESSORS 4)
+            # The menu UI binary now spends enough time in redraw-heavy flows
+            # that ASan/UBSan can push it past the generic 180s CTest budget
+            # when GitHub's 4-core runners overlap it with the rest of the
+            # integration batch. Run it alone in that lane and match the
+            # timeout budget already used for the slower coverage variant.
+            set_tests_properties(og_test_menu_ui PROPERTIES
+                PROCESSORS 4
+                TIMEOUT 420
+            )
             # The picker suite now exercises live WebSocket lobby setup and
             # end-to-end host/join handoff paths. Under ASan/UBSan it can hit
             # GitHub's generic 180-second budget when scheduled beside the
