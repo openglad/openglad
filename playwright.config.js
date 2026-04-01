@@ -7,8 +7,11 @@ module.exports = defineConfig({
   expect: {
     timeout: 30_000,
   },
-  // Run serially because all tests share one wasm page/server lifecycle and input state.
+  // Keep the entire suite on one worker because the seeded WASM tests share
+  // the same server lifecycle and the jitter capture depends on uninterrupted
+  // motion sampling.
   fullyParallel: false,
+  workers: 1,
   retries: 1,
   reporter: [['html', { open: 'never' }], ['list']],
   use: {

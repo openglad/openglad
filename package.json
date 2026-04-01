@@ -7,8 +7,8 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "playwright test",
-    "test:e2e": "playwright test"
+    "test": "playwright test --workers=1",
+    "test:e2e": "playwright test --workers=1"
   },
   "keywords": [],
   "license": "GPL-2.0",
