@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace og::runtime {
+namespace og::core {
 
 float render_tick_interval_ms(short timer_wait, float speed_factor);
 std::uint32_t browser_frame_target_interval_ms(
@@ -24,4 +24,4 @@ BrowserFramePacingResult step_browser_frame_pacing(
     short timer_wait,
     float speed_factor);
 
-} // namespace og::runtime
+} // namespace og::core

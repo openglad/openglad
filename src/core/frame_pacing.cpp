@@ -1,16 +1,13 @@
-#include <openglad/platform/frame_pacing.h>
+#include <openglad/core/frame_pacing.h>
 #include <openglad/core/util.h>
 
 #include <algorithm>
 
-namespace og::runtime {
-
-namespace {
-} // namespace
+namespace og::core {
 
 float render_tick_interval_ms(short timer_wait, float speed_factor)
 {
-    return og::core::rounded_render_tick_interval_ms(timer_wait, speed_factor);
+    return rounded_render_tick_interval_ms(timer_wait, speed_factor);
 }
 
 std::uint32_t browser_frame_target_interval_ms(
@@ -62,4 +59,4 @@ BrowserFramePacingResult step_browser_frame_pacing(
     return result;
 }
 
-} // namespace og::runtime
+} // namespace og::core

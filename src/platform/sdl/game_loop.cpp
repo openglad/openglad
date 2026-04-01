@@ -6,12 +6,12 @@
  * (at your option) any later version.
  */
 #include <openglad/platform/game_loop.h>
+#include <openglad/core/frame_pacing.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/platform/game_context.h>
-#include <openglad/platform/frame_pacing.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/ui/results_screen.h>
@@ -90,7 +90,7 @@ TickSchedule compute_tick_schedule(const screen& s, const GameLoopDeps& deps)
         ? (speed_factor > 0.0f
                ? static_cast<float>(deps.fixed_tick_ms) / speed_factor
                : 0.0f)
-        : og::runtime::render_tick_interval_ms(
+        : og::core::render_tick_interval_ms(
             s.world().timer_wait, speed_factor);
     if (interval_ms <= 0.0f)
     {

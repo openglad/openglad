@@ -133,8 +133,8 @@ function buildExpectedPeriodCandidates(timerWait, speedFactor, rafDeltaP50) {
       alignment_mode: 'phase_beating',
       source_locations: [
         'src/platform/sdl/glad.cpp',
-        'include/openglad/platform/frame_pacing.h',
-        'src/platform/sdl/frame_pacing.cpp',
+        'include/openglad/core/frame_pacing.h',
+        'src/core/frame_pacing.cpp',
       ],
       cadence_ms: browserCadence,
       candidate_period_ms: phaseBeatPeriodMs(browserCadence, rafDeltaP50),
@@ -148,8 +148,8 @@ function buildExpectedPeriodCandidates(timerWait, speedFactor, rafDeltaP50) {
       alignment_mode: 'phase_beating',
       source_locations: [
         'src/gameplay/game_client.cpp',
-        'include/openglad/platform/frame_pacing.h',
-        'src/platform/sdl/frame_pacing.cpp',
+        'include/openglad/core/frame_pacing.h',
+        'src/core/frame_pacing.cpp',
       ],
       cadence_ms: interpolationCadence,
       candidate_period_ms: phaseBeatPeriodMs(interpolationCadence, rafDeltaP50),
@@ -417,15 +417,15 @@ function buildConfirmedRootCause(bestCandidate, correlatedEvent) {
       kind: 'browser_outer_frame_pacing',
       source_locations: [
         'src/platform/sdl/glad.cpp',
-        'include/openglad/platform/frame_pacing.h',
-        'src/platform/sdl/frame_pacing.cpp',
+        'include/openglad/core/frame_pacing.h',
+        'src/core/frame_pacing.cpp',
       ],
       rationale:
         'The strongest period match lands on the browser wrapper cadence family, and the highest-overlap correlated events come from emscripten_frame_wrapper().',
       fix_files: [
         'src/platform/sdl/glad.cpp',
-        'include/openglad/platform/frame_pacing.h',
-        'src/platform/sdl/frame_pacing.cpp',
+        'include/openglad/core/frame_pacing.h',
+        'src/core/frame_pacing.cpp',
       ],
     };
   }
@@ -438,15 +438,15 @@ function buildConfirmedRootCause(bestCandidate, correlatedEvent) {
       kind: 'interpolation_interval_mismatch',
       source_locations: [
         'src/gameplay/game_client.cpp',
-        'include/openglad/platform/frame_pacing.h',
-        'src/platform/sdl/frame_pacing.cpp',
+        'include/openglad/core/frame_pacing.h',
+        'src/core/frame_pacing.cpp',
       ],
       rationale:
         'The measured cadence matches the rounded interpolation interval family more closely than transport periodic work, pointing at disagreement between presentation timing and outer frame pacing.',
       fix_files: [
         'src/gameplay/game_client.cpp',
-        'include/openglad/platform/frame_pacing.h',
-        'src/platform/sdl/frame_pacing.cpp',
+        'include/openglad/core/frame_pacing.h',
+        'src/core/frame_pacing.cpp',
       ],
     };
   }

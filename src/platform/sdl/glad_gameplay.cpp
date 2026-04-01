@@ -37,7 +37,7 @@ static inline GameLoopFrameState& g_frame_state() {
 }
 
 #ifdef __EMSCRIPTEN__
-void openglad_web_finalize_jitter_capture_profile_after_load(screen& current_screen);
+#include <openglad/platform/emscripten/web_runtime_diagnostics.h>
 #endif
 
 #ifdef TESTING
@@ -162,7 +162,8 @@ void glad_init(bool preserve_frame_timing,
     // Load the default saved-game, or the lobby-supplied in-memory config.
     load_saved_game(lobby_config != nullptr ? "" : "save0", current_screen);
 #ifdef __EMSCRIPTEN__
-    openglad_web_finalize_jitter_capture_profile_after_load(*current_screen);
+    og::platform::web::finalize_jitter_capture_profile_after_load(
+        *current_screen);
 #endif
     for (short view_index = 0; view_index < current_screen->numviews; ++view_index)
     {

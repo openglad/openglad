@@ -114,7 +114,7 @@ endif()
 set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/glad.cpp
     ${SRC_DIR}/platform/sdl/game_loop.cpp
-    ${SRC_DIR}/platform/sdl/frame_pacing.cpp
+    ${SRC_DIR}/core/frame_pacing.cpp
     ${SRC_DIR}/platform/game_context.cpp
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
@@ -262,6 +262,7 @@ set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
 list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/platform/sdl/glad.cpp)
 if(EMSCRIPTEN)
     list(APPEND GAME_SOURCES_NO_MAIN
+        ${SRC_DIR}/platform/emscripten/web_runtime_diagnostics.cpp
         ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp
         ${SRC_DIR}/platform/emscripten/net_transport_relay_ws.cpp
     )
@@ -271,8 +272,8 @@ endif()
 # Keep these lists in sync with GAME_SOURCES_NO_MAIN so targets remain behaviorally equivalent.
 set(OG_CORE_SOURCES
     ${SRC_DIR}/core/combat_math.cpp
+    ${SRC_DIR}/core/frame_pacing.cpp
     ${SRC_DIR}/core/runtime_trace.cpp
-    ${SRC_DIR}/platform/sdl/frame_pacing.cpp
     ${SRC_DIR}/core/util.cpp
 )
 
@@ -932,13 +933,13 @@ set(OG_EXTERNAL_LIBS
 if(NOT EMSCRIPTEN)
     # --- component targets (Phase 12) ---
     prepare_component_include_root(OG_CORE_INCLUDE_ROOT core
-        core interface platform)
+        core)
     prepare_component_include_root(OG_GAMEPLAY_INCLUDE_ROOT gameplay
-        core gameplay platform)
+        core gameplay)
     prepare_component_include_root(OG_RESOURCES_INCLUDE_ROOT resources
         core gameplay resources)
     prepare_component_include_root(OG_INTERFACE_INCLUDE_ROOT interface
-        core gameplay resources interface platform)
+        core gameplay resources interface)
 
     add_library(og_core STATIC ${OG_CORE_SOURCES})
     configure_component_library(og_core "${OG_CORE_INCLUDE_ROOT}")
