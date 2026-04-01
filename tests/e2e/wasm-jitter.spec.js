@@ -1,4 +1,5 @@
 // @ts-check
+const childProcess = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
@@ -10,8 +11,15 @@ const {
 
 const CAPTURE_DURATION_MS = 12_000;
 const PROFILE_ID = 'single-player-right-run';
+const ANALYZER_SCRIPT = path.resolve(
+  __dirname,
+  '..',
+  '..',
+  'scripts',
+  'analyze_jitter_metrics.mjs',
+);
 
-test('captures browser and engine timing for jitter reproduction', async ({ page }, testInfo) => {
+test('captures browser timing and verifies jitter does not reproduce', async ({ page }, testInfo) => {
   test.setTimeout(120_000);
 
   const captureDir =
@@ -175,4 +183,33 @@ test('captures browser and engine timing for jitter reproduction', async ({ page
       2,
     )}\n`,
   );
+
+  const analysisJsonPath = path.join(captureDir, 'analysis.json');
+  const analysisMdPath = path.join(captureDir, 'analysis.md');
+  try {
+    childProcess.execFileSync(
+      process.execPath,
+      [
+        ANALYZER_SCRIPT,
+        '--browser',
+        path.join(captureDir, 'browser-timing.json'),
+        '--engine',
+        path.join(captureDir, 'engine-timing.json'),
+        '--expect',
+        'not-reproduced',
+        '--output-json',
+        analysisJsonPath,
+        '--output-md',
+        analysisMdPath,
+      ],
+      { stdio: 'pipe' },
+    );
+  } catch (error) {
+    const stderr = error && error.stderr ? String(error.stderr) : '';
+    throw new Error(stderr.trim() || String(error));
+  }
+
+  const analysis = JSON.parse(fs.readFileSync(analysisJsonPath, 'utf8'));
+  expect(analysis.capture_sufficient).toBe(true);
+  expect(analysis.reproduced).toBe(false);
 });

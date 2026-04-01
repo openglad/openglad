@@ -1446,6 +1446,20 @@ function main() {
     return;
   }
 
+  if (expectMode === 'not-reproduced') {
+    if (!analysis.capture_sufficient) {
+      throw new Error(
+        'expected not-reproduced capture, but capture is insufficient',
+      );
+    }
+    if (analysis.reproduced) {
+      throw new Error(
+        'expected not-reproduced capture, but jitter reproduction gate passed',
+      );
+    }
+    return;
+  }
+
   if (expectMode === 'fixed') {
     return;
   }
