@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 
+#include <openglad/core/frame_pacing.h>
 #include <openglad/interface/game_loop_state.h>
 
 class screen;
@@ -35,6 +36,7 @@ struct GameLoopDeps {
     // Optional: allows tests to bypass expensive rendering even in non-TESTING builds.
     bool enable_render = true;
     bool enable_event_poll = true;
+    bool enable_tick = true;
     // When false, skip internal accumulator pacing and run at most one sim tick
     // per call. Used by multi-session demos that apply their own pacing.
     bool enable_frame_timing = true;
@@ -58,3 +60,10 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
 
 // Runs one frame of the main game loop. Returns true when the mission is done.
 bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps = {});
+
+void run_browser_wrapper_frame(screen& s,
+                               GameLoopFrameState& st,
+                               std::uint32_t current_time_ms,
+                               const og::core::BrowserFramePacingResult& pacing,
+                               const GameLoopDeps& render_deps = {},
+                               const GameLoopDeps& tick_deps = {});

@@ -332,35 +332,12 @@ static void emscripten_frame_wrapper() {
 						pacing.should_run_frame ? "wrapper_frame_ready"
 						                        : "wrapper_frame_skip"));
 
-				{
-					GameLoopFrameState render_state = g_frame_state();
-					render_state.initialized = true;
-					render_state.last_frame_time = current_time;
-					render_state.accumulated_time = 0;
-
-					GameLoopDeps render_deps;
-					render_deps.enable_render = true;
-					game_frame(*current_screen, render_state, render_deps);
-					g_frame_state().done = render_state.done;
-					g_frame_state().has_pending_input =
-						render_state.has_pending_input;
-					g_frame_state().pending_input =
-						render_state.pending_input;
+				run_browser_wrapper_frame(
+					*current_screen,
+					g_frame_state(),
+					current_time,
+					pacing);
 				}
-
-				if (!g_frame_state().done && pacing.should_run_frame) {
-					GameLoopDeps tick_deps;
-					tick_deps.enable_render = false;
-					tick_deps.enable_event_poll = false;
-					tick_deps.enable_frame_timing = false;
-					game_frame(*current_screen, g_frame_state(), tick_deps);
-				}
-
-				g_frame_state().initialized = true;
-				g_frame_state().last_frame_time = current_time;
-				g_frame_state().accumulated_time =
-					pacing.accumulated_after_step_ms;
-			}
 			if (g_frame_state().done) {
 				Log("Game done, transitioning back to PICKER\n");
 				og::runtime::current_session->gameplay_active_ = false;

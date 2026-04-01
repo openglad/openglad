@@ -379,11 +379,21 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     if (s.world().end || st.done)
         return finish_done(st);
 
-    const TickSchedule schedule = compute_tick_schedule(s, deps);
     ctx().poll_input();
     latch_polled_input(st, ctx().input);
 
-    const std::uint32_t ticks_to_run = ticks_to_run_this_call(st, schedule, deps);
+    std::uint32_t ticks_to_run = 0;
+    if (deps.enable_tick)
+    {
+        const TickSchedule schedule = compute_tick_schedule(s, deps);
+        ticks_to_run = ticks_to_run_this_call(st, schedule, deps);
+    }
+    else
+    {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_loop", "ticks_disabled"));
+    }
     for (std::uint32_t tick = 0; tick < ticks_to_run; ++tick)
     {
         const GameFrameResult tick_result =
@@ -422,4 +432,38 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
 bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
 {
     return game_frame_with_result(s, st, deps) != GameFrameResult::Continue;
+}
+
+void run_browser_wrapper_frame(screen& s,
+                               GameLoopFrameState& st,
+                               std::uint32_t current_time_ms,
+                               const og::core::BrowserFramePacingResult& pacing,
+                               const GameLoopDeps& render_deps,
+                               const GameLoopDeps& tick_deps)
+{
+    GameLoopFrameState render_state = st;
+    render_state.initialized = true;
+    render_state.last_frame_time = current_time_ms;
+    render_state.accumulated_time = 0;
+
+    GameLoopDeps effective_render_deps = render_deps;
+    effective_render_deps.enable_tick = false;
+    game_frame(s, render_state, effective_render_deps);
+
+    st.done = render_state.done;
+    st.has_pending_input = render_state.has_pending_input;
+    st.pending_input = render_state.pending_input;
+
+    if (!st.done && pacing.should_run_frame)
+    {
+        GameLoopDeps effective_tick_deps = tick_deps;
+        effective_tick_deps.enable_render = false;
+        effective_tick_deps.enable_event_poll = false;
+        effective_tick_deps.enable_frame_timing = false;
+        game_frame(s, st, effective_tick_deps);
+    }
+
+    st.initialized = true;
+    st.last_frame_time = current_time_ms;
+    st.accumulated_time = pacing.accumulated_after_step_ms;
 }

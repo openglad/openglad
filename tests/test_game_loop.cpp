@@ -180,6 +180,55 @@ static bool load_minimal_game_loop_scenario(const char* save_name)
         *og::runtime::current_game_session);
 }
 
+static void expect_browser_wrapper_immediate_step_runs_one_tick(
+    const char* save_name,
+    short timer_wait,
+    float speed_factor)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed_guard(speed_factor);
+    ASSERT_TRUE(load_minimal_game_loop_scenario(save_name));
+
+    game_screen->world().timer_wait =
+        static_cast<decltype(game_screen->world().timer_wait)>(timer_wait);
+
+    const std::uint32_t tick_count_before = game_screen->world().tick_count_;
+    const int framecount_before = game_screen->framecount;
+    int tick_count = 0;
+
+    GameLoopFrameState st;
+    const og::core::BrowserFramePacingResult pacing =
+        og::core::step_browser_frame_pacing(33u, 16u, timer_wait, speed_factor);
+    ASSERT_TRUE(pacing.should_run_frame);
+
+    GameLoopDeps render_deps;
+    render_deps.enable_render = false;
+    render_deps.enable_event_poll = false;
+
+    GameLoopDeps tick_deps;
+    tick_deps.after_act = [&tick_count](screen&) {
+        ++tick_count;
+    };
+
+    run_browser_wrapper_frame(
+        *game_screen,
+        st,
+        1016u,
+        pacing,
+        render_deps,
+        tick_deps);
+
+    EXPECT_EQ(1, tick_count);
+    EXPECT_EQ(framecount_before + 1, game_screen->framecount);
+    EXPECT_EQ(tick_count_before + 1u, game_screen->world().tick_count_);
+    EXPECT_TRUE(st.initialized);
+    EXPECT_EQ(1016u, st.last_frame_time);
+    EXPECT_EQ(pacing.accumulated_after_step_ms, st.accumulated_time);
+
+    game_screen->world().delete_objects();
+}
+
 static void expect_snapshot_bytes_match(const og::sim::WorldSnapshot& expected,
                                         const og::sim::WorldSnapshot& actual)
 {
@@ -1609,6 +1658,22 @@ TEST(GameLoopJitter, browser_wrapper_honors_zero_timer_wait_fast_mode)
     EXPECT_FALSE(immediate.should_present_frame);
     EXPECT_EQ(49u, immediate.accumulated_after_add_ms);
     EXPECT_EQ(0u, immediate.accumulated_after_step_ms);
+}
+
+TEST(GameLoopJitter, browser_wrapper_runs_one_tick_for_zero_timer_wait_fast_mode)
+{
+    expect_browser_wrapper_immediate_step_runs_one_tick(
+        "test_game_loop_browser_zero_timer_wait",
+        0,
+        1.0f);
+}
+
+TEST(GameLoopJitter, browser_wrapper_runs_one_tick_for_zero_speed_factor_immediate_mode)
+{
+    expect_browser_wrapper_immediate_step_runs_one_tick(
+        "test_game_loop_browser_zero_speed_factor",
+        6,
+        0.0f);
 }
 
 TEST(GameLoopJitter, game_frame_accumulator_uses_injected_now_ms)
