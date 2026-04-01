@@ -1880,6 +1880,15 @@ if(NOT EMSCRIPTEN)
             og_unit_sim
             PROPERTIES RESOURCE_LOCK native_network_stack
         )
+        # The dedicated picker-network suite is tiny when it runs alone, but
+        # its live host/join transport handoff can stall on 4-core CI runners
+        # when CTest overlaps it with the other long-running integration
+        # binaries. Give it a dedicated budget and run it by itself in every
+        # lane instead of relying on incidental scheduler order.
+        set_tests_properties(og_test_picker_network PROPERTIES
+            RUN_SERIAL TRUE
+            TIMEOUT 420
+        )
 
         if(ENABLE_COVERAGE)
             # Coverage-instrumented UI-heavy binaries can time out on 4-core CI
