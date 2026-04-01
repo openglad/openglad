@@ -279,6 +279,7 @@ struct NetworkingJoinState
     bool updated_port = false;
     bool enabled_room_code = false;
     bool updated_room_code = false;
+    bool saw_join_relay_error_popup = false;
     bool stayed_in_submenu_after_join_error = false;
     bool returned_to_main_menu = false;
 };
@@ -323,8 +324,10 @@ int networking_join_injector(void* data)
         "network_room_value", "glad-xkcd");
 
     SDL_Delay(150);
-    interact("network_join");
-    SDL_Delay(250);
+    state->saw_join_relay_error_popup = interact_until_trace_contains(
+        "network_join",
+        "popup",
+        "JOIN GAME: Relay base URL must use");
     state->stayed_in_submenu_after_join_error =
         has_interactable("network_join") && has_interactable("network_back");
 
@@ -717,10 +720,9 @@ TEST(NetworkingMenu, room_code_join_invalid_relay_url_stays_in_submenu)
     ASSERT_TRUE(state.updated_port);
     ASSERT_TRUE(state.enabled_room_code);
     ASSERT_TRUE(state.updated_room_code);
+    ASSERT_TRUE(state.saw_join_relay_error_popup);
     ASSERT_TRUE(state.stayed_in_submenu_after_join_error);
     ASSERT_TRUE(state.returned_to_main_menu);
-    ASSERT_TRUE(trace_contains("popup", "Relay base URL must use"))
-        << "room-code join errors should be surfaced as a popup instead of unwinding the menu";
 }
 
 TEST(NetworkingMenu, submenu_validation_errors_stay_in_place)
