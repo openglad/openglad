@@ -695,6 +695,25 @@ TEST(NetTransport, game_client_sends_automatic_heartbeats_when_idle)
     EXPECT_TRUE(transport.sent_messages().empty());
 }
 
+TEST(NetTransportJitter, held_input_suppresses_automatic_heartbeat_cadence)
+{
+    MockTransport transport;
+    og::sim::GameClient client(transport, 7u);
+
+    transport.set_connected_peers({7u});
+    client.poll_messages();
+    transport.clear_sent_messages();
+
+    InputState input{};
+    input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
+    client.send_input(input, 1u);
+    transport.clear_sent_messages();
+
+    client.testing_set_last_outbound_activity_elapsed_ms(1000.0f);
+    client.poll_messages();
+    EXPECT_TRUE(transport.sent_messages().empty());
+}
+
 TEST(NetTransport, game_client_notifies_when_server_is_gone_for_too_long)
 {
     MockTransport transport;
@@ -1107,6 +1126,47 @@ TEST(NetTransport,
             transport.broadcast_messages().front().size());
     EXPECT_EQ(og::sim::KEYFRAME_INTERVAL_TICKS, snapshot.tick_count);
     EXPECT_EQ(3, snapshot.current_palette_id);
+}
+
+TEST(NetTransportJitter, keyframe_broadcast_cadence_follows_interval_ticks)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u});
+    server.connect_client(7u);
+    server.bind_player(7u, 0u, fixture.world().my_team);
+    server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+    transport.clear_sent_messages();
+
+    const og::sim::ClientReadyMessage ready{
+        .last_applied_tick = fixture.world().tick_count_,
+    };
+    transport.queue_received(
+        7u, og::sim::serialize_client_ready_message(ready));
+    server.step();
+    transport.clear_sent_messages();
+
+    fixture.world().tick_count_ = og::sim::KEYFRAME_INTERVAL_TICKS - 1u;
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    og::sim::TransportEnvelope envelope;
+    ASSERT_TRUE(og::sim::decode_transport_envelope(
+        transport.sent_messages().front().data,
+        envelope));
+    EXPECT_EQ(og::sim::kDeltaSnapshotMessageType, envelope.message_type);
+
+    transport.clear_sent_messages();
+    fixture.world().tick_count_ = og::sim::KEYFRAME_INTERVAL_TICKS;
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+    ASSERT_EQ(1u, transport.sent_messages().size());
+    ASSERT_TRUE(og::sim::decode_transport_envelope(
+        transport.sent_messages().front().data,
+        envelope));
+    EXPECT_EQ(og::sim::kSnapshotMessageType, envelope.message_type);
 }
 
 TEST(NetTransport,
@@ -1627,6 +1687,25 @@ TEST(NetTransport, game_client_render_interpolation_alpha_respects_game_speed)
     EXPECT_FLOAT_EQ(1.0f, client.render_interpolation_alpha(0.0f));
 }
 
+TEST(NetTransportJitter, interpolation_alpha_uses_rounded_timer_wait_interval)
+{
+    MockTransport transport;
+    TestGameWorld fixture;
+
+    fixture.world().timer_wait = 6;
+    fixture.world().tick_count_ = og::sim::KEYFRAME_INTERVAL_TICKS - 1u;
+    transport.queue_received(
+        7u,
+        og::sim::serialize_snapshot(
+            og::sim::capture_keyframe_snapshot(fixture.world())));
+
+    og::sim::GameClient client(transport, 7u);
+    client.poll_messages();
+
+    client.testing_set_render_interpolation_elapsed_ms(41.0f);
+    EXPECT_NEAR(0.5f, client.render_interpolation_alpha(1.0f), 0.02f);
+}
+
 TEST(NetTransport,
      game_client_render_interpolation_alpha_treats_zero_timer_wait_as_immediate)
 {
@@ -1644,6 +1723,40 @@ TEST(NetTransport,
 
     client.testing_set_render_interpolation_elapsed_ms(1.0f);
     EXPECT_FLOAT_EQ(1.0f, client.render_interpolation_alpha(1.0f));
+}
+
+TEST(NetTransportJitter, snapshot_hash_checks_follow_keyframe_interval)
+{
+    MockTransport transport;
+    TestGameWorld fixture;
+
+    fixture.world().timer_wait = 6;
+    fixture.world().tick_count_ = og::sim::KEYFRAME_INTERVAL_TICKS - 1u;
+    transport.queue_received(
+        7u,
+        og::sim::serialize_snapshot(
+            og::sim::capture_keyframe_snapshot(fixture.world())));
+
+    og::sim::GameClient client(transport, 7u);
+    client.poll_messages();
+    const std::uint32_t after_initial_hash_checks =
+        client.snapshot_hash_check_count();
+
+    fixture.world().tick_count_ = og::sim::KEYFRAME_INTERVAL_TICKS;
+    transport.queue_received(
+        7u,
+        og::sim::serialize_delta(og::sim::capture_snapshot(fixture.world())));
+    client.poll_messages();
+    EXPECT_EQ(after_initial_hash_checks + 1u,
+              client.snapshot_hash_check_count());
+
+    fixture.world().tick_count_ = og::sim::KEYFRAME_INTERVAL_TICKS + 1u;
+    transport.queue_received(
+        7u,
+        og::sim::serialize_delta(og::sim::capture_snapshot(fixture.world())));
+    client.poll_messages();
+    EXPECT_EQ(after_initial_hash_checks + 1u,
+              client.snapshot_hash_check_count());
 }
 
 TEST(NetTransport,

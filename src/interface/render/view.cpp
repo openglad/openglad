@@ -24,6 +24,7 @@
 #include <openglad/interface/cheat_handler.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/core/colors.h>
+#include <openglad/core/runtime_trace.h>
 #include <openglad/core/version.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
@@ -180,6 +181,57 @@ walker* sanitize_control_pointer(viewscreen& view, LevelRuntimeData& level)
         view.control = nullptr;
     return view.control;
 }
+
+void publish_primary_render_sample(const viewscreen& view,
+                                   const walker* control,
+                                   float interpolation_alpha,
+                                   float control_worldx,
+                                   float control_worldy,
+                                   float control_render_x,
+                                   float control_render_y,
+                                   float camera_topx_float,
+                                   float camera_topy_float)
+{
+    if (og::runtime::current_session == nullptr ||
+        !og::runtime::current_session->gameplay_active_ || view.mynum != 0)
+    {
+        return;
+    }
+
+    screen* const game_screen = active_screen();
+    if (game_screen == nullptr)
+        return;
+
+    og::runtime::RuntimeRenderSample sample;
+    sample.view_index = view.mynum;
+    sample.tick = game_screen->world().tick_count_;
+    sample.timer_wait = game_screen->world().timer_wait;
+    sample.speed_factor = game_screen->render_interpolation_speed_factor();
+    sample.interpolation_alpha = interpolation_alpha;
+    sample.control_worldx = control != nullptr ? control_worldx : 0.0f;
+    sample.control_worldy = control != nullptr ? control_worldy : 0.0f;
+    sample.control_render_x = control != nullptr ? control_render_x : 0.0f;
+    sample.control_render_y = control != nullptr ? control_render_y : 0.0f;
+    sample.camera_topx = view.topx;
+    sample.camera_topy = view.topy;
+    sample.camera_topx_float = camera_topx_float;
+    sample.camera_topy_float = camera_topy_float;
+    og::runtime::publish_runtime_render_sample(std::move(sample));
+
+    og::runtime::RuntimeTraceRecord trace =
+        og::runtime::make_runtime_trace_record("render", "viewscreen_redraw");
+    trace.tick = game_screen->world().tick_count_;
+    trace.interpolation_alpha = interpolation_alpha;
+    trace.control_worldx = sample.control_worldx;
+    trace.control_worldy = sample.control_worldy;
+    trace.control_render_x = sample.control_render_x;
+    trace.control_render_y = sample.control_render_y;
+    trace.camera_topx = sample.camera_topx;
+    trace.camera_topy = sample.camera_topy;
+    trace.camera_topx_float = sample.camera_topx_float;
+    trace.camera_topy_float = sample.camera_topy_float;
+    og::runtime::emit_runtime_trace(std::move(trace));
+}
 } // namespace
 
 // ************************************************************
@@ -260,6 +312,12 @@ bool viewscreen::redraw()
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
+    float control_worldx = 0.0f;
+    float control_worldy = 0.0f;
+    float control_render_x = 0.0f;
+    float control_render_y = 0.0f;
+    float camera_topx_float = static_cast<float>(topx);
+    float camera_topy_float = static_cast<float>(topy);
     LevelRuntimeData& level = active_screen()->level_runtime_data();
 	walker  *controlob = sanitize_control_pointer(*this, level);
 	auto* renderer = active_screen()->level_visuals_.renderer_.get();
@@ -275,17 +333,25 @@ bool viewscreen::redraw()
 	{
         const WalkerRenderPosition control_pos =
             resolve_walker_render_position(*controlob, interpolation_alpha);
-		topx = static_cast<Sint32>(
+        control_worldx = control_pos.worldx;
+        control_worldy = control_pos.worldy;
+        control_render_x = control_pos.xpos;
+        control_render_y = control_pos.ypos;
+        camera_topx_float =
             control_pos.xpos -
-            static_cast<float>(xview - controlob->sizex()) / 2.0f);
-		topy = static_cast<Sint32>(
+            static_cast<float>(xview - controlob->sizex()) / 2.0f;
+        camera_topy_float =
             control_pos.ypos -
-            static_cast<float>(yview - controlob->sizey()) / 2.0f);
+            static_cast<float>(yview - controlob->sizey()) / 2.0f;
+		topx = static_cast<Sint32>(camera_topx_float);
+		topy = static_cast<Sint32>(camera_topy_float);
 	}
 	else // no control object now ..
 	{
 		topx = active_screen()->level_visuals_.topx;
 		topy = active_screen()->level_visuals_.topy;
+        camera_topx_float = static_cast<float>(topx);
+        camera_topy_float = static_cast<float>(topy);
 	}
 
 
@@ -319,6 +385,15 @@ bool viewscreen::redraw()
 	if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
 	display_text();
+    publish_primary_render_sample(*this,
+                                  controlob,
+                                  interpolation_alpha,
+                                  control_worldx,
+                                  control_worldy,
+                                  control_render_x,
+                                  control_render_y,
+                                  camera_topx_float,
+                                  camera_topy_float);
 	return 1;
 
 }
@@ -329,6 +404,12 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
+    float control_worldx = 0.0f;
+    float control_worldy = 0.0f;
+    float control_render_x = 0.0f;
+    float control_render_y = 0.0f;
+    float camera_topx_float = static_cast<float>(topx);
+    float camera_topy_float = static_cast<float>(topy);
 	walker  *controlob = sanitize_control_pointer(*this, *data);
 	auto* renderer = data->level_visuals().renderer_.get();
 	if (!renderer) return false;
@@ -343,17 +424,25 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	{
         const WalkerRenderPosition control_pos =
             resolve_walker_render_position(*controlob, interpolation_alpha);
-		topx = static_cast<Sint32>(
+        control_worldx = control_pos.worldx;
+        control_worldy = control_pos.worldy;
+        control_render_x = control_pos.xpos;
+        control_render_y = control_pos.ypos;
+        camera_topx_float =
             control_pos.xpos -
-            static_cast<float>(xview - controlob->sizex()) / 2.0f);
-		topy = static_cast<Sint32>(
+            static_cast<float>(xview - controlob->sizex()) / 2.0f;
+        camera_topy_float =
             control_pos.ypos -
-            static_cast<float>(yview - controlob->sizey()) / 2.0f);
+            static_cast<float>(yview - controlob->sizey()) / 2.0f;
+		topx = static_cast<Sint32>(camera_topx_float);
+		topy = static_cast<Sint32>(camera_topy_float);
 	}
 	else // no control object now ..
 	{
 		topx = data->level_visuals().topx;
 		topy = data->level_visuals().topy;
+        camera_topx_float = static_cast<float>(topx);
+        camera_topy_float = static_cast<float>(topy);
 	}
 
 
@@ -387,6 +476,15 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();
+    publish_primary_render_sample(*this,
+                                  controlob,
+                                  interpolation_alpha,
+                                  control_worldx,
+                                  control_worldy,
+                                  control_render_x,
+                                  control_render_y,
+                                  camera_topx_float,
+                                  camera_topy_float);
 	return 1;
 
 }

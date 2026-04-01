@@ -17,6 +17,7 @@
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/game_loop.h>
+#include <openglad/platform/frame_pacing.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/platform/local_transport_shadow.h>
@@ -1539,6 +1540,100 @@ TEST(GameLoop, game_frame_with_result_uses_fixed_tick_ms_instead_of_timer_wait_w
     EXPECT_EQ(1, fixed_ticks);
 
     game_screen->world().timer_wait = old_timer_wait;
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoopJitter, browser_wrapper_helper_uses_shared_rounded_interval)
+{
+    const og::runtime::BrowserFramePacingResult waiting =
+        og::runtime::step_browser_frame_pacing(0u, 16u, 6, 1.0f);
+    EXPECT_EQ(82u, waiting.target_interval_ms);
+    EXPECT_FALSE(waiting.should_run_frame);
+    EXPECT_FALSE(waiting.should_present_frame);
+    EXPECT_EQ(16u, waiting.accumulated_after_add_ms);
+    EXPECT_EQ(16u, waiting.accumulated_after_step_ms);
+
+    const og::runtime::BrowserFramePacingResult midpoint =
+        og::runtime::step_browser_frame_pacing(32u, 16u, 6, 1.0f);
+    EXPECT_EQ(82u, midpoint.target_interval_ms);
+    EXPECT_FALSE(midpoint.should_run_frame);
+    EXPECT_TRUE(midpoint.should_present_frame);
+    EXPECT_EQ(48u, midpoint.accumulated_after_add_ms);
+    EXPECT_EQ(48u, midpoint.accumulated_after_step_ms);
+
+    const og::runtime::BrowserFramePacingResult ready =
+        og::runtime::step_browser_frame_pacing(66u, 16u, 6, 1.0f);
+    EXPECT_EQ(82u, ready.target_interval_ms);
+    EXPECT_TRUE(ready.should_run_frame);
+    EXPECT_FALSE(ready.should_present_frame);
+    EXPECT_EQ(82u, ready.accumulated_after_add_ms);
+    EXPECT_EQ(0u, ready.accumulated_after_step_ms);
+
+    const og::runtime::BrowserFramePacingResult no_carry =
+        og::runtime::step_browser_frame_pacing(67u, 16u, 6, 1.0f);
+    EXPECT_TRUE(no_carry.should_run_frame);
+    EXPECT_FALSE(no_carry.should_present_frame);
+    EXPECT_EQ(83u, no_carry.accumulated_after_add_ms);
+    EXPECT_EQ(0u, no_carry.accumulated_after_step_ms);
+
+    const og::runtime::BrowserFramePacingResult clamped =
+        og::runtime::step_browser_frame_pacing(230u, 17u, 6, 1.0f);
+    EXPECT_TRUE(clamped.should_run_frame);
+    EXPECT_FALSE(clamped.should_present_frame);
+    EXPECT_EQ(0u, clamped.accumulated_after_step_ms);
+}
+
+TEST(GameLoopJitter, browser_wrapper_and_shared_render_interval_match)
+{
+    EXPECT_EQ(82u, og::runtime::browser_frame_target_interval_ms(6, 1.0f));
+
+    const og::runtime::BrowserFramePacingResult browser_interval =
+        og::runtime::step_browser_frame_pacing(0u, 0u, 6, 1.0f);
+    EXPECT_EQ(82u, browser_interval.target_interval_ms);
+    EXPECT_FALSE(browser_interval.should_run_frame);
+    EXPECT_FALSE(browser_interval.should_present_frame);
+    EXPECT_EQ(0u, browser_interval.accumulated_after_add_ms);
+    EXPECT_EQ(0u, browser_interval.accumulated_after_step_ms);
+    EXPECT_FLOAT_EQ(82.0f, og::runtime::render_tick_interval_ms(6, 1.0f));
+}
+
+TEST(GameLoopJitter, game_frame_accumulator_uses_injected_now_ms)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_jitter_now_ms"))
+        << "load_saved_game should succeed for injected clock test";
+
+    GameLoopFrameState st;
+    st.initialized = true;
+    st.last_frame_time = 1000u;
+    st.accumulated_time = 0u;
+
+    std::uint32_t fake_now_ms = 1049u;
+    int tick_count = 0;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.fixed_tick_ms = 50u;
+    deps.now_ms = [&fake_now_ms]() {
+        return fake_now_ms;
+    };
+    deps.after_act = [&tick_count](screen&) {
+        ++tick_count;
+    };
+
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(0, tick_count);
+    EXPECT_EQ(49u, st.accumulated_time);
+
+    fake_now_ms = 1050u;
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(1, tick_count);
+    EXPECT_EQ(0u, st.accumulated_time);
+
     game_screen->world().delete_objects();
 }
 

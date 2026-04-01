@@ -197,6 +197,7 @@ private:
         render_interpolation_;
     std::optional<InterpolationClock::time_point>
         last_snapshot_receive_time_ = std::nullopt;
+    mutable float last_render_speed_factor_ = 1.0f;
     std::optional<InterpolationClock::time_point>
         last_outbound_activity_time_ = std::nullopt;
     std::optional<InterpolationClock::time_point>

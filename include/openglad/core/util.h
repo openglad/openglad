@@ -21,9 +21,11 @@
 //
 #pragma once
 
+#include <algorithm>
 #include <chrono>
-#include <cstdint>
 #include <cctype>
+#include <cmath>
+#include <cstdint>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -110,6 +112,27 @@ inline void log_formatted(void (*sink)(const char*),
 }
 
 } // namespace og::detail
+
+namespace og::core {
+
+inline float rounded_render_tick_interval_ms(short timer_wait, float speed_factor)
+{
+    constexpr float kTimerWaitToMs = 13.6f;
+
+    const float interval_ms =
+        static_cast<float>(std::max<int>(timer_wait, 0)) * kTimerWaitToMs;
+    if (speed_factor <= 0.0f || interval_ms <= 0.0f)
+        return 0.0f;
+
+    const float scaled_interval_ms = interval_ms / speed_factor;
+    if (scaled_interval_ms <= 0.0f)
+        return 0.0f;
+
+    return static_cast<float>(std::max<std::uint32_t>(
+        1u, static_cast<std::uint32_t>(std::lround(scaled_interval_ms))));
+}
+
+} // namespace og::core
 
 // Single-argument overloads (no formatting needed)
 inline void Log(const char* msg) { LogImpl(msg); }

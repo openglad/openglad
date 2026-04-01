@@ -44,17 +44,25 @@ fi
 BUILD_DIR="$PROJECT_ROOT/build/ctest-emscripten-build"
 EM_CONFIG_FILE="$BUILD_DIR/.emscripten"
 EM_CACHE_DIR="$BUILD_DIR/emcache"
+EM_PORTS_DIR="$EM_CACHE_DIR/ports"
 JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 1)"
 
-mkdir -p "$BUILD_DIR" "$EM_CACHE_DIR"
+mkdir -p "$BUILD_DIR" "$EM_CACHE_DIR" "$EM_PORTS_DIR"
 
 export EM_CONFIG="$EM_CONFIG_FILE"
 export EM_CACHE="$EM_CACHE_DIR"
+export EM_PORTS="$EM_PORTS_DIR"
 
-if [[ ! -f "$EM_CONFIG_FILE" ]]; then
-    echo "Generating local Emscripten config at $EM_CONFIG_FILE"
-    EM_CONFIG="$EM_CONFIG_FILE" "$EMCC_BIN" --generate-config >/dev/null
-fi
+echo "Generating local Emscripten config at $EM_CONFIG_FILE"
+rm -f "$EM_CONFIG_FILE"
+EM_CONFIG="$EM_CONFIG_FILE" "$EMCC_BIN" --generate-config >/dev/null
+
+sed -i '/^CACHE = /d;/^PORTS = /d' "$EM_CONFIG_FILE"
+printf '\n' >>"$EM_CONFIG_FILE"
+cat >>"$EM_CONFIG_FILE" <<EOF
+CACHE = '$EM_CACHE_DIR' # directory
+PORTS = '$EM_PORTS_DIR' # directory
+EOF
 
 echo "=== Emscripten build verification ==="
 echo "emcc version: $("$EMCC_BIN" --version | head -1)"
@@ -62,6 +70,7 @@ echo "toolchain file: $TOOLCHAIN_FILE"
 echo "build dir: $BUILD_DIR"
 echo "EM_CONFIG: $EM_CONFIG"
 echo "EM_CACHE: $EM_CACHE"
+echo "EM_PORTS: $EM_PORTS"
 
 cd "$PROJECT_ROOT"
 cmake --fresh -S "$PROJECT_ROOT" -B "$BUILD_DIR" -G Ninja \

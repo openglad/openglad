@@ -6,10 +6,12 @@
  * (at your option) any later version.
  */
 #include <openglad/platform/game_loop.h>
+#include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/platform/game_context.h>
+#include <openglad/platform/frame_pacing.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/ui/results_screen.h>
@@ -43,6 +45,11 @@ static void default_handle(const SDL_Event& e)
     handle_events(e);
 }
 
+static std::uint32_t default_now_ms()
+{
+    return SDL_GetTicks();
+}
+
 namespace
 {
 constexpr std::uint32_t kMaxTicksPerCall = 4;
@@ -66,6 +73,9 @@ TickSchedule compute_tick_schedule(const screen& s, const GameLoopDeps& deps)
 {
     if (!deps.enable_frame_timing)
     {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_loop", "schedule_external_timing"));
         return {
             .interval_ms = 0,
             .caller_manages_timing = true,
@@ -73,21 +83,28 @@ TickSchedule compute_tick_schedule(const screen& s, const GameLoopDeps& deps)
         };
     }
 
-    float interval_ms = deps.fixed_tick_ms > 0
-        ? static_cast<float>(deps.fixed_tick_ms)
-        : static_cast<float>(std::max<short>(s.world().timer_wait, 0)) *
-            og::sim::TIMER_WAIT_TO_MS;
-
     const float speed_factor = (og::runtime::current_session != nullptr)
         ? og::runtime::current_session->g_game_speed_factor_
         : 1.0f;
-    if (speed_factor <= 0.0f || interval_ms <= 0.0f)
-        return {.interval_ms = 0, .caller_manages_timing = false, .immediate_tick = true};
-
-    interval_ms /= speed_factor;
+    const float interval_ms = deps.fixed_tick_ms > 0
+        ? (speed_factor > 0.0f
+               ? static_cast<float>(deps.fixed_tick_ms) / speed_factor
+               : 0.0f)
+        : og::runtime::render_tick_interval_ms(
+            s.world().timer_wait, speed_factor);
     if (interval_ms <= 0.0f)
+    {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_loop", "schedule_immediate_tick"));
         return {.interval_ms = 0, .caller_manages_timing = false, .immediate_tick = true};
+    }
 
+    og::runtime::emit_runtime_trace(
+        og::runtime::make_runtime_trace_record(
+            "game_loop",
+            deps.fixed_tick_ms > 0 ? "schedule_fixed_interval"
+                                   : "schedule_timer_wait_interval"));
     return {
         .interval_ms = std::max<std::uint32_t>(
             1u, static_cast<std::uint32_t>(std::lround(interval_ms))),
@@ -104,15 +121,27 @@ void reset_frame_timing(GameLoopFrameState& st, std::uint32_t current_time_ms)
 }
 
 std::uint32_t ticks_to_run_this_call(GameLoopFrameState& st,
-                                     const TickSchedule& schedule)
+                                     const TickSchedule& schedule,
+                                     const GameLoopDeps& deps)
 {
     if (schedule.caller_manages_timing)
+    {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_loop", "ticks_caller_managed"));
         return 1;
+    }
 
-    const std::uint32_t current_time_ms = SDL_GetTicks();
+    const std::function<std::uint32_t()> now_ms =
+        deps.now_ms ? deps.now_ms
+                    : std::function<std::uint32_t()>(default_now_ms);
+    const std::uint32_t current_time_ms = now_ms();
     if (schedule.immediate_tick)
     {
         reset_frame_timing(st, current_time_ms);
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_loop", "ticks_immediate"));
         return 1;
     }
 
@@ -129,16 +158,28 @@ std::uint32_t ticks_to_run_this_call(GameLoopFrameState& st,
     }
 
     if (st.accumulated_time < schedule.interval_ms)
+    {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_loop", "ticks_waiting_for_interval"));
         return 0;
+    }
 
     std::uint32_t ticks_to_run = st.accumulated_time / schedule.interval_ms;
     if (ticks_to_run > kMaxTicksPerCall)
     {
         st.accumulated_time = 0;
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_loop", "ticks_clamped_to_cap"));
         return kMaxTicksPerCall;
     }
 
     st.accumulated_time -= ticks_to_run * schedule.interval_ms;
+    og::runtime::emit_runtime_trace(
+        og::runtime::make_runtime_trace_record(
+            "game_loop",
+            ticks_to_run > 1u ? "ticks_multiple_ready" : "ticks_single_ready"));
     return ticks_to_run;
 }
 
@@ -342,7 +383,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     ctx().poll_input();
     latch_polled_input(st, ctx().input);
 
-    const std::uint32_t ticks_to_run = ticks_to_run_this_call(st, schedule);
+    const std::uint32_t ticks_to_run = ticks_to_run_this_call(st, schedule, deps);
     for (std::uint32_t tick = 0; tick < ticks_to_run; ++tick)
     {
         const GameFrameResult tick_result =

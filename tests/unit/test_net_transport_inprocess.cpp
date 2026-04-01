@@ -269,6 +269,51 @@ TEST(NetTransportInProcess, direct_sends_to_multiple_clients_preserve_message_or
     EXPECT_EQ(3u, second_messages[0].snapshot->tick_count);
 }
 
+TEST(NetTransportInProcessJitter, typed_messages_are_drained_once_per_poll)
+{
+    const auto pair = og::sim::InProcessTransport::create_linked_pair();
+    ASSERT_NE(nullptr, pair.server);
+    ASSERT_NE(nullptr, pair.client);
+
+    pair.server->send_snapshot(
+        pair.peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(make_snapshot(5u)));
+    pair.server->send_heartbeat(
+        pair.peer_id,
+        std::make_shared<og::sim::HeartbeatMessage>());
+
+    const std::vector<og::sim::TypedReceivedMessage> first =
+        pair.client->poll_typed();
+    ASSERT_EQ(2u, first.size());
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Snapshot, first[0].kind);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Heartbeat, first[1].kind);
+
+    const std::vector<og::sim::TypedReceivedMessage> second =
+        pair.client->poll_typed();
+    EXPECT_TRUE(second.empty());
+}
+
+TEST(NetTransportInProcessJitter, empty_polls_do_not_create_periodic_messages)
+{
+    const auto pair = og::sim::InProcessTransport::create_linked_pair();
+    ASSERT_NE(nullptr, pair.server);
+    ASSERT_NE(nullptr, pair.client);
+
+    EXPECT_TRUE(pair.client->poll_typed().empty());
+    EXPECT_TRUE(pair.client->poll_typed().empty());
+
+    pair.server->send_snapshot_hash_check(
+        pair.peer_id,
+        std::make_shared<og::sim::SnapshotHashCheckMessage>(
+            og::sim::SnapshotHashCheckMessage{
+                .tick = og::sim::KEYFRAME_INTERVAL_TICKS,
+                .snapshot_hash = 0x1234u,
+            }));
+
+    ASSERT_EQ(1u, pair.client->poll_typed().size());
+    EXPECT_TRUE(pair.client->poll_typed().empty());
+}
+
 TEST(NetTransportInProcess,
      game_server_broadcast_current_state_reaches_all_clients_in_order)
 {

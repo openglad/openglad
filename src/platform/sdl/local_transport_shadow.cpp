@@ -1,5 +1,6 @@
 #include <openglad/platform/local_transport_shadow.h>
 
+#include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -183,6 +184,12 @@ void poll_local_transport_client(screen& gameplay_screen,
 {
     if (!client.game_client)
         return;
+
+    og::runtime::emit_runtime_trace(
+        og::runtime::make_runtime_trace_record(
+            "local_transport_shadow",
+            client.drives_display ? "poll_display_client"
+                                  : "poll_background_client"));
 
     if (client.drives_display)
     {
@@ -1054,6 +1061,9 @@ void local_transport_shadow_finish_tick(GameSession& session)
 
     if (runtime->display_session_finished || session.myscreen_->world().end != 0)
     {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "local_transport_shadow", "finish_tick_display_finished"));
         runtime->display_session_finished = true;
         session.myscreen_->world().end = 1;
         return;
@@ -1061,6 +1071,9 @@ void local_transport_shadow_finish_tick(GameSession& session)
 
     if (runtime->authoritative_mode())
     {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "local_transport_shadow", "finish_tick_authoritative_step"));
         // Single-thread authoritative order:
         //  3-9. Install the server session/context and run one authoritative step.
         auto server_scope = runtime->server_session->activate();
@@ -1073,6 +1086,9 @@ void local_transport_shadow_finish_tick(GameSession& session)
     // 10-14. Restore the display session, then drain snapshots/events into the
     // client mirror before rendering.
     {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "local_transport_shadow", "finish_tick_client_drain_begin"));
         auto client_scope = session.activate();
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
@@ -1081,6 +1097,9 @@ void local_transport_shadow_finish_tick(GameSession& session)
             if (runtime->display_session_finished ||
                 session.myscreen_->world().end != 0)
             {
+                og::runtime::emit_runtime_trace(
+                    og::runtime::make_runtime_trace_record(
+                        "local_transport_shadow", "finish_tick_client_drain_end"));
                 runtime->display_session_finished = true;
                 session.myscreen_->world().end = 1;
                 return;
@@ -1093,6 +1112,9 @@ void local_transport_shadow_finish_tick(GameSession& session)
                 *session.myscreen_,
                 *runtime->clients[runtime->display_client_index].game_client);
         }
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "local_transport_shadow", "finish_tick_client_drain_end"));
     }
 }
 

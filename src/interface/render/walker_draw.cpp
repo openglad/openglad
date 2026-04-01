@@ -10,6 +10,7 @@
 // These were originally walker::draw(), walker::draw_tile(), etc.
 
 #include <openglad/interface/render/walker_draw.h>
+#include <openglad/core/runtime_trace.h>
 #include <openglad/interface/base.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/walker.h>
@@ -205,6 +206,19 @@ static float display_interpolation_speed_factor()
         : 1.0f;
 }
 
+bool is_primary_control_walker(const walker& candidate)
+{
+    screen* const game_screen = active_game_screen();
+    if (og::runtime::current_session == nullptr ||
+        !og::runtime::current_session->gameplay_active_ ||
+        game_screen == nullptr || game_screen->viewob[0] == nullptr)
+    {
+        return false;
+    }
+
+    return game_screen->viewob[0]->control == &candidate;
+}
+
 static WalkerRenderPosition current_position(const walker& w)
 {
     return {
@@ -222,10 +236,16 @@ static WalkerRenderPosition current_position(const walker& w)
 float query_render_interpolation_alpha()
 {
     const og::sim::GameClient* const client = display_game_client();
-    return client != nullptr
+    const float alpha = client != nullptr
         ? client->render_interpolation_alpha(
             display_interpolation_speed_factor())
         : 1.0f;
+    og::runtime::RuntimeTraceRecord trace =
+        og::runtime::make_runtime_trace_record(
+            "render", "query_interpolation_alpha");
+    trace.interpolation_alpha = alpha;
+    og::runtime::emit_runtime_trace(std::move(trace));
+    return alpha;
 }
 
 WalkerRenderPosition resolve_walker_render_position(const walker& w,
@@ -233,18 +253,61 @@ WalkerRenderPosition resolve_walker_render_position(const walker& w,
 {
     const og::sim::GameClient* const client = display_game_client();
     if (client == nullptr || w.entity_id() == 0u)
-        return current_position(w);
+    {
+        const WalkerRenderPosition position = current_position(w);
+        if (is_primary_control_walker(w))
+        {
+            og::runtime::RuntimeTraceRecord trace =
+                og::runtime::make_runtime_trace_record(
+                    "render", "resolve_control_render_position_local");
+            trace.interpolation_alpha = alpha;
+            trace.control_worldx = position.worldx;
+            trace.control_worldy = position.worldy;
+            trace.control_render_x = position.xpos;
+            trace.control_render_y = position.ypos;
+            og::runtime::emit_runtime_trace(std::move(trace));
+        }
+        return position;
+    }
 
     const auto position = client->render_position(w.entity_id(), alpha);
     if (!position.has_value())
-        return current_position(w);
+    {
+        const WalkerRenderPosition local = current_position(w);
+        if (is_primary_control_walker(w))
+        {
+            og::runtime::RuntimeTraceRecord trace =
+                og::runtime::make_runtime_trace_record(
+                    "render", "resolve_control_render_position_fallback");
+            trace.interpolation_alpha = alpha;
+            trace.control_worldx = local.worldx;
+            trace.control_worldy = local.worldy;
+            trace.control_render_x = local.xpos;
+            trace.control_render_y = local.ypos;
+            og::runtime::emit_runtime_trace(std::move(trace));
+        }
+        return local;
+    }
 
-    return {
+    WalkerRenderPosition resolved = {
         .worldx = position->worldx,
         .worldy = position->worldy,
         .xpos = position->xpos,
         .ypos = position->ypos,
     };
+    if (is_primary_control_walker(w))
+    {
+        og::runtime::RuntimeTraceRecord trace =
+            og::runtime::make_runtime_trace_record(
+                "render", "resolve_control_render_position_interpolated");
+        trace.interpolation_alpha = alpha;
+        trace.control_worldx = resolved.worldx;
+        trace.control_worldy = resolved.worldy;
+        trace.control_render_x = resolved.xpos;
+        trace.control_render_y = resolved.ypos;
+        og::runtime::emit_runtime_trace(std::move(trace));
+    }
+    return resolved;
 }
 
 static void draw_damage_number(walker::DamageNumber& dn, viewscreen* view_buf)

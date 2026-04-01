@@ -1,4 +1,5 @@
 #include <openglad/gameplay/game_client.h>
+#include <openglad/core/runtime_trace.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/net_transport.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -88,6 +89,24 @@ private:
     screen& screen_;
     const og::sim::GameClient* previous_client_ = nullptr;
     float previous_speed_factor_ = 1.0f;
+};
+
+class GameplayActiveGuard
+{
+public:
+    GameplayActiveGuard()
+        : previous_(og::runtime::current_session->gameplay_active_)
+    {
+        og::runtime::current_session->gameplay_active_ = true;
+    }
+
+    ~GameplayActiveGuard()
+    {
+        og::runtime::current_session->gameplay_active_ = previous_;
+    }
+
+private:
+    bool previous_ = false;
 };
 
 void prepare_view_world()
@@ -270,6 +289,90 @@ TEST(ViewRedraw, redraw_uses_interpolated_control_position_for_camera_follow)
     EXPECT_EQ(expected_topy, vs->topy);
     EXPECT_NE(snapped_topx, vs->topx);
     EXPECT_NE(snapped_topy, vs->topy);
+
+    vs->control = nullptr;
+}
+
+TEST(ViewRedrawJitter, render_sample_preserves_float_camera_while_camera_snaps)
+{
+    viewscreen* const vs =
+        og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    prepare_view_world();
+    GameplayActiveGuard gameplay_active;
+    og::runtime::reset_runtime_trace_capture_state();
+
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+
+    walker* const control =
+        active->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setworldxy(160.25f, 120.25f);
+    active->world().tick_count_ = 1u;
+
+    MockTransport transport;
+    constexpr og::sim::PeerId kPeerId = 7u;
+    og::sim::GameClient client(transport, kPeerId);
+    sync_client_to_world(client, transport, kPeerId, active->world(), false);
+
+    control->setworldxy(161.25f, 121.25f);
+    active->world().tick_count_ = 2u;
+    sync_client_to_world(client, transport, kPeerId, active->world(), true);
+
+    ScreenInterpolationContextGuard interpolation_guard(*active);
+    interpolation_guard.set(&client, 1.0f);
+    client.testing_set_render_interpolation_elapsed_ms(41.0f);
+
+    vs->control = control;
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+
+    const auto sample = og::runtime::latest_runtime_render_sample();
+    ASSERT_TRUE(sample.has_value());
+    EXPECT_EQ(0, sample->view_index);
+    EXPECT_EQ(sample->camera_topx, vs->topx);
+    EXPECT_EQ(sample->camera_topy, vs->topy);
+    EXPECT_NEAR(vs->interpolation_alpha, sample->interpolation_alpha, 0.02f);
+    EXPECT_NE(sample->camera_topx_float, static_cast<float>(sample->camera_topx));
+    EXPECT_NE(sample->camera_topy_float, static_cast<float>(sample->camera_topy));
+    EXPECT_NEAR(160.75f, sample->control_render_x, 0.02f);
+    EXPECT_NEAR(120.75f, sample->control_render_y, 0.02f);
+
+    vs->control = nullptr;
+}
+
+TEST(ViewRedrawJitter, render_sample_seq_increments_once_per_primary_redraw)
+{
+    viewscreen* const vs =
+        og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    prepare_view_world();
+    GameplayActiveGuard gameplay_active;
+    og::runtime::reset_runtime_trace_capture_state();
+
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+
+    walker* const control =
+        active->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(100, 100);
+    vs->control = control;
+
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    const auto first = og::runtime::latest_runtime_render_sample();
+    ASSERT_TRUE(first.has_value());
+
+    const auto stable = og::runtime::latest_runtime_render_sample();
+    ASSERT_TRUE(stable.has_value());
+    EXPECT_EQ(first->render_sample_seq, stable->render_sample_seq);
+
+    ASSERT_TRUE(vs->redraw(&active->level_runtime_data(), false));
+    const auto second = og::runtime::latest_runtime_render_sample();
+    ASSERT_TRUE(second.has_value());
+    EXPECT_EQ(first->render_sample_seq + 1u, second->render_sample_seq);
 
     vs->control = nullptr;
 }

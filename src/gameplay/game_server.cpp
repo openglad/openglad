@@ -1,5 +1,6 @@
 #include <openglad/gameplay/game_server.h>
 
+#include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -1904,12 +1905,22 @@ bool GameServer::should_send_to_client(const ConnectedClientState& client) const
 bool GameServer::should_send_keyframe(const ConnectedClientState& client,
                                       const WorldSnapshot& snapshot) const
 {
-    return client.force_keyframe ||
+    const bool should_send =
+        client.force_keyframe ||
         (snapshot.tick_count != 0 &&
          (snapshot.tick_count % KEYFRAME_INTERVAL_TICKS) == 0) ||
         pending_exit_prompt_state_.has_value() ||
         pending_pause_state_.has_value() ||
         snapshot.tick_count <= client.snapshot_state.last_sent_tick;
+
+    og::runtime::RuntimeTraceRecord trace =
+        og::runtime::make_runtime_trace_record(
+            "game_server",
+            should_send ? "keyframe_required" : "delta_snapshot_allowed");
+    trace.tick = snapshot.tick_count;
+    trace.snapshot_kind = should_send ? "keyframe" : "delta";
+    og::runtime::emit_runtime_trace(std::move(trace));
+    return should_send;
 }
 
 void GameServer::forward_event_batch(const SimEventBatch& batch)
@@ -2060,6 +2071,9 @@ void GameServer::maybe_resolve_world_events(SimEventBatch& batch,
 void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
                                          EventDeliveryMode event_mode)
 {
+    og::runtime::emit_runtime_trace(
+        og::runtime::make_runtime_trace_record(
+            "game_server", "broadcast_current_state_begin"));
     WorldSnapshot snapshot = capture_server_snapshot(world_, capture_mode);
     if (pending_exit_prompt_state_.has_value())
     {
@@ -2183,6 +2197,12 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
                 const WorldSnapshot& full = ensure_keyframe();
                 if (!broadcast_keyframe_sent)
                 {
+                    og::runtime::RuntimeTraceRecord trace =
+                        og::runtime::make_runtime_trace_record(
+                            "game_server", "broadcast_keyframe_shared");
+                    trace.tick = full.tick_count;
+                    trace.snapshot_kind = "keyframe";
+                    og::runtime::emit_runtime_trace(std::move(trace));
                     const std::vector<std::uint8_t> bytes =
                         serialize_snapshot(full);
                     transport_.broadcast(bytes.data(), bytes.size());
@@ -2202,6 +2222,12 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
                 continue;
             }
             WorldSnapshot full = ensure_keyframe();
+            og::runtime::RuntimeTraceRecord trace =
+                og::runtime::make_runtime_trace_record(
+                    "game_server", "broadcast_keyframe_direct");
+            trace.tick = full.tick_count;
+            trace.snapshot_kind = "keyframe";
+            og::runtime::emit_runtime_trace(std::move(trace));
             seed_client_snapshot_baseline(client.snapshot_state, full);
             client.allow_initial_keyframe_without_ready = false;
             client.budget_pending_keyframe = false;
@@ -2220,6 +2246,12 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             consume_delta_snapshot_for_client(client.snapshot_state, snapshot);
         client.budget_pending_keyframe = false;
         client.force_keyframe = false;
+        og::runtime::RuntimeTraceRecord trace =
+            og::runtime::make_runtime_trace_record(
+                "game_server", "broadcast_delta_snapshot");
+        trace.tick = delta.tick_count;
+        trace.snapshot_kind = "delta";
+        og::runtime::emit_runtime_trace(std::move(trace));
         // Clients only auto-send hash checks for full snapshots and periodic
         // delta ticks. Skipping non-periodic deltas avoids same-tick pause or
         // exit keyframes being compared against an earlier delta hash for the
@@ -2241,10 +2273,17 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
 
     if (snapshot.game_ended && snapshot.next_level != -1)
         handle_level_transition(snapshot.next_level);
+
+    og::runtime::emit_runtime_trace(
+        og::runtime::make_runtime_trace_record(
+            "game_server", "broadcast_current_state_end"));
 }
 
 void GameServer::step()
 {
+    og::runtime::emit_runtime_trace(
+        og::runtime::make_runtime_trace_record(
+            "game_server", "step_begin"));
     const std::uint32_t next_tick = world_.tick_count_ + 1;
     events_.current_tick_ = next_tick;
     poll_incoming_messages();
@@ -2261,6 +2300,11 @@ void GameServer::step()
 
     broadcast_current_state(SnapshotCaptureMode::Consume,
                             EventDeliveryMode::Drain);
+    og::runtime::RuntimeTraceRecord trace =
+        og::runtime::make_runtime_trace_record(
+            "game_server", "step_end");
+    trace.tick = world_.tick_count_;
+    og::runtime::emit_runtime_trace(std::move(trace));
 }
 
 } // namespace og::sim

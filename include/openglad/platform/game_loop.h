@@ -25,6 +25,7 @@ struct GameLoopDeps {
     std::function<int(SDL_Event*)> poll_event;
     std::function<void(const SDL_Event&)> handle_event;
     std::function<void(screen&)> after_act;
+    std::function<std::uint32_t()> now_ms;
 
     // When non-zero, pins the sim tick interval in milliseconds
     // (for example og::sim::DEFAULT_SIM_TICK_MS). When zero, derive the

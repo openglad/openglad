@@ -1,12 +1,12 @@
 #include <openglad/gameplay/game_client.h>
 
+#include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/net_constants.h>
 
 #include <algorithm>
-#include <cmath>
 #include <stdexcept>
 #include <utility>
 
@@ -33,29 +33,6 @@ float clamp_alpha(float alpha)
 float lerp(float start, float end, float alpha)
 {
     return start + (end - start) * alpha;
-}
-
-float render_tick_interval_ms(
-    const std::optional<og::sim::WorldSnapshot>& baseline,
-    float speed_factor)
-{
-    float interval_ms = static_cast<float>(og::sim::DEFAULT_SIM_TICK_MS);
-    if (baseline.has_value())
-    {
-        interval_ms =
-            static_cast<float>(std::max<int>(baseline->timer_wait, 0)) *
-            og::sim::TIMER_WAIT_TO_MS;
-    }
-
-    if (speed_factor <= 0.0f || interval_ms <= 0.0f)
-        return 0.0f;
-
-    interval_ms /= speed_factor;
-    if (interval_ms <= 0.0f)
-        return 0.0f;
-
-    return static_cast<float>(std::max<std::uint32_t>(
-        1u, static_cast<std::uint32_t>(std::lround(interval_ms))));
 }
 
 void apply_initial_setup_to_world(GameWorld& world,
@@ -324,18 +301,38 @@ void GameClient::poll_messages(float current_render_alpha)
 
 float GameClient::render_interpolation_alpha(float speed_factor) const
 {
-    if (!last_snapshot_receive_time_.has_value())
-        return 1.0f;
+    last_render_speed_factor_ = speed_factor;
 
-    const float tick_interval_ms =
-        render_tick_interval_ms(baseline_, speed_factor);
-    if (tick_interval_ms <= 0.0f)
+    if (!last_snapshot_receive_time_.has_value())
+    {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_client", "render_alpha_without_snapshot"));
         return 1.0f;
+    }
+
+    const short timer_wait =
+        baseline_.has_value() ? baseline_->timer_wait : og::sim::DEFAULT_TIMER_WAIT;
+    const float tick_interval_ms =
+        og::core::rounded_render_tick_interval_ms(timer_wait, speed_factor);
+    if (tick_interval_ms <= 0.0f)
+    {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_client", "render_alpha_immediate"));
+        return 1.0f;
+    }
 
     const auto elapsed =
         std::chrono::duration_cast<std::chrono::duration<float, std::milli>>(
             InterpolationClock::now() - *last_snapshot_receive_time_);
-    return clamp_alpha(elapsed.count() / tick_interval_ms);
+    const float alpha = clamp_alpha(elapsed.count() / tick_interval_ms);
+    og::runtime::RuntimeTraceRecord trace =
+        og::runtime::make_runtime_trace_record(
+            "game_client", "render_alpha_computed");
+    trace.interpolation_alpha = alpha;
+    og::runtime::emit_runtime_trace(std::move(trace));
+    return alpha;
 }
 
 std::optional<RenderInterpolationPosition> GameClient::render_position(
@@ -587,7 +584,12 @@ void GameClient::maybe_send_hello_if_needed()
 void GameClient::maybe_send_heartbeat_if_needed()
 {
     if (!transport_connected_)
+    {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_client", "heartbeat_disconnected"));
         return;
+    }
 
     const auto now = InterpolationClock::now();
     const auto last_activity =
@@ -595,6 +597,9 @@ void GameClient::maybe_send_heartbeat_if_needed()
     if (last_outbound_activity_time_.has_value() &&
         now - last_activity < kHeartbeatInterval)
     {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_client", "heartbeat_suppressed_by_activity"));
         return;
     }
 
@@ -603,6 +608,11 @@ void GameClient::maybe_send_heartbeat_if_needed()
         server_peer_id_,
         std::make_shared<HeartbeatMessage>(message));
     note_outbound_activity();
+    og::runtime::RuntimeTraceRecord trace =
+        og::runtime::make_runtime_trace_record(
+            "game_client", "heartbeat_sent");
+    trace.snapshot_kind = "heartbeat";
+    og::runtime::emit_runtime_trace(std::move(trace));
 }
 
 void GameClient::maybe_notify_connection_lost()
@@ -637,15 +647,31 @@ void GameClient::maybe_send_client_ready()
 void GameClient::maybe_send_snapshot_hash_check(bool force)
 {
     if (!baseline_.has_value())
+    {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_client", "snapshot_hash_without_baseline"));
         return;
+    }
 
     if (!force &&
         (baseline_->tick_count % KEYFRAME_INTERVAL_TICKS) != 0)
     {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_client", "snapshot_hash_not_due"));
         return;
     }
 
     send_snapshot_hash_check();
+    og::runtime::RuntimeTraceRecord trace =
+        og::runtime::make_runtime_trace_record(
+            "game_client",
+            force ? "snapshot_hash_forced" : "snapshot_hash_periodic");
+    trace.snapshot_kind = "snapshot_hash";
+    if (baseline_.has_value())
+        trace.tick = baseline_->tick_count;
+    og::runtime::emit_runtime_trace(std::move(trace));
 }
 
 void GameClient::notify_control_mapping_changed()
@@ -763,7 +789,23 @@ void GameClient::update_render_interpolation(const WorldSnapshot& snapshot,
     update_entities(snapshot.weaplist);
 
     render_interpolation_ = std::move(next_state);
-    last_snapshot_receive_time_ = InterpolationClock::now();
+    const float preserved_alpha = clamp_alpha(prior_alpha);
+    const float interval_ms = og::core::rounded_render_tick_interval_ms(
+        snapshot.timer_wait,
+        last_render_speed_factor_);
+    const auto now = InterpolationClock::now();
+    if (interval_ms > 0.0f && preserved_alpha > 0.0f)
+    {
+        last_snapshot_receive_time_ =
+            now -
+            std::chrono::duration_cast<InterpolationClock::duration>(
+                std::chrono::duration<float, std::milli>(
+                    preserved_alpha * interval_ms));
+    }
+    else
+    {
+        last_snapshot_receive_time_ = now;
+    }
 }
 
 void GameClient::apply_initial_setup(const InitialSetupMessage& message)
@@ -865,6 +907,12 @@ void GameClient::note_event_batch_gap(std::uint32_t expected,
 
 void GameClient::poll_messages_impl(float first_snapshot_prior_alpha)
 {
+    og::runtime::RuntimeTraceRecord start_trace =
+        og::runtime::make_runtime_trace_record(
+            "game_client", "poll_messages_begin");
+    start_trace.interpolation_alpha = clamp_alpha(first_snapshot_prior_alpha);
+    og::runtime::emit_runtime_trace(std::move(start_trace));
+
     update_transport_connection_state();
     maybe_send_hello_if_needed();
     maybe_send_heartbeat_if_needed();
@@ -872,6 +920,9 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha)
     const ClientPollResult poll_result = poll_client_messages(transport_);
     if (poll_result.malformed_server_message)
     {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "game_client", "poll_messages_malformed"));
         LogError("game_client_malformed_message peer={}\n", server_peer_id_);
         transport_.disconnect(server_peer_id_);
         last_polled_messages_.clear();
@@ -884,6 +935,13 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha)
     update_transport_connection_state();
     maybe_send_hello_if_needed();
     maybe_send_heartbeat_if_needed();
+
+    og::runtime::RuntimeTraceRecord polled_trace =
+        og::runtime::make_runtime_trace_record(
+            "game_client",
+            poll_result.messages.empty() ? "poll_messages_empty"
+                                         : "poll_messages_received");
+    og::runtime::emit_runtime_trace(std::move(polled_trace));
 
     last_polled_messages_ = poll_result.messages;
     sim_event_batches_.clear();
@@ -1033,6 +1091,9 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha)
     }
 
     maybe_notify_connection_lost();
+    og::runtime::emit_runtime_trace(
+        og::runtime::make_runtime_trace_record(
+            "game_client", "poll_messages_end"));
 }
 
 } // namespace og::sim

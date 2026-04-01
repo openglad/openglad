@@ -1,5 +1,6 @@
 #include <openglad/gameplay/net_transport_inprocess.h>
 
+#include <openglad/core/runtime_trace.h>
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/replay.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -253,6 +254,25 @@ void normalize_delta_snapshot_for_comparison(og::sim::WorldSnapshot& snapshot)
         failure.field,
         failure.expected_value,
         failure.actual_value));
+}
+
+const char* runtime_trace_snapshot_kind(
+    og::sim::TypedReceivedMessageKind kind)
+{
+    using Kind = og::sim::TypedReceivedMessageKind;
+    switch (kind)
+    {
+    case Kind::Snapshot:
+        return "keyframe";
+    case Kind::DeltaSnapshot:
+        return "delta";
+    case Kind::Heartbeat:
+        return "heartbeat";
+    case Kind::SnapshotHashCheck:
+        return "snapshot_hash";
+    default:
+        return "";
+    }
 }
 
 std::shared_ptr<og::sim::WorldSnapshot> validate_snapshot_roundtrip(
@@ -820,6 +840,12 @@ std::vector<ReceivedMessage> InProcessTransport::poll()
     std::lock_guard<std::mutex> lock(mutex_);
     std::vector<ReceivedMessage> drained = std::move(raw_messages_);
     raw_messages_.clear();
+    if (!drained.empty())
+    {
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record(
+                "inprocess_transport", "poll_raw_drained"));
+    }
     return drained;
 }
 
@@ -837,6 +863,20 @@ std::vector<TypedReceivedMessage> InProcessTransport::poll_typed()
     drained.insert(drained.end(),
                    std::make_move_iterator(typed_drained.begin()),
                    std::make_move_iterator(typed_drained.end()));
+    for (const TypedReceivedMessage& message : drained)
+    {
+        og::runtime::RuntimeTraceRecord trace =
+            og::runtime::make_runtime_trace_record(
+                "inprocess_transport", "poll_typed_drained");
+        trace.snapshot_kind = runtime_trace_snapshot_kind(message.kind);
+        if (message.snapshot)
+            trace.tick = message.snapshot->tick_count;
+        else if (message.snapshot_hash_check)
+            trace.tick = message.snapshot_hash_check->tick;
+        else if (message.input)
+            trace.tick = message.tick;
+        og::runtime::emit_runtime_trace(std::move(trace));
+    }
     return drained;
 }
 
@@ -923,10 +963,25 @@ void InProcessTransport::enqueue_raw(PeerId peer_id, std::vector<std::uint8_t> b
 {
     std::lock_guard<std::mutex> lock(mutex_);
     raw_messages_.push_back({peer_id, std::move(bytes)});
+    og::runtime::emit_runtime_trace(
+        og::runtime::make_runtime_trace_record(
+            "inprocess_transport", "enqueue_raw"));
 }
 
 void InProcessTransport::enqueue_typed(TypedReceivedMessage message)
 {
+    og::runtime::RuntimeTraceRecord trace =
+        og::runtime::make_runtime_trace_record(
+            "inprocess_transport", "enqueue_typed");
+    trace.snapshot_kind = runtime_trace_snapshot_kind(message.kind);
+    if (message.snapshot)
+        trace.tick = message.snapshot->tick_count;
+    else if (message.snapshot_hash_check)
+        trace.tick = message.snapshot_hash_check->tick;
+    else if (message.input)
+        trace.tick = message.tick;
+    og::runtime::emit_runtime_trace(std::move(trace));
+
     std::lock_guard<std::mutex> lock(mutex_);
     typed_messages_.push_back(std::move(message));
 }
