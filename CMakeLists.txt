@@ -1341,6 +1341,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_picker_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_network_client.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_local_transport_shadow_budget.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_frame_pacing_jitter.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_screen_funcs.cpp
@@ -1617,6 +1618,7 @@ if(NOT EMSCRIPTEN)
             test_go_no_team.cpp
             test_fairy_death.cpp
             test_overpowered_team.cpp
+            test_frame_pacing_jitter.cpp
         )
 
         og_add_test_group(og_test_snapshot_safety FILES
