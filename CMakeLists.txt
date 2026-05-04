@@ -115,6 +115,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/glad.cpp
     ${SRC_DIR}/platform/sdl/game_loop.cpp
     ${SRC_DIR}/core/frame_pacing.cpp
+    ${SRC_DIR}/core/frame_rate_config.cpp
     ${SRC_DIR}/platform/game_context.cpp
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
@@ -273,6 +274,7 @@ endif()
 set(OG_CORE_SOURCES
     ${SRC_DIR}/core/combat_math.cpp
     ${SRC_DIR}/core/frame_pacing.cpp
+    ${SRC_DIR}/core/frame_rate_config.cpp
     ${SRC_DIR}/core/runtime_trace.cpp
     ${SRC_DIR}/core/util.cpp
 )
@@ -291,7 +293,6 @@ set(OG_SIM_SOURCES
 )
 
 set(OG_DATA_SOURCES
-    ${SRC_DIR}/core/frame_rate_config.cpp
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
