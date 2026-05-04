@@ -1,0 +1,1 @@
+redesign and reimplement the networking code so that there is no possibility for jitter: each frame should run in the exact same amount of time. make the fps configurable

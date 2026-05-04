@@ -1,0 +1,155 @@
+linear: true
+yaml_source_mode: inline-only
+verifier_encoding: explicit-phases
+phases:
+  - order: 1
+    id: phase_1_add_fps_config
+    type: implement
+    bounce_target: null
+    required_preexisting_inputs:
+      - .plan/goal.md
+      - .plan/plan.md
+      - include/openglad/resources/gparser.h
+      - cfg/openglad.yaml
+      - src/platform/sdl/glad.cpp
+      - include/openglad/gameplay/net_constants.h
+      - include/openglad/interface/session_state.h
+      - CMakeLists.txt
+  - order: 2
+    id: phase_1_check
+    type: check
+    bounce_target: phase_1_add_fps_config
+    required_preexisting_inputs:
+      - include/openglad/core/frame_rate_config.h
+      - src/core/frame_rate_config.cpp
+      - tests/unit/test_frame_rate_config.cpp
+      - cfg/openglad.yaml
+      - CMakeLists.txt
+  - order: 3
+    id: phase_2_deadline_pacer
+    type: implement
+    bounce_target: null
+    required_preexisting_inputs:
+      - .plan/plan.md
+      - include/openglad/core/frame_pacing.h
+      - src/core/frame_pacing.cpp
+      - include/openglad/core/runtime_trace.h
+      - include/openglad/core/frame_rate_config.h
+      - tests/test_game_loop.cpp
+      - src/server/server_main.cpp
+      - CMakeLists.txt
+  - order: 4
+    id: phase_2_check
+    type: check
+    bounce_target: phase_2_deadline_pacer
+    required_preexisting_inputs:
+      - include/openglad/core/frame_pacing.h
+      - src/core/frame_pacing.cpp
+      - tests/unit/test_frame_deadline_pacer.cpp
+      - tests/test_game_loop.cpp
+  - order: 5
+    id: phase_3_desktop_loop_rewrite
+    type: implement
+    bounce_target: null
+    required_preexisting_inputs:
+      - .plan/plan.md
+      - src/platform/sdl/game_loop.cpp
+      - src/platform/sdl/glad_gameplay.cpp
+      - include/openglad/platform/game_loop.h
+      - include/openglad/interface/game_loop_state.h
+      - include/openglad/core/frame_pacing.h
+      - include/openglad/core/frame_rate_config.h
+      - include/openglad/interface/session_state.h
+      - tests/test_game_loop.cpp
+      - scripts/run_jitter_gtests.sh
+  - order: 6
+    id: phase_3_check
+    type: check
+    bounce_target: phase_3_desktop_loop_rewrite
+    required_preexisting_inputs:
+      - src/platform/sdl/game_loop.cpp
+      - src/platform/sdl/glad_gameplay.cpp
+      - include/openglad/platform/game_loop.h
+      - include/openglad/interface/game_loop_state.h
+      - tests/test_game_loop.cpp
+      - scripts/run_jitter_gtests.sh
+  - order: 7
+    id: phase_4_bounded_network_drain
+    type: implement
+    bounce_target: null
+    required_preexisting_inputs:
+      - .plan/plan.md
+      - src/platform/sdl/local_transport_shadow.cpp
+      - include/openglad/gameplay/game_client.h
+      - src/gameplay/game_client.cpp
+      - include/openglad/gameplay/game_server.h
+      - src/gameplay/game_server.cpp
+      - include/openglad/gameplay/net_constants.h
+      - include/openglad/core/runtime_trace.h
+      - tests/test_network_fixture.h
+      - CMakeLists.txt
+  - order: 8
+    id: phase_4_check
+    type: check
+    bounce_target: phase_4_bounded_network_drain
+    required_preexisting_inputs:
+      - src/platform/sdl/local_transport_shadow.cpp
+      - include/openglad/gameplay/game_client.h
+      - include/openglad/gameplay/game_server.h
+      - include/openglad/gameplay/net_constants.h
+      - tests/test_local_transport_shadow_budget.cpp
+      - CMakeLists.txt
+  - order: 9
+    id: phase_5_browser_and_headless_pacer
+    type: implement
+    bounce_target: null
+    required_preexisting_inputs:
+      - .plan/plan.md
+      - src/platform/sdl/glad.cpp
+      - src/platform/sdl/game_loop.cpp
+      - src/core/frame_pacing.cpp
+      - include/openglad/core/frame_pacing.h
+      - src/server/server_main.cpp
+      - include/openglad/core/frame_rate_config.h
+      - tests/unit/test_game_loop_wrapper.cpp
+      - tests/test_game_loop.cpp
+      - scripts/test_headless_server_cli.sh
+      - scripts/test_emscripten_build.sh
+  - order: 10
+    id: phase_5_check
+    type: check
+    bounce_target: phase_5_browser_and_headless_pacer
+    required_preexisting_inputs:
+      - src/platform/sdl/glad.cpp
+      - src/platform/sdl/game_loop.cpp
+      - src/core/frame_pacing.cpp
+      - src/server/server_main.cpp
+      - tests/unit/test_game_loop_wrapper.cpp
+      - tests/test_game_loop.cpp
+      - scripts/test_headless_server_cli.sh
+      - scripts/test_emscripten_build.sh
+  - order: 11
+    id: phase_6_jitter_measurement_final
+    type: implement
+    bounce_target: null
+    required_preexisting_inputs:
+      - .plan/plan.md
+      - include/openglad/core/frame_rate_config.h
+      - include/openglad/core/frame_pacing.h
+      - src/platform/sdl/game_loop.cpp
+      - src/platform/sdl/glad_gameplay.cpp
+      - src/platform/sdl/local_transport_shadow.cpp
+      - cfg/openglad.yaml
+      - scripts/run_jitter_gtests.sh
+      - scripts/analyze_jitter_metrics.mjs
+      - scripts/check_vendor_leaks.sh
+      - CMakeLists.txt
+  - order: 12
+    id: phase_6_check
+    type: check
+    bounce_target: phase_6_jitter_measurement_final
+    required_preexisting_inputs:
+      - tests/test_frame_pacing_jitter.cpp
+      - scripts/run_jitter_gtests.sh
+      - scripts/check_vendor_leaks.sh
+      - CMakeLists.txt

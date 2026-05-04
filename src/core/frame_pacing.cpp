@@ -1,4 +1,5 @@
 #include <openglad/core/frame_pacing.h>
+#include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
 
 #include <algorithm>
@@ -57,6 +58,50 @@ BrowserFramePacingResult step_browser_frame_pacing(
         result.accumulated_after_step_ms = 0u;
 
     return result;
+}
+
+void FrameDeadlinePacer::configure(std::uint32_t interval_ms, std::uint32_t now_ms)
+{
+    interval_ms_ = std::max<std::uint32_t>(1u, interval_ms);
+    next_deadline_ms_ = now_ms + interval_ms_;
+    initialized_ = true;
+}
+
+void FrameDeadlinePacer::reset(std::uint32_t now_ms)
+{
+    next_deadline_ms_ = now_ms + std::max<std::uint32_t>(1u, interval_ms_);
+}
+
+FrameDeadlineDecision FrameDeadlinePacer::tick(std::uint32_t now_ms)
+{
+    if (!initialized_)
+    {
+        configure(1u, now_ms);
+        og::runtime::emit_runtime_trace(
+            og::runtime::make_runtime_trace_record("frame_pacing", "pacer_resync"));
+        return FrameDeadlineDecision{false, false, 1u, now_ms + 1u};
+    }
+
+    if (now_ms < next_deadline_ms_)
+    {
+        return FrameDeadlineDecision{
+            false,
+            false,
+            next_deadline_ms_ - now_ms,
+            next_deadline_ms_};
+    }
+
+    const std::uint32_t slip = now_ms - next_deadline_ms_;
+    if (slip <= interval_ms_)
+    {
+        next_deadline_ms_ += interval_ms_;
+        return FrameDeadlineDecision{true, true, 0u, next_deadline_ms_};
+    }
+
+    next_deadline_ms_ = now_ms + interval_ms_;
+    og::runtime::emit_runtime_trace(
+        og::runtime::make_runtime_trace_record("frame_pacing", "pacer_resync"));
+    return FrameDeadlineDecision{true, true, 0u, next_deadline_ms_};
 }
 
 } // namespace og::core

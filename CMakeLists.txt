@@ -1776,6 +1776,7 @@ if(NOT EMSCRIPTEN)
 
         og_add_unit_group(og_unit_core FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_deadline_pacer.cpp
         )
 
         og_add_unit_group(og_unit_sim FILES

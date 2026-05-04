@@ -1,0 +1,548 @@
+name: openglad-jitter-elimination
+description: |
+  Redesign the networking and frame-pacing code so that each frame runs in
+  the same amount of time and the FPS becomes configurable.
+
+vars:
+  GOAL: "Redesign and reimplement the networking code so that there is no possibility for jitter: each frame should run in the exact same amount of time. Make the fps configurable."
+
+phases:
+  - id: phase_1_add_fps_config
+    type: implement
+    prompt: |
+      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+
+      This is Phase 1 — add FPS configuration plumbing.
+
+      ## Preexisting Inputs (consume in place — do NOT regenerate, refetch, or rediscover)
+      - `.plan/goal.md` — original one-line goal.
+      - `.plan/plan.md` — full implementation plan; read in place.
+      - `include/openglad/resources/gparser.h` — `cfg_store::get_setting` (line 31), `apply_setting` (line 30), `load_settings` (line 26), `save_settings` (line 28).
+      - `cfg/openglad.yaml` — canonical config; already contains a `graphics:` map with `fullscreen`, `overscan_percentage`, `render`.
+      - `src/platform/sdl/glad.cpp:200` — `initialize_runtime_config` calling `cfg.load_settings()`.
+      - `src/platform/sdl/glad.cpp:204-230` — `bootstrap_runtime` reading from already-loaded cfg; persists via `cfg.save_settings()` at line 216; mirrors `overscan_percentage` at lines 220-224.
+      - `include/openglad/gameplay/net_constants.h` — `DEFAULT_SIM_TICK_MS` (line 9), `TIMER_WAIT_TO_MS` (line 10).
+      - `include/openglad/interface/session_state.h:76` — `g_game_speed_factor_` field; new field added adjacent.
+      - `CMakeLists.txt` — existing `og_add_unit_group(og_unit_sim …)` block (around line 1762) and `OG_CORE_SOURCES` list.
+
+      ## New Outputs
+      - New header `include/openglad/core/frame_rate_config.h` exporting:
+          - `inline constexpr int kDefaultTargetFps = 72;`
+          - `inline constexpr int kMinTargetFps = 10;`
+          - `inline constexpr int kMaxTargetFps = 240;`
+          - `int target_fps_from_cfg(cfg_store& cfg);` (clamps & defaults).
+          - `void apply_target_fps_to_cfg(cfg_store& cfg, int fps);`
+          - `std::uint32_t target_frame_interval_ms(int fps);` (defined inline; rounds half-up; safe-clamps to `>= 1`).
+      - New impl `src/core/frame_rate_config.cpp` (added to `OG_CORE_SOURCES` in `CMakeLists.txt`).
+      - New unit tests `tests/unit/test_frame_rate_config.cpp`.
+      - New `og_add_unit_group(og_unit_core …)` block in `CMakeLists.txt`, sibling to the existing `og_add_unit_group(og_unit_sim …)` block (around line 1762). Contains only `tests/unit/test_frame_rate_config.cpp` initially; later phases extend it.
+      - `cfg/openglad.yaml`: add `target_fps: 72` under `graphics:`, preserving alphabetical ordering with `fullscreen`, `overscan_percentage`, `render`.
+
+      ## File Changes
+      - Create `include/openglad/core/frame_rate_config.h`, `src/core/frame_rate_config.cpp`, `tests/unit/test_frame_rate_config.cpp`.
+      - `CMakeLists.txt`:
+          - Add `${SRC_DIR}/core/frame_rate_config.cpp` to `OG_CORE_SOURCES` (alongside `${SRC_DIR}/core/frame_pacing.cpp`).
+          - Add new `og_add_unit_group(og_unit_core FILES ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp)` block adjacent to `og_unit_sim` (around line 1762).
+      - `src/platform/sdl/glad.cpp` `bootstrap_runtime()` (after the overscan block at lines 220-224):
+          ```cpp
+          const int fps = og::core::target_fps_from_cfg(cfg);
+          og::core::apply_target_fps_to_cfg(cfg, fps);
+          og::runtime::current_session->target_fps_ = fps;
+          ```
+        `apply_setting` writes the canonical clamped value back so the next save persists it. Move `cfg.save_settings()` to immediately after the new `apply_setting` call so both overscan and `target_fps` are flushed in one save, mirroring the existing overscan pattern.
+      - `include/openglad/interface/session_state.h`: add `int target_fps_ = 72;` adjacent to `g_game_speed_factor_` at line 76. Default literal matches `og::core::kDefaultTargetFps`; do not include the new header here (avoid circular include) — keep the literal default in sync with the constant via a `static_assert` in `frame_rate_config.cpp`.
+      - `cfg/openglad.yaml`: add `target_fps: 72` under `graphics:`.
+
+      ## Implementation Details
+      - YAML setting key path: `("graphics", "target_fps")`. Reader returns the parsed int clamped to `[kMinTargetFps, kMaxTargetFps]`; missing or unparseable falls back to `kDefaultTargetFps`. Writer always serializes a base-10 integer with no leading zeros via `cfg.apply_setting("graphics", "target_fps", std::to_string(fps))`.
+      - `target_frame_interval_ms(int fps)` returns `std::max<std::uint32_t>(1u, static_cast<std::uint32_t>((1000 + fps / 2) / fps))`. Document that this rounds half-up so 72 fps → 14 ms and 60 fps → 17 ms.
+      - The session field is read-only after `bootstrap_runtime()` for this phase. Future runtime adjustments go through a setter that re-applies to `cfg` (out of scope here).
+
+      ## Success Criteria
+      - `target_fps_from_cfg()` is unit-tested for default, clamp-low, clamp-high, parse-failure, and persistence round-trip.
+      - `cmake --build --preset ci-test --target og_unit_core` succeeds.
+      - The broader test suite still compiles.
+      - `cfg/openglad.yaml` contains `target_fps: 72` under `graphics:`.
+
+      ## Git Commit Requirement
+      Before yielding control, you MUST stage and commit all changes with
+      `git add -A && git commit -m "add-fps-config: <change>"`. Do not yield
+      with a dirty working tree.
+
+  - id: phase_1_check
+    type: check
+    bounce_target: phase_1_add_fps_config
+    prompt: |
+      You are a strict reviewer for Phase 1 (`add-fps-config`) of the openglad
+      jitter elimination work. Goal context: {{ GOAL }}
+
+      ## Preexisting Inputs (consume in place; do not regenerate)
+      - `include/openglad/core/frame_rate_config.h` (new in Phase 1)
+      - `src/core/frame_rate_config.cpp` (new in Phase 1)
+      - `tests/unit/test_frame_rate_config.cpp` (new in Phase 1)
+      - `cfg/openglad.yaml` (must contain `target_fps: 72` under `graphics:`)
+      - `CMakeLists.txt` (must register new source in `OG_CORE_SOURCES` and add `og_add_unit_group(og_unit_core ...)` block)
+
+      ## What to verify
+      - `og::core::target_fps_from_cfg()`, `apply_target_fps_to_cfg()`, and `target_frame_interval_ms()` exist with the documented signatures and semantics (clamps, default = 72, half-up rounding, `>= 1`).
+      - `kDefaultTargetFps`, `kMinTargetFps`, `kMaxTargetFps` constants exist with correct values (72/10/240).
+      - `cfg/openglad.yaml` has `target_fps: 72` under `graphics:`.
+      - `bootstrap_runtime()` in `src/platform/sdl/glad.cpp` reads, clamps, applies, and persists `target_fps`, and writes it onto `og::runtime::current_session->target_fps_`.
+      - `include/openglad/interface/session_state.h` has `int target_fps_ = 72;` adjacent to `g_game_speed_factor_` and does NOT include `frame_rate_config.h`.
+      - A `static_assert` in `frame_rate_config.cpp` keeps the session default in sync with `kDefaultTargetFps`.
+      - `og_add_unit_group(og_unit_core ...)` exists in `CMakeLists.txt` near the `og_unit_sim` block and contains `tests/unit/test_frame_rate_config.cpp`.
+      - The unit tests cover default, clamp-low, clamp-high, parse-failure, and persistence round-trip.
+
+      ## Commands you MUST run (verbatim)
+      - `cmake --preset ci-test`
+      - `cmake --build --preset ci-test --target og_unit_core`
+      - `ctest --preset ci-test --output-on-failure -R 'FrameRateConfig'`
+
+      Build and test failures, missing constants, missing config key, or a
+      dirty working tree are all FAIL conditions. End your response with
+      exactly one of:
+
+      `VERDICT: PASS`
+      or
+      `VERDICT: FAIL: <reason>`
+
+  - id: phase_2_deadline_pacer
+    type: implement
+    prompt: |
+      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+
+      This is Phase 2 — replace the variable-tick accumulator with a deadline pacer.
+
+      ## Preexisting Inputs (consume in place — do NOT regenerate or rediscover)
+      - `.plan/plan.md` — full implementation plan.
+      - `src/core/frame_pacing.cpp`, `include/openglad/core/frame_pacing.h` — existing pacing helpers (kept; new pacer lives alongside).
+      - `tests/test_game_loop.cpp:1595-1690` — `GameLoopJitter` suite (must keep passing; `now_ms` injected via `GameLoopDeps`).
+      - `src/server/server_main.cpp:360-380` — `sleep_until` deadline pattern (inspiration).
+      - `include/openglad/core/runtime_trace.h:64-67` — `emit_runtime_trace` / `make_runtime_trace_record` (call directly, no macro gating).
+      - `include/openglad/core/frame_rate_config.h` — produced in Phase 1.
+      - `src/core/frame_rate_config.cpp` — produced in Phase 1.
+      - `og_unit_core` test group in `CMakeLists.txt` — created in Phase 1.
+
+      ## New Outputs
+      - In `include/openglad/core/frame_pacing.h`, add:
+          ```cpp
+          struct FrameDeadlineDecision {
+              bool run_tick = false;
+              bool run_render = false;
+              std::uint32_t sleep_ms = 0;
+              std::uint32_t next_deadline_ms = 0;
+          };
+
+          class FrameDeadlinePacer {
+          public:
+              void configure(std::uint32_t interval_ms, std::uint32_t now_ms);
+              FrameDeadlineDecision tick(std::uint32_t now_ms);
+              void reset(std::uint32_t now_ms);
+              std::uint32_t interval_ms() const;
+          private:
+              std::uint32_t interval_ms_ = 0;
+              std::uint32_t next_deadline_ms_ = 0;
+              bool initialized_ = false;
+          };
+          ```
+      - Implementation in `src/core/frame_pacing.cpp` enforcing **exactly one tick per call**:
+          - `configure(interval, now)` clamps `interval_ms_ = std::max<std::uint32_t>(1u, interval)`, sets `next_deadline_ms_ = now + interval_ms_`, and `initialized_ = true`.
+          - `tick(now)`: if not initialized, `configure(1, now)` and return `{false, false, 1, now + 1}` plus a `pacer_resync` trace. Otherwise:
+              - If `now < next_deadline_ms_`, return `{run_tick=false, run_render=false, sleep_ms = next_deadline_ms_ - now, next_deadline_ms = next_deadline_ms_}`.
+              - Else if `now - next_deadline_ms_ <= interval_ms_` (within one interval of slip): advance `next_deadline_ms_ += interval_ms_` and return `{true, true, 0, next_deadline_ms_}`.
+              - Else (slipped more than one interval): set `next_deadline_ms_ = now + interval_ms_`, emit a `pacer_resync` runtime trace via `emit_runtime_trace(make_runtime_trace_record("frame_pacing", "pacer_resync"))`, and return `{true, true, 0, next_deadline_ms_}` so the current frame still runs exactly one tick (drop lost time deliberately rather than burst-catch-up).
+      - New tests `tests/unit/test_frame_deadline_pacer.cpp` added to the `og_unit_core` group.
+
+      ## File Changes
+      - Edit `include/openglad/core/frame_pacing.h` and `src/core/frame_pacing.cpp` to add `FrameDeadlinePacer` and `FrameDeadlineDecision`.
+      - Add new tests `tests/unit/test_frame_deadline_pacer.cpp` covering: steady-state advance, pause/resume resync (slip > 1 interval emits one `pacer_resync` and runs exactly one tick on the resync frame), configure → tick → tick determinism with injected clock, interval=0 clamps to 1, `sleep_ms` matches `interval_ms - elapsed`. Add to the `og_unit_core` group created in Phase 1.
+
+      ## Implementation Details
+      - The class is fully defined in the header; the `pacer_resync` runtime-trace emit lives in the .cpp to keep the header free of `runtime_trace.h`.
+      - `FrameDeadlinePacer` is the production replacement for the multi-tick accumulator inside `ticks_to_run_this_call()` (`src/platform/sdl/game_loop.cpp:123-184`). Removal of the multi-tick path is **Phase 3**, not this phase. This phase only adds the new class and tests; it does not yet wire it into the desktop loop.
+
+      ## Success Criteria
+      - Unit tests assert that 1000 simulated frames with a perfect clock advance `next_deadline_ms_` by exactly `1000 * interval_ms_`.
+      - One stalled iteration produces a one-frame skip and exactly one `pacer_resync` trace.
+      - `sleep_ms` is correct mid-interval.
+      - No call ever returns `run_tick=true` twice for one delta below `interval_ms`.
+      - Existing `GameLoopJitter` tests in `og_test_game_core` still pass unchanged.
+
+      ## Git Commit Requirement
+      Before yielding control, you MUST stage and commit all changes with
+      `git add -A && git commit -m "deadline-pacer: <change>"`. Do not yield
+      with a dirty working tree.
+
+  - id: phase_2_check
+    type: check
+    bounce_target: phase_2_deadline_pacer
+    prompt: |
+      You are a strict reviewer for Phase 2 (`deadline-pacer`) of the openglad
+      jitter elimination work.
+
+      ## Preexisting Inputs (consume in place; do not regenerate)
+      - `include/openglad/core/frame_pacing.h` — must declare `FrameDeadlineDecision` and `FrameDeadlinePacer`.
+      - `src/core/frame_pacing.cpp` — must implement the one-tick-per-call deadline pacer with `pacer_resync` trace.
+      - `tests/unit/test_frame_deadline_pacer.cpp` — must cover steady-state, slip, interval=0, mid-interval sleep, and determinism.
+      - `tests/test_game_loop.cpp` — existing `GameLoopJitter` suite must remain green.
+
+      ## What to verify
+      - A single `og::core::FrameDeadlinePacer` exists with the documented public API.
+      - `tick(now)` is purely deterministic given an injected clock (no calls to `SDL_GetTicks`, no chrono, no random).
+      - `pacer_resync` is emitted via `emit_runtime_trace(make_runtime_trace_record("frame_pacing", "pacer_resync"))` only when slip exceeds one interval.
+      - The slip path drops lost time and runs exactly one tick (no burst catch-up).
+      - No multi-tick or accumulator path was added.
+      - `tests/unit/test_frame_deadline_pacer.cpp` is registered in the `og_unit_core` group.
+
+      ## Commands you MUST run (verbatim)
+      - `cmake --build --preset ci-test --target og_unit_core og_test_game_core`
+      - `ctest --preset ci-test --output-on-failure -R 'FrameDeadlinePacer|GameLoopJitter'`
+
+      End your response with exactly one of:
+
+      `VERDICT: PASS`
+      or
+      `VERDICT: FAIL: <reason>`
+
+  - id: phase_3_desktop_loop_rewrite
+    type: implement
+    prompt: |
+      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+
+      This is Phase 3 — switch the desktop loop to one-tick-per-frame deadline pacing.
+
+      ## Preexisting Inputs (consume in place — do NOT rebuild from scratch)
+      - `.plan/plan.md` — full implementation plan.
+      - `src/platform/sdl/game_loop.cpp:55` (`kMaxTicksPerCall = 4`), `:72` (`compute_tick_schedule`), `:123-184` (`ticks_to_run_this_call`).
+      - `src/platform/sdl/game_loop.cpp:307` (`game_frame_with_result`).
+      - `src/platform/sdl/glad_gameplay.cpp:227-257` (`glad_main` and the bare `while` loop).
+      - `include/openglad/platform/game_loop.h` (`GameLoopDeps` shape lines 24-43; existing fields stay).
+      - `include/openglad/interface/game_loop_state.h` (`GameLoopFrameState` lines 10-19; new field added here).
+      - Phase 1 outputs: `target_fps_` session field; `og::core::target_frame_interval_ms`.
+      - Phase 2 outputs: `og::core::FrameDeadlinePacer`, `FrameDeadlineDecision`.
+      - `tests/test_game_loop.cpp` — existing test fixtures using `now_ms` injection via `GameLoopDeps`.
+      - `scripts/run_jitter_gtests.sh` — existing jitter runner.
+
+      ## New Outputs
+      - `GameLoopDeps::sleep_ms` callback (`std::function<void(std::uint32_t)>`) — defaults to `SDL_Delay`. Tests inject a no-op or capturing lambda.
+      - Native main-loop helper `og::runtime::run_native_game_loop(screen&, GameLoopFrameState&, const GameLoopDeps&)` declared in `include/openglad/platform/game_loop.h` that owns the sleep+tick cycle, replacing the bare `while (!done) game_frame(...)` in `glad_main()`.
+      - New tests:
+          - `GameLoop.single_tick_per_call`: N=100 calls with `now_ms` advanced by exactly the interval each call asserts exactly N ticks executed, never more.
+          - `GameLoop.idle_call_sleeps_remaining_interval`: inject `now_ms` returning `interval_ms / 2` past the last tick; capture `deps.sleep_ms` arg and assert it equals the remaining half-interval.
+
+      ## File Changes
+      - `include/openglad/platform/game_loop.h`: add `std::function<void(std::uint32_t)> sleep_ms;` to `GameLoopDeps`. Declare `void run_native_game_loop(screen&, GameLoopFrameState&, const GameLoopDeps&);`.
+      - `include/openglad/interface/game_loop_state.h`: add `#include <openglad/core/frame_pacing.h>` and `og::core::FrameDeadlinePacer pacer;` field. Keep `last_frame_time` and `accumulated_time` for now (legacy callers may still touch them in tests); production code stops reading them.
+      - `src/platform/sdl/game_loop.cpp`:
+          - Delete `kMaxTicksPerCall` and the multi-tick branch in `ticks_to_run_this_call()`. Function still exists for browser callers but always returns 0 or 1.
+          - In `compute_tick_schedule()`, the interval is now `og::core::target_frame_interval_ms(og::runtime::current_session->target_fps_) / std::max(0.01f, og::runtime::current_session->g_game_speed_factor_)` clamped to `>= 1` ms. `deps.fixed_tick_ms` still wins when non-zero (kept for tests).
+          - `game_frame_with_result()`: at the start of the timing block, configure the pacer on first call (`st.pacer.configure(interval_ms, now_ms())` if `interval_ms() == 0`), then call `auto decision = st.pacer.tick(now_ms())`. If `decision.run_tick == false`, invoke `(deps.sleep_ms ? deps.sleep_ms : SDL_Delay)(decision.sleep_ms)` and return `Continue` without rendering and without polling input again. If `run_tick == true`, run **exactly one** sim tick (no for-loop over `ticks_to_run`) and one render.
+          - Render is gated on `decision.run_render` — render only on tick frames, never on idle wakeups.
+          - Emit `runtime_trace` `desktop_loop_sleep_ms` with the captured sleep value so jitter scripts can observe the actual sleep distribution.
+      - `src/platform/sdl/glad_gameplay.cpp:255-257`: replace the `while (!g_frame_state().done) { game_frame(...); }` block with `run_native_game_loop(*current_screen, g_frame_state(), GameLoopDeps{});`. The helper is the one and only place that calls `SDL_Delay` for pacing in the native build.
+      - `tests/test_game_loop.cpp`: update any test that asserted multi-tick catch-up behavior to assert the new single-tick contract; existing `now_ms` injection tests should pass with at most a fixture tweak.
+      - Add new tests inside the `og_test_game_core` group:
+          - `GameLoop.single_tick_per_call`
+          - `GameLoop.idle_call_sleeps_remaining_interval`
+
+      ## Implementation Details
+      - The browser path (`run_browser_wrapper_frame()` in `src/platform/sdl/game_loop.cpp:437`) is updated separately in **Phase 5**; this phase leaves it alone except for the `pacer` field already being present on `GameLoopFrameState` (the browser path simply does not call `pacer.tick`).
+      - `last_frame_time` and `accumulated_time` are kept on `GameLoopFrameState` to avoid disturbing test fixtures, but production code in `game_frame_with_result()` no longer reads them. Final removal is out of scope here.
+
+      ## Success Criteria
+      - Existing `GameLoopJitter` tests pass.
+      - `GameLoop.single_tick_per_call` and `GameLoop.idle_call_sleeps_remaining_interval` pass.
+      - `scripts/run_jitter_gtests.sh` exits zero.
+      - No code path inside `game_frame_with_result()` runs more than one sim tick or renders on an idle wakeup.
+
+      ## Git Commit Requirement
+      Before yielding control, you MUST stage and commit all changes with
+      `git add -A && git commit -m "desktop-loop-rewrite: <change>"`. Do not
+      yield with a dirty working tree.
+
+  - id: phase_3_check
+    type: check
+    bounce_target: phase_3_desktop_loop_rewrite
+    prompt: |
+      You are a strict reviewer for Phase 3 (`desktop-loop-rewrite`) of the
+      openglad jitter elimination work.
+
+      ## Preexisting Inputs (consume in place; do not regenerate)
+      - `src/platform/sdl/game_loop.cpp` — `game_frame_with_result()` must use the deadline pacer.
+      - `src/platform/sdl/glad_gameplay.cpp` — `glad_main` must call `run_native_game_loop(...)`.
+      - `include/openglad/platform/game_loop.h` — must declare `run_native_game_loop` and `GameLoopDeps::sleep_ms`.
+      - `include/openglad/interface/game_loop_state.h` — must include the new `pacer` field.
+      - `tests/test_game_loop.cpp` — must contain `GameLoop.single_tick_per_call` and `GameLoop.idle_call_sleeps_remaining_interval`.
+      - `scripts/run_jitter_gtests.sh` — must exit zero.
+
+      ## What to verify
+      - Desktop loop runs **at most one** sim tick per call. The multi-tick catch-up branch and `kMaxTicksPerCall` are gone.
+      - Idle wakeups call `deps.sleep_ms(...)` (defaulting to `SDL_Delay`) and do NOT render.
+      - Render is gated on `decision.run_render`.
+      - `desktop_loop_sleep_ms` runtime trace is emitted with the captured sleep value.
+      - `glad_main()` no longer contains a bare `while (!done)` loop calling `game_frame`; it delegates to `run_native_game_loop(...)`.
+      - The `pacer` field exists on `GameLoopFrameState`; production code no longer reads `last_frame_time`/`accumulated_time`.
+
+      ## Commands you MUST run (verbatim)
+      - `cmake --build --preset ci-test`
+      - `ctest --preset ci-test --output-on-failure -R 'GameLoop|FrameDeadlinePacer|FrameRateConfig|Picker'`
+      - `bash scripts/run_jitter_gtests.sh build/ci-test/og_test_game_core build/ci-test/og_test_view build/ci-test/og_unit_sim`
+
+      End your response with exactly one of:
+
+      `VERDICT: PASS`
+      or
+      `VERDICT: FAIL: <reason>`
+
+  - id: phase_4_bounded_network_drain
+    type: implement
+    prompt: |
+      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+
+      This is Phase 4 — bound networking work per tick.
+
+      ## Preexisting Inputs (consume in place — do NOT rediscover)
+      - `.plan/plan.md` — full implementation plan.
+      - `src/platform/sdl/local_transport_shadow.cpp:1053-1119` (`local_transport_shadow_finish_tick`) and `:182-204` (`poll_local_transport_client`).
+      - `include/openglad/gameplay/game_client.h:39-40` (`poll_messages` / `poll_messages(float)`).
+      - `include/openglad/gameplay/game_server.h:131` (`poll_incoming_messages`).
+      - `include/openglad/gameplay/net_constants.h` (`KEYFRAME_INTERVAL_TICKS` line 14, `MAX_GRID_DIRTY_TILES` line 21).
+      - `tests/unit/test_net_transport*.cpp` and `tests/test_network_fixture.h` — extend, do not replace.
+      - Existing `og_test_picker_network` group at `CMakeLists.txt:1667` — already links the shadow runtime.
+      - `include/openglad/core/runtime_trace.h` — `emit_runtime_trace` API for the overflow trace.
+
+      ## New Outputs
+      - In `include/openglad/gameplay/net_constants.h`:
+          ```cpp
+          inline constexpr int MAX_INBOUND_MESSAGES_PER_TICK = 64;
+          inline constexpr int MAX_OUTBOUND_MESSAGES_PER_TICK = 32;
+          inline constexpr std::uint32_t MAX_NETWORK_BUDGET_US_PER_TICK = 2000; // 2 ms (advisory, traced not enforced)
+          ```
+      - New overloads:
+          - `void GameClient::poll_messages(float current_render_alpha, int max_messages);`
+          - `void GameServer::poll_incoming_messages(int max_messages);`
+          - `int GameServer::messages_drained_last_call() const;` (so the shadow can know whether the cap fired).
+      - New tests `tests/test_local_transport_shadow_budget.cpp` (in the existing `og_test_picker_network` group at `CMakeLists.txt:1667`):
+          - Push 1000 fake snapshot messages; assert exactly `MAX_INBOUND_MESSAGES_PER_TICK` are drained per call and the un-drained queue persists.
+          - Run repeated ticks until the queue drains; assert no tick processes more than the cap.
+          - Assert exactly one `shadow_inbound_overflow` trace on the first tick of the storm and at least one across the storm.
+
+      ## File Changes
+      - `include/openglad/gameplay/game_client.h`, `src/gameplay/game_client.cpp`: add the bounded overload; existing unbounded versions delegate with `INT_MAX`.
+      - `include/openglad/gameplay/game_server.h`, `src/gameplay/game_server.cpp`: same shape, plus `messages_drained_last_call()`.
+      - `src/platform/sdl/local_transport_shadow.cpp`:
+          - `poll_local_transport_client()` gains an `int budget` parameter and forwards.
+          - `local_transport_shadow_finish_tick()` calls `poll_local_transport_client(*session.myscreen_, client, MAX_INBOUND_MESSAGES_PER_TICK)`. If the server reports it drained the full budget, emit `runtime_trace` `shadow_inbound_overflow` so tests can assert the cap fired.
+      - New `tests/test_local_transport_shadow_budget.cpp` added to the `og_test_picker_network` group in `CMakeLists.txt`.
+
+      ## Implementation Details
+      - Budget values (64 / 32 / 2 ms) are tunable but live in the header so they are visible in code review and jitter runs.
+      - When the cap is hit, the un-drained queue stays in the transport and is consumed next tick. Snapshots are idempotent under sequence numbers (already true), so deferred application is safe.
+      - The 2-ms time budget is advisory only in this phase (recorded in trace but not enforced by an additional clock check inside the loop). Hard time-budget enforcement is deferred — the message-count cap is the primary jitter safety net.
+
+      ## Success Criteria
+      - New `tests/test_local_transport_shadow_budget.cpp` cases pass.
+      - Existing `og_test_picker_network` and the inprocess transport tests pass unchanged.
+      - `runtime_trace` records `shadow_inbound_overflow` at least once in the new storm test.
+
+      ## Git Commit Requirement
+      Before yielding control, you MUST stage and commit all changes with
+      `git add -A && git commit -m "bounded-network-drain: <change>"`. Do not
+      yield with a dirty working tree.
+
+  - id: phase_4_check
+    type: check
+    bounce_target: phase_4_bounded_network_drain
+    prompt: |
+      You are a strict reviewer for Phase 4 (`bounded-network-drain`) of the
+      openglad jitter elimination work.
+
+      ## Preexisting Inputs (consume in place; do not regenerate)
+      - `src/platform/sdl/local_transport_shadow.cpp` — must call the bounded poll and emit `shadow_inbound_overflow`.
+      - `include/openglad/gameplay/game_client.h` — must declare `poll_messages(float, int)`.
+      - `include/openglad/gameplay/game_server.h` — must declare `poll_incoming_messages(int)` and `messages_drained_last_call()`.
+      - `include/openglad/gameplay/net_constants.h` — must define `MAX_INBOUND_MESSAGES_PER_TICK`, `MAX_OUTBOUND_MESSAGES_PER_TICK`, `MAX_NETWORK_BUDGET_US_PER_TICK`.
+      - `tests/test_local_transport_shadow_budget.cpp` — must exist and be wired into `og_test_picker_network`.
+      - `CMakeLists.txt` — must register the new test source.
+
+      ## What to verify
+      - Inbound polling is bounded at exactly `MAX_INBOUND_MESSAGES_PER_TICK` per tick; un-drained queue persists.
+      - Storm test asserts exactly one `shadow_inbound_overflow` trace on the first tick and at least one across the storm.
+      - The unbounded `poll_messages`/`poll_incoming_messages` overloads delegate to the bounded ones with `INT_MAX`.
+      - No existing test regressed.
+
+      ## Commands you MUST run (verbatim)
+      - `cmake --build --preset ci-test`
+      - `ctest --preset ci-test --output-on-failure -R 'NetTransport|GameClient|GameServer|LocalTransportShadow'`
+
+      End your response with exactly one of:
+
+      `VERDICT: PASS`
+      or
+      `VERDICT: FAIL: <reason>`
+
+  - id: phase_5_browser_and_headless_pacer
+    type: implement
+    prompt: |
+      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+
+      This is Phase 5 — browser pacing and headless server pacing alignment.
+
+      ## Preexisting Inputs (consume in place — do NOT rediscover)
+      - `.plan/plan.md` — full implementation plan.
+      - `src/platform/sdl/glad.cpp:243-340` (`emscripten_frame_wrapper`).
+      - `src/platform/sdl/game_loop.cpp:437-469` (`run_browser_wrapper_frame`).
+      - `src/core/frame_pacing.cpp:13-60` (`browser_frame_target_interval_ms` and `step_browser_frame_pacing` — kept; cadence input changes).
+      - `src/server/server_main.cpp:360-380` — existing `sleep_until` headless pacer.
+      - Phase 1 outputs: `target_fps_from_cfg()` getter, `target_frame_interval_ms()`.
+      - Phase 2 outputs: `FrameDeadlinePacer`.
+      - `tests/unit/test_game_loop_wrapper.cpp` (in `og_unit_sim`) — covers `step_browser_frame_pacing`.
+      - `tests/test_game_loop.cpp:1595-1690` — `GameLoopJitter.browser_wrapper_*` tests.
+      - `scripts/test_headless_server_cli.sh`, `scripts/test_emscripten_build.sh` — preexisting scripts.
+
+      ## New Outputs
+      - Browser pacer sources its target interval from `og::core::target_frame_interval_ms(session.target_fps_)` instead of `browser_frame_target_interval_ms(timer_wait, speed_factor)`. The 16 ms browser floor at `src/core/frame_pacing.cpp:22` remains (browser cannot tick faster than rAF).
+      - Headless server pacer (`src/server/server_main.cpp`) uses `og::core::target_frame_interval_ms(target_fps_from_cfg(cfg))` instead of `wait_ticks * TIMER_WAIT_TO_MS`.
+      - Headless server CLI gains `--fps <n>`: when present, it calls `cfg.apply_setting("graphics", "target_fps", arg)` before reading the value back via `target_fps_from_cfg(cfg)`.
+      - New `runtime_trace` `browser_frame_step` emitted at most once per frame in the rAF wrapper.
+
+      ## File Changes
+      - `src/core/frame_pacing.cpp` and `include/openglad/core/frame_pacing.h`: change `browser_frame_target_interval_ms()` to take `int fps` instead of `(short timer_wait, float speed_factor)`. Update all callers in the same change; do not add a compat overload. Update `tests/unit/test_game_loop_wrapper.cpp` (in `og_unit_sim`) and any other test in the same change.
+      - `src/platform/sdl/glad.cpp:243-340` (`emscripten_frame_wrapper`): replace `timer_wait`/`speed_factor` reads with `og::runtime::current_session->target_fps_`. Strict single-step contract: each call to `run_browser_wrapper_frame` may execute at most one sim tick (it already does); add a `runtime_trace` `browser_frame_step` that emits at most once per frame and update `tests/unit/test_game_loop_wrapper.cpp` to assert the count.
+      - `src/server/server_main.cpp:360-380`: replace `wait_ticks * TIMER_WAIT_TO_MS` with `og::core::target_frame_interval_ms(...)`. Parse `--fps <n>` in the existing CLI argument loop and call `cfg.apply_setting("graphics", "target_fps", value)` before computing the interval. The integer is then read via `target_fps_from_cfg(cfg)` (clamps).
+      - `tests/test_game_loop.cpp:1595-1690`: update `GameLoopJitter.browser_wrapper_*` tests to drive the new fps-based input shape; assertions on rounded interval should use `target_frame_interval_ms()`.
+      - `tests/unit/test_game_loop_wrapper.cpp`: same.
+
+      ## Implementation Details
+      - The browser tick is still scheduled by the browser's rAF loop, so the deadline pacer is **not** used in the browser to *sleep*; the browser uses `step_browser_frame_pacing()` to decide whether the rAF callback should run a tick. What changes is the input — the rAF helper now reads `target_fps_` from the session instead of `timer_wait` and `speed_factor`.
+      - `world.timer_wait` continues to be transmitted in snapshots (sim determinism). Visual cadence is no longer slaved to it.
+      - On the headless server, the deadline-sleep loop keeps its existing structure but pulls the fps value from cfg at startup; in-game changes to the target fps require a server restart (acceptable for headless).
+
+      ## Success Criteria
+      - All `GameLoopJitter.browser_*` tests pass with the new signatures.
+      - `scripts/test_headless_server_cli.sh` runs and exits cleanly; the server respects `--fps <n>`.
+      - `scripts/test_emscripten_build.sh` either compiles cleanly or self-skips with exit 0.
+      - No code path in the browser wrapper or headless server reads `timer_wait * speed_factor` for pacing — the value is sourced from `target_fps`.
+
+      ## Git Commit Requirement
+      Before yielding control, you MUST stage and commit all changes with
+      `git add -A && git commit -m "browser-and-headless-pacer: <change>"`.
+      Do not yield with a dirty working tree.
+
+  - id: phase_5_check
+    type: check
+    bounce_target: phase_5_browser_and_headless_pacer
+    prompt: |
+      You are a strict reviewer for Phase 5 (`browser-and-headless-pacer`) of
+      the openglad jitter elimination work.
+
+      ## Preexisting Inputs (consume in place; do not regenerate)
+      - `src/platform/sdl/glad.cpp` — `emscripten_frame_wrapper` must source pacing from `target_fps_`.
+      - `src/platform/sdl/game_loop.cpp` — browser wrapper must call the new fps-based interval helper.
+      - `src/core/frame_pacing.cpp` — `browser_frame_target_interval_ms(int fps)` signature must be updated; 16 ms floor preserved.
+      - `src/server/server_main.cpp` — must use `target_frame_interval_ms(target_fps_from_cfg(cfg))` and parse `--fps <n>`.
+      - `tests/unit/test_game_loop_wrapper.cpp` — must drive the new fps-based input shape and assert the `browser_frame_step` runtime trace count.
+      - `tests/test_game_loop.cpp` — `GameLoopJitter.browser_wrapper_*` tests must use `target_frame_interval_ms()`.
+      - `scripts/test_headless_server_cli.sh`, `scripts/test_emscripten_build.sh` — must run cleanly (the emscripten script may self-skip with exit 0 if emsdk is missing).
+
+      ## What to verify
+      - No `timer_wait * speed_factor` pacing math remains in the browser wrapper or headless server.
+      - The `--fps <n>` CLI flag sets `graphics.target_fps` before the interval is computed.
+      - `browser_frame_step` runtime trace is emitted at most once per browser frame.
+      - The 16 ms browser floor is preserved.
+
+      ## Commands you MUST run (verbatim)
+      - `cmake --build --preset ci-test`
+      - `ctest --preset ci-test --output-on-failure -R 'GameLoopWrapper|GameLoopJitter|HeadlessServer'`
+      - `bash scripts/test_headless_server_cli.sh`
+      - `bash scripts/test_emscripten_build.sh`
+
+      Any non-zero exit from `scripts/test_emscripten_build.sh` is a failure
+      (the script is expected to self-detect a missing emsdk and exit 0).
+
+      End your response with exactly one of:
+
+      `VERDICT: PASS`
+      or
+      `VERDICT: FAIL: <reason>`
+
+  - id: phase_6_jitter_measurement_final
+    type: implement
+    prompt: |
+      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+
+      This is Phase 6 — end-to-end jitter measurement and final docs.
+
+      ## Preexisting Inputs (consume in place — do NOT rebuild)
+      - `.plan/plan.md` — full implementation plan.
+      - All artifacts from Phases 1-5 (consumed in place):
+          - `include/openglad/core/frame_rate_config.h`, `src/core/frame_rate_config.cpp` (Phase 1).
+          - `include/openglad/core/frame_pacing.h`, `src/core/frame_pacing.cpp` containing `FrameDeadlinePacer` (Phase 2).
+          - Updated `src/platform/sdl/game_loop.cpp` and `src/platform/sdl/glad_gameplay.cpp` (Phase 3).
+          - Updated `src/platform/sdl/local_transport_shadow.cpp` and bounded message overloads (Phase 4).
+          - Updated browser/headless pacers (Phase 5).
+      - `scripts/analyze_jitter_metrics.mjs` and `scripts/run_jitter_gtests.sh`.
+      - `cfg/openglad.yaml` (already updated in Phase 1).
+      - `scripts/check_vendor_leaks.sh`.
+      - Existing `og_test_game_core` group at `CMakeLists.txt:1593-1606`.
+
+      ## New Outputs
+      - New deterministic jitter regression test `tests/test_frame_pacing_jitter.cpp` (in `og_test_game_core` group at `CMakeLists.txt:1593-1606`):
+          - Drives `game_frame_with_result()` for 600 simulated frames at 72 fps with an injected `now_ms` advancing by exactly `target_frame_interval_ms(72)` each call.
+          - Captures every value passed to `deps.sleep_ms` and every `desktop_loop_sleep_ms` runtime trace.
+          - Asserts `max(observed_interval) - min(observed_interval) <= 1` ms (zero structural jitter; only integer rounding remains).
+          - Asserts exactly 600 sim ticks ran (no catch-up bursts, no skipped ticks).
+          - Repeats the same flow at 60 fps in a second test case to prove the knob is honored.
+      - Jitter assertion under storm: extend the budgeted-drain test from Phase 4 (or add a new case in `tests/test_frame_pacing_jitter.cpp`) asserting that with 1000 inbound messages queued, `local_transport_shadow_finish_tick` returns within a bound proportional to `MAX_INBOUND_MESSAGES_PER_TICK` rather than to the queue length, measured against an injected clock.
+
+      ## File Changes
+      - New `tests/test_frame_pacing_jitter.cpp`; add to the `og_test_game_core` group at `CMakeLists.txt:1593`.
+      - **Do not** add markdown summary docs; per repo rules, documentation files are not created unless explicitly requested.
+
+      ## Implementation Details
+      - The jitter regression test must be wall-clock-independent — uses an injected clock so it is reproducible on any CI runner including ASan and UBSan.
+      - The two fps cases (60 and 72) live in the same compilation unit; both use the injected-clock harness from `tests/test_game_loop.cpp` patterns.
+
+      ## Success Criteria
+      - Full `ctest --preset ci-test` is green.
+      - `scripts/run_jitter_gtests.sh` exits zero.
+      - `scripts/check_vendor_leaks.sh` exits zero (no third-party header leakage from the new code, which only touches `og::core`, `og::runtime`, and `og::sim` public headers).
+      - New `FramePacingJitter.*` tests in `og_test_game_core` are exercised and pass for both 60 and 72 fps.
+      - Storm-jitter assertion holds: `local_transport_shadow_finish_tick` is bounded by `MAX_INBOUND_MESSAGES_PER_TICK`, not by queue length.
+
+      ## Git Commit Requirement
+      Before yielding control, you MUST stage and commit all changes with
+      `git add -A && git commit -m "jitter-measurement-final: <change>"`. Do
+      not yield with a dirty working tree.
+
+  - id: phase_6_check
+    type: check
+    bounce_target: phase_6_jitter_measurement_final
+    prompt: |
+      You are a strict reviewer for Phase 6 (`jitter-measurement-final`) of
+      the openglad jitter elimination work.
+
+      ## Preexisting Inputs (consume in place; do not regenerate)
+      - `tests/test_frame_pacing_jitter.cpp` — must exist with both 60 fps and 72 fps test cases and a storm-jitter assertion.
+      - `scripts/run_jitter_gtests.sh` — must exit zero.
+      - `scripts/check_vendor_leaks.sh` — must exit zero.
+      - `CMakeLists.txt` — must register `tests/test_frame_pacing_jitter.cpp` in the `og_test_game_core` group at line 1593.
+
+      ## What to verify
+      - Deterministic 600-frame jitter regression at both 60 fps and 72 fps with an injected clock.
+      - `max(observed_interval) - min(observed_interval) <= 1` ms.
+      - Exactly 600 sim ticks ran (no catch-up bursts, no skipped ticks).
+      - Storm-jitter assertion: `local_transport_shadow_finish_tick` returns within a bound proportional to `MAX_INBOUND_MESSAGES_PER_TICK`, not the queue length.
+      - No new markdown summary docs were added.
+
+      ## Commands you MUST run (verbatim)
+      - `cmake --build --preset ci-test`
+      - `ctest --preset ci-test --output-on-failure`
+      - `bash scripts/run_jitter_gtests.sh build/ci-test/og_test_game_core build/ci-test/og_test_view build/ci-test/og_unit_sim`
+      - `bash scripts/check_vendor_leaks.sh`
+
+      End your response with exactly one of:
+
+      `VERDICT: PASS`
+      or
+      `VERDICT: FAIL: <reason>`

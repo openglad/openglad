@@ -24,4 +24,26 @@ BrowserFramePacingResult step_browser_frame_pacing(
     short timer_wait,
     float speed_factor);
 
+struct FrameDeadlineDecision
+{
+    bool run_tick = false;
+    bool run_render = false;
+    std::uint32_t sleep_ms = 0;
+    std::uint32_t next_deadline_ms = 0;
+};
+
+class FrameDeadlinePacer
+{
+public:
+    void configure(std::uint32_t interval_ms, std::uint32_t now_ms);
+    FrameDeadlineDecision tick(std::uint32_t now_ms);
+    void reset(std::uint32_t now_ms);
+    std::uint32_t interval_ms() const { return interval_ms_; }
+
+private:
+    std::uint32_t interval_ms_ = 0;
+    std::uint32_t next_deadline_ms_ = 0;
+    bool initialized_ = false;
+};
+
 } // namespace og::core
