@@ -193,6 +193,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
+    ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
     ${SRC_DIR}/interface/session_state.cpp
@@ -235,6 +236,7 @@ set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
+    ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
 )
